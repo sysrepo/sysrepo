@@ -56,6 +56,8 @@ def oper_get_items_cb(session, module_name, path, request_xpath, request_id, par
     except Exception as e:
         print (e)
         return sr.SR_ERR_OK
+    print("done")
+    sys.stdout.flush()
     return sr.SR_ERR_OK
 
 if __name__ == "__main__":
@@ -75,6 +77,7 @@ if __name__ == "__main__":
     subscribe = sr.Subscribe(sess)
 
     subscribe.oper_get_items_subscribe(module_name, xpath, oper_get_items_cb)
+    print("subscribed")
 
     sr.global_loop()
 

@@ -37,10 +37,11 @@ class NotificationTester(SysrepoTester):
     def subscribeStep(self, module_name, xpath):
         self.filename = "notifications_test_" + str(randint(0, 9999))
         self.process = subprocess.Popen(
-            ['python3','NotificationTestApp.py', module_name, xpath, self.filename])
+            ['python3','-u','NotificationTestApp.py', module_name, xpath, self.filename], stdin=subprocess.PIPE,stdout=subprocess.PIPE)
         self.report_pid(self.process.pid)
         # wait for running data file to be copied
-        time.sleep(1)
+        output = str(self.process.stdout.readline().rstrip())
+        self.tc.assertEqual(output, "b'subscribed'")
 
     def cancelSubscriptionStep(self):
         os.kill(self.process.pid, signal.SIGINT)
@@ -119,11 +120,6 @@ class NotificationTest(unittest.TestCase):
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
 
-        subscriber.add_step(subscriber.waitTimeoutStep, 0.4)
-        subscriber.add_step(subscriber.waitTimeoutStep, 0.4)
-        subscriber2.add_step(subscriber2.waitTimeoutStep, 0.4)
-        subscriber3.add_step(subscriber3.waitTimeoutStep, 0.4)
-
         tester.add_step(tester.waitStep)
         subscriber.add_step(subscriber.checkNotificationStep,
                             [["DELETED", "/ietf-interfaces:interfaces/interface[name='eth0']"],
@@ -159,11 +155,6 @@ class NotificationTest(unittest.TestCase):
         subscriber.add_step(subscriber.disconnect)
         subscriber2.add_step(subscriber2.disconnect)
         subscriber3.add_step(subscriber3.disconnect)
-
-        tester.add_step(tester.waitTimeoutStep, 1)
-        subscriber.add_step(subscriber.waitTimeoutStep, 1)
-        subscriber2.add_step(subscriber2.waitTimeoutStep, 1)
-        subscriber3.add_step(subscriber3.waitTimeoutStep, 1)
 
         tm.add_tester(tester)
         tm.add_tester(subscriber)
@@ -206,11 +197,6 @@ class NotificationTest(unittest.TestCase):
 
         tester.add_step(tester.commitStep)
         subscriber.add_step(subscriber.waitStep)
-        subscriber2.add_step(subscriber2.waitStep)
-        subscriber3.add_step(subscriber3.waitStep)
-
-        tester.add_step(tester.waitStep)
-        subscriber.add_step(subscriber.waitTimeoutStep, 0.4)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
 
@@ -287,11 +273,6 @@ class NotificationTest(unittest.TestCase):
         subscriber3.add_step(subscriber3.waitStep)
 
         tester.add_step(tester.commitStep)
-        subscriber.add_step(subscriber.waitStep)
-        subscriber2.add_step(subscriber2.waitStep)
-        subscriber3.add_step(subscriber3.waitStep)
-
-        tester.add_step(tester.waitTimeoutStep, 0.4)
         subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)
@@ -378,12 +359,6 @@ class NotificationTest(unittest.TestCase):
         subscriber4.add_step(subscriber4.waitStep)
 
         tester.add_step(tester.commitStep)
-        subscriber.add_step(subscriber.waitStep)
-        subscriber2.add_step(subscriber2.waitStep)
-        subscriber3.add_step(subscriber3.waitStep)
-        subscriber4.add_step(subscriber4.waitStep)
-
-        tester.add_step(tester.waitTimeoutStep, 0.4)
         subscriber.add_step(subscriber.waitStep)
         subscriber2.add_step(subscriber2.waitStep)
         subscriber3.add_step(subscriber3.waitStep)

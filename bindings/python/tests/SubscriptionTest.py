@@ -30,11 +30,11 @@ from time import sleep
 class SubscriptionTester(SysrepoTester):
 
     def subscribeStep(self):
-        self.process = subprocess.Popen(
-            ['python3','SubscriptionTestApp.py'])
+        self.process = subprocess.Popen(['python3','-u','SubscriptionTestApp.py'], stdin=subprocess.PIPE,stdout=subprocess.PIPE)
         self.report_pid(self.process.pid)
         # wait for running data file to be copied
-        sleep(2)
+        output = str(self.process.stdout.readline().rstrip())
+        self.tc.assertEqual(output, "b'subscribed'")
 
     def cancelSubscriptionStep(self):
         os.kill(self.process.pid, signal.SIGUSR1)
@@ -85,9 +85,6 @@ class SubscriptionTest(unittest.TestCase):
         reader.add_step(reader.waitStep)
         subscriber.add_step(subscriber.cancelSubscriptionStep)
 
-        reader.add_step(reader.waitStep)
-        subscriber.add_step(subscriber.waitTimeoutStep, 1)
-
         reader.add_step(reader.getOperationalData, "/ietf-interfaces:interfaces-state/interface[name='eth100']", [])
         subscriber.add_step(subscriber.waitStep)
 
@@ -118,9 +115,6 @@ class SubscriptionTest(unittest.TestCase):
 
         reader.add_step(reader.waitStep)
         subscriber.add_step(subscriber.cancelSubscriptionStep)
-
-        reader.add_step(reader.waitStep)
-        subscriber.add_step(subscriber.waitTimeoutStep, 1)
 
         reader.add_step(reader.getOperationalData, "/ietf-interfaces:interfaces-state/interface[name='eth100']", [])
         subscriber.add_step(subscriber.waitStep)
