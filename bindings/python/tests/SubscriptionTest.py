@@ -21,6 +21,7 @@ __license__ = "Apache 2.0"
 from ConcurrentHelpers import *
 import signal
 import os
+import errno
 import subprocess
 import TestModule
 import sysrepo as sr
@@ -30,11 +31,23 @@ from time import sleep
 class SubscriptionTester(SysrepoTester):
 
     def subscribeStep(self):
-        self.process = subprocess.Popen(
-            ['python3','SubscriptionTestApp.py'])
-        self.report_pid(self.process.pid)
         # wait for running data file to be copied
-        sleep(2)
+
+        try:
+            os.mkfifo("pipe_subscription_test")
+        except OSError as oe: 
+            if oe.errno != errno.EEXIST:
+                raise
+                
+
+        self.process = subprocess.Popen(['python3','SubscriptionTestApp.py', format(os.getpid())])
+        self.report_pid(self.process.pid)
+        output = ""
+        with open("pipe_subscription_test", "r") as fifo:
+            output = fifo.readline()
+        
+        os.unlink("pipe_subscription_test")
+        self.tc.assertEqual(str(output), "subscribed")
 
     def cancelSubscriptionStep(self):
         os.kill(self.process.pid, signal.SIGUSR1)
@@ -54,17 +67,44 @@ class SubscriptionTester(SysrepoTester):
 
 class SubscriptionTest(unittest.TestCase):
 
-    @classmethod
-    def setUp(self):
-        TestModule.create_ietf_interfaces_module()
-        TestModule.create_iana_if_type_module()
-        TestModule.create_ietf_ip_module()
-        TestModule.create_ietf_interfaces()
-
-    def tearDown(self):
+    def remove_interfaces(self):
         TestModule.remove_ietf_interfaces_module()
         TestModule.remove_iana_if_type_module()
         TestModule.remove_ietf_ip_module()
+    @classmethod
+    def setUpClass(self):
+        self.remove_interfaces(self)
+
+    @classmethod
+    def tearDownClass(self):
+        self.remove_interfaces(self)
+
+    @classmethod
+    def setUp(self):
+        if not TestModule.create_ietf_interfaces_module():
+            self.remove_interfaces(self)
+            self.skipTest(self,"Test environment is not clean!")
+            print("Environment is not clean!")
+            return
+        if not TestModule.create_iana_if_type_module():
+            self.remove_interfaces(self)
+            self.skipTest(self,"Test environment is not clean!")
+            print("Environment is not clean!")
+            return
+        if not TestModule.create_ietf_ip_module():
+            self.remove_interfaces(self)
+            self.skipTest(self,"Test environment is not clean!")
+            print("Environment is not clean!")
+            return
+        if not TestModule.create_ietf_interfaces():
+            self.remove_interfaces(self)
+            self.skipTest(self,"Test environment is not clean!")
+            print("Environment is not clean!")
+            return
+
+    @classmethod
+    def tearDown(self):
+        self.remove_interfaces(self)
 
 
     def test_SubscribeUnsubscribe(self):
@@ -84,9 +124,6 @@ class SubscriptionTest(unittest.TestCase):
 
         reader.add_step(reader.waitStep)
         subscriber.add_step(subscriber.cancelSubscriptionStep)
-
-        reader.add_step(reader.waitStep)
-        subscriber.add_step(subscriber.waitTimeoutStep, 1)
 
         reader.add_step(reader.getOperationalData, "/ietf-interfaces:interfaces-state/interface[name='eth100']", [])
         subscriber.add_step(subscriber.waitStep)
@@ -118,9 +155,6 @@ class SubscriptionTest(unittest.TestCase):
 
         reader.add_step(reader.waitStep)
         subscriber.add_step(subscriber.cancelSubscriptionStep)
-
-        reader.add_step(reader.waitStep)
-        subscriber.add_step(subscriber.waitTimeoutStep, 1)
 
         reader.add_step(reader.getOperationalData, "/ietf-interfaces:interfaces-state/interface[name='eth100']", [])
         subscriber.add_step(subscriber.waitStep)
