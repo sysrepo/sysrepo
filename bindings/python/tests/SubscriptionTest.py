@@ -55,16 +55,57 @@ class SubscriptionTester(SysrepoTester):
 class SubscriptionTest(unittest.TestCase):
 
     @classmethod
-    def setUp(self):
-        TestModule.create_ietf_interfaces_module()
-        TestModule.create_iana_if_type_module()
-        TestModule.create_ietf_ip_module()
-        TestModule.create_ietf_interfaces()
-
-    def tearDown(self):
+    def setUpClass(self):
         TestModule.remove_ietf_interfaces_module()
         TestModule.remove_iana_if_type_module()
         TestModule.remove_ietf_ip_module()
+
+    @classmethod
+    def tearDownClass(cls):
+        TestModule.remove_ietf_interfaces_module()
+        TestModule.remove_iana_if_type_module()
+        TestModule.remove_ietf_ip_module()
+
+    @classmethod
+    def setUp(self):
+        if not TestModule.create_ietf_interfaces_module():
+            TestModule.remove_ietf_interfaces_module()
+            TestModule.remove_iana_if_type_module()
+            TestModule.remove_ietf_ip_module()
+            self.skipTest(self,"Test environment is not clean!")
+            print("Environment is not clean!")
+            return
+        if not TestModule.create_iana_if_type_module():
+            TestModule.remove_ietf_interfaces_module()
+            TestModule.remove_iana_if_type_module()
+            TestModule.remove_ietf_ip_module()
+            self.skipTest(self,"Test environment is not clean!")
+            print("Environment is not clean!")
+            return
+        if not TestModule.create_ietf_ip_module():
+            TestModule.remove_ietf_interfaces_module()
+            TestModule.remove_iana_if_type_module()
+            TestModule.remove_ietf_ip_module()
+            self.skipTest(self,"Test environment is not clean!")
+            print("Environment is not clean!")
+            return
+        if not TestModule.create_ietf_interfaces():
+            TestModule.remove_ietf_interfaces_module()
+            TestModule.remove_iana_if_type_module()
+            TestModule.remove_ietf_ip_module()
+            self.skipTest(self,"Test environment is not clean!")
+            print("Environment is not clean!")
+            return
+
+    @classmethod
+    def tearDown(self):
+        print("tear1")
+        TestModule.remove_ietf_interfaces_module()
+        print("tear2")
+        TestModule.remove_iana_if_type_module()
+        print("tear3")
+        TestModule.remove_ietf_ip_module()
+        print("tear4")
 
 
     def test_SubscribeUnsubscribe(self):
