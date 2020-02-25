@@ -19,6 +19,7 @@ __license__ = "Apache 2.0"
 
 import sysrepo as sr
 import sys
+import os
 from time import sleep
 from datetime import datetime
 
@@ -114,8 +115,8 @@ if __name__ == "__main__":
             sleep(10.0/10e6)
             continue
         break
-
-    print("subscribed")
+    with open("pipe_"+settings['filename'], "w") as fifo:
+        fifo.write("subscribed")
     sr.global_loop()
     subscribe.unsubscribe()
 

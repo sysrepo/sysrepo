@@ -23,6 +23,7 @@ from ConcurrentHelpers import *
 from random import randint
 import signal
 import os
+import errno
 import subprocess
 import TestModule
 import sysrepo as sr
@@ -36,12 +37,22 @@ class NotificationTester(SysrepoTester):
 
     def subscribeStep(self, module_name, xpath):
         self.filename = "notifications_test_" + str(randint(0, 9999))
+        try:
+            os.mkfifo("pipe_"+self.filename)
+        except OSError as oe: 
+            if oe.errno != errno.EEXIST:
+                raise
+
         self.process = subprocess.Popen(
-            ['python3','-u','NotificationTestApp.py', module_name, xpath, self.filename], stdin=subprocess.PIPE,stdout=subprocess.PIPE)
+            ['python3','NotificationTestApp.py', module_name, xpath, self.filename])
         self.report_pid(self.process.pid)
         # wait for running data file to be copied
-        output = str(self.process.stdout.readline().rstrip())
-        self.tc.assertEqual(output, "b'subscribed'")
+        output = ""
+        with open("pipe_"+self.filename, "r") as fifo:
+            output = fifo.readline()
+        
+        os.unlink("pipe_"+self.filename)
+        self.tc.assertEqual(str(output), "subscribed")
 
     def cancelSubscriptionStep(self):
         os.kill(self.process.pid, signal.SIGINT)
@@ -74,20 +85,51 @@ class NotificationTester(SysrepoTester):
 
 class NotificationTest(unittest.TestCase):
 
-    @classmethod
-    def setUp(self):
-        TestModule.create_ietf_interfaces_module()
-        TestModule.create_iana_if_type_module()
-        TestModule.create_ietf_ip_module()
-        TestModule.create_ietf_interfaces()
-        TestModule.remove_example_module()
-        TestModule.create_example_module()
 
-    def tearDown(self):
-        TestModule.remove_example_module()
+    def remove_interfaces(self):
         TestModule.remove_ietf_interfaces_module()
         TestModule.remove_iana_if_type_module()
         TestModule.remove_ietf_ip_module()
+        TestModule.remove_example_module()
+    @classmethod
+    def setUpClass(self):
+        self.remove_interfaces(self)
+
+    @classmethod
+    def tearDownClass(self):
+        self.remove_interfaces(self)
+
+    @classmethod
+    def setUp(self):
+        if not TestModule.create_ietf_interfaces_module():
+            self.remove_interfaces(self)
+            self.skipTest(self,"Test environment is not clean!")
+            print("Environment is not clean!")
+            return
+        if not TestModule.create_iana_if_type_module():
+            self.remove_interfaces(self)
+            self.skipTest(self,"Test environment is not clean!")
+            print("Environment is not clean!")
+            return
+        if not TestModule.create_ietf_ip_module():
+            self.remove_interfaces(self)
+            self.skipTest(self,"Test environment is not clean!")
+            print("Environment is not clean!")
+            return
+        if not TestModule.create_ietf_interfaces():
+            self.remove_interfaces(self)
+            self.skipTest(self,"Test environment is not clean!")
+            print("Environment is not clean!")
+            return
+        if not TestModule.create_example_module():
+            self.remove_interfaces(self)
+            self.skipTest(self,"Test environment is not clean!")
+            print("Environment is not clean!")
+            return
+
+    @classmethod
+    def tearDown(self):
+        self.remove_interfaces(self)
 
     def test_notify_delete(self):
         tm = TestManager()
@@ -496,7 +538,7 @@ class NotificationTest(unittest.TestCase):
         tm.add_tester(tester)
         tm.add_tester(subscriber)
 
-        tm.run()
+        tm.run() 
 
 
 if __name__ == '__main__':
