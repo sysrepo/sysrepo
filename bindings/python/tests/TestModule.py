@@ -71,7 +71,7 @@ def remove_ietf_ip_module():
     try:
         connection.remove_module("ietf-ip")
     except Exception as e:
-        print (e)
+        print(e)
         connection = None
         return False
 
@@ -83,7 +83,7 @@ def create_ietf_ip_module():
     try:
         connection.install_module(os.environ['TESTS_DIR']+"/files/ietf-ip.yang",os.environ['TESTS_DIR']+"/files", [])
     except Exception as e:
-        print (e)
+        print(e)
         connection = None
         return False
 
@@ -95,7 +95,7 @@ def remove_iana_if_type_module():
     try:
         connection.remove_module("iana-if-type")
     except Exception as e:
-        print (e)
+        print(e)
         connection = None
         return False
 
@@ -107,7 +107,7 @@ def create_iana_if_type_module():
     try:
         connection.install_module(os.environ['TESTS_DIR']+"/files/iana-if-type.yang",os.environ['TESTS_DIR']+"/files", [])
     except Exception as e:
-        print (e)
+        print(e)
         connection = None
         return False
 
@@ -119,7 +119,7 @@ def remove_ietf_interfaces_module():
     try:
         connection.remove_module("ietf-interfaces")
     except Exception as e:
-        print (e)
+        print(e)
         connection = None
         return False
 
@@ -131,7 +131,7 @@ def create_ietf_interfaces_module():
     try:
         connection.install_module(os.environ['TESTS_DIR']+"/files/ietf-interfaces.yang",os.environ['TESTS_DIR']+"/files", [])
     except Exception as e:
-        print (e)
+        print(e)
         connection = None
         return False
 
@@ -144,7 +144,7 @@ def remove_referenced_data_module():
     try:
         connection.remove_module("referenced-data")
     except Exception as e:
-        print (e)
+        print(e)
         connection = None
         return False
 
@@ -156,7 +156,7 @@ def create_referenced_data_module():
     try:
         connection.install_module(os.environ['TESTS_DIR']+"/files/referenced-data.yang",os.environ['TESTS_DIR']+"/files", [])
     except Exception as e:
-        print (e)
+        print(e)
         connection = None
         return False
 
@@ -168,7 +168,7 @@ def remove_test_module():
     try:
         connection.remove_module("test-module")
     except Exception as e:
-        print (e)
+        print(e)
         connection = None
         return False
 
@@ -180,7 +180,7 @@ def create_test_module():
     try:
         connection.install_module(os.environ['TESTS_DIR']+"/files/test-module.yang",os.environ['TESTS_DIR']+"/files", [])
     except Exception as e:
-        print (e)
+        print(e)
         connection = None
         return False
 
@@ -265,7 +265,7 @@ def create_test_module():
 
         connection=None
     except Exception as e:
-        print (e)
+        print(e)
         connection = None
         return False
 
@@ -275,7 +275,7 @@ def remove_example_module():
     try:
         connection.remove_module("example-module")
     except Exception as e:
-        print (e)
+        print(e)
         connection = None
         return False
 
@@ -287,7 +287,7 @@ def create_example_module():
     try:
         connection.install_module(os.environ['TESTS_DIR']+"/files/example-module.yang",os.environ['TESTS_DIR']+"/files", [])
     except Exception as e:
-        print (e)
+        print(e)
         connection = None
         return False
 
@@ -305,7 +305,7 @@ def create_example_module():
         connection=None
         return True
     except Exception as e:
-        print (e)
+        print(e)
         connection = None
         return False
 
@@ -362,7 +362,7 @@ def create_ietf_interfaces():
         connection=None
         return True
     except Exception as e:
-        print (e)
+        print(e)
         connection = None
         return False
 

@@ -22,24 +22,46 @@ import sysrepo as sr
 
 class SysrepoBasicTest(unittest.TestCase):
 
-    @classmethod
-    def setUpClass(self):
-        TestModule.create_referenced_data_module()
-        TestModule.create_test_module()
-        TestModule.create_example_module()
-        self.conn= sr.Connection(sr.SR_CONN_DEFAULT)
-
-    def setUp(self):
-        TestModule.create_test_module()
-        self.session = sr.Session(self.conn, sr.SR_DS_STARTUP)
-        self.conn= sr.Connection(sr.SR_CONN_DEFAULT)
-
-    def tearDown(self):
+    def remove_modules(self):
         TestModule.remove_example_module()
         TestModule.remove_test_module()
         TestModule.remove_referenced_data_module()
+
+    @classmethod
+    def setUpClass(self):
+        self.remove_modules(self)
+        self.conn= sr.Connection(sr.SR_CONN_DEFAULT)
+
+    @classmethod
+    def tearDownClass(self):
+        self.conn=None
+        self.remove_modules(self)
+
+    @classmethod
+    def setUp(self):
+        if not TestModule.create_referenced_data_module():
+            self.remove_modules(self)
+            self.skipTest(self,"Test environment is not clean!")
+            print("Environment is not clean!")
+            return
+        if not TestModule.create_test_module():
+            self.remove_modules(self)
+            self.skipTest(self,"Test environment is not clean!")
+            print("Environment is not clean!")
+            return
+        if not TestModule.create_example_module():
+            self.remove_modules(self)
+            self.skipTest(self,"Test environment is not clean!")
+            print("Environment is not clean!")
+            return
+        self.session = sr.Session(self.conn, sr.SR_DS_STARTUP)
+        self.conn= sr.Connection(sr.SR_CONN_DEFAULT)
+
+    @classmethod
+    def tearDown(self):
+        self.remove_modules(self)
         self.session.session_stop()
-        conn=None
+        self.conn=None
 
     def test_logg_stderr(self):
         log = sr.Logs()

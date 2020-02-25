@@ -28,7 +28,7 @@ usr_interrupt=False
 subscribe = None
 
 def oper_get_items_cb(session, module_name, path, request_xpath, request_id, parent, private_data):
-    print ("\n\n ========== CALLBACK CALLED TO PROVIDE \"" + path + "\" DATA ==========\n")
+    print("\n\n ========== CALLBACK CALLED TO PROVIDE \"" + path + "\" DATA ==========\n")
     try:
         ctx = session.get_context()
         mod = ctx.get_module(module_name)
@@ -55,7 +55,7 @@ def oper_get_items_cb(session, module_name, path, request_xpath, request_id, par
         oper_status.reset(sr.Data_Node(ifc, mod, "oper-status", "not-present"));
 
     except Exception as e:
-        print (e)
+        print(e)
         return sr.SR_ERR_OK
     sys.stdout.flush()
     return sr.SR_ERR_OK

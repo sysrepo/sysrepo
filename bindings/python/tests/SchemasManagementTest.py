@@ -42,14 +42,34 @@ class SysrepoModuleTester(SysrepoTester):
 
 class SchemasManagementTest(unittest.TestCase):
 
-    @classmethod
-    def setUp(self):
-       TestModule.create_referenced_data_module()
-       TestModule.create_test_module()
-
-    def tearDown(self):
+    def remove_modules(self):
         TestModule.remove_test_module()
         TestModule.remove_referenced_data_module()
+
+    @classmethod
+    def setUpClass(self):
+        self.remove_modules(self)
+
+    @classmethod
+    def tearDownClass(self):
+        self.remove_modules(self)
+
+    @classmethod
+    def setUp(self):
+        if not TestModule.create_referenced_data_module():
+            self.remove_modules(self)
+            self.skipTest(self,"Test environment is not clean!")
+            print("Environment is not clean!")
+            return
+        if not TestModule.create_test_module():
+            self.remove_modules(self)
+            self.skipTest(self,"Test environment is not clean!")
+            print("Environment is not clean!")
+            return
+
+    @classmethod
+    def tearDown(self):
+        self.remove_modules(self)
 
     def test_ModuleLoading(self):
          """Schemas are loaded on demand. Try to send multiple requests targeting the same model

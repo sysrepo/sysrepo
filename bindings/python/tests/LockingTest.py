@@ -38,12 +38,29 @@ class User2(SysrepoTester):
 
 
 class LockingTest(unittest.TestCase):
-    @classmethod
-    def tearDown(self):
+
+    def remove_modules(self):
         TestModule.remove_example_module()
 
+    @classmethod
+    def setUpClass(self):
+        self.remove_modules(self)
+
+    @classmethod
+    def tearDownClass(self):
+        self.remove_modules(self)
+
+    @classmethod
     def setUp(self):
-        TestModule.create_example_module()
+        if not TestModule.create_example_module():
+            self.remove_modules(self)
+            self.skipTest(self,"Test environment is not clean!")
+            print("Environment is not clean!")
+            return
+
+    @classmethod
+    def tearDown(self):
+        self.remove_modules(self)
 
     def test_ConcurrentDataStoreLocking(self):
         tm = TestManager()
