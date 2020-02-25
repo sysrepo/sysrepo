@@ -2186,7 +2186,7 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         /* parse data parent */
         ly_errno = 0;
         parent = lyd_parse_mem(conn->ly_ctx, oper_sub->sub_shm.addr + sizeof(sr_sub_shm_t) + sr_strshmlen(request_xpath),
-                LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT);
+                LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT | LYD_OPT_TRUSTED);
         if (ly_errno) {
             sr_errinfo_new_ly(&err_info, conn->ly_ctx);
             SR_ERRINFO_INT(&err_info);
