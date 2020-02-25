@@ -18,6 +18,7 @@ __license__ = "Apache 2.0"
 
 import sysrepo as sr
 import sys
+import os
 import signal
 from time import sleep
 from os import getpid
@@ -63,8 +64,9 @@ def oper_get_items_cb(session, module_name, path, request_xpath, request_id, par
 if __name__ == "__main__":
     module_name = "ietf-interfaces"
     xpath = "/ietf-interfaces:interfaces-state"
+    pid = "0"
     if len(sys.argv) > 2:
-        module_name = sys.argv[1]
+        pid = sys.argv[1]
 
 
     # connect to sysrepo
@@ -77,7 +79,10 @@ if __name__ == "__main__":
     subscribe = sr.Subscribe(sess)
 
     subscribe.oper_get_items_subscribe(module_name, xpath, oper_get_items_cb)
-    print("subscribed")
+    
+    with open("Subs", "w") as fifo:
+        fifo.write("subscribed")
+    
 
     sr.global_loop()
 
