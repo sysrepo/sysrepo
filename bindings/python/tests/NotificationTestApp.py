@@ -19,6 +19,7 @@ __license__ = "Apache 2.0"
 
 import sysrepo as sr
 import sys
+import os
 from time import sleep
 from datetime import datetime
 
@@ -109,14 +110,13 @@ if __name__ == "__main__":
     for i in range(3):
         try:
             subscribe.module_change_subscribe(settings['module_name'], module_change_cb, settings['xpath'], settings, 0, sr.SR_SUBSCR_DONE_ONLY)
-            print("Application will watch for changes under module name " +  settings['module_name'] + "\n")
         except Exception as e:
             # Multiple clients might try to subscribe to the same model.
-            print ("Retrying to subscribe...", file=sys.stderr) 
             sleep(10.0/10e6)
             continue
         break
-
+    with open("pipe_"+settings['filename'], "w") as fifo:
+        fifo.write("subscribed")
     sr.global_loop()
     subscribe.unsubscribe()
 
