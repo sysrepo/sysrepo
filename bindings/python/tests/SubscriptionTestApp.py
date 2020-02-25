@@ -57,16 +57,14 @@ def oper_get_items_cb(session, module_name, path, request_xpath, request_id, par
     except Exception as e:
         print (e)
         return sr.SR_ERR_OK
-    print("done")
     sys.stdout.flush()
     return sr.SR_ERR_OK
 
 if __name__ == "__main__":
     module_name = "ietf-interfaces"
     xpath = "/ietf-interfaces:interfaces-state"
-    pid = "0"
     if len(sys.argv) > 2:
-        pid = sys.argv[1]
+        module_name = sys.argv[1]
 
 
     # connect to sysrepo
@@ -80,7 +78,7 @@ if __name__ == "__main__":
 
     subscribe.oper_get_items_subscribe(module_name, xpath, oper_get_items_cb)
     
-    with open("Subs", "w") as fifo:
+    with open("pipe_subscription_test", "w") as fifo:
         fifo.write("subscribed")
     
 

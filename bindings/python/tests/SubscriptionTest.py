@@ -34,22 +34,19 @@ class SubscriptionTester(SysrepoTester):
         # wait for running data file to be copied
 
         try:
-            os.mkfifo("Subs")
+            os.mkfifo("pipe_subscription_test")
         except OSError as oe: 
             if oe.errno != errno.EEXIST:
                 raise
                 
 
-        print("Opening FIFO...")
         self.process = subprocess.Popen(['python3','SubscriptionTestApp.py', format(os.getpid())])
         self.report_pid(self.process.pid)
         output = ""
-        with open("Subs", "r") as fifo:
-            print("FIFO opened")
+        with open("pipe_subscription_test", "r") as fifo:
             output = fifo.readline()
-            print(output)
         
-        os.unlink("Subs")
+        os.unlink("pipe_subscription_test")
         self.tc.assertEqual(str(output), "subscribed")
 
     def cancelSubscriptionStep(self):
@@ -107,9 +104,7 @@ class SubscriptionTest(unittest.TestCase):
 
     @classmethod
     def tearDown(self):
-        TestModule.remove_ietf_interfaces_module()
-        TestModule.remove_iana_if_type_module()
-        TestModule.remove_ietf_ip_module()
+        self.remove_interfaces(self)
 
 
     def test_SubscribeUnsubscribe(self):
