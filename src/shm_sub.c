@@ -162,8 +162,12 @@ sr_shmsub_notify_finish_wrunlock(sr_sub_shm_t *sub_shm, size_t shm_struct_size, 
     struct timespec timeout_ts;
     sr_error_t err_code;
     char *ptr, *err_msg, *err_xpath;
+    sr_sub_event_t event;
+    uint32_t request_id;
     int ret;
 
+    event = sub_shm->event;
+    request_id = sub_shm->request_id;
     sr_time_get(&timeout_ts, timeout_ms);
 
     /* wait until this event was processed */
@@ -185,8 +189,9 @@ sr_shmsub_notify_finish_wrunlock(sr_sub_shm_t *sub_shm, size_t shm_struct_size, 
 
             /* event timeout */
             sr_errinfo_new(cb_err_info, SR_ERR_TIME_OUT, NULL, "Callback event \"%s\" with ID %u processing timed out.",
-                    sr_ev2str(sub_shm->event), sub_shm->request_id);
-            if ((sub_shm->event != SR_SUB_EV_DONE) && (sub_shm->event != SR_SUB_EV_ABORT)) {
+                    sr_ev2str(event), request_id);
+            if ((event == sub_shm->event) && (request_id == sub_shm->request_id)
+                    && (sub_shm->event != SR_SUB_EV_DONE) && (sub_shm->event != SR_SUB_EV_ABORT)) {
                 sub_shm->event = SR_SUB_EV_ERROR;
             }
         } else {
