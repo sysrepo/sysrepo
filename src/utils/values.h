@@ -190,6 +190,36 @@ char *sr_val_to_str(const sr_val_t *value);
  */
 int sr_val_to_buff(const sr_val_t *value, char buffer[], size_t size);
 
+/**
+ * @brief Finds single node from given `struct lyd_node` type data tree and converts it to ::sr_val_t
+ *
+ * Helps to achive better performance by avoiding multiple ::sr_get_item calls,
+ * Applications can get running data tree beforehand and use this API multiple times
+ * to get ::sr_val_t type value.
+ *
+ * @param[in] data Root node of a data tree in which to search for and return value.
+ * @param[in] path [Path](@ref paths) of the data element to be retrieved.
+ * @param[out] value Requested node, allocated dynamically (free using ::sr_free_val).
+ * @return Error code (::SR_ERR_OK on success, ::SR_ERR_INVAL_ARG if multiple nodes match the path,
+ * ::SR_ERR_NOT_FOUND if no nodes match the path).
+ */
+int sr_tree_to_val(const struct lyd_node *data, const char *path, sr_val_t **value);
+
+/**
+ * @brief Finds subtree from given `struct lyd_node type` data tree and converts it to ::sr_val_t
+ *
+ * Helps to achive better performance by avoiding multiple ::sr_get_items calls,
+ * Applications can get running data tree beforehand and use this API multiple times
+ * to get ::sr_val_t type values.
+ *
+ * @param[in] data Root node of a data tree in which to search for and return value.
+ * @param[in] xpath [XPath](@ref paths) of the data elements to be retrieved.
+ * @param[out] values Array of requested nodes, allocated dynamically (free using ::sr_free_values).
+ * @param[out] value_cnt Number of returned elements in the values array.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_tree_to_values(const struct lyd_node *data, const char *xpath, sr_val_t **values, size_t *value_cnt);
+
 /**@} values */
 
 #ifdef __cplusplus
