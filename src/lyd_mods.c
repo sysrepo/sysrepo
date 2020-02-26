@@ -1748,7 +1748,7 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
     for (idx = 0; idx < startup_set->number; ++idx) {
         ly_errno = 0;
         mod_data = lyd_parse_mem((struct ly_ctx *)new_ctx, sr_ly_leaf_value_str(startup_set->set.d[idx]), LYD_JSON,
-                LYD_OPT_CONFIG | LYD_OPT_STRICT);
+                LYD_OPT_CONFIG | LYD_OPT_TRUSTED | LYD_OPT_STRICT);
         /* this was parsed before */
         assert(!ly_errno);
         if (!mod_data) {
