@@ -27,6 +27,29 @@
 #include "common.h"
 
 /**
+ * @brief All edit operations.
+ */
+enum edit_op {
+    /* internal */
+    EDIT_FINISH = -1,
+    EDIT_CONTINUE = 0,
+    EDIT_MOVE,
+    EDIT_CASE_REMOVE,
+
+    /* sysrepo-specific */
+    EDIT_ETHER,
+    EDIT_PURGE,
+
+    /* NETCONF */
+    EDIT_NONE,
+    EDIT_MERGE,
+    EDIT_REPLACE,
+    EDIT_CREATE,
+    EDIT_DELETE,
+    EDIT_REMOVE
+};
+
+/**
  * @brief Set an operation (attribute) for an edit node.
  *
  * @param[in] edit Node to modify.
@@ -34,6 +57,16 @@
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_edit_set_oper(struct lyd_node *edit, const char *op);
+
+/**
+ * @brief Find operation of an edit node.
+ *
+ * @param[in] edit Edit node.
+ * @param[in] recursive Whether to search recursively in parents.
+ * @param[out] own_oper Whether the operation is in the node or in some of its parents.
+ * @return Edit operation for the node.
+ */
+enum edit_op sr_edit_find_oper(struct lyd_node *edit, int recursive, int *own_oper);
 
 /**
  * @brief Delete an attribute from an edit node. Only internal (from ietf-netconf or sysrepo modules)

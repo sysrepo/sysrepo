@@ -2064,10 +2064,10 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
 
     /* add default operation and default origin */
     LY_TREE_FOR(dup_edit, node) {
-        if ((err_info = sr_edit_set_oper(node, default_operation))) {
+        if (!sr_edit_find_oper(node, 0, NULL) && (err_info = sr_edit_set_oper(node, default_operation))) {
             goto error;
         }
-        if ((session->ds == SR_DS_OPERATIONAL) && (err_info = sr_edit_diff_set_origin(node, SR_OPER_ORIGIN, 1))) {
+        if ((session->ds == SR_DS_OPERATIONAL) && (err_info = sr_edit_diff_set_origin(node, SR_OPER_ORIGIN, 0))) {
             goto error;
         }
     }

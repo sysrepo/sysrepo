@@ -32,26 +32,6 @@
 
 #include <libyang/libyang.h>
 
-enum edit_op {
-    /* internal */
-    EDIT_FINISH = -1,
-    EDIT_CONTINUE = 0,
-    EDIT_MOVE,
-    EDIT_CASE_REMOVE,
-
-    /* sysrepo-specific */
-    EDIT_ETHER,
-    EDIT_PURGE,
-
-    /* NETCONF */
-    EDIT_NONE,
-    EDIT_MERGE,
-    EDIT_REPLACE,
-    EDIT_CREATE,
-    EDIT_DELETE,
-    EDIT_REMOVE
-};
-
 enum insert_val {
     INSERT_DEFAULT = 0,
     INSERT_FIRST,
@@ -581,26 +561,6 @@ sr_edit_set_oper(struct lyd_node *edit, const char *op)
     return NULL;
 }
 
-void
-sr_edit_del_attr(struct lyd_node *edit, const char *name)
-{
-    struct lyd_attr *attr;
-
-    for (attr = edit->attr; attr; attr = attr->next) {
-        if (!strcmp(attr->name, name)) {
-            if (!strcmp(attr->annotation->module->name, SR_YANG_MOD)
-                    || !strcmp(attr->annotation->module->name, "ietf-netconf")
-                    || !strcmp(attr->annotation->module->name, "yang")
-                    || !strcmp(attr->annotation->module->name, "ietf-origin")) {
-                lyd_free_attr(edit->schema->module->ctx, edit, attr, 0);
-                return;
-            }
-        }
-    }
-
-    assert(0);
-}
-
 /**
  * @brief Return string name of an operation.
  *
@@ -678,6 +638,60 @@ sr_edit_str2op(const char *str)
 
     assert(0);
     return 0;
+}
+
+enum edit_op
+sr_edit_find_oper(struct lyd_node *edit, int recursive, int *own_oper)
+{
+    struct lyd_attr *attr;
+
+    if (!edit) {
+        return 0;
+    }
+
+    if (own_oper) {
+        *own_oper = 1;
+    }
+    do {
+        for (attr = edit->attr; attr; attr = attr->next) {
+            if (!strcmp(attr->name, "operation")) {
+                if (!strcmp(attr->annotation->module->name, SR_YANG_MOD) || !strcmp(attr->annotation->module->name, "ietf-netconf")) {
+                    return sr_edit_str2op(attr->value_str);
+                }
+            }
+        }
+
+        if (!recursive) {
+            return 0;
+        }
+
+        edit = edit->parent;
+        if (own_oper) {
+            *own_oper = 0;
+        }
+    } while (edit);
+
+    return 0;
+}
+
+void
+sr_edit_del_attr(struct lyd_node *edit, const char *name)
+{
+    struct lyd_attr *attr;
+
+    for (attr = edit->attr; attr; attr = attr->next) {
+        if (!strcmp(attr->name, name)) {
+            if (!strcmp(attr->annotation->module->name, SR_YANG_MOD)
+                    || !strcmp(attr->annotation->module->name, "ietf-netconf")
+                    || !strcmp(attr->annotation->module->name, "yang")
+                    || !strcmp(attr->annotation->module->name, "ietf-origin")) {
+                lyd_free_attr(edit->schema->module->ctx, edit, attr, 0);
+                return;
+            }
+        }
+    }
+
+    assert(0);
 }
 
 /**
@@ -962,48 +976,6 @@ sr_edit_delete_set_cont_dflt(struct lyd_node *parent)
 
 #define EDIT_APPLY_REPLACE_R 0x01       /**< There was a replace operation in a parent, change behavior accordingly. */
 #define EDIT_APPLY_CHECK_OP_R 0x02      /**< Do not apply edit, just check whether the operations are valid. */
-
-/**
- * @brief Find operation of an edit node.
- *
- * @param[in] edit Edit node.
- * @param[in] recursive Whether to search recursively in parents.
- * @param[out] own_oper Whether the operation is in the node or in some of its parents.
- * @return Edit operation for the node.
- */
-static enum edit_op
-sr_edit_find_oper(struct lyd_node *edit, int recursive, int *own_oper)
-{
-    struct lyd_attr *attr;
-
-    if (!edit) {
-        return 0;
-    }
-
-    if (own_oper) {
-        *own_oper = 1;
-    }
-    do {
-        for (attr = edit->attr; attr; attr = attr->next) {
-            if (!strcmp(attr->name, "operation")) {
-                if (!strcmp(attr->annotation->module->name, SR_YANG_MOD) || !strcmp(attr->annotation->module->name, "ietf-netconf")) {
-                    return sr_edit_str2op(attr->value_str);
-                }
-            }
-        }
-
-        if (!recursive) {
-            return 0;
-        }
-
-        edit = edit->parent;
-        if (own_oper) {
-            *own_oper = 0;
-        }
-    } while (edit);
-
-    return 0;
-}
 
 /**
  * @brief CHeck whether this edit node is redundant (does not change data).
