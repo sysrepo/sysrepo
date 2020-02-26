@@ -833,45 +833,51 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
     sr_mod_change_sub_t *shm_changesubs;
     struct lyd_node *root, *elem, *next;
     uint16_t i, xp_i;
+    int data_duplicated = 0;
     char **xpaths;
     const char *origin;
 
     *enabled_mod_data = NULL;
 
     if (!data) {
-        /* no data is enabled */
-        return NULL;
+        /* no enabled data to duplicate */
+        data_duplicated = 1;
     }
 
-    /* first try to find a subscription for the whole module */
-    shm_changesubs = (sr_mod_change_sub_t *)(ext_shm_addr + mod->shm_mod->change_sub[SR_DS_RUNNING].subs);
-    for (i = 0; i < mod->shm_mod->change_sub[SR_DS_RUNNING].sub_count; ++i) {
-        if (!shm_changesubs[i].xpath && !(shm_changesubs[i].opts & SR_SUBSCR_PASSIVE)) {
-            /* the whole module is enabled */
-            if ((err_info = sr_module_data_dup(data, mod->ly_mod, enabled_mod_data))) {
-                return err_info;
+    if (!data_duplicated) {
+        /* try to find a subscription for the whole module */
+        shm_changesubs = (sr_mod_change_sub_t *)(ext_shm_addr + mod->shm_mod->change_sub[SR_DS_RUNNING].subs);
+        for (i = 0; i < mod->shm_mod->change_sub[SR_DS_RUNNING].sub_count; ++i) {
+            if (!shm_changesubs[i].xpath && !(shm_changesubs[i].opts & SR_SUBSCR_PASSIVE)) {
+                /* the whole module is enabled */
+                if ((err_info = sr_module_data_dup(data, mod->ly_mod, enabled_mod_data))) {
+                    return err_info;
+                }
+                data_duplicated = 1;
+                break;
             }
-            return NULL;
         }
     }
 
-    /* collect all enabled subtress in the form of xpaths */
-    xpaths = NULL;
-    for (i = 0, xp_i = 0; i < mod->shm_mod->change_sub[SR_DS_RUNNING].sub_count; ++i) {
-        if (shm_changesubs[i].xpath && !(shm_changesubs[i].opts & SR_SUBSCR_PASSIVE)) {
-            xpaths = sr_realloc(xpaths, (xp_i + 1) * sizeof *xpaths);
-            SR_CHECK_MEM_RET(!xpaths, err_info);
+    if (!data_duplicated) {
+        /* collect all enabled subtress in the form of xpaths */
+        xpaths = NULL;
+        for (i = 0, xp_i = 0; i < mod->shm_mod->change_sub[SR_DS_RUNNING].sub_count; ++i) {
+            if (shm_changesubs[i].xpath && !(shm_changesubs[i].opts & SR_SUBSCR_PASSIVE)) {
+                xpaths = sr_realloc(xpaths, (xp_i + 1) * sizeof *xpaths);
+                SR_CHECK_MEM_RET(!xpaths, err_info);
 
-            xpaths[xp_i] = ext_shm_addr + shm_changesubs[i].xpath;
-            ++xp_i;
+                xpaths[xp_i] = ext_shm_addr + shm_changesubs[i].xpath;
+                ++xp_i;
+            }
         }
-    }
 
-    /* duplicate only enabled subtrees */
-    err_info = sr_lyd_xpath_dup(data, xpaths, xp_i, mod->ly_mod, enabled_mod_data);
-    free(xpaths);
-    if (err_info) {
-        return err_info;
+        /* duplicate only enabled subtrees */
+        err_info = sr_lyd_xpath_dup(data, xpaths, xp_i, mod->ly_mod, enabled_mod_data);
+        free(xpaths);
+        if (err_info) {
+            return err_info;
+        }
     }
 
     /* add existing (valid) state NP containers and default values */
@@ -913,9 +919,10 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
  */
 static sr_error_info_t *
 sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mod_info_mod_s *mod,
-        struct lyd_node **upd_mod_data, int read_locked)
+        const struct lyd_node *upd_mod_data, int read_locked)
 {
     sr_error_info_t *err_info = NULL;
+    struct lyd_node *mod_data;
     uint32_t i;
     void *mem;
 
@@ -968,13 +975,17 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
     /* append current data */
     if (!mod_cache->mods[i].ver) {
         if (upd_mod_data) {
-            /* current data were provided */
-            if (mod_cache->data) {
-                sr_ly_link(mod_cache->data, *upd_mod_data);
-            } else {
-                mod_cache->data = *upd_mod_data;
+            /* current data were provided, use them */
+            mod_data = lyd_dup_withsiblings(upd_mod_data, LYD_DUP_OPT_RECURSIVE | LYD_DUP_OPT_WITH_WHEN);
+            if (!mod_data) {
+                sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
+                goto error_wrunlock;
             }
-            *upd_mod_data = NULL;
+            if (mod_cache->data) {
+                sr_ly_link(mod_cache->data, mod_data);
+            } else {
+                mod_cache->data = mod_data;
+            }
         } else {
             /* we need to load current data from persistent storage */
             if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_RUNNING, &mod_cache->data))) {
@@ -1144,10 +1155,11 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
                 /* append ietf-yang-library state data - internal */
                 mod_data = ly_ctx_info(mod_info->conn->ly_ctx);
                 assert(!strcmp(mod_data->schema->name, "yang-library") && !strcmp(mod_data->next->schema->name, "modules-state"));
-                if (mod_info->data) {
-                    sr_ly_link(mod_info->data, mod_data);
-                } else {
-                    mod_info->data = mod_data;
+                /* there should always be al least some default containers */
+                assert(mod_info->data);
+                if (lyd_merge(mod_info->data, mod_data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
+                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                    return err_info;
                 }
             }
 
@@ -1858,10 +1870,8 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                     ++mod->shm_mod->ver;
 
                     if (mod_info->conn->opts & SR_CONN_CACHE_RUNNING) {
-                        /* we are caching so update cache with these data,
-                         * HACK data are simply removed from mod_info because they are no longer
-                         * needed anyway (in current use-cases!) */
-                        tmp_err_info = sr_modcache_module_running_update(&mod_info->conn->mod_cache, mod, &mod_data, 0);
+                        /* we are caching so update cache with these data */
+                        tmp_err_info = sr_modcache_module_running_update(&mod_info->conn->mod_cache, mod, mod_data, 0);
                         if (tmp_err_info) {
                             /* always store all changed modules, if possible */
                             sr_errinfo_merge(&err_info, tmp_err_info);
@@ -1878,6 +1888,9 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                 }
 
                 if (mod_info->ds == SR_DS_RUNNING) {
+                    /* add possible default state data nodes so that stored diff can be properly applied */
+                    lyd_validate_modules(&mod_data, &mod->ly_mod, 1, LYD_OPT_DATA | LYD_OPT_TRUSTED);
+
                     /* update diffs of stored operational data, if any */
                     if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_OPERATIONAL, &diff))) {
                         goto cleanup;

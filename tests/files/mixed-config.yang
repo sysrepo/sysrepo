@@ -7,6 +7,9 @@ module mixed-config {
             leaf name {
                 type string;
             }
+            leaf a {
+                type string;
+            }
             leaf result {
                 type uint32;
                 config false;
