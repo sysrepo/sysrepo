@@ -103,6 +103,9 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /* macro for getting aligned SHM size */
 #define SR_SHM_SIZE(size) ((size) + ((~(size) + 1) & (SR_SHM_MEM_ALIGN - 1)))
 
+/* macro for getting lydmods lock from a connection */
+#define SR_SHM_LYDMODS_LOCK(conn) ((sr_main_shm_t *)(conn)->main_shm.addr)->lydmods_lock
+
 /** name of sysrepo YANG module */
 #define SR_YANG_MOD "sysrepo"
 
@@ -265,7 +268,8 @@ struct sr_conn_ctx_s {
     uint32_t session_count;         /**< Session count. */
 
     int main_create_lock;           /**< Process-shared file lock for creating main/ext SHM. */
-    sr_rwlock_t ext_remap_lock;     /**< Session-shared lock for remapping ext SHM. */
+    sr_rwlock_t ext_remap_lock;     /**< Session-shared lock only for remapping ext SHM
+                                         (to sync concurrent SHM READ locks). */
     sr_shm_t main_shm;              /**< Main SHM structure. */
     sr_shm_t ext_shm;               /**< External SHM structure (all stored offsets point here). */
 

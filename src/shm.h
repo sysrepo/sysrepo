@@ -48,7 +48,7 @@
  *
  * Ext shm starts with a `size_t` value representing the number of wasted
  * bytes in this SHM segment. It is followed by arrays and strings pointed to
- * by main SHM `off_t` pointers. First, there is the sysrepo state ::sr_conn_state_t
+ * by main SHM `off_t` pointers. First, there is the sysrepo connections state ::sr_conn_shm_t
  * meaning all currently running connections. Then, there is information from ::sr_mod_t
  * which includes names, dependencies, and subscriptions. Lastly, there are RPCs ::sr_rpc_t.
  * Also, any pointers in all the previous structures point, again, into ext SHM.
@@ -193,32 +193,31 @@ typedef enum sr_lock_mode_e {
 /**
  * @brief Ext SHM connection state held lock.
  */
-typedef struct sr_conn_state_lock_s {
+typedef struct sr_conn_shm_lock_s {
     sr_lock_mode_t mode;    /**< Held lock mode. */
     uint8_t rcount;         /**< Number of recursive READ locks held. */
-} sr_conn_state_lock_t;
+} sr_conn_shm_lock_t;
 
 /**
  * @brief Ext SHM connection state.
  */
-typedef struct sr_conn_state_s {
+typedef struct sr_conn_shm_s {
     sr_conn_ctx_t *conn_ctx;    /**< Connection, process-specific pointer, do not access! */
     pid_t pid;                  /**< PID of process that created this connection. */
 
-    sr_conn_state_lock_t main_lock; /**< Held main SHM lock. */
+    sr_conn_shm_lock_t main_lock; /**< Held main SHM lock. */
     off_t mod_locks;            /**< Held SHM module locks, points to (sr_conn_state_lock_t (*)[3]). */
 
     off_t evpipes;              /**< Array of event pipes of subscriptions on this connection. */
     uint32_t evpipe_count;      /**< Event pipe count. */
-} sr_conn_state_t;
+} sr_conn_shm_t;
 
 /**
  * @brief Main SHM.
  */
 typedef struct sr_main_shm_s {
     sr_rwlock_t lock;           /**< Process-shared lock for accessing main and ext SHM. It is required only when
-                                     accessing attributes that can be changed (subscriptions, replay support) and do
-                                     not have their own lock (conn state), otherwise not needed. */
+                                     accessing attributes that can be changed (subscriptions, replay support). */
     pthread_mutex_t lydmods_lock; /**< Process-shared lock for accessing sysrepo module data. */
     uint32_t mod_count;         /**< Number of installed modules stored after this structure. */
 
@@ -228,11 +227,8 @@ typedef struct sr_main_shm_s {
     ATOMIC_T new_sr_sid;        /**< SID for a new session. */
     ATOMIC_T new_evpipe_num;    /**< Event pipe number for a new subscription. */
 
-    struct {
-        pthread_mutex_t lock;   /**< Process-shared lock for accessing connection state. */
-        off_t conns;            /**< Array of existing connections. */
-        uint32_t conn_count;    /**< Number of existing connections. */
-    } conn_state;               /**< Information about connection state. */
+    off_t conns;                /**< Array of existing connections (connection state). */
+    uint32_t conn_count;        /**< Number of existing connections. */
 } sr_main_shm_t;
 
 /**
@@ -369,13 +365,13 @@ sr_error_info_t *sr_shmmain_createlock(int shm_lock);
 void sr_shmmain_createunlock(int shm_lock);
 
 /**
- * @brief Add connection into main SHM state.
+ * @brief Add connection into main SHM.
  * Main SHM lock is expected to be held.
  *
  * @param[in] conn Connection to add.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_conn_state_add(sr_conn_ctx_t *conn);
+sr_error_info_t *sr_shmmain_conn_add(sr_conn_ctx_t *conn);
 
 /**
  * @brief Remove a connection from main SHM state.
@@ -386,38 +382,38 @@ sr_error_info_t *sr_shmmain_conn_state_add(sr_conn_ctx_t *conn);
  * @param[in] conn Connection context to delete.
  * @param[in] pid Connection PID to delete.
  */
-void sr_shmmain_conn_state_del(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
+void sr_shmmain_conn_del(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
 
 /**
- * @brief Find a connection in main SHM state.
+ * @brief Find a connection in main SHM.
  * Main SHM lock is expected to be held.
  *
- * @param[in] main_shm Main SHM structure.
+ * @param[in] main_shm_addr Main SHM address.
  * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] conn Connection context to find.
  * @param[in] pid Connection PID to find.
  * @return Matching connection state, NULL if not found.
  */
-sr_conn_state_t *sr_shmmain_conn_state_find(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
+sr_conn_shm_t *sr_shmmain_conn_find(char *main_shm_addr, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
 
 /**
- * @brief Add an event pipe into main SHM state.
+ * @brief Add an event pipe into a connection in main SHM.
  * Main SHM lock is expected to be held.
  *
  * @param[in] conn Connection of the subscription.
  * @param[in] evpipe_num Event pipe number.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_state_add_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num);
+sr_error_info_t *sr_shmmain_conn_add_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num);
 
 /**
- * @brief Remove and event pipe from main SHM state.
+ * @brief Remove and event pipe from a connection in main SHM.
  * Main SHM lock is expected to be held.
  *
  * @param[in] conn Connection of the subscription.
  * @param[in] evpipe_num Event pipe number.
  */
-void sr_shmmain_state_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num);
+void sr_shmmain_conn_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num);
 
 /**
  * @brief Initialize libyang context with only the internal sysrepo module.
@@ -503,11 +499,10 @@ sr_rpc_t *sr_shmmain_find_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const
  * @param[in] conn Connection to use.
  * @param[in] mode Whether to WRITE, READ or not lock main (actually ext) SHM.
  * @param[in] remap Whether to WRITE (ext SHM may be remapped) or READ (just protect from remapping) remap lock.
- * @param[in] lydmods Whether to lydmods LOCK.
  * @param[in] func Caller function name.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods, const char *func);
+sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, const char *func);
 
 /**
  * @brief Unlock main SHM and update information about held locks in SHM. If remap was WRITE locked,
@@ -516,10 +511,9 @@ sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode,
  * @param[in] conn Connection to use.
  * @param[in] mode Whether to WRITE, READ or not unlock main (actually ext) SHM.
  * @param[in] remap Whether to WRITE or READ remap unlock.
- * @param[in] lydmods Whether to lydmods UNLOCK.
  * @param[in] func Caller function name.
  */
-void sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods, const char *func);
+void sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, const char *func);
 
 /**
  * @brief Add main SHM RPC/action subscription.

@@ -357,31 +357,22 @@ sr_shmmod_collect_op(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_
  * @param[in] lock Whether to lock or unlock.
  */
 static void
-sr_shmmod_conn_state_lock_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, sr_lock_mode_t mode, int lock)
+sr_shmmod_conn_lock_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, sr_lock_mode_t mode, int lock)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t shm_mod_idx;
-    sr_conn_state_lock_t (*mod_locks)[3];
-    sr_conn_state_t *conn_s;
-    sr_main_shm_t *main_shm;
+    sr_conn_shm_lock_t (*mod_locks)[3];
+    sr_conn_shm_t *conn_s;
 
     assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
 
-    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
-
-    /* CONN STATE LOCK */
-    if ((err_info = sr_mlock(&main_shm->conn_state.lock, SR_CONN_STATE_LOCK_TIMEOUT, __func__))) {
-        sr_errinfo_free(&err_info);
-        return;
-    }
-
-    conn_s = sr_shmmain_conn_state_find(main_shm, conn->ext_shm.addr, conn, getpid());
+    conn_s = sr_shmmain_conn_find(conn->main_shm.addr, conn->ext_shm.addr, conn, getpid());
     if (!conn_s) {
         SR_ERRINFO_INT(&err_info);
-        goto cleanup_unlock;
+        goto cleanup;
     }
 
-    mod_locks = (sr_conn_state_lock_t (*)[3])(conn->ext_shm.addr + conn_s->mod_locks);
+    mod_locks = (sr_conn_shm_lock_t (*)[3])(conn->ext_shm.addr + conn_s->mod_locks);
     shm_mod_idx = SR_SHM_MOD_IDX(shm_mod, conn->main_shm);
     if (lock) {
         /* lock */
@@ -414,9 +405,7 @@ sr_shmmod_conn_state_lock_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_data
         }
     }
 
-cleanup_unlock:
-    /* CONN STATE UNLOCK */
-    sr_munlock(&main_shm->conn_state.lock);
+cleanup:
     sr_errinfo_free(&err_info);
 }
 
@@ -462,7 +451,7 @@ sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradable, sr_sid_
 
             /* remember this lock in SHM (fake WRITE lock - write_locked is set to 1
              * but actual module lock is only SR_LOCK_READ) */
-            sr_shmmod_conn_state_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_WRITE, 1);
+            sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_WRITE, 1);
 
             /* MOD WRITE UNLOCK */
             sr_rwunlock(&shm_lock->lock, SR_LOCK_WRITE, __func__);
@@ -474,7 +463,7 @@ sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradable, sr_sid_
         }
 
         /* remember this lock in SHM (always have READ lock) */
-        sr_shmmod_conn_state_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_READ, 1);
+        sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_READ, 1);
 
         /* set the flag for unlocking (it is always READ locked now) */
         mod->state |= MOD_INFO_RLOCK;
@@ -520,8 +509,8 @@ sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid)
             mod->state &= ~MOD_INFO_RLOCK;
 
             /* update this lock in SHM (real WRITE lock no longer covered) */
-            sr_shmmod_conn_state_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_WRITE, 0);
-            sr_shmmod_conn_state_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_READ, 0);
+            sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_WRITE, 0);
+            sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_READ, 0);
 
             /* MOD WRITE LOCK */
             if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, sid))) {
@@ -571,8 +560,8 @@ sr_shmmod_modinfo_wrlock_downgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid)
             mod->state &= ~MOD_INFO_WLOCK;
 
             /* update this lock in SHM (we have again a fake WRITE lock) */
-            sr_shmmod_conn_state_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_WRITE, 1);
-            sr_shmmod_conn_state_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_READ, 1);
+            sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_WRITE, 1);
+            sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_READ, 1);
 
             /* MOD READ LOCK */
             if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, SR_LOCK_READ, sid))) {
@@ -619,7 +608,7 @@ sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, int upgradable)
 
             /* update this lock in SHM (only unupgraded fake WRITE lock is covered) */
             if (mod->state & MOD_INFO_RLOCK) {
-                sr_shmmod_conn_state_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_WRITE, 0);
+                sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_WRITE, 0);
             }
         }
 
@@ -631,7 +620,7 @@ sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, int upgradable)
             sr_rwunlock(&shm_lock->lock, SR_LOCK_READ, __func__);
 
             /* update this lock in SHM (always was READ-locked) */
-            sr_shmmod_conn_state_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_READ, 0);
+            sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_READ, 0);
         }
     }
 }

@@ -55,11 +55,14 @@
     if (strncmp(s1, s2, n)) { fprintf(stderr, "\"%.*s\"\n!=\n\"%.*s\"\n", n, s1, n, s2); sr_assert_line(); return 1; } }
 
 typedef int (*test_proc)(int, int);
+typedef void (*test_prep)(void);
 
 struct test {
     const char *name;
     test_proc p1;
     test_proc p2;
+    test_prep setup;
+    test_prep teardown;
 };
 
 static void
@@ -85,6 +88,10 @@ run_tests(struct test *tests, uint32_t test_count)
     printf("[===========] Running %u test(s).\n", test_count);
 
     for (i = 0; i < test_count; ++i) {
+        if (tests[i].setup) {
+            tests[i].setup();
+        }
+
         printf("[ %3s %2s %2s ] test %s\n", "RUN", "", "", tests[i].name);
 
         if (fork()) {
@@ -117,6 +124,11 @@ run_tests(struct test *tests, uint32_t test_count)
         }
 
         printf("[ %3s %2s %2s ] test %s\n", "", parent_status, child_status, tests[i].name);
+
+        if (tests[i].teardown) {
+            tests[i].teardown();
+        }
+
         if (fail) {
             abort();
         }
@@ -131,17 +143,113 @@ run_tests(struct test *tests, uint32_t test_count)
     close(pipes[3]);
 }
 
-/* TEST 1 */
-static int
-test_connection(int rp, int wp)
+static void
+test_log_cb(sr_log_level_t level, const char *message)
+{
+    const char *severity;
+
+    switch (level) {
+    case SR_LL_ERR:
+        severity = "ERR";
+        break;
+    case SR_LL_WRN:
+        severity = "WRN";
+        break;
+    case SR_LL_INF:
+        severity = "INF";
+        break;
+    case SR_LL_DBG:
+        /*severity = "DBG";
+        break;*/
+        return;
+    case SR_LL_NONE:
+        assert(0);
+        return;
+    }
+
+    fprintf(stderr, "[%ld][%s]: %s\n", (long)getpid(), severity, message);
+}
+
+/* TEST FUNCS */
+static void
+setup(void)
 {
     sr_conn_ctx_t *conn;
-    int ret;
+    const char *en_feat = "feat1";
 
-    barrier(rp, wp);
+    assert(sr_connect(0, &conn) == SR_ERR_OK);
+
+    assert(sr_install_module(conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", &en_feat, 1) == SR_ERR_OK);
+    assert(sr_install_module(conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0) == SR_ERR_OK);
+
+    sr_disconnect(conn);
+}
+
+static void
+teardown(void)
+{
+    sr_conn_ctx_t *conn;
+
+    assert(sr_connect(0, &conn) == SR_ERR_OK);
+
+    sr_remove_module(conn, "ops");
+    sr_remove_module(conn, "ops-ref");
+
+    sr_disconnect(conn);
+}
+
+/* TEST 1 */
+static int
+sub_rpc_cb(sr_session_ctx_t *session, const char *op_path, const sr_val_t *input, const size_t input_cnt,
+        sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data)
+{
+    (void)session;
+    (void)op_path;
+    (void)input;
+    (void)input_cnt;
+    (void)event;
+    (void)request_id;
+    (void)output;
+    (void)output_cnt;
+    (void)private_data;
+
+    return SR_ERR_OK;
+}
+
+static int
+test_sub_rpc(int rp, int wp)
+{
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *sub;
+    int ret, i;
 
     ret = sr_connect(0, &conn);
     sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_start(conn, SR_DS_RUNNING, &sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for the other process */
+    barrier(rp, wp);
+
+    /* subscribe and unsubscribe to RPCs/actions */
+    for (i = 0; i < 20; ++i) {
+        sub = NULL;
+
+        ret = sr_rpc_subscribe(sess, "/ops:rpc1", sub_rpc_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_rpc_subscribe(sess, "/ops:rpc2", sub_rpc_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_rpc_subscribe(sess, "/ops:rpc3", sub_rpc_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_rpc_subscribe(sess, "/ops:cont/list1/cont2/act1", sub_rpc_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_rpc_subscribe(sess, "/ops:cont/list1/act2", sub_rpc_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+
+        sr_unsubscribe(sub);
+    }
 
     sr_disconnect(conn);
     return 0;
@@ -151,10 +259,10 @@ int
 main(void)
 {
     struct test tests[] = {
-        { "connection", test_connection, test_connection },
+        { "sub_rpc", test_sub_rpc, test_sub_rpc, setup, teardown },
     };
 
-    sr_log_stderr(SR_LL_INF);
+    sr_log_set_cb(test_log_cb);
     run_tests(tests, sizeof tests / sizeof *tests);
     return 0;
 }
