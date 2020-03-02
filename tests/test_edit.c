@@ -109,12 +109,8 @@ clear_test(void **state)
 {
     struct state *st = (struct state *)*state;
 
-    sr_delete_item(st->sess, "/test:l1[k='key1']", SR_EDIT_STRICT);
-    sr_delete_item(st->sess, "/test:l1[k='key2']", SR_EDIT_STRICT);
-    sr_delete_item(st->sess, "/test:l1[k='key3']", SR_EDIT_STRICT);
-    sr_delete_item(st->sess, "/test:ll1[.='-1']", SR_EDIT_STRICT);
-    sr_delete_item(st->sess, "/test:ll1[.='-2']", SR_EDIT_STRICT);
-    sr_delete_item(st->sess, "/test:ll1[.='-3']", SR_EDIT_STRICT);
+    sr_delete_item(st->sess, "/test:l1", 0);
+    sr_delete_item(st->sess, "/test:ll1", 0);
     sr_delete_item(st->sess, "/test:cont", 0);
     sr_apply_changes(st->sess, 0, 0);
 
