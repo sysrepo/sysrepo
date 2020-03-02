@@ -651,6 +651,43 @@ test_top_op(void **state)
     lyd_free_withsiblings(data);
 }
 
+static void
+test_union(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    const char *str2;
+    char *str;
+    int ret;
+
+    /* create some host */
+    ret = sr_set_item_str(st->sess, "/test:cont/server", "fe80::42:39ff:fe67:1fb3", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* change it */
+    ret = sr_set_item_str(st->sess, "/test:cont/server", "192.168.1.10", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check datastore contents */
+    ret = sr_get_subtree(st->sess, "/test:cont", 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    lyd_print_mem(&str, data, LYD_XML, LYP_WITHSIBLINGS);
+    lyd_free(data);
+
+    str2 =
+    "<cont xmlns=\"urn:test\">"
+        "<server>192.168.1.10</server>"
+    "</cont>";
+
+    assert_string_equal(str, str2);
+    free(str);
+}
+
 int
 main(void)
 {
@@ -664,6 +701,7 @@ main(void)
         cmocka_unit_test_teardown(test_isolate, clear_interfaces),
         cmocka_unit_test(test_purge),
         cmocka_unit_test(test_top_op),
+        cmocka_unit_test_teardown(test_union, clear_test),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
