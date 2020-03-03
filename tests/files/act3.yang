@@ -48,6 +48,12 @@ module act3 {
     }
   }
 
+  augment "/a:advanced" {
+    when "a:condition = 'true'";
+
+    action conditional_action2;
+  }
+
   augment "/a:basics/a:subbasics/a2:decision" {
     case third {
       leaf three {

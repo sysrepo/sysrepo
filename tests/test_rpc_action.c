@@ -1122,6 +1122,8 @@ test_action_deps(void **state)
     /* subscribe */
     ret = sr_rpc_subscribe_tree(st->sess, "/act:advanced/act3:conditional/conditional_action", action_deps_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_rpc_subscribe_tree(st->sess, "/act:advanced/act3:conditional_action2", action_deps_cb, st, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
 
     /* create the action */
     input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/act:advanced/act3:conditional/conditional_action",
@@ -1150,18 +1152,38 @@ test_action_deps(void **state)
     /* send the action again, should succeed now */
     st->cb_called = 0;
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
+    assert_int_equal(ret, SR_ERR_OK);
     while (output_op->parent) {
         output_op = output_op->parent;
     }
     lyd_free_withsiblings(output_op);
-
     assert_int_equal(st->cb_called, 1);
-    assert_int_equal(ret, SR_ERR_OK);
 
     while (input_op->parent) {
         input_op = input_op->parent;
     }
     lyd_free_withsiblings(input_op);
+
+    /* create another action */
+    input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/act:advanced/act3:conditional_action2",
+            NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input_op);
+
+    /* send the action, should succeed */
+    st->cb_called = 0;
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
+    assert_int_equal(ret, SR_ERR_OK);
+    while (output_op->parent) {
+        output_op = output_op->parent;
+    }
+    lyd_free_withsiblings(output_op);
+    assert_int_equal(st->cb_called, 1);
+
+    while (input_op->parent) {
+        input_op = input_op->parent;
+    }
+    lyd_free_withsiblings(input_op);
+
     sr_unsubscribe(subscr);
 }
 
