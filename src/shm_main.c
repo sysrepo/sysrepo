@@ -975,6 +975,7 @@ sr_shmmain_conn_recover(sr_conn_ctx_t *conn)
     sr_conn_shm_lock_t (*mod_locks)[3];
     struct sr_mod_lock_s *shm_lock;
     struct timespec timeout_ts;
+    char *path;
     int ret;
 
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
@@ -1053,6 +1054,17 @@ sr_shmmain_conn_recover(sr_conn_ctx_t *conn)
                 for (k = 0; k < main_shm->rpc_sub_count; ++k) {
                     if ((tmp_err = sr_shmmain_rpc_subscription_stop(conn, &shm_rpc[k], NULL, 0, evpipes[j], 1))) {
                         sr_errinfo_merge(&err_info, tmp_err);
+                    }
+                }
+
+                /* unlink event pipe */
+                if ((tmp_err = sr_path_evpipe(evpipes[j], &path))) {
+                    sr_errinfo_merge(&err_info, tmp_err);
+                } else {
+                    ret = unlink(path);
+                    free(path);
+                    if (ret == -1) {
+                        SR_ERRINFO_SYSERRNO(&err_info, "unlink");
                     }
                 }
             }
