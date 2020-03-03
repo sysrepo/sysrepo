@@ -962,7 +962,9 @@ int sr_validate(sr_session_ctx_t *session, uint32_t timeout_ms);
  * Required WRITE access.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to apply changes of.
- * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
+ * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used. Note that this timeout
+ * is measured separately for each callback meaning this whole function call can easily __take more time__ than this
+ * timeout if there are changes applied for several subscribers.
  * @param[in] wait Whether to wait until all callbacks on all events are finished (even ::SR_EV_DONE or ::SR_EV_ABORT).
  * If not set, these events may not yet be processed after the function returns. Note that all ::SR_EV_CHANGE events
  * are always waited for.
