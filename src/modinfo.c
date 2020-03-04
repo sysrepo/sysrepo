@@ -1507,7 +1507,7 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, sr_m
             SR_CHECK_INT_GOTO(set->number > 1, err_info, cleanup);
 
             if (!set->number) {
-                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, parent_xpath,
+                sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, parent_xpath,
                         "Nested operation \"%s\" data parent does not exist in the operational datastore.", op->schema->name);
                 goto cleanup;
             }

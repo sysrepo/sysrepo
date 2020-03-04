@@ -202,7 +202,7 @@ test_fail(void **state)
     ret = sr_rpc_send_tree(st->sess, input, 0, &output);
     for (; input->parent; input = input->parent);
     lyd_free_withsiblings(input);
-    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     sr_unsubscribe(subscr);
 }
@@ -1135,7 +1135,7 @@ test_action_deps(void **state)
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     assert_null(output_op);
     assert_int_equal(st->cb_called, 0);
-    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     /* create the necessary data in operational */
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
