@@ -301,8 +301,8 @@ sr_shmmod_collect_op(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_
     shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, lys_node_module(top)->name, 0);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    /* if this is a nested action/notification, we will also need this module's data */
-    if (lys_parent(op->schema)) {
+    /* if this is a nested action/notification, we will also need this module's data for checking its data parent exists */
+    if (!output && lys_parent(op->schema)) {
         if ((err_info = sr_modinfo_add_mod(shm_mod, lys_node_module(top), MOD_INFO_REQ, 0, mod_info))) {
             return err_info;
         }
