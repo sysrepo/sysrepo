@@ -49,6 +49,7 @@ static void global_loop() {
     while (!exit_application) {
         sleep(1000);  /* or do some more useful work... */
     }
+    exit_application = 0;
 }
 
 class Wrap_cb {
