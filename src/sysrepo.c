@@ -129,63 +129,63 @@ sr_conn_free(sr_conn_ctx_t *conn)
 /**
  * @brief Load stored lydmods data, apply any scheduled changes if possible, and update connection context.
  *
- * @param[in] conn Connection to use.
+ * LYDMODS lock is expected to be held.
+ *
+ * @param[in,out] ly_ctx libyang context to use, may be destroyed and created anew.
+ * @param[in] main_shm_addr Main SHM address.
  * @param[in] apply_sched Whether we can attempt to apply scheduled changes.
+ * @param[in] err_on_sched_fail Whether to return an error if applying scheduled changes fails.
  * @param[out] sr_mods Parsed lydmods data.
  * @param[out] changed Whether stored lydmods data were changed (created or scheduled changes applied).
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_conn_lydmods_ctx_update(sr_conn_ctx_t *conn, int apply_sched, struct lyd_node **sr_mods, int *changed)
+sr_conn_lydmods_ctx_update(struct ly_ctx **ly_ctx, char *main_shm_addr, int apply_sched, int err_on_sched_fail,
+        struct lyd_node **sr_mods, int *changed)
 {
     sr_error_info_t *err_info = NULL;
-    sr_main_shm_t *main_shm = (sr_main_shm_t *)conn->main_shm.addr;
-    int exists, fail, ctx_updated = 0;
+    sr_main_shm_t *main_shm = (sr_main_shm_t *)main_shm_addr;
+    int chng, exists, fail, ctx_updated = 0;
 
     *sr_mods = NULL;
-    *changed = 0;
-
-    /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
-        return err_info;
-    }
+    chng = 0;
 
     /* check whether any internal module data exist */
     if ((err_info = sr_lydmods_exists(&exists))) {
-        goto cleanup_unlock;
+        goto cleanup;
     }
     if (!exists) {
         /* create new persistent module data file */
-        if ((err_info = sr_lydmods_create(conn->ly_ctx, sr_mods))) {
-            goto cleanup_unlock;
+        if ((err_info = sr_lydmods_create(*ly_ctx, sr_mods))) {
+            goto cleanup;
         }
-        *changed = 1;
+        chng = 1;
     } else {
         /* parse sysrepo module data */
-        if ((err_info = sr_lydmods_parse(conn->ly_ctx, sr_mods))) {
-            goto cleanup_unlock;
+        if ((err_info = sr_lydmods_parse(*ly_ctx, sr_mods))) {
+            goto cleanup;
         }
         if (apply_sched) {
             /* apply scheduled changes if we can */
-            if (!((sr_main_shm_t *)conn->main_shm.addr)->conn_count) {
-                if ((err_info = sr_lydmods_sched_apply(*sr_mods, conn->ly_ctx, changed, &fail))) {
-                    goto cleanup_unlock;
+            if (!main_shm->conn_count) {
+                if ((err_info = sr_lydmods_sched_apply(*sr_mods, *ly_ctx, &chng, &fail))) {
+                    goto cleanup;
                 }
                 if (fail) {
-                    if (conn->opts & SR_CONN_ERR_ON_SCHED_FAIL) {
+                    if (err_on_sched_fail) {
                         sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, NULL, "Applying scheduled changes failed.");
-                        goto cleanup_unlock;
+                        goto cleanup;
                     }
 
                     /* the context is not valid anymore, we have to create it from scratch in the connection
                      * but also update sr_mods, because it was parsed with the context */
                     lyd_free_withsiblings(*sr_mods);
-                    ly_ctx_destroy(conn->ly_ctx, NULL);
-                    if ((err_info = sr_shmmain_ly_ctx_init(&conn->ly_ctx))) {
-                        goto cleanup_unlock;
+                    ly_ctx_destroy(*ly_ctx, NULL);
+                    if ((err_info = sr_shmmain_ly_ctx_init(ly_ctx))) {
+                        goto cleanup;
                     }
-                    if ((err_info = sr_lydmods_parse(conn->ly_ctx, sr_mods))) {
-                        goto cleanup_unlock;
+                    if ((err_info = sr_lydmods_parse(*ly_ctx, sr_mods))) {
+                        goto cleanup;
                     }
                 } else {
                     ctx_updated = 1;
@@ -198,24 +198,24 @@ sr_conn_lydmods_ctx_update(sr_conn_ctx_t *conn, int apply_sched, struct lyd_node
 
     /* update the connection context modules */
     if (!ctx_updated) {
-        if ((err_info = sr_lydmods_ctx_load_modules(*sr_mods, conn->ly_ctx, 1, 1, NULL))) {
-            goto cleanup_unlock;
+        if ((err_info = sr_lydmods_ctx_load_modules(*sr_mods, *ly_ctx, 1, 1, NULL))) {
+            goto cleanup;
         }
     }
 
-    if (*changed) {
+    if (chng) {
         /* store updated internal sysrepo data */
         if ((err_info = sr_lydmods_print(sr_mods))) {
-            goto cleanup_unlock;
+            goto cleanup;
         }
     }
 
     /* success */
+    if (changed) {
+        *changed = chng;
+    }
 
-cleanup_unlock:
-    /* LYDMODS UNLOCK */
-    sr_munlock(&main_shm->lydmods_lock);
-
+cleanup:
     if (err_info) {
         lyd_free_withsiblings(*sr_mods);
         *sr_mods = NULL;
@@ -260,8 +260,21 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         goto cleanup_unlock;
     }
 
+    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
+
+    /* LYDMODS LOCK */
+    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+        goto cleanup_unlock;
+    }
+
     /* update connection context based on stored lydmods data */
-    if ((err_info = sr_conn_lydmods_ctx_update(conn, created || !(opts & SR_CONN_NO_SCHED_CHANGES), &sr_mods, &changed))) {
+    err_info = sr_conn_lydmods_ctx_update(&conn->ly_ctx, conn->main_shm.addr,
+            created || !(opts & SR_CONN_NO_SCHED_CHANGES), opts & SR_CONN_ERR_ON_SCHED_FAIL, &sr_mods, &changed);
+
+    /* LYDMODS UNLOCK */
+    sr_munlock(&main_shm->lydmods_lock);
+
+    if (err_info) {
         goto cleanup_unlock;
     }
 
@@ -1055,8 +1068,8 @@ sr_install_module_data(sr_conn_ctx_t *conn, const char *module_name, const char 
         goto cleanup;
     }
 
-    /* parse sysrepo module data */
-    if ((err_info = sr_lydmods_parse(tmp_ly_ctx, &sr_mods))) {
+    /* fill it with current modules */
+    if ((err_info = sr_conn_lydmods_ctx_update(&tmp_ly_ctx, conn->main_shm.addr, 0, 0, &sr_mods, NULL))) {
         goto cleanup_unlock;
     }
 
@@ -1068,9 +1081,9 @@ sr_install_module_data(sr_conn_ctx_t *conn, const char *module_name, const char 
     /* parse module data */
     ly_errno = 0;
     if (data_path) {
-        mod_data = lyd_parse_path(tmp_ly_ctx, data_path, format, LYD_OPT_CONFIG | LYD_OPT_NOEXTDEPS);
+        mod_data = lyd_parse_path(tmp_ly_ctx, data_path, format, LYD_OPT_CONFIG);
     } else {
-        mod_data = lyd_parse_mem(tmp_ly_ctx, data, format, LYD_OPT_CONFIG | LYD_OPT_NOEXTDEPS);
+        mod_data = lyd_parse_mem(tmp_ly_ctx, data, format, LYD_OPT_CONFIG);
     }
     if (ly_errno) {
         sr_errinfo_new_ly(&err_info, tmp_ly_ctx);
