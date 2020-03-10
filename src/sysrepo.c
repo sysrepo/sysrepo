@@ -1053,7 +1053,7 @@ sr_install_module_data(sr_conn_ctx_t *conn, const char *module_name, const char 
 {
     sr_error_info_t *err_info = NULL;
     struct ly_ctx *tmp_ly_ctx = NULL;
-    struct lyd_node *sr_mods = NULL, *mod_data = NULL, *next, *node;
+    struct lyd_node *sr_mods = NULL, *mod_data = NULL, *node;
     const struct lys_module *ly_mod;
 
     SR_CHECK_ARG_APIRET(!conn || !module_name || (data && data_path) || (!data && !data_path) || !format, NULL, err_info);
@@ -1090,10 +1090,11 @@ sr_install_module_data(sr_conn_ctx_t *conn, const char *module_name, const char 
         goto cleanup_unlock;
     }
 
-    /* get only this module data */
-    LY_TREE_FOR_SAFE(mod_data, next, node) {
+    /* check that there are only this module data */
+    LY_TREE_FOR(mod_data, node) {
         if (lyd_node_module(node) != ly_mod) {
-            lyd_free(node);
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Only data for the module \"%s\" can be set.", module_name);
+            goto cleanup_unlock;
         }
     }
 
