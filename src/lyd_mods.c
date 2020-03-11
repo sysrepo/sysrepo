@@ -2253,41 +2253,48 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_lydmods_ctx_load_installed_module(const struct lyd_node *sr_mods, struct ly_ctx *ly_ctx, const char *module_name,
+sr_lydmods_ctx_load_installed_module_all(const struct lyd_node *sr_mods, struct ly_ctx *ly_ctx, const char *module_name,
         const struct lys_module **ly_mod)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL;
-    char *path = NULL;
+    const struct lys_module *lmod;
+    uint32_t i;
 
-    /* check that the module is scheduled for installation */
-    if (asprintf(&path, "installed-module[name=\"%s\"]/module-yang", module_name) == -1) {
-        SR_ERRINFO_MEM(&err_info);
-        goto cleanup;
-    }
-    set = lyd_find_path(sr_mods, path);
+    *ly_mod = NULL;
+
+    /* find all scheduled modules */
+    set = lyd_find_path(sr_mods, "installed-module/module-yang");
     SR_CHECK_INT_GOTO(!set, err_info, cleanup);
-    if (!set->number) {
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" not scheduled for installation.", module_name);
-        goto cleanup;
+
+    /* load all the modules, it must succeed */
+    for (i = 0; i < set->number; ++i) {
+        lmod = lys_parse_mem(ly_ctx, sr_ly_leaf_value_str(set->set.d[i]), LYS_YANG);
+        if (!lmod) {
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+            SR_ERRINFO_INT(&err_info);
+            goto cleanup;
+        }
+
+        /* just enable all features */
+        if ((err_info = sr_lydmods_ctx_load_module(set->set.d[i]->parent, ly_ctx, NULL))) {
+            goto cleanup;
+        }
+
+        if (!strcmp(lmod->name, module_name)) {
+            /* the required mdule was found */
+            *ly_mod = lmod;
+        }
     }
 
-    /* load the module */
-    *ly_mod = lys_parse_mem(ly_ctx, sr_ly_leaf_value_str(set->set.d[0]), LYS_YANG);
     if (!*ly_mod) {
-        sr_errinfo_new_ly(&err_info, ly_ctx);
-        goto cleanup;
-    }
-
-    /* just enable all features */
-    if ((err_info = sr_lydmods_ctx_load_module(set->set.d[0]->parent, ly_ctx, NULL))) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" not scheduled for installation.", module_name);
         goto cleanup;
     }
 
     /* success */
 
 cleanup:
-    free(path);
     ly_set_free(set);
     return err_info;
 }

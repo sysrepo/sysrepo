@@ -1074,7 +1074,7 @@ sr_install_module_data(sr_conn_ctx_t *conn, const char *module_name, const char 
     }
 
     /* load the module to be installed */
-    if ((err_info = sr_lydmods_ctx_load_installed_module(sr_mods, tmp_ly_ctx, module_name, &ly_mod))) {
+    if ((err_info = sr_lydmods_ctx_load_installed_module_all(sr_mods, tmp_ly_ctx, module_name, &ly_mod))) {
         goto cleanup_unlock;
     }
 

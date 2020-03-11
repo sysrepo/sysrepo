@@ -109,7 +109,7 @@ sr_error_info_t *sr_lydmods_deferred_add_module(struct ly_ctx *ly_ctx, const str
 sr_error_info_t *sr_lydmods_unsched_add_module(struct ly_ctx *ly_ctx, const char *module_name);
 
 /**
- * @brief Load an installed module from sysrepo module data into a context.
+ * @brief Load an installed module from sysrepo module data into a context with any other installed modules.
  *
  * @param[in] sr_mods Sysrepo modules data tree.
  * @param[in] ly_ctx Context to parse the module into.
@@ -117,7 +117,7 @@ sr_error_info_t *sr_lydmods_unsched_add_module(struct ly_ctx *ly_ctx, const char
  * @param[out] ly_mod Parsed module.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lydmods_ctx_load_installed_module(const struct lyd_node *sr_mods, struct ly_ctx *ly_ctx,
+sr_error_info_t *sr_lydmods_ctx_load_installed_module_all(const struct lyd_node *sr_mods, struct ly_ctx *ly_ctx,
         const char *module_name, const struct lys_module **ly_mod);
 
 /**
