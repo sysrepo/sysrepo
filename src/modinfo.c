@@ -586,11 +586,9 @@ sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const
         goto cleanup;
     }
 
-    if (*oper_data) {
-        /* add default state data so that parents exist and we ask for descendants
-         * that can exist (it should not fail with TRUSTED flag, we do not care even if it does) */
-        lyd_validate_modules(oper_data, &ly_mod, 1, LYD_OPT_DATA | LYD_OPT_TRUSTED);
-    }
+    /* add default state data so that parents exist and we ask for descendants
+     * that can exist (it should not fail with TRUSTED flag, we do not care even if it does) */
+    lyd_validate_modules(oper_data, &ly_mod, 1, LYD_OPT_DATA | LYD_OPT_TRUSTED);
 
 cleanup:
     lyd_free_withsiblings(parent_dup);
