@@ -45,7 +45,7 @@
 %newobject Session::action_send;
 
 %shared_ptr(sysrepo::Callback);
-%ignore Callback::private_ctx;
+%ignore Callback::private_data;
 
 %shared_ptr(sysrepo::Subscribe);
 %ignore Subscribe::swig_sub;
