@@ -67,7 +67,7 @@ static void
 cmp_int_data(sr_conn_ctx_t *conn, const char *module_name, const char *expected)
 {
     char *str, *ptr, buf[1024];
-    struct lyd_node *data;
+    struct lyd_node *data, *sr_mod;
     struct ly_set *set;
     int ret;
 
@@ -81,12 +81,21 @@ cmp_int_data(sr_conn_ctx_t *conn, const char *module_name, const char *expected)
     set = lyd_find_path(data, buf);
     assert_non_null(set);
     assert_int_equal(set->number, 1);
+    sr_mod = set->set.d[0];
+    ly_set_free(set);
+
+    /* remove YANG module is present */
+    set = lyd_find_path(sr_mod, "module-yang");
+    assert_non_null(set);
+    if (set->number) {
+        lyd_free(set->set.d[0]);
+    }
+    ly_set_free(set);
 
     /* check current internal (sorted) data */
-    ret = lyd_schema_sort(set->set.d[0], 1);
+    ret = lyd_schema_sort(sr_mod, 1);
     assert_int_equal(ret, 0);
-    ret = lyd_print_mem(&str, set->set.d[0], LYD_XML, 0);
-    ly_set_free(set);
+    ret = lyd_print_mem(&str, sr_mod, LYD_XML, 0);
     lyd_free_withsiblings(data);
     assert_int_equal(ret, 0);
 
@@ -990,6 +999,152 @@ test_empty_invalid(void **state)
     assert_int_equal(ret, SR_ERR_NOT_FOUND);
 }
 
+static void
+test_startup_data_foreign_identityref(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_session_ctx_t *sess;
+    struct lyd_node *tree;
+    const char data[] =
+        "<haha xmlns=\"http://www.example.net/t1\">"
+            "<layer-protocol-name xmlns:x=\"http://www.example.net/t2\">x:desc</layer-protocol-name>"
+        "</haha>";
+    int ret;
+    uint32_t conn_count;
+
+    /* install module with types */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/t-types.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* install module with top-level default data */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/defaults.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* install t1 */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/t1.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* scheduled changes not applied */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    cmp_int_data(st->conn, "t1",
+    "<installed-module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>t1</name>"
+    "</installed-module>"
+    );
+
+    /* install t2 */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/t2.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* scheduled changes not applied */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    cmp_int_data(st->conn, "t2",
+    "<installed-module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>t2</name>"
+    "</installed-module>"
+    );
+
+    /* finally set startup data */
+    ret = sr_install_module_data(st->conn, "t1", data, NULL, LYD_XML);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* should have succeeded now */
+    cmp_int_data(st->conn, "t1",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>t1</name>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "t2",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>t2</name>"
+    "</module>"
+    );
+
+    /* check startup data */
+    ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_data(sess, "/t1:*", 0, 0, 0, &tree);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(tree->schema->name, "haha");
+    assert_string_equal(tree->child->schema->name, "layer-protocol-name");
+    assert_string_equal(((struct lyd_node_leaf_list *)tree->child)->value_str, "t2:desc");
+    assert_null(tree->next);
+
+    /* check running data */
+    ret = sr_session_switch_ds(sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_free_withsiblings(tree);
+    ret = sr_get_data(sess, "/t1:*", 0, 0, 0, &tree);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(tree->schema->name, "haha");
+    assert_string_equal(tree->child->schema->name, "layer-protocol-name");
+    assert_string_equal(((struct lyd_node_leaf_list *)tree->child)->value_str, "t2:desc");
+    assert_null(tree->next);
+
+    /* cleanup, remove its data so that it can be uninstalled */
+    lyd_free_withsiblings(tree);
+    sr_session_stop(sess);
+
+    /* actually remove the modules */
+    ret = sr_remove_module(st->conn, "t1");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "t2");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "t-types");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "defaults");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_remove_module(st->conn, "t1");
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+    ret = sr_remove_module(st->conn, "t2");
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+    ret = sr_remove_module(st->conn, "t-types");
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+    ret = sr_remove_module(st->conn, "defaults");
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+}
+
 int
 main(void)
 {
@@ -1004,6 +1159,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_change_feature, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_foreign_aug, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_empty_invalid, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_startup_data_foreign_identityref, setup_f, teardown_f),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

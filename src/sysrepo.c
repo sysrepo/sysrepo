@@ -1092,7 +1092,7 @@ sr_install_module_data(sr_conn_ctx_t *conn, const char *module_name, const char 
 
     /* check that there are only this module data */
     LY_TREE_FOR(mod_data, node) {
-        if (lyd_node_module(node) != ly_mod) {
+        if (!node->dflt && (lyd_node_module(node) != ly_mod)) {
             sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Only data for the module \"%s\" can be set.", module_name);
             goto cleanup_unlock;
         }

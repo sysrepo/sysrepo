@@ -1,0 +1,16 @@
+module t1 {
+    namespace "http://www.example.net/t1";
+    prefix t1;
+    import t-types {
+        prefix "tt";
+    }
+    container haha{
+        leaf layer-protocol-name {
+            mandatory true;
+            type identityref {
+                base tt:layer-protocol-name;
+            }
+            description "";
+        }
+    }
+}
