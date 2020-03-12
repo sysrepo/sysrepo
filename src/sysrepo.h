@@ -1685,7 +1685,8 @@ typedef int (*sr_oper_get_items_cb)(sr_session_ctx_t *session, const char *modul
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] module_name Name of the affected module.
  * @param[in] path [Path](@ref paths) identifying the subtree which the provider is able to provide. Predicates can be
- * used to provide only specific instances of nodes.
+ * used to provide only specific instances of nodes. Before calling this callback, any existing data matching this
+ * path __are deleted__.
  * @param[in] callback Callback to be called when the operational data for the given xpath are requested.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be

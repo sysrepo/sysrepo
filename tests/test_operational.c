@@ -169,7 +169,72 @@ dummy_change_cb(sr_session_ctx_t *session, const char *module_name, const char *
     return SR_ERR_OK;
 }
 
-/* TEST 1 (no threads) */
+/* TEST */
+static int
+yang_lib_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+        uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    (void)session;
+    (void)module_name;
+    (void)xpath;
+    (void)request_xpath;
+    (void)request_id;
+    (void)parent;
+    (void)private_data;
+
+    return SR_ERR_OK;
+}
+
+static void
+test_yang_lib(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const struct ly_ctx *ly_ctx;
+    struct lyd_node *data;
+    sr_subscription_ctx_t *subscr;
+    int ret;
+
+    ly_ctx = sr_get_context(st->conn);
+    assert_non_null(ly_ctx);
+
+    /* read ietf-yang-library data */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_data(st->sess, "/ietf-yang-library:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_non_null(data);
+    assert_string_equal(data->schema->name, "yang-library");
+    assert_string_equal(data->child->schema->name, "module-set");
+    assert_string_equal(data->child->next->schema->name, "content-id");
+    assert_null(data->child->next->next);
+    assert_string_equal(data->next->schema->name, "modules-state");
+    lyd_free_withsiblings(data);
+
+    /* subscribe as dummy state data provider, they should get deleted */
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-yang-library", "/ietf-yang-library:yang-library", yang_lib_oper_cb,
+            NULL, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read ietf-yang-library data again */
+    ret = sr_get_data(st->sess, "/ietf-yang-library:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* order was changed */
+    assert_non_null(data);
+    assert_string_equal(data->schema->name, "modules-state");
+    assert_string_equal(data->next->schema->name, "yang-library");
+    assert_int_equal(data->next->dflt, 1);
+    assert_null(data->next->child);
+    lyd_free_withsiblings(data);
+
+    /* cleanup */
+    sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    sr_unsubscribe(subscr);
+}
+
+/* TEST */
 static int
 enabled_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
@@ -387,7 +452,7 @@ test_enabled_partial(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 2 */
+/* TEST */
 static int
 simple_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
@@ -514,7 +579,7 @@ test_simple(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 3 */
+/* TEST */
 static int
 fail_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
@@ -564,7 +629,7 @@ test_fail(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 4 */
+/* TEST */
 static int
 config_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
@@ -646,7 +711,7 @@ test_config(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 5 */
+/* TEST */
 static int
 list_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
@@ -741,7 +806,7 @@ test_list(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 6 */
+/* TEST */
 static int
 nested_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
@@ -877,7 +942,7 @@ test_nested(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 7 */
+/* TEST */
 static int
 invalid_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
@@ -946,7 +1011,7 @@ test_invalid(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 8 */
+/* TEST */
 static int
 mixed_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
@@ -1050,7 +1115,7 @@ test_mixed(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 9 */
+/* TEST */
 static int
 xpath_check_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
@@ -1123,7 +1188,7 @@ test_xpath_check(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 10 */
+/* TEST */
 static int
 state_only_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
@@ -1295,7 +1360,7 @@ test_state_only(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 11 */
+/* TEST */
 static void
 test_config_only(void **state)
 {
@@ -1349,7 +1414,7 @@ test_config_only(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 12 */
+/* TEST */
 static void
 test_conn_owner1(void **state)
 {
@@ -1409,7 +1474,7 @@ test_conn_owner1(void **state)
     lyd_free_withsiblings(data);
 }
 
-/* TEST 13 */
+/* TEST */
 static void
 test_conn_owner2(void **state)
 {
@@ -1525,7 +1590,7 @@ test_conn_owner2(void **state)
     free(str1);
 }
 
-/* TEST 14 */
+/* TEST */
 static int
 oper_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
@@ -1668,7 +1733,7 @@ test_stored_state(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 15 */
+/* TEST */
 static void
 test_stored_state_list(void **state)
 {
@@ -1719,7 +1784,7 @@ test_stored_state_list(void **state)
     free(str1);
 }
 
-/* TEST 16 */
+/* TEST */
 static void
 test_stored_config(void **state)
 {
@@ -1809,7 +1874,7 @@ test_stored_config(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 17 */
+/* TEST */
 static void
 test_stored_np_cont1(void **state)
 {
@@ -1907,7 +1972,7 @@ test_stored_np_cont1(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 18 */
+/* TEST */
 static void
 test_stored_np_cont2(void **state)
 {
@@ -1976,7 +2041,7 @@ test_stored_np_cont2(void **state)
     lyd_free_withsiblings(data);
 }
 
-/* TEST 19 */
+/* TEST */
 static void
 test_stored_diff_merge_leaf(void **state)
 {
@@ -2078,7 +2143,7 @@ test_stored_diff_merge_leaf(void **state)
     free(str1);
 }
 
-/* TEST 20 */
+/* TEST */
 static void
 test_stored_diff_merge_replace(void **state)
 {
@@ -2188,7 +2253,7 @@ test_stored_diff_merge_replace(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 21 */
+/* TEST */
 static void
 test_stored_diff_merge_userord(void **state)
 {
@@ -2346,7 +2411,7 @@ test_stored_diff_merge_userord(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 22 */
+/* TEST */
 static void
 test_default_when(void **state)
 {
@@ -2378,7 +2443,7 @@ test_default_when(void **state)
     free(str1);
 }
 
-/* TEST 23 */
+/* TEST */
 static int
 nested_default_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
@@ -2466,6 +2531,7 @@ int
 main(void)
 {
     const struct CMUnitTest tests[] = {
+        cmocka_unit_test(test_yang_lib),
         cmocka_unit_test_teardown(test_enabled_partial, clear_up),
         cmocka_unit_test_teardown(test_simple, clear_up),
         cmocka_unit_test_teardown(test_fail, clear_up),
