@@ -1081,9 +1081,9 @@ sr_install_module_data(sr_conn_ctx_t *conn, const char *module_name, const char 
     /* parse module data */
     ly_errno = 0;
     if (data_path) {
-        mod_data = lyd_parse_path(tmp_ly_ctx, data_path, format, LYD_OPT_CONFIG | LYD_OPT_STRICT);
+        mod_data = lyd_parse_path(tmp_ly_ctx, data_path, format, LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_TRUSTED);
     } else {
-        mod_data = lyd_parse_mem(tmp_ly_ctx, data, format, LYD_OPT_CONFIG | LYD_OPT_STRICT);
+        mod_data = lyd_parse_mem(tmp_ly_ctx, data, format, LYD_OPT_CONFIG | LYD_OPT_STRICT | LYD_OPT_TRUSTED);
     }
     if (ly_errno) {
         sr_errinfo_new_ly(&err_info, tmp_ly_ctx);
