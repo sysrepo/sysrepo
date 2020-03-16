@@ -1215,10 +1215,12 @@ sr_lydmods_sched_ctx_install_modules(const struct lyd_node *sr_mods, struct ly_c
         goto cleanup;
     }
     for (i = 0; i < set->number; ++i) {
-        /* load the new module */
+        /* load the new module, it can still fail on, for example, duplicate namespace */
         ly_mod = lys_parse_mem(new_ctx, sr_ly_leaf_value_str(set->set.d[i]), LYS_YANG);
         if (!ly_mod) {
-            sr_errinfo_new_ly(&err_info, new_ctx);
+            sr_log_wrn_ly(new_ctx);
+            SR_LOG_WRN("Installing module \"%s\" failed.", sr_ly_leaf_value_str(set->set.d[i]->parent->child));
+            *fail = 1;
             goto cleanup;
         }
 
