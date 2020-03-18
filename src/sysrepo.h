@@ -1421,7 +1421,7 @@ typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *op_path, const s
  *
  * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
  * @param[in] op_path Simple operation [path](@ref paths) identifying the RPC/action.
- * @param[in] input Data tree of input parameters.
+ * @param[in] input Data tree of input parameters. Always points to the __RPC/action__ itself, even for nested operations.
  * @param[in] event Type of the callback event that has occurred.
  * @param[in] request_id Request ID unique for the specific \p op_path.
  * @param[out] output Data tree of output parameters. Should be allocated on heap,
@@ -1554,7 +1554,7 @@ typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, const sr_ev_notif_t
  *
  * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
  * @param[in] notif_type Type of the notification.
- * @param[in] notif Notification data tree.
+ * @param[in] notif Notification data tree. Always points to the __notification__ itself, even for nested ones.
  * @param[in] timestamp Time when the notification was generated
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_event_notif_subscribe_tree call.
  */
