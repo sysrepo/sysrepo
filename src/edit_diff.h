@@ -226,4 +226,34 @@ sr_error_info_t *sr_diff_reverse(const struct lyd_node *diff, struct lyd_node **
  */
 sr_error_info_t *sr_diff_del_conn(struct lyd_node **diff, sr_conn_ctx_t *conn, pid_t pid);
 
+
+/**
+ * @brief Find a previous (leaf-)list instance.
+ *
+ * @param[in] llist (Leaf-)list instance.
+ * @return Previous instance, NULL if first.
+ */
+const struct lyd_node *sr_edit_find_previous_instance(const struct lyd_node *llist);
+
+/**
+ * @brief Create a predicate for a user-ordered (leaf-)list. In case of list,
+ * it is an array of predicates for each key. For leaf-list, it is simply its value.
+ *
+ * @param[in] llist (Leaf-)list to process.
+ * @return Predicate, NULL on error.
+ */
+char *sr_edit_create_userord_predicate(const struct lyd_node *llist);
+
+/**
+ * @brief Add diff attributes for a sysrepo diff node.
+ *
+ * @param[in] diff_node Diff node to change.
+ * @param[in] attr_val Attribute value (meaning depends on the nodetype).
+ * @param[in] prev_attr_val Previous attribute value (meaning depends on the nodetype).
+ * @param[in] op Diff operation.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *
+sr_diff_add_attrs(struct lyd_node *diff_node, const char *attr_val, const char *prev_attr_val, enum edit_op op);
+
 #endif

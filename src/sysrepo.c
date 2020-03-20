@@ -2076,6 +2076,169 @@ error:
 }
 
 API int
+sr_edit_update_ly2sr(struct ly_ctx *ly_ctx, uint32_t *index, struct lyd_difflist *ly_diff, struct lyd_node **edit)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i;
+    int attr_free;
+    struct lyd_node *node, *iter;
+    const struct lyd_node *sibling_before;
+    enum edit_op op;
+    char *attr_val, *prev_attr_val;
+
+    SR_CHECK_ARG_APIRET(!ly_ctx || !ly_diff || !edit || !index, NULL, err_info);
+
+    i = *index;
+    if (ly_diff->type[i] != LYD_DIFF_END) {
+        node = NULL;
+        attr_free = 0;
+
+        switch (ly_diff->type[i]) {
+        case LYD_DIFF_DELETED:
+
+            /* duplicate subtree with parents */
+            node = lyd_dup(ly_diff->first[i], LYD_DUP_OPT_RECURSIVE | LYD_DUP_OPT_WITH_PARENTS | LYD_DUP_OPT_NO_ATTR);
+            if (!node) {
+                sr_errinfo_new_ly(&err_info, ly_ctx);
+                goto error;
+            }
+
+            /* set attrs (basic delete) */
+            attr_val = NULL;
+            prev_attr_val = NULL;
+            op = EDIT_DELETE;
+            break;
+        case LYD_DIFF_CHANGED:
+
+            assert(ly_diff->second[i]->schema->nodetype != LYS_LIST);
+            if (!strcmp(sr_ly_leaf_value_str(ly_diff->second[i]), sr_ly_leaf_value_str(ly_diff->first[i]))) {
+                /* only dflt flag was changed, not a diff change */
+                assert(ly_diff->second[i]->dflt != ly_diff->first[i]->dflt);
+                return SR_ERR_OK;
+            }
+
+            /* duplicate leaf */
+            node = lyd_dup(ly_diff->second[i], LYD_DUP_OPT_WITH_PARENTS | LYD_DUP_OPT_NO_ATTR);
+            if (!node) {
+                sr_errinfo_new_ly(&err_info, ly_ctx);
+                goto error;
+            }
+
+            /* set attrs (change leaf value) */
+            attr_val = (char *)sr_ly_leaf_value_str(ly_diff->first[i]);
+            prev_attr_val = (char *)((uintptr_t)ly_diff->first[i]->dflt);
+            op = EDIT_REPLACE;
+            break;
+        case LYD_DIFF_MOVEDAFTER1:
+
+            /* duplicate (leaf-)list instance */
+            node = lyd_dup(ly_diff->first[i], LYD_DUP_OPT_WITH_PARENTS | LYD_DUP_OPT_WITH_KEYS | LYD_DUP_OPT_NO_ATTR);
+            if (!node) {
+                sr_errinfo_new_ly(&err_info, ly_ctx);
+                goto error;
+            }
+
+            /* set attrs (move user-ordered (leaf-)list) */
+            if (ly_diff->second[i]) {
+                attr_val = sr_edit_create_userord_predicate(ly_diff->second[i]);
+                attr_free = 1;
+            } else {
+                attr_val = NULL;
+            }
+            sibling_before = sr_edit_find_previous_instance(ly_diff->first[i]);
+            if (sibling_before) {
+                prev_attr_val = sr_edit_create_userord_predicate(sibling_before);
+                attr_free = 1;
+            } else {
+                prev_attr_val = NULL;
+            }
+            op = EDIT_REPLACE;
+            break;
+        case LYD_DIFF_CREATED:
+
+            /* duplicate subtree with parents */
+            node = lyd_dup(ly_diff->second[i], LYD_DUP_OPT_RECURSIVE | LYD_DUP_OPT_WITH_PARENTS | LYD_DUP_OPT_NO_ATTR);
+            if (!node) {
+                sr_errinfo_new_ly(&err_info, ly_ctx);
+                goto error;
+            }
+
+            /* set attrs (basic create) */
+            attr_val = NULL;
+            prev_attr_val = NULL;
+            op = EDIT_CREATE;
+
+            /* for user-ordered lists we also need to move it to the correct place */
+            if (sr_ly_is_userord(node)) {
+                if (ly_diff->type[i + 1] == LYD_DIFF_MOVEDAFTER2) {
+                    /* libyang provides the information about position */
+                    ++i;
+                    *index = i;
+                    assert(ly_diff->second[i] == ly_diff->second[i - 1]);
+                    sibling_before = ly_diff->first[i];
+                } else {
+                    /* instances were created in this order, just find the previous sibling */
+                    sibling_before = sr_edit_find_previous_instance(ly_diff->second[i]);
+                }
+
+                /* update attrs (create user-ordered (leaf-)list) */
+                if (sibling_before) {
+                    attr_val = sr_edit_create_userord_predicate(sibling_before);
+                    attr_free = 1;
+                }
+            }
+
+            /* add correct attributes to any nested user-ordered lists */
+            LY_TREE_FOR(sr_lyd_child(node, 1), iter) {
+                if ((err_info = sr_edit_created_subtree_apply_move(iter))) {
+                    goto error;
+                }
+            }
+            break;
+        default:
+            SR_ERRINFO_INT(&err_info);
+            goto error;
+        }
+
+        /* add all attributes */
+        if ((err_info = sr_diff_add_attrs(node, attr_val, prev_attr_val, op))) {
+            goto error;
+        }
+        if (attr_free) {
+            free(attr_val);
+            free(prev_attr_val);
+        }
+
+        /* find top-level */
+        while (node->parent) {
+            node = node->parent;
+        }
+
+        /* add top-level operation */
+        if (!sr_edit_find_oper(node, 0, NULL) && (err_info = sr_edit_set_oper(node, "none"))) {
+            goto error;
+        }
+
+        /* merge into diff */
+        if (*edit == NULL) {
+            *edit = node;
+        } else {
+            if ((err_info = sr_diff_mod_merge(node, NULL, lyd_node_module(node), edit, NULL))) {
+                goto error;
+            }
+            lyd_free_withsiblings(node);
+            node = NULL;
+        }
+    }
+
+    return SR_ERR_OK;
+
+error:
+    lyd_free_withsiblings(node);
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
 sr_validate(sr_session_ctx_t *session, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;

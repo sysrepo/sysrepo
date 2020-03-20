@@ -43,13 +43,7 @@ enum insert_val {
 static sr_error_info_t *sr_diff_merge_r(const struct lyd_node *src_node, enum edit_op parent_op, void *oper_conn,
         struct lyd_node *diff_parent, struct lyd_node **diff_root, int *change);
 
-/**
- * @brief Find a previous (leaf-)list instance.
- *
- * @param[in] llist (Leaf-)list instance.
- * @return Previous instance, NULL if first.
- */
-static const struct lyd_node *
+const struct lyd_node *
 sr_edit_find_previous_instance(const struct lyd_node *llist)
 {
     struct lyd_node *prev_inst;
@@ -494,14 +488,7 @@ sr_edit_insert(struct lyd_node **first_node, struct lyd_node *parent_node, struc
     return NULL;
 }
 
-/**
- * @brief Create a predicate for a user-ordered (leaf-)list. In case of list,
- * it is an array of predicates for each key. For leaf-list, it is simply its value.
- *
- * @param[in] llist (Leaf-)list to process.
- * @return Predicate, NULL on error.
- */
-static char *
+char *
 sr_edit_create_userord_predicate(const struct lyd_node *llist)
 {
     char *pred;
@@ -694,16 +681,7 @@ sr_edit_del_attr(struct lyd_node *edit, const char *name)
     assert(0);
 }
 
-/**
- * @brief Add diff attributes for a sysrepo diff node.
- *
- * @param[in] diff_node Diff node to change.
- * @param[in] attr_val Attribute value (meaning depends on the nodetype).
- * @param[in] prev_attr_val Previous attribute value (meaning depends on the nodetype).
- * @param[in] op Diff operation.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
 sr_diff_add_attrs(struct lyd_node *diff_node, const char *attr_val, const char *prev_attr_val, enum edit_op op)
 {
     sr_error_info_t *err_info = NULL;
@@ -2907,13 +2885,10 @@ sr_error_info_t *
 sr_diff_ly2sr(struct lyd_difflist *ly_diff, struct lyd_node **diff_p)
 {
     sr_error_info_t *err_info = NULL;
+    int rc = SR_ERR_OK;
     uint32_t i;
-    int attr_free;
     struct ly_ctx *ly_ctx;
-    struct lyd_node *diff = NULL, *node, *iter;
-    const struct lyd_node *sibling_before;
-    enum edit_op op;
-    char *attr_val, *prev_attr_val;
+    struct lyd_node *diff = NULL;
 
     /* just a shortcut to context */
     if (ly_diff->type[0] != LYD_DIFF_END) {
@@ -2925,151 +2900,18 @@ sr_diff_ly2sr(struct lyd_difflist *ly_diff, struct lyd_node **diff_p)
     }
 
     for (i = 0; ly_diff->type[i] != LYD_DIFF_END; ++i) {
-        node = NULL;
-        attr_free = 0;
-
-        switch (ly_diff->type[i]) {
-        case LYD_DIFF_DELETED:
-
-            /* duplicate subtree with parents */
-            node = lyd_dup(ly_diff->first[i], LYD_DUP_OPT_RECURSIVE | LYD_DUP_OPT_WITH_PARENTS | LYD_DUP_OPT_NO_ATTR);
-            if (!node) {
-                sr_errinfo_new_ly(&err_info, ly_ctx);
-                goto error;
-            }
-
-            /* set attrs (basic delete) */
-            attr_val = NULL;
-            prev_attr_val = NULL;
-            op = EDIT_DELETE;
-            break;
-        case LYD_DIFF_CHANGED:
-
-            assert(ly_diff->second[i]->schema->nodetype != LYS_LIST);
-            if (!strcmp(sr_ly_leaf_value_str(ly_diff->second[i]), sr_ly_leaf_value_str(ly_diff->first[i]))) {
-                /* only dflt flag was changed, not a diff change */
-                assert(ly_diff->second[i]->dflt != ly_diff->first[i]->dflt);
-                continue;
-            }
-
-            /* duplicate leaf */
-            node = lyd_dup(ly_diff->second[i], LYD_DUP_OPT_WITH_PARENTS | LYD_DUP_OPT_NO_ATTR);
-            if (!node) {
-                sr_errinfo_new_ly(&err_info, ly_ctx);
-                goto error;
-            }
-
-            /* set attrs (change leaf value) */
-            attr_val = (char *)sr_ly_leaf_value_str(ly_diff->first[i]);
-            prev_attr_val = (char *)((uintptr_t)ly_diff->first[i]->dflt);
-            op = EDIT_REPLACE;
-            break;
-        case LYD_DIFF_MOVEDAFTER1:
-
-            /* duplicate (leaf-)list instance */
-            node = lyd_dup(ly_diff->first[i], LYD_DUP_OPT_WITH_PARENTS | LYD_DUP_OPT_WITH_KEYS | LYD_DUP_OPT_NO_ATTR);
-            if (!node) {
-                sr_errinfo_new_ly(&err_info, ly_ctx);
-                goto error;
-            }
-
-            /* set attrs (move user-ordered (leaf-)list) */
-            if (ly_diff->second[i]) {
-                attr_val = sr_edit_create_userord_predicate(ly_diff->second[i]);
-                attr_free = 1;
-            } else {
-                attr_val = NULL;
-            }
-            sibling_before = sr_edit_find_previous_instance(ly_diff->first[i]);
-            if (sibling_before) {
-                prev_attr_val = sr_edit_create_userord_predicate(sibling_before);
-                attr_free = 1;
-            } else {
-                prev_attr_val = NULL;
-            }
-            op = EDIT_REPLACE;
-            break;
-        case LYD_DIFF_CREATED:
-
-            /* duplicate subtree with parents */
-            node = lyd_dup(ly_diff->second[i], LYD_DUP_OPT_RECURSIVE | LYD_DUP_OPT_WITH_PARENTS | LYD_DUP_OPT_NO_ATTR);
-            if (!node) {
-                sr_errinfo_new_ly(&err_info, ly_ctx);
-                goto error;
-            }
-
-            /* set attrs (basic create) */
-            attr_val = NULL;
-            prev_attr_val = NULL;
-            op = EDIT_CREATE;
-
-            /* for user-ordered lists we also need to move it to the correct place */
-            if (sr_ly_is_userord(node)) {
-                if (ly_diff->type[i + 1] == LYD_DIFF_MOVEDAFTER2) {
-                    /* libyang provides the information about position */
-                    ++i;
-                    assert(ly_diff->second[i] == ly_diff->second[i - 1]);
-                    sibling_before = ly_diff->first[i];
-                } else {
-                    /* instances were created in this order, just find the previous sibling */
-                    sibling_before = sr_edit_find_previous_instance(ly_diff->second[i]);
-                }
-
-                /* update attrs (create user-ordered (leaf-)list) */
-                if (sibling_before) {
-                    attr_val = sr_edit_create_userord_predicate(sibling_before);
-                    attr_free = 1;
-                }
-            }
-
-            /* add correct attributes to any nested user-ordered lists */
-            LY_TREE_FOR(sr_lyd_child(node, 1), iter) {
-                if ((err_info = sr_edit_created_subtree_apply_move(iter))) {
-                    goto error;
-                }
-            }
-            break;
-        default:
-            SR_ERRINFO_INT(&err_info);
+        rc = sr_edit_update_ly2sr(ly_ctx, &i, ly_diff, &diff);
+        if (SR_ERR_OK != rc) {
             goto error;
-        }
-
-        /* add all attributes */
-        if ((err_info = sr_diff_add_attrs(node, attr_val, prev_attr_val, op))) {
-            goto error;
-        }
-        if (attr_free) {
-            free(attr_val);
-            free(prev_attr_val);
-        }
-
-        /* find top-level */
-        while (node->parent) {
-            node = node->parent;
-        }
-
-        /* add top-level operation */
-        if (!sr_edit_find_oper(node, 0, NULL) && (err_info = sr_edit_set_oper(node, "none"))) {
-            goto error;
-        }
-
-        /* merge into diff */
-        if (!diff) {
-            diff = node;
-        } else {
-            if ((err_info = sr_diff_mod_merge(node, NULL, lyd_node_module(node), &diff, NULL))) {
-                goto error;
-            }
-            lyd_free_withsiblings(node);
-            node = NULL;
         }
     }
 
-    *diff_p = diff;
+    if (diff)
+        *diff_p = diff;
+
     return NULL;
 
 error:
-    lyd_free_withsiblings(node);
     lyd_free_withsiblings(diff);
     return err_info;
 }
