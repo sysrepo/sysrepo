@@ -2392,6 +2392,16 @@ cleanup_shm_unlock:
 }
 
 API int
+sr_has_changes(sr_session_ctx_t *session)
+{
+    if (session && session->dt[session->ds].edit) {
+        return 1;
+    }
+
+    return 0;
+}
+
+API int
 sr_discard_changes(sr_session_ctx_t *session)
 {
     sr_error_info_t *err_info = NULL;

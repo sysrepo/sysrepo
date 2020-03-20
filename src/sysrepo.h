@@ -973,6 +973,14 @@ int sr_validate(sr_session_ctx_t *session, uint32_t timeout_ms);
 int sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms, int wait);
 
 /**
+ * @brief Learn whether there are any prepared non-applied changes in the session.
+ *
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to check changes in.
+ * @return non-zero if there are some changes, 0 if there are none.
+ */
+int sr_has_changes(sr_session_ctx_t *session);
+
+/**
  * @brief Discard prepared changes made in the current session.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to discard changes from.
