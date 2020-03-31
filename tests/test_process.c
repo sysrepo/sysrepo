@@ -198,9 +198,9 @@ teardown(void)
     sr_disconnect(conn);
 }
 
-/* TEST 1 */
+/* TEST */
 static int
-sub_rpc_cb(sr_session_ctx_t *session, const char *op_path, const sr_val_t *input, const size_t input_cnt,
+rpc_sub_cb(sr_session_ctx_t *session, const char *op_path, const sr_val_t *input, const size_t input_cnt,
         sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data)
 {
     (void)session;
@@ -217,7 +217,7 @@ sub_rpc_cb(sr_session_ctx_t *session, const char *op_path, const sr_val_t *input
 }
 
 static int
-test_sub_rpc(int rp, int wp)
+test_rpc_sub(int rp, int wp)
 {
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sess;
@@ -237,15 +237,15 @@ test_sub_rpc(int rp, int wp)
     for (i = 0; i < 20; ++i) {
         sub = NULL;
 
-        ret = sr_rpc_subscribe(sess, "/ops:rpc1", sub_rpc_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
+        ret = sr_rpc_subscribe(sess, "/ops:rpc1", rpc_sub_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
         sr_assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_rpc_subscribe(sess, "/ops:rpc2", sub_rpc_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
+        ret = sr_rpc_subscribe(sess, "/ops:rpc2", rpc_sub_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
         sr_assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_rpc_subscribe(sess, "/ops:rpc3", sub_rpc_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
+        ret = sr_rpc_subscribe(sess, "/ops:rpc3", rpc_sub_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
         sr_assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_rpc_subscribe(sess, "/ops:cont/list1/cont2/act1", sub_rpc_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
+        ret = sr_rpc_subscribe(sess, "/ops:cont/list1/cont2/act1", rpc_sub_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
         sr_assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_rpc_subscribe(sess, "/ops:cont/list1/act2", sub_rpc_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
+        ret = sr_rpc_subscribe(sess, "/ops:cont/list1/act2", rpc_sub_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
         sr_assert_int_equal(ret, SR_ERR_OK);
 
         sr_unsubscribe(sub);
@@ -255,11 +255,91 @@ test_sub_rpc(int rp, int wp)
     return 0;
 }
 
+/* TEST */
+static int
+test_rpc_crash1(int rp, int wp)
+{
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    struct lyd_node *rpc, *output;
+    int ret;
+
+    ret = sr_connect(0, &conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_start(conn, SR_DS_RUNNING, &sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for the other process */
+    barrier(rp, wp);
+
+    rpc = lyd_new_path(NULL, sr_get_context(conn), "/ops:rpc3/l4", "value", 0, 0);
+    sr_assert_true(rpc);
+
+    /* this should crash the other process */
+    ret = sr_rpc_send_tree(sess, rpc, 100, &output);
+    sr_assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+
+    lyd_free(rpc);
+    sr_disconnect(conn);
+    return 0;
+}
+
+static int
+rpc_crash_cb(sr_session_ctx_t *session, const char *op_path, const sr_val_t *input, const size_t input_cnt,
+        sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data)
+{
+    (void)session;
+    (void)op_path;
+    (void)input;
+    (void)input_cnt;
+    (void)event;
+    (void)request_id;
+    (void)output;
+    (void)output_cnt;
+    (void)private_data;
+
+    /* callback crashes */
+    exit(0);
+
+    return SR_ERR_OK;
+}
+
+static int
+test_rpc_crash2(int rp, int wp)
+{
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *sub;
+    int ret;
+
+    ret = sr_connect(0, &conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_start(conn, SR_DS_RUNNING, &sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_rpc_subscribe(sess, "/ops:rpc3", rpc_crash_cb, NULL, 0, 0, &sub);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for the other process */
+    barrier(rp, wp);
+
+    /* will block until crash */
+    barrier(rp, wp);
+
+    /* unreachable */
+    sr_unsubscribe(sub);
+    sr_disconnect(conn);
+    return 0;
+}
+
 int
 main(void)
 {
     struct test tests[] = {
-        { "sub_rpc", test_sub_rpc, test_sub_rpc, setup, teardown },
+        {"rpc sub", test_rpc_sub, test_rpc_sub, setup, teardown},
+        {"rpc crash", test_rpc_crash1, test_rpc_crash2, setup, teardown},
     };
 
     sr_log_set_cb(test_log_cb);

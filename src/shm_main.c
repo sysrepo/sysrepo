@@ -835,7 +835,7 @@ sr_shmmain_conn_del(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *
 
     /* add wasted memory for mods lock, evpipes, and connection itself */
     *((size_t *)ext_shm_addr) += SR_SHM_SIZE(main_shm->mod_count * sizeof(sr_conn_shm_lock_t[3]))
-            + (conn_s[i].evpipe_count * sizeof(uint32_t)) + sizeof *conn_s;
+            + SR_SHM_SIZE(conn_s[i].evpipe_count * sizeof(uint32_t)) + sizeof *conn_s;
 
     --main_shm->conn_count;
     if (!main_shm->conn_count) {
