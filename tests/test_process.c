@@ -319,14 +319,17 @@ test_rpc_crash2(int rp, int wp)
     ret = sr_session_start(conn, SR_DS_RUNNING, &sess);
     sr_assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_rpc_subscribe(sess, "/ops:rpc3", rpc_crash_cb, NULL, 0, 0, &sub);
+    /* do not create thread to avoid leaks */
+    ret = sr_rpc_subscribe(sess, "/ops:rpc3", rpc_crash_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &sub);
     sr_assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for the other process */
     barrier(rp, wp);
 
     /* will block until crash */
-    barrier(rp, wp);
+    while (1) {
+        sr_process_events(sub, NULL, NULL);
+    }
 
     /* unreachable */
     sr_unsubscribe(sub);
