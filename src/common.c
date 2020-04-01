@@ -2812,7 +2812,7 @@ error:
 }
 
 char *
-sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, char *buf)
+sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, char *buf, int output)
 {
     struct lys_node_leaf *sleaf;
 
@@ -2836,7 +2836,7 @@ sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, 
         return sr_val->data.bool_val ? "true" : "false";
     case SR_DECIMAL64_T:
         /* get fraction-digits */
-        sleaf = (struct lys_node_leaf *)ly_ctx_get_node(ctx, NULL, xpath, 0);
+        sleaf = (struct lys_node_leaf *)ly_ctx_get_node(ctx, NULL, xpath, output);
         if (!sleaf) {
             return NULL;
         }

@@ -2452,7 +2452,7 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
             goto cleanup;
         }
         for (i = 0; i < output_val_count; ++i) {
-            val_str = sr_val_sr2ly_str(tmp_sess->conn->ly_ctx, &output_vals[i], output_vals[i].xpath, buf);
+            val_str = sr_val_sr2ly_str(tmp_sess->conn->ly_ctx, &output_vals[i], output_vals[i].xpath, buf, 1);
             if ((err_info = sr_val_sr2ly(tmp_sess->conn->ly_ctx, output_vals[i].xpath, val_str, output_vals[i].dflt, 1,
                     output_op))) {
                 /* output sr_vals are invalid */

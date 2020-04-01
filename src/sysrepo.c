@@ -1964,7 +1964,7 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
     if (!path) {
         path = value->xpath;
     }
-    str_val = sr_val_sr2ly_str(session->conn->ly_ctx, value, path, str);
+    str_val = sr_val_sr2ly_str(session->conn->ly_ctx, value, path, str, 0);
 
     /* API function */
     return sr_set_item_str(session, path, str_val, value ? value->origin : NULL, opts);
@@ -4023,7 +4023,7 @@ sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *input, 
 
     /* transform input into a data tree */
     for (i = 0; i < input_cnt; ++i) {
-        val_str = sr_val_sr2ly_str(session->conn->ly_ctx, &input[i], input[i].xpath, buf);
+        val_str = sr_val_sr2ly_str(session->conn->ly_ctx, &input[i], input[i].xpath, buf, 0);
         if ((err_info = sr_val_sr2ly(session->conn->ly_ctx, input[i].xpath, val_str, input[i].dflt, 0, &input_tree))) {
             goto cleanup;
         }
@@ -4418,7 +4418,7 @@ sr_event_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t 
 
     /* transform values into a data tree */
     for (i = 0; i < values_cnt; ++i) {
-        val_str = sr_val_sr2ly_str(session->conn->ly_ctx, &values[i], values[i].xpath, buf);
+        val_str = sr_val_sr2ly_str(session->conn->ly_ctx, &values[i], values[i].xpath, buf, 0);
         if ((err_info = sr_val_sr2ly(session->conn->ly_ctx, values[i].xpath, val_str, values[i].dflt, 0, &notif_tree))) {
             goto cleanup;
         }
