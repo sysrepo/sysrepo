@@ -1822,6 +1822,130 @@ module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, c
         } else {
             assert_int_equal(event, SR_EV_DONE);
         }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/defaults:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_int_equal(new_val->dflt, 0);
+        assert_string_equal(new_val->xpath, "/defaults:pcont");
+
+        sr_free_val(new_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_int_equal(new_val->dflt, 1);
+        assert_string_equal(new_val->xpath, "/defaults:pcont/ll");
+
+        sr_free_val(new_val);
+
+        /* 3rd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_int_equal(new_val->dflt, 1);
+        assert_string_equal(new_val->xpath, "/defaults:pcont/ll");
+
+        sr_free_val(new_val);
+
+        /* 4th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_int_equal(new_val->dflt, 1);
+        assert_string_equal(new_val->xpath, "/defaults:pcont/ll");
+
+        sr_free_val(new_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    case 16:
+    case 17:
+        if (st->cb_called == 16) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/defaults:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_non_null(old_val);
+        assert_null(new_val);
+        assert_int_equal(old_val->dflt, 1);
+        assert_int_equal(old_val->data.uint16_val, 1);
+        assert_string_equal(old_val->xpath, "/defaults:pcont/ll");
+
+        sr_free_val(old_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_non_null(old_val);
+        assert_null(new_val);
+        assert_int_equal(old_val->dflt, 1);
+        assert_int_equal(old_val->data.uint16_val, 3);
+        assert_string_equal(old_val->xpath, "/defaults:pcont/ll");
+
+        sr_free_val(old_val);
+
+        /* 3rd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_int_equal(new_val->dflt, 0);
+        assert_int_equal(new_val->data.uint16_val, 4);
+        assert_string_equal(new_val->xpath, "/defaults:pcont/ll");
+
+        sr_free_val(new_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    case 18:
+    case 19:
+        /* cleanup */
+        if (st->cb_called == 18) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
         break;
     default:
         fail();
@@ -1836,7 +1960,7 @@ apply_change_done_dflt_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    struct lyd_node *data;
+    struct lyd_node *data, *node;
     char *str1;
     const char *str2;
     int ret;
@@ -2057,7 +2181,68 @@ apply_change_done_dflt_thread(void *arg)
 
     lyd_free_withsiblings(data);
 
+    /*
+     * perform 9th change
+     *
+     * (create presence container iwth default leaf-lists)
+     */
+    ret = sr_set_item_str(sess, "/defaults:pcont", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check current data tree */
+    ret = sr_get_data(sess, "/defaults:pcont", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    node = data;
+    assert_string_equal(node->schema->name, "pcont");
+    node = node->child;
+    assert_string_equal(node->schema->name, "ll");
+    assert_int_equal(node->dflt, 1);
+    node = node->next;
+    assert_string_equal(node->schema->name, "ll");
+    assert_int_equal(node->dflt, 1);
+    node = node->next;
+    assert_string_equal(node->schema->name, "ll");
+    assert_int_equal(node->dflt, 1);
+    assert_null(node->next);
+
+    lyd_free_withsiblings(data);
+
+    /*
+     * perform 10th change
+     *
+     * (create explicit leaf-lists to delete the implicit ones)
+     */
+    ret = sr_set_item_str(sess, "/defaults:pcont/ll", "2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/defaults:pcont/ll", "4", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check current data tree */
+    ret = sr_get_data(sess, "/defaults:pcont", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    node = data;
+    assert_string_equal(node->schema->name, "pcont");
+    node = node->child;
+    assert_string_equal(node->schema->name, "ll");
+    assert_int_equal(node->dflt, 0);
+    node = node->next;
+    assert_string_equal(node->schema->name, "ll");
+    assert_int_equal(node->dflt, 0);
+    assert_null(node->next);
+
+    lyd_free_withsiblings(data);
+
     /* cleanup */
+    ret = sr_delete_item(sess, "/defaults:pcont", 0);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(sess, "/defaults:cont", 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(sess, "/defaults:l2[k='key']", 0);
@@ -2088,11 +2273,11 @@ subscribe_change_done_dflt_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 16) && (count < 1500)) {
+    while ((st->cb_called < 20) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 16);
+    assert_int_equal(st->cb_called, 20);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);

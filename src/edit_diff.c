@@ -167,13 +167,14 @@ sr_edit_find_userord_predicate(const struct lyd_node *sibling, const struct lyd_
  * @param[in] op Operation of the edit node.
  * @param[in] insert Optional insert place of the operation.
  * @param[in] key_or_value Optional predicate of relative (leaf-)list instance of the operation.
+ * @param[in] dflt_ll_skip Whether to skip found default leaf-list instance.
  * @param[out] match_p Matching node.
  * @param[out] val_equal_p Whether even the value matches.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node, enum edit_op op, enum insert_val insert,
-        const char *key_or_value, struct lyd_node **match_p, int *val_equal_p)
+        const char *key_or_value, int dflt_ll_skip, struct lyd_node **match_p, int *val_equal_p)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *anchor_node;
@@ -241,7 +242,11 @@ sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node
                 break;
             case LYS_LIST:
             case LYS_LEAFLIST:
-                if (sr_ly_is_userord(edit_node)) {
+                if (dflt_ll_skip && match->dflt) {
+                    /* default leaf-list is not really considered to exist in data */
+                    assert(edit_node->schema->nodetype == LYS_LEAFLIST);
+                    match = NULL;
+                } else if (sr_ly_is_userord(edit_node)) {
                     /* check if even the order matches for user-ordered (leaf-)lists */
                     anchor_node = NULL;
                     if (key_or_value) {
@@ -936,8 +941,18 @@ sr_edit_diff_add(struct lyd_node *node, const char *attr_val, const char *prev_a
         goto error;
     }
 
-    /* insert node into diff */
-    sr_diff_insert(node_dup, diff_parent, diff_root);
+    if ((node_dup->schema->nodetype == LYS_LEAFLIST) && ((struct lys_node_leaflist *)node_dup->schema)->dflt && (op == EDIT_CREATE)) {
+        /* default leaf-list with the same value may have been removed, so we need to merge these 2 diffs */
+        if ((err_info = sr_diff_merge_r(node_dup, op, NULL, diff_parent, diff_root, NULL))) {
+            goto error;
+        }
+        /* it was duplicated, so free it and do not return any diff node (since it has no children, it is okay) */
+        lyd_free(node_dup);
+        node_dup = NULL;
+    } else {
+        /* insert node into diff */
+        sr_diff_insert(node_dup, diff_parent, diff_root);
+    }
 
     *diff_node = node_dup;
     return NULL;
@@ -1429,9 +1444,24 @@ sr_edit_apply_create(struct lyd_node **first_node, struct lyd_node *parent_node,
 
             /* data from some other case found, they need to be removed first */
             *match_node = node;
-            *next_op = EDIT_CASE_REMOVE;
+            *next_op = EDIT_AUTO_REMOVE;
             return NULL;
         }
+    } else if ((edit_node->schema->nodetype == LYS_LEAFLIST) && ((struct lys_node_leaflist *)edit_node->schema)->dflt) {
+        /* handle leaf-list defaults correctly, try to find existing default instances */
+        LY_TREE_FOR(*first_node ? *first_node : sr_lyd_child(parent_node, 1), node) {
+            if (node->schema == edit_node->schema) {
+                /* we found the first instance, that is enough */
+                break;
+            }
+        }
+        if (node && (node->dflt)) {
+            /* a default instance exists, it needs to be removed first */
+            *match_node = node;
+            *next_op = EDIT_AUTO_REMOVE;
+            return NULL;
+        }
+        /* otherwise there is no other leaf-list instance or there is an explicit one -> no default ones can exists */
     }
 
     /* create and insert the node at the correct place */
@@ -1556,7 +1586,7 @@ reapply:
         /* we have no data */
         match = NULL;
     } else {
-        if ((err_info = sr_edit_find(*first_node, edit_node, op, insert, key_or_value, &match, &val_equal))) {
+        if ((err_info = sr_edit_find(*first_node, edit_node, op, insert, key_or_value, 1, &match, &val_equal))) {
             return err_info;
         }
     }
@@ -1602,7 +1632,7 @@ reapply:
                 goto op_error;
             }
             break;
-        case EDIT_CASE_REMOVE:
+        case EDIT_AUTO_REMOVE:
         case EDIT_PURGE:
             prev_op = next_op;
             /* fallthrough */
@@ -1643,8 +1673,9 @@ reapply:
         }
     }
 
-    if ((prev_op == EDIT_CASE_REMOVE) || ((prev_op == EDIT_PURGE) && diff_node)) {
-        /* we have removed one subtree of data from another case/one instance, try this whole edit again */
+    if ((prev_op == EDIT_AUTO_REMOVE) || ((prev_op == EDIT_PURGE) && diff_node)) {
+        /* we have removed one subtree of data from another case/one default leaf-list instance/one purged instance,
+         * try this whole edit again */
         prev_op = 0;
         diff_node = NULL;
         goto reapply;
@@ -1667,7 +1698,7 @@ reapply:
     if (flags & EDIT_APPLY_REPLACE_R) {
         /* remove all children that are not in the edit, recursively */
         LY_TREE_FOR_SAFE(sr_lyd_child(match, 1), next, child) {
-            if ((err_info = sr_edit_find(edit_node->child, child, EDIT_DELETE, 0, NULL, &edit_match, NULL))) {
+            if ((err_info = sr_edit_find(edit_node->child, child, EDIT_DELETE, 0, NULL, 0, &edit_match, NULL))) {
                 return err_info;
             }
             if (!edit_match && (err_info = sr_edit_apply_r(&match->child, match, child, EDIT_DELETE, diff_parent,
@@ -2260,7 +2291,7 @@ sr_diff_merge_r(const struct lyd_node *src_node, enum edit_op parent_op, void *o
 
     /* find an equal node in the current diff */
     if ((err_info = sr_edit_find(diff_parent ? sr_lyd_child(diff_parent, 1) : *diff_root, src_node, src_op, INSERT_DEFAULT,
-            NULL, &diff_node, &val_equal))) {
+            NULL, 0, &diff_node, &val_equal))) {
         return err_info;
     }
 
@@ -2508,7 +2539,7 @@ sr_diff_apply_r(struct lyd_node **first_node, struct lyd_node *parent_node, cons
         if (op == EDIT_REPLACE) {
             /* find the node (we must have some siblings because the node was only moved) */
             assert(*first_node);
-            if ((err_info = sr_edit_find(*first_node, diff_node, op, 0, NULL, &match, NULL))) {
+            if ((err_info = sr_edit_find(*first_node, diff_node, op, 0, NULL, 0, &match, NULL))) {
                 return err_info;
             }
             SR_CHECK_INT_RET(!match, err_info);
@@ -2545,7 +2576,7 @@ sr_diff_apply_r(struct lyd_node **first_node, struct lyd_node *parent_node, cons
 
         /* just find the node */
         SR_CHECK_INT_RET(!(*first_node), err_info);
-        if ((err_info = sr_edit_find(*first_node, diff_node, op, 0, NULL, &match, NULL))) {
+        if ((err_info = sr_edit_find(*first_node, diff_node, op, 0, NULL, 0, &match, NULL))) {
             return err_info;
         }
         SR_CHECK_INT_RET(!match, err_info);
@@ -2576,7 +2607,7 @@ sr_diff_apply_r(struct lyd_node **first_node, struct lyd_node *parent_node, cons
     case EDIT_DELETE:
         /* find the node */
         SR_CHECK_INT_RET(!(*first_node), err_info);
-        if ((err_info = sr_edit_find(*first_node, diff_node, op, 0, NULL, &match, NULL))) {
+        if ((err_info = sr_edit_find(*first_node, diff_node, op, 0, NULL, 0, &match, NULL))) {
             return err_info;
         }
         SR_CHECK_INT_RET(!match, err_info);
@@ -2600,7 +2631,7 @@ sr_diff_apply_r(struct lyd_node **first_node, struct lyd_node *parent_node, cons
 
         /* find the node */
         SR_CHECK_INT_RET(!(*first_node), err_info);
-        if ((err_info = sr_edit_find(*first_node, diff_node, op, 0, NULL, &match, NULL))) {
+        if ((err_info = sr_edit_find(*first_node, diff_node, op, 0, NULL, 0, &match, NULL))) {
             return err_info;
         }
         SR_CHECK_INT_RET(!match, err_info);
@@ -2705,7 +2736,7 @@ sr_diff_update_r(const struct lyd_node *first_node, struct lyd_node *diff_node, 
         assert((op == EDIT_CREATE) || (op == EDIT_REPLACE));
         if (op == EDIT_REPLACE) {
             /* find the node */
-            if ((err_info = sr_edit_find(first_node, diff_node, op, 0, NULL, &match, NULL))) {
+            if ((err_info = sr_edit_find(first_node, diff_node, op, 0, NULL, 0, &match, NULL))) {
                 return err_info;
             }
             if (!match) {
@@ -2730,7 +2761,7 @@ sr_diff_update_r(const struct lyd_node *first_node, struct lyd_node *diff_node, 
         SR_CHECK_INT_RET(!sr_lyd_child(diff_node, 1), err_info);
 
         /* just find the node */
-        if ((err_info = sr_edit_find(first_node, diff_node, op, 0, NULL, &match, NULL))) {
+        if ((err_info = sr_edit_find(first_node, diff_node, op, 0, NULL, 0, &match, NULL))) {
             return err_info;
         }
         break;
@@ -2739,7 +2770,7 @@ sr_diff_update_r(const struct lyd_node *first_node, struct lyd_node *diff_node, 
         return NULL;
     case EDIT_DELETE:
         /* find the node */
-        if ((err_info = sr_edit_find(first_node, diff_node, op, 0, NULL, &match, NULL))) {
+        if ((err_info = sr_edit_find(first_node, diff_node, op, 0, NULL, 0, &match, NULL))) {
             return err_info;
         }
         break;
@@ -2747,7 +2778,7 @@ sr_diff_update_r(const struct lyd_node *first_node, struct lyd_node *diff_node, 
         SR_CHECK_INT_RET(diff_node->schema->nodetype != LYS_LEAF, err_info);
 
         /* find the node */
-        if ((err_info = sr_edit_find(first_node, diff_node, op, 0, NULL, &match, NULL))) {
+        if ((err_info = sr_edit_find(first_node, diff_node, op, 0, NULL, 0, &match, NULL))) {
             return err_info;
         }
 

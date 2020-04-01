@@ -34,7 +34,7 @@ enum edit_op {
     EDIT_FINISH = -1,
     EDIT_CONTINUE = 0,
     EDIT_MOVE,
-    EDIT_CASE_REMOVE,
+    EDIT_AUTO_REMOVE,
 
     /* sysrepo-specific */
     EDIT_ETHER,
