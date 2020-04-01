@@ -1909,8 +1909,6 @@ sr_shmsub_prepare_error(sr_error_t err_code, sr_session_ctx_t *tmp_sess, char **
     *((sr_error_t *)data) = err_code;
 
     if (tmp_sess->err_info && (tmp_sess->err_info->err_code == SR_ERR_OK)) {
-        assert(tmp_sess->err_info->err_count == 1);
-
         /* error message */
         msg_len = sr_strshmlen(tmp_sess->err_info->err[0].message) - 1;
         data_len += msg_len;
@@ -2457,13 +2455,8 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
             val_str = sr_val_sr2ly_str(tmp_sess->conn->ly_ctx, &output_vals[i], output_vals[i].xpath, buf);
             if ((err_info = sr_val_sr2ly(tmp_sess->conn->ly_ctx, output_vals[i].xpath, val_str, output_vals[i].dflt, 1,
                     output_op))) {
-                /* output sr_vals are invalid, fake a callback failure */
-                *err_code = err_info->err_code;
-                err_info->err_code = SR_ERR_OK;
-                sr_errinfo_free(&tmp_sess->err_info);
-                tmp_sess->err_info = err_info;
-                err_info = NULL;
-                goto cleanup;
+                /* output sr_vals are invalid */
+                goto fake_cb_error;
             }
         }
     }
@@ -2473,7 +2466,7 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
         if ((*output_op)->schema != input_op->schema) {
             sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, NULL, "RPC/action callback returned \"%s\" node "
                     "instead of \"%s\" output.", (*output_op)->schema->name, input_op->schema->name);
-            goto cleanup;
+            goto fake_cb_error;
         }
         while ((*output_op)->parent) {
             *output_op = (*output_op)->parent;
@@ -2481,6 +2474,15 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
     }
 
     /* success */
+    goto cleanup;
+
+fake_cb_error:
+    /* fake callback error so that the subscription continues normally */
+    *err_code = err_info->err_code;
+    err_info->err_code = SR_ERR_OK;
+    sr_errinfo_free(&tmp_sess->err_info);
+    tmp_sess->err_info = err_info;
+    err_info = NULL;
 
 cleanup:
     sr_free_values(input_vals, input_val_count);
