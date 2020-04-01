@@ -590,7 +590,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
             /* remap sub SHM once we have the lock, it will do anything only on the first call */
             err_info = sr_shm_remap(&shm_sub, sizeof *multi_sub_shm + diff_lyb_len);
             if (err_info) {
-                goto cleanup;
+                goto cleanup_wrunlock;
             }
             multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
@@ -604,7 +604,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
             /* notify using event pipe and wait until all the subscribers have processed the event */
             if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn->ext_shm.addr, mod, mod_info->ds,
                     SR_SUB_EV_UPDATE, cur_priority))) {
-                goto cleanup;
+                goto cleanup_wrunlock;
             }
 
             /* SUB WRITE UNLOCK */
@@ -631,7 +631,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
 
             /* remap sub SHM */
             if ((err_info = sr_shm_remap(&shm_sub, 0))) {
-                goto cleanup;
+                goto cleanup_rdunlock;
             }
             multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
@@ -641,7 +641,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
             if (ly_errno) {
                 sr_errinfo_new_ly(&err_info, ly_ctx);
                 sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "Failed to parse \"update\" edit.");
-                goto cleanup;
+                goto cleanup_rdunlock;
             }
 
             /* event fully processed */
@@ -669,7 +669,15 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
     }
 
     /* success */
+    goto cleanup;
 
+cleanup_wrunlock:
+    /* SUB WRITE UNLOCK */
+    sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
+    goto cleanup;
+cleanup_rdunlock:
+    /* SUB READ UNLOCK */
+    sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
 cleanup:
     free(diff_lyb);
     sr_shm_clear(&shm_sub);
@@ -1207,7 +1215,7 @@ sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const 
 
     /* notify using event pipe and wait until the subscriber has processed the event */
     if ((err_info = sr_shmsub_notify_evpipe(evpipe_num))) {
-        goto cleanup;
+        goto cleanup_wrunlock;
     }
 
     /* SUB WRITE UNLOCK */
