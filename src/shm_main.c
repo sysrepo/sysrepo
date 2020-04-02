@@ -1173,6 +1173,11 @@ sr_shmmain_ext_get_lydmods_size(struct lyd_node *sr_mods)
     assert(sr_mods);
 
     LY_TREE_FOR(sr_mods->child, sr_mod) {
+        if (strcmp(sr_mod->schema->name, "module")) {
+            /* skip installed-module, for example */
+            continue;
+        }
+
         LY_TREE_FOR(sr_mod->child, sr_child) {
             if (!strcmp(sr_child->schema->name, "name")) {
                 /* a string */
@@ -1390,6 +1395,11 @@ sr_shmmain_add_modules(char *ext_shm_addr, struct lyd_node *first_sr_mod, sr_mod
     ext_cur = ext_shm_addr + *ext_end;
 
     LY_TREE_FOR(first_sr_mod, first_sr_mod) {
+        if (strcmp(first_sr_mod->schema->name, "module")) {
+            /* skip installed-modules, for example */
+            continue;
+        }
+
         /* set module structure */
         memset(first_shm_mod, 0, sizeof *first_shm_mod);
         for (i = 0; i < SR_DS_COUNT; ++i) {
@@ -1473,6 +1483,11 @@ sr_shmmain_add_modules_deps(sr_shm_t *shm_main, char *ext_shm_addr, struct lyd_n
     ext_cur = ext_shm_addr + *ext_end;
 
     LY_TREE_FOR(first_sr_mod, first_sr_mod) {
+        if (strcmp(first_sr_mod->schema->name, "module")) {
+            /* skip installed-modules, for example */
+            continue;
+        }
+
         assert(!first_shm_mod->data_dep_count);
         assert(!first_shm_mod->inv_data_dep_count);
         assert(!first_shm_mod->op_dep_count);
@@ -1671,7 +1686,9 @@ sr_shmmain_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod)
     /* count how many modules are we going to add */
     new_mod_count = 0;
     LY_TREE_FOR(sr_mod, next) {
-        ++new_mod_count;
+        if (!strcmp(next->schema->name, "module")) {
+            ++new_mod_count;
+        }
     }
 
     /* remember current SHM and ext SHM end (size) */
