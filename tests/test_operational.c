@@ -207,9 +207,15 @@ test_yang_lib(void **state)
     assert_non_null(data);
     assert_string_equal(data->schema->name, "yang-library");
     assert_string_equal(data->child->schema->name, "module-set");
-    assert_string_equal(data->child->next->schema->name, "content-id");
-    assert_null(data->child->next->next);
+    assert_string_equal(data->child->next->schema->name, "schema");
+    assert_string_equal(data->child->next->next->schema->name, "content-id");
+    assert_string_equal(data->child->next->next->next->schema->name, "datastore");
     assert_string_equal(data->next->schema->name, "modules-state");
+
+    /* they must be valid */
+    ret = lyd_validate_modules(&data, (const struct lys_module **)&data->schema->module, 1, 0);
+    assert_int_equal(ret, 0);
+
     lyd_free_withsiblings(data);
 
     /* subscribe as dummy state data provider, they should get deleted */

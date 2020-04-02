@@ -1151,7 +1151,17 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
                 /* append ietf-yang-library state data - internal */
                 mod_data = ly_ctx_info(mod_info->conn->ly_ctx);
                 assert(!strcmp(mod_data->schema->name, "yang-library") && !strcmp(mod_data->next->schema->name, "modules-state"));
-                /* there should always be al least some default containers */
+
+                /* add supported datastores */
+                if (!lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:running']/schema", "complete", 0, 0)
+                        || !lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:candidate']/schema", "complete", 0, 0)
+                        || !lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:startup']/schema", "complete", 0, 0)
+                        || !lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:operational']/schema", "complete", 0, 0)) {
+                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                    return err_info;
+                }
+
+                /* there should always be at least some default containers */
                 assert(mod_info->data);
                 if (lyd_merge(mod_info->data, mod_data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
                     sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
