@@ -887,8 +887,12 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     /* for internal libyang modules create files and store in the persistent module data tree */
     i = 0;
     while ((i < ly_ctx_internal_modules_count(ly_ctx)) && (ly_mod = ly_ctx_get_module_iter(ly_ctx, &i))) {
-        /* module must be implemented */
-        if (ly_mod->implemented) {
+        /* module must be implemented or be "ietf-datastores" */
+        if (ly_mod->implemented || !strcmp(ly_mod->name, "ietf-datastores")) {
+            if (lys_set_implemented(ly_mod)) {
+                sr_errinfo_new_ly(&err_info, ly_ctx);
+                goto error;
+            }
             if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0))) {
                 goto error;
             }
