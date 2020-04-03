@@ -514,6 +514,8 @@ sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid)
 
             /* MOD WRITE LOCK */
             if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, sid))) {
+                /* clear the flag */
+                shm_lock->write_locked = 1;
                 return err_info;
             }
             mod->state |= MOD_INFO_WLOCK;
