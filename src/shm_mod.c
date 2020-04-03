@@ -567,6 +567,8 @@ sr_shmmod_modinfo_wrlock_downgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid)
 
             /* MOD READ LOCK */
             if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, SR_LOCK_READ, sid))) {
+                /* this should always succeed due to having write_lock flag set */
+                SR_ERRINFO_INT(&err_info);
                 return err_info;
             }
             mod->state |= MOD_INFO_RLOCK;
