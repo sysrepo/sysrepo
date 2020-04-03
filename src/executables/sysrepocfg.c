@@ -19,8 +19,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define _GNU_SOURCE
-#define _DEFAULT_SOURCE
+#define _GNU_SOURCE /* asprintf */
+#define _DEFAULT_SOURCE /* mkstemps */
+#define _XOPEN_SOURCE 500 /* mkstemp */
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -249,7 +250,7 @@ step_load_data(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format,
 static int
 step_create_input_file(LYD_FORMAT format, char *tmp_file)
 {
-    int suffix, fd;
+    int fd;
 
     if (format == LYD_LYB) {
         error_print(0, "LYB binary format cannot be opened in a text editor");
@@ -258,7 +259,11 @@ step_create_input_file(LYD_FORMAT format, char *tmp_file)
         format = LYD_XML;
     }
 
-    /* create temporary file */
+#ifdef SR_HAVE_MKSTEMPS
+    int suffix;
+
+    /* create temporary file, suffix is used only so that the text editor
+     * can automatically use syntax highlighting */
     if (format == LYD_JSON) {
         sprintf(tmp_file, "/tmp/srtmpXXXXXX.json");
         suffix = 5;
@@ -267,6 +272,10 @@ step_create_input_file(LYD_FORMAT format, char *tmp_file)
         suffix = 4;
     }
     fd = mkstemps(tmp_file, suffix);
+#else
+    sprintf(tmp_file, "/tmp/srtmpXXXXXX");
+    fd = mkstemp(tmp_file);
+#endif
     if (fd == -1) {
         error_print(0, "Failed to open temporary file (%s)", strerror(errno));
         return EXIT_FAILURE;

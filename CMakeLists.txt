@@ -221,7 +221,7 @@ target_link_libraries(sysrepo ${CMAKE_THREAD_LIBS_INIT})
 set(CMAKE_REQUIRED_LIBRARIES pthread)
 
 # required functions
-set(CMAKE_REQUIRED_DEFINITIONS "${CMAKE_REQUIRED_DEFINITIONS} -D_GNU_SOURCE")
+set(CMAKE_REQUIRED_DEFINITIONS "-D_GNU_SOURCE;-D_DEFAULT_SOURCE")
 check_function_exists(pthread_mutex_timedlock SR_HAVE_PTHREAD_MUTEX_TIMEDLOCK)
 check_symbol_exists(eaccess "unistd.h" SR_HAVE_EACCESS)
 if(NOT SR_HAVE_EACCESS)
@@ -229,6 +229,8 @@ if(NOT SR_HAVE_EACCESS)
         "change results of access control checks!")
 endif()
 check_include_file("stdatomic.h" SR_HAVE_STDATOMIC)
+check_symbol_exists(mkstemps "stdlib.h" SR_HAVE_MKSTEMPS)
+unset(CMAKE_REQUIRED_DEFINITIONS)
 
 # generate files
 configure_file("${PROJECT_SOURCE_DIR}/src/common.h.in" "${PROJECT_BINARY_DIR}/common.h" ESCAPE_QUOTES @ONLY)
