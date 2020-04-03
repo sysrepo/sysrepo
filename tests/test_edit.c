@@ -66,6 +66,9 @@ setup_f(void **state)
     if (sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/decimal.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
     sr_disconnect(st->conn);
 
     if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
@@ -84,6 +87,7 @@ teardown_f(void **state)
 {
     struct state *st = (struct state *)*state;
 
+    sr_remove_module(st->conn, "decimal");
     sr_remove_module(st->conn, "ietf-interfaces");
     sr_remove_module(st->conn, "iana-if-type");
     sr_remove_module(st->conn, "test");
@@ -684,6 +688,106 @@ test_union(void **state)
     free(str);
 }
 
+static void
+test_decimal64(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_val_t val = {.type = SR_DECIMAL64_T};
+    struct lyd_node *data;
+    int ret;
+
+    /* set item_str */
+    ret = sr_set_item_str(st->sess, "/decimal:d1", "255.5", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/decimal:d1", "255.55", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    ret = sr_set_item_str(st->sess, "/decimal:d1", "+00255.50", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_subtree(st->sess, "/decimal:d1", 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(((struct lyd_node_leaf_list *)data)->value_str, "255.5");
+    lyd_free(data);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/decimal:d-uni-2-18", "10.0000000000000001", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    ret = sr_set_item_str(st->sess, "/decimal:d-uni-2-18", "9.0000000000000001", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(((struct lyd_node_leaf_list *)data)->value_str, "9.0000000000000001");
+    lyd_free(data);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/decimal:d-uni-2-18", "2.01", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(((struct lyd_node_leaf_list *)data)->value_str, "2.01");
+    lyd_free(data);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set item (value) */
+    val.data.decimal64_val = 255.5;
+    ret = sr_set_item(st->sess, "/decimal:d1", &val, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* value gets rounded automatically because it is impossible to know what value was originally set
+     * (because of precision loss) */
+    val.data.decimal64_val = 255.55;
+    ret = sr_set_item(st->sess, "/decimal:d1", &val, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_subtree(st->sess, "/decimal:d1", 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(((struct lyd_node_leaf_list *)data)->value_str, "255.6");
+    lyd_free(data);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* it is valid with 2 fraction digits, resolved as such because of rounding */
+    val.data.decimal64_val = 10.0000000000000001;
+    ret = sr_set_item(st->sess, "/decimal:d-uni-2-18", &val, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(((struct lyd_node_leaf_list *)data)->value_str, "10.0");
+    lyd_free(data);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* outside double precision */
+    val.data.decimal64_val = 9.0000000000000001;
+    ret = sr_set_item(st->sess, "/decimal:d-uni-2-18", &val, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(((struct lyd_node_leaf_list *)data)->value_str, "9.0");
+    lyd_free(data);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* rounded to 2 fraction digits */
+    val.data.decimal64_val = 2.01;
+    ret = sr_set_item(st->sess, "/decimal:d-uni-2-18", &val, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(((struct lyd_node_leaf_list *)data)->value_str, "2.01");
+    lyd_free(data);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 int
 main(void)
 {
@@ -698,6 +802,7 @@ main(void)
         cmocka_unit_test(test_purge),
         cmocka_unit_test(test_top_op),
         cmocka_unit_test_teardown(test_union, clear_test),
+        cmocka_unit_test(test_decimal64),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

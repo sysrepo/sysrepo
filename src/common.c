@@ -2815,6 +2815,7 @@ char *
 sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, char *buf, int output)
 {
     struct lys_node_leaf *sleaf;
+    const struct lys_type *t, *t2;
 
     if (!sr_val) {
         return NULL;
@@ -2840,10 +2841,18 @@ sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, 
         if (!sleaf) {
             return NULL;
         }
-        while (sleaf->type.base == LY_TYPE_LEAFREF) {
-            sleaf = sleaf->type.info.lref.target;
+        t = &sleaf->type;
+        while (t->base == LY_TYPE_LEAFREF) {
+            t = &t->info.lref.target->type;
         }
-        sprintf(buf, "%.*f", sleaf->type.info.dec64.dig, sr_val->data.decimal64_val);
+        if (t->base == LY_TYPE_UNION) {
+            for (t2 = lys_getnext_union_type(NULL, t); t2->base != LY_TYPE_DEC64; t2 = lys_getnext_union_type(t2, t));
+            t = t2;
+        }
+        if (!t) {
+            return NULL;
+        }
+        sprintf(buf, "%.*f", t->info.dec64.dig, sr_val->data.decimal64_val);
         return buf;
     case SR_UINT8_T:
         sprintf(buf, "%"PRIu8, sr_val->data.uint8_val);
