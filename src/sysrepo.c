@@ -3442,19 +3442,21 @@ error:
  * @brief Transform libyang node into sysrepo value.
  *
  * @param[in] node libyang node.
- * @param[in] llist_value_str Optional value to override.
+ * @param[in] value_str Optional value to override.
  * @param[in] keys_predicate Optional keys predicate to override.
  * @param[out] sr_val_p Transformed sysrepo value.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lyd_node2sr_val(const struct lyd_node *node, const char *llist_value_str, const char *keys_predicate, sr_val_t **sr_val_p)
+sr_lyd_node2sr_val(const struct lyd_node *node, const char *value_str, const char *keys_predicate, sr_val_t **sr_val_p)
 {
     char *ptr;
     sr_error_info_t *err_info = NULL;
     uint32_t start, end;
     sr_val_t *sr_val;
+    LY_DATA_TYPE value_type;
     const struct lyd_node_leaf_list *leaf;
+    struct lys_type *type;
     struct lys_node_list *slist;
 
     sr_val = calloc(1, sizeof *sr_val);
@@ -3530,28 +3532,34 @@ sr_lyd_node2sr_val(const struct lyd_node *node, const char *llist_value_str, con
 
         /* fallthrough */
     case LYS_LEAF:
+        /* find the actual leaf */
         leaf = (const struct lyd_node_leaf_list *)node;
         while (leaf->value_type == LY_TYPE_LEAFREF) {
-            /* find final leafref target */
             leaf = (const struct lyd_node_leaf_list *)leaf->value.leafref;
         }
 
-        if (!llist_value_str) {
-            llist_value_str = leaf->value_str;
+        if (value_str) {
+            /* learn value_str value_type */
+            SR_CHECK_INT_GOTO(lyd_value_type(node->schema, value_str, &type), err_info, error);
+            value_type = type->base;
+        } else {
+            /* use attributes from the leaf */
+            value_str = leaf->value_str;
+            value_type = leaf->value_type;
         }
 
-        switch (leaf->value_type) {
+        switch (value_type) {
         case LY_TYPE_BINARY:
             sr_val->type = SR_BINARY_T;
-            sr_val->data.binary_val = strdup(llist_value_str);
+            sr_val->data.binary_val = strdup(value_str);
             break;
         case LY_TYPE_BITS:
             sr_val->type = SR_BITS_T;
-            sr_val->data.bits_val = strdup(llist_value_str);
+            sr_val->data.bits_val = strdup(value_str);
             break;
         case LY_TYPE_BOOL:
             sr_val->type = SR_BOOL_T;
-            if (!strcmp(llist_value_str, "true")) {
+            if (!strcmp(value_str, "true")) {
                 sr_val->data.bool_val = true;
             } else {
                 sr_val->data.bool_val = false;
@@ -3559,10 +3567,10 @@ sr_lyd_node2sr_val(const struct lyd_node *node, const char *llist_value_str, con
             break;
         case LY_TYPE_DEC64:
             sr_val->type = SR_DECIMAL64_T;
-            sr_val->data.decimal64_val = strtod(llist_value_str, &ptr);
+            sr_val->data.decimal64_val = strtod(value_str, &ptr);
             if (ptr[0]) {
                 sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Conversion of \"%s\" to double failed (%s).",
-                        llist_value_str, strerror(errno));
+                        value_str, strerror(errno));
                 goto error;
             }
             break;
@@ -3571,58 +3579,58 @@ sr_lyd_node2sr_val(const struct lyd_node *node, const char *llist_value_str, con
             break;
         case LY_TYPE_ENUM:
             sr_val->type = SR_ENUM_T;
-            sr_val->data.enum_val = strdup(llist_value_str);
+            sr_val->data.enum_val = strdup(value_str);
             break;
         case LY_TYPE_IDENT:
             sr_val->type = SR_IDENTITYREF_T;
-            sr_val->data.identityref_val = strdup(llist_value_str);
+            sr_val->data.identityref_val = strdup(value_str);
             break;
         case LY_TYPE_INST:
             sr_val->type = SR_INSTANCEID_T;
-            sr_val->data.instanceid_val = strdup(llist_value_str);
+            sr_val->data.instanceid_val = strdup(value_str);
             break;
         case LY_TYPE_STRING:
             sr_val->type = SR_STRING_T;
-            sr_val->data.string_val = strdup(llist_value_str);
+            sr_val->data.string_val = strdup(value_str);
             break;
         case LY_TYPE_INT8:
             sr_val->type = SR_INT8_T;
-            sr_val->data.int8_val = strtoll(llist_value_str, &ptr, 10);
+            sr_val->data.int8_val = strtoll(value_str, &ptr, 10);
             SR_CHECK_INT_GOTO(ptr[0], err_info, error);
             break;
         case LY_TYPE_INT16:
             sr_val->type = SR_INT16_T;
-            sr_val->data.int16_val = strtoll(llist_value_str, &ptr, 10);
+            sr_val->data.int16_val = strtoll(value_str, &ptr, 10);
             SR_CHECK_INT_GOTO(ptr[0], err_info, error);
             break;
         case LY_TYPE_INT32:
             sr_val->type = SR_INT32_T;
-            sr_val->data.int32_val = strtoll(llist_value_str, &ptr, 10);
+            sr_val->data.int32_val = strtoll(value_str, &ptr, 10);
             SR_CHECK_INT_GOTO(ptr[0], err_info, error);
             break;
         case LY_TYPE_INT64:
             sr_val->type = SR_INT64_T;
-            sr_val->data.int64_val = strtoll(llist_value_str, &ptr, 10);
+            sr_val->data.int64_val = strtoll(value_str, &ptr, 10);
             SR_CHECK_INT_GOTO(ptr[0], err_info, error);
             break;
         case LY_TYPE_UINT8:
             sr_val->type = SR_UINT8_T;
-            sr_val->data.uint8_val = strtoull(llist_value_str, &ptr, 10);
+            sr_val->data.uint8_val = strtoull(value_str, &ptr, 10);
             SR_CHECK_INT_GOTO(ptr[0], err_info, error);
             break;
         case LY_TYPE_UINT16:
             sr_val->type = SR_UINT16_T;
-            sr_val->data.uint16_val = strtoull(llist_value_str, &ptr, 10);
+            sr_val->data.uint16_val = strtoull(value_str, &ptr, 10);
             SR_CHECK_INT_GOTO(ptr[0], err_info, error);
             break;
         case LY_TYPE_UINT32:
             sr_val->type = SR_UINT32_T;
-            sr_val->data.uint32_val = strtoull(llist_value_str, &ptr, 10);
+            sr_val->data.uint32_val = strtoull(value_str, &ptr, 10);
             SR_CHECK_INT_GOTO(ptr[0], err_info, error);
             break;
         case LY_TYPE_UINT64:
             sr_val->type = SR_UINT64_T;
-            sr_val->data.uint64_val = strtoull(llist_value_str, &ptr, 10);
+            sr_val->data.uint64_val = strtoull(value_str, &ptr, 10);
             SR_CHECK_INT_GOTO(ptr[0], err_info, error);
             break;
         default:
