@@ -16,8 +16,6 @@ __license__ = "Apache 2.0"
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# sysrepod and notifications_test_app must be in PATH
 
 from ConcurrentHelpers import *
 from random import randint
@@ -39,7 +37,7 @@ class NotificationTester(SysrepoTester):
         self.filename = "notifications_test_" + str(randint(0, 9999))
         try:
             os.mkfifo("pipe_"+self.filename)
-        except OSError as oe: 
+        except OSError as oe:
             if oe.errno != errno.EEXIST:
                 raise
 
@@ -50,7 +48,7 @@ class NotificationTester(SysrepoTester):
         output = ""
         with open("pipe_"+self.filename, "r") as fifo:
             output = fifo.readline()
-        
+
         os.unlink("pipe_"+self.filename)
         self.tc.assertEqual(str(output), "subscribed")
 
@@ -538,7 +536,7 @@ class NotificationTest(unittest.TestCase):
         tm.add_tester(tester)
         tm.add_tester(subscriber)
 
-        tm.run() 
+        tm.run()
 
 
 if __name__ == '__main__':
