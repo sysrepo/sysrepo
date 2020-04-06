@@ -1,5 +1,5 @@
 /**
- * @file Struct.h
+ * @file Struct.hpp
  * @author Mislav Novakovic <mislav.novakovic@sartura.hr>
  * @author Michal Vasko <mvasko@cesnet.cz>
  * @brief Sysrepo class header for C struts.
@@ -164,7 +164,7 @@ public:
     bool empty();
     /** Wrapper for [sr_print_val_mem](@ref sr_print_val_mem) */
     std::string to_string();
-    /** Wrapper for [sr_val_to_string](@ref sr_val_to_string) */
+    /** Wrapper for [sr_val_to_str](@ref sr_val_to_str) */
     std::string val_to_string();
     /** Wrapper for [sr_dup_val](@ref sr_dup_val) */
     S_Val dup();
@@ -213,7 +213,7 @@ private:
 
 /**
  * @brief Class for wrapping sr_val_t in callbacks.
- * @class Vals_holder
+ * @class Vals_Holder
  */
 class Vals_Holder
 {

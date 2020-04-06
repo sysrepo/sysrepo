@@ -784,6 +784,7 @@ WARN_LOGFILE           =
 INPUT                  = ./src/sysrepo.h \
                          ./src/utils/values.h \
                          ./src/utils/xpath.h \
+                         @CPP_HEADERS_DIR@ \
                          ./doc/
 
 # This tag can be used to specify the character encoding of the source files
@@ -811,6 +812,7 @@ INPUT_ENCODING         = UTF-8
 
 FILE_PATTERNS          = *.c \
                          *.h \
+                         *.hpp \
                          *.dox \
 
 # The RECURSIVE tag can be used to specify whether or not subdirectories should

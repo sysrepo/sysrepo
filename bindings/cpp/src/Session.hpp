@@ -1,5 +1,5 @@
 /**
- * @file Session.h
+ * @file Session.hpp
  * @author Mislav Novakovic <mislav.novakovic@sartura.hr>
  * @author Michal Vasko <mvasko@cesnet.cz>
  * @brief Sysrepo Session class header.

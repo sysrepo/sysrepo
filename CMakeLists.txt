@@ -246,22 +246,6 @@ install(TARGETS sysrepoctl sysrepocfg sysrepo-plugind DESTINATION ${CMAKE_INSTAL
 
 install(FILES "${PROJECT_BINARY_DIR}/sysrepo.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 
-# doxygen documentation
-find_package(Doxygen)
-if(DOXYGEN_FOUND)
-    find_program(DOT_PATH dot PATH_SUFFIXES graphviz2.38/bin graphviz/bin)
-    if(DOT_PATH)
-        set(HAVE_DOT "YES")
-    else()
-        set(HAVE_DOT "NO")
-        message(AUTHOR_WARNING "Doxygen: to generate UML diagrams please install graphviz")
-    endif()
-    add_custom_target(doc
-            COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_BINARY_DIR}/Doxyfile
-            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-    configure_file(Doxyfile.in Doxyfile)
-endif()
-
 # examples
 if(BUILD_EXAMPLES)
     add_subdirectory(examples)
@@ -286,6 +270,27 @@ endif()
 
 # packages
 add_subdirectory(packages)
+
+# doxygen documentation
+find_package(Doxygen)
+if(DOXYGEN_FOUND)
+    find_program(DOT_PATH dot PATH_SUFFIXES graphviz2.38/bin graphviz/bin)
+    if(DOT_PATH)
+        set(HAVE_DOT "YES")
+    else()
+        set(HAVE_DOT "NO")
+        message(AUTHOR_WARNING "Doxygen: to generate UML diagrams please install graphviz")
+    endif()
+
+    if(GEN_LANGUAGE_BINDINGS AND GEN_CPP_BINDINGS)
+        set(CPP_HEADERS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/bindings/cpp/src)
+    endif()
+
+    add_custom_target(doc
+            COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_BINARY_DIR}/Doxyfile
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    configure_file(Doxyfile.in Doxyfile)
+endif()
 
 # phony target for clearing sysrepo SHM
 add_custom_target(shm_clean

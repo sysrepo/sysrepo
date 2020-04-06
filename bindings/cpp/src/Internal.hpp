@@ -1,5 +1,5 @@
 /**
- * @file Internal.h
+ * @file Internal.hpp
  * @author Mislav Novakovic <mislav.novakovic@sartura.hr>
  * @author Michal Vasko <mvasko@cesnet.cz>
  * @brief Sysrepo class header for internal C++ classes.
