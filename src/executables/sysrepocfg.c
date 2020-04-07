@@ -143,7 +143,7 @@ step_edit_input(const char *editor, const char *path)
         return EXIT_FAILURE;
     }
 
-    if ((pid = vfork()) == -1) {
+    if ((pid = fork()) == -1) {
         error_print(0, "Fork failed (%s)", strerror(errno));
         return EXIT_FAILURE;
     } else if (pid == 0) {
