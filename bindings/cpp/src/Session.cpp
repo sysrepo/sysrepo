@@ -327,6 +327,20 @@ S_Iter_Change Session::get_changes_iter(const char *xpath)
     throw_exception(ret);
 }
 
+S_Iter_Change Session::dup_changes_iter(const char *xpath)
+{
+    S_Iter_Change iter(new Iter_Change());
+
+    int ret = sr_dup_changes_iter(_sess, xpath, &iter->_iter);
+    if (SR_ERR_OK == ret) {
+        return iter;
+    }
+    if (SR_ERR_NOT_FOUND == ret) {
+        return nullptr;
+    }
+    throw_exception(ret);
+}
+
 S_Change Session::get_change_next(S_Iter_Change iter)
 {
     S_Change change(new Change());

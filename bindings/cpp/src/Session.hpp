@@ -123,6 +123,8 @@ public:
 
     /** Wrapper for [sr_get_changes_iter](@ref sr_get_changes_iter) */
     S_Iter_Change get_changes_iter(const char *xpath);
+    /** Wrapper for [sr_dup_changes_iter](@ref sr_dup_changes_iter) */
+    S_Iter_Change dup_changes_iter(const char *xpath);
     /** Wrapper for [sr_get_change_next](@ref sr_get_change_next) */
     S_Change get_change_next(S_Iter_Change iter);
     /** Wrapper for [sr_get_change_tree_next](@ref sr_get_change_tree_next) */
