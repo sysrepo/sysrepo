@@ -179,7 +179,7 @@ target_link_libraries(sysrepocfg sysrepo)
 
 # sysrepo-plugind daemon
 add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC})
-target_link_libraries(sysrepo-plugind sysrepo dl)
+target_link_libraries(sysrepo-plugind sysrepo ${CMAKE_DL_LIBS})
 
 # include custom Modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
