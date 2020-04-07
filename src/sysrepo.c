@@ -3405,8 +3405,8 @@ error_unlock:
     return sr_api_ret(session, err_info);
 }
 
-API int
-sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter_t **iter)
+static int
+_sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, int dup, sr_change_iter_t **iter)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -3417,13 +3417,17 @@ sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter
         return sr_api_ret(session, err_info);
     }
 
-    *iter = malloc(sizeof **iter);
+    *iter = calloc(1, sizeof **iter);
     if (!*iter) {
         SR_ERRINFO_MEM(&err_info);
         return sr_api_ret(session, err_info);
     }
 
     if (session->dt[session->ds].diff) {
+        if (dup) {
+            (*iter)->diff = lyd_dup_withsiblings(session->dt[session->ds].diff, LYD_DUP_OPT_RECURSIVE);
+            SR_CHECK_MEM_GOTO(!(*iter)->diff, err_info, error);
+        }
         (*iter)->set = lyd_find_path(session->dt[session->ds].diff, xpath);
     } else {
         (*iter)->set = ly_set_new();
@@ -3434,8 +3438,20 @@ sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter
     return sr_api_ret(session, NULL);
 
 error:
-    free(*iter);
+    sr_free_change_iter(*iter);
     return sr_api_ret(session, err_info);
+}
+
+API int
+sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter_t **iter)
+{
+    return _sr_get_changes_iter(session, xpath, 0, iter);
+}
+
+API int
+sr_dup_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter_t **iter)
+{
+    return _sr_get_changes_iter(session, xpath, 1, iter);
 }
 
 /**
@@ -3850,6 +3866,9 @@ sr_free_change_iter(sr_change_iter_t *iter)
         return;
     }
 
+    if (iter->diff) {
+        lyd_free_withsiblings(iter->diff);
+    }
     ly_set_free(iter->set);
     free(iter);
 }

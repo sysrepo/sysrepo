@@ -408,6 +408,7 @@ struct sr_subscription_ctx_s {
  * @brief Change iterator.
  */
 struct sr_change_iter_s {
+    struct lyd_node *diff;          /**< Optional copied diff that set items point into. */
     struct ly_set *set;             /**< Set of all the selected diff nodes. */
     uint32_t idx;                   /**< Index of the next change. */
 };
