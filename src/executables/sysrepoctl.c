@@ -20,6 +20,7 @@
  * limitations under the License.
  */
 #define _GNU_SOURCE
+#define _XOPEN_SOURCE 500 /* strdup */
 
 #include <sys/stat.h>
 #include <stdio.h>
