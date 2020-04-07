@@ -37,6 +37,7 @@
 
 #include <libyang/libyang.h>
 
+#include "compat.h"
 #include "sysrepo.h"
 #include "bin_common.h"
 

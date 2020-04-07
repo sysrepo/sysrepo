@@ -39,6 +39,7 @@
 #include <fcntl.h>
 #include <dlfcn.h>
 
+#include "compat.h"
 #include "sysrepo.h"
 #include "bin_common.h"
 

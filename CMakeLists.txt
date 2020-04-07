@@ -1,11 +1,17 @@
 cmake_minimum_required(VERSION 2.8.12)
+
 project(sysrepo)
 set(SYSREPO_DESC "YANG-based system repository for all-around configuration management.")
+
+# include custom Modules
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
+
 include(GNUInstallDirs)
 include(CheckSymbolExists)
 include(CheckFunctionExists)
 include(CheckLibraryExists)
 include(CheckIncludeFile)
+include(UseCompat)
 if(POLICY CMP0075)
     cmake_policy(SET CMP0075 NEW)
 endif()
@@ -162,27 +168,27 @@ set (SYSREPOCFG_SRC
 set (SYSREPOPLUGIND_SRC
     src/executables/sysrepo-plugind.c)
 
+# use compat
+use_compat()
+
 # sysrepo
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
-add_library(srobj OBJECT ${LIB_SRC})
+add_library(srobj OBJECT ${LIB_SRC} compat)
 set_target_properties(srobj PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
 add_library(sysrepo SHARED $<TARGET_OBJECTS:srobj>)
 set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_SOVERSION_FULL} SOVERSION ${SYSREPO_SOVERSION})
 
 # sysrepoctl tool
-add_executable(sysrepoctl ${SYSREPOCTL_SRC})
+add_executable(sysrepoctl ${SYSREPOCTL_SRC} compat)
 target_link_libraries(sysrepoctl sysrepo)
 
 # sysrepocfg tool
-add_executable(sysrepocfg ${SYSREPOCFG_SRC})
+add_executable(sysrepocfg ${SYSREPOCFG_SRC} compat)
 target_link_libraries(sysrepocfg sysrepo)
 
 # sysrepo-plugind daemon
-add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC})
+add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC} compat)
 target_link_libraries(sysrepo-plugind sysrepo ${CMAKE_DL_LIBS})
-
-# include custom Modules
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
 # include repository files with highest priority
 include_directories("${PROJECT_SOURCE_DIR}/src")
