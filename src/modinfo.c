@@ -1068,6 +1068,57 @@ sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_ope
 }
 
 /**
+ * @brief Load module data of the ietf-yang-library module. They are actually generated.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] mod Mod info module to use.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mod_info_mod_s *mod)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *mod_data;
+
+    /* get the data from libyang */
+    mod_data = ly_ctx_info(mod_info->conn->ly_ctx);
+    if (!mod_data) {
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+        return err_info;
+    }
+
+    if (!strcmp(mod->ly_mod->rev[0].date, "2019-01-04")) {
+        assert(!strcmp(mod_data->schema->name, "yang-library"));
+
+        /* add supported datastores */
+        if (!lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:running']/schema", "complete", 0, 0)
+                || !lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:candidate']/schema", "complete", 0, 0)
+                || !lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:startup']/schema", "complete", 0, 0)
+                || !lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:operational']/schema", "complete", 0, 0)) {
+            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+            return err_info;
+        }
+    } else if (!strcmp(mod->ly_mod->rev[0].date, "2016-06-21")) {
+        assert(!strcmp(mod_data->schema->name, "modules-state"));
+
+        /* all data should already be there */
+    } else {
+        /* no other revision is supported */
+        SR_ERRINFO_INT(&err_info);
+        return err_info;
+    }
+
+    /* there should always be at least some default containers */
+    assert(mod_info->data);
+    if (lyd_merge(mod_info->data, mod_data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+        return err_info;
+    }
+
+    return NULL;
+}
+
+/**
  * @brief Load module data of a specific module.
  *
  * @param[in] mod_info Mod info to use.
@@ -1149,22 +1200,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
         if (mod_info->ds == SR_DS_OPERATIONAL) {
             if (!strcmp(mod->ly_mod->name, "ietf-yang-library")) {
                 /* append ietf-yang-library state data - internal */
-                mod_data = ly_ctx_info(mod_info->conn->ly_ctx);
-                assert(!strcmp(mod_data->schema->name, "yang-library") && !strcmp(mod_data->next->schema->name, "modules-state"));
-
-                /* add supported datastores */
-                if (!lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:running']/schema", "complete", 0, 0)
-                        || !lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:candidate']/schema", "complete", 0, 0)
-                        || !lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:startup']/schema", "complete", 0, 0)
-                        || !lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:operational']/schema", "complete", 0, 0)) {
-                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
-                    return err_info;
-                }
-
-                /* there should always be at least some default containers */
-                assert(mod_info->data);
-                if (lyd_merge(mod_info->data, mod_data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
-                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                if ((err_info = sr_modinfo_module_data_load_yanglib(mod_info, mod))) {
                     return err_info;
                 }
             }

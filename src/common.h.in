@@ -110,6 +110,9 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** name of sysrepo YANG module */
 #define SR_YANG_MOD "sysrepo"
 
+/** implemented ietf-yang-library revision */
+#define SR_YANGLIB_REVISION @YANGLIB_REVISION@
+
 /** main sysrepo repository path; prefix of all other paths by default */
 #define SR_REPO_PATH "@REPO_PATH@"
 

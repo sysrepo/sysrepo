@@ -1128,17 +1128,22 @@ sr_ly_ctx_new(struct ly_ctx **ly_ctx)
     char *yang_dir;
 
     if ((err_info = sr_path_yang_dir(&yang_dir))) {
-        return err_info;
+        goto cleanup;
     }
-    *ly_ctx = ly_ctx_new(yang_dir, 0);
+    *ly_ctx = ly_ctx_new(yang_dir, LY_CTX_NOYANGLIBRARY);
     free(yang_dir);
 
     if (!*ly_ctx) {
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to create a new libyang context.");
-        return err_info;
+        goto cleanup;
     }
 
-    return NULL;
+cleanup:
+    if (err_info) {
+        ly_ctx_destroy(*ly_ctx, NULL);
+        *ly_ctx = NULL;
+    }
+    return err_info;
 }
 
 /**
@@ -1223,10 +1228,6 @@ sr_ly_module_is_internal(const struct lys_module *ly_mod)
     } else if (!strcmp(ly_mod->name, "ietf-inet-types") && !strcmp(ly_mod->rev[0].date, "2013-07-15")) {
         return 1;
     } else if (!strcmp(ly_mod->name, "ietf-yang-types") && !strcmp(ly_mod->rev[0].date, "2013-07-15")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-datastores") && !strcmp(ly_mod->rev[0].date, "2017-08-17")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-yang-library") && !strcmp(ly_mod->rev[0].date, "2019-01-04")) {
         return 1;
     }
 

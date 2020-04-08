@@ -33,6 +33,15 @@
 #include <assert.h>
 
 #include "../modules/sysrepo_yang.h"
+#include "../modules/ietf_datastores_yang.h"
+#if SR_YANGLIB_REVISION == 2019-01-04
+# include "../modules/ietf_yang_library@2019_01_04_yang.h"
+#elif SR_YANGLIB_REVISION == 2016-06-21
+# include "../modules/ietf_yang_library@2016_06_21_yang.h"
+#else
+# error "Unknown yang-library revision!"
+#endif
+
 #include "../modules/ietf_netconf_yang.h"
 #include "../modules/ietf_netconf_with_defaults_yang.h"
 #include "../modules/ietf_netconf_notifications_yang.h"
@@ -877,6 +886,16 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     struct lyd_node *sr_mods = NULL;
     uint32_t i;
 
+#define SR_INSTALL_INT_MOD(yang_mod, dep) \
+    if (!(ly_mod = lys_parse_mem(ly_ctx, yang_mod, LYS_YANG))) { \
+        sr_errinfo_new_ly(&err_info, ly_ctx); \
+        goto error; \
+    } \
+    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0))) { \
+        goto error; \
+    } \
+    SR_LOG_INF("Sysrepo internal%s module \"%s\" was installed.", dep ? " dependency" : "", ly_mod->name)
+
     ly_mod = ly_ctx_get_module(ly_ctx, SR_YANG_MOD, NULL, 1);
     SR_CHECK_INT_RET(!ly_mod, err_info);
 
@@ -887,12 +906,8 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     /* for internal libyang modules create files and store in the persistent module data tree */
     i = 0;
     while ((i < ly_ctx_internal_modules_count(ly_ctx)) && (ly_mod = ly_ctx_get_module_iter(ly_ctx, &i))) {
-        /* module must be implemented or be "ietf-datastores" */
-        if (ly_mod->implemented || !strcmp(ly_mod->name, "ietf-datastores")) {
-            if (lys_set_implemented(ly_mod)) {
-                sr_errinfo_new_ly(&err_info, ly_ctx);
-                goto error;
-            }
+        /* module must be implemented */
+        if (ly_mod->implemented) {
             if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0))) {
                 goto error;
             }
@@ -900,44 +915,19 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
         }
     }
 
-    /* install ietf-netconf (implemented dependency) and ietf-netconf-with-defaults */
-    if (!(ly_mod = lys_parse_mem(ly_ctx, ietf_netconf_yang, LYS_YANG))) {
-        sr_errinfo_new_ly(&err_info, ly_ctx);
-        goto error;
-    }
-    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0))) {
-        goto error;
-    }
-    SR_LOG_INF("Sysrepo internal dependency module \"%s\" was installed.", ly_mod->name);
+    /* install ietf-datastores and ietf-yang-library */
+    SR_INSTALL_INT_MOD(ietf_datastores_yang, 1);
+    SR_INSTALL_INT_MOD(ietf_yang_library_yang, 0);
 
-    if (!(ly_mod = lys_parse_mem(ly_ctx, ietf_netconf_with_defaults_yang, LYS_YANG))) {
-        sr_errinfo_new_ly(&err_info, ly_ctx);
-        goto error;
-    }
-    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0))) {
-        goto error;
-    }
-    SR_LOG_INF("Sysrepo internal module \"%s\" was installed.", ly_mod->name);
+    /* install ietf-netconf (implemented dependency) and ietf-netconf-with-defaults */
+    SR_INSTALL_INT_MOD(ietf_netconf_yang, 1);
+    SR_INSTALL_INT_MOD(ietf_netconf_with_defaults_yang, 0);
 
     /* install ietf-netconf-notifications */
-    if (!(ly_mod = lys_parse_mem(ly_ctx, ietf_netconf_notifications_yang, LYS_YANG))) {
-        sr_errinfo_new_ly(&err_info, ly_ctx);
-        goto error;
-    }
-    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0))) {
-        goto error;
-    }
-    SR_LOG_INF("Sysrepo internal module \"%s\" was installed.", ly_mod->name);
+    SR_INSTALL_INT_MOD(ietf_netconf_notifications_yang, 0);
 
     /* install ietf-origin */
-    if (!(ly_mod = lys_parse_mem(ly_ctx, ietf_origin_yang, LYS_YANG))) {
-        sr_errinfo_new_ly(&err_info, ly_ctx);
-        goto error;
-    }
-    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0))) {
-        goto error;
-    }
-    SR_LOG_INF("Sysrepo internal module \"%s\" was installed.", ly_mod->name);
+    SR_INSTALL_INT_MOD(ietf_origin_yang, 0);
 
     *sr_mods_p = sr_mods;
     return NULL;
@@ -945,6 +935,8 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
 error:
     lyd_free_withsiblings(sr_mods);
     return err_info;
+
+#undef SR_INSTALL_INT_MOD
 }
 
 sr_error_info_t *

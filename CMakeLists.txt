@@ -107,6 +107,14 @@ set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2")
 set(CMAKE_C_FLAGS_PACKAGE "-g -O2 -DNDEBUG")
 set(CMAKE_C_FLAGS_DEBUG   "-g -O0")
 
+# ietf-yang-library revision
+set(YANGLIB_REVISION "2019-01-04" CACHE STRING
+    "YANG module ietf-yang-library revision to implement. Only 2019-01-04 and 2016-06-21 are supported.")
+if(NOT ${YANGLIB_REVISION} STREQUAL "2019-01-04" AND NOT ${YANGLIB_REVISION} STREQUAL "2016-06-21")
+    message(FATAL_ERROR "Unsupported ietf-yang-library revision ${YANGLIB_REVISION} specified!")
+endif()
+message(STATUS "ietf-yang-library revision: ${YANGLIB_REVISION}")
+
 # paths
 if(NOT REPO_PATH)
     if(CMAKE_BUILD_TYPE_LOWER STREQUAL debug)
