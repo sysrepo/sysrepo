@@ -2747,7 +2747,7 @@ sr_lydmods_update_replay_support(struct ly_ctx *ly_ctx, const char *mod_name, in
         if (!from_ts) {
             from_ts = time(NULL);
         }
-        sprintf(buf, "%ld", from_ts);
+        sprintf(buf, "%ld", (long int)from_ts);
 
         /* add replay support */
         node = lyd_new_path(sr_mods, NULL, path, buf, 0, 0);

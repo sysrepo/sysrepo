@@ -2894,7 +2894,7 @@ sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif_subs
     }
 
     cur_time = time(NULL);
-    if ((next_stop_time - cur_time) < 0) {
+    if (cur_time > next_stop_time) {
         /* stop time has already elapsed while we were processing some other events, handle this as soon as possible */
         *stop_time_in = 1;
     } else if (!*stop_time_in || ((next_stop_time - cur_time) + 1 < *stop_time_in)) {
