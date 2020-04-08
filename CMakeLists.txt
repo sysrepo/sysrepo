@@ -173,21 +173,21 @@ use_compat()
 
 # sysrepo
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
-add_library(srobj OBJECT ${LIB_SRC} compat)
+add_library(srobj OBJECT ${LIB_SRC} $<TARGET_OBJECTS:compat>)
 set_target_properties(srobj PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
 add_library(sysrepo SHARED $<TARGET_OBJECTS:srobj>)
 set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_SOVERSION_FULL} SOVERSION ${SYSREPO_SOVERSION})
 
 # sysrepoctl tool
-add_executable(sysrepoctl ${SYSREPOCTL_SRC} compat)
+add_executable(sysrepoctl ${SYSREPOCTL_SRC} $<TARGET_OBJECTS:compat>)
 target_link_libraries(sysrepoctl sysrepo)
 
 # sysrepocfg tool
-add_executable(sysrepocfg ${SYSREPOCFG_SRC} compat)
+add_executable(sysrepocfg ${SYSREPOCFG_SRC} $<TARGET_OBJECTS:compat>)
 target_link_libraries(sysrepocfg sysrepo)
 
 # sysrepo-plugind daemon
-add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC} compat)
+add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC} $<TARGET_OBJECTS:compat>)
 target_link_libraries(sysrepo-plugind sysrepo ${CMAKE_DL_LIBS})
 
 # include repository files with highest priority
