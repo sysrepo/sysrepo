@@ -3902,7 +3902,7 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     sr_sid_t sid;
     struct lyd_node *diff = NULL;
 
-    memset(&mod_info, 0, sizeof mod_info);
+    SR_MODINFO_INIT(mod_info, conn, SR_DS_OPERATIONAL, SR_DS_RUNNING);
     memset(&sid, 0, sizeof sid);
 
     /* get the module */
@@ -3918,13 +3918,13 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
         return NULL;
     }
 
-    if ((err_info = sr_shmmod_collect_modules(conn, ly_mod, SR_DS_OPERATIONAL, 0, &mod_info))) {
-        return err_info;
+    if ((err_info = sr_shmmod_modinfo_collect_modules(&mod_info, ly_mod, 0))) {
+        goto cleanup;
     }
 
-    /* MODULES READ LOCK */
-    if ((err_info = sr_shmmod_modinfo_rdlock(&mod_info, 0, sid))) {
-        return err_info;
+    /* MODULES WRITE LOCK */
+    if ((err_info = sr_shmmod_modinfo_wrlock(&mod_info, sid))) {
+        goto cleanup;
     }
 
     /* load the module enabled running data */

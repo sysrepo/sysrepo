@@ -612,64 +612,64 @@ sr_error_info_t *sr_shmmain_check_data_files(sr_conn_ctx_t *conn);
 /**
  * @brief Collect required modules into mod info based on an edit.
  *
- * @param[in] conn Connection to use.
- * @param[in] edit Edit to be applied.
- * @param[in] ds Datastore.
  * @param[in,out] mod_info Modified mod info.
+ * @param[in] edit Edit to be applied.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_edit(sr_conn_ctx_t *conn, const struct lyd_node *edit, sr_datastore_t ds,
-        struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_shmmod_modinfo_collect_edit(struct sr_mod_info_s *mod_info, const struct lyd_node *edit);
 
 /**
  * @brief Collect required modules into mod info based on an XPath.
  *
- * @param[in] conn Connection to use.
- * @param[in] xpath XPath to be evaluated.
- * @param[in] ds Datastore.
  * @param[in,out] mod_info Modified mod info.
+ * @param[in] xpath XPath to be evaluated.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, const char *xpath, sr_datastore_t ds,
-        struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_shmmod_modinfo_collect_xpath(struct sr_mod_info_s *mod_info, const char *xpath);
 
 /**
  * @brief Collect required modules into mod info based on a specific module.
  *
- * @param[in] conn Connection to use.
- * @param[in] ly_mod Required module, all modules if not set.
- * @param[in] ds Datastore.
- * @param[in] with_deps What dependencies of the module are also needed.
  * @param[in,out] mod_info Modified mod info.
+ * @param[in] ly_mod Required module, all modules if not set.
+ * @param[in] mod_req_deps What dependencies of the module are also needed.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_modules(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore_t ds,
-        int with_deps, struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_shmmod_modinfo_collect_modules(struct sr_mod_info_s *mod_info, const struct lys_module *ly_mod,
+        int mod_req_deps);
 
 /**
  * @brief Collect required modules into mod info based on an operation data.
  *
- * @param[in] conn Connection to use.
+ * @param[in,out] mod_info Modified mod info.
  * @param[in] op_path Path identifying the operation.
  * @param[in] op Operation data tree.
  * @param[in] output Whether this is the operation output or input.
  * @param[out] shm_deps Main SHM operation dependencies.
  * @param[out] shm_dep_count Operation dependency count.
- * @param[in,out] mod_info Modified mod info.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_op(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_node *op, int output,
-        sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count, struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_shmmod_modinfo_collect_op(struct sr_mod_info_s *mod_info, const char *op_path,
+        const struct lyd_node *op, int output, sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count);
 
 /**
  * @brief READ lock all modules in mod info.
  *
  * @param[in] mod_info Mod info to use.
- * @param[in] upgradable Whether the lock will be upgraded to WRITE later.
+ * @param[in] upgradable Whether the lock will be upgraded to WRITE later. Used only for main DS of @p mod_info!
  * @param[in] sid Sysrepo session ID.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradable, sr_sid_t sid);
+
+/**
+ * @brief WRITE lock all modules in mod info. Secondary DS modules, if any, are READ locked.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] sid Sysrepo session ID.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_modinfo_wrlock(struct sr_mod_info_s *mod_info, sr_sid_t sid);
 
 /**
  * @brief Upgrade READ lock on modules in mod info to WRITE lock.

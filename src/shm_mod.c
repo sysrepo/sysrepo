@@ -121,16 +121,13 @@ sr_modinfo_qsort_cmp(const void *ptr1, const void *ptr2)
 }
 
 sr_error_info_t *
-sr_shmmod_collect_edit(sr_conn_ctx_t *conn, const struct lyd_node *edit, sr_datastore_t ds, struct sr_mod_info_s *mod_info)
+sr_shmmod_modinfo_collect_edit(struct sr_mod_info_s *mod_info, const struct lyd_node *edit)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
     const struct lys_module *mod;
     const struct lyd_node *root;
     char *str;
-
-    mod_info->ds = ds;
-    mod_info->conn = conn;
 
     /* add all the modules from the edit into our array */
     mod = NULL;
@@ -148,7 +145,7 @@ sr_shmmod_collect_edit(sr_conn_ctx_t *conn, const struct lyd_node *edit, sr_data
         mod = lyd_node_module(root);
 
         /* find the module in SHM and add it with any dependencies */
-        shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, mod->name, 0);
+        shm_mod = sr_shmmain_find_module(&mod_info->conn->main_shm, mod_info->conn->ext_shm.addr, mod->name, 0);
         SR_CHECK_INT_RET(!shm_mod, err_info);
         if ((err_info = sr_modinfo_add_mod(shm_mod, mod, MOD_INFO_REQ, MOD_INFO_DEP | MOD_INFO_INV_DEP, mod_info))) {
             return err_info;
@@ -162,7 +159,7 @@ sr_shmmod_collect_edit(sr_conn_ctx_t *conn, const struct lyd_node *edit, sr_data
 }
 
 sr_error_info_t *
-sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, const char *xpath, sr_datastore_t ds, struct sr_mod_info_s *mod_info)
+sr_shmmod_modinfo_collect_xpath(struct sr_mod_info_s *mod_info, const char *xpath)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
@@ -172,9 +169,6 @@ sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, const char *xpath, sr_datastore_t d
     struct ly_set *set = NULL;
     uint32_t i;
 
-    mod_info->ds = ds;
-    mod_info->conn = conn;
-
     /* get the module */
     module_name = sr_get_first_ns(xpath);
     if (!module_name) {
@@ -183,7 +177,7 @@ sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, const char *xpath, sr_datastore_t d
         SR_CHECK_MEM_RET(!module_name, err_info);
     }
 
-    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
+    ly_mod = ly_ctx_get_module(mod_info->conn->ly_ctx, module_name, NULL, 1);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
         free(module_name);
@@ -200,7 +194,7 @@ sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, const char *xpath, sr_datastore_t d
 
     set = lys_xpath_atomize(ctx_node, LYXP_NODE_ELEM, xpath, 0);
     if (!set) {
-        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
         return err_info;
     }
 
@@ -209,7 +203,7 @@ sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, const char *xpath, sr_datastore_t d
     for (i = 0; i < set->number; ++i) {
         /* skip uninteresting nodes */
         if ((set->set.s[i]->nodetype & (LYS_RPC | LYS_NOTIF))
-                || ((set->set.s[i]->flags & LYS_CONFIG_R) && SR_IS_CONVENTIONAL_DS(ds))) {
+                || ((set->set.s[i]->flags & LYS_CONFIG_R) && SR_IS_CONVENTIONAL_DS(mod_info->ds))) {
             continue;
         }
 
@@ -243,14 +237,11 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmmod_collect_modules(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore_t ds, int mod_req_deps,
-        struct sr_mod_info_s *mod_info)
+sr_shmmod_modinfo_collect_modules(struct sr_mod_info_s *mod_info, const struct lys_module *ly_mod, int mod_req_deps)
 {
     sr_error_info_t *err_info = NULL;
+    sr_conn_ctx_t *conn = mod_info->conn;
     sr_mod_t *shm_mod;
-
-    mod_info->ds = ds;
-    mod_info->conn = conn;
 
     if (ly_mod) {
         /* only one module */
@@ -281,18 +272,16 @@ sr_shmmod_collect_modules(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, 
 }
 
 sr_error_info_t *
-sr_shmmod_collect_op(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_node *op, int output,
-        sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count, struct sr_mod_info_s *mod_info)
+sr_shmmod_modinfo_collect_op(struct sr_mod_info_s *mod_info, const char *op_path, const struct lyd_node *op, int output,
+        sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count)
 {
     sr_error_info_t *err_info = NULL;
+    sr_conn_ctx_t *conn = mod_info->conn;
     sr_mod_t *shm_mod, *dep_mod;
     sr_mod_op_dep_t *shm_op_deps;
     const struct lys_module *ly_mod;
     const struct lys_node *top;
     uint16_t i;
-
-    mod_info->ds = SR_DS_OPERATIONAL;
-    mod_info->conn = conn;
 
     /* find top-level node in case of action/nested notification */
     for (top = op->schema; lys_parent(top); top = lys_parent(top));
@@ -415,22 +404,15 @@ sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradable, sr_sid_
     sr_error_info_t *err_info = NULL;
     sr_lock_mode_t mod_lock;
     uint32_t i;
+    uint8_t rlock_bit;
     sr_datastore_t ds;
     struct sr_mod_info_mod_s *mod;
     struct sr_mod_lock_s *shm_lock;
 
-    switch (mod_info->ds) {
-    case SR_DS_STARTUP:
-    case SR_DS_RUNNING:
-    case SR_DS_CANDIDATE:
-        ds = mod_info->ds;
-        break;
-    case SR_DS_OPERATIONAL:
-        /* will use running DS */
-        ds = SR_DS_RUNNING;
-        break;
-    }
-
+    /* lock main DS normally */
+    ds = mod_info->ds;
+    rlock_bit = MOD_INFO_RLOCK;
+lock:
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
         shm_lock = &mod->shm_mod->data_lock_info[ds];
@@ -466,7 +448,57 @@ sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradable, sr_sid_
         sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_READ, 1);
 
         /* set the flag for unlocking (it is always READ locked now) */
-        mod->state |= MOD_INFO_RLOCK;
+        mod->state |= rlock_bit;
+    }
+
+    if (mod_info->ds2 != ds) {
+        /* read lock the secondary DS */
+        upgradable = 0;
+        ds = mod_info->ds2;
+        rlock_bit = MOD_INFO_RLOCK2;
+        goto lock;
+    }
+
+    return NULL;
+}
+
+sr_error_info_t *
+sr_shmmod_modinfo_wrlock(struct sr_mod_info_s *mod_info, sr_sid_t sid)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i;
+    struct sr_mod_info_mod_s *mod;
+    struct sr_mod_lock_s *shm_lock;
+
+    for (i = 0; i < mod_info->mod_count; ++i) {
+        mod = &mod_info->mods[i];
+        shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds];
+
+        /* MOD WRITE LOCK */
+        if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, sid))) {
+            return err_info;
+        }
+
+        /* real WRITE locks are not stored in SHM */
+
+        /* set the flag for unlocking */
+        mod->state |= MOD_INFO_WLOCK;
+
+        if (mod_info->ds2 != mod_info->ds) {
+            /* secondary DS */
+            shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds2];
+
+            /* MOD READ LOCK */
+            if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, SR_LOCK_READ, sid))) {
+                return err_info;
+            }
+
+            /* remember this lock in SHM */
+            sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, mod_info->ds2, SR_LOCK_READ, 1);
+
+            /* set the flag for unlocking */
+            mod->state |= MOD_INFO_RLOCK2;
+        }
     }
 
     return NULL;
@@ -477,25 +509,12 @@ sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
-    sr_datastore_t ds;
     struct sr_mod_info_mod_s *mod;
     struct sr_mod_lock_s *shm_lock;
 
-    switch (mod_info->ds) {
-    case SR_DS_STARTUP:
-    case SR_DS_RUNNING:
-    case SR_DS_CANDIDATE:
-        ds = mod_info->ds;
-        break;
-    case SR_DS_OPERATIONAL:
-        /* will use running DS */
-        ds = SR_DS_RUNNING;
-        break;
-    }
-
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
-        shm_lock = &mod->shm_mod->data_lock_info[ds];
+        shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds];
 
         /* upgrade only required modules */
         if ((mod->state & MOD_INFO_REQ) && (mod->state & MOD_INFO_RLOCK)) {
@@ -509,8 +528,8 @@ sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid)
             mod->state &= ~MOD_INFO_RLOCK;
 
             /* update this lock in SHM (real WRITE lock no longer covered) */
-            sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_WRITE, 0);
-            sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_READ, 0);
+            sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, mod_info->ds, SR_LOCK_WRITE, 0);
+            sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, mod_info->ds, SR_LOCK_READ, 0);
 
             /* MOD WRITE LOCK */
             if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, sid))) {
@@ -530,25 +549,12 @@ sr_shmmod_modinfo_wrlock_downgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
-    sr_datastore_t ds;
     struct sr_mod_info_mod_s *mod;
     struct sr_mod_lock_s *shm_lock;
 
-    switch (mod_info->ds) {
-    case SR_DS_STARTUP:
-    case SR_DS_RUNNING:
-    case SR_DS_CANDIDATE:
-        ds = mod_info->ds;
-        break;
-    case SR_DS_OPERATIONAL:
-        /* will use running DS */
-        ds = SR_DS_RUNNING;
-        break;
-    }
-
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
-        shm_lock = &mod->shm_mod->data_lock_info[ds];
+        shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds];
 
         /* downgrade only required modules */
         if ((mod->state & MOD_INFO_REQ) && (mod->state & MOD_INFO_WLOCK)) {
@@ -562,8 +568,8 @@ sr_shmmod_modinfo_wrlock_downgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid)
             mod->state &= ~MOD_INFO_WLOCK;
 
             /* update this lock in SHM (we have again a fake WRITE lock) */
-            sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_WRITE, 1);
-            sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_READ, 1);
+            sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, mod_info->ds, SR_LOCK_WRITE, 1);
+            sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, mod_info->ds, SR_LOCK_READ, 1);
 
             /* MOD READ LOCK */
             if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, SR_LOCK_READ, sid))) {
@@ -582,50 +588,57 @@ void
 sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, int upgradable)
 {
     uint32_t i;
-    sr_datastore_t ds;
     struct sr_mod_info_mod_s *mod;
     struct sr_mod_lock_s *shm_lock;
 
-    switch (mod_info->ds) {
-    case SR_DS_STARTUP:
-    case SR_DS_RUNNING:
-    case SR_DS_CANDIDATE:
-        ds = mod_info->ds;
-        break;
-    case SR_DS_OPERATIONAL:
-        /* will use running DS */
-        ds = SR_DS_RUNNING;
-        break;
-    }
-
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
-        shm_lock = &mod->shm_mod->data_lock_info[ds];
 
-        if ((mod->state & MOD_INFO_REQ) && (mod->state & (MOD_INFO_RLOCK | MOD_INFO_WLOCK)) && upgradable) {
-            /* this module's lock was upgraded (WRITE-locked), correctly clean everything */
-            assert(shm_lock->write_locked);
-            shm_lock->write_locked = 0;
-            if (!shm_lock->ds_locked) {
-                memset(&shm_lock->sid, 0, sizeof shm_lock->sid);
+        if (mod->state & (MOD_INFO_RLOCK | MOD_INFO_WLOCK)) {
+            /* main DS */
+            shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds];
+
+            if ((mod->state & MOD_INFO_REQ) && upgradable) {
+                /* this module's lock was upgraded (WRITE-locked), correctly clean everything */
+                assert(shm_lock->write_locked);
+                shm_lock->write_locked = 0;
+                if (!shm_lock->ds_locked) {
+                    memset(&shm_lock->sid, 0, sizeof shm_lock->sid);
+                }
+
+                /* update this lock in SHM (only unupgraded fake WRITE lock is covered) */
+                if (mod->state & MOD_INFO_RLOCK) {
+                    sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, mod_info->ds, SR_LOCK_WRITE, 0);
+                }
             }
 
-            /* update this lock in SHM (only unupgraded fake WRITE lock is covered) */
-            if (mod->state & MOD_INFO_RLOCK) {
-                sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_WRITE, 0);
+            if (mod->state & MOD_INFO_WLOCK) {
+                /* MOD WRITE UNLOCK */
+                sr_rwunlock(&shm_lock->lock, SR_LOCK_WRITE, __func__);
+
+                /* real WRITE lock not stored in SHM */
+            } else if (mod->state & MOD_INFO_RLOCK) {
+                /* MOD READ UNLOCK */
+                sr_rwunlock(&shm_lock->lock, SR_LOCK_READ, __func__);
+
+                /* update this lock in SHM */
+                sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, mod_info->ds, SR_LOCK_READ, 0);
             }
         }
 
-        if (mod->state & MOD_INFO_WLOCK) {
-            /* MOD WRITE UNLOCK */
-            sr_rwunlock(&shm_lock->lock, SR_LOCK_WRITE, __func__);
-        } else if (mod->state & MOD_INFO_RLOCK) {
+        if (mod->state & MOD_INFO_RLOCK2) {
+            /* secondary DS */
+            shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds2];
+
             /* MOD READ UNLOCK */
             sr_rwunlock(&shm_lock->lock, SR_LOCK_READ, __func__);
 
-            /* update this lock in SHM (always was READ-locked) */
-            sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_READ, 0);
+            /* update this lock in SHM */
+            sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, mod_info->ds2, SR_LOCK_READ, 0);
         }
+
+        /* clear flags */
+        mod->state &= ~(MOD_INFO_RLOCK | MOD_INFO_WLOCK | MOD_INFO_RLOCK2);
     }
 }
 
@@ -1064,20 +1077,32 @@ sr_error_info_t *
 sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid_t del_pid)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
-    sr_mod_t *shm_mod;
+    struct sr_mod_info_s mod_info;
+    struct sr_mod_info_mod_s *mod;
+    sr_sid_t sid;
     struct lyd_node *diff = NULL;
     char *path = NULL;
+    uint32_t i;
 
-    /* we do not need to lock the modules because we do not work with RUNNING data */
+    /* we really need to write lock only stored operational data */
+    SR_MODINFO_INIT(mod_info, conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL);
+    memset(&sid, 0, sizeof sid);
 
-    SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
-        ly_mod = ly_ctx_get_module(conn->ly_ctx, conn->ext_shm.addr + shm_mod->name, NULL, 1);
-        SR_CHECK_INT_RET(!ly_mod, err_info);
+    if ((err_info = sr_shmmod_modinfo_collect_modules(&mod_info, NULL, 0))) {
+        return err_info;
+    }
+
+    /* MODULES WRITE LOCK */
+    if ((err_info = sr_shmmod_modinfo_wrlock(&mod_info, sid))) {
+        goto cleanup;
+    }
+
+    for (i = 0; i < mod_info.mod_count; ++i) {
+        mod = &mod_info.mods[i];
 
         /* check we have permissions to open operational file */
         free(path);
-        if ((err_info = sr_path_ds_shm(ly_mod->name, SR_DS_OPERATIONAL, 1, &path))) {
+        if ((err_info = sr_path_ds_shm(mod->ly_mod->name, SR_DS_OPERATIONAL, 1, &path))) {
             goto cleanup;
         }
         errno = 0;
@@ -1093,7 +1118,7 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid
         }
 
         /* trim diff of the module */
-        if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_OPERATIONAL, &diff))) {
+        if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_OPERATIONAL, &diff))) {
             goto cleanup;
         }
 
@@ -1101,7 +1126,7 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid
             if ((err_info = sr_diff_del_conn(&diff, del_conn, del_pid))) {
                 goto cleanup;
             }
-            if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, diff, 0, 0))) {
+            if ((err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, diff, 0, 0))) {
                 goto cleanup;
             }
             lyd_free_withsiblings(diff);
@@ -1110,7 +1135,11 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid
     }
 
 cleanup:
+    /* MODULES UNLOCK */
+    sr_shmmod_modinfo_unlock(&mod_info, 0);
+
     free(path);
     lyd_free_withsiblings(diff);
+    sr_modinfo_free(&mod_info);
     return err_info;
 }

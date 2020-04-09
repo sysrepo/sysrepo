@@ -216,6 +216,10 @@ typedef struct sr_mod_data_dep_s sr_mod_data_dep_t;
 /** static initializer of the shared memory structure */
 #define SR_SHM_INITIALIZER {.fd = -1, .size = 0, .addr = NULL}
 
+/** initializer of mod_info structure */
+#define SR_MODINFO_INIT(mi, c, d, d2) mi.ds = (d); mi.ds2 = (d2); mi.diff = NULL; mi.data = NULL; \
+        mi.data_cached = 0; mi.conn = (c); mi.mods = NULL; mi.mod_count = 0
+
 /**
  * @brief Generic shared memory information structure.
  */

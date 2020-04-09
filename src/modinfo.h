@@ -26,20 +26,22 @@
 
 #include "common.h"
 
-#define MOD_INFO_DEP     0x01 /* dependency module, its data cannot be changed, but are required for validation */
-#define MOD_INFO_INV_DEP 0x02 /* inverse dependency module, its data cannot be changed, but will be validated */
-#define MOD_INFO_REQ     0x04 /* required module, its data can be changed and it will be validated */
+#define MOD_INFO_DEP     0x01   /* dependency module, its data cannot be changed, but are required for validation */
+#define MOD_INFO_INV_DEP 0x02   /* inverse dependency module, its data cannot be changed, but will be validated */
+#define MOD_INFO_REQ     0x04   /* required module, its data can be changed and it will be validated */
 #define MOD_INFO_TYPE_MASK 0x07 /* just a mask for all module types */
 
-#define MOD_INFO_RLOCK   0x08 /* read-locked module */
-#define MOD_INFO_WLOCK   0x10 /* write-locked module */
-#define MOD_INFO_CHANGED 0x20 /* module data were changed */
+#define MOD_INFO_RLOCK   0x08   /* read-locked module (main DS) */
+#define MOD_INFO_WLOCK   0x10   /* write-locked module (main DS) */
+#define MOD_INFO_RLOCK2  0x20   /* read-locked module (secondary DS, it can be only read locked) */
+#define MOD_INFO_CHANGED 0x40   /* module data were changed */
 
 /**
  * @brief Mod info structure, used for keeping all relevant modules for a data operation.
  */
 struct sr_mod_info_s {
-    sr_datastore_t ds;          /**< Datastore. */
+    sr_datastore_t ds;          /**< Main datastore we are working with. */
+    sr_datastore_t ds2;         /**< Secondary datastore valid only if differs from the main one. Used only for locking. */
     struct lyd_node *diff;      /**< Diff with previous data. */
     struct lyd_node *data;      /**< Data tree. */
     int data_cached;            /**< Whether the data are actually in cache (conn cache READ lock is held). */
