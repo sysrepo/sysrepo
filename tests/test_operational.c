@@ -204,6 +204,7 @@ test_yang_lib(void **state)
     ret = sr_get_data(st->sess, "/ietf-yang-library:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
+#if SR_YANGLIB_REVISION == 2019-01-04
     assert_non_null(data);
     assert_string_equal(data->schema->name, "yang-library");
     assert_string_equal(data->child->schema->name, "module-set");
@@ -211,6 +212,11 @@ test_yang_lib(void **state)
     assert_string_equal(data->child->next->next->schema->name, "content-id");
     assert_string_equal(data->child->next->next->next->schema->name, "datastore");
     assert_string_equal(data->next->schema->name, "modules-state");
+#else
+    assert_non_null(data);
+    assert_string_equal(data->schema->name, "modules-state");
+    assert_string_equal(data->child->prev->schema->name, "module-set-id");
+#endif
 
     /* they must be valid */
     ret = lyd_validate_modules(&data, (const struct lys_module **)&data->schema->module, 1, 0);
@@ -219,20 +225,32 @@ test_yang_lib(void **state)
     lyd_free_withsiblings(data);
 
     /* subscribe as dummy state data provider, they should get deleted */
+#if SR_YANGLIB_REVISION == 2019-01-04
     ret = sr_oper_get_items_subscribe(st->sess, "ietf-yang-library", "/ietf-yang-library:yang-library", yang_lib_oper_cb,
             NULL, 0, &subscr);
+#else
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-yang-library", "/ietf-yang-library:modules-state", yang_lib_oper_cb,
+            NULL, 0, &subscr);
+#endif
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read ietf-yang-library data again */
     ret = sr_get_data(st->sess, "/ietf-yang-library:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
+#if SR_YANGLIB_REVISION == 2019-01-04
     /* order was changed */
     assert_non_null(data);
     assert_string_equal(data->schema->name, "modules-state");
     assert_string_equal(data->next->schema->name, "yang-library");
     assert_int_equal(data->next->dflt, 1);
     assert_null(data->next->child);
+#else
+    assert_non_null(data);
+    assert_string_equal(data->schema->name, "modules-state");
+    assert_int_equal(data->dflt, 1);
+    assert_null(data->next);
+#endif
     lyd_free_withsiblings(data);
 
     /* cleanup */
