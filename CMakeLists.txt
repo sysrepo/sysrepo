@@ -203,9 +203,10 @@ include_directories("${PROJECT_SOURCE_DIR}/src")
 include_directories(${PROJECT_BINARY_DIR})
 
 # dependencies
-# librt (shm_open, shm_unlink, not required on OSX)
-if(NOT APPLE)
-    target_link_libraries(sysrepo rt)
+# librt (shm_open, shm_unlink, not required on OSX or QNX)
+find_library(LIBRT rt)
+if(LIBRT)
+    target_link_libraries(sysrepo ${LIBRT})
 endif()
 
 # atomic
