@@ -114,5 +114,13 @@ module defaults {
             type my_ipaddr;
             default "some-ip";
         }
+
+        leaf-list ll2 {
+            type uint16;
+            ordered-by user;
+            default 4;
+            default 5;
+            default 6;
+        }
     }
 }

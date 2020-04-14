@@ -1420,12 +1420,6 @@ sr_edit_apply_create(struct lyd_node **first_node, struct lyd_node *parent_node,
         return err_info;
     }
 
-    if (sr_ly_is_userord(edit_node)) {
-        /* handle user-ordered lists separately */
-        *next_op = EDIT_MOVE;
-        return NULL;
-    }
-
     if (lys_parent(edit_node->schema) && (lys_parent(edit_node->schema)->nodetype == LYS_CASE)) {
         new_case = lys_parent(edit_node->schema);
 
@@ -1462,6 +1456,12 @@ sr_edit_apply_create(struct lyd_node **first_node, struct lyd_node *parent_node,
             return NULL;
         }
         /* otherwise there is no other leaf-list instance or there is an explicit one -> no default ones can exists */
+    }
+
+    if (sr_ly_is_userord(edit_node)) {
+        /* handle creating user-ordered lists separately */
+        *next_op = EDIT_MOVE;
+        return NULL;
     }
 
     /* create and insert the node at the correct place */
@@ -2864,8 +2864,9 @@ sr_ly_val_diff_merge(struct lyd_node **diff, LYD_DIFFTYPE type, struct lyd_node 
         struct ly_ctx *ly_ctx, int *change)
 {
     sr_error_info_t *err_info = NULL;
-    char *parent_path;
-    struct lyd_node *diff_parent, *tmp;
+    char *parent_path, *sibling_before_val;
+    struct lyd_node *diff_parent, *tmp, *next, *elem;
+    const struct lyd_node *sibling_before;
     struct ly_set *set;
 
     assert((type == LYD_DIFF_CREATED) || (type == LYD_DIFF_DELETED));
@@ -2907,6 +2908,25 @@ sr_ly_val_diff_merge(struct lyd_node **diff, LYD_DIFFTYPE type, struct lyd_node 
     /* merge this one subtree with siblings */
     if (type == LYD_DIFF_CREATED) {
         LY_TREE_FOR(second, tmp) {
+
+            /* add required attributes for created user-ordered leaf-lists */
+            LY_TREE_DFS_BEGIN(tmp, next, elem) {
+                if (sr_ly_is_userord(elem)) {
+                    sibling_before = sr_edit_find_previous_instance(elem);
+                    if (sibling_before) {
+                        sibling_before_val = sr_edit_create_userord_predicate(sibling_before);
+                    } else {
+                        sibling_before_val = NULL;
+                    }
+                    err_info = sr_diff_add_attrs(elem, sibling_before_val, NULL, EDIT_CREATE);
+                    free(sibling_before_val);
+                    if (err_info) {
+                        return err_info;
+                    }
+                }
+                LY_TREE_DFS_END(tmp, next, elem);
+            }
+
             if ((err_info = sr_diff_merge_r(tmp, EDIT_CREATE, NULL, diff_parent, diff, change))) {
                 return err_info;
             }
