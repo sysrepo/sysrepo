@@ -146,7 +146,7 @@ teardown_f(void **state)
     return 0;
 }
 
-/* TEST 1 */
+/* TEST */
 static int
 module_empty_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_ctx)
@@ -516,7 +516,7 @@ test_empty(void **state)
     pthread_join(tid[1], NULL);
 }
 
-/* TEST 2 */
+/* TEST */
 static int
 module_simple_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_ctx)
@@ -856,7 +856,116 @@ test_simple(void **state)
     pthread_join(tid[1], NULL);
 }
 
-/* TEST 3 */
+/* TEST */
+static int
+module_fail_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_ctx)
+{
+    struct state *st = (struct state *)private_ctx;
+
+    assert_string_equal(module_name, "ietf-interfaces");
+    assert_null(xpath);
+    (void)request_id;
+
+    switch (st->cb_called) {
+    case 0:
+        assert_int_equal(event, SR_EV_CHANGE);
+
+        sr_set_error(session, "/path/to/some/node", "Custom error.");
+        break;
+    default:
+        fail();
+    }
+
+    ++st->cb_called;
+    return SR_ERR_INTERNAL;
+}
+
+static void *
+copy_fail_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    int ret;
+    const sr_error_info_t *err_info;
+
+    ret = sr_session_start(st->conn, SR_DS_CANDIDATE, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for subscription before copying */
+    pthread_barrier_wait(&st->barrier);
+
+    /* perform some candidate changes */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/description", "some-eth1-desc", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:sonet", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* perform copy-config, it fails */
+    ret = sr_session_switch_ds(sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_CANDIDATE, 0, 0);
+    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    ret = sr_get_error(sess, &err_info);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(err_info->err[0].xpath, "/path/to/some/node");
+    assert_string_equal(err_info->err[0].message, "Custom error.");
+
+    /* signal that we have finished copying */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+subscribe_fail_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr;
+    int count, ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe */
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_fail_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that subscription was created */
+    pthread_barrier_wait(&st->barrier);
+
+    count = 0;
+    while ((st->cb_called < 1) && (count < 1500)) {
+        usleep(10000);
+        ++count;
+    }
+    assert_int_equal(st->cb_called, 1);
+
+    /* wait for the other thread to finish */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_unsubscribe(subscr);
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_fail(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, copy_fail_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_fail_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
+/* TEST */
 static int
 module_userord_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_ctx)
@@ -1126,7 +1235,7 @@ test_userord(void **state)
     pthread_join(tid[1], NULL);
 }
 
-/* TEST 4 */
+/* TEST */
 static int
 module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_ctx)
@@ -1500,7 +1609,7 @@ test_replace(void **state)
     pthread_join(tid[1], NULL);
 }
 
-/* TEST 5 */
+/* TEST */
 static int
 module_replace_dflt_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_ctx)
@@ -1716,7 +1825,7 @@ test_replace_dflt(void **state)
     pthread_join(tid[1], NULL);
 }
 
-/* TEST 6 */
+/* TEST */
 static int
 module_replace_case_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_ctx)
@@ -1906,7 +2015,7 @@ test_replace_case(void **state)
     pthread_join(tid[1], NULL);
 }
 
-/* TEST 7 */
+/* TEST */
 static int
 module_replace_when_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_ctx)
@@ -2097,6 +2206,7 @@ main(void)
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup_teardown(test_empty, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_simple, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_fail, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_userord, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_replace, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_replace_dflt, setup_f, teardown_f),
