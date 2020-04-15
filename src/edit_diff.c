@@ -2077,7 +2077,7 @@ sr_diff_find_oper(struct lyd_node *diff, int *op_own, pid_t *pid, void **conn_pt
                 *pid = (pid_t)pid_attr->value.uint32;
             }
             if (conn_ptr) {
-                *conn_ptr = (void *)conn_attr->value.uint64;
+                *conn_ptr = (void *)((uintptr_t)conn_attr->value.uint64);
             }
             if (attr_own && (parent == diff) && pid_attr) {
                 *attr_own = 1;
