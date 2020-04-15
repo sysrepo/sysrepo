@@ -21,6 +21,7 @@
 #include <signal.h>
 #include <inttypes.h>
 
+#include "compat.h"
 #include "sysrepo.h"
 
 volatile int exit_application = 0;
