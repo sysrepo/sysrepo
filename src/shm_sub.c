@@ -2639,10 +2639,10 @@ process_event:
             }
 
             if (!timed_out && (ret == SR_ERR_CALLBACK_SHELVE)) {
-                /* this subscription did not process the event yet, skip it */
+                /* processing was shelved, so interupt the whole RPC processing in order to get correct final output */
                 SR_LOG_INF("Shelved processing \"%s\" event with ID %u priority %u.",
                         sr_ev2str(multi_sub_shm->event), multi_sub_shm->request_id, multi_sub_shm->priority);
-                continue;
+                goto cleanup_rdunlock;
             } else if (timed_out || (ret != SR_ERR_OK)) {
                 /* whole event failed */
                 err_code = ret;
