@@ -682,33 +682,16 @@ sr_shmmod_change_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const ch
         uint32_t priority, int sub_opts, uint32_t evpipe_num)
 {
     sr_error_info_t *err_info = NULL;
-    off_t xpath_off, change_subs_off;
+    off_t xpath_off;
     sr_mod_change_sub_t *shm_sub;
-    uint32_t new_ext_size;
 
-    /* moving all existing subscriptions (if any) and adding a new one */
-    change_subs_off = shm_ext->size;
-    xpath_off = change_subs_off + (shm_mod->change_sub[ds].sub_count + 1) * sizeof *shm_sub;
-    new_ext_size = xpath_off + (xpath ? sr_strshmlen(xpath) : 0);
-
-    /* remap ext SHM */
-    if ((err_info = sr_shm_remap(shm_ext, new_ext_size))) {
+    /* allocate new subscription and its xpath, if any */
+    if ((err_info = sr_shmrealloc_add(shm_ext, &shm_mod->change_sub[ds].subs, &shm_mod->change_sub[ds].sub_count,
+            sizeof *shm_sub, -1, (void **)&shm_sub, xpath ? sr_strshmlen(xpath) : 0, &xpath_off))) {
         return err_info;
     }
 
-    /* add wasted memory */
-    *((size_t *)shm_ext->addr) += shm_mod->change_sub[ds].sub_count * sizeof *shm_sub;
-
-    /* move subscriptions */
-    memcpy(shm_ext->addr + change_subs_off, shm_ext->addr + shm_mod->change_sub[ds].subs,
-            shm_mod->change_sub[ds].sub_count * sizeof *shm_sub);
-    shm_mod->change_sub[ds].subs = change_subs_off;
-
     /* fill new subscription */
-    shm_sub = (sr_mod_change_sub_t *)(shm_ext->addr + shm_mod->change_sub[ds].subs);
-    shm_sub += shm_mod->change_sub[ds].sub_count;
-    ++shm_mod->change_sub[ds].sub_count;
-
     if (xpath) {
         strcpy(shm_ext->addr + xpath_off, xpath);
         shm_sub->xpath = xpath_off;
@@ -752,19 +735,12 @@ sr_shmmod_change_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const c
         return 1;
     }
 
-    /* add wasted memory */
-    *((size_t *)ext_shm_addr) += sizeof *shm_sub + (shm_sub[i].xpath ? sr_strshmlen(ext_shm_addr + shm_sub[i].xpath) : 0);
+    /* remove the subscription and its xpath, if any */
+    sr_shmrealloc_del(ext_shm_addr, &shm_mod->change_sub[ds].subs, &shm_mod->change_sub[ds].sub_count, sizeof *shm_sub,
+            i, shm_sub[i].xpath ? sr_strshmlen(ext_shm_addr + shm_sub[i].xpath) : 0);
 
-    --shm_mod->change_sub[ds].sub_count;
-    if (!shm_mod->change_sub[ds].sub_count) {
-        /* the only subscription removed */
-        shm_mod->change_sub[ds].subs = 0;
-        if (last_removed) {
-            *last_removed = 1;
-        }
-    } else if (i < shm_mod->change_sub[ds].sub_count) {
-        /* replace the deleted subscription with the last one */
-        memcpy(&shm_sub[i], &shm_sub[shm_mod->change_sub[ds].sub_count], sizeof *shm_sub);
+    if (!shm_mod->change_sub[ds].subs && last_removed) {
+        *last_removed = 1;
     }
 
     return 0;
@@ -819,9 +795,9 @@ sr_shmmod_oper_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char
         uint32_t evpipe_num)
 {
     sr_error_info_t *err_info = NULL;
-    off_t xpath_off, oper_subs_off;
+    off_t xpath_off;
     sr_mod_oper_sub_t *shm_sub;
-    size_t new_ext_size, new_len, cur_len;
+    size_t new_len, cur_len;
     uint16_t i;
 
     assert(xpath && sub_type);
@@ -843,33 +819,13 @@ sr_shmmod_oper_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char
         }
     }
 
-    /* get new offsets and SHM size */
-    oper_subs_off = shm_ext->size;
-    xpath_off = oper_subs_off + (shm_mod->oper_sub_count + 1) * sizeof *shm_sub;
-    new_ext_size = xpath_off + (xpath ? sr_strshmlen(xpath) : 0);
-
-    /* remap ext SHM */
-    if ((err_info = sr_shm_remap(shm_ext, new_ext_size))) {
+    /* allocate new subscription and its xpath, if any */
+    if ((err_info = sr_shmrealloc_add(shm_ext, &shm_mod->oper_subs, &shm_mod->oper_sub_count, sizeof *shm_sub,
+            i, (void **)&shm_sub, xpath ? sr_strshmlen(xpath) : 0, &xpath_off))) {
         return err_info;
     }
 
-    /* add wasted memory */
-    *((size_t *)shm_ext->addr) += shm_mod->oper_sub_count * sizeof *shm_sub;
-
-    /* move preceding and succeeding subscriptions leaving place for the new one */
-    if (i) {
-        memcpy(shm_ext->addr + oper_subs_off, shm_ext->addr + shm_mod->oper_subs,
-                i * sizeof *shm_sub);
-    }
-    if (i < shm_mod->oper_sub_count) {
-        memcpy(shm_ext->addr + oper_subs_off + (i + 1) * sizeof *shm_sub,
-                shm_ext->addr + shm_mod->oper_subs + i * sizeof *shm_sub, (shm_mod->oper_sub_count - i) * sizeof *shm_sub);
-    }
-    shm_mod->oper_subs = oper_subs_off;
-
     /* fill new subscription */
-    shm_sub = (sr_mod_oper_sub_t *)(shm_ext->addr + shm_mod->oper_subs);
-    shm_sub += i;
     if (xpath) {
         strcpy(shm_ext->addr + xpath_off, xpath);
         shm_sub->xpath = xpath_off;
@@ -878,8 +834,6 @@ sr_shmmod_oper_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char
     }
     shm_sub->sub_type = sub_type;
     shm_sub->evpipe_num = evpipe_num;
-
-    ++shm_mod->oper_sub_count;
 
     return NULL;
 }
@@ -911,19 +865,9 @@ sr_shmmod_oper_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const cha
         *xpath_p = ext_shm_addr + shm_sub[i].xpath;
     }
 
-    /* add wasted memory */
-    *((size_t *)ext_shm_addr) += sizeof *shm_sub + sr_strshmlen(ext_shm_addr + shm_sub[i].xpath);
-
-    --shm_mod->oper_sub_count;
-    if (!shm_mod->oper_sub_count) {
-        /* the only subscription removed */
-        shm_mod->oper_subs = 0;
-    } else {
-        /* move all following subscriptions */
-        if (i < shm_mod->oper_sub_count) {
-            memmove(&shm_sub[i], &shm_sub[i + 1], (shm_mod->oper_sub_count - i) * sizeof *shm_sub);
-        }
-    }
+    /* delete the subscription */
+    sr_shmrealloc_del(ext_shm_addr, &shm_mod->oper_subs, &shm_mod->oper_sub_count, sizeof *shm_sub, i,
+            shm_sub[i].xpath ? sr_strshmlen(ext_shm_addr + shm_sub[i].xpath) : 0);
 
     return 0;
 }
@@ -964,36 +908,16 @@ sr_error_info_t *
 sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, uint32_t evpipe_num)
 {
     sr_error_info_t *err_info = NULL;
-    off_t notif_subs_off;
     sr_mod_notif_sub_t *shm_sub;
-    size_t new_ext_size;
 
-    /* we may not even need to resize ext SHM because of the alignment */
-    if (SR_SHM_SIZE((shm_mod->notif_sub_count + 1) * sizeof *shm_sub) > SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof shm_sub)) {
-        /* moving all existing subscriptions (if any) and adding a new one */
-        notif_subs_off = shm_ext->size;
-        new_ext_size = notif_subs_off + SR_SHM_SIZE((shm_mod->notif_sub_count + 1) * sizeof *shm_sub);
-
-        /* remap ext SHM */
-        if ((err_info = sr_shm_remap(shm_ext, new_ext_size))) {
-            return err_info;
-        }
-
-        /* add wasted memory */
-        *((size_t *)shm_ext->addr) += SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof *shm_sub);
-
-        /* move subscriptions */
-        memcpy(shm_ext->addr + notif_subs_off, shm_ext->addr + shm_mod->notif_subs,
-                shm_mod->notif_sub_count * sizeof *shm_sub);
-        shm_mod->notif_subs = notif_subs_off;
+    /* add new item */
+    if ((err_info = sr_shmrealloc_add(shm_ext, &shm_mod->notif_subs, &shm_mod->notif_sub_count, sizeof *shm_sub, -1,
+            (void **)&shm_sub, 0, NULL))) {
+        return err_info;
     }
 
     /* fill new subscription */
-    shm_sub = (sr_mod_notif_sub_t *)(shm_ext->addr + shm_mod->notif_subs);
-    shm_sub += shm_mod->notif_sub_count;
     shm_sub->evpipe_num = evpipe_num;
-
-    ++shm_mod->notif_sub_count;
 
     return NULL;
 }
@@ -1020,20 +944,11 @@ sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t
         return 1;
     }
 
-    /* add wasted memory keeping alignment in mind */
-    *((size_t *)ext_shm_addr) += SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof *shm_sub)
-            - SR_SHM_SIZE((shm_mod->notif_sub_count - 1) * sizeof *shm_sub);
+    /* remove the subscription */
+    sr_shmrealloc_del(ext_shm_addr, &shm_mod->notif_subs, &shm_mod->notif_sub_count, sizeof *shm_sub, i, 0);
 
-    --shm_mod->notif_sub_count;
-    if (!shm_mod->notif_sub_count) {
-        /* the only subscription removed */
-        shm_mod->notif_subs = 0;
-        if (last_removed) {
-            *last_removed = 1;
-        }
-    } else if (i < shm_mod->notif_sub_count) {
-        /* replace the deleted subscription with the last one */
-        memcpy(&shm_sub[i], &shm_sub[shm_mod->notif_sub_count], sizeof *shm_sub);
+    if (!shm_mod->notif_subs && last_removed) {
+        *last_removed = 1;
     }
 
     return 0;

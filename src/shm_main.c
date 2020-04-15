@@ -1126,9 +1126,9 @@ sr_shmmain_ext_get_size_main_shm(sr_shm_t *shm_main, char *ext_shm_addr)
             assert(rpc_subs[j].xpath);
             shm_size += sr_strshmlen(ext_shm_addr + rpc_subs[j].xpath);
         }
-        shm_size += shm_rpc[i].sub_count * sizeof *rpc_subs;
+        shm_size += SR_SHM_SIZE(shm_rpc[i].sub_count * sizeof *rpc_subs);
     }
-    shm_size += main_shm->rpc_sub_count * sizeof *shm_rpc;
+    shm_size += SR_SHM_SIZE(main_shm->rpc_sub_count * sizeof *shm_rpc);
 
     /* existing module subscriptions */
     SR_SHM_MOD_FOR(shm_main->addr, shm_main->size, shm_mod) {
@@ -1140,7 +1140,7 @@ sr_shmmain_ext_get_size_main_shm(sr_shm_t *shm_main, char *ext_shm_addr)
                     shm_size += sr_strshmlen(ext_shm_addr + change_subs[j].xpath);
                 }
             }
-            shm_size += shm_mod->change_sub[i].sub_count * sizeof *change_subs;
+            shm_size += SR_SHM_SIZE(shm_mod->change_sub[i].sub_count * sizeof *change_subs);
         }
 
         /* oper subscriptions */
@@ -1149,10 +1149,10 @@ sr_shmmain_ext_get_size_main_shm(sr_shm_t *shm_main, char *ext_shm_addr)
             assert(oper_subs[i].xpath);
             shm_size += sr_strshmlen(ext_shm_addr + oper_subs[i].xpath);
         }
-        shm_size += shm_mod->oper_subs * sizeof *oper_subs;
+        shm_size += SR_SHM_SIZE(shm_mod->oper_subs * sizeof *oper_subs);
 
         /* notif subscriptions */
-        shm_size += shm_mod->notif_subs * sizeof(sr_mod_notif_sub_t);
+        shm_size += SR_SHM_SIZE(shm_mod->notif_subs * sizeof(sr_mod_notif_sub_t));
     }
 
     return shm_size;

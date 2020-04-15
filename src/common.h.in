@@ -890,6 +890,35 @@ off_t sr_shmstrcpy(char *shm_addr, const char *str, char **shm_end);
 size_t sr_strshmlen(const char *str);
 
 /**
+ * @brief Realloc for an array in SHM adding one new item.
+ *
+ * @param[in] shm_ext Ext SHM, may be remapped.
+ * @param[in,out] shm_array Array in SHM, may be updated.
+ * @param[in,out] shm_count Array count in SHM, will be updated.
+ * @param[in] item_size Array item size.
+ * @param[in] add_idx Index of the new item, -1 for adding at the end.
+ * @param[out] new_item Pointer to the new item.
+ * @param[in] dyn_attr_size Optional dynamic attribute size to allocate as well.
+ * @param[out] dyn_attr_off Optional allocated dynamic attribute offset.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array, uint16_t *shm_count, size_t item_size,
+        int32_t add_idx, void **new_item, size_t dyn_attr_size, off_t *dyn_attr_off);
+
+/**
+ * @brief Realloc for an array in SHM deleting one item.
+ *
+ * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in,out] shm_array Array in SHM, set to 0 if last item was removed.
+ * @param[in,out] shm_count Array count in SHM, will be updated.
+ * @param[in] item_size Array item size.
+ * @param[in] del_idx Item index to delete.
+ * @param[in] dyn_attr_size Aligned size of dynamic attributes of the deleted item.
+ */
+void sr_shmrealloc_del(char *ext_shm_addr, off_t *shm_array, uint16_t *shm_count, size_t item_size, uint16_t del_idx,
+        size_t dyn_shm_size);
+
+/**
  * @brief Wrapper for pthread_mutex_init().
  *
  * @param[in,out] lock pthread mutex to initialize.
