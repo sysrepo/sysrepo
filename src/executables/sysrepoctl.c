@@ -101,6 +101,7 @@ help_print(void)
         "  -p, --permissions <permissions>\n"
         "                       Set filesystem permissions of a module (chmod format) (change op, if \"apply\" even install op).\n"
         "  -a, --apply          Apply schema changes immediately, not only schedule them.\n"
+        "  -f, --force          Force update/remove/install module(s). ATTENTION: for development use only.\n"
         "  -v, --verbosity <level>\n"
         "                       Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
         "\n"
@@ -407,7 +408,7 @@ main(int argc, char** argv)
     char **features = NULL, **dis_features = NULL, *ptr;
     mode_t perms = -1;
     sr_log_level_t log_level = SR_LL_ERR;
-    int r, i, rc = EXIT_FAILURE, opt, operation = 0, feat_count = 0, dis_feat_count = 0, replay = -1, apply = 0;
+    int r, i, rc = EXIT_FAILURE, opt, operation = 0, feat_count = 0, dis_feat_count = 0, replay = -1, apply = 0, force = 0;
     uint32_t conn_count;
     struct option options[] = {
         {"help",            no_argument,       NULL, 'h'},
@@ -426,6 +427,7 @@ main(int argc, char** argv)
         {"group",           required_argument, NULL, 'g'},
         {"permissions",     required_argument, NULL, 'p'},
         {"apply",           no_argument,       NULL, 'a'},
+        {"force",           no_argument,       NULL, 'f'},
         {"verbosity",       required_argument, NULL, 'v'},
         {NULL,              0,                 NULL, 0},
     };
@@ -437,7 +439,7 @@ main(int argc, char** argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVli:u:c:U:Cs:e:d:r:o:g:p:av:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVli:u:c:U:Cs:e:d:r:o:g:p:afv:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -571,6 +573,9 @@ main(int argc, char** argv)
         case 'a':
             apply = 1;
             break;
+        case 'f':
+            force = 1;
+            break;
         case 'v':
             if (!strcmp(optarg, "none")) {
                 log_level = SR_LL_NONE;
@@ -626,7 +631,12 @@ main(int argc, char** argv)
         break;
     case 'i':
         /* install */
-        if ((r = sr_install_module(conn, file_path, search_dirs, (const char **)features, feat_count)) != SR_ERR_OK) {
+        if (force) {
+            r = sr_install_module_force(conn, file_path, search_dirs, (const char **)features, feat_count);
+        } else {
+            r = sr_install_module(conn, file_path, search_dirs, (const char **)features, feat_count);
+        }
+        if (r != SR_ERR_OK) {
             /* succeed if the module is already installed */
             if (r != SR_ERR_EXISTS) {
                 error_print(r, "Failed to install module \"%s\"", file_path);
@@ -638,7 +648,12 @@ main(int argc, char** argv)
         /* uninstall */
         ptr = (char *)module_name;
         for (module_name = strtok(ptr, ","); module_name; module_name = strtok(NULL, ",")) {
-            if ((r = sr_remove_module(conn, module_name)) != SR_ERR_OK) {
+            if (force) {
+                r = sr_remove_module_force(conn, module_name);
+            } else {
+                r = sr_remove_module(conn, module_name);
+            }
+            if (r != SR_ERR_OK) {
                 error_print(r, "Failed to uninstall module \"%s\"", module_name);
                 goto cleanup;
             }
@@ -681,7 +696,12 @@ main(int argc, char** argv)
         break;
     case 'U':
         /* update */
-        if ((r = sr_update_module(conn, file_path, search_dirs)) != SR_ERR_OK) {
+        if (force) {
+            r = sr_update_module_force(conn, file_path, search_dirs);
+        } else {
+            r = sr_update_module(conn, file_path, search_dirs);
+        }
+        if (r != SR_ERR_OK) {
             error_print(r, "Failed to update module \"%s\"", file_path);
             goto cleanup;
         }

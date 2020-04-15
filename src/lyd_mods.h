@@ -97,7 +97,7 @@ sr_error_info_t *sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx 
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lydmods_deferred_add_module(struct ly_ctx *ly_ctx, const struct lys_module *ly_mod, const char **features,
-        int feat_count);
+        int feat_count, int force);
 
 /**
  * @brief Unschedule module installation from sysrepo module data.
@@ -138,7 +138,7 @@ sr_error_info_t *sr_lydmods_deferred_add_module_data(struct lyd_node *sr_mods, c
  * @param[in] mod_name Module name to delete.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lydmods_deferred_del_module(struct ly_ctx *ly_ctx, const char *mod_name);
+sr_error_info_t *sr_lydmods_deferred_del_module(struct ly_ctx *ly_ctx, const char *mod_name, int force);
 
 /**
  * @brief Unschedule module deletion from sysrepo module data.
@@ -156,7 +156,7 @@ sr_error_info_t *sr_lydmods_unsched_del_module_with_imps(struct ly_ctx *ly_ctx, 
  * @param[in] ly_upd_mod Update module.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lydmods_deferred_upd_module(struct ly_ctx *ly_ctx, const struct lys_module *ly_upd_mod);
+sr_error_info_t *sr_lydmods_deferred_upd_module(struct ly_ctx *ly_ctx, const struct lys_module *ly_upd_mod, int force);
 
 /**
  * @brief Unschedule module update from sysrepo module data.

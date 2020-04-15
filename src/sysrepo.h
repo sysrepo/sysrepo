@@ -466,6 +466,24 @@ int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *
         int feat_count);
 
 /**
+ * @brief Install a schema (module) into sysrepo.
+ * Update it if a different revision is already installed.
+ * Reinstall it if the revision is the same.
+ * Deferred until there are no connections!
+ *
+ * @warning For development use only.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] schema_path Path to the new schema. Can have either YANG or YIN extension/format.
+ * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
+ * @param[in] features Array of enabled features.
+ * @param[in] feat_count Number of enabled features.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_install_module_force(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs,
+        const char **features, int feat_count);
+
+/**
  * @brief Set newly installed module startup and running data. It is necessary in case empty data are not valid
  * for the particular schema (module).
  *
@@ -491,6 +509,21 @@ int sr_install_module_data(sr_conn_ctx_t *conn, const char *module_name, const c
 int sr_remove_module(sr_conn_ctx_t *conn, const char *module_name);
 
 /**
+ * @brief Remove an installed module from sysrepo.
+ * Ignore if the module is not installed.
+ * Deferred until there are no connections!
+ *
+ * Required WRITE access.
+ *
+ * @warning For development use only.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_name Name of the module to remove.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_remove_module_force(sr_conn_ctx_t *conn, const char *module_name);
+
+/**
  * @brief Update an installed schema (module) to a new revision. Deferred until there are no connections!
  *
  * Required WRITE access.
@@ -501,6 +534,23 @@ int sr_remove_module(sr_conn_ctx_t *conn, const char *module_name);
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs);
+
+/**
+ * @brief Update an installed schema (module) to a new revision.
+ * If the module is not installed, install it.
+ * If it is already installed with the same revision, update it anyway.
+ * Deferred until there are no connections!
+ *
+ * Required WRITE access.
+ *
+ * @warning For development use only.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] schema_path Path to the updated schema. Can have either YANG or YIN extension/format.
+ * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_update_module_force(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs);
 
 /**
  * @brief Cancel scheduled update of a module.

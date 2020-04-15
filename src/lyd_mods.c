@@ -2139,7 +2139,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_lydmods_deferred_add_module(struct ly_ctx *ly_ctx, const struct lys_module *ly_mod, const char **features, int feat_count)
+sr_lydmods_deferred_add_module(struct ly_ctx *ly_ctx, const struct lys_module *ly_mod, const char **features, int feat_count, int force)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mods = NULL, *inst_mod;
@@ -2160,7 +2160,10 @@ sr_lydmods_deferred_add_module(struct ly_ctx *ly_ctx, const struct lys_module *l
     set = lyd_find_path(sr_mods, path);
     SR_CHECK_INT_GOTO(!set, err_info, cleanup);
     if (set->number == 1) {
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" already scheduled for installation.", ly_mod->name);
+        if (!force) {
+            sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL,
+                "Module \"%s\" already scheduled for installation.", ly_mod->name);
+        }
         goto cleanup;
     }
 
@@ -2346,7 +2349,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_lydmods_deferred_del_module(struct ly_ctx *ly_ctx, const char *mod_name)
+sr_lydmods_deferred_del_module(struct ly_ctx *ly_ctx, const char *mod_name, int force)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mods = NULL;
@@ -2366,7 +2369,10 @@ sr_lydmods_deferred_del_module(struct ly_ctx *ly_ctx, const char *mod_name)
     set = lyd_find_path(sr_mods, path);
     SR_CHECK_INT_GOTO(!set, err_info, cleanup);
     if (set->number == 1) {
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" already scheduled for deletion.", mod_name);
+        if (!force) {
+            sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL,
+                "Module \"%s\" already scheduled for deletion.", mod_name);
+        }
         goto cleanup;
     }
 
@@ -2466,7 +2472,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_lydmods_deferred_upd_module(struct ly_ctx *ly_ctx, const struct lys_module *ly_upd_mod)
+sr_lydmods_deferred_upd_module(struct ly_ctx *ly_ctx, const struct lys_module *ly_upd_mod, int force)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mods = NULL;
@@ -2486,7 +2492,10 @@ sr_lydmods_deferred_upd_module(struct ly_ctx *ly_ctx, const struct lys_module *l
     set = lyd_find_path(sr_mods, path);
     SR_CHECK_INT_GOTO(!set, err_info, cleanup);
     if (set->number == 1) {
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" already scheduled for an update.", ly_upd_mod->name);
+        if (!force) {
+            sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL,
+                "Module \"%s\" already scheduled for an update.", ly_upd_mod->name);
+        }
         goto cleanup;
     }
 
