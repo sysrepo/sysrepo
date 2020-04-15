@@ -37,7 +37,7 @@ endif()
 # micro version is changed with a set of small changes or bugfixes anywhere in the project.
 set(SYSREPO_MAJOR_VERSION 1)
 set(SYSREPO_MINOR_VERSION 4)
-set(SYSREPO_MICRO_VERSION 37)
+set(SYSREPO_MICRO_VERSION 38)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # Version of the library
@@ -45,7 +45,7 @@ set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_
 # with backward compatible change and micro version is connected with any internal change of the library.
 set(SYSREPO_MAJOR_SOVERSION 5)
 set(SYSREPO_MINOR_SOVERSION 3)
-set(SYSREPO_MICRO_SOVERSION 4)
+set(SYSREPO_MICRO_SOVERSION 5)
 set(SYSREPO_SOVERSION_FULL ${SYSREPO_MAJOR_SOVERSION}.${SYSREPO_MINOR_SOVERSION}.${SYSREPO_MICRO_SOVERSION})
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_SOVERSION})
 
@@ -203,9 +203,10 @@ include_directories("${PROJECT_SOURCE_DIR}/src")
 include_directories(${PROJECT_BINARY_DIR})
 
 # dependencies
-# librt (shm_open, shm_unlink, not required on OSX)
-if(NOT APPLE)
-    target_link_libraries(sysrepo rt)
+# librt (shm_open, shm_unlink, not required on OSX or QNX)
+find_library(LIBRT rt)
+if(LIBRT)
+    target_link_libraries(sysrepo ${LIBRT})
 endif()
 
 # atomic

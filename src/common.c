@@ -1312,7 +1312,11 @@ sr_module_is_internal(const struct lys_module *ly_mod)
         return 1;
     }
 
-    if (!strcmp(ly_mod->name, "ietf-netconf")) {
+    if (!strcmp(ly_mod->name, "ietf-datastores") && !strcmp(ly_mod->rev[0].date, "2018-02-14")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-yang-library")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-netconf")) {
         return 1;
     } else if (!strcmp(ly_mod->name, "ietf-netconf-with-defaults") && !strcmp(ly_mod->rev[0].date, "2011-06-01")) {
         return 1;

@@ -136,7 +136,7 @@ clear_ops(void **state)
     return 0;
 }
 
-/* TEST 1 */
+/* TEST */
 static int
 rpc_fail_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
         uint32_t request_id, struct lyd_node *output, void *private_data)
@@ -207,7 +207,7 @@ test_fail(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 2 */
+/* TEST */
 static int
 rpc_rpc_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_event_t event,
         uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data)
@@ -396,7 +396,7 @@ test_rpc(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 3 */
+/* TEST */
 static int
 rpc_action_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
         uint32_t request_id, struct lyd_node *output, void *private_data)
@@ -521,7 +521,7 @@ test_action(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 4 */
+/* TEST */
 static int
 rpc_action_pred_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
         uint32_t request_id, struct lyd_node *output, void *private_data)
@@ -771,7 +771,7 @@ test_multi(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 6 */
+/* TEST */
 static int
 rpc_multi_fail0_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
         uint32_t request_id, struct lyd_node *output, void *private_data)
@@ -1022,7 +1022,7 @@ test_multi_fail(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 7 */
+/* TEST */
 static int
 rpc_unlocked_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
         uint32_t request_id, struct lyd_node *output, void *private_data)
@@ -1092,7 +1092,7 @@ test_unlocked(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 8 */
+/* TEST */
 static int
 action_deps_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
         uint32_t request_id, struct lyd_node *output, void *private_data)
@@ -1187,7 +1187,7 @@ test_action_deps(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 9 */
+/* TEST */
 static int
 action_change_config_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
         uint32_t request_id, struct lyd_node *output, void *private_data)
@@ -1274,6 +1274,126 @@ test_action_change_config(void **state)
     sr_unsubscribe(subscr2);
 }
 
+/* TEST */
+static int
+rpc_shelve_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+        uint32_t request_id, struct lyd_node *output, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    struct lyd_node *node;
+
+    (void)session;
+    (void)xpath;
+    (void)input;
+    (void)event;
+    (void)request_id;
+
+    /* callback called */
+    ++st->cb_called;
+    if (st->cb_called == 1) {
+        return SR_ERR_CALLBACK_SHELVE;
+    }
+
+    /* create output data */
+    node = lyd_new_path(output, NULL, "l5", "256", 0, LYD_PATH_OPT_OUTPUT);
+    assert_non_null(node);
+
+    return SR_ERR_OK;
+}
+
+static void *
+send_rpc_shelve_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    struct lyd_node *input_op, *output_op;
+    int ret;
+
+    st->cb_called = 0;
+
+    /* create the RPC */
+    input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:rpc3/l4", "vall", 0, 0);
+    assert_non_null(input_op);
+
+    /* wait for subscription before sending the RPC */
+    pthread_barrier_wait(&st->barrier);
+
+    /* send the RPC */
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
+    while (input_op->parent) {
+        input_op = input_op->parent;
+    }
+    lyd_free_withsiblings(input_op);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check output */
+    /* TODO */
+
+    while (output_op->parent) {
+        output_op = output_op->parent;
+    }
+    lyd_free_withsiblings(output_op);
+
+    /* signal that we are done */
+    pthread_barrier_wait(&st->barrier);
+    return NULL;
+}
+
+static void *
+subscribe_rpc_shelve_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr;
+    int count, ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe */
+    ret = sr_rpc_subscribe_tree(sess, "/ops:rpc3", rpc_shelve_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that subscription was created */
+    pthread_barrier_wait(&st->barrier);
+
+    count = 0;
+    while ((st->cb_called < 1) && (count < 1500)) {
+        usleep(10000);
+        ++count;
+    }
+    assert_int_equal(st->cb_called, 1);
+
+    /* callback was shelved, process it again */
+    ret = sr_process_events(subscr, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    count = 0;
+    while ((st->cb_called < 2) && (count < 1500)) {
+        usleep(10000);
+        ++count;
+    }
+    assert_int_equal(st->cb_called, 2);
+
+    /* wait for the other thread to finish */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_unsubscribe(subscr);
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_rpc_shelve(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, subscribe_rpc_shelve_thread, *state);
+    pthread_create(&tid[1], NULL, send_rpc_shelve_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
 /* MAIN */
 int
 main(void)
@@ -1288,6 +1408,7 @@ main(void)
         cmocka_unit_test(test_unlocked),
         cmocka_unit_test(test_action_deps),
         cmocka_unit_test_teardown(test_action_change_config, clear_ops),
+        cmocka_unit_test(test_rpc_shelve),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

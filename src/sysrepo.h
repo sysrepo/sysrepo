@@ -65,7 +65,7 @@ typedef enum sr_error_e {
     SR_ERR_TIME_OUT,           /**< Time out has expired. */
     SR_ERR_CALLBACK_FAILED,    /**< User callback failure caused the operation to fail. */
     SR_ERR_CALLBACK_SHELVE,    /**< User callback has not processed the event and will do so
-                                    on the next event processing. */
+                                    on some future event processing. */
 } sr_error_t;
 
 /**
@@ -1262,7 +1262,8 @@ typedef enum sr_event_e {
                         get this event! */
     SR_EV_ENABLED, /**< Occurs for subscriptions with the flag ::SR_SUBSCR_ENABLED and is normally followed by
                         ::SR_EV_DONE. It can fail and will also be triggered even when there is no startup configuration
-                        (which is different from the ::SR_EV_CHANGE event). */
+                        (which is different from the ::SR_EV_CHANGE event). Also note that the callback on this event
+                        __cannot__ return ::SR_ERR_CABBACK_SHELVE. */
     SR_EV_RPC,     /**< Occurs for a standard RPC execution. If a later callback fails, ::SR_EV_ABORT is generated. */
 } sr_event_t;
 
