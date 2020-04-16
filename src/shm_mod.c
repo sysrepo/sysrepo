@@ -792,7 +792,7 @@ sr_shmmod_change_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const
 
 sr_error_info_t *
 sr_shmmod_oper_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char *xpath, sr_mod_oper_sub_type_t sub_type,
-        uint32_t evpipe_num)
+        int sub_opts, uint32_t evpipe_num)
 {
     sr_error_info_t *err_info = NULL;
     off_t xpath_off;
@@ -833,6 +833,7 @@ sr_shmmod_oper_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char
         shm_sub->xpath = 0;
     }
     shm_sub->sub_type = sub_type;
+    shm_sub->opts = sub_opts;
     shm_sub->evpipe_num = evpipe_num;
 
     return NULL;

@@ -2551,6 +2551,107 @@ test_nested_default(void **state)
     sr_unsubscribe(subscr);
 }
 
+/* TEST */
+static int
+merge_flag_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+        uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    struct lyd_node *node;
+
+    (void)session;
+    (void)request_id;
+    (void)private_data;
+
+    assert_string_equal(module_name, "ietf-interfaces");
+    assert_string_equal(xpath, "/ietf-interfaces:interfaces/interface");
+    assert_string_equal(request_xpath, "/ietf-interfaces:*");
+
+    /* create new interface */
+    node = lyd_new_path(*parent, NULL, "interface[name='eth3']/type", "iana-if-type:softwareLoopback", 0, 0);
+    assert_non_null(node);
+
+    /* add node into an interface */
+    node = lyd_new_path(*parent, NULL, "interface[name='eth1']/description", "operational-desc", 0, 0);
+    assert_non_null(node);
+
+    /* change nodes in an interface */
+    node = lyd_new_path(*parent, NULL, "interface[name='eth2']/enabled", "true", 0, 0);
+    assert_non_null(node);
+    node = lyd_new_path(*parent, NULL, "interface[name='eth2']/type", "iana-if-type:frameRelay", 0, 0);
+    assert_non_null(node);
+
+    return SR_ERR_OK;
+}
+
+static void
+test_merge_flag(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    sr_subscription_ctx_t *subscr;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* set some configuration data */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth2']/enabled",
+            "false", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to all configuration data just to enable them */
+    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", dummy_change_cb, NULL,
+            0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe as state data provider and listen */
+    ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface",
+            merge_flag_oper_cb, NULL, SR_SUBSCR_CTX_REUSE | SR_SUBSCR_OPER_MERGE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read all data from operational */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth1</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<description>operational-desc</description>"
+        "</interface>"
+        "<interface>"
+            "<name>eth2</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:frameRelay</type>"
+            "<enabled>true</enabled>"
+        "</interface>"
+        "<interface>"
+            "<name>eth3</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:softwareLoopback</type>"
+        "</interface>"
+    "</interfaces>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    sr_unsubscribe(subscr);
+}
+
 int
 main(void)
 {
@@ -2579,6 +2680,7 @@ main(void)
         cmocka_unit_test_teardown(test_stored_diff_merge_userord, clear_up),
         cmocka_unit_test(test_default_when),
         cmocka_unit_test(test_nested_default),
+        cmocka_unit_test_teardown(test_merge_flag, clear_up),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

@@ -4730,6 +4730,7 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     sr_conn_ctx_t *conn;
     const struct lys_module *ly_mod;
     sr_mod_oper_sub_type_t sub_type;
+    sr_subscr_options_t sub_opts;
     sr_mod_t *shm_mod;
 
     SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !module_name || !path || !callback || !subscription,
@@ -4741,6 +4742,8 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     }
 
     conn = session->conn;
+    /* only these options are relevant outside this function and will be stored */
+    sub_opts = opts & SR_SUBSCR_OPER_MERGE;
 
     ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
     if (!ly_mod) {
@@ -4775,7 +4778,8 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     SR_CHECK_INT_GOTO(!shm_mod, err_info, error_unlock_unsub);
 
     /* add oper subscription into main SHM */
-    if ((err_info = sr_shmmod_oper_subscription_add(&conn->ext_shm, shm_mod, path, sub_type, (*subscription)->evpipe_num))) {
+    if ((err_info = sr_shmmod_oper_subscription_add(&conn->ext_shm, shm_mod, path, sub_type, sub_opts,
+            (*subscription)->evpipe_num))) {
         goto error_unlock_unsub;
     }
 

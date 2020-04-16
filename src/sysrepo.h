@@ -1171,6 +1171,13 @@ typedef enum sr_subscr_flag_e {
      */
     SR_SUBSCR_UNLOCKED = 64,
 
+    /**
+     * @brief Instead of removing any previous existing matching data before getting them from an operational
+     * subscription callback, keep them. Then the returned data are merged into the existing data. Accepted
+     * only for operational subscriptions.
+     */
+    SR_SUBSCR_OPER_MERGE = 128,
+
 } sr_subscr_flag_t;
 
 /**

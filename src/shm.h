@@ -109,6 +109,7 @@ typedef enum sr_mod_oper_sub_type_e {
 typedef struct sr_mod_oper_sub_s {
     off_t xpath;                /**< XPath of the subscription. */
     sr_mod_oper_sub_type_t sub_type;  /**< Type of the subscription. */
+    int opts;                   /**< Subscription options. */
     uint32_t evpipe_num;        /** Event pipe number. */
 } sr_mod_oper_sub_t;
 
@@ -766,11 +767,12 @@ sr_error_info_t *sr_shmmod_change_subscription_stop(sr_conn_ctx_t *conn, sr_mod_
  * @param[in] shm_mod SHM module.
  * @param[in] xpath Subscription XPath.
  * @param[in] sub_type Data-provide subscription type.
+ * @param[in] sub_opts Subscription options.
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmod_oper_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char *xpath,
-        sr_mod_oper_sub_type_t sub_type, uint32_t evpipe_num);
+        sr_mod_oper_sub_type_t sub_type, int sub_opts, uint32_t evpipe_num);
 
 /**
  * @brief Remove main SHM module operational subscription.

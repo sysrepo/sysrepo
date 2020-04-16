@@ -702,7 +702,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const c
         }
 
         /* remove any present data */
-        if ((err_info = sr_lyd_xpath_complement(data, sub_xpath))) {
+        if (!(shm_msub->opts & SR_SUBSCR_OPER_MERGE) && (err_info = sr_lyd_xpath_complement(data, sub_xpath))) {
             return err_info;
         }
 
