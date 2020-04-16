@@ -686,7 +686,7 @@ sr_shmmod_change_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const ch
     sr_mod_change_sub_t *shm_sub;
 
     /* allocate new subscription and its xpath, if any */
-    if ((err_info = sr_shmrealloc_add(shm_ext, &shm_mod->change_sub[ds].subs, &shm_mod->change_sub[ds].sub_count,
+    if ((err_info = sr_shmrealloc_add(shm_ext, &shm_mod->change_sub[ds].subs, &shm_mod->change_sub[ds].sub_count, 0,
             sizeof *shm_sub, -1, (void **)&shm_sub, xpath ? sr_strshmlen(xpath) : 0, &xpath_off))) {
         return err_info;
     }
@@ -820,7 +820,7 @@ sr_shmmod_oper_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char
     }
 
     /* allocate new subscription and its xpath, if any */
-    if ((err_info = sr_shmrealloc_add(shm_ext, &shm_mod->oper_subs, &shm_mod->oper_sub_count, sizeof *shm_sub,
+    if ((err_info = sr_shmrealloc_add(shm_ext, &shm_mod->oper_subs, &shm_mod->oper_sub_count, 0, sizeof *shm_sub,
             i, (void **)&shm_sub, xpath ? sr_strshmlen(xpath) : 0, &xpath_off))) {
         return err_info;
     }
@@ -911,7 +911,7 @@ sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, uint32_t 
     sr_mod_notif_sub_t *shm_sub;
 
     /* add new item */
-    if ((err_info = sr_shmrealloc_add(shm_ext, &shm_mod->notif_subs, &shm_mod->notif_sub_count, sizeof *shm_sub, -1,
+    if ((err_info = sr_shmrealloc_add(shm_ext, &shm_mod->notif_subs, &shm_mod->notif_sub_count, 0, sizeof *shm_sub, -1,
             (void **)&shm_sub, 0, NULL))) {
         return err_info;
     }

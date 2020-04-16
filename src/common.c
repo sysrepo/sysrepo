@@ -2046,11 +2046,11 @@ sr_strshmlen(const char *str)
 }
 
 sr_error_info_t *
-sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array, uint16_t *shm_count, size_t item_size, int32_t add_idx,
-        void **new_item, size_t dyn_attr_size, off_t *dyn_attr_off)
+sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array, uint16_t *shm_count, int in_ext_shm, size_t item_size,
+        int32_t add_idx, void **new_item, size_t dyn_attr_size, off_t *dyn_attr_off)
 {
     sr_error_info_t *err_info = NULL;
-    off_t array_off, attr_off;
+    off_t old_array_off, new_array_off, old_count_off, attr_off;
     size_t new_ext_size;
 
     assert((add_idx > -2) && (add_idx <= *shm_count));
@@ -2064,11 +2064,17 @@ sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array, uint16_t *shm_count, size
         add_idx = *shm_count;
     }
 
+    if (in_ext_shm) {
+        /* remember current offsets in ext SHM */
+        old_array_off = ((char *)shm_array) - shm_ext->addr;
+        old_count_off = ((char *)shm_count) - shm_ext->addr;
+    }
+
     /* we may not even need to resize ext SHM because of the alignment */
     if (SR_SHM_SIZE((*shm_count + 1) * item_size) + dyn_attr_size > SR_SHM_SIZE(*shm_count * item_size)) {
         /* get new offsets and size */
-        array_off = shm_ext->size;
-        attr_off = array_off + SR_SHM_SIZE((*shm_count + 1) * item_size);
+        new_array_off = shm_ext->size;
+        attr_off = new_array_off + SR_SHM_SIZE((*shm_count + 1) * item_size);
         new_ext_size = attr_off + dyn_attr_size;
 
         /* remap ext SHM */
@@ -2076,22 +2082,28 @@ sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array, uint16_t *shm_count, size
             return err_info;
         }
 
+        if (in_ext_shm) {
+            /* update our pointers */
+            shm_array = (off_t *)(shm_ext->addr + old_array_off);
+            shm_count = (uint16_t *)(shm_ext->addr + old_count_off);
+        }
+
         /* add wasted memory */
         *((size_t *)shm_ext->addr) += SR_SHM_SIZE(*shm_count * item_size);
 
         /* copy preceding items */
         if (add_idx) {
-            memcpy(shm_ext->addr + array_off, shm_ext->addr + *shm_array, add_idx * item_size);
+            memcpy(shm_ext->addr + new_array_off, shm_ext->addr + *shm_array, add_idx * item_size);
         }
 
         /* copy succeeding items */
         if (add_idx < *shm_count) {
-            memcpy(shm_ext->addr + array_off + (add_idx + 1) * item_size,
+            memcpy(shm_ext->addr + new_array_off + (add_idx + 1) * item_size,
                     shm_ext->addr + *shm_array + add_idx * item_size, (*shm_count - add_idx) * item_size);
         }
 
         /* update array and attribute offset */
-        *shm_array = array_off;
+        *shm_array = new_array_off;
         if (dyn_attr_off && dyn_attr_size) {
             *dyn_attr_off = attr_off;
         }

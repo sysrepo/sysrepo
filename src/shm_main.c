@@ -773,36 +773,19 @@ sr_shmmain_conn_add(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
-    off_t conns_off, mod_locks_off;
+    off_t mod_locks_off;
     sr_conn_shm_t *conn_s;
-    uint32_t new_ext_size;
 
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
-    /* moving existing state, remember offsets */
-    conns_off = conn->ext_shm.size;
-    mod_locks_off = conns_off + (main_shm->conn_count + 1) * sizeof *conn_s;
-    new_ext_size = mod_locks_off + SR_SHM_SIZE(main_shm->mod_count * sizeof(sr_conn_shm_lock_t[3]));
-
-    /* remap ext SHM */
-    if ((err_info = sr_shm_remap(&conn->ext_shm, new_ext_size))) {
+    /* allocate new connection and its module locks */
+    if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &main_shm->conns, &main_shm->conn_count, 0, sizeof *conn_s, -1,
+            (void **)&conn_s, SR_SHM_SIZE(main_shm->mod_count * sizeof(sr_conn_shm_lock_t[3])), &mod_locks_off))) {
         return err_info;
     }
 
-    /* add wasted memory */
-    *((size_t *)conn->ext_shm.addr) += main_shm->conn_count * sizeof *conn_s;
-
-    /* move the state */
-    memcpy(conn->ext_shm.addr + conns_off, conn->ext_shm.addr + main_shm->conns, main_shm->conn_count * sizeof *conn_s);
-    main_shm->conns = conns_off;
-
-    /* add new clear connection state */
-    conn_s = (sr_conn_shm_t *)(conn->ext_shm.addr + main_shm->conns);
-    conn_s += main_shm->conn_count;
+    /* clear new connection state and mods lock array */
     memset(conn_s, 0, sizeof *conn_s);
-    ++main_shm->conn_count;
-
-    /* clear mods lock array */
     memset(conn->ext_shm.addr + mod_locks_off, 0, main_shm->mod_count * sizeof(sr_conn_shm_lock_t[3]));
 
     /* fill the attributes */
@@ -818,7 +801,8 @@ sr_shmmain_conn_del(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *
 {
     sr_error_info_t *err_info = NULL;
     sr_conn_shm_t *conn_s;
-    uint32_t i;
+    size_t dyn_attr_size;
+    uint16_t i;
 
     /* find the connection */
     conn_s = (sr_conn_shm_t *)(ext_shm_addr + main_shm->conns);
@@ -833,18 +817,10 @@ sr_shmmain_conn_del(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *
         return;
     }
 
-    /* add wasted memory for mods lock, evpipes, and connection itself */
-    *((size_t *)ext_shm_addr) += SR_SHM_SIZE(main_shm->mod_count * sizeof(sr_conn_shm_lock_t[3]))
-            + SR_SHM_SIZE(conn_s[i].evpipe_count * sizeof(uint32_t)) + sizeof *conn_s;
-
-    --main_shm->conn_count;
-    if (!main_shm->conn_count) {
-        /* the only connection removed */
-        main_shm->conns = 0;
-    } else if (i < main_shm->conn_count) {
-        /* replace the deleted connection with the last one */
-        memcpy(&conn_s[i], &conn_s[main_shm->conn_count], sizeof *conn_s);
-    }
+    /* remove the connection with its mod locks and evpipes */
+    dyn_attr_size = SR_SHM_SIZE(main_shm->mod_count * sizeof(sr_conn_shm_lock_t[3]))
+            + SR_SHM_SIZE(conn_s[i].evpipe_count * sizeof(uint32_t));
+    sr_shmrealloc_del(ext_shm_addr, &main_shm->conns, &main_shm->conn_count, sizeof *conn_s, i, dyn_attr_size);
 }
 
 sr_conn_shm_t *
@@ -870,9 +846,8 @@ sr_error_info_t *
 sr_shmmain_conn_add_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num)
 {
     sr_error_info_t *err_info = NULL;
-    off_t evpipes_off;
     sr_conn_shm_t *conn_s;
-    uint32_t new_ext_size;
+    uint32_t *new_item;
 
     /* find the connection */
     conn_s = sr_shmmain_conn_find(conn->main_shm.addr, conn->ext_shm.addr, conn, getpid());
@@ -882,33 +857,13 @@ sr_shmmain_conn_add_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num)
         return err_info;
     }
 
-    /* we may not even need to resize ext SHM because of the alignment */
-    if (SR_SHM_SIZE((conn_s->evpipe_count + 1) * sizeof evpipe_num) > SR_SHM_SIZE(conn_s->evpipe_count * sizeof evpipe_num)) {
-        /* moving existing evpipes */
-        evpipes_off = conn->ext_shm.size;
-        new_ext_size = evpipes_off + SR_SHM_SIZE((conn_s->evpipe_count + 1) * sizeof evpipe_num);
-
-        /* remap ext SHM */
-        if ((err_info = sr_shm_remap(&conn->ext_shm, new_ext_size))) {
-            return err_info;
-        }
-
-        /* find the connection again, could have moved */
-        conn_s = sr_shmmain_conn_find(conn->main_shm.addr, conn->ext_shm.addr, conn, getpid());
-        assert(conn_s);
-
-        /* add wasted memory */
-        *((size_t *)conn->ext_shm.addr) += SR_SHM_SIZE(conn_s->evpipe_count * sizeof evpipe_num);
-
-        /* move the evpipes */
-        memcpy(conn->ext_shm.addr + evpipes_off, conn->ext_shm.addr + conn_s->evpipes,
-                conn_s->evpipe_count * sizeof evpipe_num);
-        conn_s->evpipes = evpipes_off;
+    if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &conn_s->evpipes, &conn_s->evpipe_count, 1, sizeof evpipe_num, -1,
+            (void **)&new_item, 0, NULL))) {
+        return err_info;
     }
 
-    /* add new evpipe */
-    ((uint32_t *)(conn->ext_shm.addr + conn_s->evpipes))[conn_s->evpipe_count] = evpipe_num;
-    ++conn_s->evpipe_count;
+    /* set new evpipe */
+    *new_item = evpipe_num;
 
     return NULL;
 }
@@ -939,18 +894,8 @@ sr_shmmain_conn_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num)
         goto cleanup;
     }
 
-    /* add wasted memory keeping alignment in mind */
-    *((size_t *)conn->ext_shm.addr) += SR_SHM_SIZE(conn_s->evpipe_count * sizeof evpipe_num)
-            - SR_SHM_SIZE((conn_s->evpipe_count - 1) * sizeof evpipe_num);
-
-    --conn_s->evpipe_count;
-    if (!conn_s->evpipe_count) {
-        /* the only evpipe removed */
-        conn_s->evpipes = 0;
-    } else if (i < conn_s->evpipe_count) {
-        /* replace the deleted evpipe with the last one */
-        evpipes[i] = evpipes[conn_s->evpipe_count];
-    }
+    /* delete the evpipe num */
+    sr_shmrealloc_del(conn->ext_shm.addr, &conn_s->evpipes, &conn_s->evpipe_count, sizeof evpipe_num, i, 0);
 
 cleanup:
     sr_errinfo_free(&err_info);
@@ -1112,8 +1057,8 @@ sr_shmmain_ext_get_size_main_shm(sr_shm_t *shm_main, char *ext_shm_addr)
     for (i = 0; i < main_shm->conn_count; ++i) {
         shm_size += SR_SHM_SIZE(main_shm->mod_count * sizeof(sr_conn_shm_lock_t[3]));
         shm_size += SR_SHM_SIZE(conn_s[i].evpipe_count * sizeof(uint32_t));
-        shm_size += sizeof *conn_s;
     }
+    shm_size += SR_SHM_SIZE(main_shm->conn_count * sizeof *conn_s);
 
     /* RPCs and their subscriptions */
     shm_rpc = (sr_rpc_t *)(ext_shm_addr + main_shm->rpc_subs);
@@ -1169,6 +1114,7 @@ sr_shmmain_ext_get_lydmods_size(struct lyd_node *sr_mods)
 {
     struct lyd_node *sr_mod, *sr_child, *sr_op_dep, *sr_dep, *sr_instid;
     size_t shm_size = 0;
+    uint16_t ddep_i, opdep_i;
 
     assert(sr_mods);
 
@@ -1179,6 +1125,7 @@ sr_shmmain_ext_get_lydmods_size(struct lyd_node *sr_mods)
         }
 
         LY_TREE_FOR(sr_mod->child, sr_child) {
+            opdep_i = 0;
             if (!strcmp(sr_child->schema->name, "name")) {
                 /* a string */
                 shm_size += sr_strshmlen(((struct lyd_node_leaf_list *)sr_child)->value_str);
@@ -1188,9 +1135,10 @@ sr_shmmain_ext_get_lydmods_size(struct lyd_node *sr_mods)
                 /* a string */
                 shm_size += sr_strshmlen(((struct lyd_node_leaf_list *)sr_child)->value_str);
             } else if (!strcmp(sr_child->schema->name, "data-deps")) {
+                ddep_i = 0;
                 LY_TREE_FOR(sr_child->child, sr_dep) {
                     /* another data dependency */
-                    shm_size += sizeof(sr_mod_data_dep_t);
+                    ++ddep_i;
 
                     /* module name was already counted and type is an enum */
                     if (!strcmp(sr_dep->schema->name, "inst-id")) {
@@ -1202,21 +1150,26 @@ sr_shmmain_ext_get_lydmods_size(struct lyd_node *sr_mods)
                         }
                     }
                 }
+
+                /* all data dependencies */
+                shm_size += SR_SHM_SIZE(ddep_i * sizeof(sr_mod_data_dep_t));
             } else if (!strcmp(sr_child->schema->name, "inverse-data-deps")) {
                 /* another inverse dependency */
+                assert(sizeof(off_t) == SR_SHM_SIZE(sizeof(off_t)));
                 shm_size += sizeof(off_t);
             } else if (!strcmp(sr_child->schema->name, "op-deps")) {
                 /* another op with dependencies */
-                shm_size += sizeof(sr_mod_op_dep_t);
+                ++opdep_i;
 
                 LY_TREE_FOR(sr_child->child, sr_op_dep) {
                     if (!strcmp(sr_op_dep->schema->name, "xpath")) {
                         /* operation xpath (a string) */
                         shm_size += sr_strshmlen(((struct lyd_node_leaf_list *)sr_op_dep)->value_str);
                     } else if (!strcmp(sr_op_dep->schema->name, "in") || !strcmp(sr_op_dep->schema->name, "out")) {
+                        ddep_i = 0;
                         LY_TREE_FOR(sr_op_dep->child, sr_dep) {
                             /* another data dependency */
-                            shm_size += sizeof(sr_mod_data_dep_t);
+                            ++ddep_i;
 
                             if (!strcmp(sr_dep->schema->name, "inst-id")) {
                                 LY_TREE_FOR(sr_dep->child, sr_instid) {
@@ -1227,9 +1180,15 @@ sr_shmmain_ext_get_lydmods_size(struct lyd_node *sr_mods)
                                 }
                             }
                         }
+
+                        /* all data dependencies */
+                        shm_size += SR_SHM_SIZE(ddep_i * sizeof(sr_mod_data_dep_t));
                     }
                 }
             }
+
+            /* all op dependencies */
+            shm_size += SR_SHM_SIZE(opdep_i * sizeof(sr_mod_op_dep_t));
         }
     }
 
@@ -2051,42 +2010,25 @@ sr_shmmain_rpc_subscription_add(sr_shm_t *shm_ext, off_t shm_rpc_off, const char
 {
     sr_error_info_t *err_info = NULL;
     sr_rpc_t *shm_rpc;
-    off_t xpath_off, subs_off;
+    off_t xpath_off;
     sr_rpc_sub_t *shm_sub;
-    size_t new_ext_size;
 
     assert(xpath);
 
     shm_rpc = (sr_rpc_t *)(shm_ext->addr + shm_rpc_off);
 
-    /* moving all existing subscriptions (if any) and adding a new one */
-    subs_off = shm_ext->size;
-    xpath_off = subs_off + (shm_rpc->sub_count + 1) * sizeof *shm_sub;
-    new_ext_size = xpath_off + sr_strshmlen(xpath);
-
-    /* remap ext SHM */
-    if ((err_info = sr_shm_remap(shm_ext, new_ext_size))) {
+    /* add new subscription with its xpath */
+    if ((err_info = sr_shmrealloc_add(shm_ext, &shm_rpc->subs, &shm_rpc->sub_count, 1, sizeof *shm_sub, -1,
+            (void **)&shm_sub, sr_strshmlen(xpath), &xpath_off))) {
         return err_info;
     }
-    shm_rpc = (sr_rpc_t *)(shm_ext->addr + shm_rpc_off);
-
-    /* add wasted memory */
-    *((size_t *)shm_ext->addr) += shm_rpc->sub_count * sizeof *shm_sub;
-
-    /* move subscriptions */
-    memcpy(shm_ext->addr + subs_off, shm_ext->addr + shm_rpc->subs, shm_rpc->sub_count * sizeof *shm_sub);
-    shm_rpc->subs = subs_off;
 
     /* fill new subscription */
-    shm_sub = (sr_rpc_sub_t *)(shm_ext->addr + shm_rpc->subs);
-    shm_sub += shm_rpc->sub_count;
     strcpy(shm_ext->addr + xpath_off, xpath);
     shm_sub->xpath = xpath_off;
     shm_sub->priority = priority;
     shm_sub->opts = sub_opts;
     shm_sub->evpipe_num = evpipe_num;
-
-    ++shm_rpc->sub_count;
 
     return NULL;
 }
@@ -2118,19 +2060,12 @@ sr_shmmain_rpc_subscription_del(char *ext_shm_addr, sr_rpc_t *shm_rpc, const cha
         return 1;
     }
 
-    /* add wasted memory */
-    *((size_t *)ext_shm_addr) += sizeof *shm_sub + sr_strshmlen(ext_shm_addr + shm_sub[i].xpath);
+    /* delete the subscription */
+    sr_shmrealloc_del(ext_shm_addr, &shm_rpc->subs, &shm_rpc->sub_count, sizeof *shm_sub, i,
+            sr_strshmlen(ext_shm_addr + shm_sub[i].xpath));
 
-    --shm_rpc->sub_count;
-    if (!shm_rpc->sub_count) {
-        /* the only subscription removed */
-        shm_rpc->subs = 0;
-        if (last_removed) {
-            *last_removed = 1;
-        }
-    } else if (i < shm_rpc->sub_count) {
-        /* replace the removed subscription with the last one */
-        memcpy(&shm_sub[i], &shm_sub[shm_rpc->sub_count], sizeof *shm_sub);
+    if (last_removed && !shm_rpc->subs) {
+        *last_removed = 1;
     }
 
     return 0;
@@ -2186,9 +2121,8 @@ sr_shmmain_add_rpc(sr_conn_ctx_t *conn, const char *op_path, sr_rpc_t **shm_rpc_
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
-    off_t op_path_off, rpc_subs_off;
+    off_t op_path_off;
     sr_rpc_t *shm_rpc;
-    size_t new_ext_size;
 
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
     shm_rpc = (sr_rpc_t *)(conn->ext_shm.addr + main_shm->rpc_subs);
@@ -2202,34 +2136,17 @@ sr_shmmain_add_rpc(sr_conn_ctx_t *conn, const char *op_path, sr_rpc_t **shm_rpc_
     }
 #endif
 
-    /* moving all existing RPCs (if any) and adding a new one */
-    rpc_subs_off = conn->ext_shm.size;
-    op_path_off = rpc_subs_off + (main_shm->rpc_sub_count + 1) * sizeof *shm_rpc;
-    new_ext_size = op_path_off + sr_strshmlen(op_path);
-
-    /* remap ext SHM, update pointers */
-    if ((err_info = sr_shm_remap(&conn->ext_shm, new_ext_size))) {
+    /* add new RPC and allocate SHM for op_path */
+    if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &main_shm->rpc_subs, &main_shm->rpc_sub_count, 0,
+            sizeof *shm_rpc, -1, (void **)&shm_rpc, sr_strshmlen(op_path), &op_path_off))) {
         return err_info;
     }
-    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
-
-    /* add wasted memory */
-    *((size_t *)conn->ext_shm.addr) += main_shm->rpc_sub_count * sizeof *shm_rpc;
-
-    /* move RPCs */
-    memcpy(conn->ext_shm.addr + rpc_subs_off, conn->ext_shm.addr + main_shm->rpc_subs,
-            main_shm->rpc_sub_count * sizeof *shm_rpc);
-    main_shm->rpc_subs = rpc_subs_off;
-    shm_rpc = (sr_rpc_t *)(conn->ext_shm.addr + main_shm->rpc_subs);
 
     /* fill new RPC */
-    shm_rpc += main_shm->rpc_sub_count;
     strcpy(conn->ext_shm.addr + op_path_off, op_path);
     shm_rpc->op_path = op_path_off;
     shm_rpc->subs = 0;
     shm_rpc->sub_count = 0;
-
-    ++main_shm->rpc_sub_count;
 
     if (shm_rpc_p) {
         *shm_rpc_p = shm_rpc;
@@ -2249,19 +2166,10 @@ sr_shmmain_del_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const char *op_p
 
     /* get index instead */
     i = shm_rpc - ((sr_rpc_t *)(ext_shm_addr + main_shm->rpc_subs));
-    shm_rpc = (sr_rpc_t *)(ext_shm_addr + main_shm->rpc_subs);
 
-    /* add wasted memory */
-    *((size_t *)ext_shm_addr) += sizeof *shm_rpc + sr_strshmlen(ext_shm_addr + shm_rpc[i].op_path);
-
-    --main_shm->rpc_sub_count;
-    if (!main_shm->rpc_sub_count) {
-        /* the only RPC removed */
-        main_shm->rpc_subs = 0;
-    } else if (i < main_shm->rpc_sub_count) {
-        /* replace the removed RPC with the last one */
-        memcpy(&shm_rpc[i], &shm_rpc[main_shm->rpc_sub_count], sizeof *shm_rpc);
-    }
+    /* remove the RPC and its op_path */
+    sr_shmrealloc_del(ext_shm_addr, &main_shm->rpc_subs, &main_shm->rpc_sub_count, sizeof *shm_rpc, i,
+            sr_strshmlen(ext_shm_addr + shm_rpc->op_path));
 
     return NULL;
 }

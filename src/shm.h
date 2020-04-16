@@ -208,8 +208,8 @@ typedef struct sr_conn_shm_s {
     sr_conn_shm_lock_t main_lock; /**< Held main SHM lock. */
     off_t mod_locks;            /**< Held SHM module locks, points to (sr_conn_state_lock_t (*)[3]). */
 
-    off_t evpipes;              /**< Array of event pipes of subscriptions on this connection. */
-    uint32_t evpipe_count;      /**< Event pipe count. */
+    off_t evpipes;              /**< Array of event pipe numbers (uint32_t) of subscriptions on this connection. */
+    uint16_t evpipe_count;      /**< Event pipe count. */
 } sr_conn_shm_t;
 
 /**
@@ -228,7 +228,7 @@ typedef struct sr_main_shm_s {
     ATOMIC_T new_evpipe_num;    /**< Event pipe number for a new subscription. */
 
     off_t conns;                /**< Array of existing connections (connection state). */
-    uint32_t conn_count;        /**< Number of existing connections. */
+    uint16_t conn_count;        /**< Number of existing connections. */
 } sr_main_shm_t;
 
 /**

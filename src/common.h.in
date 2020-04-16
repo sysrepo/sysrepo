@@ -890,11 +890,16 @@ off_t sr_shmstrcpy(char *shm_addr, const char *str, char **shm_end);
 size_t sr_strshmlen(const char *str);
 
 /**
- * @brief Realloc for an array in SHM adding one new item.
+ * @brief Realloc for an array in SHM adding one new item. The array offset and item count is properly
+ * updated in the ext SHM.
  *
- * @param[in] shm_ext Ext SHM, may be remapped.
- * @param[in,out] shm_array Array in SHM, may be updated.
- * @param[in,out] shm_count Array count in SHM, will be updated.
+ * May remap ext SHM!
+ *
+ * @param[in] shm_ext Ext SHM structure.
+ * @param[in] shm_array Pointer to array in a SHM.
+ * @param[in] shm_count Pointer to array item count in a SHM.
+ * @param[in] in_ext_shm Whether @p shm_array and @p shm_count are stored in ext SHM or not (in main SHM).
+ * In case they are in ext SHM, they should no longer be used after this function as they may have been remapped!
  * @param[in] item_size Array item size.
  * @param[in] add_idx Index of the new item, -1 for adding at the end.
  * @param[out] new_item Pointer to the new item.
@@ -902,8 +907,8 @@ size_t sr_strshmlen(const char *str);
  * @param[out] dyn_attr_off Optional allocated dynamic attribute offset.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array, uint16_t *shm_count, size_t item_size,
-        int32_t add_idx, void **new_item, size_t dyn_attr_size, off_t *dyn_attr_off);
+sr_error_info_t *sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array, uint16_t *shm_count, int in_ext_shm,
+        size_t item_size, int32_t add_idx, void **new_item, size_t dyn_attr_size, off_t *dyn_attr_off);
 
 /**
  * @brief Realloc for an array in SHM deleting one item.
