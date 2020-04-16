@@ -1130,7 +1130,7 @@ sr_ly_ctx_new(struct ly_ctx **ly_ctx)
     if ((err_info = sr_path_yang_dir(&yang_dir))) {
         goto cleanup;
     }
-    *ly_ctx = ly_ctx_new(yang_dir, LY_CTX_NOYANGLIBRARY);
+    *ly_ctx = ly_ctx_new(yang_dir, LY_CTX_NOYANGLIBRARY | LY_CTX_DISABLE_SEARCHDIR_CWD);
     free(yang_dir);
 
     if (!*ly_ctx) {
