@@ -129,22 +129,42 @@ sr_modinfo_add_mod(sr_mod_t *shm_mod, const struct lys_module *ly_mod, int mod_t
 }
 
 sr_error_info_t *
-sr_modinfo_perm_check(struct sr_mod_info_s *mod_info, int wr)
+sr_modinfo_perm_check(struct sr_mod_info_s *mod_info, int wr, int strict)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
     uint32_t i;
+    int has_access;
 
-    for (i = 0; i < mod_info->mod_count; ++i) {
+    /* it is simply not covered because we would have to also remove the failed permission check module data */
+    assert(!mod_info->data || strict);
+
+    i = 0;
+    while (i < mod_info->mod_count) {
         mod = &mod_info->mods[i];
 
-        /* check also modules additionaly modified by validation */
+        /* check also modules additionally modified by validation */
         if (mod->state & (MOD_INFO_REQ | MOD_INFO_CHANGED)) {
             /* check perm */
-            if ((err_info = sr_perm_check(mod->ly_mod->name, wr))) {
+            if ((err_info = sr_perm_check(mod->ly_mod->name, wr, strict ? NULL : &has_access))) {
                 return err_info;
             }
+
+            if (!strict && !has_access) {
+                /* remove this module from mod_info by moving all succeding modules */
+                SR_LOG_INF("No %s permission for the module \"%s\", skipping.", wr ? "write" : "read", mod->ly_mod->name);
+                --mod_info->mod_count;
+                if (!mod_info->mod_count) {
+                    free(mod_info->mods);
+                    mod_info->mods = NULL;
+                } else if (i < mod_info->mod_count) {
+                    memmove(&mod_info->mods[i], &mod_info->mods[i + 1], (mod_info->mod_count - i) * sizeof *mod);
+                }
+                continue;
+            }
         }
+
+        ++i;
     }
 
     return NULL;

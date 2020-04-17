@@ -1813,7 +1813,7 @@ sr_chmodown(const char *path, const char *owner, const char *group, mode_t perm)
 }
 
 sr_error_info_t *
-sr_perm_check(const char *mod_name, int wr)
+sr_perm_check(const char *mod_name, int wr, int *has_access)
 {
     sr_error_info_t *err_info = NULL;
     char *path;
@@ -1825,11 +1825,18 @@ sr_perm_check(const char *mod_name, int wr)
 
     /* check against effective permissions */
     if (eaccess(path, (wr ? W_OK : R_OK)) == -1) {
-        if (errno != EACCES) {
+        if (errno == EACCES) {
+            if (has_access) {
+                *has_access = 0;
+            } else {
+                sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "%s permission \"%s\" check failed.",
+                        wr ? "Write" : "Read", mod_name);
+            }
+        } else {
             SR_ERRINFO_SYSERRNO(&err_info, "eaccess");
         }
-        sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "%s permission \"%s\" check failed.",
-                wr ? "Write" : "Read", mod_name);
+    } else if (has_access) {
+        *has_access = 1;
     }
 
     free(path);

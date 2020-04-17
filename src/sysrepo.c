@@ -1151,7 +1151,7 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name)
     }
 
     /* check write permission */
-    if ((err_info = sr_perm_check(module_name, 1))) {
+    if ((err_info = sr_perm_check(module_name, 1, NULL))) {
         goto cleanup_unlock;
     }
 
@@ -1197,7 +1197,7 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
     }
 
     /* check write permission */
-    if ((err_info = sr_perm_check(mod_name, 1))) {
+    if ((err_info = sr_perm_check(mod_name, 1, NULL))) {
         goto cleanup_unlock;
     }
 
@@ -1268,7 +1268,7 @@ sr_cancel_update_module(sr_conn_ctx_t *conn, const char *module_name)
     }
 
     /* check write permission */
-    if ((err_info = sr_perm_check(module_name, 1))) {
+    if ((err_info = sr_perm_check(module_name, 1, NULL))) {
         goto cleanup_unlock;
     }
 
@@ -1469,7 +1469,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     /* check write perm */
-    if ((err_info = sr_perm_check(module_name, 1))) {
+    if ((err_info = sr_perm_check(module_name, 1, NULL))) {
         goto cleanup;
     }
 
@@ -1565,7 +1565,7 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* check read perm */
-    if ((err_info = sr_modinfo_perm_check(&mod_info, 0))) {
+    if ((err_info = sr_modinfo_perm_check(&mod_info, 0, 0))) {
         goto cleanup_shm_unlock;
     }
 
@@ -1652,7 +1652,7 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
     }
 
     /* check read perm */
-    if ((err_info = sr_modinfo_perm_check(&mod_info, 0))) {
+    if ((err_info = sr_modinfo_perm_check(&mod_info, 0, 0))) {
         goto cleanup_shm_unlock;
     }
 
@@ -1735,7 +1735,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
     }
 
     /* check read perm */
-    if ((err_info = sr_modinfo_perm_check(&mod_info, 0))) {
+    if ((err_info = sr_modinfo_perm_check(&mod_info, 0, 0))) {
         goto cleanup_shm_unlock;
     }
 
@@ -1821,7 +1821,7 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
     }
 
     /* check read perm */
-    if ((err_info = sr_modinfo_perm_check(&mod_info, 0))) {
+    if ((err_info = sr_modinfo_perm_check(&mod_info, 0, 0))) {
         goto cleanup_shm_unlock;
     }
 
@@ -2214,7 +2214,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     }
 
     /* check write perm (we must wait until after validation, some additional modules can be modified) */
-    if ((err_info = sr_modinfo_perm_check(mod_info, 1))) {
+    if ((err_info = sr_modinfo_perm_check(mod_info, 1, 1))) {
         goto cleanup;
     }
 
@@ -2450,7 +2450,7 @@ _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, s
     }
 
     /* check write perm */
-    if ((err_info = sr_modinfo_perm_check(&mod_info, 1))) {
+    if ((err_info = sr_modinfo_perm_check(&mod_info, 1, 1))) {
         return err_info;
     }
 
@@ -2738,7 +2738,7 @@ _sr_un_lock(sr_session_ctx_t *session, const char *module_name, int lock)
     }
 
     /* check read perm */
-    if (lock && (err_info = sr_modinfo_perm_check(&mod_info, 0))) {
+    if (lock && (err_info = sr_modinfo_perm_check(&mod_info, 0, 1))) {
         goto cleanup;
     }
 
@@ -2817,7 +2817,7 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
     }
 
     /* check read perm */
-    if ((err_info = sr_modinfo_perm_check(&mod_info, 0))) {
+    if ((err_info = sr_modinfo_perm_check(&mod_info, 0, 1))) {
         goto cleanup;
     }
 
@@ -3330,7 +3330,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     }
 
     /* check write/read perm */
-    if ((err_info = sr_perm_check(module_name, (opts & SR_SUBSCR_PASSIVE) ? 0 : 1))) {
+    if ((err_info = sr_perm_check(module_name, (opts & SR_SUBSCR_PASSIVE) ? 0 : 1, NULL))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -3932,7 +3932,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     }
 
     /* check write perm */
-    if ((err_info = sr_perm_check(module_name, 1))) {
+    if ((err_info = sr_perm_check(module_name, 1, NULL))) {
         goto error;
     }
 
@@ -4155,7 +4155,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     }
 
     /* check read perm */
-    if ((err_info = sr_perm_check(lyd_node_module(input)->name, 0))) {
+    if ((err_info = sr_perm_check(lyd_node_module(input)->name, 0, NULL))) {
         goto cleanup_shm_unlock;
     }
 
@@ -4304,7 +4304,7 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
     }
 
     /* check write perm */
-    if ((err_info = sr_perm_check(mod_name, 1))) {
+    if ((err_info = sr_perm_check(mod_name, 1, NULL))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -4525,7 +4525,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
     /* check write/read perm */
     shm_mod = sr_shmmain_find_module(&session->conn->main_shm, session->conn->ext_shm.addr, lyd_node_module(notif)->name, 0);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup_shm_unlock);
-    if ((err_info = sr_perm_check(lyd_node_module(notif)->name, (shm_mod->flags & SR_MOD_REPLAY_SUPPORT) ? 1 : 0))) {
+    if ((err_info = sr_perm_check(lyd_node_module(notif)->name, (shm_mod->flags & SR_MOD_REPLAY_SUPPORT) ? 1 : 0, NULL))) {
         goto cleanup_shm_unlock;
     }
 
@@ -4752,7 +4752,7 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     }
 
     /* check write perm */
-    if ((err_info = sr_perm_check(module_name, 1))) {
+    if ((err_info = sr_perm_check(module_name, 1, NULL))) {
         return sr_api_ret(session, err_info);
     }
 

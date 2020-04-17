@@ -75,9 +75,10 @@ sr_error_info_t *sr_modinfo_add_mod(sr_mod_t *shm_mod, const struct lys_module *
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] wr Whether to check write or read permissions.
+ * @param[in] strict Whether to return error if permission check fails or silently remove it from the modules.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_perm_check(struct sr_mod_info_s *mod_info, int wr);
+sr_error_info_t *sr_modinfo_perm_check(struct sr_mod_info_s *mod_info, int wr, int strict);
 
 /**
  * @brief Get next mod_info mod in the order they are present in the data.

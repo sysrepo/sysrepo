@@ -711,7 +711,7 @@ typedef uint32_t sr_get_oper_options_t;
  * has no data filled in and its type is set properly
  * (::SR_LEAF_EMPTY_T / ::SR_LIST_T / ::SR_CONTAINER_T / ::SR_CONTAINER_PRESENCE_T).
  *
- * Required READ access.
+ * Required READ access, but if the access check fails, the module data are simply ignored without an error.
  *
  * @see Use ::sr_get_items for retrieving larger chunks
  * of data from the datastore. Since it retrieves the data from datastore in
@@ -733,7 +733,7 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms
  * All data elements are transferred within one message from the datastore,
  * which is more efficient that calling multiple ::sr_get_item calls.
  *
- * Required READ access.
+ * Required READ access, but if the access check fails, the module data are simply ignored without an error.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] xpath [XPath](@ref paths) of the data elements to be retrieved.
@@ -755,7 +755,7 @@ int sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_
  * with the expressive power of XPath addressing, the recursive nature of the output data type
  * also preserves the hierarchical relationships between data elements.
  *
- * Required READ access.
+ * Required READ access, but if the access check fails, the module data are simply ignored without an error.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) selecting the root node of the subtree to be retrieved.
@@ -778,7 +778,7 @@ int sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout
  * of data nodes. Since all the descendants of each matched node are returned implicitly, `//` in the XPath
  * should never be used (i.e. `/\asterisk` is the correct XPath for all the nodes).
  *
- * Required READ access.
+ * Required READ access, but if the access check fails, the module data are simply ignored without an error.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] xpath [XPath](@ref paths) selecting root nodes of subtrees to be retrieved.

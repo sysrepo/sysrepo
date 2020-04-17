@@ -803,9 +803,11 @@ sr_error_info_t *sr_chmodown(const char *path, const char *owner, const char *gr
  *
  * @param[in] mod_name Module to check.
  * @param[in] wr Check write access if set, otherwise read.
+ * @param[in,out] has_access If set, it will contain the result of the access check.
+ * If not set, denied access returns an error.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_perm_check(const char *mod_name, int wr);
+sr_error_info_t *sr_perm_check(const char *mod_name, int wr, int *has_access);
 
 /**
  * @brief Get mode (permissions) and/or owner and group of a module.
