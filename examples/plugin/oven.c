@@ -12,6 +12,7 @@
  *
  *     https://opensource.org/licenses/BSD-3-Clause
  */
+#define _QNX_SOURCE /* sleep */
 
 #include <stdlib.h>
 #include <string.h>
