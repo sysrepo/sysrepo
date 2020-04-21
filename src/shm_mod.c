@@ -350,7 +350,7 @@ sr_shmmod_conn_lock_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_
 {
     sr_error_info_t *err_info = NULL;
     uint32_t shm_mod_idx;
-    sr_conn_shm_lock_t (*mod_locks)[3];
+    sr_conn_shm_lock_t (*mod_locks)[SR_DS_COUNT];
     sr_conn_shm_t *conn_s;
 
     assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
@@ -361,7 +361,7 @@ sr_shmmod_conn_lock_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_
         goto cleanup;
     }
 
-    mod_locks = (sr_conn_shm_lock_t (*)[3])(conn->ext_shm.addr + conn_s->mod_locks);
+    mod_locks = (sr_conn_shm_lock_t (*)[SR_DS_COUNT])(conn->ext_shm.addr + conn_s->mod_locks);
     shm_mod_idx = SR_SHM_MOD_IDX(shm_mod, conn->main_shm);
     if (lock) {
         /* lock */

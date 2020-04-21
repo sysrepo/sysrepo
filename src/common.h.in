@@ -92,7 +92,7 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 #define SR_IS_EVENT_SESS(session) (session->ev != SR_SUB_EV_NONE)
 
 /** macro for getting the first SHM module */
-#define SR_FIRST_SHM_MOD(main_shm_addr) ((sr_mod_t *)(main_shm_addr + sizeof(sr_main_shm_t)))
+#define SR_FIRST_SHM_MOD(main_shm_addr) ((sr_mod_t *)(((char *)main_shm_addr) + sizeof(sr_main_shm_t)))
 
 /** macro for traversing main SHM modules */
 #define SR_SHM_MOD_FOR(main_shm_addr, main_shm_size, shm_mod) \
@@ -193,6 +193,9 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 
 /** permissions of data files of internal modules */
 #define SR_INT_FILE_PERM 00666
+
+/** permission of data files of sysrepo-monitoring internal module */
+#define SR_MON_INT_FILE_PERM 00600
 
 /** initial length of message buffer (B) */
 #define SR_MSG_LEN_START 128
@@ -1039,6 +1042,14 @@ sr_error_info_t *sr_get_trim_predicates(const char *expr, char **expr2);
  * @return Datastore string name.
  */
 const char *sr_ds2str(sr_datastore_t ds);
+
+/**
+ * @brief Get datastore identity name from ietf-datastores.
+ *
+ * @param[in] ds Datastore to transform.
+ * @return Datastore identity name.
+ */
+const char *sr_ds2ident(sr_datastore_t ds);
 
 /**
  * @brief Sleep for specified milliseconds.

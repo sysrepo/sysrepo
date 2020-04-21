@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <unistd.h>
+#include <inttypes.h>
 #include <fcntl.h>
 #include <sys/mman.h>
 
@@ -1102,10 +1103,7 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
 
     /* get the data from libyang */
     mod_data = ly_ctx_info(mod_info->conn->ly_ctx);
-    if (!mod_data) {
-        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
-        return err_info;
-    }
+    SR_CHECK_LY_RET(!mod_data, mod_info->conn->ly_ctx, err_info);
 
     if (!strcmp(mod->ly_mod->rev[0].date, "2019-01-04")) {
         assert(!strcmp(mod_data->schema->name, "yang-library"));
@@ -1128,14 +1126,329 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
         return err_info;
     }
 
-    /* there should always be at least some default containers */
-    assert(mod_info->data);
-    if (lyd_merge(mod_info->data, mod_data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
+    /* connect to the rest of data */
+    if (!mod_info->data) {
+        mod_info->data = mod_data;
+    } else if (lyd_merge(mod_info->data, mod_data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
         sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
         return err_info;
     }
 
     return NULL;
+}
+
+static sr_error_info_t *
+sr_modinfo_module_srmon_evpipe2pid(sr_main_shm_t *main_shm, char *ext_shm_addr, uint32_t evpipe_num, uint32_t *pid)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_conn_shm_t *shm_conn;
+    uint32_t *evpipe;
+    uint16_t i, j;
+
+    shm_conn = (sr_conn_shm_t *)(ext_shm_addr + main_shm->conns);
+    for (i = 0; i < main_shm->conn_count; ++i) {
+        evpipe = (uint32_t *)(ext_shm_addr + shm_conn[i].evpipes);
+        for (j = 0; j < shm_conn[i].evpipe_count; ++j) {
+            if (evpipe[j] == evpipe_num) {
+                /* matching evpipe num found */
+                *pid = shm_conn[i].pid;
+                return NULL;
+            }
+        }
+    }
+
+    SR_ERRINFO_INT(&err_info);
+    return err_info;
+}
+
+/**
+ * @brief Append a "module" data node with its subscriptions to sysrepo-monitoring data.
+ *
+ * @param[in] main_shm Main SHM structure.
+ * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] shm_mod SHM module to read from.
+ * @param[in,out] sr_state Main container node of sysrepo-monitoring.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_modinfo_module_srmon_module(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_mod_t *shm_mod, struct lyd_node *sr_state)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *sr_mod, *sr_subs, *sr_sub;
+    sr_datastore_t ds;
+    sr_mod_change_sub_t *change_sub;
+    sr_mod_oper_sub_t *oper_sub;
+    sr_mod_notif_sub_t *notif_sub;
+    uint16_t i;
+    char buf[22];
+    uint32_t pid;
+    struct ly_ctx *ly_ctx;
+
+    ly_ctx = lyd_node_module(sr_state)->ctx;
+
+    /* module */
+    sr_mod = lyd_new(sr_state, NULL, "module");
+    SR_CHECK_LY_RET(!sr_mod, ly_ctx, err_info);
+
+    /* name */
+    SR_CHECK_LY_RET(!lyd_new_leaf(sr_mod, NULL, "name", ext_shm_addr + shm_mod->name), ly_ctx, err_info);
+
+    /* subscriptions, make implicit */
+    sr_subs = lyd_new(sr_mod, NULL, "subscriptions");
+    SR_CHECK_LY_RET(!sr_subs, ly_ctx, err_info);
+    sr_subs->dflt = 1;
+
+    for (ds = 0; ds < SR_DS_COUNT; ++ds) {
+        change_sub = (sr_mod_change_sub_t *)(ext_shm_addr + shm_mod->change_sub[ds].subs);
+        for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
+            /* change-sub */
+            sr_sub = lyd_new(sr_subs, NULL, "change-sub");
+            SR_CHECK_LY_RET(!sr_sub, ly_ctx, err_info);
+
+            /* datastore */
+            SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "datastore", sr_ds2ident(ds)), ly_ctx, err_info);
+
+            /* xpath */
+            if (change_sub[i].xpath) {
+                SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "xpath", ext_shm_addr + change_sub[i].xpath),
+                        ly_ctx, err_info);
+            }
+
+            /* priority */
+            sprintf(buf, "%"PRIu32, change_sub[i].priority);
+            SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "priority", buf), ly_ctx, err_info);
+
+            /* pid */
+            if ((err_info = sr_modinfo_module_srmon_evpipe2pid(main_shm, ext_shm_addr, change_sub[i].evpipe_num, &pid))) {
+                return err_info;
+            }
+            sprintf(buf, "%"PRIu32, pid);
+            SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "pid", buf), ly_ctx, err_info);
+        }
+    }
+
+    oper_sub = (sr_mod_oper_sub_t *)(ext_shm_addr + shm_mod->oper_subs);
+    for (i = 0; i < shm_mod->oper_sub_count; ++i) {
+        /* operational-sub */
+        sr_sub = lyd_new(sr_subs, NULL, "operational-sub");
+        SR_CHECK_LY_RET(!sr_sub, ly_ctx, err_info);
+
+        /* xpath */
+        SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "xpath", ext_shm_addr + oper_sub[i].xpath),
+                ly_ctx, err_info);
+
+        /* pid */
+        if ((err_info = sr_modinfo_module_srmon_evpipe2pid(main_shm, ext_shm_addr, oper_sub[i].evpipe_num, &pid))) {
+            return err_info;
+        }
+        sprintf(buf, "%"PRIu32, pid);
+        SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "pid", buf), ly_ctx, err_info);
+    }
+
+    notif_sub = (sr_mod_notif_sub_t *)(ext_shm_addr + shm_mod->notif_subs);
+    for (i = 0; i < shm_mod->notif_sub_count; ++i) {
+        /* notification-sub with pid */
+        if ((err_info = sr_modinfo_module_srmon_evpipe2pid(main_shm, ext_shm_addr, notif_sub[i].evpipe_num, &pid))) {
+            return err_info;
+        }
+        sprintf(buf, "%"PRIu32, pid);
+        SR_CHECK_LY_RET(!lyd_new_leaf(sr_subs, NULL, "notification-sub", buf), ly_ctx, err_info);
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief Append an "rpc" data node with its subscriptions to sysrepo-monitoring data.
+ *
+ * @param[in] main_shm Main SHM structure.
+ * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] shm_rpc SHM RPC to read from.
+ * @param[in,out] sr_state Main container node of sysrepo-monitoring.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_modinfo_module_srmon_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_rpc_t *shm_rpc, struct lyd_node *sr_state)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *sr_rpc, *sr_sub;
+    sr_rpc_sub_t *rpc_sub;
+    uint16_t i;
+    char buf[22];
+    uint32_t pid;
+    struct ly_ctx *ly_ctx;
+
+    ly_ctx = lyd_node_module(sr_state)->ctx;
+
+    /* rpc */
+    sr_rpc = lyd_new(sr_state, NULL, "rpc");
+    SR_CHECK_LY_RET(!sr_rpc, ly_ctx, err_info);
+
+    /* path */
+    SR_CHECK_LY_RET(!lyd_new_leaf(sr_rpc, NULL, "path", ext_shm_addr + shm_rpc->op_path), ly_ctx, err_info);
+
+    rpc_sub = (sr_rpc_sub_t *)(ext_shm_addr + shm_rpc->subs);
+    for (i = 0; i < shm_rpc->sub_count; ++i) {
+        /* rpc-sub */
+        sr_sub = lyd_new(sr_rpc, NULL, "rpc-sub");
+        SR_CHECK_LY_RET(!sr_sub, ly_ctx, err_info);
+
+        /* xpath */
+        SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "xpath", ext_shm_addr + rpc_sub[i].xpath),
+                ly_ctx, err_info);
+
+        /* priority */
+        sprintf(buf, "%"PRIu32, rpc_sub[i].priority);
+        SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "priority", buf), ly_ctx, err_info);
+
+        /* pid */
+        if ((err_info = sr_modinfo_module_srmon_evpipe2pid(main_shm, ext_shm_addr, rpc_sub[i].evpipe_num, &pid))) {
+            return err_info;
+        }
+        sprintf(buf, "%"PRIu32, pid);
+        SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "pid", buf), ly_ctx, err_info);
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief Append a "connection" data node with its locks to sysrepo-monitoring data.
+ *
+ * @param[in] main_shm Main SHM structure.
+ * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] shm_conn SHM connection to read from.
+ * @param[in,out] sr_state Main container node of sysrepo-monitoring.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_modinfo_module_srmon_connection(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_shm_t *shm_conn,
+        struct lyd_node *sr_state)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *sr_conn, *sr_modlock;
+    sr_mod_t *shm_mod;
+    sr_conn_shm_lock_t (*mod_locks)[SR_DS_COUNT];
+    uint16_t i;
+    sr_datastore_t ds;
+    char buf[22];
+    struct ly_ctx *ly_ctx;
+
+    ly_ctx = lyd_node_module(sr_state)->ctx;
+
+    /* connection */
+    sr_conn = lyd_new(sr_state, NULL, "connection");
+    SR_CHECK_LY_RET(!sr_conn, ly_ctx, err_info);
+
+    /* pid */
+    sprintf(buf, "%ld", (long)shm_conn->pid);
+    SR_CHECK_LY_RET(!lyd_new_leaf(sr_conn, NULL, "pid", buf), ly_ctx, err_info);
+
+    /* main-lock */
+    if (shm_conn->main_lock.mode) {
+        if (shm_conn->main_lock.mode == SR_LOCK_READ) {
+            sprintf(buf, "read");
+        } else {
+            sprintf(buf, "write");
+        }
+        SR_CHECK_LY_RET(!lyd_new_leaf(sr_conn, NULL, "main-lock", buf), ly_ctx, err_info);
+    }
+
+    mod_locks = (sr_conn_shm_lock_t (*)[SR_DS_COUNT])(ext_shm_addr + shm_conn->mod_locks);
+    shm_mod = SR_FIRST_SHM_MOD(main_shm);
+    for (i = 0; i < main_shm->mod_count; ++i) {
+        for (ds = 0; ds < SR_DS_COUNT; ++ds) {
+            if (!mod_locks[i][ds].mode) {
+                continue;
+            }
+
+            /* module-lock */
+            sr_modlock = lyd_new(sr_conn, NULL, "module-lock");
+            SR_CHECK_LY_RET(!sr_modlock, ly_ctx, err_info);
+
+            /* name */
+            SR_CHECK_LY_RET(!lyd_new_leaf(sr_modlock, NULL, "name", ext_shm_addr + shm_mod[i].name), ly_ctx, err_info);
+
+            /* datastore */
+            SR_CHECK_LY_RET(!lyd_new_leaf(sr_modlock, NULL, "datastore", sr_ds2ident(ds)), ly_ctx, err_info);
+
+            /* lock */
+            if (mod_locks[i][ds].mode == SR_LOCK_READ) {
+                sprintf(buf, "read");
+            } else {
+                sprintf(buf, "write");
+            }
+            SR_CHECK_LY_RET(!lyd_new_leaf(sr_modlock, NULL, "lock", buf), ly_ctx, err_info);
+        }
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief Load module data of the sysrepo-monitoring module. They are actually generated.
+ *
+ * SHM READ lock is expected to be held.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] mod Mod info module to use.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_modinfo_module_data_load_srmon(struct sr_mod_info_s *mod_info)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *mod_data;
+    sr_mod_t *shm_mod;
+    sr_rpc_t *shm_rpc;
+    sr_conn_shm_t *shm_conn;
+    const struct lys_module *ly_mod;
+    sr_main_shm_t *main_shm;
+    uint16_t i;
+
+    main_shm = (sr_main_shm_t *)mod_info->conn->main_shm.addr;
+    ly_mod = ly_ctx_get_module(mod_info->conn->ly_ctx, "sysrepo-monitoring", NULL, 1);
+    assert(ly_mod);
+
+    /* main container */
+    mod_data = lyd_new(NULL, ly_mod, "sysrepo-state");
+    SR_CHECK_LY_GOTO(!mod_data, mod_info->conn->ly_ctx, err_info, cleanup);
+
+    /* modules */
+    SR_SHM_MOD_FOR(mod_info->conn->main_shm.addr, mod_info->conn->main_shm.size, shm_mod) {
+        if ((err_info = sr_modinfo_module_srmon_module(main_shm, mod_info->conn->ext_shm.addr, shm_mod, mod_data))) {
+            goto cleanup;
+        }
+    }
+
+    /* RPCs */
+    shm_rpc = (sr_rpc_t *)(mod_info->conn->ext_shm.addr + main_shm->rpc_subs);
+    for (i = 0; i < main_shm->rpc_sub_count; ++i) {
+        if ((err_info = sr_modinfo_module_srmon_rpc(main_shm, mod_info->conn->ext_shm.addr, &shm_rpc[i], mod_data))) {
+            goto cleanup;
+        }
+    }
+
+    /* connections */
+    shm_conn = (sr_conn_shm_t *)(mod_info->conn->ext_shm.addr + main_shm->conns);
+    for (i = 0; i < main_shm->conn_count; ++i) {
+        if ((err_info = sr_modinfo_module_srmon_connection(main_shm, mod_info->conn->ext_shm.addr, &shm_conn[i], mod_data))) {
+            goto cleanup;
+        }
+    }
+
+    /* connect to the rest of data */
+    if (!mod_info->data) {
+        mod_info->data = mod_data;
+    } else if (lyd_merge(mod_info->data, mod_data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+        goto cleanup;
+    }
+    mod_data = NULL;
+
+cleanup:
+    lyd_free_withsiblings(mod_data);
+    return err_info;
 }
 
 /**
@@ -1221,6 +1534,11 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             if (!strcmp(mod->ly_mod->name, "ietf-yang-library")) {
                 /* append ietf-yang-library state data - internal */
                 if ((err_info = sr_modinfo_module_data_load_yanglib(mod_info, mod))) {
+                    return err_info;
+                }
+            } else if (!strcmp(mod->ly_mod->name, "sysrepo-monitoring")) {
+                /* append sysrepo-monitoring state data - internal */
+                if ((err_info = sr_modinfo_module_data_load_srmon(mod_info))) {
                     return err_info;
                 }
             }

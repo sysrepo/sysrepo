@@ -1326,6 +1326,8 @@ sr_module_is_internal(const struct lys_module *ly_mod)
         return 1;
     } else if (!strcmp(ly_mod->name, "sysrepo")) {
         return 1;
+    } else if (!strcmp(ly_mod->name, "sysrepo-monitoring")) {
+        return 1;
     }
 
     return 0;
@@ -1355,7 +1357,11 @@ sr_create_startup_file(const struct lys_module *ly_mod)
     }
 
     if (sr_module_is_internal(ly_mod)) {
-        mode = SR_INT_FILE_PERM;
+        if (!strcmp(ly_mod->name, "sysrepo-monitoring")) {
+            mode = SR_MON_INT_FILE_PERM;
+        } else {
+            mode = SR_INT_FILE_PERM;
+        }
     } else {
         mode = SR_FILE_PERM;
     }
@@ -2399,7 +2405,7 @@ sr_cp_file2shm(const char *to, const char *from, mode_t perm)
 {
     sr_error_info_t *err_info = NULL;
     int fd_to = -1, fd_from = -1;
-    char * out_ptr, buf[4096];
+    char *out_ptr, buf[4096];
     ssize_t nread, nwritten;
     mode_t um;
 
@@ -2570,6 +2576,23 @@ sr_ds2str(sr_datastore_t ds)
         return "candidate";
     case SR_DS_OPERATIONAL:
         return "operational";
+    }
+
+    return NULL;
+}
+
+const char *
+sr_ds2ident(sr_datastore_t ds)
+{
+    switch (ds) {
+    case SR_DS_RUNNING:
+        return "ietf-datastores:running";
+    case SR_DS_STARTUP:
+        return "ietf-datastores:startup";
+    case SR_DS_CANDIDATE:
+        return "ietf-datastores:candidate";
+    case SR_DS_OPERATIONAL:
+        return "ietf-datastores:operational";
     }
 
     return NULL;

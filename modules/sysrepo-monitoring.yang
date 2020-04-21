@@ -1,0 +1,222 @@
+module sysrepo-monitoring {
+    namespace "http://www.sysrepo.org/yang/sysrepo-monitoring";
+    prefix srm;
+
+    yang-version 1.1;
+
+    import ietf-yang-types {
+        prefix yang;
+    }
+
+    import ietf-datastores {
+        prefix ds;
+    }
+
+    organization
+        "CESNET";
+
+    contact
+        "Author: Michal Vasko
+                 <mvasko@cesnet.cz>";
+
+    description
+        "Sysrepo YANG datastore monitoring state information.";
+
+    revision "2020-04-17" {
+        description
+            "Initial revision.";
+    }
+
+    typedef lock-mode {
+        description
+            "Mode of lock held.";
+        type enumeration {
+            enum read {
+                description
+                    "Read lock.";
+            }
+            enum write {
+                description
+                    "Write lock.";
+            }
+        }
+    }
+
+    typedef module-ref {
+        description
+            "Module reference.";
+        type leafref {
+            path "/sysrepo-state/module/name";
+        }
+    }
+
+    typedef conn-ref {
+        description
+            "Connection reference.";
+        type leafref {
+            path "/sysrepo-state/connection/pid";
+        }
+    }
+
+    container sysrepo-state {
+        config false;
+        description
+            "Information about Sysrepo state stored in the shared memory.";
+
+        list module {
+            key "name";
+            description
+                "Sysrepo module.";
+
+            leaf name {
+                type string;
+                description
+                    "Module name.";
+            }
+
+            container subscriptions {
+                description
+                    "Module subscriptions.";
+
+                list change-sub {
+                    description
+                        "Data change subscription.";
+
+                    leaf datastore {
+                        mandatory true;
+                        type identityref {
+                            base ds:datastore;
+                        }
+                        description
+                            "Datastore, whose data changes were subscribed for.";
+                    }
+
+                    leaf xpath {
+                        type yang:xpath1.0;
+                        description
+                            "XPath filtering the data subscribed for.";
+                    }
+
+                    leaf priority {
+                        mandatory true;
+                        type uint32;
+                        description
+                            "Subscription priority.";
+                    }
+
+                    leaf pid {
+                        mandatory true;
+                        type conn-ref;
+                        description
+                            "PID of the connection that this subscription belongs to.";
+                    }
+                }
+
+                list operational-sub {
+                    key "xpath";
+                    description
+                        "Operational subscription.";
+
+                    leaf xpath {
+                        type yang:xpath1.0;
+                        description
+                            "Operational data pull subscription XPath.";
+                    }
+
+                    leaf pid {
+                        mandatory true;
+                        type conn-ref;
+                        description
+                            "PID of the connection that this subscription belongs to.";
+                    }
+                }
+
+                leaf-list notification-sub {
+                    type conn-ref;
+                    description
+                        "PID of the connection that this subscription belongs to.";
+                }
+            }
+        }
+
+        list rpc {
+            key "path";
+            description
+                "RPC/action of a Sysrepo module.";
+
+            leaf path {
+                type yang:xpath1.0;
+                description
+                    "Path identifying an RPC or action.";
+            }
+
+            list rpc-sub {
+                leaf xpath {
+                    mandatory true;
+                    type yang:xpath1.0;
+                    description
+                        "XPath filtering the RPCs/actions subscribed for.";
+                }
+
+                leaf priority {
+                    mandatory true;
+                    type uint32;
+                    description
+                        "Subscription priority.";
+                }
+
+                leaf pid {
+                    mandatory true;
+                    type conn-ref;
+                    description
+                        "PID of the connection that this subscription belongs to.";
+                }
+            }
+        }
+
+        list connection {
+            key "pid";
+            description
+                "Created Sysrepo connection.";
+
+            leaf pid {
+                type uint32;
+                description
+                    "PID of the process that created this connection.";
+            }
+
+            leaf main-lock {
+                type lock-mode;
+                description
+                    "Held main lock mode.";
+            }
+
+            list module-lock {
+                key "name datastore";
+                description
+                    "Held module data lock.";
+
+                leaf name {
+                    type module-ref;
+                    description
+                        "Name of the locked module of the data.";
+                }
+
+                leaf datastore {
+                    type identityref {
+                        base ds:datastore;
+                    }
+                    description
+                        "Datastore of the locked module data.";
+                }
+
+                leaf lock {
+                    mandatory true;
+                    type lock-mode;
+                    description
+                        "Module data lock mode.";
+                }
+            }
+        }
+    }
+}

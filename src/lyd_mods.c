@@ -42,6 +42,7 @@
 # error "Unknown yang-library revision!"
 #endif
 
+#include "../modules/sysrepo_monitoring_yang.h"
 #include "../modules/ietf_netconf_yang.h"
 #include "../modules/ietf_netconf_with_defaults_yang.h"
 #include "../modules/ietf_netconf_notifications_yang.h"
@@ -918,6 +919,9 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     /* install ietf-datastores and ietf-yang-library */
     SR_INSTALL_INT_MOD(ietf_datastores_yang, 1);
     SR_INSTALL_INT_MOD(ietf_yang_library_yang, 0);
+
+    /* install sysrepo-monitoring */
+    SR_INSTALL_INT_MOD(sysrepo_monitoring_yang, 0);
 
     /* install ietf-netconf (implemented dependency) and ietf-netconf-with-defaults */
     SR_INSTALL_INT_MOD(ietf_netconf_yang, 1);
@@ -1813,6 +1817,9 @@ cleanup:
     free(start_data_json);
     free(run_data_json);
     ly_ctx_destroy(old_ctx, NULL);
+    if (err_info) {
+        sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, NULL, "Failed to update data for the new context.");
+    }
     return err_info;
 }
 

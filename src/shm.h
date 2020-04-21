@@ -207,7 +207,7 @@ typedef struct sr_conn_shm_s {
     pid_t pid;                  /**< PID of process that created this connection. */
 
     sr_conn_shm_lock_t main_lock; /**< Held main SHM lock. */
-    off_t mod_locks;            /**< Held SHM module locks, points to (sr_conn_state_lock_t (*)[3]). */
+    off_t mod_locks;            /**< Held SHM module locks, points to (sr_conn_state_lock_t (*)[SR_DS_COUNT]). */
 
     off_t evpipes;              /**< Array of event pipe numbers (uint32_t) of subscriptions on this connection. */
     uint16_t evpipe_count;      /**< Event pipe count. */
