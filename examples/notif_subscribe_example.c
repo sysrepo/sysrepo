@@ -12,6 +12,7 @@
  *
  *     https://opensource.org/licenses/BSD-3-Clause
  */
+#define _QNX_SOURCE /* sleep */
 #define _GNU_SOURCE
 
 #include <stdio.h>
