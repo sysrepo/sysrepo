@@ -2982,7 +2982,9 @@ sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subsc
             /* we need to perform the requested replay */
             if ((err_info = sr_replay_notify(subs->conn, notif_subs->module_name, notif_sub->xpath, notif_sub->start_time,
                     notif_sub->stop_time, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data))) {
-                return err_info;
+                /* continue even on error so that the subscription is at least added into SHM,
+                 * otherwise there are problems with removing it */
+                sr_errinfo_free(&err_info);
             }
 
             /* find module */

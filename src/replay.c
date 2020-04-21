@@ -718,7 +718,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, t
 
     if (!(shm_mod->flags & SR_MOD_REPLAY_SUPPORT)) {
         /* nothing to do */
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Module \"%s\" does not support notification replay.", mod_name);
+        SR_LOG_WRN("Module \"%s\" does not support notification replay.", mod_name);
         goto cleanup;
     }
 
