@@ -1293,18 +1293,20 @@ sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int r
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
 
-    SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
+    SR_CHECK_ARG_APIRET(!conn, NULL, err_info);
 
     /* LYDMODS LOCK */
     if ((err_info = sr_mlock(&SR_SHM_LYDMODS_LOCK(conn), SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
         return sr_api_ret(NULL, err_info);
     }
 
-    /* try to find this module */
-    ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
-    if (!ly_mod || !ly_mod->implemented) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
-        goto cleanup_unlock;
+    if (module_name) {
+        /* try to find this module */
+        ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
+        if (!ly_mod || !ly_mod->implemented) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+            goto cleanup_unlock;
+        }
     }
 
     /* SHM LOCK (writing into replay support, but that cannot remap ext SHM) */

@@ -821,6 +821,131 @@ test_change_feature(void **state)
 }
 
 static void
+test_replay_support(void **state)
+{
+    struct state *st = (struct state *)*state;
+    int ret;
+    uint32_t conn_count;
+
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/simple.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* replay support for 2 modules */
+    ret = sr_set_module_replay_support(st->conn, "ietf-interfaces", 1);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_module_replay_support(st->conn, "simple", 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    cmp_int_data(st->conn, "test",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>test</name>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "ietf-interfaces",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>ietf-interfaces</name>"
+        "<revision>2014-05-08</revision>"
+        "<replay-support>0000000000</replay-support>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "iana-if-type",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>iana-if-type</name>"
+        "<revision>2014-05-08</revision>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "simple",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>simple</name>"
+        "<replay-support>0000000000</replay-support>"
+    "</module>"
+    );
+
+    /* replay support for all modules */
+    ret = sr_set_module_replay_support(st->conn, NULL, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    cmp_int_data(st->conn, "test",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>test</name>"
+        "<replay-support>0000000000</replay-support>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "ietf-interfaces",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>ietf-interfaces</name>"
+        "<revision>2014-05-08</revision>"
+        "<replay-support>0000000000</replay-support>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "iana-if-type",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>iana-if-type</name>"
+        "<revision>2014-05-08</revision>"
+        "<replay-support>0000000000</replay-support>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "simple",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>simple</name>"
+        "<replay-support>0000000000</replay-support>"
+    "</module>"
+    );
+
+    /* replay support for no modules */
+    ret = sr_set_module_replay_support(st->conn, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    cmp_int_data(st->conn, "test",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>test</name>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "ietf-interfaces",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>ietf-interfaces</name>"
+        "<revision>2014-05-08</revision>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "iana-if-type",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>iana-if-type</name>"
+        "<revision>2014-05-08</revision>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "simple",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>simple</name>"
+    "</module>"
+    );
+
+    /* cleanup */
+    ret = sr_remove_module(st->conn, "test");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "ietf-interfaces");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "iana-if-type");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "simple");
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+static void
 test_foreign_aug(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -1157,6 +1282,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_remove_dep_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_update_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_feature, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_replay_support, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_foreign_aug, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_empty_invalid, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_startup_data_foreign_identityref, setup_f, teardown_f),

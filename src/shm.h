@@ -590,7 +590,7 @@ sr_error_info_t *sr_shmmain_del_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr,
  *
  * @param[in] shm_main Main SHM.
  * @param[in] ext_shm_addr Ext SHM address.
- * @param[in] mod_name Module name.
+ * @param[in] mod_name Module name. NUll for all the modules.
  * @param[in] replay_support Whether replay support should be enabled or disabled.
  * @return err_info, NULL on success.
  */

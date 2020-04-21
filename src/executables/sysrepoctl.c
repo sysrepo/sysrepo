@@ -83,6 +83,7 @@ help_print(void)
         "                       Uninstall the specified module(s) from sysrepo.\n"
         "  -c, --change <module>\n"
         "                       Change access rights, features, or replay support of the specified module.\n"
+        "                       Use special \":ALL\" module name to change the replay support of all the modules.\n"
         "  -U, --update <path>  Update the specified schema in sysrepo. Can be in either YANG or YIN format.\n"
         "  -C, --connection-count\n"
         "                       Print the number of sysrepo connections to STDOUT.\n"
@@ -671,8 +672,12 @@ main(int argc, char** argv)
             }
         }
 
-        /* enable replay */
+        /* change replay */
         if (replay != -1) {
+            if (!strcmp(module_name, ":ALL")) {
+                /* all the modules */
+                module_name = NULL;
+            }
             if ((r = sr_set_module_replay_support(conn, module_name, replay))) {
                 error_print(r, "Failed to change replay support");
                 goto cleanup;

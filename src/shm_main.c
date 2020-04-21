@@ -2180,16 +2180,24 @@ sr_shmmain_update_replay_support(sr_shm_t *shm_main, char *ext_shm_addr, const c
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
 
-    shm_mod = sr_shmmain_find_module(shm_main, ext_shm_addr, mod_name, 0);
-    SR_CHECK_INT_RET(!shm_mod, err_info);
+    if (mod_name) {
+        shm_mod = sr_shmmain_find_module(shm_main, ext_shm_addr, mod_name, 0);
+        SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    if ((replay_support && !(shm_mod->flags & SR_MOD_REPLAY_SUPPORT))
-            || (!replay_support && (shm_mod->flags & SR_MOD_REPLAY_SUPPORT))) {
         /* update flag */
         if (replay_support) {
             shm_mod->flags |= SR_MOD_REPLAY_SUPPORT;
         } else {
             shm_mod->flags &= ~SR_MOD_REPLAY_SUPPORT;
+        }
+    } else {
+        SR_SHM_MOD_FOR(shm_main->addr, shm_main->size, shm_mod) {
+            /* update flag */
+            if (replay_support) {
+                shm_mod->flags |= SR_MOD_REPLAY_SUPPORT;
+            } else {
+                shm_mod->flags &= ~SR_MOD_REPLAY_SUPPORT;
+            }
         }
     }
 

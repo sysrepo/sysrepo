@@ -184,7 +184,7 @@ sr_error_info_t *sr_lydmods_deferred_change_feature(struct ly_ctx *ly_ctx, const
  * @brief Update reply support in sysrepo module data.
  *
  * @param[in] ly_ctx Context to use for parsing the data.
- * @param[in] mod_name Module to update.
+ * @param[in] mod_name Module to update. NULL to update all the modules.
  * @param[in] replay_support Whether replay should be enabled or disabled.
  * @return err_info, NULL on success.
  */

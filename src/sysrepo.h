@@ -517,7 +517,7 @@ int sr_cancel_update_module(sr_conn_ctx_t *conn, const char *module_name);
  * @brief Change module replay support.
  *
  * @param[in] conn Connection to use.
- * @param[in] module_name Name of the module to change.
+ * @param[in] module_name Name of the module to change. NULL to change all the modules.
  * @param[in] replay_support 0 to disabled, non-zero to enable.
  * @return Error code (::SR_ERR_OK on success).
  */
