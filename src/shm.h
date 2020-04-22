@@ -556,10 +556,11 @@ int sr_shmmain_rpc_subscription_del(char *ext_shm_addr, sr_rpc_t *shm_rpc, const
  * @param[in] priority Subscription priority.
  * @param[in] evpipe_num Subscription event pipe number.
  * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.
+ * @param[out] last_removed Optional, set if the last subscription of the RPC was removed and hence also the RPC.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmain_rpc_subscription_stop(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath,
-        uint32_t priority, uint32_t evpipe_num, int all_evpipe);
+        uint32_t priority, uint32_t evpipe_num, int all_evpipe, int *last_removed);
 
 /**
  * @brief Add an RPC/action into main SHM.

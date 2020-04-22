@@ -921,7 +921,7 @@ sr_shmmain_conn_recover(sr_conn_ctx_t *conn)
     struct sr_mod_lock_s *shm_lock;
     struct timespec timeout_ts;
     char *path;
-    int ret;
+    int ret, last_removed;
 
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
     sr_time_get(&timeout_ts, SR_MOD_LOCK_TIMEOUT * 1000);
@@ -996,9 +996,13 @@ sr_shmmain_conn_recover(sr_conn_ctx_t *conn)
                 }
 
                 shm_rpc = (sr_rpc_t *)(conn->ext_shm.addr + main_shm->rpc_subs);
-                for (k = 0; k < main_shm->rpc_sub_count; ++k) {
-                    if ((tmp_err = sr_shmmain_rpc_subscription_stop(conn, &shm_rpc[k], NULL, 0, evpipes[j], 1))) {
+                k = 0;
+                while (k < main_shm->rpc_sub_count) {
+                    if ((tmp_err = sr_shmmain_rpc_subscription_stop(conn, &shm_rpc[k], NULL, 0, evpipes[j], 1, &last_removed))) {
                         sr_errinfo_merge(&err_info, tmp_err);
+                    }
+                    if (!last_removed) {
+                        ++k;
                     }
                 }
 
@@ -2073,26 +2077,29 @@ sr_shmmain_rpc_subscription_del(char *ext_shm_addr, sr_rpc_t *shm_rpc, const cha
 
 sr_error_info_t *
 sr_shmmain_rpc_subscription_stop(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath, uint32_t priority,
-        uint32_t evpipe_num, int all_evpipe)
+        uint32_t evpipe_num, int all_evpipe, int *last_removed)
 {
     sr_error_info_t *err_info = NULL;
     const char *op_path;
     char *mod_name, *path;
-    int last_removed;
+    int last_sub_removed;
 
     op_path = conn->ext_shm.addr + shm_rpc->op_path;
+    if (last_removed) {
+        *last_removed = 0;
+    }
 
     do {
         /* remove the subscription from the main SHM */
         if (sr_shmmain_rpc_subscription_del(conn->ext_shm.addr, shm_rpc, xpath, priority, evpipe_num, all_evpipe,
-                &last_removed)) {
+                &last_sub_removed)) {
             if (!all_evpipe) {
                 SR_ERRINFO_INT(&err_info);
             }
             break;
         }
 
-        if (last_removed) {
+        if (last_sub_removed) {
             /* get module name */
             mod_name = sr_get_first_ns(op_path);
 
@@ -2109,6 +2116,9 @@ sr_shmmain_rpc_subscription_stop(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const c
 
             /* delete also RPC, we must break because shm_rpc was removed */
             err_info = sr_shmmain_del_rpc((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, NULL, shm_rpc->op_path);
+            if (!err_info && last_removed) {
+                *last_removed = 1;
+            }
             break;
         }
     } while (all_evpipe);

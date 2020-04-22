@@ -869,7 +869,7 @@ rpc_subs_del:
             if (rpc_sub->subs[j].sess == sess) {
                 /* properly remove the subscription from the main SHM */
                 if ((err_info = sr_shmmain_rpc_subscription_stop(sess->conn, shm_rpc, rpc_sub->subs[j].xpath,
-                        rpc_sub->subs[j].priority, subs->evpipe_num, 0))) {
+                        rpc_sub->subs[j].priority, subs->evpipe_num, 0, NULL))) {
                     return err_info;
                 }
 
