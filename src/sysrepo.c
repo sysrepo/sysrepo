@@ -2179,23 +2179,30 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *update_edit = NULL, *old_diff = NULL, *new_diff = NULL;
-    const char *err_msg = NULL, *err_xpath = NULL;
+    sr_session_ctx_t tmp_sess;
     int ret;
 
+    memset(&tmp_sess, 0, sizeof tmp_sess);
     *cb_err_info = NULL;
 
     /* call connection diff callback */
-    if (mod_info->diff && session->conn->diff_check_cb && (ret = session->conn->diff_check_cb(session, mod_info->diff))) {
-        /* create cb_err_info */
-        if (session->err_info && session->err_info->err_code == SR_ERR_OK) {
-            err_msg = session->err_info->err[0].message;
+    if (mod_info->diff && session->conn->diff_check_cb) {
+        /* create temporary session */
+        tmp_sess.conn = session->conn;
+        tmp_sess.ds = session->ds;
+        tmp_sess.ev = SR_SUB_EV_CHANGE;
+        tmp_sess.sid = session->sid;
+
+        ret = session->conn->diff_check_cb(&tmp_sess, mod_info->diff);
+        if (ret) {
+            /* create cb_err_info */
+            if (tmp_sess.err_info && (tmp_sess.err_info->err_code == SR_ERR_OK)) {
+                sr_errinfo_new(cb_err_info, ret, tmp_sess.err_info->err[0].xpath, tmp_sess.err_info->err[0].message);
+            } else {
+                sr_errinfo_new(cb_err_info, ret, NULL, "Diff check callback failed (%s).", sr_strerror(ret));
+            }
+            goto cleanup;
         }
-        if (!err_msg) {
-            err_msg = sr_strerror(ret);
-        }
-        err_xpath = session->err_info->err[0].xpath;
-        sr_errinfo_new(cb_err_info, ret, err_xpath, err_msg);
-        goto cleanup;
     }
 
     /* validate new data trees */
@@ -2319,6 +2326,7 @@ cleanup:
     lyd_free_withsiblings(update_edit);
     lyd_free_withsiblings(old_diff);
     lyd_free_withsiblings(new_diff);
+    sr_errinfo_free(&tmp_sess.err_info);
     return err_info;
 }
 
