@@ -263,10 +263,11 @@ sr_shmsub_notify_finish_wrunlock(sr_sub_shm_t *sub_shm, size_t shm_struct_size, 
  * @param[in] xpath Optional XPath written after the structure.
  * @param[in] data Optional data written after the structure (or \p xpath).
  * @param[in] data_len Length of additional data.
+ * @param[in] event_desc Specific event description for printing.
  */
 static void
 sr_shmsub_notify_write_event(sr_sub_shm_t *sub_shm, uint32_t request_id, sr_sub_event_t event, struct sr_sid_s *sid,
-        const char *xpath, const char *data, uint32_t data_len)
+        const char *xpath, const char *data, uint32_t data_len, const char *event_desc)
 {
     sub_shm->request_id = request_id;
     sub_shm->event = event;
@@ -286,7 +287,7 @@ sr_shmsub_notify_write_event(sr_sub_shm_t *sub_shm, uint32_t request_id, sr_sub_
     }
 
     if (event) {
-        SR_LOG_INF("Published event \"%s\" with ID %u.", sr_ev2str(event), request_id);
+        SR_LOG_INF("Published event \"%s\" \"%s\" with ID %u.", sr_ev2str(event), event_desc, request_id);
     }
 }
 
@@ -302,11 +303,12 @@ sr_shmsub_notify_write_event(sr_sub_shm_t *sub_shm, uint32_t request_id, sr_sub_
  * @param[in] notif_ts Notification timestamp for notifications.
  * @param[in] data Optional data written after the structure.
  * @param[in] data_len Length of additional data.
+ * @param[in] event_desc Specific event description for printing.
  */
 static void
 sr_shmsub_multi_notify_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t request_id, uint32_t priority,
         sr_sub_event_t event, struct sr_sid_s *sid, uint32_t subscriber_count, time_t notif_ts, const char *data,
-        uint32_t data_len)
+        uint32_t data_len, const char *event_desc)
 {
     size_t changed_shm_size;
 
@@ -333,8 +335,8 @@ sr_shmsub_multi_notify_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t r
     }
 
     if (event) {
-        SR_LOG_INF("Published event \"%s\" with ID %u priority %u for %u subscribers.", sr_ev2str(event), request_id,
-                priority, subscriber_count);
+        SR_LOG_INF("Published event \"%s\" \"%s\" with ID %u priority %u for %u subscribers.", sr_ev2str(event),
+                event_desc, request_id, priority, subscriber_count);
     }
 }
 
@@ -599,7 +601,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
                 mod->request_id = ++multi_sub_shm->request_id;
             }
             sr_shmsub_multi_notify_write_event(multi_sub_shm, mod->request_id, cur_priority, SR_SUB_EV_UPDATE, &sid,
-                    subscriber_count, 0, diff_lyb, diff_lyb_len);
+                    subscriber_count, 0, diff_lyb, diff_lyb_len, mod->ly_mod->name);
 
             /* notify using event pipe and wait until all the subscribers have processed the event */
             if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn->ext_shm.addr, mod, mod_info->ds,
@@ -744,7 +746,7 @@ clear_event:
                 assert((multi_sub_shm->request_id == mod->request_id) && (multi_sub_shm->priority == cur_priority));
 
                 /* clear it */
-                sr_shmsub_multi_notify_write_event(multi_sub_shm, mod->request_id, cur_priority, 0, NULL, 0, 0, NULL, 0);
+                sr_shmsub_multi_notify_write_event(multi_sub_shm, mod->request_id, cur_priority, 0, NULL, 0, 0, NULL, 0, NULL);
 
                 /* remap sub SHM to make it smaller */
                 if ((err_info = sr_shm_remap(&shm_sub, sizeof *multi_sub_shm))) {
@@ -860,7 +862,7 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
                 mod->request_id = ++multi_sub_shm->request_id;
             }
             sr_shmsub_multi_notify_write_event(multi_sub_shm, mod->request_id, cur_priority, SR_SUB_EV_CHANGE, &sid,
-                    subscriber_count, 0, diff_lyb, diff_lyb_len);
+                    subscriber_count, 0, diff_lyb, diff_lyb_len, mod->ly_mod->name);
 
             /* notify using event pipe and wait until all the subscribers have processed the event */
             if ((err_info = sr_shmsub_change_notify_evpipe(ext_shm_addr, mod, mod_info->ds,
@@ -972,7 +974,7 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
                 mod->request_id = ++multi_sub_shm->request_id;
             }
             sr_shmsub_multi_notify_write_event(multi_sub_shm, mod->request_id, cur_priority, SR_SUB_EV_DONE, &sid,
-                    subscriber_count, 0, diff_lyb, diff_lyb_len);
+                    subscriber_count, 0, diff_lyb, diff_lyb_len, mod->ly_mod->name);
 
             /* notify using event pipe and do not wait for subscribers */
             if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn->ext_shm.addr, mod, mod_info->ds,
@@ -1047,7 +1049,7 @@ clear_shm:
             if (multi_sub_shm->event == SR_SUB_EV_ERROR) {
                 /* this must be the right subscription SHM, we still have apply-changes locks, clear and shrink it */
                 assert(multi_sub_shm->request_id == mod->request_id);
-                sr_shmsub_multi_notify_write_event(multi_sub_shm, mod->request_id, cur_priority, 0, NULL, 0, 0, NULL, 0);
+                sr_shmsub_multi_notify_write_event(multi_sub_shm, mod->request_id, cur_priority, 0, NULL, 0, 0, NULL, 0, NULL);
                 if ((err_info = sr_shm_remap(&shm_sub, sizeof *multi_sub_shm))) {
                     goto cleanup_wrunlock;
                 }
@@ -1115,7 +1117,7 @@ clear_shm:
 
             /* write "abort" event with the same LYB data trees */
             sr_shmsub_multi_notify_write_event(multi_sub_shm, mod->request_id, cur_priority, SR_SUB_EV_ABORT, &sid,
-                    subscriber_count, 0, diff_lyb, diff_lyb_len);
+                    subscriber_count, 0, diff_lyb, diff_lyb_len, mod->ly_mod->name);
 
             /* notify using event pipe */
             if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn->ext_shm.addr, mod, mod_info->ds,
@@ -1211,7 +1213,7 @@ sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const 
 
     /* write the request for state data */
     request_id = sub_shm->request_id + 1;
-    sr_shmsub_notify_write_event(sub_shm, request_id, SR_SUB_EV_OPER, &sid, request_xpath, parent_lyb, parent_lyb_len);
+    sr_shmsub_notify_write_event(sub_shm, request_id, SR_SUB_EV_OPER, &sid, request_xpath, parent_lyb, parent_lyb_len, xpath);
 
     /* notify using event pipe and wait until the subscriber has processed the event */
     if ((err_info = sr_shmsub_notify_evpipe(evpipe_num))) {
@@ -1232,7 +1234,7 @@ sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const 
             goto cleanup;
         }
         /* clear SHM */
-        sr_shmsub_notify_write_event(sub_shm, request_id, 0, NULL, NULL, NULL, 0);
+        sr_shmsub_notify_write_event(sub_shm, request_id, 0, NULL, NULL, NULL, 0, NULL);
         goto cleanup_wrunlock;
     } else {
         SR_LOG_INF("Event \"operational\" with ID %u succeeded.", request_id);
@@ -1493,7 +1495,7 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_
             *request_id = ++multi_sub_shm->request_id;
         }
         sr_shmsub_multi_notify_write_event(multi_sub_shm, *request_id, cur_priority, SR_SUB_EV_RPC, &sid,
-                subscriber_count, 0, input_lyb, input_lyb_len);
+                subscriber_count, 0, input_lyb, input_lyb_len, op_path);
 
         /* notify using event pipe and wait until all the subscribers have processed the event */
         for (i = 0; i < subscriber_count; ++i) {
@@ -1612,7 +1614,7 @@ clear_shm:
 
         /* clear and shrink the SHM */
         assert(multi_sub_shm->event == SR_SUB_EV_ERROR);
-        sr_shmsub_multi_notify_write_event(multi_sub_shm, request_id, cur_priority, 0, NULL, 0, 0, NULL, 0);
+        sr_shmsub_multi_notify_write_event(multi_sub_shm, request_id, cur_priority, 0, NULL, 0, 0, NULL, 0, NULL);
         if ((err_info = sr_shm_remap(&shm_sub, sizeof *multi_sub_shm))) {
             goto cleanup_wrunlock;
         }
@@ -1669,7 +1671,7 @@ clear_shm:
 
         /* write "abort" event with the same input */
         sr_shmsub_multi_notify_write_event(multi_sub_shm, request_id, cur_priority, SR_SUB_EV_ABORT, &sid,
-                subscriber_count, 0, input_lyb, input_lyb_len);
+                subscriber_count, 0, input_lyb, input_lyb_len, op_path);
 
         /* notify using event pipe but do not wait for the subscribers */
         for (i = 0; i < subscriber_count; ++i) {
@@ -1743,7 +1745,7 @@ sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t s
     /* write the notification, we do not wait for any reply */
     request_id = multi_sub_shm->request_id + 1;
     sr_shmsub_multi_notify_write_event(multi_sub_shm, request_id, 0, SR_SUB_EV_NOTIF, &sid, notif_sub_count,
-            notif_ts, notif_lyb, notif_lyb_len);
+            notif_ts, notif_lyb, notif_lyb_len, ly_mod->name);
 
     /* notify all subscribers using event pipe and do not wait for them */
     for (i = 0; i < notif_sub_count; ++i) {
