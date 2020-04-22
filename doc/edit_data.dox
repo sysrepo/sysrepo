@@ -13,7 +13,7 @@ Note that changes of _operational_ datastore behave in a special way (more in [o
 
 Lastly, it is possible to simply replace the whole datastore (only conventional datastores, all except
 ::SR_DS_OPERATIONAL) or only a specific module data with a data tree. Or the source configuration may also come from
-from another datastore or module data, respectively.
+another datastore or module data, respectively.
 
 @ref edit_data_api
 
