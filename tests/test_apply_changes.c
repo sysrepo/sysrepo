@@ -1377,7 +1377,7 @@ module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, c
         }
 
         /* get changes iter */
-        ret = sr_get_changes_iter(session, "/defaults:*//.", &iter);
+        ret = sr_get_changes_iter(session, "//*", &iter);
         assert_int_equal(ret, SR_ERR_OK);
 
         /* 1st change */
