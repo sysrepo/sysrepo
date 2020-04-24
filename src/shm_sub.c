@@ -359,12 +359,12 @@ sr_shmsub_change_is_valid(sr_sub_event_t ev, sr_subscr_options_t sub_opts)
         }
         break;
     case SR_SUB_EV_CHANGE:
+    case SR_SUB_EV_ABORT:
         if (sub_opts & SR_SUBSCR_DONE_ONLY) {
             return 0;
         }
         break;
     case SR_SUB_EV_DONE:
-    case SR_SUB_EV_ABORT:
         break;
     default:
         /* just print it */

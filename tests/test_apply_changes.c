@@ -1204,6 +1204,23 @@ module_ifc_change_fail_cb(sr_session_ctx_t *session, const char *module_name, co
     return ret;
 }
 
+static int
+module_when1_change_fail_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    (void)session;
+    (void)module_name;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+    (void)private_data;
+
+    /* should not be called at all */
+    fail();
+
+    return SR_ERR_INTERNAL;
+}
+
 static void *
 apply_change_fail_thread(void *arg)
 {
@@ -1217,6 +1234,8 @@ apply_change_fail_thread(void *arg)
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
+    ret = sr_set_item_str(sess, "/when1:l1", "value1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_move_item(sess, "/test:l1[k='key1']", SR_MOVE_AFTER, "[k='key2']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth52']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
@@ -1252,7 +1271,9 @@ apply_change_fail_thread(void *arg)
     /* signal that we have finished applying changes #1 */
     pthread_barrier_wait(&st->barrier);
 
-    /* perform a single change (it should fail) */
+    /* perform another change (it should fail) */
+    ret = sr_set_item_str(sess, "/when1:l2", "value2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth52']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0, 0);
@@ -1300,6 +1321,9 @@ subscribe_change_fail_thread(void *arg)
     ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_ifc_change_fail_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_module_change_subscribe(sess, "test", NULL, module_test_change_fail_cb, st, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "when1", NULL, module_when1_change_fail_cb, st, 0,
+            SR_SUBSCR_CTX_REUSE | SR_SUBSCR_DONE_ONLY, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* signal that subscription was created */
