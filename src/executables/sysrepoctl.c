@@ -97,10 +97,11 @@ help_print(void)
         "  -d, --disable-feature <feature-name>\n"
         "                       Disable specific feature. Can be specified multiple times (change op).\n"
         "  -r, --replay <state> Change replay support (storing notifications) for this module to on/off or 1/0 (change op).\n"
-        "  -o, --owner <user>   Set filesystem owner of a module (change op, if \"apply\" even install op).\n"
-        "  -g, --group <group>  Set filesystem group of a module (change op, if \"apply\" even install op).\n"
+        "  -o, --owner <user>   Set filesystem owner of a module (change op, if \"apply\" even install, update op).\n"
+        "  -g, --group <group>  Set filesystem group of a module (change op, if \"apply\" even install, update op).\n"
         "  -p, --permissions <permissions>\n"
-        "                       Set filesystem permissions of a module (chmod format) (change op, if \"apply\" even install op).\n"
+        "                       Set filesystem permissions of a module (chmod format) (change op, if \"apply\" even \n"
+        "                       install, update op).\n"
         "  -a, --apply          Apply schema changes immediately, not only schedule them.\n"
         "  -v, --verbosity <level>\n"
         "                       Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
@@ -390,13 +391,16 @@ log_cb(sr_log_level_t level, const char *message)
     if (strncmp(message, "Module \"", 8)) {
         return;
     }
-    if ((strlen(message) < 16) || strcmp(message + strlen(message) - 16, "\" was installed.")) {
+    end = strchr(message + 8, '\"');
+    if (!end) {
+        return;
+    }
+    if (strncmp(end, "\" was installed", 15) && strncmp(end, "\" was updated", 13)) {
         return;
     }
 
-    /* store the newly installed module name */
+    /* store the newly installed/updated module name */
     free(inst_module_name);
-    end = strchr(message + 8, '\"');
     inst_module_name = strndup(message + 8, end - (message + 8));
 }
 
@@ -533,7 +537,7 @@ main(int argc, char** argv)
             }
             break;
         case 'o':
-            if (operation && (operation != 'c') && ((operation != 'i') || !apply)) {
+            if (operation && (operation != 'c') && (((operation != 'i') && (operation != 'U')) || !apply)) {
                 error_print(0, "Invalid parameter -%c for the operation", opt);
                 goto cleanup;
             }
@@ -544,7 +548,7 @@ main(int argc, char** argv)
             owner = optarg;
             break;
         case 'g':
-            if (operation && (operation != 'c') && ((operation != 'i') || !apply)) {
+            if (operation && (operation != 'c') && (((operation != 'i') && (operation != 'U')) || !apply)) {
                 error_print(0, "Invalid parameter -%c for the operation", opt);
                 goto cleanup;
             }
@@ -555,7 +559,7 @@ main(int argc, char** argv)
             group = optarg;
             break;
         case 'p':
-            if (operation && (operation != 'c') && ((operation != 'i') || !apply)) {
+            if (operation && (operation != 'c') && (((operation != 'i') && (operation != 'U')) || !apply)) {
                 error_print(0, "Invalid parameter -%c for the operation", opt);
                 goto cleanup;
             }
@@ -736,8 +740,8 @@ main(int argc, char** argv)
         break;
     }
 
-    /* change permissions for a newly installed module */
-    if ((operation == 'i') && (owner || group || ((int)perms != -1))) {
+    /* change permissions for a newly installed/updated module */
+    if (((operation == 'i') || (operation == 'U')) && (owner || group || ((int)perms != -1))) {
         if ((r = sr_set_module_access(conn, inst_module_name, owner, group, perms)) != SR_ERR_OK) {
             error_print(r, "Failed to change module \"%s\" access", inst_module_name);
             goto cleanup;
