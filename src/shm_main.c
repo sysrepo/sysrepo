@@ -1745,9 +1745,10 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
         goto error;
     }
 
+    main_shm = (sr_main_shm_t *)shm->addr;
     if (creat) {
         /* init the memory */
-        main_shm = (sr_main_shm_t *)shm->addr;
+        main_shm->shm_ver = SR_SHM_VER;
         if ((err_info = sr_rwlock_init(&main_shm->lock, 1))) {
             goto error;
         }
@@ -1759,6 +1760,13 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
 
         /* remove leftover event pipes */
         sr_remove_evpipes();
+    } else {
+        /* check versions  */
+        if (main_shm->shm_ver != SR_SHM_VER) {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Shared memory version mismatch (%u, expected %u).",
+                    main_shm->shm_ver, SR_SHM_VER);
+            goto error;
+        }
     }
 
     if (created) {

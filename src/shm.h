@@ -33,6 +33,7 @@
 #define SR_MAIN_SHM "/sr_main"              /**< Main SHM name. */
 #define SR_EXT_SHM "/sr_ext"                /**< External SHM name. */
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
+#define SR_SHM_VER 1                        /**< Main and ext SHM version of their expected content structures. */
 
 /**
  * Main SHM organization
@@ -217,6 +218,8 @@ typedef struct sr_conn_shm_s {
  * @brief Main SHM.
  */
 typedef struct sr_main_shm_s {
+    uint32_t shm_ver;           /**< Main and ext SHM version of all expected data stored in them. Is increased with
+                                     every change of their structure content (ABI change). */
     sr_rwlock_t lock;           /**< Process-shared lock for accessing main and ext SHM. It is required only when
                                      accessing attributes that can be changed (subscriptions, replay support). */
     pthread_mutex_t lydmods_lock; /**< Process-shared lock for accessing sysrepo module data. */
