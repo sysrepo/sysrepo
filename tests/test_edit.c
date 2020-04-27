@@ -292,7 +292,7 @@ test_create2(void **state)
 }
 
 static void
-test_move1(void **state)
+test_move(void **state)
 {
     struct state *st = (struct state *)*state;
     struct lyd_node *data, *node;
@@ -304,6 +304,8 @@ test_move1(void **state)
     ret = sr_set_item_str(st->sess, "/test:l1[k='key1']/v", "1", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:l1[k='key2']/v", "2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_move_item(st->sess, "/test:l1[k='key3']", SR_MOVE_AFTER, "[k='key2']", NULL, NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:l1[k='key3']/v", "3", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -796,7 +798,7 @@ main(void)
         cmocka_unit_test_teardown(test_delete, clear_interfaces),
         cmocka_unit_test_teardown(test_create1, clear_interfaces),
         cmocka_unit_test_teardown(test_create2, clear_interfaces),
-        cmocka_unit_test_teardown(test_move1, clear_test),
+        cmocka_unit_test_teardown(test_move, clear_test),
         cmocka_unit_test_teardown(test_replace, clear_interfaces),
         cmocka_unit_test_teardown(test_isolate, clear_interfaces),
         cmocka_unit_test(test_purge),

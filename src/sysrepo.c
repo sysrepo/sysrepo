@@ -2032,8 +2032,8 @@ sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position
     SR_CHECK_ARG_APIRET(!session || !path, session, err_info);
 
     /* add the operation into edit */
-    err_info = sr_edit_add(session, path, NULL, "merge", "none", &position, list_keys, leaflist_value, origin,
-            opts & SR_EDIT_ISOLATE);
+    err_info = sr_edit_add(session, path, NULL, opts & SR_EDIT_STRICT ? "create" : "merge",
+            opts & SR_EDIT_NON_RECURSIVE ? "none" : "merge", &position, list_keys, leaflist_value, origin, opts & SR_EDIT_ISOLATE);
 
     return sr_api_ret(session, err_info);
 }

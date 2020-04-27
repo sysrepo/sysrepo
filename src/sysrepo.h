@@ -908,10 +908,15 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
 int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts);
 
 /**
- * @brief Prepare to move the instance of an user-ordered list or leaf-list to the specified position.
+ * @brief Prepare to move/create the instance of an user-ordered list or leaf-list to the specified position.
  * These changes are applied only after calling ::sr_apply_changes.
  *
- * Item can be move to the first or last position or positioned relatively to its sibling.
+ * Item can be moved to the first or last position or positioned relatively to its sibling.
+ *
+ * With default options it recursively creates all missing nodes (containers and
+ * lists including their key leaves) in the xpath to the specified node (can be
+ * turned off with ::SR_EDIT_NON_RECURSIVE option). If ::SR_EDIT_STRICT flag is set,
+ * the node must not exist (otherwise an error is returned).
  *
  * @note To determine current order, you can issue a ::sr_get_items call
  * (without specifying keys of particular list).
