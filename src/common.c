@@ -1774,8 +1774,8 @@ sr_chmodown(const char *path, const char *owner, const char *group, mode_t perm)
     assert(path);
 
     if ((int)perm != -1) {
-        if (perm > 00666) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Only read and write permissions can be set.");
+        if (perm > 00777) {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Invalid permissions 0%.3o.", perm);
             return err_info;
         } else if (perm & 00111) {
             sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Setting execute permissions has no effect.");
@@ -2461,9 +2461,13 @@ sr_error_info_t *
 sr_mkpath(char *path, mode_t mode)
 {
     sr_error_info_t *err_info = NULL;
+    mode_t um;
     char *p;
 
     assert(path[0] == '/');
+
+    /* set umask so that the correct permissions are really set */
+    um = umask(00000);
 
     for (p = strchr(path + 1, '/'); p; p = strchr(p + 1, '/')) {
         *p = '\0';
@@ -2471,7 +2475,7 @@ sr_mkpath(char *path, mode_t mode)
             if (errno != EEXIST) {
                 sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
                 *p = '/';
-                return err_info;
+                goto cleanup;
             }
         }
         *p = '/';
@@ -2480,11 +2484,13 @@ sr_mkpath(char *path, mode_t mode)
     if (mkdir(path, mode) == -1) {
         if (errno != EEXIST) {
             sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
-            return err_info;
+            goto cleanup;
         }
     }
 
-    return NULL;
+cleanup:
+    umask(um);
+    return err_info;
 }
 
 char *

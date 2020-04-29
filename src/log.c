@@ -135,7 +135,7 @@ sr_log_msg(int plugin, sr_log_level_t ll, const char *msg, const char *path)
     }
 
     /* syslog logging */
-    if (ll < syslog_ll) {
+    if (ll <= syslog_ll) {
         syslog(priority | (plugin ? LOG_DAEMON : 0), "[%s] %s\n", severity, msg);
     }
 
