@@ -273,6 +273,8 @@ sr_shmsub_notify_write_event(sr_sub_shm_t *sub_shm, uint32_t request_id, sr_sub_
     sub_shm->event = event;
     if (sid) {
         sub_shm->sid = *sid;
+        /* TODO send even user name somehow */
+        sub_shm->sid.user = NULL;
     } else {
         memset(&sub_shm->sid, 0, sizeof sub_shm->sid);
     }
@@ -316,6 +318,8 @@ sr_shmsub_multi_notify_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t r
     multi_sub_shm->event = event;
     if (sid) {
         multi_sub_shm->sid = *sid;
+        /* TODO send even user name somehow */
+        multi_sub_shm->sid.user = NULL;
     } else {
         memset(&multi_sub_shm->sid, 0, sizeof multi_sub_shm->sid);
     }
