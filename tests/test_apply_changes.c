@@ -69,6 +69,9 @@ setup(void **state)
     if (sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/ietf-if-aug.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
     if (sr_install_module(st->conn, TESTS_DIR "/files/when1.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
@@ -95,6 +98,7 @@ teardown(void **state)
     sr_remove_module(st->conn, "defaults");
     sr_remove_module(st->conn, "when2");
     sr_remove_module(st->conn, "when1");
+    sr_remove_module(st->conn, "ietf-if-aug");
     sr_remove_module(st->conn, "iana-if-type");
     sr_remove_module(st->conn, "ietf-ip");
     sr_remove_module(st->conn, "ietf-interfaces");
@@ -127,7 +131,7 @@ teardown_f(void **state)
     return 0;
 }
 
-/* TEST 1 */
+/* TEST */
 static int
 module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
@@ -544,7 +548,7 @@ test_change_done(void **state)
     pthread_join(tid[1], NULL);
 }
 
-/* TEST 2 */
+/* TEST */
 static int
 module_update_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
@@ -856,7 +860,7 @@ test_update(void **state)
     pthread_join(tid[1], NULL);
 }
 
-/* TEST 3 */
+/* TEST */
 static int
 module_update_fail_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
@@ -985,7 +989,7 @@ test_update_fail(void **state)
     pthread_join(tid[1], NULL);
 }
 
-/* TEST 4 */
+/* TEST */
 static int
 module_test_change_fail_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
@@ -1375,7 +1379,289 @@ test_change_fail(void **state)
     pthread_join(tid[1], NULL);
 }
 
-/* TEST 5 */
+/* TEST */
+static int
+dummy_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    (void)session;
+    (void)module_name;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+    (void)private_data;
+
+    return SR_ERR_OK;
+}
+
+static int
+test_change_fail2_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    int ret;
+    sr_change_oper_t op;
+    sr_change_iter_t* iter = NULL;
+    sr_val_t *old_value = NULL;
+    sr_val_t *new_value = NULL;
+
+    (void)module_name;
+    (void)event;
+    (void)request_id;
+    (void)private_data;
+
+    ret = sr_get_changes_iter(session, xpath, &iter);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    while (sr_get_change_next(session, iter, &op, &old_value, &new_value) == SR_ERR_OK) {
+        sr_free_val(old_value);
+        sr_free_val(new_value);
+
+        if (op == SR_OP_MODIFIED) {
+            sr_set_error(session, xpath, "Modifications are not supported for %s", xpath);
+            ret = SR_ERR_OPERATION_FAILED;
+            break;
+        }
+    }
+
+
+    sr_free_change_iter(iter);
+    return ret;
+}
+
+static void *
+apply_change_fail2_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    const sr_error_info_t *err_info;
+    struct lyd_node *data;
+    const char *str;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    str =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>sw0p1</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:bridge</type>"
+            "<enabled>true</enabled>"
+            "<bridge-port xmlns=\"urn:ietf-if-aug\">"
+                "<component-name>br0</component-name>"
+                "<port-type>c-vlan-bridge-port</port-type>"
+                "<pvid>2</pvid>"
+                "<default-priority>0</default-priority>"
+                "<priority-regeneration>"
+                    "<priority0>0</priority0>"
+                    "<priority1>1</priority1>"
+                    "<priority2>2</priority2>"
+                    "<priority3>3</priority3>"
+                    "<priority4>4</priority4>"
+                    "<priority5>5</priority5>"
+                    "<priority6>6</priority6>"
+                    "<priority7>7</priority7>"
+                "</priority-regeneration>"
+                "<service-access-priority>"
+                    "<priority0>0</priority0>"
+                    "<priority1>1</priority1>"
+                    "<priority2>2</priority2>"
+                    "<priority3>3</priority3>"
+                    "<priority4>4</priority4>"
+                    "<priority5>5</priority5>"
+                    "<priority6>6</priority6>"
+                    "<priority7>7</priority7>"
+                "</service-access-priority>"
+                "<traffic-class>"
+                    "<priority0>1</priority0>"
+                    "<priority1>0</priority1>"
+                    "<priority2>2</priority2>"
+                    "<priority3>3</priority3>"
+                    "<priority4>4</priority4>"
+                    "<priority5>5</priority5>"
+                    "<priority6>6</priority6>"
+                    "<priority7>7</priority7>"
+                "</traffic-class>"
+                "<acceptable-frame>admit-all-frames</acceptable-frame>"
+                "<enable-ingress-filtering>true</enable-ingress-filtering>"
+            "</bridge-port>"
+        "</interface>"
+    "</interfaces>";
+    data = lyd_parse_mem((struct ly_ctx *)sr_get_context(st->conn), str, LYD_XML, LYD_OPT_EDIT | LYD_OPT_STRICT);
+    assert_non_null(data);
+
+    ret = sr_edit_batch(sess, data, "merge");
+    lyd_free_withsiblings(data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for subscription before applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    /* perform the change (it should fail) */
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+
+    /* no custom error message set */
+    ret = sr_get_error(sess, &err_info);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(err_info->err_count, 1);
+    assert_string_equal(err_info->err[0].message, "Modifications are not supported for "
+            "/ietf-interfaces:interfaces/interface/ietf-if-aug:bridge-port/enable-ingress-filtering");
+    assert_non_null(err_info->err[0].xpath);
+
+    ret = sr_discard_changes(sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that we have finished applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+subscribe_change_fail2_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr[13];
+    struct lyd_node *data;
+    int ret, i;
+    const char *str;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some configuration */
+    str =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>sw0p1</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:bridge</type>"
+            "<enabled>true</enabled>"
+            "<bridge-port xmlns=\"urn:ietf-if-aug\">"
+                "<component-name>br0</component-name>"
+                "<port-type>c-vlan-bridge-port</port-type>"
+                "<pvid>2</pvid>"
+                "<default-priority>0</default-priority>"
+                "<priority-regeneration>"
+                    "<priority0>0</priority0>"
+                    "<priority1>1</priority1>"
+                    "<priority2>2</priority2>"
+                    "<priority3>3</priority3>"
+                    "<priority4>4</priority4>"
+                    "<priority5>5</priority5>"
+                    "<priority6>6</priority6>"
+                    "<priority7>7</priority7>"
+                "</priority-regeneration>"
+                "<service-access-priority>"
+                    "<priority0>0</priority0>"
+                    "<priority1>1</priority1>"
+                    "<priority2>2</priority2>"
+                    "<priority3>3</priority3>"
+                    "<priority4>4</priority4>"
+                    "<priority5>5</priority5>"
+                    "<priority6>6</priority6>"
+                    "<priority7>7</priority7>"
+                "</service-access-priority>"
+                "<traffic-class>"
+                    "<priority0>0</priority0>"
+                    "<priority1>1</priority1>"
+                    "<priority2>2</priority2>"
+                    "<priority3>3</priority3>"
+                    "<priority4>4</priority4>"
+                    "<priority5>5</priority5>"
+                    "<priority6>6</priority6>"
+                    "<priority7>7</priority7>"
+                "</traffic-class>"
+                "<acceptable-frame>admit-all-frames</acceptable-frame>"
+                "<enable-ingress-filtering>false</enable-ingress-filtering>"
+            "</bridge-port>"
+        "</interface>"
+    "</interfaces>";
+    data = lyd_parse_mem((struct ly_ctx *)sr_get_context(st->conn), str, LYD_XML, LYD_OPT_EDIT | LYD_OPT_STRICT);
+    assert_non_null(data);
+
+    ret = sr_edit_batch(sess, data, "merge");
+    lyd_free_withsiblings(data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe */
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, dummy_change_cb, NULL, 1,
+            SR_SUBSCR_ENABLED | SR_SUBSCR_DONE_ONLY, &subscr[0]);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface/"
+            "ietf-if-aug:bridge-port/port-type", test_change_fail2_cb, NULL, 2, 0, &subscr[1]);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface/"
+            "ietf-if-aug:bridge-port/pvid", dummy_change_cb, NULL, 2, 0, &subscr[2]);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface/"
+            "ietf-if-aug:bridge-port/acceptable-frame", test_change_fail2_cb, NULL, 2, 0, &subscr[3]);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface/"
+            "ietf-if-aug:bridge-port/enable-ingress-filtering", test_change_fail2_cb, NULL, 2, 0, &subscr[4]);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface/"
+            "ietf-if-aug:bridge-port/service-access-priority/priority0", test_change_fail2_cb, NULL, 2, 0, &subscr[5]);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface/"
+            "ietf-if-aug:bridge-port/service-access-priority/priority1", test_change_fail2_cb, NULL, 2, 0, &subscr[6]);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface/"
+            "ietf-if-aug:bridge-port/service-access-priority/priority2", test_change_fail2_cb, NULL, 2, 0, &subscr[7]);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface/"
+            "ietf-if-aug:bridge-port/service-access-priority/priority3", test_change_fail2_cb, NULL, 2, 0, &subscr[8]);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface/"
+            "ietf-if-aug:bridge-port/service-access-priority/priority4", test_change_fail2_cb, NULL, 2, 0, &subscr[9]);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface/"
+            "ietf-if-aug:bridge-port/service-access-priority/priority5", test_change_fail2_cb, NULL, 2, 0, &subscr[10]);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface/"
+            "ietf-if-aug:bridge-port/service-access-priority/priority6", test_change_fail2_cb, NULL, 2, 0, &subscr[11]);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface/"
+            "ietf-if-aug:bridge-port/service-access-priority/priority7", test_change_fail2_cb, NULL, 2, 0, &subscr[12]);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that subscriptions were created */
+    pthread_barrier_wait(&st->barrier);
+
+    /* wait for the other thread to signal */
+    pthread_barrier_wait(&st->barrier);
+
+    for (i = 0; i < 13; ++i) {
+        sr_unsubscribe(subscr[i]);
+    }
+
+    /* cleanup after ourselves */
+    ret = sr_delete_item(sess, "/ietf-interfaces:interfaces", SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_change_fail2(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, apply_change_fail2_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_change_fail2_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
+/* TEST */
 static int
 module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
@@ -2454,7 +2740,7 @@ test_change_done_dflt(void **state)
     pthread_join(tid[1], NULL);
 }
 
-/* TEST 6 */
+/* TEST */
 static int
 module_change_done_when_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
@@ -2859,7 +3145,7 @@ test_change_done_when(void **state)
     pthread_join(tid[1], NULL);
 }
 
-/* TEST 7 */
+/* TEST */
 static int
 module_change_done_xpath_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
@@ -3258,7 +3544,7 @@ test_change_done_xpath(void **state)
     pthread_join(tid[1], NULL);
 }
 
-/* TEST 8 */
+/* TEST */
 static int
 module_change_unlocked_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
@@ -3371,7 +3657,7 @@ test_change_unlocked(void **state)
     pthread_join(tid[1], NULL);
 }
 
-/* TEST 9 */
+/* TEST */
 static int
 module_change_timeout_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
@@ -3509,7 +3795,7 @@ test_change_timeout(void **state)
     pthread_join(tid[1], NULL);
 }
 
-/* TEST 10 */
+/* TEST */
 static int
 module_change_order_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
@@ -3669,7 +3955,7 @@ test_change_order(void **state)
     pthread_join(tid[1], NULL);
 }
 
-/* TEST 11 */
+/* TEST */
 static int
 module_change_userord_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
@@ -3933,6 +4219,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_update, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_update_fail, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_fail, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_change_fail2, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_done_dflt, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_done_when, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_done_xpath, setup_f, teardown_f),

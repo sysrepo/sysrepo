@@ -1846,9 +1846,8 @@ sr_shmsub_change_listen_is_diff(struct modsub_changesub_s *sub, const struct lyd
  * @param[in] data Optional data to write after the structure.
  * @param[in] data_len Additional data length.
  * @param[in] err_code Optional error code if a callback failed.
- * @return err_info, NULL on success.
  */
-static sr_error_info_t *
+static void
 sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t valid_subscr_count, const char *data,
         uint32_t data_len, sr_error_t err_code)
 {
@@ -1857,7 +1856,7 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
 
     event = multi_sub_shm->event;
 
-    if (!multi_sub_shm->subscriber_count || (multi_sub_shm->subscriber_count == valid_subscr_count) || err_code) {
+    if ((multi_sub_shm->subscriber_count == valid_subscr_count) || err_code) {
         /* last subscriber finished or an error, update event */
         switch (event) {
         case SR_SUB_EV_UPDATE:
@@ -1878,11 +1877,10 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
             multi_sub_shm->event = SR_SUB_EV_NONE;
             break;
         default:
-            /* no longer a listener event, timeout was supposed to be handled before but since then the shared memory
-             * was briefly unlocked so that is when the timeout may have occured (extremely small chance) */
-            sr_errinfo_new(&err_info, SR_ERR_TIME_OUT, NULL, "Unable to finish processing event with ID %u priority %u "
-                    "(timeout probably).", multi_sub_shm->request_id, multi_sub_shm->priority);
-            return err_info;
+            /* unreachable, it was checked before */
+            SR_ERRINFO_INT(&err_info);
+            sr_errinfo_free(&err_info);
+            break;
         }
     }
 
@@ -1892,9 +1890,9 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
         memcpy(((char *)multi_sub_shm) + sizeof *multi_sub_shm, data, data_len);
     }
 
-    SR_LOG_INF("Finished processing \"%s\" event%s with ID %u priority %u (remaining %u subscribers).", sr_ev2str(event),
-            err_code ? " (callback fail)" : "", multi_sub_shm->request_id, multi_sub_shm->priority, multi_sub_shm->subscriber_count);
-    return NULL;
+    SR_LOG_INF("%s processing of \"%s\" event with ID %u priority %u (remaining %u subscribers).",
+            err_code ? "Failed" : "Successful", sr_ev2str(event), multi_sub_shm->request_id, multi_sub_shm->priority,
+            multi_sub_shm->subscriber_count);
 }
 
 /**
@@ -1949,19 +1947,90 @@ sr_shmsub_prepare_error(sr_error_t err_code, sr_session_ctx_t *tmp_sess, char **
     return NULL;
 }
 
+struct info_sub_s {
+    sr_sub_event_t event;
+    uint32_t request_id;
+    uint32_t priority;
+};
+
+/**
+ * @brief Relock change subscription SHM lock after it was locked before so it must be checked that no
+ * unexpected changes happened in the SHM (such as other callback failed or this processing timed out).
+ *
+ * @param[in] multi_sub_shm SHM to lock/check.
+ * @param[in] mode SHM lock mode.
+ * @param[in] sub_info Expected event information in the SHM.
+ * @param[in] sub Current change subscription.
+ * @param[in] module_name Subscription module name.
+ * @param[in] err_code Error code of the callback.
+ * @param[in] tmp_sess Implicit session to use.
+ * @param[out] err_info Optional error info on error.
+ * @return 0 if SHM content is as expected.
+ * @return non-zero if SHM content changed unexpectedly and event processing was finished specially, @p err_info
+ * may be set.
+ */
+static int
+sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t mode, struct info_sub_s *sub_info,
+        struct modsub_changesub_s *sub, const char *module_name, sr_error_t err_code, sr_session_ctx_t *tmp_sess,
+        sr_error_info_t **err_info)
+{
+    struct lyd_node *abort_diff;
+
+    assert(!*err_info);
+
+    /* SUB READ/WRITE LOCK */
+    if ((*err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, __func__))) {
+        return 1;
+    }
+
+    /* check that SHM is still valid even after the lock was released and re-acquired */
+    if ((sub_info->event != multi_sub_shm->event) || (sub_info->request_id != multi_sub_shm->request_id)) {
+        /* SUB READ/WRITE UNLOCK */
+        sr_rwunlock(&multi_sub_shm->lock, mode, __func__);
+
+        SR_LOG_INF("%s processing of \"%s\" event with ID %u priority %u (after timeout or earlier error).",
+                err_code ? "Failed" : "Successful", sr_ev2str(sub_info->event), sub_info->request_id, sub_info->priority);
+
+        /* self-generate abort event in case the change was applied successfully */
+        if ((sub_info->event == SR_SUB_EV_CHANGE) && (err_code == SR_ERR_OK)
+                && sr_shmsub_change_is_valid(SR_SUB_EV_ABORT, sub->opts)) {
+            /* update session */
+            tmp_sess->ev = SR_SUB_EV_ABORT;
+            if ((*err_info = sr_diff_reverse(tmp_sess->dt[tmp_sess->ds].diff, &abort_diff))) {
+                return 1;
+            }
+            lyd_free_withsiblings(tmp_sess->dt[tmp_sess->ds].diff);
+            tmp_sess->dt[tmp_sess->ds].diff = abort_diff;
+
+            SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %u priority %u (self-generated).",
+                    module_name, sr_ev2str(SR_SUB_EV_ABORT), sub_info->request_id, sub_info->priority);
+
+            /* call callback */
+            sub->cb(tmp_sess, module_name, sub->xpath, sr_ev2api(SR_SUB_EV_ABORT), sub_info->request_id,
+                    sub->private_data);
+        }
+
+        /* we have completely finished processing (with no error) */
+        return 1;
+    }
+
+    /* SHM is still valid and we can continue normally */
+    return 0;
+}
+
 sr_error_info_t *
 sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_subs, sr_conn_ctx_t *conn)
 {
-    sr_error_info_t *err_info = NULL, *tmp_err;
-    uint32_t i, data_len = 0, valid_subscr_count, request_id;
+    sr_error_info_t *err_info = NULL;
+    uint32_t i, data_len = 0, valid_subscr_count;
     char *data = NULL;
-    int ret = SR_ERR_OK, timed_out = 0;
-    struct lyd_node *diff, *abort_diff;
+    int ret = SR_ERR_OK;
+    struct lyd_node *diff;
     sr_error_t err_code = SR_ERR_OK;
     struct modsub_changesub_s *change_sub;
     sr_multi_sub_shm_t *multi_sub_shm;
     sr_session_ctx_t tmp_sess;
-    sr_sub_event_t event;
+    struct info_sub_s sub_info;
 
     memset(&tmp_sess, 0, sizeof tmp_sess);
     multi_sub_shm = (sr_multi_sub_shm_t *)change_subs->sub_shm.addr;
@@ -1981,13 +2050,16 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
         goto cleanup_rdunlock;
     }
 
-    change_sub = &change_subs->subs[i];
-
     /* remap SHM */
     if ((err_info = sr_shm_remap(&change_subs->sub_shm, 0))) {
         goto cleanup_rdunlock;
     }
     multi_sub_shm = (sr_multi_sub_shm_t *)change_subs->sub_shm.addr;
+
+    /* remember subscription info in SHM */
+    sub_info.event = multi_sub_shm->event;
+    sub_info.request_id = multi_sub_shm->request_id;
+    sub_info.priority = multi_sub_shm->priority;
 
     /* parse event diff */
     diff = lyd_parse_mem(conn->ly_ctx, change_subs->sub_shm.addr + sizeof *multi_sub_shm, LYD_LYB, LYD_OPT_EDIT | LYD_OPT_STRICT);
@@ -2003,10 +2075,9 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
     /* process event */
     SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %u priority %u (remaining %u subscribers).", change_subs->module_name,
             sr_ev2str(multi_sub_shm->event), multi_sub_shm->request_id, multi_sub_shm->priority, multi_sub_shm->subscriber_count);
-    event = multi_sub_shm->event;
-    request_id = multi_sub_shm->request_id;
 
     /* process individual subscriptions (starting at the last found subscription, it was valid) */
+    change_sub = &change_subs->subs[i];
     valid_subscr_count = 0;
     goto process_event;
     for (; i < change_subs->sub_count; ++i) {
@@ -2021,32 +2092,28 @@ process_event:
 
         /* call callback if there are some changes */
         if (sr_shmsub_change_listen_is_diff(change_sub, diff)) {
-            ret = change_sub->cb(&tmp_sess, change_subs->module_name, change_sub->xpath, sr_ev2api(event), request_id,
-                    change_sub->private_data);
+            ret = change_sub->cb(&tmp_sess, change_subs->module_name, change_sub->xpath, sr_ev2api(sub_info.event),
+                    sub_info.request_id, change_sub->private_data);
         }
 
         /* SUB READ LOCK */
-        if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
+        if (sr_shmsub_change_listen_relock(multi_sub_shm, SR_LOCK_READ, &sub_info, change_sub, change_subs->module_name,
+                ret, &tmp_sess, &err_info)) {
             goto cleanup;
         }
 
-        if ((event == SR_SUB_EV_UPDATE) || (event == SR_SUB_EV_CHANGE)) {
-            /* check that SHM is valid even after the callback returned */
-            if ((event != multi_sub_shm->event) || (request_id != multi_sub_shm->request_id)) {
-                timed_out = 1;
-            }
-
-            if (!timed_out && (ret == SR_ERR_CALLBACK_SHELVE)) {
+        if ((sub_info.event == SR_SUB_EV_UPDATE) || (sub_info.event == SR_SUB_EV_CHANGE)) {
+            if (ret == SR_ERR_CALLBACK_SHELVE) {
                 /* this subscription did not process the event yet, skip it */
-                SR_LOG_INF("Shelved processing \"%s\" event with ID %u priority %u.", sr_ev2str(multi_sub_shm->event),
-                        multi_sub_shm->request_id, multi_sub_shm->priority);
+                SR_LOG_INF("Shelved processing of \"%s\" event with ID %u priority %u.", sr_ev2str(sub_info.event),
+                        sub_info.request_id, sub_info.priority);
                 continue;
-            } else if (timed_out || (ret != SR_ERR_OK)) {
+            } else if (ret != SR_ERR_OK) {
                 /* whole event failed */
                 err_code = ret;
-                if (event == SR_SUB_EV_CHANGE) {
+                if (sub_info.event == SR_SUB_EV_CHANGE) {
                     /* remember request ID and "abort" event so that we do not process it */
-                    change_sub->request_id = multi_sub_shm->request_id;
+                    change_sub->request_id = sub_info.request_id;
                     change_sub->event = SR_SUB_EV_ABORT;
                 }
                 break;
@@ -2061,37 +2128,6 @@ process_event:
         change_sub->event = multi_sub_shm->event;
     }
 
-    if (timed_out) {
-        /* we will not write anything into SHM anymore, we are desynchronized because of the time out */
-
-        /* SUB READ UNLOCK */
-        sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
-
-        sr_errinfo_new(&err_info, SR_ERR_TIME_OUT, NULL, "Unable to finish processing event \"%s\" with ID %u priority %u"
-                " (timeout probably).", sr_ev2str(event), request_id, change_sub->priority);
-
-        /* generate abort event in case the change was applied successfully (after a time out, though) */
-        if ((event == SR_SUB_EV_CHANGE) && (err_code == SR_ERR_OK)) {
-            /* update session */
-            tmp_sess.ev = SR_SUB_EV_ABORT;
-            if ((tmp_err = sr_diff_reverse(tmp_sess.dt[tmp_sess.ds].diff, &abort_diff))) {
-                sr_errinfo_merge(&err_info, tmp_err);
-                goto cleanup;
-            }
-            lyd_free_withsiblings(tmp_sess.dt[tmp_sess.ds].diff);
-            tmp_sess.dt[tmp_sess.ds].diff = abort_diff;
-
-            SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %u priority %u (after time out).",
-                    change_subs->module_name, sr_ev2str(SR_SUB_EV_ABORT), request_id, change_sub->priority);
-
-            /* call callback */
-            change_sub->cb(&tmp_sess, change_subs->module_name, change_sub->xpath, sr_ev2api(SR_SUB_EV_ABORT), request_id,
-                    change_sub->private_data);
-        }
-
-        goto cleanup;
-    }
-
     /*
      * prepare additional event data written into subscription SHM (after the structure)
      */
@@ -2099,7 +2135,7 @@ process_event:
     case SR_SUB_EV_UPDATE:
         if (err_code == SR_ERR_OK) {
             /* we may have an updated edit (empty is fine), print it into LYB */
-            if (lyd_print_mem(&data, tmp_sess.dt[change_subs->ds].edit, LYD_LYB, LYP_WITHSIBLINGS)) {
+            if (lyd_print_mem(&data, tmp_sess.dt[tmp_sess.ds].edit, LYD_LYB, LYP_WITHSIBLINGS)) {
                 sr_errinfo_new_ly(&err_info, conn->ly_ctx);
                 goto cleanup_rdunlock;
             }
@@ -2123,24 +2159,27 @@ process_event:
         goto cleanup_rdunlock;
     }
 
+    /* SUB READ UNLOCK */
+    sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
+
+    /* TODO in case of timeout, all change_sub that processed the event (valid_subscr_count) should get the abort or
+     * implement upgradable lock so that this never happens */
+    /* SUB WRITE LOCK */
+    if (sr_shmsub_change_listen_relock(multi_sub_shm, SR_LOCK_WRITE, &sub_info, change_sub, change_subs->module_name,
+            err_code, &tmp_sess, &err_info)) {
+        goto cleanup;
+    }
+
     if (data_len) {
-        /* remap SHM having the lock */
+        /* remap (and possibly truncate) SHM having the lock */
         if ((err_info = sr_shm_remap(&change_subs->sub_shm, sizeof *multi_sub_shm + data_len))) {
             goto cleanup_rdunlock;
         }
         multi_sub_shm = (sr_multi_sub_shm_t *)change_subs->sub_shm.addr;
     }
 
-    /* SUB READ UNLOCK */
-    sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
-
-    /* SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
-        goto cleanup;
-    }
-
     /* finish event */
-    err_info = sr_shmsub_multi_listen_write_event(multi_sub_shm, valid_subscr_count, data, data_len, err_code);
+    sr_shmsub_multi_listen_write_event(multi_sub_shm, valid_subscr_count, data, data_len, err_code);
 
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
@@ -2166,9 +2205,8 @@ cleanup:
  * @param[in] data Optional data to write after the structure.
  * @param[in] data_len Additional data length.
  * @param[in] err_code Optional error code if a callback failed.
- * @return err_info, NULL on success.
  */
-static sr_error_info_t *
+static void
 sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, const char *data, uint32_t data_len, sr_error_t err_code)
 {
     sr_error_info_t *err_info = NULL;
@@ -2178,7 +2216,6 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, const char *data, uint32_t d
 
     switch (event) {
     case SR_SUB_EV_OPER:
-    case SR_SUB_EV_RPC:
         /* notifier waits for these events */
         if (err_code) {
             sub_shm->event = SR_SUB_EV_ERROR;
@@ -2187,10 +2224,10 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, const char *data, uint32_t d
         }
         break;
     default:
-        /* no longer a listener event, we could have timeouted (handled before, this is an extreme corner-case) */
-        sr_errinfo_new(&err_info, SR_ERR_TIME_OUT, NULL, "Unable to finish processing event with ID %u (timeout probably).",
-                sub_shm->request_id);
-        return err_info;
+        /* unreachable */
+        SR_ERRINFO_INT(&err_info);
+        sr_errinfo_free(&err_info);
+        break;
     }
 
     if (data && data_len) {
@@ -2198,9 +2235,48 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, const char *data, uint32_t d
         memcpy(((char *)sub_shm) + sizeof *sub_shm, data, data_len);
     }
 
-    SR_LOG_INF("Finished processing \"%s\" event%s with ID %u.", sr_ev2str(event), err_code ? " (callback fail)" : "",
+    SR_LOG_INF("%s processing of \"%s\" event with ID %u.", err_code ? "Failed" : "Successful", sr_ev2str(event),
             sub_shm->request_id);
-    return NULL;
+}
+
+/**
+ * @brief Relock oper subscription SHM lock after it was locked before so it must be checked that no
+ * unexpected changes happened in the SHM (such as this processing timed out).
+ *
+ * @param[in] sub_shm SHM to lock/check.
+ * @param[in] mode SHM lock mode.
+ * @param[in] exp_req_id Expected event request ID in the SHM.
+ * @param[in] err_code Error code of the callback.
+ * @param[out] err_info Optional error info on error.
+ * @return 0 if SHM content is as expected.
+ * @return non-zero if SHM content changed unexpectedly and event processing was finished specially, @p err_info
+ * may be set.
+ */
+static int
+sr_shmsub_oper_listen_relock(sr_sub_shm_t *sub_shm, sr_lock_mode_t mode, uint32_t exp_req_id, sr_error_t err_code,
+        sr_error_info_t **err_info)
+{
+    assert(!*err_info);
+
+    /* SUB READ/WRITE LOCK */
+    if ((*err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, __func__))) {
+        return 1;
+    }
+
+    /* check that SHM is still valid even after the lock was released and re-acquired */
+    if ((SR_SUB_EV_OPER != sub_shm->event) || (exp_req_id != sub_shm->request_id)) {
+        /* SUB READ/WRITE UNLOCK */
+        sr_rwunlock(&sub_shm->lock, mode, __func__);
+
+        SR_LOG_INF("%s processing of \"%s\" event with ID %u (after timeout).", err_code ? "Failed" : "Successful",
+                sr_ev2str(SR_SUB_EV_OPER), exp_req_id);
+
+        /* we have completely finished processing (with no error) */
+        return 1;
+    }
+
+    /* SHM is still valid and we can continue normally */
+    return 0;
 }
 
 sr_error_info_t *
@@ -2210,7 +2286,6 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
     uint32_t i, data_len = 0, request_id;
     char *data = NULL, *request_xpath = NULL;
     const char *origin;
-    int timed_out = 0;
     sr_error_t err_code = SR_ERR_OK;
     struct modsub_opersub_s *oper_sub;
     struct lyd_node *parent = NULL, *orig_parent, *node;
@@ -2270,7 +2345,7 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         sr_rwunlock(&sub_shm->lock, SR_LOCK_READ, __func__);
 
         /* process event */
-        SR_LOG_INF("Processing \"operational\" \"%s\" event with ID %u.", oper_subs->module_name, request_id);
+        SR_LOG_INF("Processing \"%s\" \"operational\" event with ID %u.", oper_subs->module_name, request_id);
 
         /* call callback */
         orig_parent = parent;
@@ -2293,62 +2368,44 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
             }
         }
 
-        /* SUB READ LOCK */
-        if ((err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
-            goto error;
-        }
-
-        /* check that SHM is valid even after the callback returned */
-        if ((SR_SUB_EV_OPER != sub_shm->event) || (request_id != sub_shm->request_id)) {
-            timed_out = 1;
-        }
-
-        /* SUB READ UNLOCK */
-        sr_rwunlock(&sub_shm->lock, SR_LOCK_READ, __func__);
-
-        if (!timed_out && (err_code == SR_ERR_CALLBACK_SHELVE)) {
+        if (err_code == SR_ERR_CALLBACK_SHELVE) {
             /* this subscription did not process the event yet, skip it */
-            SR_LOG_INF("Shelved processing \"operational\" event with ID %u.", request_id);
+            SR_LOG_INF("Shelved processing of \"operational\" event with ID %u.", request_id);
             goto next_iter;
-        } else if (timed_out) {
-            sr_errinfo_new(&err_info, SR_ERR_TIME_OUT, NULL, "Unable to finish processing event \"operational\" with"
-                    " ID %u (timeout probably).", request_id);
-            goto error;
-        }
-
-        /* SUB WRITE LOCK */
-        if ((err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
-            goto error;
         }
 
         /* remember request ID so that we do not process it again */
-        oper_sub->request_id = sub_shm->request_id;
+        oper_sub->request_id = request_id;
 
         /*
          * prepare additional event data written into subscription SHM (after the structure)
          */
         if (err_code != SR_ERR_OK) {
             if ((err_info = sr_shmsub_prepare_error(err_code, &tmp_sess, &data, &data_len))) {
-                goto error_wrunlock;
+                goto error;
             }
         } else {
             if (lyd_print_mem(&data, parent, LYD_LYB, LYP_WITHSIBLINGS)) {
                 sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-                goto error_wrunlock;
+                goto error;
             }
             data_len = lyd_lyb_data_length(data);
         }
 
-        /* remap SHM having the lock */
+        /* SUB WRITE LOCK */
+        if (sr_shmsub_oper_listen_relock(sub_shm, SR_LOCK_WRITE, request_id, err_code, &err_info)) {
+            /* not necessarily an error */
+            goto error;
+        }
+
+        /* remap (and possibly truncate) SHM having the lock */
         if ((err_info = sr_shm_remap(&oper_sub->sub_shm, sizeof *sub_shm + data_len))) {
             goto error_wrunlock;
         }
         sub_shm = (sr_sub_shm_t *)oper_sub->sub_shm.addr;
 
         /* finish event */
-        if ((err_info = sr_shmsub_listen_write_event(sub_shm, data, data_len, err_code))) {
-            goto error_wrunlock;
-        }
+        sr_shmsub_listen_write_event(sub_shm, data, data_len, err_code);
 
         /* SUB WRITE UNLOCK */
         sr_rwunlock(&sub_shm->lock, SR_LOCK_WRITE, __func__);
@@ -2512,6 +2569,14 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Check whether a valid event is found in SHM for the subscription.
+ *
+ * @param[in] multi_sub_shm SHM to read from.
+ * @param[in] sub Current subscription.
+ * @return 0 if not.
+ * @return non-zero if this is a new event for the subscription.
+ */
 static int
 sr_shmsub_rpc_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct opsub_rpcsub_s *sub)
 {
@@ -2538,19 +2603,81 @@ sr_shmsub_rpc_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct opsu
     return 1;
 }
 
+/**
+ * @brief Relock RPC subscription SHM lock after it was locked before so it must be checked that no
+ * unexpected changes happened in the SHM (such as other callback failed or this processing timed out).
+ *
+ * @param[in] multi_sub_shm SHM to lock/check.
+ * @param[in] mode SHM lock mode.
+ * @param[in] sub_info Expected event information in the SHM.
+ * @param[in] sub Current RPC subscription.
+ * @param[in] op_path Subscription RPC path.
+ * @param[in] err_code Error code of the callback.
+ * @param[in] tmp_sess Implicit session to use.
+ * @param[in] input_op RPC input structure.
+ * @param[out] err_info Optional error info on error.
+ * @return 0 if SHM content is as expected.
+ * @return non-zero if SHM content changed unexpectedly and event processing was finished specially, @p err_info
+ * may be set.
+ */
+static int
+sr_shmsub_rpc_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t mode, struct info_sub_s *sub_info,
+        struct opsub_rpcsub_s *sub, const char *op_path, sr_error_t err_code, sr_session_ctx_t *tmp_sess,
+        const struct lyd_node *input_op, sr_error_info_t **err_info)
+{
+    struct lyd_node *output;
+
+    assert(!*err_info);
+
+    /* SUB READ/WRITE LOCK */
+    if ((*err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, __func__))) {
+        return 1;
+    }
+
+    /* check that SHM is still valid even after the lock was released and re-acquired */
+    if ((sub_info->event != multi_sub_shm->event) || (sub_info->request_id != multi_sub_shm->request_id)) {
+        /* SUB READ/WRITE UNLOCK */
+        sr_rwunlock(&multi_sub_shm->lock, mode, __func__);
+
+        SR_LOG_INF("%s processing of \"%s\" event with ID %u priority %u (after timeout or earlier error).",
+                err_code ? "Failed" : "Successful", sr_ev2str(sub_info->event), sub_info->request_id, sub_info->priority);
+
+        /* self-generate abort event in case the RPC was applied successfully */
+        if (err_code == SR_ERR_OK) {
+            /* update session */
+            tmp_sess->ev = SR_SUB_EV_ABORT;
+
+            SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %u priority %u (self-generated).",
+                    op_path, sr_ev2str(SR_SUB_EV_ABORT), sub_info->request_id, sub_info->priority);
+
+            /* call callback */
+            *err_info = sr_shmsub_rpc_listen_call_callback(sub, tmp_sess, input_op, SR_SUB_EV_ABORT,
+                    sub_info->request_id, &output, &err_code);
+
+            /* we do not care about output of error code */
+            lyd_free_withsiblings(output);
+        }
+
+        /* we have completely finished processing (with no error) */
+        return 1;
+    }
+
+    /* SHM is still valid and we can continue normally */
+    return 0;
+}
+
 sr_error_info_t *
 sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ctx_t *conn)
 {
-    sr_error_info_t *err_info = NULL, *tmp_err;
-    uint32_t i, data_len = 0, valid_subscr_count, request_id;
+    sr_error_info_t *err_info = NULL;
+    uint32_t i, data_len = 0, valid_subscr_count;
     char *data = NULL;
-    int timed_out = 0;
     struct lyd_node *input = NULL, *input_op, *output = NULL;
     sr_error_t err_code = SR_ERR_OK, ret;
     struct opsub_rpcsub_s *rpc_sub;
     sr_multi_sub_shm_t *multi_sub_shm;
     sr_session_ctx_t tmp_sess;
-    sr_sub_event_t event;
+    struct info_sub_s sub_info;
 
     memset(&tmp_sess, 0, sizeof tmp_sess);
     tmp_sess.conn = conn;
@@ -2600,6 +2727,11 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
     /* read SID */
     tmp_sess.sid = multi_sub_shm->sid;
 
+    /* remember subscription info in SHM */
+    sub_info.event = multi_sub_shm->event;
+    sub_info.request_id = multi_sub_shm->request_id;
+    sub_info.priority = multi_sub_shm->priority;
+
     /* go to the operation, not the root */
     input_op = input;
     if ((err_info = sr_ly_find_last_parent(&input_op, LYS_RPC | LYS_ACTION))) {
@@ -2609,8 +2741,6 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
     /* process event */
     SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %u priority %u (remaining %u subscribers).", rpc_subs->op_path,
             sr_ev2str(multi_sub_shm->event), multi_sub_shm->request_id, multi_sub_shm->priority, multi_sub_shm->subscriber_count);
-    event = multi_sub_shm->event;
-    request_id = multi_sub_shm->request_id;
 
     /* process individual subscriptions (starting at the last found subscription, it was valid) */
     valid_subscr_count = 0;
@@ -2629,27 +2759,24 @@ process_event:
         lyd_free_withsiblings(output);
 
         /* call callback */
-        if ((err_info = sr_shmsub_rpc_listen_call_callback(rpc_sub, &tmp_sess, input_op, event, request_id, &output, &ret))) {
+        if ((err_info = sr_shmsub_rpc_listen_call_callback(rpc_sub, &tmp_sess, input_op, sub_info.event,
+                sub_info.request_id, &output, &ret))) {
             goto cleanup;
         }
 
         /* SUB READ LOCK */
-        if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
+        if (sr_shmsub_rpc_listen_relock(multi_sub_shm, SR_LOCK_READ, &sub_info, rpc_sub, rpc_subs->op_path, ret,
+                &tmp_sess, input_op, &err_info)) {
             goto cleanup;
         }
 
-        if (event == SR_SUB_EV_RPC) {
-            /* check that SHM is valid even after the callback returned */
-            if ((event != multi_sub_shm->event) || (request_id != multi_sub_shm->request_id)) {
-                timed_out = 1;
-            }
-
-            if (!timed_out && (ret == SR_ERR_CALLBACK_SHELVE)) {
+        if (sub_info.event == SR_SUB_EV_RPC) {
+            if (ret == SR_ERR_CALLBACK_SHELVE) {
                 /* processing was shelved, so interupt the whole RPC processing in order to get correct final output */
-                SR_LOG_INF("Shelved processing \"%s\" event with ID %u priority %u.",
+                SR_LOG_INF("Shelved processing of \"%s\" event with ID %u priority %u.",
                         sr_ev2str(multi_sub_shm->event), multi_sub_shm->request_id, multi_sub_shm->priority);
                 goto cleanup_rdunlock;
-            } else if (timed_out || (ret != SR_ERR_OK)) {
+            } else if (ret != SR_ERR_OK) {
                 /* whole event failed */
                 err_code = ret;
 
@@ -2668,35 +2795,6 @@ process_event:
         rpc_sub->event = multi_sub_shm->event;
     }
 
-    if (timed_out) {
-        /* we will not write anything into SHM anymore, we are desynchronized because of the time out */
-
-        /* SUB READ UNLOCK */
-        sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
-
-        sr_errinfo_new(&err_info, SR_ERR_TIME_OUT, NULL, "Unable to finish processing event \"%s\" with ID %u priority %u"
-                " (timeout probably).", sr_ev2str(event), request_id, rpc_sub->priority);
-
-        /* generate abort event in case the change was applied successfully (after a time out, though) */
-        if (err_code == SR_ERR_OK) {
-            /* update session */
-            tmp_sess.ev = SR_SUB_EV_ABORT;
-
-            SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %u priority %u (after time out).",
-                    rpc_subs->op_path, sr_ev2str(SR_SUB_EV_ABORT), request_id, rpc_sub->priority);
-
-            /* call callback */
-            lyd_free_withsiblings(output);
-            if ((tmp_err = sr_shmsub_rpc_listen_call_callback(rpc_sub, &tmp_sess, input_op, SR_SUB_EV_ABORT, request_id,
-                    &output, &ret))) {
-                sr_errinfo_merge(&err_info, tmp_err);
-                goto cleanup;
-            }
-        }
-
-        goto cleanup;
-    }
-
     /*
      * prepare additional event data written into subscription SHM (after the structure)
      */
@@ -2712,24 +2810,27 @@ process_event:
         data_len = lyd_lyb_data_length(data);
     }
 
+    /* SUB READ UNLOCK */
+    sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
+
+    /* TODO in case of timeout (which cannot now be distinguished from error), all change_sub that processed
+     * the event (valid_subscr_count) should get the abort or implement upgradable lock so that this never happens */
+    /* SUB WRITE LOCK */
+    if (sr_shmsub_rpc_listen_relock(multi_sub_shm, SR_LOCK_WRITE, &sub_info, rpc_sub, rpc_subs->op_path, err_code,
+            &tmp_sess, input_op, &err_info)) {
+        goto cleanup;
+    }
+
     if (data_len) {
-        /* remap SHM having the lock */
+        /* remap (and possibly truncate) SHM having the lock */
         if ((err_info = sr_shm_remap(&rpc_subs->sub_shm, sizeof *multi_sub_shm + data_len))) {
             goto cleanup_rdunlock;
         }
         multi_sub_shm = (sr_multi_sub_shm_t *)rpc_subs->sub_shm.addr;
     }
 
-    /* SUB READ UNLOCK */
-    sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
-
-    /* SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
-        goto cleanup;
-    }
-
     /* finish event */
-    err_info = sr_shmsub_multi_listen_write_event(multi_sub_shm, valid_subscr_count, data, data_len, err_code);
+    sr_shmsub_multi_listen_write_event(multi_sub_shm, valid_subscr_count, data, data_len, err_code);
 
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
@@ -2804,15 +2905,17 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
         goto cleanup;
     }
 
+    /* no error/timeout should be possible */
+    if ((multi_sub_shm->event != SR_SUB_EV_NOTIF) || (multi_sub_shm->request_id != notif_subs->request_id)) {
+        SR_ERRINFO_INT(&err_info);
+        sr_errinfo_free(&err_info);
+    }
+
     /* finish event */
-    err_info = sr_shmsub_multi_listen_write_event(multi_sub_shm, notif_subs->sub_count, NULL, 0, 0);
+    sr_shmsub_multi_listen_write_event(multi_sub_shm, notif_subs->sub_count, NULL, 0, 0);
 
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
-
-    if (err_info) {
-        goto cleanup;
-    }
 
     /* go to the operation, not the root */
     notif_op = notif;
