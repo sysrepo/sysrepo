@@ -27,6 +27,8 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <pwd.h>
+#include <grp.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
@@ -1270,6 +1272,192 @@ test_startup_data_foreign_identityref(void **state)
     assert_int_equal(ret, SR_ERR_NOT_FOUND);
 }
 
+static void
+test_set_module_access(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct passwd *pwd;
+    struct group *grp;
+    const char *user;
+    const char *group;
+    uint32_t conn_count;
+    int ret;
+
+    /* install module test */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* get user */
+    pwd = getpwuid(getuid());
+    user = pwd->pw_name;
+
+    /* get group */
+    grp = getgrgid(getgid());
+    group = grp->gr_name;
+
+    /* params error, connection NULL or owner NULL/group NULL/(int)perm=-1 */
+    ret = sr_set_module_access(NULL, "test", user, group, 00666);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    ret = sr_set_module_access(st->conn, NULL, user, group, 00666);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    ret = sr_set_module_access(st->conn, "test", NULL, NULL, (mode_t)-1);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    /* param perm error,invalid permissions */
+    ret = sr_set_module_access(st->conn, "test", user, group, 01777);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    /* param perm error,setting execute permissions has no effect */
+    ret = sr_set_module_access(st->conn, "test", user, group, 00771);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    /* non-existing module */
+    ret = sr_set_module_access(st->conn, "no-module", user, group, 00666);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+    /* invalid user */
+    ret = sr_set_module_access(st->conn, "test", "no-user", group, 00666);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+    /* invalid group */
+    ret = sr_set_module_access(st->conn, "test", user, "no-group", 00666);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+    /* user NULL and group NULL */
+    ret = sr_set_module_access(st->conn, "test", NULL, NULL, 00666);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_module_access(st->conn, "test", user, group, 00666);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* cleanup */
+    ret = sr_remove_module(st->conn, "test");
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+static void
+test_get_module_access(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct passwd *pwd;
+    struct group *grp;
+    const char *user;
+    char *owner, *group;
+    uint32_t conn_count;
+    int ret;
+    mode_t perm;
+
+    /* install module test */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* get user */
+    pwd = getpwuid(getuid());
+    user = pwd->pw_name;
+    /* get group */
+    grp = getgrgid(getgid());
+    group = grp->gr_name;
+
+    /* change module test permissions */
+    ret = sr_set_module_access(st->conn, "test", user, group, 00600);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* params error, connection NULL or module name NULL or ower/group/perm NULL */
+    ret = sr_get_module_access(NULL, "test", &owner, &group, &perm);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    ret = sr_get_module_access(st->conn, NULL, &owner, &group, &perm);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    ret = sr_get_module_access(st->conn, "test", NULL, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    /* non-existing module */
+    ret = sr_get_module_access(st->conn, "no-module", &owner, &group, &perm);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+    ret = sr_get_module_access(st->conn, "test", &owner, &group, &perm);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(owner, pwd->pw_name);
+    assert_string_equal(group, grp->gr_name);
+    assert_int_equal(perm, 00600);
+
+    free(owner);
+    free(group);
+
+    /* cleanup */
+    ret = sr_remove_module(st->conn, "test");
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+static void
+test_get_module_info(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data, *sr_mod;
+    uint32_t conn_count;
+    char *str, *str2;
+    int ret;
+
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_module_info(st->conn, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* filter module test */
+    struct ly_set *set;
+    set = lyd_find_path(data, "/sysrepo:sysrepo-modules/*[name='test']");
+    assert_non_null(set);
+    assert_int_equal(set->number, 1);
+    sr_mod = set->set.d[0];
+    ly_set_free(set);
+
+    ret = lyd_print_mem(&str, sr_mod, LYD_XML, 0);
+    lyd_free_withsiblings(data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    str2 =
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>test</name>"
+    "</module>";
+    assert_string_equal(str, str2);
+    free(str);
+
+    /* cleanup */
+    ret = sr_remove_module(st->conn, "test");
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 int
 main(void)
 {
@@ -1286,6 +1474,9 @@ main(void)
         cmocka_unit_test_setup_teardown(test_foreign_aug, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_empty_invalid, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_startup_data_foreign_identityref, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_set_module_access, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_get_module_access, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_get_module_info, setup_f, teardown_f),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
