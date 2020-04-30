@@ -172,26 +172,32 @@ sr_modinfo_perm_check(struct sr_mod_info_s *mod_info, int wr, int strict)
 }
 
 struct sr_mod_info_mod_s *
-sr_modinfo_next_mod(struct sr_mod_info_mod_s *last, struct sr_mod_info_s *mod_info, const struct lyd_node *data)
+sr_modinfo_next_mod(struct sr_mod_info_mod_s *last, struct sr_mod_info_s *mod_info, const struct lyd_node *data,
+        uint32_t **aux)
 {
-    struct sr_mod_info_mod_s *mod = NULL;
+    struct sr_mod_info_mod_s *mod;
     const struct lyd_node *node;
     uint32_t i;
 
     if (!last) {
         node = data;
+
+        /* allocate aux array */
+        *aux = calloc(mod_info->mod_count, sizeof **aux);
     } else {
         assert(data);
 
         /* find the last edit node */
         for (node = data; lyd_node_module(node) != last->ly_mod; node = node->next);
 
+next_mod:
         /* skip all edit nodes from this module */
         for (; node && (lyd_node_module(node) == last->ly_mod); node = node->next);
     }
 
     if (node) {
         /* find mod of this edit node */
+        mod = NULL;
         for (i = 0; i < mod_info->mod_count; ++i) {
             if (mod_info->mods[i].ly_mod == lyd_node_module(node)) {
                 mod = &mod_info->mods[i];
@@ -200,6 +206,21 @@ sr_modinfo_next_mod(struct sr_mod_info_mod_s *last, struct sr_mod_info_s *mod_in
         }
 
         assert(mod);
+
+        /* mark this mod as returned if not already */
+        if ((*aux)[i]) {
+            /* continue search */
+            last = mod;
+            goto next_mod;
+        } else {
+            (*aux)[i] = 1;
+        }
+    } else {
+        mod = NULL;
+
+        /* free the auxiliary array */
+        free(*aux);
+        *aux = NULL;
     }
 
     return mod;
@@ -212,6 +233,7 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
     struct sr_mod_info_mod_s *mod = NULL;
     const struct lyd_node *node;
     char *str;
+    uint32_t *aux;
     int change;
 
     assert(!mod_info->data_cached);
@@ -225,11 +247,12 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
         }
     }
 
-    while ((mod = sr_modinfo_next_mod(mod, mod_info, edit))) {
+    while ((mod = sr_modinfo_next_mod(mod, mod_info, edit, &aux))) {
         assert(mod->state & MOD_INFO_REQ);
 
         /* apply relevant edit changes */
         if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, create_diff ? &mod_info->diff : NULL, &change))) {
+            free(aux);
             return err_info;
         }
 

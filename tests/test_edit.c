@@ -526,14 +526,18 @@ test_isolate(void **state)
     assert_string_equal(str, str2);
     free(str);
 
-    /* try some more isolated edits */
+    /* try some more isolated edits, with data from one module not next to each other */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/enabled",
             "false", NULL, SR_EDIT_ISOLATE);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']", SR_EDIT_STRICT | SR_EDIT_ISOLATE);
     assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/test:test-leaf", "15", NULL, SR_EDIT_STRICT | SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
             "iana-if-type:other", NULL, SR_EDIT_STRICT | SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(st->sess, "/test:test-leaf", SR_EDIT_STRICT | SR_EDIT_ISOLATE);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);

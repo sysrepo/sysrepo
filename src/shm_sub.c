@@ -582,7 +582,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
     sr_multi_sub_shm_t *multi_sub_shm;
     struct sr_mod_info_mod_s *mod = NULL;
     struct lyd_node *edit;
-    uint32_t cur_priority, subscriber_count, diff_lyb_len;
+    uint32_t cur_priority, subscriber_count, diff_lyb_len, *aux = NULL;
     char *diff_lyb = NULL;
     struct ly_ctx *ly_ctx;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER;
@@ -591,7 +591,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
     *update_edit = NULL;
     ly_ctx = lyd_node_module(mod_info->diff)->ctx;
 
-    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff))) {
+    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff, &aux))) {
         /* first check that there actually are some value changes (and not only dflt changes) */
         if (!sr_shmsub_change_notify_diff_has_changes(mod, mod_info->diff)) {
             continue;
@@ -607,7 +607,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
         if (!diff_lyb && lyd_print_mem(&diff_lyb, mod_info->diff, LYD_LYB, LYP_WITHSIBLINGS)) {
             sr_errinfo_new_ly(&err_info, ly_ctx);
             SR_ERRINFO_INT(&err_info);
-            return err_info;
+            goto cleanup;
         }
         diff_lyb_len = lyd_lyb_data_length(diff_lyb);
 
@@ -722,6 +722,7 @@ cleanup_rdunlock:
     /* SUB READ UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
 cleanup:
+    free(aux);
     free(diff_lyb);
     sr_shm_clear(&shm_sub);
     if (err_info || *cb_err_info) {
@@ -737,10 +738,10 @@ sr_shmsub_change_notify_clear(struct sr_mod_info_s *mod_info, sr_sub_event_t ev)
     sr_error_info_t *err_info = NULL;
     sr_multi_sub_shm_t *multi_sub_shm;
     struct sr_mod_info_mod_s *mod = NULL;
-    uint32_t cur_priority, subscriber_count;
+    uint32_t cur_priority, subscriber_count, *aux = NULL;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER;
 
-    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff))) {
+    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff, &aux))) {
         /* open sub SHM and map it */
         if ((err_info = sr_shmsub_open_map(mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &shm_sub, sizeof *multi_sub_shm))) {
             goto cleanup;
@@ -821,6 +822,7 @@ clear_event:
     return err_info;
 
 cleanup:
+    free(aux);
     sr_shm_clear(&shm_sub);
     return err_info;
 }
@@ -831,7 +833,7 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
     sr_error_info_t *err_info = NULL;
     sr_multi_sub_shm_t *multi_sub_shm;
     struct sr_mod_info_mod_s *mod = NULL;
-    uint32_t cur_priority, subscriber_count, diff_lyb_len;
+    uint32_t cur_priority, subscriber_count, diff_lyb_len, *aux = NULL;
     char *diff_lyb = NULL, *ext_shm_addr, *ext_shm_buf = NULL;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER;
     int opts;
@@ -839,7 +841,7 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
     /* use our ext SHM mapping by default */
     ext_shm_addr = mod_info->conn->ext_shm.addr;
 
-    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff))) {
+    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff, &aux))) {
         /* first check that there actually are some value changes (and not only dflt changes) */
         if (!sr_shmsub_change_notify_diff_has_changes(mod, mod_info->diff)) {
             continue;
@@ -862,7 +864,7 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
         if (!diff_lyb) {
             if (lyd_print_mem(&diff_lyb, mod_info->diff, LYD_LYB, LYP_WITHSIBLINGS)) {
                 sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
-                return err_info;
+                goto cleanup;
             }
             diff_lyb_len = lyd_lyb_data_length(diff_lyb);
         }
@@ -956,6 +958,7 @@ cleanup_wrunlock:
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
 cleanup:
+    free(aux);
     free(diff_lyb);
     sr_shm_clear(&shm_sub);
     if (ext_shm_buf) {
@@ -972,11 +975,11 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     sr_multi_sub_shm_t *multi_sub_shm;
     struct sr_mod_info_mod_s *mod = NULL;
-    uint32_t cur_priority, subscriber_count, diff_lyb_len;
+    uint32_t cur_priority, subscriber_count, diff_lyb_len, *aux = NULL;
     char *diff_lyb = NULL;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER;
 
-    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff))) {
+    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff, &aux))) {
         /* first check that there actually are some value changes (and not only dflt changes) */
         if (!sr_shmsub_change_notify_diff_has_changes(mod, mod_info->diff)) {
             continue;
@@ -992,7 +995,7 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
         if (!diff_lyb) {
             if (lyd_print_mem(&diff_lyb, mod_info->diff, LYD_LYB, LYP_WITHSIBLINGS)) {
                 sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
-                return err_info;
+                goto cleanup;
             }
             diff_lyb_len = lyd_lyb_data_length(diff_lyb);
         }
@@ -1064,6 +1067,7 @@ cleanup_wrunlock:
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
 cleanup:
+    free(aux);
     free(diff_lyb);
     sr_shm_clear(&shm_sub);
     return err_info;
@@ -1076,12 +1080,12 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t si
     sr_multi_sub_shm_t *multi_sub_shm;
     struct lyd_node *abort_diff;
     struct sr_mod_info_mod_s *mod = NULL;
-    uint32_t cur_priority, err_priority, subscriber_count, err_subscriber_count, diff_lyb_len;
+    uint32_t cur_priority, err_priority, subscriber_count, err_subscriber_count, diff_lyb_len, *aux = NULL;
     char *diff_lyb = NULL;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER;
     int last_subscr = 0;
 
-    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff))) {
+    while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff, &aux))) {
         /* first check that there actually are some value changes (and not only dflt changes) */
         if (!sr_shmsub_change_notify_diff_has_changes(mod, mod_info->diff)) {
             continue;
@@ -1223,6 +1227,7 @@ cleanup_wrunlock:
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
 cleanup:
+    free(aux);
     free(diff_lyb);
     sr_shm_clear(&shm_sub);
     return err_info;
