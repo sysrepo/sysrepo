@@ -2127,7 +2127,7 @@ sr_validate(sr_session_ctx_t *session, uint32_t timeout_ms)
     }
 
     /* load all modules data (we need dependencies for validation) */
-    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 1, &session->sid, NULL, timeout_ms, 0,
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 0, &session->sid, NULL, timeout_ms, 0,
             &cb_err_info)) || cb_err_info) {
         goto cleanup_mods_unlock;
     }
