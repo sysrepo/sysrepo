@@ -220,8 +220,8 @@ sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node
                 if ((op == EDIT_REMOVE) || (op == EDIT_DELETE) || (op == EDIT_PURGE)) {
                     /* we do not care about the value in this case */
                     val_equal = 1;
-                } else if ((match->dflt != edit_node->dflt) || strcmp(sr_ly_leaf_value_str(match), sr_ly_leaf_value_str(edit_node))) {
-                    /* check whether the value or at least dflt flag is different */
+                } else if (strcmp(sr_ly_leaf_value_str(match), sr_ly_leaf_value_str(edit_node))) {
+                    /* check whether the value is different (dflt flag may or may not differ) */
                     val_equal = 0;
                 } else {
                     /* canonical values are the same */
@@ -646,7 +646,7 @@ sr_edit_str2op(const char *str)
 }
 
 enum edit_op
-sr_edit_find_oper(struct lyd_node *edit, int recursive, int *own_oper)
+sr_edit_find_oper(const struct lyd_node *edit, int recursive, int *own_oper)
 {
     struct lyd_attr *attr;
 
@@ -721,6 +721,14 @@ sr_diff_add_attrs(struct lyd_node *diff_node, const char *attr_val, const char *
     }
 
     switch (op) {
+    case EDIT_NONE:
+        /* add attributes for the special dflt-only change */
+        if (diff_node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) {
+            if (prev_attr_val && !lyd_insert_attr(diff_node, NULL, SR_YANG_MOD ":orig-dflt", "")) {
+                goto ly_error;
+            }
+        }
+        break;
     case EDIT_REPLACE:
         if (diff_node->schema->nodetype == LYS_LEAF) {
             assert(attr_val);
@@ -993,30 +1001,30 @@ sr_edit_delete_set_cont_dflt(struct lyd_node *parent)
 #define EDIT_APPLY_CHECK_OP_R 0x02      /**< Do not apply edit, just check whether the operations are valid. */
 
 /**
- * @brief CHeck whether this edit node is redundant (does not change data).
+ * @brief Check whether this diff node is redundant (does not change data).
  *
- * @param[in] edit Edit node.
+ * @param[in] diff Diff node.
  * @return 0 if not, non-zero if it is.
  */
 static int
-sr_edit_is_redundant(struct lyd_node *edit)
+sr_diff_is_redundant(struct lyd_node *diff)
 {
     sr_error_info_t *err_info = NULL;
     enum edit_op op;
     struct lyd_attr *attr, *orig_val_attr = NULL, *val_attr = NULL;
     struct lyd_node *child;
 
-    assert(edit);
+    assert(diff);
 
-    child = sr_lyd_child(edit, 1);
+    child = sr_lyd_child(diff, 1);
 
     /* get node operation */
-    op = sr_edit_find_oper(edit, 1, NULL);
+    op = sr_edit_find_oper(diff, 1, NULL);
 
-    if ((op == EDIT_REPLACE) && sr_ly_is_userord(edit)) {
+    if ((op == EDIT_REPLACE) && sr_ly_is_userord(diff)) {
         /* check for redundant move */
-        for (attr = edit->attr; attr; attr = attr->next) {
-            if (edit->schema->nodetype == LYS_LIST) {
+        for (attr = diff->attr; attr; attr = attr->next) {
+            if (diff->schema->nodetype == LYS_LIST) {
                 if (!strcmp(attr->name, "orig-key") && !strcmp(attr->annotation->module->name, SR_YANG_MOD)) {
                     orig_val_attr = attr;
                 } else if (!strcmp(attr->name, "key") && !strcmp(attr->annotation->module->name, "yang")) {
@@ -1034,12 +1042,12 @@ sr_edit_is_redundant(struct lyd_node *edit)
         /* in the dictionary */
         if (orig_val_attr->value_str == val_attr->value_str) {
             /* there is actually no move */
-            lyd_free_attr(lyd_node_module(edit)->ctx, edit, orig_val_attr, 0);
-            lyd_free_attr(lyd_node_module(edit)->ctx, edit, val_attr, 0);
+            lyd_free_attr(lyd_node_module(diff)->ctx, diff, orig_val_attr, 0);
+            lyd_free_attr(lyd_node_module(diff)->ctx, diff, val_attr, 0);
             if (child) {
                 /* change operation to NONE, we have siblings */
-                sr_edit_del_attr(edit, "operation");
-                if ((err_info = sr_edit_set_oper(edit, "none"))) {
+                sr_edit_del_attr(diff, "operation");
+                if ((err_info = sr_edit_set_oper(diff, "none"))) {
                     /* it was printed at least */
                     sr_errinfo_free(&err_info);
                 }
@@ -1055,6 +1063,18 @@ sr_edit_is_redundant(struct lyd_node *edit)
              */
             return 1;
         }
+    } else if ((op == EDIT_NONE) && (diff->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST))) {
+        for (attr = diff->attr; attr; attr = attr->next) {
+            if (!strcmp(attr->name, "orig-dflt") && !strcmp(attr->annotation->module->name, SR_YANG_MOD)) {
+                break;
+            }
+        }
+
+        /* if previous and current dflt flags are the same, this node is redundant */
+        if ((attr && diff->dflt) || (!attr && !diff->dflt)) {
+            return 1;
+        }
+        return 0;
     }
 
     if (!child && (op == EDIT_NONE)) {
@@ -1101,6 +1121,7 @@ sr_edit_apply_none(struct lyd_node *match_node, const struct lyd_node *edit_node
         struct lyd_node **diff_root, struct lyd_node **diff_node, enum edit_op *next_op)
 {
     sr_error_info_t *err_info = NULL;
+    uintptr_t prev_dflt;
 
     assert(edit_node || match_node);
 
@@ -1114,6 +1135,16 @@ sr_edit_apply_none(struct lyd_node *match_node, const struct lyd_node *edit_node
         if ((err_info = sr_edit_diff_add(match_node, NULL, NULL, EDIT_NONE, 0, diff_parent, diff_root, diff_node))) {
             return err_info;
         }
+    } else if ((match_node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) && (match_node->dflt != edit_node->dflt)) {
+        /* default flag changed, we need the node in the diff */
+        prev_dflt = match_node->dflt;
+        if ((err_info = sr_edit_diff_add(match_node, NULL, (char *)prev_dflt, EDIT_NONE, 0, diff_parent, diff_root,
+                diff_node))) {
+            return err_info;
+        }
+
+        /* update dflt flag itself */
+        match_node->dflt = edit_node->dflt;
     }
 
     *next_op = EDIT_CONTINUE;
@@ -1723,7 +1754,7 @@ reapply:
 
     if (diff_root && diff_parent) {
         /* remove any redundant nodes */
-        if (sr_edit_is_redundant(diff_parent)) {
+        if (sr_diff_is_redundant(diff_parent)) {
             if (diff_parent == *diff_root) {
                 *diff_root = (*diff_root)->next;
             }
@@ -1783,11 +1814,13 @@ sr_edit_mod_apply(const struct lyd_node *edit, const struct lys_module *ly_mod, 
 /**
  * @brief Update operations on a diff node when the new operation is NONE.
  *
+ * @param[in,out] diff_match Node from the diff, may be zeroed.
  * @param[in] cur_op Current operation of the diff node.
+ * @param[in] src_node Current source diff node.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_diff_merge_none(enum edit_op cur_op)
+sr_diff_merge_none(struct lyd_node *diff_match, enum edit_op cur_op, const struct lyd_node *src_node)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -1795,7 +1828,10 @@ sr_diff_merge_none(enum edit_op cur_op)
     case EDIT_NONE:
     case EDIT_CREATE:
     case EDIT_REPLACE:
-        /* the operation is simply kept, the node exists */
+        if (src_node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) {
+            /* NONE on a leaf(-list) means only its dflt flag was changed */
+            diff_match->dflt = src_node->dflt;
+        }
         break;
     default:
         /* delete operation is not valid */
@@ -1955,52 +1991,55 @@ sr_diff_merge_create(struct lyd_node *diff_match, enum edit_op cur_op, int cur_o
     switch (cur_op) {
     case EDIT_REMOVE:
     case EDIT_DELETE:
-        /* consider only dflt flag change as val_equal */
-        if (val_equal || !strcmp(sr_ly_leaf_value_str(diff_match), sr_ly_leaf_value_str(src_node))) {
-            /* deleted + created -> operation NONE */
-            if (cur_own_op) {
-                sr_edit_del_attr(diff_match, "operation");
-            }
-            if ((err_info = sr_edit_set_oper(diff_match, "none"))) {
-                return err_info;
-            }
-
-            /* but the operation of its children should remain DELETE */
-            if ((child = sr_lyd_child(diff_match, 1))) {
-                LY_TREE_FOR(child, child) {
-                    /* there should not be any operation on the children */
-                    assert(!sr_edit_find_oper(child, 0, NULL));
-
-                    if ((err_info = sr_edit_set_oper(child, "delete"))) {
-                        return err_info;
-                    }
-                }
-            }
-            break;
-        }
-
-        assert(diff_match->schema->nodetype == LYS_LEAF);
-        /* we deleted it, but it was created with a different value -> operation REPLACE */
         if (cur_own_op) {
             sr_edit_del_attr(diff_match, "operation");
         }
-        if ((err_info = sr_edit_set_oper(diff_match, "replace"))) {
-            return err_info;
+        if (val_equal) {
+            /* deleted + created -> operation NONE */
+            if ((err_info = sr_edit_set_oper(diff_match, "none"))) {
+                return err_info;
+            }
+        } else {
+            assert(diff_match->schema->nodetype == LYS_LEAF);
+            /* we deleted it, but it was created with a different value -> operation REPLACE */
+            if ((err_info = sr_edit_set_oper(diff_match, "replace"))) {
+                return err_info;
+            }
+
+            /* correctly modify the node, current value is previous one (attr) and the default value is new */
+            if (!lyd_insert_attr(diff_match, NULL, SR_YANG_MOD ":orig-value", sr_ly_leaf_value_str(diff_match))) {
+                sr_errinfo_new_ly(&err_info, lyd_node_module(diff_match)->ctx);
+                return err_info;
+            }
+
+            ret = lyd_change_leaf((struct lyd_node_leaf_list *)diff_match, sr_ly_leaf_value_str(src_node));
+            assert(ret < 1);
+            if (ret < 0) {
+                sr_errinfo_new_ly(&err_info, lyd_node_module(diff_match)->ctx);
+                return err_info;
+            }
         }
 
-        /* correctly modify the node, current value is previous one (attr) and the default value is new */
-        if (!lyd_insert_attr(diff_match, NULL, SR_YANG_MOD ":orig-value", sr_ly_leaf_value_str(diff_match))) {
-            sr_errinfo_new_ly(&err_info, lyd_node_module(diff_match)->ctx);
-            return err_info;
-        }
+        if (diff_match->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) {
+            /* add orig-dflt attribute if needed */
+            if (diff_match->dflt && !lyd_insert_attr(diff_match, NULL, SR_YANG_MOD ":orig-dflt", "")) {
+                sr_errinfo_new_ly(&err_info, lyd_node_module(diff_match)->ctx);
+                return err_info;
+            }
 
-        ret = lyd_change_leaf((struct lyd_node_leaf_list *)diff_match, sr_ly_leaf_value_str(src_node));
-        assert(ret < 1);
-        if (ret < 0) {
-            sr_errinfo_new_ly(&err_info, lyd_node_module(diff_match)->ctx);
-            return err_info;
+            /* update dflt flag itself */
+            diff_match->dflt = src_node->dflt;
+        } else {
+            /* but the operation of its children should remain DELETE */
+            LY_TREE_FOR(sr_lyd_child(diff_match, 1), child) {
+                /* there should not be any operation on the children */
+                assert(!sr_edit_find_oper(child, 0, NULL));
+
+                if ((err_info = sr_edit_set_oper(child, "delete"))) {
+                    return err_info;
+                }
+            }
         }
-        diff_match->dflt = src_node->dflt;
         break;
     default:
         /* create and replace operations are not valid */
@@ -2321,7 +2360,7 @@ sr_diff_merge_r(const struct lyd_node *src_node, enum edit_op parent_op, void *o
             }
             break;
         case EDIT_NONE:
-            if ((err_info = sr_diff_merge_none(cur_op))) {
+            if ((err_info = sr_diff_merge_none(diff_node, cur_op, src_node))) {
                 goto op_error;
             }
             break;
@@ -2397,7 +2436,7 @@ sr_diff_merge_r(const struct lyd_node *src_node, enum edit_op parent_op, void *o
     }
 
     /* remove any redundant nodes */
-    if (diff_parent && sr_edit_is_redundant(diff_parent)) {
+    if (diff_parent && sr_diff_is_redundant(diff_parent)) {
         if (diff_parent == *diff_root) {
             *diff_root = (*diff_root)->next;
         }
@@ -2571,15 +2610,20 @@ sr_diff_apply_r(struct lyd_node **first_node, struct lyd_node *parent_node, cons
     /* apply operation */
     switch (op) {
     case EDIT_NONE:
-        /* none operation on a node without children is redundant and hence forbidden */
-        SR_CHECK_INT_RET(!sr_lyd_child(diff_node, 1), err_info);
-
-        /* just find the node */
+        /* find the node */
         SR_CHECK_INT_RET(!(*first_node), err_info);
         if ((err_info = sr_edit_find(*first_node, diff_node, op, 0, NULL, 0, &match, NULL))) {
             return err_info;
         }
         SR_CHECK_INT_RET(!match, err_info);
+
+        if (match->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) {
+            /* special case of only dflt flag change */
+            match->dflt = diff_node->dflt;
+        } else {
+            /* none operation on nodes without children is redundant and hence forbidden */
+            SR_CHECK_INT_RET(!sr_lyd_child(diff_node, 1), err_info);
+        }
         break;
     case EDIT_CREATE:
         /* duplicate the node */
@@ -2757,12 +2801,16 @@ sr_diff_update_r(const struct lyd_node *first_node, struct lyd_node *diff_node, 
     /* apply operation */
     switch (op) {
     case EDIT_NONE:
-        /* none operation on a node without children is redundant and hence forbidden */
-        SR_CHECK_INT_RET(!sr_lyd_child(diff_node, 1), err_info);
-
-        /* just find the node */
+        /* find the node */
         if ((err_info = sr_edit_find(first_node, diff_node, op, 0, NULL, 0, &match, NULL))) {
             return err_info;
+        }
+
+        if (match && (match->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST))) {
+            /* the dflt flag is the same now */
+            if (match->dflt == diff_node->dflt) {
+                match = NULL;
+            }
         }
         break;
     case EDIT_CREATE:
@@ -2940,7 +2988,7 @@ sr_ly_val_diff_merge(struct lyd_node **diff, LYD_DIFFTYPE type, struct lyd_node 
     }
 
     /* remove possibly redundant nodes */
-    while (diff_parent && sr_edit_is_redundant(diff_parent)) {
+    while (diff_parent && sr_diff_is_redundant(diff_parent)) {
         tmp = diff_parent->parent;
         if (*diff == diff_parent) {
             /* there can be no parent because we must be top-level */
@@ -3549,7 +3597,8 @@ sr_diff_reverse(const struct lyd_node *diff, struct lyd_node **reverse_diff)
     struct ly_ctx *ly_ctx;
     const struct lys_module *ly_sr_mod, *ly_yang_mod;
     struct lyd_node *root, *next, *elem;
-    struct lyd_attr *attr_op, *attr1, *attr2;
+    enum edit_op op;
+    struct lyd_attr *at, *attr1, *attr2;
     char *val_str = NULL;
     const char *attr1_name, *attr2_name;
     int dflt;
@@ -3572,118 +3621,146 @@ sr_diff_reverse(const struct lyd_node *diff, struct lyd_node **reverse_diff)
     LY_TREE_FOR(*reverse_diff, root) {
         LY_TREE_DFS_BEGIN(root, next, elem) {
             /* find operation attribute, if any */
-            LY_TREE_FOR(elem->attr, attr_op) {
-                if (!strcmp(attr_op->name, "operation")) {
-                    if (strcmp(attr_op->annotation->module->name, "ietf-netconf")) {
-                        /* we only care about basic NETCONF operations */
-                        attr_op = NULL;
+            op = sr_edit_find_oper(elem, 0, NULL);
+
+            switch (op) {
+            case EDIT_CREATE:
+                /* reverse create to delete */
+                sr_edit_del_attr(elem, "operation");
+                if ((err_info = sr_edit_set_oper(elem, "delete"))) {
+                    goto error;
+                }
+                break;
+            case EDIT_DELETE:
+                /* reverse delete to create */
+                sr_edit_del_attr(elem, "operation");
+                if ((err_info = sr_edit_set_oper(elem, "create"))) {
+                    goto error;
+                }
+                break;
+            case EDIT_REPLACE:
+                switch (elem->schema->nodetype) {
+                case LYS_LEAF:
+                    /* switch leaf value for attr "orig-value", leaf dflt for "orig-dflt" and vice versa */
+                    val_str = strdup(sr_ly_leaf_value_str(elem));
+                    SR_CHECK_MEM_GOTO(!val_str, err_info, error);
+                    dflt = elem->dflt;
+
+                    attr1 = NULL;
+                    attr2 = NULL;
+                    LY_TREE_FOR(elem->attr, at) {
+                        if (!strcmp(at->name, "orig-value")) {
+                            assert(at->annotation->module == ly_sr_mod);
+                            attr1 = at;
+                        } else if (!strcmp(at->name, "orig-dflt")) {
+                            assert(at->annotation->module == ly_sr_mod);
+                            attr2 = at;
+                        }
+                    }
+                    assert(attr1);
+
+                    /* update leaf */
+                    lyd_change_leaf((struct lyd_node_leaf_list *)elem, attr1->value_str);
+                    if (attr2) {
+                        elem->dflt = 1;
+                    }
+
+                    /* update attributes */
+                    lyd_free_attr(ly_ctx, elem, attr1, 0);
+                    lyd_free_attr(ly_ctx, elem, attr2, 0);
+                    if (!lyd_insert_attr(elem, ly_sr_mod, "orig-value", val_str)) {
+                        sr_errinfo_new_ly(&err_info, ly_ctx);
+                        goto error;
+                    }
+                    if (dflt && !lyd_insert_attr(elem, ly_sr_mod, "orig-dflt", "")) {
+                        sr_errinfo_new_ly(&err_info, ly_ctx);
+                        goto error;
+                    }
+
+                    free(val_str);
+                    val_str = NULL;
+                    break;
+                case LYS_LEAFLIST:
+                    /* switch "orig-value" for "value" and vice versa */
+                    attr1_name = "orig-value";
+                    attr2_name = "value";
+
+                    /* fallthrough */
+                case LYS_LIST:
+                    if (elem->schema->nodetype == LYS_LIST) {
+                        /* switch "orig-key" for "key" and vice versa */
+                        attr1_name = "orig-key";
+                        attr2_name = "key";
+                    }
+
+                    attr1 = NULL;
+                    attr2 = NULL;
+                    LY_TREE_FOR(elem->attr, at) {
+                        if (!strcmp(at->name, attr1_name)) {
+                            assert(at->annotation->module == ly_sr_mod);
+                            attr1 = at;
+                        } else if (!strcmp(at->name, attr2_name)) {
+                            assert(at->annotation->module == ly_yang_mod);
+                            attr2 = at;
+                        }
+                    }
+                    assert(attr1 && attr2);
+
+                    val_str = strdup(attr1->value_str);
+                    SR_CHECK_MEM_GOTO(!val_str, err_info, error);
+                    lyd_free_attr(ly_ctx, elem, attr1, 0);
+                    if (!lyd_insert_attr(elem, ly_sr_mod, attr1_name, attr2->value_str)) {
+                        sr_errinfo_new_ly(&err_info, ly_ctx);
+                        goto error;
+                    }
+                    lyd_free_attr(ly_ctx, elem, attr2, 0);
+                    if (!lyd_insert_attr(elem, ly_yang_mod, attr2_name, val_str)) {
+                        sr_errinfo_new_ly(&err_info, ly_ctx);
+                        goto error;
+                    }
+
+                    free(val_str);
+                    val_str = NULL;
+                    break;
+                default:
+                    SR_ERRINFO_INT(&err_info);
+                    goto error;
+                }
+                break;
+            case EDIT_NONE:
+                switch (elem->schema->nodetype) {
+                case LYS_LEAF:
+                case LYS_LEAFLIST:
+                    /* switch dflt flag for "orig-dflt" and vice versa */
+                    dflt = elem->dflt;
+
+                    attr1 = NULL;
+                    LY_TREE_FOR(elem->attr, at) {
+                        if (!strcmp(at->name, "orig-dflt")) {
+                            assert(at->annotation->module == ly_sr_mod);
+                            attr1 = at;
+                            break;
+                        }
+                    }
+                    if (attr1) {
+                        elem->dflt = 1;
+                    }
+
+                    /* update attribute */
+                    lyd_free_attr(ly_ctx, elem, attr1, 0);
+                    if (dflt && !lyd_insert_attr(elem, ly_sr_mod, "orig-dflt", "")) {
+                        sr_errinfo_new_ly(&err_info, ly_ctx);
+                        goto error;
                     }
                     break;
+                default:
+                    /* nothing to do */
+                    break;
                 }
-            }
-
-            if (attr_op) {
-                if (!strcmp(attr_op->value_str, "create")) {
-                    /* reverse create to delete */
-                    lyd_free_attr(ly_ctx, elem, attr_op, 0);
-                    if ((err_info = sr_edit_set_oper(elem, "delete"))) {
-                        goto error;
-                    }
-                } else if (!strcmp(attr_op->value_str, "delete")) {
-                    /* reverse delete to create */
-                    lyd_free_attr(ly_ctx, elem, attr_op, 0);
-                    if ((err_info = sr_edit_set_oper(elem, "create"))) {
-                        goto error;
-                    }
-                } else if (!strcmp(attr_op->value_str, "replace")) {
-                    switch (elem->schema->nodetype) {
-                    case LYS_LEAF:
-                        /* switch leaf value for attr "orig-value", leaf dflt for "orig-dflt" and vice versa */
-                        val_str = strdup(sr_ly_leaf_value_str(elem));
-                        SR_CHECK_MEM_GOTO(!val_str, err_info, error);
-                        dflt = elem->dflt;
-
-                        attr1 = NULL;
-                        attr2 = NULL;
-                        LY_TREE_FOR(elem->attr, attr_op) {
-                            if (!strcmp(attr_op->name, "orig-value")) {
-                                assert(attr_op->annotation->module == ly_sr_mod);
-                                attr1 = attr_op;
-                            } else if (!strcmp(attr_op->name, "orig-dflt")) {
-                                assert(attr_op->annotation->module == ly_sr_mod);
-                                attr2 = attr_op;
-                            }
-                        }
-                        assert(attr1);
-
-                        /* update leaf */
-                        lyd_change_leaf((struct lyd_node_leaf_list *)elem, attr1->value_str);
-                        if (attr2) {
-                            elem->dflt = 1;
-                        }
-
-                        /* update attributes */
-                        lyd_free_attr(ly_ctx, elem, attr1, 0);
-                        lyd_free_attr(ly_ctx, elem, attr2, 0);
-                        if (!lyd_insert_attr(elem, ly_sr_mod, "orig-value", val_str)) {
-                            sr_errinfo_new_ly(&err_info, ly_ctx);
-                            goto error;
-                        }
-                        if (dflt && !lyd_insert_attr(elem, ly_sr_mod, "orig-dflt", "")) {
-                            sr_errinfo_new_ly(&err_info, ly_ctx);
-                            goto error;
-                        }
-
-                        free(val_str);
-                        val_str = NULL;
-                        break;
-                    case LYS_LEAFLIST:
-                        /* switch "orig-value" for "value" and vice versa */
-                        attr1_name = "orig-value";
-                        attr2_name = "value";
-
-                        /* fallthrough */
-                    case LYS_LIST:
-                        if (elem->schema->nodetype == LYS_LIST) {
-                            /* switch "orig-key" for "key" and vice versa */
-                            attr1_name = "orig-key";
-                            attr2_name = "key";
-                        }
-
-                        attr1 = NULL;
-                        attr2 = NULL;
-                        LY_TREE_FOR(elem->attr, attr_op) {
-                            if (!strcmp(attr_op->name, attr1_name)) {
-                                assert(attr_op->annotation->module == ly_sr_mod);
-                                attr1 = attr_op;
-                            } else if (!strcmp(attr_op->name, attr2_name)) {
-                                assert(attr_op->annotation->module == ly_yang_mod);
-                                attr2 = attr_op;
-                            }
-                        }
-                        assert(attr1 && attr2);
-
-                        val_str = strdup(attr1->value_str);
-                        SR_CHECK_MEM_GOTO(!val_str, err_info, error);
-                        lyd_free_attr(ly_ctx, elem, attr1, 0);
-                        if (!lyd_insert_attr(elem, ly_sr_mod, attr1_name, attr2->value_str)) {
-                            sr_errinfo_new_ly(&err_info, ly_ctx);
-                            goto error;
-                        }
-                        lyd_free_attr(ly_ctx, elem, attr2, 0);
-                        if (!lyd_insert_attr(elem, ly_yang_mod, attr2_name, val_str)) {
-                            sr_errinfo_new_ly(&err_info, ly_ctx);
-                            goto error;
-                        }
-
-                        free(val_str);
-                        val_str = NULL;
-                        break;
-                    default:
-                        SR_ERRINFO_INT(&err_info);
-                        goto error;
-                    }
-                }
+                break;
+            default:
+                /* nothing to do */
+                break;
             }
 
             LY_TREE_DFS_END(root, next, elem);

@@ -542,9 +542,41 @@ sr_shmsub_change_notify_evpipe(char *ext_shm_addr, struct sr_mod_info_mod_s *mod
     return NULL;
 }
 
+/**
+ * @brief Learn whether the diff for the module includes some node changes and not just dflt flag modifications.
+ *
+ * @param[in] mod Mod info module diff to check.
+ * @param[in] diff Full diff.
+ * @return 0 if only dflt flags were changed.
+ * @return non-zero if the diff for this module includes some node changes.
+ */
+static int
+sr_shmsub_change_notify_diff_has_changes(struct sr_mod_info_mod_s *mod, const struct lyd_node *diff)
+{
+    const struct lyd_node *root, *next, *elem;
+    enum edit_op op;
+
+    LY_TREE_FOR(diff, root) {
+        if (lyd_node_module(root) != mod->ly_mod) {
+            /* skip data nodes from different modules */
+            continue;
+        }
+
+        LY_TREE_DFS_BEGIN(root, next, elem) {
+            op = sr_edit_find_oper(elem, 0, NULL);
+            if (op && (op != EDIT_NONE)) {
+                return 1;
+            }
+            LY_TREE_DFS_END(root, next, elem);
+        }
+    }
+
+    return 0;
+}
+
 sr_error_info_t *
-sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint32_t timeout_ms, struct lyd_node **update_edit,
-        sr_error_info_t **cb_err_info)
+sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uint32_t timeout_ms,
+        struct lyd_node **update_edit, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
     sr_multi_sub_shm_t *multi_sub_shm;
@@ -560,6 +592,11 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
     ly_ctx = lyd_node_module(mod_info->diff)->ctx;
 
     while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff))) {
+        /* first check that there actually are some value changes (and not only dflt changes) */
+        if (!sr_shmsub_change_notify_diff_has_changes(mod, mod_info->diff)) {
+            continue;
+        }
+
         /* just find out whether there are any subscriptions and if so, what is the highest priority */
         if (!sr_shmsub_change_notify_has_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_UPDATE,
                 &cur_priority)) {
@@ -803,6 +840,11 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
     ext_shm_addr = mod_info->conn->ext_shm.addr;
 
     while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff))) {
+        /* first check that there actually are some value changes (and not only dflt changes) */
+        if (!sr_shmsub_change_notify_diff_has_changes(mod, mod_info->diff)) {
+            continue;
+        }
+
         /* just find out whether there are any subscriptions and if so, what is the highest priority */
         if (!sr_shmsub_change_notify_has_subscription(ext_shm_addr, mod, mod_info->ds, SR_SUB_EV_CHANGE,
                     &cur_priority)) {
@@ -935,6 +977,11 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
     sr_shm_t shm_sub = SR_SHM_INITIALIZER;
 
     while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff))) {
+        /* first check that there actually are some value changes (and not only dflt changes) */
+        if (!sr_shmsub_change_notify_diff_has_changes(mod, mod_info->diff)) {
+            continue;
+        }
+
         if (!sr_shmsub_change_notify_has_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_DONE,
                 &cur_priority)) {
             /* no subscriptions interested in this event */
@@ -1035,6 +1082,11 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t si
     int last_subscr = 0;
 
     while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff))) {
+        /* first check that there actually are some value changes (and not only dflt changes) */
+        if (!sr_shmsub_change_notify_diff_has_changes(mod, mod_info->diff)) {
+            continue;
+        }
+
         /* open sub SHM and map it */
         if ((err_info = sr_shmsub_open_map(mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &shm_sub, sizeof *multi_sub_shm))) {
             goto cleanup;
@@ -1819,19 +1871,33 @@ sr_shmsub_change_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct m
  * @return 0 if not, non-zero if there is.
  */
 static int
-sr_shmsub_change_listen_is_diff(struct modsub_changesub_s *sub, const struct lyd_node *diff)
+sr_shmsub_change_listen_has_diff(struct modsub_changesub_s *sub, const struct lyd_node *diff)
 {
     struct ly_set *set = NULL;
-    int ret;
+    const struct lyd_node *next, *elem;
+    uint32_t i;
+    enum edit_op op;
+    int ret = 0;
 
-    if (sub->xpath) {
-        set = lyd_find_path(diff, sub->xpath);
-        assert(set);
+    if (!sub->xpath) {
+        return 1;
     }
-    if (set && !set->number) {
-        ret = 0;
-    } else {
-        ret = 1;
+
+    set = lyd_find_path(diff, sub->xpath);
+    assert(set);
+
+    for (i = 0; i < set->number; ++i) {
+        LY_TREE_DFS_BEGIN(set->set.d[i], next, elem) {
+            op = sr_edit_find_oper(elem, 0, NULL);
+            if (op && (op != EDIT_NONE)) {
+                ret = 1;
+                break;
+            }
+            LY_TREE_DFS_END(set->set.d[i], next, elem);
+        }
+        if (ret) {
+            break;
+        }
     }
     ly_set_free(set);
 
@@ -2091,7 +2157,7 @@ process_event:
         sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
 
         /* call callback if there are some changes */
-        if (sr_shmsub_change_listen_is_diff(change_sub, diff)) {
+        if (sr_shmsub_change_listen_has_diff(change_sub, diff)) {
             ret = change_sub->cb(&tmp_sess, change_subs->module_name, change_sub->xpath, sr_ev2api(sub_info.event),
                     sub_info.request_id, change_sub->private_data);
         }

@@ -66,7 +66,7 @@ sr_error_info_t *sr_edit_set_oper(struct lyd_node *edit, const char *op);
  * @param[out] own_oper Whether the operation is in the node or in some of its parents.
  * @return Edit operation for the node.
  */
-enum edit_op sr_edit_find_oper(struct lyd_node *edit, int recursive, int *own_oper);
+enum edit_op sr_edit_find_oper(const struct lyd_node *edit, int recursive, int *own_oper);
 
 /**
  * @brief Delete an attribute from an edit node. Only internal (from ietf-netconf or sysrepo modules)

@@ -2227,70 +2227,72 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
         goto cleanup;
     }
 
-    if (mod_info->diff) {
-        /* publish current diff in an "update" event for the subscribers to update it */
-        if ((err_info = sr_shmsub_change_notify_update(mod_info, session->sid, timeout_ms, &update_edit, cb_err_info))) {
+    if (!mod_info->diff) {
+        SR_LOG_INFMSG("No datastore changes to apply.");
+        goto cleanup;
+    }
+
+    /* publish current diff in an "update" event for the subscribers to update it */
+    if ((err_info = sr_shmsub_change_notify_update(mod_info, session->sid, timeout_ms, &update_edit, cb_err_info))) {
+        goto cleanup;
+    }
+    if (*cb_err_info) {
+        /* "update" event failed, just clear the sub SHM and finish */
+        err_info = sr_shmsub_change_notify_clear(mod_info, SR_SUB_EV_UPDATE);
+        goto cleanup;
+    }
+
+    /* create new diff if we have an update edit */
+    if (update_edit) {
+        /* backup the old diff */
+        old_diff = mod_info->diff;
+        mod_info->diff = NULL;
+
+        /* get new diff using the updated edit */
+        if ((err_info = sr_modinfo_edit_apply(mod_info, update_edit, 1))) {
             goto cleanup;
         }
-        if (*cb_err_info) {
-            /* "update" event failed, just clear the sub SHM and finish */
-            err_info = sr_shmsub_change_notify_clear(mod_info, SR_SUB_EV_UPDATE);
+
+        /* validate updated data trees and finish new diff */
+        switch (session->ds) {
+        case SR_DS_STARTUP:
+        case SR_DS_RUNNING:
+            if ((err_info = sr_modinfo_validate(mod_info, 1, NULL, NULL))) {
+                goto cleanup;
+            }
+            break;
+        case SR_DS_CANDIDATE:
+        case SR_DS_OPERATIONAL:
+            if ((err_info = sr_modinfo_add_defaults(mod_info, 1))) {
+                goto cleanup;
+            }
+            break;
+        }
+
+        /* put the old diff back */
+        new_diff = mod_info->diff;
+        mod_info->diff = old_diff;
+        old_diff = NULL;
+
+        /* merge diffs into one */
+        if ((err_info = sr_modinfo_diff_merge(mod_info, new_diff))) {
             goto cleanup;
-        }
-
-        /* create new diff if we have an update edit */
-        if (update_edit) {
-            /* backup the old diff */
-            old_diff = mod_info->diff;
-            mod_info->diff = NULL;
-
-            /* get new diff using the updated edit */
-            if ((err_info = sr_modinfo_edit_apply(mod_info, update_edit, 1))) {
-                goto cleanup;
-            }
-
-            /* validate updated data trees and finish new diff */
-            switch (session->ds) {
-            case SR_DS_STARTUP:
-            case SR_DS_RUNNING:
-                if ((err_info = sr_modinfo_validate(mod_info, 1, NULL, NULL))) {
-                    goto cleanup;
-                }
-                break;
-            case SR_DS_CANDIDATE:
-            case SR_DS_OPERATIONAL:
-                if ((err_info = sr_modinfo_add_defaults(mod_info, 1))) {
-                    goto cleanup;
-                }
-                break;
-            }
-
-            /* put the old diff back */
-            new_diff = mod_info->diff;
-            mod_info->diff = old_diff;
-            old_diff = NULL;
-
-            /* merge diffs into one */
-            if ((err_info = sr_modinfo_diff_merge(mod_info, new_diff))) {
-                goto cleanup;
-            }
-        }
-
-        if (mod_info->diff) {
-            /* publish final diff in a "change" event for any subscribers and wait for them */
-            if ((err_info = sr_shmsub_change_notify_change(mod_info, session->sid, timeout_ms, cb_err_info))) {
-                goto cleanup;
-            }
-            if (*cb_err_info) {
-                /* "change" event failed, publish "abort" event and finish */
-                err_info = sr_shmsub_change_notify_change_abort(mod_info, session->sid, wait ? timeout_ms : 0);
-                goto cleanup;
-            }
         }
     }
+
     if (!mod_info->diff) {
-        /* while there are no changes for callbacks, some default flags could have changed so we must store them */
         SR_LOG_INFMSG("No datastore changes to apply.");
+        goto cleanup;
+    }
+
+    /* publish final diff in a "change" event for any subscribers and wait for them */
+    if ((err_info = sr_shmsub_change_notify_change(mod_info, session->sid, timeout_ms, cb_err_info))) {
+        goto cleanup;
+    }
+    if (*cb_err_info) {
+        /* "change" event failed, publish "abort" event and finish */
+        err_info = sr_shmsub_change_notify_change_abort(mod_info, session->sid, wait ? timeout_ms : 0);
+        goto cleanup;
     }
 
     /* MODULES WRITE LOCK (upgrade) */
@@ -2308,16 +2310,14 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
         goto cleanup;
     }
 
-    if (mod_info->diff) {
-        /* publish "done" event, all changes were applied */
-        if ((err_info = sr_shmsub_change_notify_change_done(mod_info, session->sid, wait ? timeout_ms : 0))) {
-            goto cleanup;
-        }
+    /* publish "done" event, all changes were applied */
+    if ((err_info = sr_shmsub_change_notify_change_done(mod_info, session->sid, wait ? timeout_ms : 0))) {
+        goto cleanup;
+    }
 
-        /* generate netconf-config-change notification */
-        if ((err_info = sr_modinfo_generate_config_change_notif(mod_info, session))) {
-            goto cleanup;
-        }
+    /* generate netconf-config-change notification */
+    if ((err_info = sr_modinfo_generate_config_change_notif(mod_info, session))) {
+        goto cleanup;
     }
 
     /* success */

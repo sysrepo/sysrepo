@@ -2053,8 +2053,28 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     char *xpath, nc_str[11];
     const char *op_enum;
     sr_change_oper_t op;
+    enum edit_op edit_op;
+    int changes;
 
-    assert(mod_info->diff);
+    /* make sure there are some actual node changes */
+    changes = 0;
+    LY_TREE_FOR(mod_info->diff, root) {
+        LY_TREE_DFS_BEGIN(root, next, elem) {
+            edit_op = sr_edit_find_oper(elem, 0, NULL);
+            if (edit_op && (edit_op != EDIT_NONE)) {
+                changes = 1;
+                break;
+            }
+            LY_TREE_DFS_END(root, next, elem);
+        }
+        if (changes) {
+            break;
+        }
+    }
+    if (!changes) {
+        /* no actual changes to notify about */
+        return NULL;
+    }
 
     if ((mod_info->ds == SR_DS_CANDIDATE) || (mod_info->ds == SR_DS_OPERATIONAL)) {
         /* not supported */
