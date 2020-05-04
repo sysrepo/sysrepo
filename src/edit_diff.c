@@ -1114,11 +1114,12 @@ sr_edit_apply_ether(struct lyd_node *match_node, enum edit_op *next_op, int *fla
  * @param[in,out] diff_root Sysrepo diff root node.
  * @param[out] diff_node Created diff node.
  * @param[out] next_op Next operation to be performed with these nodes.
+ * @param[out] change Whether some data change occurred.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_edit_apply_none(struct lyd_node *match_node, const struct lyd_node *edit_node, struct lyd_node *diff_parent,
-        struct lyd_node **diff_root, struct lyd_node **diff_node, enum edit_op *next_op)
+        struct lyd_node **diff_root, struct lyd_node **diff_node, enum edit_op *next_op, int *change)
 {
     sr_error_info_t *err_info = NULL;
     uintptr_t prev_dflt;
@@ -1136,15 +1137,20 @@ sr_edit_apply_none(struct lyd_node *match_node, const struct lyd_node *edit_node
             return err_info;
         }
     } else if ((match_node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) && (match_node->dflt != edit_node->dflt)) {
-        /* default flag changed, we need the node in the diff */
         prev_dflt = match_node->dflt;
+
+        /* update dflt flag itself */
+        match_node->dflt = edit_node->dflt;
+
+        /* default flag changed, we need the node in the diff */
         if ((err_info = sr_edit_diff_add(match_node, NULL, (char *)prev_dflt, EDIT_NONE, 0, diff_parent, diff_root,
                 diff_node))) {
             return err_info;
         }
 
-        /* update dflt flag itself */
-        match_node->dflt = edit_node->dflt;
+        if (change) {
+            *change = 1;
+        }
     }
 
     *next_op = EDIT_CONTINUE;
@@ -1162,7 +1168,7 @@ sr_edit_apply_none(struct lyd_node *match_node, const struct lyd_node *edit_node
  * @param[out] diff_node Created diff node.
  * @param[out] next_op Next operation to be performed with these nodes.
  * @param[in,out] flags_r Modified flags for the rest of recursive applpying of this operation.
- * @param[out] change Whether some data change occured.
+ * @param[out] change Whether some data change occurred.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
@@ -1225,7 +1231,7 @@ sr_edit_apply_remove(struct lyd_node **first_node, struct lyd_node *parent_node,
  * @param[in,out] diff_root Sysrepo diff root node.
  * @param[out] diff_node Created diff node.
  * @param[out] next_op Next operation to be performed with these nodes.
- * @param[out] change Whether some data change occured.
+ * @param[out] change Whether some data change occurred.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
@@ -1680,7 +1686,7 @@ reapply:
             }
             break;
         case EDIT_NONE:
-            if ((err_info = sr_edit_apply_none(match, edit_node, diff_parent, diff_root, &diff_node, &next_op))) {
+            if ((err_info = sr_edit_apply_none(match, edit_node, diff_parent, diff_root, &diff_node, &next_op, change))) {
                 goto op_error;
             }
             break;
@@ -3043,13 +3049,7 @@ sr_diff_ly2sr(struct lyd_difflist *ly_diff, struct lyd_node **diff_p)
             op = EDIT_DELETE;
             break;
         case LYD_DIFF_CHANGED:
-
             assert(ly_diff->second[i]->schema->nodetype != LYS_LIST);
-            if (!strcmp(sr_ly_leaf_value_str(ly_diff->second[i]), sr_ly_leaf_value_str(ly_diff->first[i]))) {
-                /* only dflt flag was changed, not a diff change */
-                assert(ly_diff->second[i]->dflt != ly_diff->first[i]->dflt);
-                continue;
-            }
 
             /* duplicate leaf */
             node = lyd_dup(ly_diff->second[i], LYD_DUP_OPT_WITH_PARENTS | LYD_DUP_OPT_NO_ATTR);
@@ -3058,10 +3058,16 @@ sr_diff_ly2sr(struct lyd_difflist *ly_diff, struct lyd_node **diff_p)
                 goto error;
             }
 
-            /* set attrs (change leaf value) */
-            attr_val = (char *)sr_ly_leaf_value_str(ly_diff->first[i]);
+            /* set attrs (changed leaf value or only dflt flag change) */
             prev_attr_val = (char *)((uintptr_t)ly_diff->first[i]->dflt);
-            op = EDIT_REPLACE;
+            if (!strcmp(sr_ly_leaf_value_str(ly_diff->second[i]), sr_ly_leaf_value_str(ly_diff->first[i]))) {
+                /* only dflt flag was changed */
+                assert(ly_diff->second[i]->dflt != ly_diff->first[i]->dflt);
+                op = EDIT_NONE;
+            } else {
+                attr_val = (char *)sr_ly_leaf_value_str(ly_diff->first[i]);
+                op = EDIT_REPLACE;
+            }
             break;
         case LYD_DIFF_MOVEDAFTER1:
 

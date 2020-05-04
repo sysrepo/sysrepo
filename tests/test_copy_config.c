@@ -1268,12 +1268,12 @@ module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
-        assert_int_equal(op, SR_OP_DELETED);
-        assert_non_null(old_val);
-        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']");
-        assert_null(new_val);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']/description");
 
-        sr_free_val(old_val);
+        sr_free_val(new_val);
 
         /* 2nd change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
@@ -1281,7 +1281,7 @@ module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char
 
         assert_int_equal(op, SR_OP_DELETED);
         assert_non_null(old_val);
-        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']/name");
+        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']");
         assert_null(new_val);
 
         sr_free_val(old_val);
@@ -1292,7 +1292,7 @@ module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char
 
         assert_int_equal(op, SR_OP_DELETED);
         assert_non_null(old_val);
-        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']/type");
+        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']/name");
         assert_null(new_val);
 
         sr_free_val(old_val);
@@ -1303,12 +1303,23 @@ module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char
 
         assert_int_equal(op, SR_OP_DELETED);
         assert_non_null(old_val);
-        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']/enabled");
+        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']/type");
         assert_null(new_val);
 
         sr_free_val(old_val);
 
         /* 5th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_non_null(old_val);
+        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']/enabled");
+        assert_null(new_val);
+
+        sr_free_val(old_val);
+
+        /* 6th change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -1319,7 +1330,7 @@ module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char
 
         sr_free_val(new_val);
 
-        /* 6th change */
+        /* 7th change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -1330,7 +1341,7 @@ module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char
 
         sr_free_val(new_val);
 
-        /* 7th change */
+        /* 8th change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -1341,17 +1352,6 @@ module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char
 
         sr_free_val(new_val);
 
-        /* 8th change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']/enabled");
-
-        sr_free_val(new_val);
-
         /* 9th change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
@@ -1359,7 +1359,7 @@ module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']/description");
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth3']/enabled");
 
         sr_free_val(new_val);
 
@@ -1673,11 +1673,6 @@ module_replace_dflt_cb(sr_session_ctx_t *session, const char *module_name, const
         fail();
     }
 
-    if (event == SR_EV_DONE) {
-        /* let other thread now even done event was handled */
-        pthread_barrier_wait(&st->barrier);
-    }
-
     ++st->cb_called;
     return SR_ERR_OK;
 }
@@ -1709,6 +1704,55 @@ replace_dflt_thread(void *arg)
                 "<mtu>1400</mtu>"
             "</ipv4>"
             "<ipv6 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">"
+                "<mtu>1400</mtu>"
+            "</ipv6>"
+        "</interface>"
+    "</interfaces>";
+    config = lyd_parse_mem((struct ly_ctx *)sr_get_context(st->conn), str2, LYD_XML, LYD_OPT_CONFIG | LYD_OPT_STRICT);
+    assert_non_null(config);
+
+    /* perform replace-config */
+    ret = sr_replace_config(sess, "ietf-interfaces", config, 0, 1);
+    config = NULL;
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check current data tree */
+    ret = sr_get_data(sess, "/ietf-interfaces:interfaces", 0, 0, 0, &node);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, node, LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    lyd_free_withsiblings(node);
+
+    str2 =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>WAN1</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">"
+                "<enabled>true</enabled>"
+                "<mtu>1400</mtu>"
+            "</ipv4>"
+            "<ipv6 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">"
+                "<mtu>1400</mtu>"
+            "</ipv6>"
+        "</interface>"
+    "</interfaces>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* prepare some ietf-interfaces config #2 (only changing value from implicit to explicit, no callback called) */
+    str2 =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>WAN1</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">"
+                "<enabled>true</enabled>"
+                "<mtu>1400</mtu>"
+            "</ipv4>"
+            "<ipv6 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">"
                 "<enabled>true</enabled>"
                 "<mtu>1400</mtu>"
             "</ipv6>"
@@ -1718,12 +1762,9 @@ replace_dflt_thread(void *arg)
     assert_non_null(config);
 
     /* perform replace-config */
-    ret = sr_replace_config(sess, "ietf-interfaces", config, 0, 0);
+    ret = sr_replace_config(sess, "ietf-interfaces", config, 0, 1);
     config = NULL;
     assert_int_equal(ret, SR_ERR_OK);
-
-    /* wait for DONE */
-    pthread_barrier_wait(&st->barrier);
 
     /* check current data tree */
     ret = sr_get_data(sess, "/ietf-interfaces:interfaces", 0, 0, 0, &node);
@@ -1765,7 +1806,7 @@ subscribe_replace_dflt_thread(void *arg)
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr;
-    int count, ret;
+    int ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1778,8 +1819,6 @@ subscribe_replace_dflt_thread(void *arg)
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='WAN1']/ietf-ip:ipv4/mtu", "1500", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='WAN1']/ietf-ip:ipv4/forwarding", "false", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='WAN1']/ietf-ip:ipv6/enabled", "true", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='WAN1']/ietf-ip:ipv6/mtu", "1500", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1798,15 +1837,9 @@ subscribe_replace_dflt_thread(void *arg)
     /* signal that subscriptions were created */
     pthread_barrier_wait(&st->barrier);
 
-    count = 0;
-    while ((st->cb_called < 2) && (count < 1500)) {
-        usleep(10000);
-        ++count;
-    }
-    assert_int_equal(st->cb_called, 2);
-
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
+    assert_int_equal(st->cb_called, 2);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);

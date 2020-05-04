@@ -181,6 +181,50 @@ test_no_read_access(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
+static void
+test_explicit_default(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    int ret;
+
+    /* get defaults data */
+    ret = sr_get_data(st->sess, "/defaults:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_non_null(data);
+    assert_string_equal(data->schema->name, "cont");
+    assert_int_equal(data->dflt, 1);
+    assert_non_null(data->child);
+    assert_string_equal(data->child->schema->name, "interval");
+    assert_int_equal(data->child->dflt, 1);
+
+    lyd_free_withsiblings(data);
+
+    /* set explicit default value */
+    ret = sr_set_item_str(st->sess, "/defaults:cont/interval", "30", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read it back */
+    ret = sr_get_data(st->sess, "/defaults:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_non_null(data);
+    assert_string_equal(data->schema->name, "cont");
+    assert_int_equal(data->dflt, 0);
+    assert_non_null(data->child);
+    assert_string_equal(data->child->schema->name, "interval");
+    assert_int_equal(data->child->dflt, 0);
+
+    lyd_free_withsiblings(data);
+
+    /* cleanup */
+    sr_delete_item(st->sess, "/defaults:cont", 0);
+    sr_apply_changes(st->sess, 0, 0);
+}
+
 int
 main(void)
 {
@@ -188,6 +232,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_enable_cached_get, setup_cached_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_no_read_access, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_no_read_access, setup_cached_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_explicit_default, setup_f, teardown_f),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
