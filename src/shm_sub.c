@@ -693,9 +693,8 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
             /* SUB READ UNLOCK */
             sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
 
-            /* collect new edits (resulting edit may be empty) */
-            if (!*update_edit || !edit) {
-                lyd_free_withsiblings(*update_edit);
+            /* collect new edits (they may not be any) */
+            if (!*update_edit) {
                 *update_edit = edit;
             } else if (edit) {
                 if (lyd_insert_after((*update_edit)->prev, edit)) {

@@ -862,6 +862,392 @@ test_update(void **state)
 
 /* TEST */
 static int
+module_update2_l1_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    sr_change_oper_t op;
+    sr_change_iter_t *iter;
+    sr_val_t *old_val, *new_val;
+    struct lyd_node *subtree;
+    int ret;
+
+    (void)request_id;
+
+    assert_string_equal(module_name, "when1");
+    assert_string_equal(xpath, "/when1:l1");
+
+    if (event != SR_EV_UPDATE) {
+        /* we do not care */
+        return SR_ERR_OK;
+    }
+
+    /* get changes iter */
+    ret = sr_get_changes_iter(session, xpath, &iter);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    while (sr_get_change_next(session, iter, &op, &old_val, &new_val) == SR_ERR_OK) {
+        if (op == SR_OP_DELETED) {
+            ret = sr_get_subtree(session, "/when1:l2", 0, &subtree);
+            assert_int_equal(ret, SR_ERR_OK);
+            if (subtree) {
+                lyd_free(subtree);
+
+                /* remove also the other leaf */
+                ret = sr_delete_item(session, "/when1:l2", 0);
+                assert_int_equal(ret, SR_ERR_OK);
+            }
+        }
+
+        sr_free_val(old_val);
+        sr_free_val(new_val);
+    }
+    sr_free_change_iter(iter);
+
+    ++st->cb_called;
+    return SR_ERR_OK;
+}
+
+static int
+module_update2_l2_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    sr_change_oper_t op;
+    sr_change_iter_t *iter;
+    sr_val_t *old_val, *new_val;
+    struct lyd_node *subtree;
+    int ret;
+
+    (void)request_id;
+
+    assert_string_equal(module_name, "when1");
+    assert_string_equal(xpath, "/when1:l2");
+
+    if (event != SR_EV_UPDATE) {
+        /* we do not care */
+        return SR_ERR_OK;
+    }
+
+    /* get changes iter */
+    ret = sr_get_changes_iter(session, xpath, &iter);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    while (sr_get_change_next(session, iter, &op, &old_val, &new_val) == SR_ERR_OK) {
+        if (op == SR_OP_DELETED) {
+            ret = sr_get_subtree(session, "/when1:l1", 0, &subtree);
+            assert_int_equal(ret, SR_ERR_OK);
+            if (subtree) {
+                lyd_free(subtree);
+
+                /* remove also the other leaf */
+                ret = sr_delete_item(session, "/when1:l1", 0);
+                assert_int_equal(ret, SR_ERR_OK);
+            }
+        }
+
+        sr_free_val(old_val);
+        sr_free_val(new_val);
+    }
+    sr_free_change_iter(iter);
+
+    ++st->cb_called;
+    return SR_ERR_OK;
+}
+
+static int
+module_update2_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    sr_change_oper_t op;
+    sr_change_iter_t *iter;
+    sr_val_t *old_val, *new_val;
+    int ret;
+
+    (void)request_id;
+
+    assert_string_equal(module_name, "when1");
+    assert_null(xpath);
+
+    switch (st->cb_called) {
+    case 2:
+    case 3:
+        if (st->cb_called == 2) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/when1:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/when1:l1");
+
+        sr_free_val(new_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/when1:l2");
+
+        sr_free_val(new_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    case 5:
+    case 6:
+        if (st->cb_called == 5) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/when1:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_non_null(old_val);
+        assert_null(new_val);
+        assert_string_equal(old_val->xpath, "/when1:l1");
+
+        sr_free_val(old_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_non_null(old_val);
+        assert_null(new_val);
+        assert_string_equal(old_val->xpath, "/when1:l2");
+
+        sr_free_val(old_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    case 9:
+    case 10:
+        if (st->cb_called == 9) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/when1:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/when1:l1");
+
+        sr_free_val(new_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/when1:l2");
+
+        sr_free_val(new_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    case 12:
+    case 13:
+        if (st->cb_called == 12) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/when1:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_non_null(old_val);
+        assert_null(new_val);
+        assert_string_equal(old_val->xpath, "/when1:l2");
+
+        sr_free_val(old_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_non_null(old_val);
+        assert_null(new_val);
+        assert_string_equal(old_val->xpath, "/when1:l1");
+
+        sr_free_val(old_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    default:
+        fail();
+    }
+
+    ++st->cb_called;
+    return SR_ERR_OK;
+}
+
+static void *
+apply_update2_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    struct lyd_node *data;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set both l1 and l2 */
+    ret = sr_set_item_str(sess, "/when1:l1", "val", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/when1:l2", "val2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for subscription before applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(st->cb_called, 4);
+
+    /* delete only l1 */
+    ret = sr_delete_item(sess, "/when1:l1", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(st->cb_called, 7);
+
+    /* check current data tree */
+    ret = sr_get_data(sess, "/when1:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_null(data);
+
+    /* set both l1 and l2 again */
+    ret = sr_set_item_str(sess, "/when1:l1", "val", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/when1:l2", "val2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(st->cb_called, 11);
+
+    /* delete only l2 this time */
+    ret = sr_delete_item(sess, "/when1:l2", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(st->cb_called, 14);
+
+    /* check current data tree */
+    ret = sr_get_data(sess, "/when1:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_null(data);
+
+    /* signal that we have finished applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+subscribe_update2_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "when1", "/when1:l1", module_update2_l1_cb, st, 0, SR_SUBSCR_UPDATE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "when1", "/when1:l2", module_update2_l2_cb, st, 1,
+            SR_SUBSCR_UPDATE | SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "when1", NULL, module_update2_cb, st, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that subscription was created */
+    pthread_barrier_wait(&st->barrier);
+
+    /* wait for the other thread to finish */
+    pthread_barrier_wait(&st->barrier);
+    assert_int_equal(st->cb_called, 14);
+
+    sr_unsubscribe(subscr);
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_update2(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, apply_update2_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_update2_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
+/* TEST */
+static int
 module_update_fail_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
 {
@@ -4534,6 +4920,7 @@ main(void)
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup_teardown(test_change_done, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_update, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_update2, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_update_fail, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_fail, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_fail2, setup_f, teardown_f),
