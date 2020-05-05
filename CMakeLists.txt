@@ -50,7 +50,6 @@ set(SYSREPO_SOVERSION_FULL ${SYSREPO_MAJOR_SOVERSION}.${SYSREPO_MINOR_SOVERSION}
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_SOVERSION})
 
 # Version of libyang library that this sysrepo depends on
-set(LIBYANG_DEP_VERSION 1.0.165)
 set(LIBYANG_DEP_SOVERSION 1.7.9)
 
 # options
@@ -216,18 +215,9 @@ if(HAVE_ATOMIC)
 endif()
 
 # libyang, check version
-find_package(YANG REQUIRED)
+find_package(LibYANG ${LIBYANG_DEP_SOVERSION} REQUIRED)
 target_link_libraries(sysrepo ${LIBYANG_LIBRARIES})
 include_directories(${LIBYANG_INCLUDE_DIRS})
-
-find_path(LY_HEADER_PATH "libyang/libyang.h" HINTS ${LIBYANG_INCLUDE_DIR})
-file(READ "${LY_HEADER_PATH}/libyang/libyang.h" LY_HEADER)
-string(REGEX MATCH "#define LY_VERSION \"[0-9]+\\.[0-9]+\\.[0-9]+\"" LY_VERSION_MACRO "${LY_HEADER}")
-string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" LY_VERSION "${LY_VERSION_MACRO}")
-message(STATUS "Libyang SO version ${LY_VERSION} found (${LY_HEADER_PATH}/libyang/libyang.h)")
-if(LY_VERSION VERSION_LESS LIBYANG_DEP_SOVERSION)
-    message(FATAL_ERROR "Libyang version too old, please update to at least ${LIBYANG_DEP_VERSION} (SO ${LIBYANG_DEP_SOVERSION})")
-endif()
 
 # pthread
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
@@ -272,11 +262,11 @@ if(ENABLE_TESTS)
     if(CMOCKA_FOUND)
         enable_testing()
         add_subdirectory(tests)
-    else(CMOCKA_FOUND)
+    else()
         message(STATUS "Disabling tests because of missing CMocka.")
         set(ENABLE_BUILD_TESTS NO)
-    endif(CMOCKA_FOUND)
-endif(ENABLE_TESTS)
+    endif()
+endif()
 
 # bindings
 if(GEN_LANGUAGE_BINDINGS)
