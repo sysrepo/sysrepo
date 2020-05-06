@@ -127,14 +127,14 @@ test_leafref(void **state)
     /* cause leafref not to point at a node (2x) */
     ret = sr_set_item_str(st->sess, "/refs:lref", "8", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_validate(st->sess, 0);
+    ret = sr_validate(st->sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_set_item_str(st->sess, "/test:test-leaf", "8", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_validate(st->sess, 0);
+    ret = sr_validate(st->sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -240,7 +240,7 @@ test_operational(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* validate operational with an invalid change */
-    ret = sr_validate(st->sess, 0);
+    ret = sr_validate(st->sess, "test", 0);
     assert_int_equal(ret, SR_ERR_UNSUPPORTED);
 
     /* try to apply, with the same result */
@@ -259,7 +259,7 @@ test_operational(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* validate operational, should be fine now */
-    ret = sr_validate(st->sess, 0);
+    ret = sr_validate(st->sess, "test", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* so we can apply it */

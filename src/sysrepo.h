@@ -954,10 +954,11 @@ int sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const 
  * Provides only YANG validation, apply-changes **subscribers will not be notified** in this case.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
+ * @param[in] module_name If specified, limits the validate operation only to this module and its dependencies.
  * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_validate(sr_session_ctx_t *session, uint32_t timeout_ms);
+int sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout_ms);
 
 /**
  * @brief Apply changes made in the current session.

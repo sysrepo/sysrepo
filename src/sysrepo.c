@@ -2082,9 +2082,11 @@ error:
 }
 
 API int
-sr_validate(sr_session_ctx_t *session, uint32_t timeout_ms)
+sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
+    const struct lys_module *ly_mod = NULL;
+    const struct lyd_node *node;
     struct sr_mod_info_s mod_info;
 
     SR_CHECK_ARG_APIRET(!session, session, err_info);
@@ -2100,6 +2102,15 @@ sr_validate(sr_session_ctx_t *session, uint32_t timeout_ms)
         return sr_api_ret(session, err_info);
     }
 
+    if (module_name) {
+        /* try to find this module */
+        ly_mod = ly_ctx_get_module(session->conn->ly_ctx, module_name, NULL, 1);
+        if (!ly_mod) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
+            goto cleanup_shm_unlock;
+        }
+    }
+
     switch (session->ds) {
     case SR_DS_STARTUP:
     case SR_DS_RUNNING:
@@ -2108,13 +2119,28 @@ sr_validate(sr_session_ctx_t *session, uint32_t timeout_ms)
             goto cleanup_shm_unlock;
         }
 
-        /* only the ones modified (other modules must be valid) */
-        err_info = sr_shmmod_modinfo_collect_edit(&mod_info, session->dt[session->ds].edit);
+        if (ly_mod) {
+            /* check that there are some changes for this module */
+            LY_TREE_FOR(session->dt[session->ds].edit, node) {
+                if (lyd_node_module(node) == ly_mod) {
+                    break;
+                }
+            }
+            if (!ly_mod) {
+                /* nothing to validate */
+                goto cleanup_shm_unlock;
+            }
+
+            err_info = sr_shmmod_modinfo_collect_modules(&mod_info, ly_mod, MOD_INFO_DEP | MOD_INFO_INV_DEP);
+        } else {
+            /* collect all modified modules (other modules must be valid) */
+            err_info = sr_shmmod_modinfo_collect_edit(&mod_info, session->dt[session->ds].edit);
+        }
         break;
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
-        /* all modules */
-        err_info = sr_shmmod_modinfo_collect_modules(&mod_info, NULL, 0);
+        /* specific module/all modules */
+        err_info = sr_shmmod_modinfo_collect_modules(&mod_info, ly_mod, MOD_INFO_DEP | MOD_INFO_INV_DEP);
         break;
     }
     if (err_info) {
