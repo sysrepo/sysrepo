@@ -1276,7 +1276,7 @@ typedef enum sr_event_e {
     SR_EV_ENABLED, /**< Occurs for subscriptions with the flag ::SR_SUBSCR_ENABLED and is normally followed by
                         ::SR_EV_DONE. It can fail and will also be triggered even when there is no startup configuration
                         (which is different from the ::SR_EV_CHANGE event). Also note that the callback on this event
-                        __cannot__ return ::SR_ERR_CABBACK_SHELVE. */
+                        __cannot__ return ::SR_ERR_CALLBACK_SHELVE. */
     SR_EV_RPC,     /**< Occurs for a standard RPC execution. If a later callback fails, ::SR_EV_ABORT is generated. */
 } sr_event_t;
 
