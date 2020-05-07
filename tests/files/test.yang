@@ -2,8 +2,19 @@ module test {
     namespace "urn:test";
     prefix t;
 
+    import ietf-inet-types {
+        prefix inet;
+    }
+
     leaf test-leaf {
         type uint8;
+    }
+
+    leaf test-leafref {
+        type leafref {
+            path "../test-leaf";
+        }
+        config false;
     }
 
     list l1 {
@@ -46,6 +57,10 @@ module test {
         leaf-list ll2 {
             ordered-by user;
             type int16;
+        }
+
+        leaf server {
+            type inet:host;
         }
     }
 }

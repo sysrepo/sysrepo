@@ -1,5 +1,5 @@
 /**
- * @file Sysrepo.h
+ * @file Sysrepo.hpp
  * @author Mislav Novakovic <mislav.novakovic@sartura.hr>
  * @author Mcihal Vasko <mvasko@cesnet.cz>
  * @brief Sysrepo Sysrepo class header.

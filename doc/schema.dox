@@ -6,7 +6,7 @@ such a YANG module change is **not performed immediately**. These changes, which
 or changing its features, are **only scheduled** to be performed and are applied during new Sysrepo connection
 creation **if there are no other connections**. The reason for this mechanism is that the module context cannot change while there
 are some data connected to it (_libyang_ requirement) and they often are even when no Sysrepo function is being executed.
-That is the price for having a context created at all times with all the schemas so there are no temporary ones needed.
+That is the price for having a context created with all the schemas at all times so there are no temporary ones needed.
 
 Sysrepo allows to **update** installed modules keeping their current data, as mentioned before. The new schema should follow
 [standardized updating rules](https://tools.ietf.org/html/rfc7950#section-11) but Sysrepo only requires for the schema

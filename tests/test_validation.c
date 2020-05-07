@@ -127,14 +127,14 @@ test_leafref(void **state)
     /* cause leafref not to point at a node (2x) */
     ret = sr_set_item_str(st->sess, "/refs:lref", "8", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_validate(st->sess, 0);
+    ret = sr_validate(st->sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_set_item_str(st->sess, "/test:test-leaf", "8", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_validate(st->sess, 0);
+    ret = sr_validate(st->sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -217,12 +217,66 @@ test_instid(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
+static void
+test_operational(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const char *data =
+    "{"
+        "\"test:test-leaf\": 12"
+    "}";
+    struct lyd_node *edit;
+    int ret;
+
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* parse it with default values, which are invalid */
+    edit = lyd_parse_mem((struct ly_ctx *)sr_get_context(st->conn), data, LYD_JSON, LYD_OPT_DATA_NO_YANGLIB);
+    assert_non_null(edit);
+
+    ret = sr_edit_batch(st->sess, edit, "replace");
+    lyd_free_withsiblings(edit);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* validate operational with an invalid change */
+    ret = sr_validate(st->sess, "test", 0);
+    assert_int_equal(ret, SR_ERR_UNSUPPORTED);
+
+    /* try to apply, with the same result */
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_UNSUPPORTED);
+
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* parse it properly now */
+    edit = lyd_parse_mem((struct ly_ctx *)sr_get_context(st->conn), data, LYD_JSON, LYD_OPT_EDIT);
+    assert_non_null(edit);
+
+    ret = sr_edit_batch(st->sess, edit, "replace");
+    lyd_free_withsiblings(edit);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* validate operational, should be fine now */
+    ret = sr_validate(st->sess, "test", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* so we can apply it */
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 int
 main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_teardown(test_leafref, clear_test_refs),
         cmocka_unit_test_teardown(test_instid, clear_test_refs),
+        cmocka_unit_test(test_operational),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

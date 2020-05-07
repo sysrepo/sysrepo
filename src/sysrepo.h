@@ -65,7 +65,7 @@ typedef enum sr_error_e {
     SR_ERR_TIME_OUT,           /**< Time out has expired. */
     SR_ERR_CALLBACK_FAILED,    /**< User callback failure caused the operation to fail. */
     SR_ERR_CALLBACK_SHELVE,    /**< User callback has not processed the event and will do so
-                                    on the next event processing. */
+                                    on some future event processing. */
 } sr_error_t;
 
 /**
@@ -517,7 +517,7 @@ int sr_cancel_update_module(sr_conn_ctx_t *conn, const char *module_name);
  * @brief Change module replay support.
  *
  * @param[in] conn Connection to use.
- * @param[in] module_name Name of the module to change.
+ * @param[in] module_name Name of the module to change. NULL to change all the modules.
  * @param[in] replay_support 0 to disabled, non-zero to enable.
  * @return Error code (::SR_ERR_OK on success).
  */
@@ -637,7 +637,10 @@ typedef union sr_data_u {
     char *binary_val;       /**< Base64-encoded binary data ([RFC 7950 sec 9.8](http://tools.ietf.org/html/rfc7950#section-9.8)) */
     char *bits_val;         /**< A set of bits or flags ([RFC 7950 sec 9.7](http://tools.ietf.org/html/rfc7950#section-9.7)) */
     bool bool_val;          /**< A boolean value ([RFC 7950 sec 9.5](http://tools.ietf.org/html/rfc7950#section-9.5)) */
-    double decimal64_val;   /**< 64-bit signed decimal number ([RFC 7950 sec 9.3](http://tools.ietf.org/html/rfc7950#section-9.3)) */
+    double decimal64_val;   /**< 64-bit signed decimal number ([RFC 7950 sec 9.3](http://tools.ietf.org/html/rfc7950#section-9.3))
+                                 __Be careful with this value!__ It is not always possible and the value can change when converting
+                                 between a double and YANG decimal64. Because of that you may see some unexpected behavior setting
+                                 or reading this value. To avoid these problems, use `*_tree()` API variants instead. */
     char *enum_val;         /**< A string from enumerated strings list ([RFC 7950 sec 9.6](http://tools.ietf.org/html/rfc7950#section-9.6)) */
     char *identityref_val;  /**< A reference to an abstract identity ([RFC 7950 sec 9.10](http://tools.ietf.org/html/rfc7950#section-9.10)) */
     char *instanceid_val;   /**< References a data tree node ([RFC 7950 sec 9.13](http://tools.ietf.org/html/rfc7950#section-9.13)) */
@@ -708,7 +711,7 @@ typedef uint32_t sr_get_oper_options_t;
  * has no data filled in and its type is set properly
  * (::SR_LEAF_EMPTY_T / ::SR_LIST_T / ::SR_CONTAINER_T / ::SR_CONTAINER_PRESENCE_T).
  *
- * Required READ access.
+ * Required READ access, but if the access check fails, the module data are simply ignored without an error.
  *
  * @see Use ::sr_get_items for retrieving larger chunks
  * of data from the datastore. Since it retrieves the data from datastore in
@@ -730,7 +733,7 @@ int sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms
  * All data elements are transferred within one message from the datastore,
  * which is more efficient that calling multiple ::sr_get_item calls.
  *
- * Required READ access.
+ * Required READ access, but if the access check fails, the module data are simply ignored without an error.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] xpath [XPath](@ref paths) of the data elements to be retrieved.
@@ -752,7 +755,7 @@ int sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_
  * with the expressive power of XPath addressing, the recursive nature of the output data type
  * also preserves the hierarchical relationships between data elements.
  *
- * Required READ access.
+ * Required READ access, but if the access check fails, the module data are simply ignored without an error.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) selecting the root node of the subtree to be retrieved.
@@ -775,7 +778,7 @@ int sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout
  * of data nodes. Since all the descendants of each matched node are returned implicitly, `//` in the XPath
  * should never be used (i.e. `/\asterisk` is the correct XPath for all the nodes).
  *
- * Required READ access.
+ * Required READ access, but if the access check fails, the module data are simply ignored without an error.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] xpath [XPath](@ref paths) selecting root nodes of subtrees to be retrieved.
@@ -905,10 +908,15 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
 int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts);
 
 /**
- * @brief Prepare to move the instance of an user-ordered list or leaf-list to the specified position.
+ * @brief Prepare to move/create the instance of an user-ordered list or leaf-list to the specified position.
  * These changes are applied only after calling ::sr_apply_changes.
  *
- * Item can be move to the first or last position or positioned relatively to its sibling.
+ * Item can be moved to the first or last position or positioned relatively to its sibling.
+ *
+ * With default options it recursively creates all missing nodes (containers and
+ * lists including their key leaves) in the xpath to the specified node (can be
+ * turned off with ::SR_EDIT_NON_RECURSIVE option). If ::SR_EDIT_STRICT flag is set,
+ * the node must not exist (otherwise an error is returned).
  *
  * @note To determine current order, you can issue a ::sr_get_items call
  * (without specifying keys of particular list).
@@ -946,10 +954,11 @@ int sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const 
  * Provides only YANG validation, apply-changes **subscribers will not be notified** in this case.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
+ * @param[in] module_name If specified, limits the validate operation only to this module and its dependencies.
  * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_validate(sr_session_ctx_t *session, uint32_t timeout_ms);
+int sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout_ms);
 
 /**
  * @brief Apply changes made in the current session.
@@ -962,13 +971,23 @@ int sr_validate(sr_session_ctx_t *session, uint32_t timeout_ms);
  * Required WRITE access.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to apply changes of.
- * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
+ * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used. Note that this timeout
+ * is measured separately for each callback meaning this whole function call can easily __take more time__ than this
+ * timeout if there are changes applied for several subscribers.
  * @param[in] wait Whether to wait until all callbacks on all events are finished (even ::SR_EV_DONE or ::SR_EV_ABORT).
  * If not set, these events may not yet be processed after the function returns. Note that all ::SR_EV_CHANGE events
  * are always waited for.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms, int wait);
+
+/**
+ * @brief Learn whether there are any prepared non-applied changes in the session.
+ *
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to check changes in.
+ * @return non-zero if there are some changes, 0 if there are none.
+ */
+int sr_has_changes(sr_session_ctx_t *session);
 
 /**
  * @brief Discard prepared changes made in the current session.
@@ -1128,7 +1147,7 @@ typedef enum sr_subscr_flag_e {
     /**
      * @brief The subscriber does not support verification of the changes and wants to be notified only after
      * the changes has been applied in the datastore, without the possibility to deny them
-     * (it will receive only ::SR_EV_DONE events).
+     * (it will not receive ::SR_EV_CHANGE nor ::SR_EV_ABORT but only ::SR_EV_DONE events).
      */
     SR_SUBSCR_DONE_ONLY = 8,
 
@@ -1157,6 +1176,13 @@ typedef enum sr_subscr_flag_e {
      * it makes no sense for others.
      */
     SR_SUBSCR_UNLOCKED = 64,
+
+    /**
+     * @brief Instead of removing any previous existing matching data before getting them from an operational
+     * subscription callback, keep them. Then the returned data are merged into the existing data. Accepted
+     * only for operational subscriptions.
+     */
+    SR_SUBSCR_OPER_MERGE = 128,
 
 } sr_subscr_flag_t;
 
@@ -1227,7 +1253,8 @@ int sr_unsubscribe(sr_subscription_ctx_t *subscription);
  *
  * @note Each change is normally announced twice: first as ::SR_EV_CHANGE event and then as ::SR_EV_DONE or ::SR_EV_ABORT
  * event. If the subscriber does not support verification, it can subscribe only to ::SR_EV_DONE event by providing
- * ::SR_SUBSCR_DONE_ONLY subscription flag.
+ * ::SR_SUBSCR_DONE_ONLY subscription flag. The general rule is that in case the operation fails, only if the subscriber
+ * has __successfully__ processed the first event (::SR_EV_CHANGE/::SR_EV_RPC), it will get the second ::SR_EV_ABORT event.
  */
 typedef enum sr_event_e {
     SR_EV_UPDATE,  /**< Occurs before any other events and the subscriber can update the apply-changes diff.
@@ -1244,11 +1271,12 @@ typedef enum sr_event_e {
                         has denied the change (returned an error). The subscriber is supposed to return the managed
                         application to the state before the commit. Any returned errors are just logged and ignored.
                         This event is also generated for RPC subscriptions when a later callback has failed and
-                        this one has already successfully processed ::SR_EV_RPC. The callback that failed will never
+                        this one has already successfully processed ::SR_EV_RPC. The callback that failed will __never__
                         get this event! */
     SR_EV_ENABLED, /**< Occurs for subscriptions with the flag ::SR_SUBSCR_ENABLED and is normally followed by
                         ::SR_EV_DONE. It can fail and will also be triggered even when there is no startup configuration
-                        (which is different from the ::SR_EV_CHANGE event). */
+                        (which is different from the ::SR_EV_CHANGE event). Also note that the callback on this event
+                        __cannot__ return ::SR_ERR_CALLBACK_SHELVE. */
     SR_EV_RPC,     /**< Occurs for a standard RPC execution. If a later callback fails, ::SR_EV_ABORT is generated. */
 } sr_event_t;
 
@@ -1310,18 +1338,37 @@ int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_nam
 
 /**
  * @brief Create an iterator for retrieving the changes (list of newly added / removed / modified nodes)
- * in module-change callbacks.
+ * in module-change callbacks. It __cannot__ be used outside the callback.
  *
  * @see ::sr_get_change_next for iterating over the changeset using this iterator.
  *
  * @param[in] session Implicit session provided in the callbacks (::sr_module_change_cb). Will not work with other sessions.
- * @param[in] xpath [XPath](@ref paths) selecting the requested changes. Be careful, you must select all the changes,
- * not just subtrees! To get a full change subtree `//.` can be appended to the XPath.
+ * @param[in] xpath [XPath](@ref paths) selecting the changes. Note that you must select all the changes specifically,
+ * not just subtrees (to get a full change subtree `//.` can be appended to the XPath)! Also note that if you use
+ * an XPath that selects more changes than subscribed to, you may actually get them because all the changes of a module
+ * are available in every callback!
  * @param[out] iter Iterator context that can be used to retrieve individual changes using
  * ::sr_get_change_next calls. Allocated by the function, should be freed with ::sr_free_change_iter.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter_t **iter);
+
+/**
+ * @brief Create an iterator for retrieving the changes (list of newly added / removed / modified nodes)
+ * in module-change callbacks. It __can__ be used even outside the callback.
+ *
+ * @see ::sr_get_change_next for iterating over the changeset using this iterator.
+ *
+ * @param[in] session Implicit session provided in the callbacks (::sr_module_change_cb). Will not work with other sessions.
+ * @param[in] xpath [XPath](@ref paths) selecting the changes. Note that you must select all the changes specifically,
+ * not just subtrees (to get a full change subtree `//.` can be appended to the XPath)! Also note that if you use
+ * an XPath that selects more changes than subscribed to, you may actually get them because all the changes of a module
+ * are available in every callback!
+ * @param[out] iter Iterator context that can be used to retrieve individual changes using
+ * ::sr_get_change_next calls. Allocated by the function, should be freed with ::sr_free_change_iter.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_dup_changes_iter(sr_session_ctx_t *session, const char *xpath, sr_change_iter_t **iter);
 
 /**
  * @brief Return the next change from the provided iterator created
@@ -1416,7 +1463,7 @@ typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *op_path, const s
  *
  * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
  * @param[in] op_path Simple operation [path](@ref paths) identifying the RPC/action.
- * @param[in] input Data tree of input parameters.
+ * @param[in] input Data tree of input parameters. Always points to the __RPC/action__ itself, even for nested operations.
  * @param[in] event Type of the callback event that has occurred.
  * @param[in] request_id Request ID unique for the specific \p op_path.
  * @param[out] output Data tree of output parameters. Should be allocated on heap,
@@ -1549,7 +1596,7 @@ typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, const sr_ev_notif_t
  *
  * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
  * @param[in] notif_type Type of the notification.
- * @param[in] notif Notification data tree.
+ * @param[in] notif Notification data tree. Always points to the __notification__ itself, even for nested ones.
  * @param[in] timestamp Time when the notification was generated
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_event_notif_subscribe_tree call.
  */
@@ -1680,7 +1727,8 @@ typedef int (*sr_oper_get_items_cb)(sr_session_ctx_t *session, const char *modul
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] module_name Name of the affected module.
  * @param[in] path [Path](@ref paths) identifying the subtree which the provider is able to provide. Predicates can be
- * used to provide only specific instances of nodes.
+ * used to provide only specific instances of nodes. Before calling this callback, any existing data matching this
+ * path __are deleted__.
  * @param[in] callback Callback to be called when the operational data for the given xpath are requested.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be

@@ -1,11 +1,17 @@
 cmake_minimum_required(VERSION 2.8.12)
-project(sysrepo)
+
+project(sysrepo C)
 set(SYSREPO_DESC "YANG-based system repository for all-around configuration management.")
+
+# include custom Modules
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
+
 include(GNUInstallDirs)
 include(CheckSymbolExists)
 include(CheckFunctionExists)
 include(CheckLibraryExists)
 include(CheckIncludeFile)
+include(UseCompat)
 if(POLICY CMP0075)
     cmake_policy(SET CMP0075 NEW)
 endif()
@@ -31,21 +37,21 @@ endif()
 # micro version is changed with a set of small changes or bugfixes anywhere in the project.
 set(SYSREPO_MAJOR_VERSION 1)
 set(SYSREPO_MINOR_VERSION 4)
-set(SYSREPO_MICRO_VERSION 2)
+set(SYSREPO_MICRO_VERSION 58)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # Version of the library
 # Major version is changed with every backward non-compatible API/ABI change, minor version changes
 # with backward compatible change and micro version is connected with any internal change of the library.
 set(SYSREPO_MAJOR_SOVERSION 5)
-set(SYSREPO_MINOR_SOVERSION 0)
-set(SYSREPO_MICRO_SOVERSION 2)
+set(SYSREPO_MINOR_SOVERSION 5)
+set(SYSREPO_MICRO_SOVERSION 0)
 set(SYSREPO_SOVERSION_FULL ${SYSREPO_MAJOR_SOVERSION}.${SYSREPO_MINOR_SOVERSION}.${SYSREPO_MICRO_SOVERSION})
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_SOVERSION})
 
 # Version of libyang library that this sysrepo depends on
-set(LIBYANG_DEP_VERSION 1.0.128)
-set(LIBYANG_DEP_SOVERSION 1.6.5)
+set(LIBYANG_DEP_VERSION 1.0.165)
+set(LIBYANG_DEP_SOVERSION 1.7.9)
 
 # options
 if((CMAKE_BUILD_TYPE_LOWER STREQUAL debug) OR (CMAKE_BUILD_TYPE_LOWER STREQUAL package))
@@ -100,6 +106,14 @@ set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_COVERAGE} -Wall -Wex
 set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2")
 set(CMAKE_C_FLAGS_PACKAGE "-g -O2 -DNDEBUG")
 set(CMAKE_C_FLAGS_DEBUG   "-g -O0")
+
+# ietf-yang-library revision
+set(YANGLIB_REVISION "2019-01-04" CACHE STRING
+    "YANG module ietf-yang-library revision to implement. Only 2019-01-04 and 2016-06-21 are supported.")
+if(NOT ${YANGLIB_REVISION} STREQUAL "2019-01-04" AND NOT ${YANGLIB_REVISION} STREQUAL "2016-06-21")
+    message(FATAL_ERROR "Unsupported ietf-yang-library revision ${YANGLIB_REVISION} specified!")
+endif()
+message(STATUS "ietf-yang-library revision: ${YANGLIB_REVISION}")
 
 # paths
 if(NOT REPO_PATH)
@@ -162,36 +176,37 @@ set (SYSREPOCFG_SRC
 set (SYSREPOPLUGIND_SRC
     src/executables/sysrepo-plugind.c)
 
+# use compat
+use_compat()
+
 # sysrepo
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 add_library(srobj OBJECT ${LIB_SRC})
 set_target_properties(srobj PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
-add_library(sysrepo SHARED $<TARGET_OBJECTS:srobj>)
+add_library(sysrepo SHARED $<TARGET_OBJECTS:srobj> $<TARGET_OBJECTS:compat>)
 set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_SOVERSION_FULL} SOVERSION ${SYSREPO_SOVERSION})
 
 # sysrepoctl tool
-add_executable(sysrepoctl ${SYSREPOCTL_SRC})
+add_executable(sysrepoctl ${SYSREPOCTL_SRC} $<TARGET_OBJECTS:compat>)
 target_link_libraries(sysrepoctl sysrepo)
 
 # sysrepocfg tool
-add_executable(sysrepocfg ${SYSREPOCFG_SRC})
+add_executable(sysrepocfg ${SYSREPOCFG_SRC} $<TARGET_OBJECTS:compat>)
 target_link_libraries(sysrepocfg sysrepo)
 
 # sysrepo-plugind daemon
-add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC})
-target_link_libraries(sysrepo-plugind sysrepo dl)
-
-# include custom Modules
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
+add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC} $<TARGET_OBJECTS:compat>)
+target_link_libraries(sysrepo-plugind sysrepo ${CMAKE_DL_LIBS})
 
 # include repository files with highest priority
 include_directories("${PROJECT_SOURCE_DIR}/src")
 include_directories(${PROJECT_BINARY_DIR})
 
 # dependencies
-# librt (shm_open, shm_unlink, not required on OSX)
-if(NOT APPLE)
-    target_link_libraries(sysrepo rt)
+# librt (shm_open, shm_unlink, not required on OSX or QNX)
+find_library(LIBRT rt)
+if(LIBRT)
+    target_link_libraries(sysrepo ${LIBRT})
 endif()
 
 # atomic
@@ -201,18 +216,9 @@ if(HAVE_ATOMIC)
 endif()
 
 # libyang, check version
-find_package(YANG REQUIRED)
+find_package(LibYANG ${LIBYANG_DEP_SOVERSION} REQUIRED)
 target_link_libraries(sysrepo ${LIBYANG_LIBRARIES})
 include_directories(${LIBYANG_INCLUDE_DIRS})
-
-find_path(LY_HEADER_PATH "libyang/libyang.h" HINTS ${LIBYANG_INCLUDE_DIR})
-file(READ "${LY_HEADER_PATH}/libyang/libyang.h" LY_HEADER)
-string(REGEX MATCH "#define LY_VERSION \"[0-9]+\\.[0-9]+\\.[0-9]+\"" LY_VERSION_MACRO "${LY_HEADER}")
-string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" LY_VERSION "${LY_VERSION_MACRO}")
-message(STATUS "Libyang SO version ${LY_VERSION} found")
-if(LY_VERSION VERSION_LESS LIBYANG_DEP_SOVERSION)
-    message(FATAL_ERROR "Libyang version too old, please update to at least ${LIBYANG_DEP_VERSION} (SO ${LIBYANG_DEP_SOVERSION})")
-endif()
 
 # pthread
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
@@ -221,7 +227,7 @@ target_link_libraries(sysrepo ${CMAKE_THREAD_LIBS_INIT})
 set(CMAKE_REQUIRED_LIBRARIES pthread)
 
 # required functions
-set(CMAKE_REQUIRED_DEFINITIONS "${CMAKE_REQUIRED_DEFINITIONS} -D_GNU_SOURCE")
+set(CMAKE_REQUIRED_DEFINITIONS "-D_GNU_SOURCE;-D_DEFAULT_SOURCE")
 check_function_exists(pthread_mutex_timedlock SR_HAVE_PTHREAD_MUTEX_TIMEDLOCK)
 check_symbol_exists(eaccess "unistd.h" SR_HAVE_EACCESS)
 if(NOT SR_HAVE_EACCESS)
@@ -229,6 +235,8 @@ if(NOT SR_HAVE_EACCESS)
         "change results of access control checks!")
 endif()
 check_include_file("stdatomic.h" SR_HAVE_STDATOMIC)
+check_symbol_exists(mkstemps "stdlib.h" SR_HAVE_MKSTEMPS)
+unset(CMAKE_REQUIRED_DEFINITIONS)
 
 # generate files
 configure_file("${PROJECT_SOURCE_DIR}/src/common.h.in" "${PROJECT_BINARY_DIR}/common.h" ESCAPE_QUOTES @ONLY)
@@ -244,22 +252,6 @@ install(TARGETS sysrepoctl sysrepocfg sysrepo-plugind DESTINATION ${CMAKE_INSTAL
 
 install(FILES "${PROJECT_BINARY_DIR}/sysrepo.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 
-# doxygen documentation
-find_package(Doxygen)
-if(DOXYGEN_FOUND)
-    find_program(DOT_PATH dot PATH_SUFFIXES graphviz2.38/bin graphviz/bin)
-    if(DOT_PATH)
-        set(HAVE_DOT "YES")
-    else()
-        set(HAVE_DOT "NO")
-        message(AUTHOR_WARNING "Doxygen: to generate UML diagrams please install graphviz")
-    endif()
-    add_custom_target(doc
-            COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_BINARY_DIR}/Doxyfile
-            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-    configure_file(Doxyfile.in Doxyfile)
-endif()
-
 # examples
 if(BUILD_EXAMPLES)
     add_subdirectory(examples)
@@ -271,11 +263,11 @@ if(ENABLE_TESTS)
     if(CMOCKA_FOUND)
         enable_testing()
         add_subdirectory(tests)
-    else(CMOCKA_FOUND)
+    else()
         message(STATUS "Disabling tests because of missing CMocka.")
         set(ENABLE_BUILD_TESTS NO)
-    endif(CMOCKA_FOUND)
-endif(ENABLE_TESTS)
+    endif()
+endif()
 
 # bindings
 if(GEN_LANGUAGE_BINDINGS)
@@ -284,6 +276,27 @@ endif()
 
 # packages
 add_subdirectory(packages)
+
+# doxygen documentation
+find_package(Doxygen)
+if(DOXYGEN_FOUND)
+    find_program(DOT_PATH dot PATH_SUFFIXES graphviz2.38/bin graphviz/bin)
+    if(DOT_PATH)
+        set(HAVE_DOT "YES")
+    else()
+        set(HAVE_DOT "NO")
+        message(AUTHOR_WARNING "Doxygen: to generate UML diagrams please install graphviz")
+    endif()
+
+    if(GEN_LANGUAGE_BINDINGS AND GEN_CPP_BINDINGS)
+        set(CPP_HEADERS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/bindings/cpp/src)
+    endif()
+
+    add_custom_target(doc
+            COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_BINARY_DIR}/Doxyfile
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    configure_file(Doxyfile.in Doxyfile)
+endif()
 
 # phony target for clearing sysrepo SHM
 add_custom_target(shm_clean

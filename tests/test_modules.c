@@ -27,6 +27,8 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <pwd.h>
+#include <grp.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
@@ -67,7 +69,7 @@ static void
 cmp_int_data(sr_conn_ctx_t *conn, const char *module_name, const char *expected)
 {
     char *str, *ptr, buf[1024];
-    struct lyd_node *data;
+    struct lyd_node *data, *sr_mod;
     struct ly_set *set;
     int ret;
 
@@ -81,12 +83,21 @@ cmp_int_data(sr_conn_ctx_t *conn, const char *module_name, const char *expected)
     set = lyd_find_path(data, buf);
     assert_non_null(set);
     assert_int_equal(set->number, 1);
+    sr_mod = set->set.d[0];
+    ly_set_free(set);
+
+    /* remove YANG module is present */
+    set = lyd_find_path(sr_mod, "module-yang");
+    assert_non_null(set);
+    if (set->number) {
+        lyd_free(set->set.d[0]);
+    }
+    ly_set_free(set);
 
     /* check current internal (sorted) data */
-    ret = lyd_schema_sort(set->set.d[0], 1);
+    ret = lyd_schema_sort(sr_mod, 1);
     assert_int_equal(ret, 0);
-    ret = lyd_print_mem(&str, set->set.d[0], LYD_XML, 0);
-    ly_set_free(set);
+    ret = lyd_print_mem(&str, sr_mod, LYD_XML, 0);
     lyd_free_withsiblings(data);
     assert_int_equal(ret, 0);
 
@@ -812,6 +823,131 @@ test_change_feature(void **state)
 }
 
 static void
+test_replay_support(void **state)
+{
+    struct state *st = (struct state *)*state;
+    int ret;
+    uint32_t conn_count;
+
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/simple.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* replay support for 2 modules */
+    ret = sr_set_module_replay_support(st->conn, "ietf-interfaces", 1);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_module_replay_support(st->conn, "simple", 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    cmp_int_data(st->conn, "test",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>test</name>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "ietf-interfaces",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>ietf-interfaces</name>"
+        "<revision>2014-05-08</revision>"
+        "<replay-support>0000000000</replay-support>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "iana-if-type",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>iana-if-type</name>"
+        "<revision>2014-05-08</revision>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "simple",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>simple</name>"
+        "<replay-support>0000000000</replay-support>"
+    "</module>"
+    );
+
+    /* replay support for all modules */
+    ret = sr_set_module_replay_support(st->conn, NULL, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    cmp_int_data(st->conn, "test",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>test</name>"
+        "<replay-support>0000000000</replay-support>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "ietf-interfaces",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>ietf-interfaces</name>"
+        "<revision>2014-05-08</revision>"
+        "<replay-support>0000000000</replay-support>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "iana-if-type",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>iana-if-type</name>"
+        "<revision>2014-05-08</revision>"
+        "<replay-support>0000000000</replay-support>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "simple",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>simple</name>"
+        "<replay-support>0000000000</replay-support>"
+    "</module>"
+    );
+
+    /* replay support for no modules */
+    ret = sr_set_module_replay_support(st->conn, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    cmp_int_data(st->conn, "test",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>test</name>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "ietf-interfaces",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>ietf-interfaces</name>"
+        "<revision>2014-05-08</revision>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "iana-if-type",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>iana-if-type</name>"
+        "<revision>2014-05-08</revision>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "simple",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>simple</name>"
+    "</module>"
+    );
+
+    /* cleanup */
+    ret = sr_remove_module(st->conn, "test");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "ietf-interfaces");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "iana-if-type");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "simple");
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+static void
 test_foreign_aug(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -990,6 +1126,338 @@ test_empty_invalid(void **state)
     assert_int_equal(ret, SR_ERR_NOT_FOUND);
 }
 
+static void
+test_startup_data_foreign_identityref(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_session_ctx_t *sess;
+    struct lyd_node *tree;
+    const char data[] =
+        "<haha xmlns=\"http://www.example.net/t1\">"
+            "<layer-protocol-name xmlns:x=\"http://www.example.net/t2\">x:desc</layer-protocol-name>"
+        "</haha>";
+    int ret;
+    uint32_t conn_count;
+
+    /* install module with types */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/t-types.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* install module with top-level default data */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/defaults.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* install t1 */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/t1.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* scheduled changes not applied */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    cmp_int_data(st->conn, "t1",
+    "<installed-module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>t1</name>"
+    "</installed-module>"
+    );
+
+    /* install t2 */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/t2.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* scheduled changes not applied */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    cmp_int_data(st->conn, "t2",
+    "<installed-module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>t2</name>"
+    "</installed-module>"
+    );
+
+    /* finally set startup data */
+    ret = sr_install_module_data(st->conn, "t1", data, NULL, LYD_XML);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* should have succeeded now */
+    cmp_int_data(st->conn, "t1",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>t1</name>"
+    "</module>"
+    );
+    cmp_int_data(st->conn, "t2",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>t2</name>"
+    "</module>"
+    );
+
+    /* check startup data */
+    ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_data(sess, "/t1:*", 0, 0, 0, &tree);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(tree->schema->name, "haha");
+    assert_string_equal(tree->child->schema->name, "layer-protocol-name");
+    assert_string_equal(((struct lyd_node_leaf_list *)tree->child)->value_str, "t2:desc");
+    assert_null(tree->next);
+
+    /* check running data */
+    ret = sr_session_switch_ds(sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_free_withsiblings(tree);
+    ret = sr_get_data(sess, "/t1:*", 0, 0, 0, &tree);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(tree->schema->name, "haha");
+    assert_string_equal(tree->child->schema->name, "layer-protocol-name");
+    assert_string_equal(((struct lyd_node_leaf_list *)tree->child)->value_str, "t2:desc");
+    assert_null(tree->next);
+
+    /* cleanup, remove its data so that it can be uninstalled */
+    lyd_free_withsiblings(tree);
+    sr_session_stop(sess);
+
+    /* actually remove the modules */
+    ret = sr_remove_module(st->conn, "t1");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "t2");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "t-types");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "defaults");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_remove_module(st->conn, "t1");
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+    ret = sr_remove_module(st->conn, "t2");
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+    ret = sr_remove_module(st->conn, "t-types");
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+    ret = sr_remove_module(st->conn, "defaults");
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+}
+
+static void
+test_set_module_access(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct passwd *pwd;
+    struct group *grp;
+    const char *user;
+    const char *group;
+    uint32_t conn_count;
+    int ret;
+
+    /* install module test */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* get user */
+    pwd = getpwuid(getuid());
+    user = pwd->pw_name;
+
+    /* get group */
+    grp = getgrgid(getgid());
+    group = grp->gr_name;
+
+    /* params error, connection NULL or owner NULL/group NULL/(int)perm=-1 */
+    ret = sr_set_module_access(NULL, "test", user, group, 00666);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    ret = sr_set_module_access(st->conn, NULL, user, group, 00666);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    ret = sr_set_module_access(st->conn, "test", NULL, NULL, (mode_t)-1);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    /* param perm error,invalid permissions */
+    ret = sr_set_module_access(st->conn, "test", user, group, 01777);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    /* param perm error,setting execute permissions has no effect */
+    ret = sr_set_module_access(st->conn, "test", user, group, 00771);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    /* non-existing module */
+    ret = sr_set_module_access(st->conn, "no-module", user, group, 00666);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+    /* invalid user */
+    ret = sr_set_module_access(st->conn, "test", "no-user", group, 00666);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+    /* invalid group */
+    ret = sr_set_module_access(st->conn, "test", user, "no-group", 00666);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+    /* user NULL and group NULL */
+    ret = sr_set_module_access(st->conn, "test", NULL, NULL, 00666);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_module_access(st->conn, "test", user, group, 00666);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* cleanup */
+    ret = sr_remove_module(st->conn, "test");
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+static void
+test_get_module_access(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct passwd *pwd;
+    struct group *grp;
+    const char *user;
+    char *owner, *group;
+    uint32_t conn_count;
+    int ret;
+    mode_t perm;
+
+    /* install module test */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* get user */
+    pwd = getpwuid(getuid());
+    user = pwd->pw_name;
+    /* get group */
+    grp = getgrgid(getgid());
+    group = grp->gr_name;
+
+    /* change module test permissions */
+    ret = sr_set_module_access(st->conn, "test", user, group, 00600);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* params error, connection NULL or module name NULL or ower/group/perm NULL */
+    ret = sr_get_module_access(NULL, "test", &owner, &group, &perm);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    ret = sr_get_module_access(st->conn, NULL, &owner, &group, &perm);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    ret = sr_get_module_access(st->conn, "test", NULL, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    /* non-existing module */
+    ret = sr_get_module_access(st->conn, "no-module", &owner, &group, &perm);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+    ret = sr_get_module_access(st->conn, "test", &owner, &group, &perm);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(owner, pwd->pw_name);
+    assert_string_equal(group, grp->gr_name);
+    assert_int_equal(perm, 00600);
+
+    free(owner);
+    free(group);
+
+    /* cleanup */
+    ret = sr_remove_module(st->conn, "test");
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+static void
+test_get_module_info(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data, *sr_mod;
+    uint32_t conn_count;
+    char *str, *str2;
+    int ret;
+
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_module_info(st->conn, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* filter module test */
+    struct ly_set *set;
+    set = lyd_find_path(data, "/sysrepo:sysrepo-modules/*[name='test']");
+    assert_non_null(set);
+    assert_int_equal(set->number, 1);
+    sr_mod = set->set.d[0];
+    ly_set_free(set);
+
+    ret = lyd_print_mem(&str, sr_mod, LYD_XML, 0);
+    lyd_free_withsiblings(data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    str2 =
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>test</name>"
+    "</module>";
+    assert_string_equal(str, str2);
+    free(str);
+
+    /* cleanup */
+    ret = sr_remove_module(st->conn, "test");
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 int
 main(void)
 {
@@ -1002,8 +1470,13 @@ main(void)
         cmocka_unit_test_setup_teardown(test_remove_dep_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_update_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_feature, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_replay_support, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_foreign_aug, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_empty_invalid, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_startup_data_foreign_identityref, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_set_module_access, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_get_module_access, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_get_module_info, setup_f, teardown_f),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

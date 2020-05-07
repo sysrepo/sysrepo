@@ -24,6 +24,9 @@
 
 #define TESTS_DIR "@TESTS_DIR@"
 
+/** implemented ietf-yang-library revision (copied from common.h) */
+#define SR_YANGLIB_REVISION @YANGLIB_REVISION@
+
 #cmakedefine SR_HAVE_PTHREAD_BARRIER
 #ifndef SR_HAVE_PTHREAD_BARRIER
 # include "pthread_barrier.h"

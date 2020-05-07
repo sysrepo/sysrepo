@@ -13,5 +13,6 @@ foreach(app_name IN LISTS examples)
 endforeach(app_name)
 
 # oven plugin
-add_library(oven SHARED plugin/oven.c)
+add_library(oven MODULE plugin/oven.c)
+set_target_properties(oven PROPERTIES PREFIX "")
 target_link_libraries(oven sysrepo)

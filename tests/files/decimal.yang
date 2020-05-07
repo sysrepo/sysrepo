@@ -1,0 +1,21 @@
+module decimal {
+    namespace "urn:decimal";
+    prefix d;
+
+    leaf d1 {
+        type decimal64 {
+            fraction-digits 1;
+        }
+    }
+
+    leaf d-uni-2-18 {
+        type union {
+            type decimal64 {
+                fraction-digits 2;
+            }
+            type decimal64 {
+                fraction-digits 18;
+            }
+        }
+    }
+}

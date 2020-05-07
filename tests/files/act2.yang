@@ -65,7 +65,7 @@ module act2 {
       }
     }
     leaf link {
-      default "/a:basics/scalar";
+      default "/a:basics/a:scalar";
       type instance-identifier {
         require-instance false;
       }

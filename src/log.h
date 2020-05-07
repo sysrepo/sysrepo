@@ -45,6 +45,8 @@
 #define SR_CHECK_MEM_RET(cond, err_info) if (cond) { SR_ERRINFO_MEM(&(err_info)); return err_info; }
 #define SR_CHECK_INT_GOTO(cond, err_info, go) if (cond) { SR_ERRINFO_INT(&(err_info)); goto go; }
 #define SR_CHECK_INT_RET(cond, err_info) if (cond) { SR_ERRINFO_INT(&(err_info)); return err_info; }
+#define SR_CHECK_LY_GOTO(cond, ly_ctx, err_info, go) if (cond) { sr_errinfo_new_ly(&(err_info), ly_ctx); goto go; }
+#define SR_CHECK_LY_RET(cond, ly_ctx, err_info) if (cond) { sr_errinfo_new_ly(&(err_info), ly_ctx); return err_info; }
 
 #define SR_CHECK_ARG_APIRET(cond, session, err_info) if (cond) { sr_errinfo_new(&(err_info), SR_ERR_INVAL_ARG, NULL, \
         "Invalid arguments for function \"%s\".", __func__); return sr_api_ret(session, err_info); }

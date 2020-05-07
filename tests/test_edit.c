@@ -66,6 +66,9 @@ setup_f(void **state)
     if (sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/decimal.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
     sr_disconnect(st->conn);
 
     if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
@@ -84,6 +87,7 @@ teardown_f(void **state)
 {
     struct state *st = (struct state *)*state;
 
+    sr_remove_module(st->conn, "decimal");
     sr_remove_module(st->conn, "ietf-interfaces");
     sr_remove_module(st->conn, "iana-if-type");
     sr_remove_module(st->conn, "test");
@@ -109,12 +113,8 @@ clear_test(void **state)
 {
     struct state *st = (struct state *)*state;
 
-    sr_delete_item(st->sess, "/test:l1[k='key1']", SR_EDIT_STRICT);
-    sr_delete_item(st->sess, "/test:l1[k='key2']", SR_EDIT_STRICT);
-    sr_delete_item(st->sess, "/test:l1[k='key3']", SR_EDIT_STRICT);
-    sr_delete_item(st->sess, "/test:ll1[.='-1']", SR_EDIT_STRICT);
-    sr_delete_item(st->sess, "/test:ll1[.='-2']", SR_EDIT_STRICT);
-    sr_delete_item(st->sess, "/test:ll1[.='-3']", SR_EDIT_STRICT);
+    sr_delete_item(st->sess, "/test:l1", 0);
+    sr_delete_item(st->sess, "/test:ll1", 0);
     sr_delete_item(st->sess, "/test:cont", 0);
     sr_apply_changes(st->sess, 0, 0);
 
@@ -292,7 +292,7 @@ test_create2(void **state)
 }
 
 static void
-test_move1(void **state)
+test_move(void **state)
 {
     struct state *st = (struct state *)*state;
     struct lyd_node *data, *node;
@@ -304,6 +304,8 @@ test_move1(void **state)
     ret = sr_set_item_str(st->sess, "/test:l1[k='key1']/v", "1", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:l1[k='key2']/v", "2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_move_item(st->sess, "/test:l1[k='key3']", SR_MOVE_AFTER, "[k='key2']", NULL, NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:l1[k='key3']/v", "3", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -524,14 +526,18 @@ test_isolate(void **state)
     assert_string_equal(str, str2);
     free(str);
 
-    /* try some more isolated edits */
+    /* try some more isolated edits, with data from one module not next to each other */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/enabled",
             "false", NULL, SR_EDIT_ISOLATE);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']", SR_EDIT_STRICT | SR_EDIT_ISOLATE);
     assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/test:test-leaf", "15", NULL, SR_EDIT_STRICT | SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
             "iana-if-type:other", NULL, SR_EDIT_STRICT | SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(st->sess, "/test:test-leaf", SR_EDIT_STRICT | SR_EDIT_ISOLATE);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -610,6 +616,184 @@ test_purge(void **state)
     assert_null(subtree);
 }
 
+static void
+test_top_op(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    const char *str;
+    int ret;
+
+    /* create some data */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']", NULL, NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth65']", NULL, NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth65']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* replace the top-level container with an empty one */
+    str = "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" nc:operation=\"replace\" xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\"/>";
+    data = lyd_parse_mem((struct ly_ctx *)sr_get_context(st->conn), str, LYD_XML, LYD_OPT_EDIT | LYD_OPT_STRICT);
+    assert_non_null(data);
+
+    ret = sr_edit_batch(st->sess, data, "merge");
+    lyd_free_withsiblings(data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check datastore contents */
+    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_int_equal(data->dflt, 1);
+    lyd_free_withsiblings(data);
+}
+
+static void
+test_union(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    const char *str2;
+    char *str;
+    int ret;
+
+    /* create some host */
+    ret = sr_set_item_str(st->sess, "/test:cont/server", "fe80::42:39ff:fe67:1fb3", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* change it */
+    ret = sr_set_item_str(st->sess, "/test:cont/server", "192.168.1.10", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check datastore contents */
+    ret = sr_get_subtree(st->sess, "/test:cont", 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    lyd_print_mem(&str, data, LYD_XML, LYP_WITHSIBLINGS);
+    lyd_free(data);
+
+    str2 =
+    "<cont xmlns=\"urn:test\">"
+        "<server>192.168.1.10</server>"
+    "</cont>";
+
+    assert_string_equal(str, str2);
+    free(str);
+}
+
+static void
+test_decimal64(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_val_t val = {.type = SR_DECIMAL64_T};
+    struct lyd_node *data;
+    int ret;
+
+    /* set item_str */
+    ret = sr_set_item_str(st->sess, "/decimal:d1", "255.5", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/decimal:d1", "255.55", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    ret = sr_set_item_str(st->sess, "/decimal:d1", "+00255.50", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_subtree(st->sess, "/decimal:d1", 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(((struct lyd_node_leaf_list *)data)->value_str, "255.5");
+    lyd_free(data);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/decimal:d-uni-2-18", "10.0000000000000001", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    ret = sr_set_item_str(st->sess, "/decimal:d-uni-2-18", "9.0000000000000001", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(((struct lyd_node_leaf_list *)data)->value_str, "9.0000000000000001");
+    lyd_free(data);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/decimal:d-uni-2-18", "2.01", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(((struct lyd_node_leaf_list *)data)->value_str, "2.01");
+    lyd_free(data);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set item (value) */
+    val.data.decimal64_val = 255.5;
+    ret = sr_set_item(st->sess, "/decimal:d1", &val, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* value gets rounded automatically because it is impossible to know what value was originally set
+     * (because of precision loss) */
+    val.data.decimal64_val = 255.55;
+    ret = sr_set_item(st->sess, "/decimal:d1", &val, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_subtree(st->sess, "/decimal:d1", 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(((struct lyd_node_leaf_list *)data)->value_str, "255.6");
+    lyd_free(data);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* it is valid with 2 fraction digits, resolved as such because of rounding */
+    val.data.decimal64_val = 10.0000000000000001;
+    ret = sr_set_item(st->sess, "/decimal:d-uni-2-18", &val, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(((struct lyd_node_leaf_list *)data)->value_str, "10.0");
+    lyd_free(data);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* outside double precision */
+    val.data.decimal64_val = 9.0000000000000001;
+    ret = sr_set_item(st->sess, "/decimal:d-uni-2-18", &val, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(((struct lyd_node_leaf_list *)data)->value_str, "9.0");
+    lyd_free(data);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* rounded to 2 fraction digits */
+    val.data.decimal64_val = 2.01;
+    ret = sr_set_item(st->sess, "/decimal:d-uni-2-18", &val, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(((struct lyd_node_leaf_list *)data)->value_str, "2.01");
+    lyd_free(data);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 int
 main(void)
 {
@@ -618,10 +802,13 @@ main(void)
         cmocka_unit_test_teardown(test_delete, clear_interfaces),
         cmocka_unit_test_teardown(test_create1, clear_interfaces),
         cmocka_unit_test_teardown(test_create2, clear_interfaces),
-        cmocka_unit_test_teardown(test_move1, clear_test),
+        cmocka_unit_test_teardown(test_move, clear_test),
         cmocka_unit_test_teardown(test_replace, clear_interfaces),
         cmocka_unit_test_teardown(test_isolate, clear_interfaces),
         cmocka_unit_test(test_purge),
+        cmocka_unit_test(test_top_op),
+        cmocka_unit_test_teardown(test_union, clear_test),
+        cmocka_unit_test(test_decimal64),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

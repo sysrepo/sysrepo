@@ -98,8 +98,8 @@ in the [NMDA RFC](@ref rfcs).
 
 Operational callback is not called unless its data are required so keep these rules in mind:
 
-- if the parent of the provided data does not exist, neither can its descendants, see [operational data](@ref oper_data)
-  for details about data existence;
+- if the parent of the provided data does not exist in the __operational__ datastore, neither can its descendants,
+  see [operational data](@ref oper_data) for details about data existence;
 
   _Example_: If you subscribed for providing `/mod:config-container/config-list/state-leaf`, your callback
   would be called for every existing instance of `/mod:config-container/config-list`, not at all if there was none.

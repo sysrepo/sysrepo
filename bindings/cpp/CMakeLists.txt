@@ -8,7 +8,7 @@ set(CMAKE_CXX_FLAGS_DEBUG   "-g -O0")
 # Major version is changed with every backward non-compatible API/ABI change, minor version changes
 # with backward compatible change and micro version is connected with any internal change of the library.
 set(SYSREPO_CPP_MAJOR_SOVERSION 3)
-set(SYSREPO_CPP_MINOR_SOVERSION 0)
+set(SYSREPO_CPP_MINOR_SOVERSION 1)
 set(SYSREPO_CPP_MICRO_SOVERSION 0)
 set(SYSREPO_CPP_SOVERSION_FULL ${SYSREPO_MAJOR_SOVERSION}.${SYSREPO_MINOR_SOVERSION}.${SYSREPO_MICRO_SOVERSION})
 set(SYSREPO_CPP_SOVERSION ${SYSREPO_MAJOR_SOVERSION})

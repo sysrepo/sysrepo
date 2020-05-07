@@ -22,6 +22,7 @@
 #define _POSIX_C_SOURCE 199309L /* sigaction */
 #define _DEFAULT_SOURCE /* struct dirent.d_type */
 #define _GNU_SOURCE /* asprintf */
+#define _XOPEN_SOURCE 500 /* strdup */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,6 +39,7 @@
 #include <fcntl.h>
 #include <dlfcn.h>
 
+#include "compat.h"
 #include "sysrepo.h"
 #include "bin_common.h"
 

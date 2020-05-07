@@ -7,6 +7,9 @@ module mixed-config {
             leaf name {
                 type string;
             }
+            leaf a {
+                type string;
+            }
             leaf result {
                 type uint32;
                 config false;
@@ -29,6 +32,18 @@ module mixed-config {
                 }
                 config false;
             }
+        }
+
+        list l {
+            config false;
+            leaf l1 {
+                type string;
+            }
+        }
+
+        leaf-list ll {
+            type string;
+            config false;
         }
     }
 }

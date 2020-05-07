@@ -1,5 +1,5 @@
 /**
- * @file Connection.h
+ * @file Connection.hpp
  * @author Mislav Novakovic <mislav.novakovic@sartura.hr>
  * @author Michal Vasko <mvasko@cesnet.cz>
  * @brief Sysrepo Connection class header.
@@ -64,7 +64,7 @@ public:
     void update_module(const char *schema_path, const char *search_dir);
     /** Wrapper for [sr_cancel_update_module](@ref sr_cancel_update_module) */
     void cancel_update_module(const char *module_name);
-    /** Wrapper for [sr_set_replay_support](@ref sr_set_replay_support) */
+    /** Wrapper for [sr_set_module_replay_support](@ref sr_set_module_replay_support) */
     void set_module_replay_support(const char *module_name, int replay_support);
     /** Wrapper for [sr_set_module_access](@ref sr_set_module_access) */
     void set_module_access(const char *module_name, const char *owner, const char *group, mode_t perm);

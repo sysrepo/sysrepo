@@ -1,0 +1,306 @@
+module ietf-if-aug {
+  yang-version 1.1;
+  namespace "urn:ietf-if-aug";
+  prefix ifa;
+
+  import ietf-interfaces {
+    prefix if;
+  }
+
+  import iana-if-type {
+    prefix ianaif;
+  }
+
+  typedef vlan-index-type {
+    type uint32 {
+      range "1..4094 | 4096..4294967295";
+    }
+  }
+
+  typedef priority-type {
+    type uint8 {
+      range "0..7";
+    }
+  }
+
+  typedef pcp-selection-type {
+    type enumeration {
+      enum 8P0D;
+      enum 7P1D;
+      enum 6P2D;
+      enum 5P3D;
+    }
+  }
+
+  typedef traffic-class-type {
+    type uint8 {
+      range "0..7";
+    }
+  }
+
+  identity type-of-port;
+  identity c-vlan-bridge-port {
+    base type-of-port;
+  }
+  identity provider-network-port {
+    base type-of-port;
+  }
+  identity customer-network-port {
+    base type-of-port;
+  }
+  identity customer-edge-port {
+    base type-of-port;
+  }
+  identity d-bridge-port {
+    base type-of-port;
+  }
+  identity remote-customer-access-port {
+    base type-of-port;
+  }
+
+  grouping priority-regeneration-table-grouping {
+    leaf priority0 {
+      type priority-type;
+//      default "0";
+    }
+    leaf priority1 {
+      type priority-type;
+//      default "1";
+    }
+    leaf priority2 {
+      type priority-type;
+//      default "2";
+    }
+    leaf priority3 {
+      type priority-type;
+//      default "3";
+    }
+    leaf priority4 {
+      type priority-type;
+//      default "4";
+    }
+    leaf priority5 {
+      type priority-type;
+//      default "5";
+    }
+    leaf priority6 {
+      type priority-type;
+//      default "6";
+    }
+    leaf priority7 {
+      type priority-type;
+//      default "7";
+    }
+  }
+
+  grouping pcp-decoding-table-grouping {
+    list pcp-decoding-map {
+      key "pcp";
+      leaf pcp {
+        type pcp-selection-type;
+      }
+      list priority-map {
+        key "priority-code-point";
+        leaf priority-code-point {
+          type priority-type;
+        }
+        leaf priority {
+          type priority-type;
+        }
+        leaf drop-eligible {
+          type boolean;
+        }
+      }
+    }
+  }
+
+  grouping pcp-encoding-table-grouping {
+    list pcp-encoding-map {
+      key "pcp";
+      leaf pcp {
+        type pcp-selection-type;
+      }
+      list priority-map {
+        key "priority dei";
+        leaf priority {
+          type priority-type;
+        }
+        leaf dei {
+          type boolean;
+        }
+        leaf priority-code-point {
+          type priority-type;
+        }
+      }
+    }
+  }
+
+  grouping service-access-priority-table-grouping {
+    leaf priority0 {
+      type priority-type;
+//      default "0";
+    }
+    leaf priority1 {
+      type priority-type;
+//      default "1";
+    }
+    leaf priority2 {
+      type priority-type;
+//      default "2";
+    }
+    leaf priority3 {
+      type priority-type;
+//      default "3";
+    }
+    leaf priority4 {
+      type priority-type;
+//      default "4";
+    }
+    leaf priority5 {
+      type priority-type;
+//      default "5";
+    }
+    leaf priority6 {
+      type priority-type;
+//      default "6";
+    }
+    leaf priority7 {
+      type priority-type;
+//      default "7";
+    }
+  }
+
+  grouping traffic-class-table-grouping {
+    leaf priority0 {
+      type traffic-class-type;
+//      default "0";
+    }
+    leaf priority1 {
+      type traffic-class-type;
+//      default "1";
+    }
+    leaf priority2 {
+      type traffic-class-type;
+//      default "2";
+    }
+    leaf priority3 {
+      type traffic-class-type;
+//      default "4";
+    }
+    leaf priority4 {
+      type traffic-class-type;
+//      default "4";
+    }
+    leaf priority5 {
+      type traffic-class-type;
+//      default "5";
+    }
+    leaf priority6 {
+      type traffic-class-type;
+//      default "6";
+    }
+    leaf priority7 {
+      type traffic-class-type;
+//      default "7";
+    }
+  }
+
+  augment "/if:interfaces/if:interface" {
+    when "if:type = 'iana-if-type:ethernetCsmacd'";
+
+    container c1 {
+      config false;
+
+      leaf oper1 {
+        type string;
+      }
+    }
+  }
+
+  augment "/if:interfaces/if:interface" {
+    when
+      "if:type = 'ianaif:bridge'"+
+      "or if:type = 'ianaif:ieee8023adLag'"+
+      "or if:type = 'ianaif:ilan'";
+
+    container bridge-port {
+      leaf component-name {
+        type string;
+      }
+      leaf port-type {
+        type identityref {
+          base type-of-port;
+        }
+      }
+      leaf pvid {
+        when "../component-name != 'd-bridge-component'";
+        type vlan-index-type;
+        default "1";
+      }
+      leaf default-priority {
+        type priority-type;
+        default "0";
+      }
+      container priority-regeneration {
+        uses priority-regeneration-table-grouping;
+      }
+      leaf pcp-selection {
+        type pcp-selection-type;
+        default "8P0D";
+      }
+      container pcp-decoding-table {
+        uses pcp-decoding-table-grouping;
+      }
+      container pcp-encoding-table {
+        uses pcp-encoding-table-grouping;
+      }
+      leaf use-dei {
+        type boolean;
+        default "false";
+      }
+      leaf drop-encoding {
+        type boolean;
+        default "false";
+      }
+      leaf service-access-priority-selection {
+        type boolean;
+        default "false";
+      }
+      container service-access-priority {
+        uses service-access-priority-table-grouping;
+      }
+      container traffic-class {
+        uses traffic-class-table-grouping;
+      }
+      leaf acceptable-frame {
+        when "../component-name != 'd-bridge-component'";
+        type enumeration {
+          enum admit-only-VLAN-tagged-frames;
+          enum admit-only-untagged-and-priority-tagged;
+          enum admit-all-frames;
+        }
+        default "admit-all-frames";
+      }
+      leaf enable-ingress-filtering {
+        when "../component-name != 'd-bridge-component'";
+        type boolean;
+        default "false";
+      }
+      leaf enable-restricted-vlan-registration {
+        when "../component-name != 'd-bridge-component'";
+        type boolean;
+        default "false";
+      }
+      leaf enable-vid-translation-table {
+        when "../component-name != 'd-bridge-component'";
+        type boolean;
+        default "false";
+      }
+      leaf enable-egress-vid-translation-table {
+        when "../component-name != 'd-bridge-component'";
+        type boolean;
+        default "false";
+      }
+    }
+  }
+}

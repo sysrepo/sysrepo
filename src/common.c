@@ -869,7 +869,7 @@ rpc_subs_del:
             if (rpc_sub->subs[j].sess == sess) {
                 /* properly remove the subscription from the main SHM */
                 if ((err_info = sr_shmmain_rpc_subscription_stop(sess->conn, shm_rpc, rpc_sub->subs[j].xpath,
-                        rpc_sub->subs[j].priority, subs->evpipe_num, 0))) {
+                        rpc_sub->subs[j].priority, subs->evpipe_num, 0, NULL))) {
                     return err_info;
                 }
 
@@ -1128,17 +1128,22 @@ sr_ly_ctx_new(struct ly_ctx **ly_ctx)
     char *yang_dir;
 
     if ((err_info = sr_path_yang_dir(&yang_dir))) {
-        return err_info;
+        goto cleanup;
     }
-    *ly_ctx = ly_ctx_new(yang_dir, 0);
+    *ly_ctx = ly_ctx_new(yang_dir, LY_CTX_NOYANGLIBRARY | LY_CTX_DISABLE_SEARCHDIR_CWD);
     free(yang_dir);
 
     if (!*ly_ctx) {
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to create a new libyang context.");
-        return err_info;
+        goto cleanup;
     }
 
-    return NULL;
+cleanup:
+    if (err_info) {
+        ly_ctx_destroy(*ly_ctx, NULL);
+        *ly_ctx = NULL;
+    }
+    return err_info;
 }
 
 /**
@@ -1224,10 +1229,6 @@ sr_ly_module_is_internal(const struct lys_module *ly_mod)
         return 1;
     } else if (!strcmp(ly_mod->name, "ietf-yang-types") && !strcmp(ly_mod->rev[0].date, "2013-07-15")) {
         return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-datastores") && !strcmp(ly_mod->rev[0].date, "2017-08-17")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-yang-library") && !strcmp(ly_mod->rev[0].date, "2019-01-04")) {
-        return 1;
     }
 
     return 0;
@@ -1311,7 +1312,11 @@ sr_module_is_internal(const struct lys_module *ly_mod)
         return 1;
     }
 
-    if (!strcmp(ly_mod->name, "ietf-netconf")) {
+    if (!strcmp(ly_mod->name, "ietf-datastores") && !strcmp(ly_mod->rev[0].date, "2018-02-14")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-yang-library")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-netconf")) {
         return 1;
     } else if (!strcmp(ly_mod->name, "ietf-netconf-with-defaults") && !strcmp(ly_mod->rev[0].date, "2011-06-01")) {
         return 1;
@@ -1320,6 +1325,8 @@ sr_module_is_internal(const struct lys_module *ly_mod)
     } else if (!strcmp(ly_mod->name, "ietf-netconf-notifications") && !strcmp(ly_mod->rev[0].date, "2012-02-06")) {
         return 1;
     } else if (!strcmp(ly_mod->name, "sysrepo")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "sysrepo-monitoring")) {
         return 1;
     }
 
@@ -1350,7 +1357,11 @@ sr_create_startup_file(const struct lys_module *ly_mod)
     }
 
     if (sr_module_is_internal(ly_mod)) {
-        mode = SR_INT_FILE_PERM;
+        if (!strcmp(ly_mod->name, "sysrepo-monitoring")) {
+            mode = SR_MON_INT_FILE_PERM;
+        } else {
+            mode = SR_INT_FILE_PERM;
+        }
     } else {
         mode = SR_FILE_PERM;
     }
@@ -1763,8 +1774,8 @@ sr_chmodown(const char *path, const char *owner, const char *group, mode_t perm)
     assert(path);
 
     if ((int)perm != -1) {
-        if (perm > 00666) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Only read and write permissions can be set.");
+        if (perm > 00777) {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Invalid permissions 0%.3o.", perm);
             return err_info;
         } else if (perm & 00111) {
             sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Setting execute permissions has no effect.");
@@ -1808,7 +1819,7 @@ sr_chmodown(const char *path, const char *owner, const char *group, mode_t perm)
 }
 
 sr_error_info_t *
-sr_perm_check(const char *mod_name, int wr)
+sr_perm_check(const char *mod_name, int wr, int *has_access)
 {
     sr_error_info_t *err_info = NULL;
     char *path;
@@ -1820,11 +1831,18 @@ sr_perm_check(const char *mod_name, int wr)
 
     /* check against effective permissions */
     if (eaccess(path, (wr ? W_OK : R_OK)) == -1) {
-        if (errno != EACCES) {
+        if (errno == EACCES) {
+            if (has_access) {
+                *has_access = 0;
+            } else {
+                sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "%s permission \"%s\" check failed.",
+                        wr ? "Write" : "Read", mod_name);
+            }
+        } else {
             SR_ERRINFO_SYSERRNO(&err_info, "eaccess");
         }
-        sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "%s permission \"%s\" check failed.",
-                wr ? "Write" : "Read", mod_name);
+    } else if (has_access) {
+        *has_access = 1;
     }
 
     free(path);
@@ -2041,6 +2059,104 @@ sr_strshmlen(const char *str)
 }
 
 sr_error_info_t *
+sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array, uint16_t *shm_count, int in_ext_shm, size_t item_size,
+        int32_t add_idx, void **new_item, size_t dyn_attr_size, off_t *dyn_attr_off)
+{
+    sr_error_info_t *err_info = NULL;
+    off_t old_array_off, new_array_off, old_count_off, attr_off;
+    size_t new_ext_size;
+
+    assert((add_idx > -2) && (add_idx <= *shm_count));
+    assert(!dyn_attr_size || dyn_attr_off);
+
+    if (dyn_attr_off) {
+        *dyn_attr_off = 0;
+    }
+    if (add_idx == -1) {
+        /* add at the end */
+        add_idx = *shm_count;
+    }
+
+    if (in_ext_shm) {
+        /* remember current offsets in ext SHM */
+        old_array_off = ((char *)shm_array) - shm_ext->addr;
+        old_count_off = ((char *)shm_count) - shm_ext->addr;
+    }
+
+    /* we may not even need to resize ext SHM because of the alignment */
+    if (SR_SHM_SIZE((*shm_count + 1) * item_size) + dyn_attr_size > SR_SHM_SIZE(*shm_count * item_size)) {
+        /* get new offsets and size */
+        new_array_off = shm_ext->size;
+        attr_off = new_array_off + SR_SHM_SIZE((*shm_count + 1) * item_size);
+        new_ext_size = attr_off + dyn_attr_size;
+
+        /* remap ext SHM */
+        if ((err_info = sr_shm_remap(shm_ext, new_ext_size))) {
+            return err_info;
+        }
+
+        if (in_ext_shm) {
+            /* update our pointers */
+            shm_array = (off_t *)(shm_ext->addr + old_array_off);
+            shm_count = (uint16_t *)(shm_ext->addr + old_count_off);
+        }
+
+        /* add wasted memory */
+        *((size_t *)shm_ext->addr) += SR_SHM_SIZE(*shm_count * item_size);
+
+        /* copy preceding items */
+        if (add_idx) {
+            memcpy(shm_ext->addr + new_array_off, shm_ext->addr + *shm_array, add_idx * item_size);
+        }
+
+        /* copy succeeding items */
+        if (add_idx < *shm_count) {
+            memcpy(shm_ext->addr + new_array_off + (add_idx + 1) * item_size,
+                    shm_ext->addr + *shm_array + add_idx * item_size, (*shm_count - add_idx) * item_size);
+        }
+
+        /* update array and attribute offset */
+        *shm_array = new_array_off;
+        if (dyn_attr_off && dyn_attr_size) {
+            *dyn_attr_off = attr_off;
+        }
+
+    } else if (add_idx < *shm_count) {
+        assert(!dyn_attr_size);
+
+        /* we only need to move succeeding items */
+        memmove(shm_ext->addr + *shm_array + (add_idx + 1) * item_size,
+                shm_ext->addr + *shm_array + add_idx * item_size, (*shm_count - add_idx) * item_size);
+    }
+
+    /* return pointer to the new item and update count */
+    *new_item = (shm_ext->addr + *shm_array) + (add_idx * item_size);
+    ++(*shm_count);
+
+    return NULL;
+}
+
+void
+sr_shmrealloc_del(char *ext_shm_addr, off_t *shm_array, uint16_t *shm_count, size_t item_size, uint16_t del_idx,
+        size_t dyn_shm_size)
+{
+    /* add wasted memory keeping alignment in mind */
+    *((size_t *)ext_shm_addr) += SR_SHM_SIZE(*shm_count * item_size) - SR_SHM_SIZE((*shm_count - 1) * item_size);
+    *((size_t *)ext_shm_addr) += dyn_shm_size;
+
+    --(*shm_count);
+    if (!*shm_count) {
+        /* the only item removed */
+        *shm_array = 0;
+    } else if (del_idx < *shm_count) {
+        /* move all following items, we may need to keep the order intact */
+        memmove((ext_shm_addr + *shm_array) + (del_idx * item_size),
+                (ext_shm_addr + *shm_array) + ((del_idx + 1) * item_size),
+                (*shm_count - del_idx) * item_size);
+    }
+}
+
+sr_error_info_t *
 sr_mutex_init(pthread_mutex_t *lock, int shared)
 {
     sr_error_info_t *err_info = NULL;
@@ -2194,11 +2310,7 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *
     struct timespec timeout_ts;
     int ret;
 
-    if (mode == SR_LOCK_NONE) {
-        /* nothing to do */
-        return NULL;
-    }
-
+    assert(mode != SR_LOCK_NONE);
     assert(timeout_ms > 0);
     sr_time_get(&timeout_ts, timeout_ms);
 
@@ -2242,10 +2354,7 @@ sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func)
     struct timespec timeout_ts;
     int ret;
 
-    if (mode == SR_LOCK_NONE) {
-        /* nothing to do */
-        return;
-    }
+    assert(mode != SR_LOCK_NONE);
 
     if (mode == SR_LOCK_READ) {
         sr_time_get(&timeout_ts, SR_RWLOCK_READ_TIMEOUT);
@@ -2296,7 +2405,7 @@ sr_cp_file2shm(const char *to, const char *from, mode_t perm)
 {
     sr_error_info_t *err_info = NULL;
     int fd_to = -1, fd_from = -1;
-    char * out_ptr, buf[4096];
+    char *out_ptr, buf[4096];
     ssize_t nread, nwritten;
     mode_t um;
 
@@ -2352,9 +2461,13 @@ sr_error_info_t *
 sr_mkpath(char *path, mode_t mode)
 {
     sr_error_info_t *err_info = NULL;
+    mode_t um;
     char *p;
 
     assert(path[0] == '/');
+
+    /* set umask so that the correct permissions are really set */
+    um = umask(00000);
 
     for (p = strchr(path + 1, '/'); p; p = strchr(p + 1, '/')) {
         *p = '\0';
@@ -2362,7 +2475,7 @@ sr_mkpath(char *path, mode_t mode)
             if (errno != EEXIST) {
                 sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
                 *p = '/';
-                return err_info;
+                goto cleanup;
             }
         }
         *p = '/';
@@ -2371,11 +2484,13 @@ sr_mkpath(char *path, mode_t mode)
     if (mkdir(path, mode) == -1) {
         if (errno != EEXIST) {
             sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
-            return err_info;
+            goto cleanup;
         }
     }
 
-    return NULL;
+cleanup:
+    umask(um);
+    return err_info;
 }
 
 char *
@@ -2467,6 +2582,23 @@ sr_ds2str(sr_datastore_t ds)
         return "candidate";
     case SR_DS_OPERATIONAL:
         return "operational";
+    }
+
+    return NULL;
+}
+
+const char *
+sr_ds2ident(sr_datastore_t ds)
+{
+    switch (ds) {
+    case SR_DS_RUNNING:
+        return "ietf-datastores:running";
+    case SR_DS_STARTUP:
+        return "ietf-datastores:startup";
+    case SR_DS_CANDIDATE:
+        return "ietf-datastores:candidate";
+    case SR_DS_OPERATIONAL:
+        return "ietf-datastores:operational";
     }
 
     return NULL;
@@ -2819,9 +2951,10 @@ error:
 }
 
 char *
-sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, char *buf)
+sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, char *buf, int output)
 {
     struct lys_node_leaf *sleaf;
+    const struct lys_type *t, *t2;
 
     if (!sr_val) {
         return NULL;
@@ -2843,14 +2976,22 @@ sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, 
         return sr_val->data.bool_val ? "true" : "false";
     case SR_DECIMAL64_T:
         /* get fraction-digits */
-        sleaf = (struct lys_node_leaf *)ly_ctx_get_node(ctx, NULL, xpath, 0);
+        sleaf = (struct lys_node_leaf *)ly_ctx_get_node(ctx, NULL, xpath, output);
         if (!sleaf) {
             return NULL;
         }
-        while (sleaf->type.base == LY_TYPE_LEAFREF) {
-            sleaf = sleaf->type.info.lref.target;
+        t = &sleaf->type;
+        while (t->base == LY_TYPE_LEAFREF) {
+            t = &t->info.lref.target->type;
         }
-        sprintf(buf, "%.*f", sleaf->type.info.dec64.dig, sr_val->data.decimal64_val);
+        if (t->base == LY_TYPE_UNION) {
+            for (t2 = lys_getnext_union_type(NULL, t); t2->base != LY_TYPE_DEC64; t2 = lys_getnext_union_type(t2, t));
+            t = t2;
+        }
+        if (!t) {
+            return NULL;
+        }
+        sprintf(buf, "%.*f", t->info.dec64.dig, sr_val->data.decimal64_val);
         return buf;
     case SR_UINT8_T:
         sprintf(buf, "%"PRIu8, sr_val->data.uint8_val);
@@ -3173,7 +3314,7 @@ sr_lyd_xpath_dup(const struct lyd_node *data, char **xpaths, uint16_t xp_count, 
 
         /* merge into the final result */
         if (*new_data) {
-            if (lyd_merge(*new_data, root, LYD_OPT_DESTRUCT)) {
+            if (lyd_merge(*new_data, root, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
                 lyd_free_withsiblings(root);
                 sr_errinfo_new_ly(&err_info, lyd_node_module(data)->ctx);
                 goto error;
@@ -3899,7 +4040,7 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     sr_sid_t sid;
     struct lyd_node *diff = NULL;
 
-    memset(&mod_info, 0, sizeof mod_info);
+    SR_MODINFO_INIT(mod_info, conn, SR_DS_OPERATIONAL, SR_DS_RUNNING);
     memset(&sid, 0, sizeof sid);
 
     /* get the module */
@@ -3915,13 +4056,13 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
         return NULL;
     }
 
-    if ((err_info = sr_shmmod_collect_modules(conn, ly_mod, SR_DS_OPERATIONAL, 0, &mod_info))) {
-        return err_info;
+    if ((err_info = sr_shmmod_modinfo_collect_modules(&mod_info, ly_mod, 0))) {
+        goto cleanup;
     }
 
-    /* MODULES READ LOCK */
-    if ((err_info = sr_shmmod_modinfo_rdlock(&mod_info, 0, sid))) {
-        return err_info;
+    /* MODULES WRITE LOCK */
+    if ((err_info = sr_shmmod_modinfo_wrlock(&mod_info, sid))) {
+        goto cleanup;
     }
 
     /* load the module enabled running data */

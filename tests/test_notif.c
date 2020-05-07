@@ -845,11 +845,11 @@ notif_config_change_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif
             "<operation>create</operation>"
         "</edit>"
         "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two']</target>"
+            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two:three']</target>"
             "<operation>create</operation>"
         "</edit>"
         "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two']/t:k</target>"
+            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two:three']/t:k</target>"
             "<operation>create</operation>"
         "</edit>"
         "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
@@ -897,11 +897,11 @@ notif_config_change_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif
             "<operation>delete</operation>"
         "</edit>"
         "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two']</target>"
+            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two:three']</target>"
             "<operation>delete</operation>"
         "</edit>"
         "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two']/t:k</target>"
+            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two:three']/t:k</target>"
             "<operation>delete</operation>"
         "</edit>";
 
@@ -945,7 +945,7 @@ test_notif_config_change(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:cont/l2[k='one']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/test:cont/l2[k='two']", NULL, NULL, 0);
+    ret = sr_set_item_str(st->sess, "/test:cont/l2[k='two:three']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ops-ref:l1", "val", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -958,7 +958,7 @@ test_notif_config_change(void **state)
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(st->cb_called, 2);
 
-    ret = sr_move_item(st->sess, "/test:cont/l2[k='one']", SR_MOVE_AFTER, "[k='two']", NULL, NULL, 0);
+    ret = sr_move_item(st->sess, "/test:cont/l2[k='one']", SR_MOVE_AFTER, "[k='two:three']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ops-ref:l1", "val2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -973,7 +973,7 @@ test_notif_config_change(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(st->sess, "/test:cont/l2[k='one']", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_delete_item(st->sess, "/test:cont/l2[k='two']", 0);
+    ret = sr_delete_item(st->sess, "/test:cont/l2[k='two:three']", 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);

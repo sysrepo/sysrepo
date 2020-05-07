@@ -107,6 +107,10 @@ test_one_session(void **state)
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
+    /* lock a nonexistent module */
+    ret = sr_lock(sess, "no_mod");
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
     /* lock all modules */
     ret = sr_lock(sess, NULL);
     assert_int_equal(ret, SR_ERR_OK);
@@ -119,9 +123,25 @@ test_one_session(void **state)
     ret = sr_lock(sess, "test");
     assert_int_equal(ret, SR_ERR_LOCKED);
 
+    /* try to unlock a locked module */
+    ret = sr_unlock(sess, "test");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* unlock all modules */
+    ret = sr_unlock(sess, NULL);
+    assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
+
+    /* try to lock a unlocked module */
+    ret = sr_lock(sess, "test");
+    assert_int_equal(ret, SR_ERR_OK);
+
     /* unlock all modules */
     ret = sr_unlock(sess, NULL);
     assert_int_equal(ret, SR_ERR_OK);
+
+    /* unlock all modules again */
+    ret = sr_unlock(sess, NULL);
+    assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
 
     /* lock a module */
     ret = sr_lock(sess, "test");
@@ -149,6 +169,42 @@ test_one_session(void **state)
 
     /* unlock last locked module */
     ret = sr_unlock(sess, "when1");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* switch datastore to candidate */
+    ret = sr_session_switch_ds(sess, SR_DS_CANDIDATE);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* lock all modules */
+    ret = sr_lock(sess, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* modify candidate datastore */
+    ret = sr_set_item_str(sess, "/test:test-leaf", "1", NULL, SR_EDIT_DEFAULT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* unlock all modules */
+    ret = sr_unlock(sess, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* lock all modules,not allow to lock */
+    ret = sr_lock(sess, NULL);
+    assert_int_equal(ret, SR_ERR_UNSUPPORTED);
+
+    /* copy config data to running from candidate datastore and reset candidate */
+    ret = sr_session_switch_ds(sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_copy_config(sess, NULL, SR_DS_CANDIDATE, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* lock all modules */
+    ret = sr_lock(sess, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* unlock all modules */
+    ret = sr_unlock(sess, NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     sr_session_stop(sess);
@@ -195,6 +251,69 @@ test_session_stop_unlock(void **state)
     sr_session_stop(sess2);
 }
 
+static void
+test_get_lock(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_session_ctx_t *sess;
+    int ret, is_locked;
+    uint32_t id, nc_id;
+    time_t timestamp;
+
+    /* params error, connection null or datastore is operational */
+    ret=sr_get_lock(NULL, SR_DS_RUNNING, NULL, &is_locked, &id, &nc_id, &timestamp);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    ret = sr_get_lock(st->conn, SR_DS_OPERATIONAL, NULL, &is_locked, &id, &nc_id, &timestamp);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* lock a module */
+    ret = sr_lock(sess, "test");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* get lock for a locked module */
+    ret = sr_get_lock(st->conn, SR_DS_RUNNING, "test", &is_locked, &id, &nc_id, &timestamp);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(is_locked, 1);
+
+    /* get lock for all modules */
+    ret = sr_get_lock(st->conn, SR_DS_RUNNING, NULL, &is_locked, &id, &nc_id, &timestamp);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(is_locked, 0);
+
+    /* unlock a module */
+    ret = sr_unlock(sess, "test");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* get lock for a unlocked module */
+    ret = sr_get_lock(st->conn, SR_DS_RUNNING, "test", &is_locked, &id, &nc_id, &timestamp);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(is_locked, 0);
+
+    /* lock all modules */
+    ret = sr_lock(sess, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* get lock for all modules */
+    ret = sr_get_lock(st->conn, SR_DS_RUNNING, NULL, &is_locked, &id, &nc_id, &timestamp);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(is_locked, 1);
+
+    /* get lock for another module */
+    ret = sr_get_lock(st->conn, SR_DS_RUNNING, "when1", &is_locked, &id, &nc_id, &timestamp);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(is_locked, 1);
+
+    /* unlock all modules */
+    ret = sr_unlock(sess, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_session_stop(sess);
+}
+
 /* MAIN */
 int
 main(void)
@@ -202,6 +321,7 @@ main(void)
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_one_session),
         cmocka_unit_test(test_session_stop_unlock),
+        cmocka_unit_test(test_get_lock),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

@@ -26,6 +26,8 @@
 #include <setjmp.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <unistd.h>
+#include <sys/types.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
@@ -39,7 +41,7 @@ struct state {
 };
 
 static int
-setup_f(void **state)
+setup(void **state, int cached)
 {
     struct state *st;
     uint32_t conn_count;
@@ -63,9 +65,12 @@ setup_f(void **state)
     if (sr_install_module(st->conn, TESTS_DIR "/files/simple-aug.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/defaults.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
     sr_disconnect(st->conn);
 
-    if (sr_connect(SR_CONN_CACHE_RUNNING, &(st->conn)) != SR_ERR_OK) {
+    if (sr_connect(cached ? SR_CONN_CACHE_RUNNING : 0, &(st->conn)) != SR_ERR_OK) {
         return 1;
     }
 
@@ -77,12 +82,25 @@ setup_f(void **state)
 }
 
 static int
+setup_f(void **state)
+{
+    return setup(state, 0);
+}
+
+static int
+setup_cached_f(void **state)
+{
+    return setup(state, 1);
+}
+
+static int
 teardown_f(void **state)
 {
     struct state *st = (struct state *)*state;
 
     sr_remove_module(st->conn, "simple");
     sr_remove_module(st->conn, "simple-aug");
+    sr_remove_module(st->conn, "defaults");
 
     sr_disconnect(st->conn);
     free(st);
@@ -133,14 +151,98 @@ test_enable_cached_get(void **state)
     sr_unsubscribe(sub);
 }
 
+static void
+test_no_read_access(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    int ret;
+
+    if (!geteuid()) {
+        /* test does not work for root */
+        return;
+    }
+
+    /* set no permissions for default module */
+    ret = sr_set_module_access(st->conn, "defaults", NULL, NULL, 00200);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* try to get its data */
+    ret = sr_get_data(st->sess, "/defaults:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* no data should be returned, not even defaults */
+    assert_null(data);
+
+    /* try to get all data */
+    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* only some default values */
+    assert_non_null(data);
+    assert_int_equal(data->dflt, 1);
+    lyd_free_withsiblings(data);
+
+    /* set permissions back so that it can be removed */
+    ret = sr_set_module_access(st->conn, "defaults", NULL, NULL, 00600);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+static void
+test_explicit_default(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    int ret;
+
+    /* get defaults data */
+    ret = sr_get_data(st->sess, "/defaults:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_non_null(data);
+    assert_string_equal(data->schema->name, "cont");
+    assert_int_equal(data->dflt, 1);
+    assert_non_null(data->child);
+    assert_string_equal(data->child->schema->name, "interval");
+    assert_int_equal(data->child->dflt, 1);
+
+    lyd_free_withsiblings(data);
+
+    /* set explicit default value */
+    ret = sr_set_item_str(st->sess, "/defaults:cont/interval", "30", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read it back */
+    ret = sr_get_data(st->sess, "/defaults:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_non_null(data);
+    assert_string_equal(data->schema->name, "cont");
+    assert_int_equal(data->dflt, 0);
+    assert_non_null(data->child);
+    assert_string_equal(data->child->schema->name, "interval");
+    assert_int_equal(data->child->dflt, 0);
+
+    lyd_free_withsiblings(data);
+
+    /* cleanup */
+    sr_delete_item(st->sess, "/defaults:cont", 0);
+    sr_apply_changes(st->sess, 0, 0);
+}
+
 int
 main(void)
 {
     const struct CMUnitTest tests[] = {
-        cmocka_unit_test(test_enable_cached_get),
+        cmocka_unit_test_setup_teardown(test_enable_cached_get, setup_cached_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_no_read_access, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_no_read_access, setup_cached_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_explicit_default, setup_f, teardown_f),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
     sr_log_stderr(SR_LL_INF);
-    return cmocka_run_group_tests(tests, setup_f, teardown_f);
+    return cmocka_run_group_tests(tests, NULL, NULL);
 }

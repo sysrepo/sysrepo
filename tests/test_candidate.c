@@ -266,7 +266,7 @@ test_invalid(void **state)
     free(str);
 
     /* is not valid */
-    ret = sr_validate(st->sess, 0);
+    ret = sr_validate(st->sess, "ietf-interfaces", 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     /* copy-config to candidate, should reset it */
@@ -303,7 +303,7 @@ test_when(void **state)
     free(str);
 
     /* is not valid */
-    ret = sr_validate(st->sess, 0);
+    ret = sr_validate(st->sess, "when1", 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     ret = sr_delete_item(st->sess, "/when1:l3", 0);
@@ -312,7 +312,7 @@ test_when(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* should be valid again (empty) */
-    ret = sr_validate(st->sess, 0);
+    ret = sr_validate(st->sess, "when1", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* the same change but with replace config */
@@ -330,7 +330,7 @@ test_when(void **state)
     free(str);
 
     /* is not valid */
-    ret = sr_validate(st->sess, 0);
+    ret = sr_validate(st->sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     /* copy-config to running, should fail */

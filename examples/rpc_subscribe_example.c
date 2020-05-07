@@ -13,6 +13,7 @@
  *     https://opensource.org/licenses/BSD-3-Clause
  */
 #define _GNU_SOURCE
+#define _XOPEN_SOURCE 500
 
 #include <stdio.h>
 #include <stdlib.h>

@@ -15,8 +15,6 @@ __license__ = "Apache 2.0"
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# sysrepod and subscription_test_app must be in PATH
 
 from ConcurrentHelpers import *
 import signal
@@ -35,17 +33,16 @@ class SubscriptionTester(SysrepoTester):
 
         try:
             os.mkfifo("pipe_subscription_test")
-        except OSError as oe: 
+        except OSError as oe:
             if oe.errno != errno.EEXIST:
                 raise
-                
 
         self.process = subprocess.Popen(['python3','SubscriptionTestApp.py', format(os.getpid())])
         self.report_pid(self.process.pid)
         output = ""
         with open("pipe_subscription_test", "r") as fifo:
             output = fifo.readline()
-        
+
         os.unlink("pipe_subscription_test")
         self.tc.assertEqual(str(output), "subscribed")
 

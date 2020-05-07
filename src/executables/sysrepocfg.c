@@ -19,8 +19,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define _GNU_SOURCE
-#define _DEFAULT_SOURCE
+#define _GNU_SOURCE /* asprintf */
+#define _DEFAULT_SOURCE /* mkstemps */
+#define _XOPEN_SOURCE 500 /* mkstemp */
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -36,6 +37,7 @@
 
 #include <libyang/libyang.h>
 
+#include "compat.h"
 #include "sysrepo.h"
 #include "bin_common.h"
 
@@ -70,6 +72,8 @@ help_print(void)
         "                               Send a notification in a file or using a text editor.\n"
         "  -C, --copy-from <file-path>/<source-datastore>\n"
         "                               Perform a copy-config from a file or a datastore.\n"
+        "  -W, --new-data <file-path>   Set the configuration from a file as the initial one for a new module only scheduled\n"
+        "                               to be installed. Is useful for modules with mandatory top-level nodes.\n"
         "\n"
         "       When both a <file-path> and <editor>/<target-datastore> can be specified, it is always first checked\n"
         "       that the file exists. If not, then it is interpreted as the other parameter.\n"
@@ -79,10 +83,10 @@ help_print(void)
         "  -d, --datastore <datastore>  Datastore to be operated on, \"running\" by default (\"running\", \"startup\",\n"
         "                               \"candidate\", or \"operational\") (import, export, edit, copy-from op).\n"
         "  -m, --module <module-name>   Module to be operated on, otherwise it is operated on full datastore\n"
-        "                               (import, export, edit, copy-from op).\n"
+        "                               (import, export, edit, copy-from, mandatory for new-data op).\n"
         "  -x, --xpath <xpath>          XPath to select (export op).\n"
         "  -f, --format <format>        Data format to be used, by default based on file extension or \"xml\" if not applicable\n"
-        "                               (\"xml\", \"json\", or \"lyb\") (import, export, edit, rpc, notification, copy-from op).\n"
+        "                               (\"xml\", \"json\", or \"lyb\") (import, export, edit, rpc, notification, copy-from, new-data op).\n"
         "  -l, --lock                   Lock the specified datastore for the whole operation (edit op).\n"
         "  -n, --not-strict             Silently ignore any unknown data (import, edit, rpc, notification, copy-from op).\n"
         "  -p, --depth <number>         Limit the depth of returned subtrees, 0 so unlimited by default (export op).\n"
@@ -140,7 +144,7 @@ step_edit_input(const char *editor, const char *path)
         return EXIT_FAILURE;
     }
 
-    if ((pid = vfork()) == -1) {
+    if ((pid = fork()) == -1) {
         error_print(0, "Fork failed (%s)", strerror(errno));
         return EXIT_FAILURE;
     } else if (pid == 0) {
@@ -247,7 +251,7 @@ step_load_data(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format,
 static int
 step_create_input_file(LYD_FORMAT format, char *tmp_file)
 {
-    int suffix, fd;
+    int fd;
 
     if (format == LYD_LYB) {
         error_print(0, "LYB binary format cannot be opened in a text editor");
@@ -256,7 +260,11 @@ step_create_input_file(LYD_FORMAT format, char *tmp_file)
         format = LYD_XML;
     }
 
-    /* create temporary file */
+#ifdef SR_HAVE_MKSTEMPS
+    int suffix;
+
+    /* create temporary file, suffix is used only so that the text editor
+     * can automatically use syntax highlighting */
     if (format == LYD_JSON) {
         sprintf(tmp_file, "/tmp/srtmpXXXXXX.json");
         suffix = 5;
@@ -265,6 +273,10 @@ step_create_input_file(LYD_FORMAT format, char *tmp_file)
         suffix = 4;
     }
     fd = mkstemps(tmp_file, suffix);
+#else
+    sprintf(tmp_file, "/tmp/srtmpXXXXXX");
+    fd = mkstemp(tmp_file);
+#endif
     if (fd == -1) {
         error_print(0, "Failed to open temporary file (%s)", strerror(errno));
         return EXIT_FAILURE;
@@ -533,6 +545,21 @@ op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds,
 }
 
 static int
+op_new_data(sr_conn_ctx_t *conn, const char *file_path, const char *module_name, LYD_FORMAT format)
+{
+    int r;
+
+    /* set the initial data */
+    r = sr_install_module_data(conn, module_name, NULL, file_path, format);
+    if (r) {
+        error_print(r, "Install module data failed");
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
+}
+
+static int
 arg_is_file(const char *optarg)
 {
     return !access(optarg, F_OK);
@@ -564,7 +591,7 @@ main(int argc, char** argv)
     sr_session_ctx_t *sess = NULL;
     sr_datastore_t ds = SR_DS_RUNNING, source_ds;
     LYD_FORMAT format = LYD_UNKNOWN;
-    const char *module_name = NULL, *editor = NULL, *file_path = NULL, *xpath = NULL;
+    const char *module_name = NULL, *editor = NULL, *file_path = NULL, *xpath = NULL, *op_str;
     char *ptr;
     sr_log_level_t log_level = SR_LL_ERR;
     int r, rc = EXIT_FAILURE, opt, operation = 0, lock = 0, not_strict = 0, timeout = 0, wait = 0;
@@ -578,6 +605,7 @@ main(int argc, char** argv)
         {"rpc",             optional_argument, NULL, 'R'},
         {"notification",    optional_argument, NULL, 'N'},
         {"copy-from",       required_argument, NULL, 'C'},
+        {"new-data",        required_argument, NULL, 'W'},
         {"datastore",       required_argument, NULL, 'd'},
         {"module",          required_argument, NULL, 'm'},
         {"xpath",           required_argument, NULL, 'x'},
@@ -598,7 +626,7 @@ main(int argc, char** argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:d:m:x:f:lnp:t:wv:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:W:d:m:x:f:lnp:t:wv:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -683,6 +711,14 @@ main(int argc, char** argv)
                     goto cleanup;
                 }
             }
+            operation = opt;
+            break;
+        case 'W':
+            if (operation) {
+                error_print(0, "Operation already specified");
+                goto cleanup;
+            }
+            file_path = optarg;
             operation = opt;
             break;
         case 'd':
@@ -775,6 +811,29 @@ main(int argc, char** argv)
         goto cleanup;
     }
 
+    /* check if operation on the datastore is supported */
+    if (ds == SR_DS_OPERATIONAL) {
+        switch (operation) {
+        case 'I':
+            op_str = "Import";
+            break;
+        case 'E':
+            op_str = "Edit";
+            break;
+        case 'C':
+            op_str = "Copy-config";
+            break;
+        default:
+            op_str = NULL;
+            break;
+        }
+
+        if (op_str) {
+            error_print(0, "%s operation on operational DS not supported, changes would be lost after session is terminated", op_str);
+            goto cleanup;
+        }
+    }
+
     /* set logging */
     sr_log_stderr(log_level);
 
@@ -809,6 +868,16 @@ main(int argc, char** argv)
         break;
     case 'C':
         rc = op_copy(sess, file_path, source_ds, module_name, format, not_strict, timeout, wait);
+        break;
+    case 'W':
+        if (!module_name) {
+            error_print(0, "Module must be specified when setting its initial data");
+            break;
+        } else if (!format) {
+            error_print(0, "Format of the file must be specified when setting initial data");
+            break;
+        }
+        rc = op_new_data(conn, file_path, module_name, format);
         break;
     case 0:
         error_print(0, "No operation specified");

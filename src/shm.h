@@ -33,6 +33,7 @@
 #define SR_MAIN_SHM "/sr_main"              /**< Main SHM name. */
 #define SR_EXT_SHM "/sr_ext"                /**< External SHM name. */
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
+#define SR_SHM_VER 1                        /**< Main and ext SHM version of their expected content structures. */
 
 /**
  * Main SHM organization
@@ -48,7 +49,7 @@
  *
  * Ext shm starts with a `size_t` value representing the number of wasted
  * bytes in this SHM segment. It is followed by arrays and strings pointed to
- * by main SHM `off_t` pointers. First, there is the sysrepo state ::sr_conn_state_t
+ * by main SHM `off_t` pointers. First, there is the sysrepo connections state ::sr_conn_shm_t
  * meaning all currently running connections. Then, there is information from ::sr_mod_t
  * which includes names, dependencies, and subscriptions. Lastly, there are RPCs ::sr_rpc_t.
  * Also, any pointers in all the previous structures point, again, into ext SHM.
@@ -109,6 +110,7 @@ typedef enum sr_mod_oper_sub_type_e {
 typedef struct sr_mod_oper_sub_s {
     off_t xpath;                /**< XPath of the subscription. */
     sr_mod_oper_sub_type_t sub_type;  /**< Type of the subscription. */
+    int opts;                   /**< Subscription options. */
     uint32_t evpipe_num;        /** Event pipe number. */
 } sr_mod_oper_sub_t;
 
@@ -193,32 +195,33 @@ typedef enum sr_lock_mode_e {
 /**
  * @brief Ext SHM connection state held lock.
  */
-typedef struct sr_conn_state_lock_s {
+typedef struct sr_conn_shm_lock_s {
     sr_lock_mode_t mode;    /**< Held lock mode. */
     uint8_t rcount;         /**< Number of recursive READ locks held. */
-} sr_conn_state_lock_t;
+} sr_conn_shm_lock_t;
 
 /**
  * @brief Ext SHM connection state.
  */
-typedef struct sr_conn_state_s {
+typedef struct sr_conn_shm_s {
     sr_conn_ctx_t *conn_ctx;    /**< Connection, process-specific pointer, do not access! */
     pid_t pid;                  /**< PID of process that created this connection. */
 
-    sr_conn_state_lock_t main_lock; /**< Held main SHM lock. */
-    off_t mod_locks;            /**< Held SHM module locks, points to (sr_conn_state_lock_t (*)[3]). */
+    sr_conn_shm_lock_t main_lock; /**< Held main SHM lock. */
+    off_t mod_locks;            /**< Held SHM module locks, points to (sr_conn_state_lock_t (*)[SR_DS_COUNT]). */
 
-    off_t evpipes;              /**< Array of event pipes of subscriptions on this connection. */
-    uint32_t evpipe_count;      /**< Event pipe count. */
-} sr_conn_state_t;
+    off_t evpipes;              /**< Array of event pipe numbers (uint32_t) of subscriptions on this connection. */
+    uint16_t evpipe_count;      /**< Event pipe count. */
+} sr_conn_shm_t;
 
 /**
  * @brief Main SHM.
  */
 typedef struct sr_main_shm_s {
+    uint32_t shm_ver;           /**< Main and ext SHM version of all expected data stored in them. Is increased with
+                                     every change of their structure content (ABI change). */
     sr_rwlock_t lock;           /**< Process-shared lock for accessing main and ext SHM. It is required only when
-                                     accessing attributes that can be changed (subscriptions, replay support) and do
-                                     not have their own lock (conn state), otherwise not needed. */
+                                     accessing attributes that can be changed (subscriptions, replay support). */
     pthread_mutex_t lydmods_lock; /**< Process-shared lock for accessing sysrepo module data. */
     uint32_t mod_count;         /**< Number of installed modules stored after this structure. */
 
@@ -228,11 +231,8 @@ typedef struct sr_main_shm_s {
     ATOMIC_T new_sr_sid;        /**< SID for a new session. */
     ATOMIC_T new_evpipe_num;    /**< Event pipe number for a new subscription. */
 
-    struct {
-        pthread_mutex_t lock;   /**< Process-shared lock for accessing connection state. */
-        off_t conns;            /**< Array of existing connections. */
-        uint32_t conn_count;    /**< Number of existing connections. */
-    } conn_state;               /**< Information about connection state. */
+    off_t conns;                /**< Array of existing connections (connection state). */
+    uint16_t conn_count;        /**< Number of existing connections. */
 } sr_main_shm_t;
 
 /**
@@ -369,13 +369,13 @@ sr_error_info_t *sr_shmmain_createlock(int shm_lock);
 void sr_shmmain_createunlock(int shm_lock);
 
 /**
- * @brief Add connection into main SHM state.
+ * @brief Add connection into main SHM.
  * Main SHM lock is expected to be held.
  *
  * @param[in] conn Connection to add.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_conn_state_add(sr_conn_ctx_t *conn);
+sr_error_info_t *sr_shmmain_conn_add(sr_conn_ctx_t *conn);
 
 /**
  * @brief Remove a connection from main SHM state.
@@ -386,38 +386,38 @@ sr_error_info_t *sr_shmmain_conn_state_add(sr_conn_ctx_t *conn);
  * @param[in] conn Connection context to delete.
  * @param[in] pid Connection PID to delete.
  */
-void sr_shmmain_conn_state_del(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
+void sr_shmmain_conn_del(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
 
 /**
- * @brief Find a connection in main SHM state.
+ * @brief Find a connection in main SHM.
  * Main SHM lock is expected to be held.
  *
- * @param[in] main_shm Main SHM structure.
+ * @param[in] main_shm_addr Main SHM address.
  * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] conn Connection context to find.
  * @param[in] pid Connection PID to find.
  * @return Matching connection state, NULL if not found.
  */
-sr_conn_state_t *sr_shmmain_conn_state_find(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
+sr_conn_shm_t *sr_shmmain_conn_find(char *main_shm_addr, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
 
 /**
- * @brief Add an event pipe into main SHM state.
+ * @brief Add an event pipe into a connection in main SHM.
  * Main SHM lock is expected to be held.
  *
  * @param[in] conn Connection of the subscription.
  * @param[in] evpipe_num Event pipe number.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_state_add_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num);
+sr_error_info_t *sr_shmmain_conn_add_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num);
 
 /**
- * @brief Remove and event pipe from main SHM state.
+ * @brief Remove and event pipe from a connection in main SHM.
  * Main SHM lock is expected to be held.
  *
  * @param[in] conn Connection of the subscription.
  * @param[in] evpipe_num Event pipe number.
  */
-void sr_shmmain_state_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num);
+void sr_shmmain_conn_del_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num);
 
 /**
  * @brief Initialize libyang context with only the internal sysrepo module.
@@ -503,11 +503,10 @@ sr_rpc_t *sr_shmmain_find_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const
  * @param[in] conn Connection to use.
  * @param[in] mode Whether to WRITE, READ or not lock main (actually ext) SHM.
  * @param[in] remap Whether to WRITE (ext SHM may be remapped) or READ (just protect from remapping) remap lock.
- * @param[in] lydmods Whether to lydmods LOCK.
  * @param[in] func Caller function name.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods, const char *func);
+sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, const char *func);
 
 /**
  * @brief Unlock main SHM and update information about held locks in SHM. If remap was WRITE locked,
@@ -516,10 +515,9 @@ sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode,
  * @param[in] conn Connection to use.
  * @param[in] mode Whether to WRITE, READ or not unlock main (actually ext) SHM.
  * @param[in] remap Whether to WRITE or READ remap unlock.
- * @param[in] lydmods Whether to lydmods UNLOCK.
  * @param[in] func Caller function name.
  */
-void sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, int lydmods, const char *func);
+void sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, const char *func);
 
 /**
  * @brief Add main SHM RPC/action subscription.
@@ -561,10 +559,11 @@ int sr_shmmain_rpc_subscription_del(char *ext_shm_addr, sr_rpc_t *shm_rpc, const
  * @param[in] priority Subscription priority.
  * @param[in] evpipe_num Subscription event pipe number.
  * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.
+ * @param[out] last_removed Optional, set if the last subscription of the RPC was removed and hence also the RPC.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmain_rpc_subscription_stop(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath,
-        uint32_t priority, uint32_t evpipe_num, int all_evpipe);
+        uint32_t priority, uint32_t evpipe_num, int all_evpipe, int *last_removed);
 
 /**
  * @brief Add an RPC/action into main SHM.
@@ -595,7 +594,7 @@ sr_error_info_t *sr_shmmain_del_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr,
  *
  * @param[in] shm_main Main SHM.
  * @param[in] ext_shm_addr Ext SHM address.
- * @param[in] mod_name Module name.
+ * @param[in] mod_name Module name. NUll for all the modules.
  * @param[in] replay_support Whether replay support should be enabled or disabled.
  * @return err_info, NULL on success.
  */
@@ -618,64 +617,64 @@ sr_error_info_t *sr_shmmain_check_data_files(sr_conn_ctx_t *conn);
 /**
  * @brief Collect required modules into mod info based on an edit.
  *
- * @param[in] conn Connection to use.
- * @param[in] edit Edit to be applied.
- * @param[in] ds Datastore.
  * @param[in,out] mod_info Modified mod info.
+ * @param[in] edit Edit to be applied.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_edit(sr_conn_ctx_t *conn, const struct lyd_node *edit, sr_datastore_t ds,
-        struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_shmmod_modinfo_collect_edit(struct sr_mod_info_s *mod_info, const struct lyd_node *edit);
 
 /**
  * @brief Collect required modules into mod info based on an XPath.
  *
- * @param[in] conn Connection to use.
- * @param[in] xpath XPath to be evaluated.
- * @param[in] ds Datastore.
  * @param[in,out] mod_info Modified mod info.
+ * @param[in] xpath XPath to be evaluated.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_xpath(sr_conn_ctx_t *conn, const char *xpath, sr_datastore_t ds,
-        struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_shmmod_modinfo_collect_xpath(struct sr_mod_info_s *mod_info, const char *xpath);
 
 /**
  * @brief Collect required modules into mod info based on a specific module.
  *
- * @param[in] conn Connection to use.
- * @param[in] ly_mod Required module, all modules if not set.
- * @param[in] ds Datastore.
- * @param[in] with_deps What dependencies of the module are also needed.
  * @param[in,out] mod_info Modified mod info.
+ * @param[in] ly_mod Required module, all modules if not set.
+ * @param[in] mod_req_deps What dependencies of the module are also needed.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_modules(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore_t ds,
-        int with_deps, struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_shmmod_modinfo_collect_modules(struct sr_mod_info_s *mod_info, const struct lys_module *ly_mod,
+        int mod_req_deps);
 
 /**
  * @brief Collect required modules into mod info based on an operation data.
  *
- * @param[in] conn Connection to use.
+ * @param[in,out] mod_info Modified mod info.
  * @param[in] op_path Path identifying the operation.
  * @param[in] op Operation data tree.
  * @param[in] output Whether this is the operation output or input.
  * @param[out] shm_deps Main SHM operation dependencies.
  * @param[out] shm_dep_count Operation dependency count.
- * @param[in,out] mod_info Modified mod info.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_op(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_node *op, int output,
-        sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count, struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_shmmod_modinfo_collect_op(struct sr_mod_info_s *mod_info, const char *op_path,
+        const struct lyd_node *op, int output, sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count);
 
 /**
  * @brief READ lock all modules in mod info.
  *
  * @param[in] mod_info Mod info to use.
- * @param[in] upgradable Whether the lock will be upgraded to WRITE later.
+ * @param[in] upgradable Whether the lock will be upgraded to WRITE later. Used only for main DS of @p mod_info!
  * @param[in] sid Sysrepo session ID.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradable, sr_sid_t sid);
+
+/**
+ * @brief WRITE lock all modules in mod info. Secondary DS modules, if any, are READ locked.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] sid Sysrepo session ID.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_modinfo_wrlock(struct sr_mod_info_s *mod_info, sr_sid_t sid);
 
 /**
  * @brief Upgrade READ lock on modules in mod info to WRITE lock.
@@ -772,11 +771,12 @@ sr_error_info_t *sr_shmmod_change_subscription_stop(sr_conn_ctx_t *conn, sr_mod_
  * @param[in] shm_mod SHM module.
  * @param[in] xpath Subscription XPath.
  * @param[in] sub_type Data-provide subscription type.
+ * @param[in] sub_opts Subscription options.
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmod_oper_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char *xpath,
-        sr_mod_oper_sub_type_t sub_type, uint32_t evpipe_num);
+        sr_mod_oper_sub_type_t sub_type, int sub_opts, uint32_t evpipe_num);
 
 /**
  * @brief Remove main SHM module operational subscription.
@@ -959,7 +959,7 @@ sr_error_info_t *sr_shmsub_oper_notify(const struct lys_module *ly_mod, const ch
  * @param[in] sid Originator sysrepo session ID.
  * @param[in] timeout_ms RPC/action callback timeout in milliseconds.
  * @param[in,out] request_id Generated request ID, set to 0 when passing.
- * @param[out] output Operation output returned by the last subscriber.
+ * @param[out] output Operation output returned by the last subscriber on success.
  * @param[out] cb_err_info Callback error information generated by a subscriber, if any.
  * @return err_info, NULL on success.
  */

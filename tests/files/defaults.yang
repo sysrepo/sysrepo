@@ -2,6 +2,22 @@ module defaults {
     namespace "urn:defaults";
     prefix d;
 
+    yang-version 1.1;
+
+    typedef my_ip4addr {
+        type union {
+            type uint8;
+            type string;
+        }
+    }
+
+    typedef my_ipaddr {
+        type union {
+            type my_ip4addr;
+            type string;
+        }
+    }
+
     list l1 {
         key "k";
         leaf k {
@@ -82,6 +98,29 @@ module defaults {
                     type empty;
                 }
             }
+        }
+    }
+
+    container pcont {
+        presence "";
+        leaf-list ll {
+            type uint16;
+            default 1;
+            default 2;
+            default 3;
+        }
+
+        leaf uni {
+            type my_ipaddr;
+            default "some-ip";
+        }
+
+        leaf-list ll2 {
+            type uint16;
+            ordered-by user;
+            default 4;
+            default 5;
+            default 6;
         }
     }
 }

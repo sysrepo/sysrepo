@@ -12,6 +12,7 @@
  *
  *     https://opensource.org/licenses/BSD-3-Clause
  */
+#define _QNX_SOURCE /* sleep */
 #define _GNU_SOURCE
 
 #include <stdio.h>
@@ -21,6 +22,7 @@
 #include <signal.h>
 #include <inttypes.h>
 
+#include "compat.h"
 #include "sysrepo.h"
 
 volatile int exit_application = 0;

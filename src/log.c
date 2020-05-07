@@ -135,7 +135,7 @@ sr_log_msg(int plugin, sr_log_level_t ll, const char *msg, const char *path)
     }
 
     /* syslog logging */
-    if (ll < syslog_ll) {
+    if (ll <= syslog_ll) {
         syslog(priority | (plugin ? LOG_DAEMON : 0), "[%s] %s\n", severity, msg);
     }
 
@@ -210,8 +210,14 @@ sr_errinfo_new_ly(sr_error_info_t **err_info, struct ly_ctx *ly_ctx)
     struct ly_err_item *e;
 
     e = ly_err_first(ly_ctx);
-    /* this function is called only when an error is expected */
-    assert(e);
+
+    /* this function is called only when an error is expected, but it is still possible there
+     * will be none -> libyang problem or simply the error was externally processed, sysrepo is
+     * unable to detect that */
+    if (!e) {
+        sr_errinfo_new(err_info, SR_ERR_LY, NULL, "Unknown libyang error.");
+        return;
+    }
 
     do {
         if (e->level == LY_LLWRN) {
