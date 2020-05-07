@@ -105,7 +105,7 @@ public:
     /** Wrapper for [sr_edit_batch](@ref sr_edit_batch) */
     void edit_batch(const libyang::S_Data_Node edit, const char *default_operation);
     /** Wrapper for [sr_validate](@ref sr_validate) */
-    void validate(uint32_t timeout_ms = 0);
+    void validate(const char *module_name = nullptr, uint32_t timeout_ms = 0);
     /** Wrapper for [sr_apply_changes](@ref sr_apply_changes) */
     void apply_changes(uint32_t timeout_ms = 0, int wait = 0);
     /** Wrapper for [sr_discard_changes](@ref sr_discard_changes) */

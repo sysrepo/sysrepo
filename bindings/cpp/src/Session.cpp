@@ -248,9 +248,9 @@ void Session::edit_batch(const libyang::S_Data_Node edit, const char *default_op
     }
 }
 
-void Session::validate(uint32_t timeout_ms)
+void Session::validate(const char *module_name, uint32_t timeout_ms)
 {
-    int ret = sr_validate(_sess, timeout_ms);
+    int ret = sr_validate(_sess, module_name, timeout_ms);
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
