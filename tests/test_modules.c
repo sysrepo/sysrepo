@@ -1326,13 +1326,13 @@ test_set_module_access(void **state)
     ret = sr_set_module_access(st->conn, "no-module", user, group, 00666);
     assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
-    /* invalid user */
+    /* invalid user (can return SR_ERR_NOT_FOUND or SR_ERR_SYS) */
     ret = sr_set_module_access(st->conn, "test", "no-user", group, 00666);
-    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+    assert_int_not_equal(ret, SR_ERR_OK);
 
-    /* invalid group */
+    /* invalid group (can return SR_ERR_NOT_FOUND or SR_ERR_SYS) */
     ret = sr_set_module_access(st->conn, "test", user, "no-group", 00666);
-    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+    assert_int_not_equal(ret, SR_ERR_OK);
 
     /* user NULL and group NULL */
     ret = sr_set_module_access(st->conn, "test", NULL, NULL, 00666);
