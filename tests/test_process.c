@@ -25,10 +25,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <assert.h>
 
 #include "tests/config.h"
 #include "sysrepo.h"
+
+#define sr_assert(cond) if (!(cond)) { fprintf(stderr, "\"%s\" not true\n", #cond); sr_assert_line(); abort(); }
 
 #define sr_assert_line() printf("[   LINE    ] --- %s:%d: error: Failure!\n", __FILE__, __LINE__)
 
@@ -70,9 +71,9 @@ barrier(int rp, int wp)
 {
     char buf[5];
 
-    assert(write(wp, "ready", 5) == 5);
-    assert(read(rp, buf, 5) == 5);
-    assert(!strncmp(buf, "ready", 5));
+    sr_assert(write(wp, "ready", 5) == 5);
+    sr_assert(read(rp, buf, 5) == 5);
+    sr_assert(!strncmp(buf, "ready", 5));
 }
 
 static void
@@ -104,7 +105,7 @@ run_tests(struct test *tests, uint32_t test_count)
             }
 
             /* wait for child */
-            assert(wait(&wstatus) != -1);
+            sr_assert(wait(&wstatus) != -1);
 
             if (WIFEXITED(wstatus)) {
                 if (WEXITSTATUS(wstatus)) {
@@ -114,7 +115,7 @@ run_tests(struct test *tests, uint32_t test_count)
                     child_status = "OK";
                 }
             } else {
-                assert(WIFSIGNALED(wstatus));
+                sr_assert(WIFSIGNALED(wstatus));
                 child_status = "SIGNAL";
                 fail = 1;
             }
@@ -163,7 +164,7 @@ test_log_cb(sr_log_level_t level, const char *message)
         break;*/
         return;
     case SR_LL_NONE:
-        assert(0);
+        sr_assert(0);
         return;
     }
 
@@ -177,10 +178,10 @@ setup(void)
     sr_conn_ctx_t *conn;
     const char *en_feat = "feat1";
 
-    assert(sr_connect(0, &conn) == SR_ERR_OK);
+    sr_assert(sr_connect(0, &conn) == SR_ERR_OK);
 
-    assert(sr_install_module(conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", &en_feat, 1) == SR_ERR_OK);
-    assert(sr_install_module(conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0) == SR_ERR_OK);
+    sr_assert(sr_install_module(conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", &en_feat, 1) == SR_ERR_OK);
+    sr_assert(sr_install_module(conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0) == SR_ERR_OK);
 
     sr_disconnect(conn);
 }
@@ -190,7 +191,7 @@ teardown(void)
 {
     sr_conn_ctx_t *conn;
 
-    assert(sr_connect(0, &conn) == SR_ERR_OK);
+    sr_assert(sr_connect(0, &conn) == SR_ERR_OK);
 
     sr_remove_module(conn, "ops");
     sr_remove_module(conn, "ops-ref");
