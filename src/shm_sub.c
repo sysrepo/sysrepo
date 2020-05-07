@@ -1893,8 +1893,9 @@ sr_shmsub_change_listen_has_diff(struct modsub_changesub_s *sub, const struct ly
 
     for (i = 0; i < set->number; ++i) {
         LY_TREE_DFS_BEGIN(set->set.d[i], next, elem) {
-            op = sr_edit_find_oper(elem, 0, NULL);
-            if (op && (op != EDIT_NONE)) {
+            op = sr_edit_find_oper(elem, 1, NULL);
+            assert(op);
+            if (op != EDIT_NONE) {
                 ret = 1;
                 break;
             }
