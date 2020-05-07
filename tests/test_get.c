@@ -26,6 +26,8 @@
 #include <setjmp.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <unistd.h>
+#include <sys/types.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
@@ -155,6 +157,11 @@ test_no_read_access(void **state)
     struct state *st = (struct state *)*state;
     struct lyd_node *data;
     int ret;
+
+    if (!geteuid()) {
+        /* test does not work for root */
+        return;
+    }
 
     /* set no permissions for default module */
     ret = sr_set_module_access(st->conn, "defaults", NULL, NULL, 00200);
