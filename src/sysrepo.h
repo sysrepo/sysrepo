@@ -831,8 +831,8 @@ typedef enum sr_edit_flag_e {
                                      by ::sr_delete_item the identified element must exist (similar to NETCONF delete operation). */
     SR_EDIT_ISOLATE = 4,        /**< Create new operation separately, independent of all the previous operations. Since all the
                                      operations are concatenated into one edit tree, it may happen that 2 incompatible operations
-                                     are set and an error is observed. This flag can in those cases be used. However, note that
-                                     it can adversely affect edit performance. */
+                                     are set and an error is observed. This flag can in those cases be used. Also, if an error
+                                     is returned the previous edit is always left untouched. */
 } sr_edit_flag_t;
 
 /**
@@ -871,7 +871,7 @@ typedef enum sr_move_position_e {
  * @param[in] path [Path](@ref paths) identifier of the data element to be set.
  * @param[in] value Value to be set. `xpath` member of the ::sr_val_t structure can be NULL.
  * @param[in] opts Options overriding default behavior of this call.
- * @return Error code (::SR_ERR_OK on success).
+ * @return Error code (::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if the whole edit was discarded).
  */
 int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, const sr_edit_options_t opts);
 
@@ -887,7 +887,7 @@ int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *val
  * @param[in] value String representation of the value to be set.
  * @param[in] origin Origin of the value, used only for ::SR_DS_OPERATIONAL edits.
  * @param[in] opts Options overriding default behavior of this call.
- * @return Error code (::SR_ERR_OK on success).
+ * @return Error code (::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if the whole edit was discarded).
  */
 int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, const char *origin,
         const sr_edit_options_t opts);
@@ -903,7 +903,7 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifier of the data element to be deleted.
  * @param[in] opts Options overriding default behavior of this call.
- * @return Error code (::SR_ERR_OK on success).
+ * @return Error code (::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if the whole edit was discarded).
  */
 int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts);
 
@@ -929,7 +929,7 @@ int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_op
  * to determine relative position, needed only if position argument is ::SR_MOVE_BEFORE or ::SR_MOVE_AFTER.
  * @param[in] origin Origin of the value, used only for ::SR_DS_OPERATIONAL edits.
  * @param[in] opts Options overriding default behavior of this call.
- * @return Error code (::SR_ERR_OK on success).
+ * @return Error code (::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if the whole edit was discarded).
  */
 int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position_t position, const char *list_keys,
         const char *leaflist_value, const char *origin, const sr_edit_options_t opts);

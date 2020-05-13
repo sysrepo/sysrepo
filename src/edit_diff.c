@@ -3364,10 +3364,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
 
     op = sr_edit_find_oper(node, 1, &own_oper);
     if (!op) {
-        parent = node;
-        while (parent->parent) {
-            parent = parent->parent;
-        }
+        for (parent = node; parent->parent; parent = parent->parent);
 
         /* add default operation if a new subtree was created */
         if ((parent != node) && ((err_info = sr_edit_set_oper(parent, def_operation)))) {
@@ -3378,7 +3375,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
             session->dt[session->ds].edit = parent;
         }
     } else {
-        assert(session->dt[session->ds].edit);
+        assert(session->dt[session->ds].edit && !isolate);
 
         /* update operations throughout the edit subtree */
         next_iter_oper = 0;
@@ -3510,16 +3507,21 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
 
 error:
     if (node) {
-        while (node->parent) {
-            node = node->parent;
+        if (isolate) {
+            /* free only the isolated subtree */
+            for (parent = node; parent->parent; parent = parent->parent);
+            if (session->dt[session->ds].edit == parent) {
+                session->dt[session->ds].edit = parent->next;
+            }
+            lyd_free(parent);
+        } else {
+            /* completely free the current edit because it was already modified */
+            lyd_free_withsiblings(session->dt[session->ds].edit);
+            session->dt[session->ds].edit = NULL;
+
+            sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, NULL, "Edit was discarded.");
         }
-        lyd_free(node);
     }
-    /* completely free the current edit */
-    if (node != session->dt[session->ds].edit) {
-        lyd_free_withsiblings(session->dt[session->ds].edit);
-    }
-    session->dt[session->ds].edit = NULL;
     return err_info;
 }
 
