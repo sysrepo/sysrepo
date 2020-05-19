@@ -512,7 +512,7 @@ test_remove_dep_module(void **state)
     int ret;
     uint32_t conn_count;
 
-    /* install modules with one dependeing on the other */
+    /* install modules with one depending on the other */
     ret = sr_install_module(st->conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0);
@@ -555,6 +555,54 @@ test_remove_dep_module(void **state)
 
     /* cleanup */
     ret = sr_remove_module(st->conn, "ops");
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+static void
+test_remove_imp_module(void **state)
+{
+    struct state *st = (struct state *)*state;
+    int ret;
+    uint32_t conn_count;
+
+    /* install modules with one importing the other */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/simple.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/simple-imp.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* remove module imported by the other module */
+    ret = sr_remove_module(st->conn, "simple");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* close connection so that changes are applied */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+
+    /* recreate connection, changes should be applied */
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    cmp_int_data(st->conn, "simple-imp",
+    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+        "<name>simple-imp</name>"
+    "</module>"
+    );
+
+    /* cleanup */
+    ret = sr_remove_module(st->conn, "simple-imp");
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -1468,6 +1516,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_inv_deps, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_remove_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_remove_dep_module, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_remove_imp_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_update_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_feature, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_replay_support, setup_f, teardown_f),

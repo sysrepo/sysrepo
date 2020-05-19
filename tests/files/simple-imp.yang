@@ -1,0 +1,12 @@
+module simple-imp {
+    namespace si;
+    prefix si;
+
+    import simple {
+        prefix s;
+    }
+
+    leaf l {
+        type string;
+    }
+}

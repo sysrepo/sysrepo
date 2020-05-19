@@ -1862,6 +1862,9 @@ sr_lydmods_sched_finalize_module_remove(struct lyd_node *sr_mod, const struct ly
                 break;
             }
         }
+        if (i < ly_mod->imp_size) {
+            break;
+        }
     }
     if (!ly_mod) {
         /* no module imports the removed one, remove the YANG as well */
