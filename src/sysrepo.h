@@ -1441,7 +1441,7 @@ void sr_free_change_iter(sr_change_iter_t *iter);
  * a deadlock and this callback timeout (unless ::SR_SUBSCR_UNLOCKED is used when subscribing).
  *
  * @param[in] session Implicit session (do not stop) with information about event originator session IDs.
- * @param[in] op_path Simple operation [path](@ref paths) identifying the RPC/action.
+ * @param[in] xpath Full operation [xpath](@ref paths) identifying the exact RPC/action executed.
  * @param[in] input Array of input parameters.
  * @param[in] input_cnt Number of input parameters.
  * @param[in] event Type of the callback event that has occurred.
@@ -1452,7 +1452,7 @@ void sr_free_change_iter(sr_change_iter_t *iter);
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_rpc_subscribe call.
  * @return User error code (::SR_ERR_OK on success).
  */
-typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *op_path, const sr_val_t *input, const size_t input_cnt,
+typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
         sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data);
 
 /**
@@ -1579,14 +1579,14 @@ typedef enum sr_ev_notif_type_e {
  *
  * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
  * @param[in] notif_type Type of the notification.
- * @param[in] path [Path](@ref paths) identifying the event notification.
+ * @param[in] xpath Full operation [xpath](@ref paths) identifying the exact notification executed.
  * @param[in] values Array of all nodes that hold some data in event notification subtree.
  * @param[in] values_cnt Number of items inside the values array.
  * @param[in] timestamp Time when the notification was generated
  * @param[in] private_data Private context opaque to sysrepo,
  * as passed to ::sr_event_notif_subscribe call.
  */
-typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const char *path,
+typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const char *xpath,
         const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data);
 
 /**

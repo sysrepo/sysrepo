@@ -2531,7 +2531,7 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *next, *elem;
     void *mem;
-    char buf[22], *val_str;
+    char buf[22], *val_str, *op_xpath = NULL;
     sr_val_t *input_vals = NULL, *output_vals = NULL;
     size_t i, input_val_count = 0, output_val_count = 0;
 
@@ -2556,6 +2556,10 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
             goto cleanup;
         }
     } else {
+        /* prepare XPath */
+        op_xpath = lyd_path(input_op);
+        SR_CHECK_INT_GOTO(!op_xpath, err_info, cleanup);
+
         /* prepare input for sr_val CB */
         input_vals = NULL;
         input_val_count = 0;
@@ -2582,7 +2586,7 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
         /* callback */
         output_vals = NULL;
         output_val_count = 0;
-        *err_code = rpc_sub->cb(tmp_sess, rpc_sub->xpath, input_vals, input_val_count, sr_ev2api(event), request_id,
+        *err_code = rpc_sub->cb(tmp_sess, op_xpath, input_vals, input_val_count, sr_ev2api(event), request_id,
                 &output_vals, &output_val_count, rpc_sub->private_data);
         if (*err_code) {
             goto cleanup;
@@ -2628,6 +2632,7 @@ fake_cb_error:
     err_info = NULL;
 
 cleanup:
+    free(op_xpath);
     sr_free_values(input_vals, input_val_count);
     sr_free_values(output_vals, output_val_count);
     if (*err_code && *output_op) {

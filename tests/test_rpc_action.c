@@ -35,6 +35,7 @@
 
 #include "tests/config.h"
 #include "sysrepo.h"
+#include "utils/values.h"
 
 struct state {
     sr_conn_ctx_t *conn;
@@ -398,7 +399,7 @@ test_rpc(void **state)
 
 /* TEST */
 static int
-rpc_action_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+rpc_action_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
         uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     struct lyd_node *node;
@@ -411,7 +412,7 @@ rpc_action_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_nod
     (void)request_id;
     (void)private_data;
 
-    if (!strcmp(xpath, "/ops:cont/list1/cont2/act1")) {
+    if (!strcmp(op_path, "/ops:cont/list1/cont2/act1")) {
         /* check input data */
         ret = lyd_print_mem(&str1, input, LYD_XML, LYP_WITHSIBLINGS);
         assert_int_equal(ret, 0);
@@ -422,7 +423,7 @@ rpc_action_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_nod
         /* create output data */
         node = lyd_new_path(output, NULL, "l9", "l12-val", 0, LYD_PATH_OPT_OUTPUT);
         assert_non_null(node);
-    } else if (!strcmp(xpath, "/ops:cont/list1/act2")) {
+    } else if (!strcmp(op_path, "/ops:cont/list1/act2")) {
         /* check input data */
         ret = lyd_print_mem(&str1, input, LYD_XML, LYP_WITHSIBLINGS);
         assert_int_equal(ret, 0);
@@ -523,7 +524,7 @@ test_action(void **state)
 
 /* TEST */
 static int
-rpc_action_pred_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+rpc_action_pred_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
         uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     char *str1;
@@ -536,14 +537,14 @@ rpc_action_pred_cb(sr_session_ctx_t *session, const char *xpath, const struct ly
     (void)output;
     (void)private_data;
 
-    if (!strcmp(xpath, "/ops:cont/list1[k='one' or k='two']/cont2/act1")) {
+    if (!strcmp(op_path, "/ops:cont/list1[k='one' or k='two']/cont2/act1")) {
         /* check input data */
         ret = lyd_print_mem(&str1, input, LYD_XML, LYP_WITHSIBLINGS);
         assert_int_equal(ret, 0);
         str2 = "<act1 xmlns=\"urn:ops\"><l6>val2</l6><l7>val2</l7></act1>";
         assert_string_equal(str1, str2);
         free(str1);
-    } else if (!strcmp(xpath, "/ops:cont/list1[k='three' or k='four']/cont2/act1")) {
+    } else if (!strcmp(op_path, "/ops:cont/list1[k='three' or k='four']/cont2/act1")) {
         /* check input data */
         ret = lyd_print_mem(&str1, input, LYD_XML, LYP_WITHSIBLINGS);
         assert_int_equal(ret, 0);
@@ -653,13 +654,13 @@ test_action_pred(void **state)
 
 /* TEST 5 */
 static int
-rpc_multi_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+rpc_multi_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
         uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
     (void)session;
-    (void)xpath;
+    (void)op_path;
     (void)input;
     (void)event;
     (void)request_id;
@@ -773,7 +774,7 @@ test_multi(void **state)
 
 /* TEST */
 static int
-rpc_multi_fail0_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+rpc_multi_fail0_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
         uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     struct state *st = (struct state *)private_data;
@@ -782,7 +783,7 @@ rpc_multi_fail0_cb(sr_session_ctx_t *session, const char *xpath, const struct ly
     int ret = SR_ERR_OK;
 
     (void)session;
-    (void)xpath;
+    (void)op_path;
     (void)input;
     (void)request_id;
 
@@ -813,7 +814,7 @@ rpc_multi_fail0_cb(sr_session_ctx_t *session, const char *xpath, const struct ly
 }
 
 static int
-rpc_multi_fail1_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+rpc_multi_fail1_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
         uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     struct state *st = (struct state *)private_data;
@@ -822,7 +823,7 @@ rpc_multi_fail1_cb(sr_session_ctx_t *session, const char *xpath, const struct ly
     int ret = SR_ERR_OK;
 
     (void)session;
-    (void)xpath;
+    (void)op_path;
     (void)input;
     (void)request_id;
 
@@ -864,7 +865,7 @@ rpc_multi_fail1_cb(sr_session_ctx_t *session, const char *xpath, const struct ly
 }
 
 static int
-rpc_multi_fail2_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+rpc_multi_fail2_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
         uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     struct state *st = (struct state *)private_data;
@@ -873,7 +874,7 @@ rpc_multi_fail2_cb(sr_session_ctx_t *session, const char *xpath, const struct ly
     int ret = SR_ERR_OK;
 
     (void)session;
-    (void)xpath;
+    (void)op_path;
     (void)input;
     (void)request_id;
 
@@ -1024,7 +1025,7 @@ test_multi_fail(void **state)
 
 /* TEST */
 static int
-rpc_unlocked_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+rpc_unlocked_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
         uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     struct state *st = (struct state *)private_data;
@@ -1034,7 +1035,7 @@ rpc_unlocked_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_n
     static int call_no = 1;
 
     (void)session;
-    (void)xpath;
+    (void)op_path;
     (void)input;
     (void)request_id;
 
@@ -1094,13 +1095,13 @@ test_unlocked(void **state)
 
 /* TEST */
 static int
-action_deps_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+action_deps_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
         uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
     (void)session;
-    (void)xpath;
+    (void)op_path;
     (void)input;
     (void)event;
     (void)request_id;
@@ -1189,17 +1190,18 @@ test_action_deps(void **state)
 
 /* TEST */
 static int
-action_change_config_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
-        uint32_t request_id, struct lyd_node *output, void *private_data)
+action_change_config_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
+        sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data)
 {
     struct state *st = (struct state *)private_data;
-    struct lyd_node *node;
     int ret;
 
-    (void)xpath;
     (void)input;
+    (void)input_cnt;
     (void)event;
     (void)request_id;
+
+    assert_string_equal(xpath, "/ops:cont/list1[k='val']/cont2/act1");
 
     /* change some running configuration */
     ret = sr_session_switch_ds(session, SR_DS_RUNNING);
@@ -1212,8 +1214,12 @@ action_change_config_cb(sr_session_ctx_t *session, const char *xpath, const stru
     ++st->cb_called;
 
     /* create some output data */
-    node = lyd_new_path(output, NULL, "l8", "/ops:cont", 0, LYD_PATH_OPT_OUTPUT);
-    assert_non_null(node);
+    sr_new_values(1, output);
+    *output_cnt = 1;
+    ret = sr_val_build_xpath(*output, "%s/l8", xpath);
+    assert_int_equal(ret, 0);
+    ret = sr_val_set_str_data(*output, SR_INSTANCEID_T, "/ops:cont");
+    assert_int_equal(ret, 0);
 
     return SR_ERR_OK;
 }
@@ -1227,7 +1233,7 @@ test_action_change_config(void **state)
     int ret;
 
     /* subscribe */
-    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1", action_change_config_cb, st, 0, 0, &subscr1);
+    ret = sr_rpc_subscribe(st->sess, "/ops:cont/list1/cont2/act1", action_change_config_cb, st, 0, 0, &subscr1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* create the data in running and subscribe to them */
@@ -1276,14 +1282,14 @@ test_action_change_config(void **state)
 
 /* TEST */
 static int
-rpc_shelve_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+rpc_shelve_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
         uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     struct lyd_node *node;
 
     (void)session;
-    (void)xpath;
+    (void)op_path;
     (void)input;
     (void)event;
     (void)request_id;
