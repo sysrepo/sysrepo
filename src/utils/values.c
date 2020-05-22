@@ -1,12 +1,9 @@
 /**
  * @file values.c
- * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>,
- *         Milan Lenco <milan.lenco@pantheon.tech>
- *         Michal Vasko <mvasko@cesnet.cz>
+ * @author Michal Vasko <mvasko@cesnet.cz>
  * @brief Functions for simplified manipulation with Sysrepo values.
  *
  * @copyright
- * Copyright 2016 Cisco Systems, Inc.
  * Copyright 2019 CESNET, z.s.p.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");

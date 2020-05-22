@@ -1,11 +1,9 @@
 /**
  * @file xpath.c
- * @author Rastislav Szabo <raszabo@cisco.com>, Lukas Macko <lmacko@cisco.com>
- *         Michal Vasko <mvasko@cesnet.cz>
+ * @author Michal Vasko <mvasko@cesnet.cz>
  * @brief Sysrepo xpath util functions.
  *
  * @copyright
- * Copyright 2016 Cisco Systems, Inc.
  * Copyright 2019 CESNET, z.s.p.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
