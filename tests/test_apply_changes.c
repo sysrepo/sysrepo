@@ -2597,6 +2597,60 @@ module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, c
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_non_null(old_val);
+        assert_null(new_val);
+        assert_int_equal(old_val->dflt, 1);
+        assert_string_equal(old_val->xpath, "/defaults:cont/time-of-day");
+
+        sr_free_val(old_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_non_null(old_val);
+        assert_null(new_val);
+        assert_int_equal(old_val->dflt, 0);
+        assert_string_equal(old_val->xpath, "/defaults:cont/daily");
+
+        sr_free_val(old_val);
+
+        /* 3rd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_int_equal(new_val->dflt, 1);
+        assert_string_equal(new_val->xpath, "/defaults:cont/interval");
+
+        sr_free_val(new_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    case 14:
+    case 15:
+        if (st->cb_called == 14) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/defaults:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
@@ -2683,9 +2737,9 @@ module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, c
 
         sr_free_change_iter(iter);
         break;
-    case 14:
-    case 15:
-        if (st->cb_called == 14) {
+    case 16:
+    case 17:
+        if (st->cb_called == 16) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -2797,9 +2851,9 @@ module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, c
 
         sr_free_change_iter(iter);
         break;
-    case 16:
-    case 17:
-        if (st->cb_called == 16) {
+    case 18:
+    case 19:
+        if (st->cb_called == 18) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -2913,9 +2967,9 @@ module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, c
 
         sr_free_change_iter(iter);
         break;
-    case 18:
-    case 19:
-        if (st->cb_called == 18) {
+    case 20:
+    case 21:
+        if (st->cb_called == 20) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -3007,10 +3061,10 @@ module_change_done_dflt_cb(sr_session_ctx_t *session, const char *module_name, c
 
         sr_free_change_iter(iter);
         break;
-    case 20:
-    case 21:
+    case 22:
+    case 23:
         /* cleanup */
-        if (st->cb_called == 20) {
+        if (st->cb_called == 22) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -3235,6 +3289,28 @@ apply_change_done_dflt_thread(void *arg)
     /*
      * perform 8th change
      *
+     * (remove explicit case node, the default one should also be removed and the default case created back)
+     */
+    ret = sr_delete_item(sess, "/defaults:cont/daily", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check current data tree */
+    ret = sr_get_data(sess, "/defaults:cont", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_string_equal(data->schema->name, "cont");
+    assert_string_equal(data->child->schema->name, "interval");
+    assert_int_equal(data->child->dflt, 1);
+    assert_null(data->child->next);
+
+    lyd_free_withsiblings(data);
+
+    /*
+     * perform 9th change
+     *
      * (add another list instance and get children, all default)
      */
     ret = sr_set_item_str(sess, "/defaults:l2[k='key']", NULL, NULL, 0);
@@ -3258,7 +3334,7 @@ apply_change_done_dflt_thread(void *arg)
     lyd_free_withsiblings(data);
 
     /*
-     * perform 9th change
+     * perform 10th change
      *
      * (create presence container with default leaf-lists)
      */
@@ -3300,7 +3376,7 @@ apply_change_done_dflt_thread(void *arg)
     lyd_free_withsiblings(data);
 
     /*
-     * perform 10th change
+     * perform 11th change
      *
      * (create explicit leaf-lists to delete the implicit ones and change union type)
      */
@@ -3344,7 +3420,7 @@ apply_change_done_dflt_thread(void *arg)
     lyd_free_withsiblings(data);
 
     /*
-     * perform 11th change
+     * perform 12th change
      *
      * (remove explicit leaf-lists to create the default ones)
      */
@@ -3420,11 +3496,11 @@ subscribe_change_done_dflt_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 22) && (count < 1500)) {
+    while ((st->cb_called < 24) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 22);
+    assert_int_equal(st->cb_called, 24);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);

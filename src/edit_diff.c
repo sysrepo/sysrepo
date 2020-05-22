@@ -1162,7 +1162,7 @@ sr_edit_apply_none(struct lyd_node *match_node, const struct lyd_node *edit_node
  *
  * @param[in,out] first_node First sibling of the data tree.
  * @param[in] parent_node Parent of the first sibling.
- * @param[in] match_node Matching data tree node.
+ * @param[in,out] match_node Matching data tree node, may be updated for auto-remove.
  * @param[in] diff_parent Current sysrepo diff parent.
  * @param[in,out] diff_root Sysrepo diff root node.
  * @param[out] diff_node Created diff node.
@@ -1172,27 +1172,53 @@ sr_edit_apply_none(struct lyd_node *match_node, const struct lyd_node *edit_node
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_apply_remove(struct lyd_node **first_node, struct lyd_node *parent_node, struct lyd_node *match_node,
+sr_edit_apply_remove(struct lyd_node **first_node, struct lyd_node *parent_node, struct lyd_node **match_node,
         struct lyd_node *diff_parent, struct lyd_node **diff_root, struct lyd_node **diff_node, enum edit_op *next_op,
         int *flags_r, int *change)
 {
-    struct lyd_node *parent;
     sr_error_info_t *err_info = NULL;
+    struct lyd_node *parent, *node;
+    const struct lys_node *scase;
 
     /* just use the value because it is only in an assert */
     (void)parent_node;
 
-    if (match_node) {
-        if ((match_node == *first_node) && !match_node->parent) {
+    if (*match_node) {
+        /* we are removing an explicit node under a case... */
+        if (!(*match_node)->dflt && lys_parent((*match_node)->schema)
+                && (lys_parent((*match_node)->schema)->nodetype == LYS_CASE)) {
+            scase = lys_parent((*match_node)->schema);
+            /* ...of a choice that has no default case or it is not this one... */
+            if (((struct lys_node_choice *)lys_parent(scase))->dflt != scase) {
+                /* ...and it is the only explicit node... */
+                LY_TREE_FOR(*first_node ? *first_node : sr_lyd_child(parent_node, 1), node) {
+                    if ((node != *match_node) && (lys_parent(node->schema) == scase) && !node->dflt) {
+                        break;
+                    }
+                }
+                if (!node) {
+                    /* ...so the whole case should be removed -> remove any existing default nodes from this case first */
+                    LY_TREE_FOR(*first_node ? *first_node : sr_lyd_child(parent_node, 1), node) {
+                        if (node->dflt && (lys_parent(node->schema) == scase)) {
+                            *match_node = node;
+                            *next_op = EDIT_AUTO_REMOVE;
+                            return NULL;
+                        }
+                    }
+                }
+            }
+        }
+
+        if ((*match_node == *first_node) && !(*match_node)->parent) {
             assert(!parent_node);
 
             /* we will unlink a top-level node */
             *first_node = (*first_node)->next;
         }
-        parent = match_node->parent;
+        parent = (*match_node)->parent;
 
         /* update diff, remove the whole subtree by relinking it to the diff */
-        if ((err_info = sr_edit_diff_add(match_node, NULL, NULL, EDIT_DELETE, 1, diff_parent, diff_root, diff_node))) {
+        if ((err_info = sr_edit_diff_add(*match_node, NULL, NULL, EDIT_DELETE, 1, diff_parent, diff_root, diff_node))) {
             return err_info;
         }
 
@@ -1674,7 +1700,7 @@ reapply:
             prev_op = next_op;
             /* fallthrough */
         case EDIT_REMOVE:
-            if ((err_info = sr_edit_apply_remove(first_node, parent_node, match, diff_parent, diff_root, &diff_node,
+            if ((err_info = sr_edit_apply_remove(first_node, parent_node, &match, diff_parent, diff_root, &diff_node,
                     &next_op, &flags, change))) {
                 goto op_error;
             }
