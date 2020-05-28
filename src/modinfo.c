@@ -1498,7 +1498,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     sr_datastore_t conf_ds;
 
     if (((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds2 == SR_DS_RUNNING)) && (conn->opts & SR_CONN_CACHE_RUNNING)) {
-        /* we are caching, so in all cases load the module into cache if not yet there */
+        /* we are caching running data we will use, so in all cases load the module into cache if not yet there */
         mod_cache = &conn->mod_cache;
         if ((err_info = sr_modcache_module_running_update(mod_cache, mod, NULL, mod_info->data_cached))) {
             return err_info;
@@ -1506,20 +1506,28 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     }
 
     if (!mod_info->data_cached) {
-        /* we cannot use cached data for this operation... */
+        /* we cannot use cached data directly for this operation... */
         if (mod_cache) {
             /* ...but they are cached */
+
+            /* CACHE READ LOCK */
+            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
+                return err_info;
+            }
+
             if (mod_info->ds == SR_DS_OPERATIONAL) {
                 /* copy only enabled module data */
-                if ((err_info = sr_module_oper_data_dup_enabled(mod_cache->data, conn->ext_shm.addr, mod, opts,
-                            &mod_data))) {
-                    return err_info;
-                }
+                err_info = sr_module_oper_data_dup_enabled(mod_cache->data, conn->ext_shm.addr, mod, opts, &mod_data);
             } else {
                 /* copy all module data */
-                if ((err_info = sr_module_data_dup(mod_cache->data, mod->ly_mod, &mod_data))) {
-                    return err_info;
-                }
+                err_info = sr_module_data_dup(mod_cache->data, mod->ly_mod, &mod_data);
+            }
+
+            /* CACHE READ UNLOCK */
+            sr_rwunlock(&mod_cache->lock, SR_LOCK_READ, __func__);
+
+            if (err_info) {
+                return err_info;
             }
             if (mod_info->data) {
                 sr_ly_link(mod_info->data, mod_data);
@@ -1957,8 +1965,8 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, uint8_t mod_type, int cache
 
     assert(!mod_info->data);
 
-    if (cache && (mod_info->conn->opts & SR_CONN_CACHE_RUNNING)
-            && ((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds2 == SR_DS_RUNNING))) {
+    /* we can use cache only if we are working with the running datastore (as the main datastore) */
+    if (cache && (mod_info->conn->opts & SR_CONN_CACHE_RUNNING) && (mod_info->ds == SR_DS_RUNNING)) {
         /* CACHE READ LOCK */
         if ((err_info = sr_rwlock(&mod_info->conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
             return err_info;

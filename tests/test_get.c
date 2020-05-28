@@ -107,6 +107,54 @@ teardown_f(void **state)
     return 0;
 }
 
+/* TEST */
+static void
+test_cached_datastore(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    int ret;
+
+    /* try to get RUNNING data */
+    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_non_null(data);
+    lyd_free_withsiblings(data);
+
+    /* try to get STARTUP data */
+    ret = sr_session_switch_ds(st->sess, SR_DS_STARTUP);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_non_null(data);
+    lyd_free_withsiblings(data);
+
+    /* try to get CANDIDATE data */
+    ret = sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_non_null(data);
+    lyd_free_withsiblings(data);
+
+    /* try to get OPERATIONAL data */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_non_null(data);
+    lyd_free_withsiblings(data);
+
+    /* switch DS back */
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+/* TEST */
 static int
 enable_cached_get_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
@@ -151,6 +199,7 @@ test_enable_cached_get(void **state)
     sr_unsubscribe(sub);
 }
 
+/* TEST */
 static void
 test_no_read_access(void **state)
 {
@@ -188,6 +237,7 @@ test_no_read_access(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
+/* TEST */
 static void
 test_explicit_default(void **state)
 {
@@ -236,6 +286,7 @@ int
 main(void)
 {
     const struct CMUnitTest tests[] = {
+        cmocka_unit_test_setup_teardown(test_cached_datastore, setup_cached_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_enable_cached_get, setup_cached_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_no_read_access, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_no_read_access, setup_cached_f, teardown_f),
