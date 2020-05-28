@@ -2557,14 +2557,14 @@ sr_get_trim_predicates(const char *expr, char **expr2)
         }
     }
 
-    /* copy last expr chunk */
-    strncat(str, start, ptr - start);
-
     if (quot || pred) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Unterminated %s in expression.", quot ? "literal" : "predicate");
         free(str);
         return err_info;
     }
+
+    /* copy last expr chunk */
+    strncat(str, start, ptr - start);
 
     *expr2 = str;
     return NULL;

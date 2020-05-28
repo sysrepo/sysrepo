@@ -177,7 +177,7 @@ test_fail(void **state)
     struct lyd_node *input, *output;
     int ret;
 
-    /* subscribe /*/
+    /* subscribe */
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:rpc1", rpc_fail_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1400,6 +1400,18 @@ test_rpc_shelve(void **state)
     pthread_join(tid[1], NULL);
 }
 
+static void
+test_input_parameters(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr;
+    int ret;
+
+    /* invalid xpath */
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[[k='one']/cont2/act1", rpc_action_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+}
+
 /* MAIN */
 int
 main(void)
@@ -1415,6 +1427,7 @@ main(void)
         cmocka_unit_test(test_action_deps),
         cmocka_unit_test_teardown(test_action_change_config, clear_ops),
         cmocka_unit_test(test_rpc_shelve),
+        cmocka_unit_test(test_input_parameters),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
