@@ -1497,7 +1497,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     struct lyd_node *mod_data;
     sr_datastore_t conf_ds;
 
-    if (((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds == SR_DS_OPERATIONAL)) && (conn->opts & SR_CONN_CACHE_RUNNING)) {
+    if (((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds2 == SR_DS_RUNNING)) && (conn->opts & SR_CONN_CACHE_RUNNING)) {
         /* we are caching, so in all cases load the module into cache if not yet there */
         mod_cache = &conn->mod_cache;
         if ((err_info = sr_modcache_module_running_update(mod_cache, mod, NULL, mod_info->data_cached))) {
@@ -1506,10 +1506,9 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     }
 
     if (!mod_info->data_cached) {
+        /* we cannot use cached data for this operation... */
         if (mod_cache) {
-            assert((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds == SR_DS_OPERATIONAL));
-
-            /* we are caching, copy module data from the cache and link it */
+            /* ...but they are cached */
             if (mod_info->ds == SR_DS_OPERATIONAL) {
                 /* copy only enabled module data */
                 if ((err_info = sr_module_oper_data_dup_enabled(mod_cache->data, conn->ext_shm.addr, mod, opts,
@@ -1528,12 +1527,13 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
                 mod_info->data = mod_data;
             }
         } else {
-            /* get current persistent data */
+            /* ...and they are not cached */
             if (mod_info->ds == SR_DS_OPERATIONAL) {
                 conf_ds = SR_DS_RUNNING;
             } else {
                 conf_ds = mod_info->ds;
             }
+            /* get current persistent data */
             if ((err_info = sr_module_file_data_append(mod->ly_mod, conf_ds, &mod_info->data))) {
                 return err_info;
             }
@@ -1576,9 +1576,9 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             sr_oper_data_trim_r(&mod_info->data, mod_info->data, opts);
         }
     } else {
+        /* we can use cached data and hence they must be cached */
         assert(mod_cache && SR_IS_CONVENTIONAL_DS(mod_info->ds));
 
-        /* just use cached data */
         mod_info->data = mod_cache->data;
     }
 
@@ -1957,7 +1957,8 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, uint8_t mod_type, int cache
 
     assert(!mod_info->data);
 
-    if (cache && (mod_info->conn->opts & SR_CONN_CACHE_RUNNING) && (mod_info->ds == SR_DS_RUNNING)) {
+    if (cache && (mod_info->conn->opts & SR_CONN_CACHE_RUNNING)
+            && ((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds2 == SR_DS_RUNNING))) {
         /* CACHE READ LOCK */
         if ((err_info = sr_rwlock(&mod_info->conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
             return err_info;
