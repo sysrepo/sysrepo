@@ -1405,11 +1405,148 @@ test_input_parameters(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_subscription_ctx_t *subscr;
+    struct lyd_node *input_op, *output_op;
     int ret;
 
     /* invalid xpath */
+    ret = sr_rpc_subscribe_tree(st->sess, NULL, rpc_action_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[[k='one']/cont2/act1", rpc_action_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='one']]/cont2/act1", rpc_action_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='one' or k=\"two']/cont2/act1", rpc_action_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    ret = sr_rpc_subscribe_tree(st->sess, "cont/list1[k='one']/cont2/act1", rpc_action_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    ret = sr_rpc_subscribe_tree(st->sess, "/cont/list1[k='one']/cont2/act1", rpc_action_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    ret = sr_rpc_subscribe_tree(st->sess, ":cont/list1[k='one']/cont2/act1", rpc_action_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    ret = sr_rpc_subscribe_tree(st->sess, "/1_ops:cont/list1[k='one']/cont2/act1", rpc_action_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops$:cont/list1[k='one']/cont2/act1", rpc_action_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    ret = sr_rpc_subscribe_tree(st->sess, "//ops:cont/list1[k='one']/cont2/act1", rpc_action_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_LY);
+
+    /* non-existing module in xpath */
+    ret = sr_rpc_subscribe_tree(st->sess, "/no-mod:cont/list1[k='one']/cont2/act1", rpc_action_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+    /* non-existing node in xpath */
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='one']/cont2/no-node", rpc_action_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_LY);
+
+    /* rpc or action node not in xpath */
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont", rpc_action_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    /* data tree must be created with the session connection libyang context */
+    struct ly_ctx *ctx = ly_ctx_new(TESTS_DIR"/files/", 0);
+    assert_non_null(ctx);
+    const struct lys_module *mod = lys_parse_path(ctx, TESTS_DIR"/files/simple.yang", LYS_IN_YANG);
+    assert_non_null(mod);
+    input_op = lyd_new_path(NULL, ctx, "/simple:ac1", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input_op);
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    lyd_free_withsiblings(input_op);
+    ly_ctx_destroy(ctx, NULL);
+
+    /* data tree not a valid RPC or action */
+    input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='key']/cont2", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input_op);
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    for(; input_op->parent; input_op = input_op->parent);
+    lyd_free_withsiblings(input_op);
+}
+
+/* test rpc/action subscription with no thread */
+static void
+test_rpc_action_with_no_thread(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr;
+    struct lyd_node *input_op, *output_op;
+    sr_val_t input, *output;
+    size_t output_count;
+    int ret;
+
+    /* rpc subscribe */
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc1", rpc_rpc_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc2", rpc_rpc_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc3", rpc_rpc_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some data needed for validation */
+    ret = sr_set_item_str(st->sess, "/ops-ref:l1", "l1-val", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ops-ref:l2", "l2-val", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create first RPC */
+    input.xpath = "/ops:rpc1/l1";
+    input.type = SR_STRING_T;
+    input.data.string_val = "l1-val";
+    input.dflt = 0;
+
+    /* subscribe to the data so they are actually present in operational */
+    ret = sr_module_change_subscribe(st->sess, "ops-ref", NULL, module_change_dummy_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* try to send first RPC, should succeed */
+    ret = sr_rpc_send(st->sess, "/ops:rpc1", &input, 1, 0, &output, &output_count);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* try to send second RPC, expect an error */
+    ret = sr_rpc_send(st->sess, "/ops:rpc2", NULL, 0, 0, &output, &output_count);
+    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+
+    /* try to send third RPC, expect an error */
+    ret = sr_rpc_send(st->sess, "/ops:rpc3", NULL, 0, 0, &output, &output_count);
+    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+
+    /* process events on rpc subscriptions with the flag is SR_SUBSCR_NO_THREAD */
+    ret = sr_process_events(subscr, st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_unsubscribe(subscr);
+
+    /* action subscribe */
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1", rpc_action_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some data needed for validation and executing the actions */
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to the data so they are actually present in operational */
+    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create first action */
+    input_op = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='key']/cont2/act1", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input_op);
+
+    /* send first action */
+    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
+    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+
+    /* process events on action subscriptions when the flag is SR_SUBSCR_NO_THREAD */
+    ret = sr_process_events(subscr, st->sess, 0);
+    for (;  input_op->parent; input_op = input_op->parent);
+    lyd_free_withsiblings(input_op);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_unsubscribe(subscr);
 }
 
 /* MAIN */
@@ -1428,6 +1565,7 @@ main(void)
         cmocka_unit_test_teardown(test_action_change_config, clear_ops),
         cmocka_unit_test(test_rpc_shelve),
         cmocka_unit_test(test_input_parameters),
+        cmocka_unit_test(test_rpc_action_with_no_thread),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
