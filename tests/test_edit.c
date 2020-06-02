@@ -967,7 +967,7 @@ test_mutiple_types(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/test-module:main/any-data", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(((struct lyd_node_leaf_list *)data)->value_str, "test");
+    assert_string_equal(((struct lyd_node_anydata *)data)->value.str, "test");
     lyd_free(data);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
