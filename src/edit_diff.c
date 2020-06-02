@@ -1759,8 +1759,12 @@ reapply:
     }
 
     if (flags & EDIT_APPLY_REPLACE_R) {
-        /* remove all children that are not in the edit, recursively */
+        /* remove all non-default children that are not in the edit, recursively */
         LY_TREE_FOR_SAFE(sr_lyd_child(match, 1), next, child) {
+            if (child->dflt) {
+                continue;
+            }
+
             if ((err_info = sr_edit_find(edit_node->child, child, EDIT_DELETE, 0, NULL, 0, &edit_match, NULL))) {
                 return err_info;
             }

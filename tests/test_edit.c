@@ -124,6 +124,7 @@ clear_test(void **state)
     sr_delete_item(st->sess, "/test:l1", 0);
     sr_delete_item(st->sess, "/test:ll1", 0);
     sr_delete_item(st->sess, "/test:cont", 0);
+    sr_delete_item(st->sess, "/test:l3", 0);
     sr_apply_changes(st->sess, 0, 0);
 
     return 0;
@@ -500,6 +501,51 @@ test_replace(void **state)
             "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
         "</interface>"
     "</interfaces>";
+
+    assert_string_equal(str, str2);
+    free(str);
+}
+
+static void
+test_replace_userord(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data, *edit;
+    char *str, *str2;
+    int ret;
+
+    /* create some data */
+    ret = sr_set_item_str(st->sess, "/test:l3[k='one']", NULL, NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* replace some data with a custom edit */
+    str2 =
+    "<l3 xmlns=\"urn:test\" xmlns:xc=\"urn:ietf:params:xml:ns:netconf:base:1.0\" xc:operation=\"replace\">"
+        "<k>one</k>"
+        "<ll3>3</ll3>"
+    "</l3>";
+    edit = lyd_parse_mem((struct ly_ctx *)sr_get_context(st->conn), str2, LYD_XML, LYD_OPT_EDIT);
+    assert_non_null(edit);
+    ret = sr_edit_batch(st->sess, edit, "merge");
+    lyd_free_withsiblings(edit);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check final datastore contents */
+    ret = sr_get_data(st->sess, "/test:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    lyd_print_mem(&str, data, LYD_XML, LYP_WITHSIBLINGS);
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<l3 xmlns=\"urn:test\">"
+        "<k>one</k>"
+        "<ll3>3</ll3>"
+    "</l3>";
 
     assert_string_equal(str, str2);
     free(str);
@@ -1056,6 +1102,7 @@ main(void)
         cmocka_unit_test_teardown(test_create2, clear_interfaces),
         cmocka_unit_test_teardown(test_move, clear_test),
         cmocka_unit_test_teardown(test_replace, clear_interfaces),
+        cmocka_unit_test_teardown(test_replace_userord, clear_test),
         cmocka_unit_test_teardown(test_isolate, clear_interfaces),
         cmocka_unit_test(test_purge),
         cmocka_unit_test(test_top_op),
