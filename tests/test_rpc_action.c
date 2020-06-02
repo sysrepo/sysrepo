@@ -652,7 +652,7 @@ test_action_pred(void **state)
     sr_unsubscribe(subscr);
 }
 
-/* TEST 5 */
+/* TEST */
 static int
 rpc_multi_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
         uint32_t request_id, struct lyd_node *output, void *private_data)
@@ -1463,12 +1463,12 @@ test_input_parameters(void **state)
     lyd_free_withsiblings(input_op);
 }
 
-/* test rpc/action subscription with no thread */
+/* TEST */
 static void
 test_rpc_action_with_no_thread(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr, *subscr2;
     struct lyd_node *input_op, *output_op;
     sr_val_t input, *output;
     size_t output_count;
@@ -1477,9 +1477,9 @@ test_rpc_action_with_no_thread(void **state)
     /* rpc subscribe */
     ret = sr_rpc_subscribe(st->sess, "/ops:rpc1", rpc_rpc_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe(st->sess, "/ops:rpc2", rpc_rpc_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &subscr);
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc2", rpc_rpc_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe(st->sess, "/ops:rpc3", rpc_rpc_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc3", rpc_rpc_cb, NULL, 0, SR_SUBSCR_NO_THREAD | SR_SUBSCR_CTX_REUSE, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation */
@@ -1497,7 +1497,8 @@ test_rpc_action_with_no_thread(void **state)
     input.dflt = 0;
 
     /* subscribe to the data so they are actually present in operational */
-    ret = sr_module_change_subscribe(st->sess, "ops-ref", NULL, module_change_dummy_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "ops-ref", NULL, module_change_dummy_cb, NULL, 0,
+            SR_SUBSCR_NO_THREAD | SR_SUBSCR_CTX_REUSE, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to send first RPC, should succeed */
@@ -1505,21 +1506,22 @@ test_rpc_action_with_no_thread(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to send second RPC, expect an error */
-    ret = sr_rpc_send(st->sess, "/ops:rpc2", NULL, 0, 0, &output, &output_count);
+    ret = sr_rpc_send(st->sess, "/ops:rpc2", NULL, 0, 50, &output, &output_count);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
 
     /* try to send third RPC, expect an error */
-    ret = sr_rpc_send(st->sess, "/ops:rpc3", NULL, 0, 0, &output, &output_count);
+    ret = sr_rpc_send(st->sess, "/ops:rpc3", NULL, 0, 50, &output, &output_count);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
 
     /* process events on rpc subscriptions with the flag is SR_SUBSCR_NO_THREAD */
-    ret = sr_process_events(subscr, st->sess, 0);
+    ret = sr_process_events(subscr2, st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr2);
 
     /* action subscribe */
-    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1", rpc_action_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &subscr);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1", rpc_action_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation and executing the actions */
@@ -1529,7 +1531,7 @@ test_rpc_action_with_no_thread(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to the data so they are actually present in operational */
-    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* create first action */
@@ -1537,16 +1539,16 @@ test_rpc_action_with_no_thread(void **state)
     assert_non_null(input_op);
 
     /* send first action */
-    ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
+    ret = sr_rpc_send_tree(st->sess, input_op, 50, &output_op);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
 
     /* process events on action subscriptions when the flag is SR_SUBSCR_NO_THREAD */
-    ret = sr_process_events(subscr, st->sess, 0);
-    for (;  input_op->parent; input_op = input_op->parent);
+    ret = sr_process_events(subscr2, st->sess, 0);
+    for (; input_op->parent; input_op = input_op->parent);
     lyd_free_withsiblings(input_op);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr2);
 }
 
 /* MAIN */
