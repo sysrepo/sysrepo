@@ -313,4 +313,4 @@ add_custom_target(sr_clean
 # uninstall
 add_custom_target(uninstall "${CMAKE_COMMAND}" -P "${CMAKE_MODULE_PATH}/uninstall.cmake")
 add_custom_target(uninstall_with_repo "${CMAKE_COMMAND}" -P "${CMAKE_MODULE_PATH}/uninstall.cmake"
-    COMMAND rm -rf ${REPOSITORY_LOC})
+    COMMAND rm -rf ${REPO_PATH})
