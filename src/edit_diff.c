@@ -3360,6 +3360,17 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         return NULL;
     }
 
+    /* check alllowed node types */
+    for (parent = node; parent; parent = parent->parent) {
+        if (parent->schema->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF)) {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "RPC/action/notification node \"%s\" cannot be created.",
+                           parent->schema->name);
+            /* no need to throw away the whole edit */
+            isolate = 1;
+            goto error;
+        }
+    }
+
     if (isolate) {
         for (parent = node; parent->parent; parent = parent->parent);
 
