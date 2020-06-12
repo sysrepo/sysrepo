@@ -1021,6 +1021,58 @@ test_notif_buffer(void **state)
     lyd_free_withsiblings(notif);
 }
 
+static void
+test_input_parameters(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr;
+    struct lyd_node *input;
+    int ret;
+
+    /* invalid xpath */
+    ret = sr_event_notif_subscribe(st->sess, "ops", "\\ops:notif3", 0, 0, notif_simple_cb, st, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_LY);
+
+    /* non-existing module in xpath */
+    ret = sr_event_notif_subscribe(st->sess, "no-mod", NULL, 0, 0, notif_simple_cb, st, 0,  &subscr);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+    /* invalid option(SR_SUBSCR_CTX_REUSE) when subscription NULL */
+    subscr = NULL;
+    ret = sr_event_notif_subscribe(st->sess, "ops", NULL, 0, 0, notif_simple_cb, st, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* non-existing notification in module */
+    ret = sr_event_notif_subscribe(st->sess, "test", NULL, 0, 0, notif_simple_cb, st, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+    /* non-existing notification node in xpath */
+    ret = sr_event_notif_subscribe(st->sess, "ops", "/ops:rpc1", 0, 0, notif_simple_cb, st, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    /* data tree must be created with the session connection libyang context */
+    struct ly_ctx *ctx = ly_ctx_new(TESTS_DIR"/files/", 0);
+    assert_non_null(ctx);
+    const struct lys_module *mod = lys_parse_path(ctx, TESTS_DIR"/files/simple.yang", LYS_IN_YANG);
+    assert_non_null(mod);
+    input = lyd_new_path(NULL, ctx, "/simple:ac1", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input);
+    ret = sr_event_notif_send_tree(st->sess, input);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    lyd_free_withsiblings(input);
+    ly_ctx_destroy(ctx, NULL);
+
+    /* data tree not a valid notification invovation */
+    input = lyd_new_path(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='key']/cont2", NULL, 0, LYD_PATH_OPT_NOPARENTRET);
+    assert_non_null(input);
+    ret = sr_event_notif_send_tree(st->sess, input);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    for(; input->parent; input = input->parent);
+    lyd_free_withsiblings(input);
+
+    sr_unsubscribe(subscr);
+}
+
 /* MAIN */
 int
 main(void)
@@ -1033,6 +1085,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_no_replay, clear_ops_notif, clear_ops),
         cmocka_unit_test_teardown(test_notif_config_change, clear_ops),
         cmocka_unit_test(test_notif_buffer),
+        cmocka_unit_test(test_input_parameters),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
