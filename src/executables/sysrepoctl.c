@@ -178,11 +178,12 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
 {
     struct list_item *cur_item;
     const struct lys_module *ly_mod;
+    const struct lys_submodule *ly_submod;
     struct lyd_node *module, *child;
     char *owner, *group;
     const char *str;
     int ret = SR_ERR_OK;
-    uint32_t i;
+    uint32_t i, j;
 
     LY_TREE_FOR(sr_data->child, module) {
         /* new module */
@@ -240,6 +241,11 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
             if (!ly_mod) {
                 return SR_ERR_INTERNAL;
             }
+            /* set empty revision if no specified */
+            if (!cur_item->revision) {
+                cur_item->revision = strdup("");
+            }
+
             for (i = 0; i < ly_mod->inc_size; ++i) {
                 str = ly_mod->inc[i].submodule->name;
                 cur_item->submodules = realloc(cur_item->submodules, strlen(cur_item->submodules) + 1 + strlen(str) + 1);
@@ -249,9 +255,12 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
                 strcat(cur_item->submodules, str);
             }
 
-            /* set empty revision if no specified */
-            if (!cur_item->revision) {
-                cur_item->revision = strdup("");
+            /* add all import modules of submodules as well */
+            for (i = 0; i < ly_mod->inc_size; ++i) {
+                ly_submod = ly_mod->inc[i].submodule;
+                for (j = 0; j < ly_submod->imp_size; ++j) {
+                    srctl_list_collect_import(ly_submod->imp[j].module, list, list_count);
+                }
             }
 
             /* add all import modules as well */
