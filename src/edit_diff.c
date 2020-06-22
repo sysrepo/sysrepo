@@ -2782,7 +2782,7 @@ sr_diff_mod_apply(const struct lyd_node *diff, const struct lys_module *ly_mod, 
         }
 
         /* apply relevant nodes from the diff datatree */
-        if ((err_info = sr_diff_apply_r(data, NULL, (struct lyd_node *)root, with_origin))) {
+        if ((err_info = sr_diff_apply_r(data, NULL, root, with_origin))) {
             return err_info;
         }
     }
