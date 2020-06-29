@@ -594,6 +594,11 @@ sr_notif_buf_thread(void *arg)
         /* MUTEX UNLOCK */
         pthread_mutex_unlock(&sess->notif_buf.lock.mutex);
 
+        /* SHM LOCK (remap lock needed) */
+        if ((err_info = sr_shmmain_lock_remap(sess->conn, SR_LOCK_READ, 0, __func__))) {
+            break;
+        }
+
         while (first) {
             /* find SHM mod */
             shm_mod = sr_shmmain_find_module(&sess->conn->main_shm, sess->conn->ext_shm.addr, first->notif_mod->name, 0);
@@ -613,6 +618,9 @@ sr_notif_buf_thread(void *arg)
             /* free prev */
             free(prev);
         }
+
+        /* SHM UNLOCK */
+        sr_shmmain_unlock(sess->conn, SR_LOCK_READ, 0, __func__);
     }
 
     sr_errinfo_free(&err_info);
