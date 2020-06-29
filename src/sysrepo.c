@@ -37,6 +37,7 @@
 
 #include <libyang/libyang.h>
 
+static sr_error_info_t *sr_session_notif_buf_stop(sr_session_ctx_t *session);
 static sr_error_info_t *_sr_session_stop(sr_session_ctx_t *session);
 static sr_error_info_t *_sr_unsubscribe(sr_subscription_ctx_t *subscription);
 
@@ -370,6 +371,12 @@ sr_disconnect(sr_conn_ctx_t *conn)
         return sr_api_ret(NULL, NULL);
     }
 
+    /* stop all session notification buffer threads, they use read lock so they need conn state in SHM */
+    for (i = 0; i < conn->session_count; ++i) {
+        tmp_err = sr_session_notif_buf_stop(conn->sessions[i]);
+        sr_errinfo_merge(&err_info, tmp_err);
+    }
+
     /* SHM LOCK (maybe unsubscribing, always writing into connections) */
     lock_err = sr_shmmain_lock_remap(conn, SR_LOCK_WRITE, 1, __func__);
     sr_errinfo_merge(&err_info, lock_err);
@@ -542,6 +549,42 @@ error:
 }
 
 /**
+ * @brief Stop session notif buffering thread.
+ *
+ * @param[in] session Session whose notif buf to stop.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_session_notif_buf_stop(sr_session_ctx_t *session)
+{
+    sr_error_info_t *err_info = NULL;
+    int ret;
+
+    if (!session->notif_buf.tid) {
+        return NULL;
+    }
+
+    /* signal the thread */
+    ATOMIC_STORE_RELAXED(session->notif_buf.thread_running, 0);
+
+    /* wake up the thread (by fake unlocking a read lock) */
+    ++session->notif_buf.lock.readers;
+    sr_rwunlock(&session->notif_buf.lock, SR_LOCK_READ, __func__);
+
+    /* join the thread, it will make sure all the buffered notifications are stored */
+    ret = pthread_join(session->notif_buf.tid, NULL);
+    if (ret) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Joining the notification buffer thread failed (%s).", strerror(ret));
+        return err_info;
+    }
+
+    session->notif_buf.tid = 0;
+    assert(!session->notif_buf.first);
+
+    return NULL;
+}
+
+/**
  * @brief Unlocked stop (free) a session.
  *
  * @param[in] session Session to stop.
@@ -552,7 +595,6 @@ _sr_session_stop(sr_session_ctx_t *session)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     uint32_t i;
-    int ret;
 
     /* subscriptions need to be freed before, with a WRITE lock */
     assert(!session->subscription_count && !session->subscriptions);
@@ -565,24 +607,7 @@ _sr_session_stop(sr_session_ctx_t *session)
     sr_shmmod_release_locks(session->conn, session->sid);
 
     /* stop notification buffering thread */
-    if (session->notif_buf.tid) {
-        /* signal the thread */
-        ATOMIC_STORE_RELAXED(session->notif_buf.thread_running, 0);
-
-        /* wake up the thread (by fake unlocking a read lock) */
-        ++session->notif_buf.lock.readers;
-        sr_rwunlock(&session->notif_buf.lock, SR_LOCK_READ, __func__);
-
-        if (!tmp_err) {
-            /* join the thread, it will make sure all the buffered notifications are stored */
-            ret = pthread_join(session->notif_buf.tid, NULL);
-            if (ret) {
-                sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Joining the notification buffer thread failed (%s).", strerror(ret));
-            }
-            assert(!session->notif_buf.first);
-        }
-        sr_errinfo_merge(&err_info, tmp_err);
-    }
+    sr_session_notif_buf_stop(session);
 
     /* free attributes */
     free(session->sid.user);
