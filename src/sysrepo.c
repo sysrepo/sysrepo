@@ -352,8 +352,20 @@ cleanup:
         sr_conn_free(conn);
         if (created) {
             /* remove any created SHM so it is not considered properly created */
-            shm_unlink(SR_MAIN_SHM);
-            shm_unlink(SR_EXT_SHM);
+            sr_error_info_t *tmp_err = NULL;
+            char *shm_name = NULL;
+            if ((tmp_err = sr_path_main_shm(&shm_name))) {
+                sr_errinfo_merge(&err_info, tmp_err);
+            } else {
+                shm_unlink(shm_name);
+                free(shm_name);
+            }
+            if ((tmp_err = sr_path_ext_shm(&shm_name))) {
+                sr_errinfo_merge(&err_info, tmp_err);
+            } else {
+                shm_unlink(shm_name);
+                free(shm_name);
+            }
         }
     } else {
         *conn_p = conn;
