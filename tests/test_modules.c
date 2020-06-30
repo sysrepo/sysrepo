@@ -721,33 +721,10 @@ test_change_feature(void **state)
     "</module>"
     );
 
-    /* enable feat3, its if-feature is disabled */
-    ret = sr_enable_module_feature(st->conn, "features", "feat3");
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* apply scheduled changes */
-    sr_disconnect(st->conn);
-    st->conn = NULL;
-    ret = sr_connection_count(&conn_count);
-    assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(conn_count, 0);
-    ret = sr_connect(0, &st->conn);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    cmp_int_data(st->conn, "features",
-    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
-        "<name>features</name>"
-        "<enabled-feature>feat1</enabled-feature>"
-        "<changed-feature>"
-            "<name>feat3</name>"
-            "<change>enable</change>"
-        "</changed-feature>"
-        "<data-deps><module>test</module></data-deps>"
-    "</module>"
-    );
-
-    /* enable feat2, now all the features should be possible to enable */
+    /* enable feat2 and feat3 */
     ret = sr_enable_module_feature(st->conn, "features", "feat2");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_enable_module_feature(st->conn, "features", "feat3");
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -784,35 +761,9 @@ test_change_feature(void **state)
     ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* disable feature, there are some dependent features enabled */
+    /* disable all features */
     ret = sr_disable_module_feature(st->conn, "features", "feat1");
     assert_int_equal(ret, SR_ERR_OK);
-
-    /* close connection (also frees session) so that changes are applied */
-    sr_disconnect(st->conn);
-    st->conn = NULL;
-    ret = sr_connection_count(&conn_count);
-    assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(conn_count, 0);
-    ret = sr_connect(0, &st->conn);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* still enabled */
-    cmp_int_data(st->conn, "features",
-    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
-        "<name>features</name>"
-        "<enabled-feature>feat1</enabled-feature>"
-        "<enabled-feature>feat2</enabled-feature>"
-        "<enabled-feature>feat3</enabled-feature>"
-        "<changed-feature>"
-            "<name>feat1</name>"
-            "<change>disable</change>"
-        "</changed-feature>"
-        "<data-deps><module>test</module></data-deps>"
-    "</module>"
-    );
-
-    /* disable all features */
     ret = sr_disable_module_feature(st->conn, "features", "feat2");
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_disable_module_feature(st->conn, "features", "feat3");
@@ -830,7 +781,7 @@ test_change_feature(void **state)
     ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* check that the feature was disabled and dependency removed */
+    /* check that the features were disabled and dependency removed */
     cmp_int_data(st->conn, "features",
     "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>features</name>"

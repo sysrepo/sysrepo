@@ -554,6 +554,10 @@ int sr_get_module_access(sr_conn_ctx_t *conn, const char *module_name, char **ow
 /**
  * @brief Enable a module feature. Deferred until there are no connections!
  *
+ * Note that no recursive if-feature checks are performed meaning the feature may
+ * still be effectively disabled in case some of its if-features are disabled.
+ * This can be checked using `sysrepoctl -l`.
+ *
  * Required WRITE access.
  *
  * @param[in] conn Connection to use.
@@ -565,6 +569,9 @@ int sr_enable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const
 
 /**
  * @brief Disable a module feature. Deferred until there are no connections!
+ *
+ * Note that this may effectively also disable any dependant features.
+ * This can be checked using `sysrepoctl -l`.
  *
  * Required WRITE access.
  *
