@@ -22,6 +22,7 @@
 #define _GNU_SOURCE
 #define _XOPEN_SOURCE 500 /* strdup */
 
+#include <assert.h>
 #include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -177,12 +178,12 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
         size_t *list_count)
 {
     struct list_item *cur_item;
-    const struct lys_module *ly_mod;
+    const struct lys_module *ly_mod = NULL;
     const struct lys_submodule *ly_submod;
     struct lyd_node *module, *child;
     char *owner, *group;
     const char *str;
-    int ret = SR_ERR_OK;
+    int ret = SR_ERR_OK, real_state;
     uint32_t i, j;
 
     LY_TREE_FOR(sr_data->child, module) {
@@ -198,15 +199,34 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
         cur_item->submodules = strdup("");
         cur_item->features = strdup("");
 
+        /* name and revision must be first */
+        child = module->child;
+        assert(!strcmp(child->schema->name, "name"));
+        str = ((struct lyd_node_leaf_list *)child)->value_str;
+        cur_item->name = strdup(str);
+
+        child = child->next;
+        if (!strcmp(child->schema->name, "revision")) {
+            str = ((struct lyd_node_leaf_list *)child)->value_str;
+            cur_item->revision = strdup(str);
+        }
+
+        /* get the module */
+        if (!strcmp(module->schema->name, "module")) {
+            ly_mod = ly_ctx_get_module(ly_ctx, cur_item->name, cur_item->revision, 1);
+            if (!ly_mod) {
+                return SR_ERR_INTERNAL;
+            }
+        }
+
+        /* set empty revision if no specified */
+        if (!cur_item->revision) {
+            cur_item->revision = strdup("");
+        }
+
         /* collect information from sysrepo data */
-        LY_TREE_FOR(module->child, child) {
-            if (!strcmp(child->schema->name, "name")) {
-                str = ((struct lyd_node_leaf_list *)child)->value_str;
-                cur_item->name = strdup(str);
-            } else if (!strcmp(child->schema->name, "revision")) {
-                str = ((struct lyd_node_leaf_list *)child)->value_str;
-                cur_item->revision = strdup(str);
-            } else if (!strcmp(child->schema->name, "replay-support")) {
+        LY_TREE_FOR(child, child) {
+            if (!strcmp(child->schema->name, "replay-support")) {
                 cur_item->replay = 1;
             } else if (!strcmp(child->schema->name, "removed")) {
                 cur_item->change_flag = "R";
@@ -214,11 +234,23 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
                 cur_item->change_flag = "U";
             } else if (!strcmp(child->schema->name, "enabled-feature")) {
                 str = ((struct lyd_node_leaf_list *)child)->value_str;
-                cur_item->features = realloc(cur_item->features, strlen(cur_item->features) + 1 + strlen(str) + 1);
+
+                if (ly_mod) {
+                    /* check the real state of the feature */
+                    real_state = lys_features_state(ly_mod, str);
+                } else {
+                    real_state = 1;
+                }
+
+                cur_item->features = realloc(cur_item->features, strlen(cur_item->features) + (real_state ? 0 : 1) + 1
+                        + strlen(str) + 1);
                 if (cur_item->features[0]) {
                     strcat(cur_item->features, " ");
                 }
                 strcat(cur_item->features, str);
+                if (!real_state) {
+                    strcat(cur_item->features, "!");
+                }
             } else if (!strcmp(child->schema->name, "changed-feature")) {
                 cur_item->feat_changes = 1;
             }
@@ -237,15 +269,6 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
             free(group);
 
             /* learn submodules */
-            ly_mod = ly_ctx_get_module(ly_ctx, cur_item->name, cur_item->revision, 1);
-            if (!ly_mod) {
-                return SR_ERR_INTERNAL;
-            }
-            /* set empty revision if no specified */
-            if (!cur_item->revision) {
-                cur_item->revision = strdup("");
-            }
-
             for (i = 0; i < ly_mod->inc_size; ++i) {
                 str = ly_mod->inc[i].submodule->name;
                 cur_item->submodules = realloc(cur_item->submodules, strlen(cur_item->submodules) + 1 + strlen(str) + 1);
@@ -371,7 +394,8 @@ srctl_list(sr_conn_ctx_t *conn)
     }
 
     /* print flag legend */
-    printf("\nFlags meaning: I - Installed/i - Imported; R - Replay support; N - New/X - Removed/U - Updated; F - Feature changes\n\n");
+    printf("\nFlags meaning: I - Installed/i - Imported; R - Replay support; N - New/X - Removed/U - Updated; F - Feature changes\n");
+    printf("Features: ! - Means that the feature is effectively disabled because of its false if-feature(s)\n\n");
 
 cleanup:
     lyd_free_withsiblings(data);
