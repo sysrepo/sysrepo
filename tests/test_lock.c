@@ -171,42 +171,6 @@ test_one_session(void **state)
     ret = sr_unlock(sess, "when1");
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* switch datastore to candidate */
-    ret = sr_session_switch_ds(sess, SR_DS_CANDIDATE);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* lock all modules */
-    ret = sr_lock(sess, NULL);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* modify candidate datastore */
-    ret = sr_set_item_str(sess, "/test:test-leaf", "1", NULL, SR_EDIT_DEFAULT);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* unlock all modules */
-    ret = sr_unlock(sess, NULL);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* lock all modules,not allow to lock */
-    ret = sr_lock(sess, NULL);
-    assert_int_equal(ret, SR_ERR_UNSUPPORTED);
-
-    /* copy config data to running from candidate datastore and reset candidate */
-    ret = sr_session_switch_ds(sess, SR_DS_RUNNING);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_copy_config(sess, NULL, SR_DS_CANDIDATE, 0, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* lock all modules */
-    ret = sr_lock(sess, NULL);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* unlock all modules */
-    ret = sr_unlock(sess, NULL);
-    assert_int_equal(ret, SR_ERR_OK);
-
     sr_session_stop(sess);
 }
 

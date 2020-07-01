@@ -648,6 +648,7 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid)
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
     struct sr_mod_lock_s *shm_lock;
+    struct sr_mod_info_s mod_info;
     uint32_t i;
 
     SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
@@ -656,8 +657,8 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid)
             if (shm_lock->sid.sr == sid.sr) {
                 if (shm_lock->write_locked) {
                     /* this should never happen, write lock is held during some API calls */
-                    sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Session %u (NC SID %u) was working with module \"%s\"!",
-                            sid.sr, sid.nc, conn->ext_shm.addr + shm_mod->name);
+                    sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Session %u (NC SID %u) was working with"
+                            " module \"%s\"!", sid.sr, sid.nc, conn->ext_shm.addr + shm_mod->name);
                     sr_errinfo_free(&err_info);
                     shm_lock->write_locked = 0;
                 }
@@ -666,6 +667,31 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid)
                     SR_ERRINFO_INT(&err_info);
                     sr_errinfo_free(&err_info);
                     continue;
+                }
+
+                if (i == SR_DS_CANDIDATE) {
+                    /* collect all modules */
+                    SR_MODINFO_INIT(mod_info, conn, i, i);
+                    if ((err_info = sr_shmmod_modinfo_collect_modules(&mod_info, NULL, 0))) {
+                        goto cleanup_modules;
+                    }
+
+                    /* MODULES WRITE LOCK */
+                    if ((err_info = sr_shmmod_modinfo_wrlock(&mod_info, sid))) {
+                        goto cleanup_modules;
+                    }
+
+                    /* reset candidate */
+                    if ((err_info = sr_modinfo_candidate_reset(&mod_info))) {
+                        goto cleanup_modules;
+                    }
+
+cleanup_modules:
+                    /* MODULES UNLOCK */
+                    sr_shmmod_modinfo_unlock(&mod_info, 0);
+
+                    sr_modinfo_free(&mod_info);
+                    sr_errinfo_free(&err_info);
                 }
 
                 /* unlock */
