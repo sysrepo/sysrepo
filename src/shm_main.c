@@ -1716,14 +1716,21 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
+    char *shm_name = NULL;
     int creat = 0;
     mode_t um;
 
+    err_info = sr_path_main_shm(&shm_name);
+    if (err_info) {
+        return err_info;
+    }
+
     /* try to open the shared memory */
-    shm->fd = shm_open(SR_MAIN_SHM, O_RDWR, SR_MAIN_SHM_PERM);
+    shm->fd = shm_open(shm_name, O_RDWR, SR_MAIN_SHM_PERM);
     if ((shm->fd == -1) && (errno == ENOENT)) {
         if (!created) {
             /* we do not want to create the memory now */
+            free(shm_name);
             return NULL;
         }
 
@@ -1731,10 +1738,11 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
         um = umask(00000);
 
         /* create shared memory */
-        shm->fd = shm_open(SR_MAIN_SHM, O_RDWR | O_CREAT | O_EXCL, SR_MAIN_SHM_PERM);
+        shm->fd = shm_open(shm_name, O_RDWR | O_CREAT | O_EXCL, SR_MAIN_SHM_PERM);
         umask(um);
         creat = 1;
     }
+    free(shm_name);
     if (shm->fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open shared memory (%s).", strerror(errno));
         goto error;
@@ -1783,12 +1791,19 @@ sr_error_info_t *
 sr_shmmain_ext_open(sr_shm_t *shm, int zero)
 {
     sr_error_info_t *err_info = NULL;
+    char *shm_name = NULL;
     mode_t um;
+
+    err_info = sr_path_ext_shm(&shm_name);
+    if (err_info) {
+        return err_info;
+    }
 
     /* set umask so that the correct permissions are really set */
     um = umask(00000);
 
-    shm->fd = shm_open(SR_EXT_SHM, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
+    shm->fd = shm_open(shm_name, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
+    free(shm_name);
     umask(um);
     if (shm->fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open ext shared memory (%s).", strerror(errno));

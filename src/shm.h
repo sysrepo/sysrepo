@@ -30,8 +30,6 @@
 
 #include "common.h"
 
-#define SR_MAIN_SHM "/sr_main"              /**< Main SHM name. */
-#define SR_EXT_SHM "/sr_ext"                /**< External SHM name. */
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
 #define SR_SHM_VER 1                        /**< Main and ext SHM version of their expected content structures. */
 
