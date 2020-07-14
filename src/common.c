@@ -2456,6 +2456,46 @@ sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func)
     pthread_mutex_unlock(&rwlock->mutex);
 }
 
+void
+sr_shmlock_update(sr_conn_shm_lock_t *shmlock, sr_lock_mode_t mode, int lock)
+{
+    if (lock) {
+        /* lock */
+        if (mode == SR_LOCK_READ) {
+            if (shmlock->mode == SR_LOCK_NONE) {
+                /* TODO all asserts are valid but since access to these locks is unprotected, they may fail at random
+                 * if the operations meet at changing rcount and mode */
+                //assert(!ATOMIC_LOAD_RELAXED(shmlock->rcount));
+                shmlock->mode = SR_LOCK_READ;
+            }
+            if (ATOMIC_INC_RELAXED(shmlock->rcount) == UINT8_MAX) {
+                assert(0);
+            }
+        } else {
+            //assert(shmlock->mode != SR_LOCK_WRITE);
+            shmlock->mode = SR_LOCK_WRITE;
+        }
+    } else {
+        /* unlock */
+        if (mode == SR_LOCK_READ) {
+            //assert(ATOMIC_LOAD_RELAXED(shmlock->rcount));
+            //assert(shmlock->mode != SR_LOCK_NONE);
+            if (ATOMIC_DEC_RELAXED(shmlock->rcount) == 0) {
+                assert(0);
+            } else if ((ATOMIC_LOAD_RELAXED(shmlock->rcount) == 0) && (shmlock->mode == SR_LOCK_READ)) {
+                shmlock->mode = SR_LOCK_NONE;
+            }
+        } else {
+            //assert(shmlock->mode == SR_LOCK_WRITE);
+            if (ATOMIC_LOAD_RELAXED(shmlock->rcount)) {
+                shmlock->mode = SR_LOCK_READ;
+            } else {
+                shmlock->mode = SR_LOCK_NONE;
+            }
+        }
+    }
+}
+
 void *
 sr_realloc(void *ptr, size_t size)
 {

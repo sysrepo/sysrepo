@@ -363,36 +363,7 @@ sr_shmmod_conn_lock_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_
 
     mod_locks = (sr_conn_shm_lock_t (*)[SR_DS_COUNT])(conn->ext_shm.addr + conn_s->mod_locks);
     shm_mod_idx = SR_SHM_MOD_IDX(shm_mod, conn->main_shm);
-    if (lock) {
-        /* lock */
-        if (mode == SR_LOCK_READ) {
-            if (mod_locks[shm_mod_idx][ds].mode == SR_LOCK_NONE) {
-                assert(!mod_locks[shm_mod_idx][ds].rcount);
-                mod_locks[shm_mod_idx][ds].mode = SR_LOCK_READ;
-            }
-            assert(mod_locks[shm_mod_idx][ds].rcount < UINT8_MAX);
-            ++mod_locks[shm_mod_idx][ds].rcount;
-        } else {
-            assert(mod_locks[shm_mod_idx][ds].mode != SR_LOCK_WRITE);
-            mod_locks[shm_mod_idx][ds].mode = SR_LOCK_WRITE;
-        }
-    } else {
-        /* unlock */
-        if (mode == SR_LOCK_READ) {
-            assert(mod_locks[shm_mod_idx][ds].rcount && (mod_locks[shm_mod_idx][ds].mode != SR_LOCK_NONE));
-            --mod_locks[shm_mod_idx][ds].rcount;
-            if (!mod_locks[shm_mod_idx][ds].rcount && (mod_locks[shm_mod_idx][ds].mode == SR_LOCK_READ)) {
-                mod_locks[shm_mod_idx][ds].mode = SR_LOCK_NONE;
-            }
-        } else {
-            assert(mod_locks[shm_mod_idx][ds].mode == SR_LOCK_WRITE);
-            if (mod_locks[shm_mod_idx][ds].rcount) {
-                mod_locks[shm_mod_idx][ds].mode = SR_LOCK_READ;
-            } else {
-                mod_locks[shm_mod_idx][ds].mode = SR_LOCK_NONE;
-            }
-        }
-    }
+    sr_shmlock_update(&mod_locks[shm_mod_idx][ds], mode, lock);
 
 cleanup:
     sr_errinfo_free(&err_info);
@@ -431,17 +402,19 @@ lock:
             shm_lock->write_locked = 1;
             shm_lock->sid = sid;
 
-            /* remember this lock in SHM (fake WRITE lock - write_locked is set to 1
-             * but actual module lock is only SR_LOCK_READ) */
-            sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_WRITE, 1);
-
             /* MOD WRITE UNLOCK */
             sr_rwunlock(&shm_lock->lock, SR_LOCK_WRITE, __func__);
 
             /* MOD READ LOCK */
             if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, SR_LOCK_READ, sid))) {
+                /* this lock should never fail because we are holding the (fake) write lock */
+                SR_ERRINFO_INT(&err_info);
                 return err_info;
             }
+
+            /* remember this lock in SHM (fake WRITE lock - write_locked is set to 1
+             * but actual module lock is only SR_LOCK_READ) */
+            sr_shmmod_conn_lock_update(mod_info->conn, mod->shm_mod, ds, SR_LOCK_WRITE, 1);
         }
 
         /* remember this lock in SHM (always have READ lock) */

@@ -1771,8 +1771,8 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
     } else {
         /* check versions  */
         if (main_shm->shm_ver != SR_SHM_VER) {
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Shared memory version mismatch (%u, expected %u).",
-                    main_shm->shm_ver, SR_SHM_VER);
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Shared memory version mismatch (%u, expected %u),"
+                          " remove the SHM to fix.", main_shm->shm_ver, SR_SHM_VER);
             goto error;
         }
     }
@@ -1883,32 +1883,7 @@ sr_shmmain_conn_lock_update(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lock)
     shm_conn = sr_shmmain_conn_find(conn->main_shm.addr, conn->ext_shm.addr, conn, getpid());
     SR_CHECK_INT_RET(!shm_conn, err_info);
 
-    if (lock) {
-        if (mode == SR_LOCK_READ) {
-            /* recursive read locks are supported */
-            assert(((shm_conn->main_lock.mode == SR_LOCK_NONE) && !shm_conn->main_lock.rcount)
-                || ((shm_conn->main_lock.mode == SR_LOCK_READ) && shm_conn->main_lock.rcount));
-            shm_conn->main_lock.mode = mode;
-            assert(shm_conn->main_lock.rcount < UINT8_MAX);
-            ++shm_conn->main_lock.rcount;
-        } else {
-            assert(shm_conn->main_lock.mode == SR_LOCK_NONE);
-            shm_conn->main_lock.mode = mode;
-        }
-    } else {
-        if (mode == SR_LOCK_READ) {
-            /* handle recursive read locks */
-            assert((shm_conn->main_lock.mode == mode) && shm_conn->main_lock.rcount);
-            --shm_conn->main_lock.rcount;
-            if (!shm_conn->main_lock.rcount) {
-                shm_conn->main_lock.mode = SR_LOCK_NONE;
-            }
-        } else {
-            assert(shm_conn->main_lock.mode == mode);
-            shm_conn->main_lock.mode = SR_LOCK_NONE;
-        }
-    }
-
+    sr_shmlock_update(&shm_conn->main_lock, mode, lock);
     return NULL;
 }
 

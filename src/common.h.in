@@ -1015,6 +1015,15 @@ sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t m
 void sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func);
 
 /**
+ * @brief Update lock state stored in SHM.
+ *
+ * @param[in] shmlock Lock in SHM to write to.
+ * @param[in] mode Whether the lock is read or write lock.
+ * @param[in] lock Whether it was locked or unlocked.
+ */
+void sr_shmlock_update(sr_conn_shm_lock_t *shmlock, sr_lock_mode_t mode, int lock);
+
+/**
  * @brief Wrapper to realloc() that frees memory on failure.
  *
  * @param[in] ptr Pointer to the current memory.
