@@ -37,6 +37,7 @@
 
 #include <libyang/libyang.h>
 
+static sr_error_info_t *sr_session_notif_buf_stop(sr_session_ctx_t *session);
 static sr_error_info_t *_sr_session_stop(sr_session_ctx_t *session);
 static sr_error_info_t *_sr_unsubscribe(sr_subscription_ctx_t *subscription);
 
@@ -351,8 +352,20 @@ cleanup:
         sr_conn_free(conn);
         if (created) {
             /* remove any created SHM so it is not considered properly created */
-            shm_unlink(SR_MAIN_SHM);
-            shm_unlink(SR_EXT_SHM);
+            sr_error_info_t *tmp_err = NULL;
+            char *shm_name = NULL;
+            if ((tmp_err = sr_path_main_shm(&shm_name))) {
+                sr_errinfo_merge(&err_info, tmp_err);
+            } else {
+                shm_unlink(shm_name);
+                free(shm_name);
+            }
+            if ((tmp_err = sr_path_ext_shm(&shm_name))) {
+                sr_errinfo_merge(&err_info, tmp_err);
+            } else {
+                shm_unlink(shm_name);
+                free(shm_name);
+            }
         }
     } else {
         *conn_p = conn;
@@ -368,6 +381,12 @@ sr_disconnect(sr_conn_ctx_t *conn)
 
     if (!conn) {
         return sr_api_ret(NULL, NULL);
+    }
+
+    /* stop all session notification buffer threads, they use read lock so they need conn state in SHM */
+    for (i = 0; i < conn->session_count; ++i) {
+        tmp_err = sr_session_notif_buf_stop(conn->sessions[i]);
+        sr_errinfo_merge(&err_info, tmp_err);
     }
 
     /* SHM LOCK (maybe unsubscribing, always writing into connections) */
@@ -542,6 +561,42 @@ error:
 }
 
 /**
+ * @brief Stop session notif buffering thread.
+ *
+ * @param[in] session Session whose notif buf to stop.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_session_notif_buf_stop(sr_session_ctx_t *session)
+{
+    sr_error_info_t *err_info = NULL;
+    int ret;
+
+    if (!session->notif_buf.tid) {
+        return NULL;
+    }
+
+    /* signal the thread */
+    ATOMIC_STORE_RELAXED(session->notif_buf.thread_running, 0);
+
+    /* wake up the thread (by fake unlocking a read lock) */
+    ++session->notif_buf.lock.readers;
+    sr_rwunlock(&session->notif_buf.lock, SR_LOCK_READ, __func__);
+
+    /* join the thread, it will make sure all the buffered notifications are stored */
+    ret = pthread_join(session->notif_buf.tid, NULL);
+    if (ret) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Joining the notification buffer thread failed (%s).", strerror(ret));
+        return err_info;
+    }
+
+    session->notif_buf.tid = 0;
+    assert(!session->notif_buf.first);
+
+    return NULL;
+}
+
+/**
  * @brief Unlocked stop (free) a session.
  *
  * @param[in] session Session to stop.
@@ -552,7 +607,6 @@ _sr_session_stop(sr_session_ctx_t *session)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     uint32_t i;
-    int ret;
 
     /* subscriptions need to be freed before, with a WRITE lock */
     assert(!session->subscription_count && !session->subscriptions);
@@ -565,24 +619,7 @@ _sr_session_stop(sr_session_ctx_t *session)
     sr_shmmod_release_locks(session->conn, session->sid);
 
     /* stop notification buffering thread */
-    if (session->notif_buf.tid) {
-        /* signal the thread */
-        ATOMIC_STORE_RELAXED(session->notif_buf.thread_running, 0);
-
-        /* wake up the thread (by fake unlocking a read lock) */
-        ++session->notif_buf.lock.readers;
-        sr_rwunlock(&session->notif_buf.lock, SR_LOCK_READ, __func__);
-
-        if (!tmp_err) {
-            /* join the thread, it will make sure all the buffered notifications are stored */
-            ret = pthread_join(session->notif_buf.tid, NULL);
-            if (ret) {
-                sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Joining the notification buffer thread failed (%s).", strerror(ret));
-            }
-            assert(!session->notif_buf.first);
-        }
-        sr_errinfo_merge(&err_info, tmp_err);
-    }
+    sr_session_notif_buf_stop(session);
 
     /* free attributes */
     free(session->sid.user);
@@ -2610,29 +2647,29 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
         goto cleanup_shm_unlock;
     }
 
+    if ((src_datastore == SR_DS_RUNNING) && (session->ds == SR_DS_CANDIDATE)) {
+        /* MODULES WRITE LOCK */
+        if ((err_info = sr_shmmod_modinfo_wrlock(&mod_info, session->sid))) {
+            goto cleanup_shm_unlock;
+        }
+
+        /* special case, just reset candidate */
+        err_info = sr_modinfo_candidate_reset(&mod_info);
+        goto cleanup_modules_unlock;
+    }
+
     /* MODULES READ LOCK */
     if ((err_info = sr_shmmod_modinfo_rdlock(&mod_info, 0, session->sid))) {
         goto cleanup_shm_unlock;
     }
 
-    if ((src_datastore == SR_DS_RUNNING) && (session->ds == SR_DS_CANDIDATE)) {
-        /* special case, just reset candidate */
-        err_info = sr_modinfo_candidate_reset(&mod_info);
-
-        /* MODULES UNLOCK */
-        sr_shmmod_modinfo_unlock(&mod_info, 0);
-        goto cleanup_shm_unlock;
-    }
-
     /* get their data */
-    err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 0, NULL, NULL, 0, 0, NULL);
+    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_REQ, 0, NULL, NULL, 0, 0, NULL))) {
+        goto cleanup_modules_unlock;
+    }
 
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info, 0);
-
-    if (err_info) {
-        goto cleanup_shm_unlock;
-    }
 
     /* replace the data */
     if ((err_info = _sr_replace_config(session, ly_mod, &mod_info.data, timeout_ms, wait))) {
@@ -2640,13 +2677,22 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
     }
 
     if ((src_datastore == SR_DS_CANDIDATE) && (session->ds == SR_DS_RUNNING)) {
-        /* reset candidate after it was applied in running */
-        if ((err_info = sr_modinfo_candidate_reset(&mod_info))) {
+        /* MODULES WRITE LOCK */
+        if ((err_info = sr_shmmod_modinfo_wrlock(&mod_info, session->sid))) {
             goto cleanup_shm_unlock;
         }
+
+        /* reset candidate after it was applied in running */
+        err_info = sr_modinfo_candidate_reset(&mod_info);
+        goto cleanup_modules_unlock;
+    } else {
+        /* success */
+        goto cleanup_shm_unlock;
     }
 
-    /* success */
+cleanup_modules_unlock:
+    /* MODULES UNLOCK */
+    sr_shmmod_modinfo_unlock(&mod_info, 0);
 
 cleanup_shm_unlock:
     /* SHM UNLOCK */
@@ -2786,6 +2832,18 @@ _sr_un_lock(sr_session_ctx_t *session, const char *module_name, int lock)
     /* DS-(un)lock them */
     if ((err_info = sr_change_dslock(&mod_info, lock, session->sid))) {
         goto cleanup_mods_unlock;
+    }
+
+    /* candidate datastore unlocked, reset its state */
+    if (!lock && (mod_info.ds == SR_DS_CANDIDATE)) {
+        /* MODULES WRITE LOCK (upgrade) */
+        if ((err_info = sr_shmmod_modinfo_rdlock_upgrade(&mod_info, session->sid))) {
+            goto cleanup_mods_unlock;
+        }
+
+        if ((err_info = sr_modinfo_candidate_reset(&mod_info))) {
+            goto cleanup_mods_unlock;
+        }
     }
 
     /* success */

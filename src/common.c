@@ -1418,16 +1418,78 @@ sr_create_module_imps_incs_r(const struct lys_module *ly_mod)
     return NULL;
 }
 
+static sr_error_info_t *
+sr_shm_prefix(const char **prefix)
+{
+    sr_error_info_t *err_info = NULL;
+
+    *prefix = getenv(SR_SHM_PREFIX_ENV);
+    if (*prefix == NULL) {
+        *prefix = SR_SHM_PREFIX_DEFAULT;
+    } else if (strchr(*prefix, '/') != NULL) {
+        *prefix = NULL;
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "%s cannot contain slashes.", SR_SHM_PREFIX_ENV);
+    }
+
+    return err_info;
+}
+
+sr_error_info_t *
+sr_path_main_shm(char **path)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *prefix;
+
+    err_info = sr_shm_prefix(&prefix);
+    if (err_info) {
+        return err_info;
+    }
+
+    if (asprintf(path, "/%s_main", prefix) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        *path = NULL;
+    }
+
+    return err_info;
+}
+
+sr_error_info_t *
+sr_path_ext_shm(char **path)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *prefix;
+
+    err_info = sr_shm_prefix(&prefix);
+    if (err_info) {
+        return err_info;
+    }
+
+    if (asprintf(path, "/%s_ext", prefix) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        *path = NULL;
+    }
+
+    return err_info;
+}
+
 sr_error_info_t *
 sr_path_sub_shm(const char *mod_name, const char *suffix1, int64_t suffix2, int abs_path, char **path)
 {
     sr_error_info_t *err_info = NULL;
+    const char *prefix;
     int ret;
 
+    err_info = sr_shm_prefix(&prefix);
+    if (err_info) {
+        return err_info;
+    }
+
     if (suffix2 > -1) {
-        ret = asprintf(path, "%s/srsub_%s.%s.%08x", abs_path ? SR_SHM_DIR : "", mod_name, suffix1, (uint32_t)suffix2);
+        ret = asprintf(path, "%s/%ssub_%s.%s.%08x", abs_path ? SR_SHM_DIR : "",
+                prefix, mod_name, suffix1, (uint32_t)suffix2);
     } else {
-        ret = asprintf(path, "%s/srsub_%s.%s", abs_path ? SR_SHM_DIR : "", mod_name, suffix1);
+        ret = asprintf(path, "%s/%ssub_%s.%s", abs_path ? SR_SHM_DIR : "",
+                prefix, mod_name, suffix1);
     }
 
     if (ret == -1) {
@@ -1440,11 +1502,18 @@ sr_error_info_t *
 sr_path_ds_shm(const char *mod_name, sr_datastore_t ds, int abs_path, char **path)
 {
     sr_error_info_t *err_info = NULL;
+    const char *prefix;
     int ret;
 
     assert((ds == SR_DS_RUNNING) || (ds == SR_DS_CANDIDATE) || (ds == SR_DS_OPERATIONAL));
 
-    ret = asprintf(path, "%s/sr_%s.%s", abs_path ? SR_SHM_DIR : "", mod_name, sr_ds2str(ds));
+    err_info = sr_shm_prefix(&prefix);
+    if (err_info) {
+        return err_info;
+    }
+
+    ret = asprintf(path, "%s/%s_%s.%s", abs_path ? SR_SHM_DIR : "",
+            prefix, mod_name, sr_ds2str(ds));
     if (ret == -1) {
         *path = NULL;
         SR_ERRINFO_MEM(&err_info);

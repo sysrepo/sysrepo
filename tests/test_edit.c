@@ -73,7 +73,13 @@ setup_f(void **state)
         return 1;
     }
     if (sr_install_module(st->conn, TESTS_DIR "/files/test-module.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
-       return 1;
+        return 1;
+    }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
     }
     sr_disconnect(st->conn);
 
@@ -99,6 +105,8 @@ teardown_f(void **state)
     sr_remove_module(st->conn, "test");
     sr_remove_module(st->conn, "test-module");
     sr_remove_module(st->conn, "referenced-data");
+    sr_remove_module(st->conn, "ops");
+    sr_remove_module(st->conn, "ops-ref");
 
     sr_disconnect(st->conn);
     free(st);
@@ -1092,6 +1100,66 @@ test_mutiple_types(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
+/* rpc/action/notification node not allowed to be edited */
+static void
+test_edit_forbid_node_types(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *subtree;
+    char *str;
+    const char *str2;
+    int ret;
+
+    /* set some data needed for validation */
+    ret=sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* rpc node cannot be created */
+    ret = sr_set_item_str(st->sess, "/ops:rpc3/l4", "val", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_subtree(st->sess, "/ops:rpc3/l4", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_null(subtree);
+
+    /* action node cannot be created */
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='k']/cont2/act1/l6", "val", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_subtree(st->sess, "/ops:cont/list1[k='k']/cont2/act1/l6", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_null(subtree);
+
+    /* notification node cannot be created */
+    ret = sr_set_item_str(st->sess, "/ops:notif3/list2[k='k']", NULL, NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_subtree(st->sess, "/ops:notif3/list2[k='k']", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_null(subtree);
+
+    /* not throw away the whole edit, the successfully created node still exists */
+    ret = sr_get_subtree(st->sess, "/ops:cont", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_print_mem(&str, subtree, LYD_XML, LYP_WITHSIBLINGS);
+
+    str2 =
+    "<cont xmlns=\"urn:ops\">"
+        "<list1>"
+            "<k>key</k>"
+        "</list1>"
+    "</cont>";
+
+    assert_string_equal(str, str2);
+    lyd_free(subtree);
+    free(str);
+}
+
 int
 main(void)
 {
@@ -1109,6 +1177,7 @@ main(void)
         cmocka_unit_test_teardown(test_union, clear_test),
         cmocka_unit_test(test_decimal64),
         cmocka_unit_test(test_mutiple_types),
+        cmocka_unit_test(test_edit_forbid_node_types),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

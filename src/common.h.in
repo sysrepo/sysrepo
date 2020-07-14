@@ -131,6 +131,12 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** where SHM files are stored */
 #define SR_SHM_DIR "/dev/shm"
 
+/** default prefix for SHM files in /dev/shm */
+#define SR_SHM_PREFIX_DEFAULT "sr"
+
+/** environment variable for setting a custom prefix for SHM files */
+#define SR_SHM_PREFIX_ENV "SYSREPO_SHM_PREFIX"
+
 /** all ext SHM item sizes will be aligned to this number (B) */
 #define SR_SHM_MEM_ALIGN (sizeof(void *))
 
@@ -689,6 +695,22 @@ sr_error_info_t *sr_create_startup_file(const struct lys_module *ly_mod);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_create_module_imps_incs_r(const struct lys_module *ly_mod);
+
+/**
+ * @brief Get the path the main SHM.
+ *
+ * @param[out] path Created path. Should be freed by the caller.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_path_main_shm(char **path);
+
+/**
+ * @brief Get the path the external SHM.
+ *
+ * @param[out] path Created path. Should be freed by the caller.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_path_ext_shm(char **path);
 
 /**
  * @brief Get the path to a subscription SHM.

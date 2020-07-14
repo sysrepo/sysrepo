@@ -721,33 +721,10 @@ test_change_feature(void **state)
     "</module>"
     );
 
-    /* enable feat3, its if-feature is disabled */
-    ret = sr_enable_module_feature(st->conn, "features", "feat3");
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* apply scheduled changes */
-    sr_disconnect(st->conn);
-    st->conn = NULL;
-    ret = sr_connection_count(&conn_count);
-    assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(conn_count, 0);
-    ret = sr_connect(0, &st->conn);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    cmp_int_data(st->conn, "features",
-    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
-        "<name>features</name>"
-        "<enabled-feature>feat1</enabled-feature>"
-        "<changed-feature>"
-            "<name>feat3</name>"
-            "<change>enable</change>"
-        "</changed-feature>"
-        "<data-deps><module>test</module></data-deps>"
-    "</module>"
-    );
-
-    /* enable feat2, now all the features should be possible to enable */
+    /* enable feat2 and feat3 */
     ret = sr_enable_module_feature(st->conn, "features", "feat2");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_enable_module_feature(st->conn, "features", "feat3");
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -784,35 +761,9 @@ test_change_feature(void **state)
     ret = sr_apply_changes(sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* disable feature, there are some dependent features enabled */
+    /* disable all features */
     ret = sr_disable_module_feature(st->conn, "features", "feat1");
     assert_int_equal(ret, SR_ERR_OK);
-
-    /* close connection (also frees session) so that changes are applied */
-    sr_disconnect(st->conn);
-    st->conn = NULL;
-    ret = sr_connection_count(&conn_count);
-    assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(conn_count, 0);
-    ret = sr_connect(0, &st->conn);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* still enabled */
-    cmp_int_data(st->conn, "features",
-    "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
-        "<name>features</name>"
-        "<enabled-feature>feat1</enabled-feature>"
-        "<enabled-feature>feat2</enabled-feature>"
-        "<enabled-feature>feat3</enabled-feature>"
-        "<changed-feature>"
-            "<name>feat1</name>"
-            "<change>disable</change>"
-        "</changed-feature>"
-        "<data-deps><module>test</module></data-deps>"
-    "</module>"
-    );
-
-    /* disable all features */
     ret = sr_disable_module_feature(st->conn, "features", "feat2");
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_disable_module_feature(st->conn, "features", "feat3");
@@ -830,7 +781,7 @@ test_change_feature(void **state)
     ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* check that the feature was disabled and dependency removed */
+    /* check that the features were disabled and dependency removed */
     cmp_int_data(st->conn, "features",
     "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>features</name>"
@@ -1506,6 +1457,73 @@ test_get_module_info(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
+static void
+test_feature_dependencies_across_modules(void **state)
+{
+    struct state *st = (struct state *)*state;
+    int ret;
+    uint32_t conn_count;
+
+    /* install modules */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/feature-deps.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/feature-deps2.yang", TESTS_DIR "/files", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(SR_CONN_ERR_ON_SCHED_FAIL, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* enable independent feature */
+    ret = sr_enable_module_feature(st->conn, "feature-deps2", "featx");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(SR_CONN_ERR_ON_SCHED_FAIL, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* enable dependent features */
+    ret = sr_enable_module_feature(st->conn, "feature-deps", "feat1");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_enable_module_feature(st->conn, "feature-deps", "feat2");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_enable_module_feature(st->conn, "feature-deps", "feat3");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(SR_CONN_ERR_ON_SCHED_FAIL, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check if modules can be loaded again */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_remove_module(st->conn, "feature-deps");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "feature-deps2");
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 int
 main(void)
 {
@@ -1526,6 +1544,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_set_module_access, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_get_module_access, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_get_module_info, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_feature_dependencies_across_modules, setup_f, teardown_f),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
