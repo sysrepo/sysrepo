@@ -170,6 +170,8 @@ linker. To help with setting all the compiler's options, there is `sysrepo.pc` f
 ### Used run-time enviromental variables
 
 It is possible to change the repository path by setting `SYSREPO_REPOSITORY_PATH` variable.
+Also, if `SYSREPO_SHM_PREFIX` is defined, it is used for all SHM files created. This way
+everal *sysrepo* instances can effectively be run simultanously on one machine.
 
 ## Examples
 

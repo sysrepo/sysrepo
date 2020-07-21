@@ -1716,14 +1716,21 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
+    char *shm_name = NULL;
     int creat = 0;
     mode_t um;
 
+    err_info = sr_path_main_shm(&shm_name);
+    if (err_info) {
+        return err_info;
+    }
+
     /* try to open the shared memory */
-    shm->fd = shm_open(SR_MAIN_SHM, O_RDWR, SR_MAIN_SHM_PERM);
+    shm->fd = shm_open(shm_name, O_RDWR, SR_MAIN_SHM_PERM);
     if ((shm->fd == -1) && (errno == ENOENT)) {
         if (!created) {
             /* we do not want to create the memory now */
+            free(shm_name);
             return NULL;
         }
 
@@ -1731,10 +1738,11 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
         um = umask(00000);
 
         /* create shared memory */
-        shm->fd = shm_open(SR_MAIN_SHM, O_RDWR | O_CREAT | O_EXCL, SR_MAIN_SHM_PERM);
+        shm->fd = shm_open(shm_name, O_RDWR | O_CREAT | O_EXCL, SR_MAIN_SHM_PERM);
         umask(um);
         creat = 1;
     }
+    free(shm_name);
     if (shm->fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open shared memory (%s).", strerror(errno));
         goto error;
@@ -1763,8 +1771,8 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
     } else {
         /* check versions  */
         if (main_shm->shm_ver != SR_SHM_VER) {
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Shared memory version mismatch (%u, expected %u).",
-                    main_shm->shm_ver, SR_SHM_VER);
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Shared memory version mismatch (%u, expected %u),"
+                          " remove the SHM to fix.", main_shm->shm_ver, SR_SHM_VER);
             goto error;
         }
     }
@@ -1783,12 +1791,19 @@ sr_error_info_t *
 sr_shmmain_ext_open(sr_shm_t *shm, int zero)
 {
     sr_error_info_t *err_info = NULL;
+    char *shm_name = NULL;
     mode_t um;
+
+    err_info = sr_path_ext_shm(&shm_name);
+    if (err_info) {
+        return err_info;
+    }
 
     /* set umask so that the correct permissions are really set */
     um = umask(00000);
 
-    shm->fd = shm_open(SR_EXT_SHM, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
+    shm->fd = shm_open(shm_name, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
+    free(shm_name);
     umask(um);
     if (shm->fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open ext shared memory (%s).", strerror(errno));
@@ -1868,32 +1883,7 @@ sr_shmmain_conn_lock_update(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lock)
     shm_conn = sr_shmmain_conn_find(conn->main_shm.addr, conn->ext_shm.addr, conn, getpid());
     SR_CHECK_INT_RET(!shm_conn, err_info);
 
-    if (lock) {
-        if (mode == SR_LOCK_READ) {
-            /* recursive read locks are supported */
-            assert(((shm_conn->main_lock.mode == SR_LOCK_NONE) && !shm_conn->main_lock.rcount)
-                || ((shm_conn->main_lock.mode == SR_LOCK_READ) && shm_conn->main_lock.rcount));
-            shm_conn->main_lock.mode = mode;
-            assert(shm_conn->main_lock.rcount < UINT8_MAX);
-            ++shm_conn->main_lock.rcount;
-        } else {
-            assert(shm_conn->main_lock.mode == SR_LOCK_NONE);
-            shm_conn->main_lock.mode = mode;
-        }
-    } else {
-        if (mode == SR_LOCK_READ) {
-            /* handle recursive read locks */
-            assert((shm_conn->main_lock.mode == mode) && shm_conn->main_lock.rcount);
-            --shm_conn->main_lock.rcount;
-            if (!shm_conn->main_lock.rcount) {
-                shm_conn->main_lock.mode = SR_LOCK_NONE;
-            }
-        } else {
-            assert(shm_conn->main_lock.mode == mode);
-            shm_conn->main_lock.mode = SR_LOCK_NONE;
-        }
-    }
-
+    sr_shmlock_update(&shm_conn->main_lock, mode, lock);
     return NULL;
 }
 

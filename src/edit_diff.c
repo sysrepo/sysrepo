@@ -2782,7 +2782,7 @@ sr_diff_mod_apply(const struct lyd_node *diff, const struct lys_module *ly_mod, 
         }
 
         /* apply relevant nodes from the diff datatree */
-        if ((err_info = sr_diff_apply_r(data, NULL, (struct lyd_node *)root, with_origin))) {
+        if ((err_info = sr_diff_apply_r(data, NULL, root, with_origin))) {
             return err_info;
         }
     }
@@ -3358,6 +3358,17 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         }
         /* node with the same operation already exists, silently ignore */
         return NULL;
+    }
+
+    /* check alllowed node types */
+    for (parent = node; parent; parent = parent->parent) {
+        if (parent->schema->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF)) {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "RPC/action/notification node \"%s\" cannot be created.",
+                           parent->schema->name);
+            /* no need to throw away the whole edit */
+            isolate = 1;
+            goto error;
+        }
     }
 
     if (isolate) {

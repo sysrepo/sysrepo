@@ -96,7 +96,9 @@ careful, because the actual use of this datastore is not restricted so it does n
 [NETCONF](@ref rfcs) definition and follows general datastore rules instead (more in @ref edit_data). The specific
 features implemented are following. This datastore can be __invalid__ and __mirrors__ _running_ datastore until
 it is modified. After that it can be reset to this behavior again only by calling ::sr_copy_config(). Also, ::sr_lock()
-will fail if a session tries to lock this datastore after some changes on it are performed.
+will fail if a session tries to lock this datastore after some changes on it are performed. Finally, whenever ::sr_unlock()
+is performed for whatever reason (session termination), the datastore is also reset to its default state (mirroring
+_running_).
 
 ## Operational Datastore
 @anchor oper_ds

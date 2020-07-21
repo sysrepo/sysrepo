@@ -41,6 +41,7 @@
 %newobject Session::get_subtrees;
 %newobject Session::get_changes_iter;
 %newobject Session::get_change_next;
+%newobject Session::get_change_tree_next;
 %newobject Session::rpc_send;
 %newobject Session::action_send;
 
@@ -127,6 +128,9 @@
 %shared_ptr(sysrepo::Change);
 %newobject new_val;
 %newobject old_val;
+
+%shared_ptr(sysrepo::Tree_Change);
+%newobject node;
 
 %shared_ptr(sysrepo::Tree);
 %ignore Tree::Tree(const char *, const char *);

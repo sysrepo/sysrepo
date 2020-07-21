@@ -30,10 +30,8 @@
 
 #include "common.h"
 
-#define SR_MAIN_SHM "/sr_main"              /**< Main SHM name. */
-#define SR_EXT_SHM "/sr_ext"                /**< External SHM name. */
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
-#define SR_SHM_VER 1                        /**< Main and ext SHM version of their expected content structures. */
+#define SR_SHM_VER 2                        /**< Main and ext SHM version of their expected content structures. */
 
 /**
  * Main SHM organization
@@ -197,7 +195,7 @@ typedef enum sr_lock_mode_e {
  */
 typedef struct sr_conn_shm_lock_s {
     sr_lock_mode_t mode;    /**< Held lock mode. */
-    uint8_t rcount;         /**< Number of recursive READ locks held. */
+    ATOMIC_T rcount;        /**< Number of recursive READ locks held. */
 } sr_conn_shm_lock_t;
 
 /**

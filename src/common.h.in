@@ -67,6 +67,7 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 # define ATOMIC_STORE_RELAXED(var, x) atomic_store_explicit(&(var), x, memory_order_relaxed)
 # define ATOMIC_LOAD_RELAXED(var) atomic_load_explicit(&(var), memory_order_relaxed)
 # define ATOMIC_INC_RELAXED(var) atomic_fetch_add_explicit(&(var), 1, memory_order_relaxed)
+# define ATOMIC_DEC_RELAXED(var) atomic_fetch_sub_explicit(&(var), 1, memory_order_relaxed)
 #else
 # define ATOMIC_T uint32_t
 # define ATOMIC_T_MAX UINT32_MAX
@@ -74,6 +75,7 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 # define ATOMIC_STORE_RELAXED(var, x) ((var) = (x))
 # define ATOMIC_LOAD_RELAXED(var) (var)
 # define ATOMIC_INC_RELAXED(var) __sync_fetch_and_add(&(var), 1)
+# define ATOMIC_DEC_RELAXED(var) __sync_fetch_and_sub(&(var), 1)
 #endif
 
 /** macro for mutex align check */
@@ -130,6 +132,12 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 
 /** where SHM files are stored */
 #define SR_SHM_DIR "/dev/shm"
+
+/** default prefix for SHM files in /dev/shm */
+#define SR_SHM_PREFIX_DEFAULT "sr"
+
+/** environment variable for setting a custom prefix for SHM files */
+#define SR_SHM_PREFIX_ENV "SYSREPO_SHM_PREFIX"
 
 /** all ext SHM item sizes will be aligned to this number (B) */
 #define SR_SHM_MEM_ALIGN (sizeof(void *))
@@ -691,6 +699,22 @@ sr_error_info_t *sr_create_startup_file(const struct lys_module *ly_mod);
 sr_error_info_t *sr_create_module_imps_incs_r(const struct lys_module *ly_mod);
 
 /**
+ * @brief Get the path the main SHM.
+ *
+ * @param[out] path Created path. Should be freed by the caller.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_path_main_shm(char **path);
+
+/**
+ * @brief Get the path the external SHM.
+ *
+ * @param[out] path Created path. Should be freed by the caller.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_path_ext_shm(char **path);
+
+/**
  * @brief Get the path to a subscription SHM.
  *
  * @param[in] mod_name Module name.
@@ -989,6 +1013,15 @@ sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t m
  * @param[in] func Name of the calling function for logging.
  */
 void sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func);
+
+/**
+ * @brief Update lock state stored in SHM.
+ *
+ * @param[in] shmlock Lock in SHM to write to.
+ * @param[in] mode Whether the lock is read or write lock.
+ * @param[in] lock Whether it was locked or unlocked.
+ */
+void sr_shmlock_update(sr_conn_shm_lock_t *shmlock, sr_lock_mode_t mode, int lock);
 
 /**
  * @brief Wrapper to realloc() that frees memory on failure.

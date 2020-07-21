@@ -348,6 +348,145 @@ test_when(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
+static void
+test_reset_unlock(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    char *str;
+    const char *str2;
+    int ret;
+
+    /* empty datastore */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(data->dflt, 1);
+    lyd_free_withsiblings(data);
+
+    ret = sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(data->dflt, 1);
+    lyd_free_withsiblings(data);
+
+    /* lock candidate */
+    ret = sr_lock(st->sess, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* modify candidate */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth32']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth32']/enabled",
+            "false", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check content */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    lyd_print_mem(&str, data, LYD_XML, LYP_WITHSIBLINGS);
+    lyd_free_withsiblings(data);
+    str2 =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth32</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<enabled>false</enabled>"
+        "</interface>"
+    "</interfaces>";
+    assert_string_equal(str, str2);
+    free(str);
+
+    /* unlock, should reset candidate */
+    ret = sr_unlock(st->sess, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check content */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(data->dflt, 1);
+    lyd_free_withsiblings(data);
+
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+static void
+test_reset_session_stop(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_session_ctx_t *sess2;
+    struct lyd_node *data;
+    char *str;
+    const char *str2;
+    int ret;
+
+    /* start another session */
+    ret = sr_session_start(st->conn, SR_DS_CANDIDATE, &sess2);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* empty datastore */
+    ret = sr_get_data(sess2, "/ietf-interfaces:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(data->dflt, 1);
+    lyd_free_withsiblings(data);
+
+    ret = sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(data->dflt, 1);
+    lyd_free_withsiblings(data);
+
+    /* lock candidate */
+    ret = sr_lock(sess2, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* modify candidate */
+    ret = sr_set_item_str(sess2, "/ietf-interfaces:interfaces/interface[name='eth32']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess2, "/ietf-interfaces:interfaces/interface[name='eth32']/enabled",
+            "false", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess2, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check content */
+    ret = sr_get_data(sess2, "/ietf-interfaces:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    lyd_print_mem(&str, data, LYD_XML, LYP_WITHSIBLINGS);
+    lyd_free_withsiblings(data);
+    str2 =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth32</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<enabled>false</enabled>"
+        "</interface>"
+    "</interfaces>";
+    assert_string_equal(str, str2);
+    free(str);
+
+    /* stop session, should reset candidate */
+    ret = sr_session_stop(sess2);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check content */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(data->dflt, 1);
+    lyd_free_withsiblings(data);
+
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 int
 main(void)
 {
@@ -355,6 +494,8 @@ main(void)
         cmocka_unit_test_teardown(test_basic, clear_interfaces),
         cmocka_unit_test_teardown(test_invalid, clear_interfaces),
         cmocka_unit_test(test_when),
+        cmocka_unit_test(test_reset_unlock),
+        cmocka_unit_test(test_reset_session_stop),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
