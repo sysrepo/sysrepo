@@ -1170,7 +1170,7 @@ typedef enum sr_subscr_flag_e {
      * @brief The subscriber will be called before any other subscribers for the particular module
      * with an additional ::SR_EV_UPDATE event and is then allowed to modify the new module data. It can add new changes
      * by calling standard set functions (such as ::sr_set_item_str) on the implicit callback session and returning.
-     * Note that you cannot subscribe more callbacks with this flags on one module with the same priority.
+     * Note that you cannot subscribe more callbacks with this flag on one module with the same priority.
      */
     SR_SUBSCR_UPDATE = 32,
 
