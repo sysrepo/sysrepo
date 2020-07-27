@@ -1132,7 +1132,7 @@ cl_sm_conn_in_buff_process(cl_sm_ctx_t *sm_ctx, cl_sm_conn_ctx_t *conn)
             /* invalid message size */
             SR_LOG_ERR("Invalid message size in the message preamble (%zu).", msg_size);
             return SR_ERR_MALFORMED_MSG;
-        } else if ((buff_size - buff_pos) >= msg_size) {
+        } else if ((buff_size - SR_MSG_PREAM_SIZE - buff_pos) >= msg_size) {
             /* the message is completely retrieved, parse it */
             SR_LOG_DBG("New message of size %zu bytes received.", msg_size);
             rc = cl_sm_conn_msg_process(sm_ctx, conn,
