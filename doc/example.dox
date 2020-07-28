@@ -286,7 +286,7 @@ above is just basic and detailed descriptions of all these mechanisms can be fou
 
 Before being concerned with this particular plugin, Sysrepo must be properly built and installed. Having done that,
 you must install first the model, then the plugin. For installing the model, you can use [sysrepoctl](@ref sysrepoctl).
-Then, you must put the shared library `liboven.so` into [plugins path](@ref plugins_path).
+Then, you must put the shared library `oven.so` into [plugins path](@ref plugins_path).
 
 After that you should be ready to start `sysrepo-plugind`, which should load the plugin. If you enable debug
 messages, you should see that the `oven` plugin was successfully initialized.
