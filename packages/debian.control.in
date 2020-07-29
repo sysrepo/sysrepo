@@ -6,7 +6,7 @@ Build-Depends: debhelper (>= 9), gcc
 Homepage: @GITHUB_URL@
 
 Package: @PACKAGE@
-Depends: libyang (>=@LIBYANG_DEP_VERSION@), ${shlibs:Depends}
+Depends: libyang@LIBYANG_DEP_SOVERSION_MAJOR@ (>=@LIBYANG_DEP_VERSION@), ${shlibs:Depends}
 Section: libs
 Architecture: any
 Description: @PACKAGE_DESC@
@@ -24,7 +24,7 @@ Architecture: any
 Description: @PACKAGE_DBG_DESC@
 
 Package: @CPP_PACKAGE@
-Depends: libyang-cpp (>=@LIBYANG_DEP_VERSION@), @PACKAGE@ (=@SYSREPO_VERSION@)
+Depends: libyang-cpp@LIBYANG_DEP_SOVERSION_MAJOR@ (>=@LIBYANG_DEP_VERSION@), @PACKAGE@ (=@SYSREPO_VERSION@)
 Section: libs
 Architecture: any
 Description: @CPP_PACKAGE_DESC@
