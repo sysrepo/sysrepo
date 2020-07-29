@@ -92,6 +92,8 @@ help_print(void)
         "  -p, --depth <number>         Limit the depth of returned subtrees, 0 so unlimited by default (export op).\n"
         "  -t, --timeout <seconds>      Set the timeout for the operation, otherwise the default one is used.\n"
         "  -w, --wait                   Wait for all the callbacks to be called on a data change including DONE or ABORT.\n"
+        "  -e, --defaults <wd-mode>     Print the default values, which are hidden by default (\"report-all\",\n"
+        "                               \"report-all-tagged\", \"trim\", \"explicit\", \"implicit-tagged\") (export, edit, rpc op).\n"
         "  -v, --verbosity <level>      Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
         "\n"
     );
@@ -310,7 +312,7 @@ op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name
 
 static int
 op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name, const char *xpath, LYD_FORMAT format,
-        uint32_t max_depth, int timeout_s)
+        uint32_t max_depth, int wd_opt, int timeout_s)
 {
     struct lyd_node *data;
     FILE *file = NULL;
@@ -348,7 +350,7 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     }
 
     /* print exported data */
-    lyd_print_file(file ? file : stdout, data, format, LYP_FORMAT | LYP_WITHSIBLINGS);
+    lyd_print_file(file ? file : stdout, data, format, LYP_FORMAT | LYP_WITHSIBLINGS | wd_opt);
     lyd_free_withsiblings(data);
 
     /* cleanup */
@@ -360,7 +362,7 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
 
 static int
 op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const char *module_name, LYD_FORMAT format,
-        int lock, int not_strict, int timeout_s, int wait)
+        int lock, int not_strict, int wd_opt, int timeout_s, int wait)
 {
     char tmp_file[22];
     int r, flags, rc = EXIT_FAILURE;
@@ -401,7 +403,7 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
     }
 
     /* use export operation to get data to edit */
-    if (op_export(sess, tmp_file, module_name, NULL, format, 0, timeout_s)) {
+    if (op_export(sess, tmp_file, module_name, NULL, format, 0, wd_opt, timeout_s)) {
         goto cleanup_unlock;
     }
 
@@ -426,7 +428,8 @@ cleanup_unlock:
 }
 
 static int
-op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FORMAT format, int not_strict, int timeout_s)
+op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FORMAT format, int not_strict, int wd_opt,
+       int timeout_s)
 {
     char tmp_file[22];
     int r, flags;
@@ -467,7 +470,7 @@ op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FO
         }
     }
     if (node) {
-        lyd_print_file(stdout, output, format, LYP_FORMAT);
+        lyd_print_file(stdout, output, format, LYP_FORMAT | wd_opt);
     }
     lyd_free_withsiblings(output);
 
@@ -594,7 +597,7 @@ main(int argc, char** argv)
     const char *module_name = NULL, *editor = NULL, *file_path = NULL, *xpath = NULL, *op_str;
     char *ptr;
     sr_log_level_t log_level = SR_LL_ERR;
-    int r, rc = EXIT_FAILURE, opt, operation = 0, lock = 0, not_strict = 0, timeout = 0, wait = 0;
+    int r, rc = EXIT_FAILURE, opt, operation = 0, lock = 0, not_strict = 0, timeout = 0, wait = 0, wd_opt = 0;
     uint32_t max_depth = 0;
     struct option options[] = {
         {"help",            no_argument,       NULL, 'h'},
@@ -615,6 +618,7 @@ main(int argc, char** argv)
         {"depth",           required_argument, NULL, 'p'},
         {"timeout",         required_argument, NULL, 't'},
         {"wait",            no_argument,       NULL, 'w'},
+        {"defaults",        required_argument, NULL, 'e'},
         {"verbosity",       required_argument, NULL, 'v'},
         {NULL,              0,                 NULL, 0},
     };
@@ -626,7 +630,7 @@ main(int argc, char** argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:W:d:m:x:f:lnp:t:wv:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:W:d:m:x:f:lnp:t:we:v:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -781,6 +785,22 @@ main(int argc, char** argv)
         case 'w':
             wait = 1;
             break;
+        case 'e':
+            if (!strcmp(optarg, "report-all")) {
+                wd_opt = LYP_WD_ALL;
+            } else if (!strcmp(optarg, "report-all-tagged")) {
+                wd_opt = LYP_WD_ALL_TAG;
+            } else if (!strcmp(optarg, "trim")) {
+                wd_opt = LYP_WD_TRIM;
+            } else if (!strcmp(optarg, "explicit")) {
+                wd_opt = LYP_WD_EXPLICIT;
+            } else if (!strcmp(optarg, "implicit-tagged")) {
+                wd_opt = LYP_WD_IMPL_TAG;
+            } else {
+                error_print(0, "Invalid defaults mode \"%s\"", optarg);
+                goto cleanup;
+            }
+            break;
         case 'v':
             if (!strcmp(optarg, "none")) {
                 log_level = SR_LL_NONE;
@@ -855,13 +875,13 @@ main(int argc, char** argv)
         rc = op_import(sess, file_path, module_name, format, not_strict, timeout, wait);
         break;
     case 'X':
-        rc = op_export(sess, file_path, module_name, xpath, format, max_depth, timeout);
+        rc = op_export(sess, file_path, module_name, xpath, format, max_depth, wd_opt, timeout);
         break;
     case 'E':
-        rc = op_edit(sess, file_path, editor, module_name, format, lock, not_strict, timeout, wait);
+        rc = op_edit(sess, file_path, editor, module_name, format, lock, not_strict, wd_opt, timeout, wait);
         break;
     case 'R':
-        rc = op_rpc(sess, file_path, editor, format, not_strict, timeout);
+        rc = op_rpc(sess, file_path, editor, format, not_strict, wd_opt, timeout);
         break;
     case 'N':
         rc = op_notif(sess, file_path, editor, format, not_strict);
