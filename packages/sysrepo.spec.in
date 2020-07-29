@@ -14,7 +14,7 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}
     %define with_lang_bind 1
 %endif
 
-Requires:  libyang >= @LIBYANG_DEP_VERSION@
+Requires:  libyang@LIBYANG_DEP_SOVERSION_MAJOR@ >= @LIBYANG_DEP_VERSION@
 BuildRequires:  cmake
 BuildRequires:  doxygen
 BuildRequires:  libyang-devel >= @LIBYANG_DEP_VERSION@
@@ -25,7 +25,7 @@ BuildRequires:  libcmocka-devel
 
 BuildRequires:  gcc-c++
 BuildRequires:  libyang-cpp-devel >= @LIBYANG_DEP_VERSION@
-BuildRequires:  python3-yang >= @LIBYANG_DEP_VERSION@
+BuildRequires:  python3-yang@LIBYANG_DEP_SOVERSION_MAJOR@ >= @LIBYANG_DEP_VERSION@
 %if 0%{?centos_version}
 BuildRequires:  swig3 >= 3.0.12
 %else
@@ -49,7 +49,7 @@ Requires:   libyang-devel >= @LIBYANG_DEP_VERSION@
 %package -n @CPP_PACKAGE@
 Summary:    @CPP_PACKAGE_BRIEF@
 Requires:   %{name} = %{version}-%{release}
-Requires:   libyang-cpp >= @LIBYANG_DEP_VERSION@
+Requires:   libyang-cpp@LIBYANG_DEP_SOVERSION_MAJOR@ >= @LIBYANG_DEP_VERSION@
 
 %package -n @CPP_PACKAGE@-devel
 Summary:    @CPP_PACKAGE_DEV_BRIEF@
@@ -60,7 +60,7 @@ Requires:   libyang-cpp-devel >= @LIBYANG_DEP_VERSION@
 Summary:    @PYTHON_PACKAGE_BRIEF@
 Requires:   @CPP_PACKAGE@ = %{version}-%{release}
 Requires:   %{name} = %{version}-%{release}
-Requires:   python3-yang >= @LIBYANG_DEP_VERSION@
+Requires:   python3-yang@LIBYANG_DEP_SOVERSION_MAJOR@ >= @LIBYANG_DEP_VERSION@
 
 %description -n @CPP_PACKAGE@
 @CPP_PACKAGE_DESC@
