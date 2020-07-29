@@ -1065,7 +1065,7 @@ test_mutiple_types(void **state)
 
     /* type int16 */
     val.type = SR_INT16_T;
-    val.data.uint16_val = INT16_MAX;
+    val.data.int16_val = INT16_MAX;
     ret = sr_set_item(st->sess, "/test-module:main/i16", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/test-module:main/i16", 0, &data);
