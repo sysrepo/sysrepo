@@ -118,7 +118,8 @@ main(int argc, char **argv)
     sr_conn_ctx_t *connection = NULL;
     sr_session_ctx_t *session = NULL;
     int rc = SR_ERR_OK;
-    size_t i = 0;
+    sr_val_t *output = NULL;
+    size_t i, output_count = 0;
     const char *path;
 
     if (argc != 2) {
@@ -143,10 +144,6 @@ main(int argc, char **argv)
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }
-
-    /* RPC output */
-    sr_val_t *output = NULL;
-    size_t output_count = 0;
 
     /* send the RPC */
     rc = sr_rpc_send(session, path, NULL, 0, 0, &output, &output_count);
