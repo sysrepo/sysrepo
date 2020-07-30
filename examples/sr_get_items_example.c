@@ -141,7 +141,7 @@ main(int argc, char **argv)
             return EXIT_FAILURE;
         }
     }
-    op_str = argv[2] ? argv[2] : "running";
+    op_str = (argc > 2) ? argv[2] : "running";
 
     printf("Application will get \"%s\" from \"%s\" datastore.\n\n", xpath, op_str);
 

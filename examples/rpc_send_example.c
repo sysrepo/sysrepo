@@ -144,16 +144,12 @@ main(int argc, char **argv)
         goto cleanup;
     }
 
-    /* RPC input */
-    sr_val_t *input = NULL;
-    const size_t input_cnt = 0;
-
     /* RPC output */
     sr_val_t *output = NULL;
     size_t output_count = 0;
 
     /* send the RPC */
-    rc = sr_rpc_send(session, path, &input[0], input_cnt, 0, &output, &output_count);
+    rc = sr_rpc_send(session, path, NULL, 0, 0, &output, &output_count);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }
