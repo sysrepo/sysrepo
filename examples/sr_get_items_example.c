@@ -117,12 +117,13 @@ main(int argc, char **argv)
     sr_session_ctx_t *session = NULL;
     int rc = SR_ERR_OK;
     const char *xpath;
+    const char *op_str;
     sr_val_t *vals = NULL;
     size_t i, val_count = 0;
     sr_datastore_t ds = SR_DS_RUNNING;
 
     if ((argc < 2) || (argc > 3)) {
-        printf("%s <xpath-to-get> [running/operational]\n", argv[0]);
+        printf("%s <xpath-to-get> [startup/running/operational/candidate]\n", argv[0]);
         return EXIT_FAILURE;
     }
     xpath = argv[1];
@@ -131,13 +132,18 @@ main(int argc, char **argv)
             ds = SR_DS_RUNNING;
         } else if (!strcmp(argv[2], "operational")) {
             ds = SR_DS_OPERATIONAL;
+        } else if (!strcmp(argv[2], "startup")) {
+            ds = SR_DS_STARTUP;
+        } else if (!strcmp(argv[2], "candidate")) {
+            ds = SR_DS_CANDIDATE;
         } else {
             printf("Invalid datastore %s\n", argv[2]);
             return EXIT_FAILURE;
         }
     }
+    op_str = (argc > 2) ? argv[2] : "running";
 
-    printf("Application will get \"%s\" from \"%s\" datastore.\n\n", xpath, ds == SR_DS_RUNNING ? "running" : "operational");
+    printf("Application will get \"%s\" from \"%s\" datastore.\n\n", xpath, op_str);
 
     /* turn logging on */
     sr_log_stderr(SR_LL_WRN);
