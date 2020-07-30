@@ -123,7 +123,7 @@ main(int argc, char **argv)
     sr_datastore_t ds = SR_DS_RUNNING;
 
     if ((argc < 2) || (argc > 3)) {
-        printf("%s <xpath-to-get> [running/operational]\n", argv[0]);
+        printf("%s <xpath-to-get> [startup/running/operational/candidate]\n", argv[0]);
         return EXIT_FAILURE;
     }
     xpath = argv[1];
