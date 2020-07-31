@@ -2083,12 +2083,11 @@ sr_diff_merge_create(struct lyd_node *diff_match, enum edit_op cur_op, int cur_o
         } else {
             /* but the operation of its children should remain DELETE */
             LY_TREE_FOR(sr_lyd_child(diff_match, 1), child) {
-                /* there should not be any operation on the children */
-                assert(!sr_edit_find_oper(child, 0, NULL));
-
-                if ((err_info = sr_edit_set_oper(child, "delete"))) {
+                if (!sr_edit_find_oper(child, 0, NULL) && (err_info = sr_edit_set_oper(child, "delete"))) {
                     return err_info;
                 }
+                /* if there was any operation, it must have been delete */
+                assert(sr_edit_find_oper(child, 0, NULL) == EDIT_DELETE);
             }
         }
         break;
