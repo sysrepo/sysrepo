@@ -2190,14 +2190,16 @@ sr_diff_find_oper(struct lyd_node *diff, int *op_own, pid_t *pid, void **conn_pt
  * @param[in] cur_op Current operation of the diff node.
  * @param[in] cur_own_op Whether \p cur_op is owned or inherited.
  * @param[in] val_equal Whether even values of the nodes match.
+ * @param[in] src_node Current source diff node.
  * @param[out] change Set if there are some data changes.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_diff_merge_delete(struct lyd_node *diff_match, enum edit_op cur_op, int cur_own_op, int val_equal, int *change)
+sr_diff_merge_delete(struct lyd_node *diff_match, enum edit_op cur_op, int cur_own_op, int val_equal,
+        const struct lyd_node *src_node, int *change)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *next, *child;
+    struct lyd_node *next, *child, *src;
     int op_own;
 
     /* we can delete only exact existing nodes */
@@ -2237,7 +2239,10 @@ sr_diff_merge_delete(struct lyd_node *diff_match, enum edit_op cur_op, int cur_o
 
         /* all descendants will be deleted even without being in the diff, so remove them */
         LY_TREE_FOR_SAFE(sr_lyd_child(diff_match, 1), next, child) {
-            lyd_free(child);
+            lyd_find_sibling(sr_lyd_child(src_node, 1), child, &src);
+            if (!src) {
+                lyd_free(child);
+            }
         }
         break;
     default:
@@ -2405,7 +2410,7 @@ sr_diff_merge_r(const struct lyd_node *src_node, enum edit_op parent_op, void *o
             }
             break;
         case EDIT_DELETE:
-            if ((err_info = sr_diff_merge_delete(diff_node, cur_op, op_own, val_equal, change))) {
+            if ((err_info = sr_diff_merge_delete(diff_node, cur_op, op_own, val_equal, src_node, change))) {
                 goto op_error;
             }
             break;
