@@ -2022,6 +2022,7 @@ sr_diff_merge_create(struct lyd_node *diff_match, enum edit_op cur_op, int cur_o
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *child;
+    const struct lys_node_leaf *sleaf;
     int ret;
 
     switch (cur_op) {
@@ -2030,19 +2031,33 @@ sr_diff_merge_create(struct lyd_node *diff_match, enum edit_op cur_op, int cur_o
         if (cur_own_op) {
             sr_edit_del_attr(diff_match, "operation");
         }
-        if (val_equal) {
+
+        if (diff_match->schema->nodetype == LYS_LEAF) {
+            sleaf = (struct lys_node_leaf *)diff_match->schema;
+        } else {
+            sleaf = NULL;
+        }
+
+        if (sleaf && sleaf->dflt && !strcmp(sleaf->dflt, sr_ly_leaf_value_str(src_node))) {
+            /* we deleted it, so a default value was in-use, and it matches the created value -> operation NONE */
+            if ((err_info = sr_edit_set_oper(diff_match, "none"))) {
+                return err_info;
+            }
+        } else if (val_equal) {
             /* deleted + created -> operation NONE */
             if ((err_info = sr_edit_set_oper(diff_match, "none"))) {
                 return err_info;
             }
         } else {
-            assert(diff_match->schema->nodetype == LYS_LEAF);
+            assert(sleaf);
             /* we deleted it, but it was created with a different value -> operation REPLACE */
             if ((err_info = sr_edit_set_oper(diff_match, "replace"))) {
                 return err_info;
             }
+        }
 
-            /* correctly modify the node, current value is previous one (attr) and the default value is new */
+        if (!val_equal) {
+            /* correctly modify the node, current value is previous one (attr) */
             if (!lyd_insert_attr(diff_match, NULL, SR_YANG_MOD ":orig-value", sr_ly_leaf_value_str(diff_match))) {
                 sr_errinfo_new_ly(&err_info, lyd_node_module(diff_match)->ctx);
                 return err_info;
