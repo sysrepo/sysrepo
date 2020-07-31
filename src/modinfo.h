@@ -143,6 +143,14 @@ sr_error_info_t *sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_
 sr_error_info_t *sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff);
 
 /**
+ * @brief Add config/state NP containers for modules in mod info.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_modinfo_add_np_cont(struct sr_mod_info_s *mod_info);
+
+/**
  * @brief Validate operation using modules in mod info.
  *
  * @param[in] mod_info Mod info to use.

@@ -286,50 +286,6 @@ sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *new
     return NULL;
 }
 
-/**
- * @brief Duplicate data of a specific module in a data tree.
- *
- * @param[in] data Data tree.
- * @param[in] ly_mod libyang module of interest.
- * @param[out] mod_data Duplicated module data.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_module_data_dup(const struct lyd_node *data, const struct lys_module *ly_mod, struct lyd_node **mod_data)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *dup;
-    const struct lyd_node *node;
-
-    assert(ly_mod && mod_data);
-    *mod_data = NULL;
-
-    LY_TREE_FOR(data, node) {
-        if (lyd_node_module(node) == ly_mod) {
-            /* duplicate node */
-            dup = lyd_dup(node, LYD_DUP_OPT_RECURSIVE | LYD_DUP_OPT_WITH_WHEN);
-            if (!dup) {
-                sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-                goto error;
-            }
-
-            /* connect it to other data from this module */
-            if (*mod_data) {
-                sr_ly_link(*mod_data, dup);
-            } else {
-                *mod_data = dup;
-            }
-        }
-    }
-
-    return NULL;
-
-error:
-    lyd_free_withsiblings(*mod_data);
-    *mod_data = NULL;
-    return err_info;
-}
-
 sr_error_info_t *
 sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data)
 {
@@ -630,9 +586,12 @@ sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const
         goto cleanup;
     }
 
-    /* add default state data so that parents exist and we ask for descendants
-     * that can exist (it should not fail with TRUSTED flag, we do not care even if it does) */
-    lyd_validate_modules(oper_data, &ly_mod, 1, LYD_OPT_DATA | LYD_OPT_TRUSTED);
+    if (*oper_data) {
+        /* add any missing NP containers, redundant to add top-level containers */
+        if ((err_info = sr_lyd_create_sibling_np_cont_r(NULL, *oper_data, NULL, NULL))) {
+            goto cleanup;
+        }
+    }
 
 cleanup:
     lyd_free_withsiblings(parent_dup);
@@ -714,11 +673,6 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const c
         lyd_free_withsiblings(diff);
         if (err_info) {
             return err_info;
-        }
-
-        if (!*data) {
-            /* add possible default state data nodes */
-            lyd_validate_modules(data, &mod->ly_mod, 1, LYD_OPT_DATA | LYD_OPT_TRUSTED);
         }
     }
 
@@ -802,59 +756,6 @@ error:
     return err_info;
 }
 
-static sr_error_info_t *
-sr_module_oper_data_add_state_default(struct lyd_node **data, const struct lys_module *ly_mod)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *node, *val_node, *sibling;
-    struct lyd_difflist *val_diff;
-    struct ly_set *set;
-    uint32_t i;
-
-    if (lyd_validate_modules(data, &ly_mod, 1, LYD_OPT_DATA | LYD_OPT_TRUSTED | LYD_OPT_VAL_DIFF, &val_diff)) {
-        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-        SR_ERRINFO_VALID(&err_info);
-        return err_info;
-    }
-
-    /* remove added config nodes */
-    assert(val_diff);
-    for (i = 0; val_diff->type[i] != LYD_DIFF_END; ++i) {
-        if (val_diff->type[i] == LYD_DIFF_CREATED) {
-            /* get the sibling in the data */
-            if (val_diff->first[i]) {
-                set = lyd_find_path(*data, (char *)val_diff->first[i]);
-                if (!set) {
-                    sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-                    return err_info;
-                }
-                assert(set->number == 1);
-                sibling = set->set.d[0]->child;
-                ly_set_free(set);
-            } else {
-                sibling = *data;
-            }
-
-            LY_TREE_FOR(val_diff->second[i], val_node) {
-                if (val_node->schema->flags & LYS_CONFIG_R) {
-                    continue;
-                }
-
-                /* find the created node in the data and free it */
-                LY_TREE_FOR(sibling, node) {
-                    if (node->schema == val_node->schema) {
-                        lyd_free(node);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    lyd_free_val_diff(val_diff);
-    return NULL;
-}
-
 /**
  * @brief Duplicate operational (enabled) data from configuration data tree.
  *
@@ -877,7 +778,11 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
     char **xpaths;
     const char *origin;
 
+    /* start with NP containers, which cannot effectively be disabled */
     *enabled_mod_data = NULL;
+    if ((err_info = sr_lyd_dup_module_np_cont(data, mod->ly_mod, 1, enabled_mod_data))) {
+        return err_info;
+    }
 
     if (!data) {
         /* no enabled data to duplicate */
@@ -890,7 +795,7 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
         for (i = 0; i < mod->shm_mod->change_sub[SR_DS_RUNNING].sub_count; ++i) {
             if (!shm_changesubs[i].xpath && !(shm_changesubs[i].opts & SR_SUBSCR_PASSIVE)) {
                 /* the whole module is enabled */
-                if ((err_info = sr_module_data_dup(data, mod->ly_mod, enabled_mod_data))) {
+                if ((err_info = sr_lyd_dup_module_data(data, mod->ly_mod, 1, enabled_mod_data))) {
                     return err_info;
                 }
                 data_duplicated = 1;
@@ -913,16 +818,11 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
         }
 
         /* duplicate only enabled subtrees */
-        err_info = sr_lyd_xpath_dup(data, xpaths, xp_i, mod->ly_mod, enabled_mod_data);
+        err_info = sr_lyd_dup_enabled_xpath(data, xpaths, xp_i, enabled_mod_data);
         free(xpaths);
         if (err_info) {
             return err_info;
         }
-    }
-
-    /* add existing (valid) state NP containers and default values */
-    if ((err_info = sr_module_oper_data_add_state_default(enabled_mod_data, mod->ly_mod))) {
-        return err_info;
     }
 
     if (opts & SR_OPER_WITH_ORIGIN) {
@@ -934,11 +834,12 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
             }
 
             LY_TREE_DFS_BEGIN(root, next, elem) {
-                /* add origin of default nodes */
+                /* add origin of default nodes instead of the default flag */
                 if ((elem->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) && elem->dflt) {
                     if ((err_info = sr_edit_diff_set_origin(elem, "default", 1))) {
                         return err_info;
                     }
+                    elem->dflt = 0;
                 }
                 LY_TREE_DFS_END(root, next, elem);
             }
@@ -1520,7 +1421,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
                 err_info = sr_module_oper_data_dup_enabled(mod_cache->data, conn->ext_shm.addr, mod, opts, &mod_data);
             } else {
                 /* copy all module data */
-                err_info = sr_module_data_dup(mod_cache->data, mod->ly_mod, &mod_data);
+                err_info = sr_lyd_dup_module_data(mod_cache->data, mod->ly_mod, 0, &mod_data);
             }
 
             /* CACHE READ UNLOCK */
@@ -1835,7 +1736,7 @@ sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff)
     uint32_t i, valid_mod_count = 0;
     int flags;
 
-    assert(!mod_info->data_cached);
+    assert(!mod_info->data_cached && SR_IS_CONVENTIONAL_DS(mod_info->ds));
 
     /* create an array of all the modules that will be processed */
     for (i = 0; i < mod_info->mod_count; ++i) {
@@ -1858,7 +1759,7 @@ sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff)
     }
 
     /* just add default values and generate diff */
-    flags = (mod_info->ds == SR_DS_OPERATIONAL ? LYD_OPT_DATA : LYD_OPT_CONFIG) | LYD_OPT_TRUSTED | LYD_OPT_VAL_DIFF;
+    flags = LYD_OPT_CONFIG | LYD_OPT_TRUSTED | LYD_OPT_VAL_DIFF;
     if (lyd_validate_modules(&mod_info->data, valid_mods, valid_mod_count, flags, &diff)) {
         sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
         goto cleanup;
@@ -1877,6 +1778,38 @@ cleanup:
     lyd_free_val_diff(diff);
     free(valid_mods);
     return err_info;
+}
+
+sr_error_info_t *
+sr_modinfo_add_np_cont(struct sr_mod_info_s *mod_info)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_mod_info_mod_s *mod;
+    uint32_t i;
+
+    assert(!mod_info->data_cached && !SR_IS_CONVENTIONAL_DS(mod_info->ds));
+
+    /* create an array of all the modules that will be processed */
+    for (i = 0; i < mod_info->mod_count; ++i) {
+        mod = &mod_info->mods[i];
+        switch (mod->state & MOD_INFO_TYPE_MASK) {
+        case MOD_INFO_REQ:
+            /* this module data are actually used */
+            if ((err_info = sr_lyd_create_sibling_np_cont_r(&mod_info->data, NULL, mod->ly_mod, &mod_info->diff))) {
+                return err_info;
+            }
+            break;
+        case MOD_INFO_INV_DEP:
+        case MOD_INFO_DEP:
+            /* this module data are not used */
+            break;
+        default:
+            SR_ERRINFO_INT(&err_info);
+            return err_info;
+        }
+    }
+
+    return NULL;
 }
 
 sr_error_info_t *
@@ -2320,21 +2253,25 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                 }
 
                 if (mod_info->ds == SR_DS_RUNNING) {
-                    /* add possible default state data nodes so that stored diff can be properly applied */
-                    lyd_validate_modules(&mod_data, &mod->ly_mod, 1, LYD_OPT_DATA | LYD_OPT_TRUSTED);
-
                     /* update diffs of stored operational data, if any */
                     if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_OPERATIONAL, &diff))) {
                         goto cleanup;
                     }
-                    if ((err_info = sr_diff_mod_update(&diff, mod->ly_mod, mod_data))) {
-                        goto cleanup;
+
+                    if (diff) {
+                        /* add any missing state NP containers so that stored diff can be properly applied */
+                        if ((err_info = sr_lyd_create_sibling_np_cont_r(&mod_data, NULL, mod->ly_mod, NULL))) {
+                            goto cleanup;
+                        }
+                        if ((err_info = sr_diff_mod_update(&diff, mod->ly_mod, mod_data))) {
+                            goto cleanup;
+                        }
+                        if ((err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, diff, 0, 0))) {
+                            goto cleanup;
+                        }
+                        lyd_free_withsiblings(diff);
+                        diff = NULL;
                     }
-                    if ((err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, diff, 0, 0))) {
-                        goto cleanup;
-                    }
-                    lyd_free_withsiblings(diff);
-                    diff = NULL;
                 }
             }
         }

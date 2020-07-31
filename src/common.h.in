@@ -1220,18 +1220,55 @@ sr_error_info_t *sr_lyd_dup(const struct lyd_node *src_parent, uint32_t depth, s
 struct lyd_node *sr_lyd_child(const struct lyd_node *node, int skip_keys);
 
 /**
- * @brief Duplicate selected nodes from a data tree.
+ * @brief Create any missing config/state NP containers in the siblings, recursively.
+ *
+ * @param[in,out] first First sibling to add NP containers into, set if @p parent is NULL.
+ * Only @p ly_mod data are considered.
+ * @param[in] parent Parent of any added NP containers, set if @p first is NULL.
+ * @param[in] ly_mod Module to consider, set if @p parent is NULL.
+ * @param[in,out] diff Optional diff to append any performed changes to.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_create_sibling_np_cont_r(struct lyd_node **first, struct lyd_node *parent,
+        const struct lys_module *ly_mod, struct lyd_node **diff);
+
+/**
+ * @brief Duplicate only config NP containers of a module from a data tree. Also optionally create state NP containers.
+ *
+ * @param[in] data Data tree to duplicate from.
+ * @param[in] ly_mod Module whose data to duplicate.
+ * @param[in] add_state_np_conts Whether to also add state NP containers.
+ * @param[in,out] new_data Data with appended duplicated nodes.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_dup_module_np_cont(const struct lyd_node *data, const struct lys_module *ly_mod,
+        int add_state_np_conts, struct lyd_node **new_data);
+
+/**
+ * @brief Duplicate all data of a module from a data tree. Also properly handles config NP containers
+ * and optionally even state NP containers.
+ *
+ * @param[in] data Data tree to duplicate from.
+ * @param[in] ly_mod Module whose data to duplicate.
+ * @param[in] add_state_np_conts Whether to also add state NP containers.
+ * @param[in,out] new_data Data with appended duplicated nodes.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_dup_module_data(const struct lyd_node *data, const struct lys_module *ly_mod,
+        int add_state_np_conts, struct lyd_node **new_data);
+
+/**
+ * @brief Duplicate selected nodes from a data tree. Also properly handles config/state NP containers.
  * Works well even for XPaths with intersections.
  *
  * @param[in] data Data tree to duplicate from.
  * @param[in] xpaths Array of XPaths that will select the duplicated nodes.
  * @param[in] xp_count XPath count.
- * @param[in] cont_ly_mod If set, even non-matching NP containers from this module will be duplicated.
- * @param[out] new_data Duplicated selected nodes.
+ * @param[in,out] new_data Data with appended duplicated selected nodes.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lyd_xpath_dup(const struct lyd_node *data, char **xpaths, uint16_t xp_count,
-        const struct lys_module *cont_ly_mod, struct lyd_node **new_data);
+sr_error_info_t *sr_lyd_dup_enabled_xpath(const struct lyd_node *data, char **xpaths, uint16_t xp_count,
+        struct lyd_node **new_data);
 
 /**
  * @brief Remove all nodes selected by XPath.

@@ -148,6 +148,12 @@ clear_up(void **state)
     sr_delete_item(st->sess, "/test:cont", 0);
     sr_apply_changes(st->sess, 0, 0);
 
+    /* create the containers back so there are effectively no stored changes */
+    sr_set_item_str(st->sess, "/ietf-interfaces:interfaces", NULL, NULL, 0);
+    sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state", NULL, NULL, 0);
+    sr_set_item_str(st->sess, "/test:cont", NULL, NULL, 0);
+    sr_apply_changes(st->sess, 0, 0);
+
     sr_session_switch_ds(st->sess, SR_DS_STARTUP);
 
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
@@ -247,17 +253,12 @@ test_yang_lib(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
 #if SR_YANGLIB_REVISION == 2019-01-04
-    /* order was changed */
     assert_non_null(data);
     assert_string_equal(data->schema->name, "modules-state");
-    assert_string_equal(data->next->schema->name, "yang-library");
-    assert_int_equal(data->next->dflt, 1);
-    assert_null(data->next->child);
-#else
-    assert_non_null(data);
-    assert_string_equal(data->schema->name, "modules-state");
-    assert_int_equal(data->dflt, 1);
+    assert_int_equal(data->dflt, 0);
     assert_null(data->next);
+#else
+    assert_null(data);
 #endif
     lyd_free_withsiblings(data);
 
@@ -674,6 +675,18 @@ enabled_change_cb(sr_session_ctx_t *session, const char *module_name, const char
 
         sr_free_val(new_val);
 
+        /* 6th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth128']/ietf-if-aug:c1");
+        assert_int_equal(new_val->dflt, 1);
+
+        sr_free_val(new_val);
+
         /* no more changes */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_NOT_FOUND);
@@ -778,6 +791,7 @@ test_enabled_partial(void **state)
         "<interface>"
             "<name>eth128</name>"
             "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<enabled or:origin=\"default\">true</enabled>"
         "</interface>"
     "</interfaces>";
 
@@ -873,7 +887,7 @@ test_simple(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS | LYP_WD_ALL);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     lyd_free_withsiblings(data);
@@ -900,7 +914,7 @@ test_simple(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS | LYP_WD_ALL);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     lyd_free_withsiblings(data);
@@ -1142,6 +1156,7 @@ test_list(void **state)
         "<interface>"
             "<name>eth1</name>"
             "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<enabled or:origin=\"default\">true</enabled>"
         "</interface>"
         "<interface or:origin=\"unknown\">"
             "<name>eth2</name>"
@@ -1266,6 +1281,7 @@ test_nested(void **state)
         "<interface>"
             "<name>eth1</name>"
             "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<enabled or:origin=\"default\">true</enabled>"
         "</interface>"
     "</interfaces>"
     "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
@@ -2278,6 +2294,7 @@ test_stored_np_cont1(void **state)
             "<name>eth0</name>"
             "<description/>"
             "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<enabled or:origin=\"default\">true</enabled>"
             "<c1 xmlns=\"urn:ietf-if-aug\" or:origin=\"unknown\">"
                 "<oper1>val</oper1>"
             "</c1>"
@@ -2313,6 +2330,7 @@ test_stored_np_cont1(void **state)
             "<name>eth0</name>"
             "<description>test-desc</description>"
             "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<enabled or:origin=\"default\">true</enabled>"
             "<c1 xmlns=\"urn:ietf-if-aug\" or:origin=\"unknown\">"
                 "<oper1>val</oper1>"
             "</c1>"
@@ -2372,6 +2390,7 @@ test_stored_np_cont2(void **state)
         "<interface>"
             "<name>eth0</name>"
             "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<enabled or:origin=\"default\">true</enabled>"
             "<c1 xmlns=\"urn:ietf-if-aug\" or:origin=\"unknown\">"
                 "<oper1>val</oper1>"
             "</c1>"
@@ -2855,16 +2874,13 @@ test_nested_default(void **state)
     ret = sr_get_data(st->sess, "/defaults:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS | LYP_WD_ALL_TAG);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     lyd_free_withsiblings(data);
 
     str2 =
-    "<cont xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
-        "<interval ncwd:default=\"true\">30</interval>"
-    "</cont>"
-    "<l1 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"unknown\">"
+    "<l1 xmlns=\"urn:defaults\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"unknown\">"
         "<k>val</k>"
         "<cont1>"
             "<cont2>"
@@ -2873,6 +2889,54 @@ test_nested_default(void **state)
             "<ll>valuee</ll>"
         "</cont1>"
     "</l1>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    sr_unsubscribe(subscr);
+}
+
+/* TEST */
+static void
+test_disabled_default(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    sr_subscription_ctx_t *subscr;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* set some configuration data */
+    ret = sr_set_item_str(st->sess, "/defaults:pcont", NULL, NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to some configuration data just to enable them */
+    ret = sr_module_change_subscribe(st->sess, "defaults", "/defaults:pcont/ll",
+            dummy_change_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the operational data */
+    ret = sr_get_data(st->sess, "/defaults:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<pcont xmlns=\"urn:defaults\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+        "<ll or:origin=\"default\">1</ll>"
+        "<ll or:origin=\"default\">2</ll>"
+        "<ll or:origin=\"default\">3</ll>"
+    "</pcont>";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -3008,8 +3072,9 @@ main(void)
         cmocka_unit_test_teardown(test_stored_diff_merge_leaf, clear_up),
         cmocka_unit_test_teardown(test_stored_diff_merge_replace, clear_up),
         cmocka_unit_test_teardown(test_stored_diff_merge_userord, clear_up),
-        cmocka_unit_test(test_default_when),
-        cmocka_unit_test(test_nested_default),
+        cmocka_unit_test_teardown(test_default_when, clear_up),
+        cmocka_unit_test_teardown(test_nested_default, clear_up),
+        cmocka_unit_test_teardown(test_disabled_default, clear_up),
         cmocka_unit_test_teardown(test_merge_flag, clear_up),
     };
 

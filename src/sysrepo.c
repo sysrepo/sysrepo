@@ -2277,9 +2277,14 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
         }
         break;
     case SR_DS_CANDIDATE:
-    case SR_DS_OPERATIONAL:
-        /* these do not have to be valid but at least add default values */
+        /* does not have to be valid but we need all default values */
         if ((err_info = sr_modinfo_add_defaults(mod_info, 1))) {
+            goto cleanup;
+        }
+        break;
+    case SR_DS_OPERATIONAL:
+        /* not valid, but we need NP containers */
+        if ((err_info = sr_modinfo_add_np_cont(mod_info))) {
             goto cleanup;
         }
         break;
@@ -2325,8 +2330,12 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
             }
             break;
         case SR_DS_CANDIDATE:
-        case SR_DS_OPERATIONAL:
             if ((err_info = sr_modinfo_add_defaults(mod_info, 1))) {
+                goto cleanup;
+            }
+            break;
+        case SR_DS_OPERATIONAL:
+            if ((err_info = sr_modinfo_add_np_cont(mod_info))) {
                 goto cleanup;
             }
             break;
@@ -3236,15 +3245,19 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, const struc
         goto error_mods_unlock;
     }
 
+    /* start with any existing config NP containers */
+    if ((err_info = sr_lyd_dup_module_np_cont(mod_info.data, ly_mod, 0, &enabled_data))) {
+        goto error_mods_unlock;
+    }
+
     /* select only the subscribed-to subtree */
     if (mod_info.data) {
         if (xpath) {
-            if ((err_info = sr_lyd_xpath_dup(mod_info.data, (char **)&xpath, 1, ly_mod, &enabled_data))) {
+            if ((err_info = sr_lyd_dup_enabled_xpath(mod_info.data, (char **)&xpath, 1, &enabled_data))) {
                 goto error_mods_unlock;
             }
         } else {
-            if (!(enabled_data = lyd_dup_withsiblings(mod_info.data, LYD_DUP_OPT_RECURSIVE))) {
-                sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
+            if ((err_info = sr_lyd_dup_module_data(mod_info.data, ly_mod, 0, &enabled_data))) {
                 goto error_mods_unlock;
             }
         }
