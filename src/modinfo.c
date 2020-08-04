@@ -1395,7 +1395,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn = mod_info->conn;
     struct sr_mod_cache_s *mod_cache = NULL;
-    struct lyd_node *mod_data;
+    struct lyd_node *mod_data = NULL;
     sr_datastore_t conf_ds;
 
     if (((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds2 == SR_DS_RUNNING)) && (conn->opts & SR_CONN_CACHE_RUNNING)) {
