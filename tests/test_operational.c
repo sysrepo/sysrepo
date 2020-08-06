@@ -73,6 +73,9 @@ setup(void **state)
     if (sr_install_module(st->conn, TESTS_DIR "/files/ietf-if-aug.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/ietf-microwave-radio-link.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+        return 1;
+    }
     if (sr_install_module(st->conn, TESTS_DIR "/files/mixed-config.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
@@ -126,6 +129,7 @@ teardown(void **state)
     sr_remove_module(st->conn, "act");
     sr_remove_module(st->conn, "mixed-config");
     sr_remove_module(st->conn, "ietf-if-aug");
+    sr_remove_module(st->conn, "ietf-microwave-radio-link");
     sr_remove_module(st->conn, "iana-if-type");
     sr_remove_module(st->conn, "ietf-interfaces");
     sr_remove_module(st->conn, "test");
@@ -372,6 +376,9 @@ test_sr_mon(void **state)
             "<name>iana-if-type</name>"
         "</module>"
         "<module>"
+            "<name>ietf-microwave-radio-link</name>"
+        "</module>"
+        "<module>"
             "<name>mixed-config</name>"
         "</module>"
         "<module>"
@@ -506,6 +513,9 @@ test_sr_mon(void **state)
         "</module>"
         "<module>"
             "<name>iana-if-type</name>"
+        "</module>"
+        "<module>"
+            "<name>ietf-microwave-radio-link</name>"
         "</module>"
         "<module>"
             "<name>mixed-config</name>"
@@ -683,6 +693,42 @@ enabled_change_cb(sr_session_ctx_t *session, const char *module_name, const char
         assert_null(old_val);
         assert_non_null(new_val);
         assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth128']/ietf-if-aug:c1");
+        assert_int_equal(new_val->dflt, 1);
+
+        sr_free_val(new_val);
+
+        /* 7th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth128']/ietf-microwave-radio-link:capabilities");
+        assert_int_equal(new_val->dflt, 1);
+
+        sr_free_val(new_val);
+
+        /* 8th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth128']/ietf-microwave-radio-link:error-performance-statistics");
+        assert_int_equal(new_val->dflt, 1);
+
+        sr_free_val(new_val);
+
+        /* 9th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth128']/ietf-microwave-radio-link:radio-performance-statistics");
         assert_int_equal(new_val->dflt, 1);
 
         sr_free_val(new_val);

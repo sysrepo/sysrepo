@@ -3337,6 +3337,53 @@ sr_lyd_copy_config_np_cont_r(struct lyd_node **first, struct lyd_node *parent, c
 }
 
 /**
+ * @brief Decide whether a container has meaning, which causes it not to be created automatically as
+ * a special default value.
+ *
+ * @param[in] snode Schema node of the container to examine.
+ * @param[in] siblings First data sibling of the container.
+ * @return 0 if it has no meaning and should be created automatically,
+ * @return non-zero otherwise.
+ */
+static int
+sr_lyd_cont_has_meaning(const struct lys_node *snode, const struct lyd_node *siblings)
+{
+    const struct lys_node *schild;
+    struct lyd_node *node;
+
+    assert(snode->nodetype == LYS_CONTAINER);
+
+    if (((struct lys_node_container *)snode)->presence) {
+        /* presence containers always carry some meaning */
+        return 1;
+    }
+
+    assert(!lys_parent(snode) || (lys_parent(snode)->nodetype != LYS_CHOICE));
+    if (lys_parent(snode) && (lys_parent(snode)->nodetype == LYS_CASE)) {
+        /* container is in a case and in case no other nodes from the case exist, it would carry
+         * meaning of selecting the case */
+        schild = NULL;
+        while ((schild = lys_getnext(schild, lys_parent(snode), NULL, 0))) {
+            if (schild == snode) {
+                continue;
+            }
+
+            /* does this other node from the case exist? */
+            lyd_find_sibling_val(siblings, schild, NULL, &node);
+            if (node) {
+                /* this other node exists meaning this NP container has no meaning */
+                return 0;
+            }
+        }
+
+        /* no data from this case exist and this NP container existence would mean this case is selected */
+        return 1;
+    }
+
+    return 0;
+}
+
+/**
  * @brief Create config/state/both NP containers, recursively.
  *
  * @param[in,out] first First sibling, not needed if @p parent is set.
@@ -3361,8 +3408,8 @@ sr_lyd_create_np_cont_r(struct lyd_node **first, struct lyd_node *parent, const 
 
     while ((snode = lys_getnext(snode, parent ? parent->schema : NULL, ly_mod, 0))) {
         if (!(snode->flags & config_f) || (snode->nodetype != LYS_CONTAINER)
-                || ((struct lys_node_container *)snode)->presence) {
-            /* not a NP container or wrong config */
+                || sr_lyd_cont_has_meaning(snode, parent ? parent->child : *first)) {
+            /* not a container, wrong config, or the container has meaning so we do not create it automatically */
             continue;
         }
 
