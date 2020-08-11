@@ -136,7 +136,8 @@ data are considered to no longer be in-use and are deleted. This method is suita
 often or not at all such as network interface state or basic information about the system.
 
 These methods can be combined and provided data can overlap. Later push data overwrite older stored push data and
-pull data always overwrite push data.
+pull data always overwrite push data. There is an example `oper_pull_push_example` illustrating providing the same data
+using both methods.
 
 Note that these data are always appended to in-use _running_ data. That means, for instance, that no state data
 can exist if their configuration parent does not exist. A consequence of this is that whenever in-use _running_
