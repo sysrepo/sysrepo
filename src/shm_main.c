@@ -1446,34 +1446,34 @@ sr_shmmain_ext_get_lydmods_size(struct lyd_node *sr_mods)
 
     assert(sr_mods);
 
-    LY_TREE_FOR(sr_mods->child, sr_mod) {
+    LY_LIST_FOR(lyd_child(sr_mods), sr_mod) {
         if (strcmp(sr_mod->schema->name, "module")) {
             /* skip installed-module, for example */
             continue;
         }
 
-        LY_TREE_FOR(sr_mod->child, sr_child) {
+        LY_LIST_FOR(lyd_child(sr_mod), sr_child) {
             opdep_i = 0;
             if (!strcmp(sr_child->schema->name, "name")) {
                 /* a string */
-                shm_size += sr_strshmlen(((struct lyd_node_leaf_list *)sr_child)->value_str);
+                shm_size += sr_strshmlen(LYD_CANON_VALUE(sr_child));
             } else if (!strcmp(sr_child->schema->name, "enabled-feature")) {
                 /* another feature */
                 shm_size += sizeof(off_t);
                 /* a string */
-                shm_size += sr_strshmlen(((struct lyd_node_leaf_list *)sr_child)->value_str);
+                shm_size += sr_strshmlen(LYD_CANON_VALUE(sr_child));
             } else if (!strcmp(sr_child->schema->name, "data-deps")) {
                 ddep_i = 0;
-                LY_TREE_FOR(sr_child->child, sr_dep) {
+                LY_LIST_FOR(lyd_child(sr_child), sr_dep) {
                     /* another data dependency */
                     ++ddep_i;
 
                     /* module name was already counted and type is an enum */
                     if (!strcmp(sr_dep->schema->name, "inst-id")) {
-                        LY_TREE_FOR(sr_dep->child, sr_instid) {
+                        LY_LIST_FOR(lyd_child(sr_dep), sr_instid) {
                             if (!strcmp(sr_instid->schema->name, "xpath")) {
                                 /* a string */
-                                shm_size += sr_strshmlen(((struct lyd_node_leaf_list *)sr_instid)->value_str);
+                                shm_size += sr_strshmlen(LYD_CANON_VALUE(sr_instid));
                             }
                         }
                     }
@@ -1489,21 +1489,21 @@ sr_shmmain_ext_get_lydmods_size(struct lyd_node *sr_mods)
                 /* another op with dependencies */
                 ++opdep_i;
 
-                LY_TREE_FOR(sr_child->child, sr_op_dep) {
+                LY_LIST_FOR(lyd_child(sr_child), sr_op_dep) {
                     if (!strcmp(sr_op_dep->schema->name, "xpath")) {
                         /* operation xpath (a string) */
-                        shm_size += sr_strshmlen(((struct lyd_node_leaf_list *)sr_op_dep)->value_str);
+                        shm_size += sr_strshmlen(LYD_CANON_VALUE(sr_op_dep));
                     } else if (!strcmp(sr_op_dep->schema->name, "in") || !strcmp(sr_op_dep->schema->name, "out")) {
                         ddep_i = 0;
-                        LY_TREE_FOR(sr_op_dep->child, sr_dep) {
+                        LY_LIST_FOR(lyd_child(sr_op_dep), sr_dep) {
                             /* another data dependency */
                             ++ddep_i;
 
                             if (!strcmp(sr_dep->schema->name, "inst-id")) {
-                                LY_TREE_FOR(sr_dep->child, sr_instid) {
+                                LY_LIST_FOR(lyd_child(sr_dep), sr_instid) {
                                     if (!strcmp(sr_instid->schema->name, "xpath")) {
                                         /* a string */
-                                        shm_size += sr_strshmlen(((struct lyd_node_leaf_list *)sr_instid)->value_str);
+                                        shm_size += sr_strshmlen(LYD_CANON_VALUE(sr_instid));
                                     }
                                 }
                             }
@@ -1534,7 +1534,7 @@ sr_shmmain_ly_ctx_init(struct ly_ctx **ly_ctx)
     }
 
     /* load just the internal module */
-    if (!lys_parse_mem(*ly_ctx, sysrepo_yang, LYS_YANG)) {
+    if (lys_parse_mem(*ly_ctx, sysrepo_yang, LYS_IN_YANG, NULL)) {
         sr_errinfo_new_ly(&err_info, *ly_ctx);
         ly_ctx_destroy(*ly_ctx, NULL);
         *ly_ctx = NULL;
@@ -1604,12 +1604,11 @@ sr_shmmain_fill_data_deps(sr_shm_t *shm_main, char *ext_shm_addr, struct lyd_nod
     sr_error_info_t *err_info = NULL;
     sr_mod_t *ref_shm_mod = NULL;
     struct lyd_node *sr_dep, *sr_instid;
-    const char *str;
     int dep_found;
 
     assert(!*dep_i);
 
-    LY_TREE_FOR(sr_dep_parent->child, sr_dep) {
+    LY_LIST_FOR(lyd_child(sr_dep_parent), sr_dep) {
         dep_found = 0;
 
         if (!strcmp(sr_dep->schema->name, "module")) {
@@ -1619,8 +1618,7 @@ sr_shmmain_fill_data_deps(sr_shm_t *shm_main, char *ext_shm_addr, struct lyd_nod
             shm_deps[*dep_i].type = SR_DEP_REF;
 
             /* copy module name offset */
-            str = sr_ly_leaf_value_str(sr_dep);
-            ref_shm_mod = sr_shmmain_find_module(shm_main, ext_shm_addr, str, 0);
+            ref_shm_mod = sr_shmmain_find_module(shm_main, ext_shm_addr, LYD_CANON_VALUE(sr_dep), 0);
             SR_CHECK_INT_RET(!ref_shm_mod, err_info);
             shm_deps[*dep_i].module = ref_shm_mod->name;
 
@@ -1635,15 +1633,13 @@ sr_shmmain_fill_data_deps(sr_shm_t *shm_main, char *ext_shm_addr, struct lyd_nod
             /* there may be no default value */
             shm_deps[*dep_i].module = 0;
 
-            LY_TREE_FOR(sr_dep->child, sr_instid) {
+            LY_LIST_FOR(lyd_child(sr_dep), sr_instid) {
                 if (!strcmp(sr_instid->schema->name, "xpath")) {
                     /* copy xpath */
-                    str = sr_ly_leaf_value_str(sr_instid);
-                    shm_deps[*dep_i].xpath = sr_shmstrcpy(ext_shm_addr, str, ext_cur);
+                    shm_deps[*dep_i].xpath = sr_shmstrcpy(ext_shm_addr, LYD_CANON_VALUE(sr_instid), ext_cur);
                 } else if (!strcmp(sr_instid->schema->name, "default-module")) {
                     /* copy module name offset */
-                    str = sr_ly_leaf_value_str(sr_instid);
-                    ref_shm_mod = sr_shmmain_find_module(shm_main, ext_shm_addr, str, 0);
+                    ref_shm_mod = sr_shmmain_find_module(shm_main, ext_shm_addr, LYD_CANON_VALUE(sr_instid), 0);
                     SR_CHECK_INT_RET(!ref_shm_mod, err_info);
                     shm_deps[*dep_i].module = ref_shm_mod->name;
                 }
@@ -1675,13 +1671,12 @@ sr_shmmain_add_modules(char *ext_shm_addr, struct lyd_node *first_sr_mod, sr_mod
     struct lyd_node *sr_child;
     off_t *shm_features;
     char *ext_cur;
-    const char *str;
     uint32_t i, feat_i;
 
     assert(first_sr_mod && first_shm_mod);
     ext_cur = ext_shm_addr + *ext_end;
 
-    LY_TREE_FOR(first_sr_mod, first_sr_mod) {
+    LY_LIST_FOR(first_sr_mod, first_sr_mod) {
         if (strcmp(first_sr_mod->schema->name, "module")) {
             /* skip installed-modules, for example */
             continue;
@@ -1700,15 +1695,13 @@ sr_shmmain_add_modules(char *ext_shm_addr, struct lyd_node *first_sr_mod, sr_mod
         first_shm_mod->ver = 1;
 
         /* set all arrays and pointers to ext SHM */
-        LY_TREE_FOR(first_sr_mod->child, sr_child) {
+        LY_LIST_FOR(lyd_child(first_sr_mod), sr_child) {
             if (!strcmp(sr_child->schema->name, "name")) {
                 /* copy module name */
-                str = sr_ly_leaf_value_str(sr_child);
-                first_shm_mod->name = sr_shmstrcpy(ext_shm_addr, str, &ext_cur);
+                first_shm_mod->name = sr_shmstrcpy(ext_shm_addr, LYD_CANON_VALUE(sr_child), &ext_cur);
             } else if (!strcmp(sr_child->schema->name, "revision")) {
                 /* copy revision */
-                str = sr_ly_leaf_value_str(sr_child);
-                strcpy(first_shm_mod->rev, str);
+                strcpy(first_shm_mod->rev, LYD_CANON_VALUE(sr_child));
             } else if (!strcmp(sr_child->schema->name, "replay-support")) {
                 /* set replay-support flag */
                 first_shm_mod->flags |= SR_MOD_REPLAY_SUPPORT;
@@ -1723,11 +1716,10 @@ sr_shmmain_add_modules(char *ext_shm_addr, struct lyd_node *first_sr_mod, sr_mod
         shm_features = (off_t *)(ext_shm_addr + first_shm_mod->features);
         feat_i = 0;
 
-        LY_TREE_FOR(first_sr_mod->child, sr_child) {
+        LY_LIST_FOR(lyd_child(first_sr_mod), sr_child) {
             if (!strcmp(sr_child->schema->name, "enabled-feature")) {
                 /* copy feature name */
-                str = sr_ly_leaf_value_str(sr_child);
-                shm_features[feat_i] = sr_shmstrcpy(ext_shm_addr, str, &ext_cur);
+                shm_features[feat_i] = sr_shmstrcpy(ext_shm_addr, LYD_CANON_VALUE(sr_child), &ext_cur);
 
                 ++feat_i;
             }
@@ -1763,13 +1755,12 @@ sr_shmmain_add_modules_deps(sr_shm_t *shm_main, char *ext_shm_addr, struct lyd_n
     sr_mod_op_dep_t *shm_op_deps;
     off_t *shm_inv_data_deps;
     char *ext_cur;
-    const char *str;
     uint32_t data_dep_i, inv_data_dep_i, op_dep_i, op_data_dep_i;
 
     assert(first_sr_mod && first_shm_mod);
     ext_cur = ext_shm_addr + *ext_end;
 
-    LY_TREE_FOR(first_sr_mod, first_sr_mod) {
+    LY_LIST_FOR(first_sr_mod, first_sr_mod) {
         if (strcmp(first_sr_mod->schema->name, "module")) {
             /* skip installed-modules, for example */
             continue;
@@ -1780,10 +1771,10 @@ sr_shmmain_add_modules_deps(sr_shm_t *shm_main, char *ext_shm_addr, struct lyd_n
         assert(!first_shm_mod->op_dep_count);
 
         /* set all arrays and pointers to ext SHM */
-        LY_TREE_FOR(first_sr_mod->child, sr_child) {
+        LY_LIST_FOR(lyd_child(first_sr_mod), sr_child) {
             if (!strcmp(sr_child->schema->name, "data-deps")) {
                 /* just count data dependencies */
-                LY_TREE_FOR(sr_child->child, sr_dep) {
+                LY_LIST_FOR(lyd_child(sr_child), sr_dep) {
                     ++first_shm_mod->data_dep_count;
                 }
             } else if (!strcmp(sr_child->schema->name, "inverse-data-deps")) {
@@ -1808,7 +1799,7 @@ sr_shmmain_add_modules_deps(sr_shm_t *shm_main, char *ext_shm_addr, struct lyd_n
         shm_op_deps = (sr_mod_op_dep_t *)(ext_shm_addr + first_shm_mod->op_deps);
         op_dep_i = 0;
 
-        LY_TREE_FOR(first_sr_mod->child, sr_child) {
+        LY_LIST_FOR(lyd_child(first_sr_mod), sr_child) {
             if (!strcmp(sr_child->schema->name, "data-deps")) {
                 /* now fill the dependency array */
                 if ((err_info = sr_shmmain_fill_data_deps(shm_main, ext_shm_addr, sr_child, shm_data_deps, &data_dep_i,
@@ -1817,20 +1808,18 @@ sr_shmmain_add_modules_deps(sr_shm_t *shm_main, char *ext_shm_addr, struct lyd_n
                 }
             } else if (!strcmp(sr_child->schema->name, "inverse-data-deps")) {
                 /* now fill module references */
-                str = sr_ly_leaf_value_str(sr_child);
-                ref_shm_mod = sr_shmmain_find_module(shm_main, ext_shm_addr, str, 0);
+                ref_shm_mod = sr_shmmain_find_module(shm_main, ext_shm_addr, LYD_CANON_VALUE(sr_child), 0);
                 SR_CHECK_INT_RET(!ref_shm_mod, err_info);
                 shm_inv_data_deps[inv_data_dep_i] = ref_shm_mod->name;
 
                 ++inv_data_dep_i;
             } else if (!strcmp(sr_child->schema->name, "op-deps")) {
-                LY_TREE_FOR(sr_child->child, sr_op) {
+                LY_LIST_FOR(lyd_child(sr_child), sr_op) {
                     if (!strcmp(sr_op->schema->name, "xpath")) {
                         /* copy xpath name */
-                        str = sr_ly_leaf_value_str(sr_op);
-                        shm_op_deps[op_dep_i].xpath = sr_shmstrcpy(ext_shm_addr, str, &ext_cur);
+                        shm_op_deps[op_dep_i].xpath = sr_shmstrcpy(ext_shm_addr, LYD_CANON_VALUE(sr_op), &ext_cur);
                     } else if (!strcmp(sr_op->schema->name, "in")) {
-                        LY_TREE_FOR(sr_op->child, sr_op_dep) {
+                        LY_LIST_FOR(lyd_child(sr_op), sr_op_dep) {
                             /* count op input data deps first */
                             ++shm_op_deps[op_dep_i].in_dep_count;
                         }
@@ -1848,7 +1837,7 @@ sr_shmmain_add_modules_deps(sr_shm_t *shm_main, char *ext_shm_addr, struct lyd_n
                         }
                         SR_CHECK_INT_RET(op_data_dep_i != shm_op_deps[op_dep_i].in_dep_count, err_info);
                     } else if (!strcmp(sr_op->schema->name, "out")) {
-                        LY_TREE_FOR(sr_op->child, sr_op_dep) {
+                        LY_LIST_FOR(lyd_child(sr_op), sr_op_dep) {
                             /* count op output data deps first */
                             ++shm_op_deps[op_dep_i].out_dep_count;
                         }
@@ -1972,7 +1961,7 @@ sr_shmmain_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod)
 
     /* count how many modules are we going to add */
     new_mod_count = 0;
-    LY_TREE_FOR(sr_mod, next) {
+    LY_LIST_FOR(sr_mod, next) {
         if (!strcmp(next->schema->name, "module")) {
             ++new_mod_count;
         }
@@ -1990,7 +1979,7 @@ sr_shmmain_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod)
     /* enlarge ext SHM */
     wasted_ext = &((sr_ext_shm_t *)conn->ext_shm.addr)->wasted;
     new_ext_size = sizeof(sr_ext_shm_t) + sr_shmmain_ext_get_size_main_shm(&conn->main_shm, conn->ext_shm.addr) +
-            sr_shmmain_ext_get_lydmods_size(sr_mod->parent);
+            sr_shmmain_ext_get_lydmods_size(lyd_parent(sr_mod));
     if ((err_info = sr_shm_remap(&conn->ext_shm, new_ext_size + *wasted_ext))) {
         return err_info;
     }

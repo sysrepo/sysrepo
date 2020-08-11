@@ -1,6 +1,7 @@
 module mandatory {
     namespace mand;
     prefix m;
+    yang-version 1.1;
 
     container cont {
         choice choic {

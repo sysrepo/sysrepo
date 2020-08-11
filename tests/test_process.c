@@ -177,14 +177,14 @@ static void
 setup(void)
 {
     sr_conn_ctx_t *conn;
-    const char *en_feat = "feat1";
+    const char *en_feats[] = {"feat1", NULL};
 
     sr_assert(sr_connect(0, &conn) == SR_ERR_OK);
 
-    sr_assert(sr_install_module(conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", &en_feat, 1) == SR_ERR_OK);
-    sr_assert(sr_install_module(conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0) == SR_ERR_OK);
-    sr_assert(sr_install_module(conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL, 0) == SR_ERR_OK);
-    sr_assert(sr_install_module(conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0) == SR_ERR_OK);
+    sr_assert(sr_install_module(conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", en_feats) == SR_ERR_OK);
+    sr_assert(sr_install_module(conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL) == SR_ERR_OK);
+    sr_assert(sr_install_module(conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL) == SR_ERR_OK);
+    sr_assert(sr_install_module(conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL) == SR_ERR_OK);
 
     sr_disconnect(conn);
 }
@@ -318,14 +318,13 @@ test_rpc_crash1(int rp, int wp)
     /* wait for the other process */
     barrier(rp, wp);
 
-    rpc = lyd_new_path(NULL, sr_get_context(conn), "/ops:rpc3/l4", "value", 0, 0);
-    sr_assert_true(rpc);
+    sr_assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, sr_get_context(conn), "/ops:rpc3/l4", "value", 0, &rpc));
 
     /* this should crash the other process */
     ret = sr_rpc_send_tree(sess, rpc, 2000, &output);
     sr_assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
 
-    lyd_free(rpc);
+    lyd_free_tree(rpc);
     sr_disconnect(conn);
     return 0;
 }
@@ -343,6 +342,9 @@ rpc_crash_cb(sr_session_ctx_t *session, const char *op_path, const sr_val_t *inp
     (void)output;
     (void)output_cnt;
     (void)private_data;
+
+    /* avoid leaks (valgrind probably cannot keep track of leafref attributes because they are shared) */
+    ly_ctx_destroy((struct ly_ctx *)sr_get_context(sr_session_get_connection(session)), NULL);
 
     /* callback crashes */
     exit(0);
@@ -441,8 +443,8 @@ test_notif_instid1(int rp, int wp)
     sr_assert_int_equal(ret, SR_ERR_OK);
 
     /* create the notification */
-    notif = lyd_new_path(NULL, sr_get_context(conn), "/ops:notif3/list2[k='key']/l15",
-            "/ietf-interfaces:interfaces/interface[name='eth0']", 0, 0);
+    lyd_new_path(NULL, sr_get_context(conn), "/ops:notif3/list2[k='key']/l15",
+            "/ietf-interfaces:interfaces/interface[name='eth0']", 0, &notif);
     sr_assert(notif);
 
     /* wait for the other process */
@@ -454,7 +456,7 @@ test_notif_instid1(int rp, int wp)
         sr_assert_int_equal(ret, SR_ERR_OK);
     }
 
-    lyd_free(notif);
+    lyd_free_tree(notif);
 
     sr_unsubscribe(sub);
     sr_disconnect(conn);

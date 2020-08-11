@@ -64,15 +64,14 @@ main(int argc, char **argv)
     }
 
     /* create the notification */
-    notif = lyd_new_path(NULL, ctx, path, NULL, 0, 0);
-    if (!notif) {
+    if (lyd_new_path(NULL, ctx, path, NULL, 0, &notif)) {
         printf("Creating notification \"%s\" failed.\n", path);
         goto cleanup;
     }
 
     /* add the input value */
     if (node_path) {
-        if (!lyd_new_path(notif, NULL, node_path, (void *)node_val, 0, 0)) {
+        if (lyd_new_path(notif, NULL, node_path, node_val, 0, NULL)) {
             printf("Creating value \"%s\" failed.\n", node_path);
             goto cleanup;
         }
@@ -85,7 +84,7 @@ main(int argc, char **argv)
     }
 
 cleanup:
-    lyd_free_withsiblings(notif);
+    lyd_free_all(notif);
     sr_disconnect(connection);
     return rc ? EXIT_FAILURE : EXIT_SUCCESS;
 }

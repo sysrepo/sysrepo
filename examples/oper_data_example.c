@@ -40,8 +40,8 @@ dp_get_items_cb(sr_session_ctx_t *session, const char *module_name, const char *
     printf("\n\n ========== DATA FOR \"%s\" \"%s\" REQUESTED =======================\n\n", module_name, xpath);
 
     if (!strcmp(module_name, "examples") && !strcmp(xpath, "/examples:stats")) {
-        *parent = lyd_new_path(NULL, sr_get_context(sr_session_get_connection(session)), "/examples:stats/counter", "852", 0, 0);
-        lyd_new_path(*parent, NULL, "/examples:stats/counter2", "1052", 0, 0);
+        lyd_new_path(NULL, sr_get_context(sr_session_get_connection(session)), "/examples:stats/counter", "852", 0, parent);
+        lyd_new_path(*parent, NULL, "/examples:stats/counter2", "1052", 0, NULL);
     }
 
     return SR_ERR_OK;

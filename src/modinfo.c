@@ -90,18 +90,18 @@ sr_modinfo_next_mod(struct sr_mod_info_mod_s *last, struct sr_mod_info_s *mod_in
         assert(data);
 
         /* find the last edit node */
-        for (node = data; lyd_node_module(node) != last->ly_mod; node = node->next);
+        for (node = data; lyd_owner_module(node) != last->ly_mod; node = node->next);
 
 next_mod:
         /* skip all edit nodes from this module */
-        for (; node && (lyd_node_module(node) == last->ly_mod); node = node->next);
+        for (; node && (lyd_owner_module(node) == last->ly_mod); node = node->next);
     }
 
     if (node) {
         /* find mod of this edit node */
         mod = NULL;
         for (i = 0; i < mod_info->mod_count; ++i) {
-            if (mod_info->mods[i].ly_mod == lyd_node_module(node)) {
+            if (mod_info->mods[i].ly_mod == lyd_owner_module(node)) {
                 mod = &mod_info->mods[i];
                 break;
             }
@@ -132,6 +132,7 @@ sr_error_info_t *
 sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edit, int create_diff)
 {
     sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
     struct sr_mod_info_mod_s *mod = NULL;
     const struct lyd_node *node;
     char *str;
@@ -140,10 +141,12 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
 
     assert(!mod_info->data_cached);
 
-    LY_TREE_FOR(edit, node) {
-        if (!strcmp(lyd_node_module(node)->name, SR_YANG_MOD)) {
-            str = lyd_path(node);
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, str, "Data of internal module \"%s\" cannot be modified.", SR_YANG_MOD);
+    LY_LIST_FOR(edit, node) {
+        ly_mod = lyd_owner_module(node);
+        if (ly_mod && !strcmp(ly_mod->name, SR_YANG_MOD)) {
+            str = lyd_path(node, LYD_PATH_STD, NULL, 0);
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, str, "Data of internal module \"%s\" cannot be modified.",
+                           SR_YANG_MOD);
             free(str);
             return err_info;
         }
@@ -173,13 +176,20 @@ sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *new
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
     uint32_t i;
+    LY_ERR lyrc;
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_REQ) {
             /* merge relevant diff part */
-            if ((err_info = sr_diff_mod_merge(new_diff, mod_info->ds == SR_DS_OPERATIONAL ? mod_info->conn : NULL,
-                    mod->ly_mod, &mod_info->diff, NULL))) {
+            if (mod_info->ds == SR_DS_OPERATIONAL) {
+                lyrc = lyd_diff_merge_module(&mod_info->diff, new_diff, mod->ly_mod, sr_lyd_diff_merge_cb,
+                        &mod_info->conn->sr_cid, LYD_DIFF_MERGE_DEFAULTS);
+            } else {
+                lyrc = lyd_diff_merge_module(&mod_info->diff, new_diff, mod->ly_mod, NULL, NULL, 0);
+            }
+            if (lyrc) {
+                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
                 return err_info;
             }
         }
@@ -192,7 +202,6 @@ sr_error_info_t *
 sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_difflist *ly_diff;
     struct sr_mod_info_mod_s *mod;
     struct lyd_node *src_mod_data, *dst_mod_data, *diff;
     uint32_t i;
@@ -205,47 +214,28 @@ sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data)
             dst_mod_data = sr_module_data_unlink(&mod_info->data, mod->ly_mod);
             src_mod_data = sr_module_data_unlink(src_data, mod->ly_mod);
 
-            /* get libyang diff on only this module's data */
-            if (!(ly_diff = lyd_diff(dst_mod_data, src_mod_data, LYD_DIFFOPT_WITHDEFAULTS))) {
+            /* get diff on only this module's data */
+            if (lyd_diff_siblings(dst_mod_data, src_mod_data, LYD_DIFF_DEFAULTS, &diff)) {
                 sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
-                lyd_free_withsiblings(dst_mod_data);
-                lyd_free_withsiblings(src_mod_data);
+                lyd_free_all(dst_mod_data);
+                lyd_free_all(src_mod_data);
                 return err_info;
             }
 
-            if (ly_diff->type[0] != LYD_DIFF_END) {
+            if (diff) {
                 /* there is a diff */
                 mod->state |= MOD_INFO_CHANGED;
 
-                /* create a single sysrepo diff */
-                err_info = sr_diff_ly2sr(ly_diff, &diff);
-                if (mod_info->diff) {
-                    sr_ly_link(mod_info->diff, diff);
-                } else {
-                    mod_info->diff = diff;
-                }
+                /* merge the diff */
+                lyd_insert_sibling(mod_info->diff, diff, &mod_info->diff);
 
                 /* update data */
-                if (mod_info->data) {
-                    sr_ly_link(mod_info->data, src_mod_data);
-                } else {
-                    mod_info->data = src_mod_data;
-                }
-                lyd_free_withsiblings(dst_mod_data);
+                lyd_insert_sibling(mod_info->data, src_mod_data, &mod_info->data);
+                lyd_free_all(dst_mod_data);
             } else {
                 /* keep old data (for validation) */
-                if (mod_info->data) {
-                    sr_ly_link(mod_info->data, dst_mod_data);
-                } else {
-                    mod_info->data = dst_mod_data;
-                }
-                lyd_free_withsiblings(src_mod_data);
-            }
-
-            /* next iteration */
-            lyd_free_diff(ly_diff);
-            if (err_info) {
-                return err_info;
+                lyd_insert_sibling(mod_info->data, dst_mod_data, &mod_info->data);
+                lyd_free_all(src_mod_data);
             }
         }
     }
@@ -462,18 +452,17 @@ sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const
 
     if (parent) {
         /* duplicate parent so that it is a stand-alone subtree */
-        last_parent = lyd_dup(parent, LYD_DUP_OPT_WITH_PARENTS | LYD_DUP_OPT_WITH_KEYS);
-        if (!last_parent) {
+        if (lyd_dup_single(parent, NULL, LYD_DUP_WITH_PARENTS, &last_parent)) {
             sr_errinfo_new_ly(&err_info, ly_mod->ctx);
             return err_info;
         }
 
         /* go top-level */
-        for (parent_dup = last_parent; parent_dup->parent; parent_dup = parent_dup->parent);
+        for (parent_dup = last_parent; parent_dup->parent; parent_dup = lyd_parent(parent_dup));
 
         if (request_xpath) {
             /* check whether the parent would not be filtered out */
-            parent_path = lyd_path(last_parent);
+            parent_path = lyd_path(last_parent, LYD_PATH_STD, NULL, 0);
             SR_CHECK_MEM_GOTO(!parent_path, err_info, cleanup);
 
             if (!sr_xpath_oper_data_required(request_xpath, parent_path)) {
@@ -490,13 +479,14 @@ sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const
 
     if (*oper_data) {
         /* add any missing NP containers, redundant to add top-level containers */
-        if ((err_info = sr_lyd_create_sibling_np_cont_r(NULL, *oper_data, NULL, NULL))) {
+        if (lyd_new_implicit_tree(*oper_data, 0, NULL)) {
+            sr_errinfo_new_ly(&err_info, ly_mod->ctx);
             goto cleanup;
         }
     }
 
 cleanup:
-    lyd_free_withsiblings(parent_dup);
+    lyd_free_tree(parent_dup);
     free(parent_path);
     return err_info;
 }
@@ -530,10 +520,8 @@ sr_xpath_oper_data_append(sr_mod_oper_sub_t *shm_msub, const struct lys_module *
     }
 
     /* merge into one data tree */
-    if (!*data) {
-        *data = oper_data;
-    } else if (oper_data && lyd_merge(*data, oper_data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
-        lyd_free_withsiblings(oper_data);
+    if (lyd_merge_siblings(data, oper_data, LYD_MERGE_DESTRUCT)) {
+        lyd_free_all(oper_data);
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         return err_info;
     }
@@ -565,15 +553,17 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const c
     uint16_t i, j;
     struct ly_set *set = NULL;
     struct lyd_node *diff = NULL;
+    LY_ERR lyrc;
 
     if (!(opts & SR_OPER_NO_STORED)) {
         /* apply stored operational diff */
         if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_OPERATIONAL, &diff))) {
             return err_info;
         }
-        err_info = sr_diff_mod_apply(diff, mod->ly_mod, opts & SR_OPER_WITH_ORIGIN, data);
-        lyd_free_withsiblings(diff);
-        if (err_info) {
+        lyrc = lyd_diff_apply_module(data, diff, mod->ly_mod, opts & SR_OPER_WITH_ORIGIN ? sr_lyd_diff_apply_cb : NULL, NULL);
+        lyd_free_all(diff);
+        if (lyrc) {
+            sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
             return err_info;
         }
     }
@@ -617,20 +607,19 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const c
                 goto next_iter;
             }
 
-            set = lyd_find_path(*data, parent_xpath);
-            if (!set) {
+            if (lyd_find_xpath(*data, parent_xpath, &set)) {
                 sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
                 goto error;
             }
 
-            if (!set->number) {
+            if (!set->count) {
                 /* data parent does not exist */
                 goto next_iter;
             }
 
             /* nested data */
-            for (j = 0; j < set->number; ++j) {
-                if ((err_info = sr_xpath_oper_data_append(shm_msub, mod->ly_mod, sub_xpath, request_xpath, set->set.d[j],
+            for (j = 0; j < set->count; ++j) {
+                if ((err_info = sr_xpath_oper_data_append(shm_msub, mod->ly_mod, sub_xpath, request_xpath, set->dnodes[j],
                         *sid, timeout_ms, data, cb_error_info))) {
                     goto error;
                 }
@@ -639,7 +628,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const c
 next_iter:
             /* cleanup for next iteration */
             free(parent_xpath);
-            ly_set_free(set);
+            ly_set_free(set, NULL);
             set = NULL;
         } else {
             /* top-level data */
@@ -654,7 +643,7 @@ next_iter:
 
 error:
     free(parent_xpath);
-    ly_set_free(set);
+    ly_set_free(set, NULL);
     return err_info;
 }
 
@@ -674,7 +663,7 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_change_sub_t *shm_changesubs;
-    struct lyd_node *root, *elem, *next;
+    struct lyd_node *root, *elem;
     uint16_t i, xp_i;
     int data_duplicated = 0;
     char **xpaths;
@@ -728,22 +717,22 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
     }
 
     if (opts & SR_OPER_WITH_ORIGIN) {
-        LY_TREE_FOR(*enabled_mod_data, root) {
+        LY_LIST_FOR(*enabled_mod_data, root) {
             /* add origin of all top-level nodes */
             origin = (root->schema->flags & LYS_CONFIG_W) ? SR_CONFIG_ORIGIN : SR_OPER_ORIGIN;
             if ((err_info = sr_edit_diff_set_origin(root, origin, 1))) {
                 return err_info;
             }
 
-            LY_TREE_DFS_BEGIN(root, next, elem) {
+            LYD_TREE_DFS_BEGIN(root, elem) {
                 /* add origin of default nodes instead of the default flag */
-                if ((elem->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) && elem->dflt) {
-                    if ((err_info = sr_edit_diff_set_origin(elem, "default", 1))) {
+                if ((elem->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) && (elem->flags & LYD_DEFAULT)) {
+                    if ((err_info = sr_edit_diff_set_origin(elem, "ietf-origin:default", 1))) {
                         return err_info;
                     }
-                    elem->dflt = 0;
+                    elem->flags &= ~LYD_DEFAULT;
                 }
-                LY_TREE_DFS_END(root, next, elem);
+                LYD_TREE_DFS_END(root, elem);
             }
         }
     }
@@ -791,7 +780,7 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
             }
 
             /* data needs to be updated, remove old data */
-            lyd_free_withsiblings(sr_module_data_unlink(&mod_cache->data, mod->ly_mod));
+            lyd_free_all(sr_module_data_unlink(&mod_cache->data, mod->ly_mod));
             mod_cache->mods[i].ver = 0;
         }
     } else {
@@ -819,16 +808,11 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
     if (!mod_cache->mods[i].ver) {
         if (upd_mod_data) {
             /* current data were provided, use them */
-            mod_data = lyd_dup_withsiblings(upd_mod_data, LYD_DUP_OPT_RECURSIVE | LYD_DUP_OPT_WITH_WHEN);
-            if (!mod_data) {
+            if (lyd_dup_siblings(upd_mod_data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &mod_data)) {
                 sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
                 goto error_wrunlock;
             }
-            if (mod_cache->data) {
-                sr_ly_link(mod_cache->data, mod_data);
-            } else {
-                mod_cache->data = mod_data;
-            }
+            lyd_insert_sibling(mod_cache->data, mod_data, &mod_cache->data);
         } else {
             /* we need to load current data from persistent storage */
             if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_RUNNING, &mod_cache->data))) {
@@ -864,15 +848,15 @@ static void
 sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_oper_options_t opts)
 {
     struct lyd_node *next, *elem;
-    struct lyd_attr *attr;
+    struct lyd_meta *meta;
 
     if (!(opts & (SR_OPER_NO_STATE | SR_OPER_NO_CONFIG)) && (opts & SR_OPER_WITH_ORIGIN)) {
         /* nothing to trim */
         return;
     }
 
-    LY_TREE_FOR_SAFE(sibling, next, elem) {
-        assert((elem->schema->nodetype != LYS_LEAF) || !lys_is_key((struct lys_node_leaf *)elem->schema, NULL));
+    LY_LIST_FOR_SAFE(sibling, next, elem) {
+        assert((elem->schema->nodetype != LYS_LEAF) || !(elem->schema->flags & LYS_KEY));
         if (elem->schema->flags & LYS_CONFIG_R) {
             /* state subtree */
             if (opts & SR_OPER_NO_STATE) {
@@ -880,7 +864,7 @@ sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_ope
                 if (*data == elem) {
                     *data = (*data)->next;
                 }
-                lyd_free(elem);
+                lyd_free_tree(elem);
                 continue;
             }
 
@@ -891,22 +875,22 @@ sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_ope
         }
 
         /* trim all our children */
-        sr_oper_data_trim_r(data, sr_lyd_child(elem, 1), opts);
+        sr_oper_data_trim_r(data, lyd_child_no_keys(elem), opts);
 
-        if ((elem->schema->flags & LYS_CONFIG_W) && (opts & SR_OPER_NO_CONFIG) && !sr_lyd_child(elem, 1)) {
+        if ((elem->schema->flags & LYS_CONFIG_W) && (opts & SR_OPER_NO_CONFIG) && !lyd_child_no_keys(elem)) {
             /* config-only subtree (config node with no children) */
             if (*data == elem) {
                 *data = (*data)->next;
             }
-            lyd_free(elem);
+            lyd_free_tree(elem);
             continue;
         }
 
         if (!(opts & SR_OPER_WITH_ORIGIN)) {
             /* trim origin */
-            LY_TREE_FOR(elem->attr, attr) {
-                if (!strcmp(attr->name, "origin") && !strcmp(attr->annotation->module->name, "ietf-origin")) {
-                    lyd_free_attr(elem->schema->module->ctx, elem, attr, 0);
+            LY_LIST_FOR(elem->meta, meta) {
+                if (!strcmp(meta->name, "origin") && !strcmp(meta->annotation->module->name, "ietf-origin")) {
+                    lyd_free_meta_single(meta);
                     break;
                 }
             }
@@ -928,21 +912,20 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
     struct lyd_node *mod_data;
 
     /* get the data from libyang */
-    mod_data = ly_ctx_info(mod_info->conn->ly_ctx);
-    SR_CHECK_LY_RET(!mod_data, mod_info->conn->ly_ctx, err_info);
+    SR_CHECK_LY_RET(ly_ctx_get_yanglib_data(mod_info->conn->ly_ctx, &mod_data), mod_info->conn->ly_ctx, err_info);
 
-    if (!strcmp(mod->ly_mod->rev[0].date, "2019-01-04")) {
+    if (!strcmp(mod->ly_mod->revision, "2019-01-04")) {
         assert(!strcmp(mod_data->schema->name, "yang-library"));
 
         /* add supported datastores */
-        if (!lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:running']/schema", "complete", 0, 0)
-                || !lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:candidate']/schema", "complete", 0, 0)
-                || !lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:startup']/schema", "complete", 0, 0)
-                || !lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:operational']/schema", "complete", 0, 0)) {
+        if (lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:running']/schema", "complete", 0, 0)
+                || lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:candidate']/schema", "complete", 0, 0)
+                || lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:startup']/schema", "complete", 0, 0)
+                || lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:operational']/schema", "complete", 0, 0)) {
             sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
             return err_info;
         }
-    } else if (!strcmp(mod->ly_mod->rev[0].date, "2016-06-21")) {
+    } else if (!strcmp(mod->ly_mod->revision, "2016-06-21")) {
         assert(!strcmp(mod_data->schema->name, "modules-state"));
 
         /* all data should already be there */
@@ -953,9 +936,7 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
     }
 
     /* connect to the rest of data */
-    if (!mod_info->data) {
-        mod_info->data = mod_data;
-    } else if (lyd_merge(mod_info->data, mod_data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
+    if (lyd_merge_siblings(&mod_info->data, mod_data, LYD_MERGE_DESTRUCT)) {
         sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
         return err_info;
     }
@@ -1008,59 +989,49 @@ sr_modinfo_module_srmon_module(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_m
     uint16_t i;
     char buf[22];
     sr_cid_t cid;
-    struct ly_ctx *ly_ctx;
+    const struct ly_ctx *ly_ctx;
 
-    ly_ctx = lyd_node_module(sr_state)->ctx;
+    ly_ctx = LYD_CTX(sr_state);
 
-    /* module */
-    sr_mod = lyd_new(sr_state, NULL, "module");
-    SR_CHECK_LY_RET(!sr_mod, ly_ctx, err_info);
-
-    /* name */
-    SR_CHECK_LY_RET(!lyd_new_leaf(sr_mod, NULL, "name", ext_shm_addr + shm_mod->name), ly_ctx, err_info);
+    /* module with name */
+    SR_CHECK_LY_RET(lyd_new_list(sr_state, NULL, "module", 0, &sr_mod, ext_shm_addr + shm_mod->name), ly_ctx, err_info);
 
     /* subscriptions, make implicit */
-    sr_subs = lyd_new(sr_mod, NULL, "subscriptions");
-    SR_CHECK_LY_RET(!sr_subs, ly_ctx, err_info);
-    sr_subs->dflt = 1;
+    SR_CHECK_LY_RET(lyd_new_inner(sr_mod, NULL, "subscriptions", 0, &sr_subs), ly_ctx, err_info);
+    sr_subs->flags |= LYD_DEFAULT;
 
     for (ds = 0; ds < SR_DS_COUNT; ++ds) {
         change_sub = (sr_mod_change_sub_t *)(ext_shm_addr + shm_mod->change_sub[ds].subs);
         for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
             /* change-sub */
-            sr_sub = lyd_new(sr_subs, NULL, "change-sub");
-            SR_CHECK_LY_RET(!sr_sub, ly_ctx, err_info);
+            SR_CHECK_LY_RET(lyd_new_list(sr_subs, NULL, "change-sub", 0, &sr_sub), ly_ctx, err_info);
 
             /* datastore */
-            SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "datastore", sr_ds2ident(ds)), ly_ctx, err_info);
+            SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "datastore", sr_ds2ident(ds), 0, NULL), ly_ctx, err_info);
 
             /* xpath */
             if (change_sub[i].xpath) {
-                SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "xpath", ext_shm_addr + change_sub[i].xpath),
+                SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "xpath", ext_shm_addr + change_sub[i].xpath, 0, NULL),
                         ly_ctx, err_info);
             }
 
             /* priority */
             sprintf(buf, "%"PRIu32, change_sub[i].priority);
-            SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "priority", buf), ly_ctx, err_info);
+            SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "priority", buf, 0, NULL), ly_ctx, err_info);
 
             /* cid */
             if ((err_info = sr_modinfo_module_srmon_evpipe2cid(main_shm, ext_shm_addr, change_sub[i].evpipe_num, &cid))) {
                 return err_info;
             }
             sprintf(buf, "%"PRIu32, cid);
-            SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "cid", buf), ly_ctx, err_info);
+            SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info);
         }
     }
 
     oper_sub = (sr_mod_oper_sub_t *)(ext_shm_addr + shm_mod->oper_subs);
     for (i = 0; i < shm_mod->oper_sub_count; ++i) {
-        /* operational-sub */
-        sr_sub = lyd_new(sr_subs, NULL, "operational-sub");
-        SR_CHECK_LY_RET(!sr_sub, ly_ctx, err_info);
-
-        /* xpath */
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "xpath", ext_shm_addr + oper_sub[i].xpath),
+        /* operational-sub and xpath */
+        SR_CHECK_LY_RET(lyd_new_list(sr_subs, NULL, "operational-sub", 0, &sr_sub, ext_shm_addr + oper_sub[i].xpath),
                 ly_ctx, err_info);
 
         /* cid */
@@ -1068,7 +1039,7 @@ sr_modinfo_module_srmon_module(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_m
             return err_info;
         }
         sprintf(buf, "%"PRIu32, cid);
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "cid", buf), ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info);
     }
 
     notif_sub = (sr_mod_notif_sub_t *)(ext_shm_addr + shm_mod->notif_subs);
@@ -1078,7 +1049,7 @@ sr_modinfo_module_srmon_module(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_m
             return err_info;
         }
         sprintf(buf, "%"PRIu32, cid);
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_subs, NULL, "notification-sub", buf), ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_term(sr_subs, NULL, "notification-sub", buf, 0, NULL), ly_ctx, err_info);
     }
 
     return NULL;
@@ -1102,37 +1073,31 @@ sr_modinfo_module_srmon_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_rpc_
     uint16_t i;
     char buf[22];
     sr_cid_t cid;
-    struct ly_ctx *ly_ctx;
+    const struct ly_ctx *ly_ctx;
 
-    ly_ctx = lyd_node_module(sr_state)->ctx;
+    ly_ctx = LYD_CTX(sr_state);
 
-    /* rpc */
-    sr_rpc = lyd_new(sr_state, NULL, "rpc");
-    SR_CHECK_LY_RET(!sr_rpc, ly_ctx, err_info);
-
-    /* path */
-    SR_CHECK_LY_RET(!lyd_new_leaf(sr_rpc, NULL, "path", ext_shm_addr + shm_rpc->op_path), ly_ctx, err_info);
+    /* rpc and path */
+    SR_CHECK_LY_RET(lyd_new_list(sr_state, NULL, "rpc", 0, &sr_rpc, ext_shm_addr + shm_rpc->op_path), ly_ctx, err_info);
 
     rpc_sub = (sr_rpc_sub_t *)(ext_shm_addr + shm_rpc->subs);
     for (i = 0; i < shm_rpc->sub_count; ++i) {
         /* rpc-sub */
-        sr_sub = lyd_new(sr_rpc, NULL, "rpc-sub");
-        SR_CHECK_LY_RET(!sr_sub, ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_list(sr_rpc, NULL, "rpc-sub", 0, &sr_sub), ly_ctx, err_info);
 
         /* xpath */
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "xpath", ext_shm_addr + rpc_sub[i].xpath),
-                ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "xpath", ext_shm_addr + rpc_sub[i].xpath, 0, NULL), ly_ctx, err_info);
 
         /* priority */
         sprintf(buf, "%"PRIu32, rpc_sub[i].priority);
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "priority", buf), ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "priority", buf, 0, NULL), ly_ctx, err_info);
 
         /* cid */
         if ((err_info = sr_modinfo_module_srmon_evpipe2cid(main_shm, ext_shm_addr, rpc_sub[i].evpipe_num, &cid))) {
             return err_info;
         }
         sprintf(buf, "%"PRIu32, cid);
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "cid", buf), ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info);
     }
 
     return NULL;
@@ -1158,17 +1123,13 @@ sr_modinfo_module_srmon_connection(sr_main_shm_t *main_shm, char *ext_shm_addr, 
     uint16_t i;
     sr_datastore_t ds;
     char buf[22];
-    struct ly_ctx *ly_ctx;
+    const struct ly_ctx *ly_ctx;
 
-    ly_ctx = lyd_node_module(sr_state)->ctx;
+    ly_ctx = LYD_CTX(sr_state);
 
-    /* connection */
-    sr_conn = lyd_new(sr_state, NULL, "connection");
-    SR_CHECK_LY_RET(!sr_conn, ly_ctx, err_info);
-
-    /* cid */
+    /* connection with cid */
     sprintf(buf, "%"PRIu32, shm_conn->cid);
-    SR_CHECK_LY_RET(!lyd_new_leaf(sr_conn, NULL, "cid", buf), ly_ctx, err_info);
+    SR_CHECK_LY_RET(lyd_new_list(sr_state, NULL, "connection", 0, &sr_conn, buf), ly_ctx, err_info);
 
     /* main-lock */
     if (shm_conn->main_lock.mode) {
@@ -1177,7 +1138,7 @@ sr_modinfo_module_srmon_connection(sr_main_shm_t *main_shm, char *ext_shm_addr, 
         } else {
             sprintf(buf, "write");
         }
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_conn, NULL, "main-lock", buf), ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_term(sr_conn, NULL, "main-lock", buf, 0, NULL), ly_ctx, err_info);
     }
 
     mod_locks = (sr_conn_shm_lock_t (*)[SR_DS_COUNT])(ext_shm_addr + shm_conn->mod_locks);
@@ -1188,15 +1149,9 @@ sr_modinfo_module_srmon_connection(sr_main_shm_t *main_shm, char *ext_shm_addr, 
                 continue;
             }
 
-            /* module-lock */
-            sr_modlock = lyd_new(sr_conn, NULL, "module-lock");
-            SR_CHECK_LY_RET(!sr_modlock, ly_ctx, err_info);
-
-            /* name */
-            SR_CHECK_LY_RET(!lyd_new_leaf(sr_modlock, NULL, "name", ext_shm_addr + shm_mod[i].name), ly_ctx, err_info);
-
-            /* datastore */
-            SR_CHECK_LY_RET(!lyd_new_leaf(sr_modlock, NULL, "datastore", sr_ds2ident(ds)), ly_ctx, err_info);
+            /* module-lock with name and datastore */
+            SR_CHECK_LY_RET(lyd_new_list(sr_conn, NULL, "module-lock", 0, &sr_modlock, ext_shm_addr + shm_mod[i].name,
+                    sr_ds2ident(ds)), ly_ctx, err_info);
 
             /* lock */
             if (mod_locks[i][ds].mode == SR_LOCK_READ) {
@@ -1204,7 +1159,7 @@ sr_modinfo_module_srmon_connection(sr_main_shm_t *main_shm, char *ext_shm_addr, 
             } else {
                 sprintf(buf, "write");
             }
-            SR_CHECK_LY_RET(!lyd_new_leaf(sr_modlock, NULL, "lock", buf), ly_ctx, err_info);
+            SR_CHECK_LY_RET(lyd_new_term(sr_modlock, NULL, "lock", buf, 0, NULL), ly_ctx, err_info);
         }
     }
 
@@ -1233,12 +1188,11 @@ sr_modinfo_module_data_load_srmon(struct sr_mod_info_s *mod_info)
     uint16_t i;
 
     main_shm = (sr_main_shm_t *)mod_info->conn->main_shm.addr;
-    ly_mod = ly_ctx_get_module(mod_info->conn->ly_ctx, "sysrepo-monitoring", NULL, 1);
+    ly_mod = ly_ctx_get_module_implemented(mod_info->conn->ly_ctx, "sysrepo-monitoring");
     assert(ly_mod);
 
     /* main container */
-    mod_data = lyd_new(NULL, ly_mod, "sysrepo-state");
-    SR_CHECK_LY_GOTO(!mod_data, mod_info->conn->ly_ctx, err_info, cleanup);
+    SR_CHECK_LY_GOTO(lyd_new_inner(NULL, ly_mod, "sysrepo-state", 0, &mod_data), mod_info->conn->ly_ctx, err_info, cleanup);
 
     /* modules */
     SR_SHM_MOD_FOR(mod_info->conn->main_shm.addr, mod_info->conn->main_shm.size, shm_mod) {
@@ -1264,16 +1218,14 @@ sr_modinfo_module_data_load_srmon(struct sr_mod_info_s *mod_info)
     }
 
     /* connect to the rest of data */
-    if (!mod_info->data) {
-        mod_info->data = mod_data;
-    } else if (lyd_merge(mod_info->data, mod_data, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
+    if (lyd_merge_siblings(&mod_info->data, mod_data, LYD_MERGE_DESTRUCT)) {
         sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
         goto cleanup;
     }
     mod_data = NULL;
 
 cleanup:
-    lyd_free_withsiblings(mod_data);
+    lyd_free_siblings(mod_data);
     return err_info;
 }
 
@@ -1332,10 +1284,8 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             if (err_info) {
                 return err_info;
             }
-            if (mod_info->data) {
-                sr_ly_link(mod_info->data, mod_data);
-            } else {
-                mod_info->data = mod_data;
+            if (mod_data) {
+                lyd_insert_sibling(mod_info->data, mod_data, &mod_info->data);
             }
         } else {
             /* ...and they are not cached */
@@ -1355,11 +1305,9 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
                             &mod_data))) {
                     return err_info;
                 }
-                lyd_free_withsiblings(sr_module_data_unlink(&mod_info->data, mod->ly_mod));
-                if (mod_info->data) {
-                    sr_ly_link(mod_info->data, mod_data);
-                } else {
-                    mod_info->data = mod_data;
+                lyd_free_siblings(sr_module_data_unlink(&mod_info->data, mod->ly_mod));
+                if (mod_data) {
+                    lyd_insert_sibling(mod_info->data, mod_data, &mod_info->data);
                 }
             }
         }
@@ -1465,7 +1413,7 @@ sr_modinfo_add_mod(const struct lys_module *ly_mod, int mod_type, int mod_req_de
             }
 
             /* find ly module */
-            ly_mod = ly_ctx_get_module(ly_mod->ctx, mod_info->conn->ext_shm.addr + shm_deps[i].module, NULL, 1);
+            ly_mod = ly_ctx_get_module_implemented(ly_mod->ctx, mod_info->conn->ext_shm.addr + shm_deps[i].module);
             SR_CHECK_INT_RET(!ly_mod, err_info);
 
             /* add dependency */
@@ -1485,7 +1433,7 @@ sr_modinfo_add_mod(const struct lys_module *ly_mod, int mod_type, int mod_req_de
          shm_inv_deps = (off_t *)(mod_info->conn->ext_shm.addr + shm_mod->inv_data_deps);
          for (i = 0; i < shm_mod->inv_data_dep_count; ++i) {
             /* find ly module */
-            ly_mod = ly_ctx_get_module(ly_mod->ctx, mod_info->conn->ext_shm.addr + shm_inv_deps[i], NULL, 1);
+            ly_mod = ly_ctx_get_module_implemented(ly_mod->ctx, mod_info->conn->ext_shm.addr + shm_inv_deps[i]);
             SR_CHECK_INT_RET(!ly_mod, err_info);
 
             /* add inverse dependency */
@@ -1592,10 +1540,10 @@ sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const struct ly_set *mod_
     }
 
     prev_mod_count = mod_info->mod_count;
-    if (mod_set->number) {
+    if (mod_set->count) {
         /* add all the new modules into mod_info */
-        for (i = 0; i < mod_set->number; ++i) {
-            if ((err_info = sr_modinfo_add_mod(mod_set->set.g[i], mod_type, mod_deps, mod_info))) {
+        for (i = 0; i < mod_set->count; ++i) {
+            if ((err_info = sr_modinfo_add_mod(mod_set->objs[i], mod_type, mod_deps, mod_info))) {
                 return err_info;
             }
         }
@@ -1660,102 +1608,52 @@ sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const struct ly_set *mod_
     return NULL;
 }
 
-static sr_error_info_t *
-sr_modinfo_ly_val_diff_merge(struct sr_mod_info_s *mod_info, struct lyd_difflist *val_diff)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *node;
-    struct lys_node *snode;
-    uint32_t i, j;
-    int change;
-
-    assert(val_diff);
-
-    for (i = 0; val_diff->type[i] != LYD_DIFF_END; ++i) {
-        if ((err_info = sr_ly_val_diff_merge(&mod_info->diff, val_diff->type[i], val_diff->first[i],
-                val_diff->second[i], mod_info->conn->ly_ctx, &change))) {
-            return err_info;
-        }
-
-        /* additional modules can be modified */
-        if (change) {
-            if (val_diff->type[i] == LYD_DIFF_CREATED) {
-                node = val_diff->second[i];
-            } else {
-                node = val_diff->first[i];
-            }
-
-            /* get the module that actually owns the data (handle augments) */
-            for (snode = node->schema; lys_parent(snode); snode = lys_parent(snode));
-            for (j = 0; j < mod_info->mod_count; ++j) {
-                if (lys_node_module(snode) == mod_info->mods[j].ly_mod) {
-                    mod_info->mods[j].state |= MOD_INFO_CHANGED;
-                    break;
-                }
-            }
-            assert(j < mod_info->mod_count);
-        }
-    }
-
-    return NULL;
-}
-
 sr_error_info_t *
 sr_modinfo_validate(struct sr_mod_info_s *mod_info, int mod_state, int finish_diff)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
-    struct lyd_difflist *diff = NULL;
-    const struct lys_module **valid_mods = NULL;
-    uint32_t i, j, valid_mod_count = 0;
-    int flags;
+    struct lyd_node *diff = NULL;
+    uint32_t i;
+    int val_opts;
 
     assert(!mod_info->data_cached);
+    assert(SR_IS_CONVENTIONAL_DS(mod_info->ds) || !finish_diff);
 
+    /* validate all the modules individually */
+    if (SR_IS_CONVENTIONAL_DS(mod_info->ds)) {
+        val_opts = LYD_VALIDATE_NO_STATE;
+    } else {
+        val_opts = 0;
+    }
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
         if (mod->state & mod_state) {
-            /* this module will be validated */
-            ++valid_mod_count;
+            /* validate this module */
+            if (lyd_validate_module(&mod_info->data, mod->ly_mod, val_opts, finish_diff ? &diff : NULL)) {
+                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                SR_ERRINFO_VALID(&err_info);
+                goto cleanup;
+            }
+
+            if (diff) {
+                /* it may not have been modified before */
+                mod->state |= MOD_INFO_CHANGED;
+
+                /* merge the changes made by the validation into our diff */
+                if (lyd_diff_merge_all(&mod_info->diff, diff, 0)) {
+                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                    goto cleanup;
+                }
+
+                lyd_free_all(diff);
+                diff = NULL;
+            }
         }
     }
-
-    /* create an array of all the modules that will be validated */
-    valid_mods = malloc(valid_mod_count * sizeof *valid_mods);
-    SR_CHECK_MEM_GOTO(!valid_mods, err_info, cleanup);
-    for (i = 0, j = 0; i < mod_info->mod_count; ++i) {
-        mod = &mod_info->mods[i];
-        if (mod->state & mod_state) {
-            valid_mods[j] = mod->ly_mod;
-            ++j;
-        }
-    }
-    assert(j == valid_mod_count);
-
-    /* validate */
-    if (SR_IS_CONVENTIONAL_DS(mod_info->ds)) {
-        flags = LYD_OPT_CONFIG | LYD_OPT_WHENAUTODEL | LYD_OPT_VAL_DIFF;
-    } else {
-        flags = LYD_OPT_DATA | LYD_OPT_WHENAUTODEL | LYD_OPT_VAL_DIFF;
-    }
-    if (lyd_validate_modules(&mod_info->data, valid_mods, valid_mod_count, flags, &diff)) {
-        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
-        SR_ERRINFO_VALID(&err_info);
-        goto cleanup;
-    }
-
-    if (finish_diff) {
-        /* merge the changes made by the validation into our diff */
-        if ((err_info = sr_modinfo_ly_val_diff_merge(mod_info, diff))) {
-            goto cleanup;
-        }
-    }
-
-    /* success */
 
 cleanup:
-    lyd_free_val_diff(diff);
-    free(valid_mods);
+    lyd_free_all(diff);
     return err_info;
 }
 
@@ -1764,10 +1662,8 @@ sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
-    struct lyd_difflist *diff = NULL;
-    const struct lys_module **valid_mods = NULL;
-    uint32_t i, valid_mod_count = 0;
-    int flags;
+    struct lyd_node *diff = NULL;
+    uint32_t i;
 
     assert(!mod_info->data_cached && SR_IS_CONVENTIONAL_DS(mod_info->ds));
 
@@ -1776,11 +1672,27 @@ sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff)
         mod = &mod_info->mods[i];
         switch (mod->state & MOD_INFO_TYPE_MASK) {
         case MOD_INFO_REQ:
-            /* this module will be validated */
-            valid_mods = sr_realloc(valid_mods, (valid_mod_count + 1) * sizeof *valid_mods);
-            SR_CHECK_MEM_GOTO(!valid_mods, err_info, cleanup);
-            valid_mods[valid_mod_count] = mod->ly_mod;
-            ++valid_mod_count;
+            /* add default values for this module */
+            if (lyd_new_implicit_module(&mod_info->data, mod->ly_mod, LYD_IMPLICIT_NO_STATE, finish_diff ? &diff : NULL)) {
+                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                SR_ERRINFO_VALID(&err_info);
+                goto cleanup;
+            }
+            mod_info->data = lyd_first_sibling(mod_info->data);
+
+            if (diff) {
+                /* it may not have been modified before */
+                mod->state |= MOD_INFO_CHANGED;
+
+                /* merge the changes made by the validation into our diff */
+                if (lyd_diff_merge_all(&mod_info->diff, diff, 0)) {
+                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                    goto cleanup;
+                }
+
+                lyd_free_all(diff);
+                diff = NULL;
+            }
             break;
         case MOD_INFO_INV_DEP:
         case MOD_INFO_DEP:
@@ -1791,25 +1703,8 @@ sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff)
         }
     }
 
-    /* just add default values and generate diff */
-    flags = LYD_OPT_CONFIG | LYD_OPT_TRUSTED | LYD_OPT_VAL_DIFF;
-    if (lyd_validate_modules(&mod_info->data, valid_mods, valid_mod_count, flags, &diff)) {
-        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
-        goto cleanup;
-    }
-
-    if (finish_diff) {
-        /* merge the changes made by the validation into our diff */
-        if ((err_info = sr_modinfo_ly_val_diff_merge(mod_info, diff))) {
-            goto cleanup;
-        }
-    }
-
-    /* success */
-
 cleanup:
-    lyd_free_val_diff(diff);
-    free(valid_mods);
+    lyd_free_all(diff);
     return err_info;
 }
 
@@ -1818,6 +1713,7 @@ sr_modinfo_add_np_cont(struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
+    struct lyd_node *d;
     uint32_t i;
 
     assert(!mod_info->data_cached && !SR_IS_CONVENTIONAL_DS(mod_info->ds));
@@ -1828,9 +1724,19 @@ sr_modinfo_add_np_cont(struct sr_mod_info_s *mod_info)
         switch (mod->state & MOD_INFO_TYPE_MASK) {
         case MOD_INFO_REQ:
             /* this module data are actually used */
-            if ((err_info = sr_lyd_create_sibling_np_cont_r(&mod_info->data, NULL, mod->ly_mod, &mod_info->diff))) {
+            if (lyd_new_implicit_module(&mod_info->data, mod->ly_mod, LYD_IMPLICIT_NO_DEFAULTS, &d)) {
+                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
                 return err_info;
             }
+
+            /* merge diff (keep origin the way it was, inherit) */
+            if (lyd_diff_merge_module(&mod_info->diff, d, mod->ly_mod, NULL, &mod_info->conn->sr_cid,
+                    LYD_DIFF_MERGE_DEFAULTS)) {
+                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                return err_info;
+            }
+
+            lyd_free_all(d);
             break;
         case MOD_INFO_INV_DEP:
         case MOD_INFO_DEP:
@@ -1854,34 +1760,36 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int 
     struct sr_mod_info_mod_s *mod;
     uint32_t i;
     char *parent_xpath = NULL;
-    int flags;
+    LYD_VALIDATE_OP op_type;
 
     assert(op->schema->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF));
 
     /* find top-level node */
-    for (top_op = op; top_op->parent; top_op = top_op->parent);
+    for (top_op = op; top_op->parent; top_op = lyd_parent(top_op));
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
         switch (mod->state & MOD_INFO_TYPE_MASK) {
         case MOD_INFO_REQ:
             /* this is the module of the nested operation and we need to check that operation's parent data node exists */
-            assert((mod->ly_mod == lyd_node_module(top_op)) && lys_parent(op->schema) && op->parent);
-            parent_xpath = lyd_path(op->parent);
+            assert((mod->ly_mod == lyd_owner_module(top_op)) && op->schema->parent && op->parent);
+            parent_xpath = lyd_path(lyd_parent(op), LYD_PATH_STD, NULL, 0);
             SR_CHECK_MEM_GOTO(!parent_xpath, err_info, cleanup);
 
             if (mod_info->data) {
-                set = lyd_find_path(mod_info->data, parent_xpath);
+                if (lyd_find_xpath(mod_info->data, parent_xpath, &set)) {
+                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                    goto cleanup;
+                }
             } else {
-                set = ly_set_new();
+                if (ly_set_new(&set)) {
+                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                    goto cleanup;
+                }
             }
-            if (!set) {
-                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
-                goto cleanup;
-            }
-            SR_CHECK_INT_GOTO(set->number > 1, err_info, cleanup);
+            SR_CHECK_INT_GOTO(set->count > 1, err_info, cleanup);
 
-            if (!set->number) {
+            if (!set->count) {
                 sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, parent_xpath,
                         "Nested operation \"%s\" data parent does not exist in the operational datastore.", op->schema->name);
                 goto cleanup;
@@ -1897,8 +1805,9 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int 
     }
 
     /* validate */
-    flags = ((op->schema->nodetype & (LYS_RPC | LYS_ACTION)) ? (output ? LYD_OPT_RPCREPLY : LYD_OPT_RPC) : LYD_OPT_NOTIF);
-    if (lyd_validate(&top_op, flags, mod_info->data)) {
+    op_type = ((op->schema->nodetype & (LYS_RPC | LYS_ACTION)) ?
+            (output ? LYD_VALIDATE_OP_REPLY : LYD_VALIDATE_OP_RPC) : LYD_VALIDATE_OP_NOTIF);
+    if (lyd_validate_op(top_op, mod_info->data, op_type, NULL)) {
         sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
         sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "%s %svalidation failed.",
                 (op->schema->nodetype == LYS_NOTIF) ? "Notification" : ((op->schema->nodetype == LYS_RPC) ? "RPC" : "Action"),
@@ -1910,7 +1819,7 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int 
 
 cleanup:
     free(parent_xpath);
-    ly_set_free(set);
+    ly_set_free(set, NULL);
     return err_info;
 }
 
@@ -1957,7 +1866,7 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
 
             if (mod_info->data_cached && (session->ds == SR_DS_RUNNING) && (edit || diff)) {
                 /* data will be changed, we cannot use the cache anymore */
-                mod_info->data = lyd_dup_withsiblings(mod_info->data, LYD_DUP_OPT_RECURSIVE | LYD_DUP_OPT_WITH_WHEN);
+                lyd_dup_siblings(mod_info->data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &mod_info->data);
                 mod_info->data_cached = 0;
 
                 /* CACHE READ UNLOCK */
@@ -1966,7 +1875,9 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
 
             /* apply any currently handled changes (diff) or additional performed ones (edit) to get
              * the session-specific data tree */
-            if ((err_info = sr_diff_mod_apply(diff, mod->ly_mod, session->ds == SR_DS_OPERATIONAL ? 1 : 0, &mod_info->data))) {
+            if (lyd_diff_apply_module(&mod_info->data, diff, mod->ly_mod,
+                    session->ds == SR_DS_OPERATIONAL ? sr_lyd_diff_apply_cb : NULL, NULL)) {
+                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
                 goto cleanup;
             }
             if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, NULL, NULL))) {
@@ -1977,20 +1888,22 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
 
     /* filter return data */
     if (mod_info->data) {
-        *result = lyd_find_path(mod_info->data, xpath);
+        if (lyd_find_xpath(mod_info->data, xpath, result)) {
+            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+            goto cleanup;
+        }
     } else {
-        *result = ly_set_new();
-    }
-    if (!*result) {
-        SR_ERRINFO_MEM(&err_info);
-        goto cleanup;
+        if (ly_set_new(result)) {
+            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+            goto cleanup;
+        }
     }
 
     /* success */
 
 cleanup:
     if (err_info) {
-        ly_set_free(*result);
+        ly_set_free(*result, NULL);
         *result = NULL;
     }
     return err_info;
@@ -2000,7 +1913,7 @@ sr_error_info_t *
 sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session)
 {
     sr_error_info_t *err_info = NULL, *tmp_err_info = NULL;
-    struct lyd_node *root, *next, *elem, *notif = NULL;
+    struct lyd_node *root, *elem, *notif = NULL;
     struct ly_set *set;
     sr_mod_t *shm_mod;
     time_t notif_ts;
@@ -2011,17 +1924,18 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     sr_change_oper_t op;
     enum edit_op edit_op;
     int changes;
+    LY_ERR lyrc;
 
     /* make sure there are some actual node changes */
     changes = 0;
-    LY_TREE_FOR(mod_info->diff, root) {
-        LY_TREE_DFS_BEGIN(root, next, elem) {
-            edit_op = sr_edit_find_oper(elem, 0, NULL);
+    LY_LIST_FOR(mod_info->diff, root) {
+        LYD_TREE_DFS_BEGIN(root, elem) {
+            edit_op = sr_edit_diff_find_oper(elem, 0, NULL);
             if (edit_op && (edit_op != EDIT_NONE)) {
                 changes = 1;
                 break;
             }
-            LY_TREE_DFS_END(root, next, elem);
+            LYD_TREE_DFS_END(root, elem);
         }
         if (changes) {
             break;
@@ -2053,74 +1967,68 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
         return NULL;
     }
 
-    set = ly_set_new();
-    SR_CHECK_MEM_GOTO(!set, err_info, cleanup);
+    lyrc = ly_set_new(&set);
+    SR_CHECK_MEM_GOTO(lyrc, err_info, cleanup);
 
     /* just put all the nodes into a set */
-    LY_TREE_FOR(mod_info->diff, root) {
-        LY_TREE_DFS_BEGIN(root, next, elem) {
-            if (ly_set_add(set, elem, LY_SET_OPT_USEASLIST) == -1) {
+    LY_LIST_FOR(mod_info->diff, root) {
+        LYD_TREE_DFS_BEGIN(root, elem) {
+            if (ly_set_add(set, elem, 1, NULL)) {
                 SR_ERRINFO_INT(&err_info);
                 goto cleanup;
             }
 
-            LY_TREE_DFS_END(root, next, elem);
+            LYD_TREE_DFS_END(root, elem);
         }
     }
 
     /* generate notifcation with all the changes */
-    notif = lyd_new_path(NULL, mod_info->conn->ly_ctx, "/ietf-netconf-notifications:netconf-config-change", NULL, 0, 0);
-    if (!notif) {
+    if (lyd_new_path(NULL, mod_info->conn->ly_ctx, "/ietf-netconf-notifications:netconf-config-change", NULL, 0, &notif)) {
         sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
         goto cleanup;
     }
 
     /* changed-by (everything was caused by user, we do not know what changes are implicit) */
-    root = lyd_new(notif, NULL, "changed-by");
-    if (!root) {
+    if (lyd_new_inner(notif, NULL, "changed-by", 0, &root)) {
         sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
         goto cleanup;
     }
 
     /* changed-by username */
-    next = lyd_new_leaf(root, NULL, "username", session->sid.user);
-    if (!next) {
+    if (lyd_new_term(root, NULL, "username", session->sid.user, 0, NULL)) {
         sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
         goto cleanup;
     }
 
     /* changed-by session-id */
     sprintf(nc_str, "%u", session->sid.nc);
-    next = lyd_new_leaf(root, NULL, "session-id", nc_str);
-    if (!next) {
+    if (lyd_new_term(root, NULL, "session-id", nc_str, 0, NULL)) {
         sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
         goto cleanup;
     }
 
     /* datastore */
-    next = lyd_new_leaf(notif, NULL, "datastore", sr_ds2str(mod_info->ds));
-    if (!next) {
+    if (lyd_new_term(notif, NULL, "datastore", sr_ds2str(mod_info->ds), 0, NULL)) {
         sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
         goto cleanup;
     }
 
     while (!(err_info = sr_diff_set_getnext(set, &idx, &elem, &op)) && elem) {
         /* edit (list instance) */
-        root = lyd_new(notif, NULL, "edit");
-        if (!root) {
+        if (lyd_new_list(notif, NULL, "edit", 0, &root)) {
             sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
             goto cleanup;
         }
 
         /* edit target */
-        xpath = lyd_path(elem);
+        xpath = lyd_path(elem, LYD_PATH_STD, NULL, 0);
         if (!xpath) {
             sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
             goto cleanup;
         }
-        next = lyd_new_leaf(root, NULL, "target", xpath);
+        lyrc = lyd_new_term(root, NULL, "target", xpath, 0, NULL);
         free(xpath);
-        if (!next) {
+        if (lyrc) {
             sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
             goto cleanup;
         }
@@ -2144,8 +2052,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
             SR_ERRINFO_INT(&err_info);
             goto cleanup;
         }
-        next = lyd_new_leaf(root, NULL, "operation", op_enum);
-        if (!next) {
+        if (lyd_new_term(root, NULL, "operation", op_enum, 0, NULL)) {
             sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
             goto cleanup;
         }
@@ -2162,8 +2069,8 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     /* success */
 
 cleanup:
-    ly_set_free(set);
-    lyd_free_withsiblings(notif);
+    ly_set_free(set, NULL);
+    lyd_free_siblings(notif);
     if (err_info) {
         /* write this only if the notification failed to be created/sent */
         sr_errinfo_new(&err_info, err_info->err_code, NULL, "Failed to generate netconf-config-change notification, "
@@ -2182,7 +2089,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
     struct sr_mod_info_mod_s *mod;
     struct lyd_node *mod_data, *diff = NULL;
     uint32_t i;
-    int change, create_flags;
+    int create_flags;
 
     assert(!mod_info->data_cached);
 
@@ -2201,15 +2108,17 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                 if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_OPERATIONAL, &diff))) {
                     goto cleanup;
                 }
-                if ((err_info = sr_diff_mod_merge(mod_info->diff, mod_info->conn, mod->ly_mod, &diff, &change))) {
+                if (lyd_diff_merge_module(&diff, mod_info->diff, mod->ly_mod, sr_lyd_diff_merge_cb,
+                        &mod_info->conn->sr_cid, LYD_DIFF_MERGE_DEFAULTS)) {
+                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
                     goto cleanup;
                 }
 
                 /* store the new diff */
-                if (change && (err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, diff, 0, 0))) {
+                if ((err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, diff, 0, 0))) {
                     goto cleanup;
                 }
-                lyd_free_withsiblings(diff);
+                lyd_free_siblings(diff);
                 diff = NULL;
             } else {
                 /* separate data of this module */
@@ -2236,11 +2145,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                 }
 
                 /* connect them back */
-                if (mod_info->data) {
-                    sr_ly_link(mod_info->data, mod_data);
-                } else {
-                    mod_info->data = mod_data;
-                }
+                lyd_insert_sibling(mod_info->data, mod_data, &mod_info->data);
 
                 if (mod_info->ds == SR_DS_RUNNING) {
                     /* update diffs of stored operational data, if any */
@@ -2250,7 +2155,8 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
 
                     if (diff) {
                         /* add any missing NP containers so that stored diff can be properly applied */
-                        if ((err_info = sr_lyd_create_sibling_np_cont_r(&mod_data, NULL, mod->ly_mod, NULL))) {
+                        if (lyd_new_implicit_module(&mod_data, mod->ly_mod, 0, NULL)) {
+                            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
                             goto cleanup;
                         }
                         if ((err_info = sr_diff_mod_update(&diff, mod->ly_mod, mod_data))) {
@@ -2259,7 +2165,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                         if ((err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, diff, 0, 0))) {
                             goto cleanup;
                         }
-                        lyd_free_withsiblings(diff);
+                        lyd_free_siblings(diff);
                         diff = NULL;
                     }
                 }
@@ -2271,7 +2177,7 @@ cleanup:
     if (tmp_err_info) {
         sr_errinfo_merge(&err_info, tmp_err_info);
     }
-    lyd_free_withsiblings(diff);
+    lyd_free_siblings(diff);
     return err_info;
 
 }
@@ -2305,14 +2211,14 @@ sr_modinfo_candidate_reset(struct sr_mod_info_s *mod_info)
 void
 sr_modinfo_free(struct sr_mod_info_s *mod_info)
 {
-    lyd_free_withsiblings(mod_info->diff);
+    lyd_free_siblings(mod_info->diff);
     if (mod_info->data_cached) {
         mod_info->data_cached = 0;
 
         /* CACHE READ UNLOCK */
         sr_rwunlock(&mod_info->conn->mod_cache.lock, SR_LOCK_READ, __func__);
     } else {
-        lyd_free_withsiblings(mod_info->data);
+        lyd_free_siblings(mod_info->data);
     }
 
     free(mod_info->mods);

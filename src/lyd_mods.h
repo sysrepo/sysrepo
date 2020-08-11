@@ -68,11 +68,12 @@ sr_error_info_t *sr_lydmods_parse(struct ly_ctx *ly_ctx, struct lyd_node **sr_mo
  * @param[in] ly_ctx Context to load into.
  * @param[in] removed Whether to load removed modules.
  * @param[in] updated Whether to load updated modules.
+ * @param[in] sched_features Whether to apply scheduled feature changes for any loaded modules.
  * @param[out] change Whether there were any removed or updated modules, if @p removed or @p updated was set.
  * @return error_info, NULL on success.
  */
 sr_error_info_t *sr_lydmods_ctx_load_modules(const struct lyd_node *sr_mods, struct ly_ctx *ly_ctx, int removed,
-        int updated, int *change);
+        int updated, int sched_features, int *change);
 
 /**
  * @brief Apply all scheduled changes in sysrepo module data.
@@ -93,11 +94,10 @@ sr_error_info_t *sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx 
  * @param[in] ly_ctx Context to use for parsing the data.
  * @param[in] ly_mod Module that is scheduled to be installed.
  * @param[in] features Array of enabled features.
- * @param[in] feat_count Number of enabled features.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lydmods_deferred_add_module(struct ly_ctx *ly_ctx, const struct lys_module *ly_mod, const char **features,
-        int feat_count);
+sr_error_info_t *sr_lydmods_deferred_add_module(struct ly_ctx *ly_ctx, const struct lys_module *ly_mod,
+        const char **features);
 
 /**
  * @brief Unschedule module installation from sysrepo module data.

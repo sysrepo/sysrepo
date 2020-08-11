@@ -848,16 +848,14 @@ sr_tree_to_val(const struct lyd_node *data, const char *path, sr_val_t **value)
 
     *value = NULL;
 
-    set = lyd_find_path(data, path);
-
-    if (!set) {
-        sr_errinfo_new_ly(&err_info, lyd_node_module(data)->ctx);
+    if (lyd_find_xpath(data, path, &set)) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(data));
         goto cleanup;
-    } else if (!set->number) {
+    } else if (!set->count) {
         /* Not building err_info to avoid error logs when no item found */
-        ly_set_free(set);
+        ly_set_free(set, NULL);
         return SR_ERR_NOT_FOUND;
-    } else if (set->number > 1) {
+    } else if (set->count > 1) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "More subtrees match \"%s\".", path);
         goto cleanup;
     }
@@ -866,13 +864,13 @@ sr_tree_to_val(const struct lyd_node *data, const char *path, sr_val_t **value)
     *value = malloc(sizeof **value);
     SR_CHECK_MEM_GOTO(!*value, err_info, cleanup);
 
-    if ((err_info = sr_val_ly2sr(set->set.d[0], *value))) {
+    if ((err_info = sr_val_ly2sr(set->dnodes[0], *value))) {
         goto cleanup;
     }
 
     /* success */
 cleanup:
-    ly_set_free(set);
+    ly_set_free(set, NULL);
     return sr_api_ret(NULL, err_info);
 }
 
@@ -888,25 +886,23 @@ sr_tree_to_values(const struct lyd_node *data, const char *xpath, sr_val_t **val
     *values = NULL;
     *value_cnt = 0;
 
-    set = lyd_find_path(data, xpath);
-
-    if (!set) {
-        sr_errinfo_new_ly(&err_info, lyd_node_module(data)->ctx);
+    if (lyd_find_xpath(data, xpath, &set)) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(data));
         goto cleanup;
-    } else if (!set->number) {
+    } else if (!set->count) {
         /* Not building err_info to avoid error logs when no item found */
-        ly_set_free(set);
+        ly_set_free(set, NULL);
         return SR_ERR_NOT_FOUND;
     } else {
-        *values = calloc(set->number, sizeof **values);
+        *values = calloc(set->count, sizeof **values);
         SR_CHECK_MEM_GOTO(!*values, err_info, cleanup);
 
-        for (i = 0; i < set->number; ++i) {
-            if (set->set.d[i]->schema->nodetype & (LYS_RPC | LYS_ACTION)) {
+        for (i = 0; i < set->count; ++i) {
+            if (set->dnodes[i]->schema->nodetype & (LYS_RPC | LYS_ACTION)) {
                 continue;
             }
 
-            if ((err_info = sr_val_ly2sr(set->set.d[i], *values + *value_cnt))) {
+            if ((err_info = sr_val_ly2sr(set->dnodes[i], *values + *value_cnt))) {
                 goto cleanup;
             }
             ++(*value_cnt);
@@ -915,7 +911,7 @@ sr_tree_to_values(const struct lyd_node *data, const char *xpath, sr_val_t **val
 
     /* success */
 cleanup:
-    ly_set_free(set);
+    ly_set_free(set, NULL);
     if (err_info) {
         sr_free_values(*values, *value_cnt);
         *values = NULL;

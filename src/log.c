@@ -205,7 +205,7 @@ sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *xpat
 }
 
 void
-sr_errinfo_new_ly(sr_error_info_t **err_info, struct ly_ctx *ly_ctx)
+sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx)
 {
     struct ly_err_item *e;
 
@@ -232,11 +232,11 @@ sr_errinfo_new_ly(sr_error_info_t **err_info, struct ly_ctx *ly_ctx)
         e = e->next;
     } while (e);
 
-    ly_err_clean(ly_ctx, NULL);
+    ly_err_clean((struct ly_ctx *)ly_ctx, NULL);
 }
 
 void
-sr_errinfo_new_ly_first(sr_error_info_t **err_info, struct ly_ctx *ly_ctx)
+sr_errinfo_new_ly_first(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx)
 {
     struct ly_err_item *e;
 
@@ -253,11 +253,11 @@ sr_errinfo_new_ly_first(sr_error_info_t **err_info, struct ly_ctx *ly_ctx)
         sr_errinfo_new(err_info, SR_ERR_LY, e->path, e->msg);
     }
 
-    ly_err_clean(ly_ctx, NULL);
+    ly_err_clean((struct ly_ctx *)ly_ctx, NULL);
 }
 
 void
-sr_log_wrn_ly(struct ly_ctx *ly_ctx)
+sr_log_wrn_ly(const struct ly_ctx *ly_ctx)
 {
     struct ly_err_item *e;
 
@@ -272,7 +272,7 @@ sr_log_wrn_ly(struct ly_ctx *ly_ctx)
         e = e->next;
     } while (e);
 
-    ly_err_clean(ly_ctx, NULL);
+    ly_err_clean((struct ly_ctx *)ly_ctx, NULL);
 }
 
 void

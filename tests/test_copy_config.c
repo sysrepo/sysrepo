@@ -58,25 +58,25 @@ setup(void **state)
         return 1;
     }
 
-    if (sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/ietf-ip.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_DIR "/files/ietf-ip.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/list-case.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_DIR "/files/list-case.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/when1.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_DIR "/files/when1.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/when2.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_DIR "/files/when2.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
     sr_disconnect(st->conn);
@@ -406,9 +406,9 @@ copy_empty_thread(void *arg)
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
-    lyd_free(subtree);
+    lyd_free_tree(subtree);
 
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
@@ -445,11 +445,11 @@ copy_empty_thread(void *arg)
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
 
     assert_null(str1);
-    lyd_free(subtree);
+    lyd_free_tree(subtree);
 
     /* signal that we have finished copying */
     pthread_barrier_wait(&st->barrier);
@@ -548,6 +548,17 @@ module_simple_cb(sr_session_ctx_t *session, const char *module_name, const char 
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']/description");
+
+        sr_free_val(new_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
         assert_int_equal(op, SR_OP_MODIFIED);
         assert_non_null(old_val);
         assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']/type");
@@ -557,17 +568,6 @@ module_simple_cb(sr_session_ctx_t *session, const char *module_name, const char 
         assert_string_equal(new_val->data.string_val, "iana-if-type:sonet");
 
         sr_free_val(old_val);
-        sr_free_val(new_val);
-
-        /* 2nd change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']/description");
-
         sr_free_val(new_val);
 
         /* 3rd change */
@@ -607,18 +607,12 @@ module_simple_cb(sr_session_ctx_t *session, const char *module_name, const char 
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
-        assert_int_equal(op, SR_OP_MODIFIED);
+        assert_int_equal(op, SR_OP_DELETED);
         assert_non_null(old_val);
-        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']/enabled");
-        assert_int_equal(old_val->data.bool_val, 0);
-        assert_int_equal(old_val->dflt, 0);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']/enabled");
-        assert_int_equal(new_val->data.bool_val, 1);
-        assert_int_equal(new_val->dflt, 1);
+        assert_null(new_val);
+        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']");
 
         sr_free_val(old_val);
-        sr_free_val(new_val);
 
         /* 2nd change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
@@ -627,7 +621,7 @@ module_simple_cb(sr_session_ctx_t *session, const char *module_name, const char 
         assert_int_equal(op, SR_OP_DELETED);
         assert_non_null(old_val);
         assert_null(new_val);
-        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']");
+        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']/name");
 
         sr_free_val(old_val);
 
@@ -638,7 +632,7 @@ module_simple_cb(sr_session_ctx_t *session, const char *module_name, const char 
         assert_int_equal(op, SR_OP_DELETED);
         assert_non_null(old_val);
         assert_null(new_val);
-        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']/name");
+        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']/description");
 
         sr_free_val(old_val);
 
@@ -668,12 +662,18 @@ module_simple_cb(sr_session_ctx_t *session, const char *module_name, const char 
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
-        assert_int_equal(op, SR_OP_DELETED);
+        assert_int_equal(op, SR_OP_MODIFIED);
         assert_non_null(old_val);
-        assert_null(new_val);
-        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth1']/description");
+        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']/enabled");
+        assert_int_equal(old_val->data.bool_val, 0);
+        assert_int_equal(old_val->dflt, 0);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth2']/enabled");
+        assert_int_equal(new_val->data.bool_val, 1);
+        assert_int_equal(new_val->dflt, 1);
 
         sr_free_val(old_val);
+        sr_free_val(new_val);
 
         /* no more changes */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
@@ -727,16 +727,16 @@ copy_simple_thread(void *arg)
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
-    lyd_free(subtree);
+    lyd_free_tree(subtree);
 
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
         "<interface>"
             "<name>eth1</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:sonet</type>"
             "<description>some-eth1-desc</description>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:sonet</type>"
         "</interface>"
         "<interface>"
             "<name>eth2</name>"
@@ -768,9 +768,9 @@ copy_simple_thread(void *arg)
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree, LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
-    lyd_free(subtree);
+    lyd_free_tree(subtree);
 
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
@@ -1040,7 +1040,9 @@ copy_userord_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    struct lyd_node *data, *node;
+    struct lyd_node *data;
+    char *str1;
+    const char *str2;
     int ret;
 
     ret = sr_session_start(st->conn, SR_DS_STARTUP, &sess);
@@ -1068,39 +1070,36 @@ copy_userord_thread(void *arg)
     ret = sr_get_data(sess, "/test:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    node = data;
-    assert_string_equal(node->schema->name, "cont");
-    node = node->child;
-    assert_string_equal(node->schema->name, "l2");
-    assert_string_equal(((struct lyd_node_leaf_list *)node->child)->value_str, "a");
-    node = node->next;
-    assert_string_equal(node->schema->name, "l2");
-    assert_string_equal(((struct lyd_node_leaf_list *)node->child)->value_str, "b");
-    node = node->next;
-    assert_string_equal(node->schema->name, "ll2");
-    assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "2");
-    node = node->next;
-    assert_string_equal(node->schema->name, "ll2");
-    assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "1");
-    assert_null(node->next);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+    lyd_free_all(data);
 
-    node = data->next;
-    assert_string_equal(node->schema->name, "ll1");
-    assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "1");
+    str2 =
+    "<l1 xmlns=\"urn:test\">"
+        "<k>b</k>"
+        "<v>2</v>"
+    "</l1>"
+    "<l1 xmlns=\"urn:test\">"
+        "<k>a</k>"
+        "<v>1</v>"
+    "</l1>"
+    "<ll1 xmlns=\"urn:test\">1</ll1>"
+    "<ll1 xmlns=\"urn:test\">2</ll1>"
+    "<cont xmlns=\"urn:test\">"
+        "<l2>"
+            "<k>a</k>"
+            "<v>1</v>"
+        "</l2>"
+        "<l2>"
+            "<k>b</k>"
+            "<v>2</v>"
+        "</l2>"
+        "<ll2>2</ll2>"
+        "<ll2>1</ll2>"
+    "</cont>";
 
-    node = data->next->next;
-    assert_string_equal(node->schema->name, "l1");
-    assert_string_equal(((struct lyd_node_leaf_list *)node->child)->value_str, "b");
-
-    node = data->next->next->next;
-    assert_string_equal(node->schema->name, "l1");
-    assert_string_equal(((struct lyd_node_leaf_list *)node->child)->value_str, "a");
-
-    node = data->next->next->next->next;
-    assert_string_equal(node->schema->name, "ll1");
-    assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "2");
-
-    lyd_free_withsiblings(data);
+    assert_string_equal(str1, str2);
+    free(str1);
 
     /* perform some startup changes (no actual changes) */
     ret = sr_move_item(sess, "/test:ll1[.='1']", SR_MOVE_BEFORE, NULL, "2", NULL, 0);
@@ -1122,39 +1121,36 @@ copy_userord_thread(void *arg)
     ret = sr_get_data(sess, "/test:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    node = data;
-    assert_string_equal(node->schema->name, "cont");
-    node = node->child;
-    assert_string_equal(node->schema->name, "l2");
-    assert_string_equal(((struct lyd_node_leaf_list *)node->child)->value_str, "a");
-    node = node->next;
-    assert_string_equal(node->schema->name, "l2");
-    assert_string_equal(((struct lyd_node_leaf_list *)node->child)->value_str, "b");
-    node = node->next;
-    assert_string_equal(node->schema->name, "ll2");
-    assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "2");
-    node = node->next;
-    assert_string_equal(node->schema->name, "ll2");
-    assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "1");
-    assert_null(node->next);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+    lyd_free_all(data);
 
-    node = data->next;
-    assert_string_equal(node->schema->name, "ll1");
-    assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "1");
+    str2 =
+    "<l1 xmlns=\"urn:test\">"
+        "<k>b</k>"
+        "<v>2</v>"
+    "</l1>"
+    "<l1 xmlns=\"urn:test\">"
+        "<k>a</k>"
+        "<v>1</v>"
+    "</l1>"
+    "<ll1 xmlns=\"urn:test\">1</ll1>"
+    "<ll1 xmlns=\"urn:test\">2</ll1>"
+    "<cont xmlns=\"urn:test\">"
+        "<l2>"
+            "<k>a</k>"
+            "<v>1</v>"
+        "</l2>"
+        "<l2>"
+            "<k>b</k>"
+            "<v>2</v>"
+        "</l2>"
+        "<ll2>2</ll2>"
+        "<ll2>1</ll2>"
+    "</cont>";
 
-    node = data->next->next;
-    assert_string_equal(node->schema->name, "l1");
-    assert_string_equal(((struct lyd_node_leaf_list *)node->child)->value_str, "b");
-
-    node = data->next->next->next;
-    assert_string_equal(node->schema->name, "l1");
-    assert_string_equal(((struct lyd_node_leaf_list *)node->child)->value_str, "a");
-
-    node = data->next->next->next->next;
-    assert_string_equal(node->schema->name, "ll1");
-    assert_string_equal(((struct lyd_node_leaf_list *)node)->value_str, "2");
-
-    lyd_free_withsiblings(data);
+    assert_string_equal(str1, str2);
+    free(str1);
 
     /* signal that we have finished copying */
     pthread_barrier_wait(&st->barrier);
@@ -1398,14 +1394,11 @@ module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_MOVED);
-        assert_non_null(old_val);
+        assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(old_val->xpath, "/test:cont/ll2");
-        assert_int_equal(old_val->data.uint16_val, 2);
         assert_string_equal(new_val->xpath, "/test:cont/ll2");
-        assert_int_equal(new_val->data.uint16_val, 1);
+        assert_int_equal(new_val->data.uint16_val, 2);
 
-        sr_free_val(old_val);
         sr_free_val(new_val);
 
         /* no more changes */
@@ -1432,7 +1425,7 @@ replace_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    struct lyd_node *config, *node;
+    struct lyd_node *config;
     char *str1;
     const char *str2;
     int ret;
@@ -1444,15 +1437,14 @@ replace_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* prepare some ietf-interfaces config */
-    config = lyd_new_path(NULL, sr_get_context(st->conn), "/ietf-interfaces:interfaces/interface[name='eth1']/type",
-            "iana-if-type:ethernetCsmacd", 0, 0);
-    assert_non_null(config);
-    node = lyd_new_path(config, NULL, "/ietf-interfaces:interfaces/interface[name='eth1']/description", "some-eth1-desc", 0, 0);
-    assert_non_null(node);
-    node = lyd_new_path(config, NULL, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", "true", 0, 0);
-    assert_non_null(node);
-    node = lyd_new_path(config, NULL, "/ietf-interfaces:interfaces/interface[name='eth3']/type", "iana-if-type:sonet", 0, 0);
-    assert_non_null(node);
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, sr_get_context(st->conn), "/ietf-interfaces:interfaces/"
+            "interface[name='eth1']/type", "iana-if-type:ethernetCsmacd", 0, &config));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(config, NULL, "/ietf-interfaces:interfaces/interface[name='eth1']/description",
+            "some-eth1-desc", 0, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(config, NULL, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled",
+            "true", 0, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(config, NULL, "/ietf-interfaces:interfaces/interface[name='eth3']/type",
+            "iana-if-type:sonet", 0, NULL));
 
     /* perform 1st replace-config */
     ret = sr_replace_config(sess, "ietf-interfaces", config, 0, 0);
@@ -1462,19 +1454,19 @@ replace_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/ietf-interfaces:interfaces", 0, 0, 0, &node);
+    ret = sr_get_data(sess, "/ietf-interfaces:interfaces", 0, 0, 0, &config);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, node, LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, config, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
-    lyd_free_withsiblings(node);
+    lyd_free_all(config);
 
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
         "<interface>"
             "<name>eth1</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
             "<description>some-eth1-desc</description>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
             "<enabled>true</enabled>"
         "</interface>"
         "<interface>"
@@ -1487,18 +1479,12 @@ replace_thread(void *arg)
     free(str1);
 
     /* prepare some test config */
-    config = lyd_new_path(NULL, sr_get_context(st->conn), "/test:l1[k='c']", NULL, 0, 0);
-    assert_non_null(config);
-    node = lyd_new_path(config, NULL, "/test:l1[k='a']", NULL, 0, 0);
-    assert_non_null(node);
-    node = lyd_new_path(config, NULL, "/test:l1[k='b']", NULL, 0, 0);
-    assert_non_null(node);
-    node = lyd_new_path(config, NULL, "/test:cont/ll2[.='2']", NULL, 0, 0);
-    assert_non_null(node);
-    node = lyd_new_path(config, NULL, "/test:cont/ll2[.='1']", NULL, 0, 0);
-    assert_non_null(node);
-    node = lyd_new_path(config, NULL, "/test:cont/ll2[.='3']", NULL, 0, 0);
-    assert_non_null(node);
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, sr_get_context(st->conn), "/test:l1[k='c']", NULL, 0, &config));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(config, NULL, "/test:l1[k='a']", NULL, 0, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(config, NULL, "/test:l1[k='b']", NULL, 0, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(config, NULL, "/test:cont/ll2[.='2']", NULL, 0, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(config, NULL, "/test:cont/ll2[.='1']", NULL, 0, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(config, NULL, "/test:cont/ll2[.='3']", NULL, 0, NULL));
 
     /* perform 2nd replace-config */
     ret = sr_replace_config(sess, "test", config, 0, 0);
@@ -1508,21 +1494,21 @@ replace_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/test:*", 0, 0, 0, &node);
+    ret = sr_get_data(sess, "/test:*", 0, 0, 0, &config);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_string_equal(node->schema->name, "l1");
-    assert_string_equal(((struct lyd_node_leaf_list *)node->child)->value_str, "c");
+    assert_string_equal(config->schema->name, "l1");
+    assert_string_equal(LYD_CANON_VALUE(lyd_child(config)), "c");
 
-    assert_string_equal(node->next->schema->name, "l1");
-    assert_string_equal(((struct lyd_node_leaf_list *)node->next->child)->value_str, "a");
+    assert_string_equal(config->next->schema->name, "l1");
+    assert_string_equal(LYD_CANON_VALUE(lyd_child(config->next)), "a");
 
-    assert_string_equal(node->next->next->schema->name, "l1");
-    assert_string_equal(((struct lyd_node_leaf_list *)node->next->next->child)->value_str, "b");
+    assert_string_equal(config->next->next->schema->name, "l1");
+    assert_string_equal(LYD_CANON_VALUE(lyd_child(config->next->next)), "b");
 
-    ret = lyd_print_mem(&str1, node->next->next->next, LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, config->next->next->next, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
-    lyd_free_withsiblings(node);
+    lyd_free_all(config);
 
     str2 = "<cont xmlns=\"urn:test\"><ll2>2</ll2><ll2>1</ll2><ll2>3</ll2></cont>";
 
@@ -1682,7 +1668,7 @@ replace_dflt_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    struct lyd_node *config, *node;
+    struct lyd_node *config;
     char *str1;
     const char *str2;
     int ret;
@@ -1708,8 +1694,8 @@ replace_dflt_thread(void *arg)
             "</ipv6>"
         "</interface>"
     "</interfaces>";
-    config = lyd_parse_mem((struct ly_ctx *)sr_get_context(st->conn), str2, LYD_XML, LYD_OPT_CONFIG | LYD_OPT_STRICT);
-    assert_non_null(config);
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(sr_get_context(st->conn), str2, LYD_XML,
+            LYD_PARSE_STRICT, LYD_VALIDATE_NO_STATE | LYD_VALIDATE_PRESENT, &config));
 
     /* perform replace-config */
     ret = sr_replace_config(sess, "ietf-interfaces", config, 0, 1);
@@ -1717,12 +1703,12 @@ replace_dflt_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/ietf-interfaces:interfaces", 0, 0, 0, &node);
+    ret = sr_get_data(sess, "/ietf-interfaces:interfaces", 0, 0, 0, &config);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, node, LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, config, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
-    lyd_free_withsiblings(node);
+    lyd_free_all(config);
 
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
@@ -1758,8 +1744,8 @@ replace_dflt_thread(void *arg)
             "</ipv6>"
         "</interface>"
     "</interfaces>";
-    config = lyd_parse_mem((struct ly_ctx *)sr_get_context(st->conn), str2, LYD_XML, LYD_OPT_CONFIG | LYD_OPT_STRICT);
-    assert_non_null(config);
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(sr_get_context(st->conn), str2, LYD_XML,
+            LYD_PARSE_STRICT, LYD_VALIDATE_NO_STATE | LYD_VALIDATE_PRESENT, &config));
 
     /* perform replace-config */
     ret = sr_replace_config(sess, "ietf-interfaces", config, 0, 1);
@@ -1767,12 +1753,12 @@ replace_dflt_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/ietf-interfaces:interfaces", 0, 0, 0, &node);
+    ret = sr_get_data(sess, "/ietf-interfaces:interfaces", 0, 0, 0, &config);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, node, LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, config, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
-    lyd_free_withsiblings(node);
+    lyd_free_all(config);
 
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
@@ -1924,8 +1910,8 @@ module_replace_case_cb(sr_session_ctx_t *session, const char *module_name, const
     /* test getting items */
     ret = sr_get_data(session, "/list-case:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(data->child->child->next->schema->name, "acl1ch1cs2lf1");
-    lyd_free_withsiblings(data);
+    assert_string_equal(lyd_child(lyd_child(data))->next->schema->name, "acl1ch1cs2lf1");
+    lyd_free_all(data);
 
     if (event == SR_EV_DONE) {
         /* let other thread now even done event was handled */
@@ -1941,7 +1927,7 @@ replace_case_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    struct lyd_node *config, *node;
+    struct lyd_node *config;
     char *str1;
     const char *str2;
     int ret;
@@ -1960,8 +1946,8 @@ replace_case_thread(void *arg)
             "<acl1ch1cs2lf1>case</acl1ch1cs2lf1>"
         "</acl1>"
     "</ac1>";
-    config = lyd_parse_mem((struct ly_ctx *)sr_get_context(st->conn), str2, LYD_XML, LYD_OPT_CONFIG | LYD_OPT_STRICT);
-    assert_non_null(config);
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(sr_get_context(st->conn), str2, LYD_XML,
+            LYD_PARSE_STRICT, LYD_VALIDATE_NO_STATE | LYD_VALIDATE_PRESENT, &config));
 
     /* perform replace-config */
     ret = sr_replace_config(sess, "list-case", config, 0, 0);
@@ -1972,12 +1958,12 @@ replace_case_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/list-case:*", 0, 0, 0, &node);
+    ret = sr_get_data(sess, "/list-case:*", 0, 0, 0, &config);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, node, LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, config, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
-    lyd_free_withsiblings(node);
+    lyd_free_all(config);
 
     str2 =
     "<ac1 xmlns=\"urn:lc\">"
@@ -2086,17 +2072,6 @@ module_replace_when_cb(sr_session_ctx_t *session, const char *module_name, const
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/when1:cont");
-
-        sr_free_val(new_val);
-
-        /* 2nd change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
         assert_string_equal(new_val->xpath, "/when1:cont/l4");
 
         sr_free_val(new_val);
@@ -2115,8 +2090,8 @@ module_replace_when_cb(sr_session_ctx_t *session, const char *module_name, const
     ret = sr_get_data(session, "/when1:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_string_equal(data->schema->name, "cont");
-    assert_string_equal(data->child->schema->name, "l4");
-    lyd_free_withsiblings(data);
+    assert_string_equal(lyd_child(data)->schema->name, "l4");
+    lyd_free_all(data);
 
     if (event == SR_EV_DONE) {
         /* let other thread now even done event was handled */
@@ -2132,7 +2107,7 @@ replace_when_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    struct lyd_node *config, *node;
+    struct lyd_node *config;
     char *str1;
     const char *str2;
     int ret;
@@ -2143,16 +2118,18 @@ replace_when_thread(void *arg)
     /* wait for subscription before replacing */
     pthread_barrier_wait(&st->barrier);
 
-    /* prepare some when1/when2 config */
+    /* prepare some when1/when2 config, must be validated for when to autodelete */
     str2 =
     "<cont xmlns=\"urn:when1\">"
-        "<l4>ri</l4>"
+        "<l4>sri</l4>"
         "<cont2 xmlns=\"urn:when2\">"
             "<bl>sri</bl>"
         "</cont2>"
     "</cont>";
-    config = lyd_parse_mem((struct ly_ctx *)sr_get_context(st->conn), str2, LYD_XML, LYD_OPT_CONFIG | LYD_OPT_TRUSTED | LYD_OPT_STRICT);
-    assert_non_null(config);
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(sr_get_context(st->conn), str2, LYD_XML,
+            LYD_PARSE_STRICT, LYD_VALIDATE_NO_STATE | LYD_VALIDATE_PRESENT, &config));
+    ret = lyd_change_term(lyd_child(config), "ri");
+    assert_int_equal(ret, 0);
 
     /* perform replace-config */
     ret = sr_replace_config(sess, "when1", config, 0, 0);
@@ -2163,12 +2140,12 @@ replace_when_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/when1:*", 0, 0, 0, &node);
+    ret = sr_get_data(sess, "/when1:*", 0, 0, 0, &config);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, node, LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, config, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
-    lyd_free_withsiblings(node);
+    lyd_free_all(config);
 
     str2 =
     "<cont xmlns=\"urn:when1\">"

@@ -88,7 +88,7 @@ help_print(void)
         "  -f, --format <format>        Data format to be used, by default based on file extension or \"xml\" if not applicable\n"
         "                               (\"xml\", \"json\", or \"lyb\") (import, export, edit, rpc, notification, copy-from, new-data op).\n"
         "  -l, --lock                   Lock the specified datastore for the whole operation (edit op).\n"
-        "  -n, --not-strict             Silently ignore any unknown data (import, edit, rpc, notification, copy-from op).\n"
+        "  -n, --not-strict             Silently ignore any unknown data (import, edit, copy-from op).\n"
         "  -p, --depth <number>         Limit the depth of returned subtrees, 0 so unlimited by default (export op).\n"
         "  -t, --timeout <seconds>      Set the timeout for the operation, otherwise the default one is used.\n"
         "  -w, --wait                   Wait for all the callbacks to be called on a data change including DONE or ABORT.\n"
@@ -117,7 +117,7 @@ error_print(int sr_error, const char *format, ...)
 }
 
 static void
-error_ly_print(struct ly_ctx *ctx)
+error_ly_print(const struct ly_ctx *ctx)
 {
     struct ly_err_item *e;
 
@@ -125,7 +125,7 @@ error_ly_print(struct ly_ctx *ctx)
         error_print(0, "libyang: %s", e->msg);
     }
 
-    ly_err_clean(ctx, NULL);
+    ly_err_clean((struct ly_ctx *)ctx, NULL);
 }
 
 static int
@@ -204,13 +204,24 @@ step_read_file(FILE *file, char **mem)
     return EXIT_SUCCESS;
 }
 
-static int
-step_load_data(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format, int flags, struct lyd_node **data)
-{
-    struct ly_ctx *ly_ctx;
-    char *ptr;
+enum data_type {
+    DATA_CONFIG,
+    DATA_EDIT,
+    DATA_RPC,
+    DATA_NOTIF
+};
 
-    ly_ctx = (struct ly_ctx *)sr_get_context(sr_session_get_connection(sess));
+static int
+step_load_data(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format, enum data_type data_type,
+        int not_strict, struct lyd_node **data)
+{
+    const struct ly_ctx *ly_ctx;
+    struct ly_in *in;
+    char *ptr;
+    int parse_flags;
+    LY_ERR lyrc;
+
+    ly_ctx = sr_get_context(sr_session_get_connection(sess));
 
     /* learn format */
     if (format == LYD_UNKNOWN) {
@@ -232,18 +243,37 @@ step_load_data(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format,
         }
     }
 
-    /* parse import data */
+    /* get input */
     if (file_path) {
-        *data = lyd_parse_path(ly_ctx, file_path, format, flags, NULL);
+        ly_in_new_filepath(file_path, 0, &in);
     } else {
         /* we need to load the data into memory first */
         if (step_read_file(stdin, &ptr)) {
             return EXIT_FAILURE;
         }
-        *data = lyd_parse_mem(ly_ctx, ptr, format, flags);
-        free(ptr);
+        ly_in_new_memory(ptr, &in);
     }
-    if (ly_errno) {
+
+    /* parse data */
+    switch (data_type) {
+    case DATA_CONFIG:
+        parse_flags = LYD_PARSE_NO_STATE | LYD_PARSE_ONLY | (not_strict ? 0 : LYD_PARSE_STRICT);
+        lyrc = lyd_parse_data(ly_ctx, in, format, parse_flags, 0, data);
+        break;
+    case DATA_EDIT:
+        parse_flags = LYD_PARSE_NO_STATE | LYD_PARSE_ONLY | LYD_PARSE_OPAQ;
+        lyrc = lyd_parse_data(ly_ctx, in, format, parse_flags, 0, data);
+        break;
+    case DATA_RPC:
+        lyrc = lyd_parse_rpc(ly_ctx, in, format, data, NULL);
+        break;
+    case DATA_NOTIF:
+        lyrc = lyd_parse_notif(ly_ctx, in, format, data, NULL);
+        break;
+    }
+    ly_in_free(in, 1);
+
+    if (lyrc) {
         error_ly_print(ly_ctx);
         error_print(0, "Data parsing failed");
         return EXIT_FAILURE;
@@ -295,10 +325,9 @@ op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name
         int timeout_s, int wait)
 {
     struct lyd_node *data;
-    int r, flags;
+    int r;
 
-    flags = LYD_OPT_CONFIG | LYD_OPT_TRUSTED | (not_strict ? 0 : LYD_OPT_STRICT);
-    if (step_load_data(sess, file_path, format, flags, &data)) {
+    if (step_load_data(sess, file_path, format, DATA_CONFIG, not_strict, &data)) {
         return EXIT_FAILURE;
     }
 
@@ -352,8 +381,8 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     }
 
     /* print exported data */
-    lyd_print_file(file ? file : stdout, data, format, LYP_FORMAT | LYP_WITHSIBLINGS | wd_opt);
-    lyd_free_withsiblings(data);
+    lyd_print_file(file ? file : stdout, data, format, LYD_PRINT_WITHSIBLINGS | wd_opt);
+    lyd_free_all(data);
 
     /* cleanup */
     if (file) {
@@ -364,21 +393,20 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
 
 static int
 op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const char *module_name, LYD_FORMAT format,
-        int lock, int not_strict, int wd_opt, int timeout_s, int wait)
+        int not_strict, int lock, int wd_opt, int timeout_s, int wait)
 {
     char tmp_file[22];
-    int r, flags, rc = EXIT_FAILURE;
+    int r, rc = EXIT_FAILURE;
     struct lyd_node *data;
 
     if (file_path) {
         /* just apply an edit from a file */
-        flags = LYD_OPT_EDIT | LYD_OPT_TRUSTED | (not_strict ? 0 : LYD_OPT_STRICT);
-        if (step_load_data(sess, file_path, format, flags, &data)) {
+        if (step_load_data(sess, file_path, format, DATA_EDIT, 0, &data)) {
             return EXIT_FAILURE;
         }
 
         r = sr_edit_batch(sess, data, "merge");
-        lyd_free_withsiblings(data);
+        lyd_free_all(data);
         if (r != SR_ERR_OK) {
             error_print(r, "Failed to prepare edit");
             return EXIT_FAILURE;
@@ -430,11 +458,10 @@ cleanup_unlock:
 }
 
 static int
-op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FORMAT format, int not_strict, int wd_opt,
-       int timeout_s)
+op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FORMAT format, int wd_opt, int timeout_s)
 {
     char tmp_file[22];
-    int r, flags;
+    int r;
     struct lyd_node *input, *output, *node;
 
     if (!file_path) {
@@ -452,38 +479,37 @@ op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FO
     }
 
     /* load the file */
-    flags = LYD_OPT_RPC | LYD_OPT_TRUSTED | (not_strict ? 0 : LYD_OPT_STRICT);
-    if (step_load_data(sess, file_path, format, flags, &input)) {
+    if (step_load_data(sess, file_path, format, DATA_RPC, 0, &input)) {
         return EXIT_FAILURE;
     }
 
     /* send rpc/action */
     r = sr_rpc_send_tree(sess, input, timeout_s * 1000, &output);
-    lyd_free_withsiblings(input);
+    lyd_free_all(input);
     if (r) {
         error_print(r, "Sending RPC/action failed");
         return EXIT_FAILURE;
     }
 
     /* print output if any */
-    LY_TREE_FOR(output->child, node) {
-        if (!node->dflt) {
+    LY_LIST_FOR(lyd_child(output), node) {
+        if (!(node->flags & LYD_DEFAULT)) {
             break;
         }
     }
     if (node) {
-        lyd_print_file(stdout, output, format, LYP_FORMAT | wd_opt);
+        lyd_print_file(stdout, output, format, wd_opt);
     }
-    lyd_free_withsiblings(output);
+    lyd_free_all(output);
 
     return EXIT_SUCCESS;
 }
 
 static int
-op_notif(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FORMAT format, int not_strict)
+op_notif(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FORMAT format)
 {
     char tmp_file[22];
-    int r, flags;
+    int r;
     struct lyd_node *notif;
 
     if (!file_path) {
@@ -501,14 +527,13 @@ op_notif(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_
     }
 
     /* load the file */
-    flags = LYD_OPT_NOTIF | LYD_OPT_TRUSTED | (not_strict ? 0 : LYD_OPT_STRICT);
-    if (step_load_data(sess, file_path, format, flags, &notif)) {
+    if (step_load_data(sess, file_path, format, DATA_NOTIF, 0, &notif)) {
         return EXIT_FAILURE;
     }
 
     /* send notification */
     r = sr_event_notif_send_tree(sess, notif);
-    lyd_free_withsiblings(notif);
+    lyd_free_all(notif);
     if (r) {
         error_print(r, "Sending notification failed");
         return EXIT_FAILURE;
@@ -521,13 +546,12 @@ static int
 op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds, const char *module_name,
         LYD_FORMAT format, int not_strict, int timeout_s, int wait)
 {
-    int r, flags;
+    int r;
     struct lyd_node *data;
 
     if (file_path) {
         /* load the file */
-        flags = LYD_OPT_CONFIG | LYD_OPT_TRUSTED | (not_strict ? 0 : LYD_OPT_STRICT);
-        if (step_load_data(sess, file_path, format, flags, &data)) {
+        if (step_load_data(sess, file_path, format, DATA_CONFIG, not_strict, &data)) {
             return EXIT_FAILURE;
         }
 
@@ -789,15 +813,15 @@ main(int argc, char** argv)
             break;
         case 'e':
             if (!strcmp(optarg, "report-all")) {
-                wd_opt = LYP_WD_ALL;
+                wd_opt = LYD_PRINT_WD_ALL;
             } else if (!strcmp(optarg, "report-all-tagged")) {
-                wd_opt = LYP_WD_ALL_TAG;
+                wd_opt = LYD_PRINT_WD_ALL_TAG;
             } else if (!strcmp(optarg, "trim")) {
-                wd_opt = LYP_WD_TRIM;
+                wd_opt = LYD_PRINT_WD_TRIM;
             } else if (!strcmp(optarg, "explicit")) {
-                wd_opt = LYP_WD_EXPLICIT;
+                wd_opt = LYD_PRINT_WD_EXPLICIT;
             } else if (!strcmp(optarg, "implicit-tagged")) {
-                wd_opt = LYP_WD_IMPL_TAG;
+                wd_opt = LYD_PRINT_WD_IMPL_TAG;
             } else {
                 error_print(0, "Invalid defaults mode \"%s\"", optarg);
                 goto cleanup;
@@ -883,10 +907,10 @@ main(int argc, char** argv)
         rc = op_edit(sess, file_path, editor, module_name, format, lock, not_strict, wd_opt, timeout, wait);
         break;
     case 'R':
-        rc = op_rpc(sess, file_path, editor, format, not_strict, wd_opt, timeout);
+        rc = op_rpc(sess, file_path, editor, format, wd_opt, timeout);
         break;
     case 'N':
-        rc = op_notif(sess, file_path, editor, format, not_strict);
+        rc = op_notif(sess, file_path, editor, format);
         break;
     case 'C':
         rc = op_copy(sess, file_path, source_ds, module_name, format, not_strict, timeout, wait);

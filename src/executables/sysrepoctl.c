@@ -131,7 +131,7 @@ static void
 srctl_list_collect_import(const struct lys_module *ly_mod, struct list_item **list, size_t *list_count)
 {
     struct list_item *cur_item;
-    uint32_t i;
+    LY_ARRAY_COUNT_TYPE u;
 
     if (ly_mod->implemented) {
         /* must be added from sysrepo data */
@@ -139,11 +139,11 @@ srctl_list_collect_import(const struct lys_module *ly_mod, struct list_item **li
     }
 
     /* check for duplicates */
-    for (i = 0; i < *list_count; ++i) {
-        if (strcmp((*list)[i].name, ly_mod->name)) {
+    for (u = 0; u < *list_count; ++u) {
+        if (strcmp((*list)[u].name, ly_mod->name)) {
             continue;
         }
-        if (strcmp((*list)[i].revision, ly_mod->rev_size ? ly_mod->rev[0].date : "")) {
+        if (strcmp((*list)[u].revision, ly_mod->revision ? ly_mod->revision : "")) {
             continue;
         }
 
@@ -165,11 +165,11 @@ srctl_list_collect_import(const struct lys_module *ly_mod, struct list_item **li
 
     /* fill name and revision */
     cur_item->name = strdup(ly_mod->name);
-    cur_item->revision = strdup(ly_mod->rev_size ? ly_mod->rev[0].date : "");
+    cur_item->revision = strdup(ly_mod->revision ? ly_mod->revision : "");
 
     /* recursively */
-    for (i = 0; i < ly_mod->imp_size; ++i) {
-        srctl_list_collect_import(ly_mod->imp[i].module, list, list_count);
+    LY_ARRAY_FOR(ly_mod->parsed->imports, u) {
+        srctl_list_collect_import(ly_mod->parsed->imports[u].module, list, list_count);
     }
 }
 
@@ -179,14 +179,15 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
 {
     struct list_item *cur_item;
     const struct lys_module *ly_mod = NULL;
-    const struct lys_submodule *ly_submod;
+    const struct lysp_submodule *ly_submod;
     struct lyd_node *module, *child;
     char *owner, *group;
     const char *str;
-    int ret = SR_ERR_OK, real_state;
-    uint32_t i, j;
+    int ret = SR_ERR_OK;
+    LY_ERR real_state;
+    LY_ARRAY_COUNT_TYPE u, v;
 
-    LY_TREE_FOR(sr_data->child, module) {
+    LY_LIST_FOR(lyd_child(sr_data), module) {
         /* new module */
         *list = realloc(*list, (*list_count + 1) * sizeof **list);
         cur_item = &(*list)[*list_count];
@@ -200,20 +201,22 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
         cur_item->features = strdup("");
 
         /* name and revision must be first */
-        child = module->child;
+        child = lyd_child(module);
         assert(!strcmp(child->schema->name, "name"));
-        str = ((struct lyd_node_leaf_list *)child)->value_str;
-        cur_item->name = strdup(str);
+        cur_item->name = strdup(LYD_CANON_VALUE(child));
 
         child = child->next;
         if (!strcmp(child->schema->name, "revision")) {
-            str = ((struct lyd_node_leaf_list *)child)->value_str;
-            cur_item->revision = strdup(str);
+            cur_item->revision = strdup(LYD_CANON_VALUE(child));
         }
 
         /* get the module */
         if (!strcmp(module->schema->name, "module")) {
-            ly_mod = ly_ctx_get_module(ly_ctx, cur_item->name, cur_item->revision, 1);
+            if (cur_item->revision) {
+                ly_mod = ly_ctx_get_module(ly_ctx, cur_item->name, cur_item->revision);
+            } else {
+                ly_mod = ly_ctx_get_module_implemented(ly_ctx, cur_item->name);
+            }
             if (!ly_mod) {
                 return SR_ERR_INTERNAL;
             }
@@ -225,7 +228,7 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
         }
 
         /* collect information from sysrepo data */
-        LY_TREE_FOR(child, child) {
+        LY_LIST_FOR(child, child) {
             if (!strcmp(child->schema->name, "replay-support")) {
                 cur_item->replay = 1;
             } else if (!strcmp(child->schema->name, "removed")) {
@@ -233,22 +236,22 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
             } else if (!strcmp(child->schema->name, "updated-yang")) {
                 cur_item->change_flag = "U";
             } else if (!strcmp(child->schema->name, "enabled-feature")) {
-                str = ((struct lyd_node_leaf_list *)child)->value_str;
+                str = LYD_CANON_VALUE(child);
 
                 if (ly_mod) {
                     /* check the real state of the feature */
-                    real_state = lys_features_state(ly_mod, str);
+                    real_state = lys_feature_value(ly_mod, str);
                 } else {
-                    real_state = 1;
+                    real_state = LY_SUCCESS;
                 }
 
-                cur_item->features = realloc(cur_item->features, strlen(cur_item->features) + (real_state ? 0 : 1) + 1
+                cur_item->features = realloc(cur_item->features, strlen(cur_item->features) + (!real_state ? 0 : 1) + 1
                         + strlen(str) + 1);
                 if (cur_item->features[0]) {
                     strcat(cur_item->features, " ");
                 }
                 strcat(cur_item->features, str);
-                if (!real_state) {
+                if (real_state == LY_ENOT) {
                     strcat(cur_item->features, "!");
                 }
             } else if (!strcmp(child->schema->name, "changed-feature")) {
@@ -269,26 +272,26 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
             free(group);
 
             /* learn submodules */
-            for (i = 0; i < ly_mod->inc_size; ++i) {
-                str = ly_mod->inc[i].submodule->name;
+            LY_ARRAY_FOR(ly_mod->parsed->includes, u) {
+                str = ly_mod->parsed->includes[u].submodule->name;
                 cur_item->submodules = realloc(cur_item->submodules, strlen(cur_item->submodules) + 1 + strlen(str) + 1);
-                if (i) {
+                if (u) {
                     strcat(cur_item->submodules, " ");
                 }
                 strcat(cur_item->submodules, str);
             }
 
             /* add all import modules of submodules as well */
-            for (i = 0; i < ly_mod->inc_size; ++i) {
-                ly_submod = ly_mod->inc[i].submodule;
-                for (j = 0; j < ly_submod->imp_size; ++j) {
-                    srctl_list_collect_import(ly_submod->imp[j].module, list, list_count);
+            LY_ARRAY_FOR(ly_mod->parsed->includes, u) {
+                ly_submod = ly_mod->parsed->includes[u].submodule;
+                LY_ARRAY_FOR(ly_submod->imports, v) {
+                    srctl_list_collect_import(ly_submod->imports[v].module, list, list_count);
                 }
             }
 
             /* add all import modules as well */
-            for (i = 0; i < ly_mod->imp_size; ++i) {
-                srctl_list_collect_import(ly_mod->imp[i].module, list, list_count);
+            LY_ARRAY_FOR(ly_mod->parsed->imports, u) {
+                srctl_list_collect_import(ly_mod->parsed->imports[u].module, list, list_count);
             }
         } else {
             cur_item->change_flag = "N";
@@ -398,7 +401,7 @@ srctl_list(sr_conn_ctx_t *conn)
     printf("Features: ! - Means that the feature is effectively disabled because of its false if-feature(s)\n\n");
 
 cleanup:
-    lyd_free_withsiblings(data);
+    lyd_free_all(data);
     for (i = 0; i < list_count; ++i) {
         free(list[i].name);
         free(list[i].revision);
@@ -544,8 +547,9 @@ main(int argc, char** argv)
                 error_print(0, "Invalid parameter -%c for the operation", opt);
                 goto cleanup;
             }
-            features = realloc(features, (feat_count + 1) * sizeof *features);
+            features = realloc(features, (feat_count + 2) * sizeof *features);
             features[feat_count++] = optarg;
+            features[feat_count] = NULL;
             break;
         case 'd':
             if (operation && (operation != 'c')) {
@@ -664,7 +668,7 @@ main(int argc, char** argv)
         break;
     case 'i':
         /* install */
-        if ((r = sr_install_module(conn, file_path, search_dirs, (const char **)features, feat_count)) != SR_ERR_OK) {
+        if ((r = sr_install_module(conn, file_path, search_dirs, (const char **)features)) != SR_ERR_OK) {
             /* succeed if the module is already installed */
             if (r != SR_ERR_EXISTS) {
                 error_print(r, "Failed to install module \"%s\"", file_path);

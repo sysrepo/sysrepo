@@ -223,10 +223,13 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 #define SR_MSG_LEN_START 128
 
 /** default operational origin for operational data (push/pull) */
-#define SR_OPER_ORIGIN "unknown"
+#define SR_OPER_ORIGIN "ietf-origin:unknown"
 
 /** default operational origin for enabled running data */
-#define SR_CONFIG_ORIGIN "intended"
+#define SR_CONFIG_ORIGIN "ietf-origin:intended"
+
+/** get string value of the first child of a node */
+#define SR_LY_CHILD_VALUE(node) LYD_CANON_VALUE(((struct lyd_node_inner *)(node))->child)
 
 /*
  * Internal declarations + definitions
@@ -721,10 +724,11 @@ sr_error_info_t *sr_create_startup_file(const struct lys_module *ly_mod);
 /**
  * @brief Create all module import and include files, recursively.
  *
- * @param[in] ly_mod libyang module whose imports and includes to create.
+ * @param[in] ly_mod libyang module whose imports and includes to create. Overriden by @p lysp_submod.
+ * @param[in] lysp_submod Optional libyang parsed submodule whose imports and includes to create.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_create_module_imps_incs_r(const struct lys_module *ly_mod);
+sr_error_info_t *sr_create_module_imps_incs_r(const struct lys_module *ly_mod, const struct lysp_submodule *lysp_submod);
 
 /**
  * @brief Get the path the main SHM.
@@ -1164,14 +1168,6 @@ int sr_sprintf(char **str, int *str_len, int offset, const char *format, ...);
 sr_error_info_t *sr_file_get_size(int fd, size_t *size);
 
 /**
- * @brief Get string value of a libyang leaf(-list).
- *
- * @param[in] leaf Node to inspect.
- * @return String value of the node.
- */
-const char *sr_ly_leaf_value_str(const struct lyd_node *leaf);
-
-/**
  * @brief Get event string name.
  *
  * @param[in] ev Event to transform.
@@ -1223,22 +1219,6 @@ sr_error_info_t *sr_val_sr2ly(struct ly_ctx *ctx, const char *xpath, const char 
         struct lyd_node **root);
 
 /**
- * @brief Split this sibling with following siblings and its preceding siblings.
- * Works only for top-level nodes!
- *
- * @param[in] sibling Specific sibling where to split the siblings.
- */
-void sr_ly_split(struct lyd_node *sibling);
-
-/**
- * @brief Link together split siblings. Works only for top-level nodes!
- *
- * @param[in] first First sibling of the preceding siblings.
- * @param[in] sibling First sibling of the following siblings.
- */
-void sr_ly_link(struct lyd_node *first, struct lyd_node *sibling);
-
-/**
  * @brief Duplicate nodes to the specified depth.
  *
  * @param[in] src_parent Source parent.
@@ -1247,28 +1227,6 @@ void sr_ly_link(struct lyd_node *first, struct lyd_node *sibling);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lyd_dup(const struct lyd_node *src_parent, uint32_t depth, struct lyd_node *trg_parent);
-
-/**
- * @brief Get pointer to data node children.
- *
- * @param[in] node Node to get children of.
- * @param[in] skip_keys Whether to return first non-key child in case of lists.
- * @return Node children, NULL if has none.
- */
-struct lyd_node *sr_lyd_child(const struct lyd_node *node, int skip_keys);
-
-/**
- * @brief Create any missing config/state NP containers in the siblings, recursively.
- *
- * @param[in,out] first First sibling to add NP containers into, set if @p parent is NULL.
- * Only @p ly_mod data are considered.
- * @param[in] parent Parent of any added NP containers, set if @p first is NULL.
- * @param[in] ly_mod Module to consider, set if @p parent is NULL.
- * @param[in,out] diff Optional diff to append any performed changes to.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_lyd_create_sibling_np_cont_r(struct lyd_node **first, struct lyd_node *parent,
-        const struct lys_module *ly_mod, struct lyd_node **diff);
 
 /**
  * @brief Duplicate only config NP containers of a module from a data tree. Also optionally create state NP containers.
@@ -1316,33 +1274,6 @@ sr_error_info_t *sr_lyd_dup_enabled_xpath(const struct lyd_node *data, char **xp
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lyd_xpath_complement(struct lyd_node **data, const char *xpath);
-
-/**
- * @brief Learn whether a node is user-ordered (leaf-)list.
- *
- * @param[in] node (Leaf-)list instance.
- * @return 0 if not, non-zero if it is.
- */
-int sr_ly_is_userord(const struct lyd_node *node);
-
-/**
- * @brief Learn whether 2 anydata/anyxml nodes are equal or not.
- *
- * @param[in] any1 First anydata/anyxml node.
- * @param[in] any2 Second anydata/anyxml node.
- * @param[out] equal 1 if equal, 0 otherwise.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_lyd_anydata_equal(const struct lyd_node *any1, const struct lyd_node *any2, int *equal);
-
-/**
- * @brief Copy anydata/anyxml value from src to trg.
- *
- * @param[in] trg Target to copy to.
- * @param[in] src Source to copy from.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_lyd_anydata_copy(struct lyd_node *trg, const struct lyd_node *src);
 
 /**
  * @brief Get string value of an anydata/anyxml node.
@@ -1422,6 +1353,16 @@ size_t sr_xpath_len_no_predicates(const char *xpath);
 sr_error_info_t *sr_ly_find_last_parent(struct lyd_node **parent, int nodetype);
 
 /**
+ * @brief Print data into LYB memory chunk.
+ *
+ * @param[in] data Data to print.
+ * @param[in,out] str String to allocate and print to.
+ * @param[out] len Length of the printed chunk.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_print_lyb(const struct lyd_node *data, char **str, uint32_t *len);
+
+/**
  * @brief Unlink data of a specific module from a data tree.
  *
  * @param[in,out] data Data tree.
@@ -1462,15 +1403,5 @@ sr_error_info_t *sr_module_file_data_set(const char *mod_name, sr_datastore_t ds
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name);
-
-/**
- * @brief Get next feature of a module.
- *
- * @param[in] last Last returned feature, NULL on first call,
- * @param[in] ly_mod Module with the features.
- * @param[in,out] idx Internal index fo the feature, arbitrary value can be passed but must not be changed in between calls.
- * @return Next found feature, NULL if last was previously returned.
- */
-struct lys_feature *sr_lys_next_feature(struct lys_feature *last, const struct lys_module *ly_mod, uint32_t *idx);
 
 #endif

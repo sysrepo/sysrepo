@@ -553,21 +553,21 @@ sr_shmsub_change_notify_evpipe(char *ext_shm_addr, struct sr_mod_info_mod_s *mod
 static int
 sr_shmsub_change_notify_diff_has_changes(struct sr_mod_info_mod_s *mod, const struct lyd_node *diff)
 {
-    const struct lyd_node *root, *next, *elem;
+    const struct lyd_node *root, *elem;
     enum edit_op op;
 
-    LY_TREE_FOR(diff, root) {
-        if (lyd_node_module(root) != mod->ly_mod) {
+    LY_LIST_FOR(diff, root) {
+        if (lyd_owner_module(root) != mod->ly_mod) {
             /* skip data nodes from different modules */
             continue;
         }
 
-        LY_TREE_DFS_BEGIN(root, next, elem) {
-            op = sr_edit_find_oper(elem, 0, NULL);
+        LYD_TREE_DFS_BEGIN(root, elem) {
+            op = sr_edit_diff_find_oper(elem, 0, NULL);
             if (op && (op != EDIT_NONE)) {
                 return 1;
             }
-            LY_TREE_DFS_END(root, next, elem);
+            LYD_TREE_DFS_END(root, elem);
         }
     }
 
@@ -589,7 +589,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
 
     assert(mod_info->diff);
     *update_edit = NULL;
-    ly_ctx = lyd_node_module(mod_info->diff)->ctx;
+    ly_ctx = mod_info->conn->ly_ctx;
 
     while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff, &aux))) {
         /* first check that there actually are some value changes (and not only dflt changes) */
@@ -604,7 +604,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
         }
 
         /* prepare diff to write into SHM */
-        if (!diff_lyb && lyd_print_mem(&diff_lyb, mod_info->diff, LYD_LYB, LYP_WITHSIBLINGS)) {
+        if (!diff_lyb && lyd_print_mem(&diff_lyb, mod_info->diff, LYD_LYB, LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS)) {
             sr_errinfo_new_ly(&err_info, ly_ctx);
             SR_ERRINFO_INT(&err_info);
             goto cleanup;
@@ -679,9 +679,8 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
             multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
             /* parse updated edit */
-            ly_errno = 0;
-            edit = lyd_parse_mem(ly_ctx, shm_sub.addr + sizeof *multi_sub_shm, LYD_LYB, LYD_OPT_EDIT | LYD_OPT_STRICT);
-            if (ly_errno) {
+            if (lyd_parse_data_mem(ly_ctx, shm_sub.addr + sizeof *multi_sub_shm, LYD_LYB,
+                    LYD_PARSE_STRICT | LYD_PARSE_OPAQ | LYD_PARSE_ONLY, 0, &edit)) {
                 sr_errinfo_new_ly(&err_info, ly_ctx);
                 sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "Failed to parse \"update\" edit.");
                 goto cleanup_rdunlock;
@@ -693,11 +692,11 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
             /* SUB READ UNLOCK */
             sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
 
-            /* collect new edits (they may not be any) */
+            /* collect new edits (there may not be any) */
             if (!*update_edit) {
                 *update_edit = edit;
             } else if (edit) {
-                if (lyd_insert_after((*update_edit)->prev, edit)) {
+                if (lyd_insert_sibling(*update_edit, edit, update_edit)) {
                     sr_errinfo_new_ly(&err_info, ly_ctx);
                     goto cleanup;
                 }
@@ -726,7 +725,7 @@ cleanup:
     free(diff_lyb);
     sr_shm_clear(&shm_sub);
     if (err_info || *cb_err_info) {
-        lyd_free_withsiblings(*update_edit);
+        lyd_free_all(*update_edit);
         *update_edit = NULL;
     }
     return err_info;
@@ -861,12 +860,8 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
         }
 
         /* prepare the diff to write into subscription SHM */
-        if (!diff_lyb) {
-            if (lyd_print_mem(&diff_lyb, mod_info->diff, LYD_LYB, LYP_WITHSIBLINGS)) {
-                sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
-                goto cleanup;
-            }
-            diff_lyb_len = lyd_lyb_data_length(diff_lyb);
+        if (!diff_lyb && (err_info = sr_lyd_print_lyb(mod_info->diff, &diff_lyb, &diff_lyb_len))) {
+            goto cleanup;
         }
 
         /* open sub SHM and map it */
@@ -992,12 +987,8 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
         }
 
         /* prepare the diff to write into subscription SHM */
-        if (!diff_lyb) {
-            if (lyd_print_mem(&diff_lyb, mod_info->diff, LYD_LYB, LYP_WITHSIBLINGS)) {
-                sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
-                goto cleanup;
-            }
-            diff_lyb_len = lyd_lyb_data_length(diff_lyb);
+        if (!diff_lyb && (err_info = sr_lyd_print_lyb(mod_info->diff, &diff_lyb, &diff_lyb_len))) {
+            goto cleanup;
         }
 
         /* open sub SHM and map it */
@@ -1139,17 +1130,16 @@ clear_shm:
         /* prepare the diff to write into subscription SHM */
         if (!diff_lyb) {
             /* first reverse change diff for abort */
-            if ((err_info = sr_diff_reverse(mod_info->diff, &abort_diff))) {
+            if (lyd_diff_reverse_all(mod_info->diff, &abort_diff)) {
+                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
                 goto cleanup;
             }
 
-            if (lyd_print_mem(&diff_lyb, abort_diff, LYD_LYB, LYP_WITHSIBLINGS)) {
-                lyd_free_withsiblings(abort_diff);
-                sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
+            if ((err_info = sr_lyd_print_lyb(abort_diff, &diff_lyb, &diff_lyb_len))) {
+                lyd_free_all(abort_diff);
                 goto cleanup;
             }
-            lyd_free_withsiblings(abort_diff);
-            diff_lyb_len = lyd_lyb_data_length(diff_lyb);
+            lyd_free_all(abort_diff);
         }
 
         /* correctly start the loop, with fake last priority 1 higher than the actual highest */
@@ -1314,9 +1304,7 @@ sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const 
     sub_shm = (sr_sub_shm_t *)shm_sub.addr;
 
     /* parse returned data */
-    ly_errno = 0;
-    *data = lyd_parse_mem(ly_mod->ctx, shm_sub.addr + sizeof *sub_shm, LYD_LYB, LYD_OPT_DATA | LYD_OPT_TRUSTED | LYD_OPT_STRICT);
-    if (ly_errno) {
+    if (lyd_parse_data_mem(ly_mod->ctx, shm_sub.addr + sizeof *sub_shm, LYD_LYB, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, data)) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "Failed to parse returned \"operational\" data.");
         goto cleanup_rdunlock;
@@ -1354,18 +1342,17 @@ sr_shmsub_rpc_is_valid(const struct lyd_node *input, const char *xpath)
     sr_error_info_t *err_info = NULL;
     struct ly_set *set;
 
-    set = lyd_find_path(input, xpath);
-    if (!set) {
+    if (lyd_find_xpath(input, xpath, &set)) {
         SR_ERRINFO_INT(&err_info);
         sr_errinfo_free(&err_info);
         return 0;
-    } else if (set->number) {
+    } else if (set->count) {
         /* valid subscription */
-        ly_set_free(set);
+        ly_set_free(set, NULL);
         return 1;
     }
 
-    ly_set_free(set);
+    ly_set_free(set, NULL);
     return 0;
 }
 
@@ -1488,6 +1475,7 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_
     char *input_lyb = NULL, *ext_shm_addr, *ext_shm_buf = NULL;
     uint32_t i, input_lyb_len, cur_priority, subscriber_count, *evpipes = NULL;
     int opts;
+    struct ly_in *in = NULL;
     sr_multi_sub_shm_t *multi_sub_shm;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER;
 
@@ -1509,13 +1497,14 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_
 
     /* print the input into LYB */
     if (lyd_print_mem(&input_lyb, input, LYD_LYB, 0)) {
-        sr_errinfo_new_ly(&err_info, lyd_node_module(input)->ctx);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(input));
         goto cleanup;
     }
     input_lyb_len = lyd_lyb_data_length(input_lyb);
 
     /* open sub SHM and map it */
-    if ((err_info = sr_shmsub_open_map(lyd_node_module(input)->name, "rpc", sr_str_hash(op_path), &shm_sub, sizeof *multi_sub_shm))) {
+    if ((err_info = sr_shmsub_open_map(lyd_owner_module(input)->name, "rpc", sr_str_hash(op_path), &shm_sub,
+            sizeof *multi_sub_shm))) {
         goto cleanup;
     }
     multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
@@ -1594,12 +1583,11 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
         /* parse returned reply, overwrite any previous ones */
-        lyd_free_withsiblings(*output);
-        ly_errno = 0;
-        *output = lyd_parse_mem(lyd_node_module(input)->ctx, shm_sub.addr + sizeof *multi_sub_shm, LYD_LYB,
-                LYD_OPT_RPCREPLY | LYD_OPT_NOEXTDEPS | LYD_OPT_STRICT, input, NULL);
-        if (ly_errno) {
-            sr_errinfo_new_ly(&err_info, lyd_node_module(input)->ctx);
+        lyd_free_all(*output);
+        ly_in_free(in, 0);
+        ly_in_new_memory(shm_sub.addr + sizeof *multi_sub_shm, &in);
+        if (lyd_parse_reply(LYD_CTX(input), in, LYD_LYB, output, NULL)) {
+            sr_errinfo_new_ly(&err_info, LYD_CTX(input));
             sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "Failed to parse returned \"RPC\" data.");
             goto cleanup_rdunlock;
         }
@@ -1629,6 +1617,7 @@ cleanup_wrunlock:
     sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
 cleanup:
     sr_shm_clear(&shm_sub);
+    ly_in_free(in, 0);
     free(input_lyb);
     free(evpipes);
     if (ext_shm_buf) {
@@ -1637,7 +1626,7 @@ cleanup:
         err_info = sr_shmmain_lock_remap(conn, SR_LOCK_READ, 0, __func__);
     }
     if (err_info) {
-        lyd_free_withsiblings(*output);
+        lyd_free_all(*output);
         *output = NULL;
     }
     return err_info;
@@ -1658,7 +1647,8 @@ sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, const char *op_path, const struc
     assert(request_id);
 
     /* open sub SHM and map it */
-    if ((err_info = sr_shmsub_open_map(lyd_node_module(input)->name, "rpc", sr_str_hash(op_path), &shm_sub, sizeof *multi_sub_shm))) {
+    if ((err_info = sr_shmsub_open_map(lyd_owner_module(input)->name, "rpc", sr_str_hash(op_path), &shm_sub,
+            sizeof *multi_sub_shm))) {
         goto cleanup;
     }
     multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
@@ -1691,11 +1681,9 @@ clear_shm:
     err_subscriber_count = multi_sub_shm->subscriber_count;
 
     /* print the input into LYB */
-    if (lyd_print_mem(&input_lyb, input, LYD_LYB, 0)) {
-        sr_errinfo_new_ly(&err_info, lyd_node_module(input)->ctx);
+    if ((err_info = sr_lyd_print_lyb(input, &input_lyb, &input_lyb_len))) {
         goto cleanup;
     }
-    input_lyb_len = lyd_lyb_data_length(input_lyb);
 
     first_iter = 1;
     /* correctly start the loop, with fake last priority 1 higher than the actual highest */
@@ -1769,7 +1757,7 @@ sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t s
         uint32_t notif_sub_count)
 {
     sr_error_info_t *err_info = NULL;
-    struct lys_module *ly_mod;
+    const struct lys_module *ly_mod;
     char *notif_lyb = NULL;
     uint32_t notif_lyb_len, request_id, i;
     sr_multi_sub_shm_t *multi_sub_shm;
@@ -1777,14 +1765,12 @@ sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t s
 
     assert(!notif->parent);
 
-    ly_mod = lyd_node_module(notif);
+    ly_mod = lyd_owner_module(notif);
 
     /* print the notification into LYB */
-    if (lyd_print_mem(&notif_lyb, notif, LYD_LYB, 0)) {
-        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+    if ((err_info = sr_lyd_print_lyb(notif, &notif_lyb, &notif_lyb_len))) {
         goto cleanup;
     }
-    notif_lyb_len = lyd_lyb_data_length(notif_lyb);
 
     /* open sub SHM and map it */
     if ((err_info = sr_shmsub_open_map(ly_mod->name, "notif", -1, &shm_sub, sizeof *multi_sub_shm))) {
@@ -1883,34 +1869,36 @@ sr_shmsub_change_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct m
 static int
 sr_shmsub_change_listen_has_diff(struct modsub_changesub_s *sub, const struct lyd_node *diff)
 {
-    struct ly_set *set = NULL;
-    const struct lyd_node *next, *elem;
+    struct ly_set *set;
+    const struct lyd_node *elem;
     uint32_t i;
     enum edit_op op;
     int ret = 0;
+    LY_ERR lyrc;
 
     if (!sub->xpath) {
         return 1;
     }
 
-    set = lyd_find_path(diff, sub->xpath);
-    assert(set);
+    lyrc = lyd_find_xpath(diff, sub->xpath, &set);
+    assert(!lyrc);
+    (void)lyrc;
 
-    for (i = 0; i < set->number; ++i) {
-        LY_TREE_DFS_BEGIN(set->set.d[i], next, elem) {
-            op = sr_edit_find_oper(elem, 1, NULL);
+    for (i = 0; i < set->count; ++i) {
+        LYD_TREE_DFS_BEGIN(set->dnodes[i], elem) {
+            op = sr_edit_diff_find_oper(elem, 1, NULL);
             assert(op);
             if (op != EDIT_NONE) {
                 ret = 1;
                 break;
             }
-            LY_TREE_DFS_END(set->set.d[i], next, elem);
+            LYD_TREE_DFS_END(set->dnodes[i], elem);
         }
         if (ret) {
             break;
         }
     }
-    ly_set_free(set);
+    ly_set_free(set, NULL);
 
     return ret;
 }
@@ -2075,10 +2063,12 @@ sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t
                 && sr_shmsub_change_is_valid(SR_SUB_EV_ABORT, sub->opts)) {
             /* update session */
             tmp_sess->ev = SR_SUB_EV_ABORT;
-            if ((*err_info = sr_diff_reverse(tmp_sess->dt[tmp_sess->ds].diff, &abort_diff))) {
+            if (lyd_diff_reverse_all(tmp_sess->dt[tmp_sess->ds].diff, &abort_diff)) {
+                sr_errinfo_new_ly(err_info, tmp_sess->conn->ly_ctx);
+                SR_ERRINFO_INT(err_info);
                 return 1;
             }
-            lyd_free_withsiblings(tmp_sess->dt[tmp_sess->ds].diff);
+            lyd_free_all(tmp_sess->dt[tmp_sess->ds].diff);
             tmp_sess->dt[tmp_sess->ds].diff = abort_diff;
 
             SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %u priority %u (self-generated).",
@@ -2162,8 +2152,12 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
     sub_info.priority = multi_sub_shm->priority;
 
     /* parse event diff */
-    diff = lyd_parse_mem(conn->ly_ctx, change_subs->sub_shm.addr + sizeof *multi_sub_shm, LYD_LYB, LYD_OPT_EDIT | LYD_OPT_STRICT);
-    SR_CHECK_INT_GOTO(!diff, err_info, cleanup_rdunlock);
+    if (lyd_parse_data_mem(conn->ly_ctx, change_subs->sub_shm.addr + sizeof *multi_sub_shm, LYD_LYB,
+            LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &diff)) {
+        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+        SR_ERRINFO_INT(&err_info);
+        goto cleanup_rdunlock;
+    }
 
     /* prepare implicit session */
     tmp_sess.conn = conn;
@@ -2235,12 +2229,12 @@ process_event:
     case SR_SUB_EV_UPDATE:
         if (err_code == SR_ERR_OK) {
             /* we may have an updated edit (empty is fine), check it */
-            LY_TREE_FOR(tmp_sess.dt[tmp_sess.ds].edit, iter) {
-                if (strcmp(lyd_node_module(iter)->name, change_subs->module_name)) {
+            LY_LIST_FOR(tmp_sess.dt[tmp_sess.ds].edit, iter) {
+                if (strcmp(lyd_owner_module(iter)->name, change_subs->module_name)) {
                     /* generate an error */
-                    path = lyd_path(iter);
+                    path = lyd_path(iter, LYD_PATH_STD, NULL, 0);
                     sr_set_error(&tmp_sess, path, "Updated edit with data from another module \"%s\".",
-                            lyd_node_module(iter)->name);
+                            lyd_owner_module(iter)->name);
                     free(path);
                     sr_log_msg(0, SR_LL_ERR, tmp_sess.err_info->err[0].message, tmp_sess.err_info->err[0].xpath);
 
@@ -2257,11 +2251,9 @@ process_event:
             }
 
             /* print it into LYB */
-            if (lyd_print_mem(&data, tmp_sess.dt[tmp_sess.ds].edit, LYD_LYB, LYP_WITHSIBLINGS)) {
-                sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+            if ((err_info = sr_lyd_print_lyb(tmp_sess.dt[tmp_sess.ds].edit, &data, &data_len))) {
                 goto cleanup_rdunlock;
             }
-            data_len = lyd_lyb_data_length(data);
         }
         /* fallthrough */
     case SR_SUB_EV_CHANGE:
@@ -2437,8 +2429,7 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, data_len = 0, request_id;
-    char *data = NULL, *request_xpath = NULL;
-    const char *origin;
+    char *data = NULL, *request_xpath = NULL, *origin;
     sr_error_t err_code = SR_ERR_OK;
     struct modsub_opersub_s *oper_sub;
     struct lyd_node *parent = NULL, *orig_parent, *node;
@@ -2481,10 +2472,8 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         SR_CHECK_MEM_GOTO(!request_xpath, err_info, error_rdunlock);
 
         /* parse data parent */
-        ly_errno = 0;
-        parent = lyd_parse_mem(conn->ly_ctx, oper_sub->sub_shm.addr + sizeof(sr_sub_shm_t) + sr_strshmlen(request_xpath),
-                LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT | LYD_OPT_TRUSTED);
-        if (ly_errno) {
+        if (lyd_parse_data_mem(conn->ly_ctx, oper_sub->sub_shm.addr + sizeof(sr_sub_shm_t) + sr_strshmlen(request_xpath),
+                LYD_LYB, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &parent)) {
             sr_errinfo_new_ly(&err_info, conn->ly_ctx);
             SR_ERRINFO_INT(&err_info);
             goto error_rdunlock;
@@ -2508,16 +2497,18 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         /* go again to the top-level root for printing */
         if (parent) {
             /* set origin if none */
-            LY_TREE_FOR(orig_parent ? sr_lyd_child(parent, 1) : parent, node) {
+            LY_LIST_FOR(orig_parent ? lyd_child_no_keys(parent) : parent, node) {
                 sr_edit_diff_get_origin(node, &origin, NULL);
                 if ((!origin || !strcmp(origin, SR_CONFIG_ORIGIN))
                         && (err_info = sr_edit_diff_set_origin(node, SR_OPER_ORIGIN, 0))) {
+                    free(origin);
                     goto error;
                 }
+                free(origin);
             }
 
             while (parent->parent) {
-                parent = parent->parent;
+                parent = lyd_parent(parent);
             }
         }
 
@@ -2538,11 +2529,9 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
                 goto error;
             }
         } else {
-            if (lyd_print_mem(&data, parent, LYD_LYB, LYP_WITHSIBLINGS)) {
-                sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+            if ((err_info = sr_lyd_print_lyb(parent, &data, &data_len))) {
                 goto error;
             }
-            data_len = lyd_lyb_data_length(data);
         }
 
         /* SUB WRITE LOCK */
@@ -2567,7 +2556,7 @@ next_iter:
         /* next iteration */
         free(data);
         data = NULL;
-        lyd_free_withsiblings(parent);
+        lyd_free_all(parent);
         parent = NULL;
         free(request_xpath);
         request_xpath = NULL;
@@ -2589,7 +2578,7 @@ error_rdunlock:
 error:
     sr_clear_sess(&tmp_sess);
     free(data);
-    lyd_free_withsiblings(parent);
+    lyd_free_all(parent);
     free(request_xpath);
     return err_info;
 }
@@ -2610,7 +2599,7 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
         sr_sub_event_t event, uint32_t request_id, struct lyd_node **output_op, sr_error_t *err_code)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lyd_node *next, *elem;
+    const struct lyd_node *elem;
     void *mem;
     char buf[22], *val_str, *op_xpath = NULL;
     sr_val_t *input_vals = NULL, *output_vals = NULL;
@@ -2624,8 +2613,7 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
 
     if (rpc_sub->tree_cb) {
         /* prepare output for tree CB */
-        *output_op = lyd_dup(input_op, LYD_DUP_OPT_WITH_PARENTS);
-        if (!*output_op) {
+        if (lyd_dup_single(input_op, NULL, LYD_DUP_WITH_PARENTS, output_op)) {
             sr_errinfo_new_ly(&err_info, tmp_sess->conn->ly_ctx);
             goto cleanup;
         }
@@ -2638,13 +2626,13 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
         }
     } else {
         /* prepare XPath */
-        op_xpath = lyd_path(input_op);
+        op_xpath = lyd_path(input_op, LYD_PATH_STD, NULL, 0);
         SR_CHECK_INT_GOTO(!op_xpath, err_info, cleanup);
 
         /* prepare input for sr_val CB */
         input_vals = NULL;
         input_val_count = 0;
-        LY_TREE_DFS_BEGIN(input_op, next, elem) {
+        LYD_TREE_DFS_BEGIN(input_op, elem) {
             /* skip op node */
             if (elem != input_op) {
                 mem = realloc(input_vals, (input_val_count + 1) * sizeof *input_vals);
@@ -2661,7 +2649,7 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
                 ++input_val_count;
             }
 
-            LY_TREE_DFS_END(input_op, next, elem);
+            LYD_TREE_DFS_END(input_op, elem);
         }
 
         /* callback */
@@ -2674,8 +2662,7 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
         }
 
         /* prepare output */
-        *output_op = lyd_dup(input_op, LYD_DUP_OPT_WITH_PARENTS);
-        if (!*output_op) {
+        if (lyd_dup_single(input_op, NULL, LYD_DUP_WITH_PARENTS, output_op)) {
             sr_errinfo_new_ly(&err_info, tmp_sess->conn->ly_ctx);
             goto cleanup;
         }
@@ -2697,7 +2684,7 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
             goto fake_cb_error;
         }
         while ((*output_op)->parent) {
-            *output_op = (*output_op)->parent;
+            *output_op = lyd_parent(*output_op);
         }
     }
 
@@ -2718,10 +2705,7 @@ cleanup:
     sr_free_values(output_vals, output_val_count);
     if (*err_code && *output_op) {
         /* free the whole output in case of an error */
-        while ((*output_op)->parent) {
-            *output_op = (*output_op)->parent;
-        }
-        lyd_free_withsiblings(*output_op);
+        lyd_free_all(*output_op);
         *output_op = NULL;
     }
     return err_info;
@@ -2813,7 +2797,7 @@ sr_shmsub_rpc_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t mo
                     sub_info->request_id, &output, &err_code);
 
             /* we do not care about output of error code */
-            lyd_free_withsiblings(output);
+            lyd_free_all(output);
         }
 
         /* we have completely finished processing (with no error) */
@@ -2829,6 +2813,7 @@ sr_shmsub_rpc_listen_dismiss_event(sr_multi_sub_shm_t *multi_sub_shm, struct ops
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *input;
+    struct ly_in *in = NULL;
     char *data;
     uint32_t data_len;
 
@@ -2838,13 +2823,10 @@ sr_shmsub_rpc_listen_dismiss_event(sr_multi_sub_shm_t *multi_sub_shm, struct ops
     }
 
     if (sr_shmsub_rpc_listen_is_new_event(multi_sub_shm, sub)) {
-        /* parse input */
-        ly_errno = 0;
-        input = lyd_parse_mem(ly_ctx, ((char *)multi_sub_shm) + sizeof *multi_sub_shm, LYD_LYB,
-                LYD_OPT_RPC | LYD_OPT_STRICT | LYD_OPT_TRUSTED, NULL);
+        ly_in_new_memory(((char *)multi_sub_shm) + sizeof *multi_sub_shm, &in);
 
-        /* XPath filtering */
-        if (!ly_errno && sr_shmsub_rpc_is_valid(input, sub->xpath)) {
+        /* parse input and filter based on XPath */
+        if (!lyd_parse_rpc(ly_ctx, in, LYD_LYB, &input, NULL) && sr_shmsub_rpc_is_valid(input, sub->xpath)) {
             /* print empty output */
             lyd_print_mem(&data, NULL, LYD_LYB, 0);
             data_len = lyd_lyb_data_length(data);
@@ -2855,7 +2837,8 @@ sr_shmsub_rpc_listen_dismiss_event(sr_multi_sub_shm_t *multi_sub_shm, struct ops
             free(data);
         }
 
-        lyd_free_withsiblings(input);
+        lyd_free_all(input);
+        ly_in_free(in, 0);
     }
 
     /* SUB WRITE UNLOCK */
@@ -2871,6 +2854,7 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
     uint32_t i, data_len = 0, valid_subscr_count;
     char *data = NULL;
     struct lyd_node *input = NULL, *input_op, *output = NULL;
+    struct ly_in *in = NULL;
     sr_error_t err_code = SR_ERR_OK, ret;
     struct opsub_rpcsub_s *rpc_sub;
     sr_multi_sub_shm_t *multi_sub_shm;
@@ -2900,11 +2884,9 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
         if (sr_shmsub_rpc_listen_is_new_event(multi_sub_shm, rpc_sub)) {
             /* there is a new event so there is some operation that can be parsed */
             if (!input) {
-                ly_errno = 0;
                 /* parse RPC/action input */
-                input = lyd_parse_mem(conn->ly_ctx, rpc_subs->sub_shm.addr + sizeof *multi_sub_shm, LYD_LYB,
-                        LYD_OPT_RPC | LYD_OPT_STRICT | LYD_OPT_TRUSTED, NULL);
-                if (ly_errno) {
+                ly_in_new_memory(rpc_subs->sub_shm.addr + sizeof *multi_sub_shm, &in);
+                if (lyd_parse_rpc(conn->ly_ctx, in, LYD_LYB, &input, NULL)) {
                     sr_errinfo_new_ly(&err_info, conn->ly_ctx);
                     SR_ERRINFO_INT(&err_info);
                     goto cleanup_rdunlock;
@@ -2954,7 +2936,7 @@ process_event:
         sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
 
         /* free any previous output, it is obviously not the last */
-        lyd_free_withsiblings(output);
+        lyd_free_all(output);
 
         /* call callback */
         if ((err_info = sr_shmsub_rpc_listen_call_callback(rpc_sub, &tmp_sess, input_op, sub_info.event,
@@ -3045,8 +3027,9 @@ cleanup:
     sr_clear_sess(&tmp_sess);
 
     free(data);
-    lyd_free_withsiblings(input);
-    lyd_free_withsiblings(output);
+    ly_in_free(in, 0);
+    lyd_free_all(input);
+    lyd_free_all(output);
     return err_info;
 }
 
@@ -3077,6 +3060,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     sr_error_info_t *err_info = NULL;
     uint32_t i;
     struct lyd_node *notif = NULL, *notif_op;
+    struct ly_in *in = NULL;
     struct ly_set *set;
     time_t notif_ts;
     sr_multi_sub_shm_t *multi_sub_shm;
@@ -3104,10 +3088,12 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     notif_ts = *(time_t *)(notif_subs->sub_shm.addr + sizeof *multi_sub_shm);
 
     /* parse notification */
-    ly_errno = 0;
-    notif = lyd_parse_mem(conn->ly_ctx, notif_subs->sub_shm.addr + sizeof *multi_sub_shm + sizeof notif_ts, LYD_LYB,
-            LYD_OPT_NOTIF | LYD_OPT_STRICT | LYD_OPT_TRUSTED, NULL);
-    SR_CHECK_INT_GOTO(ly_errno, err_info, cleanup_rdunlock);
+    ly_in_new_memory(notif_subs->sub_shm.addr + sizeof *multi_sub_shm + sizeof notif_ts, &in);
+    if (lyd_parse_notif(conn->ly_ctx, in, LYD_LYB, &notif, NULL)) {
+        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+        SR_ERRINFO_INT(&err_info);
+        goto cleanup_rdunlock;
+    }
 
     /* remember request ID so that we do not process it again */
     notif_subs->request_id = multi_sub_shm->request_id;
@@ -3146,13 +3132,15 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     /* call callbacks if xpath filter matches */
     for (i = 0; i < notif_subs->sub_count; ++i) {
         if (notif_subs->subs[i].xpath) {
-            set = lyd_find_path(notif_op, notif_subs->subs[i].xpath);
-            SR_CHECK_INT_GOTO(!set, err_info, cleanup);
-            if (!set->number) {
-                ly_set_free(set);
+            if (lyd_find_xpath(notif_op, notif_subs->subs[i].xpath, &set)) {
+                SR_ERRINFO_INT(&err_info);
+                goto cleanup;
+            }
+            if (!set->count) {
+                ly_set_free(set, NULL);
                 continue;
             }
-            ly_set_free(set);
+            ly_set_free(set, NULL);
         }
 
         if ((err_info = sr_notif_call_callback(conn, notif_subs->subs[i].cb, notif_subs->subs[i].tree_cb,
@@ -3168,7 +3156,8 @@ cleanup_rdunlock:
     /* SUB READ UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
 cleanup:
-    lyd_free_withsiblings(notif);
+    ly_in_free(in, 0);
+    lyd_free_all(notif);
     return err_info;
 }
 

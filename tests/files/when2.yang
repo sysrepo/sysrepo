@@ -20,7 +20,7 @@ module when2 {
     }
 
     augment /w1:cont {
-        when "starts-with(l4,'sri')";
+        when "starts-with(w1:l4,'sri')";
         container cont2 {
             leaf bl {
                 type string;

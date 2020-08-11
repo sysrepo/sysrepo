@@ -512,7 +512,7 @@ sr_replay_store(sr_session_ctx_t *sess, const struct lyd_node *notif, time_t not
 
     assert(notif && !notif->parent);
 
-    ly_mod = lyd_node_module(notif);
+    ly_mod = lyd_owner_module(notif);
     notif_op = (struct lyd_node *)notif;
     if ((err_info = sr_ly_find_last_parent(&notif_op, LYS_NOTIF))) {
         return err_info;
@@ -529,7 +529,7 @@ sr_replay_store(sr_session_ctx_t *sess, const struct lyd_node *notif, time_t not
     }
 
     /* convert notification into LYB */
-    if (lyd_print_mem(&notif_lyb, notif, LYD_LYB, LYP_WITHSIBLINGS)) {
+    if (lyd_print_mem(&notif_lyb, notif, LYD_LYB, LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS)) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         return err_info;
     }
@@ -654,6 +654,7 @@ sr_replay_read_notif(int notif_fd, struct ly_ctx *ly_ctx, struct lyd_node **noti
 {
     sr_error_info_t *err_info = NULL;
     char *notif_lyb = NULL;
+    struct ly_in *in = NULL;
     uint32_t notif_lyb_len;
 
     /* read the length */
@@ -670,15 +671,15 @@ sr_replay_read_notif(int notif_fd, struct ly_ctx *ly_ctx, struct lyd_node **noti
     }
 
     /* parse the notification */
-    ly_errno = 0;
-    *notif = lyd_parse_mem(ly_ctx, notif_lyb, LYD_LYB, LYD_OPT_NOTIF | LYD_OPT_STRICT | LYD_OPT_TRUSTED, NULL);
-    if (ly_errno) {
+    ly_in_new_memory(notif_lyb, &in);
+    if (lyd_parse_notif(ly_ctx, in, LYD_LYB, notif, NULL)) {
         sr_errinfo_new_ly(&err_info, ly_ctx);
         goto cleanup;
     }
 
 cleanup:
     free(notif_lyb);
+    ly_in_free(in, 0);
     return err_info;
 }
 
@@ -760,19 +761,18 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, t
         while (notif_ts && (!stop_time || (notif_ts <= stop_time))) {
 
             /* parse notification */
-            lyd_free_withsiblings(notif);
+            lyd_free_all(notif);
             if ((err_info = sr_replay_read_notif(fd, conn->ly_ctx, &notif))) {
                 goto cleanup;
             }
 
             /* make sure the XPath filter matches something */
             if (xpath) {
-                ly_set_free(set);
-                set = lyd_find_path(notif, xpath);
-                SR_CHECK_INT_GOTO(!set, err_info, cleanup);
+                ly_set_free(set, NULL);
+                SR_CHECK_INT_GOTO(lyd_find_xpath(notif, xpath, &set), err_info, cleanup);
             }
 
-            if (!xpath || set->number) {
+            if (!xpath || set->count) {
                 /* find notification node */
                 notif_op = notif;
                 if ((err_info = sr_ly_find_last_parent(&notif_op, LYS_NOTIF))) {
@@ -817,7 +817,7 @@ cleanup:
     if (fd > -1) {
         close(fd);
     }
-    lyd_free_withsiblings(notif);
-    ly_set_free(set);
+    lyd_free_all(notif);
+    ly_set_free(set, NULL);
     return err_info;
 }

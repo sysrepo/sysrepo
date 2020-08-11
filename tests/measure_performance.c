@@ -169,8 +169,9 @@ sysrepo_teardown(void **state)
 void
 libyang_setup(void **state)
 {
-    struct ly_ctx *ctx = ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0);
-    const struct lys_module *module = ly_ctx_load_module(ctx, "example-module", NULL);
+    struct ly_ctx *ctx;
+    ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0, &ctx);
+    const struct lys_module *module = ly_ctx_load_module(ctx, "example-module", NULL, NULL);
     assert_non_null(module);
     *state = (void *) ctx;
 }
@@ -196,7 +197,7 @@ data_provide_cb(sr_session_ctx_t *session, const char *module_name, const char *
 {
     size_t if_count = *((size_t *) private_data);
     int rc = SR_ERR_OK;
-    struct lyd_node *list, *node, *stats;
+    struct lyd_node *list, *stats;
     char *xpath;
 
     (void)session;
@@ -207,24 +208,14 @@ data_provide_cb(sr_session_ctx_t *session, const char *module_name, const char *
 
     for (size_t i = 0; i < if_count; i++) {
         asprintf(&xpath, "interface[name='eth%zu']", i);
-        list = lyd_new_path(*parent, NULL, xpath, NULL, 0, 0);
+        assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, xpath, NULL, 0, &list));
         free(xpath);
-        assert_non_null(list);
+        assert_int_equal(LY_SUCCESS, lyd_new_term(list, NULL, "oper-status", "up", 0, NULL));
 
-        node = lyd_new_leaf(list, NULL, "oper-status", "up");
-        assert_non_null(node);
-
-        stats = lyd_new(list, NULL, "statistics");
-        assert_non_null(stats);
-
-        node = lyd_new_leaf(stats, NULL, "in-octets", "456213");
-        assert_non_null(node);
-
-        node = lyd_new_leaf(stats, NULL, "in-unicast-pkts", "45213");
-        assert_non_null(node);
-
-        node = lyd_new_leaf(stats, NULL, "in-broadcast-pkts", "4213");
-        assert_non_null(node);
+        assert_int_equal(LY_SUCCESS, lyd_new_inner(list, NULL, "statistics", 0, &stats));
+        assert_int_equal(LY_SUCCESS, lyd_new_term(stats, NULL, "in-octets", "456213", 0, NULL));
+        assert_int_equal(LY_SUCCESS, lyd_new_term(stats, NULL, "in-unicast-pkts", "45213", 0, NULL));
+        assert_int_equal(LY_SUCCESS, lyd_new_term(stats, NULL, "in-broadcast-pkts", "4213", 0, NULL));
     }
 
     return rc;
@@ -437,13 +428,13 @@ perf_get_items_iter_test(void **state, int op_num, int *items)
 static size_t
 get_nodes_cnt(struct lyd_node *trees)
 {
-    struct lyd_node *root, *next, *elem;
+    struct lyd_node *root, *elem;
     size_t count = 0;
 
-    LY_TREE_FOR(trees, root) {
-        LY_TREE_DFS_BEGIN(root, next, elem) {
+    LY_LIST_FOR(trees, root) {
+        LYD_TREE_DFS_BEGIN(root, elem) {
             ++count;
-            LY_TREE_DFS_END(root, next, elem);
+            LYD_TREE_DFS_END(root, elem);
         }
     }
 
@@ -472,7 +463,7 @@ perf_get_ietf_intefaces_test(void **state, int op_num, int *items)
         rc = sr_get_data(session, "/ietf-interfaces:interfaces/*", 0, 0, 0, &data);
         assert_int_equal(SR_ERR_OK, rc);
         count += get_nodes_cnt(data);
-        lyd_free_withsiblings(data);
+        lyd_free_all(data);
     }
 
     /* stop the session */
@@ -501,8 +492,8 @@ perf_get_subtree_test(void **state, int op_num, int *items)
         rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", 0, &tree);
         assert_int_equal(rc, SR_ERR_OK);
         assert_non_null(tree);
-        assert_int_equal(LY_TYPE_STRING, ((struct lys_node_leaf *)tree->schema)->type.base);
-        lyd_free(tree);
+        assert_int_equal(LY_TYPE_STRING, ((struct lysc_node_leaf *)tree->schema)->type->basetype);
+        lyd_free_tree(tree);
     }
 
     /* stop the session */
@@ -531,8 +522,8 @@ perf_get_subtree_with_data_load_test(void **state, int op_num, int *items)
         rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", 0, &tree);
         assert_int_equal(rc, SR_ERR_OK);
         assert_non_null(tree);
-        assert_int_equal(LY_TYPE_STRING, ((struct lys_node_leaf *)tree->schema)->type.base);
-        lyd_free(tree);
+        assert_int_equal(LY_TYPE_STRING, ((struct lysc_node_leaf *)tree->schema)->type->basetype);
+        lyd_free_tree(tree);
 
         /* stop the session */
         rc = sr_session_stop(session);
@@ -564,9 +555,9 @@ perf_get_subtrees_test(void **state, int op_num, int *items)
         rc = sr_get_data(session, "/example-module:container/list/leaf", 0, 0, 0, &trees);
         assert_int_equal(SR_ERR_OK, rc);
         /* skip 2 keys */
-        assert_string_equal(trees->child->child->next->next->schema->name, "leaf");
+        assert_string_equal(lyd_child(lyd_child(trees))->next->next->schema->name, "leaf");
         count += get_nodes_cnt(trees);
-        lyd_free_withsiblings(trees);
+        lyd_free_all(trees);
     }
 
     /* stop the session */
@@ -597,7 +588,7 @@ perf_get_ietf_intefaces_tree_test(void **state, int op_num, int *items)
         if (0 == i) {
             total_cnt = get_nodes_cnt(trees);
         }
-        lyd_free_withsiblings(trees);
+        lyd_free_all(trees);
     }
 
     /* stop the session */
@@ -905,21 +896,23 @@ static void
 perf_libyang_get_node(void **state, int op_num, int *items)
 {
     struct ly_ctx *ctx = *state;
-    assert_non_null(ctx);
+    struct lyd_node *root;
+    struct ly_set *set;
 
-    struct lyd_node *root = lyd_parse_path(ctx, EXAMPLE_MODULE_DATA_FILE_NAME, LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT);
-    assert_non_null(root);
+    assert_non_null(ctx);
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_path(ctx, EXAMPLE_MODULE_DATA_FILE_NAME, LYD_LYB,
+            LYD_PARSE_ONLY | LYD_PARSE_NO_STATE | LYD_PARSE_STRICT, 0, &root));
 
     /* perform a lyd_get_node op */
-    for (int i = 0; i<op_num; i++){
+    for (int i = 0; i < op_num; i++){
 
         /* existing leaf */
-        struct ly_set *set = lyd_find_path(root, "/example-module:container/list[key1='key1'][key2='key2']/leaf");
-        assert_non_null(set);
-        ly_set_free(set);
+        assert_int_equal(LY_SUCCESS, lyd_find_xpath(root, "/example-module:container/list[key1='key1'][key2='key2']/leaf",
+                &set));
+        ly_set_free(set, NULL);
     }
 
-    lyd_free_withsiblings(root);
+    lyd_free_all(root);
     *items = 1;
 }
 
@@ -927,22 +920,24 @@ static void
 perf_libyang_get_all_list(void **state, int op_num, int *items)
 {
     struct ly_ctx *ctx = *state;
+    struct lyd_node *root;
+    struct ly_set *set;
+
     assert_non_null(ctx);
 
-    struct lyd_node *root = lyd_parse_path(ctx, EXAMPLE_MODULE_DATA_FILE_NAME, LYD_LYB, LYD_OPT_CONFIG | LYD_OPT_STRICT);
-    assert_non_null(root);
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_path(ctx, EXAMPLE_MODULE_DATA_FILE_NAME, LYD_LYB,
+            LYD_PARSE_ONLY | LYD_PARSE_NO_STATE | LYD_PARSE_STRICT, 0, &root));
 
     /* perform a lyd_get_node op */
     for (int i = 0; i<op_num; i++){
 
         /* existing leaf */
-        struct ly_set *set = lyd_find_path(root, "/example-module:container/list/leaf");
-        *items = set->number;
-        assert_non_null(set);
-        ly_set_free(set);
+        assert_int_equal(LY_SUCCESS, lyd_find_xpath(root, "/example-module:container/list/leaf", &set));
+        *items = set->count;
+        ly_set_free(set, NULL);
     }
 
-    lyd_free_withsiblings(root);
+    lyd_free_all(root);
 
 }
 
@@ -966,14 +961,13 @@ createDataTreeExampleModule(sr_session_ctx_t *sess)
 
     ctx = sr_get_context(sr_session_get_connection(sess));
 
-    const struct lys_module *module = ly_ctx_get_module(ctx, "example-module", NULL, 1);
+    const struct lys_module *module = ly_ctx_get_module_implemented(ctx, "example-module");
     assert_non_null(module);
 
 #define XPATH "/example-module:container/list[key1='key1'][key2='key2']/leaf"
 
-    root = lyd_new_path(NULL, ctx, XPATH, "Leaf value", 0, 0);
-    assert_non_null(root);
-    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ctx, XPATH, "Leaf value", 0, &root));
+    assert_int_equal(LY_SUCCESS, lyd_validate_all(&root, NULL, LYD_VALIDATE_NO_STATE, NULL));
     assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "example-module", root, 0, 0));
 }
 
@@ -985,7 +979,7 @@ createDataTreeLargeExampleModule(sr_session_ctx_t *sess, int list_count)
 
     ctx = sr_get_context(sr_session_get_connection(sess));
 
-    const struct lys_module *module = ly_ctx_get_module(ctx, "example-module", NULL, 1);
+    const struct lys_module *module = ly_ctx_get_module_implemented(ctx, "example-module");
     assert_non_null(module);
 
 #define MAX_XP_LEN 100
@@ -995,14 +989,14 @@ createDataTreeLargeExampleModule(sr_session_ctx_t *sess, int list_count)
 
     for (int i = 0; i < list_count; i++){
         snprintf(xpath, MAX_XP_LEN, template, i, i);
-        node = lyd_new_path(root, ctx, xpath, "Leaf value", 0, 0);
+        assert_int_equal(LY_SUCCESS, lyd_new_path(root, ctx, xpath, "Leaf value", 0, &node));
         if (NULL == root) {
             root = node;
         }
     }
-    lyd_new_path(root, ctx, "/example-module:container/list[key1='key1'][key2='key2']/leaf", "Leaf value", 0, 0);
+    lyd_new_path(root, ctx, "/example-module:container/list[key1='key1'][key2='key2']/leaf", "Leaf value", 0, NULL);
 
-    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_validate_all(&root, NULL, LYD_VALIDATE_NO_STATE, NULL));
     assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "example-module", root, 0, 0));
 }
 
@@ -1023,39 +1017,37 @@ createDataTreeLargeIETFinterfacesModule(sr_session_ctx_t *sess, size_t if_count)
     const char *template_ipv4_mtu = "/ietf-interfaces:interfaces/interface[name='eth%d']/ietf-ip:ipv4/ietf-ip:mtu";
     char xpath[MAX_IF_LEN] = {0,};
 
-    const struct lys_module *module_interfaces = ly_ctx_get_module(ctx, "ietf-interfaces", NULL, 1);
+    const struct lys_module *module_interfaces = ly_ctx_get_module_implemented(ctx, "ietf-interfaces");
     assert_non_null(module_interfaces);
-    const struct lys_module *module_ip = ly_ctx_get_module(ctx, "ietf-ip", NULL, 1);
+    const struct lys_module *module_ip = ly_ctx_get_module_implemented(ctx, "ietf-ip");
     assert_non_null(module_ip);
-    const struct lys_module *module = ly_ctx_get_module(ctx, "iana-if-type", "2014-05-08", 1);
+    const struct lys_module *module = ly_ctx_get_module(ctx, "iana-if-type", "2014-05-08");
     assert_non_null(module);
     struct lyd_node *node = NULL;
 
     for (size_t i = 1; i < (if_count+1); i++) {
         snprintf(xpath, MAX_IF_LEN, template_prefix_len, i, (i/244 +1), i % 244);
-        node = lyd_new_path(root, ctx, xpath, "24", 0, 0);
+        assert_int_equal(LY_SUCCESS, lyd_new_path(root, ctx, xpath, "24", 0, &node));
         if (NULL == root) {
             root = node;
         }
         snprintf(xpath, MAX_IF_LEN, template_type, i);
-        lyd_new_path(root, ctx, xpath, "iana-if-type:ethernetCsmacd", 0, 0);
+        assert_int_equal(LY_SUCCESS, lyd_new_path(root, ctx, xpath, "iana-if-type:ethernetCsmacd", 0, NULL));
 
         snprintf(xpath, MAX_IF_LEN, template_desc, i);
-        lyd_new_path(root, ctx, xpath, "ethernet interface", 0, 0);
+        assert_int_equal(LY_SUCCESS, lyd_new_path(root, ctx, xpath, "ethernet interface", 0, NULL));
 
         snprintf(xpath, MAX_IF_LEN, template_enabled, i);
-        lyd_new_path(root, ctx, xpath, "true", 0, 0);
+        assert_int_equal(LY_SUCCESS, lyd_new_path(root, ctx, xpath, "true", 0, NULL));
 
         snprintf(xpath, MAX_IF_LEN, template_ipv4_enabled, i);
-        lyd_new_path(root, ctx, xpath, "true", 0, 0);
+        assert_int_equal(LY_SUCCESS, lyd_new_path(root, ctx, xpath, "true", 0, NULL));
 
         snprintf(xpath, MAX_IF_LEN, template_ipv4_mtu, i);
-        lyd_new_path(root, ctx, xpath, "1500", 0, 0);
-
+        assert_int_equal(LY_SUCCESS, lyd_new_path(root, ctx, xpath, "1500", 0, NULL));
     }
 
-
-    assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_validate_all(&root, NULL, LYD_VALIDATE_NO_STATE, NULL));
     assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "ietf-interfaces", root, 0, 0));
 }
 
@@ -1104,23 +1096,23 @@ main(int argc, char **argv)
     sr_connect(0, &conn);
 
     /* install required modules */
-    rc = sr_install_module(conn, TESTS_DIR "/files/example-module.yang", TESTS_DIR "/files", NULL, 0);
+    rc = sr_install_module(conn, TESTS_DIR "/files/example-module.yang", TESTS_DIR "/files", NULL);
     if (rc && (rc != SR_ERR_EXISTS)) {
         goto cleanup;
     }
-    rc = sr_install_module(conn, TESTS_DIR "/files/referenced-data.yang", TESTS_DIR "/files", NULL, 0);
+    rc = sr_install_module(conn, TESTS_DIR "/files/referenced-data.yang", TESTS_DIR "/files", NULL);
     if (rc && (rc != SR_ERR_EXISTS)) {
         goto cleanup;
     }
-    rc = sr_install_module(conn, TESTS_DIR "/files/test-module.yang", TESTS_DIR "/files", NULL, 0);
+    rc = sr_install_module(conn, TESTS_DIR "/files/test-module.yang", TESTS_DIR "/files", NULL);
     if (rc && (rc != SR_ERR_EXISTS)) {
         goto cleanup;
     }
-    rc = sr_install_module(conn, TESTS_DIR "/files/ietf-ip.yang", TESTS_DIR "/files", NULL, 0);
+    rc = sr_install_module(conn, TESTS_DIR "/files/ietf-ip.yang", TESTS_DIR "/files", NULL);
     if (rc && (rc != SR_ERR_EXISTS)) {
         goto cleanup;
     }
-    rc = sr_install_module(conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0);
+    rc = sr_install_module(conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL);
     if (rc && (rc != SR_ERR_EXISTS)) {
         goto cleanup;
     }

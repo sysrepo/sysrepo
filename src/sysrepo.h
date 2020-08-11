@@ -25,10 +25,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <sys/types.h>
 #include <time.h>
-#ifdef __APPLE__
-    #include <sys/types.h>
-#endif
 
 #include <libyang/libyang.h>
 
@@ -458,12 +456,10 @@ const char *sr_get_repo_path(void);
  * @param[in] conn Connection to use.
  * @param[in] schema_path Path to the new schema. Can have either YANG or YIN extension/format.
  * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
- * @param[in] features Array of enabled features.
- * @param[in] feat_count Number of enabled features.
+ * @param[in] features Array of enabled features ended with NULL.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs, const char **features,
-        int feat_count);
+int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs, const char **features);
 
 /**
  * @brief Set newly installed module startup and running data. It is necessary in case empty data are not valid
@@ -892,7 +888,8 @@ int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *val
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifier of the data element to be set.
  * @param[in] value String representation of the value to be set.
- * @param[in] origin Origin of the value, used only for ::SR_DS_OPERATIONAL edits.
+ * @param[in] origin Origin of the value, used only for ::SR_DS_OPERATIONAL edits. Module ietf-origin is assumed
+ * if no prefix used.
  * @param[in] opts Options overriding default behavior of this call.
  * @return Error code (::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if the whole edit was discarded).
  */
@@ -934,7 +931,8 @@ int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_op
  * @param[in] list_keys Predicate identifying the relative list instance (example input `[key1="val1"][key2="val2"]...`).
  * @param[in] leaflist_value Value of the relative leaf-list instance (example input `val1`) used
  * to determine relative position, needed only if position argument is ::SR_MOVE_BEFORE or ::SR_MOVE_AFTER.
- * @param[in] origin Origin of the value, used only for ::SR_DS_OPERATIONAL edits.
+ * @param[in] origin Origin of the value, used only for ::SR_DS_OPERATIONAL edits. Module ietf-origin is assumed
+ * if no prefix used.
  * @param[in] opts Options overriding default behavior of this call.
  * @return Error code (::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if the whole edit was discarded).
  */

@@ -103,11 +103,11 @@ module ietf-microwave-radio-link {
 
   augment "/if:interfaces/if:interface" {
     when "derived-from-or-self(if:type,"
-       + "'ianaift:microwaveRadioLinkTerminal')";
+       + "'ianaift:wwanPP')";
     description
       "Addition of data nodes for the radio link terminal to
        the standard Interface data model, for interfaces of
-       the type 'microwaveRadioLinkTerminal'.";
+       the type 'wwanPP'.";
     leaf id {
       type string;
       description
@@ -132,10 +132,10 @@ module ietf-microwave-radio-link {
       type if:interface-ref;
       must "derived-from-or-self(/if:interfaces/if:interface"
          + "[if:name = current()]"
-         + "/if:type, 'ianaift:microwaveCarrierTermination')" {
+         + "/if:type, 'ianaift:wwanPP2')" {
         description
           "The type of interface must be
-           'microwaveCarrierTermination'.";
+           'wwanPP2'.";
       }
       min-elements 1;
       description
@@ -207,11 +207,11 @@ module ietf-microwave-radio-link {
 
   augment "/if:interfaces/if:interface" {
     when "derived-from-or-self(if:type,"
-       + "'ianaift:microwaveCarrierTermination')";
+       + "'ianaift:wwanPP2')";
     description
       "Addition of data nodes for carrier termination to
        the standard Interface data model, for interfaces
-       of the type 'microwaveCarrierTermination'.";
+       of the type 'wwanPP2'.";
     leaf carrier-id {
       type string;
       default "A";
@@ -803,19 +803,19 @@ module ietf-microwave-radio-link {
       refine "protection-group/members" {
         must "derived-from-or-self(/if:interfaces/if:interface"
            + "[if:name = current()]"
-           + "/if:type, 'ianaift:microwaveCarrierTermination')" {
+           + "/if:type, 'ianaift:wwanPP2')" {
           description
             "The type of a protection member must be
-             'microwaveCarrierTermination'.";
+             'wwanPP2'.";
         }
       }
       refine "protection-group/working-entity" {
         must "derived-from-or-self(/if:interfaces/if:interface"
            + "[if:name = current()]"
-           + "/if:type, 'ianaift:microwaveCarrierTermination')" {
+           + "/if:type, 'ianaift:wwanPP2')" {
           description
             "The type of a working-entity must be
-             'microwaveCarrierTermination'.";
+             'wwanPP2'.";
         }
       }
     }
@@ -851,10 +851,10 @@ module ietf-microwave-radio-link {
         type if:interface-ref;
         must "derived-from-or-self(/if:interfaces/if:interface"
            + "[if:name = current()]"
-           + "/if:type, 'ianaift:microwaveCarrierTermination')" {
+           + "/if:type, 'ianaift:wwanPP2')" {
           description
             "The type of a member must be
-             'microwaveCarrierTermination'.";
+             'wwanPP2'.";
         }
         min-elements 2;
         max-elements 2;
@@ -891,10 +891,10 @@ module ietf-microwave-radio-link {
         type if:interface-ref;
         must "derived-from-or-self(/if:interfaces/if:interface"
            + "[if:name = current()]"
-           + "/if:type, 'ianaift:microwaveCarrierTermination')" {
+           + "/if:type, 'ianaift:wwanPP2')" {
           description
             "The type of a member must be
-             'microwaveCarrierTermination'.";
+             'wwanPP2'.";
         }
         min-elements 2;
         description

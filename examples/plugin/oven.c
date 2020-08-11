@@ -155,8 +155,8 @@ oven_state_cb(sr_session_ctx_t *session, const char *module_name, const char *pa
     (void)private_data;
 
     sprintf(str, "%u", oven_temperature);
-    *parent = lyd_new_path(NULL, sr_get_context(sr_session_get_connection(sess)), "/oven:oven-state/temperature", str, 0, 0);
-    lyd_new_path(*parent, NULL, "/oven:oven-state/food-inside", food_inside ? "true" : "false", 0, 0);
+    lyd_new_path(NULL, sr_get_context(sr_session_get_connection(sess)), "/oven:oven-state/temperature", str, 0, parent);
+    lyd_new_path(*parent, NULL, "/oven:oven-state/food-inside", food_inside ? "true" : "false", 0, NULL);
 
     return SR_ERR_OK;
 }

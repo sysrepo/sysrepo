@@ -35,8 +35,8 @@ dp_get_items_cb(sr_session_ctx_t *session, const char *module_name, const char *
     (void)private_data;
 
     if (!strcmp(module_name, "examples") && !strcmp(xpath, "/examples:stats")) {
-        *parent = lyd_new_path(NULL, sr_get_context(sr_session_get_connection(session)), "/examples:stats/counter", "852", 0, 0);
-        lyd_new_path(*parent, NULL, "/examples:stats/counter2", "1052", 0, 0);
+        lyd_new_path(NULL, sr_get_context(sr_session_get_connection(session)), "/examples:stats/counter", "852", 0, parent);
+        lyd_new_path(*parent, NULL, "/examples:stats/counter2", "1052", 0, NULL);
     }
 
     return SR_ERR_OK;
@@ -64,7 +64,7 @@ main(void)
         goto cleanup;
     }
 
-    if (!ly_ctx_get_module(sr_get_context(connection), mod_name, NULL, 1)) {
+    if (!ly_ctx_get_module_implemented(sr_get_context(connection), mod_name)) {
         fprintf(stderr, "Module \"%s\" must be installed in sysrepo for this example to work.\n", mod_name);
         rc = SR_ERR_INVAL_ARG;
         goto cleanup;
@@ -93,9 +93,9 @@ main(void)
     }
 
     /* print data */
-    lyd_print_file(stdout, data, LYD_XML, LYP_FORMAT | LYP_WITHSIBLINGS);
+    lyd_print_file(stdout, data, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     printf("\n");
-    lyd_free_withsiblings(data);
+    lyd_free_all(data);
 
     /* unsubscribe */
     sr_unsubscribe(subscription);
@@ -122,9 +122,9 @@ main(void)
     }
 
     /* print data */
-    lyd_print_file(stdout, data, LYD_XML, LYP_FORMAT | LYP_WITHSIBLINGS);
+    lyd_print_file(stdout, data, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     printf("\n");
-    lyd_free_withsiblings(data);
+    lyd_free_all(data);
 
 cleanup:
     sr_disconnect(connection);

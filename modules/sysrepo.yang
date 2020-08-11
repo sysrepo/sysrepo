@@ -85,24 +85,6 @@ module sysrepo {
             "RFC 6241 section 7.2.";
     }
 
-    md:annotation orig-key {
-        type string;
-        description
-            "List keys that were originally preceding the list node instance in the configuration.";
-    }
-
-    md:annotation orig-value {
-        type string;
-        description
-            "Leaf-list value that was originally prceding the leaf-list node instance in the configuration.";
-    }
-
-    md:annotation orig-dflt {
-        type empty;
-        description
-            "Present if the node was originally a default node.";
-    }
-
     md:annotation cid {
         type uint32;
         description

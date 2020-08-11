@@ -228,7 +228,8 @@ if(HAVE_ATOMIC)
 endif()
 
 # libyang, check version
-find_package(LibYANG ${LIBYANG_DEP_SOVERSION} REQUIRED)
+#find_package(LibYANG ${LIBYANG_DEP_SOVERSION} REQUIRED)
+find_package(LibYANG REQUIRED)
 target_link_libraries(sysrepo ${LIBYANG_LIBRARIES})
 include_directories(${LIBYANG_INCLUDE_DIRS})
 

@@ -98,7 +98,7 @@ void sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char 
  * @param[in,out] err_info Existing error info.
  * @param[in] ly_ctx libyang context to use.
  */
-void sr_errinfo_new_ly(sr_error_info_t **err_info, struct ly_ctx *ly_ctx);
+void sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx);
 
 /**
  * @brief Log the first error from a libyang context and add it into an error info structure.
@@ -106,14 +106,14 @@ void sr_errinfo_new_ly(sr_error_info_t **err_info, struct ly_ctx *ly_ctx);
  * @param[in,out] err_info Existing error info.
  * @param[in] ly_ctx libyang context to use.
  */
-void sr_errinfo_new_ly_first(sr_error_info_t **err_info, struct ly_ctx *ly_ctx);
+void sr_errinfo_new_ly_first(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx);
 
 /**
  * @brief Log the errors from a libyang context as warnings.
  *
  * @param[in] ly_ctx libyang context to use.
  */
-void sr_log_wrn_ly(struct ly_ctx *ly_ctx);
+void sr_log_wrn_ly(const struct ly_ctx *ly_ctx);
 
 /**
  * @brief Free an error info structure.
