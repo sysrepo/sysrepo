@@ -31,6 +31,14 @@ if(NOT UNIX)
     message(FATAL_ERROR "Only Unix-like systems are supported.")
 endif()
 
+if(NOT FORCE_WSL AND EXISTS "/proc/sys/kernel/osrelease")
+    file(READ "/proc/sys/kernel/osrelease" OS_RELEASE)
+    string(FIND ${OS_RELEASE} "Microsoft" POS)
+    if(POS GREATER -1)
+        message(FATAL_ERROR "Windows Subsystem for Linux is not supported. Set FORCE_WSL var to bypass at your own risk.")
+    endif()
+endif()
+
 # Version of the project
 # Generic version of not only the library. Major version is reserved for really big changes of the project,
 # minor version changes with added functionality (new tool, functionality of the tool or library, ...) and
