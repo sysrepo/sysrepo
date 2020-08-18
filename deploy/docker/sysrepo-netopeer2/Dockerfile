@@ -62,7 +62,16 @@ RUN \
       wget -nv https://download.opensuse.org/repositories/home:liberouter/xUbuntu_18.04/Release.key -O Release.key && \
       apt-key add - < Release.key && \
       apt-get update && \
-      apt-get install libyang libyang-dev
+      apt-get install libyang1 libyang-dev
+
+# libssh 0.8.0
+RUN \
+      cd /opt/dev && \
+      git clone https://git.libssh.org/projects/libssh.git && cd libssh && \
+      mkdir build && cd build && \
+      cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE="Release" -DWITH_ZLIB=ON -DWITH_NACL=OFF -DWITH_PCAP=OFF .. && \
+      make -j2 && \
+      make install
 
 # libnetconf2
 RUN \
@@ -79,22 +88,17 @@ RUN \
       cd /opt/dev && \
       git clone https://github.com/sysrepo/sysrepo.git && cd sysrepo && \
       mkdir build && cd build && \
-      cmake -DENABLE_TESTS=OFF -DCMAKE_BUILD_TYPE="Release" -DCMAKE_INSTALL_PREFIX:PATH=/usr -DREPOSITORY_LOC:PATH=/etc/sysrepo .. && \
+      cmake -DENABLE_TESTS=OFF -DCMAKE_BUILD_TYPE="Release" -DCMAKE_INSTALL_PREFIX:PATH=/usr .. && \
       make -j2 && \
       make install
 
 # netopeer 2
 RUN \
-      cd /opt/dev && git clone https://github.com/CESNET/Netopeer2.git && cd Netopeer2 && \
+      cd /opt/dev && \
+      git clone https://github.com/CESNET/Netopeer2.git && cd Netopeer2 && \
       git checkout master && \
-      cd /opt/dev/Netopeer2/server && \
       mkdir build && cd build && \
-      cmake -DCMAKE_BUILD_TYPE:String="Release" -DCMAKE_INSTALL_PREFIX:PATH=/usr .. && \
-      make -j2 && \
-      make install && \
-      cd /opt/dev/Netopeer2/cli && \
-      mkdir build && cd build && \
-      cmake -DCMAKE_BUILD_TYPE:String="Release" -DCMAKE_INSTALL_PREFIX:PATH=/usr .. && \
+      cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_BUILD_TYPE:String="Release" .. && \
       make -j2 && \
       make install
 
