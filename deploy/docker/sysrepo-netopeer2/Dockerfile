@@ -98,7 +98,7 @@ RUN \
       git clone https://github.com/CESNET/Netopeer2.git && cd Netopeer2 && \
       git checkout master && \
       mkdir build && cd build && \
-      cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_BUILD_TYPE:String="Release" -DBUILD_CLI=ON .. && \
+      cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_BUILD_TYPE:String="Release" .. && \
       make -j2 && \
       make install
 
