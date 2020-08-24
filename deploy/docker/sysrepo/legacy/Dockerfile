@@ -4,11 +4,8 @@ FROM ubuntu:18.04
 RUN \
 	apt-get update && apt-get install -y \
 	git \
-	curl \
 	wget \
-	libssh-dev \
 	libssl-dev \
-	libtool \
 	build-essential \
 	vim \
 	libtool	\
@@ -16,23 +13,21 @@ RUN \
 	automake \
 	pkg-config \
 	libgtk-3-dev \
-	make \
 	vim \
 	valgrind \
-	doxygen \
 	libev-dev \
 	libpcre3-dev \
-	unzip \
 	sudo \
 	python3 \
-	build-essential \
 	bison \
 	flex \
-      swig \
-      libcmocka0 \
-      libcmocka-dev \
-      cmake \
-      supervisor
+	swig \
+	libcmocka0 \
+	libcmocka-dev \
+	cmake \
+	libprotobuf-c-dev \
+	protobuf-c-compiler \
+	libavl-dev
 
 # Adding netconf user
 RUN adduser --system netconf
@@ -64,46 +59,14 @@ RUN \
       apt-get update && \
       apt-get install libyang1 libyang-dev
 
-# libssh 0.8.0
-RUN \
-      cd /opt/dev && \
-      git clone https://git.libssh.org/projects/libssh.git && cd libssh && \
-      mkdir build && cd build && \
-      cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE="Debug" -DWITH_ZLIB=ON -DWITH_NACL=OFF -DWITH_PCAP=OFF .. && \
-      make -j2 && \
-      make install
-
-# libnetconf2
-RUN \
-      cd /opt/dev && \
-      git clone https://github.com/CESNET/libnetconf2.git && cd libnetconf2 && \
-      git checkout master && \
-      mkdir build && cd build && \
-      cmake  -DCMAKE_BUILD_TYPE:String="Debug" -DCMAKE_INSTALL_PREFIX:PATH=/usr -DENABLE_BUILD_TESTS=OFF .. && \
-      make -j2 && \
-      make install
-
 # sysrepo
 RUN \
       cd /opt/dev && \
-      git clone https://github.com/sysrepo/sysrepo.git && cd sysrepo && \
+      git clone https://github.com/sysrepo/sysrepo.git --branch legacy && cd sysrepo && \
       mkdir build && cd build && \
       cmake -DENABLE_TESTS=OFF -DCMAKE_BUILD_TYPE="Debug" -DCMAKE_INSTALL_PREFIX:PATH=/usr .. && \
       make -j2 && \
       make install
 
-# netopeer 2
-RUN \
-      cd /opt/dev && \
-      git clone https://github.com/CESNET/Netopeer2.git && cd Netopeer2 && \
-      git checkout master && \
-      mkdir build && cd build && \
-      cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr -DCMAKE_BUILD_TYPE:String="Debug" .. && \
-      make -j2 && \
-      make install
-
 ENV EDITOR vim
 EXPOSE 830
-
-COPY supervisord.conf /etc/supervisord.conf
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
