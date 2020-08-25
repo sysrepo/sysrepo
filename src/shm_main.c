@@ -1230,7 +1230,7 @@ sr_shmmain_files_startup2running(sr_conn_ctx_t *conn, int replace)
 
     SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
         mod_name = conn->ext_shm.addr + shm_mod->name;
-        if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, 0, &running_path))) {
+        if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, 1, &running_path))) {
             goto error;
         }
 
@@ -1238,6 +1238,11 @@ sr_shmmain_files_startup2running(sr_conn_ctx_t *conn, int replace)
             /* there are some running data, keep them */
             free(running_path);
             continue;
+        }
+        free(running_path);
+
+        if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, 0, &running_path))) {
+            goto error;
         }
 
         if ((err_info = sr_path_startup_file(mod_name, &startup_path))) {
