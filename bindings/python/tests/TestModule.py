@@ -268,6 +268,7 @@ def create_test_module():
         print(e)
         connection = None
         return False
+    return True
 
 def remove_example_module():
     connection = sr.Connection(sr.SR_CONN_DEFAULT)
