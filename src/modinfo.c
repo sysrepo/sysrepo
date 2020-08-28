@@ -2259,7 +2259,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                     }
 
                     if (diff) {
-                        /* add any missing state NP containers so that stored diff can be properly applied */
+                        /* add any missing NP containers so that stored diff can be properly applied */
                         if ((err_info = sr_lyd_create_sibling_np_cont_r(&mod_data, NULL, mod->ly_mod, NULL))) {
                             goto cleanup;
                         }
