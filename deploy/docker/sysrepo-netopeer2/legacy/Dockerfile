@@ -67,10 +67,10 @@ RUN \
       apt-get update && \
       apt-get install libyang1 libyang-dev
 
-# libssh 0.8.0
+# libssh
 RUN \
       cd /opt/dev && \
-      git clone https://git.libssh.org/projects/libssh.git && cd libssh && \
+      git clone https://git.libssh.org/projects/libssh.git && cd libssh && git checkout libssh-0.9.2 && \
       mkdir build && cd build && \
       cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE="Debug" -DWITH_ZLIB=ON -DWITH_NACL=OFF -DWITH_PCAP=OFF .. && \
       make -j2 && \
