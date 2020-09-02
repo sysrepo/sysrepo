@@ -4643,7 +4643,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
      * can be invoked meaning its parent data node exists) */
     xpath = lys_data_path(notif_op->schema);
     SR_CHECK_MEM_GOTO(!xpath, err_info, cleanup_shm_unlock);
-    if ((err_info = sr_shmmod_modinfo_collect_op(&mod_info, xpath, notif_op, 0, &shm_deps, &shm_dep_count))) {
+    if ((err_info = sr_shmmod_modinfo_collect_op(&mod_info, xpath, notif_op, 1, &shm_deps, &shm_dep_count))) {
         goto cleanup_shm_unlock;
     }
 
