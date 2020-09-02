@@ -4202,7 +4202,7 @@ sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *input, 
 
 cleanup:
     lyd_free_withsiblings(input_tree);
-    while (output_tree->parent) {
+    while (output_tree && output_tree->parent) {
         output_tree = output_tree->parent;
     }
     lyd_free_withsiblings(output_tree);
