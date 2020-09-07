@@ -394,6 +394,19 @@ test_rpc(void **state)
 
     sr_free_values(output, output_count);
 
+    /*
+     * try to send a non-existing RPC, expect an error
+     */
+    ret = sr_rpc_send(st->sess, "/ops:invalid", &input, 1, 0, &output, &output_count);
+    assert_int_equal(ret, SR_ERR_LY);
+    ret = sr_get_error(st->sess, &err_info);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(err_info->err_count, 1);
+    assert_string_equal(err_info->err[0].message, "Schema node not found.");
+    assert_string_equal(err_info->err[0].xpath, "/ops:invalid");
+    assert_null(output);
+    assert_int_equal(output_count, 0);
+
     sr_unsubscribe(subscr);
 }
 
