@@ -152,8 +152,13 @@ sr_shmmod_modinfo_collect_edit(struct sr_mod_info_s *mod_info, const struct lyd_
         }
     }
 
-    /* sort the modules based on their offsets in the SHM so that we have a uniform order for locking */
-    qsort(mod_info->mods, mod_info->mod_count, sizeof *mod_info->mods, sr_modinfo_qsort_cmp);
+    /*
+     * sort the modules based on their offsets in the SHM so that we have a uniform order for locking
+     * qsort doesn't want the first argument to be NULL, so only sort if there actually is something to sort
+     */
+    if (mod_info->mod_count > 0) {
+        qsort(mod_info->mods, mod_info->mod_count, sizeof *mod_info->mods, sr_modinfo_qsort_cmp);
+    }
 
     return NULL;
 }
@@ -226,8 +231,13 @@ sr_shmmod_modinfo_collect_xpath(struct sr_mod_info_s *mod_info, const char *xpat
         }
     }
 
-    /* sort the modules based on their offsets in the SHM so that we have a uniform order for locking */
-    qsort(mod_info->mods, mod_info->mod_count, sizeof *mod_info->mods, sr_modinfo_qsort_cmp);
+    /*
+     * sort the modules based on their offsets in the SHM so that we have a uniform order for locking
+     * qsort doesn't want the first argument to be NULL, so only sort if there actually is something to sort
+     */
+    if (mod_info->mod_count > 0) {
+        qsort(mod_info->mods, mod_info->mod_count, sizeof *mod_info->mods, sr_modinfo_qsort_cmp);
+    }
 
     /* success */
 
@@ -329,8 +339,13 @@ sr_shmmod_modinfo_collect_op(struct sr_mod_info_s *mod_info, const char *op_path
         }
     }
 
-    /* sort the modules based on their offsets in the SHM so that we have a uniform order for locking */
-    qsort(mod_info->mods, mod_info->mod_count, sizeof *mod_info->mods, sr_modinfo_qsort_cmp);
+    /*
+     * sort the modules based on their offsets in the SHM so that we have a uniform order for locking
+     * qsort doesn't want the first argument to be NULL, so only sort if there actually is something to sort
+     */
+    if (mod_info->mod_count > 0) {
+        qsort(mod_info->mods, mod_info->mod_count, sizeof *mod_info->mods, sr_modinfo_qsort_cmp);
+    }
 
     return NULL;
 }
