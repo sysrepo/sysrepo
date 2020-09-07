@@ -192,7 +192,7 @@ sr_conn_lydmods_ctx_update(struct ly_ctx **ly_ctx, char *main_shm_addr, int appl
                     ctx_updated = 1;
                 }
             } else {
-                SR_LOG_INFMSG("Scheduled changes not applied because of other existing connections.");
+                SR_LOG_INF("Scheduled changes not applied because of other existing connections.");
             }
         }
     }
@@ -2296,7 +2296,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     }
 
     if (!mod_info->diff) {
-        SR_LOG_INFMSG("No datastore changes to apply.");
+        SR_LOG_INF("No datastore changes to apply.");
         goto cleanup;
     }
 
@@ -2353,7 +2353,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     }
 
     if (!mod_info->diff) {
-        SR_LOG_INFMSG("No datastore changes to apply.");
+        SR_LOG_INF("No datastore changes to apply.");
         goto cleanup;
     }
 

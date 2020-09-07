@@ -1258,7 +1258,7 @@ sr_shmmain_files_startup2running(sr_conn_ctx_t *conn, int replace)
     }
 
     if (replace) {
-        SR_LOG_INFMSG("Datastore copied from <startup> to <running>.");
+        SR_LOG_INF("Datastore copied from <startup> to <running>.");
     }
     return NULL;
 
@@ -1984,7 +1984,7 @@ sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, const cha
     if (remap && (*((size_t *)conn->ext_shm.addr) > SR_SHM_WASTED_MAX_MEM)) {
         assert(mode == SR_LOCK_WRITE);
 
-        SR_LOG_DBGMSG("#SHM before defrag");
+        SR_LOG_DBG("#SHM before defrag");
         sr_shmmain_ext_print(&conn->main_shm, conn->ext_shm.addr, conn->ext_shm.size);
 
         /* defrag mem into a separate memory */
@@ -1998,7 +1998,7 @@ sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, const cha
             memcpy(conn->ext_shm.addr, buf, conn->ext_shm.size);
             free(buf);
 
-            SR_LOG_DBGMSG("#SHM after defrag");
+            SR_LOG_DBG("#SHM after defrag");
             sr_shmmain_ext_print(&conn->main_shm, conn->ext_shm.addr, conn->ext_shm.size);
         }
         sr_errinfo_free(&err_info);
