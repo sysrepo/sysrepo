@@ -153,11 +153,11 @@ S_Val Session::get_item(const char *path, uint32_t timeout_ms)
 
     int ret = sr_get_item(_sess, path, timeout_ms, &value->_val);
     if (SR_ERR_OK == ret) {
+        if (!value->_val) {
+            return nullptr;
+        }
         value->_deleter = std::make_shared<Deleter>(value->_val);
         return value;
-    }
-    if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
     }
     throw_exception(ret);
 }
@@ -168,11 +168,11 @@ S_Vals Session::get_items(const char *xpath, uint32_t timeout_ms, const sr_get_o
 
     int ret = sr_get_items(_sess, xpath, timeout_ms, opts, &values->_vals, &values->_cnt);
     if (SR_ERR_OK == ret) {
+        if (!values->_vals) {
+            return nullptr;
+        }
         values->_deleter = std::make_shared<Deleter>(values->_vals, values->_cnt);
         return values;
-    }
-    if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
     }
     throw_exception(ret);
 }
@@ -183,10 +183,10 @@ libyang::S_Data_Node Session::get_subtree(const char *path, uint32_t timeout_ms)
 
     int ret = sr_get_subtree(_sess, path, timeout_ms, &subtree);
     if (SR_ERR_OK == ret) {
+        if (!subtree) {
+            return nullptr;
+        }
         return std::make_shared<libyang::Data_Node>(subtree, std::make_shared<libyang::Deleter>(subtree));
-    }
-    if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
     }
     throw_exception(ret);
 }
@@ -197,10 +197,10 @@ libyang::S_Data_Node Session::get_data(const char *xpath, uint32_t max_depth, ui
 
     int ret = sr_get_data(_sess, xpath, max_depth, timeout_ms, opts, &data);
     if (SR_ERR_OK == ret) {
+        if (!data) {
+            return nullptr;
+        }
         return std::make_shared<libyang::Data_Node>(data, std::make_shared<libyang::Deleter>(data));
-    }
-    if (SR_ERR_NOT_FOUND == ret) {
-        return nullptr;
     }
     throw_exception(ret);
 }
