@@ -278,7 +278,7 @@ test_rpc_crash1(int rp, int wp)
     sr_assert_true(rpc);
 
     /* this should crash the other process */
-    ret = sr_rpc_send_tree(sess, rpc, 100, &output);
+    ret = sr_rpc_send_tree(sess, rpc, 2000, &output);
     sr_assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
 
     lyd_free(rpc);
