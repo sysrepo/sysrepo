@@ -171,7 +171,6 @@ sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct l
  * @brief Load data for modules in mod info.
  *
  * @param[in] mod_info Mod info to use.
- * @param[in] mod_type Types of modules whose data should only be loaded.
  * @param[in] cache Whether it makes sense to use cached data, if available.
  * @param[in] sid Sysrepo session ID.
  * @param[in] request_id XPath of the data request.
@@ -180,7 +179,7 @@ sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct l
  * @param[out] cb_error_info Callback error info in case an operational subscriber of required data failed.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, uint8_t mod_type, int cache, sr_sid_t *sid,
+sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, sr_sid_t *sid,
         const char *request_id, uint32_t timeout_ms, sr_get_oper_options_t opts, sr_error_info_t **cb_error_info);
 
 /**

@@ -1889,8 +1889,8 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_modinfo_data_load(struct sr_mod_info_s *mod_info, uint8_t mod_type, int cache, sr_sid_t *sid,
-        const char *request_xpath, uint32_t timeout_ms, sr_get_oper_options_t opts, sr_error_info_t **cb_error_info)
+sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, sr_sid_t *sid, const char *request_xpath,
+        uint32_t timeout_ms, sr_get_oper_options_t opts, sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
@@ -1912,11 +1912,9 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, uint8_t mod_type, int cache
     /* load data for each module */
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
-        if (mod->state & mod_type) {
-            if ((err_info = sr_modinfo_module_data_load(mod_info, mod, sid, request_xpath, timeout_ms, opts, cb_error_info))) {
-                /* if cached, we keep both cache lock and flag, so it is fine */
-                return err_info;
-            }
+        if ((err_info = sr_modinfo_module_data_load(mod_info, mod, sid, request_xpath, timeout_ms, opts, cb_error_info))) {
+            /* if cached, we keep both cache lock and flag, so it is fine */
+            return err_info;
         }
     }
 

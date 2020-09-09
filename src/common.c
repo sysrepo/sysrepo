@@ -4402,8 +4402,7 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     }
 
     /* load the module enabled running data */
-    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 1, NULL, NULL, 0,
-            SR_OPER_NO_STORED | SR_OPER_NO_SUBS, NULL))) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, 1, NULL, NULL, 0, SR_OPER_NO_STORED | SR_OPER_NO_SUBS, NULL))) {
         goto cleanup;
     }
 
