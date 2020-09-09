@@ -3478,7 +3478,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     }
 
     /* add module subscription into main SHM */
-    if ((err_info = sr_shmmod_change_subscription_add(&conn->ext_shm, shm_mod, xpath, session->ds, priority, sub_opts,
+    if ((err_info = sr_shmmod_change_subscription_add(conn, shm_mod, xpath, session->ds, priority, sub_opts,
             (*subscription)->evpipe_num))) {
         goto error_unlock_unsub;
     }

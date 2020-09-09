@@ -695,7 +695,7 @@ cleanup_modules:
 }
 
 sr_error_info_t *
-sr_shmmod_change_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char *xpath, sr_datastore_t ds,
+sr_shmmod_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath, sr_datastore_t ds,
         uint32_t priority, int sub_opts, uint32_t evpipe_num)
 {
     sr_error_info_t *err_info = NULL;
@@ -703,14 +703,14 @@ sr_shmmod_change_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const ch
     sr_mod_change_sub_t *shm_sub;
 
     /* allocate new subscription and its xpath, if any */
-    if ((err_info = sr_shmrealloc_add(shm_ext, &shm_mod->change_sub[ds].subs, &shm_mod->change_sub[ds].sub_count, 0,
+    if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_mod->change_sub[ds].subs, &shm_mod->change_sub[ds].sub_count, 0,
             sizeof *shm_sub, -1, (void **)&shm_sub, xpath ? sr_strshmlen(xpath) : 0, &xpath_off))) {
         return err_info;
     }
 
     /* fill new subscription */
     if (xpath) {
-        strcpy(shm_ext->addr + xpath_off, xpath);
+        strcpy(conn->ext_shm.addr + xpath_off, xpath);
         shm_sub->xpath = xpath_off;
     } else {
         shm_sub->xpath = 0;
@@ -718,6 +718,13 @@ sr_shmmod_change_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const ch
     shm_sub->priority = priority;
     shm_sub->opts = sub_opts;
     shm_sub->evpipe_num = evpipe_num;
+
+    if (ds == SR_DS_RUNNING) {
+        /* technically, operational data may have changed */
+        if ((err_info = sr_module_update_oper_diff(conn, conn->ext_shm.addr + shm_mod->name))) {
+            return err_info;
+        }
+    }
 
     return NULL;
 }
