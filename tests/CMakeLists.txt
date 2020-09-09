@@ -40,6 +40,12 @@ foreach(test_name IN LISTS tests)
         )
 endforeach(test_name)
 
+# phony target for clearing all sysrepo test data
+add_custom_target(test_clean
+    COMMAND rm -rf ${PROJECT_BINARY_DIR}/test_repositories
+    COMMAND rm -rf /dev/shm/_tests_sr_*
+)
+
 # measure_performance benchmark binary
 set(SR_PERF measure_performance)
 add_executable(${SR_PERF} ${SR_PERF}.c)
