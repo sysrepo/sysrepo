@@ -223,10 +223,10 @@ sr_shmmod_modinfo_collect_xpath(struct sr_mod_info_s *mod_info, const char *xpat
             continue;
         }
 
-        /* find the module in SHM and add it with any dependencies */
+        /* find the module in SHM, we need just its data, no dependencies as we will be only returning these data */
         shm_mod = sr_shmmain_find_module(&mod_info->conn->main_shm, mod_info->conn->ext_shm.addr, ly_mod->name, 0);
         SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
-        if ((err_info = sr_modinfo_add_mod(shm_mod, ly_mod, MOD_INFO_REQ, MOD_INFO_DEP | MOD_INFO_INV_DEP, mod_info))) {
+        if ((err_info = sr_modinfo_add_mod(shm_mod, ly_mod, MOD_INFO_REQ, 0, mod_info))) {
             goto cleanup;
         }
     }
