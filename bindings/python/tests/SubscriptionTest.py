@@ -57,9 +57,12 @@ class SubscriptionTester(SysrepoTester):
     def getOperationalData(self, xpath, expected):
         if(self.session):
             vals = self.session.get_items(xpath)
-            self.tc.assertEqual(len(expected), vals.val_cnt())
-            for i in range(len(expected)):
-                self.tc.assertEqual(vals.val(i).xpath(), expected[i])
+            if len(expected):
+                self.tc.assertEqual(len(expected), vals.val_cnt())
+                for i in range(len(expected)):
+                    self.tc.assertEqual(vals.val(i).xpath(), expected[i])
+            else:
+                self.tc.assertFalse(vals)
 
 
 class SubscriptionTest(unittest.TestCase):
