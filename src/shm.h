@@ -715,7 +715,7 @@ void sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid);
  * @brief Add main SHM module change subscription.
  * May remap ext SHM!
  *
- * @param[in] shm_ext Ext SHM.
+ * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
  * @param[in] xpath Subscription XPath.
  * @param[in] ds Datastore.
@@ -724,7 +724,7 @@ void sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid);
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_change_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char *xpath,
+sr_error_info_t *sr_shmmod_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath,
         sr_datastore_t ds, uint32_t priority, int sub_opts, uint32_t evpipe_num);
 
 /**
