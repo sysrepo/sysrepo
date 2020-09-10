@@ -189,6 +189,8 @@ step_read_file(FILE *file, char **mem)
         mem_used += fread(*mem + mem_used, 1, mem_size - mem_used, file);
     } while (mem_used == mem_size);
 
+    (*mem)[mem_used] = '\0';
+
     if (ferror(file)) {
         free(*mem);
         error_print(0, "Error reading from file (%s)", strerror(errno));
