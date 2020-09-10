@@ -182,6 +182,7 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, const char 
 {
     sr_change_iter_t *it = NULL;
     int rc = SR_ERR_OK;
+    char *path;
     sr_change_oper_t oper;
     sr_val_t *old_value = NULL;
     sr_val_t *new_value = NULL;
@@ -192,7 +193,9 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, const char 
 
     printf("\n\n ========== EVENT %s CHANGES: ====================================\n\n", ev_to_str(event));
 
-    rc = sr_get_changes_iter(session, "//." , &it);
+    asprintf(&path, "%s//.", xpath);
+    rc = sr_get_changes_iter(session, path, &it);
+    free(path);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }
