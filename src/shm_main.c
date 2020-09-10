@@ -1098,10 +1098,10 @@ sr_shmmain_ext_get_size_main_shm(sr_shm_t *shm_main, char *ext_shm_addr)
             assert(oper_subs[i].xpath);
             shm_size += sr_strshmlen(ext_shm_addr + oper_subs[i].xpath);
         }
-        shm_size += SR_SHM_SIZE(shm_mod->oper_subs * sizeof *oper_subs);
+        shm_size += SR_SHM_SIZE(shm_mod->oper_sub_count * sizeof *oper_subs);
 
         /* notif subscriptions */
-        shm_size += SR_SHM_SIZE(shm_mod->notif_subs * sizeof(sr_mod_notif_sub_t));
+        shm_size += SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof(sr_mod_notif_sub_t));
     }
 
     return shm_size;
