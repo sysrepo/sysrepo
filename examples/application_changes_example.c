@@ -22,7 +22,6 @@
 #include <signal.h>
 #include <inttypes.h>
 
-#include "compat.h"
 #include "sysrepo.h"
 
 volatile int exit_application = 0;
@@ -144,12 +143,10 @@ print_current_config(sr_session_ctx_t *session, const char *module_name)
     sr_val_t *values = NULL;
     size_t count = 0;
     int rc = SR_ERR_OK;
-    char *xpath;
+    char xpath[128];
 
-    asprintf(&xpath, "/%s:*//.", module_name);
-
+    sprintf(xpath, "/%s:*//.", module_name);
     rc = sr_get_items(session, xpath, 0, 0, &values, &count);
-    free(xpath);
     if (rc != SR_ERR_OK) {
         return rc;
     }
@@ -182,7 +179,7 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, const char 
 {
     sr_change_iter_t *it = NULL;
     int rc = SR_ERR_OK;
-    char *path;
+    char path[512];
     sr_change_oper_t oper;
     sr_val_t *old_value = NULL;
     sr_val_t *new_value = NULL;
@@ -193,9 +190,8 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, const char 
 
     printf("\n\n ========== EVENT %s CHANGES: ====================================\n\n", ev_to_str(event));
 
-    asprintf(&path, "%s//.", xpath);
+    sprintf(path, "%s//.", xpath);
     rc = sr_get_changes_iter(session, path, &it);
-    free(path);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }
