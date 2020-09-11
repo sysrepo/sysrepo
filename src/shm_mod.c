@@ -95,36 +95,10 @@ sr_shmmod_lock(const char *mod_name, struct sr_mod_lock_s *shm_lock, int timeout
     return NULL;
 }
 
-/**
- * @brief Comparator function for qsort of mod info modules.
- *
- * @param[in] ptr1 First value pointer.
- * @param[in] ptr2 Second value pointer.
- * @return Less than, equal to, or greater than 0 if the first value is found
- * to be less than, equal to, or greater to the second value.
- */
-static int
-sr_modinfo_qsort_cmp(const void *ptr1, const void *ptr2)
-{
-    struct sr_mod_info_mod_s *mod1, *mod2;
-
-    mod1 = (struct sr_mod_info_mod_s *)ptr1;
-    mod2 = (struct sr_mod_info_mod_s *)ptr2;
-
-    if (mod1->shm_mod > mod2->shm_mod) {
-        return 1;
-    }
-    if (mod1->shm_mod < mod2->shm_mod) {
-        return -1;
-    }
-    return 0;
-}
-
 sr_error_info_t *
-sr_shmmod_modinfo_collect_edit(struct sr_mod_info_s *mod_info, const struct lyd_node *edit)
+sr_shmmod_collect_edit(const struct lyd_node *edit, struct ly_set *mod_set)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_t *shm_mod;
     const struct lys_module *mod;
     const struct lyd_node *root;
     char *str;
@@ -144,30 +118,17 @@ sr_shmmod_modinfo_collect_edit(struct sr_mod_info_s *mod_info, const struct lyd_
         /* remember last mod, good chance it will also be the module of some next data nodes */
         mod = lyd_node_module(root);
 
-        /* find the module in SHM and add it with any dependencies */
-        shm_mod = sr_shmmain_find_module(&mod_info->conn->main_shm, mod_info->conn->ext_shm.addr, mod->name, 0);
-        SR_CHECK_INT_RET(!shm_mod, err_info);
-        if ((err_info = sr_modinfo_add_mod(shm_mod, mod, MOD_INFO_REQ, MOD_INFO_DEP | MOD_INFO_INV_DEP, mod_info))) {
-            return err_info;
-        }
-    }
-
-    /*
-     * sort the modules based on their offsets in the SHM so that we have a uniform order for locking
-     * qsort doesn't want the first argument to be NULL, so only sort if there actually is something to sort
-     */
-    if (mod_info->mod_count > 0) {
-        qsort(mod_info->mods, mod_info->mod_count, sizeof *mod_info->mods, sr_modinfo_qsort_cmp);
+        /* remember the module */
+        ly_set_add(mod_set, (void *)mod, 0);
     }
 
     return NULL;
 }
 
 sr_error_info_t *
-sr_shmmod_modinfo_collect_xpath(struct sr_mod_info_s *mod_info, const char *xpath)
+sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds, struct ly_set *mod_set)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_t *shm_mod;
     char *module_name;
     const struct lys_module *ly_mod;
     const struct lys_node *ctx_node;
@@ -182,7 +143,7 @@ sr_shmmod_modinfo_collect_xpath(struct sr_mod_info_s *mod_info, const char *xpat
         SR_CHECK_MEM_RET(!module_name, err_info);
     }
 
-    ly_mod = ly_ctx_get_module(mod_info->conn->ly_ctx, module_name, NULL, 1);
+    ly_mod = ly_ctx_get_module(ly_ctx, module_name, NULL, 1);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
         free(module_name);
@@ -199,7 +160,7 @@ sr_shmmod_modinfo_collect_xpath(struct sr_mod_info_s *mod_info, const char *xpat
 
     set = lys_xpath_atomize(ctx_node, LYXP_NODE_ELEM, xpath, 0);
     if (!set) {
-        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+        sr_errinfo_new_ly(&err_info, (struct ly_ctx *)ly_ctx);
         return err_info;
     }
 
@@ -208,7 +169,7 @@ sr_shmmod_modinfo_collect_xpath(struct sr_mod_info_s *mod_info, const char *xpat
     for (i = 0; i < set->number; ++i) {
         /* skip uninteresting nodes */
         if ((set->set.s[i]->nodetype & (LYS_RPC | LYS_NOTIF))
-                || ((set->set.s[i]->flags & LYS_CONFIG_R) && SR_IS_CONVENTIONAL_DS(mod_info->ds))) {
+                || ((set->set.s[i]->flags & LYS_CONFIG_R) && SR_IS_CONVENTIONAL_DS(ds))) {
             continue;
         }
 
@@ -223,89 +184,26 @@ sr_shmmod_modinfo_collect_xpath(struct sr_mod_info_s *mod_info, const char *xpat
             continue;
         }
 
-        /* find the module in SHM, we need just its data, no dependencies as we will be only returning these data */
-        shm_mod = sr_shmmain_find_module(&mod_info->conn->main_shm, mod_info->conn->ext_shm.addr, ly_mod->name, 0);
-        SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
-        if ((err_info = sr_modinfo_add_mod(shm_mod, ly_mod, MOD_INFO_REQ, 0, mod_info))) {
-            goto cleanup;
-        }
+        ly_set_add(mod_set, (void *)ly_mod, 0);
     }
 
-    /*
-     * sort the modules based on their offsets in the SHM so that we have a uniform order for locking
-     * qsort doesn't want the first argument to be NULL, so only sort if there actually is something to sort
-     */
-    if (mod_info->mod_count > 0) {
-        qsort(mod_info->mods, mod_info->mod_count, sizeof *mod_info->mods, sr_modinfo_qsort_cmp);
-    }
-
-    /* success */
-
-cleanup:
     ly_set_free(set);
-    return err_info;
-}
-
-sr_error_info_t *
-sr_shmmod_modinfo_collect_modules(struct sr_mod_info_s *mod_info, const struct lys_module *ly_mod, int mod_req_deps)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_conn_ctx_t *conn = mod_info->conn;
-    sr_mod_t *shm_mod;
-
-    if (ly_mod) {
-        /* only one module */
-        shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, ly_mod->name, 0);
-        SR_CHECK_INT_RET(!shm_mod, err_info);
-
-        if ((err_info = sr_modinfo_add_mod(shm_mod, ly_mod, MOD_INFO_REQ, mod_req_deps, mod_info))) {
-            return err_info;
-        }
-
-        return NULL;
-    }
-
-    /* all modules */
-    SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
-        ly_mod = ly_ctx_get_module(conn->ly_ctx, conn->ext_shm.addr + shm_mod->name, NULL, 1);
-        SR_CHECK_INT_RET(!ly_mod, err_info);
-
-        /* do not collect dependencies, all the modules are added anyway */
-        if ((err_info = sr_modinfo_add_mod(shm_mod, ly_mod, MOD_INFO_REQ, 0, mod_info))) {
-            return err_info;
-        }
-    }
-
-    /* we do not need to sort the modules, they were added in the correct order */
-
     return NULL;
 }
 
 sr_error_info_t *
-sr_shmmod_modinfo_collect_op(struct sr_mod_info_s *mod_info, const char *op_path, const struct lyd_node *op, int output,
-        sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count)
+sr_shmmod_collect_op_deps(sr_conn_ctx_t *conn, const struct lys_module *op_mod, const char *op_path, int output,
+        struct ly_set *mod_set, sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count)
 {
     sr_error_info_t *err_info = NULL;
-    sr_conn_ctx_t *conn = mod_info->conn;
-    sr_mod_t *shm_mod, *dep_mod;
+    sr_mod_t *shm_mod;
     sr_mod_op_dep_t *shm_op_deps;
     const struct lys_module *ly_mod;
-    const struct lys_node *top;
     uint16_t i;
 
-    /* find top-level node in case of action/nested notification */
-    for (top = op->schema; lys_parent(top); top = lys_parent(top));
-
     /* find the module in SHM */
-    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, lys_node_module(top)->name, 0);
+    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, op_mod->name, 0);
     SR_CHECK_INT_RET(!shm_mod, err_info);
-
-    /* if this is a nested action/notification, we will also need this module's data for checking its data parent exists */
-    if (!output && lys_parent(op->schema)) {
-        if ((err_info = sr_modinfo_add_mod(shm_mod, lys_node_module(top), MOD_INFO_REQ, 0, mod_info))) {
-            return err_info;
-        }
-    }
 
     /* find this operation dependencies */
     shm_op_deps = (sr_mod_op_dep_t *)(conn->ext_shm.addr + shm_mod->op_deps);
@@ -325,26 +223,12 @@ sr_shmmod_modinfo_collect_op(struct sr_mod_info_s *mod_info, const char *op_path
             continue;
         }
 
-        /* find the dependency */
-        dep_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, NULL, (*shm_deps)[i].module);
-        SR_CHECK_INT_RET(!dep_mod, err_info);
-
         /* find ly module */
-        ly_mod = ly_ctx_get_module(conn->ly_ctx, conn->ext_shm.addr + dep_mod->name, NULL, 1);
+        ly_mod = ly_ctx_get_module(conn->ly_ctx, conn->ext_shm.addr + (*shm_deps)[i].module, NULL, 1);
         SR_CHECK_INT_RET(!ly_mod, err_info);
 
         /* add dependency */
-        if ((err_info = sr_modinfo_add_mod(dep_mod, ly_mod, MOD_INFO_DEP, MOD_INFO_DEP, mod_info))) {
-            return err_info;
-        }
-    }
-
-    /*
-     * sort the modules based on their offsets in the SHM so that we have a uniform order for locking
-     * qsort doesn't want the first argument to be NULL, so only sort if there actually is something to sort
-     */
-    if (mod_info->mod_count > 0) {
-        qsort(mod_info->mods, mod_info->mod_count, sizeof *mod_info->mods, sr_modinfo_qsort_cmp);
+        ly_set_add(mod_set, (void *)ly_mod, 0);
     }
 
     return NULL;
@@ -390,7 +274,7 @@ sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradable, sr_sid_
     sr_error_info_t *err_info = NULL;
     sr_lock_mode_t mod_lock;
     uint32_t i;
-    uint8_t rlock_bit;
+    uint8_t rlock_bit, lock_mask;
     sr_datastore_t ds;
     struct sr_mod_info_mod_s *mod;
     struct sr_mod_lock_s *shm_lock;
@@ -398,10 +282,16 @@ sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradable, sr_sid_
     /* lock main DS normally */
     ds = mod_info->ds;
     rlock_bit = MOD_INFO_RLOCK;
+    lock_mask = MOD_INFO_RLOCK | MOD_INFO_WLOCK;
 lock:
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
         shm_lock = &mod->shm_mod->data_lock_info[ds];
+
+        if (mod->state & lock_mask) {
+            /* module was already fully locked, do not change it */
+            continue;
+        }
 
         /* WRITE-lock data-required modules, READ-lock dependency modules */
         mod_lock = upgradable && (mod->state & MOD_INFO_REQ) ? SR_LOCK_WRITE : SR_LOCK_READ;
@@ -444,6 +334,7 @@ lock:
         upgradable = 0;
         ds = mod_info->ds2;
         rlock_bit = MOD_INFO_RLOCK2;
+        lock_mask = MOD_INFO_RLOCK2;
         goto lock;
     }
 
@@ -461,6 +352,11 @@ sr_shmmod_modinfo_wrlock(struct sr_mod_info_s *mod_info, sr_sid_t sid)
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
         shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds];
+
+        if (mod->state & (MOD_INFO_RLOCK | MOD_INFO_WLOCK)) {
+            /* module was already fully locked, do not change it */
+            continue;
+        }
 
         /* MOD WRITE LOCK */
         if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, sid))) {
@@ -640,6 +536,7 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid)
     sr_mod_t *shm_mod;
     struct sr_mod_lock_s *shm_lock;
     struct sr_mod_info_s mod_info;
+    struct ly_set mod_set = {0};
     uint32_t i;
 
     SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
@@ -663,12 +560,8 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid)
                 if (i == SR_DS_CANDIDATE) {
                     /* collect all modules */
                     SR_MODINFO_INIT(mod_info, conn, i, i);
-                    if ((err_info = sr_shmmod_modinfo_collect_modules(&mod_info, NULL, 0))) {
-                        goto cleanup_modules;
-                    }
-
-                    /* MODULES WRITE LOCK */
-                    if ((err_info = sr_shmmod_modinfo_wrlock(&mod_info, sid))) {
+                    if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_WRITE,
+                            SR_MI_DATA_NO | SR_MI_PERM_NO, sid, NULL, 0, 0))) {
                         goto cleanup_modules;
                     }
 
@@ -1018,6 +911,7 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_s mod_info;
+    struct ly_set mod_set = {0};
     struct sr_mod_info_mod_s *mod;
     sr_sid_t sid;
     struct lyd_node *diff = NULL;
@@ -1028,12 +922,8 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid
     SR_MODINFO_INIT(mod_info, conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL);
     memset(&sid, 0, sizeof sid);
 
-    if ((err_info = sr_shmmod_modinfo_collect_modules(&mod_info, NULL, 0))) {
-        return err_info;
-    }
-
-    /* MODULES WRITE LOCK */
-    if ((err_info = sr_shmmod_modinfo_wrlock(&mod_info, sid))) {
+    if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_WRITE, SR_MI_DATA_NO | SR_MI_PERM_NO, sid,
+            NULL, 0, 0))) {
         goto cleanup;
     }
 

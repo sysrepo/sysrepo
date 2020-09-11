@@ -182,15 +182,6 @@ typedef struct sr_rpc_s {
 } sr_rpc_t;
 
 /**
- * @brief Lock mode.
- */
-typedef enum sr_lock_mode_e {
-    SR_LOCK_NONE = 0,           /**< Not locked. */
-    SR_LOCK_READ,               /**< Read lock. */
-    SR_LOCK_WRITE,              /**< Write lock. */
-} sr_lock_mode_t;
-
-/**
  * @brief Ext SHM connection state held lock.
  */
 typedef struct sr_conn_shm_lock_s {
@@ -613,47 +604,40 @@ sr_error_info_t *sr_shmmain_check_data_files(sr_conn_ctx_t *conn);
  */
 
 /**
- * @brief Collect required modules into mod info based on an edit.
+ * @brief Collect required modules found in an edit.
  *
- * @param[in,out] mod_info Modified mod info.
  * @param[in] edit Edit to be applied.
+ * @param[in,out] mod_set Set of modules to add to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_modinfo_collect_edit(struct sr_mod_info_s *mod_info, const struct lyd_node *edit);
+sr_error_info_t *sr_shmmod_collect_edit(const struct lyd_node *edit, struct ly_set *mod_set);
 
 /**
- * @brief Collect required modules into mod info based on an XPath.
+ * @brief Collect required modules for evaluating XPath and getting selected data.
  *
- * @param[in,out] mod_info Modified mod info.
+ * @param[in] ly_ctx libyang context.
  * @param[in] xpath XPath to be evaluated.
+ * @param[in] ds Target datastore where the @p xpath will be evaluated.
+ * @param[in,out] mod_set Set of modules to add to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_modinfo_collect_xpath(struct sr_mod_info_s *mod_info, const char *xpath);
+sr_error_info_t *sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds,
+        struct ly_set *mod_set);
 
 /**
- * @brief Collect required modules into mod info based on a specific module.
+ * @brief Collect required modules found in an operation.
  *
- * @param[in,out] mod_info Modified mod info.
- * @param[in] ly_mod Required module, all modules if not set.
- * @param[in] mod_req_deps What dependencies of the module are also needed.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmod_modinfo_collect_modules(struct sr_mod_info_s *mod_info, const struct lys_module *ly_mod,
-        int mod_req_deps);
-
-/**
- * @brief Collect required modules into mod info based on an operation data.
- *
- * @param[in,out] mod_info Modified mod info.
+ * @param[in] conn Connection to use.
+ * @param[in] op_mod Module of the operation.
  * @param[in] op_path Path identifying the operation.
- * @param[in] op Operation data tree.
  * @param[in] output Whether this is the operation output or input.
+ * @param[in,out] mod_set Set of modules to add to.
  * @param[out] shm_deps Main SHM operation dependencies.
  * @param[out] shm_dep_count Operation dependency count.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_modinfo_collect_op(struct sr_mod_info_s *mod_info, const char *op_path,
-        const struct lyd_node *op, int output, sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count);
+sr_error_info_t *sr_shmmod_collect_op_deps(sr_conn_ctx_t *conn, const struct lys_module *op_mod, const char *op_path,
+        int output, struct ly_set *mod_set, sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count);
 
 /**
  * @brief READ lock all modules in mod info.

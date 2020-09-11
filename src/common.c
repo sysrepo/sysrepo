@@ -4373,6 +4373,7 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
     struct sr_mod_info_s mod_info;
+    struct ly_set mod_set = {0};
     sr_sid_t sid;
     struct lyd_node *diff = NULL;
 
@@ -4392,17 +4393,10 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
         return NULL;
     }
 
-    if ((err_info = sr_shmmod_modinfo_collect_modules(&mod_info, ly_mod, 0))) {
-        goto cleanup;
-    }
-
-    /* MODULES WRITE LOCK */
-    if ((err_info = sr_shmmod_modinfo_wrlock(&mod_info, sid))) {
-        goto cleanup;
-    }
-
-    /* load the module enabled running data */
-    if ((err_info = sr_modinfo_data_load(&mod_info, 1, NULL, NULL, 0, SR_OPER_NO_STORED | SR_OPER_NO_SUBS, NULL))) {
+    /* add the module into mod_info and load its enabled running data */
+    ly_set_add(&mod_set, (void *)ly_mod, 0);
+    if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_WRITE, SR_MI_PERM_NO | SR_MI_DATA_CACHE,
+            sid, NULL, 0, SR_OPER_NO_STORED | SR_OPER_NO_SUBS))) {
         goto cleanup;
     }
 
@@ -4419,6 +4413,7 @@ cleanup:
     sr_shmmod_modinfo_unlock(&mod_info, 0);
 
     lyd_free_withsiblings(diff);
+    ly_set_clean(&mod_set);
     sr_modinfo_free(&mod_info);
     return err_info;
 }

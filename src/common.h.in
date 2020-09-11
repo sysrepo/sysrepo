@@ -250,6 +250,15 @@ typedef struct sr_sid_s {
 } sr_sid_t;
 
 /**
+ * @brief Lock mode.
+ */
+typedef enum sr_lock_mode_e {
+    SR_LOCK_NONE = 0,           /**< Not locked. */
+    SR_LOCK_READ,               /**< Read lock. */
+    SR_LOCK_WRITE,              /**< Write lock. */
+} sr_lock_mode_t;
+
+/**
  * @brief Sysrepo read-write lock.
  */
 typedef struct sr_rwlock_s {
