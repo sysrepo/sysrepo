@@ -234,6 +234,106 @@ sr_shmmod_collect_op_deps(sr_conn_ctx_t *conn, const struct lys_module *op_mod, 
     return NULL;
 }
 
+sr_error_info_t *
+sr_shmmod_collect_instid_deps_data(sr_conn_ctx_t *conn, sr_mod_data_dep_t *shm_deps, uint16_t shm_dep_count,
+        const struct lyd_node *data, struct ly_set *mod_set)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+    struct ly_set *set = NULL;
+    const char *val_str;
+    char *mod_name;
+    uint32_t i, j;
+
+    /* collect all possibly required modules (because of inst-ids) into a set */
+    for (i = 0; i < shm_dep_count; ++i) {
+        if (shm_deps[i].type == SR_DEP_INSTID) {
+            if (data) {
+                set = lyd_find_path(data, conn->ext_shm.addr + shm_deps[i].xpath);
+            } else {
+                /* no data, just fake empty set */
+                set = ly_set_new();
+            }
+            if (!set) {
+                sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+                goto cleanup;
+            }
+
+            if (set->number) {
+                /* extract module names from all the existing instance-identifiers */
+                for (j = 0; j < set->number; ++j) {
+                    assert(set->set.d[j]->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST));
+                    val_str = sr_ly_leaf_value_str(set->set.d[j]);
+
+                    mod_name = sr_get_first_ns(val_str);
+                    ly_mod = ly_ctx_get_module(conn->ly_ctx, mod_name, NULL, 1);
+                    free(mod_name);
+                    SR_CHECK_INT_GOTO(!ly_mod, err_info, cleanup);
+
+                    /* add module into set */
+                    if (ly_set_add(mod_set, (void *)ly_mod, 0) == -1) {
+                        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+                        goto cleanup;
+                    }
+                }
+            } else if (shm_deps[i].module) {
+                /* assume a default value will be used even though it may not be */
+                ly_mod = ly_ctx_get_module(conn->ly_ctx, conn->ext_shm.addr + shm_deps[i].module, NULL, 1);
+                SR_CHECK_INT_GOTO(!ly_mod, err_info, cleanup);
+
+                if (ly_set_add(mod_set, (void *)ly_mod, 0) == -1) {
+                    sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+                    goto cleanup;
+                }
+            }
+            ly_set_free(set);
+            set = NULL;
+        }
+    }
+
+    /* success */
+
+cleanup:
+    ly_set_free(set);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_shmmod_collect_instid_deps_modinfo(const struct sr_mod_info_s *mod_info, struct ly_set *mod_set)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_mod_info_mod_s *mod;
+    uint32_t i;
+
+    for (i = 0; i < mod_info->mod_count; ++i) {
+        mod = &mod_info->mods[i];
+        switch (mod->state & MOD_INFO_TYPE_MASK) {
+        case MOD_INFO_REQ:
+            if (!(mod->state & MOD_INFO_CHANGED)) {
+                /* data were not changed so no reason to validate them */
+                break;
+            }
+            /* fallthrough */
+        case MOD_INFO_INV_DEP:
+            /* this module data will be validated */
+            assert(mod->state & MOD_INFO_DATA);
+            if ((err_info = sr_shmmod_collect_instid_deps_data(mod_info->conn,
+                    (sr_mod_data_dep_t *)(mod_info->conn->ext_shm.addr + mod->shm_mod->data_deps),
+                    mod->shm_mod->data_dep_count, mod_info->data, mod_set))) {
+                return err_info;
+            }
+            break;
+        case MOD_INFO_DEP:
+            /* this module will not be validated */
+            break;
+        default:
+            SR_CHECK_INT_RET(0, err_info);
+        }
+    }
+
+    return NULL;
+}
+
 /**
  * @brief Update information about held module locks in SHM for the connection state.
  * Real WRITE lock (that a lock is WRITE-locked) is not covered and so is not recoverable.

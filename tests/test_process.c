@@ -131,6 +131,7 @@ run_tests(struct test *tests, uint32_t test_count)
         }
 
         if (fail) {
+            printf("Test failed, aborting.\n");
             abort();
         }
     }
@@ -182,6 +183,8 @@ setup(void)
 
     sr_assert(sr_install_module(conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", &en_feat, 1) == SR_ERR_OK);
     sr_assert(sr_install_module(conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0) == SR_ERR_OK);
+    sr_assert(sr_install_module(conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL, 0) == SR_ERR_OK);
+    sr_assert(sr_install_module(conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL, 0) == SR_ERR_OK);
 
     sr_disconnect(conn);
 }
@@ -193,6 +196,8 @@ teardown(void)
 
     sr_assert(sr_connect(0, &conn) == SR_ERR_OK);
 
+    sr_remove_module(conn, "iana-if-type");
+    sr_remove_module(conn, "ietf-interfaces");
     sr_remove_module(conn, "ops");
     sr_remove_module(conn, "ops-ref");
 
@@ -338,12 +343,129 @@ test_rpc_crash2(int rp, int wp)
     return 0;
 }
 
+/* TEST */
+static void
+notif_instid_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data)
+{
+    (void)session;
+    (void)notif_type;
+    (void)xpath;
+    (void)values;
+    (void)values_cnt;
+    (void)timestamp;
+    (void)private_data;
+}
+
+static int
+notif_instid_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
+{
+    (void)session;
+    (void)module_name;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+    (void)private_data;
+
+    return SR_ERR_OK;
+}
+
+static int
+test_notif_instid1(int rp, int wp)
+{
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *sub;
+    struct lyd_node *notif;
+    int ret, i;
+
+    ret = sr_connect(0, &conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_start(conn, SR_DS_RUNNING, &sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* create instid target */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type", "iana-if-type:ethernetCsmacd",
+            NULL, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to it so it appears in operational */
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, notif_instid_change_cb, NULL, 0, 0, &sub);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to the notification */
+    ret = sr_event_notif_subscribe(sess, "ops", "/ops:notif3", 0, 0, notif_instid_cb, NULL, SR_SUBSCR_CTX_REUSE, &sub);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* create the notification */
+    notif = lyd_new_path(NULL, sr_get_context(conn), "/ops:notif3/list2[k='key']/l15",
+            "/ietf-interfaces:interfaces/interface[name='eth0']", 0, 0);
+    sr_assert(notif);
+
+    /* wait for the other process */
+    barrier(rp, wp);
+
+    /* keep sending notification with instance-identifier */
+    for (i = 0; i < 50; ++i) {
+        ret = sr_event_notif_send_tree(sess, notif);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    lyd_free(notif);
+
+    sr_unsubscribe(sub);
+    sr_disconnect(conn);
+    return 0;
+}
+
+static int
+test_notif_instid2(int rp, int wp)
+{
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    int ret, i;
+
+    ret = sr_connect(0, &conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_start(conn, SR_DS_RUNNING, &sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for the other process */
+    barrier(rp, wp);
+
+    /* keep changing data in some arbitrary way */
+    for (i = 0; i < 50; ++i) {
+        ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/enabled", "false", NULL, 0);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/description", "desc", NULL, 0);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_apply_changes(sess, 0, 0);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+
+        ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/enabled", "true", NULL, 0);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/description", "desc2", NULL, 0);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_apply_changes(sess, 0, 0);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    sr_disconnect(conn);
+    return 0;
+}
+
 int
 main(void)
 {
     struct test tests[] = {
         {"rpc sub", test_rpc_sub, test_rpc_sub, setup, teardown},
         {"rpc crash", test_rpc_crash1, test_rpc_crash2, setup, teardown},
+        {"notif instid", test_notif_instid1, test_notif_instid2, setup, teardown},
     };
 
     sr_log_set_cb(test_log_cb);

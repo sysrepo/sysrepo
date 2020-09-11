@@ -640,6 +640,29 @@ sr_error_info_t *sr_shmmod_collect_op_deps(sr_conn_ctx_t *conn, const struct lys
         int output, struct ly_set *mod_set, sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count);
 
 /**
+ * @brief Collect required modules of instance-identifiers found in data.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_deps SHM dependencies of relevant instance-identifiers.
+ * @param[in] shm_dep_count SHM dependency count.
+ * @param[in] data Data to look for instance-identifiers in.
+ * @param[in,out] mod_set Set of modules to add to.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_collect_instid_deps_data(sr_conn_ctx_t *conn, sr_mod_data_dep_t *shm_deps,
+        uint16_t shm_dep_count, const struct lyd_node *data, struct ly_set *mod_set);
+
+/**
+ * @brief Collect required modules of instance-identifiers found in
+ * (MOD_INFO_REQ & MOD_INFO_CHANGED) | MOD_INFO_INV_DEP modules in mod info. Other modules will not be validated.
+ *
+ * @param[in] mod_info Mod info with the modules and data.
+ * @param[in,out] mod_set Set of modules to add to.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_collect_instid_deps_modinfo(const struct sr_mod_info_s *mod_info, struct ly_set *mod_set);
+
+/**
  * @brief READ lock all modules in mod info.
  *
  * @param[in] mod_info Mod info to use.

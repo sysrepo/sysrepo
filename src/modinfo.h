@@ -139,14 +139,11 @@ sr_error_info_t *sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const st
  * @brief Validate data for modules in mod info.
  *
  * @param[in] mod_info Mod info to use.
+ * @param[in] mod_state Bitmask of state flags, module with at least one matching but will be validated.
  * @param[in] finish_diff Whether to update diff with possible changes caused by validation.
- * @param[in] sid Sysrepo session ID.
- * @param[out] cb_error_info Callback error info in case an operational subscriber data required
- * because of an instance-identifier retrieval failed.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_diff, sr_sid_t *sid,
-        sr_error_info_t **cb_error_info);
+sr_error_info_t *sr_modinfo_validate(struct sr_mod_info_s *mod_info, int mod_state, int finish_diff);
 
 /**
  * @brief Add default values into data for modules in mod info.
@@ -170,17 +167,10 @@ sr_error_info_t *sr_modinfo_add_np_cont(struct sr_mod_info_s *mod_info);
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] op Operation data tree (RPC/action/notification).
- * @param[in] shm_deps Main SHM dependencies of the operation.
- * @param[in] shm_dep_count Main SHM dependency count.
  * @param[in] output Whether this is the output of an operation.
- * @param[in] sid Sysrepo session ID.
- * @param[in] timeout_ms Operational callback timeout in milliseconds.
- * @param[out] cb_error_info Callback error info in case an operational subscriber data required
- * because of an instance-identifier retrieval failed.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, sr_mod_data_dep_t *shm_deps,
-        uint16_t shm_dep_count, int output, sr_sid_t *sid, uint32_t timeout_ms, sr_error_info_t **cb_error_info);
+sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int output);
 
 /**
  * @brief Filter data from mod info.

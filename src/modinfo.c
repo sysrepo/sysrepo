@@ -1660,106 +1660,6 @@ sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const struct ly_set *mod_
     return NULL;
 }
 
-/**
- * @brief Add modules and data dependencies of instance-identifiers to mod info.
- *
- * @param[in] mod_info Mod info to use.
- * @param[in] shm_deps SHM dependencies of relevant instance-identifiers.
- * @param[in] shm_dep_count SHM dependency count.
- * @param[in] sid Sysrepo session ID.
- * @param[in] timeout_ms Operational callback timeout in milliseconds.
- * @param[out] cb_error_info Callback error info returned by oper subscribers, if any.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_modinfo_add_instid_deps_data(struct sr_mod_info_s *mod_info, sr_mod_data_dep_t *shm_deps, uint16_t shm_dep_count,
-        const struct lyd_node *data, sr_sid_t *sid, uint32_t timeout_ms, sr_error_info_t **cb_error_info)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_conn_ctx_t *conn;
-    const struct lys_module *ly_mod;
-    struct ly_set *set = NULL, *dep_set = NULL;
-    const char *val_str;
-    char *mod_name;
-    uint32_t i, j;
-
-    conn = mod_info->conn;
-
-    dep_set = ly_set_new();
-    if (!dep_set) {
-        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-        goto cleanup;
-    }
-
-    /* collect all possibly required modules (because of inst-ids) into a set */
-    for (i = 0; i < shm_dep_count; ++i) {
-        if (shm_deps[i].type == SR_DEP_INSTID) {
-            if (data) {
-                set = lyd_find_path(data, conn->ext_shm.addr + shm_deps[i].xpath);
-            } else {
-                /* no data, just fake empty set */
-                set = ly_set_new();
-            }
-            if (!set) {
-                sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-                goto cleanup;
-            }
-
-            if (set->number) {
-                /* extract module names from all the existing instance-identifiers */
-                for (j = 0; j < set->number; ++j) {
-                    assert(set->set.d[j]->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST));
-                    val_str = sr_ly_leaf_value_str(set->set.d[j]);
-
-                    mod_name = sr_get_first_ns(val_str);
-                    ly_mod = ly_ctx_get_module(mod_info->conn->ly_ctx, mod_name, NULL, 1);
-                    free(mod_name);
-                    SR_CHECK_INT_GOTO(!ly_mod, err_info, cleanup);
-
-                    /* add module int oset */
-                    if (ly_set_add(dep_set, (void *)ly_mod, 0) == -1) {
-                        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-                        goto cleanup;
-                    }
-                }
-            } else if (shm_deps[i].module) {
-                /* assume a default value will be used even though it may not be */
-                ly_mod = ly_ctx_get_module(mod_info->conn->ly_ctx, conn->ext_shm.addr + shm_deps[i].module, NULL, 1);
-                SR_CHECK_INT_GOTO(!ly_mod, err_info, cleanup);
-
-                if (ly_set_add(dep_set, (void *)ly_mod, 0) == -1) {
-                    sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-                    goto cleanup;
-                }
-            }
-            ly_set_free(set);
-            set = NULL;
-        }
-    }
-
-    /* add new modules to mod_info */
-    for (i = 0; i < dep_set->number; ++i) {
-        /* remember how many modules there were and add this one */
-        j = mod_info->mod_count;
-        if ((err_info = sr_modinfo_add_mod(dep_set->set.g[i], MOD_INFO_DEP, 0, mod_info))) {
-            goto cleanup;
-        }
-
-        /* add this module data if not already there */
-        if ((j < mod_info->mod_count) && (err_info = sr_modinfo_module_data_load(mod_info, &mod_info->mods[j], sid,
-                    NULL, timeout_ms, 0, cb_error_info))) {
-            goto cleanup;
-        }
-    }
-
-    /* success */
-
-cleanup:
-    ly_set_free(set);
-    ly_set_free(dep_set);
-    return err_info;
-}
-
 static sr_error_info_t *
 sr_modinfo_ly_val_diff_merge(struct sr_mod_info_s *mod_info, struct lyd_difflist *val_diff)
 {
@@ -1801,7 +1701,7 @@ sr_modinfo_ly_val_diff_merge(struct sr_mod_info_s *mod_info, struct lyd_difflist
 }
 
 sr_error_info_t *
-sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_diff, sr_sid_t *sid, sr_error_info_t **cb_error_info)
+sr_modinfo_validate(struct sr_mod_info_s *mod_info, int mod_state, int finish_diff)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
@@ -1810,34 +1710,13 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_diff, sr_sid_t *s
     uint32_t i, j, valid_mod_count = 0;
     int flags;
 
-    assert(SR_IS_CONVENTIONAL_DS(mod_info->ds) || (sid && cb_error_info));
     assert(!mod_info->data_cached);
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
-        switch (mod->state & MOD_INFO_TYPE_MASK) {
-        case MOD_INFO_REQ:
+        if (mod->state & mod_state) {
             /* this module will be validated */
             ++valid_mod_count;
-
-            if (mod->state & MOD_INFO_CHANGED) {
-                /* check all instids and add their target modules as deps, other inst-ids do not need to be revalidated */
-                if ((err_info = sr_modinfo_add_instid_deps_data(mod_info,
-                        (sr_mod_data_dep_t *)(mod_info->conn->ext_shm.addr + mod->shm_mod->data_deps),
-                        mod->shm_mod->data_dep_count, mod_info->data, sid, 0, cb_error_info))) {
-                    goto cleanup;
-                }
-            }
-            break;
-        case MOD_INFO_INV_DEP:
-            /* this module reference targets could have been changed, needs to be validated */
-            ++valid_mod_count;
-            /* fallthrough */
-        case MOD_INFO_DEP:
-            /* this module will not be validated */
-            break;
-        default:
-            SR_CHECK_INT_GOTO(0, err_info, cleanup);
         }
     }
 
@@ -1846,15 +1725,9 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_diff, sr_sid_t *s
     SR_CHECK_MEM_GOTO(!valid_mods, err_info, cleanup);
     for (i = 0, j = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
-        switch (mod->state & MOD_INFO_TYPE_MASK) {
-        case MOD_INFO_REQ:
-        case MOD_INFO_INV_DEP:
+        if (mod->state & mod_state) {
             valid_mods[j] = mod->ly_mod;
             ++j;
-            break;
-        case MOD_INFO_DEP:
-            /* is not validated */
-            break;
         }
     }
     assert(j == valid_mod_count);
@@ -1973,8 +1846,7 @@ sr_modinfo_add_np_cont(struct sr_mod_info_s *mod_info)
 }
 
 sr_error_info_t *
-sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, sr_mod_data_dep_t *shm_deps,
-        uint16_t shm_dep_count, int output, sr_sid_t *sid, uint32_t timeout_ms, sr_error_info_t **cb_error_info)
+sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int output)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *top_op;
@@ -1985,7 +1857,6 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, sr_m
     int flags;
 
     assert(op->schema->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF));
-    assert((mod_info->ds == SR_DS_OPERATIONAL) && sid && cb_error_info);
 
     /* find top-level node */
     for (top_op = op; top_op->parent; top_op = top_op->parent);
@@ -2023,11 +1894,6 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, sr_m
             SR_ERRINFO_INT(&err_info);
             goto cleanup;
         }
-    }
-
-    /* check instids and add their target modules as deps */
-    if ((err_info = sr_modinfo_add_instid_deps_data(mod_info, shm_deps, shm_dep_count, op, sid, timeout_ms, cb_error_info))) {
-        goto cleanup;
     }
 
     /* validate */
