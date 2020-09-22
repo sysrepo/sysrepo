@@ -4391,8 +4391,9 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
     time_t cur_ts = time(NULL);
     const struct lys_module *ly_mod;
     sr_conn_ctx_t *conn;
-    uint32_t i;
+    uint32_t i, sub_id;
     sr_mod_t *shm_mod;
+    sr_main_shm_t *main_shm;
 
     SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !mod_name || (start_time && (start_time > cur_ts)) || (stop_time
             && (!start_time || (stop_time < start_time))) || (!callback && !tree_callback) || !subscription, session, err_info);
@@ -4462,19 +4463,27 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
         }
     }
 
+    /* get new sub ID */
+    main_shm = (sr_main_shm_t *)session->conn->main_shm.addr;
+    sub_id = ATOMIC_INC_RELAXED(main_shm->new_sub_id);
+    if (sub_id == (uint32_t)(ATOMIC_T_MAX - 1)) {
+        /* the value in the main SHM is actually ATOMIC_T_MAX and calling another INC would cause an overflow */
+        ATOMIC_STORE_RELAXED(main_shm->new_sub_id, 1);
+    }
+
     /* find module */
     shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, ly_mod->name, 0);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, error_unlock_unsub);
 
     if (!start_time) {
         /* add notification subscription into main SHM now if replay was not requested */
-        if ((err_info = sr_shmmod_notif_subscription_add(&conn->ext_shm, shm_mod, (*subscription)->evpipe_num))) {
+        if ((err_info = sr_shmmod_notif_subscription_add(&conn->ext_shm, shm_mod, sub_id, (*subscription)->evpipe_num))) {
             goto error_unlock_unsub;
         }
     }
 
     /* add subscription into structure and create separate specific SHM segment */
-    if ((err_info = sr_sub_notif_add(session, ly_mod->name, xpath, start_time, stop_time, callback, tree_callback,
+    if ((err_info = sr_sub_notif_add(session, ly_mod->name, sub_id, xpath, start_time, stop_time, callback, tree_callback,
                 private_data, *subscription))) {
         goto error_unlock_unsub_unmod;
     }
@@ -4499,12 +4508,12 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
 
 error_unlock_unsub_unmod:
     if (!start_time) {
-        sr_shmmod_notif_subscription_del(conn->ext_shm.addr, shm_mod, (*subscription)->evpipe_num, NULL);
+        sr_shmmod_notif_subscription_del(conn->ext_shm.addr, shm_mod, sub_id, 0, NULL);
     }
 
 error_unlock_unsub:
     if (opts & SR_SUBSCR_CTX_REUSE) {
-        sr_sub_notif_del(ly_mod->name, xpath, start_time, stop_time, callback, tree_callback, private_data, *subscription, 0);
+        sr_sub_notif_del(ly_mod->name, sub_id, *subscription, 0);
     } else {
         _sr_unsubscribe(*subscription);
         *subscription = NULL;
@@ -4681,7 +4690,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
 
     if (notif_sub_count) {
         /* publish notif in an event, do not wait for subscribers */
-        if ((tmp_err_info = sr_shmsub_notif_notify(notif, notif_ts, session->sid, (uint32_t *)notif_subs, notif_sub_count))) {
+        if ((tmp_err_info = sr_shmsub_notif_notify(notif, notif_ts, session->sid, notif_subs, notif_sub_count))) {
             goto cleanup_shm_unlock;
         }
     } else {

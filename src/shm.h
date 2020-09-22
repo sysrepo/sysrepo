@@ -31,7 +31,7 @@
 #include "common.h"
 
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
-#define SR_SHM_VER 2                        /**< Main and ext SHM version of their expected content structures. */
+#define SR_SHM_VER 3                        /**< Main and ext SHM version of their expected content structures. */
 
 /**
  * Main SHM organization
@@ -116,6 +116,7 @@ typedef struct sr_mod_oper_sub_s {
  * @brief Ext SHM notification subscription.
  */
 typedef struct sr_mod_notif_sub_s {
+    uint32_t sub_id;            /**< Unique (notification) subscription ID. */
     uint32_t evpipe_num;        /**< Event pipe number. */
 } sr_mod_notif_sub_t;
 
@@ -218,6 +219,7 @@ typedef struct sr_main_shm_s {
     uint16_t rpc_sub_count;     /**< Number of RPC/action subscriptions. */
 
     ATOMIC_T new_sr_sid;        /**< SID for a new session. */
+    ATOMIC_T new_sub_id;        /**< Subscription ID of a new notification subscription. */
     ATOMIC_T new_evpipe_num;    /**< Event pipe number for a new subscription. */
 
     off_t conns;                /**< Array of existing connections (connection state). */
@@ -817,21 +819,25 @@ sr_error_info_t *sr_shmmod_oper_subscription_stop(char *ext_shm_addr, sr_mod_t *
  *
  * @param[in] shm_ext Ext SHM.
  * @param[in] shm_mod SHM module.
+ * @param[in] sub_id Unique notif sub ID.
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, uint32_t evpipe_num);
+sr_error_info_t *sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, uint32_t sub_id,
+        uint32_t evpipe_num);
 
 /**
  * @brief Remove main SHM module notification subscription.
  *
  * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] shm_mod SHM module.
+ * @param[in] sub_id Unique notif sub ID.
  * @param[in] evpipe_num Subscription event pipe number.
  * @param[out] last_removed Whether this is the last module notification subscription that was removed.
  * @return 0 if removed, 1 if no matching found.
  */
-int sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t evpipe_num, int *last_removed);
+int sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num,
+        int *last_removed);
 
 /**
  * @brief Remove main SHM module notification subscription and do a proper cleanup.
@@ -839,12 +845,12 @@ int sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint
  *
  * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] shm_mod SHM module.
- * @param[in] evpipe_num Subscription event pipe number.
- * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.
+ * @param[in] sub_id Unique notif sub ID in case a specific subscription should be removed.
+ * @param[in] evpipe_num Subscription event pipe number in case all matching subscriptions should be removed.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_notif_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t evpipe_num,
-        int all_evpipe);
+sr_error_info_t *sr_shmmod_notif_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t sub_id,
+        uint32_t evpipe_num);
 
 /**
  * @brief Remove all stored operational data of a connection.
@@ -990,12 +996,12 @@ sr_error_info_t *sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, const char *op_
  * @param[in] notif Notification data tree.
  * @param[in] notif_ts Notification timestamp.
  * @param[in] sid Originator sysrepo session ID.
- * @param[in] notif_sub_evpipe_nums Array of subscribers event pipe numbers.
- * @param[in] notif_sub_count Number of subscribers.
+ * @param[in] notif_subs Array of subscriptions for the specific notification.
+ * @param[in] notif_sub_count Number of notification subscribers.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t sid,
-        uint32_t *notif_sub_evpipe_nums, uint32_t notif_sub_count);
+        const sr_mod_notif_sub_t *notif_subs, uint32_t notif_sub_count);
 
 /**
  * @brief Process all module change events, if any.

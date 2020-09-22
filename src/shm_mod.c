@@ -923,7 +923,7 @@ sr_shmmod_oper_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, const ch
 }
 
 sr_error_info_t *
-sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, uint32_t evpipe_num)
+sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_notif_sub_t *shm_sub;
@@ -935,16 +935,20 @@ sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, uint32_t 
     }
 
     /* fill new subscription */
+    shm_sub->sub_id = sub_id;
     shm_sub->evpipe_num = evpipe_num;
 
     return NULL;
 }
 
 int
-sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t evpipe_num, int *last_removed)
+sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num,
+        int *last_removed)
 {
     sr_mod_notif_sub_t *shm_sub;
     uint16_t i;
+
+    assert((sub_id || evpipe_num) && (!sub_id || !evpipe_num));
 
     if (last_removed) {
         *last_removed = 0;
@@ -953,7 +957,9 @@ sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t
     /* find the subscription */
     shm_sub = (sr_mod_notif_sub_t *)(ext_shm_addr + shm_mod->notif_subs);
     for (i = 0; i < shm_mod->notif_sub_count; ++i) {
-        if (shm_sub[i].evpipe_num == evpipe_num) {
+        if (sub_id && (shm_sub[i].sub_id == sub_id)) {
+            break;
+        } else if (shm_sub[i].evpipe_num == evpipe_num) {
             break;
         }
     }
@@ -973,19 +979,21 @@ sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t
 }
 
 sr_error_info_t *
-sr_shmmod_notif_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t evpipe_num, int all_evpipe)
+sr_shmmod_notif_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num)
 {
     sr_error_info_t *err_info = NULL;
     const char *mod_name;
     char *path;
     int last_removed;
 
+    assert((sub_id || evpipe_num) && (!sub_id || !evpipe_num));
+
     mod_name = ext_shm_addr + shm_mod->name;
 
     do {
         /* remove the subscriptions from the main SHM */
-        if (sr_shmmod_notif_subscription_del(ext_shm_addr, shm_mod, evpipe_num, &last_removed)) {
-            if (!all_evpipe) {
+        if (sr_shmmod_notif_subscription_del(ext_shm_addr, shm_mod, sub_id, evpipe_num, &last_removed)) {
+            if (sub_id) {
                 SR_ERRINFO_INT(&err_info);
             }
             break;
@@ -1001,7 +1009,7 @@ sr_shmmod_notif_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_
             }
             free(path);
         }
-    } while (all_evpipe);
+    } while (evpipe_num);
 
     return err_info;
 }

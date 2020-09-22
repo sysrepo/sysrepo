@@ -990,7 +990,7 @@ sr_shmmain_conn_recover(sr_conn_ctx_t *conn)
                     if ((tmp_err = sr_shmmod_oper_subscription_stop(conn->ext_shm.addr, shm_mod, NULL, evpipes[j], 1))) {
                         sr_errinfo_merge(&err_info, tmp_err);
                     }
-                    if ((tmp_err = sr_shmmod_notif_subscription_stop(conn->ext_shm.addr, shm_mod, evpipes[j], 1))) {
+                    if ((tmp_err = sr_shmmod_notif_subscription_stop(conn->ext_shm.addr, shm_mod, 0, evpipes[j]))) {
                         sr_errinfo_merge(&err_info, tmp_err);
                     }
                 }
@@ -1769,6 +1769,7 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
             goto error;
         }
         ATOMIC_STORE_RELAXED(main_shm->new_sr_sid, 1);
+        ATOMIC_STORE_RELAXED(main_shm->new_sub_id, 1);
         ATOMIC_STORE_RELAXED(main_shm->new_evpipe_num, 1);
 
         /* remove leftover event pipes */

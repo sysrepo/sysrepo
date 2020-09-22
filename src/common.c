@@ -390,8 +390,9 @@ sr_sub_oper_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *
 }
 
 sr_error_info_t *
-sr_sub_notif_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath, time_t start_time, time_t stop_time,
-        sr_event_notif_cb notif_cb, sr_event_notif_tree_cb notif_tree_cb, void *private_data, sr_subscription_ctx_t *subs)
+sr_sub_notif_add(sr_session_ctx_t *sess, const char *mod_name, uint32_t sub_id, const char *xpath, time_t start_time,
+        time_t stop_time, sr_event_notif_cb notif_cb, sr_event_notif_tree_cb notif_tree_cb, void *private_data,
+        sr_subscription_ctx_t *subs)
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_notif_s *notif_sub = NULL;
@@ -444,6 +445,7 @@ sr_sub_notif_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath
     memset(notif_sub->subs + notif_sub->sub_count, 0, sizeof *notif_sub->subs);
 
     /* set attributes */
+    notif_sub->subs[notif_sub->sub_count].sub_id = sub_id;
     if (xpath) {
         mem[3] = strdup(xpath);
         SR_CHECK_MEM_GOTO(!mem[3], err_info, error_unlock);
@@ -477,8 +479,7 @@ error_unlock:
 }
 
 void
-sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, time_t stop_time, sr_event_notif_cb notif_cb,
-        sr_event_notif_tree_cb notif_tree_cb, void *private_data, sr_subscription_ctx_t *subs, int has_subs_lock)
+sr_sub_notif_del(const char *mod_name, uint32_t sub_id, sr_subscription_ctx_t *subs, int has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
@@ -500,13 +501,7 @@ sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, tim
         }
 
         for (j = 0; j < notif_sub->sub_count; ++j) {
-            if ((!xpath && notif_sub->subs[j].xpath) || (xpath && (!notif_sub->subs[j].xpath
-                    || strcmp(notif_sub->subs[j].xpath, xpath)))) {
-                continue;
-            }
-            if ((start_time != notif_sub->subs[j].start_time) || (stop_time != notif_sub->subs[j].stop_time)
-                    || (notif_cb != notif_sub->subs[j].cb) || (notif_tree_cb != notif_sub->subs[j].tree_cb)
-                    || (private_data != notif_sub->subs[j].private_data)) {
+            if (sub_id != notif_sub->subs[j].sub_id) {
                 continue;
             }
 
@@ -842,14 +837,12 @@ notif_subs_del:
         for (j = 0; j < notif_sub->sub_count; ++j) {
             if (notif_sub->subs[j].sess == sess) {
                 /* properly remove the subscriptions from the main SHM */
-                if ((err_info = sr_shmmod_notif_subscription_stop(ext_shm->addr, shm_mod, subs->evpipe_num, 0))) {
+                if ((err_info = sr_shmmod_notif_subscription_stop(ext_shm->addr, shm_mod, notif_sub->subs[j].sub_id, 0))) {
                     return err_info;
                 }
 
                 /* remove the subscription from the subscription structure */
-                sr_sub_notif_del(notif_sub->module_name, notif_sub->subs[j].xpath, notif_sub->subs[j].start_time,
-                        notif_sub->subs[j].stop_time, notif_sub->subs[j].cb, notif_sub->subs[j].tree_cb,
-                        notif_sub->subs[j].private_data, subs, 0);
+                sr_sub_notif_del(notif_sub->module_name, notif_sub->subs[j].sub_id, subs, 0);
 
                 /* restart loops */
                 goto notif_subs_del;
