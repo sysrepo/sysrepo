@@ -1577,6 +1577,9 @@ typedef enum sr_ev_notif_type_e {
                                        (all the stored notifications from the given time interval have been delivered). */
     SR_EV_NOTIF_STOP,             /**< Not a real notification, just a signal that replay stop time has been reached
                                        (delivered only if stop_time was specified when subscribing). */
+    SR_EV_NOTIF_SUSPENDED,        /**< Not a real notification, just a signal that the notification was suspended. */
+    SR_EV_NOTIF_RESUMED,          /**< Not a real notification, just a signal that the notification was resumed after
+                                       previously suspended. */
 } sr_ev_notif_type_t;
 
 /**
@@ -1686,6 +1689,33 @@ int sr_event_notif_send(sr_session_ctx_t *session, const char *path, const sr_va
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif);
+
+/**
+ * @brief Get the subscription ID of the last notification subscription.
+ *
+ * @param[in] subscription Subscription context to read from.
+ * @return Unique notification subscription ID.
+ */
+uint32_t sr_event_notif_sub_id_get_last(const sr_subscription_ctx_t *subscription);
+
+/**
+ * @brief Suspend a notification subscription, special ::SR_EV_NOTIF_SUSPENDED notification is delivered.
+ *
+ * @param[in] subscription Subscription context to use.
+ * @param[in] sub_id Subscription ID of the specific subscription to suspend.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_event_notif_sub_suspend(sr_subscription_ctx_t *subscription, uint32_t sub_id);
+
+/**
+ * @brief Resume a previously suspended notification subscription, special ::SR_EV_NOTIF_RESUMED notification is
+ * delivered.
+ *
+ * @param[in] subscription Subscription context to use.
+ * @param[in] sub_id Subscription ID of the specific subscription to resume.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_event_notif_sub_resume(sr_subscription_ctx_t *subscription, uint32_t sub_id);
 
 /** @} notifsubs */
 

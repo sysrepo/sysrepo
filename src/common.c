@@ -946,12 +946,21 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
+    uint32_t i;
 
     shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, mod_name, 0);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     *notif_subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
-    *notif_sub_count = shm_mod->notif_sub_count;
+
+    /* do not count suspended subscribers */
+    *notif_sub_count = 0;
+    for (i = 0; i < shm_mod->notif_sub_count; ++i) {
+        if (!(*notif_subs)[i].suspended) {
+            ++(*notif_sub_count);
+        }
+    }
+
     return NULL;
 }
 

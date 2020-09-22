@@ -4717,6 +4717,142 @@ cleanup_shm_unlock:
     return sr_api_ret(session, err_info);
 }
 
+API uint32_t
+sr_event_notif_sub_id_get_last(const sr_subscription_ctx_t *subscription)
+{
+    uint32_t i, last_sub_id = 0, cur_sub_id;
+
+    if (!subscription) {
+        return 0;
+    }
+
+    for (i = 0; i < subscription->notif_sub_count; ++i) {
+        /* last subscription must be at the array end */
+        cur_sub_id = subscription->notif_subs[i].subs[subscription->notif_subs[i].sub_count - 1].sub_id;
+        if (cur_sub_id > last_sub_id) {
+            last_sub_id = cur_sub_id;
+        }
+    }
+
+    return last_sub_id;
+}
+
+/**
+ * @brief Find a specific notification subscription.
+ *
+ * @param[in] subscription Subscription context to use.
+ * @param[in] sub_id Subscription ID to find.
+ * @param[out] module_name Found subscription module name.
+ * @return Matching notification subscription, NULL if not found.
+ */
+static struct modsub_notifsub_s *
+sr_event_notif_find_sub(const sr_subscription_ctx_t *subscription, uint32_t sub_id, const char **module_name)
+{
+    uint32_t i, j;
+
+    for (i = 0; i < subscription->notif_sub_count; ++i) {
+        for (j = 0; j < subscription->notif_subs[i].sub_count; ++j) {
+            if (subscription->notif_subs[i].subs[j].sub_id == sub_id) {
+                *module_name = subscription->notif_subs[i].module_name;
+                return &subscription->notif_subs[i].subs[j];
+            }
+        }
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief Change suspended state of a subscription.
+ *
+ * @param[in] subscription Subscription context to use.
+ * @param[in] sub_id Subscription notification ID.
+ * @param[in] suspend Whether to suspend or resume the subscription.
+ * @return Error code.
+ */
+static int
+_sr_event_notif_sub_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_id, int suspend)
+{
+    sr_error_info_t *err_info = NULL;
+    struct modsub_notifsub_s *notif_sub;
+    const char *module_name;
+    sr_mod_t *shm_mod;
+    sr_mod_notif_sub_t *shm_sub;
+    sr_sid_t sid = {0};
+    uint32_t i;
+
+    SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
+
+    /* SHM LOCK (writing suspended, but that cannot remap ext SHM) */
+    if ((err_info = sr_shmmain_lock_remap(subscription->conn, SR_LOCK_WRITE, 0, __func__))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* SUBS LOCK */
+    if ((err_info = sr_mlock(&subscription->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, __func__))) {
+        goto cleanup_unlock;
+    }
+
+    /* find the subscription in the context */
+    notif_sub = sr_event_notif_find_sub(subscription, sub_id, &module_name);
+    if (!notif_sub) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Notification subscription with ID \"%u\" not found.", sub_id);
+        goto cleanup_subs_unlock;
+    }
+
+    /* find the subscription in SHM */
+    shm_mod = sr_shmmain_find_module(&subscription->conn->main_shm, subscription->conn->ext_shm.addr, module_name, 0);
+    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup_subs_unlock);
+    shm_sub = (sr_mod_notif_sub_t *)(subscription->conn->ext_shm.addr + shm_mod->notif_subs);
+    for (i = 0; i < shm_mod->notif_sub_count; ++i) {
+        if (shm_sub[i].sub_id == sub_id) {
+            break;
+        }
+    }
+    SR_CHECK_INT_GOTO(i == shm_mod->notif_sub_count, err_info, cleanup_subs_unlock);
+
+    /* set the flag */
+    if (suspend && shm_sub[i].suspended) {
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Notification subscription with ID \"%u\" already suspended.",
+                sub_id);
+        goto cleanup_subs_unlock;
+    } else if (!suspend && !shm_sub[i].suspended) {
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Notification subscription with ID \"%u\" not suspended.",
+                sub_id);
+        goto cleanup_subs_unlock;
+    }
+    shm_sub[i].suspended = suspend;
+
+    /* send the special notification */
+    if ((err_info = sr_notif_call_callback(subscription->conn, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
+            suspend ? SR_EV_NOTIF_SUSPENDED : SR_EV_NOTIF_RESUMED, NULL, time(NULL), sid))) {
+        /* remove the flag */
+        shm_sub[i].suspended = !suspend;
+        goto cleanup_subs_unlock;
+    }
+
+cleanup_subs_unlock:
+    /* SUBS UNLOCK */
+    sr_munlock(&subscription->subs_lock);
+
+cleanup_unlock:
+    /* SHM UNLOCK */
+    sr_shmmain_unlock(subscription->conn, SR_LOCK_WRITE, 0, __func__);
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_event_notif_sub_suspend(sr_subscription_ctx_t *subscription, uint32_t sub_id)
+{
+    return _sr_event_notif_sub_suspended(subscription, sub_id, 1);
+}
+
+API int
+sr_event_notif_sub_resume(sr_subscription_ctx_t *subscription, uint32_t sub_id)
+{
+    return _sr_event_notif_sub_suspended(subscription, sub_id, 0);
+}
+
 /**
  * @brief Learn what kinds (config) of nodes are provided by an operational subscription
  * to determine its type.

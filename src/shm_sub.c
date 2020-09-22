@@ -1810,6 +1810,11 @@ sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t s
 
     /* notify all subscribers using event pipe and do not wait for them */
     for (i = 0; i < notif_sub_count; ++i) {
+        if (notif_subs[i].suspended) {
+            /* skip suspended subscribers */
+            continue;
+        }
+
         if ((err_info = sr_shmsub_notify_evpipe(notif_subs[i].evpipe_num))) {
             goto cleanup_wrunlock;
         }

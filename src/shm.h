@@ -118,6 +118,7 @@ typedef struct sr_mod_oper_sub_s {
 typedef struct sr_mod_notif_sub_s {
     uint32_t sub_id;            /**< Unique (notification) subscription ID. */
     uint32_t evpipe_num;        /**< Event pipe number. */
+    int suspended;              /**< Whether the subscription is not suspended. */
 } sr_mod_notif_sub_t;
 
 #define SR_MOD_REPLAY_SUPPORT 0x01  /**< Flag for module with replay support. */
