@@ -3333,7 +3333,7 @@ sr_subs_new(sr_conn_ctx_t *conn, sr_subscr_options_t opts, sr_subscription_ctx_t
     }
 
     /* set umask so that the correct permissions are really set */
-    um = umask(00000);
+    um = umask(SR_UMASK);
 
     /* create the event pipe */
     ret = mkfifo(path, SR_EVPIPE_PERM);

@@ -721,7 +721,7 @@ sr_shmmain_createlock_open(int *shm_lock)
     }
 
     /* set umask so that the correct permissions are really set */
-    um = umask(00000);
+    um = umask(SR_UMASK);
 
     *shm_lock = open(path, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
     free(path);
@@ -1740,7 +1740,7 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
         }
 
         /* set umask so that the correct permissions are really set */
-        um = umask(00000);
+        um = umask(SR_UMASK);
 
         /* create shared memory */
         shm->fd = shm_open(shm_name, O_RDWR | O_CREAT | O_EXCL, SR_MAIN_SHM_PERM);
@@ -1805,7 +1805,7 @@ sr_shmmain_ext_open(sr_shm_t *shm, int zero)
     }
 
     /* set umask so that the correct permissions are really set */
-    um = umask(00000);
+    um = umask(SR_UMASK);
 
     shm->fd = shm_open(shm_name, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
     free(shm_name);

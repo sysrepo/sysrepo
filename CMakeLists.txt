@@ -124,6 +124,9 @@ if(NOT ${YANGLIB_REVISION} STREQUAL "2019-01-04" AND NOT ${YANGLIB_REVISION} STR
 endif()
 message(STATUS "ietf-yang-library revision: ${YANGLIB_REVISION}")
 
+# umask
+set(SYSREPO_UMASK "00000" CACHE STRING "Umask used for any files created by sysrepo.")
+
 # paths
 if(NOT REPO_PATH)
     if(CMAKE_BUILD_TYPE_LOWER STREQUAL debug)

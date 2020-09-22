@@ -2526,7 +2526,7 @@ sr_cp_file2shm(const char *to, const char *from, mode_t perm)
     }
 
     /* set umask so that the correct permissions are really set */
-    um = umask(00000);
+    um = umask(SR_UMASK);
 
     /* open "to" SHM */
     fd_to = shm_open(to, O_WRONLY | O_TRUNC | O_CREAT, perm);
@@ -2576,7 +2576,7 @@ sr_mkpath(char *path, mode_t mode)
     assert(path[0] == '/');
 
     /* set umask so that the correct permissions are really set */
-    um = umask(00000);
+    um = umask(SR_UMASK);
 
     for (p = strchr(path + 1, '/'); p; p = strchr(p + 1, '/')) {
         *p = '\0';
@@ -4338,7 +4338,7 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node
     }
 
     /* set umask so that the correct permissions are really set if the file is created */
-    um = umask(00000);
+    um = umask(SR_UMASK);
 
     /* open */
     if (ds == SR_DS_STARTUP) {

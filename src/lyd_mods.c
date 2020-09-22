@@ -102,7 +102,7 @@ sr_lydmods_print(struct lyd_node **sr_mods)
     }
 
     /* set umask so that the correct permissions are set in case this file does not exist */
-    um = umask(00000);
+    um = umask(SR_UMASK);
 
     /* store the data tree */
     if (lyd_print_path(path, *sr_mods, LYD_LYB, LYP_WITHSIBLINGS)) {

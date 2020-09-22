@@ -55,7 +55,7 @@ sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_sh
     created = 1;
 
     /* set umask so that the correct permissions are really set */
-    um = umask(00000);
+    um = umask(SR_UMASK);
 
     shm->fd = shm_open(path, O_RDWR | O_CREAT | O_EXCL, SR_SUB_SHM_PERM);
     umask(um);
