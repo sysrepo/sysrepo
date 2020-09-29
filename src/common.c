@@ -3422,7 +3422,7 @@ sr_lyd_create_np_cont_r(struct lyd_node **first, struct lyd_node *parent, const 
         }
 
         /* create the NP container */
-        node = lyd_new(parent, snode->module, snode->name);
+        node = lyd_new(parent, lys_node_module(snode), snode->name);
         if (!node) {
             sr_errinfo_new_ly(&err_info, ly_ctx);
             return err_info;
