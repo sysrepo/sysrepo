@@ -2361,6 +2361,23 @@ module_change_dflt_leaf_cb(sr_session_ctx_t *session, const char *module_name, c
 
         sr_free_val(old_val);
 
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_MODIFIED);
+        assert_non_null(old_val);
+        assert_int_equal(old_val->dflt, 1);
+        assert_string_equal(old_val->xpath, "/defaults:dflt2");
+        assert_string_equal(old_val->data.string_val, "I exist!");
+        assert_non_null(new_val);
+        assert_int_equal(new_val->dflt, 0);
+        assert_string_equal(new_val->xpath, "/defaults:dflt2");
+        assert_string_equal(new_val->data.string_val, "explicit");
+
+        sr_free_val(old_val);
+        sr_free_val(new_val);
+
         /* no more changes */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_NOT_FOUND);
@@ -2392,6 +2409,23 @@ module_change_dflt_leaf_cb(sr_session_ctx_t *session, const char *module_name, c
         assert_int_equal(new_val->dflt, 0);
         assert_string_equal(new_val->xpath, "/defaults:l1[k='when-true']/cont1/cont2/dflt1");
         assert_int_equal(new_val->data.uint8_val, 5);
+
+        sr_free_val(old_val);
+        sr_free_val(new_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_MODIFIED);
+        assert_non_null(old_val);
+        assert_int_equal(old_val->dflt, 0);
+        assert_string_equal(old_val->xpath, "/defaults:dflt2");
+        assert_string_equal(old_val->data.string_val, "explicit");
+        assert_non_null(new_val);
+        assert_int_equal(new_val->dflt, 1);
+        assert_string_equal(new_val->xpath, "/defaults:dflt2");
+        assert_string_equal(new_val->data.string_val, "I exist!");
 
         sr_free_val(old_val);
         sr_free_val(new_val);
@@ -2600,9 +2634,11 @@ apply_change_dflt_leaf_thread(void *arg)
     /*
      * perform 2nd change
      *
-     * (remove explicit container with a default container and default value)
+     * (remove explicit container with a default container and default value, also set a leaf explicitly)
      */
     ret = sr_delete_item(sess, "/defaults:l1[k='when-true']/cont1", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/defaults:dflt2", "explicit", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2628,8 +2664,8 @@ apply_change_dflt_leaf_thread(void *arg)
             "</cont2>"
         "</cont1>"
     "</l1>"
-    "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
-        "I exist!"
+    "<dflt2 xmlns=\"urn:defaults\">"
+        "explicit"
     "</dflt2>";
 
     assert_string_equal(str1, str2);
@@ -2638,9 +2674,11 @@ apply_change_dflt_leaf_thread(void *arg)
     /*
      * perform 3rd change
      *
-     * (change default leaf from default to explicitly set with different value)
+     * (change default leaf from default to explicitly set with different value, also remove leaf changing it to default)
      */
     ret = sr_set_item_str(sess, "/defaults:l1[k='when-true']/cont1/cont2/dflt1", "5", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(sess, "/defaults:dflt2", 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2654,6 +2692,8 @@ apply_change_dflt_leaf_thread(void *arg)
     assert_string_equal(data->next->schema->name, "l1");
     assert_int_equal(data->next->child->next->child->child->dflt, 0);
     assert_string_equal(((struct lyd_node_leaf_list *)data->next->child->next->child->child)->value_str, "5");
+    assert_string_equal(data->next->next->schema->name, "dflt2");
+    assert_int_equal(data->next->next->dflt, 1);
 
     lyd_free_withsiblings(data);
 

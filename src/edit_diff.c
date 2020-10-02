@@ -2012,13 +2012,15 @@ sr_diff_merge_replace(struct lyd_node *diff_match, enum edit_op cur_op, int val_
  * @param[in] cur_op Current operation of the diff node.
  * @param[in] cur_own_op Whether \p cur_op is owned or inherited.
  * @param[in] val_equal Whether even values of the nodes match.
+ * @param[in] oper Whether we are merging operational diff. Operational diff is different in a few ways
+ * (such as allowing to delete default values).
  * @param[in] src_node Current source diff node.
  * @param[out] change Set if there are some data changes.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_diff_merge_create(struct lyd_node *diff_match, enum edit_op cur_op, int cur_own_op, int val_equal,
-        const struct lyd_node *src_node, int *change)
+        int oper, const struct lyd_node *src_node, int *change)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *child;
@@ -2038,7 +2040,7 @@ sr_diff_merge_create(struct lyd_node *diff_match, enum edit_op cur_op, int cur_o
             sleaf = NULL;
         }
 
-        if (sleaf && sleaf->dflt && !strcmp(sleaf->dflt, sr_ly_leaf_value_str(src_node))) {
+        if (oper && sleaf && sleaf->dflt && !strcmp(sleaf->dflt, sr_ly_leaf_value_str(src_node))) {
             /* we deleted it, so a default value was in-use, and it matches the created value -> operation NONE */
             if ((err_info = sr_edit_set_oper(diff_match, "none"))) {
                 return err_info;
@@ -2405,7 +2407,7 @@ sr_diff_merge_r(const struct lyd_node *src_node, enum edit_op parent_op, void *o
             }
             break;
         case EDIT_CREATE:
-            if ((err_info = sr_diff_merge_create(diff_node, cur_op, op_own, val_equal, src_node, change))) {
+            if ((err_info = sr_diff_merge_create(diff_node, cur_op, op_own, val_equal, oper_conn ? 1 : 0, src_node, change))) {
                 goto op_error;
             }
             break;
