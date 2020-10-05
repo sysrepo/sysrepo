@@ -1564,6 +1564,78 @@ test_rpc_action_with_no_thread(void **state)
     sr_unsubscribe(subscr2);
 }
 
+/* TEST */
+static int
+oper_rpc_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+        uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    (void)session;
+    (void)module_name;
+    (void)xpath;
+    (void)request_xpath;
+    (void)request_id;
+    (void)parent;
+    (void)private_data;
+
+    fail();
+    return SR_ERR_UNSUPPORTED;
+}
+
+static int
+rpc_rpc_oper_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
+        uint32_t request_id, struct lyd_node *output, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    struct lyd_node *node;
+
+    (void)session;
+    (void)op_path;
+    (void)input;
+    (void)event;
+    (void)request_id;
+
+    /* callback called */
+    ++st->cb_called;
+
+    /* create output data */
+    node = lyd_new_path(output, NULL, "l5", "256", 0, LYD_PATH_OPT_OUTPUT);
+    assert_non_null(node);
+
+    return SR_ERR_OK;
+}
+
+static void
+test_rpc_oper(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr;
+    sr_val_t input, *output;
+    size_t output_count;
+    int ret;
+
+    /* rpc subscribe */
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:rpc3", rpc_rpc_oper_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* oper subscribe, should not be called */
+    ret = sr_oper_get_items_subscribe(st->sess, "ops", "/ops:cont", oper_rpc_oper_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create and send the RPC */
+    input.xpath = "/ops:rpc3/l4";
+    input.type = SR_STRING_T;
+    input.data.string_val = "l4-val";
+    input.dflt = 0;
+
+    st->cb_called = 0;
+    ret = sr_rpc_send(st->sess, "/ops:rpc3", &input, 1, 0, &output, &output_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(st->cb_called, 1);
+
+    sr_free_values(output, output_count);
+    sr_unsubscribe(subscr);
+}
+
 /* MAIN */
 int
 main(void)
@@ -1581,6 +1653,7 @@ main(void)
         cmocka_unit_test(test_rpc_shelve),
         cmocka_unit_test(test_input_parameters),
         cmocka_unit_test(test_rpc_action_with_no_thread),
+        cmocka_unit_test(test_rpc_oper),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
