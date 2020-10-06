@@ -473,10 +473,9 @@ static int oper_get_items_cb(sr_session_ctx_t *session, const char *module_name,
         tree = std::make_shared<libyang::Data_Node>(*parent);
         ret = wrap->oper_get_items(sess, module_name, path, request_xpath, request_id, tree, wrap->private_data["oper_get_items"]);
     } else {
-        tree = std::make_shared<libyang::Data_Node>(nullptr);
         ret = wrap->oper_get_items(sess, module_name, path, request_xpath, request_id, tree, wrap->private_data["oper_get_items"]);
         if (tree) {
-            *parent = lyd_dup(tree->swig_node(), LYD_DUP_OPT_RECURSIVE);
+            *parent = lyd_dup_withsiblings(tree->swig_node(), LYD_DUP_OPT_RECURSIVE);
         }
     }
     return ret;
