@@ -471,8 +471,8 @@ int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *
  *
  * @param[in] conn Connection to use.
  * @param[in] module_name Name of the module to set startup data.
- * @param[in] data Data to set. Must be NULL if \p data_path is set.
- * @param[in] data_path Data file with the data to set. Must be NULL if \p data is set.
+ * @param[in] data Data to set. Must be NULL if @p data_path is set.
+ * @param[in] data_path Data file with the data to set. Must be NULL if @p data is set.
  * @param[in] format Format of the data/file.
  * @return Error code (::SR_ERR_OK on success).
  */
@@ -1087,9 +1087,9 @@ int sr_unlock(sr_session_ctx_t *session, const char *module_name);
 /**
  * @brief Check whether the data of the specified module or the whole datastore are locked.
  *
- * Note that if whole datastore is checked, \p is_locked will be set only if all
+ * Note that if whole datastore is checked, @p is_locked will be set only if all
  * the modules are locked by the same Sysrepo session. If a module is not locked
- * or locked by another Sysrepo session, \p is_locked will be false.
+ * or locked by another Sysrepo session, @p is_locked will be false.
  *
  * @param[in] conn Connection to use.
  * @param[in] datastore Datastore of the lock.
@@ -1313,7 +1313,7 @@ typedef struct sr_change_iter_s sr_change_iter_t;
  * @param[in] module_name Name of the module where the change has occurred.
  * @param[in] xpath [XPath](@ref paths) used when subscribing, NULL if the whole module was subscribed to.
  * @param[in] event Type of the callback event that has occurred.
- * @param[in] request_id Request ID unique for the specific \p module_name. Connected events
+ * @param[in] request_id Request ID unique for the specific @p module_name. Connected events
  * for one request (::SR_EV_CHANGE and ::SR_EV_DONE, for example) have the same request ID.
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_module_change_subscribe call.
  * @return User error code (::SR_ERR_OK on success).
@@ -1403,13 +1403,13 @@ int sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_cha
  * by ::sr_get_changes_iter call. Data are represented as _libyang_ subtrees.
  *
  * @note Meaning of output parameters varies based on the operation:
- * ::SR_OP_CREATED - \p node is the created node, for user-ordered lists either \p prev_value or \p prev_list is
+ * ::SR_OP_CREATED - @p node is the created node, for user-ordered lists either @p prev_value or @p prev_list is
  * always set with meaning similar to ::SR_OP_MOVED.
- * ::SR_OP_MODIFIED - \p node is the modified node, \p prev_value is set to the previous value of the leaf,
- * \p prev_dflt is set if the previous leaf value was the default.
- * ::SR_OP_DELETED - \p node is the deleted node.
- * ::SR_OP_MOVED - \p node is the moved (leaf-)list instance, for user-ordered lists either \p prev_value (leaf-list) or
- * \p prev_list (list) is set to the preceding instance unless the node is the first, when they are set to "" (empty string).
+ * ::SR_OP_MODIFIED - @p node is the modified node, @p prev_value is set to the previous value of the leaf,
+ * @p prev_dflt is set if the previous leaf value was the default.
+ * ::SR_OP_DELETED - @p node is the deleted node.
+ * ::SR_OP_MOVED - @p node is the moved (leaf-)list instance, for user-ordered lists either @p prev_value (leaf-list) or
+ * @p prev_list (list) is set to the preceding instance unless the node is the first, when they are set to "" (empty string).
  *
  * @param[in] session Implicit session provided in the callbacks (::sr_module_change_cb). Will not work with other sessions.
  * @param[in,out] iter Iterator acquired with ::sr_get_changes_iter call.
@@ -1452,7 +1452,7 @@ void sr_free_change_iter(sr_change_iter_t *iter);
  * @param[in] input Array of input parameters.
  * @param[in] input_cnt Number of input parameters.
  * @param[in] event Type of the callback event that has occurred.
- * @param[in] request_id Request ID unique for the specific \p op_path.
+ * @param[in] request_id Request ID unique for the specific @p op_path.
  * @param[out] output Array of output parameters. Should be allocated on heap,
  * will be freed by sysrepo after sending of the RPC response.
  * @param[out] output_cnt Number of output parameters.
@@ -1472,7 +1472,7 @@ typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *xpath, const sr_
  * @param[in] op_path Simple operation [path](@ref paths) identifying the RPC/action.
  * @param[in] input Data tree of input parameters. Always points to the __RPC/action__ itself, even for nested operations.
  * @param[in] event Type of the callback event that has occurred.
- * @param[in] request_id Request ID unique for the specific \p op_path.
+ * @param[in] request_id Request ID unique for the specific @p op_path.
  * @param[out] output Data tree of output parameters. Should be allocated on heap,
  * will be freed by sysrepo after sending of the RPC response.
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_rpc_subscribe_tree call.
@@ -1746,7 +1746,7 @@ int sr_event_notif_sub_resume(sr_subscription_ctx_t *subscription, uint32_t sub_
  * @param[in] path [Path](@ref paths) identifying the subtree that is supposed to be provided, same as the one used
  * for the subscription.
  * @param[in] request_xpath [XPath](@ref paths) as requested by a client. Can be NULL.
- * @param[in] request_id Request ID unique for the specific \p module_name.
+ * @param[in] request_id Request ID unique for the specific @p module_name.
  * @param[in,out] parent Pointer to an existing parent of the requested nodes. Is NULL for top-level nodes.
  * Caller is supposed to append the requested nodes to this data subtree and return either the original parent
  * or a top-level node.
@@ -1763,9 +1763,10 @@ typedef int (*sr_oper_get_items_cb)(sr_session_ctx_t *session, const char *modul
  *
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] module_name Name of the affected module.
- * @param[in] path [Path](@ref paths) identifying the subtree which the provider is able to provide. Predicates can be
- * used to provide only specific instances of nodes. Before calling this callback, any existing data matching this
- * path __are deleted__.
+ * @param[in] path [Path](@ref paths) identifying the subtree (not strictly required, all list/leaf-list instances
+ * are also valid, for example) which the provider is able to provide. Predicates can be used to provide only
+ * specific instances of nodes. Before calling this callback, any existing data matching this path __are deleted__
+ * (unless modified by @p opts).
  * @param[in] callback Callback to be called when the operational data for the given xpath are requested.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
