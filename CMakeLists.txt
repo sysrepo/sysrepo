@@ -314,12 +314,14 @@ endif()
 add_custom_target(shm_clean
     COMMAND rm -rf /dev/shm/sr_*
     COMMAND rm -rf /dev/shm/srsub_*
+    COMMENT "Removing all volatile SHM files prefixed with \"sr\""
 )
 
 # phony target for clearing all sysrepo data
 add_custom_target(sr_clean
     COMMAND rm -rf ${REPO_PATH}
     DEPENDS shm_clean
+    COMMENT "Removing the whole persistent repository \"${REPO_PATH}\""
 )
 
 # uninstall
