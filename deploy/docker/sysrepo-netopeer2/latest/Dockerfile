@@ -15,7 +15,6 @@ RUN \
 	pkg-config \
 	libgtk-3-dev \
 	make \
-	vim \
 	valgrind \
 	doxygen \
 	libev-dev \
@@ -23,7 +22,6 @@ RUN \
 	unzip \
 	sudo \
 	python3 \
-	build-essential \
 	bison \
 	flex \
 	swig \
