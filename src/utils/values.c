@@ -844,7 +844,7 @@ sr_tree_to_val(const struct lyd_node *data, const char *path, sr_val_t **value)
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL;
 
-    SR_CHECK_ARG_APIRET(!data || !path || !value, NULL, err_info)
+    SR_CHECK_ARG_APIRET(!data || (data->schema->nodetype & (LYS_RPC | LYS_ACTION)) || !path || !value, NULL, err_info);
 
     *value = NULL;
 
@@ -902,7 +902,11 @@ sr_tree_to_values(const struct lyd_node *data, const char *xpath, sr_val_t **val
         SR_CHECK_MEM_GOTO(!*values, err_info, cleanup);
 
         for (i = 0; i < set->number; ++i) {
-            if ((err_info = sr_val_ly2sr(set->set.d[i], (*values) + i))) {
+            if (set->set.d[i]->schema->nodetype & (LYS_RPC | LYS_ACTION)) {
+                continue;
+            }
+
+            if ((err_info = sr_val_ly2sr(set->set.d[i], *values + *value_cnt))) {
                 goto cleanup;
             }
             ++(*value_cnt);

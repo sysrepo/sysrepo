@@ -263,11 +263,16 @@ def create_test_module():
         session.apply_changes()
         session.session_stop()
 
+        session = sr.Session(connection, sr.SR_DS_RUNNING)
+        session.copy_config(sr.SR_DS_STARTUP)
+        session.session_stop()
+
         connection=None
     except Exception as e:
         print(e)
         connection = None
         return False
+    return True
 
 def remove_example_module():
     connection = sr.Connection(sr.SR_CONN_DEFAULT)
@@ -302,6 +307,11 @@ def create_example_module():
         session.set_item("/example-module:container/list[key1='key1'][key2='key2']/leaf", v)
         session.apply_changes()
         session.session_stop()
+
+        session = sr.Session(connection, sr.SR_DS_RUNNING)
+        session.copy_config(sr.SR_DS_STARTUP)
+        session.session_stop()
+
         connection=None
         return True
     except Exception as e:
@@ -357,6 +367,10 @@ def create_ietf_interfaces():
         session.set_item("/ietf-interfaces:interfaces/interface[name='gigaeth0']/enabled", v)
 
         session.apply_changes()
+        session.session_stop()
+
+        session = sr.Session(connection, sr.SR_DS_RUNNING)
+        session.copy_config(sr.SR_DS_STARTUP)
         session.session_stop()
 
         connection=None

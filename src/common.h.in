@@ -181,6 +181,9 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** default timeout for RPC/action subscription callback (ms) */
 #define SR_RPC_CB_TIMEOUT 2000
 
+/** umask modifying all the permissions below */
+#define SR_UMASK @SYSREPO_UMASK@
+
 /** permissions of main SHM lock file and main SHM itself */
 #define SR_MAIN_SHM_PERM 00666
 
@@ -248,6 +251,15 @@ typedef struct sr_sid_s {
     uint32_t nc;                    /**< NETCONF session ID. */
     char *user;                     /**< Sysrepo user. */
 } sr_sid_t;
+
+/**
+ * @brief Lock mode.
+ */
+typedef enum sr_lock_mode_e {
+    SR_LOCK_NONE = 0,           /**< Not locked. */
+    SR_LOCK_READ,               /**< Read lock. */
+    SR_LOCK_WRITE,              /**< Write lock. */
+} sr_lock_mode_t;
 
 /**
  * @brief Sysrepo read-write lock.
@@ -387,6 +399,7 @@ struct sr_subscription_ctx_s {
     struct modsub_notif_s {
         char *module_name;          /**< Module of the subscriptions. */
         struct modsub_notifsub_s {
+            uint32_t sub_id;        /**< Unique (notification) subscription ID. */
             char *xpath;            /**< Subscription XPath. */
             time_t start_time;      /**< Subscription start time. */
             int replayed;           /**< Flag whether the subscription replay is finished. */
@@ -495,6 +508,7 @@ void sr_sub_oper_del(const char *mod_name, const char *xpath, sr_subscription_ct
  *
  * @param[in] sess Subscription session.
  * @param[in] mod_name Subscription module name.
+ * @param[in] sub_id Unique notif sub ID.
  * @param[in] xpath Subscription XPath.
  * @param[in] start_time Subscription start time.
  * @param[in] stop_time Subscription stop time.
@@ -504,25 +518,19 @@ void sr_sub_oper_del(const char *mod_name, const char *xpath, sr_subscription_ct
  * @param[in,out] subs Subscription structure.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_sub_notif_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath, time_t start_time,
-        time_t stop_time, sr_event_notif_cb notif_cb, sr_event_notif_tree_cb notif_tree_cb, void *private_data,
-        sr_subscription_ctx_t *subs);
+sr_error_info_t *sr_sub_notif_add(sr_session_ctx_t *sess, const char *mod_name, uint32_t sub_id, const char *xpath,
+        time_t start_time, time_t stop_time, sr_event_notif_cb notif_cb, sr_event_notif_tree_cb notif_tree_cb,
+        void *private_data, sr_subscription_ctx_t *subs);
 
 /**
  * @brief Delete a notification subscription from a subscription structure.
  *
  * @param[in] mod_name Subscription module name.
- * @param[in] xpath Subscription XPath.
- * @param[in] start_time Subscription start time.
- * @param[in] stop_time Subscription stop time.
- * @param[in] notif_cb Subscription value callback.
- * @param[in] notif_tree_cb Subscription tree callback.
- * @param[in] private_data Subscription callback private data.
+ * @param[in] sub_id Unique notif sub ID.
  * @param[in,out] subs Subscription structure.
  * @param[in] has_subs_lock Whether the caller already holds subs lock.
  */
-void sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, time_t stop_time, sr_event_notif_cb notif_cb,
-        sr_event_notif_tree_cb notif_tree_cb, void *private_data, sr_subscription_ctx_t *subs, int has_subs_lock);
+void sr_sub_notif_del(const char *mod_name, uint32_t sub_id, sr_subscription_ctx_t *subs, int has_subs_lock);
 
 /**
  * @brief Add an RPC subscription into a subscription structure.
@@ -1220,18 +1228,55 @@ sr_error_info_t *sr_lyd_dup(const struct lyd_node *src_parent, uint32_t depth, s
 struct lyd_node *sr_lyd_child(const struct lyd_node *node, int skip_keys);
 
 /**
- * @brief Duplicate selected nodes from a data tree.
+ * @brief Create any missing config/state NP containers in the siblings, recursively.
+ *
+ * @param[in,out] first First sibling to add NP containers into, set if @p parent is NULL.
+ * Only @p ly_mod data are considered.
+ * @param[in] parent Parent of any added NP containers, set if @p first is NULL.
+ * @param[in] ly_mod Module to consider, set if @p parent is NULL.
+ * @param[in,out] diff Optional diff to append any performed changes to.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_create_sibling_np_cont_r(struct lyd_node **first, struct lyd_node *parent,
+        const struct lys_module *ly_mod, struct lyd_node **diff);
+
+/**
+ * @brief Duplicate only config NP containers of a module from a data tree. Also optionally create state NP containers.
+ *
+ * @param[in] data Data tree to duplicate from.
+ * @param[in] ly_mod Module whose data to duplicate.
+ * @param[in] add_state_np_conts Whether to also add state NP containers.
+ * @param[in,out] new_data Data with appended duplicated nodes.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_dup_module_np_cont(const struct lyd_node *data, const struct lys_module *ly_mod,
+        int add_state_np_conts, struct lyd_node **new_data);
+
+/**
+ * @brief Duplicate all data of a module from a data tree. Also properly handles config NP containers
+ * and optionally even state NP containers.
+ *
+ * @param[in] data Data tree to duplicate from.
+ * @param[in] ly_mod Module whose data to duplicate.
+ * @param[in] add_state_np_conts Whether to also add state NP containers.
+ * @param[in,out] new_data Data with appended duplicated nodes.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_dup_module_data(const struct lyd_node *data, const struct lys_module *ly_mod,
+        int add_state_np_conts, struct lyd_node **new_data);
+
+/**
+ * @brief Duplicate selected nodes from a data tree. Also properly handles config/state NP containers.
  * Works well even for XPaths with intersections.
  *
  * @param[in] data Data tree to duplicate from.
  * @param[in] xpaths Array of XPaths that will select the duplicated nodes.
  * @param[in] xp_count XPath count.
- * @param[in] cont_ly_mod If set, even non-matching NP containers from this module will be duplicated.
- * @param[out] new_data Duplicated selected nodes.
+ * @param[in,out] new_data Data with appended duplicated selected nodes.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lyd_xpath_dup(const struct lyd_node *data, char **xpaths, uint16_t xp_count,
-        const struct lys_module *cont_ly_mod, struct lyd_node **new_data);
+sr_error_info_t *sr_lyd_dup_enabled_xpath(const struct lyd_node *data, char **xpaths, uint16_t xp_count,
+        struct lyd_node **new_data);
 
 /**
  * @brief Remove all nodes selected by XPath.

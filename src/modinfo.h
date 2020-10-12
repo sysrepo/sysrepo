@@ -29,12 +29,14 @@
 #define MOD_INFO_DEP     0x01   /* dependency module, its data cannot be changed, but are required for validation */
 #define MOD_INFO_INV_DEP 0x02   /* inverse dependency module, its data cannot be changed, but will be validated */
 #define MOD_INFO_REQ     0x04   /* required module, its data can be changed and it will be validated */
-#define MOD_INFO_TYPE_MASK 0x07 /* just a mask for all module types */
+#define MOD_INFO_TYPE_MASK 0x07 /* mask for all module types */
 
 #define MOD_INFO_RLOCK   0x08   /* read-locked module (main DS) */
 #define MOD_INFO_WLOCK   0x10   /* write-locked module (main DS) */
 #define MOD_INFO_RLOCK2  0x20   /* read-locked module (secondary DS, it can be only read locked) */
-#define MOD_INFO_CHANGED 0x40   /* module data were changed */
+
+#define MOD_INFO_DATA    0x40   /* module data were loaded */
+#define MOD_INFO_CHANGED 0x80   /* module data were changed */
 
 /**
  * @brief Mod info structure, used for keeping all relevant modules for a data operation.
@@ -49,26 +51,12 @@ struct sr_mod_info_s {
 
     struct sr_mod_info_mod_s {
         sr_mod_t *shm_mod;      /**< Module SHM structure. */
-        uint8_t state;          /**< Module state (flags). */
         const struct lys_module *ly_mod;    /**< Module libyang structure. */
-
+        uint8_t state;          /**< Module state (flags). */
         uint32_t request_id;    /**< Request ID of the published event. */
     } *mods;                    /**< Relevant modules. */
     uint32_t mod_count;         /**< Modules count. */
 };
-
-/**
- * @brief Add a module into mod info.
- *
- * @param[in] shm_mod Module SHM structure.
- * @param[in] ly_mod Module libyang structure.
- * @param[in] mod_type Module type.
- * @param[in] mod_req_deps Which dependencies are also to be added.
- * @param[in] mod_info Modified mod info.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_modinfo_add_mod(sr_mod_t *shm_mod, const struct lys_module *ly_mod, int mod_type, int mod_req_deps,
-        struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Check permissions of all the modules in a mod info.
@@ -120,18 +108,42 @@ sr_error_info_t *sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, const str
  */
 sr_error_info_t *sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data);
 
+#define SR_MI_MOD_DEPS          0x01    /**< add modules not as MOD_INFO_REQ but as MOD_INFO_DEP */
+#define SR_MI_LOCK_UPGRADEABLE  0x02    /**< only valid for a read lock, make it upgradeable into a write lock */
+#define SR_MI_DATA_CACHE        0x04    /**< enable cache when loading module data */
+#define SR_MI_DATA_NO           0x08    /**< do not load module data */
+#define SR_MI_PERM_STRICT       0x10    /**< failed permission check causes an error instead of silent omission
+                                             of the offending data */
+#define SR_MI_PERM_NO           0x20    /**< do not check any permissions */
+#define SR_MI_PERM_READ         0x40    /**< check read permissions of the MOD_INFO_REQ modules */
+#define SR_MI_PERM_WRITE        0x80    /**< check write permissions of the MOD_INFO_REQ modules */
+
+/**
+ * @brief Add new modules and their dependnecies into mod_info, check their permissions, lock, and load their data.
+ *
+ * @param[in,out] mod_info Mod info to use.
+ * @param[in] mod_set Module set with modules to add to @p mod_info. Empty set means add all the modules.
+ * @param[in] mod_deps Dependency modules to add for each added module. 0 for adding no dependency modules.
+ * @param[in] mod_lock Mode of module lock.
+ * @param[in] mi_opts Mod info options modifying the default behavior but some SR_MI_PERM_* must always be used.
+ * @param[in] sid Session ID to store in lock information and optionally to present for operational callbacks.
+ * @param[in] request_xpath Request XPath for operational callbacks.
+ * @param[in] timeout_ms Timeout for operational callbacks.
+ * @param[in] get_opts Get operational data options.
+ */
+sr_error_info_t *sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const struct ly_set *mod_set, int mod_deps,
+        sr_lock_mode_t mod_lock, int mi_opts, sr_sid_t sid, const char *request_xpath, uint32_t timeout_ms,
+        sr_get_oper_options_t get_opts);
+
 /**
  * @brief Validate data for modules in mod info.
  *
  * @param[in] mod_info Mod info to use.
+ * @param[in] mod_state Bitmask of state flags, module with at least one matching but will be validated.
  * @param[in] finish_diff Whether to update diff with possible changes caused by validation.
- * @param[in] sid Sysrepo session ID.
- * @param[out] cb_error_info Callback error info in case an operational subscriber data required
- * because of an instance-identifier retrieval failed.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_diff, sr_sid_t *sid,
-        sr_error_info_t **cb_error_info);
+sr_error_info_t *sr_modinfo_validate(struct sr_mod_info_s *mod_info, int mod_state, int finish_diff);
 
 /**
  * @brief Add default values into data for modules in mod info.
@@ -143,37 +155,22 @@ sr_error_info_t *sr_modinfo_validate(struct sr_mod_info_s *mod_info, int finish_
 sr_error_info_t *sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff);
 
 /**
+ * @brief Add config/state NP containers for modules in mod info.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_modinfo_add_np_cont(struct sr_mod_info_s *mod_info);
+
+/**
  * @brief Validate operation using modules in mod info.
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] op Operation data tree (RPC/action/notification).
- * @param[in] shm_deps Main SHM dependencies of the operation.
- * @param[in] shm_dep_count Main SHM dependency count.
  * @param[in] output Whether this is the output of an operation.
- * @param[in] sid Sysrepo session ID.
- * @param[in] timeout_ms Operational callback timeout in milliseconds.
- * @param[out] cb_error_info Callback error info in case an operational subscriber data required
- * because of an instance-identifier retrieval failed.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, sr_mod_data_dep_t *shm_deps,
-        uint16_t shm_dep_count, int output, sr_sid_t *sid, uint32_t timeout_ms, sr_error_info_t **cb_error_info);
-
-/**
- * @brief Load data for modules in mod info.
- *
- * @param[in] mod_info Mod info to use.
- * @param[in] mod_type Types of modules whose data should only be loaded.
- * @param[in] cache Whether it makes sense to use cached data, if available.
- * @param[in] sid Sysrepo session ID.
- * @param[in] request_id XPath of the data request.
- * @param[in] timeout_ms Operational callback timeout in milliseconds.
- * @param[in] opts Get oper data options.
- * @param[out] cb_error_info Callback error info in case an operational subscriber of required data failed.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, uint8_t mod_type, int cache, sr_sid_t *sid,
-        const char *request_id, uint32_t timeout_ms, sr_get_oper_options_t opts, sr_error_info_t **cb_error_info);
+sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int output);
 
 /**
  * @brief Filter data from mod info.

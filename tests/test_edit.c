@@ -358,7 +358,7 @@ test_move(void **state)
     /* perform some move operations */
     ret = sr_move_item(st->sess, "/test:l1[k='key3']", SR_MOVE_FIRST, NULL, NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_move_item(st->sess, "/test:l1[k='key1']", SR_MOVE_AFTER, "[k='key2']", NULL, NULL, 0);
+    ret = sr_move_item(st->sess, "/test:l1[k='key1']", SR_MOVE_AFTER, "[test:k='key2']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_move_item(st->sess, "/test:ll1[.='-3']", SR_MOVE_FIRST, NULL, NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1065,7 +1065,7 @@ test_mutiple_types(void **state)
 
     /* type int16 */
     val.type = SR_INT16_T;
-    val.data.uint16_val = INT16_MAX;
+    val.data.int16_val = INT16_MAX;
     ret = sr_set_item(st->sess, "/test-module:main/i16", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/test-module:main/i16", 0, &data);

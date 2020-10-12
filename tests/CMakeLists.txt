@@ -32,8 +32,19 @@ endforeach(test_name)
 foreach(test_name IN LISTS tests)
     target_link_libraries(${test_name} ${CMOCKA_LIBRARIES} sysrepo)
     add_test(NAME ${test_name} COMMAND $<TARGET_FILE:${test_name}>)
-    set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT "MALLOC_CHECK_=3 CMOCKA_TEST_ABORT=1")
+    set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
+        "MALLOC_CHECK_=3"
+        "CMOCKA_TEST_ABORT=1"
+        "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"
+        "SYSREPO_SHM_PREFIX=_tests_sr_${test_name}"
+        )
 endforeach(test_name)
+
+# phony target for clearing all sysrepo test data
+add_custom_target(test_clean
+    COMMAND rm -rf ${PROJECT_BINARY_DIR}/test_repositories
+    COMMAND rm -rf /dev/shm/_tests_sr_*
+)
 
 # measure_performance benchmark binary
 set(SR_PERF measure_performance)

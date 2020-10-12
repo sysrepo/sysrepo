@@ -102,7 +102,7 @@ sr_lydmods_print(struct lyd_node **sr_mods)
     }
 
     /* set umask so that the correct permissions are set in case this file does not exist */
-    um = umask(00000);
+    um = umask(SR_UMASK);
 
     /* store the data tree */
     if (lyd_print_path(path, *sr_mods, LYD_LYB, LYP_WITHSIBLINGS)) {
@@ -2001,7 +2001,7 @@ sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *ch
 
     assert(sr_mods && new_ctx && change);
 
-    SR_LOG_INFMSG("Applying scheduled changes.");
+    SR_LOG_INF("Applying scheduled changes.");
     *change = 0;
     *fail = 0;
 
@@ -2095,12 +2095,12 @@ sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *ch
 cleanup:
     if (!err_info) {
         if (*fail) {
-            SR_LOG_WRNMSG("Failed to apply some changes, leaving all changes scheduled.");
+            SR_LOG_WRN("Failed to apply some changes, leaving all changes scheduled.");
             *change = 0;
         } else if (*change) {
-            SR_LOG_INFMSG("Scheduled changes applied.");
+            SR_LOG_INF("Scheduled changes applied.");
         } else {
-            SR_LOG_INFMSG("No scheduled changes.");
+            SR_LOG_INF("No scheduled changes.");
         }
     }
     return err_info;

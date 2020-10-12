@@ -55,7 +55,7 @@ sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_sh
     created = 1;
 
     /* set umask so that the correct permissions are really set */
-    um = umask(00000);
+    um = umask(SR_UMASK);
 
     shm->fd = shm_open(path, O_RDWR | O_CREAT | O_EXCL, SR_SUB_SHM_PERM);
     umask(um);
@@ -1765,7 +1765,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t sid, uint32_t *notif_sub_evpipe_nums,
+sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t sid, const sr_mod_notif_sub_t *notif_subs,
         uint32_t notif_sub_count)
 {
     sr_error_info_t *err_info = NULL;
@@ -1810,7 +1810,12 @@ sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t s
 
     /* notify all subscribers using event pipe and do not wait for them */
     for (i = 0; i < notif_sub_count; ++i) {
-        if ((err_info = sr_shmsub_notify_evpipe(notif_sub_evpipe_nums[i]))) {
+        if (notif_subs[i].suspended) {
+            /* skip suspended subscribers */
+            continue;
+        }
+
+        if ((err_info = sr_shmsub_notify_evpipe(notif_subs[i].evpipe_num))) {
             goto cleanup_wrunlock;
         }
     }
@@ -3126,7 +3131,7 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_su
             SR_CHECK_INT_RET(!shm_mod, err_info);
 
             /* remove the subscription from main SHM */
-            if (sr_shmmod_notif_subscription_del(subs->conn->ext_shm.addr, shm_mod, subs->evpipe_num, NULL)) {
+            if (sr_shmmod_notif_subscription_del(subs->conn->ext_shm.addr, shm_mod, notif_sub->sub_id, 0, NULL)) {
                 /* continue */
                 SR_ERRINFO_INT(&err_info);
             }
@@ -3137,8 +3142,7 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_su
             }
 
             /* remove the subscription from the sub structure */
-            sr_sub_notif_del(notif_subs->module_name, notif_sub->xpath, notif_sub->start_time, notif_sub->stop_time,
-                    notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data, subs, 1);
+            sr_sub_notif_del(notif_subs->module_name, notif_sub->sub_id, subs, 1);
 
             if (*mod_finished) {
                 /* there are no more subscriptions for this module */
@@ -3178,7 +3182,8 @@ sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subsc
             SR_CHECK_INT_RET(!shm_mod, err_info);
 
             /* now we can add notification subscription into main SHM because it will process realtime notifications */
-            if ((err_info = sr_shmmod_notif_subscription_add(&subs->conn->ext_shm, shm_mod, subs->evpipe_num))) {
+            if ((err_info = sr_shmmod_notif_subscription_add(&subs->conn->ext_shm, shm_mod, notif_sub->sub_id,
+                    subs->evpipe_num))) {
                 return err_info;
             }
 

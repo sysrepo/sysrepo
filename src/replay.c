@@ -147,7 +147,7 @@ sr_replay_open_file(const char *mod_name, time_t from_ts, time_t to_ts, int flag
     }
 
     /* set umask so that the correct permissions are really set */
-    um = umask(00000);
+    um = umask(SR_UMASK);
 
     *notif_fd = open(path, flags, perm);
     umask(um);

@@ -721,7 +721,7 @@ sr_shmmain_createlock_open(int *shm_lock)
     }
 
     /* set umask so that the correct permissions are really set */
-    um = umask(00000);
+    um = umask(SR_UMASK);
 
     *shm_lock = open(path, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
     free(path);
@@ -990,7 +990,7 @@ sr_shmmain_conn_recover(sr_conn_ctx_t *conn)
                     if ((tmp_err = sr_shmmod_oper_subscription_stop(conn->ext_shm.addr, shm_mod, NULL, evpipes[j], 1))) {
                         sr_errinfo_merge(&err_info, tmp_err);
                     }
-                    if ((tmp_err = sr_shmmod_notif_subscription_stop(conn->ext_shm.addr, shm_mod, evpipes[j], 1))) {
+                    if ((tmp_err = sr_shmmod_notif_subscription_stop(conn->ext_shm.addr, shm_mod, 0, evpipes[j]))) {
                         sr_errinfo_merge(&err_info, tmp_err);
                     }
                 }
@@ -1098,10 +1098,10 @@ sr_shmmain_ext_get_size_main_shm(sr_shm_t *shm_main, char *ext_shm_addr)
             assert(oper_subs[i].xpath);
             shm_size += sr_strshmlen(ext_shm_addr + oper_subs[i].xpath);
         }
-        shm_size += SR_SHM_SIZE(shm_mod->oper_subs * sizeof *oper_subs);
+        shm_size += SR_SHM_SIZE(shm_mod->oper_sub_count * sizeof *oper_subs);
 
         /* notif subscriptions */
-        shm_size += SR_SHM_SIZE(shm_mod->notif_subs * sizeof(sr_mod_notif_sub_t));
+        shm_size += SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof(sr_mod_notif_sub_t));
     }
 
     return shm_size;
@@ -1230,7 +1230,7 @@ sr_shmmain_files_startup2running(sr_conn_ctx_t *conn, int replace)
 
     SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
         mod_name = conn->ext_shm.addr + shm_mod->name;
-        if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, 0, &running_path))) {
+        if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, 1, &running_path))) {
             goto error;
         }
 
@@ -1238,6 +1238,11 @@ sr_shmmain_files_startup2running(sr_conn_ctx_t *conn, int replace)
             /* there are some running data, keep them */
             free(running_path);
             continue;
+        }
+        free(running_path);
+
+        if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, 0, &running_path))) {
+            goto error;
         }
 
         if ((err_info = sr_path_startup_file(mod_name, &startup_path))) {
@@ -1253,7 +1258,7 @@ sr_shmmain_files_startup2running(sr_conn_ctx_t *conn, int replace)
     }
 
     if (replace) {
-        SR_LOG_INFMSG("Datastore copied from <startup> to <running>.");
+        SR_LOG_INF("Datastore copied from <startup> to <running>.");
     }
     return NULL;
 
@@ -1735,7 +1740,7 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
         }
 
         /* set umask so that the correct permissions are really set */
-        um = umask(00000);
+        um = umask(SR_UMASK);
 
         /* create shared memory */
         shm->fd = shm_open(shm_name, O_RDWR | O_CREAT | O_EXCL, SR_MAIN_SHM_PERM);
@@ -1764,6 +1769,7 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
             goto error;
         }
         ATOMIC_STORE_RELAXED(main_shm->new_sr_sid, 1);
+        ATOMIC_STORE_RELAXED(main_shm->new_sub_id, 1);
         ATOMIC_STORE_RELAXED(main_shm->new_evpipe_num, 1);
 
         /* remove leftover event pipes */
@@ -1800,7 +1806,7 @@ sr_shmmain_ext_open(sr_shm_t *shm, int zero)
     }
 
     /* set umask so that the correct permissions are really set */
-    um = umask(00000);
+    um = umask(SR_UMASK);
 
     shm->fd = shm_open(shm_name, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
     free(shm_name);
@@ -1979,7 +1985,7 @@ sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, const cha
     if (remap && (*((size_t *)conn->ext_shm.addr) > SR_SHM_WASTED_MAX_MEM)) {
         assert(mode == SR_LOCK_WRITE);
 
-        SR_LOG_DBGMSG("#SHM before defrag");
+        SR_LOG_DBG("#SHM before defrag");
         sr_shmmain_ext_print(&conn->main_shm, conn->ext_shm.addr, conn->ext_shm.size);
 
         /* defrag mem into a separate memory */
@@ -1993,7 +1999,7 @@ sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, const cha
             memcpy(conn->ext_shm.addr, buf, conn->ext_shm.size);
             free(buf);
 
-            SR_LOG_DBGMSG("#SHM after defrag");
+            SR_LOG_DBG("#SHM after defrag");
             sr_shmmain_ext_print(&conn->main_shm, conn->ext_shm.addr, conn->ext_shm.size);
         }
         sr_errinfo_free(&err_info);

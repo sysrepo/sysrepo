@@ -33,13 +33,9 @@
 #define SR_ERRINFO_SYSERRNO(err_info, func) sr_errinfo_new(err_info, SR_ERR_SYS, NULL, "%s() failed (%s).", func, strerror(errno))
 #define SR_ERRINFO_VALID(err_info) sr_errinfo_new(err_info, SR_ERR_VALIDATION_FAILED, NULL, "Validation failed.")
 
-#define SR_LOG_WRN(format, ...) sr_log(SR_LL_WRN, format, __VA_ARGS__)
-#define SR_LOG_INF(format, ...) sr_log(SR_LL_INF, format, __VA_ARGS__)
-#define SR_LOG_DBG(format, ...) sr_log(SR_LL_DBG, format, __VA_ARGS__)
-
-#define SR_LOG_WRNMSG(msg) sr_log(SR_LL_WRN, msg)
-#define SR_LOG_INFMSG(msg) sr_log(SR_LL_INF, msg)
-#define SR_LOG_DBGMSG(msg) sr_log(SR_LL_DBG, msg)
+#define SR_LOG_WRN(...) sr_log(SR_LL_WRN, __VA_ARGS__)
+#define SR_LOG_INF(...) sr_log(SR_LL_INF, __VA_ARGS__)
+#define SR_LOG_DBG(...) sr_log(SR_LL_DBG, __VA_ARGS__)
 
 #define SR_CHECK_MEM_GOTO(cond, err_info, go) if (cond) { SR_ERRINFO_MEM(&(err_info)); goto go; }
 #define SR_CHECK_MEM_RET(cond, err_info) if (cond) { SR_ERRINFO_MEM(&(err_info)); return err_info; }

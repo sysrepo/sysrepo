@@ -31,7 +31,7 @@
 #include "common.h"
 
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
-#define SR_SHM_VER 2                        /**< Main and ext SHM version of their expected content structures. */
+#define SR_SHM_VER 3                        /**< Main and ext SHM version of their expected content structures. */
 
 /**
  * Main SHM organization
@@ -116,7 +116,9 @@ typedef struct sr_mod_oper_sub_s {
  * @brief Ext SHM notification subscription.
  */
 typedef struct sr_mod_notif_sub_s {
+    uint32_t sub_id;            /**< Unique (notification) subscription ID. */
     uint32_t evpipe_num;        /**< Event pipe number. */
+    int suspended;              /**< Whether the subscription is not suspended. */
 } sr_mod_notif_sub_t;
 
 #define SR_MOD_REPLAY_SUPPORT 0x01  /**< Flag for module with replay support. */
@@ -182,15 +184,6 @@ typedef struct sr_rpc_s {
 } sr_rpc_t;
 
 /**
- * @brief Lock mode.
- */
-typedef enum sr_lock_mode_e {
-    SR_LOCK_NONE = 0,           /**< Not locked. */
-    SR_LOCK_READ,               /**< Read lock. */
-    SR_LOCK_WRITE,              /**< Write lock. */
-} sr_lock_mode_t;
-
-/**
  * @brief Ext SHM connection state held lock.
  */
 typedef struct sr_conn_shm_lock_s {
@@ -227,6 +220,7 @@ typedef struct sr_main_shm_s {
     uint16_t rpc_sub_count;     /**< Number of RPC/action subscriptions. */
 
     ATOMIC_T new_sr_sid;        /**< SID for a new session. */
+    ATOMIC_T new_sub_id;        /**< Subscription ID of a new notification subscription. */
     ATOMIC_T new_evpipe_num;    /**< Event pipe number for a new subscription. */
 
     off_t conns;                /**< Array of existing connections (connection state). */
@@ -613,47 +607,63 @@ sr_error_info_t *sr_shmmain_check_data_files(sr_conn_ctx_t *conn);
  */
 
 /**
- * @brief Collect required modules into mod info based on an edit.
+ * @brief Collect required modules found in an edit.
  *
- * @param[in,out] mod_info Modified mod info.
  * @param[in] edit Edit to be applied.
+ * @param[in,out] mod_set Set of modules to add to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_modinfo_collect_edit(struct sr_mod_info_s *mod_info, const struct lyd_node *edit);
+sr_error_info_t *sr_shmmod_collect_edit(const struct lyd_node *edit, struct ly_set *mod_set);
 
 /**
- * @brief Collect required modules into mod info based on an XPath.
+ * @brief Collect required modules for evaluating XPath and getting selected data.
  *
- * @param[in,out] mod_info Modified mod info.
+ * @param[in] ly_ctx libyang context.
  * @param[in] xpath XPath to be evaluated.
+ * @param[in] ds Target datastore where the @p xpath will be evaluated.
+ * @param[in,out] mod_set Set of modules to add to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_modinfo_collect_xpath(struct sr_mod_info_s *mod_info, const char *xpath);
+sr_error_info_t *sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds,
+        struct ly_set *mod_set);
 
 /**
- * @brief Collect required modules into mod info based on a specific module.
+ * @brief Collect required modules found in an operation.
  *
- * @param[in,out] mod_info Modified mod info.
- * @param[in] ly_mod Required module, all modules if not set.
- * @param[in] mod_req_deps What dependencies of the module are also needed.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmod_modinfo_collect_modules(struct sr_mod_info_s *mod_info, const struct lys_module *ly_mod,
-        int mod_req_deps);
-
-/**
- * @brief Collect required modules into mod info based on an operation data.
- *
- * @param[in,out] mod_info Modified mod info.
+ * @param[in] conn Connection to use.
+ * @param[in] op_mod Module of the operation.
  * @param[in] op_path Path identifying the operation.
- * @param[in] op Operation data tree.
  * @param[in] output Whether this is the operation output or input.
+ * @param[in,out] mod_set Set of modules to add to.
  * @param[out] shm_deps Main SHM operation dependencies.
  * @param[out] shm_dep_count Operation dependency count.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_modinfo_collect_op(struct sr_mod_info_s *mod_info, const char *op_path,
-        const struct lyd_node *op, int output, sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count);
+sr_error_info_t *sr_shmmod_collect_op_deps(sr_conn_ctx_t *conn, const struct lys_module *op_mod, const char *op_path,
+        int output, struct ly_set *mod_set, sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count);
+
+/**
+ * @brief Collect required modules of instance-identifiers found in data.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_deps SHM dependencies of relevant instance-identifiers.
+ * @param[in] shm_dep_count SHM dependency count.
+ * @param[in] data Data to look for instance-identifiers in.
+ * @param[in,out] mod_set Set of modules to add to.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_collect_instid_deps_data(sr_conn_ctx_t *conn, sr_mod_data_dep_t *shm_deps,
+        uint16_t shm_dep_count, const struct lyd_node *data, struct ly_set *mod_set);
+
+/**
+ * @brief Collect required modules of instance-identifiers found in
+ * (MOD_INFO_REQ & MOD_INFO_CHANGED) | MOD_INFO_INV_DEP modules in mod info. Other modules will not be validated.
+ *
+ * @param[in] mod_info Mod info with the modules and data.
+ * @param[in,out] mod_set Set of modules to add to.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_collect_instid_deps_modinfo(const struct sr_mod_info_s *mod_info, struct ly_set *mod_set);
 
 /**
  * @brief READ lock all modules in mod info.
@@ -715,7 +725,7 @@ void sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid);
  * @brief Add main SHM module change subscription.
  * May remap ext SHM!
  *
- * @param[in] shm_ext Ext SHM.
+ * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
  * @param[in] xpath Subscription XPath.
  * @param[in] ds Datastore.
@@ -724,7 +734,7 @@ void sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid);
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_change_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char *xpath,
+sr_error_info_t *sr_shmmod_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath,
         sr_datastore_t ds, uint32_t priority, int sub_opts, uint32_t evpipe_num);
 
 /**
@@ -810,21 +820,25 @@ sr_error_info_t *sr_shmmod_oper_subscription_stop(char *ext_shm_addr, sr_mod_t *
  *
  * @param[in] shm_ext Ext SHM.
  * @param[in] shm_mod SHM module.
+ * @param[in] sub_id Unique notif sub ID.
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, uint32_t evpipe_num);
+sr_error_info_t *sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, uint32_t sub_id,
+        uint32_t evpipe_num);
 
 /**
  * @brief Remove main SHM module notification subscription.
  *
  * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] shm_mod SHM module.
+ * @param[in] sub_id Unique notif sub ID.
  * @param[in] evpipe_num Subscription event pipe number.
  * @param[out] last_removed Whether this is the last module notification subscription that was removed.
  * @return 0 if removed, 1 if no matching found.
  */
-int sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t evpipe_num, int *last_removed);
+int sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num,
+        int *last_removed);
 
 /**
  * @brief Remove main SHM module notification subscription and do a proper cleanup.
@@ -832,12 +846,12 @@ int sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint
  *
  * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] shm_mod SHM module.
- * @param[in] evpipe_num Subscription event pipe number.
- * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.
+ * @param[in] sub_id Unique notif sub ID in case a specific subscription should be removed.
+ * @param[in] evpipe_num Subscription event pipe number in case all matching subscriptions should be removed.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_notif_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t evpipe_num,
-        int all_evpipe);
+sr_error_info_t *sr_shmmod_notif_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t sub_id,
+        uint32_t evpipe_num);
 
 /**
  * @brief Remove all stored operational data of a connection.
@@ -983,12 +997,12 @@ sr_error_info_t *sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, const char *op_
  * @param[in] notif Notification data tree.
  * @param[in] notif_ts Notification timestamp.
  * @param[in] sid Originator sysrepo session ID.
- * @param[in] notif_sub_evpipe_nums Array of subscribers event pipe numbers.
- * @param[in] notif_sub_count Number of subscribers.
+ * @param[in] notif_subs Array of subscriptions for the specific notification.
+ * @param[in] notif_sub_count Number of notification subscribers.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t sid,
-        uint32_t *notif_sub_evpipe_nums, uint32_t notif_sub_count);
+        const sr_mod_notif_sub_t *notif_subs, uint32_t notif_sub_count);
 
 /**
  * @brief Process all module change events, if any.

@@ -390,8 +390,9 @@ sr_sub_oper_del(const char *mod_name, const char *xpath, sr_subscription_ctx_t *
 }
 
 sr_error_info_t *
-sr_sub_notif_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath, time_t start_time, time_t stop_time,
-        sr_event_notif_cb notif_cb, sr_event_notif_tree_cb notif_tree_cb, void *private_data, sr_subscription_ctx_t *subs)
+sr_sub_notif_add(sr_session_ctx_t *sess, const char *mod_name, uint32_t sub_id, const char *xpath, time_t start_time,
+        time_t stop_time, sr_event_notif_cb notif_cb, sr_event_notif_tree_cb notif_tree_cb, void *private_data,
+        sr_subscription_ctx_t *subs)
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_notif_s *notif_sub = NULL;
@@ -444,6 +445,7 @@ sr_sub_notif_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath
     memset(notif_sub->subs + notif_sub->sub_count, 0, sizeof *notif_sub->subs);
 
     /* set attributes */
+    notif_sub->subs[notif_sub->sub_count].sub_id = sub_id;
     if (xpath) {
         mem[3] = strdup(xpath);
         SR_CHECK_MEM_GOTO(!mem[3], err_info, error_unlock);
@@ -477,8 +479,7 @@ error_unlock:
 }
 
 void
-sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, time_t stop_time, sr_event_notif_cb notif_cb,
-        sr_event_notif_tree_cb notif_tree_cb, void *private_data, sr_subscription_ctx_t *subs, int has_subs_lock)
+sr_sub_notif_del(const char *mod_name, uint32_t sub_id, sr_subscription_ctx_t *subs, int has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
@@ -500,13 +501,7 @@ sr_sub_notif_del(const char *mod_name, const char *xpath, time_t start_time, tim
         }
 
         for (j = 0; j < notif_sub->sub_count; ++j) {
-            if ((!xpath && notif_sub->subs[j].xpath) || (xpath && (!notif_sub->subs[j].xpath
-                    || strcmp(notif_sub->subs[j].xpath, xpath)))) {
-                continue;
-            }
-            if ((start_time != notif_sub->subs[j].start_time) || (stop_time != notif_sub->subs[j].stop_time)
-                    || (notif_cb != notif_sub->subs[j].cb) || (notif_tree_cb != notif_sub->subs[j].tree_cb)
-                    || (private_data != notif_sub->subs[j].private_data)) {
+            if (sub_id != notif_sub->subs[j].sub_id) {
                 continue;
             }
 
@@ -842,14 +837,12 @@ notif_subs_del:
         for (j = 0; j < notif_sub->sub_count; ++j) {
             if (notif_sub->subs[j].sess == sess) {
                 /* properly remove the subscriptions from the main SHM */
-                if ((err_info = sr_shmmod_notif_subscription_stop(ext_shm->addr, shm_mod, subs->evpipe_num, 0))) {
+                if ((err_info = sr_shmmod_notif_subscription_stop(ext_shm->addr, shm_mod, notif_sub->subs[j].sub_id, 0))) {
                     return err_info;
                 }
 
                 /* remove the subscription from the subscription structure */
-                sr_sub_notif_del(notif_sub->module_name, notif_sub->subs[j].xpath, notif_sub->subs[j].start_time,
-                        notif_sub->subs[j].stop_time, notif_sub->subs[j].cb, notif_sub->subs[j].tree_cb,
-                        notif_sub->subs[j].private_data, subs, 0);
+                sr_sub_notif_del(notif_sub->module_name, notif_sub->subs[j].sub_id, subs, 0);
 
                 /* restart loops */
                 goto notif_subs_del;
@@ -953,12 +946,21 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
+    uint32_t i;
 
     shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, mod_name, 0);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     *notif_subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
-    *notif_sub_count = shm_mod->notif_sub_count;
+
+    /* do not count suspended subscribers */
+    *notif_sub_count = 0;
+    for (i = 0; i < shm_mod->notif_sub_count; ++i) {
+        if (!(*notif_subs)[i].suspended) {
+            ++(*notif_sub_count);
+        }
+    }
+
     return NULL;
 }
 
@@ -2526,7 +2528,7 @@ sr_cp_file2shm(const char *to, const char *from, mode_t perm)
     }
 
     /* set umask so that the correct permissions are really set */
-    um = umask(00000);
+    um = umask(SR_UMASK);
 
     /* open "to" SHM */
     fd_to = shm_open(to, O_WRONLY | O_TRUNC | O_CREAT, perm);
@@ -2576,7 +2578,7 @@ sr_mkpath(char *path, mode_t mode)
     assert(path[0] == '/');
 
     /* set umask so that the correct permissions are really set */
-    um = umask(00000);
+    um = umask(SR_UMASK);
 
     for (p = strchr(path + 1, '/'); p; p = strchr(p + 1, '/')) {
         *p = '\0';
@@ -3267,39 +3269,27 @@ sr_lyd_child(const struct lyd_node *node, int skip_keys)
 }
 
 /**
- * @brief Copy any NP containers from source to target. Processes only this level meaning it
- * only traverses source siblings to look for NP containers. However, if any container is copied,
- * all its nested NP containers are also copied, recursively.
+ * @brief Copy any existing config NP containers, recursively.
  *
- * @param[in,out] trg_sibling Any target sibling, NULL if there are none.
- * @param[in] trg_parent Target parent of the first sibling, NULL if its top-level.
+ * @param[in,out] first First sibling, not needed if @p parent is set.
+ * @param[in] parent Parent of any copied containers.
  * @param[in] src_sibling Any source sibling to look for existing NP containers.
- * @param[in] ly_mod Only containers from this module will be duplicated
+ * @param[in] ly_mod Module, whose top-level containers to create, if @p first is set.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lyd_copy_np_cont_r(struct lyd_node **trg_sibling, struct lyd_node *trg_parent, const struct lyd_node *src_sibling,
+sr_lyd_copy_config_np_cont_r(struct lyd_node **first, struct lyd_node *parent, const struct lyd_node *src_sibling,
         const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *src, *src_top;
-    struct lyd_node *trg;
+    struct lyd_node *node;
 
     assert(ly_mod);
 
     if (!src_sibling) {
         /* nothing to do */
         return NULL;
-    }
-
-    /* find first siblings */
-    if (trg_sibling && *trg_sibling) {
-        while ((*trg_sibling)->prev->next) {
-            (*trg_sibling) = (*trg_sibling)->prev;
-        }
-    }
-    while (src_sibling->prev->next) {
-        src_sibling = src_sibling->prev;
     }
 
     for (src = src_sibling; src; src = src->next) {
@@ -3314,41 +3304,199 @@ sr_lyd_copy_np_cont_r(struct lyd_node **trg_sibling, struct lyd_node *trg_parent
             continue;
         }
 
-        /* check that it does not exist in the new data */
-        trg = NULL;
-        if (trg_sibling) {
-            for (trg = *trg_sibling; trg; trg = trg->next) {
-                if (trg->schema == src->schema) {
-                    break;
-                }
-            }
-        }
-        if (trg) {
-            /* it already exists */
+        lyd_find_sibling_val(parent ? parent->child : *first, src->schema, NULL, &node);
+        if (node) {
+            /* container already exists */
             continue;
         }
 
         /* create the NP container */
-        trg = lyd_new(trg_parent, lyd_node_module(src), src->schema->name);
-        if (!trg) {
+        node = lyd_new(parent, lyd_node_module(src), src->schema->name);
+        if (!node) {
             sr_errinfo_new_ly(&err_info, lyd_node_module(src)->ctx);
             return err_info;
         }
-        trg->dflt = 1;
 
-        /* connect it if needed */
-        if (!trg_parent) {
-            if (!*trg_sibling) {
-                *trg_sibling = trg;
-            } else if (lyd_insert_sibling(trg_sibling, trg)) {
-                lyd_free(trg);
-                sr_errinfo_new_ly(&err_info, lyd_node_module(src)->ctx);
-                return err_info;
+        if (!parent) {
+            /* connect it */
+            if (*first) {
+                lyd_insert_sibling(first, node);
+            } else {
+                *first = node;
             }
         }
 
         /* copy any nested NP containers */
-        if ((err_info = sr_lyd_copy_np_cont_r(NULL, trg, src->child, ly_mod))) {
+        if ((err_info = sr_lyd_copy_config_np_cont_r(NULL, node, src->child, ly_mod))) {
+            return err_info;
+        }
+
+        /* set the default flag after all nested containers were copied */
+        node->dflt = 1;
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief Decide whether a container has meaning, which causes it not to be created automatically as
+ * a special default value.
+ *
+ * @param[in] snode Schema node of the container to examine.
+ * @param[in] siblings First data sibling of the container.
+ * @return 0 if it has no meaning and should be created automatically,
+ * @return non-zero otherwise.
+ */
+static int
+sr_lyd_cont_has_meaning(const struct lys_node *snode, const struct lyd_node *siblings)
+{
+    const struct lys_node *schild;
+    struct lyd_node *node;
+
+    assert(snode->nodetype == LYS_CONTAINER);
+
+    if (((struct lys_node_container *)snode)->presence) {
+        /* presence containers always carry some meaning */
+        return 1;
+    }
+
+    assert(!lys_parent(snode) || (lys_parent(snode)->nodetype != LYS_CHOICE));
+    if (lys_parent(snode) && (lys_parent(snode)->nodetype == LYS_CASE)) {
+        /* container is in a case and in case no other nodes from the case exist, it would carry
+         * meaning of selecting the case */
+        schild = NULL;
+        while ((schild = lys_getnext(schild, lys_parent(snode), NULL, 0))) {
+            if (schild == snode) {
+                continue;
+            }
+
+            /* does this other node from the case exist? */
+            lyd_find_sibling_val(siblings, schild, NULL, &node);
+            if (node) {
+                /* this other node exists meaning this NP container has no meaning */
+                return 0;
+            }
+        }
+
+        /* no data from this case exist and this NP container existence would mean this case is selected */
+        return 1;
+    }
+
+    return 0;
+}
+
+/**
+ * @brief Create config/state/both NP containers, recursively.
+ *
+ * @param[in,out] first First sibling, not needed if @p parent is set.
+ * @param[in] parent Parent of any created containers.
+ * @param[in] ly_mod Module, whose top-level containers to create, if @p first is set.
+ * @param[in] config_f Config flag of the created containers, bitfied of ::LYS_CONFIG_W and ::LYS_CONFIG_R.
+ * @param[in,out] diff Optional diff to merge any performed changes in.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_lyd_create_np_cont_r(struct lyd_node **first, struct lyd_node *parent, const struct lys_module *ly_mod, int config_f,
+        struct lyd_node **diff)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_node *snode = NULL;
+    struct ly_ctx *ly_ctx;
+    struct lyd_node *node, *new_diff;
+
+    assert(parent || (ly_mod && first));
+
+    ly_ctx = parent ? lyd_node_module(parent)->ctx : ly_mod->ctx;
+
+    while ((snode = lys_getnext(snode, parent ? parent->schema : NULL, ly_mod, 0))) {
+        if (!(snode->flags & config_f) || (snode->nodetype != LYS_CONTAINER)
+                || sr_lyd_cont_has_meaning(snode, parent ? parent->child : *first)) {
+            /* not a container, wrong config, or the container has meaning so we do not create it automatically */
+            continue;
+        }
+
+        lyd_find_sibling_val(parent ? parent->child : *first, snode, NULL, &node);
+        if (node) {
+            /* container already exists */
+            continue;
+        }
+
+        /* create the NP container */
+        node = lyd_new(parent, lys_node_module(snode), snode->name);
+        if (!node) {
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+            return err_info;
+        }
+
+        if (!parent) {
+            /* connect it */
+            if (*first) {
+                lyd_insert_sibling(first, node);
+            } else {
+                *first = node;
+            }
+        }
+
+        if (diff) {
+            /* add (merge) into diff */
+            new_diff = lyd_dup(node, LYD_DUP_OPT_WITH_PARENTS | LYD_DUP_OPT_WITH_KEYS);
+            sr_edit_set_oper(new_diff, "create");
+            if (new_diff->parent) {
+                do {
+                    new_diff = new_diff->parent;
+                } while (new_diff->parent);
+                sr_edit_set_oper(new_diff, "none");
+            }
+            err_info = sr_diff_mod_merge(new_diff, NULL, lyd_node_module(new_diff), diff, NULL);
+            lyd_free(new_diff);
+            if (err_info) {
+                return err_info;
+            }
+        }
+
+        /* recursively create any nested NP containers */
+        if ((err_info = sr_lyd_create_np_cont_r(NULL, node, NULL, config_f, diff))) {
+            return err_info;
+        }
+
+        /* set the default flag after all nested containers were added */
+        node->dflt = 1;
+    }
+
+    return NULL;
+}
+
+sr_error_info_t *
+sr_lyd_create_sibling_np_cont_r(struct lyd_node **first, struct lyd_node *parent, const struct lys_module *ly_mod,
+        struct lyd_node **diff)
+{
+    sr_error_info_t *err_info;
+    struct lyd_node *subtree, *next, *elem;
+
+    assert((first && ly_mod) || parent);
+
+    /* add all nested NP containers */
+    LY_TREE_FOR(parent ? sr_lyd_child(parent, 1) : *first, subtree) {
+        if (first && (lyd_node_module(subtree) != ly_mod)) {
+            continue;
+        }
+
+        LY_TREE_DFS_BEGIN(subtree, next, elem) {
+            if ((err_info = sr_lyd_create_np_cont_r(NULL, elem, NULL, LYS_CONFIG_R | LYS_CONFIG_W, diff))) {
+                return err_info;
+            }
+
+            LY_TREE_DFS_END(subtree, next, elem);
+        }
+    }
+
+    /* add sibling NP containers */
+    if (parent) {
+        if ((err_info = sr_lyd_create_np_cont_r(NULL, parent, NULL, LYS_CONFIG_R | LYS_CONFIG_W, diff))) {
+            return err_info;
+        }
+    } else {
+        if ((err_info = sr_lyd_create_np_cont_r(first, NULL, ly_mod, LYS_CONFIG_R | LYS_CONFIG_W, diff))) {
             return err_info;
         }
     }
@@ -3357,22 +3505,99 @@ sr_lyd_copy_np_cont_r(struct lyd_node **trg_sibling, struct lyd_node *trg_parent
 }
 
 sr_error_info_t *
-sr_lyd_xpath_dup(const struct lyd_node *data, char **xpaths, uint16_t xp_count, const struct lys_module *cont_ly_mod,
+sr_lyd_dup_module_np_cont(const struct lyd_node *data, const struct lys_module *ly_mod, int add_state_np_conts,
         struct lyd_node **new_data)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *root, *src;
-    struct ly_set *cur_set, *set = NULL;
-    size_t i;
+    struct lyd_node *root, *next, *elem;
 
-    *new_data = NULL;
+    assert(ly_mod && new_data);
 
-    if (cont_ly_mod) {
-        /* duplicate top-level NP-containers */
-        if ((err_info = sr_lyd_copy_np_cont_r(new_data, NULL, data, cont_ly_mod))) {
-            return err_info;
+    /* copy top-level config NP containers */
+    if ((err_info = sr_lyd_copy_config_np_cont_r(new_data, NULL, data, ly_mod))) {
+        return err_info;
+    }
+
+    if (!add_state_np_conts) {
+        /* done */
+        return NULL;
+    }
+
+    /* add any state NP containers into the config NP containers */
+    LY_TREE_FOR(*new_data, root) {
+        if (lyd_node_module(root) != ly_mod) {
+            continue;
+        }
+
+        LY_TREE_DFS_BEGIN(root, next, elem) {
+            if ((err_info = sr_lyd_create_np_cont_r(NULL, elem, NULL, LYS_CONFIG_R, NULL))) {
+                return err_info;
+            }
+            LY_TREE_DFS_END(root, next, elem);
         }
     }
+
+    /* finally, add top-level state NP containers */
+    if ((err_info = sr_lyd_create_np_cont_r(new_data, NULL, ly_mod, LYS_CONFIG_R, NULL))) {
+        return err_info;
+    }
+
+    return NULL;
+}
+
+sr_error_info_t *
+sr_lyd_dup_module_data(const struct lyd_node *data, const struct lys_module *ly_mod, int add_state_np_conts,
+        struct lyd_node **new_data)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *dup, *next, *elem;
+    const struct lyd_node *node;
+
+    assert(ly_mod && new_data);
+
+    LY_TREE_FOR(data, node) {
+        if (lyd_node_module(node) == ly_mod) {
+            /* duplicate node */
+            dup = lyd_dup(node, LYD_DUP_OPT_RECURSIVE | LYD_DUP_OPT_WITH_WHEN);
+            if (!dup) {
+                sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+                return err_info;
+            }
+
+            if (add_state_np_conts) {
+                /* add any nested state NP containers */
+                LY_TREE_DFS_BEGIN(dup, next, elem) {
+                    if ((err_info = sr_lyd_create_np_cont_r(NULL, elem, NULL, LYS_CONFIG_R, NULL))) {
+                        return err_info;
+                    }
+                    LY_TREE_DFS_END(dup, next, elem);
+                }
+            }
+
+            /* connect it to any other data */
+            if (*new_data) {
+                if (lyd_merge(*new_data, dup, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
+                    lyd_free_withsiblings(dup);
+                    sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+                    return err_info;
+                }
+            } else {
+                *new_data = dup;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+sr_error_info_t *
+sr_lyd_dup_enabled_xpath(const struct lyd_node *data, char **xpaths, uint16_t xp_count, struct lyd_node **new_data)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *root, *next, *elem;
+    const struct lyd_node *src;
+    struct ly_set *cur_set, *set = NULL;
+    size_t i;
 
     if (!xp_count) {
         /* no XPaths */
@@ -3384,7 +3609,7 @@ sr_lyd_xpath_dup(const struct lyd_node *data, char **xpaths, uint16_t xp_count, 
         cur_set = lyd_find_path(data, xpaths[i]);
         if (!cur_set) {
             sr_errinfo_new_ly(&err_info, lyd_node_module(data)->ctx);
-            goto error;
+            goto cleanup;
         }
 
         /* merge into one set */
@@ -3392,7 +3617,7 @@ sr_lyd_xpath_dup(const struct lyd_node *data, char **xpaths, uint16_t xp_count, 
             if (ly_set_merge(set, cur_set, 0) == -1) {
                 ly_set_free(cur_set);
                 sr_errinfo_new_ly(&err_info, lyd_node_module(data)->ctx);
-                goto error;
+                goto cleanup;
             }
         } else {
             set = cur_set;
@@ -3405,19 +3630,28 @@ sr_lyd_xpath_dup(const struct lyd_node *data, char **xpaths, uint16_t xp_count, 
         root = lyd_dup(src, LYD_DUP_OPT_RECURSIVE | LYD_DUP_OPT_WITH_PARENTS);
         if (!root) {
             sr_errinfo_new_ly(&err_info, lyd_node_module(data)->ctx);
-            goto error;
+            goto cleanup;
         }
 
-        /* go top-level and add any existing NP containers along the way */
-        while (1) {
-            if (cont_ly_mod && (err_info = sr_lyd_copy_np_cont_r(&root, root->parent, src, cont_ly_mod))) {
-                return err_info;
+        /* first add any nested state NP containers */
+        LY_TREE_DFS_BEGIN(root, next, elem) {
+            if ((err_info = sr_lyd_create_np_cont_r(NULL, elem, NULL, LYS_CONFIG_R, NULL))) {
+                goto cleanup;
+            }
+            LY_TREE_DFS_END(root, next, elem);
+        }
+
+        /* then go top-level and copy/add any config/state NP containers along the way */
+        while (root->parent) {
+            root = root->parent;
+            if ((err_info = sr_lyd_copy_config_np_cont_r(NULL, root, src, lyd_node_module(set->set.d[i])))) {
+                goto cleanup;
+            }
+            if ((err_info = sr_lyd_create_np_cont_r(NULL, root, NULL, LYS_CONFIG_R, NULL))) {
+                goto cleanup;
             }
 
-            if (!root->parent) {
-                break;
-            }
-            root = root->parent;
+            /* src should be a sibling, not parent (so move it afterwards) */
             src = src->parent;
         }
 
@@ -3426,20 +3660,15 @@ sr_lyd_xpath_dup(const struct lyd_node *data, char **xpaths, uint16_t xp_count, 
             if (lyd_merge(*new_data, root, LYD_OPT_DESTRUCT | LYD_OPT_EXPLICIT)) {
                 lyd_free_withsiblings(root);
                 sr_errinfo_new_ly(&err_info, lyd_node_module(data)->ctx);
-                goto error;
+                goto cleanup;
             }
         } else {
             *new_data = root;
         }
     }
 
+cleanup:
     ly_set_free(set);
-    return NULL;
-
-error:
-    ly_set_free(set);
-    lyd_free_withsiblings(*new_data);
-    *new_data = NULL;
     return err_info;
 }
 
@@ -4111,7 +4340,7 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node
     }
 
     /* set umask so that the correct permissions are really set if the file is created */
-    um = umask(00000);
+    um = umask(SR_UMASK);
 
     /* open */
     if (ds == SR_DS_STARTUP) {
@@ -4146,6 +4375,7 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
     struct sr_mod_info_s mod_info;
+    struct ly_set mod_set = {0};
     sr_sid_t sid;
     struct lyd_node *diff = NULL;
 
@@ -4165,18 +4395,10 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
         return NULL;
     }
 
-    if ((err_info = sr_shmmod_modinfo_collect_modules(&mod_info, ly_mod, 0))) {
-        goto cleanup;
-    }
-
-    /* MODULES WRITE LOCK */
-    if ((err_info = sr_shmmod_modinfo_wrlock(&mod_info, sid))) {
-        goto cleanup;
-    }
-
-    /* load the module enabled running data */
-    if ((err_info = sr_modinfo_data_load(&mod_info, MOD_INFO_TYPE_MASK, 1, NULL, NULL, 0,
-            SR_OPER_NO_STORED | SR_OPER_NO_SUBS, NULL))) {
+    /* add the module into mod_info and load its enabled running data */
+    ly_set_add(&mod_set, (void *)ly_mod, 0);
+    if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_WRITE, SR_MI_PERM_NO | SR_MI_DATA_CACHE,
+            sid, NULL, 0, SR_OPER_NO_STORED | SR_OPER_NO_SUBS))) {
         goto cleanup;
     }
 
@@ -4193,6 +4415,7 @@ cleanup:
     sr_shmmod_modinfo_unlock(&mod_info, 0);
 
     lyd_free_withsiblings(diff);
+    ly_set_clean(&mod_set);
     sr_modinfo_free(&mod_info);
     return err_info;
 }

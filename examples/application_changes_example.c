@@ -22,7 +22,6 @@
 #include <signal.h>
 #include <inttypes.h>
 
-#include "compat.h"
 #include "sysrepo.h"
 
 volatile int exit_application = 0;
@@ -138,26 +137,26 @@ print_change(sr_change_oper_t op, sr_val_t *old_val, sr_val_t *new_val)
     }
 }
 
-static void
+static int
 print_current_config(sr_session_ctx_t *session, const char *module_name)
 {
     sr_val_t *values = NULL;
     size_t count = 0;
     int rc = SR_ERR_OK;
-    char *xpath;
+    char xpath[128];
 
-    asprintf(&xpath, "/%s:*//.", module_name);
-
+    sprintf(xpath, "/%s:*//.", module_name);
     rc = sr_get_items(session, xpath, 0, 0, &values, &count);
-    free(xpath);
     if (rc != SR_ERR_OK) {
-        return;
+        return rc;
     }
 
     for (size_t i = 0; i < count; i++){
         print_val(&values[i]);
     }
     sr_free_values(values, count);
+
+    return rc;
 }
 
 const char *
@@ -180,6 +179,7 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, const char 
 {
     sr_change_iter_t *it = NULL;
     int rc = SR_ERR_OK;
+    char path[512];
     sr_change_oper_t oper;
     sr_val_t *old_value = NULL;
     sr_val_t *new_value = NULL;
@@ -190,7 +190,8 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, const char 
 
     printf("\n\n ========== EVENT %s CHANGES: ====================================\n\n", ev_to_str(event));
 
-    rc = sr_get_changes_iter(session, "//." , &it);
+    sprintf(path, "%s//.", xpath);
+    rc = sr_get_changes_iter(session, path, &it);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }
@@ -205,7 +206,9 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, const char 
 
     if (event == SR_EV_DONE) {
         printf("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n\n");
-        print_current_config(session, module_name);
+        if (print_current_config(session, module_name) != SR_ERR_OK) {
+            goto cleanup;
+        }
     }
 
 cleanup:
@@ -258,7 +261,9 @@ main(int argc, char **argv)
 
     /* read current config */
     printf("\n ========== READING RUNNING CONFIG: ==========\n\n");
-    print_current_config(session, mod_name);
+    if (print_current_config(session, mod_name) != SR_ERR_OK) {
+        goto cleanup;
+    }
 
     /* subscribe for changes in running config */
     rc = sr_module_change_subscribe(session, mod_name, xpath, module_change_cb, NULL, 0, 0, &subscription);

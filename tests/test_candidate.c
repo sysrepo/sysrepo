@@ -272,6 +272,10 @@ test_invalid(void **state)
     /* copy-config to candidate, should reset it */
     ret = sr_copy_config(st->sess, NULL, SR_DS_RUNNING, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(data->dflt, 1);
+    lyd_free_withsiblings(data);
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
 }
