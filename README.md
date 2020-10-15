@@ -79,6 +79,14 @@ $ make doc
 $ google-chrome ../doc/html/index.html
 ```
 
+### Plugin development documentation
+
+Another markdown document aimed at plugin developers is available in [plugin_dev_doc.md](./plugin_dev_doc.md).
+The goal of the document is to provide a single place where a complete overview of information required to
+start developing plugins is available.
+The document describes the basics of Sysrepo plugin development and the technologies required to work with
+Sysrepo like YANG, XPath, NETCONF and others.
+
 ### Useful CMake sysrepo Options
 
 Generate C++ and Python3 bindings:
