@@ -2100,9 +2100,9 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, data_len = 0, valid_subscr_count;
-    char *data = NULL;
+    char *data = NULL, *path;
     int ret = SR_ERR_OK;
-    struct lyd_node *diff;
+    struct lyd_node *diff, *iter;
     sr_error_t err_code = SR_ERR_OK;
     struct modsub_changesub_s *change_sub;
     sr_multi_sub_shm_t *multi_sub_shm;
@@ -2211,7 +2211,29 @@ process_event:
     switch (multi_sub_shm->event) {
     case SR_SUB_EV_UPDATE:
         if (err_code == SR_ERR_OK) {
-            /* we may have an updated edit (empty is fine), print it into LYB */
+            /* we may have an updated edit (empty is fine), check it */
+            LY_TREE_FOR(tmp_sess.dt[tmp_sess.ds].edit, iter) {
+                if (strcmp(lyd_node_module(iter)->name, change_subs->module_name)) {
+                    /* generate an error */
+                    path = lyd_path(iter);
+                    sr_set_error(&tmp_sess, path, "Updated edit with data from another module \"%s\".",
+                            lyd_node_module(iter)->name);
+                    free(path);
+                    sr_log_msg(0, SR_LL_ERR, tmp_sess.err_info->err[0].message, tmp_sess.err_info->err[0].xpath);
+
+                    /* prepare the error */
+                    err_code = SR_ERR_INVAL_ARG;
+                    if ((err_info = sr_shmsub_prepare_error(err_code, &tmp_sess, &data, &data_len))) {
+                        goto cleanup_rdunlock;
+                    }
+                    break;
+                }
+            }
+            if (iter) {
+                break;
+            }
+
+            /* print it into LYB */
             if (lyd_print_mem(&data, tmp_sess.dt[tmp_sess.ds].edit, LYD_LYB, LYP_WITHSIBLINGS)) {
                 sr_errinfo_new_ly(&err_info, conn->ly_ctx);
                 goto cleanup_rdunlock;
