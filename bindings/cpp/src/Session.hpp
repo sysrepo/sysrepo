@@ -34,7 +34,6 @@
 #include "Internal.hpp"
 #include "Struct.hpp"
 #include "Connection.hpp"
-#include "Session.hpp"
 
 #include "sysrepo.h"
 
