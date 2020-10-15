@@ -44,7 +44,7 @@ rpc_handler(sysrepo::S_Session sess)
 {
     int rc = SR_ERR_OK;
     try {
-        sysrepo::S_Subscribe subscribe(new sysrepo::Subscribe(sess));
+        auto subscribe = std::make_shared<sysrepo::Subscribe>(sess);
         auto cb = [] (sysrepo::S_Session session, const char *op_path, const sysrepo::S_Vals input, sr_event_t event,
             uint32_t request_id, sysrepo::S_Vals_Holder output) {
             sr_error_e rc = SR_ERR_OK;
@@ -133,7 +133,7 @@ rpc_caller(sysrepo::S_Session sess)
     try {
 
         /* allocate input values */
-        sysrepo::S_Vals input(new sysrepo::Vals(7));
+        auto input = std::make_shared<sysrepo::Vals>(7);
 
         /* set 'input/state' leaf */
         input->val(0)->set("/turing-machine:run-until/state", uint16_t{10});
@@ -176,10 +176,10 @@ main(int argc, char **argv)
     int rc = SR_ERR_OK;
     try {
         /* connect to sysrepo */
-        sysrepo::S_Connection conn(new sysrepo::Connection());
+        auto conn = std::make_shared<sysrepo::Connection>();
 
         /* start session */
-        sysrepo::S_Session sess(new sysrepo::Session(conn));
+        auto sess = std::make_shared<sysrepo::Session>(conn);
 
         if (1 == argc) {
             /* run as a RPC handler */

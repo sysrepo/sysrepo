@@ -47,10 +47,10 @@ main(int argc, char **argv)
     const char *module_name = "ietf-interfaces";
     try {
         cout << "Application will provide data of " << module_name << endl;
-        sysrepo::S_Connection conn(new sysrepo::Connection());
-        sysrepo::S_Session sess(new sysrepo::Session(conn));
+        auto conn = std::make_shared<sysrepo::Connection>();
+        auto sess = std::make_shared<sysrepo::Session>(conn);
 
-        sysrepo::S_Subscribe subscribe(new sysrepo::Subscribe(sess));
+        auto subscribe = std::make_shared<sysrepo::Subscribe>(sess);
         auto cb1 = [] (sysrepo::S_Session session, const char *module_name, const char *path, const char *request_xpath,
             uint32_t request_id, libyang::S_Data_Node &parent) {
 
@@ -90,9 +90,9 @@ main(int argc, char **argv)
             libyang::S_Context ctx = session->get_context();
             libyang::S_Module mod = ctx->get_module(module_name);
 
-            libyang::S_Data_Node stats(new libyang::Data_Node(parent, mod, "statistics"));
-            libyang::S_Data_Node dis_time(new libyang::Data_Node(stats, mod, "discontinuity-time", "2019-01-01T00:00:00Z"));
-            libyang::S_Data_Node in_oct(new libyang::Data_Node(stats, mod, "in-octets", "22"));
+            auto stats = std::make_shared<libyang::Data_Node>(parent, mod, "statistics");
+            auto dis_time = std::make_shared<libyang::Data_Node>(stats, mod, "discontinuity-time", "2019-01-01T00:00:00Z");
+            auto in_oct = std::make_shared<libyang::Data_Node>(stats, mod, "in-octets", "22");
 
             return SR_ERR_OK;
         };

@@ -105,13 +105,13 @@ main(int argc, char **argv)
 
         printf("Application will send notification in %s\n", module_name);
         /* connect to sysrepo */
-        sysrepo::S_Connection conn(new sysrepo::Connection());
+        auto conn = std::make_shared<sysrepo::Connection>();
 
         /* start session */
-        sysrepo::S_Session sess(new sysrepo::Session(conn));
+        auto sess = std::make_shared<sysrepo::Session>(conn);
 
         /* subscribe for changes in running config */
-        sysrepo::S_Subscribe subscribe(new sysrepo::Subscribe(sess));
+        auto subscribe = std::make_shared<sysrepo::Subscribe>(sess);
         auto cbVals = [] (sysrepo::S_Session session, const sr_ev_notif_type_t notif_type, const char *path,
             const sysrepo::S_Vals vals, time_t timestamp) {
             cout << "\n ========== NOTIF RECEIVED ==========\n" << endl;
@@ -131,7 +131,7 @@ main(int argc, char **argv)
 
         subscribe->event_notif_subscribe(module_name, cbVals);
 
-        sysrepo::S_Vals in_vals(new sysrepo::Vals(2));
+        auto in_vals = std::make_shared<sysrepo::Vals>(2);
 
         in_vals->val(0)->set("/test-examples:test-notif/val1", "some-value", SR_STRING_T);
         in_vals->val(1)->set("/test-examples:test-notif/val2", "some-other-value", SR_STRING_T);
@@ -144,7 +144,7 @@ main(int argc, char **argv)
 
         libyang::S_Context ctx = conn->get_context();
         libyang::S_Module mod = ctx->get_module(module_name);
-        libyang::S_Data_Node in_trees(new libyang::Data_Node(ctx, "/test-examples:test-notif", nullptr, LYD_ANYDATA_CONSTSTRING, 0));
+        auto in_trees = std::make_shared<libyang::Data_Node>(ctx, "/test-examples:test-notif", nullptr, LYD_ANYDATA_CONSTSTRING, 0);
         std::make_shared<libyang::Data_Node>(libyang::Data_Node(in_trees, mod, "val1", "some-value"));
         std::make_shared<libyang::Data_Node>(libyang::Data_Node(in_trees, mod, "val2", "some-other-value"));
 

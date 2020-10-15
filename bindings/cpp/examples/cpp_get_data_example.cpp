@@ -131,8 +131,8 @@ main(int argc, char **argv)
     }
 
     try {
-        sysrepo::S_Connection conn(new sysrepo::Connection());
-        sysrepo::S_Session sess(new sysrepo::Session(conn, ds));
+        auto conn = std::make_shared<sysrepo::Connection>();
+        auto sess = std::make_shared<sysrepo::Session>(conn, ds);
 
         libyang::S_Data_Node data = sess->get_data(xpath);
 

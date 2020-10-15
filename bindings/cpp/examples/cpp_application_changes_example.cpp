@@ -130,13 +130,13 @@ main(int argc, char **argv)
 
         cout << "Application will watch for changes in " << module_name << endl;
         /* connect to sysrepo */
-        sysrepo::S_Connection conn(new sysrepo::Connection());
+        auto conn = std::make_shared<sysrepo::Connection>();
 
         /* start session */
-        sysrepo::S_Session sess(new sysrepo::Session(conn));
+        auto sess = std::make_shared<sysrepo::Session>(conn);
 
         /* subscribe for changes in running config */
-        sysrepo::S_Subscribe subscribe(new sysrepo::Subscribe(sess));
+        auto subscribe = std::make_shared<sysrepo::Subscribe>(sess);
         auto cb = [] (sysrepo::S_Session sess, const char *module_name, const char *xpath, sr_event_t event,
             uint32_t request_id) {
             char change_path[MAX_LEN];

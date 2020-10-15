@@ -34,9 +34,9 @@ main(int argc, char **argv)
         sysrepo::Logs log;
         log.set_stderr(SR_LL_DBG);
 
-        sysrepo::S_Connection conn(new sysrepo::Connection());
+        auto conn = std::make_shared<sysrepo::Connection>();
 
-        sysrepo::S_Session sess(new sysrepo::Session(conn));
+        auto sess = std::make_shared<sysrepo::Session>(conn);
 
         const char *xpath = "/ietf-interfaces:interfaces/interface[name='eth0']/enabled";
 

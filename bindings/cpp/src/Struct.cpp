@@ -111,7 +111,7 @@ Val::Val(sr_val_t *val, S_Deleter deleter) {
 }
 Val::Val() {
     _val = nullptr;
-    _deleter = S_Deleter(new Deleter(_val));
+    _deleter = std::make_shared<Deleter>(_val);
 }
 Val::~Val() {}
 Val::Val(const char *value, sr_type_t type) {
@@ -119,7 +119,7 @@ Val::Val(const char *value, sr_type_t type) {
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,value,type);
-    _deleter = S_Deleter(new Deleter(_val));
+    _deleter = std::make_shared<Deleter>(_val);
 }
 Val::Val(bool bool_val, sr_type_t type) {
     if (type != SR_BOOL_T)
@@ -128,70 +128,70 @@ Val::Val(bool bool_val, sr_type_t type) {
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,bool_val,type);
-    _deleter = S_Deleter(new Deleter(_val));
+    _deleter = std::make_shared<Deleter>(_val);
 }
 Val::Val(double decimal64_val) {
     _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,decimal64_val);
-    _deleter = S_Deleter(new Deleter(_val));
+    _deleter = std::make_shared<Deleter>(_val);
 }
 Val::Val(int8_t int8_val) {
     _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,int8_val);
-    _deleter = S_Deleter(new Deleter(_val));
+    _deleter = std::make_shared<Deleter>(_val);
 }
 Val::Val(int16_t int16_val) {
     _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,int16_val);
-    _deleter = S_Deleter(new Deleter(_val));
+    _deleter = std::make_shared<Deleter>(_val);
 }
 Val::Val(int32_t int32_val) {
     _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,int32_val);
-    _deleter = S_Deleter(new Deleter(_val));
+    _deleter = std::make_shared<Deleter>(_val);
 }
 Val::Val(int64_t int64_val, sr_type_t type) {
     _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,int64_val,type);
-    _deleter = S_Deleter(new Deleter(_val));
+    _deleter = std::make_shared<Deleter>(_val);
 }
 Val::Val(uint8_t uint8_val) {
     _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,uint8_val);
-    _deleter = S_Deleter(new Deleter(_val));
+    _deleter = std::make_shared<Deleter>(_val);
 }
 Val::Val(uint16_t uint16_val) {
     _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,uint16_val);
-    _deleter = S_Deleter(new Deleter(_val));
+    _deleter = std::make_shared<Deleter>(_val);
 }
 Val::Val(uint32_t uint32_val) {
     _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,uint32_val);
-    _deleter = S_Deleter(new Deleter(_val));
+    _deleter = std::make_shared<Deleter>(_val);
 }
 Val::Val(uint64_t uint64_val) {
     _val = (sr_val_t*) calloc(1, sizeof(sr_val_t));
     if (_val == nullptr)
         throw_exception(SR_ERR_NOMEM);
     set(nullptr,uint64_val);
-    _deleter = S_Deleter(new Deleter(_val));
+    _deleter = std::make_shared<Deleter>(_val);
 }
 void Val::set(const char *xpath, const char *value, sr_type_t type) {
     switch (type)
@@ -368,8 +368,7 @@ void Val::dflt_set(bool data) {
     _val->dflt = data;
 }
 S_Data Val::data() {
-    S_Data data(new Data(_val->data, _val->type, _deleter));
-    return data;
+    return std::make_shared<Data>(_val->data, _val->type, _deleter);
 }
 bool Val::empty() {
     return !_val;
@@ -408,8 +407,8 @@ S_Val Val::dup() {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    S_Deleter deleter(new Deleter(new_val));
-    S_Val val(new Val(new_val, deleter));
+    auto deleter = std::make_shared<Deleter>(new_val);
+    auto val = std::make_shared<Val>(new_val, deleter);
     return val;
 }
 
@@ -434,7 +433,7 @@ Vals::Vals(size_t cnt): Vals() {
             throw_exception(ret);
 
         _cnt = cnt;
-        _deleter = S_Deleter(new Deleter(_vals, _cnt));
+        _deleter = std::make_shared<Deleter>(_vals, _cnt);
     }
 }
 Vals::Vals(): _cnt(0), _vals(nullptr) {}
@@ -445,7 +444,7 @@ S_Val Vals::val(size_t n) {
     if (!_vals)
         throw std::logic_error("Vals::val: called on null Vals");
 
-    S_Val val(new Val(&_vals[n], _deleter));
+    auto val = std::make_shared<Val>(&_vals[n], _deleter);
     return val;
 }
 S_Vals Vals::dup() {
@@ -454,8 +453,8 @@ S_Vals Vals::dup() {
     if (ret != SR_ERR_OK)
         throw_exception(ret);
 
-    S_Deleter deleter(new Deleter(new_val, _cnt));
-    S_Vals vals(new Vals(new_val, _cnt, deleter));
+    auto deleter = std::make_shared<Deleter>(new_val, _cnt);
+    auto vals = std::make_shared<Vals>(new_val, _cnt, deleter);
     return vals;
 }
 sr_val_t* Vals::reallocate(size_t n) {
@@ -493,7 +492,7 @@ S_Vals Vals_Holder::allocate(size_t n) {
     *p_cnt = n;
     _allocate = false;
 
-    p_Vals = S_Vals(new Vals(p_vals, p_cnt, nullptr));
+    p_Vals = std::make_shared<Vals>(p_vals, p_cnt, nullptr);
     return p_Vals;
 }
 S_Vals Vals_Holder::reallocate(size_t n) {
@@ -524,19 +523,19 @@ Change::Change() {
     _new = nullptr;
     _old = nullptr;
 
-    _deleter_old = S_Deleter(new Deleter(_old));
-    _deleter_new = S_Deleter(new Deleter(_new));
+    _deleter_old = std::make_shared<Deleter>(_old);
+    _deleter_new = std::make_shared<Deleter>(_new);
 }
 S_Val Change::new_val() {
     if (_new == nullptr) return nullptr;
 
-    S_Val new_val(new Val(_new, _deleter_new));
+    auto new_val = std::make_shared<Val>(_new, _deleter_new);
     return new_val;
 }
 S_Val Change::old_val() {
     if (_old == nullptr) return nullptr;
 
-    S_Val old_val(new Val(_old, _deleter_old));
+    auto old_val = std::make_shared<Val>(_old, _deleter_old);
     return old_val;
 }
 Change::~Change() {

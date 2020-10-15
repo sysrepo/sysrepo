@@ -74,10 +74,10 @@ main(int argc, char **argv)
         }
 
         cout << "Application will watch for changes in "<< module_name << endl;
-        sysrepo::S_Connection conn(new sysrepo::Connection());
-        sysrepo::S_Session sess(new sysrepo::Session(conn));
+        auto conn = std::make_shared<sysrepo::Connection>();
+        auto sess = std::make_shared<sysrepo::Session>(conn);
 
-        sysrepo::S_Subscribe subscribe(new sysrepo::Subscribe(sess));
+        auto subscribe = std::make_shared<sysrepo::Subscribe>(sess);
         auto cb = [] (sysrepo::S_Session sess, const char *module_name, const char *xpath, sr_event_t event,
             uint32_t request_id) {
 

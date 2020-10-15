@@ -43,7 +43,7 @@ Session::Session(S_Connection conn, sr_datastore_t datastore)
     int ret;
     _conn = nullptr;
     _sess = nullptr;
-    S_Deleter deleter(new Deleter(_sess));
+    auto deleter = std::make_shared<Deleter>(_sess);
 
     /* start session */
     ret = sr_session_start(conn->_conn, datastore, &_sess);
@@ -97,7 +97,7 @@ void Session::session_notif_buffer()
 
 S_Errors Session::get_error()
 {
-    S_Errors errors(new Errors());
+    auto errors = std::make_shared<Errors>();
 
     sr_get_error(_sess, &errors->_info);
     if (errors->_info == nullptr) {
@@ -149,7 +149,7 @@ libyang::S_Context Session::get_context()
 
 S_Val Session::get_item(const char *path, uint32_t timeout_ms)
 {
-    S_Val value(new Val());
+    auto value = std::make_shared<Val>();
 
     int ret = sr_get_item(_sess, path, timeout_ms, &value->_val);
     if (SR_ERR_OK == ret) {
@@ -164,7 +164,7 @@ S_Val Session::get_item(const char *path, uint32_t timeout_ms)
 
 S_Vals Session::get_items(const char *xpath, uint32_t timeout_ms, const sr_get_oper_options_t opts)
 {
-    S_Vals values(new Vals());
+    auto values = std::make_shared<Vals>();
 
     int ret = sr_get_items(_sess, xpath, timeout_ms, opts, &values->_vals, &values->_cnt);
     if (SR_ERR_OK == ret) {
@@ -315,7 +315,7 @@ void Session::unlock(const char *module_name)
 
 S_Iter_Change Session::get_changes_iter(const char *xpath)
 {
-    S_Iter_Change iter(new Iter_Change());
+    auto iter = std::make_shared<Iter_Change>();
 
     int ret = sr_get_changes_iter(_sess, xpath, &iter->_iter);
     if (SR_ERR_OK == ret) {
@@ -329,7 +329,7 @@ S_Iter_Change Session::get_changes_iter(const char *xpath)
 
 S_Iter_Change Session::dup_changes_iter(const char *xpath)
 {
-    S_Iter_Change iter(new Iter_Change());
+    auto iter = std::make_shared<Iter_Change>();
 
     int ret = sr_dup_changes_iter(_sess, xpath, &iter->_iter);
     if (SR_ERR_OK == ret) {
@@ -343,7 +343,7 @@ S_Iter_Change Session::dup_changes_iter(const char *xpath)
 
 S_Change Session::get_change_next(S_Iter_Change iter)
 {
-    S_Change change(new Change());
+    auto change = std::make_shared<Change>();
 
     int ret = sr_get_change_next(_sess, iter->_iter, &change->_oper, &change->_old, &change->_new);
     if (SR_ERR_OK == ret) {
@@ -357,7 +357,7 @@ S_Change Session::get_change_next(S_Iter_Change iter)
 
 S_Tree_Change Session::get_change_tree_next(S_Iter_Change iter)
 {
-    S_Tree_Change change(new Tree_Change());
+    auto change = std::make_shared<Tree_Change>();
 
     int ret = sr_get_change_tree_next(_sess, iter->_iter, &change->_oper, &change->_node, &change->_prev_value, \
             &change->_prev_list, &change->_prev_dflt);
@@ -374,7 +374,7 @@ Session::~Session() {}
 
 S_Vals Session::rpc_send(const char *path, S_Vals input, uint32_t timeout_ms)
 {
-    S_Vals output(new Vals());
+    auto output = std::make_shared<Vals>();
 
     int ret = sr_rpc_send(_sess, path, input->_vals, input->_cnt, timeout_ms, &output->_vals, &output->_cnt);
     if (ret != SR_ERR_OK) {
@@ -455,7 +455,7 @@ void Subscribe::module_change_subscribe(const char *module_name, ModuleChangeCb 
                 uint32_t request_id,
                 void *private_data)
             {
-                S_Session sess(new Session(session));
+                auto sess = std::make_shared<Session>(session);
                 auto cb = reinterpret_cast<ModuleChangeCb*>(private_data);
                 return (*cb)(sess, module_name, xpath, event, request_id);
             },
@@ -486,9 +486,9 @@ void Subscribe::rpc_subscribe(const char *xpath, RpcCb cb, uint32_t priority, sr
                 size_t *output_cnt,
                 void *private_data)
             {
-                S_Session sess(new Session(session));
-                S_Vals in_vals(new Vals(input, input_cnt, nullptr));
-                S_Vals_Holder out_vals(new Vals_Holder(output, output_cnt));
+                auto sess = std::make_shared<Session>(session);
+                auto in_vals = std::make_shared<Vals>(input, input_cnt, nullptr);
+                auto out_vals = std::make_shared<Vals_Holder>(output, output_cnt);
                 auto cb = reinterpret_cast<RpcCb*>(private_data);
                 return (*cb)(sess, op_path, in_vals, event, request_id, out_vals);
             },
@@ -517,9 +517,9 @@ void Subscribe::rpc_subscribe_tree(const char *xpath, RpcTreeCb cb, uint32_t pri
                 struct lyd_node *output,
                 void *private_data)
             {
-                S_Session sess(new Session(session));
-                libyang::S_Data_Node in_tree(new libyang::Data_Node(const_cast<struct lyd_node *>(input)));
-                libyang::S_Data_Node out_tree(new libyang::Data_Node(output));
+                auto sess = std::make_shared<Session>(session);
+                auto in_tree = std::make_shared<libyang::Data_Node>(const_cast<struct lyd_node *>(input));
+                auto out_tree = std::make_shared<libyang::Data_Node>(output);
                 auto cb = reinterpret_cast<RpcTreeCb*>(private_data);
                 return (*cb)(sess, op_path, in_tree, event, request_id, out_tree);
             },
@@ -551,8 +551,8 @@ void Subscribe::event_notif_subscribe(const char *module_name, EventNotifCb cb, 
                 time_t timestamp,
                 void *private_data)
             {
-                S_Session sess(new Session(session));
-                S_Vals vals(new Vals(values, values_cnt, nullptr));
+                auto sess = std::make_shared<Session>(session);
+                auto vals = std::make_shared<Vals>(values, values_cnt, nullptr);
                 auto cb = reinterpret_cast<EventNotifCb*>(private_data);
                 (*cb)(sess, notif_type, path, vals, timestamp);
             },
@@ -581,8 +581,8 @@ void Subscribe::event_notif_subscribe_tree(const char *module_name, EventNotifTr
                 time_t timestamp,
                 void *private_data)
             {
-                S_Session sess(new Session(session));
-                libyang::S_Data_Node node(new libyang::Data_Node(const_cast<struct lyd_node *>(notif)));
+                auto sess = std::make_shared<Session>(session);
+                auto node = std::make_shared<libyang::Data_Node>(const_cast<struct lyd_node *>(notif));
                 auto cb = reinterpret_cast<EventNotifTreeCb*>(private_data);
                 (*cb)(sess, notif_type, node, timestamp);
             },
@@ -613,7 +613,7 @@ void Subscribe::oper_get_items_subscribe(const char *module_name, OperGetItemsCb
             {
                 int ret;
                 libyang::S_Data_Node tree;
-                S_Session sess(new Session(session));
+                auto sess = std::make_shared<Session>(session);
                 auto cb = reinterpret_cast<OperGetItemsCb*>(private_data);
                 if (*parent) {
                     tree = std::make_shared<libyang::Data_Node>(*parent);
