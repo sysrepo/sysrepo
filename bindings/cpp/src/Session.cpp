@@ -424,9 +424,26 @@ Subscribe::Subscribe(S_Session sess)
 {
 }
 
+Subscribe::Subscribe(S_Session sess, const FdRegistration& reg, const FdUnregistration& unreg)
+    : sess(sess)
+    , sess_deleter(sess->_deleter)
+    , reg(reg)
+    , unreg(unreg)
+{
+    if (!reg) {
+        throw std::logic_error("FD registration callback is invalid");
+    }
+    if (!unreg) {
+        throw std::logic_error("FD unregistration callback is invalid");
+    }
+}
+
 Subscribe::~Subscribe()
 {
     if (ctx) {
+        if (unreg) {
+            unreg(get_event_pipe());
+        }
         int ret = sr_unsubscribe(ctx);
         if (ret != SR_ERR_OK) {
             //this exception can't be catched
@@ -439,8 +456,30 @@ Subscribe::~Subscribe()
     }
 }
 
+void Subscribe::check_custom_loop_options(sr_subscr_options_t opts)
+{
+    if (reg && !(opts & SR_SUBSCR_NO_THREAD)) {
+        throw std::logic_error("Custom loop subscription not called with SR_SUBSCR_NO_THREAD.");
+    }
+
+    if (!reg && (opts & SR_SUBSCR_NO_THREAD)) {
+        throw std::logic_error("Non-custom loop subscription mustn't be called with SR_SUBSCR_NO_THREAD.");
+    }
+}
+
+void Subscribe::call_reg()
+{
+    if (reg && !reg_called) {
+        int pipe;
+        sr_get_event_pipe(ctx, &pipe);
+        reg(pipe, [this] {sr_process_events(ctx, sess->_sess, nullptr);});
+        reg_called = true;
+    }
+}
+
 void Subscribe::module_change_subscribe(const char *module_name, ModuleChangeCb cb, const char *xpath, uint32_t priority, sr_subscr_options_t opts)
 {
+    check_custom_loop_options(opts);
     module_change_cbs.emplace_back(cb);
 
     opts |= SR_SUBSCR_CTX_REUSE;
@@ -466,10 +505,12 @@ void Subscribe::module_change_subscribe(const char *module_name, ModuleChangeCb 
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
+    call_reg();
 }
 
 void Subscribe::rpc_subscribe(const char *xpath, RpcCb cb, uint32_t priority, sr_subscr_options_t opts)
 {
+    check_custom_loop_options(opts);
     rpc_cbs.push_back(cb);
 
     opts |= SR_SUBSCR_CTX_REUSE;
@@ -499,10 +540,12 @@ void Subscribe::rpc_subscribe(const char *xpath, RpcCb cb, uint32_t priority, sr
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
+    call_reg();
 }
 
 void Subscribe::rpc_subscribe_tree(const char *xpath, RpcTreeCb cb, uint32_t priority, sr_subscr_options_t opts)
 {
+    check_custom_loop_options(opts);
     rpc_tree_cbs.push_back(cb);
 
     opts |= SR_SUBSCR_CTX_REUSE;
@@ -530,10 +573,12 @@ void Subscribe::rpc_subscribe_tree(const char *xpath, RpcTreeCb cb, uint32_t pri
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
+    call_reg();
 }
 
 void Subscribe::event_notif_subscribe(const char *module_name, EventNotifCb cb, const char *xpath, time_t start_time, time_t stop_time, sr_subscr_options_t opts)
 {
+    check_custom_loop_options(opts);
     event_notif_cbs.push_back(cb);
 
     opts |= SR_SUBSCR_CTX_REUSE;
@@ -562,10 +607,12 @@ void Subscribe::event_notif_subscribe(const char *module_name, EventNotifCb cb, 
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
+    call_reg();
 }
 
 void Subscribe::event_notif_subscribe_tree(const char *module_name, EventNotifTreeCb cb, const char *xpath, time_t start_time, time_t stop_time, sr_subscr_options_t opts)
 {
+    check_custom_loop_options(opts);
     event_notif_tree_cbs.push_back(cb);
 
     opts |= SR_SUBSCR_CTX_REUSE;
@@ -592,10 +639,12 @@ void Subscribe::event_notif_subscribe_tree(const char *module_name, EventNotifTr
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
+    call_reg();
 }
 
 void Subscribe::oper_get_items_subscribe(const char *module_name, OperGetItemsCb cb, const char *path, sr_subscr_options_t opts)
 {
+    check_custom_loop_options(opts);
     oper_get_items_cbs.push_back(cb);
 
     opts |= SR_SUBSCR_CTX_REUSE;
@@ -633,6 +682,7 @@ void Subscribe::oper_get_items_subscribe(const char *module_name, OperGetItemsCb
     if (ret != SR_ERR_OK) {
         throw_exception(ret);
     }
+    call_reg();
 }
 
 int Subscribe::get_event_pipe()

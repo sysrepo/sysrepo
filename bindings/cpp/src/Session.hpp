@@ -168,6 +168,7 @@ class Subscribe
 public:
     /** Wrapper for [sr_subscription_ctx_t](@ref sr_subscription_ctx_t) */
     Subscribe(S_Session sess);
+    Subscribe(S_Session sess, const FdRegistration& reg, const FdUnregistration& unreg);
     /** Wrapper for [sr_module_change_subscribe](@ref sr_module_change_subscribe) */
     void module_change_subscribe(const char *module_name, ModuleChangeCb cb, const char *xpath = nullptr, uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT);
     /** Wrapper for [sr_rpc_subscribe](@ref sr_rpc_subscribe) */
@@ -181,8 +182,6 @@ public:
     /** Wrapper for [sr_oper_get_items_subscribe](@ref sr_oper_get_items_subscribe) */
     void oper_get_items_subscribe(const char *module_name, OperGetItemsCb cb, const char *path, sr_subscr_options_t opts = SUBSCR_DEFAULT);
 
-    /** Wrapper for [sr_get_event_pipe](@ref sr_get_event_pipe) */
-    int get_event_pipe();
     /** Wrapper for [sr_process_event](@ref sr_process_events) */
     time_t process_events(S_Session sess = nullptr);
     ~Subscribe();
@@ -208,6 +207,14 @@ private:
 
     S_Session sess;
     S_Deleter sess_deleter;
+
+    int get_event_pipe();
+    FdRegistration reg;
+    bool reg_called = false;
+    FdUnregistration unreg;
+    void check_custom_loop_options(sr_subscr_options_t opts);
+    void call_reg();
+
 };
 
 /** @} */
