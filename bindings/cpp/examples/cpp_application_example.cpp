@@ -54,19 +54,6 @@ print_current_config(sysrepo::S_Session session, const char *module_name)
     }
 }
 
-class My_Callback:public sysrepo::Callback {
-    public:
-    /* Function to be called for subscribed client of given session whenever configuration changes. */
-    int module_change(sysrepo::S_Session sess, const char *module_name, const char *xpath, sr_event_t event, \
-            uint32_t request_id, void *private_data) override
-    {
-        cout << "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n" << endl;
-
-        print_current_config(sess, module_name);
-        return SR_ERR_OK;
-    }
-};
-
 static void
 sigint_handler(int signum)
 {
@@ -91,9 +78,16 @@ main(int argc, char **argv)
         sysrepo::S_Session sess(new sysrepo::Session(conn));
 
         sysrepo::S_Subscribe subscribe(new sysrepo::Subscribe(sess));
-        sysrepo::S_Callback cb(new My_Callback());
+        auto cb = [] (sysrepo::S_Session sess, const char *module_name, const char *xpath, sr_event_t event,
+            uint32_t request_id) {
 
-        subscribe->module_change_subscribe(module_name, cb, nullptr, nullptr, 0, SR_SUBSCR_DONE_ONLY);
+            cout << "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n" << endl;
+
+            print_current_config(sess, module_name);
+            return SR_ERR_OK;
+        };
+
+        subscribe->module_change_subscribe(module_name, cb, nullptr, 0, SR_SUBSCR_DONE_ONLY);
 
         /* read running config */
         cout << "\n\n ========== READING RUNNING CONFIG: ==========\n" << endl;

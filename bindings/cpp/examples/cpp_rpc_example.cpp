@@ -100,46 +100,6 @@ print_value(sysrepo::S_Val value)
     return;
 }
 
-class My_Callback:public sysrepo::Callback {
-    int rpc(sysrepo::S_Session session, const char *op_path, const sysrepo::S_Vals input, sr_event_t event, uint32_t request_id, \
-                sysrepo::S_Vals_Holder output, void *private_data) override
-    {
-        cout << "\n ========== RPC CALLED ==========\n" << endl;
-
-        auto out_vals = output->allocate(3);
-
-        for(size_t n = 0; n < input->val_cnt(); ++n)
-            print_value(input->val(n));
-
-        out_vals->val(0)->set("/test-examples:activate-software-image/status",\
-                              "The image acmefw-2.3 is being installed.",\
-                              SR_STRING_T);
-        out_vals->val(1)->set("/test-examples:activate-software-image/version",\
-                            "2.3",\
-                            SR_STRING_T);
-        out_vals->val(2)->set("/test-examples:activate-software-image/location",\
-                            "/root/",\
-                            SR_STRING_T);
-
-        return SR_ERR_OK;
-    }
-
-    int rpc_tree(sysrepo::S_Session session, const char *op_path, const libyang::S_Data_Node input, sr_event_t event, \
-                uint32_t request_id, libyang::S_Data_Node output, void *private_data) override
-    {
-        cout << "\n ========== RPC TREE CALLED ==========\n" << endl;
-        cout << input->print_mem(LYD_XML, LYP_FORMAT);
-
-        libyang::S_Context ctx = session->get_context();
-
-        output->new_path(ctx, "status", "The image acmefw-2.3 is being installed.", LYD_ANYDATA_CONSTSTRING, LYD_PATH_OPT_OUTPUT);
-        output->new_path(ctx, "version", "2.3", LYD_ANYDATA_CONSTSTRING, LYD_PATH_OPT_OUTPUT);
-        output->new_path(ctx, "location", "/root/", LYD_ANYDATA_CONSTSTRING, LYD_PATH_OPT_OUTPUT);
-
-        return SR_ERR_OK;
-    }
-};
-
 int
 main(int argc, char **argv)
 {
@@ -155,19 +115,52 @@ main(int argc, char **argv)
 
         /* subscribe for changes in running config */
         sysrepo::S_Subscribe subscribe(new sysrepo::Subscribe(sess));
-        sysrepo::S_Callback cb(new My_Callback());
+        auto cbVals = [](sysrepo::S_Session session, const char* op_path, const sysrepo::S_Vals input, sr_event_t event, uint32_t request_id, sysrepo::S_Vals_Holder output) {
+            cout << "\n ========== RPC CALLED ==========\n" << endl;
+
+            auto out_vals = output->allocate(3);
+
+            for(size_t n = 0; n < input->val_cnt(); ++n)
+                print_value(input->val(n));
+
+            out_vals->val(0)->set("/test-examples:activate-software-image/status",
+                    "The image acmefw-2.3 is being installed.",
+                    SR_STRING_T);
+            out_vals->val(1)->set("/test-examples:activate-software-image/version",
+                    "2.3",
+                    SR_STRING_T);
+            out_vals->val(2)->set("/test-examples:activate-software-image/location",
+                    "/root/",
+                    SR_STRING_T);
+
+            return SR_ERR_OK;
+        };
+
+        auto cbTree = [] (sysrepo::S_Session session, const char *op_path, const libyang::S_Data_Node input, sr_event_t event,
+                uint32_t request_id, libyang::S_Data_Node output) {
+            cout << "\n ========== RPC TREE CALLED ==========\n" << endl;
+            cout << input->print_mem(LYD_XML, LYP_FORMAT);
+
+            libyang::S_Context ctx = session->get_context();
+
+            output->new_path(ctx, "status", "The image acmefw-2.3 is being installed.", LYD_ANYDATA_CONSTSTRING, LYD_PATH_OPT_OUTPUT);
+            output->new_path(ctx, "version", "2.3", LYD_ANYDATA_CONSTSTRING, LYD_PATH_OPT_OUTPUT);
+            output->new_path(ctx, "location", "/root/", LYD_ANYDATA_CONSTSTRING, LYD_PATH_OPT_OUTPUT);
+
+            return SR_ERR_OK;
+        };
 
         cout << "\n ========== SUBSCRIBE TO RPC CALL ==========\n" << endl;
 
-        subscribe->rpc_subscribe("/test-examples:activate-software-image", cb);
+        subscribe->rpc_subscribe("/test-examples:activate-software-image", cbVals);
 
         sysrepo::S_Vals in_vals(new sysrepo::Vals(2));
 
-        in_vals->val(0)->set("/test-examples:activate-software-image/image-name",\
-                           "acmefw-2.3",\
+        in_vals->val(0)->set("/test-examples:activate-software-image/image-name",
+                           "acmefw-2.3",
                SR_STRING_T);
-        in_vals->val(1)->set("/test-examples:activate-software-image/location",\
-                           "/root/",\
+        in_vals->val(1)->set("/test-examples:activate-software-image/location",
+                           "/root/",
                            SR_STRING_T);
 
         cout << "\n ========== START RPC CALL ==========\n" << endl;
@@ -178,7 +171,7 @@ main(int argc, char **argv)
             print_value(out_vals->val(n));
 
         cout << "\n ========== SUBSCRIBE TO RPC TREE CALL ==========\n" << endl;
-        subscribe->rpc_subscribe_tree("/test-examples:activate-software-image", cb, nullptr, 0, SR_SUBSCR_CTX_REUSE);
+        subscribe->rpc_subscribe_tree("/test-examples:activate-software-image", cbTree, 0, SR_SUBSCR_CTX_REUSE);
 
         libyang::S_Context ctx = conn->get_context();
         libyang::S_Module mod = ctx->get_module(module_name);

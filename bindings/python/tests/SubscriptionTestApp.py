@@ -84,8 +84,6 @@ if __name__ == "__main__":
 
     sr.global_loop()
 
-    subscribe.unsubscribe()
-
     sess.session_stop()
 
     conn = None
