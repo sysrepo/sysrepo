@@ -1189,6 +1189,37 @@ cleanup:
 }
 
 /**
+ * @brief Check data dependencies of a module and all its implemented imports, recursively.
+ *
+ * @param[in] ly_mod Libyang module to check.
+ * @param[in] sr_mods Sysrepo module data.
+ * @param[out] fail Whether any dependant module was not implemented.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_lydmods_check_data_deps_r(const struct lys_module *ly_mod, const struct lyd_node *sr_mods, int *fail)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i;
+
+    /* check data deps of this module */
+    if ((err_info = sr_lydmods_check_data_deps(ly_mod, sr_mods, fail)) || *fail) {
+        return err_info;
+    }
+
+    /* check data deps of all the implemented dependencies, recursively */
+    for (i = 0; i < ly_mod->imp_size; ++i) {
+        if (ly_mod->imp[i].module->implemented) {
+            if ((err_info = sr_lydmods_check_data_deps_r(ly_mod->imp[i].module, sr_mods, fail)) || *fail) {
+                return err_info;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+/**
  * @brief Load new installed modules into context from sysrepo module data.
  *
  * @param[in] sr_mods Sysrepo module data.
@@ -1240,7 +1271,7 @@ sr_lydmods_sched_ctx_install_modules(const struct lyd_node *sr_mods, struct ly_c
         }
 
         /* check that all the dependant modules are implemented */
-        if ((err_info = sr_lydmods_check_data_deps(ly_mod, sr_mods, fail)) || *fail) {
+        if ((err_info = sr_lydmods_check_data_deps_r(ly_mod, sr_mods, fail)) || *fail) {
             goto cleanup;
         }
 
