@@ -33,60 +33,6 @@ using namespace std;
 
 volatile int exit_application = 0;
 
-class My_Callback1:public sysrepo::Callback {
-    /* Function to be called whenever a client requests these state data. */
-    int oper_get_items(sysrepo::S_Session session, const char *module_name, const char *path, const char *request_xpath, \
-            uint32_t request_id, libyang::S_Data_Node &parent, void *private_data) override
-    {
-        cout << "\n\n ========== CALLBACK CALLED TO PROVIDE \"" << path << "\" DATA ==========\n" << endl;
-
-        libyang::S_Context ctx = session->get_context();
-        libyang::S_Module mod = ctx->get_module(module_name);
-
-        parent.reset(new libyang::Data_Node(ctx, "/ietf-interfaces:interfaces-state", nullptr, LYD_ANYDATA_CONSTSTRING, 0));
-
-        libyang::S_Data_Node ifc(new libyang::Data_Node(parent, mod, "interface"));
-        libyang::S_Data_Node name(new libyang::Data_Node(ifc, mod, "name", "eth100"));
-        libyang::S_Data_Node type(new libyang::Data_Node(ifc, mod, "type", "iana-if-type:ethernetCsmacd"));
-        libyang::S_Data_Node oper_status(new libyang::Data_Node(ifc, mod, "oper-status", "down"));
-
-        ifc.reset(new libyang::Data_Node(parent, mod, "interface"));
-        name.reset(new libyang::Data_Node(ifc, mod, "name", "eth101"));
-        type.reset(new libyang::Data_Node(ifc, mod, "type", "iana-if-type:ethernetCsmacd"));
-        oper_status.reset(new libyang::Data_Node(ifc, mod, "oper-status", "up"));
-
-        ifc.reset(new libyang::Data_Node(parent, mod, "interface"));
-        name.reset(new libyang::Data_Node(ifc, mod, "name", "eth102"));
-        type.reset(new libyang::Data_Node(ifc, mod, "type", "iana-if-type:ethernetCsmacd"));
-        oper_status.reset(new libyang::Data_Node(ifc, mod, "oper-status", "dormant"));
-
-        ifc.reset(new libyang::Data_Node(parent, mod, "interface"));
-        name.reset(new libyang::Data_Node(ifc, mod, "name", "eth105"));
-        type.reset(new libyang::Data_Node(ifc, mod, "type", "iana-if-type:ethernetCsmacd"));
-        oper_status.reset(new libyang::Data_Node(ifc, mod, "oper-status", "not-present"));
-
-        return SR_ERR_OK;
-    }
-};
-
-class My_Callback2:public sysrepo::Callback {
-    /* Function to be called whenever a client requests these state data. */
-    int oper_get_items(sysrepo::S_Session session, const char *module_name, const char *path, const char *request_xpath, \
-            uint32_t request_id, libyang::S_Data_Node &parent, void *private_data) override
-    {
-        cout << "\n\n ========== CALLBACK CALLED TO PROVIDE \"" << path << "\" DATA ==========\n" << endl;
-
-        libyang::S_Context ctx = session->get_context();
-        libyang::S_Module mod = ctx->get_module(module_name);
-
-        libyang::S_Data_Node stats(new libyang::Data_Node(parent, mod, "statistics"));
-        libyang::S_Data_Node dis_time(new libyang::Data_Node(stats, mod, "discontinuity-time", "2019-01-01T00:00:00Z"));
-        libyang::S_Data_Node in_oct(new libyang::Data_Node(stats, mod, "in-octets", "22"));
-
-        return SR_ERR_OK;
-    }
-};
-
 static void
 sigint_handler(int signum)
 {
@@ -101,16 +47,58 @@ main(int argc, char **argv)
     const char *module_name = "ietf-interfaces";
     try {
         cout << "Application will provide data of " << module_name << endl;
-        sysrepo::S_Connection conn(new sysrepo::Connection());
-        sysrepo::S_Session sess(new sysrepo::Session(conn));
+        auto conn = std::make_shared<sysrepo::Connection>();
+        auto sess = std::make_shared<sysrepo::Session>(conn);
 
-        sysrepo::S_Subscribe subscribe(new sysrepo::Subscribe(sess));
-        sysrepo::S_Callback cb1(new My_Callback1());
-        sysrepo::S_Callback cb2(new My_Callback2());
+        auto subscribe = std::make_shared<sysrepo::Subscribe>(sess);
+        auto cb1 = [] (sysrepo::S_Session session, const char *module_name, const char *path, const char *request_xpath,
+            uint32_t request_id, libyang::S_Data_Node &parent) {
 
-        subscribe->oper_get_items_subscribe(module_name, "/ietf-interfaces:interfaces-state", cb1);
-        subscribe->oper_get_items_subscribe(module_name, "/ietf-interfaces:interfaces-state/interface/statistics", cb2,
-                nullptr, SR_SUBSCR_CTX_REUSE);
+            cout << "\n\n ========== CALLBACK CALLED TO PROVIDE \"" << path << "\" DATA ==========\n" << endl;
+
+            libyang::S_Context ctx = session->get_context();
+            libyang::S_Module mod = ctx->get_module(module_name);
+
+            parent.reset(new libyang::Data_Node(ctx, "/ietf-interfaces:interfaces-state", nullptr, LYD_ANYDATA_CONSTSTRING, 0));
+
+            libyang::S_Data_Node ifc(new libyang::Data_Node(parent, mod, "interface"));
+            libyang::S_Data_Node name(new libyang::Data_Node(ifc, mod, "name", "eth100"));
+            libyang::S_Data_Node type(new libyang::Data_Node(ifc, mod, "type", "iana-if-type:ethernetCsmacd"));
+            libyang::S_Data_Node oper_status(new libyang::Data_Node(ifc, mod, "oper-status", "down"));
+
+            ifc.reset(new libyang::Data_Node(parent, mod, "interface"));
+            name.reset(new libyang::Data_Node(ifc, mod, "name", "eth101"));
+            type.reset(new libyang::Data_Node(ifc, mod, "type", "iana-if-type:ethernetCsmacd"));
+            oper_status.reset(new libyang::Data_Node(ifc, mod, "oper-status", "up"));
+
+            ifc.reset(new libyang::Data_Node(parent, mod, "interface"));
+            name.reset(new libyang::Data_Node(ifc, mod, "name", "eth102"));
+            type.reset(new libyang::Data_Node(ifc, mod, "type", "iana-if-type:ethernetCsmacd"));
+            oper_status.reset(new libyang::Data_Node(ifc, mod, "oper-status", "dormant"));
+
+            ifc.reset(new libyang::Data_Node(parent, mod, "interface"));
+            name.reset(new libyang::Data_Node(ifc, mod, "name", "eth105"));
+            type.reset(new libyang::Data_Node(ifc, mod, "type", "iana-if-type:ethernetCsmacd"));
+            oper_status.reset(new libyang::Data_Node(ifc, mod, "oper-status", "not-present"));
+
+            return SR_ERR_OK;
+        };
+        auto cb2 = [] (sysrepo::S_Session session, const char *module_name, const char *path, const char *request_xpath,
+            uint32_t request_id, libyang::S_Data_Node &parent) {
+            cout << "\n\n ========== CALLBACK CALLED TO PROVIDE \"" << path << "\" DATA ==========\n" << endl;
+
+            libyang::S_Context ctx = session->get_context();
+            libyang::S_Module mod = ctx->get_module(module_name);
+
+            auto stats = std::make_shared<libyang::Data_Node>(parent, mod, "statistics");
+            auto dis_time = std::make_shared<libyang::Data_Node>(stats, mod, "discontinuity-time", "2019-01-01T00:00:00Z");
+            auto in_oct = std::make_shared<libyang::Data_Node>(stats, mod, "in-octets", "22");
+
+            return SR_ERR_OK;
+        };
+
+        subscribe->oper_get_items_subscribe(module_name, cb1, "/ietf-interfaces:interfaces-state");
+        subscribe->oper_get_items_subscribe(module_name, cb2, "/ietf-interfaces:interfaces-state/interface/statistics");
 
         /* loop until ctrl-c is pressed / SIGINT is received */
         signal(SIGINT, sigint_handler);

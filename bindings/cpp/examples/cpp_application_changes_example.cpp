@@ -109,40 +109,6 @@ const char *ev_to_str(sr_event_t ev) {
     }
 }
 
-class My_Callback:public sysrepo::Callback {
-    public:
-    /* Function to be called for subscribed client of given session whenever configuration changes. */
-    int module_change(sysrepo::S_Session sess, const char *module_name, const char *xpath, sr_event_t event, \
-            uint32_t request_id, void *private_data) override
-    {
-        char change_path[MAX_LEN];
-
-        try {
-            cout << "\n\n ========== Notification " << ev_to_str(event) << " =============================================";
-            if (SR_EV_CHANGE == event) {
-                cout << "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n" << endl;
-                print_current_config(sess, module_name);
-            }
-
-            cout << "\n\n ========== CHANGES: =============================================\n" << endl;
-
-            snprintf(change_path, MAX_LEN, "/%s:*//.", module_name);
-
-            auto it = sess->get_changes_iter(change_path);
-
-            while (auto change = sess->get_change_next(it)) {
-                print_change(change);
-            }
-
-            cout << "\n\n ========== END OF CHANGES =======================================\n" << endl;
-
-        } catch( const std::exception& e ) {
-            cout << e.what() << endl;
-        }
-        return SR_ERR_OK;
-    }
-};
-
 static void
 sigint_handler(int signum)
 {
@@ -164,15 +130,42 @@ main(int argc, char **argv)
 
         cout << "Application will watch for changes in " << module_name << endl;
         /* connect to sysrepo */
-        sysrepo::S_Connection conn(new sysrepo::Connection());
+        auto conn = std::make_shared<sysrepo::Connection>();
 
         /* start session */
-        sysrepo::S_Session sess(new sysrepo::Session(conn));
+        auto sess = std::make_shared<sysrepo::Session>(conn);
 
         /* subscribe for changes in running config */
-        sysrepo::S_Subscribe subscribe(new sysrepo::Subscribe(sess));
-        sysrepo::S_Callback cb(new My_Callback());
+        auto subscribe = std::make_shared<sysrepo::Subscribe>(sess);
+        auto cb = [] (sysrepo::S_Session sess, const char *module_name, const char *xpath, sr_event_t event,
+            uint32_t request_id) {
+            char change_path[MAX_LEN];
 
+            try {
+                cout << "\n\n ========== Notification " << ev_to_str(event) << " =============================================";
+                if (SR_EV_CHANGE == event) {
+                    cout << "\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: ==========\n" << endl;
+                    print_current_config(sess, module_name);
+                }
+
+                cout << "\n\n ========== CHANGES: =============================================\n" << endl;
+
+                snprintf(change_path, MAX_LEN, "/%s:*//.", module_name);
+
+                auto it = sess->get_changes_iter(change_path);
+
+                while (auto change = sess->get_change_next(it)) {
+                    print_change(change);
+                }
+
+                cout << "\n\n ========== END OF CHANGES =======================================\n" << endl;
+
+            } catch( const std::exception& e ) {
+                cout << e.what() << endl;
+            }
+            return SR_ERR_OK;
+
+        };
         subscribe->module_change_subscribe(module_name, cb);
 
         /* read running config */

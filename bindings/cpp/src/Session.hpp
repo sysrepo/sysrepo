@@ -24,6 +24,7 @@
 #define SESSION_H
 
 #include <iostream>
+#include <list>
 #include <memory>
 #include <map>
 #include <vector>
@@ -34,7 +35,6 @@
 #include "Internal.hpp"
 #include "Struct.hpp"
 #include "Connection.hpp"
-#include "Session.hpp"
 
 #include "sysrepo.h"
 
@@ -149,38 +149,14 @@ private:
     S_Deleter _deleter;
 };
 
-/**
- * @brief Helper class for calling C callbacks, C++ only.
- * @class Callback
- */
-class Callback
-{
-public:
-    Callback();
-    virtual ~Callback();
-
-    /** Wrapper for [sr_module_change_cb](@ref sr_module_change_cb) callback.*/
-    virtual int module_change(S_Session session, const char *module_name, const char *xpath, sr_event_t event, \
-            uint32_t request_id, void *private_data) {return SR_ERR_OK;};
-    /** Wrapper for [sr_rpc_cb](@ref sr_rpc_cb) callback.*/
-    virtual int rpc(S_Session session, const char *op_path, const S_Vals input, sr_event_t event, uint32_t request_id, \
-            S_Vals_Holder output, void *private_data) {return SR_ERR_OK;};
-    /** Wrapper for [sr_rpc_tree_cb](@ref sr_rpc_tree_cb) callback.*/
-    virtual int rpc_tree(S_Session session, const char *op_path, const libyang::S_Data_Node input, sr_event_t event, \
-            uint32_t request_id, libyang::S_Data_Node output, void *private_data) {return SR_ERR_OK;};
-    /** Wrapper for [sr_event_notif_cb](@ref sr_event_notif_cb) callback.*/
-    virtual void event_notif(S_Session session, const sr_ev_notif_type_t notif_type, const char *path, const S_Vals vals, \
-            time_t timestamp, void *private_data) {return;};
-    /** Wrapper for [sr_event_notif_tree_cb](@ref sr_event_notif_tree_cb) callback.*/
-    virtual void event_notif_tree(S_Session session, const sr_ev_notif_type_t notif_type, const libyang::S_Data_Node notif, \
-            time_t timestamp, void *private_data) {return;};
-    /** Wrapper for [sr_oper_get_items_cb](@ref sr_oper_get_items_cb) callback.*/
-    virtual int oper_get_items(S_Session session, const char *module_name, const char *path, const char *request_xpath, \
-            uint32_t request_id, libyang::S_Data_Node &parent, void *private_data) {return SR_ERR_OK;};
-    Callback *get() {return this;};
-
-    std::map<const char *, void *> private_data;
-};
+using FdRegistration = std::function<void(int, std::function<void()>)>;
+using FdUnregistration = std::function<void(int)>;
+using ModuleChangeCb = std::function<int(S_Session session, const char *module_name, const char *xpath, sr_event_t event, uint32_t request_id)>;
+using RpcCb = std::function<int(S_Session session, const char *op_path, const S_Vals input, sr_event_t event, uint32_t request_id, S_Vals_Holder output)>;
+using RpcTreeCb = std::function<int(S_Session session, const char *op_path, const libyang::S_Data_Node input, sr_event_t event, uint32_t request_id, libyang::S_Data_Node output)>;
+using EventNotifCb = std::function<void(S_Session session, const sr_ev_notif_type_t notif_type, const char *path, const S_Vals vals, time_t timestamp)>;
+using EventNotifTreeCb = std::function<void(S_Session session, const sr_ev_notif_type_t notif_type, const libyang::S_Data_Node notif, time_t timestamp)>;
+using OperGetItemsCb = std::function<int(S_Session session, const char *module_name, const char *path, const char *request_xpath, uint32_t request_id, libyang::S_Data_Node &parent)>;
 
 /**
  * @brief Class for wrapping sr_subscription_ctx_t.
@@ -192,48 +168,53 @@ class Subscribe
 public:
     /** Wrapper for [sr_subscription_ctx_t](@ref sr_subscription_ctx_t) */
     Subscribe(S_Session sess);
-
+    Subscribe(S_Session sess, const FdRegistration& reg, const FdUnregistration& unreg);
     /** Wrapper for [sr_module_change_subscribe](@ref sr_module_change_subscribe) */
-    void module_change_subscribe(const char *module_name, S_Callback callback, const char *xpath = nullptr, \
-            void *private_data = nullptr, uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void module_change_subscribe(const char *module_name, ModuleChangeCb cb, const char *xpath = nullptr, uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT);
     /** Wrapper for [sr_rpc_subscribe](@ref sr_rpc_subscribe) */
-    void rpc_subscribe(const char *xpath, S_Callback callback, void *private_data = nullptr, uint32_t priority = 0, \
-            sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void rpc_subscribe(const char *xpath, RpcCb cb, uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT);
     /** Wrapper for [sr_rpc_subscribe_tree](@ref sr_rpc_subscribe_tree) */
-    void rpc_subscribe_tree(const char *xpath, S_Callback callback, void *private_data = nullptr, uint32_t priority = 0, \
-            sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void rpc_subscribe_tree(const char *xpath, RpcTreeCb cb, uint32_t priority = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT);
     /** Wrapper for [sr_event_notif_subscribe](@ref sr_event_notif_subscribe) */
-    void event_notif_subscribe(const char *module_name, S_Callback callback, const char *xpath = nullptr, \
-            time_t start_time = 0, time_t stop_time = 0, void *private_data = nullptr, sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void event_notif_subscribe(const char *module_name, EventNotifCb cb, const char *xpath = nullptr, time_t start_time = 0, time_t stop_time = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT);
     /** Wrapper for [sr_event_notif_subscribe_tree](@ref sr_event_notif_subscribe_tree) */
-    void event_notif_subscribe_tree(const char *module_name, S_Callback callback, const char *xpath = nullptr, \
-            time_t start_time = 0, time_t stop_time = 0, void *private_data = nullptr, sr_subscr_options_t opts = SUBSCR_DEFAULT);
+    void event_notif_subscribe_tree(const char *module_name, EventNotifTreeCb cb, const char *xpath = nullptr, time_t start_time = 0, time_t stop_time = 0, sr_subscr_options_t opts = SUBSCR_DEFAULT);
     /** Wrapper for [sr_oper_get_items_subscribe](@ref sr_oper_get_items_subscribe) */
-    void oper_get_items_subscribe(const char *module_name, const char *path, S_Callback callback, \
-            void *private_data = nullptr, sr_subscr_options_t opts = SUBSCR_DEFAULT);
-    std::vector<S_Callback > cb_list;
+    void oper_get_items_subscribe(const char *module_name, OperGetItemsCb cb, const char *path, sr_subscr_options_t opts = SUBSCR_DEFAULT);
 
-    /** Wrapper for [sr_get_event_pipe](@ref sr_get_event_pipe) */
-    int get_event_pipe();
     /** Wrapper for [sr_process_event](@ref sr_process_events) */
     time_t process_events(S_Session sess = nullptr);
-    /** Wrapper for [sr_unsubscribe](@ref sr_unsubscribe) */
-    void unsubscribe();
     ~Subscribe();
 
     /** SWIG specific, internal use only.*/
-    sr_subscription_ctx_t **swig_sub() { return &_sub;};
+    sr_subscription_ctx_t **swig_sub() { return &ctx;};
     /** SWIG specific, internal use only.*/
-    sr_session_ctx_t *swig_sess() {return _sess->_sess;};
+    sr_session_ctx_t *swig_sess() {return sess->_sess;};
     /** SWIG specific, internal use only.*/
     std::vector<void*> wrap_cb_l;
     /** SWIG specific, internal use only.*/
     void additional_cleanup(void *private_data) {return;};
 
 private:
-    sr_subscription_ctx_t *_sub;
-    S_Session _sess;
+    sr_subscription_ctx_t *ctx = nullptr;
+    std::list<ModuleChangeCb> module_change_cbs;
+    std::list<RpcCb> rpc_cbs;
+    std::list<RpcTreeCb> rpc_tree_cbs;
+    std::list<EventNotifCb> event_notif_cbs;
+    std::list<EventNotifTreeCb> event_notif_tree_cbs;
+    std::list<OperGetItemsCb> oper_get_items_cbs;
+
+
+    S_Session sess;
     S_Deleter sess_deleter;
+
+    int get_event_pipe();
+    FdRegistration reg;
+    bool reg_called = false;
+    FdUnregistration unreg;
+    void check_custom_loop_options(sr_subscr_options_t opts);
+    void call_reg();
+
 };
 
 /** @} */

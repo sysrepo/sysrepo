@@ -30,9 +30,8 @@ int
 main(int argc, char **argv)
 {
     try {
-        sysrepo::S_Connection conn(new sysrepo::Connection());
-
-        sysrepo::S_Session sess(new sysrepo::Session(conn));
+        auto conn = std::make_shared<sysrepo::Connection>();
+        auto sess = std::make_shared<sysrepo::Session>(conn);
 
         const char *xpath = "/ietf-interfaces:interfaces/interface";
 
