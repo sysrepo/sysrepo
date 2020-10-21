@@ -794,10 +794,10 @@ sr_shmmod_change_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const
 
         if (last_removed) {
             /* delete the SHM file itself so that there is no leftover event */
-            if ((err_info = sr_path_sub_shm(mod_name, sr_ds2str(ds), -1, 0, &path))) {
+            if ((err_info = sr_path_sub_shm(mod_name, sr_ds2str(ds), -1, &path))) {
                 break;
             }
-            if (shm_unlink(path) == -1) {
+            if (unlink(path) == -1) {
                 SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
             }
             free(path);
@@ -910,10 +910,10 @@ sr_shmmod_oper_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, const ch
         }
 
         /* delete the SHM file itself so that there is no leftover event */
-        if ((err_info = sr_path_sub_shm(mod_name, "oper", sr_str_hash(xpath), 0, &path))) {
+        if ((err_info = sr_path_sub_shm(mod_name, "oper", sr_str_hash(xpath), &path))) {
             break;
         }
-        if (shm_unlink(path) == -1) {
+        if (unlink(path) == -1) {
             SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
         }
         free(path);
@@ -1001,10 +1001,10 @@ sr_shmmod_notif_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_
 
         if (last_removed) {
             /* delete the SHM file itself so that there is no leftover event */
-            if ((err_info = sr_path_sub_shm(mod_name, "notif", -1, 0, &path))) {
+            if ((err_info = sr_path_sub_shm(mod_name, "notif", -1, &path))) {
                 break;
             }
-            if (shm_unlink(path) == -1) {
+            if (unlink(path) == -1) {
                 SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
             }
             free(path);
@@ -1040,7 +1040,7 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid
 
         /* check we have permissions to open operational file */
         free(path);
-        if ((err_info = sr_path_ds_shm(mod->ly_mod->name, SR_DS_OPERATIONAL, 1, &path))) {
+        if ((err_info = sr_path_ds_shm(mod->ly_mod->name, SR_DS_OPERATIONAL, &path))) {
             goto cleanup;
         }
         errno = 0;

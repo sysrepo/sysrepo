@@ -49,7 +49,7 @@ sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_sh
     }
 
     /* create/open shared memory */
-    if ((err_info = sr_path_sub_shm(name, suffix1, suffix2, 0, &path))) {
+    if ((err_info = sr_path_sub_shm(name, suffix1, suffix2, &path))) {
         return err_info;
     }
     created = 1;
@@ -57,11 +57,11 @@ sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_sh
     /* set umask so that the correct permissions are really set */
     um = umask(SR_UMASK);
 
-    shm->fd = shm_open(path, O_RDWR | O_CREAT | O_EXCL, SR_SUB_SHM_PERM);
+    shm->fd = open(path, O_RDWR | O_CREAT | O_EXCL, SR_SUB_SHM_PERM);
     umask(um);
     if ((shm->fd == -1) && (errno == EEXIST)) {
         created = 0;
-        shm->fd = shm_open(path, O_RDWR, SR_SUB_SHM_PERM);
+        shm->fd = open(path, O_RDWR, SR_SUB_SHM_PERM);
     }
     free(path);
     if (shm->fd == -1) {

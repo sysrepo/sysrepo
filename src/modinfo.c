@@ -2288,11 +2288,11 @@ sr_modinfo_candidate_reset(struct sr_mod_info_s *mod_info)
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_REQ) {
             /* just remove the candidate SHM files */
-            if ((err_info = sr_path_ds_shm(mod->ly_mod->name, SR_DS_CANDIDATE, 0, &path))) {
+            if ((err_info = sr_path_ds_shm(mod->ly_mod->name, SR_DS_CANDIDATE, &path))) {
                 return err_info;
             }
 
-            if ((shm_unlink(path) == -1) && (errno != ENOENT)) {
+            if ((unlink(path) == -1) && (errno != ENOENT)) {
                 SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
             }
             free(path);
