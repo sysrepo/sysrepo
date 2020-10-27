@@ -2521,7 +2521,7 @@ sr_cp_file2shm(const char *to, const char *from, mode_t perm)
     mode_t um;
 
     /* open "from" file */
-    fd_from = open(from, O_RDONLY);
+    fd_from = SR_OPEN(from, O_RDONLY, 0);
     if (fd_from < 0) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening \"%s\" file failed (%s).", from, strerror(errno));
         goto cleanup;
@@ -2531,7 +2531,7 @@ sr_cp_file2shm(const char *to, const char *from, mode_t perm)
     um = umask(SR_UMASK);
 
     /* open "to" */
-    fd_to = open(to, O_WRONLY | O_TRUNC | O_CREAT, perm);
+    fd_to = SR_OPEN(to, O_WRONLY | O_TRUNC | O_CREAT, perm);
     umask(um);
     if (fd_to < 0) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening \"%s\" failed (%s).", to, strerror(errno));
@@ -4259,7 +4259,7 @@ retry_open:
     }
 
     /* open fd */
-    fd = open(path, O_RDONLY);
+    fd = SR_OPEN(path, O_RDONLY, 0);
     if (fd == -1) {
         if ((errno == ENOENT) && (ds == SR_DS_CANDIDATE)) {
             /* no candidate exists, just use running */
@@ -4339,7 +4339,7 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node
     um = umask(SR_UMASK);
 
     /* open */
-    fd = open(path, O_WRONLY | O_TRUNC | create_flags, create_mode);
+    fd = SR_OPEN(path, O_WRONLY | O_TRUNC | create_flags, create_mode);
     umask(um);
     if (fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" (%s).", path, strerror(errno));

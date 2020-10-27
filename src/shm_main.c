@@ -723,7 +723,7 @@ sr_shmmain_createlock_open(int *shm_lock)
     /* set umask so that the correct permissions are really set */
     um = umask(SR_UMASK);
 
-    *shm_lock = open(path, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
+    *shm_lock = SR_OPEN(path, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
     free(path);
     umask(um);
     if (*shm_lock == -1) {
@@ -1726,7 +1726,7 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
     }
 
     /* try to open the shared memory */
-    shm->fd = open(shm_name, O_RDWR, SR_MAIN_SHM_PERM);
+    shm->fd = SR_OPEN(shm_name, O_RDWR, SR_MAIN_SHM_PERM);
     if ((shm->fd == -1) && (errno == ENOENT)) {
         if (!created) {
             /* we do not want to create the memory now */
@@ -1738,7 +1738,7 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
         um = umask(SR_UMASK);
 
         /* create shared memory */
-        shm->fd = open(shm_name, O_RDWR | O_CREAT | O_EXCL, SR_MAIN_SHM_PERM);
+        shm->fd = SR_OPEN(shm_name, O_RDWR | O_CREAT | O_EXCL, SR_MAIN_SHM_PERM);
         umask(um);
         creat = 1;
     }
@@ -1803,7 +1803,7 @@ sr_shmmain_ext_open(sr_shm_t *shm, int zero)
     /* set umask so that the correct permissions are really set */
     um = umask(SR_UMASK);
 
-    shm->fd = open(shm_name, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
+    shm->fd = SR_OPEN(shm_name, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
     free(shm_name);
     umask(um);
     if (shm->fd == -1) {

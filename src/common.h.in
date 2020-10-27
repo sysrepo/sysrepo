@@ -93,6 +93,14 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** macro for checking session type */
 #define SR_IS_EVENT_SESS(session) (session->ev != SR_SUB_EV_NONE)
 
+/** macro for opening files.
+ * O_NOFOLLOW enforces that files are not symlinks -- all opened
+ *   files are created by sysrepo so there cannot be any symlinks.
+ * O_CLOEXEC enforces that forking with an open sysrepo connection
+ *   is forbidden.
+ */
+#define SR_OPEN(path, oflag, ...) open(path, oflag | O_NOFOLLOW | O_CLOEXEC, __VA_ARGS__)
+
 /** macro for getting the first SHM module */
 #define SR_FIRST_SHM_MOD(main_shm_addr) ((sr_mod_t *)(((char *)main_shm_addr) + sizeof(sr_main_shm_t)))
 

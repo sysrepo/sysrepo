@@ -149,7 +149,7 @@ sr_replay_open_file(const char *mod_name, time_t from_ts, time_t to_ts, int flag
     /* set umask so that the correct permissions are really set */
     um = umask(SR_UMASK);
 
-    *notif_fd = open(path, flags, perm);
+    *notif_fd = SR_OPEN(path, flags, perm);
     umask(um);
     if (*notif_fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open file \"%s\" (%s).", path, strerror(errno));
