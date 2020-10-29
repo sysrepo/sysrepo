@@ -723,7 +723,7 @@ sr_shmmain_createlock_open(int *shm_lock)
     /* set umask so that the correct permissions are really set */
     um = umask(SR_UMASK);
 
-    *shm_lock = open(path, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
+    *shm_lock = SR_OPEN(path, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
     free(path);
     umask(um);
     if (*shm_lock == -1) {
@@ -1230,7 +1230,7 @@ sr_shmmain_files_startup2running(sr_conn_ctx_t *conn, int replace)
 
     SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
         mod_name = conn->ext_shm.addr + shm_mod->name;
-        if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, 1, &running_path))) {
+        if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, &running_path))) {
             goto error;
         }
 
@@ -1238,11 +1238,6 @@ sr_shmmain_files_startup2running(sr_conn_ctx_t *conn, int replace)
             /* there are some running data, keep them */
             free(running_path);
             continue;
-        }
-        free(running_path);
-
-        if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, 0, &running_path))) {
-            goto error;
         }
 
         if ((err_info = sr_path_startup_file(mod_name, &startup_path))) {
@@ -1731,7 +1726,7 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
     }
 
     /* try to open the shared memory */
-    shm->fd = shm_open(shm_name, O_RDWR, SR_MAIN_SHM_PERM);
+    shm->fd = SR_OPEN(shm_name, O_RDWR, SR_MAIN_SHM_PERM);
     if ((shm->fd == -1) && (errno == ENOENT)) {
         if (!created) {
             /* we do not want to create the memory now */
@@ -1743,7 +1738,7 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
         um = umask(SR_UMASK);
 
         /* create shared memory */
-        shm->fd = shm_open(shm_name, O_RDWR | O_CREAT | O_EXCL, SR_MAIN_SHM_PERM);
+        shm->fd = SR_OPEN(shm_name, O_RDWR | O_CREAT | O_EXCL, SR_MAIN_SHM_PERM);
         umask(um);
         creat = 1;
     }
@@ -1808,7 +1803,7 @@ sr_shmmain_ext_open(sr_shm_t *shm, int zero)
     /* set umask so that the correct permissions are really set */
     um = umask(SR_UMASK);
 
-    shm->fd = shm_open(shm_name, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
+    shm->fd = SR_OPEN(shm_name, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
     free(shm_name);
     umask(um);
     if (shm->fd == -1) {
@@ -2108,12 +2103,12 @@ sr_shmmain_rpc_subscription_stop(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const c
             mod_name = sr_get_first_ns(op_path);
 
             /* delete the SHM file itself so that there is no leftover event */
-            err_info = sr_path_sub_shm(mod_name, "rpc", sr_str_hash(op_path), 0, &path);
+            err_info = sr_path_sub_shm(mod_name, "rpc", sr_str_hash(op_path), &path);
             free(mod_name);
             if (err_info) {
                 break;
             }
-            if (shm_unlink(path) == -1) {
+            if (unlink(path) == -1) {
                 SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
             }
             free(path);
@@ -2269,7 +2264,7 @@ sr_shmmain_check_data_files(sr_conn_ctx_t *conn)
 
         if (cur_owner || cur_group || cur_perm) {
             /* set correct values on the file */
-            if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, 1, &path))) {
+            if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, &path))) {
                 goto error;
             }
             err_info = sr_chmodown(path, cur_owner, cur_group, cur_perm);
@@ -2282,7 +2277,7 @@ sr_shmmain_check_data_files(sr_conn_ctx_t *conn)
         /*
          * operational file, may not exist
          */
-        if ((err_info = sr_path_ds_shm(mod_name, SR_DS_OPERATIONAL, 1, &path))) {
+        if ((err_info = sr_path_ds_shm(mod_name, SR_DS_OPERATIONAL, &path))) {
             goto error;
         }
         exists = sr_file_exists(path);
@@ -2318,7 +2313,7 @@ sr_shmmain_check_data_files(sr_conn_ctx_t *conn)
 
         if (cur_owner || cur_group || cur_perm) {
             /* set correct values on the file */
-            if ((err_info = sr_path_ds_shm(mod_name, SR_DS_OPERATIONAL, 1, &path))) {
+            if ((err_info = sr_path_ds_shm(mod_name, SR_DS_OPERATIONAL, &path))) {
                 goto error;
             }
             err_info = sr_chmodown(path, cur_owner, cur_group, cur_perm);

@@ -1276,26 +1276,26 @@ sr_remove_data_files(const char *mod_name)
     }
     free(path);
 
-    if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, 0, &path))) {
+    if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, &path))) {
         return err_info;
     }
-    if ((shm_unlink(path) == -1) && (errno != ENOENT)) {
+    if ((unlink(path) == -1) && (errno != ENOENT)) {
         SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
     }
     free(path);
 
-    if ((err_info = sr_path_ds_shm(mod_name, SR_DS_OPERATIONAL, 0, &path))) {
+    if ((err_info = sr_path_ds_shm(mod_name, SR_DS_OPERATIONAL, &path))) {
         return err_info;
     }
-    if ((shm_unlink(path) == -1) && (errno != ENOENT)) {
+    if ((unlink(path) == -1) && (errno != ENOENT)) {
         SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
     }
     free(path);
 
-    if ((err_info = sr_path_ds_shm(mod_name, SR_DS_CANDIDATE, 0, &path))) {
+    if ((err_info = sr_path_ds_shm(mod_name, SR_DS_CANDIDATE, &path))) {
         return err_info;
     }
-    if ((shm_unlink(path) == -1) && (errno != ENOENT)) {
+    if ((unlink(path) == -1) && (errno != ENOENT)) {
         SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
     }
     free(path);
@@ -1447,7 +1447,7 @@ sr_path_main_shm(char **path)
         return err_info;
     }
 
-    if (asprintf(path, "/%s_main", prefix) == -1) {
+    if (asprintf(path, "%s/%s_main", SR_SHM_DIR, prefix) == -1) {
         SR_ERRINFO_MEM(&err_info);
         *path = NULL;
     }
@@ -1466,7 +1466,7 @@ sr_path_ext_shm(char **path)
         return err_info;
     }
 
-    if (asprintf(path, "/%s_ext", prefix) == -1) {
+    if (asprintf(path, "%s/%s_ext", SR_SHM_DIR, prefix) == -1) {
         SR_ERRINFO_MEM(&err_info);
         *path = NULL;
     }
@@ -1475,7 +1475,7 @@ sr_path_ext_shm(char **path)
 }
 
 sr_error_info_t *
-sr_path_sub_shm(const char *mod_name, const char *suffix1, int64_t suffix2, int abs_path, char **path)
+sr_path_sub_shm(const char *mod_name, const char *suffix1, int64_t suffix2, char **path)
 {
     sr_error_info_t *err_info = NULL;
     const char *prefix;
@@ -1487,10 +1487,10 @@ sr_path_sub_shm(const char *mod_name, const char *suffix1, int64_t suffix2, int 
     }
 
     if (suffix2 > -1) {
-        ret = asprintf(path, "%s/%ssub_%s.%s.%08x", abs_path ? SR_SHM_DIR : "",
+        ret = asprintf(path, "%s/%ssub_%s.%s.%08x", SR_SHM_DIR,
                 prefix, mod_name, suffix1, (uint32_t)suffix2);
     } else {
-        ret = asprintf(path, "%s/%ssub_%s.%s", abs_path ? SR_SHM_DIR : "",
+        ret = asprintf(path, "%s/%ssub_%s.%s", SR_SHM_DIR,
                 prefix, mod_name, suffix1);
     }
 
@@ -1501,7 +1501,7 @@ sr_path_sub_shm(const char *mod_name, const char *suffix1, int64_t suffix2, int 
 }
 
 sr_error_info_t *
-sr_path_ds_shm(const char *mod_name, sr_datastore_t ds, int abs_path, char **path)
+sr_path_ds_shm(const char *mod_name, sr_datastore_t ds, char **path)
 {
     sr_error_info_t *err_info = NULL;
     const char *prefix;
@@ -1514,7 +1514,7 @@ sr_path_ds_shm(const char *mod_name, sr_datastore_t ds, int abs_path, char **pat
         return err_info;
     }
 
-    ret = asprintf(path, "%s/%s_%s.%s", abs_path ? SR_SHM_DIR : "",
+    ret = asprintf(path, "%s/%s_%s.%s", SR_SHM_DIR,
             prefix, mod_name, sr_ds2str(ds));
     if (ret == -1) {
         *path = NULL;
@@ -1940,7 +1940,7 @@ sr_perm_get(const char *mod_name, sr_datastore_t ds, char **owner, char **group,
             return err_info;
         }
     } else {
-        if ((err_info = sr_path_ds_shm(mod_name, ds, 1, &path))) {
+        if ((err_info = sr_path_ds_shm(mod_name, ds, &path))) {
             return err_info;
         }
     }
@@ -2521,7 +2521,7 @@ sr_cp_file2shm(const char *to, const char *from, mode_t perm)
     mode_t um;
 
     /* open "from" file */
-    fd_from = open(from, O_RDONLY);
+    fd_from = SR_OPEN(from, O_RDONLY, 0);
     if (fd_from < 0) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening \"%s\" file failed (%s).", from, strerror(errno));
         goto cleanup;
@@ -2530,11 +2530,11 @@ sr_cp_file2shm(const char *to, const char *from, mode_t perm)
     /* set umask so that the correct permissions are really set */
     um = umask(SR_UMASK);
 
-    /* open "to" SHM */
-    fd_to = shm_open(to, O_WRONLY | O_TRUNC | O_CREAT, perm);
+    /* open "to" */
+    fd_to = SR_OPEN(to, O_WRONLY | O_TRUNC | O_CREAT, perm);
     umask(um);
     if (fd_to < 0) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening \"%s\" SHM failed (%s).", to, strerror(errno));
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening \"%s\" failed (%s).", to, strerror(errno));
         goto cleanup;
     }
 
@@ -4252,18 +4252,14 @@ retry_open:
     if (ds == SR_DS_STARTUP) {
         err_info = sr_path_startup_file(ly_mod->name, &path);
     } else {
-        err_info = sr_path_ds_shm(ly_mod->name, ds, 0, &path);
+        err_info = sr_path_ds_shm(ly_mod->name, ds, &path);
     }
     if (err_info) {
         goto error;
     }
 
     /* open fd */
-    if (ds == SR_DS_STARTUP) {
-        fd = open(path, O_RDONLY);
-    } else {
-        fd = shm_open(path, O_RDONLY, 0);
-    }
+    fd = SR_OPEN(path, O_RDONLY, 0);
     if (fd == -1) {
         if ((errno == ENOENT) && (ds == SR_DS_CANDIDATE)) {
             /* no candidate exists, just use running */
@@ -4332,7 +4328,7 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node
     case SR_DS_RUNNING:
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
-        err_info = sr_path_ds_shm(mod_name, ds, 0, &path);
+        err_info = sr_path_ds_shm(mod_name, ds, &path);
         break;
     }
     if (err_info) {
@@ -4343,11 +4339,7 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node
     um = umask(SR_UMASK);
 
     /* open */
-    if (ds == SR_DS_STARTUP) {
-        fd = open(path, O_WRONLY | O_TRUNC | create_flags, create_mode);
-    } else {
-        fd = shm_open(path, O_WRONLY | O_TRUNC | create_flags, create_mode);
-    }
+    fd = SR_OPEN(path, O_WRONLY | O_TRUNC | create_flags, create_mode);
     umask(um);
     if (fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" (%s).", path, strerror(errno));

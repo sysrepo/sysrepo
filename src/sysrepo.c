@@ -357,13 +357,13 @@ cleanup:
             if ((tmp_err = sr_path_main_shm(&shm_name))) {
                 sr_errinfo_merge(&err_info, tmp_err);
             } else {
-                shm_unlink(shm_name);
+                unlink(shm_name);
                 free(shm_name);
             }
             if ((tmp_err = sr_path_ext_shm(&shm_name))) {
                 sr_errinfo_merge(&err_info, tmp_err);
             } else {
-                shm_unlink(shm_name);
+                unlink(shm_name);
                 free(shm_name);
             }
         }
@@ -1406,7 +1406,7 @@ sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *o
     }
 
     /* get running SHM file path */
-    if ((err_info = sr_path_ds_shm(module_name, SR_DS_RUNNING, 1, &path))) {
+    if ((err_info = sr_path_ds_shm(module_name, SR_DS_RUNNING, &path))) {
         goto cleanup_unlock;
     }
 
@@ -1418,7 +1418,7 @@ sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *o
     }
 
     /* get operational SHM file path */
-    if ((err_info = sr_path_ds_shm(module_name, SR_DS_OPERATIONAL, 1, &path))) {
+    if ((err_info = sr_path_ds_shm(module_name, SR_DS_OPERATIONAL, &path))) {
         goto cleanup_unlock;
     }
 
@@ -2736,7 +2736,7 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, sr_sid_t sid)
             goto error;
         } else if (lock && (mod_info->ds == SR_DS_CANDIDATE)) {
             /* candidate DS file cannot exist */
-            if ((err_info = sr_path_ds_shm(mod->ly_mod->name, SR_DS_CANDIDATE, 1, &path))) {
+            if ((err_info = sr_path_ds_shm(mod->ly_mod->name, SR_DS_CANDIDATE, &path))) {
                 goto error;
             }
             r = access(path, F_OK);
@@ -3345,7 +3345,7 @@ sr_subs_new(sr_conn_ctx_t *conn, sr_subscr_options_t opts, sr_subscription_ctx_t
 
     /* open it for reading AND writing (just so that there always is a "writer", otherwise it is always ready
      * for reading by select() but returns just EOF on read) */
-    (*subs_p)->evpipe = open(path, O_RDWR | O_NONBLOCK);
+    (*subs_p)->evpipe = SR_OPEN(path, O_RDWR | O_NONBLOCK, 0);
     if ((*subs_p)->evpipe == -1) {
         SR_ERRINFO_SYSERRNO(&err_info, "open");
         goto error;
