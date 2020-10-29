@@ -814,7 +814,7 @@ test_enabled_partial(void **state)
 
     called = 0;
     ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface[name='eth128']",
-            enabled_change_cb, &called, 0, SR_SUBSCR_ENABLED, &subscr);
+            enabled_change_cb, &called, 0, SR_SUBSCR_ENABLED | SR_SUBSCR_DONE_ONLY, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(called, 2);
 

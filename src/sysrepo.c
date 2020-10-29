@@ -3260,7 +3260,7 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, const struc
     tmp_sess.ds = SR_DS_RUNNING;
     tmp_sess.dt[tmp_sess.ds].diff = enabled_data;
 
-    if (!(opts & SR_SUBSCR_DONE_ONLY)) {
+    if (opts & SR_SUBSCR_ENABLED) {
         tmp_sess.ev = SR_SUB_EV_ENABLED;
         SR_LOG_INF("Triggering \"%s\" \"%s\" event on enabled data.", ly_mod->name, sr_ev2str(tmp_sess.ev));
 
