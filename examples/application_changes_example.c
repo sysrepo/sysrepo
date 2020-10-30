@@ -184,13 +184,16 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, const char 
     sr_val_t *old_value = NULL;
     sr_val_t *new_value = NULL;
 
-    (void)xpath;
     (void)request_id;
     (void)private_data;
 
     printf("\n\n ========== EVENT %s CHANGES: ====================================\n\n", ev_to_str(event));
 
-    sprintf(path, "%s//.", xpath);
+    if (xpath) {
+        sprintf(path, "%s//.", xpath);
+    } else {
+        sprintf(path, "%s:*//.", module_name);
+    }
     rc = sr_get_changes_iter(session, path, &it);
     if (rc != SR_ERR_OK) {
         goto cleanup;
