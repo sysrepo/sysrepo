@@ -4047,27 +4047,33 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
 
     /* find RPC struct or add a new one */
     shm_rpc = sr_shmmain_find_rpc((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, op_path, 0);
-    if (!shm_rpc && (err_info = sr_shmmain_add_rpc(conn, op_path, &shm_rpc))) {
-        goto error_unlock_unsub;
+    if (!shm_rpc) {
+        if ((err_info = sr_shmmain_add_rpc(conn, op_path, &shm_rpc))) {
+            goto error_unlock_unsub1;
+        }
+        /* needed for error_unlock_unsub2 */
+        last_removed = 1;
+    } else {
+        last_removed = 0;
     }
     shm_rpc_off = ((char *)shm_rpc) - conn->ext_shm.addr;
 
     /* add RPC/action subscription into main SHM (which may be remapped) */
     if ((err_info = sr_shmmain_rpc_subscription_add(&conn->ext_shm, shm_rpc_off, xpath, priority, sub_opts,
                 (*subscription)->evpipe_num))) {
-        goto error_unlock_unsub;
+        goto error_unlock_unsub2;
     }
     shm_rpc = (sr_rpc_t *)(conn->ext_shm.addr + shm_rpc_off);
 
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_sub_rpc_add(session, op_path, xpath, callback, tree_callback, private_data, priority, *subscription))) {
-        goto error_unlock_unsub_unrpc;
+        goto error_unlock_unsub3;
     }
 
     /* add the subscription into session */
     if ((err_info = sr_ptr_add(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
                 *subscription))) {
-        goto error_unlock_unsub_unrpc;
+        goto error_unlock_unsub4;
     }
 
     /* SHM UNLOCK */
@@ -4077,16 +4083,21 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     free(op_path);
     return sr_api_ret(session, NULL);
 
-error_unlock_unsub_unrpc:
+error_unlock_unsub4:
+    if (opts & SR_SUBSCR_CTX_REUSE) {
+        sr_sub_rpc_del(op_path, xpath, callback, tree_callback, private_data, priority, *subscription);
+    }
+
+error_unlock_unsub3:
     sr_shmmain_rpc_subscription_del(conn->ext_shm.addr, shm_rpc, xpath, priority, (*subscription)->evpipe_num, 0, &last_removed);
+
+error_unlock_unsub2:
     if (last_removed) {
         sr_shmmain_del_rpc((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, NULL, shm_rpc->op_path);
     }
 
-error_unlock_unsub:
-    if (opts & SR_SUBSCR_CTX_REUSE) {
-        sr_sub_rpc_del(op_path, xpath, callback, tree_callback, private_data, priority, *subscription);
-    } else {
+error_unlock_unsub1:
+    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         _sr_unsubscribe(*subscription);
         *subscription = NULL;
     }
