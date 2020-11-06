@@ -2015,10 +2015,20 @@ sr_shmmain_rpc_subscription_add(sr_shm_t *shm_ext, off_t shm_rpc_off, const char
     sr_rpc_t *shm_rpc;
     off_t xpath_off;
     sr_rpc_sub_t *shm_sub;
+    uint32_t i;
 
     assert(xpath);
 
+    /* check that this exact subscription does not exist yet */
     shm_rpc = (sr_rpc_t *)(shm_ext->addr + shm_rpc_off);
+    shm_sub = (sr_rpc_sub_t *)(shm_ext->addr + shm_rpc->subs);
+    for (i = 0; i < shm_rpc->sub_count; ++i) {
+        if (shm_sub->priority == priority) {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "RPC subscription for \"%s\" with priority %u "
+                    "already exists.", shm_ext->addr + shm_rpc->op_path, priority);
+            return err_info;
+        }
+    }
 
     /* add new subscription with its xpath */
     if ((err_info = sr_shmrealloc_add(shm_ext, &shm_rpc->subs, &shm_rpc->sub_count, 1, sizeof *shm_sub, -1,

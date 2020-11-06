@@ -223,7 +223,7 @@ rpc_sub_cb(sr_session_ctx_t *session, const char *op_path, const sr_val_t *input
 }
 
 static int
-test_rpc_sub(int rp, int wp)
+test_rpc_sub1(int rp, int wp)
 {
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sess;
@@ -252,6 +252,45 @@ test_rpc_sub(int rp, int wp)
         ret = sr_rpc_subscribe(sess, "/ops:cont/list1/cont2/act1", rpc_sub_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
         sr_assert_int_equal(ret, SR_ERR_OK);
         ret = sr_rpc_subscribe(sess, "/ops:cont/list1/act2", rpc_sub_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+
+        sr_unsubscribe(sub);
+    }
+
+    sr_disconnect(conn);
+    return 0;
+}
+
+static int
+test_rpc_sub2(int rp, int wp)
+{
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *sub;
+    int ret, i;
+
+    ret = sr_connect(0, &conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_start(conn, SR_DS_RUNNING, &sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for the other process */
+    barrier(rp, wp);
+
+    /* subscribe and unsubscribe to RPCs/actions */
+    for (i = 0; i < 20; ++i) {
+        sub = NULL;
+
+        ret = sr_rpc_subscribe(sess, "/ops:rpc1", rpc_sub_cb, NULL, 1, SR_SUBSCR_CTX_REUSE, &sub);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_rpc_subscribe(sess, "/ops:rpc2", rpc_sub_cb, NULL, 1, SR_SUBSCR_CTX_REUSE, &sub);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_rpc_subscribe(sess, "/ops:rpc3", rpc_sub_cb, NULL, 1, SR_SUBSCR_CTX_REUSE, &sub);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_rpc_subscribe(sess, "/ops:cont/list1/cont2/act1", rpc_sub_cb, NULL, 1, SR_SUBSCR_CTX_REUSE, &sub);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_rpc_subscribe(sess, "/ops:cont/list1/act2", rpc_sub_cb, NULL, 1, SR_SUBSCR_CTX_REUSE, &sub);
         sr_assert_int_equal(ret, SR_ERR_OK);
 
         sr_unsubscribe(sub);
@@ -463,7 +502,7 @@ int
 main(void)
 {
     struct test tests[] = {
-        {"rpc sub", test_rpc_sub, test_rpc_sub, setup, teardown},
+        {"rpc sub", test_rpc_sub1, test_rpc_sub2, setup, teardown},
         {"rpc crash", test_rpc_crash1, test_rpc_crash2, setup, teardown},
         {"notif instid", test_notif_instid1, test_notif_instid2, setup, teardown},
     };

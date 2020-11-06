@@ -587,7 +587,7 @@ test_action_pred(void **state)
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='one' or k='two']/cont2/act1", rpc_action_pred_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='three' or k='four']/cont2/act1", rpc_action_pred_cb, NULL,
-            0, SR_SUBSCR_CTX_REUSE, &subscr);
+            1, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation and executing the actions */
@@ -695,10 +695,10 @@ test_multi(void **state)
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1", rpc_multi_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='one' or k='two']/cont2/act1", rpc_multi_cb, st,
-            0, SR_SUBSCR_CTX_REUSE, &subscr);
+            1, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='two' or k='three' or k='four']/cont2/act1",
-            rpc_multi_cb, st, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+            rpc_multi_cb, st, 2, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation and executing the actions */
@@ -1413,6 +1413,24 @@ test_rpc_shelve(void **state)
     pthread_join(tid[1], NULL);
 }
 
+/* TEST */
+static int
+rpc_dummy_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
+        sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data)
+{
+    (void)session;
+    (void)xpath;
+    (void)input;
+    (void)input_cnt;
+    (void)event;
+    (void)request_id;
+    (void)output;
+    (void)output_cnt;
+    (void)private_data;
+
+    return SR_ERR_OK;
+}
+
 static void
 test_input_parameters(void **state)
 {
@@ -1474,6 +1492,13 @@ test_input_parameters(void **state)
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
     for(; input_op->parent; input_op = input_op->parent);
     lyd_free_withsiblings(input_op);
+
+    /* equal priority */
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc1", rpc_dummy_cb, NULL, 5, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc1", rpc_dummy_cb, NULL, 5, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    sr_unsubscribe(subscr);
 }
 
 /* TEST */

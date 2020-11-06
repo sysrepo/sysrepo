@@ -64,8 +64,8 @@ cannot even be sent. Callbacks work as one would expect, on _rpc_ event they are
 can fail or succeed with optionally generating some output that is sent back to the original sender. There
 can be predicates on the subscription XPath filtering only specific RPC/action instances.
 
-In case there are several subscriptions matching a single RPC/action, it is best to make sure there is only __one__
-subscription with the lowest priority (will be called last). This (main) subscription will be the one generating
+In case there are several subscriptions matching a single RPC/action, there can only be __one__
+subscription with a specific priority. This lowest priority (main) subscription will be the one generating
 output for the sender (previous outputs will be overwritten) and, additionally, will never receive the _abort_
 event (in case it fails, only all the other higher priority callbacks will be aborted).
 
