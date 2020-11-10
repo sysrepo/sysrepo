@@ -196,7 +196,7 @@ typedef struct sr_conn_shm_lock_s {
  */
 typedef struct sr_conn_shm_s {
     sr_conn_ctx_t *conn_ctx;    /**< Connection, process-specific pointer, do not access! */
-    pid_t pid;                  /**< PID of process that created this connection. */
+    sr_cid_t cid;               /**< Globally unique connection ID for this connection. */
 
     sr_conn_shm_lock_t main_lock; /**< Held main SHM lock. */
     off_t mod_locks;            /**< Held SHM module locks, points to (sr_conn_state_lock_t (*)[SR_DS_COUNT]). */
@@ -375,10 +375,9 @@ sr_error_info_t *sr_shmmain_conn_add(sr_conn_ctx_t *conn);
  *
  * @param[in] main_shm Main SHM structure.
  * @param[in] ext_shm_addr Ext SHM address.
- * @param[in] conn Connection context to delete.
- * @param[in] pid Connection PID to delete.
+ * @param[in] cid Connection ID to delete.
  */
-void sr_shmmain_conn_del(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
+void sr_shmmain_conn_del(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_cid_t cid);
 
 /**
  * @brief Find a connection in main SHM.
@@ -387,10 +386,18 @@ void sr_shmmain_conn_del(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_ct
  * @param[in] main_shm_addr Main SHM address.
  * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] conn Connection context to find.
- * @param[in] pid Connection PID to find.
  * @return Matching connection state, NULL if not found.
  */
-sr_conn_shm_t *sr_shmmain_conn_find(char *main_shm_addr, char *ext_shm_addr, sr_conn_ctx_t *conn, pid_t pid);
+sr_conn_shm_t *sr_shmmain_conn_find(char *main_shm_addr, char *ext_shm_addr, sr_conn_ctx_t *conn);
+
+/**
+ * @brief Check if the connection is alive.
+ *
+ * @param[in] cid The connection ID to check.
+ * @param[out] conn_alive Will be set to non-zero if the connection is alive, zero otherwise.
+ */
+sr_error_info_t *sr_shmmain_check_conn_lock(sr_cid_t cid, int *conn_alive);
+
 
 /**
  * @brief Add an event pipe into a connection in main SHM.
@@ -858,10 +865,10 @@ sr_error_info_t *sr_shmmod_notif_subscription_stop(char *ext_shm_addr, sr_mod_t 
  *
  * @param[in] conn Connection to use.
  * @param[in] del_conn Connection whose data to remove.
- * @param[in] del_pid PID of \p del_conn.
+ * @param[in] cid Connection ID whose data to remove.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid_t del_pid);
+sr_error_info_t *sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, sr_cid_t cid);
 
 /*
  * Subscription SHM functions.

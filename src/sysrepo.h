@@ -220,6 +220,11 @@ typedef struct sr_error_info_s {
 } sr_error_info_t;
 
 /**
+ * @brief Connection ID.
+ */
+typedef uint32_t sr_cid_t;
+
+/**
  * @brief Connects to the sysrepo datastore. If possible (no other connections exist), also apply
  * any scheduled changes.
  *
@@ -253,6 +258,15 @@ int sr_disconnect(sr_conn_ctx_t *conn);
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_connection_count(uint32_t *conn_count);
+
+/**
+ * @brief Retrieve globally unique connection ID for this connection.  A value
+ * of 0 indicates the ID is not set.
+ *
+ * @param[in] conn Connection to use.
+ * @return unique identifier for the connection.
+ */
+sr_cid_t sr_connection_cid(sr_conn_ctx_t *conn);
 
 /**
  * @brief Get the _libyang_ context used by a connection. Can be used in an application for working with data

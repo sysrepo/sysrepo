@@ -354,7 +354,7 @@ sr_shmmod_conn_lock_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_
 
     assert((mode == SR_LOCK_READ) || (mode == SR_LOCK_WRITE));
 
-    conn_s = sr_shmmain_conn_find(conn->main_shm.addr, conn->ext_shm.addr, conn, getpid());
+    conn_s = sr_shmmain_conn_find(conn->main_shm.addr, conn->ext_shm.addr, conn);
     if (!conn_s) {
         SR_ERRINFO_INT(&err_info);
         goto cleanup;
@@ -1015,7 +1015,7 @@ sr_shmmod_notif_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_
 }
 
 sr_error_info_t *
-sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid_t del_pid)
+sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, sr_cid_t cid)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -1061,7 +1061,7 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, pid
         }
 
         if (diff) {
-            if ((err_info = sr_diff_del_conn(&diff, del_conn, del_pid))) {
+            if ((err_info = sr_diff_del_conn(&diff, del_conn, cid))) {
                 goto cleanup;
             }
             if ((err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, diff, 0, 0))) {

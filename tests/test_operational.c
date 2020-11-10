@@ -414,7 +414,7 @@ test_sr_mon(void **state)
             "</module-lock>"
         "</connection>"
     "</sysrepo-state>",
-    (long)getpid());
+    (long)sr_connection_cid(st->conn));
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -591,8 +591,11 @@ test_sr_mon(void **state)
             "</module-lock>"
         "</connection>"
     "</sysrepo-state>",
-    (long)getpid(), (long)getpid(), (long)getpid(), (long)getpid(), (long)getpid(),
-    (long)getpid(), (long)getpid(), (long)getpid(), (long)getpid(), (long)getpid());
+    (long)sr_connection_cid(st->conn), (long)sr_connection_cid(st->conn),
+    (long)sr_connection_cid(st->conn), (long)sr_connection_cid(st->conn),
+    (long)sr_connection_cid(st->conn), (long)sr_connection_cid(st->conn),
+    (long)sr_connection_cid(st->conn), (long)sr_connection_cid(st->conn),
+    (long)sr_connection_cid(st->conn), (long)sr_connection_cid(st->conn));
 
     assert_string_equal(str1, str2);
     free(str1);
