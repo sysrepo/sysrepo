@@ -28,6 +28,7 @@
 #include <setjmp.h>
 #include <string.h>
 #include <stdarg.h>
+#include <poll.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
@@ -5214,6 +5215,131 @@ test_change_userord(void **state)
     pthread_join(tid[1], NULL);
 }
 
+/* TEST */
+static void *
+apply_done_unsub_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(sess, "/test:test-leaf", "1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for subscription before applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    /* perform 1st change */
+    ret = sr_apply_changes(sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait until the other thread unsubscribes */
+    pthread_barrier_wait(&st->barrier);
+
+    /* perform 2nd change */
+    ret = sr_delete_item(sess, "/test:test-leaf", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+subscribe_done_unsub_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr1, *subscr2;
+    int ret, ev_pipe;
+    struct pollfd pfd;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* 1st subscribe */
+    ret = sr_module_change_subscribe(sess, "test", NULL, dummy_change_cb, st, 0, SR_SUBSCR_NO_THREAD, &subscr1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* get its event pipe */
+    ret = sr_get_event_pipe(subscr1, &ev_pipe);
+    assert_int_equal(ret, SR_ERR_OK);
+    pfd.fd = ev_pipe;
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+
+    /* 2nd subscribe */
+    ret = sr_module_change_subscribe(sess, "test", NULL, dummy_change_cb, st, 0, SR_SUBSCR_NO_THREAD, &subscr2);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that subscriptions were created */
+    pthread_barrier_wait(&st->barrier);
+
+    /* poll the event */
+    ret = poll(&pfd, 1, 1000);
+    assert_int_equal(ret, 1);
+    assert_int_equal(pfd.revents, POLLIN);
+
+    /* handle SR_EV_CHANGE events */
+    ret = sr_process_events(subscr1, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_process_events(subscr2, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* unsubscribe one subscription */
+    sr_unsubscribe(subscr2);
+
+    /* poll the event */
+    ret = poll(&pfd, 1, 1000);
+    assert_int_equal(ret, 1);
+    assert_int_equal(pfd.revents, POLLIN);
+
+    /* handle SR_EV_DONE event */
+    ret = sr_process_events(subscr1, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that we have unsubscribed and are ready for the next change */
+    pthread_barrier_wait(&st->barrier);
+
+    /* poll the event */
+    ret = poll(&pfd, 1, 1000);
+    assert_int_equal(ret, 1);
+    assert_int_equal(pfd.revents, POLLIN);
+
+    /* handle SR_EV_CHANGE event */
+    ret = sr_process_events(subscr1, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* poll the event */
+    ret = poll(&pfd, 1, 1000);
+    assert_int_equal(ret, 1);
+    assert_int_equal(pfd.revents, POLLIN);
+
+    /* handle SR_EV_DONE event */
+    ret = sr_process_events(subscr1, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_unsubscribe(subscr1);
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_done_unsub(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, apply_done_unsub_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_done_unsub_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
 /* MAIN */
 int
 main(void)
@@ -5235,6 +5361,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_change_timeout, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_order, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_userord, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_done_unsub, setup_f, teardown_f),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

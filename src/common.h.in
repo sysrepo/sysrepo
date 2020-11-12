@@ -278,8 +278,11 @@ typedef struct sr_rwlock_s {
     uint16_t readers;               /**< Current read-locked users. */
 } sr_rwlock_t;
 
+struct modsub_changesub_s;
 struct modsub_change_s;
+struct modsub_opersub_s;
 struct modsub_oper_s;
+struct opsub_rpcsub_s;
 struct opsub_rpc_s;
 struct modsub_notif_s;
 

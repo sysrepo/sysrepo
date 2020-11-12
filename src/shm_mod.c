@@ -804,7 +804,7 @@ sr_shmmod_change_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const
         }
     } while (all_evpipe);
 
-    return err_info;;
+    return err_info;
 }
 
 sr_error_info_t *

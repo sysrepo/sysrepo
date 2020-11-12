@@ -1923,10 +1923,11 @@ sr_shmsub_change_listen_has_diff(struct modsub_changesub_s *sub, const struct ly
  * @param[in] data Optional data to write after the structure.
  * @param[in] data_len Additional data length.
  * @param[in] err_code Optional error code if a callback failed.
+ * @param[in] result_str Result of processing the event in string.
  */
 static void
 sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t valid_subscr_count, const char *data,
-        uint32_t data_len, sr_error_t err_code)
+        uint32_t data_len, sr_error_t err_code, const char *result_str)
 {
     sr_error_info_t *err_info = NULL;
     sr_sub_event_t event;
@@ -1967,9 +1968,8 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
         memcpy(((char *)multi_sub_shm) + sizeof *multi_sub_shm, data, data_len);
     }
 
-    SR_LOG_INF("%s processing of \"%s\" event with ID %u priority %u (remaining %u subscribers).",
-            err_code ? "Failed" : "Successful", sr_ev2str(event), multi_sub_shm->request_id, multi_sub_shm->priority,
-            multi_sub_shm->subscriber_count);
+    SR_LOG_INF("%s processing of \"%s\" event with ID %u priority %u (remaining %u subscribers).", result_str,
+            sr_ev2str(event), multi_sub_shm->request_id, multi_sub_shm->priority, multi_sub_shm->subscriber_count);
 }
 
 /**
@@ -2093,6 +2093,27 @@ sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t
 
     /* SHM is still valid and we can continue normally */
     return 0;
+}
+
+sr_error_info_t *
+sr_shmsub_change_listen_dismiss_event(sr_multi_sub_shm_t *multi_sub_shm, struct modsub_changesub_s *sub)
+{
+    sr_error_info_t *err_info = NULL;
+
+    /* SUB WRITE LOCK */
+    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
+        return err_info;
+    }
+
+    if (sr_shmsub_change_listen_is_new_event(multi_sub_shm, sub)) {
+        /* dismiss event */
+        sr_shmsub_multi_listen_write_event(multi_sub_shm, 1, NULL, 0, 0, "Dismissed");
+    }
+
+    /* SUB WRITE UNLOCK */
+    sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
+
+    return NULL;
 }
 
 sr_error_info_t *
@@ -2278,7 +2299,8 @@ process_event:
     }
 
     /* finish event */
-    sr_shmsub_multi_listen_write_event(multi_sub_shm, valid_subscr_count, data, data_len, err_code);
+    sr_shmsub_multi_listen_write_event(multi_sub_shm, valid_subscr_count, data, data_len, err_code,
+            err_code ? "Failed" : "Successful");
 
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
@@ -2304,9 +2326,11 @@ cleanup:
  * @param[in] data Optional data to write after the structure.
  * @param[in] data_len Additional data length.
  * @param[in] err_code Optional error code if a callback failed.
+ * @param[in] result_str Result of processing the event in string.
  */
 static void
-sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, const char *data, uint32_t data_len, sr_error_t err_code)
+sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, const char *data, uint32_t data_len, sr_error_t err_code,
+        const char *result_str)
 {
     sr_error_info_t *err_info = NULL;
     sr_sub_event_t event;
@@ -2334,8 +2358,7 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, const char *data, uint32_t d
         memcpy(((char *)sub_shm) + sizeof *sub_shm, data, data_len);
     }
 
-    SR_LOG_INF("%s processing of \"%s\" event with ID %u.", err_code ? "Failed" : "Successful", sr_ev2str(event),
-            sub_shm->request_id);
+    SR_LOG_INF("%s processing of \"%s\" event with ID %u.", result_str, sr_ev2str(event), sub_shm->request_id);
 }
 
 /**
@@ -2376,6 +2399,35 @@ sr_shmsub_oper_listen_relock(sr_sub_shm_t *sub_shm, sr_lock_mode_t mode, uint32_
 
     /* SHM is still valid and we can continue normally */
     return 0;
+}
+
+sr_error_info_t *
+sr_shmsub_oper_listen_dismiss_event(sr_sub_shm_t *sub_shm, struct modsub_opersub_s *sub)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t data_len;
+    char *data;
+
+    /* SUB WRITE LOCK */
+    if ((err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
+        return err_info;
+    }
+
+    if ((sub_shm->event == SR_SUB_EV_OPER) && (sub_shm->request_id != sub->request_id)) {
+        /* print empty data tree */
+        lyd_print_mem(&data, NULL, LYD_LYB, 0);
+        data_len = lyd_lyb_data_length(data);
+
+        /* dismiss event */
+        sr_shmsub_listen_write_event(sub_shm, data, data_len, 0, "Dismissed");
+
+        free(data);
+    }
+
+    /* SUB WRITE UNLOCK */
+    sr_rwunlock(&sub_shm->lock, SR_LOCK_WRITE, __func__);
+
+    return NULL;
 }
 
 sr_error_info_t *
@@ -2504,7 +2556,7 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         sub_shm = (sr_sub_shm_t *)oper_sub->sub_shm.addr;
 
         /* finish event */
-        sr_shmsub_listen_write_event(sub_shm, data, data_len, err_code);
+        sr_shmsub_listen_write_event(sub_shm, data, data_len, err_code, err_code ? "Failed" : "Successful");
 
         /* SUB WRITE UNLOCK */
         sr_rwunlock(&sub_shm->lock, SR_LOCK_WRITE, __func__);
@@ -2771,6 +2823,45 @@ sr_shmsub_rpc_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t mo
 }
 
 sr_error_info_t *
+sr_shmsub_rpc_listen_dismiss_event(sr_multi_sub_shm_t *multi_sub_shm, struct opsub_rpcsub_s *sub, struct ly_ctx *ly_ctx)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *input;
+    char *data;
+    uint32_t data_len;
+
+    /* SUB WRITE LOCK */
+    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
+        return err_info;
+    }
+
+    if (sr_shmsub_rpc_listen_is_new_event(multi_sub_shm, sub)) {
+        /* parse input */
+        ly_errno = 0;
+        input = lyd_parse_mem(ly_ctx, ((char *)multi_sub_shm) + sizeof *multi_sub_shm, LYD_LYB,
+                LYD_OPT_RPC | LYD_OPT_STRICT | LYD_OPT_TRUSTED, NULL);
+
+        /* XPath filtering */
+        if (!ly_errno && sr_shmsub_rpc_is_valid(input, sub->xpath)) {
+            /* print empty output */
+            lyd_print_mem(&data, NULL, LYD_LYB, 0);
+            data_len = lyd_lyb_data_length(data);
+
+            /* dismiss event */
+            sr_shmsub_multi_listen_write_event(multi_sub_shm, 1, data, data_len, 0, "Dismissed");
+        }
+
+        lyd_free_withsiblings(input);
+        free(data);
+    }
+
+    /* SUB WRITE UNLOCK */
+    sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
+
+    return NULL;
+}
+
+sr_error_info_t *
 sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
@@ -2934,7 +3025,8 @@ process_event:
     }
 
     /* finish event */
-    sr_shmsub_multi_listen_write_event(multi_sub_shm, valid_subscr_count, data, data_len, err_code);
+    sr_shmsub_multi_listen_write_event(multi_sub_shm, valid_subscr_count, data, data_len, err_code,
+            err_code ? "Failed" : "Successful");
 
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
@@ -2953,6 +3045,27 @@ cleanup:
     lyd_free_withsiblings(input);
     lyd_free_withsiblings(output);
     return err_info;
+}
+
+sr_error_info_t *
+sr_shmsub_notif_listen_dismiss_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t request_id)
+{
+    sr_error_info_t *err_info = NULL;
+
+    /* SUB WRITE LOCK */
+    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
+        return err_info;
+    }
+
+    if ((multi_sub_shm->event == SR_SUB_EV_NOTIF) && (multi_sub_shm->request_id != request_id)) {
+        /* dismiss event */
+        sr_shmsub_multi_listen_write_event(multi_sub_shm, 1, NULL, 0, 0, "Dismissed");
+    }
+
+    /* SUB WRITE UNLOCK */
+    sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
+
+    return NULL;
 }
 
 sr_error_info_t *
@@ -3016,7 +3129,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     }
 
     /* finish event */
-    sr_shmsub_multi_listen_write_event(multi_sub_shm, notif_subs->sub_count, NULL, 0, 0);
+    sr_shmsub_multi_listen_write_event(multi_sub_shm, notif_subs->sub_count, NULL, 0, 0, "Successful");
 
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);

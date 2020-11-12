@@ -1005,6 +1005,15 @@ sr_error_info_t *sr_shmsub_notif_notify(const struct lyd_node *notif, time_t not
         const sr_mod_notif_sub_t *notif_subs, uint32_t notif_sub_count);
 
 /**
+ * @brief Dismiss any pending change events for @p sub.
+ *
+ * @param[in] multi_sub_shm SHM to write to.
+ * @param[in] sub Subscription to use.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_change_listen_dismiss_event(sr_multi_sub_shm_t *multi_sub_shm, struct modsub_changesub_s *sub);
+
+/**
  * @brief Process all module change events, if any.
  *
  * @param[in] change_subs Module change subscriptions.
@@ -1012,6 +1021,15 @@ sr_error_info_t *sr_shmsub_notif_notify(const struct lyd_node *notif, time_t not
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_subs, sr_conn_ctx_t *conn);
+
+/**
+ * @brief Dismiss any pending oper events for @p sub.
+ *
+ * @param[in] sub_shm SHM to write to.
+ * @param[in] sub Subscription to use.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_oper_listen_dismiss_event(sr_sub_shm_t *sub_shm, struct modsub_opersub_s *sub);
 
 /**
  * @brief Process all module operational events, if any.
@@ -1023,6 +1041,17 @@ sr_error_info_t *sr_shmsub_change_listen_process_module_events(struct modsub_cha
 sr_error_info_t *sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_conn_ctx_t *conn);
 
 /**
+ * @brief Dismiss any pending RPC events for @p sub.
+ *
+ * @param[in] multi_sub_shm SHM to write to.
+ * @param[in] sub Subscription to use.
+ * @param[in] ly_ctx libyang context for parsing input.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_rpc_listen_dismiss_event(sr_multi_sub_shm_t *multi_sub_shm, struct opsub_rpcsub_s *sub,
+        struct ly_ctx *ly_ctx);
+
+/**
  * @brief Process all RPC/action events for one RPC/action, if any.
  *
  * @param[in] rpc_sub RPC/action subscriptions.
@@ -1030,6 +1059,15 @@ sr_error_info_t *sr_shmsub_oper_listen_process_module_events(struct modsub_oper_
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ctx_t *conn);
+
+/**
+ * @brief Dismiss one pending notif event, if any.
+ *
+ * @param[in] multi_sub_shm SHM to write to.
+ * @param[in] request_id Last processed request_id.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_notif_listen_dismiss_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t request_id);
 
 /**
  * @brief Process all module notification events, if any.

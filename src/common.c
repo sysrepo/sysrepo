@@ -785,6 +785,12 @@ change_subs_del:
         SR_CHECK_INT_RET(!shm_mod, err_info);
         for (j = 0; j < change_subs->sub_count; ++j) {
             if (change_subs->subs[j].sess == sess) {
+                /* dismiss any events already generated for this sub */
+                if ((err_info = sr_shmsub_change_listen_dismiss_event((sr_multi_sub_shm_t *)change_subs->sub_shm.addr,
+                        &change_subs->subs[j]))) {
+                    return err_info;
+                }
+
                 /* properly remove the subscription from ext SHM */
                 if ((err_info = sr_shmmod_change_subscription_stop(sess->conn, shm_mod, change_subs->subs[j].xpath,
                         change_subs->ds, change_subs->subs[j].priority, change_subs->subs[j].opts, subs->evpipe_num, 0))) {
@@ -811,6 +817,12 @@ oper_subs_del:
         SR_CHECK_INT_RET(!shm_mod, err_info);
         for (j = 0; j < oper_sub->sub_count; ++j) {
             if (oper_sub->subs[j].sess == sess) {
+                /* dismiss any events already generated for this sub */
+                if ((err_info = sr_shmsub_oper_listen_dismiss_event((sr_sub_shm_t *)oper_sub->subs[j].sub_shm.addr,
+                        &oper_sub->subs[j]))) {
+                    return err_info;
+                }
+
                 /* properly remove the subscriptions from the main SHM */
                 if ((err_info = sr_shmmod_oper_subscription_stop(ext_shm->addr, shm_mod, oper_sub->subs[j].xpath,
                         subs->evpipe_num, 0))) {
@@ -836,6 +848,12 @@ notif_subs_del:
         SR_CHECK_INT_RET(!shm_mod, err_info);
         for (j = 0; j < notif_sub->sub_count; ++j) {
             if (notif_sub->subs[j].sess == sess) {
+                /* dismiss any events already generated for this sub */
+                if ((err_info = sr_shmsub_notif_listen_dismiss_event((sr_multi_sub_shm_t *)notif_sub->sub_shm.addr,
+                        notif_sub->request_id))) {
+                    return err_info;
+                }
+
                 /* properly remove the subscriptions from the main SHM */
                 if ((err_info = sr_shmmod_notif_subscription_stop(ext_shm->addr, shm_mod, notif_sub->subs[j].sub_id, 0))) {
                     return err_info;
@@ -860,6 +878,12 @@ rpc_subs_del:
         SR_CHECK_INT_RET(!shm_rpc, err_info);
         for (j = 0; j < rpc_sub->sub_count; ++j) {
             if (rpc_sub->subs[j].sess == sess) {
+                /* dismiss any events already generated for this sub */
+                if ((err_info = sr_shmsub_rpc_listen_dismiss_event((sr_multi_sub_shm_t *)rpc_sub->sub_shm.addr,
+                        &rpc_sub->subs[j], sess->conn->ly_ctx))) {
+                    return err_info;
+                }
+
                 /* properly remove the subscription from the main SHM */
                 if ((err_info = sr_shmmain_rpc_subscription_stop(sess->conn, shm_rpc, rpc_sub->subs[j].xpath,
                         rpc_sub->subs[j].priority, subs->evpipe_num, 0, NULL))) {
