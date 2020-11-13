@@ -2849,10 +2849,11 @@ sr_shmsub_rpc_listen_dismiss_event(sr_multi_sub_shm_t *multi_sub_shm, struct ops
 
             /* dismiss event */
             sr_shmsub_multi_listen_write_event(multi_sub_shm, 1, data, data_len, 0, "Dismissed");
+
+            free(data);
         }
 
         lyd_free_withsiblings(input);
-        free(data);
     }
 
     /* SUB WRITE UNLOCK */
