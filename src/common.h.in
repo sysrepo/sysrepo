@@ -241,9 +241,8 @@ typedef struct sr_mod_data_dep_s sr_mod_data_dep_t;
 /** static initializer of the shared memory structure */
 #define SR_SHM_INITIALIZER {.fd = -1, .size = 0, .addr = NULL}
 
-/** Initialize Connection ID to unique value from sid to expose bugs sooner.  SR_CONN_ID_NONE
- * is a reserved value representing an invalid or unset value.*/
-#define SR_CONN_ID_BASE 17
+/** SR_CONN_ID_NONE is a reserved value representing an invalid or unset value. */
+#define SR_CONN_ID_BASE 1
 #define SR_CONN_ID_MAX 65535
 #define SR_CONN_ID_NONE 0
 
