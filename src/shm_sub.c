@@ -3347,8 +3347,11 @@ sr_shmsub_listen_thread(void *arg)
     while (ATOMIC_LOAD_RELAXED(subs->thread_running)) {
         /* process the new event (or subscription stop time has elapsed) */
         ret = sr_process_events(subs, NULL, &stop_time_in);
-        if ((ret != SR_ERR_OK) && (ret != SR_ERR_TIME_OUT)) {
-            /* continue on time out */
+        if (ret == SR_ERR_TIME_OUT) {
+            /* continue on time out and try again to actually process the current event because unless
+             * another event is generated, our event pipe will not get notified */
+            continue;
+        } else if (ret) {
             goto error;
         }
 
