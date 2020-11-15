@@ -228,8 +228,9 @@ typedef uint32_t sr_cid_t;
  * @brief Connects to the sysrepo datastore. If possible (no other connections exist), also apply
  * any scheduled changes.
  *
- * @note Do not use `fork()` after creating a connection. Sysrepo internally stores PID of
- * every created connection and this way a mismatch of PID and connection is created.
+ * @note Do not use `fork()` after creating a connection. Sysrepo internally stores the connection
+ * ID of every created connection. Forking will duplicate the connection and ID resulting in a
+ * mismatch.
  *
  * @param[in] opts Options overriding default connection handling by this call.
  * @param[out] conn Connection that can be used for subsequent API calls

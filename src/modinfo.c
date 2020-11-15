@@ -1049,7 +1049,7 @@ sr_modinfo_module_srmon_module(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_m
                 return err_info;
             }
             sprintf(buf, "%"PRIu32, cid);
-            SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "pid", buf), ly_ctx, err_info);
+            SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "cid", buf), ly_ctx, err_info);
         }
     }
 
@@ -1068,7 +1068,7 @@ sr_modinfo_module_srmon_module(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_m
             return err_info;
         }
         sprintf(buf, "%"PRIu32, cid);
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "pid", buf), ly_ctx, err_info);
+        SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "cid", buf), ly_ctx, err_info);
     }
 
     notif_sub = (sr_mod_notif_sub_t *)(ext_shm_addr + shm_mod->notif_subs);
@@ -1132,7 +1132,7 @@ sr_modinfo_module_srmon_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_rpc_
             return err_info;
         }
         sprintf(buf, "%"PRIu32, cid);
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "pid", buf), ly_ctx, err_info);
+        SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "cid", buf), ly_ctx, err_info);
     }
 
     return NULL;
@@ -1168,7 +1168,7 @@ sr_modinfo_module_srmon_connection(sr_main_shm_t *main_shm, char *ext_shm_addr, 
 
     /* cid */
     sprintf(buf, "%ld", (long)shm_conn->cid);
-    SR_CHECK_LY_RET(!lyd_new_leaf(sr_conn, NULL, "pid", buf), ly_ctx, err_info);
+    SR_CHECK_LY_RET(!lyd_new_leaf(sr_conn, NULL, "cid", buf), ly_ctx, err_info);
 
     /* main-lock */
     if (shm_conn->main_lock.mode) {

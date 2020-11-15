@@ -54,7 +54,7 @@ module sysrepo-monitoring {
         description
             "Connection reference.";
         type leafref {
-            path "/sysrepo-state/connection/pid";
+            path "/sysrepo-state/connection/cid";
         }
     }
 
@@ -104,11 +104,11 @@ module sysrepo-monitoring {
                             "Subscription priority.";
                     }
 
-                    leaf pid {
+                    leaf cid {
                         mandatory true;
                         type conn-ref;
                         description
-                            "PID of the connection that this subscription belongs to.";
+                            "CID of the connection that this subscription belongs to.";
                     }
                 }
 
@@ -123,18 +123,18 @@ module sysrepo-monitoring {
                             "Operational data pull subscription XPath.";
                     }
 
-                    leaf pid {
+                    leaf cid {
                         mandatory true;
                         type conn-ref;
                         description
-                            "PID of the connection that this subscription belongs to.";
+                            "CID of the connection that this subscription belongs to.";
                     }
                 }
 
                 leaf-list notification-sub {
                     type conn-ref;
                     description
-                        "PID of the connection that this subscription belongs to.";
+                        "CID of the connection that this subscription belongs to.";
                 }
             }
         }
@@ -165,24 +165,24 @@ module sysrepo-monitoring {
                         "Subscription priority.";
                 }
 
-                leaf pid {
+                leaf cid {
                     mandatory true;
                     type conn-ref;
                     description
-                        "PID of the connection that this subscription belongs to.";
+                        "CID of the connection that this subscription belongs to.";
                 }
             }
         }
 
         list connection {
-            key "pid";
+            key "cid";
             description
                 "Created Sysrepo connection.";
 
-            leaf pid {
+            leaf cid {
                 type uint32;
                 description
-                    "PID of the process that created this connection.";
+                    "CID of the process that created this connection.";
             }
 
             leaf main-lock {

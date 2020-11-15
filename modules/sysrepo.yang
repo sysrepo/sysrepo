@@ -103,10 +103,10 @@ module sysrepo {
             "Present if the node was originally a default node.";
     }
 
-    md:annotation pid {
+    md:annotation cid {
         type uint32;
         description
-            "Process with this PID is the owner of the operational data subtree.";
+            "Process with this CID is the owner of the operational data subtree.";
     }
 
     md:annotation conn-ptr {

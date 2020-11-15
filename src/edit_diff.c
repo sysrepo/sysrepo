@@ -2151,7 +2151,7 @@ sr_diff_find_oper(struct lyd_node *diff, int *op_own, sr_cid_t *cid, void **conn
                     }
                 }
             }
-            if (!cid_attr && !strcmp(attr->name, "pid") && !strcmp(attr->annotation->module->name, SR_YANG_MOD)) {
+            if (!cid_attr && !strcmp(attr->name, "cid") && !strcmp(attr->annotation->module->name, SR_YANG_MOD)) {
                 cid_attr = attr;
                 if (attr_own && (parent == diff)) {
                     *attr_own = 1;
@@ -2316,13 +2316,13 @@ sr_diff_check_cid_conn(struct lyd_node *diff_node, sr_cid_t cur_cid, void *cur_c
     if ((!cur_cid && !cur_conn_ptr) || (cur_cid != conn_ptr->sr_cid) || (cur_conn_ptr != conn_ptr)) {
         if (cur_attr_own) {
             /* remove attrs from the node */
-            sr_edit_del_attr(diff_node, "pid");
+            sr_edit_del_attr(diff_node, "cid");
             sr_edit_del_attr(diff_node, "conn-ptr");
         }
 
         /* add attrs of the new connection */
         sprintf(cid_str, "%ld", (long)conn_ptr->sr_cid);
-        if (!lyd_insert_attr(diff_node, NULL, SR_YANG_MOD ":pid", cid_str)) {
+        if (!lyd_insert_attr(diff_node, NULL, SR_YANG_MOD ":cid", cid_str)) {
             sr_errinfo_new_ly(&err_info, lyd_node_module(diff_node)->ctx);
             return err_info;
         }
@@ -2343,7 +2343,7 @@ sr_diff_check_cid_conn(struct lyd_node *diff_node, sr_cid_t cur_cid, void *cur_c
         LY_TREE_FOR(sr_lyd_child(diff_node, 1), child) {
             sr_diff_find_oper(child, NULL, NULL, NULL, &attr_own);
             if (!attr_own) {
-                if (!lyd_insert_attr(child, NULL, SR_YANG_MOD ":pid", cid_str)) {
+                if (!lyd_insert_attr(child, NULL, SR_YANG_MOD ":cid", cid_str)) {
                     sr_errinfo_new_ly(&err_info, lyd_node_module(diff_node)->ctx);
                     return err_info;
                 }
@@ -3891,7 +3891,7 @@ sr_diff_del_conn(struct lyd_node **diff, sr_conn_ctx_t *conn, sr_cid_t cid)
         return NULL;
     }
 
-    if (asprintf(&xpath, "//*[@pid='%ld' and @conn-ptr='%" PRIuPTR "']", (long)cid, (uintptr_t)conn) == -1) {
+    if (asprintf(&xpath, "//*[@cid='%ld' and @conn-ptr='%" PRIuPTR "']", (long)cid, (uintptr_t)conn) == -1) {
         SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }
