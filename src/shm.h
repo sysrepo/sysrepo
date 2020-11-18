@@ -31,7 +31,7 @@
 #include "common.h"
 
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
-#define SR_SHM_VER 3                        /**< Main and ext SHM version of their expected content structures. */
+#define SR_SHM_VER 4                        /**< Main and ext SHM version of their expected content structures. */
 
 /**
  * Main SHM organization
@@ -219,6 +219,7 @@ typedef struct sr_main_shm_s {
     off_t rpc_subs;             /**< Array of RPC/action subscriptions. */
     uint16_t rpc_sub_count;     /**< Number of RPC/action subscriptions. */
 
+    ATOMIC_T new_sr_cid;        /**< Connection ID for a new connection. */
     ATOMIC_T new_sr_sid;        /**< SID for a new session. */
     ATOMIC_T new_sub_id;        /**< Subscription ID of a new notification subscription. */
     ATOMIC_T new_evpipe_num;    /**< Event pipe number for a new subscription. */

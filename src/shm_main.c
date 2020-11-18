@@ -859,21 +859,15 @@ sr_shmmain_check_conn_lock(sr_cid_t cid, int *conn_alive) {
 
     sr_shmmain_get_conn_lockfile_path(cid, &path);
 
-    /* The file may not exist in which case there is no connection established */
-    if (0 != access(path, F_OK)){
-        free(path);
-        if (EACCES == errno) {
-            SR_ERRINFO_SYSERRNO(&err_info, "access");
-            return err_info;
-        }
-        (*conn_alive) = 0;
-        return NULL;
-    }
-
-    /* The file exists, test the lock */
+    /* Open the file to test the lock */
     fd = open(path, O_RDWR);
     free(path);
     if (-1 == fd) {
+        /* The file does not exist in which case there is no connection established */
+        if (ENOENT == errno) {
+            (*conn_alive) = 0;
+            return NULL;
+        }
         SR_ERRINFO_SYSERRNO(&err_info, "open");
         return err_info;
     }
@@ -972,26 +966,25 @@ sr_shmmain_allocate_conn(sr_conn_ctx_t *conn) {
     int lock_fd = 0;
     char *owner = NULL;
     char *group = NULL;
-    mode_t perm =0;
+    mode_t perm = 0;
+    sr_main_shm_t *main_shm = NULL;
+    sr_cid_t cid = SR_CONN_ID_NONE;
+    int alive = 0;
+
+    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
     conn->sr_cid = SR_CONN_ID_NONE;
-    /* Find available connection ID */
-    for (sr_cid_t idx=SR_CONN_ID_BASE; idx < SR_CONN_ID_MAX; idx++) {
-        int alive = 0;
-        sr_error_info_t *err = sr_shmmain_check_conn_lock(idx, &alive);
-        if (err) {
-            sr_errinfo_free(&err);
+    /* Allocate next unique Connection ID */
+    cid = ATOMIC_INC_RELAXED(main_shm->new_sr_cid);
+    err_info = sr_shmmain_check_conn_lock(cid, &alive);
+    if (err_info || (0 != alive) || (SR_CONN_ID_NONE == cid) ) {
+        SR_LOG_WRN("Could not allocate connection ID %ld (%ld)", cid, alive);
+        if (!err_info) {
+            SR_ERRINFO_INT(&err_info);
         }
-        if (0 == alive) {
-            conn->sr_cid = idx;
-            break;
-        }
-    }
-    if (SR_CONN_ID_NONE == conn->sr_cid) {
-        SR_LOG_WRN("No free connection id found");
-        SR_ERRINFO_INT(&err_info);
         return err_info;
     }
+    conn->sr_cid = cid;
 
     /* Initialize the linked list of connections in this process */
     if (NULL == conn_list_lock) {
@@ -1025,14 +1018,14 @@ sr_shmmain_allocate_conn(sr_conn_ctx_t *conn) {
 
     sr_shmmain_get_conn_lockfile_path(conn->sr_cid, &path);
 
-    lock_fd = open(path, O_CREAT | O_RDWR, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-    if (-1 == lock_fd) {
-        SR_ERRINFO_SYSERRNO(&err_info, "open");
+    /* Update the GID and permissions of the lock file */
+    if ((err_info = sr_perm_get("sysrepo-monitoring", SR_DS_STARTUP, &owner, &group, &perm))) {
         goto conn_cid_cleanup;
     }
 
-    /* Update the GID and permissions of the lock file */
-    if ((err_info = sr_perm_get("sysrepo-monitoring", SR_DS_STARTUP, &owner, &group, &perm))) {
+    lock_fd = open(path, O_CREAT | O_RDWR, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    if (-1 == lock_fd) {
+        SR_ERRINFO_SYSERRNO(&err_info, "open");
         goto conn_cid_cleanup;
     }
 
@@ -2093,6 +2086,7 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
         if ((err_info = sr_mutex_init(&main_shm->lydmods_lock, 1))) {
             goto error;
         }
+        ATOMIC_STORE_RELAXED(main_shm->new_sr_cid, 1);
         ATOMIC_STORE_RELAXED(main_shm->new_sr_sid, 1);
         ATOMIC_STORE_RELAXED(main_shm->new_sub_id, 1);
         ATOMIC_STORE_RELAXED(main_shm->new_evpipe_num, 1);
