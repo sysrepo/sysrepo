@@ -2107,21 +2107,19 @@ sr_diff_merge_create(struct lyd_node *diff_match, enum edit_op cur_op, int cur_o
 }
 
 /**
- * @brief Find connection ID and conn-ptr attributes of a diff node or its parents.
+ * @brief Find connection ID attribute of a diff node or its parents.
  *
  * @param[in] diff Diff node.
  * @param[out] op_own Whether operation is owned or inherited.
  * @param[out] cid Found stored connection ID, 0 if none found.
- * @param[out] conn_ptr Found stored conn-ptr, NULL if none found.
- * @param[out] attr_own Whether \p cid and \p conn_ptr are own or inherited.
+ * @param[out] attr_own Whether \p cid is own or inherited.
  * @return Edit operation for the node.
  */
 static enum edit_op
-sr_diff_find_oper(struct lyd_node *diff, int *op_own, sr_cid_t *cid, void **conn_ptr, int *attr_own)
+sr_diff_find_oper(struct lyd_node *diff, int *op_own, sr_cid_t *cid, int *attr_own)
 {
-    sr_error_info_t *err_info = NULL;
     struct lyd_node *parent;
-    struct lyd_attr *attr, *cid_attr = NULL, *conn_attr = NULL;
+    struct lyd_attr *attr, *cid_attr = NULL;
     enum edit_op op = 0;
 
     if (op_own) {
@@ -2129,9 +2127,6 @@ sr_diff_find_oper(struct lyd_node *diff, int *op_own, sr_cid_t *cid, void **conn
     }
     if (cid) {
         *cid = 0;
-    }
-    if (conn_ptr) {
-        *conn_ptr = NULL;
     }
     if (attr_own) {
         *attr_own = 0;
@@ -2157,28 +2152,17 @@ sr_diff_find_oper(struct lyd_node *diff, int *op_own, sr_cid_t *cid, void **conn
                     *attr_own = 1;
                 }
             }
-            if (!conn_attr && !strcmp(attr->name, "conn-ptr") && !strcmp(attr->annotation->module->name, SR_YANG_MOD)) {
-                conn_attr = attr;
-            }
         }
 
-        if (op && ((!cid && !conn_ptr) || (cid_attr && conn_attr))) {
+        if (op && (!cid || cid_attr)) {
             /* we found everything */
             if (cid) {
                 *cid = (sr_cid_t)cid_attr->value.uint32;
-            }
-            if (conn_ptr) {
-                *conn_ptr = (void *)((uintptr_t)conn_attr->value.uint64);
             }
             if (attr_own && (parent == diff) && cid_attr) {
                 *attr_own = 1;
             }
             break;
-        }
-
-        if ((cid_attr && !conn_attr) || (!cid_attr && conn_attr)) {
-            SR_ERRINFO_INT(&err_info);
-            return 0;
         }
     }
 
@@ -2219,7 +2203,7 @@ sr_diff_merge_delete(struct lyd_node *diff_match, enum edit_op cur_op, int cur_o
 
         /* keep operation for all descendants (for now) */
         LY_TREE_FOR(sr_lyd_child(diff_match, 1), child) {
-            if (!sr_diff_find_oper(child, &op_own, NULL, NULL, NULL) || !op_own) {
+            if (!sr_diff_find_oper(child, &op_own, NULL, NULL) || !op_own) {
                 if ((err_info = sr_edit_set_oper(child, sr_edit_op2str(cur_op)))) {
                     return err_info;
                 }
@@ -2291,43 +2275,36 @@ sr_diff_add(const struct lyd_node *src_node, struct lyd_node *diff_parent, struc
 }
 
 /**
- * @brief Check (inherited) connection ID and conn-ptr attributes of a diff node.
- * Replace if not matching this connection and CID.
+ * @brief Check (inherited) connection ID attribute of a diff node.
+ * Replace if not matching this connection ID.
  *
  * @param[in] diff_node Diff node to examine.
  * @param[in] cur_cid Current effective \p diff_node cid.
- * @param[in] cur_conn_ptr Current effective \p diff_node conn-ptr.
- * @param[in] cur_attr_own Whether \p old_cid and \p old_conn_ptr are owned or inherited.
+ * @param[in] cur_attr_own Whether \p old_cid is owned or inherited.
  * @param[in] conn_ptr Connection pointer of the diff merge source (new owner of these oper diff nodes).
  * @param[in] keep_cur_child Whether to keep current attrs for direct children.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_diff_check_cid_conn(struct lyd_node *diff_node, sr_cid_t cur_cid, void *cur_conn_ptr, int cur_attr_own, sr_conn_ctx_t *conn_ptr,
+sr_diff_check_cid_conn(struct lyd_node *diff_node, sr_cid_t cur_cid, int cur_attr_own, sr_conn_ctx_t *conn_ptr,
                        int keep_cur_child)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *child;
     int attr_own;
-    char cid_str[21], conn_str[21];
+    char cid_str[21];
 
     assert(conn_ptr);
 
-    if ((!cur_cid && !cur_conn_ptr) || (cur_cid != conn_ptr->sr_cid) || (cur_conn_ptr != conn_ptr)) {
+    if ( !cur_cid || (cur_cid != conn_ptr->sr_cid)) {
         if (cur_attr_own) {
             /* remove attrs from the node */
             sr_edit_del_attr(diff_node, "cid");
-            sr_edit_del_attr(diff_node, "conn-ptr");
         }
 
         /* add attrs of the new connection */
         sprintf(cid_str, "%ld", (long)conn_ptr->sr_cid);
         if (!lyd_insert_attr(diff_node, NULL, SR_YANG_MOD ":cid", cid_str)) {
-            sr_errinfo_new_ly(&err_info, lyd_node_module(diff_node)->ctx);
-            return err_info;
-        }
-        sprintf(conn_str, "%" PRIuPTR, (uintptr_t)conn_ptr);
-        if (!lyd_insert_attr(diff_node, NULL, SR_YANG_MOD ":conn-ptr", conn_str)) {
             sr_errinfo_new_ly(&err_info, lyd_node_module(diff_node)->ctx);
             return err_info;
         }
@@ -2338,16 +2315,11 @@ sr_diff_check_cid_conn(struct lyd_node *diff_node, sr_cid_t cur_cid, void *cur_c
 
         /* keep attrs of the current connection for children */
         sprintf(cid_str, "%ld", (long)cur_cid);
-        sprintf(conn_str, "%" PRIuPTR, (uintptr_t)cur_conn_ptr);
 
         LY_TREE_FOR(sr_lyd_child(diff_node, 1), child) {
-            sr_diff_find_oper(child, NULL, NULL, NULL, &attr_own);
+            sr_diff_find_oper(child, NULL, NULL, &attr_own);
             if (!attr_own) {
                 if (!lyd_insert_attr(child, NULL, SR_YANG_MOD ":cid", cid_str)) {
-                    sr_errinfo_new_ly(&err_info, lyd_node_module(diff_node)->ctx);
-                    return err_info;
-                }
-                if (!lyd_insert_attr(child, NULL, SR_YANG_MOD ":conn-ptr", conn_str)) {
                     sr_errinfo_new_ly(&err_info, lyd_node_module(diff_node)->ctx);
                     return err_info;
                 }
@@ -2377,7 +2349,6 @@ sr_diff_merge_r(const struct lyd_node *src_node, enum edit_op parent_op, sr_conn
     struct lyd_node *child, *diff_node = NULL;
     enum edit_op src_op, cur_op;
     sr_cid_t cid;
-    void *conn_ptr;
     const char *key_or_value, *origin, *cur_origin;
     int val_equal, op_own, attr_own, origin_own;
 
@@ -2395,9 +2366,9 @@ sr_diff_merge_r(const struct lyd_node *src_node, enum edit_op parent_op, sr_conn
     if (diff_node) {
         /* learn about the diff node */
         if (oper_conn) {
-            cur_op = sr_diff_find_oper(diff_node, &op_own, &cid, &conn_ptr, &attr_own);
+            cur_op = sr_diff_find_oper(diff_node, &op_own, &cid, &attr_own);
         } else {
-            cur_op = sr_diff_find_oper(diff_node, &op_own, NULL, NULL, NULL);
+            cur_op = sr_diff_find_oper(diff_node, &op_own, NULL, NULL);
         }
 
         /* merge operations */
@@ -2428,8 +2399,8 @@ sr_diff_merge_r(const struct lyd_node *src_node, enum edit_op parent_op, sr_conn
         }
 
         if (oper_conn) {
-            /* check connection ID/conn-ptr of the new node */
-            if ((err_info = sr_diff_check_cid_conn(diff_node, cid, conn_ptr, attr_own, oper_conn, 1))) {
+            /* check connection ID of the new node */
+            if ((err_info = sr_diff_check_cid_conn(diff_node, cid, attr_own, oper_conn, 1))) {
                 return err_info;
             }
 
@@ -2466,9 +2437,9 @@ sr_diff_merge_r(const struct lyd_node *src_node, enum edit_op parent_op, sr_conn
 
         /* learn about the diff node */
         if (oper_conn) {
-            cur_op = sr_diff_find_oper(diff_node, &op_own, &cid, &conn_ptr, &attr_own);
+            cur_op = sr_diff_find_oper(diff_node, &op_own, &cid, &attr_own);
         } else {
-            cur_op = sr_diff_find_oper(diff_node, &op_own, NULL, NULL, NULL);
+            cur_op = sr_diff_find_oper(diff_node, &op_own, NULL, NULL);
         }
 
         /* check op of the new node */
@@ -2477,8 +2448,8 @@ sr_diff_merge_r(const struct lyd_node *src_node, enum edit_op parent_op, sr_conn
         }
 
         if (oper_conn) {
-            /* check connection ID/conn-ptr of the new node */
-            if ((err_info = sr_diff_check_cid_conn(diff_node, cid, conn_ptr, attr_own, oper_conn, 0))) {
+            /* check connection ID of the new node */
+            if ((err_info = sr_diff_check_cid_conn(diff_node, cid, attr_own, oper_conn, 0))) {
                 return err_info;
             }
 
@@ -3880,7 +3851,7 @@ error:
 }
 
 sr_error_info_t *
-sr_diff_del_conn(struct lyd_node **diff, sr_conn_ctx_t *conn, sr_cid_t cid)
+sr_diff_del_conn(struct lyd_node **diff, sr_cid_t cid)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL;
@@ -3891,7 +3862,7 @@ sr_diff_del_conn(struct lyd_node **diff, sr_conn_ctx_t *conn, sr_cid_t cid)
         return NULL;
     }
 
-    if (asprintf(&xpath, "//*[@cid='%ld' and @conn-ptr='%" PRIuPTR "']", (long)cid, (uintptr_t)conn) == -1) {
+    if (asprintf(&xpath, "//*[@cid='%ld']", (long)cid) == -1) {
         SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }

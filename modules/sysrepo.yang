@@ -109,12 +109,6 @@ module sysrepo {
             "Process with this CID is the owner of the operational data subtree.";
     }
 
-    md:annotation conn-ptr {
-        type uint64;
-        description
-            "Connection with this address is the owner of the operational data subtree.";
-    }
-
     grouping module-info-grp {
         leaf name {
             type string;

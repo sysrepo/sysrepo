@@ -195,7 +195,6 @@ typedef struct sr_conn_shm_lock_s {
  * @brief Ext SHM connection state.
  */
 typedef struct sr_conn_shm_s {
-    sr_conn_ctx_t *conn_ctx;    /**< Connection, process-specific pointer, do not access! */
     sr_cid_t cid;               /**< Globally unique connection ID for this connection. */
 
     sr_conn_shm_lock_t main_lock; /**< Held main SHM lock. */
@@ -865,11 +864,10 @@ sr_error_info_t *sr_shmmod_notif_subscription_stop(char *ext_shm_addr, sr_mod_t 
  * @brief Remove all stored operational data of a connection.
  *
  * @param[in] conn Connection to use.
- * @param[in] del_conn Connection whose data to remove.
  * @param[in] cid Connection ID whose data to remove.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, sr_cid_t cid);
+sr_error_info_t *sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_cid_t cid);
 
 /*
  * Subscription SHM functions.

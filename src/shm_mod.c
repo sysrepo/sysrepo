@@ -1015,7 +1015,7 @@ sr_shmmod_notif_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_
 }
 
 sr_error_info_t *
-sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, sr_cid_t cid)
+sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_cid_t cid)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -1061,7 +1061,7 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_conn_ctx_t *del_conn, sr_
         }
 
         if (diff) {
-            if ((err_info = sr_diff_del_conn(&diff, del_conn, cid))) {
+            if ((err_info = sr_diff_del_conn(&diff, cid))) {
                 goto cleanup;
             }
             if ((err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, diff, 0, 0))) {

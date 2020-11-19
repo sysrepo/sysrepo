@@ -179,7 +179,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
         items = sr_realloc(items, (item_count + 1) * sizeof *items);
         items[item_count].start = shm_conn[i].mod_locks;
         items[item_count].size = SR_SHM_SIZE(main_shm->mod_count * sizeof(sr_conn_shm_lock_t[SR_DS_COUNT]));
-        asprintf(&(items[item_count].name), "conn mods lock (%u, conn %p)", main_shm->mod_count, (void *)shm_conn[i].conn_ctx);
+        asprintf(&(items[item_count].name), "conn mods lock (%u, conn %ld)", main_shm->mod_count, (long)shm_conn[i].cid);
         ++item_count;
 
         if (shm_conn[i].evpipes) {
@@ -187,7 +187,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
             items = sr_realloc(items, (item_count + 1) * sizeof *items);
             items[item_count].start = shm_conn[i].evpipes;
             items[item_count].size = SR_SHM_SIZE(shm_conn[i].evpipe_count * sizeof(uint32_t));
-            asprintf(&(items[item_count].name), "evpipes (%u, conn %p)", shm_conn[i].evpipe_count, (void *)shm_conn[i].conn_ctx);
+            asprintf(&(items[item_count].name), "evpipes (%u, conn %ld)", shm_conn[i].evpipe_count, (long)shm_conn[i].cid);
             ++item_count;
         }
     }
@@ -1103,7 +1103,6 @@ sr_shmmain_conn_add(sr_conn_ctx_t *conn)
     memset(conn->ext_shm.addr + mod_locks_off, 0, main_shm->mod_count * sizeof(sr_conn_shm_lock_t[SR_DS_COUNT]));
 
     /* fill the attributes */
-    shm_conn->conn_ctx = conn;
     shm_conn->cid = conn->sr_cid;
     shm_conn->mod_locks = mod_locks_off;
 
@@ -1157,7 +1156,7 @@ sr_shmmain_conn_find(char *main_shm_addr, char *ext_shm_addr, sr_conn_ctx_t *con
 
     shm_conn = (sr_conn_shm_t *)(ext_shm_addr + main_shm->conns);
     for (i = 0; i < main_shm->conn_count; ++i) {
-        if ((conn == shm_conn[i].conn_ctx) && (conn->sr_cid == shm_conn[i].cid)) {
+        if (conn->sr_cid == shm_conn[i].cid) {
             return &shm_conn[i];
         }
     }
@@ -1345,7 +1344,7 @@ sr_shmmain_conn_recover(sr_conn_ctx_t *conn)
             sr_shmmain_conn_del(main_shm, conn->ext_shm.addr, shm_conn[i].cid);
 
             /* remove any stored operational data of this connection */
-            if ((tmp_err = sr_shmmod_oper_stored_del_conn(conn, shm_conn[i].conn_ctx, shm_conn[i].cid))) {
+            if ((tmp_err = sr_shmmod_oper_stored_del_conn(conn, shm_conn[i].cid))) {
                 sr_errinfo_merge(&err_info, tmp_err);
             }
         } else {

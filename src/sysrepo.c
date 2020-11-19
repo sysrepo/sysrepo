@@ -417,7 +417,7 @@ sr_disconnect(sr_conn_ctx_t *conn)
     }
 
     /* free any stored operational data */
-    tmp_err = sr_shmmod_oper_stored_del_conn(conn, conn, conn->sr_cid);
+    tmp_err = sr_shmmod_oper_stored_del_conn(conn, conn->sr_cid);
     sr_errinfo_merge(&err_info, tmp_err);
 
     /* free attributes */
