@@ -4,7 +4,7 @@
  * @brief test for edits performed using multiple connections
  *
  * @copyright
- * Copyright 2019 ADVA Optical Networking Inc.
+ * Copyright 2020 ADVA Optical Networking Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.

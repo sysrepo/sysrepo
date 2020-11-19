@@ -404,14 +404,17 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
     assert(*((size_t *)ext_shm_addr) == wasted);
 }
 
-/*
- * Returns the lockfile path for a Connection ID.  With cid of SR_CONN_ID_NONE
- * returns the directory path for lock files. Lockfile path is written to newly
- * allocated memory in path.  Caller is responsible for freeing memory.
+/**
+ * @brief Populate the lockfile path for a given Connection ID.
+ * When called with cid of SR_CONN_ID_NONE the path will be set to the lock file
+ * directory path. The path parameter is set to newly allocated memory.  Caller
+ * is responsible for freeing memory.
  *
+ * @param[in] cid Connection ID for which the lockfile path is constructed
+ * @param[out] path Lockfile directory if cid is SR_CONN_ID_NONE, path of lockfile otherwise
  * @return 0 on success
  */
-int
+static int
 sr_shmmain_get_conn_lockfile_path(sr_cid_t cid, char **path) {
     const char *shm_dir = SR_SHM_DIR;
     if (SR_CONN_ID_NONE == cid) {
@@ -811,22 +814,20 @@ sr_shmmain_createunlock(int shm_lock)
 }
 
 /**
- * Determine whether the connection specified by cid is alive.
+ * @brief Determine whether the connection specified by cid is alive.
  *
  * @param[in]  cid Connection ID to check
- * @param[out] conn_alive Set to non-zero if the connection is alive, 0
- * otherwise.
- *
- * @return NULL if check is successful, non-null sr_error_info_t with error
- * details otherwise.
+ * @param[out] conn_alive Set to non-zero if the connection is alive, 0 otherwise.
+ * @return err_info, NULL on success.
  */
 sr_error_info_t *
 sr_shmmain_check_conn_lock(sr_cid_t cid, int *conn_alive) {
     sr_error_info_t *err_info = NULL;
     struct flock fl;
-    int fd;
+    int fd = -1;
     char *path = NULL;
-    int rc;
+    int rc = 0;
+    conn_list_entry *ptr = NULL;
 
     assert(conn_alive);
 
@@ -843,7 +844,6 @@ sr_shmmain_check_conn_lock(sr_cid_t cid, int *conn_alive) {
      * open().
      */
     if (NULL != conn_head) {
-        conn_list_entry *ptr;
         if ( (err_info = sr_mlock(conn_list_lock, 1000, __func__))) {
             return err_info;
         }
@@ -896,20 +896,23 @@ sr_shmmain_check_conn_lock(sr_cid_t cid, int *conn_alive) {
 }
 
 /**
- * Release the specified connection ID and free resources used in tracking the
- * connection.
+ * @brief Release the specified connection ID.
+ * Free all resources used in tracking the connection.
+ *
+ * @param[in] cid Connection ID to release.
+ * @return err_info, NULL on success.
  */
 sr_error_info_t *
 sr_shmmain_deallocate_conn(const sr_cid_t cid) {
     sr_error_info_t *err_info = NULL;
     char *path = NULL;
+    conn_list_entry *ptr = NULL;
+    conn_list_entry *prev = NULL;
+    conn_list_entry *removed = NULL;
 
     /* Search the list of active connections owned by this process in order to
-    * remove the connection from the list and clean up
-    */
+     * remove the connection from the list and clean up */
     if (NULL != conn_head) {
-        conn_list_entry *ptr = NULL;
-        conn_list_entry *prev = NULL;
         if ( (err_info = sr_mlock(conn_list_lock, 1000, __func__))) {
             return err_info;
         }
@@ -933,7 +936,7 @@ sr_shmmain_deallocate_conn(const sr_cid_t cid) {
                 }
                 /* Removed entry does not adjust prev */
                 /* prev = prev; */
-                conn_list_entry *removed = ptr;
+                removed = ptr;
                 ptr = ptr->_next;
                 free(removed);
             } else {
@@ -954,7 +957,12 @@ sr_shmmain_deallocate_conn(const sr_cid_t cid) {
 }
 
 /**
- * Allocate and track a globally unique connection ID.
+ * @brief Allocate and track a globally unique connection ID.
+ * Populate the sr_cid field of conn with newly allocated ID.
+ * Main SHM write lock is expected to be held.
+ *
+ * @param[in,out] Connection for which an ID will be allocated.
+ * @return err_info, NULL on success.
  */
 sr_error_info_t *
 sr_shmmain_allocate_conn(sr_conn_ctx_t *conn) {
@@ -988,10 +996,9 @@ sr_shmmain_allocate_conn(sr_conn_ctx_t *conn) {
 
     /* Initialize the linked list of connections in this process */
     if (NULL == conn_list_lock) {
-        /* Initialize the mutex.  The SHM write lock should be held when calling
+        /* Initialize the mutex.  The SHM write lock is held when calling
          * this function which protects the creation of this mutex.
          */
-        sr_error_info_t *err_info = NULL;
         conn_list_lock = calloc(1, sizeof(pthread_mutex_t));
         if ((err_info = sr_mutex_init(conn_list_lock, 0))) {
             return err_info;
@@ -1037,9 +1044,8 @@ sr_shmmain_allocate_conn(sr_conn_ctx_t *conn) {
         goto conn_cid_cleanup;
     }
 
-    /* Write the PID into the file for debug. The / helps uncover issues where a
-     * file is reused without being correctly freed by a previous owner.
-     */
+    /* Write the PID into the file for debug. The / helps identify if a
+     * file is unexpectedly reused. */
     snprintf(buf, sizeof(buf), "/%u\n", getpid());
     write(lock_fd, buf, strlen(buf));
 
@@ -1120,7 +1126,7 @@ sr_shmmain_conn_del(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_cid_t cid)
     /* find the connection */
     shm_conn = (sr_conn_shm_t *)(ext_shm_addr + main_shm->conns);
     for (i = 0; i < main_shm->conn_count; ++i) {
-        /* The CID is globally unique and is therefore sufficient to identify the connection */
+        /* The CID is globally unique and is sufficient to identify the connection */
         if (cid == shm_conn[i].cid) {
             break;
         }

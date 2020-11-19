@@ -229,8 +229,7 @@ typedef uint32_t sr_cid_t;
  * any scheduled changes.
  *
  * @note Do not use `fork()` after creating a connection. Sysrepo internally stores the connection
- * ID of every created connection. Forking will duplicate the connection and ID resulting in a
- * mismatch.
+ * ID of every connection. Forking will duplicate the connection and ID resulting in a mismatch.
  *
  * @param[in] opts Options overriding default connection handling by this call.
  * @param[out] conn Connection that can be used for subsequent API calls
@@ -253,7 +252,7 @@ int sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn);
 int sr_disconnect(sr_conn_ctx_t *conn);
 
 /**
- * @brief Learn the current global number of (some possibly dead) connections.
+ * @brief Learn the current global number of alive connections.
  *
  * @param[out] conn_count Current number of connections.
  * @return Error code (::SR_ERR_OK on success).
@@ -261,8 +260,8 @@ int sr_disconnect(sr_conn_ctx_t *conn);
 int sr_connection_count(uint32_t *conn_count);
 
 /**
- * @brief Retrieve globally unique connection ID for this connection.  A value
- * of 0 indicates the ID is not set.
+ * @brief Retrieve globally unique connection ID for this connection.
+ * A value of 0 indicates the ID is not set.
  *
  * @param[in] conn Connection to use.
  * @return unique identifier for the connection.

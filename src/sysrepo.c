@@ -430,13 +430,13 @@ API int
 sr_connection_count(uint32_t *conn_count)
 {
     sr_error_info_t *err_info = NULL;
-    sr_main_shm_t *main_shm;
+    sr_main_shm_t *main_shm = NULL;
     sr_shm_t shm = SR_SHM_INITIALIZER;
     int shm_lock = -1;
     sr_shm_t ext_shm;
     uint32_t idx = 0;
     uint32_t count = 0;
-    sr_conn_shm_t *conn_s;
+    sr_conn_shm_t *conn_s = NULL;
     memset(&ext_shm, 0, sizeof(sr_shm_t));
 
     SR_CHECK_ARG_APIRET(!conn_count, NULL, err_info);

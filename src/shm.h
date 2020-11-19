@@ -395,6 +395,7 @@ sr_conn_shm_t *sr_shmmain_conn_find(char *main_shm_addr, char *ext_shm_addr, sr_
  *
  * @param[in] cid The connection ID to check.
  * @param[out] conn_alive Will be set to non-zero if the connection is alive, zero otherwise.
+ * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmain_check_conn_lock(sr_cid_t cid, int *conn_alive);
 
