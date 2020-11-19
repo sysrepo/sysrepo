@@ -2296,14 +2296,14 @@ sr_diff_check_cid_conn(struct lyd_node *diff_node, sr_cid_t cur_cid, int cur_att
 
     assert(conn_ptr);
 
-    if ( !cur_cid || (cur_cid != conn_ptr->sr_cid)) {
+    if (!cur_cid || (cur_cid != conn_ptr->sr_cid)) {
         if (cur_attr_own) {
             /* remove attrs from the node */
             sr_edit_del_attr(diff_node, "cid");
         }
 
         /* add attrs of the new connection */
-        sprintf(cid_str, "%ld", (long)conn_ptr->sr_cid);
+        sprintf(cid_str, "%"PRIu32, conn_ptr->sr_cid);
         if (!lyd_insert_attr(diff_node, NULL, SR_YANG_MOD ":cid", cid_str)) {
             sr_errinfo_new_ly(&err_info, lyd_node_module(diff_node)->ctx);
             return err_info;
@@ -2314,7 +2314,7 @@ sr_diff_check_cid_conn(struct lyd_node *diff_node, sr_cid_t cur_cid, int cur_att
         }
 
         /* keep attrs of the current connection for children */
-        sprintf(cid_str, "%ld", (long)cur_cid);
+        sprintf(cid_str, "%"PRIu32, cur_cid);
 
         LY_TREE_FOR(sr_lyd_child(diff_node, 1), child) {
             sr_diff_find_oper(child, NULL, NULL, &attr_own);
@@ -3862,7 +3862,7 @@ sr_diff_del_conn(struct lyd_node **diff, sr_cid_t cid)
         return NULL;
     }
 
-    if (asprintf(&xpath, "//*[@cid='%ld']", (long)cid) == -1) {
+    if (asprintf(&xpath, "//*[@cid='%"PRIu32"']", cid) == -1) {
         SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }

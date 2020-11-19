@@ -314,7 +314,7 @@ struct sr_conn_ctx_s {
     pthread_mutex_t ptr_lock;       /**< Session-shared lock for accessing pointers to sessions. */
     sr_session_ctx_t **sessions;    /**< Array of sessions for this connection. */
     uint32_t session_count;         /**< Session count. */
-    sr_cid_t sr_cid;                /**< Globally unique connection ID*/
+    sr_cid_t sr_cid;                /**< Globally unique connection ID */
 
     int main_create_lock;           /**< Process-shared file lock for creating main/ext SHM. */
     sr_rwlock_t ext_remap_lock;     /**< Session-shared lock only for remapping ext SHM

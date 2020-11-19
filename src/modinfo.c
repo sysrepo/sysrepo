@@ -1167,7 +1167,7 @@ sr_modinfo_module_srmon_connection(sr_main_shm_t *main_shm, char *ext_shm_addr, 
     SR_CHECK_LY_RET(!sr_conn, ly_ctx, err_info);
 
     /* cid */
-    sprintf(buf, "%ld", (long)shm_conn->cid);
+    sprintf(buf, "%"PRIu32, shm_conn->cid);
     SR_CHECK_LY_RET(!lyd_new_leaf(sr_conn, NULL, "cid", buf), ly_ctx, err_info);
 
     /* main-lock */

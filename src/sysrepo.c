@@ -473,7 +473,7 @@ sr_connection_count(uint32_t *conn_count)
     main_shm = (sr_main_shm_t *)shm.addr;
     *conn_count = main_shm->conn_count;
 
-    if ((err_info = sr_shmmain_ext_open(&ext_shm, 0)) ) {
+    if ((err_info = sr_shmmain_ext_open(&ext_shm, 0))) {
         goto cleanup;
     }
 
