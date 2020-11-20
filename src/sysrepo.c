@@ -506,15 +506,6 @@ cleanup:
     return sr_api_ret(NULL, err_info);
 }
 
-API sr_cid_t
-sr_connection_cid(sr_conn_ctx_t *conn) {
-    if (!conn) {
-        return SR_CONN_ID_NONE;
-    }
-    return conn->sr_cid;
-}
-
-
 API const struct ly_ctx *
 sr_get_context(sr_conn_ctx_t *conn)
 {

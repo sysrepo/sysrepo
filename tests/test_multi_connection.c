@@ -154,28 +154,6 @@ test_connection_count(void **state)
 }
 
 static void
-test_connection_unique_id(void **state)
-{
-    struct state *st = (struct state *)*state;
-    sr_cid_t cid1;
-    sr_cid_t cid2;
-    sr_cid_t cid3;
-
-    cid1 = sr_connection_cid(st->conn1);
-    cid2 = sr_connection_cid(st->conn2);
-    cid3 = sr_connection_cid(st->conn3);
-
-    // 0 is reserved for not-connected.
-    assert_int_not_equal(cid1, 0);
-    assert_int_not_equal(cid2, 0);
-    assert_int_not_equal(cid3, 0);
-
-    assert_int_not_equal(cid1, cid2);
-    assert_int_not_equal(cid1, cid3);
-    assert_int_not_equal(cid2, cid3);
-}
-
-static void
 test_create1(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -220,7 +198,6 @@ main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_connection_count),
-        cmocka_unit_test(test_connection_unique_id),
         cmocka_unit_test_teardown(test_create1, clear_interfaces),
     };
 

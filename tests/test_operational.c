@@ -187,6 +187,49 @@ dummy_change_cb(sr_session_ctx_t *session, const char *module_name, const char *
     return SR_ERR_OK;
 }
 
+/**
+ * @brief delete content between two strings.
+ * The content between consecutive pairs of open and close will be deleted. For
+ * example with open="<cid>" and close="</cid>" the string <cid>1234</cid> will
+ * be replaced with <cid></cid>.
+ * @param[in,out] input The string to be modified
+ * @param[in] open The string which starts the section(s) to be deleted
+ * @param[in] close The string which ends the section(s) to be deleted
+ * @return 0 on success, non-zero on error (input will not be modified)
+ */
+int
+sr_str_subs(char *input, const char *open, const char *close)
+{
+    int idx = 0;
+    int len = strlen(input);
+    int segment_len=0;
+    char *openIdx = NULL;
+    char *closeIdx = NULL;
+    char *resp = calloc( sizeof(char), len+1);
+    if (!resp) {
+        return 1;
+    }
+    for (idx=0; idx < len; ) {
+        openIdx = strstr( &input[idx], open);
+        closeIdx = strstr( &input[idx], close);
+        if ((NULL == openIdx) || (NULL == closeIdx)) {
+            break;
+        }
+        segment_len = openIdx + strlen(open) - input - idx;
+        strncat(resp, &input[idx], segment_len);
+        strncat(resp, close, strlen(close));
+        segment_len += strlen(close);
+        resp[idx+segment_len] = 0;
+        idx = closeIdx - input + strlen(close);
+    }
+    /* pick up any remaining content */
+    strncat(resp, &input[idx], len);
+    /* copy the modified string to the input */
+    strcpy(input, resp);
+    free(resp);
+    return 0;
+}
+
 /* TEST */
 static int
 yang_lib_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
@@ -323,7 +366,9 @@ test_sr_mon(void **state)
     struct state *st = (struct state *)*state;
     struct lyd_node *data;
     sr_subscription_ctx_t *subscr;
-    char *str1, *str2;
+    int sub_ok=0;
+    char *str1;
+    const char *str2;
     int ret;
 
     /* get almost empty monitoring data */
@@ -337,8 +382,7 @@ test_sr_mon(void **state)
     assert_int_equal(ret, 0);
     lyd_free_withsiblings(data);
 
-    asprintf(&str2,
-    "<sysrepo-state xmlns=\"http://www.sysrepo.org/yang/sysrepo-monitoring\">"
+    str2 = "<sysrepo-state xmlns=\"http://www.sysrepo.org/yang/sysrepo-monitoring\">"
         "<module>"
             "<name>yang</name>"
         "</module>"
@@ -400,7 +444,7 @@ test_sr_mon(void **state)
             "<name>ops-ref</name>"
         "</module>"
         "<connection>"
-            "<cid>%ld</cid>"
+            "<cid></cid>"
             "<main-lock>read</main-lock>"
             "<module-lock>"
                 "<name>sysrepo-monitoring</name>"
@@ -413,12 +457,11 @@ test_sr_mon(void **state)
                 "<lock>read</lock>"
             "</module-lock>"
         "</connection>"
-    "</sysrepo-state>",
-    (long)sr_connection_cid(st->conn));
-
+        "</sysrepo-state>";
+    sub_ok = sr_str_subs(str1, "<cid>","</cid>");
+    assert_int_equal(sub_ok, 0);
     assert_string_equal(str1, str2);
     free(str1);
-    free(str2);
 
     /* make some change subscriptions */
     ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", dummy_change_cb, NULL,
@@ -464,8 +507,7 @@ test_sr_mon(void **state)
     assert_int_equal(ret, 0);
     lyd_free_withsiblings(data);
 
-    asprintf(&str2,
-    "<sysrepo-state xmlns=\"http://www.sysrepo.org/yang/sysrepo-monitoring\">"
+    str2= "<sysrepo-state xmlns=\"http://www.sysrepo.org/yang/sysrepo-monitoring\">"
         "<module>"
             "<name>yang</name>"
         "</module>"
@@ -503,11 +545,11 @@ test_sr_mon(void **state)
                     "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:operational</datastore>"
                     "<xpath xmlns:if=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">/if:interfaces</xpath>"
                     "<priority>3</priority>"
-                    "<cid>%ld</cid>"
+                    "<cid></cid>"
                 "</change-sub>"
                 "<operational-sub>"
                     "<xpath xmlns:if=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">/if:interfaces-state</xpath>"
-                    "<cid>%ld</cid>"
+                    "<cid></cid>"
                 "</operational-sub>"
             "</subscriptions>"
         "</module>"
@@ -523,7 +565,7 @@ test_sr_mon(void **state)
                 "<change-sub>"
                     "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
                     "<priority>0</priority>"
-                    "<cid>%ld</cid>"
+                    "<cid></cid>"
                 "</change-sub>"
             "</subscriptions>"
         "</module>"
@@ -535,7 +577,7 @@ test_sr_mon(void **state)
             "<subscriptions>"
                 "<operational-sub>"
                     "<xpath xmlns:a=\"urn:act\" xmlns:a2=\"urn:act2\">/a:basics/a:subbasics/a2:complex_number/a2:imaginary_part</xpath>"
-                    "<cid>%ld</cid>"
+                    "<cid></cid>"
                 "</operational-sub>"
             "</subscriptions>"
         "</module>"
@@ -548,8 +590,8 @@ test_sr_mon(void **state)
         "<module>"
             "<name>ops</name>"
             "<subscriptions>"
-                "<notification-sub>%ld</notification-sub>"
-                "<notification-sub>%ld</notification-sub>"
+                "<notification-sub></notification-sub>"
+                "<notification-sub></notification-sub>"
             "</subscriptions>"
         "</module>"
         "<module>"
@@ -560,7 +602,7 @@ test_sr_mon(void **state)
             "<rpc-sub>"
                 "<xpath xmlns:a=\"urn:act\">/a:capitalize</xpath>"
                 "<priority>0</priority>"
-                "<cid>%ld</cid>"
+                "<cid></cid>"
             "</rpc-sub>"
         "</rpc>"
         "<rpc>"
@@ -568,16 +610,16 @@ test_sr_mon(void **state)
             "<rpc-sub>"
                 "<xpath xmlns:a=\"urn:act\">/a:basics/a:animals/a:convert[a:direction='false']</xpath>"
                 "<priority>5</priority>"
-                "<cid>%ld</cid>"
+                "<cid></cid>"
             "</rpc-sub>"
             "<rpc-sub>"
                 "<xpath xmlns:a=\"urn:act\">/a:basics/a:animals/a:convert</xpath>"
                 "<priority>4</priority>"
-                "<cid>%ld</cid>"
+                "<cid></cid>"
             "</rpc-sub>"
         "</rpc>"
         "<connection>"
-            "<cid>%ld</cid>"
+            "<cid></cid>"
             "<main-lock>read</main-lock>"
             "<module-lock>"
                 "<name>sysrepo-monitoring</name>"
@@ -590,16 +632,13 @@ test_sr_mon(void **state)
                 "<lock>read</lock>"
             "</module-lock>"
         "</connection>"
-    "</sysrepo-state>",
-    (long)sr_connection_cid(st->conn), (long)sr_connection_cid(st->conn),
-    (long)sr_connection_cid(st->conn), (long)sr_connection_cid(st->conn),
-    (long)sr_connection_cid(st->conn), (long)sr_connection_cid(st->conn),
-    (long)sr_connection_cid(st->conn), (long)sr_connection_cid(st->conn),
-    (long)sr_connection_cid(st->conn), (long)sr_connection_cid(st->conn));
-
+        "</sysrepo-state>";
+    sub_ok = sr_str_subs(str1, "<cid>","</cid>");
+    assert_int_equal(sub_ok, 0);
+    sub_ok = sr_str_subs(str1, "<notification-sub>","</notification-sub>");
+    assert_int_equal(sub_ok, 0);
     assert_string_equal(str1, str2);
     free(str1);
-    free(str2);
 
     sr_unsubscribe(subscr);
     sr_session_switch_ds(st->sess, SR_DS_RUNNING);

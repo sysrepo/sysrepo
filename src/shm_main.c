@@ -56,9 +56,26 @@ struct _conn_list_entry {
 
 /**
  * @brief Linked list of all active connections in this process.
+ *
+ * Each sysrepo connection maintains a POSIX advisory lock on its lockfile. These
+ * locks allow other sysrepo processes to validate if a tracked connection is
+ * still alive. However a process closing ANY file descriptor to a lockfile on
+ * which it holds an advisory lock results in the lock being immediately
+ * released. To avoid this condition this linked list tracks all open connections
+ * within the current process along with the open file descriptor used to create
+ * the advisory lock. When testing for aliveness (sr_shmmain_conn_lock) this list
+ * is checked first to see if the connection ID is owned by this process. Only
+ * when that check fails will the lock test open (and later close) a file handle
+ * to the lockfile for testing the lock. This list is used by the disconnect logic
+ * to close the filehandle which releases the lock. Programs which do not cleanly
+ * disconnect (eg crash) will have the lock removed automatcially as the
+ * terminated process is cleaned up.
  */
-static conn_list_entry *conn_head = NULL;
-static pthread_mutex_t *conn_list_lock = NULL;
+typedef struct {
+    conn_list_entry *conn_head;
+    pthread_mutex_t *conn_list_lock;
+} sr_locked_list_t;
+sr_locked_list_t local_conn_list = { .conn_head=NULL, .conn_list_lock=NULL };
 
 /**
  * @brief Collect data dependencies for printing.
@@ -846,18 +863,18 @@ sr_shmmain_check_conn_lock(sr_cid_t cid, int *conn_alive) {
      * connection owned by this process and return status before we do an
      * open().
      */
-    if (conn_head) {
-        if ((err_info = sr_mlock(conn_list_lock, 1000, __func__))) {
+    if (local_conn_list.conn_head) {
+        if ((err_info = sr_mlock(local_conn_list.conn_list_lock, 1000, __func__))) {
             return err_info;
         }
-        for (ptr = conn_head; ptr; ptr = ptr->_next) {
+        for (ptr = local_conn_list.conn_head; ptr; ptr = ptr->_next) {
             if (cid == ptr->cid) {
                 *conn_alive = 1;
-                sr_munlock(conn_list_lock);
+                sr_munlock(local_conn_list.conn_list_lock);
                 return NULL;
             }
         }
-        sr_munlock(conn_list_lock);
+        sr_munlock(local_conn_list.conn_list_lock);
     }
 
     sr_shmmain_get_conn_lockfile_path(cid, &path);
@@ -882,7 +899,10 @@ sr_shmmain_check_conn_lock(sr_cid_t cid, int *conn_alive) {
     fl.l_len = 0; /* length of 0 is entire file */
     fl.l_type = F_WRLCK;
     rc = fcntl(fd, F_GETLK, &fl);
-    close(fd); /* this will release the lock if we hold it, thus the list above */
+    /* Closing any FD to a lock file of a connection owned by this process will
+     * immediately release the lock. When testing locks, we search local_conn_list
+     * above to ensure we only open/close lock files owned by other processes. */
+    close(fd);
     if (rc == -1) {
         SR_ERRINFO_SYSERRNO(&err_info, "flock");
         return err_info;
@@ -915,16 +935,16 @@ sr_shmmain_deallocate_conn(const sr_cid_t cid) {
 
     /* Search the list of active connections owned by this process in order to
      * remove the connection from the list and clean up */
-    if (conn_head) {
-        if ((err_info = sr_mlock(conn_list_lock, 1000, __func__))) {
+    if (local_conn_list.conn_head) {
+        if ((err_info = sr_mlock(local_conn_list.conn_list_lock, 1000, __func__))) {
             return err_info;
         }
 
-        for (ptr = conn_head; ptr;) {
+        for (ptr = local_conn_list.conn_head; ptr;) {
             if (cid == ptr->cid) {
                 /* remove the entry from the list */
                 if (!prev) {
-                    conn_head = ptr->_next;
+                    local_conn_list.conn_head = ptr->_next;
                 } else {
                     prev->_next = ptr->_next;
                 }
@@ -947,7 +967,7 @@ sr_shmmain_deallocate_conn(const sr_cid_t cid) {
                 ptr = ptr->_next;
             }
         }
-        sr_munlock(conn_list_lock);
+        sr_munlock(local_conn_list.conn_list_lock);
     }
 
     sr_shmmain_get_conn_lockfile_path(cid, &path);
@@ -985,16 +1005,16 @@ sr_shmmain_allocate_conn(sr_conn_ctx_t *conn) {
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
 
     /* initialize the linked list of connections in this process */
-    if (!conn_list_lock) {
+    if (!local_conn_list.conn_list_lock) {
         /* Initialize the mutex.  The SHM write lock is held when calling
          * this function which protects the creation of this mutex.
          */
-        conn_list_lock = calloc(1, sizeof(pthread_mutex_t));
-        if (!conn_list_lock) {
+        local_conn_list.conn_list_lock = calloc(1, sizeof(pthread_mutex_t));
+        if (!local_conn_list.conn_list_lock) {
             SR_ERRINFO_MEM(&err_info);
             return err_info;
         }
-        if ((err_info = sr_mutex_init(conn_list_lock, 0))) {
+        if ((err_info = sr_mutex_init(local_conn_list.conn_list_lock, 0))) {
             return err_info;
         }
     }
@@ -1019,7 +1039,7 @@ sr_shmmain_allocate_conn(sr_conn_ctx_t *conn) {
     conn->sr_cid = cid;
 
 
-    if ((err_info = sr_mlock(conn_list_lock, 1000, __func__))) {
+    if ((err_info = sr_mlock(local_conn_list.conn_list_lock, 1000, __func__))) {
         return err_info;
     }
 
@@ -1027,9 +1047,9 @@ sr_shmmain_allocate_conn(sr_conn_ctx_t *conn) {
     /* cid_fd will be set below after lock file is created and the lock is held */
     cid_info->cid_fd = 0;
     /* insert at the head of the list */
-    cid_info->_next = conn_head;
-    conn_head = cid_info;
-    sr_munlock(conn_list_lock);
+    cid_info->_next = local_conn_list.conn_head;
+    local_conn_list.conn_head = cid_info;
+    sr_munlock(local_conn_list.conn_list_lock);
 
     sr_shmmain_get_conn_lockfile_path(conn->sr_cid, &path);
 

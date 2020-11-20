@@ -260,15 +260,6 @@ int sr_disconnect(sr_conn_ctx_t *conn);
 int sr_connection_count(uint32_t *conn_count);
 
 /**
- * @brief Retrieve globally unique connection ID for this connection.
- * A value of 0 indicates the ID is not set.
- *
- * @param[in] conn Connection to use.
- * @return unique identifier for the connection.
- */
-sr_cid_t sr_connection_cid(sr_conn_ctx_t *conn);
-
-/**
  * @brief Get the _libyang_ context used by a connection. Can be used in an application for working with data
  * and schemas. Do **NOT** change this context!
  *
