@@ -210,7 +210,6 @@ sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node
             }
         }
 
-
         if (match) {
             switch (edit_node->schema->nodetype) {
             case LYS_CONTAINER:

@@ -209,7 +209,7 @@ sr_str_subs(char *input, const char *open, const char *close)
     if (!resp) {
         return 1;
     }
-    for (idx=0; idx < len; ) {
+    for (idx = 0; idx < len; ) {
         openIdx = strstr( &input[idx], open);
         closeIdx = strstr( &input[idx], close);
         if ((NULL == openIdx) || (NULL == closeIdx)) {
@@ -366,7 +366,7 @@ test_sr_mon(void **state)
     struct state *st = (struct state *)*state;
     struct lyd_node *data;
     sr_subscription_ctx_t *subscr;
-    int sub_ok=0;
+    int sub_ok = 0;
     char *str1;
     const char *str2;
     int ret;

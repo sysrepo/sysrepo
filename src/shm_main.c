@@ -76,7 +76,6 @@ static struct {
     pthread_mutex_t *conn_list_lock;
 } conn_list;
 
-
 /**
  * @brief Collect data dependencies for printing.
  *
@@ -424,18 +423,19 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
 
 /**
  * @brief Populate the lockfile path for a given Connection ID.
- * When called with cid of SR_CONN_ID_NONE the path will be set to the lock file
+ * When called with cid of 0 the path will be set to the lock file
  * directory path. The path parameter is set to newly allocated memory.  Caller
  * is responsible for freeing memory.
  *
  * @param[in] cid Connection ID for which the lockfile path is constructed
- * @param[out] path Lockfile directory if cid is SR_CONN_ID_NONE, path of lockfile otherwise
+ * @param[out] path Lockfile directory if cid is 0, path of lockfile otherwise
  * @return 0 on success
  */
 static int
-sr_shmmain_get_conn_lockfile_path(sr_cid_t cid, char **path) {
+sr_shmmain_get_conn_lockfile_path(sr_cid_t cid, char **path)
+{
     const char *shm_dir = SR_SHM_DIR;
-    if (SR_CONN_ID_NONE == cid) {
+    if (cid == 0) {
         asprintf(path, "%s/%s", shm_dir, SR_CONN_LOCK_DIR);
     } else {
         asprintf(path, "%s/%s/conn_%"PRIu32".lock", shm_dir, SR_CONN_LOCK_DIR, cid);
@@ -761,7 +761,7 @@ sr_shmmain_check_dirs(void)
     free(dir_path);
 
     /* connection lock dir */
-    sr_shmmain_get_conn_lockfile_path(SR_CONN_ID_NONE, &dir_path);
+    sr_shmmain_get_conn_lockfile_path(0, &dir_path);
     if ((err_info = sr_mkpath(dir_path, SR_DIR_PERM))) {
         free(dir_path);
         return err_info;
@@ -839,7 +839,8 @@ sr_shmmain_createunlock(int shm_lock)
  * @return err_info, NULL on success.
  */
 sr_error_info_t *
-sr_shmmain_check_conn_lock(sr_cid_t cid, int *conn_alive) {
+sr_shmmain_check_conn_lock(sr_cid_t cid, int *conn_alive)
+{
     sr_error_info_t *err_info = NULL;
     struct flock fl;
     int fd = -1;
@@ -848,15 +849,9 @@ sr_shmmain_check_conn_lock(sr_cid_t cid, int *conn_alive) {
     conn_list_entry *ptr = NULL;
 
     assert(conn_alive);
+    assert(cid); /* 0 is reserved for invalid or unset */
 
     *conn_alive = 0;
-
-    /* connection ID NONE is reserved and never used */
-    if (SR_CONN_ID_NONE == cid) {
-        SR_ERRINFO_INT(&err_info);
-        sr_errinfo_free(&err_info);
-        return NULL;
-    }
 
     /* If the connection is owned by this process a check using flock which
      * requires an open/close would release the lock. Check if the CID is a
@@ -926,7 +921,8 @@ sr_shmmain_check_conn_lock(sr_cid_t cid, int *conn_alive) {
  * @return err_info, NULL on success.
  */
 sr_error_info_t *
-sr_shmmain_deallocate_conn(const sr_cid_t cid) {
+sr_shmmain_deallocate_conn(const sr_cid_t cid)
+{
     sr_error_info_t *err_info = NULL;
     char *path = NULL;
     conn_list_entry *ptr = NULL;
@@ -988,7 +984,8 @@ sr_shmmain_deallocate_conn(const sr_cid_t cid) {
  * @return err_info, NULL on success.
  */
 sr_error_info_t *
-sr_shmmain_allocate_conn(sr_conn_ctx_t *conn) {
+sr_shmmain_allocate_conn(sr_conn_ctx_t *conn)
+{
     sr_error_info_t *err_info = NULL;
     char buf[64] = {0};
     char *path = NULL;
@@ -999,7 +996,7 @@ sr_shmmain_allocate_conn(sr_conn_ctx_t *conn) {
     char *group = NULL;
     mode_t perm = 0;
     sr_main_shm_t *main_shm = NULL;
-    sr_cid_t cid = SR_CONN_ID_NONE;
+    sr_cid_t cid = 0;
     int alive = 0;
 
     main_shm = (sr_main_shm_t *)conn->main_shm.addr;
@@ -1025,11 +1022,11 @@ sr_shmmain_allocate_conn(sr_conn_ctx_t *conn) {
         return err_info;
     }
 
-    conn->sr_cid = SR_CONN_ID_NONE;
+    conn->sr_cid = 0;
     /* allocate next unique Connection ID */
     cid = ATOMIC_INC_RELAXED(main_shm->new_sr_cid);
     err_info = sr_shmmain_check_conn_lock(cid, &alive);
-    if (err_info || alive || (SR_CONN_ID_NONE == cid)) {
+    if (err_info || alive || (cid == 0)) {
         SR_LOG_WRN("Could not allocate connection ID %ld (%d)", cid, alive);
         if (!err_info) {
             SR_ERRINFO_INT(&err_info);
@@ -1037,7 +1034,6 @@ sr_shmmain_allocate_conn(sr_conn_ctx_t *conn) {
         return err_info;
     }
     conn->sr_cid = cid;
-
 
     if ((err_info = sr_mlock(conn_list.conn_list_lock, 1000, __func__))) {
         return err_info;

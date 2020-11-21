@@ -41,7 +41,6 @@
 #include <assert.h>
 #include <pthread.h>
 
-
 #ifndef SR_HAVE_PTHREAD_MUTEX_TIMEDLOCK
 
 int

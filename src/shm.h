@@ -399,7 +399,6 @@ sr_conn_shm_t *sr_shmmain_conn_find(char *main_shm_addr, char *ext_shm_addr, sr_
  */
 sr_error_info_t *sr_shmmain_check_conn_lock(sr_cid_t cid, int *conn_alive);
 
-
 /**
  * @brief Add an event pipe into a connection in main SHM.
  * Main SHM lock is expected to be held.

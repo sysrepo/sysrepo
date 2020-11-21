@@ -404,7 +404,6 @@ sr_disconnect(sr_conn_ctx_t *conn)
     /* remove from state */
     sr_shmmain_conn_del((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, conn->sr_cid);
 
-
     if (!lock_err) {
         /* SHM UNLOCK */
         sr_shmmain_unlock(conn, SR_LOCK_WRITE, 1, __func__);
@@ -484,7 +483,7 @@ sr_connection_count(uint32_t *conn_count)
 
     count = 0;
     conn_s = (sr_conn_shm_t *)(ext_shm.addr + main_shm->conns);
-    for (idx=0; idx < main_shm->conn_count; idx++) {
+    for (idx = 0; idx < main_shm->conn_count; idx++) {
         if (!sr_connection_exists(conn_s[idx].cid)) {
             SR_LOG_WRN("Skipping dead connection for CID %ld.", (long)conn_s[idx].cid);
         } else {
