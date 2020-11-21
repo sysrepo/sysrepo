@@ -47,12 +47,11 @@ struct shm_item {
 /**
  * @brief Item holding information about active connections owned by this process.
  */
-typedef struct _conn_list_entry conn_list_entry;
-struct _conn_list_entry {
-    conn_list_entry *_next;
+typedef struct _conn_list_entry {
+    struct _conn_list_entry *_next;
     sr_cid_t cid;
     int cid_fd;
-};
+} conn_list_entry;
 
 /**
  * @brief Linked list of all active connections in this process.
