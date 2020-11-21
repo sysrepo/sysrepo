@@ -220,11 +220,6 @@ typedef struct sr_error_info_s {
 } sr_error_info_t;
 
 /**
- * @brief Connection ID.
- */
-typedef uint32_t sr_cid_t;
-
-/**
  * @brief Connects to the sysrepo datastore. If possible (no other connections exist), also apply
  * any scheduled changes.
  *

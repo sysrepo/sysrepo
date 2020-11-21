@@ -150,7 +150,6 @@ test_connection_count(void **state)
     ret = sr_connection_count(&count);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(count, 3);
-
 }
 
 static void

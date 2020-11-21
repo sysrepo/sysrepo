@@ -264,6 +264,11 @@ typedef struct sr_sid_s {
 } sr_sid_t;
 
 /**
+ * @brief Connection ID.
+ */
+typedef uint32_t sr_cid_t;
+
+/**
  * @brief Lock mode.
  */
 typedef enum sr_lock_mode_e {

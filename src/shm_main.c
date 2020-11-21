@@ -967,7 +967,7 @@ sr_shmmain_deallocate_conn(const sr_cid_t cid)
     }
 
     sr_shmmain_get_conn_lockfile_path(cid, &path);
-    if (0 != unlink(path)) {
+    if (unlink(path) != 0) {
         SR_ERRINFO_SYSERRNO(&err_info, "unlink");
     }
     free(path);
@@ -1055,7 +1055,7 @@ sr_shmmain_allocate_conn(sr_conn_ctx_t *conn)
     }
 
     lock_fd = open(path, O_CREAT | O_RDWR, SR_INT_FILE_PERM);
-    if (-1 == lock_fd) {
+    if (lock_fd == -1) {
         SR_ERRINFO_SYSERRNO(&err_info, "open");
         goto conn_cid_cleanup;
     }
