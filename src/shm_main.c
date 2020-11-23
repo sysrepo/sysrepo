@@ -906,7 +906,7 @@ sr_shmmain_check_conn_lock(sr_cid_t cid, int *conn_alive)
         *conn_alive = 0;
     } else {
         /* we cannot get the lock, it must be held by an alive connection */
-        SR_LOG_INF("Lock test found alive connection by pid [%ld] for CID %"PRIu32".", fl.l_pid, cid);
+        SR_LOG_INF("Lock test found alive connection by pid [%ld] for CID %"PRIu32".", (long)fl.l_pid, cid);
         *conn_alive = 1;
     }
     return NULL;
@@ -1026,7 +1026,7 @@ sr_shmmain_allocate_conn(sr_conn_ctx_t *conn)
     cid = ATOMIC_INC_RELAXED(main_shm->new_sr_cid);
     err_info = sr_shmmain_check_conn_lock(cid, &alive);
     if (err_info || alive || (cid == 0)) {
-        SR_LOG_WRN("Could not allocate connection ID %"PRIu32" (%ld)", cid, alive);
+        SR_LOG_WRN("Could not allocate connection ID %"PRIu32" (%d)", cid, alive);
         if (!err_info) {
             SR_ERRINFO_INT(&err_info);
         }
