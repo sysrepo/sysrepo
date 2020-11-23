@@ -51,7 +51,7 @@ typedef struct _conn_list_entry {
     struct _conn_list_entry *_next;
     sr_cid_t cid;
     int cid_fd;
-} conn_list_entry;
+} sr_conn_list_entry;
 
 /**
  * @brief Linked list of all active connections in this process.
@@ -71,7 +71,7 @@ typedef struct _conn_list_entry {
  * terminated process is cleaned up.
  */
 static struct {
-    conn_list_entry *conn_head;
+    sr_conn_list_entry *conn_head;
     pthread_mutex_t *conn_list_lock;
 } conn_list;
 
@@ -845,7 +845,7 @@ sr_shmmain_check_conn_lock(sr_cid_t cid, int *conn_alive)
     int fd = -1;
     char *path = NULL;
     int rc = 0;
-    conn_list_entry *ptr = NULL;
+    sr_conn_list_entry *ptr = NULL;
 
     assert(conn_alive);
     assert(cid); /* 0 is reserved for invalid or unset */
@@ -902,11 +902,11 @@ sr_shmmain_check_conn_lock(sr_cid_t cid, int *conn_alive)
         return err_info;
     }
     if (fl.l_type == F_UNLCK) {
-        SR_LOG_INF("Lock test found no connection for CID %ld.", cid);
+        SR_LOG_INF("Lock test found no connection for CID %"PRIu32".", cid);
         *conn_alive = 0;
     } else {
         /* we cannot get the lock, it must be held by an alive connection */
-        SR_LOG_INF("Lock test found alive connection by pid [%ld] for CID %ld.", fl.l_pid, cid);
+        SR_LOG_INF("Lock test found alive connection by pid [%ld] for CID %"PRIu32".", fl.l_pid, cid);
         *conn_alive = 1;
     }
     return NULL;
@@ -924,9 +924,9 @@ sr_shmmain_deallocate_conn(const sr_cid_t cid)
 {
     sr_error_info_t *err_info = NULL;
     char *path = NULL;
-    conn_list_entry *ptr = NULL;
-    conn_list_entry *prev = NULL;
-    conn_list_entry *removed = NULL;
+    sr_conn_list_entry *ptr = NULL;
+    sr_conn_list_entry *prev = NULL;
+    sr_conn_list_entry *removed = NULL;
 
     /* Search the list of active connections owned by this process in order to
      * remove the connection from the list and clean up */
@@ -950,7 +950,7 @@ sr_shmmain_deallocate_conn(const sr_cid_t cid)
                     close(ptr->cid_fd);
                     ptr->cid_fd = 0;
                 } else {
-                    SR_LOG_WRN("Connection CID %d fd is unset", ptr->cid);
+                    SR_LOG_WRN("Connection CID %"PRIu32" fd is unset", ptr->cid);
                 }
                 /* removed entry does not adjust prev */
                 /* prev = prev; */
@@ -989,7 +989,7 @@ sr_shmmain_allocate_conn(sr_conn_ctx_t *conn)
     char buf[64] = {0};
     char *path = NULL;
     struct flock fl;
-    conn_list_entry *cid_info = NULL;
+    sr_conn_list_entry *cid_info = NULL;
     int lock_fd = 0;
     char *owner = NULL;
     char *group = NULL;
@@ -1015,7 +1015,7 @@ sr_shmmain_allocate_conn(sr_conn_ctx_t *conn)
         }
     }
 
-    cid_info = calloc(1, sizeof(conn_list_entry));
+    cid_info = calloc(1, sizeof(sr_conn_list_entry));
     if (!cid_info) {
         SR_ERRINFO_MEM(&err_info);
         return err_info;
@@ -1026,7 +1026,7 @@ sr_shmmain_allocate_conn(sr_conn_ctx_t *conn)
     cid = ATOMIC_INC_RELAXED(main_shm->new_sr_cid);
     err_info = sr_shmmain_check_conn_lock(cid, &alive);
     if (err_info || alive || (cid == 0)) {
-        SR_LOG_WRN("Could not allocate connection ID %ld (%d)", cid, alive);
+        SR_LOG_WRN("Could not allocate connection ID %"PRIu32" (%ld)", cid, alive);
         if (!err_info) {
             SR_ERRINFO_INT(&err_info);
         }
@@ -1280,7 +1280,7 @@ sr_shmmain_conn_recover(sr_conn_ctx_t *conn)
     i = 0;
     while (i < main_shm->conn_count) {
         if (!sr_connection_exists(shm_conn[i].cid)) {
-            SR_LOG_WRN("Cleaning up after a non-existent sysrepo client with CID %ld.", (long)shm_conn[i].cid);
+            SR_LOG_WRN("Cleaning up after a non-existent sysrepo client with CID %"PRIu32".", shm_conn[i].cid);
 
             /* recover held main SHM locks */
             switch (shm_conn[i].main_lock.mode) {

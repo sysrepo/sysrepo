@@ -34,6 +34,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <inttypes.h>
 
 #include <libyang/libyang.h>
 
@@ -485,7 +486,7 @@ sr_connection_count(uint32_t *conn_count)
     conn_s = (sr_conn_shm_t *)(ext_shm.addr + main_shm->conns);
     for (idx = 0; idx < main_shm->conn_count; idx++) {
         if (!sr_connection_exists(conn_s[idx].cid)) {
-            SR_LOG_WRN("Skipping dead connection for CID %ld.", (long)conn_s[idx].cid);
+            SR_LOG_WRN("Skipping dead connection for CID %"PRIu32".", conn_s[idx].cid);
         } else {
             count++;
         }
