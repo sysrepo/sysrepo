@@ -34,6 +34,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <inttypes.h>
 
 #include <libyang/libyang.h>
 
@@ -402,7 +403,7 @@ sr_disconnect(sr_conn_ctx_t *conn)
     }
 
     /* remove from state */
-    sr_shmmain_conn_del((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, conn, getpid());
+    sr_shmmain_conn_del((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, conn->sr_cid);
 
     if (!lock_err) {
         /* SHM UNLOCK */
@@ -416,7 +417,7 @@ sr_disconnect(sr_conn_ctx_t *conn)
     }
 
     /* free any stored operational data */
-    tmp_err = sr_shmmod_oper_stored_del_conn(conn, conn, getpid());
+    tmp_err = sr_shmmod_oper_stored_del_conn(conn, conn->sr_cid);
     sr_errinfo_merge(&err_info, tmp_err);
 
     /* free attributes */
@@ -429,9 +430,14 @@ API int
 sr_connection_count(uint32_t *conn_count)
 {
     sr_error_info_t *err_info = NULL;
-    sr_main_shm_t *main_shm;
+    sr_main_shm_t *main_shm = NULL;
     sr_shm_t shm = SR_SHM_INITIALIZER;
     int shm_lock = -1;
+    sr_shm_t ext_shm;
+    uint32_t idx = 0;
+    uint32_t count = 0;
+    sr_conn_shm_t *conn_s = NULL;
+    memset(&ext_shm, 0, sizeof(sr_shm_t));
 
     SR_CHECK_ARG_APIRET(!conn_count, NULL, err_info);
 
@@ -466,6 +472,29 @@ sr_connection_count(uint32_t *conn_count)
 
     main_shm = (sr_main_shm_t *)shm.addr;
     *conn_count = main_shm->conn_count;
+
+    if ((err_info = sr_shmmain_ext_open(&ext_shm, 0))) {
+        goto cleanup;
+    }
+
+    /* SHM LOCK */
+    if ((err_info = sr_rwlock(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
+        goto cleanup;
+    }
+
+    count = 0;
+    conn_s = (sr_conn_shm_t *)(ext_shm.addr + main_shm->conns);
+    for (idx = 0; idx < main_shm->conn_count; idx++) {
+        if (!sr_connection_exists(conn_s[idx].cid)) {
+            SR_LOG_WRN("Skipping dead connection for CID %"PRIu32".", conn_s[idx].cid);
+        } else {
+            count++;
+        }
+    }
+    *conn_count = count;
+
+    /* SHM UNLOCK */
+    sr_rwunlock(&main_shm->lock, SR_LOCK_READ, __func__);
 
     /* success */
 

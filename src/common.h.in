@@ -147,6 +147,9 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** environment variable for setting a custom prefix for SHM files */
 #define SR_SHM_PREFIX_ENV "SYSREPO_SHM_PREFIX"
 
+/** where connection lock files are stored, relative to SHM dir */
+#define SR_CONN_LOCK_DIR "lock"
+
 /** all ext SHM item sizes will be aligned to this number (B) */
 #define SR_SHM_MEM_ALIGN (sizeof(void *))
 
@@ -261,6 +264,11 @@ typedef struct sr_sid_s {
 } sr_sid_t;
 
 /**
+ * @brief Connection ID.
+ */
+typedef uint32_t sr_cid_t;
+
+/**
  * @brief Lock mode.
  */
 typedef enum sr_lock_mode_e {
@@ -308,6 +316,7 @@ struct sr_conn_ctx_s {
     pthread_mutex_t ptr_lock;       /**< Session-shared lock for accessing pointers to sessions. */
     sr_session_ctx_t **sessions;    /**< Array of sessions for this connection. */
     uint32_t session_count;         /**< Session count. */
+    sr_cid_t sr_cid;                /**< Globally unique connection ID */
 
     int main_create_lock;           /**< Process-shared file lock for creating main/ext SHM. */
     sr_rwlock_t ext_remap_lock;     /**< Session-shared lock only for remapping ext SHM
@@ -874,12 +883,12 @@ sr_error_info_t *sr_perm_get(const char *mod_name, sr_datastore_t ds, char **own
 int sr_file_exists(const char *path);
 
 /**
- * @brief Check whether a process exists.
+ * @brief Check whether a connection exists.
  *
- * @param[in] pid Process PID.
+ * @param[in] cid Connection CID.
  * @return 0 if not, non-zero if it exists.
  */
-int sr_process_exists(pid_t pid);
+int sr_connection_exists(sr_cid_t cid);
 
 /**
  * @brief Get current time with an offset.

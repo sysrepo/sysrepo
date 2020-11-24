@@ -2028,18 +2028,17 @@ sr_file_exists(const char *path)
 }
 
 int
-sr_process_exists(pid_t pid)
+sr_connection_exists(sr_cid_t cid)
 {
-    if (!kill(pid, 0)) {
-        return 1;
+    int alive = 0;
+    sr_error_info_t *err_info;
+    if ((err_info = sr_shmmain_check_conn_lock(cid, &alive))) {
+        SR_LOG_WRN("Failed to check connection %"PRIu32" aliveness.", cid);
+        sr_errinfo_free(&err_info);
+        /* if check fails, assume the connection is alive */
+        alive = 1;
     }
-
-    if (errno != ESRCH) {
-        SR_LOG_INF("Failed to check existence of process with PID %ld (%s).", (long)pid, strerror(errno));
-        return 1;
-    }
-
-    return 0;
+    return alive;
 }
 
 void

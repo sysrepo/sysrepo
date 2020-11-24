@@ -223,8 +223,8 @@ typedef struct sr_error_info_s {
  * @brief Connects to the sysrepo datastore. If possible (no other connections exist), also apply
  * any scheduled changes.
  *
- * @note Do not use `fork()` after creating a connection. Sysrepo internally stores PID of
- * every created connection and this way a mismatch of PID and connection is created.
+ * @note Do not use `fork()` after creating a connection. Sysrepo internally stores the connection
+ * ID of every connection. Forking will duplicate the connection and ID resulting in a mismatch.
  *
  * @param[in] opts Options overriding default connection handling by this call.
  * @param[out] conn Connection that can be used for subsequent API calls
@@ -247,7 +247,7 @@ int sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn);
 int sr_disconnect(sr_conn_ctx_t *conn);
 
 /**
- * @brief Learn the current global number of (some possibly dead) connections.
+ * @brief Learn the current global number of alive connections.
  *
  * @param[out] conn_count Current number of connections.
  * @return Error code (::SR_ERR_OK on success).
