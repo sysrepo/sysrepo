@@ -36,10 +36,10 @@ Additionally, only a specific part of the configuration can be retrieved. Either
 sysrepocfg --export=ietf-interfaces_running.lyb --format lyb --module ietf-interfaces
 ~~~
 
-or an XPath selection.
+or an XPath selection. Be careful, it is generally needed to enclose the XPath in " to prevent ' from being removed.
 
 ~~~
-sysrepocfg --export --xpath /ietf-interfaces:interfaces/interface[name='eth0']
+sysrepocfg --export --xpath "/ietf-interfaces:interfaces/interface[name='eth0']"
 ~~~
 
 ## -E, \-\-edit[=\<file-path\>/\<editor\>]
