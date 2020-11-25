@@ -1473,8 +1473,7 @@ typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *xpath, const sr_
  * @param[in] input Data tree of input parameters. Always points to the __RPC/action__ itself, even for nested operations.
  * @param[in] event Type of the callback event that has occurred.
  * @param[in] request_id Request ID unique for the specific @p op_path.
- * @param[out] output Data tree of output parameters. Should be allocated on heap,
- * will be freed by sysrepo after sending of the RPC response.
+ * @param[out] output Data tree for appending any output parameters, the operation root node is provided..
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_rpc_subscribe_tree call.
  * @return User error code (::SR_ERR_OK on success).
  */
