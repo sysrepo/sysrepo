@@ -430,14 +430,11 @@ API int
 sr_connection_count(uint32_t *conn_count)
 {
     sr_error_info_t *err_info = NULL;
-    sr_main_shm_t *main_shm = NULL;
-    sr_shm_t shm = SR_SHM_INITIALIZER;
+    sr_main_shm_t *main_shm;
+    sr_shm_t shm = SR_SHM_INITIALIZER, ext_shm = SR_SHM_INITIALIZER;
     int shm_lock = -1;
-    sr_shm_t ext_shm;
-    uint32_t idx = 0;
-    uint32_t count = 0;
-    sr_conn_shm_t *conn_s = NULL;
-    memset(&ext_shm, 0, sizeof(sr_shm_t));
+    uint32_t idx, count;
+    sr_conn_shm_t *conn_s;
 
     SR_CHECK_ARG_APIRET(!conn_count, NULL, err_info);
 
@@ -457,6 +454,9 @@ sr_connection_count(uint32_t *conn_count)
 
     /* open the main SHM */
     err_info = sr_shmmain_main_open(&shm, NULL);
+    if (!err_info && (shm.fd > -1)) {
+        err_info = sr_shmmain_ext_open(&ext_shm, 0);
+    }
 
     /* CREATE UNLOCK */
     sr_shmmain_createunlock(shm_lock);
@@ -471,11 +471,6 @@ sr_connection_count(uint32_t *conn_count)
     }
 
     main_shm = (sr_main_shm_t *)shm.addr;
-    *conn_count = main_shm->conn_count;
-
-    if ((err_info = sr_shmmain_ext_open(&ext_shm, 0))) {
-        goto cleanup;
-    }
 
     /* SHM LOCK */
     if ((err_info = sr_rwlock(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
@@ -484,10 +479,8 @@ sr_connection_count(uint32_t *conn_count)
 
     count = 0;
     conn_s = (sr_conn_shm_t *)(ext_shm.addr + main_shm->conns);
-    for (idx = 0; idx < main_shm->conn_count; idx++) {
-        if (!sr_connection_exists(conn_s[idx].cid)) {
-            SR_LOG_WRN("Skipping dead connection for CID %"PRIu32".", conn_s[idx].cid);
-        } else {
+    for (idx = 0; idx < main_shm->conn_count; ++idx) {
+        if (sr_connection_exists(conn_s[idx].cid)) {
             count++;
         }
     }
@@ -503,6 +496,7 @@ cleanup:
         close(shm_lock);
     }
     sr_shm_clear(&shm);
+    sr_shm_clear(&ext_shm);
     return sr_api_ret(NULL, err_info);
 }
 
