@@ -1478,6 +1478,11 @@ sr_edit_apply_create(struct lyd_node **first_node, struct lyd_node *parent_node,
     struct lys_node *cur_case, *new_case;
 
     if (*match_node) {
+        if ((edit_node->schema->nodetype == LYS_CONTAINER) && !((struct lys_node_container *)edit_node->schema)->presence) {
+            /* ignore creating NP containers */
+            *next_op = EDIT_NONE;
+            return NULL;
+        }
         sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Node \"%s\" to be created already exists.", edit_node->schema->name);
         return err_info;
     }

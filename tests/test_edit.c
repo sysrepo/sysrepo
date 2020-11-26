@@ -329,6 +329,43 @@ test_create2(void **state)
 }
 
 static void
+test_create_np_cont(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *subtree;
+    int ret;
+
+    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_string_equal(subtree->schema->name, "interfaces");
+    assert_int_equal(subtree->dflt, 1);
+    lyd_free(subtree);
+
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces", NULL, NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_string_equal(subtree->schema->name, "interfaces");
+    assert_int_equal(subtree->dflt, 1);
+    lyd_free(subtree);
+
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces", NULL, NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces", NULL, NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+static void
 test_move(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -1168,6 +1205,7 @@ main(void)
         cmocka_unit_test_teardown(test_delete, clear_interfaces),
         cmocka_unit_test_teardown(test_create1, clear_interfaces),
         cmocka_unit_test_teardown(test_create2, clear_interfaces),
+        cmocka_unit_test_teardown(test_create_np_cont, clear_interfaces),
         cmocka_unit_test_teardown(test_move, clear_test),
         cmocka_unit_test_teardown(test_replace, clear_interfaces),
         cmocka_unit_test_teardown(test_replace_userord, clear_test),
