@@ -956,11 +956,6 @@ sr_shmmain_conn_free(const sr_cid_t cid)
     /* CONN LIST UNLOCK */
     sr_munlock(&conn_list.lock);
 
-    /* the conn list item with CID must have been found */
-    if (!ptr) {
-        SR_ERRINFO_INT(&err_info);
-    }
-
     /* remove the lockfile as well */
     sr_shmmain_get_conn_lockfile_path(cid, &path);
     if (unlink(path)) {
