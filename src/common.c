@@ -2032,7 +2032,7 @@ sr_connection_exists(sr_cid_t cid)
 {
     int alive = 0;
     sr_error_info_t *err_info;
-    if ((err_info = sr_shmmain_check_conn_lock(cid, &alive))) {
+    if ((err_info = sr_shmmain_conn_check(cid, &alive))) {
         SR_LOG_WRN("Failed to check connection %"PRIu32" aliveness.", cid);
         sr_errinfo_free(&err_info);
         /* if check fails, assume the connection is alive */

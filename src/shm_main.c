@@ -50,8 +50,8 @@ struct shm_item {
 typedef struct _conn_list_entry {
     struct _conn_list_entry *_next;
     sr_cid_t cid;
-    int cid_fd;
-} sr_conn_list_entry;
+    int lock_fd;
+} sr_conn_list_item;
 
 /**
  * @brief Linked list of all active connections in this process.
@@ -71,9 +71,9 @@ typedef struct _conn_list_entry {
  * terminated process is cleaned up.
  */
 static struct {
-    sr_conn_list_entry *conn_head;
-    pthread_mutex_t *conn_list_lock;
-} conn_list;
+    sr_conn_list_item *head;
+    pthread_mutex_t lock;
+} conn_list = {.head = NULL, .lock = PTHREAD_MUTEX_INITIALIZER};
 
 /**
  * @brief Collect data dependencies for printing.
@@ -830,64 +830,57 @@ sr_shmmain_createunlock(int shm_lock)
     }
 }
 
-/**
- * @brief Determine whether the connection specified by cid is alive.
- *
- * @param[in]  cid Connection ID to check
- * @param[out] conn_alive Set to non-zero if the connection is alive, 0 otherwise.
- * @return err_info, NULL on success.
- */
 sr_error_info_t *
-sr_shmmain_check_conn_lock(sr_cid_t cid, int *conn_alive)
+sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive)
 {
     sr_error_info_t *err_info = NULL;
-    struct flock fl;
-    int fd = -1;
-    char *path = NULL;
-    int rc = 0;
-    sr_conn_list_entry *ptr = NULL;
+    struct flock fl = {0};
+    int fd, rc;
+    char *path;
+    sr_conn_list_item *ptr;
 
-    assert(conn_alive);
-    assert(cid); /* 0 is reserved for invalid or unset */
-
-    *conn_alive = 0;
+    assert(cid && conn_alive);
 
     /* If the connection is owned by this process a check using flock which
      * requires an open/close would release the lock. Check if the CID is a
      * connection owned by this process and return status before we do an
      * open().
      */
-    if (conn_list.conn_head) {
-        if ((err_info = sr_mlock(conn_list.conn_list_lock, 1000, __func__))) {
-            return err_info;
+    if (conn_list.head) {
+        /* CONN LIST LOCK */
+        if ((err_info = sr_mlock(&conn_list.lock, 1000, __func__))) {
+            goto cleanup;
         }
-        for (ptr = conn_list.conn_head; ptr; ptr = ptr->_next) {
+        for (ptr = conn_list.head; ptr; ptr = ptr->_next) {
             if (cid == ptr->cid) {
+                /* alive connection of this process */
                 *conn_alive = 1;
-                sr_munlock(conn_list.conn_list_lock);
-                return NULL;
+
+                /* CONN LIST UNLOCK */
+                sr_munlock(&conn_list.lock);
+                goto cleanup;
             }
         }
-        sr_munlock(conn_list.conn_list_lock);
+
+        /* CONN LIST UNLOCK */
+        sr_munlock(&conn_list.lock);
     }
 
-    sr_shmmain_get_conn_lockfile_path(cid, &path);
-
     /* open the file to test the lock */
+    sr_shmmain_get_conn_lockfile_path(cid, &path);
     fd = open(path, O_RDWR);
     free(path);
     if (fd == -1) {
         /* the file does not exist in which case there is no connection established */
         if (errno == ENOENT) {
             *conn_alive = 0;
-            return NULL;
+            goto cleanup;
         }
         SR_ERRINFO_SYSERRNO(&err_info, "open");
-        return err_info;
+        goto cleanup;
     }
 
     /* check the lock */
-    memset(&fl, 0, sizeof fl);
     fl.l_whence = SEEK_SET;
     fl.l_start = 0;
     fl.l_len = 0; /* length of 0 is entire file */
@@ -899,78 +892,138 @@ sr_shmmain_check_conn_lock(sr_cid_t cid, int *conn_alive)
     close(fd);
     if (rc == -1) {
         SR_ERRINFO_SYSERRNO(&err_info, "flock");
-        return err_info;
+        goto cleanup;
     }
     if (fl.l_type == F_UNLCK) {
-        SR_LOG_INF("Lock test found no connection for CID %"PRIu32".", cid);
+        /* leftover unlocked file */
         *conn_alive = 0;
     } else {
-        /* we cannot get the lock, it must be held by an alive connection */
-        SR_LOG_INF("Lock test found alive connection by pid [%ld] for CID %"PRIu32".", (long)fl.l_pid, cid);
+        /* we cannot get the lock, it must be held by a live connection */
         *conn_alive = 1;
     }
-    return NULL;
+
+cleanup:
+    if (!err_info && !*conn_alive) {
+        SR_LOG_INF("Connection with CID %"PRIu32" is not alive.", cid);
+    }
+    return err_info;
 }
 
 /**
- * @brief Release the specified connection ID.
- * Free all resources used in tracking the connection.
+ * @brief Free the connection with CID and all the resources used in tracking it.
  *
- * @param[in] cid Connection ID to release.
+ * @param[in] cid Connection ID of the connection to free.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *
-sr_shmmain_deallocate_conn(const sr_cid_t cid)
+static sr_error_info_t *
+sr_shmmain_conn_free(const sr_cid_t cid)
 {
     sr_error_info_t *err_info = NULL;
-    char *path = NULL;
-    sr_conn_list_entry *ptr = NULL;
-    sr_conn_list_entry *prev = NULL;
-    sr_conn_list_entry *removed = NULL;
+    char *path;
+    sr_conn_list_item *ptr, *prev;
 
-    /* Search the list of active connections owned by this process in order to
-     * remove the connection from the list and clean up */
-    if (conn_list.conn_head) {
-        if ((err_info = sr_mlock(conn_list.conn_list_lock, 1000, __func__))) {
-            return err_info;
-        }
-
-        for (ptr = conn_list.conn_head; ptr;) {
-            if (cid == ptr->cid) {
-                /* remove the entry from the list */
-                if (!prev) {
-                    conn_list.conn_head = ptr->_next;
-                } else {
-                    prev->_next = ptr->_next;
-                }
-                /* cleanup local resources */
-                if (ptr->cid_fd > 0) {
-                    /* Note that closing ANY file descriptor to a locked file
-                     * releases all locks */
-                    close(ptr->cid_fd);
-                    ptr->cid_fd = 0;
-                } else {
-                    SR_LOG_WRN("Connection CID %"PRIu32" fd is unset", ptr->cid);
-                }
-                /* removed entry does not adjust prev */
-                /* prev = prev; */
-                removed = ptr;
-                ptr = ptr->_next;
-                free(removed);
-            } else {
-                prev = ptr;
-                ptr = ptr->_next;
-            }
-        }
-        sr_munlock(conn_list.conn_list_lock);
+    /* CONN LIST LOCK */
+    if ((err_info = sr_mlock(&conn_list.lock, 1000, __func__))) {
+        return err_info;
     }
 
+    ptr = conn_list.head;
+    prev = NULL;
+    while (ptr) {
+        if (cid == ptr->cid) {
+            /* remove the entry from the list */
+            if (!prev) {
+                conn_list.head = ptr->_next;
+            } else {
+                prev->_next = ptr->_next;
+            }
+
+            /* cleanup local resources */
+            if (ptr->lock_fd > 0) {
+                /* closing ANY file descriptor to a locked file releases all the locks */
+                close(ptr->lock_fd);
+            } else {
+                SR_ERRINFO_INT(&err_info);
+            }
+            free(ptr);
+            break;
+        }
+
+        prev = ptr;
+        ptr = ptr->_next;
+    }
+
+    /* CONN LIST UNLOCK */
+    sr_munlock(&conn_list.lock);
+
+    /* the conn list item with CID must have been found */
+    if (!ptr) {
+        SR_ERRINFO_INT(&err_info);
+    }
+
+    /* remove the lockfile as well */
     sr_shmmain_get_conn_lockfile_path(cid, &path);
-    if (unlink(path) != 0) {
+    if (unlink(path)) {
         SR_ERRINFO_SYSERRNO(&err_info, "unlink");
     }
     free(path);
 
+    return err_info;
+}
+
+/**
+ * @brief Open and lock a new connection lockfile.
+ *
+ * @param[in] cid CID of the lockfile.
+ * @param[out] lock_fd Opened lockfile.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_shmmain_conn_new_lockfile(sr_cid_t cid, int *lock_fd)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path = NULL;
+    int fd = -1;
+    struct flock fl = {0};
+    mode_t um;
+    char buf[64];
+
+    /* open the connection lock file with the correct permissions */
+    sr_shmmain_get_conn_lockfile_path(cid, &path);
+    um = umask(SR_UMASK);
+    fd = SR_OPEN(path, O_CREAT | O_RDWR, SR_INT_FILE_PERM);
+    umask(um);
+    if (fd == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "open");
+        goto cleanup;
+    }
+
+    /* Write the PID into the file for debug. The / helps identify if a
+     * file is unexpectedly reused. */
+    snprintf(buf, sizeof(buf) - 1, "/%ld\n", (long)getpid());
+    write(fd, buf, strlen(buf));
+
+    /* set an exclusive lock on the file */
+    fl.l_whence = SEEK_SET;
+    fl.l_start = 0;
+    fl.l_len = 0; /* length of 0 is entire file */
+    fl.l_type = F_WRLCK;
+
+    /* this will fail if we end up reusing a CID while a lock is held on it */
+    if (fcntl(fd, F_SETLK, &fl) == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "flock");
+        goto cleanup;
+    }
+
+cleanup:
+    if (err_info) {
+        if (fd > -1) {
+            close(fd);
+        }
+    } else {
+        *lock_fd = fd;
+    }
+    free(path);
     return err_info;
 }
 
@@ -982,123 +1035,60 @@ sr_shmmain_deallocate_conn(const sr_cid_t cid)
  * @param[in,out] Connection for which an ID will be allocated.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *
-sr_shmmain_allocate_conn(sr_conn_ctx_t *conn)
+static sr_error_info_t *
+sr_shmmain_conn_new(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
-    char buf[64] = {0};
-    char *path = NULL;
-    struct flock fl;
-    sr_conn_list_entry *cid_info = NULL;
-    int lock_fd = 0;
-    char *owner = NULL;
-    char *group = NULL;
-    mode_t perm = 0;
-    sr_main_shm_t *main_shm = NULL;
+    sr_conn_list_item *conn_item = NULL;
+    sr_main_shm_t *main_shm;
     sr_cid_t cid = 0;
-    int alive = 0;
+    int lock_fd = -1;
 
-    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
-
-    /* initialize the linked list of connections in this process */
-    if (!conn_list.conn_list_lock) {
-        /* Initialize the mutex.  The SHM write lock is held when calling
-         * this function which protects the creation of this mutex.
-         */
-        conn_list.conn_list_lock = calloc(1, sizeof(pthread_mutex_t));
-        if (!conn_list.conn_list_lock) {
-            SR_ERRINFO_MEM(&err_info);
-            return err_info;
-        }
-        if ((err_info = sr_mutex_init(conn_list.conn_list_lock, 0))) {
-            return err_info;
-        }
-    }
-
-    cid_info = calloc(1, sizeof(sr_conn_list_entry));
-    if (!cid_info) {
-        SR_ERRINFO_MEM(&err_info);
-        return err_info;
-    }
-
-    conn->sr_cid = 0;
     /* allocate next unique Connection ID */
+    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
     cid = ATOMIC_INC_RELAXED(main_shm->new_sr_cid);
-    err_info = sr_shmmain_check_conn_lock(cid, &alive);
-    if (err_info || alive || (cid == 0)) {
-        SR_LOG_WRN("Could not allocate connection ID %"PRIu32" (%d)", cid, alive);
-        if (!err_info) {
-            SR_ERRINFO_INT(&err_info);
-        }
-        return err_info;
-    }
-    conn->sr_cid = cid;
 
-    if ((err_info = sr_mlock(conn_list.conn_list_lock, 1000, __func__))) {
-        return err_info;
+    /* open and lock the connection lockfile */
+    if ((err_info = sr_shmmain_conn_new_lockfile(cid, &lock_fd))) {
+        goto error;
     }
 
-    cid_info->cid = conn->sr_cid;
-    /* cid_fd will be set below after lock file is created and the lock is held */
-    cid_info->cid_fd = 0;
+    /* allocate a new conn_list item for tracking this process connections */
+    conn_item = calloc(1, sizeof *conn_item);
+    if (!conn_item) {
+        SR_ERRINFO_MEM(&err_info);
+        goto error;
+    }
+    conn_item->cid = cid;
+    conn_item->lock_fd = lock_fd;
+
+    /* CONN LIST LOCK */
+    if ((err_info = sr_mlock(&conn_list.lock, 1000, __func__))) {
+        goto error;
+    }
+
     /* insert at the head of the list */
-    cid_info->_next = conn_list.conn_head;
-    conn_list.conn_head = cid_info;
-    sr_munlock(conn_list.conn_list_lock);
+    conn_item->_next = conn_list.head;
+    conn_list.head = conn_item;
 
-    sr_shmmain_get_conn_lockfile_path(conn->sr_cid, &path);
+    /* CONN LIST UNLOCK */
+    sr_munlock(&conn_list.lock);
 
-    /* update the GID and permissions of the lock file */
-    if ((err_info = sr_perm_get("sysrepo-monitoring", SR_DS_STARTUP, &owner, &group, &perm))) {
-        goto conn_cid_cleanup;
-    }
-
-    lock_fd = open(path, O_CREAT | O_RDWR, SR_INT_FILE_PERM);
-    if (lock_fd == -1) {
-        SR_ERRINFO_SYSERRNO(&err_info, "open");
-        goto conn_cid_cleanup;
-    }
-
-    /* keep only read/write bits and update group ownership, leaving file owned by our user */
-    err_info = sr_chmodown(path, NULL, group, perm & 00666);
-    free(owner);
-    free(group);
-    if (err_info) {
-        goto conn_cid_cleanup;
-    }
-
-    /* Write the PID into the file for debug. The / helps identify if a
-     * file is unexpectedly reused. */
-    snprintf(buf, sizeof(buf), "/%u\n", getpid());
-    write(lock_fd, buf, strlen(buf));
-
-    /* set an exclusive lock on the file */
-    memset(&fl, 0, sizeof fl);
-    fl.l_whence = SEEK_SET;
-    fl.l_start = 0;
-    fl.l_len = 0; /* length of 0 is entire file */
-    fl.l_type = F_WRLCK;
-    /* This will fail if we end up reusing a CID while a lock is held on it.
-     * Based on the check above this should be impossible.
-     */
-    if (fcntl(lock_fd, F_SETLK, &fl) == -1) {
-        SR_ERRINFO_SYSERRNO(&err_info, "flock");
-        goto conn_cid_cleanup;
-    }
-    /* save the fd which will be closed in the disconnect */
-    cid_info->cid_fd = lock_fd;
-
-    free(path);
+    /* success */
+    conn->sr_cid = cid;
     return NULL;
 
-conn_cid_cleanup:
-    free(path);
-    if (lock_fd > 0) {
-        /* cid_fd should still be 0 but this ensures a single close */
-        cid_info->cid_fd = 0;
+error:
+    if (lock_fd > -1) {
+        char *path;
+
         close(lock_fd);
+        assert(cid);
+        sr_shmmain_get_conn_lockfile_path(cid, &path);
+        unlink(path);
+        free(path);
     }
-    sr_shmmain_deallocate_conn(conn->sr_cid);
+    free(conn_item);
     return err_info;
 }
 
@@ -1116,7 +1106,7 @@ sr_shmmain_conn_add(sr_conn_ctx_t *conn)
      * done after the SHM lock is taken but before our information is saved in
      * the SHM state and thus visible to other processes/connections.
      */
-    if ((err_info = sr_shmmain_allocate_conn(conn))) {
+    if ((err_info = sr_shmmain_conn_new(conn))) {
         return err_info;
     }
 
@@ -1162,7 +1152,7 @@ sr_shmmain_conn_del(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_cid_t cid)
     /* Release the connection lock and cleanup.  Must be done after connection
      * info is removed from SHM but still within the held SHM lock.
      */
-    if ((err_info = sr_shmmain_deallocate_conn(cid))) {
+    if ((err_info = sr_shmmain_conn_free(cid))) {
         SR_ERRINFO_INT(&err_info);
         sr_errinfo_free(&err_info);
     }
