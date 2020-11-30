@@ -1673,6 +1673,25 @@ sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path)
     return err_info;
 }
 
+sr_error_info_t *
+sr_path_conn_lockfile(sr_cid_t cid, char **path)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *prefix;
+
+    err_info = sr_shm_prefix(&prefix);
+    if (err_info) {
+        return err_info;
+    }
+
+    if (cid == 0) {
+        asprintf(path, "%s/%s%s", SR_SHM_DIR, prefix, SR_CONN_LOCK_DIR);
+    } else {
+        asprintf(path, "%s/%s%s/conn_%"PRIu32".lock", SR_SHM_DIR, prefix, SR_CONN_LOCK_DIR, cid);
+    }
+    return NULL;
+}
+
 void
 sr_remove_evpipes(void)
 {
