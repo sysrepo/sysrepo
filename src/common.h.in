@@ -827,6 +827,18 @@ sr_error_info_t *sr_path_notif_file(const char *mod_name, time_t from_ts, time_t
 sr_error_info_t *sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path);
 
 /**
+ * @brief Populate the lockfile path for a given Connection ID.
+ * When called with cid of 0 the path will be set to the lock file directory
+ * path. The path parameter is set to newly allocated memory. Caller is
+ * responsible for freeing memory.
+ *
+ * @param[in] cid Connection ID for which the lockfile path is constructed.
+ * @param[out] path Lockfile directory if cid is 0, path of lockfile otherwise.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_path_conn_lockfile(sr_cid_t cid, char **path);
+
+/**
  * @brief Remove any leftover event pipes after crashed subscriptions.
  */
 void sr_remove_evpipes(void);

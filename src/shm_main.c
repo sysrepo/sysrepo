@@ -421,28 +421,6 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
 }
 
 /**
- * @brief Populate the lockfile path for a given Connection ID.
- * When called with cid of 0 the path will be set to the lock file
- * directory path. The path parameter is set to newly allocated memory.  Caller
- * is responsible for freeing memory.
- *
- * @param[in] cid Connection ID for which the lockfile path is constructed
- * @param[out] path Lockfile directory if cid is 0, path of lockfile otherwise
- * @return 0 on success
- */
-static int
-sr_shmmain_get_conn_lockfile_path(sr_cid_t cid, char **path)
-{
-    const char *shm_dir = SR_SHM_DIR;
-    if (cid == 0) {
-        asprintf(path, "%s/%s", shm_dir, SR_CONN_LOCK_DIR);
-    } else {
-        asprintf(path, "%s/%s/conn_%"PRIu32".lock", shm_dir, SR_CONN_LOCK_DIR, cid);
-    }
-    return 0;
-}
-
-/**
  * @brief Copy data deps array from ext SHM to buffer to defragment it.
  *
  * @param[in] shm_main Main SHM.
@@ -760,7 +738,9 @@ sr_shmmain_check_dirs(void)
     free(dir_path);
 
     /* connection lock dir */
-    sr_shmmain_get_conn_lockfile_path(0, &dir_path);
+    if ((err_info = sr_path_conn_lockfile(0, &dir_path))) {
+        return err_info;
+    }
     if ((err_info = sr_mkpath(dir_path, SR_DIR_PERM))) {
         free(dir_path);
         return err_info;
@@ -867,7 +847,9 @@ sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive)
     }
 
     /* open the file to test the lock */
-    sr_shmmain_get_conn_lockfile_path(cid, &path);
+    if ((err_info = sr_path_conn_lockfile(cid, &path))) {
+        goto cleanup;
+    }
     fd = open(path, O_RDWR);
     free(path);
     if (fd == -1) {
@@ -957,7 +939,9 @@ sr_shmmain_conn_free(const sr_cid_t cid)
     sr_munlock(&conn_list.lock);
 
     /* remove the lockfile as well */
-    sr_shmmain_get_conn_lockfile_path(cid, &path);
+    if ((err_info = sr_path_conn_lockfile(cid, &path))) {
+        return err_info;
+    }
     if (unlink(path)) {
         SR_ERRINFO_SYSERRNO(&err_info, "unlink");
     }
@@ -984,7 +968,9 @@ sr_shmmain_conn_new_lockfile(sr_cid_t cid, int *lock_fd)
     char buf[64];
 
     /* open the connection lock file with the correct permissions */
-    sr_shmmain_get_conn_lockfile_path(cid, &path);
+    if ((err_info = sr_path_conn_lockfile(cid, &path))) {
+        return err_info;
+    }
     um = umask(SR_UMASK);
     fd = SR_OPEN(path, O_CREAT | O_RDWR, SR_INT_FILE_PERM);
     umask(um);
@@ -1076,12 +1062,15 @@ sr_shmmain_conn_new(sr_conn_ctx_t *conn)
 error:
     if (lock_fd > -1) {
         char *path;
-
+        sr_error_info_t *err_info_2 = NULL;
         close(lock_fd);
         assert(cid);
-        sr_shmmain_get_conn_lockfile_path(cid, &path);
-        unlink(path);
-        free(path);
+        if ((err_info_2 = sr_path_conn_lockfile(cid, &path))) {
+            sr_errinfo_free(&err_info_2);
+        } else {
+            unlink(path);
+            free(path);
+        }
     }
     free(conn_item);
     return err_info;
