@@ -3669,7 +3669,7 @@ sr_lyd_dup_enabled_xpath(const struct lyd_node *data, char **xpaths, uint16_t xp
     for (i = 0; i < set->number; ++i) {
         /* duplicate filtered subtree */
         src = set->set.d[i];
-        root = lyd_dup(src, LYD_DUP_OPT_RECURSIVE | LYD_DUP_OPT_WITH_PARENTS);
+        root = lyd_dup(src, LYD_DUP_OPT_RECURSIVE | LYD_DUP_OPT_WITH_PARENTS | LYD_DUP_OPT_WITH_WHEN);
         if (!root) {
             sr_errinfo_new_ly(&err_info, lyd_node_module(data)->ctx);
             goto cleanup;
