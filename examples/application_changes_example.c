@@ -192,7 +192,7 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, const char 
     if (xpath) {
         sprintf(path, "%s//.", xpath);
     } else {
-        sprintf(path, "%s:*//.", module_name);
+        sprintf(path, "/%s:*//.", module_name);
     }
     rc = sr_get_changes_iter(session, path, &it);
     if (rc != SR_ERR_OK) {
