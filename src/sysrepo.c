@@ -3585,8 +3585,10 @@ sr_lyd_node2sr_val(const struct lyd_node *node, const char *value_str, const cha
     sr_val_t *sr_val;
     LY_DATA_TYPE value_type;
     const struct lyd_node_leaf_list *leaf;
+    struct lyd_node_anydata *any;
     struct lys_type *type;
     struct lys_node_list *slist;
+    struct lyd_node *tree;
 
     sr_val = calloc(1, sizeof *sr_val);
     SR_CHECK_MEM_GOTO(!sr_val, err_info, error);
@@ -3643,10 +3645,49 @@ sr_lyd_node2sr_val(const struct lyd_node *node, const char *value_str, const cha
         sr_val->type = SR_NOTIFICATION_T;
         break;
     case LYS_ANYXML:
-        sr_val->type = SR_ANYXML_T;
-        break;
     case LYS_ANYDATA:
-        sr_val->type = SR_ANYDATA_T;
+        any = (struct lyd_node_anydata *)node;
+        ptr = NULL;
+
+        switch (any->value_type) {
+        case LYD_ANYDATA_CONSTSTRING:
+        case LYD_ANYDATA_JSON:
+        case LYD_ANYDATA_SXML:
+            if (any->value.str) {
+                ptr = strdup(any->value.str);
+                SR_CHECK_MEM_RET(!ptr, err_info);
+            }
+            break;
+        case LYD_ANYDATA_XML:
+            lyxml_print_mem(&ptr, any->value.xml, LYXML_PRINT_FORMAT);
+            break;
+        case LYD_ANYDATA_LYB:
+            /* try to convert into a data tree */
+            tree = lyd_parse_mem(node->schema->module->ctx, any->value.mem, LYD_LYB, LYD_OPT_DATA | LYD_OPT_STRICT, NULL);
+            if (!tree) {
+                sr_errinfo_new_ly(&err_info, node->schema->module->ctx);
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Failed to convert LYB anyxml/anydata into XML.");
+                goto error;
+            }
+            free(any->value.mem);
+            any->value_type = LYD_ANYDATA_DATATREE;
+            any->value.tree = tree;
+            /* fallthrough */
+        case LYD_ANYDATA_DATATREE:
+            lyd_print_mem(&ptr, any->value.tree, LYD_XML, LYP_FORMAT | LYP_WITHSIBLINGS);
+            break;
+        default:
+            SR_ERRINFO_INT(&err_info);
+            goto error;
+        }
+
+        if (node->schema->nodetype == LYS_ANYXML) {
+            sr_val->type = SR_ANYXML_T;
+            sr_val->data.anyxml_val = ptr;
+        } else {
+            sr_val->type = SR_ANYDATA_T;
+            sr_val->data.anydata_val = ptr;
+        }
         break;
     case LYS_LEAFLIST:
         /* fix the xpath, we do not want the value in the predicate */
