@@ -155,6 +155,12 @@ sr_sub_change_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpat
     change_sub->subs[change_sub->sub_count].private_data = private_data;
     change_sub->subs[change_sub->sub_count].sess = sess;
 
+    /* if there is already some event, do not process it (such as timeouted DONE event and this subscription
+     * is DONE-only, it should also never happen that CHANGE event is being processed and we are allowed to subscribe) */
+    change_sub->subs[change_sub->sub_count].request_id = ((sr_multi_sub_shm_t *)change_sub->sub_shm.addr)->request_id;
+    assert(((sr_multi_sub_shm_t *)change_sub->sub_shm.addr)->event != SR_SUB_EV_CHANGE);
+    change_sub->subs[change_sub->sub_count].event = ((sr_multi_sub_shm_t *)change_sub->sub_shm.addr)->event;
+
     ++change_sub->sub_count;
 
     /* SUBS UNLOCK */
