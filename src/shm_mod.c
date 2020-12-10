@@ -694,6 +694,20 @@ sr_shmmod_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const 
     sr_error_info_t *err_info = NULL;
     off_t xpath_off;
     sr_mod_change_sub_t *shm_sub;
+    uint16_t i;
+
+    if (sub_opts & SR_SUBSCR_UPDATE) {
+        /* check that there is not already an update subscription with the same priority */
+        shm_sub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs);
+        for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
+            if ((shm_sub[i].opts & SR_SUBSCR_UPDATE) && (shm_sub[i].priority == priority)) {
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL,
+                        "There already is an \"update\" subscription on module \"%s\" with priority %u for %s DS.",
+                        conn->ext_shm.addr + shm_mod->name, priority, sr_ds2str(ds));
+                return err_info;
+            }
+        }
+    }
 
     /* allocate new subscription and its xpath, if any */
     if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_mod->change_sub[ds].subs, &shm_mod->change_sub[ds].sub_count, 0,

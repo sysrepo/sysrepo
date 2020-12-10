@@ -427,7 +427,7 @@ sr_sub_notif_add(sr_session_ctx_t *sess, const char *mod_name, uint32_t sub_id, 
         SR_CHECK_MEM_GOTO(!mem[1], err_info, error_unlock);
         notif_sub->module_name = mem[1];
 
-        /* create specific SHM and map it */
+        /* create/open specific SHM and map it */
         if ((err_info = sr_shmsub_open_map(mod_name, "notif", -1, &notif_sub->sub_shm, sizeof(sr_sub_shm_t)))) {
             goto error_unlock;
         }

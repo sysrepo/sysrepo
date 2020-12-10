@@ -1932,6 +1932,8 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
     sr_error_info_t *err_info = NULL;
     sr_sub_event_t event;
 
+    assert(multi_sub_shm->subscriber_count >= valid_subscr_count);
+
     event = multi_sub_shm->event;
 
     if ((multi_sub_shm->subscriber_count == valid_subscr_count) || err_code) {

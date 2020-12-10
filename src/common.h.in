@@ -431,7 +431,7 @@ struct sr_subscription_ctx_s {
         } *subs;                    /**< Notification subscriptions for each XPath. */
         uint32_t sub_count;         /**< Notification module XPath subscription count. */
 
-        uint32_t request_id;    /**< Request ID of the last processed request. */
+        uint32_t request_id;        /**< Request ID of the last processed request. */
         sr_shm_t sub_shm;           /**< Subscription SHM. */
     } *notif_subs;                  /**< Notification subscriptions for each module. */
     uint32_t notif_sub_count;       /**< Notification module subscription count. */
