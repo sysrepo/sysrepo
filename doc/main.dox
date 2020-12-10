@@ -59,9 +59,10 @@ configured. Finally, despite being only a library, there are a few auxiliary [ut
 in some common ways.
 
 Almost all API functions that work with data have 2 variants, each accepting the data in another format. An array of
-::sr_val_t values can be used. This format is a legacy one and __should not be used__ in new applications. The alternative
+::sr_val_t values can be used. This format is a legacy one and __should generally not be used__ in new applications.
+However, there are specific use-cases when this format can be efficient so it was kept. The alternative
 is using native _libyang_ tree structures (API functions suffixed with `_tree()`) that Sysrepo always works with internally.
-It has the advantage of being more efficient (no internal conversion is needed) and having an extended _libyang_ API
+It has the advantage of generally being more efficient (no internal conversion is needed) and having an extended _libyang_ API
 available for creating/modifying/printing.
 
 [Editing data](@ref edit_data) is simple but requires basic knowledge of XPath for addressing individual data nodes.
