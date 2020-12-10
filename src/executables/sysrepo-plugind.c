@@ -42,17 +42,28 @@
 #include "compat.h"
 #include "sysrepo.h"
 #include "bin_common.h"
+#include "common.h"
+
+/**
+ * The MAX_PLUGIN_NAME_LEN should not be greater than 256 because it is the size of (struct dirent).d_name.
+ * The MAX_PLUGIN_NAME_LEN constant can be less than 256 if you know for sure the maximum length of your plugin names.
+ */
+#define MAX_PLUGIN_NAME_LEN 256
 
 /** protected flag for terminating sysrepo-plugind */
 int loop_finish;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
+/** The name of the configuration module for the sysrepo-plugind program itself. */
+static const char *srpd_plugin_module_name = "sysrepo-plugind";
+
 struct srpd_plugin_s {
     void *handle;
     srp_init_cb_t init_cb;
     srp_cleanup_cb_t cleanup_cb;
     void *private_data;
+    char plugin_name[MAX_PLUGIN_NAME_LEN];
 };
 
 static void
@@ -210,7 +221,7 @@ daemon_init(int debug, sr_log_level_t log_level)
 
 /* from src/common.c */
 int
-sr_mkpath(const char *path, mode_t mode)
+sr_mkpath_m(const char *path, mode_t mode)
 {
     char *p, *dup;
 
@@ -261,7 +272,7 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
             error_print(0, "Checking plugins dir existence failed (%s).", strerror(errno));
             return -1;
         }
-        if (sr_mkpath(plugins_dir, 00777) == -1) {
+        if (sr_mkpath_m(plugins_dir, 00777) == -1) {
             error_print(0, "Creating plugins dir \"%s\" failed (%s).", plugins_dir, strerror(errno));
             return -1;
         }
@@ -323,11 +334,94 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
         /* finally store the plugin */
         (*plugins)[*plugin_count].handle = handle;
         (*plugins)[*plugin_count].private_data = NULL;
+        {
+            char *plugin_name = (*plugins)[*plugin_count].plugin_name;
+            memcpy(plugin_name, ent->d_name, sizeof(char[MAX_PLUGIN_NAME_LEN]));
+            /* just in case for strlen(d_name) >= MAX_PLUGIN_NAME_LEN */
+            plugin_name[MAX_PLUGIN_NAME_LEN - 1] = '\0';
+        }
         ++(*plugin_count);
     }
 
     closedir(dir);
     return rc;
+}
+
+void
+swap(struct srpd_plugin_s *a, struct srpd_plugin_s *b)
+{
+    if (a == b) {
+        return;
+    }
+    /* Warning: struct srpd_plugin_s must not contain a dynamically allocated field.*/
+    struct srpd_plugin_s tmp = *a;
+    *a = *b;
+    *b = tmp;
+}
+
+int
+plugin_names_cmp(const char *str1, const char *str2)
+{
+    if(str1 == str2)
+        return 0;
+    /* suffx .so is ignored */
+    const size_t str1_len = strlen(str1);
+    const size_t str2_len = strlen(str2);
+    const size_t len1 = strcmp(str1 + (str1_len - 3), ".so") == 0 ?
+        str1_len - 3 : str1_len;
+    const size_t len2 = strcmp(str2 + (str2_len - 3), ".so") == 0 ?
+        str2_len - 3 : str2_len;
+    return len1 == len2 ? strncmp(str1, str2, len1) : -1;
+}
+
+
+int
+sorting_plugins(int plugin_count, sr_session_ctx_t *sess, struct srpd_plugin_s *plugins)
+{
+    const char *xpath = "/sysrepo-plugind:sysrepo-plugind/plugin-order/plugin";
+    sr_val_t *values;
+    size_t value_cnt;
+    int rc;
+    if ((rc = sr_get_items(sess, xpath, 0, SR_OPER_DEFAULT, &values, &value_cnt))) {
+        error_print(0, "The XPath \"%s\" application failed.", xpath);
+        return rc;
+    }
+
+    int ordered_part = 0;
+    for(size_t i = 0; i < value_cnt; ++i) {
+        for (int j = ordered_part; j < plugin_count; ++j) {
+            if (plugin_names_cmp(plugins[j].plugin_name, values[i].data.string_val) == 0) {
+                swap(&plugins[ordered_part], &plugins[j]);
+                ++ordered_part;
+            }
+        }
+    }
+    /* If values[i] wasn't found in plugins, it doesn't matter, it'll just be ignored. */
+    sr_free_values(values, value_cnt);
+    return 0;
+}
+
+int
+plugind_module_exists(const sr_conn_ctx_t *conn)
+{
+    return ly_ctx_get_module(conn->ly_ctx, srpd_plugin_module_name, NULL, 0) != NULL;
+}
+
+int
+apply_plugind_module(int plugin_count, const sr_conn_ctx_t *conn, sr_session_ctx_t *sess, struct srpd_plugin_s *plugins)
+{
+    int rc;
+
+    if (!plugind_module_exists(conn)) {
+        /* The sysrepo-plugind module is not in sysrepo. Silent return with no error. */
+        return 0;
+    }
+
+    if ((rc = sorting_plugins(plugin_count, sess, plugins))) {
+        error_print(0, "Sorting of plugins failed.");
+        return rc;
+    }
+    return 0;
 }
 
 int
@@ -409,6 +503,12 @@ main(int argc, char** argv)
     /* create session */
     if ((r = sr_session_start(conn, SR_DS_RUNNING, &sess)) != SR_ERR_OK) {
         error_print(r, "Failed to start new session");
+        goto cleanup;
+    }
+
+    /* apply sysrepo-plugind module if exists */
+    if (apply_plugind_module(plugin_count, conn, sess, plugins)) {
+        error_print(0, "The sysrepo-plugind module application failed.");
         goto cleanup;
     }
 
