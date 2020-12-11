@@ -289,11 +289,11 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         main_shm->mod_count = 0;
 
         /* clear ext SHM (there can be no connections and no modules) */
-        if ((err_info = sr_shm_remap(&conn->ext_shm, sizeof(size_t)))) {
+        if ((err_info = sr_shm_remap(&conn->ext_shm, sizeof(sr_ext_shm_t)))) {
             goto cleanup_unlock;
         }
         /* set wasted mem to 0 */
-        *((size_t *)conn->ext_shm.addr) = 0;
+        ((sr_ext_shm_t *)conn->ext_shm.addr)->wasted = 0;
 
         /* add all the modules in lydmods data into main SHM */
         if ((err_info = sr_shmmain_add(conn, sr_mods->child))) {

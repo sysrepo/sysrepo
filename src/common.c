@@ -2221,7 +2221,7 @@ sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array, uint16_t *shm_count, int 
         }
 
         /* add wasted memory */
-        *((size_t *)shm_ext->addr) += SR_SHM_SIZE(*shm_count * item_size);
+        ((sr_ext_shm_t *)shm_ext->addr)->wasted += SR_SHM_SIZE(*shm_count * item_size);
 
         /* copy preceding items */
         if (add_idx) {
@@ -2260,8 +2260,8 @@ sr_shmrealloc_del(char *ext_shm_addr, off_t *shm_array, uint16_t *shm_count, siz
         size_t dyn_shm_size)
 {
     /* add wasted memory keeping alignment in mind */
-    *((size_t *)ext_shm_addr) += SR_SHM_SIZE(*shm_count * item_size) - SR_SHM_SIZE((*shm_count - 1) * item_size);
-    *((size_t *)ext_shm_addr) += dyn_shm_size;
+    ((sr_ext_shm_t *)ext_shm_addr)->wasted += SR_SHM_SIZE(*shm_count * item_size) - SR_SHM_SIZE((*shm_count - 1) * item_size);
+    ((sr_ext_shm_t *)ext_shm_addr)->wasted += dyn_shm_size;
 
     --(*shm_count);
     if (!*shm_count) {
