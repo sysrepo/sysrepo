@@ -56,8 +56,8 @@ find_program(VALGRIND_FOUND valgrind)
 if(ENABLE_VALGRIND_TESTS)
     if(VALGRIND_FOUND)
         foreach(test_name IN LISTS tests)
-            add_test(${test_name}_valgrind valgrind --leak-check=full --show-leak-kinds=all --error-exitcode=1 ${CMAKE_BINARY_DIR}/tests/${test_name})
-            set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
+            add_test(NAME ${test_name}_valgrind COMMAND valgrind --leak-check=full --show-leak-kinds=all --error-exitcode=1 ${CMAKE_BINARY_DIR}/tests/${test_name})
+            set_property(TEST ${test_name}_valgrind APPEND PROPERTY ENVIRONMENT
                 "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"
                 "SYSREPO_SHM_PREFIX=_tests_sr_${test_name}"
             )
