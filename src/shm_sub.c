@@ -2135,8 +2135,8 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
     memset(&tmp_sess, 0, sizeof tmp_sess);
     multi_sub_shm = (sr_multi_sub_shm_t *)change_subs->sub_shm.addr;
 
-    /* SUB READ LOCK */
-    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
+    /* SUB READ UPGR LOCK */
+    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ_UPGR, __func__))) {
         goto cleanup;
     }
 
@@ -2187,8 +2187,8 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
         }
 
 process_event:
-        /* SUB READ UNLOCK */
-        sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
+        /* SUB READ UPGR UNLOCK */
+        sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ_UPGR, __func__);
 
         /* call callback if there are some changes */
         if (sr_shmsub_change_listen_has_diff(change_sub, diff)) {
@@ -2196,9 +2196,9 @@ process_event:
                     sub_info.request_id, change_sub->private_data);
         }
 
-        /* SUB READ LOCK */
-        if (sr_shmsub_change_listen_relock(multi_sub_shm, SR_LOCK_READ, &sub_info, change_sub, change_subs->module_name,
-                ret, &tmp_sess, &err_info)) {
+        /* SUB READ UPGR LOCK */
+        if (sr_shmsub_change_listen_relock(multi_sub_shm, SR_LOCK_READ_UPGR, &sub_info, change_sub,
+                change_subs->module_name, ret, &tmp_sess, &err_info)) {
             goto cleanup;
         }
 
@@ -2281,21 +2281,15 @@ process_event:
         goto cleanup_rdunlock;
     }
 
-    /* SUB READ UNLOCK */
-    sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
-
-    /* TODO in case of timeout, all change_sub that processed the event (valid_subscr_count) should get the abort or
-     * implement upgradeable lock so that this never happens */
-    /* SUB WRITE LOCK */
-    if (sr_shmsub_change_listen_relock(multi_sub_shm, SR_LOCK_WRITE, &sub_info, change_sub, change_subs->module_name,
-            err_code, &tmp_sess, &err_info)) {
-        goto cleanup;
+    /* SUB WRITE LOCK UPGRADE */
+    if ((err_info = sr_rwrelock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
+        goto cleanup_rdunlock;
     }
 
     if (data_len) {
         /* remap (and possibly truncate) SHM having the lock */
         if ((err_info = sr_shm_remap(&change_subs->sub_shm, sizeof *multi_sub_shm + data_len))) {
-            goto cleanup_rdunlock;
+            goto cleanup_wrunlock;
         }
         multi_sub_shm = (sr_multi_sub_shm_t *)change_subs->sub_shm.addr;
     }
@@ -2304,14 +2298,15 @@ process_event:
     sr_shmsub_multi_listen_write_event(multi_sub_shm, valid_subscr_count, data, data_len, err_code,
             err_code ? "Failed" : "Successful");
 
+cleanup_wrunlock:
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
 
     goto cleanup;
 
 cleanup_rdunlock:
-    /* SUB READ UNLOCK */
-    sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
+    /* SUB READ UPGR UNLOCK */
+    sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ_UPGR, __func__);
 
 cleanup:
     /* clear callback session */
@@ -2884,8 +2879,8 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
 
     multi_sub_shm = (sr_multi_sub_shm_t *)rpc_subs->sub_shm.addr;
 
-    /* SUB READ LOCK */
-    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
+    /* SUB READ UPGR LOCK */
+    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ_UPGR, __func__))) {
         goto cleanup;
     }
 
@@ -2950,8 +2945,8 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
         }
 
 process_event:
-        /* SUB READ UNLOCK */
-        sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
+        /* SUB READ UPGR UNLOCK */
+        sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ_UPGR, __func__);
 
         /* free any previous output, it is obviously not the last */
         lyd_free_withsiblings(output);
@@ -2962,8 +2957,8 @@ process_event:
             goto cleanup;
         }
 
-        /* SUB READ LOCK */
-        if (sr_shmsub_rpc_listen_relock(multi_sub_shm, SR_LOCK_READ, &sub_info, rpc_sub, rpc_subs->op_path, ret,
+        /* SUB READ UPGR LOCK */
+        if (sr_shmsub_rpc_listen_relock(multi_sub_shm, SR_LOCK_READ_UPGR, &sub_info, rpc_sub, rpc_subs->op_path, ret,
                 &tmp_sess, input_op, &err_info)) {
             goto cleanup;
         }
@@ -3008,21 +3003,15 @@ process_event:
         data_len = lyd_lyb_data_length(data);
     }
 
-    /* SUB READ UNLOCK */
-    sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
-
-    /* TODO in case of timeout (which cannot now be distinguished from error), all change_sub that processed
-     * the event (valid_subscr_count) should get the abort or implement upgradeable lock so that this never happens */
-    /* SUB WRITE LOCK */
-    if (sr_shmsub_rpc_listen_relock(multi_sub_shm, SR_LOCK_WRITE, &sub_info, rpc_sub, rpc_subs->op_path, err_code,
-            &tmp_sess, input_op, &err_info)) {
-        goto cleanup;
+    /* SUB WRITE LOCK UPGRADE */
+    if ((err_info = sr_rwrelock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
+        goto cleanup_rdunlock;
     }
 
     if (data_len) {
         /* remap (and possibly truncate) SHM having the lock */
         if ((err_info = sr_shm_remap(&rpc_subs->sub_shm, sizeof *multi_sub_shm + data_len))) {
-            goto cleanup_rdunlock;
+            goto cleanup_wrunlock;
         }
         multi_sub_shm = (sr_multi_sub_shm_t *)rpc_subs->sub_shm.addr;
     }
@@ -3031,14 +3020,15 @@ process_event:
     sr_shmsub_multi_listen_write_event(multi_sub_shm, valid_subscr_count, data, data_len, err_code,
             err_code ? "Failed" : "Successful");
 
+cleanup_wrunlock:
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_WRITE, __func__);
 
     goto cleanup;
 
 cleanup_rdunlock:
-    /* SUB READ UNLOCK */
-    sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
+    /* SUB READ UPGR UNLOCK */
+    sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ_UPGR, __func__);
 
 cleanup:
     /* clear callback session */
