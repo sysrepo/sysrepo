@@ -243,7 +243,10 @@ sr_mkpath(const char *path, mode_t mode)
 static size_t
 length_without_extension(const char *src)
 {
-    char *dot = strrchr(src, '.');
+    char *dot;
+
+    dot = strrchr(src, '.');
+
     return dot ? (size_t)(dot - src) : strlen(src);
 }
 
@@ -362,10 +365,13 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
 static void
 swap(struct srpd_plugin_s *a, struct srpd_plugin_s *b)
 {
+    struct srpd_plugin_s tmp;
+
     if (a == b) {
         return;
     }
-    struct srpd_plugin_s tmp = *a;
+
+    tmp = *a;
     *a = *b;
     *b = tmp;
 }
@@ -380,7 +386,9 @@ plugin_names_cmp(const struct srpd_plugin_s *plugin, const char *str2)
     if (str1 == str2) {
         return 0;
     }
+
     n = length_without_extension(str2);
+
     return (strlen(str1) == n) ? strncmp(str1, str2, n) : -1;
 }
 
@@ -407,7 +415,9 @@ sorting_plugins(int plugin_count, sr_session_ctx_t *sess, struct srpd_plugin_s *
         }
     }
     /* If values[i] wasn't found in plugins, it doesn't matter, it'll just be ignored. */
+
     sr_free_values(values, value_cnt);
+
     return 0;
 }
 
@@ -420,6 +430,7 @@ apply_plugind_module(int plugin_count, sr_session_ctx_t *sess, struct srpd_plugi
         error_print(0, "Sorting of plugins failed.");
         return rc;
     }
+
     return rc;
 }
 
