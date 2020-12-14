@@ -240,6 +240,13 @@ sr_mkpath(const char *path, mode_t mode)
     return 0;
 }
 
+static size_t
+length_without_extension(const char *src)
+{
+    char *dot = strrchr(src, '.');
+    return dot ? (size_t)(dot - src) : strlen(src);
+}
+
 static int
 load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
 {
@@ -330,9 +337,14 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
         (*plugins)[*plugin_count].handle = handle;
         (*plugins)[*plugin_count].private_data = NULL;
 
-        name_len = strlen(ent->d_name);
-        name_len = name_len >= 3 && !strcmp(ent->d_name + (name_len - 3), ".so") ?
-            name_len - 3 : name_len;
+        name_len = length_without_extension(ent->d_name);
+        if (name_len == 0) {
+            error_print(0, "Wrong filename \"%s\".", ent->d_name);
+            dlclose(handle);
+            rc = -1;
+            break;
+        }
+
         new_str = strndup(ent->d_name, name_len);
         if (!new_str) {
             error_print(0, "strndup() failed.");
@@ -340,6 +352,7 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
             rc = -1;
             break;
         }
+
         (*plugins)[*plugin_count].plugin_name = new_str;
 
         ++(*plugin_count);
@@ -363,21 +376,15 @@ swap(struct srpd_plugin_s *a, struct srpd_plugin_s *b)
 static int
 plugin_names_cmp(const struct srpd_plugin_s *plugin, const char *str2)
 {
-    /* str1 does not have the .so suffix */
+    /* str1 does not have the filename extension */
     const char *str1 = plugin->plugin_name;
-    size_t str1_len;
-    size_t str2_len;
     size_t n;
 
     if (str1 == str2) {
         return 0;
     }
-    str1_len = strlen(str1);
-    str2_len = strlen(str2);
-    /* suffx .so in str2 is ignored */
-    n = str2_len >= 3 && !strcmp(str2 + (str2_len - 3), ".so")?
-        str2_len - 3 : str2_len;
-    return str1_len == n ? strncmp(str1, str2, n) : -1;
+    n = length_without_extension(str2);
+    return strlen(str1) == n ? strncmp(str1, str2, n) : -1;
 }
 
 static int
