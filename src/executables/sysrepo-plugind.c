@@ -256,7 +256,6 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
     const char *plugins_dir;
     char *path;
     size_t name_len;
-    char *new_str;
     int rc = 0;
 
     *plugins = NULL;
@@ -345,15 +344,13 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
             break;
         }
 
-        new_str = strndup(ent->d_name, name_len);
-        if (!new_str) {
+        (*plugins)[*plugin_count].plugin_name = strndup(ent->d_name, name_len);
+        if (!((*plugins)[*plugin_count].plugin_name)) {
             error_print(0, "strndup() failed.");
             dlclose(handle);
             rc = -1;
             break;
         }
-
-        (*plugins)[*plugin_count].plugin_name = new_str;
 
         ++(*plugin_count);
     }
@@ -384,7 +381,7 @@ plugin_names_cmp(const struct srpd_plugin_s *plugin, const char *str2)
         return 0;
     }
     n = length_without_extension(str2);
-    return strlen(str1) == n ? strncmp(str1, str2, n) : -1;
+    return (strlen(str1) == n) ? strncmp(str1, str2, n) : -1;
 }
 
 static int

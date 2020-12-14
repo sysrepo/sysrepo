@@ -10,7 +10,7 @@ module sysrepo-plugind {
         container plugin-order {
             description "The order in which to run plugins from the sysrepo-plugind.";
             leaf-list plugin {
-                description "Plugin name.";
+                description "The name of the plugin file, which may not include the extension.";
                 type string;
                 ordered-by user;
             }
