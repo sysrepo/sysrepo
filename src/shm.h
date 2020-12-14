@@ -131,10 +131,9 @@ typedef struct sr_mod_notif_sub_s {
 struct sr_mod_s {
     struct sr_mod_lock_s {
         sr_rwlock_t lock;       /**< Process-shared lock for accessing module instance data. */
-        uint8_t write_locked;   /**< Whether module data are WRITE locked (lock itself may not be WRITE locked
-                                     to allow data reading). */
-        uint8_t ds_locked;      /**< Whether module data are datastore locked (NETCONF locks). */
-        sr_sid_t sid;           /**< Session ID of the locking session (user is always NULL). */
+        ATOMIC_T ds_locked;     /**< Whether module data are datastore locked (NETCONF locks). */
+        sr_sid_t sid;           /**< Session ID of the lock owner - of DS lock, if not of write/read-upgr-lock,
+                                     if not of read-lock */
         time_t ds_ts;           /**< Timestamp of the datastore lock. */
     } data_lock_info[SR_DS_COUNT]; /**< Module data lock information for each datastore. */
     sr_rwlock_t replay_lock;    /**< Process-shared lock for accessing stored notifications for replay. */
@@ -684,11 +683,11 @@ sr_error_info_t *sr_shmmod_collect_instid_deps_modinfo(const struct sr_mod_info_
  * @brief READ lock all modules in mod info.
  *
  * @param[in] mod_info Mod info to use.
- * @param[in] upgradable Whether the lock will be upgraded to WRITE later. Used only for main DS of @p mod_info!
+ * @param[in] upgradeable Whether the lock will be upgraded to WRITE later. Used only for main DS of @p mod_info!
  * @param[in] sid Sysrepo session ID.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradable, sr_sid_t sid);
+sr_error_info_t *sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradeable, sr_sid_t sid);
 
 /**
  * @brief WRITE lock all modules in mod info. Secondary DS modules, if any, are READ locked.
@@ -701,7 +700,7 @@ sr_error_info_t *sr_shmmod_modinfo_wrlock(struct sr_mod_info_s *mod_info, sr_sid
 
 /**
  * @brief Upgrade READ lock on modules in mod info to WRITE lock.
- * Works only for upgradable READ lock, in which case there will only be one
+ * Works only for upgradeable READ lock, in which case there will only be one
  * thread waiting for WRITE lock.
  *
  * @param[in] mod_info Mod info to use.
@@ -724,9 +723,9 @@ sr_error_info_t *sr_shmmod_modinfo_wrlock_downgrade(struct sr_mod_info_s *mod_in
  * @brief Unlock mod info.
  *
  * @param[in] mod_info Mod info to use.
- * @param[in] upgradable Whether we are unlocking normal READ lock or possibly upgraded to WRITE lock.
+ * @param[in] sid Sysrepo session ID.
  */
-void sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, int upgradable);
+void sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, sr_sid_t sid);
 
 /**
  * @brief Release any locks matching the provided SID.

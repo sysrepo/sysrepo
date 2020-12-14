@@ -2409,11 +2409,12 @@ sr_rwlock_init(sr_rwlock_t *rwlock, int shared)
     if ((err_info = sr_mutex_init(&rwlock->mutex, shared))) {
         return err_info;
     }
-    rwlock->readers = 0;
     if ((err_info = sr_cond_init(&rwlock->cond, shared))) {
         pthread_mutex_destroy(&rwlock->mutex);
         return err_info;
     }
+    rwlock->readers = 0;
+    rwlock->upgr = 0;
 
     return NULL;
 }
@@ -2450,16 +2451,26 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *
             /* COND WAIT */
             ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
         }
-
         if (ret) {
-            /* MUTEX UNLOCK */
-            pthread_mutex_unlock(&rwlock->mutex);
-
-            SR_ERRINFO_COND(&err_info, func, ret);
-            return err_info;
+            goto error_cond_unlock;
         }
     } else {
         /* read lock */
+        if (mode == SR_LOCK_READ_UPGR) {
+            ret = 0;
+            while (!ret && rwlock->upgr) {
+                /* COND WAIT */
+                ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
+            }
+            if (ret) {
+                goto error_cond_unlock;
+            }
+
+            /* set upgradeable flag */
+            rwlock->upgr = 1;
+        }
+
+        /* add a reader */
         ++rwlock->readers;
 
         /* MUTEX UNLOCK */
@@ -2467,6 +2478,87 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *
     }
 
     return NULL;
+
+error_cond_unlock:
+    /* MUTEX UNLOCK */
+    pthread_mutex_unlock(&rwlock->mutex);
+
+    SR_ERRINFO_COND(&err_info, func, ret);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *func)
+{
+    sr_error_info_t *err_info = NULL;
+    struct timespec timeout_ts;
+    int ret;
+
+    assert(mode != SR_LOCK_NONE);
+    assert((mode != SR_LOCK_WRITE) || (timeout_ms > 0));
+    sr_time_get(&timeout_ts, timeout_ms);
+
+    if (mode == SR_LOCK_WRITE) {
+        /*
+         * upgrade from upgradeable read-lock to write-lock
+         */
+
+        /* MUTEX LOCK */
+        ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_ts);
+        if (ret) {
+            SR_ERRINFO_LOCK(&err_info, func, ret);
+            return err_info;
+        }
+
+        /* consistency checks */
+        if (!rwlock->readers || !rwlock->upgr) {
+            SR_ERRINFO_INT(&err_info);
+            goto cleanup_unlock;
+        }
+
+        /* remove our reader */
+        --rwlock->readers;
+
+        /* wait until there are no readers */
+        ret = 0;
+        while (!ret && rwlock->readers) {
+            /* COND WAIT */
+            ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
+        }
+        if (ret) {
+            SR_ERRINFO_COND(&err_info, func, ret);
+            goto cleanup_unlock;
+        }
+
+        /* remove upgradeable flag since we now own the mutex */
+        rwlock->upgr = 0;
+
+        /* simply keep the lock */
+        return NULL;
+    }
+
+    /*
+     * downgrade from write-lock to read-lock (optionally with upgrade capability)
+     */
+
+    /* consistency checks */
+    if (rwlock->readers || rwlock->upgr) {
+        SR_ERRINFO_INT(&err_info);
+        goto cleanup_unlock;
+    }
+
+    if (mode == SR_LOCK_READ_UPGR) {
+        /* we want the upgrade capability */
+        rwlock->upgr = 1;
+    }
+
+    /* add a reader */
+    ++rwlock->readers;
+
+cleanup_unlock:
+    /* MUTEX UNLOCK */
+    pthread_mutex_unlock(&rwlock->mutex);
+    return err_info;
 }
 
 void
@@ -2478,7 +2570,7 @@ sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func)
 
     assert(mode != SR_LOCK_NONE);
 
-    if (mode == SR_LOCK_READ) {
+    if ((mode == SR_LOCK_READ) || (mode == SR_LOCK_READ_UPGR)) {
         sr_time_get(&timeout_ts, SR_RWLOCK_READ_TIMEOUT);
 
         /* MUTEX LOCK */
@@ -2488,6 +2580,16 @@ sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func)
             sr_errinfo_free(&err_info);
         }
 
+        if (mode == SR_LOCK_READ_UPGR) {
+            if (!rwlock->upgr) {
+                SR_ERRINFO_INT(&err_info);
+                sr_errinfo_free(&err_info);
+            } else {
+                /* remove the upgradeable flag */
+                rwlock->upgr = 0;
+            }
+        }
+
         if (!rwlock->readers) {
             SR_ERRINFO_INT(&err_info);
             sr_errinfo_free(&err_info);
@@ -2495,12 +2597,16 @@ sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func)
             /* remove a reader */
             --rwlock->readers;
         }
+    } else {
+        /* we are unlocking a write lock, there can be no readers */
+        if (rwlock->readers) {
+            SR_ERRINFO_INT(&err_info);
+            sr_errinfo_free(&err_info);
+        }
     }
 
-    /* we are unlocking a write lock, there can be no readers */
-    assert((mode == SR_LOCK_READ) || !rwlock->readers);
-
-    if (!rwlock->readers) {
+    /* write-unlock, last read-unlock, or upgradeable read-lock (there may be another upgr-read-lock waiting) */
+    if (!rwlock->readers || (mode == SR_LOCK_READ_UPGR)) {
         /* broadcast on condition */
         pthread_cond_broadcast(&rwlock->cond);
     }
@@ -4503,7 +4609,7 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
 
 cleanup:
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info, 0);
+    sr_shmmod_modinfo_unlock(&mod_info, sid);
 
     lyd_free_withsiblings(diff);
     ly_set_clean(&mod_set);

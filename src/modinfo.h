@@ -27,17 +27,18 @@
 
 #include "common.h"
 
-#define MOD_INFO_DEP     0x01   /* dependency module, its data cannot be changed, but are required for validation */
-#define MOD_INFO_INV_DEP 0x02   /* inverse dependency module, its data cannot be changed, but will be validated */
-#define MOD_INFO_REQ     0x04   /* required module, its data can be changed and it will be validated */
-#define MOD_INFO_TYPE_MASK 0x07 /* mask for all module types */
+#define MOD_INFO_DEP        0x0001 /* dependency module, its data cannot be changed, but are required for validation */
+#define MOD_INFO_INV_DEP    0x0002 /* inverse dependency module, its data cannot be changed, but will be validated */
+#define MOD_INFO_REQ        0x0004 /* required module, its data can be changed and it will be validated */
+#define MOD_INFO_TYPE_MASK  0x0007 /* mask for all module types */
 
-#define MOD_INFO_RLOCK   0x08   /* read-locked module (main DS) */
-#define MOD_INFO_WLOCK   0x10   /* write-locked module (main DS) */
-#define MOD_INFO_RLOCK2  0x20   /* read-locked module (secondary DS, it can be only read locked) */
+#define MOD_INFO_RLOCK      0x0008 /* read-locked module (main DS) */
+#define MOD_INFO_RLOCK_UPGR 0x0010 /* read-upgr-locked module (main DS) */
+#define MOD_INFO_WLOCK      0x0020 /* write-locked module (main DS) */
+#define MOD_INFO_RLOCK2     0x0040 /* read-locked module (secondary DS, it can be only read locked) */
 
-#define MOD_INFO_DATA    0x40   /* module data were loaded */
-#define MOD_INFO_CHANGED 0x80   /* module data were changed */
+#define MOD_INFO_DATA       0x0080 /* module data were loaded */
+#define MOD_INFO_CHANGED    0x0100 /* module data were changed */
 
 /**
  * @brief Mod info structure, used for keeping all relevant modules for a data operation.
@@ -53,7 +54,7 @@ struct sr_mod_info_s {
     struct sr_mod_info_mod_s {
         sr_mod_t *shm_mod;      /**< Module SHM structure. */
         const struct lys_module *ly_mod;    /**< Module libyang structure. */
-        uint8_t state;          /**< Module state (flags). */
+        uint32_t state;         /**< Module state (flags). */
         uint32_t request_id;    /**< Request ID of the published event. */
     } *mods;                    /**< Relevant modules. */
     uint32_t mod_count;         /**< Modules count. */

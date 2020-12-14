@@ -1265,6 +1265,10 @@ sr_shmmain_conn_recover(sr_conn_ctx_t *conn)
                 assert(shm_conn[i].main_lock.rcount && (main_shm->lock.readers >= shm_conn[i].main_lock.rcount));
                 main_shm->lock.readers -= shm_conn[i].main_lock.rcount;
                 break;
+            case SR_LOCK_READ_UPGR:
+                /* not supported */
+                sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Client crashed while holding SHM READ UPGR lock, not recoverable!");
+                break;
             case SR_LOCK_WRITE:
                 /* not supported */
                 sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Client crashed while holding SHM WRITE lock, not recoverable!");
@@ -1279,7 +1283,9 @@ sr_shmmain_conn_recover(sr_conn_ctx_t *conn)
             shm_mod = SR_FIRST_SHM_MOD(conn->main_shm.addr);
             for (j = 0; j < main_shm->mod_count; ++j) {
                 for (k = 0; k < SR_DS_COUNT; ++k) {
-                    if ((mod_locks[j][k].mode == SR_LOCK_READ) || (mod_locks[j][k].mode == SR_LOCK_WRITE)) {
+                    switch (mod_locks[j][k].mode) {
+                    case SR_LOCK_READ:
+                    case SR_LOCK_READ_UPGR:
                         shm_lock = &shm_mod[j].data_lock_info[k];
 
                         /* SHM MOD MUTEX LOCK */
@@ -1291,15 +1297,23 @@ sr_shmmain_conn_recover(sr_conn_ctx_t *conn)
                             assert(shm_lock->lock.readers >= mod_locks[j][k].rcount);
                             shm_lock->lock.readers -= mod_locks[j][k].rcount;
 
-                            /* unlock fake write lock */
-                            if (mod_locks[j][k].mode == SR_LOCK_WRITE) {
-                                assert(shm_lock->write_locked);
-                                shm_lock->write_locked = 0;
+                            /* unlock upgradeable read lock */
+                            if (mod_locks[j][k].mode == SR_LOCK_READ_UPGR) {
+                                assert(shm_lock->lock.upgr);
+                                shm_lock->lock.upgr = 0;
                             }
 
                             /* SHM MOD MUTEX UNLOCK */
                             pthread_mutex_unlock(&shm_lock->lock.mutex);
                         }
+                        break;
+                    case SR_LOCK_WRITE:
+                        /* not supported */
+                        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Client crashed while holding module WRITE lock, not recoverable!");
+                        break;
+                    case SR_LOCK_NONE:
+                        /* nothing to do */
+                        break;
                     }
                 }
             }

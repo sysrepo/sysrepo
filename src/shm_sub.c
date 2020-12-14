@@ -2285,7 +2285,7 @@ process_event:
     sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
 
     /* TODO in case of timeout, all change_sub that processed the event (valid_subscr_count) should get the abort or
-     * implement upgradable lock so that this never happens */
+     * implement upgradeable lock so that this never happens */
     /* SUB WRITE LOCK */
     if (sr_shmsub_change_listen_relock(multi_sub_shm, SR_LOCK_WRITE, &sub_info, change_sub, change_subs->module_name,
             err_code, &tmp_sess, &err_info)) {
@@ -3012,7 +3012,7 @@ process_event:
     sr_rwunlock(&multi_sub_shm->lock, SR_LOCK_READ, __func__);
 
     /* TODO in case of timeout (which cannot now be distinguished from error), all change_sub that processed
-     * the event (valid_subscr_count) should get the abort or implement upgradable lock so that this never happens */
+     * the event (valid_subscr_count) should get the abort or implement upgradeable lock so that this never happens */
     /* SUB WRITE LOCK */
     if (sr_shmsub_rpc_listen_relock(multi_sub_shm, SR_LOCK_WRITE, &sub_info, rpc_sub, rpc_subs->op_path, err_code,
             &tmp_sess, input_op, &err_info)) {

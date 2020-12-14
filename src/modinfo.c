@@ -1458,7 +1458,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_modinfo_add_mod(const struct lys_module *ly_mod, int mod_type, int mod_req_deps, struct sr_mod_info_s *mod_info)
+sr_modinfo_add_mod(const struct lys_module *ly_mod, uint32_t mod_type, int mod_req_deps, struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;

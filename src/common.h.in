@@ -278,6 +278,7 @@ typedef uint32_t sr_cid_t;
 typedef enum sr_lock_mode_e {
     SR_LOCK_NONE = 0,           /**< Not locked. */
     SR_LOCK_READ,               /**< Read lock. */
+    SR_LOCK_READ_UPGR,          /**< Read lock with the upgrade capability. */
     SR_LOCK_WRITE               /**< Write lock. */
 } sr_lock_mode_t;
 
@@ -287,7 +288,8 @@ typedef enum sr_lock_mode_e {
 typedef struct sr_rwlock_s {
     pthread_mutex_t mutex;          /**< Lock mutex. */
     pthread_cond_t cond;            /**< Lock condition variable. */
-    uint16_t readers;               /**< Current read-locked users. */
+    uint16_t readers;               /**< Current read-locked (including read-upgrageable) users. */
+    uint8_t upgr;                   /**< Whether the lock is only read-locked with upgrade capability, must be 0 otherwise. */
 } sr_rwlock_t;
 
 struct modsub_changesub_s;
@@ -1037,21 +1039,35 @@ sr_error_info_t *sr_rwlock_init(sr_rwlock_t *rwlock, int shared);
 void sr_rwlock_destroy(sr_rwlock_t *rwlock);
 
 /**
- * @brief Lock a sysrepo RW lock.
+ * @brief Lock a sysrepo RW lock. On failure, the lock is not changed in any way.
  *
  * @param[in] rwlock RW lock to lock.
  * @param[in] timeout_ms Timeout in ms for locking.
- * @param[in] mode Whether to write-lock or read-lock.
+ * @param[in] mode Lock mode to set.
  * @param[in] func Name of the calling function for logging.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *func);
 
 /**
- * @brief Unlock a sysrepo RW lock.
+ * @brief Relock a sysrepo RW lock (upgrade or downgrade). On failure, the lock is not changed in any way.
+ *
+ * If @p mode is ::SR_LOCK_WRITE, the @p rwlock must be locked with ::SR_LOCK_READ_UPGR.
+ * If @p mode is ::SR_LOCK_READ or ::SR_LOCK_READ_UPGR, the @p rwlock must be locked with ::SR_LOCK_WRITE.
+ *
+ * @param[in] rwlock RW lock to lock.
+ * @param[in] timeout_ms Timeout in ms for locking. Only needed for lock upgrade (if @p mode is ::SR_LOCK_WRITE).
+ * @param[in] mode Lock mode to set.
+ * @param[in] func Name of the calling function for logging.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *func);
+
+/**
+ * @brief Unlock a sysrepo RW lock. On failure, whatever steps are possible are still performed.
  *
  * @param[in] rwlock RW lock to unlock.
- * @param[in] mode Whether to write-unlock or read-unlock.
+ * @param[in] mode Lock mode that was successfully set for the lock.
  * @param[in] func Name of the calling function for logging.
  */
 void sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func);
