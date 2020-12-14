@@ -174,8 +174,8 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
     item_count = 0;
     items = malloc(sizeof *items);
     items[item_count].start = 0;
-    items[item_count].size = sizeof(size_t);
-    asprintf(&(items[item_count].name), "ext wasted %lu", *((size_t *)ext_shm_addr));
+    items[item_count].size = sizeof(sr_ext_shm_t);
+    asprintf(&(items[item_count].name), "ext wasted %lu", ((sr_ext_shm_t *)ext_shm_addr)->wasted);
     ++item_count;
 
     main_shm = (sr_main_shm_t *)shm_main->addr;
@@ -417,7 +417,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
     /* check that no item exists after the mapped segment */
     assert((unsigned)cur_off <= ext_shm_size);
     /* check that wasted memory is correct */
-    assert(*((size_t *)ext_shm_addr) == wasted);
+    assert(((sr_ext_shm_t *)ext_shm_addr)->wasted == wasted);
 }
 
 /**
@@ -588,12 +588,12 @@ sr_shmmain_ext_defrag(sr_shm_t *shm_main, sr_shm_t *shm_ext, char **defrag_ext_b
     *defrag_ext_buf = NULL;
 
     /* resulting defragmented size is known */
-    ext_buf_cur = ext_buf = malloc(shm_ext->size - *((size_t *)shm_ext->addr));
+    ext_buf_cur = ext_buf = malloc(shm_ext->size - ((sr_ext_shm_t *)shm_ext->addr)->wasted);
     SR_CHECK_MEM_RET(!ext_buf, err_info);
 
     /* wasted ext number */
-    *((size_t *)ext_buf_cur) = 0;
-    ext_buf_cur += sizeof(size_t);
+    ((sr_ext_shm_t *)ext_buf_cur)->wasted = 0;
+    ext_buf_cur += sizeof(sr_ext_shm_t);
 
     /* 1) copy all module names so that dependencies can reference them */
     SR_SHM_MOD_FOR(shm_main->addr, shm_main->size, shm_mod) {
@@ -675,7 +675,7 @@ sr_shmmain_ext_defrag(sr_shm_t *shm_main, sr_shm_t *shm_ext, char **defrag_ext_b
     }
 
     /* check size */
-    if ((unsigned)(ext_buf_cur - ext_buf) != shm_ext->size - *((size_t *)shm_ext->addr)) {
+    if ((unsigned)(ext_buf_cur - ext_buf) != shm_ext->size - ((sr_ext_shm_t *)shm_ext->addr)->wasted) {
         SR_ERRINFO_INT(&err_info);
         free(ext_buf);
         return err_info;
@@ -1899,7 +1899,7 @@ sr_shmmain_del_modules_deps(sr_shm_t *shm_main, char *ext_shm_addr, sr_mod_t *fi
     uint32_t i, j;
 
     assert(first_shm_mod);
-    ext_wasted = (size_t *)ext_shm_addr;
+    ext_wasted = &((sr_ext_shm_t *)ext_shm_addr)->wasted;
 
     do {
         shm_data_deps = (sr_mod_data_dep_t *)(ext_shm_addr + first_shm_mod->data_deps);
@@ -1988,13 +1988,13 @@ sr_shmmain_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod)
     }
 
     /* enlarge ext SHM */
-    wasted_ext = (size_t *)conn->ext_shm.addr;
-    new_ext_size = sizeof(size_t) + sr_shmmain_ext_get_size_main_shm(&conn->main_shm, conn->ext_shm.addr) +
+    wasted_ext = &((sr_ext_shm_t *)conn->ext_shm.addr)->wasted;
+    new_ext_size = sizeof(sr_ext_shm_t) + sr_shmmain_ext_get_size_main_shm(&conn->main_shm, conn->ext_shm.addr) +
             sr_shmmain_ext_get_lydmods_size(sr_mod->parent);
     if ((err_info = sr_shm_remap(&conn->ext_shm, new_ext_size + *wasted_ext))) {
         return err_info;
     }
-    wasted_ext = (size_t *)conn->ext_shm.addr;
+    wasted_ext = &((sr_ext_shm_t *)conn->ext_shm.addr)->wasted;
 
     /* add all newly implemented modules into SHM */
     if ((err_info = sr_shmmain_add_modules(conn->ext_shm.addr, sr_mod, (sr_mod_t *)(conn->main_shm.addr + main_end),
@@ -2021,7 +2021,7 @@ sr_shmmain_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod)
     if ((err_info = sr_shm_remap(&conn->ext_shm, new_ext_size + *wasted_ext))) {
         return err_info;
     }
-    wasted_ext = (size_t *)conn->ext_shm.addr;
+    wasted_ext = &((sr_ext_shm_t *)conn->ext_shm.addr)->wasted;
 
     /* add all dependencies for all modules in SHM */
     if ((err_info = sr_shmmain_add_modules_deps(&conn->main_shm, conn->ext_shm.addr, sr_mod->parent->child,
@@ -2137,11 +2137,11 @@ sr_shmmain_ext_open(sr_shm_t *shm, int zero)
     }
 
     /* either zero the memory or keep it exactly the way it was */
-    if ((err_info = sr_shm_remap(shm, zero ? sizeof(size_t) : 0))) {
+    if ((err_info = sr_shm_remap(shm, zero ? sizeof(sr_ext_shm_t) : 0))) {
         goto error;
     }
     if (zero) {
-        *((size_t *)shm->addr) = 0;
+        ((sr_ext_shm_t *)shm->addr)->wasted = 0;
     }
 
     return NULL;
@@ -2302,7 +2302,7 @@ sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, const cha
     }
 
     /* in case remap WRITE lock was held, it means wasted memory could have been added, defragment if needed */
-    if (remap && (*((size_t *)conn->ext_shm.addr) > SR_SHM_WASTED_MAX_MEM)) {
+    if (remap && (((sr_ext_shm_t *)conn->ext_shm.addr)->wasted > SR_SHM_WASTED_MAX_MEM)) {
         assert(mode == SR_LOCK_WRITE);
 
         SR_LOG_DBG("#SHM before defrag");
@@ -2311,9 +2311,9 @@ sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, const cha
         /* defrag mem into a separate memory */
         if (!(err_info = sr_shmmain_ext_defrag(&conn->main_shm, &conn->ext_shm, &buf))) {
             /* remap ext SHM, it does not matter if it fails, will just be kept larger than needed */
-            err_info = sr_shm_remap(&conn->ext_shm, conn->ext_shm.size - *((size_t *)conn->ext_shm.addr));
+            err_info = sr_shm_remap(&conn->ext_shm, conn->ext_shm.size - ((sr_ext_shm_t *)conn->ext_shm.addr)->wasted);
 
-            SR_LOG_INF("Ext SHM was defragmented and %u B were saved.", *((size_t *)conn->ext_shm.addr));
+            SR_LOG_INF("Ext SHM was defragmented and %u B were saved.", ((sr_ext_shm_t *)conn->ext_shm.addr)->wasted);
 
             /* copy the defragmented memory into ext SHM (has wasted set to 0) */
             memcpy(conn->ext_shm.addr, buf, conn->ext_shm.size);

@@ -228,6 +228,13 @@ typedef struct sr_main_shm_s {
 } sr_main_shm_t;
 
 /**
+ * @brief External (ext) SHM.
+ */
+typedef struct sr_ext_shm_s {
+    size_t wasted;              /**< Number of unused allocated bytes in the memory. */
+} sr_ext_shm_t;
+
+/**
  * @brief Subscription event.
  */
 typedef enum sr_sub_event_e {
