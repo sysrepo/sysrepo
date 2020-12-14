@@ -22,7 +22,7 @@
 #define _POSIX_C_SOURCE 199309L /* sigaction */
 #define _DEFAULT_SOURCE /* struct dirent.d_type */
 #define _GNU_SOURCE /* asprintf */
-#define _XOPEN_SOURCE 500 /* strdup */
+#define _XOPEN_SOURCE 700 /* strndup */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,13 +42,6 @@
 #include "compat.h"
 #include "sysrepo.h"
 #include "bin_common.h"
-#include "common.h"
-
-/**
- * The MAX_PLUGIN_NAME_LEN should not be greater than 256 because it is the size of (struct dirent).d_name.
- * The MAX_PLUGIN_NAME_LEN constant can be less than 256 if you know for sure the maximum length of your plugin names.
- */
-#define MAX_PLUGIN_NAME_LEN 256
 
 /** protected flag for terminating sysrepo-plugind */
 int loop_finish;
@@ -56,14 +49,14 @@ pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 /** The name of the configuration module for the sysrepo-plugind program itself. */
-static const char *srpd_plugin_module_name = "sysrepo-plugind";
+#define SRPD_MODULE_NAME "sysrepo-plugind"
 
 struct srpd_plugin_s {
     void *handle;
     srp_init_cb_t init_cb;
     srp_cleanup_cb_t cleanup_cb;
     void *private_data;
-    char plugin_name[MAX_PLUGIN_NAME_LEN];
+    char *plugin_name;
 };
 
 static void
@@ -220,8 +213,8 @@ daemon_init(int debug, sr_log_level_t log_level)
 }
 
 /* from src/common.c */
-int
-sr_mkpath_m(const char *path, mode_t mode)
+static int
+sr_mkpath(const char *path, mode_t mode)
 {
     char *p, *dup;
 
@@ -272,7 +265,7 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
             error_print(0, "Checking plugins dir existence failed (%s).", strerror(errno));
             return -1;
         }
-        if (sr_mkpath_m(plugins_dir, 00777) == -1) {
+        if (sr_mkpath(plugins_dir, 00777) == -1) {
             error_print(0, "Creating plugins dir \"%s\" failed (%s).", plugins_dir, strerror(errno));
             return -1;
         }
@@ -335,10 +328,18 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
         (*plugins)[*plugin_count].handle = handle;
         (*plugins)[*plugin_count].private_data = NULL;
         {
-            char *plugin_name = (*plugins)[*plugin_count].plugin_name;
-            memcpy(plugin_name, ent->d_name, sizeof(char[MAX_PLUGIN_NAME_LEN]));
-            /* just in case for strlen(d_name) >= MAX_PLUGIN_NAME_LEN */
-            plugin_name[MAX_PLUGIN_NAME_LEN - 1] = '\0';
+            const char *src = ent->d_name;
+            const size_t src_len = strlen(src);
+            const size_t n = strcmp(src + (src_len - 3), ".so") == 0 ?
+                src_len - 3 : src_len;
+            char *str = strndup(src, n);
+            if (!str) {
+                error_print(0, "strndup() failed.");
+                dlclose(handle);
+                rc = -1;
+                break;
+            }
+            (*plugins)[*plugin_count].plugin_name = str;
         }
         ++(*plugin_count);
     }
@@ -347,35 +348,35 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
     return rc;
 }
 
-void
+static void
 swap(struct srpd_plugin_s *a, struct srpd_plugin_s *b)
 {
     if (a == b) {
         return;
     }
-    /* Warning: struct srpd_plugin_s must not contain a dynamically allocated field.*/
     struct srpd_plugin_s tmp = *a;
     *a = *b;
     *b = tmp;
 }
 
-int
-plugin_names_cmp(const char *str1, const char *str2)
+static int
+plugin_names_cmp(const struct srpd_plugin_s *plugin, const char *str2)
 {
-    if(str1 == str2)
+    /* str1 does not have the .so suffix */
+    const char *str1 = plugin->plugin_name;
+    if (str1 == str2) {
         return 0;
-    /* suffx .so is ignored */
+    }
     const size_t str1_len = strlen(str1);
     const size_t str2_len = strlen(str2);
-    const size_t len1 = strcmp(str1 + (str1_len - 3), ".so") == 0 ?
-        str1_len - 3 : str1_len;
-    const size_t len2 = strcmp(str2 + (str2_len - 3), ".so") == 0 ?
+    /* suffx .so in str2 is ignored */
+    const size_t n = strcmp(str2 + (str2_len - 3), ".so") == 0 ?
         str2_len - 3 : str2_len;
-    return len1 == len2 ? strncmp(str1, str2, len1) : -1;
+    return str1_len == n ? strncmp(str1, str2, n) : -1;
 }
 
 
-int
+static int
 sorting_plugins(int plugin_count, sr_session_ctx_t *sess, struct srpd_plugin_s *plugins)
 {
     const char *xpath = "/sysrepo-plugind:sysrepo-plugind/plugin-order/plugin";
@@ -390,7 +391,7 @@ sorting_plugins(int plugin_count, sr_session_ctx_t *sess, struct srpd_plugin_s *
     int ordered_part = 0;
     for(size_t i = 0; i < value_cnt; ++i) {
         for (int j = ordered_part; j < plugin_count; ++j) {
-            if (plugin_names_cmp(plugins[j].plugin_name, values[i].data.string_val) == 0) {
+            if (plugin_names_cmp(&plugins[j], values[i].data.string_val) == 0) {
                 swap(&plugins[ordered_part], &plugins[j]);
                 ++ordered_part;
             }
@@ -401,27 +402,16 @@ sorting_plugins(int plugin_count, sr_session_ctx_t *sess, struct srpd_plugin_s *
     return 0;
 }
 
-int
-plugind_module_exists(const sr_conn_ctx_t *conn)
+static int
+apply_plugind_module(int plugin_count, sr_session_ctx_t *sess, struct srpd_plugin_s *plugins)
 {
-    return ly_ctx_get_module(conn->ly_ctx, srpd_plugin_module_name, NULL, 0) != NULL;
-}
-
-int
-apply_plugind_module(int plugin_count, const sr_conn_ctx_t *conn, sr_session_ctx_t *sess, struct srpd_plugin_s *plugins)
-{
-    int rc;
-
-    if (!plugind_module_exists(conn)) {
-        /* The sysrepo-plugind module is not in sysrepo. Silent return with no error. */
-        return 0;
-    }
+    int rc = 0;
 
     if ((rc = sorting_plugins(plugin_count, sess, plugins))) {
         error_print(0, "Sorting of plugins failed.");
         return rc;
     }
-    return 0;
+    return rc;
 }
 
 int
@@ -507,7 +497,7 @@ main(int argc, char** argv)
     }
 
     /* apply sysrepo-plugind module if exists */
-    if (apply_plugind_module(plugin_count, conn, sess, plugins)) {
+    if (apply_plugind_module(plugin_count, sess, plugins)) {
         error_print(0, "The sysrepo-plugind module application failed.");
         goto cleanup;
     }
@@ -539,6 +529,7 @@ main(int argc, char** argv)
 cleanup:
     for (i = 0; i < plugin_count; ++i) {
         dlclose(plugins[i].handle);
+        free(plugins[i].plugin_name);
     }
     free(plugins);
 
