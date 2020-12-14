@@ -19,7 +19,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define _POSIX_C_SOURCE 199309L /* sigaction */
+#define _POSIX_C_SOURCE 200809L /* sigaction */
 #define _DEFAULT_SOURCE /* struct dirent.d_type */
 #define _GNU_SOURCE /* asprintf */
 #define _XOPEN_SOURCE 700 /* strndup */
