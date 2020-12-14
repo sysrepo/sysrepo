@@ -248,6 +248,8 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
     struct dirent *ent;
     const char *plugins_dir;
     char *path;
+    size_t name_len;
+    char *new_str;
     int rc = 0;
 
     *plugins = NULL;
@@ -327,20 +329,19 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
         /* finally store the plugin */
         (*plugins)[*plugin_count].handle = handle;
         (*plugins)[*plugin_count].private_data = NULL;
-        {
-            const char *src = ent->d_name;
-            const size_t src_len = strlen(src);
-            const size_t n = strcmp(src + (src_len - 3), ".so") == 0 ?
-                src_len - 3 : src_len;
-            char *str = strndup(src, n);
-            if (!str) {
-                error_print(0, "strndup() failed.");
-                dlclose(handle);
-                rc = -1;
-                break;
-            }
-            (*plugins)[*plugin_count].plugin_name = str;
+
+        name_len = strlen(ent->d_name);
+        name_len = name_len >= 3 && !strcmp(ent->d_name + (name_len - 3), ".so") ?
+            name_len - 3 : name_len;
+        new_str = strndup(ent->d_name, name_len);
+        if (!new_str) {
+            error_print(0, "strndup() failed.");
+            dlclose(handle);
+            rc = -1;
+            break;
         }
+        (*plugins)[*plugin_count].plugin_name = new_str;
+
         ++(*plugin_count);
     }
 
@@ -364,17 +365,20 @@ plugin_names_cmp(const struct srpd_plugin_s *plugin, const char *str2)
 {
     /* str1 does not have the .so suffix */
     const char *str1 = plugin->plugin_name;
+    size_t str1_len;
+    size_t str2_len;
+    size_t n;
+
     if (str1 == str2) {
         return 0;
     }
-    const size_t str1_len = strlen(str1);
-    const size_t str2_len = strlen(str2);
+    str1_len = strlen(str1);
+    str2_len = strlen(str2);
     /* suffx .so in str2 is ignored */
-    const size_t n = strcmp(str2 + (str2_len - 3), ".so") == 0 ?
+    n = str2_len >= 3 && !strcmp(str2 + (str2_len - 3), ".so")?
         str2_len - 3 : str2_len;
     return str1_len == n ? strncmp(str1, str2, n) : -1;
 }
-
 
 static int
 sorting_plugins(int plugin_count, sr_session_ctx_t *sess, struct srpd_plugin_s *plugins)
@@ -383,15 +387,16 @@ sorting_plugins(int plugin_count, sr_session_ctx_t *sess, struct srpd_plugin_s *
     sr_val_t *values;
     size_t value_cnt;
     int rc;
+
     if ((rc = sr_get_items(sess, xpath, 0, SR_OPER_DEFAULT, &values, &value_cnt))) {
         error_print(0, "The XPath \"%s\" application failed.", xpath);
         return rc;
     }
 
     int ordered_part = 0;
-    for(size_t i = 0; i < value_cnt; ++i) {
+    for (size_t i = 0; i < value_cnt; ++i) {
         for (int j = ordered_part; j < plugin_count; ++j) {
-            if (plugin_names_cmp(&plugins[j], values[i].data.string_val) == 0) {
+            if (!plugin_names_cmp(&plugins[j], values[i].data.string_val)) {
                 swap(&plugins[ordered_part], &plugins[j]);
                 ++ordered_part;
             }
