@@ -1360,6 +1360,8 @@ sr_module_is_internal(const struct lys_module *ly_mod)
         return 1;
     } else if (!strcmp(ly_mod->name, "sysrepo-monitoring")) {
         return 1;
+    } else if (!strcmp(ly_mod->name, "sysrepo-plugind")) {
+        return 1;
     }
 
     return 0;

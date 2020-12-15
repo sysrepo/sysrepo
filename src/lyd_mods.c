@@ -43,6 +43,7 @@
 #endif
 
 #include "../modules/sysrepo_monitoring_yang.h"
+#include "../modules/sysrepo_plugind_yang.h"
 #include "../modules/ietf_netconf_yang.h"
 #include "../modules/ietf_netconf_with_defaults_yang.h"
 #include "../modules/ietf_netconf_notifications_yang.h"
@@ -922,6 +923,9 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
 
     /* install sysrepo-monitoring */
     SR_INSTALL_INT_MOD(sysrepo_monitoring_yang, 0);
+
+    /* install sysrepo-plugind */
+    SR_INSTALL_INT_MOD(sysrepo_plugind_yang, 0);
 
     /* install ietf-netconf (implemented dependency) and ietf-netconf-with-defaults */
     SR_INSTALL_INT_MOD(ietf_netconf_yang, 1);
