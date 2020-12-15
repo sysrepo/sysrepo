@@ -473,7 +473,7 @@ sr_connection_count(uint32_t *conn_count)
     main_shm = (sr_main_shm_t *)shm.addr;
 
     /* SHM LOCK */
-    if ((err_info = sr_rwlock(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
+    if ((err_info = sr_rwlock(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__, NULL))) {
         goto cleanup;
     }
 

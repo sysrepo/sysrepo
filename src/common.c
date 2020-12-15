@@ -2427,7 +2427,7 @@ sr_rwlock_destroy(sr_rwlock_t *rwlock)
 }
 
 sr_error_info_t *
-sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *func)
+sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *func, int *cond_timeout)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
@@ -2435,6 +2435,10 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *
 
     assert(mode != SR_LOCK_NONE);
     assert(timeout_ms > 0);
+
+    if (cond_timeout) {
+        *cond_timeout = 0;
+    }
     sr_time_get(&timeout_ts, timeout_ms);
 
     /* MUTEX LOCK */
@@ -2480,10 +2484,14 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *
     return NULL;
 
 error_cond_unlock:
-    /* MUTEX UNLOCK */
-    pthread_mutex_unlock(&rwlock->mutex);
+    if (cond_timeout) {
+        *cond_timeout = 1;
+    } else {
+        /* MUTEX UNLOCK */
+        pthread_mutex_unlock(&rwlock->mutex);
 
-    SR_ERRINFO_COND(&err_info, func, ret);
+        SR_ERRINFO_COND(&err_info, func, ret);
+    }
     return err_info;
 }
 
@@ -2616,11 +2624,23 @@ sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func)
 }
 
 void
-sr_shmlock_update(sr_conn_shm_lock_t *shmlock, sr_lock_mode_t mode, int lock)
+sr_shmlock_update(char *main_shm_addr, sr_conn_shm_lock_t *shmlock, sr_lock_mode_t mode, int lock)
 {
+    sr_error_info_t *err_info = NULL;
+    sr_main_shm_t *main_shm;
+
+    main_shm = (sr_main_shm_t *)main_shm_addr;
+
+    /* CONN LOCK */
+    if ((err_info = sr_mlock(&main_shm->conn_lock, SR_CONN_STATE_LOCK_TIMEOUT, __func__))) {
+        sr_errinfo_free(&err_info);
+    }
+
     if (lock) {
         /* lock */
-        if (mode == SR_LOCK_READ) {
+        switch (mode) {
+        case SR_LOCK_READ:
+            assert((shmlock->mode == SR_LOCK_NONE) || (shmlock->mode == SR_LOCK_READ) || (shmlock->mode == SR_LOCK_READ_UPGR));
             if (shmlock->mode == SR_LOCK_NONE) {
                 /* TODO all asserts are valid but since access to these locks is unprotected, they may fail at random
                  * if the operations meet at changing rcount and mode */
@@ -2633,6 +2653,10 @@ sr_shmlock_update(sr_conn_shm_lock_t *shmlock, sr_lock_mode_t mode, int lock)
         } else {
             // assert(shmlock->mode != SR_LOCK_WRITE);
             shmlock->mode = SR_LOCK_WRITE;
+            break;
+        case SR_LOCK_NONE:
+            assert(0);
+            break;
         }
     } else {
         /* unlock */
@@ -2651,8 +2675,21 @@ sr_shmlock_update(sr_conn_shm_lock_t *shmlock, sr_lock_mode_t mode, int lock)
             } else {
                 shmlock->mode = SR_LOCK_NONE;
             }
+            break;
+        case SR_LOCK_WRITE:
+            assert(shmlock->mode == SR_LOCK_WRITE);
+            assert(!shmlock->rcount);
+
+            shmlock->mode = SR_LOCK_NONE;
+            break;
+        case SR_LOCK_NONE:
+            assert(0);
+            break;
         }
     }
+
+    /* CONN UNLOCK */
+    sr_munlock(&main_shm->conn_lock);
 }
 
 void *

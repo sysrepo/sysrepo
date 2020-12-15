@@ -296,7 +296,7 @@ sr_shmmod_lock(const char *mod_name, struct sr_mod_lock_s *shm_lock, int timeout
         err_info = sr_rwrelock(&shm_lock->lock, timeout_ms, mode, __func__);
     } else {
         /* LOCK */
-        err_info = sr_rwlock(&shm_lock->lock, timeout_ms, mode, __func__);
+        err_info = sr_rwlock(&shm_lock->lock, timeout_ms, mode, __func__, NULL);
     }
     if (err_info) {
         if (err_info->err_code == SR_ERR_TIME_OUT) {
@@ -408,7 +408,7 @@ sr_shmmod_conn_lock_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_
 
     mod_locks = (sr_conn_shm_lock_t (*)[SR_DS_COUNT])(conn->ext_shm.addr + conn_s->mod_locks);
     shm_mod_idx = SR_SHM_MOD_IDX(shm_mod, conn->main_shm);
-    sr_shmlock_update(&mod_locks[shm_mod_idx][ds], mode, lock);
+    sr_shmlock_update(conn->main_shm.addr, &mod_locks[shm_mod_idx][ds], mode, lock);
 
 cleanup:
     sr_errinfo_free(&err_info);

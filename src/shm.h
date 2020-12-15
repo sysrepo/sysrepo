@@ -188,7 +188,7 @@ typedef struct sr_rpc_s {
  */
 typedef struct sr_conn_shm_lock_s {
     sr_lock_mode_t mode;    /**< Held lock mode. */
-    ATOMIC_T rcount;        /**< Number of recursive READ locks held. */
+    uint16_t rcount;        /**< Number of recursive READ locks held. */
 } sr_conn_shm_lock_t;
 
 /**
@@ -223,6 +223,7 @@ typedef struct sr_main_shm_s {
     ATOMIC_T new_sub_id;        /**< Subscription ID of a new notification subscription. */
     ATOMIC_T new_evpipe_num;    /**< Event pipe number for a new subscription. */
 
+    pthread_mutex_t conn_lock;  /**< Process-shared lock for accessing connection state. */
     off_t conns;                /**< Array of existing connections (connection state). */
     uint16_t conn_count;        /**< Number of existing connections. */
 } sr_main_shm_t;

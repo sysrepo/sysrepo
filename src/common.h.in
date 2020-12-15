@@ -1045,9 +1045,11 @@ void sr_rwlock_destroy(sr_rwlock_t *rwlock);
  * @param[in] timeout_ms Timeout in ms for locking.
  * @param[in] mode Lock mode to set.
  * @param[in] func Name of the calling function for logging.
+ * @param[in,out] cond_timeout Optional variable set if the mutex was locked but the lock remained read or
+ * read-upgr locked until timeout elapsed. Set to NULL if that should cause an error.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *func);
+sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *func, int *cond_timeout);
 
 /**
  * @brief Relock a sysrepo RW lock (upgrade or downgrade). On failure, the lock is not changed in any way.
@@ -1075,11 +1077,12 @@ void sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func);
 /**
  * @brief Update lock state stored in SHM.
  *
+ * @param[in] main_shm_addr Main SHM address.
  * @param[in] shmlock Lock in SHM to write to.
  * @param[in] mode Whether the lock is read or write lock.
  * @param[in] lock Whether it was locked or unlocked.
  */
-void sr_shmlock_update(sr_conn_shm_lock_t *shmlock, sr_lock_mode_t mode, int lock);
+void sr_shmlock_update(char *main_shm_addr, sr_conn_shm_lock_t *shmlock, sr_lock_mode_t mode, int lock);
 
 /**
  * @brief Wrapper to realloc() that frees memory on failure.

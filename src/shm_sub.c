@@ -667,7 +667,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
             }
 
             /* SUB READ LOCK */
-            if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
+            if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__, NULL))) {
                 goto cleanup;
             }
             assert(multi_sub_shm->event == SR_SUB_EV_SUCCESS);
@@ -753,7 +753,7 @@ sr_shmsub_change_notify_clear(struct sr_mod_info_s *mod_info, sr_sub_event_t ev)
             /* it is still possible that the subscription unsubscribed already */
 
             /* SUB WRITE LOCK */
-            if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
+            if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__, NULL))) {
                 goto cleanup;
             }
 
@@ -779,7 +779,7 @@ sr_shmsub_change_notify_clear(struct sr_mod_info_s *mod_info, sr_sub_event_t ev)
 
         do {
             /* SUB WRITE LOCK */
-            if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
+            if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__, NULL))) {
                 goto cleanup;
             }
 
@@ -1291,7 +1291,7 @@ sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const 
         SR_LOG_WRN("Event \"operational\" with ID %u failed (%s).", request_id, sr_strerror((*cb_err_info)->err_code));
 
         /* SUB WRITE LOCK */
-        if ((err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
+        if ((err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__, NULL))) {
             goto cleanup;
         }
         /* clear SHM */
@@ -1302,7 +1302,7 @@ sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const 
     }
 
     /* SUB READ LOCK */
-    if ((err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
+    if ((err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__, NULL))) {
         goto cleanup;
     }
     assert(sub_shm->event == SR_SUB_EV_SUCCESS);
@@ -1582,7 +1582,7 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_
         }
 
         /* SUB READ LOCK */
-        if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
+        if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__, NULL))) {
             goto cleanup;
         }
         assert(multi_sub_shm->event == SR_SUB_EV_SUCCESS);
@@ -2058,7 +2058,7 @@ sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t
     assert(!*err_info);
 
     /* SUB READ/WRITE LOCK */
-    if ((*err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, __func__))) {
+    if ((*err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, __func__, NULL))) {
         return 1;
     }
 
@@ -2103,7 +2103,7 @@ sr_shmsub_change_listen_dismiss_event(sr_multi_sub_shm_t *multi_sub_shm, struct 
     sr_error_info_t *err_info = NULL;
 
     /* SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
+    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__, NULL))) {
         return err_info;
     }
 
@@ -2136,7 +2136,7 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
     multi_sub_shm = (sr_multi_sub_shm_t *)change_subs->sub_shm.addr;
 
     /* SUB READ UPGR LOCK */
-    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ_UPGR, __func__))) {
+    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ_UPGR, __func__, NULL))) {
         goto cleanup;
     }
 
@@ -2378,7 +2378,7 @@ sr_shmsub_oper_listen_relock(sr_sub_shm_t *sub_shm, sr_lock_mode_t mode, uint32_
     assert(!*err_info);
 
     /* SUB READ/WRITE LOCK */
-    if ((*err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, __func__))) {
+    if ((*err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, __func__, NULL))) {
         return 1;
     }
 
@@ -2406,7 +2406,7 @@ sr_shmsub_oper_listen_dismiss_event(sr_sub_shm_t *sub_shm, struct modsub_opersub
     char *data;
 
     /* SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
+    if ((err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__, NULL))) {
         return err_info;
     }
 
@@ -2450,7 +2450,7 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         sub_shm = (sr_sub_shm_t *)oper_sub->sub_shm.addr;
 
         /* SUB READ LOCK */
-        if ((err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
+        if ((err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__, NULL))) {
             goto error;
         }
 
@@ -2783,7 +2783,7 @@ sr_shmsub_rpc_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t mo
     assert(!*err_info);
 
     /* SUB READ/WRITE LOCK */
-    if ((*err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, __func__))) {
+    if ((*err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, __func__, NULL))) {
         return 1;
     }
 
@@ -2828,7 +2828,7 @@ sr_shmsub_rpc_listen_dismiss_event(sr_multi_sub_shm_t *multi_sub_shm, struct ops
     uint32_t data_len;
 
     /* SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
+    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__, NULL))) {
         return err_info;
     }
 
@@ -2880,7 +2880,7 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
     multi_sub_shm = (sr_multi_sub_shm_t *)rpc_subs->sub_shm.addr;
 
     /* SUB READ UPGR LOCK */
-    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ_UPGR, __func__))) {
+    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ_UPGR, __func__, NULL))) {
         goto cleanup;
     }
 
@@ -3046,7 +3046,7 @@ sr_shmsub_notif_listen_dismiss_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t
     sr_error_info_t *err_info = NULL;
 
     /* SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
+    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__, NULL))) {
         return err_info;
     }
 
@@ -3075,7 +3075,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     multi_sub_shm = (sr_multi_sub_shm_t *)notif_subs->sub_shm.addr;
 
     /* SUB READ LOCK */
-    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
+    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__, NULL))) {
         goto cleanup;
     }
 
@@ -3111,7 +3111,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     SR_LOG_INF("Processing \"notif\" \"%s\" event with ID %u.", notif_subs->module_name, multi_sub_shm->request_id);
 
     /* SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
+    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__, NULL))) {
         goto cleanup;
     }
 

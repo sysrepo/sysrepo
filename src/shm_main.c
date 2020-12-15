@@ -1266,8 +1266,11 @@ sr_shmmain_conn_recover(sr_conn_ctx_t *conn)
                 main_shm->lock.readers -= shm_conn[i].main_lock.rcount;
                 break;
             case SR_LOCK_READ_UPGR:
-                /* not supported */
-                sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Client crashed while holding SHM READ UPGR lock, not recoverable!");
+                /* remove the upgradeable read lock */
+                assert(shm_conn[i].main_lock.rcount && (main_shm->lock.readers >= shm_conn[i].main_lock.rcount)
+                        && main_shm->lock.upgr);
+                main_shm->lock.readers -= shm_conn[i].main_lock.rcount;
+                main_shm->lock.upgr = 0;
                 break;
             case SR_LOCK_WRITE:
                 /* not supported */
@@ -2107,6 +2110,9 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
         ATOMIC_STORE_RELAXED(main_shm->new_sr_sid, 1);
         ATOMIC_STORE_RELAXED(main_shm->new_sub_id, 1);
         ATOMIC_STORE_RELAXED(main_shm->new_evpipe_num, 1);
+        if ((err_info = sr_mutex_init(&main_shm->conn_lock, 1))) {
+            goto error;
+        }
 
         /* remove leftover event pipes */
         sr_remove_evpipes();
@@ -2225,36 +2231,38 @@ sr_shmmain_conn_lock_update(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lock)
     shm_conn = sr_shmmain_conn_find(conn->main_shm.addr, conn->ext_shm.addr, conn);
     SR_CHECK_INT_RET(!shm_conn, err_info);
 
-    sr_shmlock_update(&shm_conn->main_lock, mode, lock);
+    sr_shmlock_update(conn->main_shm.addr, &shm_conn->main_lock, mode, lock);
     return NULL;
 }
 
-sr_error_info_t *
-sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, const char *func)
+/**
+ * @brief Lock local remap lock and remap ext SHM if needed.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] remap_mode Mode of remap lock.
+ * @param[in] func Caller function name for logging.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_shmmain_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t remap_mode, const char *func)
 {
     sr_error_info_t *err_info = NULL;
     size_t shm_file_size;
 
-    /* SHM LOCK */
-    if ((err_info = sr_rwlock(&((sr_main_shm_t *)conn->main_shm.addr)->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, func))) {
+    /* REMAP READ/WRITE LOCK */
+    if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, remap_mode, func, NULL))) {
         return err_info;
     }
 
-    /* REMAP READ/WRITE LOCK */
-    if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000,
-            remap ? SR_LOCK_WRITE : SR_LOCK_READ, func))) {
-        goto error_shm_unlock;
-    }
-
     /* remap ext SHM */
-    if (remap) {
+    if (remap_mode == SR_LOCK_WRITE) {
         /* we have WRITE lock, it is safe */
         if ((err_info = sr_shm_remap(&conn->ext_shm, 0))) {
-            goto error_shm_remap_unlock;
+            goto error_unlock;
         }
     } else {
         if ((err_info = sr_file_get_size(conn->ext_shm.fd, &shm_file_size))) {
-            goto error_shm_remap_unlock;
+            goto error_unlock;
         }
         if (shm_file_size > conn->ext_shm.size) {
             /* ext SHM is larger now and we need to remap it */
@@ -2262,22 +2270,71 @@ sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, const
             /* REMAP READ UNLOCK */
             sr_rwunlock(&conn->ext_remap_lock, SR_LOCK_READ, func);
             /* REMAP WRITE LOCK */
-            if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, func))) {
-                goto error_shm_unlock;
+            if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, func, NULL))) {
+                return err_info;
             }
 
             if ((err_info = sr_shm_remap(&conn->ext_shm, shm_file_size))) {
-                remap = 1;
-                goto error_shm_remap_unlock;
+                remap_mode = SR_LOCK_WRITE;
+                goto error_unlock;
             }
 
             /* REMAP WRITE UNLOCK */
             sr_rwunlock(&conn->ext_remap_lock, SR_LOCK_WRITE, func);
             /* REMAP READ LOCK */
-            if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, func))) {
-                goto error_shm_unlock;
+            if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, func, NULL))) {
+                return err_info;
             }
         } /* else no remapping needed */
+    }
+
+    return NULL;
+
+error_unlock:
+    /* REMAP UNLOCK */
+    sr_rwunlock(&conn->ext_remap_lock, remap_mode, func);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, const char *func)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_main_shm_t *main_shm;
+    int cond_timeout = 0, *cond_timeout_p = &cond_timeout;
+
+    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
+
+retry:
+    /* SHM LOCK */
+    if ((err_info = sr_rwlock(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, func, cond_timeout_p))) {
+        return err_info;
+    }
+
+    if (cond_timeout) {
+        /* we have the SHM WRITE lock but the lock state is not as should be, attempt to recover any leftover locks */
+        err_info = sr_shmmain_remap_lock(conn, SR_LOCK_READ, func);
+        if (!err_info) {
+            err_info = sr_shmmain_conn_recover(conn);
+        }
+
+        /* MUTEX UNLOCK */
+        pthread_mutex_unlock(&main_shm->lock.mutex);
+
+        if (err_info) {
+            /* something failed and recovery did not succeed */
+            return err_info;
+        }
+
+        /* recovery success, try again to lock normally without expecting any stale locks */
+        cond_timeout = 0;
+        cond_timeout_p = NULL;
+        goto retry;
+    }
+
+    /* REMAP READ/WRITE LOCK */
+    if ((err_info = sr_shmmain_remap_lock(conn, remap ? SR_LOCK_WRITE : SR_LOCK_READ, func))) {
+        goto error_shm_unlock;
     }
 
     if (mode == SR_LOCK_WRITE) {
@@ -2300,7 +2357,7 @@ error_shm_remap_unlock:
     sr_rwunlock(&conn->ext_remap_lock, remap ? SR_LOCK_WRITE : SR_LOCK_READ, func);
 
 error_shm_unlock:
-    sr_rwunlock(&((sr_main_shm_t *)conn->main_shm.addr)->lock, mode, func);
+    sr_rwunlock(&main_shm->lock, mode, func);
     return err_info;
 }
 

@@ -837,7 +837,7 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
             }
 
             /* CACHE WRITE LOCK */
-            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
+            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__, NULL))) {
                 goto error_rlock;
             }
 
@@ -852,7 +852,7 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
         }
 
         /* CACHE WRITE LOCK */
-        if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__))) {
+        if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__, NULL))) {
             goto error_rlock;
         }
 
@@ -895,7 +895,7 @@ error_wrunlock:
 error_rlock:
         if (read_locked) {
             /* CACHE READ LOCK */
-            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
+            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__, NULL))) {
                 return err_info;
             }
         }
@@ -1366,7 +1366,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             /* ...but they are cached */
 
             /* CACHE READ LOCK */
-            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
+            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__, NULL))) {
                 return err_info;
             }
 
@@ -1599,7 +1599,8 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, sr_sid_t *sid, c
     if (!mod_info->data_cached && cache && (mod_info->conn->opts & SR_CONN_CACHE_RUNNING) &&
             (mod_info->ds == SR_DS_RUNNING)) {
         /* CACHE READ LOCK */
-        if ((err_info = sr_rwlock(&mod_info->conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
+        if ((err_info = sr_rwlock(&mod_info->conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ,
+                __func__, NULL))) {
             return err_info;
         }
 
