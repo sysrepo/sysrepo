@@ -15,9 +15,9 @@
 #ifndef _COMPAT_H_
 #define _COMPAT_H_
 
-#include <sys/types.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <sys/types.h>
 
 #ifndef __WORDSIZE
 #  if defined __x86_64__ && !defined __ILP32__
@@ -29,10 +29,10 @@
 
 #ifndef __INT64_C
 #  if __WORDSIZE == 64
-#    define __INT64_C(c)  c ## L
+#    define __INT64_C(c) c ## L
 #    define __UINT64_C(c) c ## UL
 #  else
-#    define __INT64_C(c)  c ## LL
+#    define __INT64_C(c) c ## LL
 #    define __UINT64_C(c) c ## ULL
 #  endif
 #endif

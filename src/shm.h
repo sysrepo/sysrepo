@@ -19,11 +19,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #ifndef _SHM_H
 #define _SHM_H
 
-#include <stdint.h>
 #include <pthread.h>
+#include <stdint.h>
 #include <sys/types.h>
 
 #include <libyang/libyang.h>
@@ -58,7 +59,7 @@
  */
 typedef enum sr_mod_dep_type_e {
     SR_DEP_REF,         /**< Module reference (leafref, when, must). */
-    SR_DEP_INSTID,      /**< Instance-identifier. */
+    SR_DEP_INSTID       /**< Instance-identifier. */
 } sr_mod_dep_type_t;
 
 /**
@@ -99,7 +100,7 @@ typedef enum sr_mod_oper_sub_type_e {
     SR_OPER_SUB_NONE = 0,         /**< Invalid type. */
     SR_OPER_SUB_STATE,            /**< Providing state data. */
     SR_OPER_SUB_CONFIG,           /**< Providing configuration data. */
-    SR_OPER_SUB_MIXED,            /**< Providing both state and configuration data. */
+    SR_OPER_SUB_MIXED             /**< Providing both state and configuration data. */
 } sr_mod_oper_sub_type_t;
 
 /**
@@ -249,7 +250,7 @@ typedef enum sr_sub_event_e {
     SR_SUB_EV_ENABLED,          /**< New enabled event ready. */
     SR_SUB_EV_OPER,             /**< New operational event ready. */
     SR_SUB_EV_RPC,              /**< New RPC/action event ready. */
-    SR_SUB_EV_NOTIF,            /**< New notification event ready. */
+    SR_SUB_EV_NOTIF             /**< New notification event ready. */
 } sr_sub_event_t;
 
 /** Whether an event is one to be processed by the listeners (subscribers). */

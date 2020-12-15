@@ -21,18 +21,18 @@
  */
 #include "common.h"
 
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/uio.h>
+#include <assert.h>
+#include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
-#include <dirent.h>
+#include <stdlib.h>
 #include <string.h>
-#include <errno.h>
-#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/uio.h>
 #include <time.h>
-#include <assert.h>
+#include <unistd.h>
 
 /**
  * @brief Wrapper for writev().

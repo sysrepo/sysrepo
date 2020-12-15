@@ -20,34 +20,37 @@
  */
 #include "common.h"
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <pthread.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
+#include <assert.h>
 #include <ctype.h>
 #include <fcntl.h>
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
-#include <assert.h>
 
-#include "../modules/sysrepo_yang.h"
+#define NEW_REVISION 2019-01-04
+#define OLD_REVISION 2016-06-21
+
 #include "../modules/ietf_datastores_yang.h"
-#if SR_YANGLIB_REVISION == 2019-01-04
+#include "../modules/sysrepo_yang.h"
+#if SR_YANGLIB_REVISION == NEW_REVISION
 # include "../modules/ietf_yang_library@2019_01_04_yang.h"
-#elif SR_YANGLIB_REVISION == 2016-06-21
+#elif SR_YANGLIB_REVISION == OLD_REVISION
 # include "../modules/ietf_yang_library@2016_06_21_yang.h"
 #else
 # error "Unknown yang-library revision!"
 #endif
 
+#include "../modules/ietf_netconf_notifications_yang.h"
+#include "../modules/ietf_netconf_with_defaults_yang.h"
+#include "../modules/ietf_netconf_yang.h"
+#include "../modules/ietf_origin_yang.h"
 #include "../modules/sysrepo_monitoring_yang.h"
 #include "../modules/sysrepo_plugind_yang.h"
-#include "../modules/ietf_netconf_yang.h"
-#include "../modules/ietf_netconf_with_defaults_yang.h"
-#include "../modules/ietf_netconf_notifications_yang.h"
-#include "../modules/ietf_origin_yang.h"
 
 static sr_error_info_t *sr_lydmods_add_data_deps_r(struct lyd_node *sr_mod, struct lys_node *data_root, struct lyd_node *sr_deps);
 
@@ -1141,7 +1144,7 @@ sr_lydmods_check_data_deps(const struct lys_module *ly_mod, const struct lyd_nod
                 next = elem->child;
             }
             if (!next) {
-    next_sibling:
+next_sibling:
                 /* no children */
                 if (elem == root) {
                     /* we are done, (START) has no children */
@@ -1725,7 +1728,7 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
             LYD_OPT_CONFIG | LYD_OPT_TRUSTED);
     if (!ly_errno) {
         new_run_data = lyd_parse_mem((struct ly_ctx *)new_ctx, run_data_json, LYD_JSON,
-            LYD_OPT_CONFIG | LYD_OPT_TRUSTED);
+                LYD_OPT_CONFIG | LYD_OPT_TRUSTED);
     }
     if (ly_errno) {
         /* it failed, some of the scheduled changes are not compatible with the stored data, abort them all */
@@ -2100,9 +2103,9 @@ sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *ch
                         }
                         /* sr_mod children were freed, iteration cannot continue */
                         break;
-                    } else if (!strcmp(node->schema->name, "data-deps")
-                            || !strcmp(node->schema->name, "op-deps")
-                            || !strcmp(node->schema->name, "inverse-data-deps")) {
+                    } else if (!strcmp(node->schema->name, "data-deps") ||
+                            !strcmp(node->schema->name, "op-deps") ||
+                            !strcmp(node->schema->name, "inverse-data-deps")) {
                         /* remove all stored dependencies of all the modules */
                         lyd_free(node);
                     }
@@ -2723,4 +2726,3 @@ cleanup:
     lyd_free_withsiblings(sr_mods);
     return err_info;
 }
-

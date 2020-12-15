@@ -21,15 +21,15 @@
  */
 #include "common.h"
 
+#include <assert.h>
+#include <fcntl.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
-#include <time.h>
-#include <assert.h>
-#include <sys/types.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <fcntl.h>
+#include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <libyang/libyang.h>
@@ -168,8 +168,8 @@ sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datas
     ly_mod = NULL;
     for (i = 0; i < set->number; ++i) {
         /* skip uninteresting nodes */
-        if ((set->set.s[i]->nodetype & (LYS_RPC | LYS_NOTIF))
-                || ((set->set.s[i]->flags & LYS_CONFIG_R) && SR_IS_CONVENTIONAL_DS(ds))) {
+        if ((set->set.s[i]->nodetype & (LYS_RPC | LYS_NOTIF)) ||
+                ((set->set.s[i]->flags & LYS_CONFIG_R) && SR_IS_CONVENTIONAL_DS(ds))) {
             continue;
         }
 
@@ -313,7 +313,7 @@ sr_shmmod_collect_instid_deps_modinfo(const struct sr_mod_info_s *mod_info, stru
                 /* data were not changed so no reason to validate them */
                 break;
             }
-            /* fallthrough */
+        /* fallthrough */
         case MOD_INFO_INV_DEP:
             /* this module data will be validated */
             assert(mod->state & MOD_INFO_DATA);
@@ -349,6 +349,7 @@ sr_shmmod_conn_lock_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_
 {
     sr_error_info_t *err_info = NULL;
     uint32_t shm_mod_idx;
+
     sr_conn_shm_lock_t (*mod_locks)[SR_DS_COUNT];
     sr_conn_shm_t *conn_s;
 
@@ -754,8 +755,8 @@ sr_shmmod_change_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const c
             if (shm_sub[i].evpipe_num == evpipe_num) {
                 break;
             }
-        } else if ((!xpath && !shm_sub[i].xpath)
-                    || (xpath && shm_sub[i].xpath && !strcmp(ext_shm_addr + shm_sub[i].xpath, xpath))) {
+        } else if ((!xpath && !shm_sub[i].xpath) ||
+                (xpath && shm_sub[i].xpath && !strcmp(ext_shm_addr + shm_sub[i].xpath, xpath))) {
             if ((shm_sub[i].priority == priority) && (shm_sub[i].opts == sub_opts) && (shm_sub[i].evpipe_num == evpipe_num)) {
                 break;
             }

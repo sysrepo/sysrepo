@@ -21,19 +21,19 @@
  */
 #include "common.h"
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
-#include <pthread.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
+#include <assert.h>
 #include <ctype.h>
 #include <fcntl.h>
-#include <unistd.h>
-#include <assert.h>
 #include <inttypes.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 /**
  * @brief Item holding information about a SHM object for debug printing.
@@ -195,7 +195,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
         items = sr_realloc(items, (item_count + 1) * sizeof *items);
         items[item_count].start = shm_conn[i].mod_locks;
         items[item_count].size = SR_SHM_SIZE(main_shm->mod_count * sizeof(sr_conn_shm_lock_t[SR_DS_COUNT]));
-        asprintf(&(items[item_count].name), "conn mods lock (%u, conn %"PRIu32")", main_shm->mod_count, shm_conn[i].cid);
+        asprintf(&(items[item_count].name), "conn mods lock (%u, conn %" PRIu32 ")", main_shm->mod_count, shm_conn[i].cid);
         ++item_count;
 
         if (shm_conn[i].evpipes) {
@@ -203,7 +203,7 @@ sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size
             items = sr_realloc(items, (item_count + 1) * sizeof *items);
             items[item_count].start = shm_conn[i].evpipes;
             items[item_count].size = SR_SHM_SIZE(shm_conn[i].evpipe_count * sizeof(uint32_t));
-            asprintf(&(items[item_count].name), "evpipes (%u, conn %"PRIu32")", shm_conn[i].evpipe_count, shm_conn[i].cid);
+            asprintf(&(items[item_count].name), "evpipes (%u, conn %" PRIu32 ")", shm_conn[i].evpipe_count, shm_conn[i].cid);
             ++item_count;
         }
     }
@@ -581,6 +581,7 @@ sr_shmmain_ext_defrag(sr_shm_t *shm_main, sr_shm_t *shm_ext, char **defrag_ext_b
     sr_conn_shm_t *shm_conn;
     sr_main_shm_t *main_shm;
     sr_mod_notif_sub_t *notif_subs;
+
     sr_conn_shm_lock_t (*mod_locks)[SR_DS_COUNT];
     uint32_t *evpipes;
     uint16_t i;
@@ -665,7 +666,7 @@ sr_shmmain_ext_defrag(sr_shm_t *shm_main, sr_shm_t *shm_ext, char **defrag_ext_b
 
     /* 4) copy RPCs and their subscriptions */
     main_shm->rpc_subs = sr_shmmain_defrag_copy_array_with_string(shm_ext->addr, main_shm->rpc_subs,
-                sizeof(sr_rpc_t), main_shm->rpc_sub_count, ext_buf, &ext_buf_cur);
+            sizeof(sr_rpc_t), main_shm->rpc_sub_count, ext_buf, &ext_buf_cur);
 
     /* copy RPC subscriptions */
     shm_rpc = (sr_rpc_t *)(ext_buf + main_shm->rpc_subs);
@@ -886,7 +887,7 @@ sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive)
 
 cleanup:
     if (!err_info && !*conn_alive) {
-        SR_LOG_INF("Connection with CID %"PRIu32" is not alive.", cid);
+        SR_LOG_INF("Connection with CID %" PRIu32 " is not alive.", cid);
     }
     return err_info;
 }
@@ -1142,8 +1143,8 @@ sr_shmmain_conn_del(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_cid_t cid)
     }
 
     /* remove the connection with its mod locks and evpipes */
-    dyn_attr_size = SR_SHM_SIZE(main_shm->mod_count * sizeof(sr_conn_shm_lock_t[SR_DS_COUNT]))
-            + SR_SHM_SIZE(shm_conn[i].evpipe_count * sizeof(uint32_t));
+    dyn_attr_size = SR_SHM_SIZE(main_shm->mod_count * sizeof(sr_conn_shm_lock_t[SR_DS_COUNT])) +
+            SR_SHM_SIZE(shm_conn[i].evpipe_count * sizeof(uint32_t));
     sr_shmrealloc_del(ext_shm_addr, &main_shm->conns, &main_shm->conn_count, sizeof *shm_conn, i, dyn_attr_size);
 }
 
@@ -1241,6 +1242,7 @@ sr_shmmain_conn_recover(sr_conn_ctx_t *conn)
     sr_rpc_t *shm_rpc;
     sr_main_shm_t *main_shm;
     uint32_t i, j, k, *evpipes;
+
     sr_conn_shm_lock_t (*mod_locks)[SR_DS_COUNT];
     struct sr_mod_lock_s *shm_lock;
     struct timespec timeout_ts;
@@ -1254,7 +1256,7 @@ sr_shmmain_conn_recover(sr_conn_ctx_t *conn)
     i = 0;
     while (i < main_shm->conn_count) {
         if (!sr_connection_exists(shm_conn[i].cid)) {
-            SR_LOG_WRN("Cleaning up after a non-existent sysrepo client with CID %"PRIu32".", shm_conn[i].cid);
+            SR_LOG_WRN("Cleaning up after a non-existent sysrepo client with CID %" PRIu32 ".", shm_conn[i].cid);
 
             /* recover held main SHM locks */
             switch (shm_conn[i].main_lock.mode) {
@@ -1812,7 +1814,7 @@ sr_shmmain_add_modules_deps(sr_shm_t *shm_main, char *ext_shm_addr, struct lyd_n
             if (!strcmp(sr_child->schema->name, "data-deps")) {
                 /* now fill the dependency array */
                 if ((err_info = sr_shmmain_fill_data_deps(shm_main, ext_shm_addr, sr_child, shm_data_deps, &data_dep_i,
-                            &ext_cur))) {
+                        &ext_cur))) {
                     return err_info;
                 }
             } else if (!strcmp(sr_child->schema->name, "inverse-data-deps")) {
@@ -1843,7 +1845,7 @@ sr_shmmain_add_modules_deps(sr_shm_t *shm_main, char *ext_shm_addr, struct lyd_n
                         shm_op_data_deps = (sr_mod_data_dep_t *)(ext_shm_addr + shm_op_deps[op_dep_i].in_deps);
                         op_data_dep_i = 0;
                         if ((err_info = sr_shmmain_fill_data_deps(shm_main, ext_shm_addr, sr_op, shm_op_data_deps,
-                                    &op_data_dep_i, &ext_cur))) {
+                                &op_data_dep_i, &ext_cur))) {
                             return err_info;
                         }
                         SR_CHECK_INT_RET(op_data_dep_i != shm_op_deps[op_dep_i].in_dep_count, err_info);
@@ -1861,7 +1863,7 @@ sr_shmmain_add_modules_deps(sr_shm_t *shm_main, char *ext_shm_addr, struct lyd_n
                         shm_op_data_deps = (sr_mod_data_dep_t *)(ext_shm_addr + shm_op_deps[op_dep_i].out_deps);
                         op_data_dep_i = 0;
                         if ((err_info = sr_shmmain_fill_data_deps(shm_main, ext_shm_addr, sr_op, shm_op_data_deps,
-                                    &op_data_dep_i, &ext_cur))) {
+                                &op_data_dep_i, &ext_cur))) {
                             return err_info;
                         }
                         SR_CHECK_INT_RET(op_data_dep_i != shm_op_deps[op_dep_i].out_dep_count, err_info);
@@ -1998,7 +2000,7 @@ sr_shmmain_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod)
 
     /* add all newly implemented modules into SHM */
     if ((err_info = sr_shmmain_add_modules(conn->ext_shm.addr, sr_mod, (sr_mod_t *)(conn->main_shm.addr + main_end),
-                &ext_end))) {
+            &ext_end))) {
         return err_info;
     }
 
@@ -2025,7 +2027,7 @@ sr_shmmain_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod)
 
     /* add all dependencies for all modules in SHM */
     if ((err_info = sr_shmmain_add_modules_deps(&conn->main_shm, conn->ext_shm.addr, sr_mod->parent->child,
-                SR_FIRST_SHM_MOD(conn->main_shm.addr), &ext_end))) {
+            SR_FIRST_SHM_MOD(conn->main_shm.addr), &ext_end))) {
         return err_info;
     }
 
@@ -2098,7 +2100,7 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
         /* check versions  */
         if (main_shm->shm_ver != SR_SHM_VER) {
             sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Shared memory version mismatch (%u, expected %u),"
-                          " remove the SHM to fix.", main_shm->shm_ver, SR_SHM_VER);
+                    " remove the SHM to fix.", main_shm->shm_ver, SR_SHM_VER);
             goto error;
         }
     }

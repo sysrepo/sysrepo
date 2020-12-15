@@ -21,13 +21,13 @@
  */
 #include "common.h"
 
+#include <assert.h>
+#include <fcntl.h>
+#include <inttypes.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <assert.h>
-#include <unistd.h>
-#include <inttypes.h>
-#include <fcntl.h>
 #include <sys/mman.h>
+#include <unistd.h>
 
 #include <libyang/libyang.h>
 
@@ -90,11 +90,11 @@ sr_modinfo_next_mod(struct sr_mod_info_mod_s *last, struct sr_mod_info_s *mod_in
         assert(data);
 
         /* find the last edit node */
-        for (node = data; lyd_node_module(node) != last->ly_mod; node = node->next);
+        for (node = data; lyd_node_module(node) != last->ly_mod; node = node->next) {}
 
 next_mod:
         /* skip all edit nodes from this module */
-        for (; node && (lyd_node_module(node) == last->ly_mod); node = node->next);
+        for ( ; node && (lyd_node_module(node) == last->ly_mod); node = node->next) {}
     }
 
     if (node) {
@@ -178,7 +178,7 @@ sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *new
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_REQ) {
             /* merge relevant diff part */
-            if ((err_info = sr_diff_mod_merge(new_diff, mod_info->ds == SR_DS_OPERATIONAL ? mod_info->conn : NULL,
+            if ((err_info = sr_diff_mod_merge(new_diff, (mod_info->ds == SR_DS_OPERATIONAL) ? mod_info->conn : NULL,
                     mod->ly_mod, &mod_info->diff, NULL))) {
                 return err_info;
             }
@@ -469,7 +469,7 @@ sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const
         }
 
         /* go top-level */
-        for (parent_dup = last_parent; parent_dup->parent; parent_dup = parent_dup->parent);
+        for (parent_dup = last_parent; parent_dup->parent; parent_dup = parent_dup->parent) {}
 
         if (request_xpath) {
             /* check whether the parent would not be filtered out */
@@ -935,10 +935,10 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
         assert(!strcmp(mod_data->schema->name, "yang-library"));
 
         /* add supported datastores */
-        if (!lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:running']/schema", "complete", 0, 0)
-                || !lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:candidate']/schema", "complete", 0, 0)
-                || !lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:startup']/schema", "complete", 0, 0)
-                || !lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:operational']/schema", "complete", 0, 0)) {
+        if (!lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:running']/schema", "complete", 0, 0) ||
+                !lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:candidate']/schema", "complete", 0, 0) ||
+                !lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:startup']/schema", "complete", 0, 0) ||
+                !lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:operational']/schema", "complete", 0, 0)) {
             sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
             return err_info;
         }
@@ -1041,14 +1041,14 @@ sr_modinfo_module_srmon_module(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_m
             }
 
             /* priority */
-            sprintf(buf, "%"PRIu32, change_sub[i].priority);
+            sprintf(buf, "%" PRIu32, change_sub[i].priority);
             SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "priority", buf), ly_ctx, err_info);
 
             /* cid */
             if ((err_info = sr_modinfo_module_srmon_evpipe2cid(main_shm, ext_shm_addr, change_sub[i].evpipe_num, &cid))) {
                 return err_info;
             }
-            sprintf(buf, "%"PRIu32, cid);
+            sprintf(buf, "%" PRIu32, cid);
             SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "cid", buf), ly_ctx, err_info);
         }
     }
@@ -1067,7 +1067,7 @@ sr_modinfo_module_srmon_module(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_m
         if ((err_info = sr_modinfo_module_srmon_evpipe2cid(main_shm, ext_shm_addr, oper_sub[i].evpipe_num, &cid))) {
             return err_info;
         }
-        sprintf(buf, "%"PRIu32, cid);
+        sprintf(buf, "%" PRIu32, cid);
         SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "cid", buf), ly_ctx, err_info);
     }
 
@@ -1077,7 +1077,7 @@ sr_modinfo_module_srmon_module(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_m
         if ((err_info = sr_modinfo_module_srmon_evpipe2cid(main_shm, ext_shm_addr, notif_sub[i].evpipe_num, &cid))) {
             return err_info;
         }
-        sprintf(buf, "%"PRIu32, cid);
+        sprintf(buf, "%" PRIu32, cid);
         SR_CHECK_LY_RET(!lyd_new_leaf(sr_subs, NULL, "notification-sub", buf), ly_ctx, err_info);
     }
 
@@ -1124,14 +1124,14 @@ sr_modinfo_module_srmon_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_rpc_
                 ly_ctx, err_info);
 
         /* priority */
-        sprintf(buf, "%"PRIu32, rpc_sub[i].priority);
+        sprintf(buf, "%" PRIu32, rpc_sub[i].priority);
         SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "priority", buf), ly_ctx, err_info);
 
         /* cid */
         if ((err_info = sr_modinfo_module_srmon_evpipe2cid(main_shm, ext_shm_addr, rpc_sub[i].evpipe_num, &cid))) {
             return err_info;
         }
-        sprintf(buf, "%"PRIu32, cid);
+        sprintf(buf, "%" PRIu32, cid);
         SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "cid", buf), ly_ctx, err_info);
     }
 
@@ -1154,6 +1154,7 @@ sr_modinfo_module_srmon_connection(sr_main_shm_t *main_shm, char *ext_shm_addr, 
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_conn, *sr_modlock;
     sr_mod_t *shm_mod;
+
     sr_conn_shm_lock_t (*mod_locks)[SR_DS_COUNT];
     uint16_t i;
     sr_datastore_t ds;
@@ -1167,7 +1168,7 @@ sr_modinfo_module_srmon_connection(sr_main_shm_t *main_shm, char *ext_shm_addr, 
     SR_CHECK_LY_RET(!sr_conn, ly_ctx, err_info);
 
     /* cid */
-    sprintf(buf, "%"PRIu32, shm_conn->cid);
+    sprintf(buf, "%" PRIu32, shm_conn->cid);
     SR_CHECK_LY_RET(!lyd_new_leaf(sr_conn, NULL, "cid", buf), ly_ctx, err_info);
 
     /* main-lock */
@@ -1352,7 +1353,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             if (mod_info->ds == SR_DS_OPERATIONAL) {
                 /* keep only enabled module data */
                 if ((err_info = sr_module_oper_data_dup_enabled(mod_info->data, conn->ext_shm.addr, mod, opts,
-                            &mod_data))) {
+                        &mod_data))) {
                     return err_info;
                 }
                 lyd_free_withsiblings(sr_module_data_unlink(&mod_info->data, mod->ly_mod));
@@ -1379,7 +1380,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
 
             /* append any operational data provided by clients */
             if ((err_info = sr_module_oper_data_update(mod, sid, request_xpath, conn->ext_shm.addr,
-                        timeout_ms, opts, &mod_info->data, cb_error_info))) {
+                    timeout_ms, opts, &mod_info->data, cb_error_info))) {
                 return err_info;
             }
 
@@ -1480,10 +1481,10 @@ sr_modinfo_add_mod(const struct lys_module *ly_mod, int mod_type, int mod_req_de
         return NULL;
     }
 
-     if (prev_mod_type < MOD_INFO_REQ) {
-         /* add all inverse dependencies (modules dependening on this module) */
-         shm_inv_deps = (off_t *)(mod_info->conn->ext_shm.addr + shm_mod->inv_data_deps);
-         for (i = 0; i < shm_mod->inv_data_dep_count; ++i) {
+    if (prev_mod_type < MOD_INFO_REQ) {
+        /* add all inverse dependencies (modules dependening on this module) */
+        shm_inv_deps = (off_t *)(mod_info->conn->ext_shm.addr + shm_mod->inv_data_deps);
+        for (i = 0; i < shm_mod->inv_data_dep_count; ++i) {
             /* find ly module */
             ly_mod = ly_ctx_get_module(ly_mod->ctx, mod_info->conn->ext_shm.addr + shm_inv_deps[i], NULL, 1);
             SR_CHECK_INT_RET(!ly_mod, err_info);
@@ -1492,8 +1493,8 @@ sr_modinfo_add_mod(const struct lys_module *ly_mod, int mod_type, int mod_req_de
             if ((err_info = sr_modinfo_add_mod(ly_mod, MOD_INFO_INV_DEP, mod_req_deps, mod_info))) {
                 return err_info;
             }
-         }
-     }
+        }
+    }
 
     return NULL;
 }
@@ -1544,8 +1545,8 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, sr_sid_t *sid, c
     uint32_t i;
 
     /* we can use cache only if we are working with the running datastore (as the main datastore) */
-    if (!mod_info->data_cached && cache && (mod_info->conn->opts & SR_CONN_CACHE_RUNNING)
-            && (mod_info->ds == SR_DS_RUNNING)) {
+    if (!mod_info->data_cached && cache && (mod_info->conn->opts & SR_CONN_CACHE_RUNNING) &&
+            (mod_info->ds == SR_DS_RUNNING)) {
         /* CACHE READ LOCK */
         if ((err_info = sr_rwlock(&mod_info->conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__))) {
             return err_info;
@@ -1686,7 +1687,7 @@ sr_modinfo_ly_val_diff_merge(struct sr_mod_info_s *mod_info, struct lyd_difflist
             }
 
             /* get the module that actually owns the data (handle augments) */
-            for (snode = node->schema; lys_parent(snode); snode = lys_parent(snode));
+            for (snode = node->schema; lys_parent(snode); snode = lys_parent(snode)) {}
             for (j = 0; j < mod_info->mod_count; ++j) {
                 if (lys_node_module(snode) == mod_info->mods[j].ly_mod) {
                     mod_info->mods[j].state |= MOD_INFO_CHANGED;
@@ -1859,7 +1860,7 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int 
     assert(op->schema->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF));
 
     /* find top-level node */
-    for (top_op = op; top_op->parent; top_op = top_op->parent);
+    for (top_op = op; top_op->parent; top_op = top_op->parent) {}
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
@@ -1938,7 +1939,7 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
                 if (session->ev != SR_SUB_EV_UPDATE) {
                     break;
                 }
-                /* fallthrough */
+            /* fallthrough */
             case SR_SUB_EV_NONE:
                 edit = session->dt[session->ds].edit;
                 break;
@@ -1966,7 +1967,7 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
 
             /* apply any currently handled changes (diff) or additional performed ones (edit) to get
              * the session-specific data tree */
-            if ((err_info = sr_diff_mod_apply(diff, mod->ly_mod, session->ds == SR_DS_OPERATIONAL ? 1 : 0, &mod_info->data))) {
+            if ((err_info = sr_diff_mod_apply(diff, mod->ly_mod, (session->ds == SR_DS_OPERATIONAL) ? 1 : 0, &mod_info->data))) {
                 goto cleanup;
             }
             if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, NULL, NULL))) {

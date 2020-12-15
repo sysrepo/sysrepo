@@ -14,13 +14,13 @@
  */
 #define _QNX_SOURCE /* sleep */
 
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
 #include <unistd.h>
 
-#include <sysrepo.h>
 #include <libyang/libyang.h>
+#include <sysrepo.h>
 
 /* no synchronization is used in this example even though most of these
  * variables are shared between 2 threads, but the chances of encountering
@@ -46,6 +46,7 @@ oven_thread(void *arg)
 {
     int rc;
     unsigned int desired_temperature;
+
     (void)arg;
 
     while (oven_tid) {
@@ -72,7 +73,7 @@ oven_thread(void *arg)
             }
         }
 
-        if (insert_food_on_ready && oven_temperature >= config_temperature) {
+        if (insert_food_on_ready && (oven_temperature >= config_temperature)) {
             /* food is inserted once the oven is ready */
             insert_food_on_ready = 0;
             food_inside = 1;
@@ -90,6 +91,7 @@ oven_config_change_cb(sr_session_ctx_t *session, const char *module_name, const 
     int rc;
     sr_val_t *val;
     pthread_t tid;
+
     (void)module_name;
     (void)xpath;
     (void)event;
@@ -110,13 +112,13 @@ oven_config_change_cb(sr_session_ctx_t *session, const char *module_name, const 
         goto sr_error;
     }
 
-    if (val->data.bool_val && oven_tid == 0) {
+    if (val->data.bool_val && (oven_tid == 0)) {
         /* the oven should be turned on and is not (create the oven thread) */
         rc = pthread_create((pthread_t *)&oven_tid, NULL, oven_thread, NULL);
         if (rc != 0) {
             goto sys_error;
         }
-    } else if (!val->data.bool_val && oven_tid != 0) {
+    } else if (!val->data.bool_val && (oven_tid != 0)) {
         /* the oven should be turned off but is on (stop the oven thread) */
         tid = oven_tid;
         oven_tid = 0;
@@ -147,6 +149,7 @@ oven_state_cb(sr_session_ctx_t *session, const char *module_name, const char *pa
         uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     char str[32];
+
     (void)session;
     (void)module_name;
     (void)path;
@@ -223,6 +226,7 @@ int
 sr_plugin_init_cb(sr_session_ctx_t *session, void **private_data)
 {
     int rc;
+
     (void)private_data;
 
     /* remember the session of our plugin */
