@@ -116,7 +116,7 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 #define SR_SHM_SIZE(size) ((size) + ((~(size) + 1) & (SR_SHM_MEM_ALIGN - 1)))
 
 /* macro for getting lydmods lock from a connection */
-#define SR_SHM_LYDMODS_LOCK(conn) ((sr_main_shm_t *)(conn)->main_shm.addr)->lydmods_lock
+#define SR_CONN_LYDMODS_LOCK(conn) &((sr_main_shm_t *)(conn)->main_shm.addr)->lydmods_lock
 
 /** name of sysrepo YANG module */
 #define SR_YANG_MOD "sysrepo"
@@ -599,6 +599,7 @@ int sr_subs_session_count(sr_session_ctx_t *sess, sr_subscription_ctx_t *subs);
 
 /**
  * @brief Delete all subscriptions in \p subs of session \p sess.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
  * @param[in] sess Subscription session.
  * @param[in] subs Session subscription.
@@ -608,6 +609,7 @@ sr_error_info_t *sr_subs_session_del(sr_session_ctx_t *sess, sr_subscription_ctx
 
 /**
  * @brief Delete all subscriptions in \p subs of all the sessions.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
  * @param[in,out] subs Subscription structure.
  * @return err_info, NULL on success.

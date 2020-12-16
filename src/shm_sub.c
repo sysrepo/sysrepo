@@ -3259,7 +3259,7 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_su
             SR_CHECK_INT_RET(!shm_mod, err_info);
 
             /* remove the subscription from main SHM */
-            if (sr_shmmod_notif_subscription_del(subs->conn->ext_shm.addr, shm_mod, notif_sub->sub_id, 0, NULL)) {
+            if (sr_shmmod_notif_subscription_del(subs->conn, shm_mod, notif_sub->sub_id, 0, NULL)) {
                 /* continue */
                 SR_ERRINFO_INT(&err_info);
             }
@@ -3310,8 +3310,7 @@ sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subsc
             SR_CHECK_INT_RET(!shm_mod, err_info);
 
             /* now we can add notification subscription into main SHM because it will process realtime notifications */
-            if ((err_info = sr_shmmod_notif_subscription_add(&subs->conn->ext_shm, shm_mod, notif_sub->sub_id,
-                    subs->evpipe_num))) {
+            if ((err_info = sr_shmmod_notif_subscription_add(subs->conn, shm_mod, notif_sub->sub_id, subs->evpipe_num))) {
                 return err_info;
             }
 

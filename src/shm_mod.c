@@ -677,7 +677,7 @@ sr_error_info_t *
 sr_shmmod_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath, sr_datastore_t ds,
         uint32_t priority, int sub_opts, uint32_t evpipe_num)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *tmp_err;
     off_t xpath_off;
     sr_mod_change_sub_t *shm_sub;
     uint16_t i;
@@ -695,10 +695,15 @@ sr_shmmod_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const 
         }
     }
 
-    /* allocate new subscription and its xpath, if any */
-    if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_mod->change_sub[ds].subs, &shm_mod->change_sub[ds].sub_count, 0,
-            sizeof *shm_sub, -1, (void **)&shm_sub, xpath ? sr_strshmlen(xpath) : 0, &xpath_off))) {
+    /* SHM LOCK UPGRADE */
+    if ((err_info = sr_shmmain_relock(conn, SR_LOCK_WRITE, __func__))) {
         return err_info;
+    }
+
+    /* allocate new subscription and its xpath, if any */
+    if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_mod->change_sub[ds].subs, &shm_mod->change_sub[ds].sub_count,
+            0, sizeof *shm_sub, -1, (void **)&shm_sub, xpath ? sr_strshmlen(xpath) : 0, &xpath_off))) {
+        goto error_unlock;
     }
 
     /* fill new subscription */
@@ -712,6 +717,11 @@ sr_shmmod_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const 
     shm_sub->opts = sub_opts;
     shm_sub->evpipe_num = evpipe_num;
 
+    /* SHM LOCK DOWNGRADE */
+    if ((err_info = sr_shmmain_relock(conn, SR_LOCK_READ_UPGR, __func__))) {
+        return err_info;
+    }
+
     if (ds == SR_DS_RUNNING) {
         /* technically, operational data may have changed */
         if ((err_info = sr_module_update_oper_diff(conn, conn->ext_shm.addr + shm_mod->name))) {
@@ -720,12 +730,20 @@ sr_shmmod_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const 
     }
 
     return NULL;
+
+error_unlock:
+    /* SHM LOCK DOWNGRADE */
+    if ((tmp_err = sr_shmmain_relock(conn, SR_LOCK_READ_UPGR, __func__))) {
+        sr_errinfo_merge(&err_info, tmp_err);
+    }
+    return err_info;
 }
 
 int
-sr_shmmod_change_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath, sr_datastore_t ds,
+sr_shmmod_change_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath, sr_datastore_t ds,
         uint32_t priority, int sub_opts, uint32_t evpipe_num, int only_evpipe, int *last_removed)
 {
+    sr_error_info_t *lock_err = NULL;
     sr_mod_change_sub_t *shm_sub;
     uint16_t i;
 
@@ -734,14 +752,14 @@ sr_shmmod_change_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const c
     }
 
     /* find the subscription(s) */
-    shm_sub = (sr_mod_change_sub_t *)(ext_shm_addr + shm_mod->change_sub[ds].subs);
+    shm_sub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs);
     for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
         if (only_evpipe) {
             if (shm_sub[i].evpipe_num == evpipe_num) {
                 break;
             }
-        } else if ((!xpath && !shm_sub[i].xpath) ||
-                (xpath && shm_sub[i].xpath && !strcmp(ext_shm_addr + shm_sub[i].xpath, xpath))) {
+        } else if ((!xpath && !shm_sub[i].xpath)
+                    || (xpath && shm_sub[i].xpath && !strcmp(conn->ext_shm.addr + shm_sub[i].xpath, xpath))) {
             if ((shm_sub[i].priority == priority) && (shm_sub[i].opts == sub_opts) && (shm_sub[i].evpipe_num == evpipe_num)) {
                 break;
             }
@@ -752,9 +770,18 @@ sr_shmmod_change_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const c
         return 1;
     }
 
+    /* SHM LOCK UPGRADE */
+    lock_err = sr_shmmain_relock(conn, SR_LOCK_WRITE, __func__);
+
     /* remove the subscription and its xpath, if any */
-    sr_shmrealloc_del(ext_shm_addr, &shm_mod->change_sub[ds].subs, &shm_mod->change_sub[ds].sub_count, sizeof *shm_sub,
-            i, shm_sub[i].xpath ? sr_strshmlen(ext_shm_addr + shm_sub[i].xpath) : 0);
+    sr_shmrealloc_del(conn->ext_shm.addr, &shm_mod->change_sub[ds].subs, &shm_mod->change_sub[ds].sub_count, sizeof *shm_sub,
+            i, shm_sub[i].xpath ? sr_strshmlen(conn->ext_shm.addr + shm_sub[i].xpath) : 0);
+
+    /* SHM LOCK DOWNGRADE */
+    if (!lock_err) {
+        lock_err = sr_shmmain_relock(conn, SR_LOCK_READ_UPGR, __func__);
+    }
+    sr_errinfo_free(&lock_err);
 
     if (!shm_mod->change_sub[ds].subs && last_removed) {
         *last_removed = 1;
@@ -776,8 +803,8 @@ sr_shmmod_change_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const
 
     do {
         /* remove the subscription from the main SHM */
-        if (sr_shmmod_change_subscription_del(conn->ext_shm.addr, shm_mod, xpath, ds, priority, sub_opts, evpipe_num,
-                all_evpipe, &last_removed)) {
+        if (sr_shmmod_change_subscription_del(conn, shm_mod, xpath, ds, priority, sub_opts, evpipe_num, all_evpipe,
+                &last_removed)) {
             if (!all_evpipe) {
                 /* error in this case */
                 SR_ERRINFO_INT(&err_info);
@@ -808,10 +835,10 @@ sr_shmmod_change_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const
 }
 
 sr_error_info_t *
-sr_shmmod_oper_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char *xpath, sr_mod_oper_sub_type_t sub_type,
+sr_shmmod_oper_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath, sr_mod_oper_sub_type_t sub_type,
         int sub_opts, uint32_t evpipe_num)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *tmp_err;
     off_t xpath_off;
     sr_mod_oper_sub_t *shm_sub;
     size_t new_len, cur_len;
@@ -821,30 +848,36 @@ sr_shmmod_oper_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char
 
     /* check that this exact subscription does not exist yet while finding its position */
     new_len = sr_xpath_len_no_predicates(xpath);
-    shm_sub = (sr_mod_oper_sub_t *)(shm_ext->addr + shm_mod->oper_subs);
+    shm_sub = (sr_mod_oper_sub_t *)(conn->ext_shm.addr + shm_mod->oper_subs);
     for (i = 0; i < shm_mod->oper_sub_count; ++i) {
-        cur_len = sr_xpath_len_no_predicates(shm_ext->addr + shm_sub[i].xpath);
+        cur_len = sr_xpath_len_no_predicates(conn->ext_shm.addr + shm_sub[i].xpath);
         if (cur_len > new_len) {
             /* we can insert it at i-th position */
             break;
         }
 
-        if ((cur_len == new_len) && !strcmp(shm_ext->addr + shm_sub[i].xpath, xpath)) {
+        if ((cur_len == new_len) && !strcmp(conn->ext_shm.addr + shm_sub[i].xpath, xpath)) {
             sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL,
-                    "Data provider subscription for \"%s\" on \"%s\" already exists.", shm_ext->addr + shm_mod->name, xpath);
+                    "Data provider subscription for \"%s\" on \"%s\" already exists.",
+                    conn->ext_shm.addr + shm_mod->name, xpath);
             return err_info;
         }
     }
 
-    /* allocate new subscription and its xpath, if any */
-    if ((err_info = sr_shmrealloc_add(shm_ext, &shm_mod->oper_subs, &shm_mod->oper_sub_count, 0, sizeof *shm_sub,
-            i, (void **)&shm_sub, xpath ? sr_strshmlen(xpath) : 0, &xpath_off))) {
+    /* SHM LOCK UPGRADE */
+    if ((err_info = sr_shmmain_relock(conn, SR_LOCK_WRITE, __func__))) {
         return err_info;
+    }
+
+    /* allocate new subscription and its xpath, if any */
+    if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_mod->oper_subs, &shm_mod->oper_sub_count, 0, sizeof *shm_sub,
+            i, (void **)&shm_sub, xpath ? sr_strshmlen(xpath) : 0, &xpath_off))) {
+        goto cleanup;
     }
 
     /* fill new subscription */
     if (xpath) {
-        strcpy(shm_ext->addr + xpath_off, xpath);
+        strcpy(conn->ext_shm.addr + xpath_off, xpath);
         shm_sub->xpath = xpath_off;
     } else {
         shm_sub->xpath = 0;
@@ -853,24 +886,30 @@ sr_shmmod_oper_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char
     shm_sub->opts = sub_opts;
     shm_sub->evpipe_num = evpipe_num;
 
-    return NULL;
+cleanup:
+    /* SHM LOCK DOWNGRADE */
+    if ((tmp_err = sr_shmmain_relock(conn, SR_LOCK_READ_UPGR, __func__))) {
+        sr_errinfo_merge(&err_info, tmp_err);
+    }
+    return err_info;
 }
 
 int
-sr_shmmod_oper_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath, uint32_t evpipe_num,
+sr_shmmod_oper_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath, uint32_t evpipe_num,
         int only_evpipe, const char **xpath_p)
 {
+    sr_error_info_t *lock_err = NULL;
     sr_mod_oper_sub_t *shm_sub;
     uint16_t i;
 
     /* find the subscription */
-    shm_sub = (sr_mod_oper_sub_t *)(ext_shm_addr + shm_mod->oper_subs);
+    shm_sub = (sr_mod_oper_sub_t *)(conn->ext_shm.addr + shm_mod->oper_subs);
     for (i = 0; i < shm_mod->oper_sub_count; ++i) {
         if (only_evpipe) {
             if (shm_sub[i].evpipe_num == evpipe_num) {
                 break;
             }
-        } else if (shm_sub[i].xpath && !strcmp(ext_shm_addr + shm_sub[i].xpath, xpath)) {
+        } else if (shm_sub[i].xpath && !strcmp(conn->ext_shm.addr + shm_sub[i].xpath, xpath)) {
             break;
         }
     }
@@ -880,29 +919,38 @@ sr_shmmod_oper_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const cha
     }
 
     if (xpath_p) {
-        *xpath_p = ext_shm_addr + shm_sub[i].xpath;
+        *xpath_p = conn->ext_shm.addr + shm_sub[i].xpath;
     }
 
+    /* SHM LOCK UPGRADE */
+    lock_err = sr_shmmain_relock(conn, SR_LOCK_WRITE, __func__);
+
     /* delete the subscription */
-    sr_shmrealloc_del(ext_shm_addr, &shm_mod->oper_subs, &shm_mod->oper_sub_count, sizeof *shm_sub, i,
-            shm_sub[i].xpath ? sr_strshmlen(ext_shm_addr + shm_sub[i].xpath) : 0);
+    sr_shmrealloc_del(conn->ext_shm.addr, &shm_mod->oper_subs, &shm_mod->oper_sub_count, sizeof *shm_sub, i,
+            shm_sub[i].xpath ? sr_strshmlen(conn->ext_shm.addr + shm_sub[i].xpath) : 0);
+
+    /* SHM LOCK DOWNGRADE */
+    if (!lock_err) {
+        lock_err = sr_shmmain_relock(conn, SR_LOCK_READ_UPGR, __func__);
+    }
+    sr_errinfo_free(&lock_err);
 
     return 0;
 }
 
 sr_error_info_t *
-sr_shmmod_oper_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath, uint32_t evpipe_num,
+sr_shmmod_oper_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath, uint32_t evpipe_num,
         int all_evpipe)
 {
     sr_error_info_t *err_info = NULL;
     const char *mod_name;
     char *path;
 
-    mod_name = ext_shm_addr + shm_mod->name;
+    mod_name = conn->ext_shm.addr + shm_mod->name;
 
     do {
         /* remove the subscriptions from the main SHM */
-        if (sr_shmmod_oper_subscription_del(ext_shm_addr, shm_mod, xpath, evpipe_num, all_evpipe, &xpath)) {
+        if (sr_shmmod_oper_subscription_del(conn, shm_mod, xpath, evpipe_num, all_evpipe, &xpath)) {
             if (!all_evpipe) {
                 SR_ERRINFO_INT(&err_info);
             }
@@ -923,28 +971,39 @@ sr_shmmod_oper_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, const ch
 }
 
 sr_error_info_t *
-sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num)
+sr_shmmod_notif_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *tmp_err;
     sr_mod_notif_sub_t *shm_sub;
 
-    /* add new item */
-    if ((err_info = sr_shmrealloc_add(shm_ext, &shm_mod->notif_subs, &shm_mod->notif_sub_count, 0, sizeof *shm_sub, -1,
-            (void **)&shm_sub, 0, NULL))) {
+    /* SHM LOCK UPGRADE */
+    if ((err_info = sr_shmmain_relock(conn, SR_LOCK_WRITE, __func__))) {
         return err_info;
+    }
+
+    /* add new item */
+    if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_mod->notif_subs, &shm_mod->notif_sub_count, 0,
+            sizeof *shm_sub, -1, (void **)&shm_sub, 0, NULL))) {
+        goto cleanup;
     }
 
     /* fill new subscription */
     shm_sub->sub_id = sub_id;
     shm_sub->evpipe_num = evpipe_num;
 
-    return NULL;
+cleanup:
+    /* SHM LOCK DOWNGRADE */
+    if ((tmp_err = sr_shmmain_relock(conn, SR_LOCK_READ_UPGR, __func__))) {
+        sr_errinfo_merge(&err_info, tmp_err);
+    }
+    return err_info;
 }
 
 int
-sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num,
+sr_shmmod_notif_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num,
         int *last_removed)
 {
+    sr_error_info_t *lock_err = NULL;
     sr_mod_notif_sub_t *shm_sub;
     uint16_t i;
 
@@ -955,7 +1014,7 @@ sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t
     }
 
     /* find the subscription */
-    shm_sub = (sr_mod_notif_sub_t *)(ext_shm_addr + shm_mod->notif_subs);
+    shm_sub = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
     for (i = 0; i < shm_mod->notif_sub_count; ++i) {
         if (sub_id && (shm_sub[i].sub_id == sub_id)) {
             break;
@@ -968,8 +1027,17 @@ sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t
         return 1;
     }
 
+    /* SHM LOCK UPGRADE */
+    lock_err = sr_shmmain_relock(conn, SR_LOCK_WRITE, __func__);
+
     /* remove the subscription */
-    sr_shmrealloc_del(ext_shm_addr, &shm_mod->notif_subs, &shm_mod->notif_sub_count, sizeof *shm_sub, i, 0);
+    sr_shmrealloc_del(conn->ext_shm.addr, &shm_mod->notif_subs, &shm_mod->notif_sub_count, sizeof *shm_sub, i, 0);
+
+    /* SHM LOCK DOWNGRADE */
+    if (!lock_err) {
+        lock_err = sr_shmmain_relock(conn, SR_LOCK_READ_UPGR, __func__);
+    }
+    sr_errinfo_free(&lock_err);
 
     if (!shm_mod->notif_subs && last_removed) {
         *last_removed = 1;
@@ -979,7 +1047,7 @@ sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t
 }
 
 sr_error_info_t *
-sr_shmmod_notif_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num)
+sr_shmmod_notif_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num)
 {
     sr_error_info_t *err_info = NULL;
     const char *mod_name;
@@ -988,11 +1056,11 @@ sr_shmmod_notif_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_
 
     assert((sub_id || evpipe_num) && (!sub_id || !evpipe_num));
 
-    mod_name = ext_shm_addr + shm_mod->name;
+    mod_name = conn->ext_shm.addr + shm_mod->name;
 
     do {
         /* remove the subscriptions from the main SHM */
-        if (sr_shmmod_notif_subscription_del(ext_shm_addr, shm_mod, sub_id, evpipe_num, &last_removed)) {
+        if (sr_shmmod_notif_subscription_del(conn, shm_mod, sub_id, evpipe_num, &last_removed)) {
             if (sub_id) {
                 SR_ERRINFO_INT(&err_info);
             }

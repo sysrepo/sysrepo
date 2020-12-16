@@ -791,15 +791,15 @@ change_subs_del:
         SR_CHECK_INT_RET(!shm_mod, err_info);
         for (j = 0; j < change_subs->sub_count; ++j) {
             if (change_subs->subs[j].sess == sess) {
-                /* dismiss any events already generated for this sub */
-                if ((err_info = sr_shmsub_change_listen_dismiss_event((sr_multi_sub_shm_t *)change_subs->sub_shm.addr,
-                        &change_subs->subs[j]))) {
-                    return err_info;
-                }
-
                 /* properly remove the subscription from ext SHM */
                 if ((err_info = sr_shmmod_change_subscription_stop(sess->conn, shm_mod, change_subs->subs[j].xpath,
                         change_subs->ds, change_subs->subs[j].priority, change_subs->subs[j].opts, subs->evpipe_num, 0))) {
+                    return err_info;
+                }
+
+                /* dismiss any events already generated for this sub */
+                if ((err_info = sr_shmsub_change_listen_dismiss_event((sr_multi_sub_shm_t *)change_subs->sub_shm.addr,
+                        &change_subs->subs[j]))) {
                     return err_info;
                 }
 
@@ -823,15 +823,15 @@ oper_subs_del:
         SR_CHECK_INT_RET(!shm_mod, err_info);
         for (j = 0; j < oper_sub->sub_count; ++j) {
             if (oper_sub->subs[j].sess == sess) {
-                /* dismiss any events already generated for this sub */
-                if ((err_info = sr_shmsub_oper_listen_dismiss_event((sr_sub_shm_t *)oper_sub->subs[j].sub_shm.addr,
-                        &oper_sub->subs[j]))) {
+                /* properly remove the subscriptions from the main SHM */
+                if ((err_info = sr_shmmod_oper_subscription_stop(sess->conn, shm_mod, oper_sub->subs[j].xpath,
+                        subs->evpipe_num, 0))) {
                     return err_info;
                 }
 
-                /* properly remove the subscriptions from the main SHM */
-                if ((err_info = sr_shmmod_oper_subscription_stop(ext_shm->addr, shm_mod, oper_sub->subs[j].xpath,
-                        subs->evpipe_num, 0))) {
+                /* dismiss any events already generated for this sub */
+                if ((err_info = sr_shmsub_oper_listen_dismiss_event((sr_sub_shm_t *)oper_sub->subs[j].sub_shm.addr,
+                        &oper_sub->subs[j]))) {
                     return err_info;
                 }
 
@@ -854,14 +854,14 @@ notif_subs_del:
         SR_CHECK_INT_RET(!shm_mod, err_info);
         for (j = 0; j < notif_sub->sub_count; ++j) {
             if (notif_sub->subs[j].sess == sess) {
-                /* dismiss any events already generated for this sub */
-                if ((err_info = sr_shmsub_notif_listen_dismiss_event((sr_multi_sub_shm_t *)notif_sub->sub_shm.addr,
-                        notif_sub->request_id))) {
+                /* properly remove the subscriptions from the main SHM */
+                if ((err_info = sr_shmmod_notif_subscription_stop(sess->conn, shm_mod, notif_sub->subs[j].sub_id, 0))) {
                     return err_info;
                 }
 
-                /* properly remove the subscriptions from the main SHM */
-                if ((err_info = sr_shmmod_notif_subscription_stop(ext_shm->addr, shm_mod, notif_sub->subs[j].sub_id, 0))) {
+                /* dismiss any events already generated for this sub */
+                if ((err_info = sr_shmsub_notif_listen_dismiss_event((sr_multi_sub_shm_t *)notif_sub->sub_shm.addr,
+                        notif_sub->request_id))) {
                     return err_info;
                 }
 
@@ -884,15 +884,15 @@ rpc_subs_del:
         SR_CHECK_INT_RET(!shm_rpc, err_info);
         for (j = 0; j < rpc_sub->sub_count; ++j) {
             if (rpc_sub->subs[j].sess == sess) {
-                /* dismiss any events already generated for this sub */
-                if ((err_info = sr_shmsub_rpc_listen_dismiss_event((sr_multi_sub_shm_t *)rpc_sub->sub_shm.addr,
-                        &rpc_sub->subs[j], sess->conn->ly_ctx))) {
-                    return err_info;
-                }
-
                 /* properly remove the subscription from the main SHM */
                 if ((err_info = sr_shmmain_rpc_subscription_stop(sess->conn, shm_rpc, rpc_sub->subs[j].xpath,
                         rpc_sub->subs[j].priority, subs->evpipe_num, 0, NULL))) {
+                    return err_info;
+                }
+
+                /* dismiss any events already generated for this sub */
+                if ((err_info = sr_shmsub_rpc_listen_dismiss_event((sr_multi_sub_shm_t *)rpc_sub->sub_shm.addr,
+                        &rpc_sub->subs[j], sess->conn->ly_ctx))) {
                     return err_info;
                 }
 
@@ -2524,12 +2524,9 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char
             goto cleanup_unlock;
         }
 
-        /* remove our reader */
-        --rwlock->readers;
-
-        /* wait until there are no readers */
+        /* wait until we are the only reader */
         ret = 0;
-        while (!ret && rwlock->readers) {
+        while (!ret && (rwlock->readers != 1)) {
             /* COND WAIT */
             ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
         }
@@ -2538,8 +2535,17 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char
             goto cleanup_unlock;
         }
 
+        /* additional consistency check */
+        if (!rwlock->upgr) {
+            SR_ERRINFO_INT(&err_info);
+            goto cleanup_unlock;
+        }
+
         /* remove upgradeable flag since we now own the mutex */
         rwlock->upgr = 0;
+
+        /* remove our reader */
+        --rwlock->readers;
 
         /* simply keep the lock */
         return NULL;
@@ -2614,7 +2620,7 @@ sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func)
     }
 
     /* write-unlock, last read-unlock, or upgradeable read-lock (there may be another upgr-read-lock waiting) */
-    if (!rwlock->readers || (mode == SR_LOCK_READ_UPGR)) {
+    if (!rwlock->readers || ((rwlock->readers == 1) && rwlock->upgr) || (mode == SR_LOCK_READ_UPGR)) {
         /* broadcast on condition */
         pthread_cond_broadcast(&rwlock->cond);
     }

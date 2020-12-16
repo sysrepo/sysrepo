@@ -377,8 +377,9 @@ cleanup:
 API int
 sr_disconnect(sr_conn_ctx_t *conn)
 {
-    sr_error_info_t *err_info = NULL, *lock_err = NULL, *tmp_err;
+    sr_error_info_t *err_info = NULL, *tmp_err;
     uint32_t i;
+    sr_lock_mode_t real_mode = SR_LOCK_NONE;
 
     if (!conn) {
         return sr_api_ret(NULL, NULL);
@@ -391,8 +392,11 @@ sr_disconnect(sr_conn_ctx_t *conn)
     }
 
     /* SHM LOCK (maybe unsubscribing, always writing into connections) */
-    lock_err = sr_shmmain_lock_remap(conn, SR_LOCK_WRITE, 1, __func__);
-    sr_errinfo_merge(&err_info, lock_err);
+    if ((tmp_err = sr_shmmain_lock_remap(conn, SR_LOCK_READ_UPGR, 1, __func__))) {
+        sr_errinfo_merge(&err_info, tmp_err);
+    } else {
+        real_mode = SR_LOCK_READ_UPGR;
+    }
 
     /* stop all subscriptions */
     for (i = 0; i < conn->session_count; ++i) {
@@ -408,16 +412,25 @@ sr_disconnect(sr_conn_ctx_t *conn)
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
-    /* free any stored operational data (this connection must still be in the recovery state) */
+    /* free any stored operational data (this connection must still be in the conection (recovery) state) */
     tmp_err = sr_shmmod_oper_stored_del_conn(conn, conn->sr_cid);
     sr_errinfo_merge(&err_info, tmp_err);
 
-    /* remove from state */
-    sr_shmmain_conn_del((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, conn->sr_cid);
+    if (real_mode == SR_LOCK_READ_UPGR) {
+        /* SHM LOCK UPGRADE */
+        if ((tmp_err = sr_shmmain_relock(conn, SR_LOCK_WRITE, __func__))) {
+            sr_errinfo_merge(&err_info, tmp_err);
+        } else {
+            real_mode = SR_LOCK_WRITE;
+        }
+    }
 
-    if (!lock_err) {
+    /* remove from state */
+    sr_shmmain_conn_del(conn, conn->sr_cid);
+
+    if (real_mode) {
         /* SHM UNLOCK */
-        sr_shmmain_unlock(conn, SR_LOCK_WRITE, 1, __func__);
+        sr_shmmain_unlock(conn, real_mode, 1, __func__);
     }
 
     /* free attributes */
@@ -674,7 +687,7 @@ sr_session_stop(sr_session_ctx_t *session)
     while (session->subscription_count) {
         if (!wr_lock) {
             /* SHM LOCK (writing into subscriptions) */
-            lock_err = sr_shmmain_lock_remap(conn, SR_LOCK_WRITE, 1, __func__);
+            lock_err = sr_shmmain_lock_remap(conn, SR_LOCK_READ_UPGR, 1, __func__);
             sr_errinfo_merge(&err_info, lock_err);
 
             wr_lock = 1;
@@ -686,7 +699,7 @@ sr_session_stop(sr_session_ctx_t *session)
 
     /* SHM UNLOCK */
     if (wr_lock && !lock_err) {
-        sr_shmmain_unlock(conn, SR_LOCK_WRITE, 1, __func__);
+        sr_shmmain_unlock(conn, SR_LOCK_READ_UPGR, 1, __func__);
     }
 
     /* no lock needed, we are just reading main SHM */
@@ -1024,7 +1037,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
     }
 
     /* LYDMODS LOCK (not accessing ext SHM) */
-    if ((err_info = sr_mlock(&SR_SHM_LYDMODS_LOCK(conn), SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(SR_CONN_LYDMODS_LOCK(conn), SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
         goto cleanup;
     }
 
@@ -1100,7 +1113,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
 
 cleanup_unlock:
     /* LYDMODS UNLOCK */
-    sr_munlock(&SR_SHM_LYDMODS_LOCK(conn));
+    sr_munlock(SR_CONN_LYDMODS_LOCK(conn));
 
 cleanup:
     ly_ctx_destroy(tmp_ly_ctx, NULL);
@@ -1125,7 +1138,7 @@ sr_install_module_data(sr_conn_ctx_t *conn, const char *module_name, const char 
     }
 
     /* LYDMODS LOCK (not accessing ext SHM) */
-    if ((err_info = sr_mlock(&SR_SHM_LYDMODS_LOCK(conn), SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(SR_CONN_LYDMODS_LOCK(conn), SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
         goto cleanup;
     }
 
@@ -1173,7 +1186,7 @@ sr_install_module_data(sr_conn_ctx_t *conn, const char *module_name, const char 
 
 cleanup_unlock:
     /* LYDMODS UNLOCK */
-    sr_munlock(&SR_SHM_LYDMODS_LOCK(conn));
+    sr_munlock(SR_CONN_LYDMODS_LOCK(conn));
 
 cleanup:
     lyd_free_withsiblings(sr_mods);
@@ -1191,7 +1204,7 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name)
     SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
 
     /* LYDMODS LOCK (not accessing ext SHM) */
-    if ((err_info = sr_mlock(&SR_SHM_LYDMODS_LOCK(conn), SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(SR_CONN_LYDMODS_LOCK(conn), SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -1225,7 +1238,7 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name)
 
 cleanup_unlock:
     /* LYDMODS UNLOCK */
-    sr_munlock(&SR_SHM_LYDMODS_LOCK(conn));
+    sr_munlock(SR_CONN_LYDMODS_LOCK(conn));
     return sr_api_ret(NULL, err_info);
 }
 
@@ -1246,7 +1259,7 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
     }
 
     /* LYDMODS LOCK (not accessing ext SHM) */
-    if ((err_info = sr_mlock(&SR_SHM_LYDMODS_LOCK(conn), SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(SR_CONN_LYDMODS_LOCK(conn), SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
         goto cleanup;
     }
 
@@ -1299,7 +1312,7 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
 
 cleanup_unlock:
     /* LYDMODS UNLOCK */
-    sr_munlock(&SR_SHM_LYDMODS_LOCK(conn));
+    sr_munlock(SR_CONN_LYDMODS_LOCK(conn));
 
 cleanup:
     ly_ctx_destroy(tmp_ly_ctx, NULL);
@@ -1317,7 +1330,7 @@ sr_cancel_update_module(sr_conn_ctx_t *conn, const char *module_name)
     SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
 
     /* LYDMODS LOCK (not accessing ext SHM) */
-    if ((err_info = sr_mlock(&SR_SHM_LYDMODS_LOCK(conn), SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(SR_CONN_LYDMODS_LOCK(conn), SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -1342,7 +1355,7 @@ sr_cancel_update_module(sr_conn_ctx_t *conn, const char *module_name)
 
 cleanup_unlock:
     /* LYDMODS UNLOCK */
-    sr_munlock(&SR_SHM_LYDMODS_LOCK(conn));
+    sr_munlock(SR_CONN_LYDMODS_LOCK(conn));
 
     free(path);
     return sr_api_ret(NULL, err_info);
@@ -1357,7 +1370,7 @@ sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int r
     SR_CHECK_ARG_APIRET(!conn, NULL, err_info);
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&SR_SHM_LYDMODS_LOCK(conn), SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(SR_CONN_LYDMODS_LOCK(conn), SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -1371,7 +1384,7 @@ sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int r
     }
 
     /* SHM LOCK (writing into replay support, but that cannot remap ext SHM) */
-    if ((err_info = sr_shmmain_lock_remap(conn, SR_LOCK_WRITE, 0, __func__))) {
+    if ((err_info = sr_shmmain_lock_remap(conn, SR_LOCK_READ_UPGR, 0, __func__))) {
         goto cleanup_unlock;
     }
 
@@ -1379,7 +1392,7 @@ sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int r
     if ((err_info = sr_lydmods_update_replay_support(conn->ly_ctx, module_name, replay_support))) {
         goto cleanup_shm_unlock;
     }
-    if ((err_info = sr_shmmain_update_replay_support(&conn->main_shm, conn->ext_shm.addr, module_name, replay_support))) {
+    if ((err_info = sr_shmmain_update_replay_support(conn, module_name, replay_support))) {
         goto cleanup_shm_unlock;
     }
 
@@ -1387,11 +1400,11 @@ sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int r
 
 cleanup_shm_unlock:
     /* SHM UNLOCK */
-    sr_shmmain_unlock(conn, SR_LOCK_WRITE, 0, __func__);
+    sr_shmmain_unlock(conn, SR_LOCK_READ_UPGR, 0, __func__);
 
 cleanup_unlock:
     /* LYDMODS UNLOCK */
-    sr_munlock(&SR_SHM_LYDMODS_LOCK(conn));
+    sr_munlock(SR_CONN_LYDMODS_LOCK(conn));
     return sr_api_ret(NULL, err_info);
 }
 
@@ -1406,7 +1419,7 @@ sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *o
     SR_CHECK_ARG_APIRET(!conn || !module_name || (!owner && !group && ((int)perm == -1)), NULL, err_info);
 
     /* LYDMODS LOCK (we just need this function not to be called simultaneously, use lyd_mods lock for this) */
-    if ((err_info = sr_mlock(&SR_SHM_LYDMODS_LOCK(conn), SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(SR_CONN_LYDMODS_LOCK(conn), SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -1476,7 +1489,7 @@ sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *o
 
 cleanup_unlock:
     /* LYDMODS UNLOCK */
-    sr_munlock(&SR_SHM_LYDMODS_LOCK(conn));
+    sr_munlock(SR_CONN_LYDMODS_LOCK(conn));
     return sr_api_ret(NULL, err_info);
 }
 
@@ -1520,7 +1533,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     int ret;
 
     /* LYDMODS LOCK (not accessing ext SHM) */
-    if ((err_info = sr_mlock(&SR_SHM_LYDMODS_LOCK(conn), SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(SR_CONN_LYDMODS_LOCK(conn), SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
         return err_info;
     }
 
@@ -1553,7 +1566,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
 
 cleanup:
     /* LYDMODS UNLOCK */
-    sr_munlock(&SR_SHM_LYDMODS_LOCK(conn));
+    sr_munlock(SR_CONN_LYDMODS_LOCK(conn));
     return err_info;
 }
 
@@ -1589,14 +1602,14 @@ sr_get_module_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data)
     SR_CHECK_ARG_APIRET(!conn || !sysrepo_data, NULL, err_info);
 
     /* LYDMODS LOCK (not accessing ext SHM) */
-    if ((err_info = sr_mlock(&SR_SHM_LYDMODS_LOCK(conn), SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(SR_CONN_LYDMODS_LOCK(conn), SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
         return sr_api_ret(NULL, err_info);
     }
 
     err_info = sr_lydmods_parse(conn->ly_ctx, sysrepo_data);
 
     /* LYDMODS UNLOCK */
-    sr_munlock(&SR_SHM_LYDMODS_LOCK(conn));
+    sr_munlock(SR_CONN_LYDMODS_LOCK(conn));
 
     return sr_api_ret(NULL, err_info);
 }
@@ -2998,7 +3011,7 @@ sr_process_events_notif_replay_stop(sr_subscription_ctx_t *subscription)
     int mod_finished;
 
     /* SHM LOCK (writing into subscriptions) */
-    if ((err_info = sr_shmmain_lock_remap(subscription->conn, SR_LOCK_WRITE, 1, __func__))) {
+    if ((err_info = sr_shmmain_lock_remap(subscription->conn, SR_LOCK_READ_UPGR, 1, __func__))) {
         return err_info;
     }
 
@@ -3036,7 +3049,7 @@ cleanup_subs_unlock:
 
 cleanup_unlock:
     /* SHM UNLOCK */
-    sr_shmmain_unlock(subscription->conn, SR_LOCK_WRITE, 1, __func__);
+    sr_shmmain_unlock(subscription->conn, SR_LOCK_READ_UPGR, 1, __func__);
     return err_info;
 }
 
@@ -3130,8 +3143,10 @@ cleanup_unlock:
 
 /**
  * @brief Unlocked unsubscribe (free) a subscription.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
  * @param[in] subscription Subscription to free.
+ * @param[in] main_lock_upgr Main SHM lock read-upgr locked.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
@@ -3200,14 +3215,14 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
     conn = subscription->conn;
 
     /* SHM LOCK (writing into subscriptions) */
-    if ((err_info = sr_shmmain_lock_remap(conn, SR_LOCK_WRITE, 1, __func__))) {
+    if ((err_info = sr_shmmain_lock_remap(conn, SR_LOCK_READ_UPGR, 1, __func__))) {
         return sr_api_ret(NULL, err_info);
     }
 
     err_info = _sr_unsubscribe(subscription);
 
     /* SHM UNLOCK */
-    sr_shmmain_unlock(conn, SR_LOCK_WRITE, 1, __func__);
+    sr_shmmain_unlock(conn, SR_LOCK_READ_UPGR, 1, __func__);
 
     return sr_api_ret(NULL, err_info);
 }
@@ -3321,9 +3336,11 @@ error_mods_unlock:
 
 /**
  * @brief Allocate and start listening on a new subscription.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
  * @param[in] conn Connection to use.
  * @param[in] opts Subscription options.
+ * @param[in] main_lock_upgr Main SHM lock read-upgr locked.
  * @param[out] subs_p Allocated subscription.
  * @return err_info, NULL on success.
  */
@@ -3448,7 +3465,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     }
 
     /* SHM LOCK (writing into subscriptions) */
-    if ((err_info = sr_shmmain_lock_remap(conn, SR_LOCK_WRITE, 1, __func__))) {
+    if ((err_info = sr_shmmain_lock_remap(conn, SR_LOCK_READ_UPGR, 1, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -3463,7 +3480,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         }
     }
 
-    /* add module subscription into main SHM */
+    /* add module subscription into ext SHM */
     if ((err_info = sr_shmmod_change_subscription_add(conn, shm_mod, xpath, session->ds, priority, sub_opts,
             (*subscription)->evpipe_num))) {
         goto error_unlock_newsub;
@@ -3482,7 +3499,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     }
 
     /* SHM UNLOCK */
-    sr_shmmain_unlock(conn, SR_LOCK_WRITE, 1, __func__);
+    sr_shmmain_unlock(conn, SR_LOCK_READ_UPGR, 1, __func__);
 
     return sr_api_ret(session, NULL);
 
@@ -3490,7 +3507,7 @@ error_unlock_unmod_unsub:
     sr_sub_change_del(module_name, xpath, session->ds, callback, private_data, priority, sub_opts, *subscription);
 
 error_unlock_unmod:
-    sr_shmmod_change_subscription_del(conn->ext_shm.addr, shm_mod, xpath, session->ds, priority, sub_opts,
+    sr_shmmod_change_subscription_del(conn, shm_mod, xpath, session->ds, priority, sub_opts,
             (*subscription)->evpipe_num, 0, NULL);
 
 error_unlock_newsub:
@@ -3501,7 +3518,7 @@ error_unlock_newsub:
 
 error_unlock:
     /* SHM UNLOCK */
-    sr_shmmain_unlock(conn, SR_LOCK_WRITE, 1, __func__);
+    sr_shmmain_unlock(conn, SR_LOCK_READ_UPGR, 1, __func__);
 
     return sr_api_ret(session, err_info);
 }
@@ -4086,7 +4103,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     }
 
     /* SHM LOCK (writing into subscriptions) */
-    if ((err_info = sr_shmmain_lock_remap(conn, SR_LOCK_WRITE, 1, __func__))) {
+    if ((err_info = sr_shmmain_lock_remap(conn, SR_LOCK_READ_UPGR, 1, __func__))) {
         goto error;
     }
 
@@ -4111,7 +4128,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     shm_rpc_off = ((char *)shm_rpc) - conn->ext_shm.addr;
 
     /* add RPC/action subscription into main SHM (which may be remapped) */
-    if ((err_info = sr_shmmain_rpc_subscription_add(&conn->ext_shm, shm_rpc_off, xpath, priority, sub_opts,
+    if ((err_info = sr_shmmain_rpc_subscription_add(conn, shm_rpc_off, xpath, priority, sub_opts,
             (*subscription)->evpipe_num))) {
         goto error_unlock_unsub2;
     }
@@ -4129,7 +4146,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     }
 
     /* SHM UNLOCK */
-    sr_shmmain_unlock(conn, SR_LOCK_WRITE, 1, __func__);
+    sr_shmmain_unlock(conn, SR_LOCK_READ_UPGR, 1, __func__);
 
     free(module_name);
     free(op_path);
@@ -4141,11 +4158,11 @@ error_unlock_unsub4:
     }
 
 error_unlock_unsub3:
-    sr_shmmain_rpc_subscription_del(conn->ext_shm.addr, shm_rpc, xpath, priority, (*subscription)->evpipe_num, 0, &last_removed);
+    sr_shmmain_rpc_subscription_del(conn, shm_rpc, xpath, priority, (*subscription)->evpipe_num, 0, &last_removed);
 
 error_unlock_unsub2:
     if (last_removed) {
-        sr_shmmain_del_rpc((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, NULL, shm_rpc->op_path);
+        sr_shmmain_del_rpc(conn, NULL, shm_rpc->op_path);
     }
 
 error_unlock_unsub1:
@@ -4156,7 +4173,7 @@ error_unlock_unsub1:
 
 error_unlock:
     /* SHM UNLOCK */
-    sr_shmmain_unlock(conn, SR_LOCK_WRITE, 1, __func__);
+    sr_shmmain_unlock(conn, SR_LOCK_READ_UPGR, 1, __func__);
 
 error:
     free(module_name);
@@ -4515,7 +4532,7 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
     ly_set_free(set);
 
     /* SHM LOCK (writing into subscriptions) */
-    if ((err_info = sr_shmmain_lock_remap(conn, SR_LOCK_WRITE, 1, __func__))) {
+    if ((err_info = sr_shmmain_lock_remap(conn, SR_LOCK_READ_UPGR, 1, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -4540,7 +4557,7 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
 
     if (!start_time) {
         /* add notification subscription into main SHM now if replay was not requested */
-        if ((err_info = sr_shmmod_notif_subscription_add(&conn->ext_shm, shm_mod, sub_id, (*subscription)->evpipe_num))) {
+        if ((err_info = sr_shmmod_notif_subscription_add(conn, shm_mod, sub_id, (*subscription)->evpipe_num))) {
             goto error_unlock_unsub;
         }
     }
@@ -4565,13 +4582,13 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
     }
 
     /* SHM UNLOCK */
-    sr_shmmain_unlock(conn, SR_LOCK_WRITE, 1, __func__);
+    sr_shmmain_unlock(conn, SR_LOCK_READ_UPGR, 1, __func__);
 
     return sr_api_ret(session, NULL);
 
 error_unlock_unsub_unmod:
     if (!start_time) {
-        sr_shmmod_notif_subscription_del(conn->ext_shm.addr, shm_mod, sub_id, 0, NULL);
+        sr_shmmod_notif_subscription_del(conn, shm_mod, sub_id, 0, NULL);
     }
 
 error_unlock_unsub:
@@ -4584,7 +4601,7 @@ error_unlock_unsub:
 
 error_unlock:
     /* SHM UNLOCK */
-    sr_shmmain_unlock(conn, SR_LOCK_WRITE, 1, __func__);
+    sr_shmmain_unlock(conn, SR_LOCK_READ_UPGR, 1, __func__);
 
     return sr_api_ret(session, err_info);
 }
@@ -4715,10 +4732,10 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
 
     /* collect all required modules for OP validation */
     xpath = lys_data_path(notif_op->schema);
-    SR_CHECK_MEM_GOTO(!xpath, err_info, cleanup_shm_unlock);
+    SR_CHECK_MEM_GOTO(!xpath, err_info, cleanup_mods_unlock);
     if ((err_info = sr_shmmod_collect_op_deps(session->conn, lyd_node_module(notif), xpath, 0, &mod_set, &shm_deps,
             &shm_dep_count))) {
-        goto cleanup_shm_unlock;
+        goto cleanup_mods_unlock;
     }
     if (mod_set.number && (err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_READ,
             SR_MI_MOD_DEPS | SR_MI_DATA_CACHE | SR_MI_PERM_NO, session->sid, NULL, SR_OPER_CB_TIMEOUT, 0))) {
@@ -4839,15 +4856,12 @@ _sr_event_notif_sub_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_
     sr_error_info_t *err_info = NULL;
     struct modsub_notifsub_s *notif_sub;
     const char *module_name;
-    sr_mod_t *shm_mod;
-    sr_mod_notif_sub_t *shm_sub;
     sr_sid_t sid = {0};
-    uint32_t i;
 
     SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
 
     /* SHM LOCK (writing suspended, but that cannot remap ext SHM) */
-    if ((err_info = sr_shmmain_lock_remap(subscription->conn, SR_LOCK_WRITE, 0, __func__))) {
+    if ((err_info = sr_shmmain_lock_remap(subscription->conn, SR_LOCK_READ_UPGR, 0, __func__))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -4863,34 +4877,14 @@ _sr_event_notif_sub_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_
         goto cleanup_subs_unlock;
     }
 
-    /* find the subscription in SHM */
-    shm_mod = sr_shmmain_find_module(&subscription->conn->main_shm, subscription->conn->ext_shm.addr, module_name, 0);
-    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup_subs_unlock);
-    shm_sub = (sr_mod_notif_sub_t *)(subscription->conn->ext_shm.addr + shm_mod->notif_subs);
-    for (i = 0; i < shm_mod->notif_sub_count; ++i) {
-        if (shm_sub[i].sub_id == sub_id) {
-            break;
-        }
-    }
-    SR_CHECK_INT_GOTO(i == shm_mod->notif_sub_count, err_info, cleanup_subs_unlock);
-
-    /* set the flag */
-    if (suspend && shm_sub[i].suspended) {
-        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Notification subscription with ID \"%u\" already suspended.",
-                sub_id);
-        goto cleanup_subs_unlock;
-    } else if (!suspend && !shm_sub[i].suspended) {
-        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Notification subscription with ID \"%u\" not suspended.",
-                sub_id);
+    /* update suspend flag in SHM */
+    if ((err_info = sr_shmmain_update_notif_suspend(subscription->conn, module_name, sub_id, suspend))) {
         goto cleanup_subs_unlock;
     }
-    shm_sub[i].suspended = suspend;
 
     /* send the special notification */
     if ((err_info = sr_notif_call_callback(subscription->conn, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
             suspend ? SR_EV_NOTIF_SUSPENDED : SR_EV_NOTIF_RESUMED, NULL, time(NULL), sid))) {
-        /* remove the flag */
-        shm_sub[i].suspended = !suspend;
         goto cleanup_subs_unlock;
     }
 
@@ -4900,7 +4894,7 @@ cleanup_subs_unlock:
 
 cleanup_unlock:
     /* SHM UNLOCK */
-    sr_shmmain_unlock(subscription->conn, SR_LOCK_WRITE, 0, __func__);
+    sr_shmmain_unlock(subscription->conn, SR_LOCK_READ_UPGR, 0, __func__);
     return sr_api_ret(NULL, err_info);
 }
 
@@ -5077,7 +5071,7 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     }
 
     /* SHM LOCK (writing into subscriptions) */
-    if ((err_info = sr_shmmain_lock_remap(conn, SR_LOCK_WRITE, 1, __func__))) {
+    if ((err_info = sr_shmmain_lock_remap(conn, SR_LOCK_READ_UPGR, 1, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -5093,8 +5087,7 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     SR_CHECK_INT_GOTO(!shm_mod, err_info, error_unlock_unsub);
 
     /* add oper subscription into main SHM */
-    if ((err_info = sr_shmmod_oper_subscription_add(&conn->ext_shm, shm_mod, path, sub_type, sub_opts,
-            (*subscription)->evpipe_num))) {
+    if ((err_info = sr_shmmod_oper_subscription_add(conn, shm_mod, path, sub_type, sub_opts, (*subscription)->evpipe_num))) {
         goto error_unlock_unsub;
     }
 
@@ -5113,7 +5106,7 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     goto cleanup_unlock;
 
 error_unlock_unsub_unmod:
-    sr_shmmod_oper_subscription_del(conn->ext_shm.addr, shm_mod, path, (*subscription)->evpipe_num, 0, NULL);
+    sr_shmmod_oper_subscription_del(conn, shm_mod, path, (*subscription)->evpipe_num, 0, NULL);
 
 error_unlock_unsub:
     if (opts & SR_SUBSCR_CTX_REUSE) {
@@ -5125,7 +5118,7 @@ error_unlock_unsub:
 
 cleanup_unlock:
     /* SHM UNLOCK */
-    sr_shmmain_unlock(conn, SR_LOCK_WRITE, 1, __func__);
+    sr_shmmain_unlock(conn, SR_LOCK_READ_UPGR, 1, __func__);
 
     return sr_api_ret(session, err_info);
 }

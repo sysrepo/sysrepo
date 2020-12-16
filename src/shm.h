@@ -223,7 +223,8 @@ typedef struct sr_main_shm_s {
     ATOMIC_T new_sub_id;        /**< Subscription ID of a new notification subscription. */
     ATOMIC_T new_evpipe_num;    /**< Event pipe number for a new subscription. */
 
-    pthread_mutex_t conn_lock;  /**< Process-shared lock for accessing connection state. */
+    pthread_mutex_t conn_lock;  /**< Process-shared lock for accessing connection state locks only (because those may
+                                     not be protected by main SHM lock). */
     off_t conns;                /**< Array of existing connections (connection state). */
     uint16_t conn_count;        /**< Number of existing connections. */
 } sr_main_shm_t;
@@ -370,7 +371,7 @@ void sr_shmmain_createunlock(int shm_lock);
 
 /**
  * @brief Add connection into main SHM.
- * Main SHM lock is expected to be held.
+ * Main SHM write lock must be held!
  *
  * @param[in] conn Connection to add.
  * @return err_info, NULL on success.
@@ -379,13 +380,12 @@ sr_error_info_t *sr_shmmain_conn_add(sr_conn_ctx_t *conn);
 
 /**
  * @brief Remove a connection from main SHM state.
- * Main SHM lock is expected to be held.
+ * Main SHM write lock must be held!
  *
- * @param[in] main_shm Main SHM structure.
- * @param[in] ext_shm_addr Ext SHM address.
- * @param[in] cid Connection ID to delete.
+ * @param[in] conn Connection to use.
+ * @param[in] cid Connection ID of the connection to delete.
  */
-void sr_shmmain_conn_del(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_cid_t cid);
+void sr_shmmain_conn_del(sr_conn_ctx_t *conn, uint32_t cid);
 
 /**
  * @brief Find a connection in main SHM.
@@ -409,7 +409,7 @@ sr_error_info_t *sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive);
 
 /**
  * @brief Add an event pipe into a connection in main SHM.
- * Main SHM lock is expected to be held.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
  * @param[in] conn Connection of the subscription.
  * @param[in] evpipe_num Event pipe number.
@@ -418,8 +418,8 @@ sr_error_info_t *sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive);
 sr_error_info_t *sr_shmmain_conn_add_evpipe(sr_conn_ctx_t *conn, uint32_t evpipe_num);
 
 /**
- * @brief Remove and event pipe from a connection in main SHM.
- * Main SHM lock is expected to be held.
+ * @brief Remove an event pipe from a connection in main SHM.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
  * @param[in] conn Connection of the subscription.
  * @param[in] evpipe_num Event pipe number.
@@ -503,7 +503,9 @@ sr_rpc_t *sr_shmmain_find_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const
 
 /**
  * @brief Lock main/ext SHM and its mapping and remap it if needed (it was changed). Also, store information
- * about held locks into SHM (a few function names are exceptions).
+ * about held locks into SHM (except sr_connect).
+ *
+ * If mode is READ-UPGR or WRITE lock, also perform connection recovery.
  *
  * !! Every API function that accesses ext SHM must call this function !!
  *
@@ -516,8 +518,20 @@ sr_rpc_t *sr_shmmain_find_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const
 sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, const char *func);
 
 /**
- * @brief Unlock main SHM and update information about held locks in SHM. If remap was WRITE locked,
- * also defragment ext SHM as needed.
+ * @brief Relock main/ext SHM. Also, update information about held locks in SHM.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] mode Whether to WRITE, READ or not lock main (actually ext) SHM.
+ * @param[in] func Caller function name.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmain_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func);
+
+/**
+ * @brief Unlock main SHM and update information about held locks in SHM. Also, store information
+ * about held locks into SHM (except sr_connect and sr_disconnect).
+ *
+ * If remap was WRITE locked, also defragment ext SHM if needed.
  *
  * @param[in] conn Connection to use.
  * @param[in] mode Whether to WRITE, READ or not unlock main (actually ext) SHM.
@@ -528,9 +542,10 @@ void sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, cons
 
 /**
  * @brief Add main SHM RPC/action subscription.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  * May remap ext SHM!
  *
- * @param[in] shm_ext Ext SHM.
+ * @param[in] conn Connection to use.
  * @param[in] shm_rpc_off SHM RPC offset.
  * @param[in] xpath Subscription XPath.
  * @param[in] priority Subscription priority.
@@ -538,13 +553,14 @@ void sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, cons
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_rpc_subscription_add(sr_shm_t *shm_ext, off_t shm_rpc_off, const char *xpath,
+sr_error_info_t *sr_shmmain_rpc_subscription_add(sr_conn_ctx_t *conn, off_t shm_rpc_off, const char *xpath,
         uint32_t priority, int sub_opts, uint32_t evpipe_num);
 
 /**
  * @brief Remove main SHM RPC/action subscription.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
- * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] conn Connection to use.
  * @param[in] shm_rpc SHM RPC.
  * @param[in] xpath Subscription XPath.
  * @param[in] priority Subscription priority.
@@ -553,11 +569,13 @@ sr_error_info_t *sr_shmmain_rpc_subscription_add(sr_shm_t *shm_ext, off_t shm_rp
  * @param[out] last_removed Whether this is the last RPC subscription that was removed.
  * @return 0 if removed, 1 if no matching found.
  */
-int sr_shmmain_rpc_subscription_del(char *ext_shm_addr, sr_rpc_t *shm_rpc, const char *xpath, uint32_t priority,
+int sr_shmmain_rpc_subscription_del(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath, uint32_t priority,
         uint32_t evpipe_num, int only_evpipe, int *last_removed);
 
 /**
  * @brief Remove main SHM module RPC/action subscription and do a proper cleanup.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ *
  * Calls ::sr_shmmain_rpc_subscription_del(), is a higher level wrapper.
  *
  * @param[in] conn Connection to use.
@@ -573,7 +591,8 @@ sr_error_info_t *sr_shmmain_rpc_subscription_stop(sr_conn_ctx_t *conn, sr_rpc_t 
         uint32_t priority, uint32_t evpipe_num, int all_evpipe, int *last_removed);
 
 /**
- * @brief Add an RPC/action into main SHM.
+ * @brief Add an RPC/action into ext SHM.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  * May remap ext SHM!
  *
  * @param[in] conn Connection to use.
@@ -584,28 +603,40 @@ sr_error_info_t *sr_shmmain_rpc_subscription_stop(sr_conn_ctx_t *conn, sr_rpc_t 
 sr_error_info_t *sr_shmmain_add_rpc(sr_conn_ctx_t *conn, const char *op_path, sr_rpc_t **shm_rpc_p);
 
 /**
- * @brief Remove an RPC/action from main SHM.
+ * @brief Remove an RPC/action from ext SHM.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
  * Either op_path or op_path_off must be set.
  *
- * @param[in] main_shm Main SHM structure.
- * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] conn Connection to use.
  * @param[in] op_path RPC/action path.
  * @param[in] op_path_off RPC/action path offset.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_del_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const char *op_path, off_t op_path_off);
+sr_error_info_t *sr_shmmain_del_rpc(sr_conn_ctx_t *conn, const char *op_path, off_t op_path_off);
 
 /**
  * @brief Change replay support of a module in main SHM.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
- * @param[in] shm_main Main SHM.
- * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] conn Connection to use.
  * @param[in] mod_name Module name. NUll for all the modules.
  * @param[in] replay_support Whether replay support should be enabled or disabled.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_update_replay_support(sr_shm_t *shm_main, char *ext_shm_addr, const char *mod_name, int replay_support);
+sr_error_info_t *sr_shmmain_update_replay_support(sr_conn_ctx_t *conn, const char *mod_name, int replay_support);
+
+/**
+ * @brief Change notification subscription suspend state (flag) in ext SHM.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] mod_name Module name. NUll for all the modules.
+ * @param[in] sub_id Subscription ID.
+ * @param[in] suspend Whether the subscription should be suspended or resumed.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmain_update_notif_suspend(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, int suspend);
 
 /**
  * @brief Check data file existence and owner/permissions of all the modules in main SHM.
@@ -738,6 +769,7 @@ void sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid);
 
 /**
  * @brief Add main SHM module change subscription.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  * May remap ext SHM!
  *
  * @param[in] conn Connection to use.
@@ -754,8 +786,9 @@ sr_error_info_t *sr_shmmod_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t
 
 /**
  * @brief Remove main SHM module change subscription.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
- * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
  * @param[in] xpath Subscription XPath.
  * @param[in] ds Datastore.
@@ -766,11 +799,13 @@ sr_error_info_t *sr_shmmod_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t
  * @param[out] last_removed Whether this is the last module change subscription that was removed.
  * @return 0 if removed, 1 if no matching found.
  */
-int sr_shmmod_change_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath, sr_datastore_t ds,
+int sr_shmmod_change_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath, sr_datastore_t ds,
         uint32_t priority, int sub_opts, uint32_t evpipe_num, int only_evpipe, int *last_removed);
 
 /**
  * @brief Remove main SHM module change subscription and do a proper cleanup.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ *
  * Calls ::sr_shmmod_change_subscription_del(), is a higher level wrapper.
  *
  * @param[in] conn Connection to use.
@@ -788,9 +823,10 @@ sr_error_info_t *sr_shmmod_change_subscription_stop(sr_conn_ctx_t *conn, sr_mod_
 
 /**
  * @brief Add main SHM module operational subscription.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  * May remap ext SHM!
  *
- * @param[in] shm_ext Ext SHM.
+ * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
  * @param[in] xpath Subscription XPath.
  * @param[in] sub_type Data-provide subscription type.
@@ -798,13 +834,14 @@ sr_error_info_t *sr_shmmod_change_subscription_stop(sr_conn_ctx_t *conn, sr_mod_
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_oper_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, const char *xpath,
+sr_error_info_t *sr_shmmod_oper_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath,
         sr_mod_oper_sub_type_t sub_type, int sub_opts, uint32_t evpipe_num);
 
 /**
  * @brief Remove main SHM module operational subscription.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
- * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
  * @param[in] xpath Subscription XPath.
  * @param[in] evpipe_num Subscription event pipe number.
@@ -812,60 +849,66 @@ sr_error_info_t *sr_shmmod_oper_subscription_add(sr_shm_t *shm_ext, sr_mod_t *sh
  * @param[out] xpath_p Optionally return the xpath of the removed subscription.
  * @return 0 if removed, 1 if no matching found.
  */
-int sr_shmmod_oper_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath, uint32_t evpipe_num,
+int sr_shmmod_oper_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath, uint32_t evpipe_num,
         int only_evpipe, const char **xpath_p);
 
 /**
  * @brief Remove main SHM module operational subscription and do a proper cleanup.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ *
  * Calls ::sr_shmmod_oper_subscription_del(), is a higher level wrapper.
  *
- * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
  * @param[in] xpath Subscription XPath.
  * @param[in] evpipe_num Subscription event pipe number.
  * @param[in] all_evpipe Whether to remove all subscriptions matching \p evpipe_num.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_oper_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, const char *xpath,
+sr_error_info_t *sr_shmmod_oper_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath,
         uint32_t evpipe_num, int all_evpipe);
 
 /**
  * @brief Add main SHM module notification subscription.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  * May remap ext SHM!
  *
- * @param[in] shm_ext Ext SHM.
+ * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
  * @param[in] sub_id Unique notif sub ID.
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_notif_subscription_add(sr_shm_t *shm_ext, sr_mod_t *shm_mod, uint32_t sub_id,
+sr_error_info_t *sr_shmmod_notif_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
         uint32_t evpipe_num);
 
 /**
  * @brief Remove main SHM module notification subscription.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
- * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
  * @param[in] sub_id Unique notif sub ID.
  * @param[in] evpipe_num Subscription event pipe number.
  * @param[out] last_removed Whether this is the last module notification subscription that was removed.
  * @return 0 if removed, 1 if no matching found.
  */
-int sr_shmmod_notif_subscription_del(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num,
+int sr_shmmod_notif_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num,
         int *last_removed);
 
 /**
  * @brief Remove main SHM module notification subscription and do a proper cleanup.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ *
  * Calls ::sr_shmmod_notif_subscription_del(), is a higher level wrapper.
  *
- * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
  * @param[in] sub_id Unique notif sub ID in case a specific subscription should be removed.
  * @param[in] evpipe_num Subscription event pipe number in case all matching subscriptions should be removed.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_notif_subscription_stop(char *ext_shm_addr, sr_mod_t *shm_mod, uint32_t sub_id,
+sr_error_info_t *sr_shmmod_notif_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
         uint32_t evpipe_num);
 
 /**
@@ -926,7 +969,7 @@ sr_error_info_t *sr_shmsub_change_notify_clear(struct sr_mod_info_s *mod_info, s
 
 /**
  * @brief Notify about (generate) a change "change" event.
- * Main SHM lock(0,0,0) must be held and this function may temporarily unlock it!
+ * Main SHM read lock must be held and may be temporarily unlocked!
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] sid Originator sysrepo session ID.
@@ -977,7 +1020,7 @@ sr_error_info_t *sr_shmsub_oper_notify(const struct lys_module *ly_mod, const ch
 
 /**
  * @brief Notify about (generate) an RPC/action event.
- * Main SHM lock(0,0,0) must be held and this function may temporarily unlock it!
+ * Main SHM read lock must be held and may be temporarily unlocked!
  *
  * @param[in] conn Connection to use.
  * @param[in] op_path Path identifying the RPC/action.
@@ -1110,6 +1153,7 @@ void sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif
 
 /**
  * @brief Check notification subscriptions stop time and finish the subscription if it has elapsed.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
  * @param[in] notif_subs Module notification subscriptions.
  * @param[in] subs Subscriptions structure.
@@ -1121,6 +1165,7 @@ sr_error_info_t *sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *
 
 /**
  * @brief Check notification subscription replay state and perform it if requested.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  * May remap ext SHM!
  *
  * @param[in] notif_subs Module notification subscriptions.
