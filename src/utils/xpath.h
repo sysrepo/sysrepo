@@ -233,4 +233,3 @@ void sr_xpath_recover(sr_xpath_ctx_t *state);
 #endif
 
 #endif /* SYSREPO_XPATH_H_ */
-

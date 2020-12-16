@@ -21,16 +21,16 @@
  */
 #include "common.h"
 
-#include <sys/select.h>
-#include <sys/mman.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <string.h>
-#include <stdlib.h>
-#include <unistd.h>
 #include <assert.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/select.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <time.h>
+#include <unistd.h>
 
 sr_error_info_t *
 sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_shm_t *shm, size_t shm_struct_size)
@@ -197,8 +197,8 @@ sr_shmsub_notify_finish_wrunlock(sr_sub_shm_t *sub_shm, size_t shm_struct_size, 
             /* event timeout */
             sr_errinfo_new(cb_err_info, SR_ERR_TIME_OUT, NULL, "Callback event \"%s\" with ID %u processing timed out.",
                     sr_ev2str(event), request_id);
-            if ((event == sub_shm->event) && (request_id == sub_shm->request_id)
-                    && ((expected_ev == SR_SUB_EV_SUCCESS) || (expected_ev == SR_SUB_EV_ERROR))) {
+            if ((event == sub_shm->event) && (request_id == sub_shm->request_id) &&
+                    ((expected_ev == SR_SUB_EV_SUCCESS) || (expected_ev == SR_SUB_EV_ERROR))) {
                 sub_shm->event = SR_SUB_EV_ERROR;
             }
         } else {
@@ -849,7 +849,7 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
 
         /* just find out whether there are any subscriptions and if so, what is the highest priority */
         if (!sr_shmsub_change_notify_has_subscription(ext_shm_addr, mod, mod_info->ds, SR_SUB_EV_CHANGE,
-                    &cur_priority)) {
+                &cur_priority)) {
             if (!sr_shmsub_change_notify_has_subscription(ext_shm_addr, mod, mod_info->ds, SR_SUB_EV_DONE,
                     &cur_priority)) {
                 if (mod_info->ds == SR_DS_RUNNING) {
@@ -1854,8 +1854,8 @@ sr_shmsub_change_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct m
     if ((multi_sub_shm->request_id == sub->request_id) && (multi_sub_shm->event == sub->event)) {
         return 0;
     }
-    if ((multi_sub_shm->event == SR_SUB_EV_ABORT) && ((sub->event != SR_SUB_EV_CHANGE)
-            || (sub->request_id != multi_sub_shm->request_id))) {
+    if ((multi_sub_shm->event == SR_SUB_EV_ABORT) && ((sub->event != SR_SUB_EV_CHANGE) ||
+            (sub->request_id != multi_sub_shm->request_id))) {
         /* process "abort" only on subscriptions that have successfully processed "change" */
         return 0;
     }
@@ -2071,8 +2071,8 @@ sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t
                 err_code ? "Failed" : "Successful", sr_ev2str(sub_info->event), sub_info->request_id, sub_info->priority);
 
         /* self-generate abort event in case the change was applied successfully */
-        if ((sub_info->event == SR_SUB_EV_CHANGE) && (err_code == SR_ERR_OK)
-                && sr_shmsub_change_is_valid(SR_SUB_EV_ABORT, sub->opts)) {
+        if ((sub_info->event == SR_SUB_EV_CHANGE) && (err_code == SR_ERR_OK) &&
+                sr_shmsub_change_is_valid(SR_SUB_EV_ABORT, sub->opts)) {
             /* update session */
             tmp_sess->ev = SR_SUB_EV_ABORT;
             if ((*err_info = sr_diff_reverse(tmp_sess->dt[tmp_sess->ds].diff, &abort_diff))) {
@@ -2180,7 +2180,7 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
     change_sub = &change_subs->subs[i];
     valid_subscr_count = 0;
     goto process_event;
-    for (; i < change_subs->sub_count; ++i) {
+    for ( ; i < change_subs->sub_count; ++i) {
         change_sub = &change_subs->subs[i];
         if (!sr_shmsub_change_listen_is_new_event(multi_sub_shm, change_sub)) {
             continue;
@@ -2263,7 +2263,7 @@ process_event:
             }
             data_len = lyd_lyb_data_length(data);
         }
-        /* fallthrough */
+    /* fallthrough */
     case SR_SUB_EV_CHANGE:
         if (err_code != SR_ERR_OK) {
             /* prepare error from session to be written to SHM */
@@ -2510,8 +2510,8 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
             /* set origin if none */
             LY_TREE_FOR(orig_parent ? sr_lyd_child(parent, 1) : parent, node) {
                 sr_edit_diff_get_origin(node, &origin, NULL);
-                if ((!origin || !strcmp(origin, SR_CONFIG_ORIGIN))
-                        && (err_info = sr_edit_diff_set_origin(node, SR_OPER_ORIGIN, 0))) {
+                if ((!origin || !strcmp(origin, SR_CONFIG_ORIGIN)) &&
+                        (err_info = sr_edit_diff_set_origin(node, SR_OPER_ORIGIN, 0))) {
                     goto error;
                 }
             }
@@ -2747,8 +2747,8 @@ sr_shmsub_rpc_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct opsu
     if ((multi_sub_shm->request_id == sub->request_id) && (multi_sub_shm->event == sub->event)) {
         return 0;
     }
-    if ((multi_sub_shm->event == SR_SUB_EV_ABORT) && ((sub->event != SR_SUB_EV_RPC)
-            || (sub->request_id != multi_sub_shm->request_id))) {
+    if ((multi_sub_shm->event == SR_SUB_EV_ABORT) && ((sub->event != SR_SUB_EV_RPC) ||
+            (sub->request_id != multi_sub_shm->request_id))) {
         /* process "abort" only on subscriptions that have successfully processed "RPC" */
         return 0;
     }
@@ -2943,7 +2943,7 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
     /* process individual subscriptions (starting at the last found subscription, it was valid) */
     valid_subscr_count = 0;
     goto process_event;
-    for (; i < rpc_subs->sub_count; ++i) {
+    for ( ; i < rpc_subs->sub_count; ++i) {
         rpc_sub = &rpc_subs->subs[i];
         if (!sr_shmsub_rpc_listen_is_new_event(multi_sub_shm, rpc_sub) || !sr_shmsub_rpc_is_valid(input, rpc_sub->xpath)) {
             continue;
@@ -3251,14 +3251,14 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_su
         if (notif_sub->stop_time && (notif_sub->stop_time < cur_time)) {
             /* subscription is finished */
             if ((err_info = sr_notif_call_callback(subs->conn, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
-                        SR_EV_NOTIF_STOP, NULL, cur_time, sid))) {
+                    SR_EV_NOTIF_STOP, NULL, cur_time, sid))) {
                 return err_info;
             }
 
             /* remove the subscription from the session if the only subscription */
             if (sr_subs_session_count(notif_sub->sess, subs) == 1) {
                 if ((tmp_err = sr_ptr_del(&notif_sub->sess->ptr_lock, (void ***)&notif_sub->sess->subscriptions,
-                            &notif_sub->sess->subscription_count, subs))) {
+                        &notif_sub->sess->subscription_count, subs))) {
                     /* continue */
                     sr_errinfo_merge(&err_info, tmp_err);
                 }

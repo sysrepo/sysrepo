@@ -19,6 +19,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #ifndef _SYSREPO_H
 #define _SYSREPO_H
 
@@ -64,7 +65,7 @@ typedef enum sr_error_e {
     SR_ERR_LOCKED,             /**< Requested resource is already locked. */
     SR_ERR_TIME_OUT,           /**< Time out has expired. */
     SR_ERR_CALLBACK_FAILED,    /**< User callback failure caused the operation to fail. */
-    SR_ERR_CALLBACK_SHELVE,    /**< User callback has not processed the event and will do so
+    SR_ERR_CALLBACK_SHELVE     /**< User callback has not processed the event and will do so
                                     on some future event processing. */
 } sr_error_t;
 
@@ -84,7 +85,7 @@ typedef enum {
     SR_LL_ERR,       /**< Print only error messages. */
     SR_LL_WRN,       /**< Print error and warning messages. */
     SR_LL_INF,       /**< Besides errors and warnings, print some other informational messages. */
-    SR_LL_DBG,       /**< Print all messages including some development debug messages. */
+    SR_LL_DBG        /**< Print all messages including some development debug messages. */
 } sr_log_level_t;
 
 /**
@@ -181,7 +182,7 @@ typedef enum sr_conn_flag_e {
                                          much faster. Affects all sessions created on this connection. */
     SR_CONN_NO_SCHED_CHANGES = 2,   /**< Do not parse internal modules data and apply any scheduled changes. Makes
                                          creating the connection faster but, obviously, scheduled changes are not applied. */
-    SR_CONN_ERR_ON_SCHED_FAIL = 4,  /**< If applying any of the scheduled changes fails, do not create a connection
+    SR_CONN_ERR_ON_SCHED_FAIL = 4   /**< If applying any of the scheduled changes fails, do not create a connection
                                          and return an error. */
 } sr_conn_flag_t;
 
@@ -199,15 +200,15 @@ typedef enum sr_datastore_e {
     SR_DS_STARTUP = 0,     /**< Contains configuration data that will be loaded when a device starts. */
     SR_DS_RUNNING = 1,     /**< Contains current configuration data. */
     SR_DS_CANDIDATE = 2,   /**< Contains prepared configuration data that do not affect actual configuration. */
-    SR_DS_OPERATIONAL = 3, /**< Contains currently used configuration (see [operational datastore](@ref oper_ds)). */
+    SR_DS_OPERATIONAL = 3  /**< Contains currently used configuration (see [operational datastore](@ref oper_ds)). */
 } sr_datastore_t;
 
 /**
  * @brief A single, detailed error message. Used in sr_error_info_s
  */
 typedef struct sr_error_info_msg_s {
-  char *message;   /**< Error message. */
-  char *xpath;     /**< [XPath](@ref paths) (or rather path) to the node where the error has been discovered. */
+    char *message; /**< Error message. */
+    char *xpath;   /**< [XPath](@ref paths) (or rather path) to the node where the error has been discovered. */
 } sr_error_info_msg_t;
 
 /**
@@ -634,7 +635,7 @@ typedef enum sr_type_e {
     SR_UINT32_T,       /**< 32-bit unsigned integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
     SR_UINT64_T,       /**< 64-bit unsigned integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
     SR_ANYXML_T,       /**< Unknown chunk of XML ([RFC 7950 sec 7.10](https://tools.ietf.org/html/rfc7950#section-7.10)) */
-    SR_ANYDATA_T,      /**< Unknown set of nodes, encoded in XML ([RFC 7950 sec 7.10](https://tools.ietf.org/html/rfc7950#section-7.10)) */
+    SR_ANYDATA_T       /**< Unknown set of nodes, encoded in XML ([RFC 7950 sec 7.10](https://tools.ietf.org/html/rfc7950#section-7.10)) */
 } sr_type_t;
 
 /**
@@ -700,7 +701,7 @@ typedef enum sr_get_oper_flag_e {
                                           parents, these are also returned (with keys if lists). */
     SR_OPER_NO_SUBS = 4,             /**< Return only stored operational data (push), do not call subscriber callbacks (pull). */
     SR_OPER_NO_STORED = 8,           /**< Do not merge with stored operational data (push). */
-    SR_OPER_WITH_ORIGIN = 16,        /**< Return data with their [origin attributes](@ref datastores). Nodes without
+    SR_OPER_WITH_ORIGIN = 16         /**< Return data with their [origin attributes](@ref datastores). Nodes without
                                           one inherit the origin from parents. */
 } sr_get_oper_flag_t;
 
@@ -836,7 +837,7 @@ typedef enum sr_edit_flag_e {
     SR_EDIT_STRICT = 2,         /**< Strict behavior:
                                      by ::sr_set_item the identified element must not exist (similar to NETCONF create operation),
                                      by ::sr_delete_item the identified element must exist (similar to NETCONF delete operation). */
-    SR_EDIT_ISOLATE = 4,        /**< Create new operation separately, independent of all the previous operations. Since all the
+    SR_EDIT_ISOLATE = 4         /**< Create new operation separately, independent of all the previous operations. Since all the
                                      operations are concatenated into one edit tree, it may happen that 2 incompatible operations
                                      are set and an error is observed. This flag can in those cases be used. Also, if an error
                                      is returned the previous edit is always left untouched. */
@@ -855,7 +856,7 @@ typedef enum sr_move_position_e {
     SR_MOVE_BEFORE = 0,    /**< Move the specified item before the selected sibling. */
     SR_MOVE_AFTER = 1,     /**< Move the specified item after the selected. */
     SR_MOVE_FIRST = 2,     /**< Move the specified item to the position of the first child. */
-    SR_MOVE_LAST = 3,      /**< Move the specified item to the position of the last child. */
+    SR_MOVE_LAST = 3       /**< Move the specified item to the position of the last child. */
 } sr_move_position_t;
 
 /**
@@ -1189,7 +1190,7 @@ typedef enum sr_subscr_flag_e {
      * subscription callback, keep them. Then the returned data are merged into the existing data. Accepted
      * only for operational subscriptions.
      */
-    SR_SUBSCR_OPER_MERGE = 128,
+    SR_SUBSCR_OPER_MERGE = 128
 
 } sr_subscr_flag_t;
 
@@ -1284,7 +1285,7 @@ typedef enum sr_event_e {
                         ::SR_EV_DONE. It can fail and will also be triggered even when there is no startup configuration
                         (which is different from the ::SR_EV_CHANGE event). Also note that the callback on this event
                         __cannot__ return ::SR_ERR_CALLBACK_SHELVE. */
-    SR_EV_RPC,     /**< Occurs for a standard RPC execution. If a later callback fails, ::SR_EV_ABORT is generated. */
+    SR_EV_RPC      /**< Occurs for a standard RPC execution. If a later callback fails, ::SR_EV_ABORT is generated. */
 } sr_event_t;
 
 /**
@@ -1294,7 +1295,7 @@ typedef enum sr_change_oper_e {
     SR_OP_CREATED,   /**< The item has been created by the change. */
     SR_OP_MODIFIED,  /**< The value of the item has been modified by the change. */
     SR_OP_DELETED,   /**< The item has been deleted by the change. */
-    SR_OP_MOVED,     /**< The item has been moved in the subtree by the change (applicable for leaf-lists and user-ordered lists). */
+    SR_OP_MOVED      /**< The item has been moved in the subtree by the change (applicable for leaf-lists and user-ordered lists). */
 } sr_change_oper_t;
 
 /**
@@ -1577,7 +1578,7 @@ typedef enum sr_ev_notif_type_e {
     SR_EV_NOTIF_STOP,             /**< Not a real notification, just a signal that replay stop time has been reached
                                        (delivered only if stop_time was specified when subscribing). */
     SR_EV_NOTIF_SUSPENDED,        /**< Not a real notification, just a signal that the notification was suspended. */
-    SR_EV_NOTIF_RESUMED,          /**< Not a real notification, just a signal that the notification was resumed after
+    SR_EV_NOTIF_RESUMED           /**< Not a real notification, just a signal that the notification was resumed after
                                        previously suspended. */
 } sr_ev_notif_type_t;
 

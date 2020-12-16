@@ -15,12 +15,12 @@
 #define _GNU_SOURCE
 #define _XOPEN_SOURCE 500
 
+#include <inttypes.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
-#include <signal.h>
-#include <inttypes.h>
+#include <unistd.h>
 
 #include <libyang/libyang.h>
 
@@ -206,4 +206,3 @@ cleanup:
     sr_disconnect(connection);
     return rc ? EXIT_FAILURE : EXIT_SUCCESS;
 }
-

@@ -12,6 +12,7 @@ include(CheckFunctionExists)
 include(CheckLibraryExists)
 include(CheckIncludeFile)
 include(UseCompat)
+include(SourceFormat)
 if(POLICY CMP0075)
     cmake_policy(SET CMP0075 NEW)
 endif()
@@ -190,6 +191,18 @@ set (SYSREPOPLUGIND_SRC
 
 # use compat
 use_compat()
+
+# source files to be covered by the 'format' target
+set(format_sources
+    compat/*
+    examples/*.c
+    examples/plugin/*.c
+    src/*.c
+    src/*.h
+    src/executables/*
+    src/utils/*)
+
+source_format(${format_sources})
 
 # sysrepo
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)

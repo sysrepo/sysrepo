@@ -24,24 +24,24 @@
 #define _GNU_SOURCE /* asprintf */
 #define _XOPEN_SOURCE 500 /* strdup */
 
+#include <dirent.h>
+#include <dlfcn.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <getopt.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
-#include <stdarg.h>
-#include <signal.h>
-#include <getopt.h>
-#include <pthread.h>
-#include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
-#include <dirent.h>
-#include <fcntl.h>
-#include <dlfcn.h>
 
+#include "bin_common.h"
 #include "compat.h"
 #include "sysrepo.h"
-#include "bin_common.h"
 
 /** protected flag for terminating sysrepo-plugind */
 int loop_finish;
@@ -63,29 +63,27 @@ static void
 version_print(void)
 {
     printf(
-        "sysrepo-plugind - sysrepo plugin daemon, compiled with libsysrepo v%s (SO v%s)\n"
-        "\n",
-        SR_VERSION, SR_SOVERSION
-    );
+            "sysrepo-plugind - sysrepo plugin daemon, compiled with libsysrepo v%s (SO v%s)\n"
+            "\n",
+            SR_VERSION, SR_SOVERSION);
 }
 
 static void
 help_print(void)
 {
     printf(
-        "Usage:\n"
-        "  sysrepo-plugind [-h] [-v <level>] [-d]\n"
-        "\n"
-        "Options:\n"
-        "  -h, --help           Prints usage help.\n"
-        "  -V, --version        Prints only information about sysrepo version.\n"
-        "  -v, --verbosity <level>\n"
-        "                       Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
-        "  -d, --debug          Debug mode - is not daemonized and logs to stderr instead of syslog.\n"
-        "\n"
-        "Environment variable $SRPD_PLUGINS_PATH overwrites the default plugins path.\n"
-        "\n"
-    );
+            "Usage:\n"
+            "  sysrepo-plugind [-h] [-v <level>] [-d]\n"
+            "\n"
+            "Options:\n"
+            "  -h, --help           Prints usage help.\n"
+            "  -V, --version        Prints only information about sysrepo version.\n"
+            "  -v, --verbosity <level>\n"
+            "                       Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
+            "  -d, --debug          Debug mode - is not daemonized and logs to stderr instead of syslog.\n"
+            "\n"
+            "Environment variable $SRPD_PLUGINS_PATH overwrites the default plugins path.\n"
+            "\n");
 }
 
 static void
@@ -406,6 +404,7 @@ sorting_plugins(int plugin_count, sr_session_ctx_t *sess, struct srpd_plugin_s *
     }
 
     int ordered_part = 0;
+
     for (size_t i = 0; i < value_cnt; ++i) {
         for (int j = ordered_part; j < plugin_count; ++j) {
             if (!plugin_names_cmp(&plugins[j], values[i].data.string_val)) {
@@ -435,7 +434,7 @@ apply_plugind_module(int plugin_count, sr_session_ctx_t *sess, struct srpd_plugi
 }
 
 int
-main(int argc, char** argv)
+main(int argc, char **argv)
 {
     struct srpd_plugin_s *plugins = NULL;
     sr_conn_ctx_t *conn = NULL;

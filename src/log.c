@@ -21,10 +21,10 @@
  */
 #include "common.h"
 
+#include <assert.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
-#include <assert.h>
 #include <syslog.h>
 
 sr_log_level_t stderr_ll = SR_LL_NONE;  /**< stderr log level */
@@ -35,23 +35,23 @@ sr_log_cb log_cb;                       /**< Logging callback */
 /**
  * @brief String error list.
  */
-static const char *const sr_errlist[] = {
-        "Operation succeeded",                  /* SR_ERR_OK */
-        "Invalid argument",                     /* SR_ERR_INVAL_ARG */
-        "libyang error",                        /* SR_ERR_LY */
-        "System function call failed",          /* SR_ERR_SYS */
-        "Out of memory",                        /* SR_ERR_NOMEM */
-        "Item not found",                       /* SR_ERR_NOT_FOUND */
-        "Item already exists",                  /* SR_ERR_EXISTS */
-        "Internal error",                       /* SR_ERR_INTERNAL */
-        "Operation not supported",              /* SR_ERR_UNSUPPORTED */
-        "Validation failed",                    /* SR_ERR_VALIDATION_FAILED */
-        "Operation failed",                     /* SR_ERR_OPERATION_FAILED */
-        "Operation not authorized",             /* SR_ERR_UNAUTHORIZED */
-        "Requested resource already locked",    /* SR_ERR_LOCKED */
-        "Timeout expired",                      /* SR_ERR_TIME_OUT */
-        "User callback failed",                 /* SR_ERR_CALLBACK_FAILED */
-        "User callback shelved",                /* SR_ERR_CALLBACK_SHELVE */
+static const char * const sr_errlist[] = {
+    "Operation succeeded",                      /* SR_ERR_OK */
+    "Invalid argument",                         /* SR_ERR_INVAL_ARG */
+    "libyang error",                            /* SR_ERR_LY */
+    "System function call failed",              /* SR_ERR_SYS */
+    "Out of memory",                            /* SR_ERR_NOMEM */
+    "Item not found",                           /* SR_ERR_NOT_FOUND */
+    "Item already exists",                      /* SR_ERR_EXISTS */
+    "Internal error",                           /* SR_ERR_INTERNAL */
+    "Operation not supported",                  /* SR_ERR_UNSUPPORTED */
+    "Validation failed",                        /* SR_ERR_VALIDATION_FAILED */
+    "Operation failed",                         /* SR_ERR_OPERATION_FAILED */
+    "Operation not authorized",                 /* SR_ERR_UNAUTHORIZED */
+    "Requested resource already locked",        /* SR_ERR_LOCKED */
+    "Timeout expired",                          /* SR_ERR_TIME_OUT */
+    "User callback failed",                     /* SR_ERR_CALLBACK_FAILED */
+    "User callback shelved",                    /* SR_ERR_CALLBACK_SHELVE */
 };
 
 struct sr_error_info_err_s {

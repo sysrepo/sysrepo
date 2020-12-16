@@ -21,25 +21,25 @@
  */
 #include "common.h"
 
+#include <assert.h>
+#include <ctype.h>
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <grp.h>
+#include <inttypes.h>
+#include <pthread.h>
+#include <pwd.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <ctype.h>
 #include <string.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <unistd.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/mman.h>
-#include <signal.h>
-#include <pwd.h>
-#include <grp.h>
-#include <dirent.h>
-#include <inttypes.h>
 #include <time.h>
-#include <assert.h>
-#include <pthread.h>
+#include <unistd.h>
 
 #ifndef SR_HAVE_PTHREAD_MUTEX_TIMEDLOCK
 
@@ -205,12 +205,12 @@ sr_sub_change_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr
         }
 
         for (j = 0; j < change_sub->sub_count; ++j) {
-            if ((!xpath && change_sub->subs[j].xpath) || (xpath && !change_sub->subs[j].xpath)
-                    || (xpath && change_sub->subs[j].xpath && strcmp(change_sub->subs[j].xpath, xpath))) {
+            if ((!xpath && change_sub->subs[j].xpath) || (xpath && !change_sub->subs[j].xpath) ||
+                    (xpath && change_sub->subs[j].xpath && strcmp(change_sub->subs[j].xpath, xpath))) {
                 continue;
             }
-            if ((change_sub->subs[j].priority != priority) || (change_sub->subs[j].opts != sub_opts)
-                    || (change_sub->subs[j].cb != change_cb) || (change_sub->subs[j].private_data != private_data)) {
+            if ((change_sub->subs[j].priority != priority) || (change_sub->subs[j].opts != sub_opts) ||
+                    (change_sub->subs[j].cb != change_cb) || (change_sub->subs[j].private_data != private_data)) {
                 continue;
             }
 
@@ -667,8 +667,8 @@ sr_sub_rpc_del(const char *op_path, const char *xpath, sr_rpc_cb rpc_cb, sr_rpc_
             if (strcmp(rpc_sub->subs[j].xpath, xpath) || (rpc_sub->subs[j].priority != priority)) {
                 continue;
             }
-            if ((rpc_sub->subs[j].cb != rpc_cb) || (rpc_sub->subs[j].tree_cb != rpc_tree_cb)
-                        || (rpc_sub->subs[j].private_data != private_data)) {
+            if ((rpc_sub->subs[j].cb != rpc_cb) || (rpc_sub->subs[j].tree_cb != rpc_tree_cb) ||
+                    (rpc_sub->subs[j].private_data != private_data)) {
                 continue;
             }
 
@@ -1695,7 +1695,7 @@ sr_path_conn_lockfile(sr_cid_t cid, char **path)
     if (cid == 0) {
         asprintf(path, "%s/%s%s", SR_SHM_DIR, prefix, SR_CONN_LOCK_DIR);
     } else {
-        asprintf(path, "%s/%s%s/conn_%"PRIu32".lock", SR_SHM_DIR, prefix, SR_CONN_LOCK_DIR, cid);
+        asprintf(path, "%s/%s%s/conn_%" PRIu32 ".lock", SR_SHM_DIR, prefix, SR_CONN_LOCK_DIR, cid);
     }
     return NULL;
 }
@@ -2059,8 +2059,9 @@ sr_connection_exists(sr_cid_t cid)
 {
     int alive = 0;
     sr_error_info_t *err_info;
+
     if ((err_info = sr_shmmain_conn_check(cid, &alive))) {
-        SR_LOG_WRN("Failed to check connection %"PRIu32" aliveness.", cid);
+        SR_LOG_WRN("Failed to check connection %" PRIu32 " aliveness.", cid);
         sr_errinfo_free(&err_info);
         /* if check fails, assume the connection is alive */
         alive = 1;
@@ -2517,28 +2518,28 @@ sr_shmlock_update(sr_conn_shm_lock_t *shmlock, sr_lock_mode_t mode, int lock)
             if (shmlock->mode == SR_LOCK_NONE) {
                 /* TODO all asserts are valid but since access to these locks is unprotected, they may fail at random
                  * if the operations meet at changing rcount and mode */
-                //assert(!ATOMIC_LOAD_RELAXED(shmlock->rcount));
+                // assert(!ATOMIC_LOAD_RELAXED(shmlock->rcount));
                 shmlock->mode = SR_LOCK_READ;
             }
             if (ATOMIC_INC_RELAXED(shmlock->rcount) == UINT8_MAX) {
                 assert(0);
             }
         } else {
-            //assert(shmlock->mode != SR_LOCK_WRITE);
+            // assert(shmlock->mode != SR_LOCK_WRITE);
             shmlock->mode = SR_LOCK_WRITE;
         }
     } else {
         /* unlock */
         if (mode == SR_LOCK_READ) {
-            //assert(ATOMIC_LOAD_RELAXED(shmlock->rcount));
-            //assert(shmlock->mode != SR_LOCK_NONE);
+            // assert(ATOMIC_LOAD_RELAXED(shmlock->rcount));
+            // assert(shmlock->mode != SR_LOCK_NONE);
             if (ATOMIC_DEC_RELAXED(shmlock->rcount) == 0) {
                 assert(0);
             } else if ((ATOMIC_LOAD_RELAXED(shmlock->rcount) == 0) && (shmlock->mode == SR_LOCK_READ)) {
                 shmlock->mode = SR_LOCK_NONE;
             }
         } else {
-            //assert(shmlock->mode == SR_LOCK_WRITE);
+            // assert(shmlock->mode == SR_LOCK_WRITE);
             if (ATOMIC_LOAD_RELAXED(shmlock->rcount)) {
                 shmlock->mode = SR_LOCK_READ;
             } else {
@@ -2671,7 +2672,7 @@ sr_get_first_ns(const char *expr)
     if (!isalpha(expr[0]) && (expr[0] != '_')) {
         return NULL;
     }
-    for (i = 1; expr[i] && (isalnum(expr[i]) || (expr[i] == '_') || (expr[i] == '-') || (expr[i] == '.')); ++i);
+    for (i = 1; expr[i] && (isalnum(expr[i]) || (expr[i] == '_') || (expr[i] == '-') || (expr[i] == '.')); ++i) {}
     if (expr[i] != ':') {
         return NULL;
     }
@@ -3076,7 +3077,7 @@ sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val)
             free(any->value.mem);
             any->value_type = LYD_ANYDATA_DATATREE;
             any->value.tree = tree;
-            /* fallthrough */
+        /* fallthrough */
         case LYD_ANYDATA_DATATREE:
             lyd_print_mem(&ptr, any->value.tree, LYD_XML, LYP_FORMAT | LYP_WITHSIBLINGS);
             break;
@@ -3130,7 +3131,7 @@ sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, 
     case SR_INSTANCEID_T:
     case SR_ANYDATA_T:
     case SR_ANYXML_T:
-        return (sr_val->data.string_val);
+        return sr_val->data.string_val;
     case SR_LEAF_EMPTY_T:
         return NULL;
     case SR_BOOL_T:
@@ -3146,7 +3147,7 @@ sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, 
             t = &t->info.lref.target->type;
         }
         if (t->base == LY_TYPE_UNION) {
-            for (t2 = lys_getnext_union_type(NULL, t); t2->base != LY_TYPE_DEC64; t2 = lys_getnext_union_type(t2, t));
+            for (t2 = lys_getnext_union_type(NULL, t); t2->base != LY_TYPE_DEC64; t2 = lys_getnext_union_type(t2, t)) {}
             t = t2;
         }
         if (!t) {
@@ -3155,28 +3156,28 @@ sr_val_sr2ly_str(struct ly_ctx *ctx, const sr_val_t *sr_val, const char *xpath, 
         sprintf(buf, "%.*f", t->info.dec64.dig, sr_val->data.decimal64_val);
         return buf;
     case SR_UINT8_T:
-        sprintf(buf, "%"PRIu8, sr_val->data.uint8_val);
+        sprintf(buf, "%" PRIu8, sr_val->data.uint8_val);
         return buf;
     case SR_UINT16_T:
-        sprintf(buf, "%"PRIu16, sr_val->data.uint16_val);
+        sprintf(buf, "%" PRIu16, sr_val->data.uint16_val);
         return buf;
     case SR_UINT32_T:
-        sprintf(buf, "%"PRIu32, sr_val->data.uint32_val);
+        sprintf(buf, "%" PRIu32, sr_val->data.uint32_val);
         return buf;
     case SR_UINT64_T:
-        sprintf(buf, "%"PRIu64, sr_val->data.uint64_val);
+        sprintf(buf, "%" PRIu64, sr_val->data.uint64_val);
         return buf;
     case SR_INT8_T:
-        sprintf(buf, "%"PRId8, sr_val->data.int8_val);
+        sprintf(buf, "%" PRId8, sr_val->data.int8_val);
         return buf;
     case SR_INT16_T:
-        sprintf(buf, "%"PRId16, sr_val->data.int16_val);
+        sprintf(buf, "%" PRId16, sr_val->data.int16_val);
         return buf;
     case SR_INT32_T:
-        sprintf(buf, "%"PRId32, sr_val->data.int32_val);
+        sprintf(buf, "%" PRId32, sr_val->data.int32_val);
         return buf;
     case SR_INT64_T:
-        sprintf(buf, "%"PRId64, sr_val->data.int64_val);
+        sprintf(buf, "%" PRId64, sr_val->data.int64_val);
         return buf;
     default:
         return NULL;
@@ -3218,7 +3219,7 @@ sr_ly_split(struct lyd_node *sibling)
     assert(!sibling->parent);
 
     /* find first and last node */
-    for (first = sibling->prev; first->prev->next; first = first->prev);
+    for (first = sibling->prev; first->prev->next; first = first->prev) {}
     last = first->prev;
 
     /* correct left sibling list */
@@ -3343,7 +3344,7 @@ sr_lyd_copy_config_np_cont_r(struct lyd_node **first, struct lyd_node *parent, c
     }
 
     for (src = src_sibling; src; src = src->next) {
-        for (src_top = src; src_top->parent; src_top = src_top->parent);
+        for (src_top = src; src_top->parent; src_top = src_top->parent) {}
         if (lyd_node_module(src_top) != ly_mod) {
             /* these data do not belong to this module */
             continue;
@@ -3459,8 +3460,8 @@ sr_lyd_create_np_cont_r(struct lyd_node **first, struct lyd_node *parent, const 
     ly_ctx = parent ? lyd_node_module(parent)->ctx : ly_mod->ctx;
 
     while ((snode = lys_getnext(snode, parent ? parent->schema : NULL, ly_mod, 0))) {
-        if (!(snode->flags & config_f) || (snode->nodetype != LYS_CONTAINER)
-                || sr_lyd_cont_has_meaning(snode, parent ? parent->child : *first)) {
+        if (!(snode->flags & config_f) || (snode->nodetype != LYS_CONTAINER) ||
+                sr_lyd_cont_has_meaning(snode, parent ? parent->child : *first)) {
             /* not a container, wrong config, or the container has meaning so we do not create it automatically */
             continue;
         }
@@ -3755,7 +3756,7 @@ sr_lyd_xpath_complement(struct lyd_node **data, const char *xpath)
     /* store the depth of every node */
     max_depth = 1;
     for (i = 0; i < node_set->number; ++i) {
-        for (parent = node_set->set.d[i], depth = 0; parent; parent = parent->parent, ++depth);
+        for (parent = node_set->set.d[i], depth = 0; parent; parent = parent->parent, ++depth) {}
 
         if (ly_set_add(depth_set, (void *)((uintptr_t)depth), LY_SET_OPT_USEASLIST) == -1) {
             sr_errinfo_new_ly(&err_info, ctx);

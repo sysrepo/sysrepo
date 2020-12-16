@@ -19,6 +19,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #ifndef _BIN_COMMON_H
 #define _BIN_COMMON_H
 

@@ -19,17 +19,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #ifndef _COMMON_H
 #define _COMMON_H
 
 #define _GNU_SOURCE
 #define _POSIX_C_SOURCE 200809L
 
-#include <stdint.h>
-#include <string.h>
+#include <errno.h>
 #include <pthread.h>
 #include <stdarg.h>
-#include <errno.h>
+#include <stdint.h>
+#include <string.h>
 #include <time.h>
 
 #include <libyang/libyang.h>
@@ -274,7 +275,7 @@ typedef uint32_t sr_cid_t;
 typedef enum sr_lock_mode_e {
     SR_LOCK_NONE = 0,           /**< Not locked. */
     SR_LOCK_READ,               /**< Read lock. */
-    SR_LOCK_WRITE,              /**< Write lock. */
+    SR_LOCK_WRITE               /**< Write lock. */
 } sr_lock_mode_t;
 
 /**
@@ -294,12 +295,12 @@ struct opsub_rpcsub_s;
 struct opsub_rpc_s;
 struct modsub_notif_s;
 
-#include "replay.h"
-#include "modinfo.h"
 #include "edit_diff.h"
-#include "lyd_mods.h"
-#include "shm.h"
 #include "log.h"
+#include "lyd_mods.h"
+#include "modinfo.h"
+#include "replay.h"
+#include "shm.h"
 
 /*
  * Private definitions of public declarations

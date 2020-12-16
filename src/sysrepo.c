@@ -21,20 +21,20 @@
  */
 #include "common.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <unistd.h>
-#include <string.h>
 #include <assert.h>
 #include <errno.h>
-#include <time.h>
-#include <sys/types.h>
+#include <fcntl.h>
+#include <inttypes.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <fcntl.h>
-#include <pthread.h>
-#include <inttypes.h>
+#include <sys/types.h>
+#include <time.h>
+#include <unistd.h>
 
 #include <libyang/libyang.h>
 
@@ -761,8 +761,8 @@ sr_set_error(sr_session_ctx_t *session, const char *path, const char *format, ..
     sr_error_info_t *err_info = NULL;
     va_list vargs;
 
-    SR_CHECK_ARG_APIRET(!session || ((session->ev != SR_SUB_EV_CHANGE) && (session->ev != SR_SUB_EV_UPDATE)
-            && (session->ev != SR_SUB_EV_OPER) && (session->ev != SR_SUB_EV_RPC)) || !format, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || ((session->ev != SR_SUB_EV_CHANGE) && (session->ev != SR_SUB_EV_UPDATE) &&
+            (session->ev != SR_SUB_EV_OPER) && (session->ev != SR_SUB_EV_RPC)) || !format, session, err_info);
 
     va_start(vargs, format);
     sr_errinfo_add(&err_info, SR_ERR_OK, path, format, &vargs);
@@ -902,7 +902,7 @@ sr_get_module_name_format(const char *schema_path, char **module_name, LYS_INFOR
     }
 
     /* parse module name */
-    for (index = 0; (ptr != schema_path) && (ptr[0] != '/'); ++index, --ptr);
+    for (index = 0; (ptr != schema_path) && (ptr[0] != '/'); ++index, --ptr) {}
     if (ptr[0] == '/') {
         ++ptr;
         --index;
@@ -934,6 +934,7 @@ sr_parse_module(struct ly_ctx *ly_ctx, const char *schema_path, LYS_INFORMAT for
     const struct lys_module *ly_mod = NULL;
     const char * const *cur_dirs;
     char *sdirs_str = NULL, *ptr, *ptr2 = NULL;
+
     struct {
         char *dir;
         int index;
@@ -1076,8 +1077,8 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
         }
 
         /* modules are implemented in both contexts, compare revisions */
-        if ((!ly_iter->rev_size && ly_iter2->rev_size) || (ly_iter->rev_size && !ly_iter2->rev_size)
-                || (ly_iter->rev_size && ly_iter2->rev_size && strcmp(ly_iter->rev[0].date, ly_iter2->rev[0].date))) {
+        if ((!ly_iter->rev_size && ly_iter2->rev_size) || (ly_iter->rev_size && !ly_iter2->rev_size) ||
+                (ly_iter->rev_size && ly_iter2->rev_size && strcmp(ly_iter->rev[0].date, ly_iter2->rev[0].date))) {
             sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Module \"%s\" implements module \"%s@%s\" that is already"
                     " in sysrepo in revision %s.", ly_mod->name, ly_iter->name,
                     ly_iter->rev_size ? ly_iter->rev[0].date : "<none>", ly_iter2->rev_size ? ly_iter2->rev[0].date : "<none>");
@@ -2049,8 +2050,8 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
     struct lyd_node *dup_edit = NULL, *node;
 
     SR_CHECK_ARG_APIRET(!session || !edit || !default_operation, session, err_info);
-    SR_CHECK_ARG_APIRET(strcmp(default_operation, "merge") && strcmp(default_operation, "replace")
-            && strcmp(default_operation, "none"), session, err_info);
+    SR_CHECK_ARG_APIRET(strcmp(default_operation, "merge") && strcmp(default_operation, "replace") &&
+            strcmp(default_operation, "none"), session, err_info);
 
     if (session->conn->ly_ctx != edit->schema->module->ctx) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Data trees must be created using the session connection libyang context.");
@@ -2594,7 +2595,7 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
     }
 
     /* find first sibling */
-    for (; src_config && src_config->prev->next; src_config = src_config->prev);
+    for ( ; src_config && src_config->prev->next; src_config = src_config->prev) {}
 
     /* SHM LOCK (reading subscriptions) */
     if ((err_info = sr_shmmain_lock_remap(session->conn, SR_LOCK_READ, 0, __func__))) {
@@ -3414,8 +3415,8 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     sr_subscr_options_t sub_opts;
     sr_mod_t *shm_mod;
 
-    SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !module_name || !callback
-            || ((opts & SR_SUBSCR_PASSIVE) && (opts & SR_SUBSCR_ENABLED)) || !subscription, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !module_name || !callback ||
+            ((opts & SR_SUBSCR_PASSIVE) && (opts & SR_SUBSCR_ENABLED)) || !subscription, session, err_info);
 
     if ((opts & SR_SUBSCR_CTX_REUSE) && !*subscription) {
         /* invalid option, remove */
@@ -3476,7 +3477,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
 
     /* add the subscription into session */
     if ((err_info = sr_ptr_add(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
-                *subscription))) {
+            *subscription))) {
         goto error_unlock_unmod_unsub;
     }
 
@@ -3659,7 +3660,7 @@ sr_lyd_node2sr_val(const struct lyd_node *node, const char *value_str, const cha
             free(any->value.mem);
             any->value_type = LYD_ANYDATA_DATATREE;
             any->value.tree = tree;
-            /* fallthrough */
+        /* fallthrough */
         case LYD_ANYDATA_DATATREE:
             lyd_print_mem(&ptr, any->value.tree, LYD_XML, LYP_FORMAT | LYP_WITHSIBLINGS);
             break;
@@ -3687,7 +3688,7 @@ sr_lyd_node2sr_val(const struct lyd_node *node, const char *value_str, const cha
         assert((ptr[-1] == '=') && (ptr[-2] == '.') && (ptr[-3] == '['));
         ptr[-3] = '\0';
 
-        /* fallthrough */
+    /* fallthrough */
     case LYS_LEAF:
         /* find the actual leaf */
         leaf = (const struct lyd_node_leaf_list *)node;
@@ -3797,7 +3798,7 @@ sr_lyd_node2sr_val(const struct lyd_node *node, const char *value_str, const cha
         break;
     default:
         SR_ERRINFO_INT(&err_info);
-            goto error;
+        goto error;
     }
 
     sr_val->dflt = node->dflt;
@@ -3845,8 +3846,8 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
     case SR_OP_MODIFIED:
         /* "orig-value" attribute contains the previous value */
         for (attr = node->attr;
-             attr && (strcmp(attr->annotation->module->name, SR_YANG_MOD) || strcmp(attr->name, "orig-value"));
-             attr = attr->next);
+                attr && (strcmp(attr->annotation->module->name, SR_YANG_MOD) || strcmp(attr->name, "orig-value"));
+                attr = attr->next) {}
         if (!attr) {
             SR_ERRINFO_INT(&err_info);
             return sr_api_ret(session, err_info);
@@ -3854,8 +3855,8 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
 
         /* "orig-dflt" is present only if the previous value was default */
         for (attr2 = node->attr;
-             attr2 && (strcmp(attr2->annotation->module->name, SR_YANG_MOD) || strcmp(attr2->name, "orig-dflt"));
-             attr2 = attr2->next);
+                attr2 && (strcmp(attr2->annotation->module->name, SR_YANG_MOD) || strcmp(attr2->name, "orig-dflt"));
+                attr2 = attr2->next) {}
 
         if ((err_info = sr_lyd_node2sr_val(node, attr->value_str, NULL, old_value))) {
             return sr_api_ret(session, err_info);
@@ -3878,7 +3879,7 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
             }
             break;
         }
-        /* fallthrough */
+    /* fallthrough */
     case SR_OP_MOVED:
         if (node->schema->nodetype == LYS_LEAFLIST) {
             attr_name = "value";
@@ -3888,8 +3889,8 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
         }
         /* attribute contains the value of the node before in the order */
         for (attr = node->attr;
-             attr && (strcmp(attr->annotation->module->name, "yang") || strcmp(attr->name, attr_name));
-             attr = attr->next);
+                attr && (strcmp(attr->annotation->module->name, "yang") || strcmp(attr->name, attr_name));
+                attr = attr->next) {}
         if (!attr) {
             SR_ERRINFO_INT(&err_info);
             return sr_api_ret(session, err_info);
@@ -3950,8 +3951,8 @@ sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_ch
     case SR_OP_MODIFIED:
         /* "orig-value" attribute contains the previous value */
         for (attr = (*node)->attr;
-             attr && (strcmp(attr->annotation->module->name, SR_YANG_MOD) || strcmp(attr->name, "orig-value"));
-             attr = attr->next);
+                attr && (strcmp(attr->annotation->module->name, SR_YANG_MOD) || strcmp(attr->name, "orig-value"));
+                attr = attr->next) {}
         if (!attr) {
             SR_ERRINFO_INT(&err_info);
             return sr_api_ret(session, err_info);
@@ -3960,8 +3961,8 @@ sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_ch
 
         /* "orig-dflt" is present only if the previous value was default */
         for (attr2 = (*node)->attr;
-             attr2 && (strcmp(attr2->annotation->module->name, SR_YANG_MOD) || strcmp(attr2->name, "orig-dflt"));
-             attr2 = attr2->next);
+                attr2 && (strcmp(attr2->annotation->module->name, SR_YANG_MOD) || strcmp(attr2->name, "orig-dflt"));
+                attr2 = attr2->next) {}
         if (attr2) {
             *prev_dflt = 1;
         }
@@ -3971,7 +3972,7 @@ sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_ch
             /* nothing to do */
             break;
         }
-        /* fallthrough */
+    /* fallthrough */
     case SR_OP_MOVED:
         if ((*node)->schema->nodetype == LYS_LEAFLIST) {
             attr_name = "value";
@@ -3982,8 +3983,8 @@ sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_ch
 
         /* attribute contains the value (predicates) of the preceding instance in the order */
         for (attr = (*node)->attr;
-             attr && (strcmp(attr->annotation->module->name, "yang") || strcmp(attr->name, attr_name));
-             attr = attr->next);
+                attr && (strcmp(attr->annotation->module->name, "yang") || strcmp(attr->name, attr_name));
+                attr = attr->next) {}
         if (!attr) {
             SR_ERRINFO_INT(&err_info);
             return sr_api_ret(session, err_info);
@@ -4111,7 +4112,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
 
     /* add RPC/action subscription into main SHM (which may be remapped) */
     if ((err_info = sr_shmmain_rpc_subscription_add(&conn->ext_shm, shm_rpc_off, xpath, priority, sub_opts,
-                (*subscription)->evpipe_num))) {
+            (*subscription)->evpipe_num))) {
         goto error_unlock_unsub2;
     }
     shm_rpc = (sr_rpc_t *)(conn->ext_shm.addr + shm_rpc_off);
@@ -4123,7 +4124,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
 
     /* add the subscription into session */
     if ((err_info = sr_ptr_add(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
-                *subscription))) {
+            *subscription))) {
         goto error_unlock_unsub4;
     }
 
@@ -4277,7 +4278,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     /* check input data tree */
     switch (input->schema->nodetype) {
     case LYS_ACTION:
-        for (input_op = input; input->parent; input = input->parent);
+        for (input_op = input; input->parent; input = input->parent) {}
         break;
     case LYS_RPC:
         input_op = input;
@@ -4292,7 +4293,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
         if (input_op->schema->nodetype == LYS_ACTION) {
             break;
         }
-        /* fallthrough */
+    /* fallthrough */
     default:
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Provided input is not a valid RPC or action invocation.");
         return sr_api_ret(session, err_info);
@@ -4457,8 +4458,8 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
     sr_mod_t *shm_mod;
     sr_main_shm_t *main_shm;
 
-    SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !mod_name || (start_time && (start_time > cur_ts)) || (stop_time
-            && (!start_time || (stop_time < start_time))) || (!callback && !tree_callback) || !subscription, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !mod_name || (start_time && (start_time > cur_ts)) || (stop_time &&
+            (!start_time || (stop_time < start_time))) || (!callback && !tree_callback) || !subscription, session, err_info);
 
     /* is the module name valid? */
     ly_mod = ly_ctx_get_module(session->conn->ly_ctx, mod_name, NULL, 1);
@@ -4546,7 +4547,7 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
 
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_sub_notif_add(session, ly_mod->name, sub_id, xpath, start_time, stop_time, callback, tree_callback,
-                private_data, *subscription))) {
+            private_data, *subscription))) {
         goto error_unlock_unsub_unmod;
     }
 
@@ -4559,7 +4560,7 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
 
     /* add the subscription into session */
     if ((err_info = sr_ptr_add(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
-                *subscription))) {
+            *subscription))) {
         goto error_unlock_unsub_unmod;
     }
 
@@ -4672,7 +4673,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
     /* check notif data tree */
     switch (notif->schema->nodetype) {
     case LYS_NOTIF:
-        for (notif_op = notif; notif->parent; notif = notif->parent);
+        for (notif_op = notif; notif->parent; notif = notif->parent) {}
         break;
     case LYS_CONTAINER:
     case LYS_LIST:
@@ -4684,7 +4685,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
         if (notif_op->schema->nodetype == LYS_NOTIF) {
             break;
         }
-        /* fallthrough */
+    /* fallthrough */
     default:
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Provided tree is not a valid notification invocation.");
         return sr_api_ret(session, err_info);
@@ -5104,7 +5105,7 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
 
     /* add the subscription into session */
     if ((err_info = sr_ptr_add(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
-                *subscription))) {
+            *subscription))) {
         goto error_unlock_unsub_unmod;
     }
 
