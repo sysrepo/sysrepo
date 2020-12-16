@@ -229,9 +229,7 @@ void sr_xpath_recover(sr_xpath_ctx_t *state);
 /**@} xpath_utils */
 
 #ifdef __cplusplus
-/* *INDENT-OFF* */
 }
-/* *INDENT-ON* */
 #endif
 
 #endif /* SYSREPO_XPATH_H_ */

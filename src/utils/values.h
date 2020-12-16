@@ -219,9 +219,7 @@ int sr_tree_to_values(const struct lyd_node *data, const char *xpath, sr_val_t *
 /**@} values */
 
 #ifdef __cplusplus
-/* *INDENT-OFF* */
 }
-/* *INDENT-ON* */
 #endif
 
 #endif /* SYSREPO_VALUES_H_ */
