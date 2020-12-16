@@ -19,6 +19,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #ifndef _SYSREPO_H
 #define _SYSREPO_H
 
@@ -1893,7 +1894,9 @@ typedef void (*srp_cleanup_cb_t)(sr_session_ctx_t *session, void *private_data);
 void srp_log(sr_log_level_t ll, const char *format, ...);
 
 #ifdef __cplusplus
+/* *INDENT-OFF* */
 }
+/* *INDENT-ON* */
 #endif
 
 #endif /* _SYSREPO_H */
