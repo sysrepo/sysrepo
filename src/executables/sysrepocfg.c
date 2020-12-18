@@ -290,7 +290,7 @@ step_create_input_file(LYD_FORMAT format, char *tmp_file)
 
 static int
 op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name, LYD_FORMAT format, int not_strict,
-        int timeout_s, int wait)
+        int timeout_s)
 {
     struct lyd_node *data;
     int r, flags;
@@ -301,7 +301,7 @@ op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     }
 
     /* replace config (always spends data) */
-    r = sr_replace_config(sess, module_name, data, timeout_s * 1000, wait);
+    r = sr_replace_config(sess, module_name, data, timeout_s * 1000, 1);
     if (r) {
         error_print(r, "Replace config failed");
         return EXIT_FAILURE;
@@ -362,7 +362,7 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
 
 static int
 op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const char *module_name, LYD_FORMAT format,
-        int lock, int not_strict, int wd_opt, int timeout_s, int wait)
+        int lock, int not_strict, int wd_opt, int timeout_s)
 {
     char tmp_file[22];
     int r, flags, rc = EXIT_FAILURE;
@@ -382,7 +382,7 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
             return EXIT_FAILURE;
         }
 
-        r = sr_apply_changes(sess, timeout_s * 1000, wait);
+        r = sr_apply_changes(sess, timeout_s * 1000, 1);
         if (r != SR_ERR_OK) {
             error_print(r, "Failed to merge edit data");
             return EXIT_FAILURE;
@@ -413,7 +413,7 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
     }
 
     /* use import operation to store edited data */
-    if (op_import(sess, tmp_file, module_name, format, not_strict, timeout_s, wait)) {
+    if (op_import(sess, tmp_file, module_name, format, not_strict, timeout_s)) {
         goto cleanup_unlock;
     }
 
@@ -517,7 +517,7 @@ op_notif(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_
 
 static int
 op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds, const char *module_name,
-        LYD_FORMAT format, int not_strict, int timeout_s, int wait)
+        LYD_FORMAT format, int not_strict, int timeout_s)
 {
     int r, flags;
     struct lyd_node *data;
@@ -530,14 +530,14 @@ op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds,
         }
 
         /* replace data */
-        r = sr_replace_config(sess, module_name, data, timeout_s * 1000, wait);
+        r = sr_replace_config(sess, module_name, data, timeout_s * 1000, 1);
         if (r) {
             error_print(r, "Replace config failed");
             return EXIT_FAILURE;
         }
     } else {
         /* copy config */
-        r = sr_copy_config(sess, module_name, source_ds, timeout_s * 1000, wait);
+        r = sr_copy_config(sess, module_name, source_ds, timeout_s * 1000, 1);
         if (r) {
             error_print(r, "Copy config failed");
             return EXIT_FAILURE;
@@ -597,7 +597,7 @@ main(int argc, char **argv)
     const char *module_name = NULL, *editor = NULL, *file_path = NULL, *xpath = NULL, *op_str;
     char *ptr;
     sr_log_level_t log_level = SR_LL_ERR;
-    int r, rc = EXIT_FAILURE, opt, operation = 0, lock = 0, not_strict = 0, timeout = 0, wait = 0, wd_opt = 0;
+    int r, rc = EXIT_FAILURE, opt, operation = 0, lock = 0, not_strict = 0, timeout = 0, wd_opt = 0;
     uint32_t max_depth = 0;
     struct option options[] = {
         {"help",            no_argument,       NULL, 'h'},
@@ -617,7 +617,6 @@ main(int argc, char **argv)
         {"not-strict",      no_argument,       NULL, 'n'},
         {"depth",           required_argument, NULL, 'p'},
         {"timeout",         required_argument, NULL, 't'},
-        {"wait",            no_argument,       NULL, 'w'},
         {"defaults",        required_argument, NULL, 'e'},
         {"verbosity",       required_argument, NULL, 'v'},
         {NULL,              0,                 NULL, 0},
@@ -630,7 +629,7 @@ main(int argc, char **argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:W:d:m:x:f:lnp:t:we:v:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:W:d:m:x:f:lnp:t:e:v:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -782,9 +781,6 @@ main(int argc, char **argv)
                 goto cleanup;
             }
             break;
-        case 'w':
-            wait = 1;
-            break;
         case 'e':
             if (!strcmp(optarg, "report-all")) {
                 wd_opt = LYP_WD_ALL;
@@ -872,13 +868,13 @@ main(int argc, char **argv)
     /* perform the operation */
     switch (operation) {
     case 'I':
-        rc = op_import(sess, file_path, module_name, format, not_strict, timeout, wait);
+        rc = op_import(sess, file_path, module_name, format, not_strict, timeout);
         break;
     case 'X':
         rc = op_export(sess, file_path, module_name, xpath, format, max_depth, wd_opt, timeout);
         break;
     case 'E':
-        rc = op_edit(sess, file_path, editor, module_name, format, lock, not_strict, wd_opt, timeout, wait);
+        rc = op_edit(sess, file_path, editor, module_name, format, lock, not_strict, wd_opt, timeout);
         break;
     case 'R':
         rc = op_rpc(sess, file_path, editor, format, not_strict, wd_opt, timeout);
@@ -887,7 +883,7 @@ main(int argc, char **argv)
         rc = op_notif(sess, file_path, editor, format, not_strict);
         break;
     case 'C':
-        rc = op_copy(sess, file_path, source_ds, module_name, format, not_strict, timeout, wait);
+        rc = op_copy(sess, file_path, source_ds, module_name, format, not_strict, timeout);
         break;
     case 'W':
         if (!module_name) {

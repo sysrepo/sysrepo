@@ -2304,14 +2304,14 @@ sr_diff_check_cid_conn(struct lyd_node *diff_node, sr_cid_t cur_cid, int cur_att
 
     assert(conn_ptr);
 
-    if (!cur_cid || (cur_cid != conn_ptr->sr_cid)) {
+    if (!cur_cid || (cur_cid != conn_ptr->cid)) {
         if (cur_attr_own) {
             /* remove attrs from the node */
             sr_edit_del_attr(diff_node, "cid");
         }
 
         /* add attrs of the new connection */
-        sprintf(cid_str, "%" PRIu32, conn_ptr->sr_cid);
+        sprintf(cid_str, "%" PRIu32, conn_ptr->cid);
         if (!lyd_insert_attr(diff_node, NULL, SR_YANG_MOD ":cid", cid_str)) {
             sr_errinfo_new_ly(&err_info, lyd_node_module(diff_node)->ctx);
             return err_info;

@@ -715,7 +715,7 @@ perf_commit_test(void **state, int op_num, int *items)
             rc = sr_set_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", &value, SR_EDIT_DEFAULT);
         }
         assert_int_equal(rc, SR_ERR_OK);
-        rc = sr_apply_changes(session, 0, 0);
+        rc = sr_apply_changes(session, 0, 1);
         assert_int_equal(rc, SR_ERR_OK);
         even = !even;
     }
@@ -974,7 +974,7 @@ createDataTreeExampleModule(sr_session_ctx_t *sess)
     root = lyd_new_path(NULL, ctx, XPATH, "Leaf value", 0, 0);
     assert_non_null(root);
     assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
-    assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "example-module", root, 0, 0));
+    assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "example-module", root, 0, 1));
 }
 
 static void
@@ -1003,7 +1003,7 @@ createDataTreeLargeExampleModule(sr_session_ctx_t *sess, int list_count)
     lyd_new_path(root, ctx, "/example-module:container/list[key1='key1'][key2='key2']/leaf", "Leaf value", 0, 0);
 
     assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
-    assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "example-module", root, 0, 0));
+    assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "example-module", root, 0, 1));
 }
 
 static void
@@ -1056,7 +1056,7 @@ createDataTreeLargeIETFinterfacesModule(sr_session_ctx_t *sess, size_t if_count)
 
 
     assert_int_equal(0, lyd_validate(&root, LYD_OPT_STRICT | LYD_OPT_CONFIG, NULL));
-    assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "ietf-interfaces", root, 0, 0));
+    assert_int_equal(SR_ERR_OK, sr_replace_config(sess, "ietf-interfaces", root, 0, 1));
 }
 
 int

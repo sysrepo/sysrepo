@@ -359,10 +359,11 @@ cleanup:
  * @param[in] shm_mod Notification SHM module.
  * @param[in] notif_lyb Notification in LYB format, is spent!
  * @param[in] notif_ts Notification timestamp.
+ * @param[in] cid Connection ID.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_notif_write(const struct lys_module *ly_mod, sr_mod_t *shm_mod, char *notif_lyb, time_t notif_ts)
+sr_notif_write(const struct lys_module *ly_mod, sr_mod_t *shm_mod, char *notif_lyb, time_t notif_ts, sr_cid_t cid)
 {
     sr_error_info_t *err_info = NULL;
     time_t from_ts, to_ts;
@@ -374,7 +375,7 @@ sr_notif_write(const struct lys_module *ly_mod, sr_mod_t *shm_mod, char *notif_l
     SR_CHECK_INT_GOTO(notif_lyb_len == -1, err_info, cleanup);
 
     /* REPLAY WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->replay_lock, SR_MOD_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__, NULL))) {
+    if ((err_info = sr_rwlock(&shm_mod->replay_lock, SR_MOD_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, cid, __func__, NULL, NULL))) {
         goto cleanup;
     }
 
@@ -428,7 +429,7 @@ sr_notif_write(const struct lys_module *ly_mod, sr_mod_t *shm_mod, char *notif_l
 
 cleanup_unlock:
     /* REPLAY WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->replay_lock, SR_LOCK_WRITE, __func__);
+    sr_rwunlock(&shm_mod->replay_lock, SR_MOD_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, cid, __func__);
 cleanup:
     if (fd > -1) {
         close(fd);
@@ -543,7 +544,7 @@ sr_replay_store(sr_session_ctx_t *sess, const struct lyd_node *notif, time_t not
         SR_LOG_INF("Notification \"%s\" buffered to be stored for replay.", notif_op->schema->name);
     } else {
         /* write the notification to a replay file */
-        if ((err_info = sr_notif_write(ly_mod, shm_mod, notif_lyb, notif_ts))) {
+        if ((err_info = sr_notif_write(ly_mod, shm_mod, notif_lyb, notif_ts, sess->conn->cid))) {
             return err_info;
         }
         SR_LOG_INF("Notification \"%s\" stored for replay.", notif_op->schema->name);
@@ -608,7 +609,7 @@ sr_notif_buf_thread(void *arg)
             }
 
             /* store the notification, continue normally on error (notif_lyb is spent!) */
-            err_info = sr_notif_write(first->notif_mod, shm_mod, first->notif_lyb, first->notif_ts);
+            err_info = sr_notif_write(first->notif_mod, shm_mod, first->notif_lyb, first->notif_ts, sess->conn->cid);
             sr_errinfo_free(&err_info);
 
             /* next iter */

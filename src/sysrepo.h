@@ -982,9 +982,7 @@ int sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t tim
  * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used. Note that this timeout
  * is measured separately for each callback meaning this whole function call can easily __take more time__ than this
  * timeout if there are changes applied for several subscribers.
- * @param[in] wait Whether to wait until all callbacks on all events are finished (even ::SR_EV_DONE or ::SR_EV_ABORT).
- * If not set, these events may not yet be processed after the function returns. Note that all ::SR_EV_CHANGE events
- * are always waited for.
+ * @param[in] wait Deprecated and ignored, the function always waits until all the events are processed.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms, int wait);
@@ -1015,9 +1013,7 @@ int sr_discard_changes(sr_session_ctx_t *session);
  * @param[in] module_name If specified, limits the replace operation only to this module.
  * @param[in] src_config Source data to replace the datastore. Is ALWAYS spent and cannot be further used by the application!
  * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
- * @param[in] wait Whether to wait until all callbacks on all events are finished (even ::SR_EV_DONE or ::SR_EV_ABORT).
- * If not set, these events may not yet be processed after the function returns. Note that all ::SR_EV_CHANGE events
- * are always waited for.
+ * @param[in] wait Deprecated and ignored, the function always waits until all the events are processed.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config,
@@ -1038,9 +1034,7 @@ int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct
  * @param[in] module_name Optional module name that limits the copy operation only to this module.
  * @param[in] src_datastore Source datastore.
  * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
- * @param[in] wait Whether to wait until all callbacks on all events are finished (even ::SR_EV_DONE or ::SR_EV_ABORT).
- * If not set, these events may not yet be processed after the function returns. Note that all ::SR_EV_CHANGE events
- * are always waited for.
+ * @param[in] wait Deprecated and ignored, the function always waits until all the events are processed.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms,

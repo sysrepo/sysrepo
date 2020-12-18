@@ -791,15 +791,13 @@ change_subs_del:
         SR_CHECK_INT_RET(!shm_mod, err_info);
         for (j = 0; j < change_subs->sub_count; ++j) {
             if (change_subs->subs[j].sess == sess) {
-                /* properly remove the subscription from ext SHM */
-                if ((err_info = sr_shmmod_change_subscription_stop(sess->conn, shm_mod, change_subs->subs[j].xpath,
-                        change_subs->ds, change_subs->subs[j].priority, change_subs->subs[j].opts, subs->evpipe_num, 0))) {
-                    return err_info;
-                }
+                /* no event can be happening */
+                assert(!SR_IS_LISTEN_EVENT(((sr_multi_sub_shm_t *)change_subs->sub_shm.addr)->event));
 
-                /* dismiss any events already generated for this sub */
-                if ((err_info = sr_shmsub_change_listen_dismiss_event((sr_multi_sub_shm_t *)change_subs->sub_shm.addr,
-                        &change_subs->subs[j]))) {
+                /* properly remove the subscription from ext SHM */
+                if ((err_info = sr_shmmod_change_subscription_stop(sess->conn, shm_mod, change_subs->ds,
+                        change_subs->subs[j].xpath, change_subs->subs[j].priority, change_subs->subs[j].opts,
+                        subs->evpipe_num, 0, 0))) {
                     return err_info;
                 }
 
@@ -823,15 +821,12 @@ oper_subs_del:
         SR_CHECK_INT_RET(!shm_mod, err_info);
         for (j = 0; j < oper_sub->sub_count; ++j) {
             if (oper_sub->subs[j].sess == sess) {
+                /* no event can be happening */
+                assert(!SR_IS_LISTEN_EVENT(((sr_sub_shm_t *)oper_sub->subs[j].sub_shm.addr)->event));
+
                 /* properly remove the subscriptions from the main SHM */
                 if ((err_info = sr_shmmod_oper_subscription_stop(sess->conn, shm_mod, oper_sub->subs[j].xpath,
-                        subs->evpipe_num, 0))) {
-                    return err_info;
-                }
-
-                /* dismiss any events already generated for this sub */
-                if ((err_info = sr_shmsub_oper_listen_dismiss_event((sr_sub_shm_t *)oper_sub->subs[j].sub_shm.addr,
-                        &oper_sub->subs[j]))) {
+                        subs->evpipe_num, 0, 0))) {
                     return err_info;
                 }
 
@@ -854,14 +849,12 @@ notif_subs_del:
         SR_CHECK_INT_RET(!shm_mod, err_info);
         for (j = 0; j < notif_sub->sub_count; ++j) {
             if (notif_sub->subs[j].sess == sess) {
-                /* properly remove the subscriptions from the main SHM */
-                if ((err_info = sr_shmmod_notif_subscription_stop(sess->conn, shm_mod, notif_sub->subs[j].sub_id, 0))) {
-                    return err_info;
-                }
+                /* no event can be happening */
+                assert(!SR_IS_LISTEN_EVENT(((sr_multi_sub_shm_t *)notif_sub->sub_shm.addr)->event));
 
-                /* dismiss any events already generated for this sub */
-                if ((err_info = sr_shmsub_notif_listen_dismiss_event((sr_multi_sub_shm_t *)notif_sub->sub_shm.addr,
-                        notif_sub->request_id))) {
+                /* properly remove the subscriptions from the main SHM */
+                if ((err_info = sr_shmmod_notif_subscription_stop(sess->conn, shm_mod, notif_sub->subs[j].sub_id,
+                        subs->evpipe_num, 0, 0))) {
                     return err_info;
                 }
 
@@ -884,15 +877,12 @@ rpc_subs_del:
         SR_CHECK_INT_RET(!shm_rpc, err_info);
         for (j = 0; j < rpc_sub->sub_count; ++j) {
             if (rpc_sub->subs[j].sess == sess) {
+                /* no event can be happening */
+                assert(!SR_IS_LISTEN_EVENT(((sr_multi_sub_shm_t *)rpc_sub->sub_shm.addr)->event));
+
                 /* properly remove the subscription from the main SHM */
                 if ((err_info = sr_shmmain_rpc_subscription_stop(sess->conn, shm_rpc, rpc_sub->subs[j].xpath,
-                        rpc_sub->subs[j].priority, subs->evpipe_num, 0, NULL))) {
-                    return err_info;
-                }
-
-                /* dismiss any events already generated for this sub */
-                if ((err_info = sr_shmsub_rpc_listen_dismiss_event((sr_multi_sub_shm_t *)rpc_sub->sub_shm.addr,
-                        &rpc_sub->subs[j], sess->conn->ly_ctx))) {
+                        rpc_sub->subs[j].priority, subs->evpipe_num, 0, 0, NULL))) {
                     return err_info;
                 }
 
@@ -1685,19 +1675,19 @@ sr_error_info_t *
 sr_path_conn_lockfile(sr_cid_t cid, char **path)
 {
     sr_error_info_t *err_info = NULL;
-    const char *prefix;
-
-    err_info = sr_shm_prefix(&prefix);
-    if (err_info) {
-        return err_info;
-    }
+    int ret;
 
     if (cid == 0) {
-        asprintf(path, "%s/%s%s", SR_SHM_DIR, prefix, SR_CONN_LOCK_DIR);
+        ret = asprintf(path, "%s/conn", sr_get_repo_path());
     } else {
-        asprintf(path, "%s/%s%s/conn_%" PRIu32 ".lock", SR_SHM_DIR, prefix, SR_CONN_LOCK_DIR, cid);
+        ret = asprintf(path, "%s/conn/conn_%" PRIu32 ".lock", sr_get_repo_path(), cid);
     }
-    return NULL;
+
+    if (ret == -1) {
+        *path = NULL;
+        SR_ERRINFO_MEM(&err_info);
+    }
+    return err_info;
 }
 
 void
@@ -2054,21 +2044,6 @@ sr_file_exists(const char *path)
     return 1;
 }
 
-int
-sr_connection_exists(sr_cid_t cid)
-{
-    int alive = 0;
-    sr_error_info_t *err_info;
-
-    if ((err_info = sr_shmmain_conn_check(cid, &alive))) {
-        SR_LOG_WRN("Failed to check connection %" PRIu32 " aliveness.", cid);
-        sr_errinfo_free(&err_info);
-        /* if check fails, assume the connection is alive */
-        alive = 1;
-    }
-    return alive;
-}
-
 void
 sr_time_get(struct timespec *ts, uint32_t add_ms)
 {
@@ -2413,8 +2388,15 @@ sr_rwlock_init(sr_rwlock_t *rwlock, int shared)
         pthread_mutex_destroy(&rwlock->mutex);
         return err_info;
     }
-    rwlock->readers = 0;
+
+    if ((err_info = sr_mutex_init(&rwlock->r_mutex, shared))) {
+        pthread_mutex_destroy(&rwlock->mutex);
+        pthread_cond_destroy(&rwlock->cond);
+        return err_info;
+    }
+    memset(rwlock->readers, 0, sizeof rwlock->readers);
     rwlock->upgr = 0;
+    rwlock->writer = 0;
 
     return NULL;
 }
@@ -2424,21 +2406,192 @@ sr_rwlock_destroy(sr_rwlock_t *rwlock)
 {
     pthread_mutex_destroy(&rwlock->mutex);
     pthread_cond_destroy(&rwlock->cond);
+    pthread_mutex_destroy(&rwlock->r_mutex);
+}
+
+/**
+ * @brief Check whether a connection exists.
+ *
+ * @param[in] cid Connection CID.
+ * @return 0 if not, non-zero if it exists.
+ */
+static int
+sr_connection_exists(sr_cid_t cid)
+{
+    int alive = 0;
+    sr_error_info_t *err_info;
+
+    if ((err_info = sr_shmmain_conn_check(cid, &alive, NULL))) {
+        SR_LOG_WRN("Failed to check connection %"PRIu32" aliveness.", cid);
+        sr_errinfo_free(&err_info);
+        /* if check fails, assume the connection is alive */
+        alive = 1;
+    }
+
+    return alive;
+}
+
+/**
+ * @brief Add a reader CID to a rwlock.
+ *
+ * @param[in] rwlock Lock to add a reader to.
+ * @param[in] cid Owner CID.
+ */
+static void
+sr_rwlock_reader_add(sr_rwlock_t *rwlock, sr_cid_t cid)
+{
+    sr_error_info_t *err_info = NULL;
+    int ret;
+    uint32_t i;
+
+    /* READ MUTEX LOCK */
+    ret = pthread_mutex_lock(&rwlock->r_mutex);
+    if (ret) {
+        SR_ERRINFO_INT(&err_info);
+        sr_errinfo_free(&err_info);
+    }
+
+    /* find first free item */
+    for (i = 0; rwlock->readers[i] && (i < SR_RWLOCK_READ_LIMIT); ++i) {}
+    if (i == SR_RWLOCK_READ_LIMIT) {
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Concurrent reader limit %d reached!", SR_RWLOCK_READ_LIMIT);
+        sr_errinfo_free(&err_info);
+        goto unlock;
+    }
+
+    /* assign owner cid */
+    rwlock->readers[i] = cid;
+
+unlock:
+    if (!ret) {
+        /* READ MUTEX UNLOCK */
+        pthread_mutex_unlock(&rwlock->r_mutex);
+    }
+}
+
+static void
+sr_rwlock_reader_del_(sr_cid_t *readers, uint32_t i)
+{
+    /* move all the following CIDs so that there are no holes */
+    while ((i < (SR_RWLOCK_READ_LIMIT - 1)) && readers[i + 1]) {
+        readers[i] = readers[i + 1];
+        ++i;
+    }
+
+    /* remove the last CID */
+    readers[i] = 0;
+}
+
+/**
+ * @brief Remove a reader CID from a rwlock.
+ *
+ * @param[in] rwlock Lock to remove a reader from.
+ * @param[in] cid Owner CID.
+ */
+static void
+sr_rwlock_reader_del(sr_rwlock_t *rwlock, sr_cid_t cid)
+{
+    sr_error_info_t *err_info = NULL;
+    int ret;
+    uint32_t i;
+
+    /* READ MUTEX LOCK */
+    ret = pthread_mutex_lock(&rwlock->r_mutex);
+    if (ret) {
+        SR_ERRINFO_INT(&err_info);
+        sr_errinfo_free(&err_info);
+    }
+
+    /* find a CID match */
+    for (i = 0; rwlock->readers[i] && (rwlock->readers[i] != cid) && (i < SR_RWLOCK_READ_LIMIT); ++i) {}
+    if ((i == SR_RWLOCK_READ_LIMIT) || (rwlock->readers[i] != cid)) {
+        /* CID not found */
+        SR_ERRINFO_INT(&err_info);
+        sr_errinfo_free(&err_info);
+        goto unlock;
+    }
+
+    /* remove the CID */
+    sr_rwlock_reader_del_(rwlock->readers, i);
+
+unlock:
+    if (!ret) {
+        /* READ MUTEX UNLOCK */
+        pthread_mutex_unlock(&rwlock->r_mutex);
+    }
+}
+
+/**
+ * @brief Recover a sysrepo RW lock.
+ * Mutex must be held!
+ *
+ * @param[in] rwlock RW lock to recover.
+ * @param[in] func Lock caller function.
+ * @param[in] cb Optional callback to call for each recovered lock.
+ * @param[in] cb_data User data for @p cb.
+ */
+static void
+sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_rwlock_recover_cb cb, void *cb_data)
+{
+    uint32_t i = 0;
+    sr_cid_t cid;
+
+    /* readers */
+    while (rwlock->readers[i] && (i < SR_RWLOCK_READ_LIMIT)) {
+        if (!sr_connection_exists(rwlock->readers[i])) {
+            /* remove the dead reader */
+            cid = rwlock->readers[i];
+            sr_rwlock_reader_del_(rwlock->readers, i);
+
+            /* recover */
+            if (cb) {
+                cb(SR_LOCK_READ, cid, cb_data);
+            }
+            SR_LOG_WRN("Recovered a read-lock of CID %" PRIu32 " in %s.", cid, func);
+        } else {
+            ++i;
+        }
+    }
+
+    /* read-upgr */
+    if (rwlock->upgr) {
+        if (!sr_connection_exists(rwlock->upgr)) {
+            cid = rwlock->upgr;
+            rwlock->upgr = 0;
+
+            /* recover */
+            if (cb) {
+                cb(SR_LOCK_READ_UPGR, cid, cb_data);
+            }
+            SR_LOG_WRN("Recovered a read-upgr-lock of CID %" PRIu32 " in %s.", cid, func);
+        }
+    }
+
+    /* write */
+    if (rwlock->writer) {
+        if (!sr_connection_exists(rwlock->writer)) {
+            cid = rwlock->writer;
+            rwlock->writer = 0;
+
+            /* recover */
+            if (cb) {
+                cb(SR_LOCK_WRITE, cid, cb_data);
+            }
+            SR_LOG_WRN("Recovered a write-lock of CID %" PRIu32 " in %s.", cid, func);
+        }
+    }
 }
 
 sr_error_info_t *
-sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *func, int *cond_timeout)
+sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
+        sr_rwlock_recover_cb cb, void *cb_data)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
     int ret;
 
-    assert(mode != SR_LOCK_NONE);
-    assert(timeout_ms > 0);
+    assert(mode && (timeout_ms > 0) && cid);
 
-    if (cond_timeout) {
-        *cond_timeout = 0;
-    }
     sr_time_get(&timeout_ts, timeout_ms);
 
     /* MUTEX LOCK */
@@ -2450,32 +2603,66 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *
 
     if (mode == SR_LOCK_WRITE) {
         /* write lock */
+        if (rwlock->readers[0]) {
+            /* instead of waiting, try to recover the lock immediately */
+            sr_rwlock_recover(rwlock, func, cb, cb_data);
+        }
+
+        /* wait until there are no readers */
         ret = 0;
-        while (!ret && rwlock->readers) {
+        while (!ret && rwlock->readers[0]) {
             /* COND WAIT */
             ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
+        }
+        if (ret == ETIMEDOUT) {
+            /* recover the lock again, the owner may have died while processing */
+            sr_rwlock_recover(rwlock, func, cb, cb_data);
+            if (!rwlock->readers[0]) {
+                /* recovered */
+                ret = 0;
+            }
         }
         if (ret) {
             goto error_cond_unlock;
         }
+
+        /* consistency checks */
+        assert(!rwlock->upgr && !rwlock->writer);
+
+        /* set writer flag */
+        rwlock->writer = cid;
     } else {
         /* read lock */
         if (mode == SR_LOCK_READ_UPGR) {
+            if (rwlock->readers[0]) {
+                /* instead of waiting, try to recover the lock immediately */
+                sr_rwlock_recover(rwlock, func, cb, cb_data);
+            }
+
+            /* wait until there is no read-upgr lock */
             ret = 0;
             while (!ret && rwlock->upgr) {
                 /* COND WAIT */
                 ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
+            }
+            if (ret == ETIMEDOUT) {
+                /* recover the lock again, the owner may have died while processing */
+                sr_rwlock_recover(rwlock, func, cb, cb_data);
+                if (!rwlock->upgr) {
+                    /* recovered */
+                    ret = 0;
+                }
             }
             if (ret) {
                 goto error_cond_unlock;
             }
 
             /* set upgradeable flag */
-            rwlock->upgr = 1;
+            rwlock->upgr = cid;
         }
 
         /* add a reader */
-        ++rwlock->readers;
+        sr_rwlock_reader_add(rwlock, cid);
 
         /* MUTEX UNLOCK */
         pthread_mutex_unlock(&rwlock->mutex);
@@ -2484,32 +2671,29 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *
     return NULL;
 
 error_cond_unlock:
-    if (cond_timeout) {
-        *cond_timeout = 1;
-    } else {
-        /* MUTEX UNLOCK */
-        pthread_mutex_unlock(&rwlock->mutex);
+    /* MUTEX UNLOCK */
+    pthread_mutex_unlock(&rwlock->mutex);
 
-        SR_ERRINFO_COND(&err_info, func, ret);
-    }
+    SR_ERRINFO_COND(&err_info, func, ret);
     return err_info;
 }
 
 sr_error_info_t *
-sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *func)
+sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
+        sr_rwlock_recover_cb cb, void *cb_data)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
     int ret;
 
-    assert(mode != SR_LOCK_NONE);
+    assert(mode && cid);
     assert((mode != SR_LOCK_WRITE) || (timeout_ms > 0));
-    sr_time_get(&timeout_ts, timeout_ms);
 
     if (mode == SR_LOCK_WRITE) {
         /*
          * upgrade from upgradeable read-lock to write-lock
          */
+        sr_time_get(&timeout_ts, timeout_ms);
 
         /* MUTEX LOCK */
         ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_ts);
@@ -2519,33 +2703,43 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char
         }
 
         /* consistency checks */
-        if (!rwlock->readers || !rwlock->upgr) {
-            SR_ERRINFO_INT(&err_info);
-            goto cleanup_unlock;
+        assert(rwlock->upgr == cid);
+
+        /* remove our reader */
+        sr_rwlock_reader_del(rwlock, cid);
+
+        if (rwlock->readers[0]) {
+            /* instead of waiting, try to recover the lock immediately */
+            sr_rwlock_recover(rwlock, func, cb, cb_data);
         }
 
-        /* wait until we are the only reader */
+        /* wait until there are no readers */
         ret = 0;
-        while (!ret && (rwlock->readers != 1)) {
+        while (!ret && rwlock->readers[0]) {
             /* COND WAIT */
             ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
         }
+        if (ret == ETIMEDOUT) {
+            sr_rwlock_recover(rwlock, func, cb, cb_data);
+            if (!rwlock->readers[0]) {
+                /* recovered */
+                ret = 0;
+            }
+        }
         if (ret) {
+            /* put back our reader */
+            sr_rwlock_reader_add(rwlock, cid);
+
             SR_ERRINFO_COND(&err_info, func, ret);
             goto cleanup_unlock;
         }
 
         /* additional consistency check */
-        if (!rwlock->upgr) {
-            SR_ERRINFO_INT(&err_info);
-            goto cleanup_unlock;
-        }
+        assert(rwlock->upgr == cid);
 
-        /* remove upgradeable flag since we now own the mutex */
+        /* update flags */
         rwlock->upgr = 0;
-
-        /* remove our reader */
-        --rwlock->readers;
+        rwlock->writer = cid;
 
         /* simply keep the lock */
         return NULL;
@@ -2556,18 +2750,18 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char
      */
 
     /* consistency checks */
-    if (rwlock->readers || rwlock->upgr) {
-        SR_ERRINFO_INT(&err_info);
-        goto cleanup_unlock;
-    }
+    assert(!rwlock->readers[0] && !rwlock->upgr && (rwlock->writer == cid));
+
+    /* remove writer flag */
+    rwlock->writer = 0;
 
     if (mode == SR_LOCK_READ_UPGR) {
         /* we want the upgrade capability */
-        rwlock->upgr = 1;
+        rwlock->upgr = cid;
     }
 
     /* add a reader */
-    ++rwlock->readers;
+    sr_rwlock_reader_add(rwlock, cid);
 
 cleanup_unlock:
     /* MUTEX UNLOCK */
@@ -2576,16 +2770,17 @@ cleanup_unlock:
 }
 
 void
-sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func)
+sr_rwunlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
     int ret;
 
-    assert(mode != SR_LOCK_NONE);
+    assert(mode && cid);
+    assert((mode == SR_LOCK_WRITE) || (timeout_ms > 0));
 
     if ((mode == SR_LOCK_READ) || (mode == SR_LOCK_READ_UPGR)) {
-        sr_time_get(&timeout_ts, SR_RWLOCK_READ_TIMEOUT);
+        sr_time_get(&timeout_ts, timeout_ms);
 
         /* MUTEX LOCK */
         ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_ts);
@@ -2595,107 +2790,30 @@ sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func)
         }
 
         if (mode == SR_LOCK_READ_UPGR) {
-            if (!rwlock->upgr) {
-                SR_ERRINFO_INT(&err_info);
-                sr_errinfo_free(&err_info);
-            } else {
-                /* remove the upgradeable flag */
-                rwlock->upgr = 0;
-            }
+            assert(rwlock->upgr == cid);
+
+            /* remove the upgradeable flag */
+            rwlock->upgr = 0;
         }
 
-        if (!rwlock->readers) {
-            SR_ERRINFO_INT(&err_info);
-            sr_errinfo_free(&err_info);
-        } else {
-            /* remove a reader */
-            --rwlock->readers;
-        }
+        /* remove this reader */
+        sr_rwlock_reader_del(rwlock, cid);
     } else {
         /* we are unlocking a write lock, there can be no readers */
-        if (rwlock->readers) {
-            SR_ERRINFO_INT(&err_info);
-            sr_errinfo_free(&err_info);
-        }
+        assert(!rwlock->readers[0] && !rwlock->upgr && (rwlock->writer == cid));
+
+        /* remove the writer flag */
+        rwlock->writer = 0;
     }
 
     /* write-unlock, last read-unlock, or upgradeable read-lock (there may be another upgr-read-lock waiting) */
-    if (!rwlock->readers || ((rwlock->readers == 1) && rwlock->upgr) || (mode == SR_LOCK_READ_UPGR)) {
+    if (!rwlock->readers[0] || (mode == SR_LOCK_READ_UPGR)) {
         /* broadcast on condition */
         pthread_cond_broadcast(&rwlock->cond);
     }
 
     /* MUTEX UNLOCK */
     pthread_mutex_unlock(&rwlock->mutex);
-}
-
-void
-sr_shmlock_update(char *main_shm_addr, sr_conn_shm_lock_t *shmlock, sr_lock_mode_t mode, int lock)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_main_shm_t *main_shm;
-
-    main_shm = (sr_main_shm_t *)main_shm_addr;
-
-    /* CONN LOCK */
-    if ((err_info = sr_mlock(&main_shm->conn_lock, SR_CONN_STATE_LOCK_TIMEOUT, __func__))) {
-        sr_errinfo_free(&err_info);
-    }
-
-    if (lock) {
-        /* lock */
-        switch (mode) {
-        case SR_LOCK_READ:
-            assert((shmlock->mode == SR_LOCK_NONE) || (shmlock->mode == SR_LOCK_READ) || (shmlock->mode == SR_LOCK_READ_UPGR));
-            if (shmlock->mode == SR_LOCK_NONE) {
-                /* TODO all asserts are valid but since access to these locks is unprotected, they may fail at random
-                 * if the operations meet at changing rcount and mode */
-                // assert(!ATOMIC_LOAD_RELAXED(shmlock->rcount));
-                shmlock->mode = SR_LOCK_READ;
-            }
-            if (ATOMIC_INC_RELAXED(shmlock->rcount) == UINT8_MAX) {
-                assert(0);
-            }
-        } else {
-            // assert(shmlock->mode != SR_LOCK_WRITE);
-            shmlock->mode = SR_LOCK_WRITE;
-            break;
-        case SR_LOCK_NONE:
-            assert(0);
-            break;
-        }
-    } else {
-        /* unlock */
-        if (mode == SR_LOCK_READ) {
-            // assert(ATOMIC_LOAD_RELAXED(shmlock->rcount));
-            // assert(shmlock->mode != SR_LOCK_NONE);
-            if (ATOMIC_DEC_RELAXED(shmlock->rcount) == 0) {
-                assert(0);
-            } else if ((ATOMIC_LOAD_RELAXED(shmlock->rcount) == 0) && (shmlock->mode == SR_LOCK_READ)) {
-                shmlock->mode = SR_LOCK_NONE;
-            }
-        } else {
-            // assert(shmlock->mode == SR_LOCK_WRITE);
-            if (ATOMIC_LOAD_RELAXED(shmlock->rcount)) {
-                shmlock->mode = SR_LOCK_READ;
-            } else {
-                shmlock->mode = SR_LOCK_NONE;
-            }
-            break;
-        case SR_LOCK_WRITE:
-            assert(shmlock->mode == SR_LOCK_WRITE);
-            assert(!shmlock->rcount);
-
-            shmlock->mode = SR_LOCK_NONE;
-            break;
-        case SR_LOCK_NONE:
-            assert(0);
-            break;
-        }
-    }
-
-    /* CONN UNLOCK */
-    sr_munlock(&main_shm->conn_lock);
 }
 
 void *
@@ -4560,6 +4678,51 @@ error:
 }
 
 sr_error_info_t *
+sr_module_file_oper_data_load(struct sr_mod_info_mod_s *mod, struct lyd_node **diff)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *root, *next, *elem;
+    struct lyd_attr *attr;
+    sr_cid_t dead_cid = 0;
+
+    assert(!*diff);
+
+    /* load the operational data (diff) */
+    if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_OPERATIONAL, diff))) {
+        return err_info;
+    }
+
+trim_retry:
+    if (dead_cid) {
+        /* this connection is dead, remove its stored diff */
+        SR_LOG_INF("Removing stored operational data of a dead connection (CID %u).", dead_cid);
+        if ((err_info = sr_diff_del_conn(diff, dead_cid))) {
+            return err_info;
+        }
+    }
+
+    /* find diff belonging to a dead connection, if any */
+    LY_TREE_FOR(*diff, root) {
+        LY_TREE_DFS_BEGIN(root, next, elem) {
+            LY_TREE_FOR(elem->attr, attr) {
+                if (!strcmp(attr->annotation->module->name, SR_YANG_MOD) && !strcmp(attr->name, "cid")) {
+                    if (!sr_connection_exists(attr->value.uint32)) {
+                        dead_cid = attr->value.uint32;
+
+                        /* retry the whole check until there are no dead connections */
+                        goto trim_retry;
+                    }
+                    break;
+                }
+            }
+            LY_TREE_DFS_END(root, next, elem);
+        }
+    }
+
+    return err_info;
+}
+
+sr_error_info_t *
 sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data, int create_flags,
         mode_t create_mode)
 {
@@ -4626,19 +4789,19 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     ly_mod = ly_ctx_get_module(conn->ly_ctx, mod_name, NULL, 1);
     SR_CHECK_INT_RET(!ly_mod, err_info);
 
-    /* load the stored diff */
-    if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_OPERATIONAL, &diff))) {
-        return err_info;
-    }
-    if (!diff) {
-        /* no stored diff */
-        return NULL;
-    }
-
     /* add the module into mod_info and load its enabled running data */
     ly_set_add(&mod_set, (void *)ly_mod, 0);
     if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_WRITE, SR_MI_PERM_NO | SR_MI_DATA_CACHE,
             sid, NULL, 0, SR_OPER_NO_STORED | SR_OPER_NO_SUBS))) {
+        goto cleanup;
+    }
+
+    /* load the stored diff */
+    if ((err_info = sr_module_file_oper_data_load(&mod_info.mods[0], &diff))) {
+        goto cleanup;
+    }
+    if (!diff) {
+        /* no stored diff */
         goto cleanup;
     }
 
@@ -4710,4 +4873,204 @@ sr_lys_next_feature(struct lys_feature *last, const struct lys_module *ly_mod, u
     }
 
     return last;
+}
+
+sr_error_info_t *
+sr_conn_info(sr_cid_t **cids, pid_t **pids, uint32_t *count, sr_cid_t **dead_cids, uint32_t *dead_count)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path = NULL, *ptr;
+    DIR *dir = NULL;
+    struct dirent *ent;
+    sr_cid_t cid;
+    int alive;
+    pid_t pid;
+
+    assert((!cids && !pids) || count);
+    assert(!dead_cids || dead_count);
+    if (cids) {
+        *cids = NULL;
+    }
+    if (pids) {
+        *pids = NULL;
+    }
+    if (count) {
+        *count = 0;
+    }
+    if (dead_cids) {
+        *dead_cids = NULL;
+        *dead_count = 0;
+    }
+
+    /* get the path to the directory with all the lock files */
+    if ((err_info = sr_path_conn_lockfile(0, &path))) {
+        return err_info;
+    }
+
+    /* open directory */
+    if (!(dir = opendir(path))) {
+        if (errno == ENOENT) {
+            /* no connections for sure */
+            goto cleanup;
+        }
+
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening directory \"%s\" failed (%s).", path, strerror(errno));
+        goto cleanup;
+    }
+
+    errno = 0;
+    while ((ent = readdir(dir))) {
+        /* skip irrelevant files */
+        if (strncmp(ent->d_name, "conn_", 5) || strncmp(ent->d_name + strlen(ent->d_name) - 5, ".lock", 5)) {
+            continue;
+        }
+
+        /* get the CID */
+        cid = strtoul(ent->d_name + 5, &ptr, 10);
+        if (!cid || (ptr[0] != '.')) {
+            SR_LOG_WRN("Invalid connection lock file name \"%s\"!", ent->d_name);
+            continue;
+        }
+
+        /* check whether the connection is alive */
+        if ((err_info = sr_shmmain_conn_check(cid, &alive, &pid))) {
+            goto cleanup;
+        }
+
+        /* another live connection */
+        if (alive && (cids || pids || count)) {
+            if (cids) {
+                *cids = sr_realloc(*cids, (*count) * sizeof **cids);
+                SR_CHECK_MEM_GOTO(!*cids, err_info, cleanup);
+                (*cids)[*count] = cid;
+            }
+            if (pids) {
+                *pids = sr_realloc(*pids, (*count) * sizeof **pids);
+                SR_CHECK_MEM_GOTO(!*pids, err_info, cleanup);
+                (*pids)[*count] = pid;
+            }
+            ++(*count);
+        } else if (!alive && dead_cids) {
+            *dead_cids = sr_realloc(*dead_cids, (*dead_count) * sizeof **dead_cids);
+            SR_CHECK_MEM_GOTO(!*dead_cids, err_info, cleanup);
+            (*dead_cids)[*dead_count] = cid;
+            ++(*dead_count);
+        }
+
+        errno = 0;
+    }
+    if (errno) {
+        SR_ERRINFO_SYSERRNO(&err_info, "readdir");
+        goto cleanup;
+    }
+
+    /* success */
+
+cleanup:
+    if (dir) {
+        closedir(dir);
+    }
+    free(path);
+    if (err_info) {
+        if (cids) {
+            free(*cids);
+            *cids = NULL;
+        }
+        if (pids) {
+            free(*pids);
+            *pids = NULL;
+        }
+        *count = 0;
+    }
+    return err_info;
+}
+
+sr_error_info_t *
+sr_time2datetime(time_t time, const char *tz, char *buf, char **buf2)
+{
+    sr_error_info_t *err_info = NULL;
+    char *zoneshift = NULL;
+    int zonediff, zonediff_h, zonediff_m;
+    struct tm tm, *tm_ret;
+    char *tz_origin;
+
+    assert(buf || buf2);
+
+    if (tz) {
+        tz_origin = getenv("TZ");
+        if (tz_origin) {
+            tz_origin = strdup(tz_origin);
+            if (!tz_origin) {
+                SR_ERRINFO_MEM(&err_info);
+                return err_info;
+            }
+        }
+        setenv("TZ", tz, 1);
+        tzset(); /* apply timezone change */
+        tm_ret = localtime_r(&time, &tm);
+        if (tz_origin) {
+            setenv("TZ", tz_origin, 1);
+            free(tz_origin);
+        } else {
+            unsetenv("TZ");
+        }
+        tzset(); /* apply timezone change */
+
+        if (!tm_ret) {
+            SR_ERRINFO_SYSERRNO(&err_info, "localtime_r");
+            return err_info;
+        }
+    } else {
+        if (!gmtime_r(&time, &tm)) {
+            SR_ERRINFO_SYSERRNO(&err_info, "gmtime_r");
+            return err_info;
+        }
+    }
+
+    /* years cannot be negative */
+    if (tm.tm_year < -1900) {
+        SR_ERRINFO_INT(&err_info);
+        return err_info;
+    }
+
+    if (tm.tm_gmtoff == 0) {
+        /* time is Zulu (UTC) */
+        if (asprintf(&zoneshift, "Z") == -1) {
+            SR_ERRINFO_MEM(&err_info);
+            return err_info;
+        }
+    } else {
+        zonediff = tm.tm_gmtoff;
+        zonediff_h = zonediff / 60 / 60;
+        zonediff_m = zonediff / 60 % 60;
+        if (asprintf(&zoneshift, "%+03d:%02d", zonediff_h, zonediff_m) == -1) {
+            SR_ERRINFO_MEM(&err_info);
+            return err_info;
+        }
+    }
+
+    if (buf) {
+        sprintf(buf, "%04d-%02d-%02dT%02d:%02d:%02d%s",
+                tm.tm_year + 1900,
+                tm.tm_mon + 1,
+                tm.tm_mday,
+                tm.tm_hour,
+                tm.tm_min,
+                tm.tm_sec,
+                zoneshift);
+    } else if (asprintf(buf2, "%04d-%02d-%02dT%02d:%02d:%02d%s",
+            tm.tm_year + 1900,
+            tm.tm_mon + 1,
+            tm.tm_mday,
+            tm.tm_hour,
+            tm.tm_min,
+            tm.tm_sec,
+            zoneshift) == -1) {
+        free(zoneshift);
+        SR_ERRINFO_MEM(&err_info);
+        return err_info;
+    }
+    free(zoneshift);
+
+    return NULL;
 }

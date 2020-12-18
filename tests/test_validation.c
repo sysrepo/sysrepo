@@ -104,7 +104,7 @@ clear_test_refs(void **state)
     sr_delete_item(st->sess, "/refs:ll[.='y']", 0);
     sr_delete_item(st->sess, "/refs:ll[.='z']", 0);
     sr_delete_item(st->sess, "/refs:lll[key='1']", 0);
-    sr_apply_changes(st->sess, 0, 0);
+    sr_apply_changes(st->sess, 0, 1);
 
     return 0;
 }
@@ -121,7 +121,7 @@ test_leafref(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/refs:lref", "10", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* cause leafref not to point at a node (2x) */
@@ -161,59 +161,59 @@ test_instid(void **state)
     /* inst-id target does not exist */
     ret = sr_set_item_str(st->sess, "/refs:inst-id", "/refs:l", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     /* create the target */
     ret = sr_set_item_str(st->sess, "/refs:l", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* point to a leaf-list */
     ret = sr_set_item_str(st->sess, "/refs:inst-id", "/refs:ll[.='z']", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     ret = sr_set_item_str(st->sess, "/refs:ll", "y", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/refs:ll", "z", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* point to a list */
     ret = sr_set_item_str(st->sess, "/refs:inst-id", "/refs:lll[refs:key='1']", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     ret = sr_set_item_str(st->sess, "/refs:lll[key='1']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* foreign leaf */
     ret = sr_set_item_str(st->sess, "/refs:inst-id", "/test:test-leaf", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     ret = sr_set_item_str(st->sess, "/test:test-leaf", "5", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* default inst-id */
     ret = sr_set_item_str(st->sess, "/refs:cont", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     ret = sr_set_item_str(st->sess, "/test:ll1", "-3000", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -244,7 +244,7 @@ test_operational(void **state)
     assert_int_equal(ret, SR_ERR_UNSUPPORTED);
 
     /* try to apply, with the same result */
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_UNSUPPORTED);
 
     ret = sr_discard_changes(st->sess);
@@ -263,7 +263,7 @@ test_operational(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* so we can apply it */
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);

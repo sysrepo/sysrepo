@@ -151,8 +151,8 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** environment variable for setting a custom prefix for SHM files */
 #define SR_SHM_PREFIX_ENV "SYSREPO_SHM_PREFIX"
 
-/** where connection lock files are stored, relative to SHM dir */
-#define SR_CONN_LOCK_DIR "lock"
+/** maximum number of possible system-wide concurrent owners of a read lock */
+#define SR_RWLOCK_READ_LIMIT 10
 
 /** all ext SHM item sizes will be aligned to this number (B) */
 #define SR_SHM_MEM_ALIGN (sizeof(void *))
@@ -163,9 +163,6 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** maximum ext SHM wasted memory (B) */
 #define SR_SHM_WASTED_MAX_MEM 4096
 
-/** maximum time read lock can be held on rwlocks; used when unlocking (ms) */
-#define SR_RWLOCK_READ_TIMEOUT 100
-
 /** timeout for processing all events on all subscriptions of one subscriber thread; used when modifying subscriptions (s) */
 #define SR_SUB_EVENT_LOOP_TIMEOUT 30
 
@@ -174,9 +171,6 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 
 /** timeout for locking notification buffer lock, used when adding/removing notifications (ms) */
 #define SR_NOTIF_BUF_LOCK_TIMEOUT 100
-
-/** timeout for locking main SHM connection state (ms) */
-#define SR_CONN_STATE_LOCK_TIMEOUT 100
 
 /** timeout for locking main SHM and subscription SHM; maximum time an API call (sr_apply_changes()) is expected to take (s) */
 #define SR_MAIN_LOCK_TIMEOUT 15
@@ -288,8 +282,11 @@ typedef enum sr_lock_mode_e {
 typedef struct sr_rwlock_s {
     pthread_mutex_t mutex;          /**< Lock mutex. */
     pthread_cond_t cond;            /**< Lock condition variable. */
-    uint16_t readers;               /**< Current read-locked (including read-upgrageable) users. */
-    uint8_t upgr;                   /**< Whether the lock is only read-locked with upgrade capability, must be 0 otherwise. */
+
+    pthread_mutex_t r_mutex;        /**< Mutex for accessing readers, needed because of concurrent reading. */
+    sr_cid_t readers[SR_RWLOCK_READ_LIMIT]; /**< CIDs of all READ lock owners (including READ-UPGR), 0s otherwise. */
+    sr_cid_t upgr;                  /**< CID of the READ-UPGR lock owner if locked, 0 otherwise. */
+    sr_cid_t writer;                /**< CID of the WRITE lock owner if locked, 0 otherwise. */
 } sr_rwlock_t;
 
 struct modsub_changesub_s;
@@ -302,8 +299,9 @@ struct modsub_notif_s;
 
 #include "edit_diff.h"
 #include "log.h"
-#include "lyd_mods.h"
 #include "modinfo.h"
+#include "shm.h"
+#include "lyd_mods.h"
 #include "replay.h"
 #include "shm.h"
 
@@ -322,7 +320,7 @@ struct sr_conn_ctx_s {
     pthread_mutex_t ptr_lock;       /**< Session-shared lock for accessing pointers to sessions. */
     sr_session_ctx_t **sessions;    /**< Array of sessions for this connection. */
     uint32_t session_count;         /**< Session count. */
-    sr_cid_t sr_cid;                /**< Globally unique connection ID */
+    sr_cid_t cid;                   /**< Globally unique connection ID */
 
     int main_create_lock;           /**< Process-shared file lock for creating main/ext SHM. */
     sr_rwlock_t ext_remap_lock;     /**< Session-shared lock only for remapping ext SHM
@@ -848,6 +846,7 @@ sr_error_info_t *sr_path_conn_lockfile(sr_cid_t cid, char **path);
 
 /**
  * @brief Remove any leftover event pipes after crashed subscriptions.
+ * There should be none unless there was a subscription structure without subscriptions that crashed.
  */
 void sr_remove_evpipes(void);
 
@@ -901,14 +900,6 @@ sr_error_info_t *sr_perm_get(const char *mod_name, sr_datastore_t ds, char **own
  * @return 0 if file does not exist, non-zero if it exists.
  */
 int sr_file_exists(const char *path);
-
-/**
- * @brief Check whether a connection exists.
- *
- * @param[in] cid Connection CID.
- * @return 0 if not, non-zero if it exists.
- */
-int sr_connection_exists(sr_cid_t cid);
 
 /**
  * @brief Get current time with an offset.
@@ -1041,17 +1032,28 @@ sr_error_info_t *sr_rwlock_init(sr_rwlock_t *rwlock, int shared);
 void sr_rwlock_destroy(sr_rwlock_t *rwlock);
 
 /**
+ * @brief Callback called for each recovered owner of a RW lock.
+ *
+ * @param[in] mode Dead owner lock mode.
+ * @param[in] cid Dead owner connection ID.
+ * @param[in] data Arbitrary user data.
+ */
+typedef void (*sr_rwlock_recover_cb)(sr_lock_mode_t mode, sr_cid_t cid, void *data);
+
+/**
  * @brief Lock a sysrepo RW lock. On failure, the lock is not changed in any way.
  *
  * @param[in] rwlock RW lock to lock.
  * @param[in] timeout_ms Timeout in ms for locking.
  * @param[in] mode Lock mode to set.
+ * @param[in] cid Lock owner connection ID.
  * @param[in] func Name of the calling function for logging.
- * @param[in,out] cond_timeout Optional variable set if the mutex was locked but the lock remained read or
- * read-upgr locked until timeout elapsed. Set to NULL if that should cause an error.
+ * @param[in] cb Optional callback called when recovering locks.
+ * @param[in] cb_data Arbitrary user data for @p cb.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *func, int *cond_timeout);
+sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
+        sr_rwlock_recover_cb cb, void *cb_data);
 
 /**
  * @brief Relock a sysrepo RW lock (upgrade or downgrade). On failure, the lock is not changed in any way.
@@ -1062,29 +1064,25 @@ sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t m
  * @param[in] rwlock RW lock to lock.
  * @param[in] timeout_ms Timeout in ms for locking. Only needed for lock upgrade (if @p mode is ::SR_LOCK_WRITE).
  * @param[in] mode Lock mode to set.
+ * @param[in] cid Lock owner connection ID.
  * @param[in] func Name of the calling function for logging.
+ * @param[in] cb Optional callback called when recovering locks.
+ * @param[in] cb_data Arbitrary user data for @p cb.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, const char *func);
+sr_error_info_t *sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
+        sr_rwlock_recover_cb cb, void *cb_data);
 
 /**
  * @brief Unlock a sysrepo RW lock. On failure, whatever steps are possible are still performed.
  *
  * @param[in] rwlock RW lock to unlock.
+ * @param[in] timeout_ms Timeout in ms for locking. Only needed for read or read-upgr unlock.
  * @param[in] mode Lock mode that was successfully set for the lock.
+ * @param[in] cid Lock owner connection ID.
  * @param[in] func Name of the calling function for logging.
  */
-void sr_rwunlock(sr_rwlock_t *rwlock, sr_lock_mode_t mode, const char *func);
-
-/**
- * @brief Update lock state stored in SHM.
- *
- * @param[in] main_shm_addr Main SHM address.
- * @param[in] shmlock Lock in SHM to write to.
- * @param[in] mode Whether the lock is read or write lock.
- * @param[in] lock Whether it was locked or unlocked.
- */
-void sr_shmlock_update(char *main_shm_addr, sr_conn_shm_lock_t *shmlock, sr_lock_mode_t mode, int lock);
+void sr_rwunlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func);
 
 /**
  * @brief Wrapper to realloc() that frees memory on failure.
@@ -1456,7 +1454,7 @@ sr_error_info_t *sr_ly_find_last_parent(struct lyd_node **parent, int nodetype);
 struct lyd_node *sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod);
 
 /**
- * @brief Append data loaded from a file/SHM for a specific module.
+ * @brief Append data loaded from a file/SHM for a specific module. Do not use for operational datastore.
  *
  * @param[in] ly_mod Module to process.
  * @param[in] ds Datastore.
@@ -1464,6 +1462,16 @@ struct lyd_node *sr_module_data_unlink(struct lyd_node **data, const struct lys_
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, sr_datastore_t ds, struct lyd_node **data);
+
+/**
+ * @brief Load operational data (diff) loaded from a SHM for a specific module.
+ * The lock may be temporarily changed.
+ *
+ * @param[in] mod Mod info mod.
+ * @param[out] diff Loaded diff to return.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_module_file_oper_data_load(struct sr_mod_info_mod_s *mod, struct lyd_node **diff);
 
 /**
  * @brief Set (replace) data in file/SHM for a specific module.
@@ -1497,5 +1505,29 @@ sr_error_info_t *sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod
  * @return Next found feature, NULL if last was previously returned.
  */
 struct lys_feature *sr_lys_next_feature(struct lys_feature *last, const struct lys_module *ly_mod, uint32_t *idx);
+
+/**
+ * @brief Learn CIDs and PIDs of all the live connections.
+ *
+ * @param[out] cids Optional array of CIDs.
+ * @param[out] pids Optional array of PIDs.
+ * @param[out] count Connection count, length of both @p cids and @p pids.
+ * @param[out] dead_cids Optional array of dead CIDs.
+ * @param[out] dead_count Length of @p dead_cids.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_conn_info(sr_cid_t **cids, pid_t **pids, uint32_t *count, sr_cid_t **dead_cids, uint32_t *dead_count);
+
+/**
+ * @brief Transform given time_t (seconds since the epoch) into the RFC 3339 format (YANG date-and-time).
+ *
+ * @param[in] time Time to convert.
+ * @param[in] tz Timezone name for the result. See tzselect(1) for list of
+ * correct values. If not specified (NULL) or unknown/invalid, the result is provided in UTC (Zulu).
+ * @param[in,out] buf Buffer to print the datetime into, must be at least 26 characters long. If not set, @p buf2 is used.
+ * @param[in,out] buf2 Pointer to a buffer to allocate for the datetime.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_time2datetime(time_t time, const char *tz, char *buf, char **buf2);
 
 #endif

@@ -22,6 +22,10 @@ module sysrepo-monitoring {
     description
         "Sysrepo YANG datastore monitoring state information.";
 
+    revision "2020-12-17" {
+        description
+            "Connection pid and new lock type added, module locks moved, ds-locks added.";
+    }
     revision "2020-04-17" {
         description
             "Initial revision.";
@@ -34,6 +38,10 @@ module sysrepo-monitoring {
             enum read {
                 description
                     "Read lock.";
+            }
+            enum read-upgr {
+                description
+                    "Read lock with an upgrade capability.";
             }
             enum write {
                 description
@@ -74,6 +82,61 @@ module sysrepo-monitoring {
                     "Module name.";
             }
 
+            list lock {
+                key "cid datastore";
+                description
+                    "Held module data lock.";
+
+                leaf cid {
+                    type conn-ref;
+                    description
+                        "CID of the lock owner.";
+                }
+
+                leaf datastore {
+                    type identityref {
+                        base ds:datastore;
+                    }
+                    description
+                        "Datastore of the locked module data.";
+                }
+
+                leaf mode {
+                    type lock-mode;
+                    mandatory true;
+                    description
+                        "Module data lock mode.";
+                }
+            }
+
+            list ds-lock {
+                key "datastore";
+                description
+                    "Held datastore (NETCONF) lock.";
+
+                leaf datastore {
+                    type identityref {
+                        base ds:datastore;
+                    }
+                    description
+                        "Datastore of the datastore lock.";
+                }
+
+                leaf sid {
+                    type uint32;
+                    mandatory true;
+                    description
+                        "Lock owner session ID.";
+                }
+
+                leaf timestamp {
+                    type yang:date-and-time;
+                    mandatory true;
+                    description
+                        "Timestamp of obtaining the lock.";
+                }
+            }
+
             container subscriptions {
                 description
                     "Module subscriptions.";
@@ -83,10 +146,10 @@ module sysrepo-monitoring {
                         "Data change subscription.";
 
                     leaf datastore {
-                        mandatory true;
                         type identityref {
                             base ds:datastore;
                         }
+                        mandatory true;
                         description
                             "Datastore, whose data changes were subscribed for.";
                     }
@@ -98,15 +161,15 @@ module sysrepo-monitoring {
                     }
 
                     leaf priority {
-                        mandatory true;
                         type uint32;
+                        mandatory true;
                         description
                             "Subscription priority.";
                     }
 
                     leaf cid {
-                        mandatory true;
                         type conn-ref;
+                        mandatory true;
                         description
                             "CID of the connection that this subscription belongs to.";
                     }
@@ -124,8 +187,8 @@ module sysrepo-monitoring {
                     }
 
                     leaf cid {
-                        mandatory true;
                         type conn-ref;
+                        mandatory true;
                         description
                             "CID of the connection that this subscription belongs to.";
                     }
@@ -152,22 +215,22 @@ module sysrepo-monitoring {
 
             list rpc-sub {
                 leaf xpath {
-                    mandatory true;
                     type yang:xpath1.0;
+                    mandatory true;
                     description
                         "XPath filtering the RPCs/actions subscribed for.";
                 }
 
                 leaf priority {
-                    mandatory true;
                     type uint32;
+                    mandatory true;
                     description
                         "Subscription priority.";
                 }
 
                 leaf cid {
-                    mandatory true;
                     type conn-ref;
+                    mandatory true;
                     description
                         "CID of the connection that this subscription belongs to.";
                 }
@@ -182,40 +245,20 @@ module sysrepo-monitoring {
             leaf cid {
                 type uint32;
                 description
-                    "CID of the process that created this connection.";
+                    "Unique CID of the connection.";
+            }
+
+            leaf pid {
+                type uint32;
+                mandatory true;
+                description
+                    "PID of the process that created this connection.";
             }
 
             leaf main-lock {
                 type lock-mode;
                 description
                     "Held main lock mode.";
-            }
-
-            list module-lock {
-                key "name datastore";
-                description
-                    "Held module data lock.";
-
-                leaf name {
-                    type module-ref;
-                    description
-                        "Name of the locked module of the data.";
-                }
-
-                leaf datastore {
-                    type identityref {
-                        base ds:datastore;
-                    }
-                    description
-                        "Datastore of the locked module data.";
-                }
-
-                leaf lock {
-                    mandatory true;
-                    type lock-mode;
-                    description
-                        "Module data lock mode.";
-                }
             }
         }
     }

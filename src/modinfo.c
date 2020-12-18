@@ -496,13 +496,14 @@ next_path:
  * @param[in] evpipe_num Subscriber event pipe number.
  * @param[in] parent Data parent required for the subscription, NULL if top-level.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
+ * @param[in] cid Connection ID.
  * @param[out] data Data tree with appended operational data.
  * @param[out] cb_error_info Callback error info returned by the client, if any.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const char *request_xpath, sr_sid_t sid,
-        uint32_t evpipe_num, const struct lyd_node *parent, uint32_t timeout_ms, struct lyd_node **oper_data,
+        uint32_t evpipe_num, const struct lyd_node *parent, uint32_t timeout_ms, sr_cid_t cid, struct lyd_node **oper_data,
         sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
@@ -535,7 +536,7 @@ sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const
 
     /* get data from client */
     if ((err_info = sr_shmsub_oper_notify(ly_mod, xpath, request_xpath, parent_dup, sid, evpipe_num, timeout_ms,
-            oper_data, cb_error_info))) {
+            cid, oper_data, cb_error_info))) {
         goto cleanup;
     }
 
@@ -562,13 +563,14 @@ cleanup:
  * @param[in] oper_parent Operational parent of the data to retrieve. NULL for top-level.
  * @param[in] sid Sysrepo session ID.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
+ * @param[in] cid Connection ID.
  * @param[in,out] data Operational data tree.
  * @param[out] cb_error_info Callback error info returned by the client, if any.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_xpath_oper_data_append(sr_mod_oper_sub_t *shm_msub, const struct lys_module *ly_mod, const char *sub_xpath,
-        const char *request_xpath, struct lyd_node *oper_parent, sr_sid_t sid, uint32_t timeout_ms,
+        const char *request_xpath, struct lyd_node *oper_parent, sr_sid_t sid, uint32_t timeout_ms, sr_cid_t cid,
         struct lyd_node **data, sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
@@ -576,7 +578,7 @@ sr_xpath_oper_data_append(sr_mod_oper_sub_t *shm_msub, const struct lys_module *
 
     /* get oper data from the client */
     if ((err_info = sr_xpath_oper_data_get(ly_mod, sub_xpath, request_xpath, sid, shm_msub->evpipe_num,
-            oper_parent, timeout_ms, &oper_data, cb_error_info))) {
+            oper_parent, timeout_ms, cid, &oper_data, cb_error_info))) {
         return err_info;
     }
 
@@ -596,9 +598,10 @@ sr_xpath_oper_data_append(sr_mod_oper_sub_t *shm_msub, const struct lys_module *
  * @brief Update (replace or append) operational data for a specific module.
  *
  * @param[in] mod Mod info module to process.
+ * @param[in] oper_mode Current lock mode of @p mod for ::SR_DS_OPERATIONAL.
  * @param[in] sid Sysrepo session ID.
+ * @param[in] conn Connection to use.
  * @param[in] request_xpath XPath of the data request.
- * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
  * @param[in] opts Get oper data options.
  * @param[in,out] data Operational data tree.
@@ -606,8 +609,9 @@ sr_xpath_oper_data_append(sr_mod_oper_sub_t *shm_msub, const struct lys_module *
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const char *request_xpath, char *ext_shm_addr,
-        uint32_t timeout_ms, sr_get_oper_options_t opts, struct lyd_node **data, sr_error_info_t **cb_error_info)
+sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, sr_conn_ctx_t *conn,
+        const char *request_xpath, uint32_t timeout_ms, sr_get_oper_options_t opts, struct lyd_node **data,
+        sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_oper_sub_t *shm_msub;
@@ -619,7 +623,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const c
 
     if (!(opts & SR_OPER_NO_STORED)) {
         /* apply stored operational diff */
-        if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_OPERATIONAL, &diff))) {
+        if ((err_info = sr_module_file_oper_data_load(mod, &diff))) {
             return err_info;
         }
         err_info = sr_diff_mod_apply(diff, mod->ly_mod, opts & SR_OPER_WITH_ORIGIN, data);
@@ -634,12 +638,12 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const c
         return NULL;
     }
 
-    assert(sid && timeout_ms && cb_error_info);
+    assert(timeout_ms && cb_error_info);
 
     /* XPaths are ordered based on depth */
     for (i = 0; i < mod->shm_mod->oper_sub_count; ++i) {
-        shm_msub = &((sr_mod_oper_sub_t *)(ext_shm_addr + mod->shm_mod->oper_subs))[i];
-        sub_xpath = ext_shm_addr + shm_msub->xpath;
+        shm_msub = &((sr_mod_oper_sub_t *)(conn->ext_shm.addr + mod->shm_mod->oper_subs))[i];
+        sub_xpath = conn->ext_shm.addr + shm_msub->xpath;
 
         if ((shm_msub->sub_type == SR_OPER_SUB_CONFIG) && (opts & SR_OPER_NO_CONFIG)) {
             /* useless to retrieve configuration data */
@@ -682,7 +686,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t *sid, const c
             /* nested data */
             for (j = 0; j < set->number; ++j) {
                 if ((err_info = sr_xpath_oper_data_append(shm_msub, mod->ly_mod, sub_xpath, request_xpath, set->set.d[j],
-                        *sid, timeout_ms, data, cb_error_info))) {
+                        sid, timeout_ms, conn->cid, data, cb_error_info))) {
                     goto error;
                 }
             }
@@ -694,8 +698,8 @@ next_iter:
             set = NULL;
         } else {
             /* top-level data */
-            if ((err_info = sr_xpath_oper_data_append(shm_msub, mod->ly_mod, sub_xpath, request_xpath, NULL, *sid,
-                    timeout_ms, data, cb_error_info))) {
+            if ((err_info = sr_xpath_oper_data_append(shm_msub, mod->ly_mod, sub_xpath, request_xpath, NULL, sid,
+                    timeout_ms, conn->cid, data, cb_error_info))) {
                 goto error;
             }
         }
@@ -809,11 +813,12 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
  * @param[in] mod Mod info module to process.
  * @param[in] upd_mod_data Optional current (updated) module data to store in cache.
  * @param[in] read_locked Whether the cache is READ locked.
+ * @param[in] cid Connection ID.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mod_info_mod_s *mod,
-        const struct lyd_node *upd_mod_data, int read_locked)
+        const struct lyd_node *upd_mod_data, int read_locked, sr_cid_t cid)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *mod_data;
@@ -833,11 +838,12 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
         if (mod->shm_mod->ver > mod_cache->mods[i].ver) {
             if (read_locked) {
                 /* CACHE READ UNLOCK */
-                sr_rwunlock(&mod_cache->lock, SR_LOCK_READ, __func__);
+                sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, cid, __func__);
             }
 
             /* CACHE WRITE LOCK */
-            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__, NULL))) {
+            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, cid, __func__,
+                    NULL, NULL))) {
                 goto error_rlock;
             }
 
@@ -848,11 +854,12 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
     } else {
         if (read_locked) {
             /* CACHE READ UNLOCK */
-            sr_rwunlock(&mod_cache->lock, SR_LOCK_READ, __func__);
+            sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, cid, __func__);
         }
 
         /* CACHE WRITE LOCK */
-        if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, __func__, NULL))) {
+        if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, cid, __func__,
+                NULL, NULL))) {
             goto error_rlock;
         }
 
@@ -890,12 +897,13 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
 
 error_wrunlock:
         /* CACHE WRITE UNLOCK */
-        sr_rwunlock(&mod_cache->lock, SR_LOCK_WRITE, __func__);
+        sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, cid, __func__);
 
 error_rlock:
         if (read_locked) {
             /* CACHE READ LOCK */
-            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__, NULL))) {
+            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, cid, __func__,
+                    NULL, NULL))) {
                 return err_info;
             }
         }
@@ -1014,51 +1022,82 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
     return NULL;
 }
 
+/**
+ * @brief Add held lock nodes to a data tree.
+ *
+ * @param[in] rwlock Lock to read CIDs from.
+ * @param[in] path_format Path string used for lyd_new_path() after printing specific CID into it.
+ * @param[in] ctx_node Context node to use for lyd_new_path().
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
-sr_modinfo_module_srmon_evpipe2cid(sr_main_shm_t *main_shm, char *ext_shm_addr, uint32_t evpipe_num, sr_cid_t *cid)
+sr_modinfo_module_srmon_locks(sr_rwlock_t *rwlock, const char *path_format, struct lyd_node *ctx_node)
 {
     sr_error_info_t *err_info = NULL;
-    sr_conn_shm_t *shm_conn;
-    uint32_t *evpipe;
-    uint16_t i, j;
+    sr_cid_t cid;
+    uint32_t i;
+    int ret;
+#define PATH_LEN 64
+    char path[PATH_LEN];
+    struct lyd_node *node;
+    struct ly_ctx *ly_ctx;
 
-    shm_conn = (sr_conn_shm_t *)(ext_shm_addr + main_shm->conns);
-    for (i = 0; i < main_shm->conn_count; ++i) {
-        evpipe = (uint32_t *)(ext_shm_addr + shm_conn[i].evpipes);
-        for (j = 0; j < shm_conn[i].evpipe_count; ++j) {
-            if (evpipe[j] == evpipe_num) {
-                /* matching evpipe num found */
-                *cid = shm_conn[i].cid;
-                return NULL;
-            }
+    ly_ctx = lyd_node_module(ctx_node)->ctx;
+
+    if ((cid = rwlock->writer)) {
+        snprintf(path, PATH_LEN, path_format, cid);
+        node = lyd_new_path(ctx_node, NULL, path, "write", 0, 0);
+        SR_CHECK_LY_RET(!node, ly_ctx, err_info);
+    }
+    if ((cid = rwlock->upgr)) {
+        snprintf(path, PATH_LEN, path_format, cid);
+        node = lyd_new_path(ctx_node, NULL, path, "read-upgr", 0, 0);
+        SR_CHECK_LY_RET(!node, ly_ctx, err_info);
+    }
+
+    /* READ MUTEX LOCK */
+    ret = pthread_mutex_lock(&rwlock->r_mutex);
+    if (ret) {
+        SR_ERRINFO_INT(&err_info);
+        return err_info;
+    }
+
+    for (i = 0; rwlock->readers[i] && (i < SR_RWLOCK_READ_LIMIT); ++i) {
+        snprintf(path, PATH_LEN, path_format, rwlock->readers[i]);
+        node = lyd_new_path(ctx_node, NULL, path, "read", 0, 0);
+        if (!node) {
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+            break;
         }
     }
 
-    SR_ERRINFO_INT(&err_info);
+    /* READ MUTEX UNLOCK */
+    pthread_mutex_unlock(&rwlock->r_mutex);
+
     return err_info;
+#undef PATH_LEN
 }
 
 /**
  * @brief Append a "module" data node with its subscriptions to sysrepo-monitoring data.
  *
- * @param[in] main_shm Main SHM structure.
  * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] shm_mod SHM module to read from.
  * @param[in,out] sr_state Main container node of sysrepo-monitoring.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_modinfo_module_srmon_module(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_mod_t *shm_mod, struct lyd_node *sr_state)
+sr_modinfo_module_srmon_module(char *ext_shm_addr, sr_mod_t *shm_mod, struct lyd_node *sr_state)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *sr_mod, *sr_subs, *sr_sub;
+    struct lyd_node *sr_mod, *sr_subs, *sr_sub, *sr_ds_lock;
     sr_datastore_t ds;
     sr_mod_change_sub_t *change_sub;
     sr_mod_oper_sub_t *oper_sub;
     sr_mod_notif_sub_t *notif_sub;
     uint16_t i;
-    char buf[22];
-    sr_cid_t cid;
+#define PATH_LEN 128
+    char buf[28], path[PATH_LEN];
     struct ly_ctx *ly_ctx;
 
     ly_ctx = lyd_node_module(sr_state)->ctx;
@@ -1069,6 +1108,38 @@ sr_modinfo_module_srmon_module(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_m
 
     /* name */
     SR_CHECK_LY_RET(!lyd_new_leaf(sr_mod, NULL, "name", ext_shm_addr + shm_mod->name), ly_ctx, err_info);
+
+    /* locks */
+    for (ds = 0; ds < SR_DS_COUNT; ++ds) {
+        snprintf(path, PATH_LEN, "lock[cid='%%"PRIu32"'][datastore='%s']/mode", sr_ds2ident(ds));
+        if ((err_info = sr_modinfo_module_srmon_locks(&shm_mod->data_lock_info[ds].lock, path, sr_mod))) {
+            return err_info;
+        }
+    }
+#undef PATH_LEN
+
+    /* ds-locks */
+    for (ds = 0; ds < SR_DS_COUNT; ++ds) {
+        if (!ATOMIC_LOAD_RELAXED(shm_mod->data_lock_info[ds].ds_locked)) {
+            continue;
+        }
+
+        sr_ds_lock = lyd_new(sr_mod, NULL, "ds-lock");
+        SR_CHECK_LY_RET(!sr_ds_lock, ly_ctx, err_info);
+
+        /* datastore */
+        SR_CHECK_LY_RET(!lyd_new_leaf(sr_ds_lock, NULL, "datastore", sr_ds2ident(ds)), ly_ctx, err_info);
+
+        /* sid */
+        sprintf(buf, "%"PRIu32, shm_mod->data_lock_info[ds].sid.sr);
+        SR_CHECK_LY_RET(!lyd_new_leaf(sr_ds_lock, NULL, "sid", buf), ly_ctx, err_info);
+
+        /* timestamp */
+        if ((err_info = sr_time2datetime(shm_mod->data_lock_info[ds].ds_ts, NULL, buf, NULL))) {
+            return err_info;
+        }
+        SR_CHECK_LY_RET(!lyd_new_leaf(sr_ds_lock, NULL, "timestamp", buf), ly_ctx, err_info);
+    }
 
     /* subscriptions, make implicit */
     sr_subs = lyd_new(sr_mod, NULL, "subscriptions");
@@ -1096,10 +1167,7 @@ sr_modinfo_module_srmon_module(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_m
             SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "priority", buf), ly_ctx, err_info);
 
             /* cid */
-            if ((err_info = sr_modinfo_module_srmon_evpipe2cid(main_shm, ext_shm_addr, change_sub[i].evpipe_num, &cid))) {
-                return err_info;
-            }
-            sprintf(buf, "%" PRIu32, cid);
+            sprintf(buf, "%"PRIu32, change_sub[i].cid);
             SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "cid", buf), ly_ctx, err_info);
         }
     }
@@ -1115,20 +1183,14 @@ sr_modinfo_module_srmon_module(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_m
                 ly_ctx, err_info);
 
         /* cid */
-        if ((err_info = sr_modinfo_module_srmon_evpipe2cid(main_shm, ext_shm_addr, oper_sub[i].evpipe_num, &cid))) {
-            return err_info;
-        }
-        sprintf(buf, "%" PRIu32, cid);
+        sprintf(buf, "%"PRIu32, oper_sub[i].cid);
         SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "cid", buf), ly_ctx, err_info);
     }
 
     notif_sub = (sr_mod_notif_sub_t *)(ext_shm_addr + shm_mod->notif_subs);
     for (i = 0; i < shm_mod->notif_sub_count; ++i) {
         /* notification-sub with cid */
-        if ((err_info = sr_modinfo_module_srmon_evpipe2cid(main_shm, ext_shm_addr, notif_sub[i].evpipe_num, &cid))) {
-            return err_info;
-        }
-        sprintf(buf, "%" PRIu32, cid);
+        sprintf(buf, "%"PRIu32, notif_sub[i].cid);
         SR_CHECK_LY_RET(!lyd_new_leaf(sr_subs, NULL, "notification-sub", buf), ly_ctx, err_info);
     }
 
@@ -1138,21 +1200,19 @@ sr_modinfo_module_srmon_module(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_m
 /**
  * @brief Append an "rpc" data node with its subscriptions to sysrepo-monitoring data.
  *
- * @param[in] main_shm Main SHM structure.
  * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] shm_rpc SHM RPC to read from.
  * @param[in,out] sr_state Main container node of sysrepo-monitoring.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_modinfo_module_srmon_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_rpc_t *shm_rpc, struct lyd_node *sr_state)
+sr_modinfo_module_srmon_rpc(char *ext_shm_addr, sr_rpc_t *shm_rpc, struct lyd_node *sr_state)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_rpc, *sr_sub;
     sr_rpc_sub_t *rpc_sub;
     uint16_t i;
     char buf[22];
-    sr_cid_t cid;
     struct ly_ctx *ly_ctx;
 
     ly_ctx = lyd_node_module(sr_state)->ctx;
@@ -1179,10 +1239,7 @@ sr_modinfo_module_srmon_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_rpc_
         SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "priority", buf), ly_ctx, err_info);
 
         /* cid */
-        if ((err_info = sr_modinfo_module_srmon_evpipe2cid(main_shm, ext_shm_addr, rpc_sub[i].evpipe_num, &cid))) {
-            return err_info;
-        }
-        sprintf(buf, "%" PRIu32, cid);
+        sprintf(buf, "%"PRIu32, rpc_sub[i].cid);
         SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "cid", buf), ly_ctx, err_info);
     }
 
@@ -1190,74 +1247,47 @@ sr_modinfo_module_srmon_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_rpc_
 }
 
 /**
- * @brief Append a "connection" data node with its locks to sysrepo-monitoring data.
+ * @brief Append all "connection" data nodes to sysrepo-monitoring data.
  *
  * @param[in] main_shm Main SHM structure.
- * @param[in] ext_shm_addr Ext SHM address.
- * @param[in] shm_conn SHM connection to read from.
  * @param[in,out] sr_state Main container node of sysrepo-monitoring.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_modinfo_module_srmon_connection(sr_main_shm_t *main_shm, char *ext_shm_addr, sr_conn_shm_t *shm_conn,
-        struct lyd_node *sr_state)
+sr_modinfo_module_srmon_connections(sr_main_shm_t *main_shm, struct lyd_node *sr_state)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *sr_conn, *sr_modlock;
-    sr_mod_t *shm_mod;
-
-    sr_conn_shm_lock_t (*mod_locks)[SR_DS_COUNT];
-    uint16_t i;
-    sr_datastore_t ds;
+    struct lyd_node *sr_conn;
     char buf[22];
     struct ly_ctx *ly_ctx;
+    sr_cid_t *cids;
+    pid_t *pids;
+    uint32_t conn_count, i;
 
     ly_ctx = lyd_node_module(sr_state)->ctx;
 
-    /* connection */
-    sr_conn = lyd_new(sr_state, NULL, "connection");
-    SR_CHECK_LY_RET(!sr_conn, ly_ctx, err_info);
-
-    /* cid */
-    sprintf(buf, "%" PRIu32, shm_conn->cid);
-    SR_CHECK_LY_RET(!lyd_new_leaf(sr_conn, NULL, "cid", buf), ly_ctx, err_info);
-
-    /* main-lock */
-    if (shm_conn->main_lock.mode) {
-        if (shm_conn->main_lock.mode == SR_LOCK_READ) {
-            sprintf(buf, "read");
-        } else {
-            sprintf(buf, "write");
-        }
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_conn, NULL, "main-lock", buf), ly_ctx, err_info);
+    /* get basic information about connections */
+    if ((err_info = sr_conn_info(&cids, &pids, &conn_count, NULL, NULL))) {
+        return err_info;
     }
 
-    mod_locks = (sr_conn_shm_lock_t (*)[SR_DS_COUNT])(ext_shm_addr + shm_conn->mod_locks);
-    shm_mod = SR_FIRST_SHM_MOD(main_shm);
-    for (i = 0; i < main_shm->mod_count; ++i) {
-        for (ds = 0; ds < SR_DS_COUNT; ++ds) {
-            if (!mod_locks[i][ds].mode) {
-                continue;
-            }
+    for (i = 0; i < conn_count; ++i) {
+        /* connection */
+        sr_conn = lyd_new(sr_state, NULL, "connection");
+        SR_CHECK_LY_RET(!sr_conn, ly_ctx, err_info);
 
-            /* module-lock */
-            sr_modlock = lyd_new(sr_conn, NULL, "module-lock");
-            SR_CHECK_LY_RET(!sr_modlock, ly_ctx, err_info);
+        /* cid */
+        sprintf(buf, "%"PRIu32, cids[i]);
+        SR_CHECK_LY_RET(!lyd_new_leaf(sr_conn, NULL, "cid", buf), ly_ctx, err_info);
 
-            /* name */
-            SR_CHECK_LY_RET(!lyd_new_leaf(sr_modlock, NULL, "name", ext_shm_addr + shm_mod[i].name), ly_ctx, err_info);
+        /* pid */
+        sprintf(buf, "%"PRIu32, pids[i]);
+        SR_CHECK_LY_RET(!lyd_new_leaf(sr_conn, NULL, "pid", buf), ly_ctx, err_info);
+    }
 
-            /* datastore */
-            SR_CHECK_LY_RET(!lyd_new_leaf(sr_modlock, NULL, "datastore", sr_ds2ident(ds)), ly_ctx, err_info);
-
-            /* lock */
-            if (mod_locks[i][ds].mode == SR_LOCK_READ) {
-                sprintf(buf, "read");
-            } else {
-                sprintf(buf, "write");
-            }
-            SR_CHECK_LY_RET(!lyd_new_leaf(sr_modlock, NULL, "lock", buf), ly_ctx, err_info);
-        }
+    /* main-lock */
+    if ((err_info = sr_modinfo_module_srmon_locks(&main_shm->lock, "connection[cid='%"PRIu32"']/main-lock", sr_state))) {
+        return err_info;
     }
 
     return NULL;
@@ -1279,7 +1309,6 @@ sr_modinfo_module_data_load_srmon(struct sr_mod_info_s *mod_info)
     struct lyd_node *mod_data;
     sr_mod_t *shm_mod;
     sr_rpc_t *shm_rpc;
-    sr_conn_shm_t *shm_conn;
     const struct lys_module *ly_mod;
     sr_main_shm_t *main_shm;
     uint16_t i;
@@ -1294,7 +1323,7 @@ sr_modinfo_module_data_load_srmon(struct sr_mod_info_s *mod_info)
 
     /* modules */
     SR_SHM_MOD_FOR(mod_info->conn->main_shm.addr, mod_info->conn->main_shm.size, shm_mod) {
-        if ((err_info = sr_modinfo_module_srmon_module(main_shm, mod_info->conn->ext_shm.addr, shm_mod, mod_data))) {
+        if ((err_info = sr_modinfo_module_srmon_module(mod_info->conn->ext_shm.addr, shm_mod, mod_data))) {
             goto cleanup;
         }
     }
@@ -1302,17 +1331,14 @@ sr_modinfo_module_data_load_srmon(struct sr_mod_info_s *mod_info)
     /* RPCs */
     shm_rpc = (sr_rpc_t *)(mod_info->conn->ext_shm.addr + main_shm->rpc_subs);
     for (i = 0; i < main_shm->rpc_sub_count; ++i) {
-        if ((err_info = sr_modinfo_module_srmon_rpc(main_shm, mod_info->conn->ext_shm.addr, &shm_rpc[i], mod_data))) {
+        if ((err_info = sr_modinfo_module_srmon_rpc(mod_info->conn->ext_shm.addr, &shm_rpc[i], mod_data))) {
             goto cleanup;
         }
     }
 
     /* connections */
-    shm_conn = (sr_conn_shm_t *)(mod_info->conn->ext_shm.addr + main_shm->conns);
-    for (i = 0; i < main_shm->conn_count; ++i) {
-        if ((err_info = sr_modinfo_module_srmon_connection(main_shm, mod_info->conn->ext_shm.addr, &shm_conn[i], mod_data))) {
-            goto cleanup;
-        }
+    if ((err_info = sr_modinfo_module_srmon_connections(main_shm, mod_data))) {
+        goto cleanup;
     }
 
     /* connect to the rest of data */
@@ -1343,7 +1369,7 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_mod_s *mod, sr_sid_t *sid,
+sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_mod_s *mod, sr_sid_t sid,
         const char *request_xpath, uint32_t timeout_ms, sr_get_oper_options_t opts, sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
@@ -1355,7 +1381,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     if (((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds2 == SR_DS_RUNNING)) && (conn->opts & SR_CONN_CACHE_RUNNING)) {
         /* we are caching running data we will use, so in all cases load the module into cache if not yet there */
         mod_cache = &conn->mod_cache;
-        if ((err_info = sr_modcache_module_running_update(mod_cache, mod, NULL, mod_info->data_cached))) {
+        if ((err_info = sr_modcache_module_running_update(mod_cache, mod, NULL, mod_info->data_cached, mod_info->conn->cid))) {
             return err_info;
         }
     }
@@ -1366,7 +1392,8 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             /* ...but they are cached */
 
             /* CACHE READ LOCK */
-            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, __func__, NULL))) {
+            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, conn->cid,
+                    __func__, NULL, NULL))) {
                 return err_info;
             }
 
@@ -1379,7 +1406,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             }
 
             /* CACHE READ UNLOCK */
-            sr_rwunlock(&mod_cache->lock, SR_LOCK_READ, __func__);
+            sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, conn->cid, __func__);
 
             if (err_info) {
                 return err_info;
@@ -1430,8 +1457,8 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             }
 
             /* append any operational data provided by clients */
-            if ((err_info = sr_module_oper_data_update(mod, sid, request_xpath, conn->ext_shm.addr,
-                    timeout_ms, opts, &mod_info->data, cb_error_info))) {
+            if ((err_info = sr_module_oper_data_update(mod, sid, conn, request_xpath, timeout_ms, opts,
+                    &mod_info->data, cb_error_info))) {
                 return err_info;
             }
 
@@ -1588,7 +1615,7 @@ sr_modinfo_qsort_cmp(const void *ptr1, const void *ptr2)
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, sr_sid_t *sid, const char *request_xpath,
+sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, sr_sid_t sid, const char *request_xpath,
         uint32_t timeout_ms, sr_get_oper_options_t opts, sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
@@ -1600,7 +1627,7 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, sr_sid_t *sid, c
             (mod_info->ds == SR_DS_RUNNING)) {
         /* CACHE READ LOCK */
         if ((err_info = sr_rwlock(&mod_info->conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ,
-                __func__, NULL))) {
+                mod_info->conn->cid, __func__, NULL, NULL))) {
             return err_info;
         }
 
@@ -1699,7 +1726,7 @@ sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const struct ly_set *mod_
 
     if (!(mi_opts & SR_MI_DATA_NO)) {
         /* load all modules data */
-        if ((err_info = sr_modinfo_data_load(mod_info, mi_opts & SR_MI_DATA_CACHE, &sid, request_xpath, timeout_ms,
+        if ((err_info = sr_modinfo_data_load(mod_info, mi_opts & SR_MI_DATA_CACHE, sid, request_xpath, timeout_ms,
                 get_opts, &cb_err_info))) {
             return err_info;
         }
@@ -2014,7 +2041,8 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
                 mod_info->data_cached = 0;
 
                 /* CACHE READ UNLOCK */
-                sr_rwunlock(&mod_info->conn->mod_cache.lock, SR_LOCK_READ, __func__);
+                sr_rwunlock(&mod_info->conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ,
+                        session->conn->cid, __func__);
             }
 
             /* apply any currently handled changes (diff) or additional performed ones (edit) to get
@@ -2208,7 +2236,8 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     tmp_err_info = sr_replay_store(session, notif, notif_ts);
 
     /* send the notification (non-validated, if everything works correctly it must be valid) */
-    if (notif_sub_count && (err_info = sr_shmsub_notif_notify(notif, notif_ts, session->sid, notif_subs, notif_sub_count))) {
+    if (notif_sub_count && (err_info = sr_shmsub_notif_notify(notif, notif_ts, session->sid, mod_info->conn->cid,
+            notif_subs, notif_sub_count))) {
         goto cleanup;
     }
 
@@ -2251,7 +2280,8 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
         if (mod->state & MOD_INFO_CHANGED) {
             if (mod_info->ds == SR_DS_OPERATIONAL) {
                 /* load current diff and merge it with the new diff */
-                if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_OPERATIONAL, &diff))) {
+                assert(mod->state & MOD_INFO_WLOCK);
+                if ((err_info = sr_module_file_oper_data_load(mod, &diff))) {
                     goto cleanup;
                 }
                 if ((err_info = sr_diff_mod_merge(mod_info->diff, mod_info->conn, mod->ly_mod, &diff, &change))) {
@@ -2279,7 +2309,8 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
 
                     if (mod_info->conn->opts & SR_CONN_CACHE_RUNNING) {
                         /* we are caching so update cache with these data */
-                        tmp_err_info = sr_modcache_module_running_update(&mod_info->conn->mod_cache, mod, mod_data, 0);
+                        tmp_err_info = sr_modcache_module_running_update(&mod_info->conn->mod_cache, mod, mod_data, 0,
+                                mod_info->conn->cid);
                         if (tmp_err_info) {
                             /* always store all changed modules, if possible */
                             sr_errinfo_merge(&err_info, tmp_err_info);
@@ -2297,7 +2328,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
 
                 if (mod_info->ds == SR_DS_RUNNING) {
                     /* update diffs of stored operational data, if any */
-                    if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_OPERATIONAL, &diff))) {
+                    if ((err_info = sr_module_file_oper_data_load(mod, &diff))) {
                         goto cleanup;
                     }
 
@@ -2363,7 +2394,8 @@ sr_modinfo_free(struct sr_mod_info_s *mod_info)
         mod_info->data_cached = 0;
 
         /* CACHE READ UNLOCK */
-        sr_rwunlock(&mod_info->conn->mod_cache.lock, SR_LOCK_READ, __func__);
+        sr_rwunlock(&mod_info->conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ,
+                mod_info->conn->cid, __func__);
     } else {
         lyd_free_withsiblings(mod_info->data);
     }
