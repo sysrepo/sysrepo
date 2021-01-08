@@ -279,7 +279,7 @@ typedef int (*sr_diff_check_cb)(sr_session_ctx_t *session, const struct lyd_node
  * by validation. This callback is primarily meant to allow full NACM
  * (NETCONF Access Control) to be performed by a NETCONF server.
  *
- * Required ROOT access.
+ * Required SUPERUSER access.
  *
  * @param[in] conn Connection, whose all sessions diffs will be passed to this callback.
  * @param[in] callback Callback to call for every diff.
@@ -406,7 +406,7 @@ uint32_t sr_session_get_nc_id(sr_session_ctx_t *session);
 /**
  * @brief Set the effective user of a session to a different one that the process owner.
  *
- * Required ROOT access.
+ * Required SUPERUSER access.
  *
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to change.
  * @param[in] user System user.
@@ -417,7 +417,7 @@ int sr_session_set_user(sr_session_ctx_t *session, const char *user);
 /**
  * @brief Get the effective user of a session.
  *
- * Required ROOT access.
+ * Required SUPERUSER access.
  *
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @return Session user.

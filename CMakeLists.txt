@@ -128,6 +128,12 @@ message(STATUS "ietf-yang-library revision: ${YANGLIB_REVISION}")
 # umask
 set(SYSREPO_UMASK "00000" CACHE STRING "Umask used for any files created by sysrepo.")
 
+# super user
+set(SYSREPO_SUPERUSER_UID "0" CACHE STRING "UID of the system user that can execute sensitive functions.")
+if(NOT SYSREPO_SUPERUSER_UID MATCHES "^[0-9]+$")
+    message(FATAL_ERROR "Invalid superuser UID \"${SYSREPO_SUPERUSER_UID}\"!")
+endif()
+
 # paths
 if(NOT REPO_PATH)
     if(CMAKE_BUILD_TYPE_LOWER STREQUAL debug)

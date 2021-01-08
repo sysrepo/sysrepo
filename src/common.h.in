@@ -121,6 +121,9 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** name of sysrepo YANG module */
 #define SR_YANG_MOD "sysrepo"
 
+/** UID of the superuser that can execute sensitive functions */
+#define SR_SU_UID @SYSREPO_SUPERUSER_UID@
+
 /** implemented ietf-yang-library revision */
 #define SR_YANGLIB_REVISION @YANGLIB_REVISION@
 

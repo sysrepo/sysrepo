@@ -519,9 +519,9 @@ sr_set_diff_check_callback(sr_conn_ctx_t *conn, sr_diff_check_cb callback)
         return;
     }
 
-    if (geteuid()) {
-        /* not a root */
-        sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "Root access required.");
+    if (geteuid() != SR_SU_UID) {
+        /* not the superuser */
+        sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "Superuser access required.");
         sr_errinfo_free(&err_info);
         return;
     }
@@ -810,9 +810,9 @@ sr_session_set_user(sr_session_ctx_t *session, const char *user)
 
     SR_CHECK_ARG_APIRET(!session || !user, session, err_info);
 
-    if (geteuid()) {
-        /* not a root */
-        sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "Root access required.");
+    if (geteuid() != SR_SU_UID) {
+        /* not the superuser */
+        sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "Superuser access required.");
         return sr_api_ret(session, err_info);
     }
 
@@ -840,9 +840,9 @@ sr_session_get_user(sr_session_ctx_t *session)
         return NULL;
     }
 
-    if (geteuid()) {
-        /* not a root */
-        sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "Root access required.");
+    if (geteuid() != SR_SU_UID) {
+        /* not the superuser */
+        sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "Superuser access required.");
         sr_api_ret(session, err_info);
         return NULL;
     }
