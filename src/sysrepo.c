@@ -1387,7 +1387,7 @@ sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *o
         goto cleanup_unlock;
     }
 
-    if (shm_mod->flags & SR_MOD_REPLAY_SUPPORT) {
+    if (shm_mod->replay_supp) {
         if ((err_info = sr_replay_find_file(module_name, 1, 1, &from_ts, &to_ts))) {
             goto cleanup_unlock;
         }
@@ -4631,7 +4631,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
     /* check write/read perm */
     shm_mod = sr_shmmain_find_module(&session->conn->main_shm, session->conn->ext_shm.addr, lyd_node_module(notif)->name, 0);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup_shm_unlock);
-    if ((err_info = sr_perm_check(lyd_node_module(notif)->name, (shm_mod->flags & SR_MOD_REPLAY_SUPPORT) ? 1 : 0, NULL))) {
+    if ((err_info = sr_perm_check(lyd_node_module(notif)->name, shm_mod->replay_supp, NULL))) {
         goto cleanup_shm_unlock;
     }
 

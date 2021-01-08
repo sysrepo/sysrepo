@@ -2129,7 +2129,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     /* get this module and check replay support */
     shm_mod = sr_shmmain_find_module(&mod_info->conn->main_shm, mod_info->conn->ext_shm.addr, "ietf-netconf-notifications", 0);
     SR_CHECK_INT_RET(!shm_mod, err_info);
-    if (!(shm_mod->flags & SR_MOD_REPLAY_SUPPORT) && !notif_sub_count) {
+    if (!shm_mod->replay_supp && !notif_sub_count) {
         /* nothing to do */
         return NULL;
     }

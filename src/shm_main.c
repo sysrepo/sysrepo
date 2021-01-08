@@ -1360,7 +1360,7 @@ sr_shmmain_add_modules(char *ext_shm_addr, struct lyd_node *first_sr_mod, sr_mod
                 strcpy(first_shm_mod->rev, str);
             } else if (!strcmp(sr_child->schema->name, "replay-support")) {
                 /* set replay-support flag */
-                first_shm_mod->flags |= SR_MOD_REPLAY_SUPPORT;
+                first_shm_mod->replay_supp = 1;
             } else if (!strcmp(sr_child->schema->name, "enabled-feature")) {
                 /* just count features */
                 ++first_shm_mod->feat_count;
@@ -2332,9 +2332,9 @@ sr_shmmain_update_replay_support(sr_conn_ctx_t *conn, const char *mod_name, int 
 
         /* update flag */
         if (replay_support) {
-            shm_mod->flags |= SR_MOD_REPLAY_SUPPORT;
+            shm_mod->replay_supp = 1;
         } else {
-            shm_mod->flags &= ~SR_MOD_REPLAY_SUPPORT;
+            shm_mod->replay_supp = 0;
         }
     } else {
         /* SHM LOCK UPGRADE */
@@ -2345,9 +2345,9 @@ sr_shmmain_update_replay_support(sr_conn_ctx_t *conn, const char *mod_name, int 
         SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
             /* update flag */
             if (replay_support) {
-                shm_mod->flags |= SR_MOD_REPLAY_SUPPORT;
+                shm_mod->replay_supp = 1;
             } else {
-                shm_mod->flags &= ~SR_MOD_REPLAY_SUPPORT;
+                shm_mod->replay_supp = 0;
             }
         }
     }

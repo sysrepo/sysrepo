@@ -524,7 +524,7 @@ sr_replay_store(sr_session_ctx_t *sess, const struct lyd_node *notif, time_t not
     shm_mod = sr_shmmain_find_module(&sess->conn->main_shm, sess->conn->ext_shm.addr, ly_mod->name, 0);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    if (!(shm_mod->flags & SR_MOD_REPLAY_SUPPORT)) {
+    if (!shm_mod->replay_supp) {
         /* nothing to do */
         return NULL;
     }
@@ -725,7 +725,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, t
     shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, mod_name, 0);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
-    if (!(shm_mod->flags & SR_MOD_REPLAY_SUPPORT)) {
+    if (!shm_mod->replay_supp) {
         /* nothing to do */
         SR_LOG_WRN("Module \"%s\" does not support notification replay.", mod_name);
         goto cleanup;

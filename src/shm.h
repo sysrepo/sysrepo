@@ -125,8 +125,6 @@ typedef struct sr_mod_notif_sub_s {
     sr_cid_t cid;               /**< Connection ID. */
 } sr_mod_notif_sub_t;
 
-#define SR_MOD_REPLAY_SUPPORT 0x01  /**< Flag for module with replay support. */
-
 /**
  * @brief Main SHM module.
  * (typedef sr_mod_t)
@@ -144,7 +142,7 @@ struct sr_mod_s {
 
     off_t name;                 /**< Module name. */
     char rev[11];               /**< Module revision. */
-    uint8_t flags;              /**< Module flags. */
+    uint8_t replay_supp;        /**< Whether module supports replay. */
 
     off_t features;             /**< Array of enabled features (off_t *). */
     uint16_t feat_count;        /**< Number of enabled features. */
