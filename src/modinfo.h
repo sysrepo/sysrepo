@@ -110,6 +110,21 @@ sr_error_info_t *sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, const str
  */
 sr_error_info_t *sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data);
 
+/**
+ * @brief Read-lock all changed modules in mod info.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_modinfo_changesub_rdlock(struct sr_mod_info_s *mod_info);
+
+/**
+ * @brief Read-unlock all changed modules in mod info.
+ *
+ * @param[in] mod_info Mod info to use.
+ */
+void sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info);
+
 #define SR_MI_MOD_DEPS          0x01    /**< add modules not as MOD_INFO_REQ but as MOD_INFO_DEP */
 #define SR_MI_LOCK_UPGRADEABLE  0x02    /**< only valid for a read lock, make it upgradeable into a write lock */
 #define SR_MI_DATA_CACHE        0x04    /**< enable cache when loading module data */

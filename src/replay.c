@@ -521,10 +521,10 @@ sr_replay_store(sr_session_ctx_t *sess, const struct lyd_node *notif, time_t not
     SR_CHECK_INT_RET(notif_op->schema->nodetype != LYS_NOTIF, err_info);
 
     /* find SHM mod for replay lock and check if replay is even supported */
-    shm_mod = sr_shmmain_find_module(&sess->conn->main_shm, sess->conn->ext_shm.addr, ly_mod->name, 0);
+    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(sess->conn), ly_mod->name, 0);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    if (!shm_mod->replay_supp) {
+    if (!ATOMIC_LOAD_RELAXED(shm_mod->replay_supp)) {
         /* nothing to do */
         return NULL;
     }
@@ -595,14 +595,14 @@ sr_notif_buf_thread(void *arg)
         /* MUTEX UNLOCK */
         pthread_mutex_unlock(&sess->notif_buf.lock.mutex);
 
-        /* SHM LOCK (remap lock needed) */
-        if ((err_info = sr_shmmain_lock_remap(sess->conn, SR_LOCK_READ, 0, __func__))) {
+        /* REMAP READ LOCK */
+        if ((err_info = sr_conn_remap_lock(sess->conn, SR_LOCK_READ, __func__))) {
             break;
         }
 
         while (first) {
             /* find SHM mod */
-            shm_mod = sr_shmmain_find_module(&sess->conn->main_shm, sess->conn->ext_shm.addr, first->notif_mod->name, 0);
+            shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(sess->conn), first->notif_mod->name, 0);
             if (!shm_mod) {
                 SR_ERRINFO_INT(&err_info);
                 break;
@@ -620,8 +620,8 @@ sr_notif_buf_thread(void *arg)
             free(prev);
         }
 
-        /* SHM UNLOCK */
-        sr_shmmain_unlock(sess->conn, SR_LOCK_READ, 0, __func__);
+        /* REMAP READ UNLOCK */
+        sr_conn_remap_unlock(sess->conn, SR_LOCK_READ, __func__);
     }
 
     sr_errinfo_free(&err_info);
@@ -722,10 +722,10 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, t
     sr_sid_t sid = {0};
 
     /* find SHM mod for replay lock and check if replay is even supported */
-    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, mod_name, 0);
+    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), mod_name, 0);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
-    if (!shm_mod->replay_supp) {
+    if (!ATOMIC_LOAD_RELAXED(shm_mod->replay_supp)) {
         /* nothing to do */
         SR_LOG_WRN("Module \"%s\" does not support notification replay.", mod_name);
         goto cleanup;

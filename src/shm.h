@@ -121,7 +121,7 @@ typedef struct sr_mod_oper_sub_s {
 typedef struct sr_mod_notif_sub_s {
     uint32_t sub_id;            /**< Unique (notification) subscription ID. */
     uint32_t evpipe_num;        /**< Event pipe number. */
-    int suspended;              /**< Whether the subscription is not suspended. */
+    ATOMIC_T suspended;         /**< Whether the subscription is not suspended. */
     sr_cid_t cid;               /**< Connection ID. */
 } sr_mod_notif_sub_t;
 
@@ -140,36 +140,39 @@ struct sr_mod_s {
     sr_rwlock_t replay_lock;    /**< Process-shared lock for accessing stored notifications for replay. */
     uint32_t ver;               /**< Module data version (non-zero). */
 
-    off_t name;                 /**< Module name. */
+    off_t name;                 /**< Module name (offset in main SHM). */
     char rev[11];               /**< Module revision. */
-    uint8_t replay_supp;        /**< Whether module supports replay. */
+    ATOMIC_T replay_supp;       /**< Whether module supports replay. */
 
-    off_t features;             /**< Array of enabled features (off_t *). */
+    off_t features;             /**< Array of enabled features (off_t *) (offset in main SHM). */
     uint16_t feat_count;        /**< Number of enabled features. */
-    off_t data_deps;            /**< Array of data dependencies. */
+    off_t data_deps;            /**< Array of data dependencies (offset in main SHM). */
     uint16_t data_dep_count;    /**< Number of data dependencies. */
-    off_t inv_data_deps;        /**< Array of inverse data dependencies (off_t *). */
+    off_t inv_data_deps;        /**< Array of inverse data dependencies (off_t *) (offset in main SHM). */
     uint16_t inv_data_dep_count;    /**< Number of inverse data dependencies. */
-    off_t op_deps;              /**< Array of operation dependencies. */
+    off_t op_deps;              /**< Array of operation dependencies (offset in main SHM). */
     uint16_t op_dep_count;      /**< Number of operation dependencies. */
 
     struct {
-        off_t subs;             /**< Array of change subscriptions. */
-        uint16_t sub_count;     /**< Number of change subscriptions. */
+        sr_rwlock_t lock;       /**< Lock for accessing change subscriptions. */
+        off_t subs;             /**< Array of change subscriptions (offset in ext SHM). */
+        uint32_t sub_count;     /**< Number of change subscriptions. */
     } change_sub[SR_DS_COUNT];  /**< Change subscriptions for each datastore. */
 
-    off_t oper_subs;            /**< Array of operational subscriptions. */
-    uint16_t oper_sub_count;    /**< Number of operational subscriptions. */
+    sr_rwlock_t oper_lock;      /**< Lock for accessing operational subscriptions. */
+    off_t oper_subs;            /**< Array of operational subscriptions (offset in ext SHM). */
+    uint32_t oper_sub_count;    /**< Number of operational subscriptions. */
 
-    off_t notif_subs;           /**< Array of notification subscriptions. */
-    uint16_t notif_sub_count;   /**< Number of notification subscriptions. */
+    sr_rwlock_t notif_lock;     /** Lock for accessing notification subscriptions. */
+    off_t notif_subs;           /**< Array of notification subscriptions (offset in ext SHM). */
+    uint32_t notif_sub_count;   /**< Number of notification subscriptions. */
 };
 
 /**
  * @brief Ext SHM RPC/action specific subscription.
  */
 typedef struct sr_rpc_sub_s {
-    off_t xpath;                /**< Full XPath of the RPC/action subscription. */
+    off_t xpath;                /**< Full XPath of the RPC/action subscription (offset in ext SHM). */
     uint32_t priority;          /**< Subscription priority. */
     int opts;                   /**< Subscription options. */
     uint32_t evpipe_num;        /**< Event pipe number. */
@@ -180,9 +183,11 @@ typedef struct sr_rpc_sub_s {
  * @brief Ext SHM RPC/action subscriptions for a single operation.
  */
 typedef struct sr_rpc_s {
-    off_t op_path;              /**< Simple path of the RPC/action subscribed to. */
-    off_t subs;                 /**< Array of RPC/action subscriptions. */
-    uint16_t sub_count;         /**< Number of RPC/action subscriptions. */
+    off_t op_path;              /**< Simple path of the RPC/action subscribed to (offset in ext SHM). */
+
+    sr_rwlock_t lock;           /**< Lock for accessing RPC/action subscriptions. */
+    off_t subs;                 /**< Array of RPC/action subscriptions (offset in ext SHM). */
+    uint32_t sub_count;         /**< Number of RPC/action subscriptions. */
 } sr_rpc_t;
 
 /**
@@ -191,13 +196,12 @@ typedef struct sr_rpc_s {
 typedef struct sr_main_shm_s {
     uint32_t shm_ver;           /**< Main and ext SHM version of all expected data stored in them. Is increased with
                                      every change of their structure content (ABI change). */
-    sr_rwlock_t lock;           /**< Process-shared lock for accessing main and ext SHM. It is required only when
-                                     accessing attributes that can be changed (subscriptions, replay support). */
     pthread_mutex_t lydmods_lock; /**< Process-shared lock for accessing sysrepo module data. */
     uint32_t mod_count;         /**< Number of installed modules stored after this structure. */
 
-    off_t rpc_subs;             /**< Array of RPC/action subscriptions. */
-    uint16_t rpc_sub_count;     /**< Number of RPC/action subscriptions. */
+    sr_rwlock_t rpc_lock;       /**< Lock for accessing RPC/actions with subscriptions. */
+    off_t rpcs;                 /**< Array of RPC/actions with subscriptions (offset in ext SHM). */
+    uint32_t rpc_count;         /**< Number of RPC/actions aith subscriptions. */
 
     ATOMIC_T new_sr_cid;        /**< Connection ID for a new connection. */
     ATOMIC_T new_sr_sid;        /**< SID for a new session. */
@@ -209,7 +213,7 @@ typedef struct sr_main_shm_s {
  * @brief External (ext) SHM.
  */
 typedef struct sr_ext_shm_s {
-    size_t wasted;              /**< Number of unused allocated bytes in the memory. */
+    ATOMIC_T wasted;            /**< Number of unused allocated bytes in the memory. */
 } sr_ext_shm_t;
 
 /**
@@ -382,21 +386,21 @@ sr_error_info_t *sr_shmmain_ly_ctx_init(struct ly_ctx **ly_ctx);
 /**
  * @brief Copy startup files into running files.
  *
- * @param[in] conn Connection to use.
+ * @param[in] main_shm Main SHM.
  * @param[in] replace Whether replace any existing running data (standard copy-config) or copy data
  * only for modules that do not have any running data.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_files_startup2running(sr_conn_ctx_t *conn, int replace);
+sr_error_info_t *sr_shmmain_files_startup2running(sr_main_shm_t *main_shm, int replace);
 
 /**
- * @brief Remap main SHM and add modules and their inverse dependencies into it.
+ * @brief Remap main SHM and store modules and all their static information (name, deps, ...) in it.
  *
  * @param[in] conn Connection to use.
- * @param[in] sr_mod First module to add.
+ * @param[in] first_sr_mod First module to add.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod);
+sr_error_info_t *sr_shmmain_store_modules(sr_conn_ctx_t *conn, struct lyd_node *first_sr_mod);
 
 /**
  * @brief Open (and init if needed) main SHM.
@@ -425,65 +429,26 @@ sr_error_info_t *sr_shmmain_ext_open(sr_shm_t *shm, int zero);
  *
  * Either name or name_off must be set.
  *
- * @param[in] shm_main Main SHM.
- * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] main_shm Main SHM.
  * @param[in] name String name of the module.
- * @param[in] name_off Ext SHM offset of the name (faster lookup, \p main_ext_shm_addr is not needed).
- * @return Main SHM module, NULL if not found.
+ * @param[in] name_off Ext SHM offset of the name (faster lookup).
+ * @return Found SHM module, NULL if not found.
  */
-sr_mod_t *sr_shmmain_find_module(sr_shm_t *shm_main, char *ext_shm_addr, const char *name, off_t name_off);
+sr_mod_t *sr_shmmain_find_module(sr_main_shm_t *main_shm, const char *name, off_t name_off);
 
 /**
  * @brief Find a specific main SHM RPC.
+ * Remap READ lock must be held, the return value also depends on it to stay valid!
  *
  * Either op_path or op_path_off must be set.
  *
- * @param[in] main_shm Main SHM structure.
+ * @param[in] main_shm Main SHM.
  * @param[in] ext_shm_addr Ext SHM address.
  * @param[in] op_path String name of the RPCmodule.
- * @param[in] op_path_off Ext SHM offset of the op_path (faster lookup, \p ext_shm_addr is not needed).
- * @return Main SHM RPC, NULL if not found.
+ * @param[in] op_path_off Ext SHM offset of the op_path (faster lookup).
+ * @return Found SHM RPC, NULL if not found.
  */
 sr_rpc_t *sr_shmmain_find_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const char *op_path, off_t op_path_off);
-
-/**
- * @brief Lock main/ext SHM and its mapping and remap it if needed (it was changed). Also, store information
- * about held locks into SHM (except sr_connect).
- *
- * If mode is READ-UPGR or WRITE lock, also perform connection recovery.
- *
- * !! Every API function that accesses ext SHM must call this function !!
- *
- * @param[in] conn Connection to use.
- * @param[in] mode Whether to WRITE, READ or not lock main (actually ext) SHM.
- * @param[in] remap Whether to WRITE (ext SHM may be remapped) or READ (just protect from remapping) remap lock.
- * @param[in] func Caller function name.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, const char *func);
-
-/**
- * @brief Relock main/ext SHM. Also, update information about held locks in SHM.
- *
- * @param[in] conn Connection to use.
- * @param[in] mode Whether to WRITE, READ or not lock main (actually ext) SHM.
- * @param[in] func Caller function name.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func);
-
-/**
- * @brief Unlock main SHM and update information about held locks in SHM. Also, store information
- * about held locks into SHM (except sr_connect and sr_disconnect).
- *
- * If remap was WRITE locked, also defragment ext SHM if needed.
- *
- * @param[in] conn Connection to use.
- * @param[in] mode Whether to WRITE, READ or not unlock main (actually ext) SHM.
- * @param[in] remap Whether to WRITE or READ remap unlock.
- * @param[in] func Caller function name.
- */
-void sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, const char *func);
 
 /**
  * @brief Add main SHM RPC/action subscription.
@@ -491,14 +456,14 @@ void sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, cons
  * May remap ext SHM!
  *
  * @param[in] conn Connection to use.
- * @param[in] shm_rpc_off SHM RPC offset.
+ * @param[in] shm_rpc SHM RPC.
  * @param[in] xpath Subscription XPath.
  * @param[in] priority Subscription priority.
  * @param[in] sub_opts Subscriptions options.
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_rpc_subscription_add(sr_conn_ctx_t *conn, off_t shm_rpc_off, const char *xpath,
+sr_error_info_t *sr_shmmain_rpc_subscription_add(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath,
         uint32_t priority, int sub_opts, uint32_t evpipe_num);
 
 /**
@@ -515,10 +480,11 @@ sr_error_info_t *sr_shmmain_rpc_subscription_add(sr_conn_ctx_t *conn, off_t shm_
  * @param[in] cid Connection ID of all the subscriptions to remove. (2)
  * @param[out] last_removed Whether this is the last RPC subscription that was removed.
  * @param[out] evpipe_num_p Optional evpipe number of the removed subscription.
- * @return 0 if removed, 1 if no matching found.
+ * @param[out] found Optional flag whether the sunscription was found.
+ * @return err_info, NULL on success.
  */
-int sr_shmmain_rpc_subscription_del(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath, uint32_t priority,
-        uint32_t evpipe_num, sr_cid_t cid, int *last_removed, uint32_t *evpipe_num_p);
+sr_error_info_t *sr_shmmain_rpc_subscription_del(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath,
+        uint32_t priority, uint32_t evpipe_num, sr_cid_t cid, int *last_removed, uint32_t *evpipe_num_p, int *found);
 
 /**
  * @brief Remove main SHM module RPC/action subscription and do a proper cleanup.
@@ -570,12 +536,12 @@ sr_error_info_t *sr_shmmain_del_rpc(sr_conn_ctx_t *conn, const char *op_path, of
  * @brief Change replay support of a module in main SHM.
  * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
- * @param[in] conn Connection to use.
+ * @param[in] main_shm Main SHM.
  * @param[in] mod_name Module name. NUll for all the modules.
  * @param[in] replay_support Whether replay support should be enabled or disabled.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_update_replay_support(sr_conn_ctx_t *conn, const char *mod_name, int replay_support);
+sr_error_info_t *sr_shmmain_update_replay_support(sr_main_shm_t *main_shm, const char *mod_name, int replay_support);
 
 /**
  * @brief Change notification subscription suspend state (flag) in ext SHM.
@@ -594,10 +560,10 @@ sr_error_info_t *sr_shmmain_update_notif_suspend(sr_conn_ctx_t *conn, const char
  * Startup file must always exist, owner/permissions are read from it.
  * For running and operational, create them if they do not exist, then change their owner/permissions.
  *
- * @param[in] conn Connection to use.
+ * @param[in] main_shm Main SHM.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_check_data_files(sr_conn_ctx_t *conn);
+sr_error_info_t *sr_shmmain_check_data_files(sr_main_shm_t *main_shm);
 
 /*
  * Main SHM module functions
@@ -627,7 +593,7 @@ sr_error_info_t *sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char
 /**
  * @brief Collect required modules found in an operation.
  *
- * @param[in] conn Connection to use.
+ * @param[in] main_shm Main SHM.
  * @param[in] op_mod Module of the operation.
  * @param[in] op_path Path identifying the operation.
  * @param[in] output Whether this is the operation output or input.
@@ -636,21 +602,22 @@ sr_error_info_t *sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char
  * @param[out] shm_dep_count Operation dependency count.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_op_deps(sr_conn_ctx_t *conn, const struct lys_module *op_mod, const char *op_path,
+sr_error_info_t *sr_shmmod_collect_op_deps(sr_main_shm_t *main_shm, const struct lys_module *op_mod, const char *op_path,
         int output, struct ly_set *mod_set, sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count);
 
 /**
  * @brief Collect required modules of instance-identifiers found in data.
  *
- * @param[in] conn Connection to use.
+ * @param[in] main_shm Main SHM.
  * @param[in] shm_deps SHM dependencies of relevant instance-identifiers.
  * @param[in] shm_dep_count SHM dependency count.
+ * @param[in] ly_ctx libyang context.
  * @param[in] data Data to look for instance-identifiers in.
  * @param[in,out] mod_set Set of modules to add to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_instid_deps_data(sr_conn_ctx_t *conn, sr_mod_data_dep_t *shm_deps,
-        uint16_t shm_dep_count, const struct lyd_node *data, struct ly_set *mod_set);
+sr_error_info_t *sr_shmmod_collect_instid_deps_data(sr_main_shm_t *main_shm, sr_mod_data_dep_t *shm_deps,
+        uint16_t shm_dep_count, struct ly_ctx *ly_ctx, const struct lyd_node *data, struct ly_set *mod_set);
 
 /**
  * @brief Collect required modules of instance-identifiers found in
@@ -776,10 +743,12 @@ sr_error_info_t *sr_shmmod_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t
  * @param[in] cid Connection ID of all the subscriptions to remove. (2)
  * @param[out] last_removed Optinal flag, whether this is the last module change subscription that was removed.
  * @param[out] evpipe_num_p Optional evpipe number of the removed subscription.
- * @return 0 if removed, 1 if no matching found.
+ * @param[out] found Optional flag whether the sunscription was found.
+ * @return err_info, NULL on success.
  */
-int sr_shmmod_change_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, const char *xpath,
-        uint32_t priority, int sub_opts, uint32_t evpipe_num, sr_cid_t cid, int *last_removed, uint32_t *evpipe_num_p);
+sr_error_info_t *sr_shmmod_change_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds,
+        const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num, sr_cid_t cid, int *last_removed,
+        uint32_t *evpipe_num_p, int *found);
 
 /**
  * @brief Remove main SHM module change subscription and do a proper cleanup.
@@ -832,10 +801,11 @@ sr_error_info_t *sr_shmmod_oper_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *
  * @param[in] cid Connection ID of all the subscriptions to remove. (2)
  * @param[out] xpath_p Optionally return the xpath of the removed subscription.
  * @param[out] evpipe_num_p Optional evpipe number of the removed subscription.
- * @return 0 if removed, 1 if no matching found.
+ * @param[out] found Optional flag whether the sunscription was found.
+ * @return err_info, NULL on success.
  */
-int sr_shmmod_oper_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath, uint32_t evpipe_num,
-        sr_cid_t cid, const char **xpath_p, uint32_t *evpipe_num_p);
+sr_error_info_t *sr_shmmod_oper_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath,
+        uint32_t evpipe_num, sr_cid_t cid, const char **xpath_p, uint32_t *evpipe_num_p, int *found);
 
 /**
  * @brief Remove main SHM module operational subscription and do a proper cleanup.
@@ -883,10 +853,11 @@ sr_error_info_t *sr_shmmod_notif_subscription_add(sr_conn_ctx_t *conn, sr_mod_t 
  * @param[in] cid Connection ID of all the subscription to remove. (2)
  * @param[out] last_removed Whether this is the last module notification subscription that was removed.
  * @param[out] evpipe_num_p Optional evpipe number of the removed subscription.
- * @return 0 if removed, 1 if no matching found.
+ * @param[out] found Optional flag whether the sunscription was found.
+ * @return err_info, NULL on success.
  */
-int sr_shmmod_notif_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num,
-        sr_cid_t cid, int *last_removed, uint32_t *evpipe_num_p);
+sr_error_info_t *sr_shmmod_notif_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
+        uint32_t evpipe_num, sr_cid_t cid, int *last_removed, uint32_t *evpipe_num_p, int *found);
 
 /**
  * @brief Remove main SHM module notification subscription and do a proper cleanup.
@@ -1019,6 +990,7 @@ sr_error_info_t *sr_shmsub_oper_notify(const struct lys_module *ly_mod, const ch
  * Main SHM read lock must be held and may be temporarily unlocked!
  *
  * @param[in] conn Connection to use.
+ * @param[in] shm_rpc SHM RPC.
  * @param[in] op_path Path identifying the RPC/action.
  * @param[in] input Operation input tree.
  * @param[in] sid Originator sysrepo session ID.
@@ -1028,13 +1000,15 @@ sr_error_info_t *sr_shmsub_oper_notify(const struct lys_module *ly_mod, const ch
  * @param[out] cb_err_info Callback error information generated by a subscriber, if any.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_node *input,
-        sr_sid_t sid, uint32_t timeout_ms, uint32_t *request_id, struct lyd_node **output, sr_error_info_t **cb_err_info);
+sr_error_info_t *sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *op_path,
+        const struct lyd_node *input, sr_sid_t sid, uint32_t timeout_ms, uint32_t *request_id, struct lyd_node **output,
+        sr_error_info_t **cb_err_info);
 
 /**
  * @brief Notify about (generate) an RPC/action abort event.
  *
  * @param[in] conn Connection to use.
+ * @param[in] shm_rpc SHM RPC.
  * @param[in] op_path Path identifying the RPC/action.
  * @param[in] input Operation input tree.
  * @param[in] sid Originator sysrepo session ID.
@@ -1042,8 +1016,8 @@ sr_error_info_t *sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, const char *op_path, 
  * @param[in] request_id Generated request ID from previous event.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_node *input,
-        sr_sid_t sid, uint32_t timeout_ms, uint32_t request_id);
+sr_error_info_t *sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *op_path,
+        const struct lyd_node *input, sr_sid_t sid, uint32_t timeout_ms, uint32_t request_id);
 
 /**
  * @brief Notify about (generate) a notification event.
@@ -1094,14 +1068,6 @@ sr_error_info_t *sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, sr_conn_ctx_t *conn);
-
-/**
- * @brief Check whether there is a pending replay or stop time elapsed for a module notification subscription.
- *
- * @param[in] notif_subs Module notification subscriptions.
- * @return 0 if no such events occured, non-zero if they did.
- */
-int sr_shmsub_notif_listen_module_has_replay_or_stop(struct modsub_notif_s *notif_subs);
 
 /**
  * @brief Get nearest stop time of a subscription, if any.

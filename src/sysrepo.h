@@ -1170,12 +1170,8 @@ typedef enum sr_subscr_flag_e {
     SR_SUBSCR_UPDATE = 32,
 
     /**
-     * @brief The subscriber wants to modify other subscriptions in its callback. Normally, this would
-     * cause deadlock but with this flag it is possible. But, there are some **limitations**. The callback
-     * MUST not subscribe to the same RPC/module DS changes it is processing (would change subscription count
-     * and cause invalid memory access) and MUST not subscribe on the same ::sr_subscription_ctx_t
-     * `subscription` (would cause a deadlock). Accepted **only** for RPC/action and change subscriptions,
-     * it makes no sense for others.
+     * @brief The options should not be used as it is deprecated and ignored. Callbacks can always modify other
+     * subscriptions except for those that are relevant for the particular subscription and callback.
      */
     SR_SUBSCR_UNLOCKED = 64,
 
@@ -1300,8 +1296,7 @@ typedef struct sr_change_iter_s sr_change_iter_t;
 /**
  * @brief Callback to be called on the event of changing datastore content of the specified module.
  *
- * @note Callback is allowed to modify installed YANG modules but MUST not modify subscriptions on ::SR_EV_CHANGE event.
- * It would result in a deadlock and this callback timeout (unless ::SR_SUBSCR_UNLOCKED is used when subscribing).
+ * @note Callback must not modify the same module and datastore change subscriptions, it would result in a deadlock.
  *
  * @param[in] session Implicit session (do not stop) with information about the changed data (retrieved by
  * ::sr_get_changes_iter) the event originator session IDs.
@@ -1439,8 +1434,7 @@ void sr_free_change_iter(sr_change_iter_t *iter);
 /**
  * @brief Callback to be called for the delivery of an RPC/action. Data are represented as ::sr_val_t structures.
  *
- * @note Callback is allowed to modify installed YANG modules but MUST not modify subscriptions. It would result in
- * a deadlock and this callback timeout (unless ::SR_SUBSCR_UNLOCKED is used when subscribing).
+ * @note Callback must not modify any RPC/action subscriptions, it would result in a deadlock.
  *
  * @param[in] session Implicit session (do not stop) with information about event originator session IDs.
  * @param[in] xpath Full operation [xpath](@ref paths) identifying the exact RPC/action executed.
@@ -1460,8 +1454,7 @@ typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *xpath, const sr_
 /**
  * @brief Callback to be called for the delivery of an RPC/action. Data are represented as _libyang_ subtrees.
  *
- * @note Callback is allowed to modify installed YANG modules but MUST not modify subscriptions. It would result in
- * a deadlock and this callback timeout (unless ::SR_SUBSCR_UNLOCKED is used when subscribing).
+ * @note Callback must not modify any RPC/action subscriptions, it would result in a deadlock.
  *
  * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
  * @param[in] op_path Simple operation [path](@ref paths) identifying the RPC/action.
@@ -1579,7 +1572,7 @@ typedef enum sr_ev_notif_type_e {
 /**
  * @brief Callback to be called for the delivery of a notification. Data are represented as ::sr_val_t structures.
  *
- * @note Callback is allowed to modify installed YANG modules and subscriptions.
+ * @note Callback must not modify the same module notification subscriptions, it would result in a deadlock.
  *
  * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
  * @param[in] notif_type Type of the notification.
@@ -1596,7 +1589,7 @@ typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, const sr_ev_notif_t
 /**
  * @brief Callback to be called for the delivery of a notification. Data are represented as _libyang_ subtrees.
  *
- * @note Callback is allowed to modify installed YANG modules and subscriptions.
+ * @note Callback must not modify the same module notification subscriptions, it would result in a deadlock.
  *
  * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
  * @param[in] notif_type Type of the notification.
@@ -1732,8 +1725,7 @@ int sr_event_notif_sub_resume(sr_subscription_ctx_t *subscription, uint32_t sub_
  * they will be called after this one (and when they are called, their parent children will again be removed
  * which can result in nodes provided by the original callback being lost).
  *
- * @note Callback is allowed to modify installed YANG modules but MUST not modify subscriptions. It would result in
- * a deadlock and this callback timeout.
+ * @note Callback must not modify the same module operational subscriptions, it would result in a deadlock.
  *
  * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
  * @param[in] module_name Name of the affected module.

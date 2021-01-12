@@ -36,15 +36,6 @@
 #include <unistd.h>
 
 /**
- * @brief Item holding information about a SHM object for debug printing.
- */
-struct shm_item {
-    off_t start;
-    size_t size;
-    char *name;
-};
-
-/**
  * @brief Item holding information about active connections owned by this process.
  */
 typedef struct _conn_list_entry {
@@ -74,569 +65,6 @@ static struct {
     sr_conn_list_item *head;
     pthread_mutex_t lock;
 } conn_list = {.head = NULL, .lock = PTHREAD_MUTEX_INITIALIZER};
-
-/**
- * @brief Collect data dependencies for printing.
- *
- * @param[in] ext_shm_addr Ext SHM mapping address.
- * @param[in] data_deps Data dependencies to be printed.
- * @param[in] data_dep_count Data dependency count.
- * @param[in] data_dep_name Name of these data dependencies to be printed.
- * @param[in] mod_name Module with these dependencies.
- * @param[in,out] items Array of print items.
- * @param[in,out] item_count Count of print items.
- */
-static void
-sr_shmmain_print_data_deps(char *ext_shm_addr, sr_mod_data_dep_t *data_deps, uint16_t data_dep_count,
-        const char *data_dep_name, const char *mod_name, struct shm_item **items, size_t *item_count)
-{
-    uint16_t i;
-
-    if (data_dep_count) {
-        /* add data dep array */
-        *items = sr_realloc(*items, (*item_count + 1) * sizeof **items);
-        (*items)[*item_count].start = ((char *)data_deps) - ext_shm_addr;
-        (*items)[*item_count].size = data_dep_count * sizeof *data_deps;
-        asprintf(&((*items)[*item_count].name), "%s (%u, mod \"%s\")", data_dep_name, data_dep_count, mod_name);
-        ++(*item_count);
-
-        for (i = 0; i < data_dep_count; ++i) {
-            if (data_deps[i].xpath) {
-                /* add xpath */
-                *items = sr_realloc(*items, (*item_count + 1) * sizeof **items);
-                (*items)[*item_count].start = data_deps[i].xpath;
-                (*items)[*item_count].size = sr_strshmlen(ext_shm_addr + data_deps[i].xpath);
-                asprintf(&((*items)[*item_count].name), "%s xpath (\"%s\", mod \"%s\")", data_dep_name,
-                        ext_shm_addr + data_deps[i].xpath, mod_name);
-                ++(*item_count);
-            }
-        }
-    }
-}
-
-/**
- * @brief Comparator for SHM print item qsort.
- *
- * @param[in] ptr1 First value pointer.
- * @param[in] ptr2 Second value pointer.
- * @return Less than, equal to, or greater than 0 if the first value is found
- * to be less than, equal to, or greater to the second value.
- */
-static int
-sr_shmmain_print_cmp(const void *ptr1, const void *ptr2)
-{
-    struct shm_item *item1, *item2;
-
-    item1 = (struct shm_item *)ptr1;
-    item2 = (struct shm_item *)ptr2;
-
-    assert(item1->start != item2->start);
-    assert((item1->start > item2->start) || (item1->start + item1->size <= (unsigned)item2->start));
-    assert((item1->start < item2->start) || (item2->start + item2->size <= (unsigned)item1->start));
-
-    if (item1->start < item2->start) {
-        return -1;
-    }
-    return 1;
-}
-
-/**
- * @brief Debug print the contents of Ext SHM.
- *
- * @param[in] shm_main Main SHM.
- * @param[in] ext_shm_addr Ext SHM mapping address.
- * @param[in] ext_shm_size Ext SHM mapping size.
- */
-static void
-sr_shmmain_ext_print(sr_shm_t *shm_main, char *ext_shm_addr, size_t ext_shm_size)
-{
-    sr_mod_t *shm_mod;
-    off_t *features, cur_off;
-    sr_mod_op_dep_t *op_deps;
-    sr_mod_change_sub_t *change_subs;
-    sr_mod_oper_sub_t *oper_subs;
-    sr_rpc_t *shm_rpc;
-    sr_rpc_sub_t *rpc_subs;
-    sr_main_shm_t *main_shm;
-    struct shm_item *items;
-    size_t i, j, item_count, printed, wasted;
-    sr_datastore_t ds;
-    int msg_len = 0;
-    char *msg;
-
-    if ((stderr_ll < SR_LL_DBG) && (syslog_ll < SR_LL_DBG) && !log_cb) {
-        /* nothing to print */
-        return;
-    }
-
-    /* add wasted */
-    item_count = 0;
-    items = malloc(sizeof *items);
-    items[item_count].start = 0;
-    items[item_count].size = sizeof(sr_ext_shm_t);
-    asprintf(&(items[item_count].name), "ext wasted %lu", ((sr_ext_shm_t *)ext_shm_addr)->wasted);
-    ++item_count;
-
-    main_shm = (sr_main_shm_t *)shm_main->addr;
-
-    if (main_shm->rpc_sub_count) {
-        /* add RPCs */
-        items = sr_realloc(items, (item_count + 1) * sizeof *items);
-        items[item_count].start = main_shm->rpc_subs;
-        items[item_count].size = main_shm->rpc_sub_count * sizeof *shm_rpc;
-        asprintf(&(items[item_count].name), "rpcs (%u)", main_shm->rpc_sub_count);
-        ++item_count;
-
-        shm_rpc = (sr_rpc_t *)(ext_shm_addr + main_shm->rpc_subs);
-        for (i = 0; i < main_shm->rpc_sub_count; ++i) {
-            /* add op_path */
-            items = sr_realloc(items, (item_count + 1) * sizeof *items);
-            items[item_count].start = shm_rpc[i].op_path;
-            items[item_count].size = sr_strshmlen(ext_shm_addr + shm_rpc[i].op_path);
-            asprintf(&(items[item_count].name), "rpc op_path (\"%s\")", ext_shm_addr + shm_rpc[i].op_path);
-            ++item_count;
-
-            if (shm_rpc[i].sub_count) {
-                /* add RPC subscriptions */
-                items = sr_realloc(items, (item_count + 1) * sizeof *items);
-                items[item_count].start = shm_rpc[i].subs;
-                items[item_count].size = shm_rpc[i].sub_count * sizeof *rpc_subs;
-                asprintf(&(items[item_count].name), "rpc subs (%u, op_path \"%s\")", shm_rpc[i].sub_count,
-                        ext_shm_addr + shm_rpc[i].op_path);
-                ++item_count;
-
-                rpc_subs = (sr_rpc_sub_t *)(ext_shm_addr + shm_rpc[i].subs);
-                for (j = 0; j < shm_rpc[i].sub_count; ++j) {
-                    /* add RPC subscription XPath */
-                    items = sr_realloc(items, (item_count + 1) * sizeof *items);
-                    items[item_count].start = rpc_subs[j].xpath;
-                    items[item_count].size = sr_strshmlen(ext_shm_addr + rpc_subs[j].xpath);
-                    asprintf(&(items[item_count].name), "rpc sub xpath (\"%s\", op_path \"%s\")",
-                            ext_shm_addr + rpc_subs[j].xpath, ext_shm_addr + shm_rpc[i].op_path);
-                    ++item_count;
-                }
-            }
-        }
-    }
-
-    SR_SHM_MOD_FOR(shm_main->addr, shm_main->size, shm_mod) {
-        /* add module name */
-        items = sr_realloc(items, (item_count + 1) * sizeof *items);
-        items[item_count].start = shm_mod->name;
-        items[item_count].size = sr_strshmlen(ext_shm_addr + shm_mod->name);
-        asprintf(&(items[item_count].name), "module name (\"%s\")", ext_shm_addr + shm_mod->name);
-        ++item_count;
-
-        if (shm_mod->features) {
-            /* add features array */
-            items = sr_realloc(items, (item_count + 1) * sizeof *items);
-            items[item_count].start = shm_mod->features;
-            items[item_count].size = shm_mod->feat_count * sizeof(off_t);
-            asprintf(&(items[item_count].name), "features (%u, mod \"%s\")", shm_mod->feat_count,
-                    ext_shm_addr + shm_mod->name);
-            ++item_count;
-
-            /* add feature names */
-            features = (off_t *)(ext_shm_addr + shm_mod->features);
-            for (i = 0; i < shm_mod->feat_count; ++i) {
-                items = sr_realloc(items, (item_count + 1) * sizeof *items);
-                items[item_count].start = features[i];
-                items[item_count].size = sr_strshmlen(ext_shm_addr + features[i]);
-                asprintf(&(items[item_count].name), "feature name (\"%s\", mod \"%s\")", ext_shm_addr + features[i],
-                        ext_shm_addr + shm_mod->name);
-                ++item_count;
-            }
-        }
-
-        /* add data deps */
-        sr_shmmain_print_data_deps(ext_shm_addr, (sr_mod_data_dep_t *)(ext_shm_addr + shm_mod->data_deps),
-                shm_mod->data_dep_count, "data deps", ext_shm_addr + shm_mod->name, &items, &item_count);
-
-        if (shm_mod->inv_data_dep_count) {
-            /* add inverse data deps */
-            items = sr_realloc(items, (item_count + 1) * sizeof *items);
-            items[item_count].start = shm_mod->inv_data_deps;
-            items[item_count].size = shm_mod->inv_data_dep_count * sizeof(off_t);
-            asprintf(&(items[item_count].name), "inv data deps (%u, mod \"%s\")", shm_mod->inv_data_dep_count,
-                    ext_shm_addr + shm_mod->name);
-            ++item_count;
-        }
-
-        if (shm_mod->op_dep_count) {
-            /* add op deps array */
-            items = sr_realloc(items, (item_count + 1) * sizeof *items);
-            items[item_count].start = shm_mod->op_deps;
-            items[item_count].size = shm_mod->op_dep_count * sizeof(sr_mod_op_dep_t);
-            asprintf(&(items[item_count].name), "op deps (%u, mod \"%s\")", shm_mod->op_dep_count,
-                    ext_shm_addr + shm_mod->name);
-            ++item_count;
-
-            /* add op deps */
-            op_deps = (sr_mod_op_dep_t *)(ext_shm_addr + shm_mod->op_deps);
-            for (i = 0; i < shm_mod->op_dep_count; ++i) {
-                /* add xpath */
-                items = sr_realloc(items, (item_count + 1) * sizeof *items);
-                items[item_count].start = op_deps[i].xpath;
-                items[item_count].size = sr_strshmlen(ext_shm_addr + op_deps[i].xpath);
-                asprintf(&(items[item_count].name), "op dep xpath (\"%s\", mod \"%s\")", ext_shm_addr + op_deps[i].xpath,
-                        ext_shm_addr + shm_mod->name);
-                ++item_count;
-
-                /* add op dep input data deps */
-                sr_shmmain_print_data_deps(ext_shm_addr, (sr_mod_data_dep_t *)(ext_shm_addr + op_deps[i].in_deps),
-                        op_deps[i].in_dep_count, "op input data deps", ext_shm_addr + shm_mod->name, &items, &item_count);
-
-                /* add op dep output data deps */
-                sr_shmmain_print_data_deps(ext_shm_addr, (sr_mod_data_dep_t *)(ext_shm_addr + op_deps[i].out_deps),
-                        op_deps[i].out_dep_count, "op output data deps", ext_shm_addr + shm_mod->name, &items, &item_count);
-            }
-        }
-
-        for (ds = 0; ds < SR_DS_COUNT; ++ds) {
-            if (shm_mod->change_sub[ds].sub_count) {
-                /* add change subscriptions */
-                items = sr_realloc(items, (item_count + 1) * sizeof *items);
-                items[item_count].start = shm_mod->change_sub[ds].subs;
-                items[item_count].size = shm_mod->change_sub[ds].sub_count * sizeof *change_subs;
-                asprintf(&(items[item_count].name), "%s change subs (%u, mod \"%s\")", sr_ds2str(ds),
-                        shm_mod->change_sub[ds].sub_count, ext_shm_addr + shm_mod->name);
-                ++item_count;
-
-                /* add xpaths */
-                change_subs = (sr_mod_change_sub_t *)(ext_shm_addr + shm_mod->change_sub[ds].subs);
-                for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
-                    if (change_subs[i].xpath) {
-                        items = sr_realloc(items, (item_count + 1) * sizeof *items);
-                        items[item_count].start = change_subs[i].xpath;
-                        items[item_count].size = sr_strshmlen(ext_shm_addr + change_subs[i].xpath);
-                        asprintf(&(items[item_count].name), "%s change sub xpath (\"%s\", mod \"%s\")", sr_ds2str(ds),
-                                ext_shm_addr + change_subs[i].xpath, ext_shm_addr + shm_mod->name);
-                        ++item_count;
-                    }
-                }
-            }
-        }
-
-        if (shm_mod->oper_sub_count) {
-            /* add DP subscriptions */
-            items = sr_realloc(items, (item_count + 1) * sizeof *items);
-            items[item_count].start = shm_mod->oper_subs;
-            items[item_count].size = shm_mod->oper_sub_count * sizeof *oper_subs;
-            asprintf(&(items[item_count].name), "oper subs (%u, mod \"%s\")", shm_mod->oper_sub_count,
-                    ext_shm_addr + shm_mod->name);
-            ++item_count;
-
-            /* add xpaths */
-            oper_subs = (sr_mod_oper_sub_t *)(ext_shm_addr + shm_mod->oper_subs);
-            for (i = 0; i < shm_mod->oper_sub_count; ++i) {
-                items = sr_realloc(items, (item_count + 1) * sizeof *items);
-                items[item_count].start = oper_subs[i].xpath;
-                items[item_count].size = sr_strshmlen(ext_shm_addr + oper_subs[i].xpath);
-                asprintf(&(items[item_count].name), "oper sub xpath (\"%s\", mod \"%s\")",
-                        ext_shm_addr + oper_subs[i].xpath, ext_shm_addr + shm_mod->name);
-                ++item_count;
-            }
-        }
-
-        if (shm_mod->notif_sub_count) {
-            /* add notif subscriptions */
-            items = sr_realloc(items, (item_count + 1) * sizeof *items);
-            items[item_count].start = shm_mod->notif_subs;
-            items[item_count].size = SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof(sr_mod_notif_sub_t));
-            asprintf(&(items[item_count].name), "notif subs (%u, mod \"%s\")", shm_mod->notif_sub_count,
-                    ext_shm_addr + shm_mod->name);
-            ++item_count;
-        }
-    }
-
-    /* sort all items */
-    qsort(items, item_count, sizeof *items, sr_shmmain_print_cmp);
-
-    /* print it */
-    cur_off = 0;
-    printed = 0;
-    wasted = 0;
-    for (i = 0; i < item_count; ++i) {
-        /* check alignment */
-        assert(items[i].size == SR_SHM_SIZE(items[i].size));
-        assert((unsigned)items[i].start == SR_SHM_SIZE(items[i].start));
-
-        if (items[i].start > cur_off) {
-            printed += sr_sprintf(&msg, &msg_len, printed, "%06ld-%06ld [%6ld]: (wasted %ld)\n",
-                    cur_off, items[i].start, items[i].start - cur_off, items[i].start - cur_off);
-            wasted += items[i].start - cur_off;
-            cur_off = items[i].start;
-        }
-        printed += sr_sprintf(&msg, &msg_len, printed, "%06ld-%06ld [%6lu]: %s\n",
-                items[i].start, items[i].start + items[i].size, items[i].size, items[i].name);
-        cur_off += items[i].size;
-
-        free(items[i].name);
-    }
-
-    if ((unsigned)cur_off < ext_shm_size) {
-        printed += sr_sprintf(&msg, &msg_len, printed, "%06ld-%06ld [%6lu]: (wasted %ld)\n",
-                cur_off, ext_shm_size, ext_shm_size - cur_off, ext_shm_size - cur_off);
-        wasted += ext_shm_size - cur_off;
-    }
-    free(items);
-
-    /* print all the information about SHM */
-    SR_LOG_DBG("#SHM:\n%s", msg);
-    free(msg);
-
-    /* check that no item exists after the mapped segment */
-    assert((unsigned)cur_off <= ext_shm_size);
-    /* check that wasted memory is correct */
-    assert(((sr_ext_shm_t *)ext_shm_addr)->wasted == wasted);
-}
-
-/**
- * @brief Copy data deps array from ext SHM to buffer to defragment it.
- *
- * @param[in] shm_main Main SHM.
- * @param[in] ext_shm_addr Ext SHM mapping address.
- * @param[in] data_deps SHM ext offset of data deps.
- * @param[in] data_dep_count Data dep count.
- * @param[in] ext_buf SHM ext buffer.
- * @param[in,out] ext_buf_cur Current ext SHM buffer position.
- * @return Memory offset of the copy.
- */
-static off_t
-sr_shmmain_defrag_copy_data_deps(sr_shm_t *shm_main, char *ext_shm_addr, off_t data_deps, uint16_t data_dep_count,
-        char *ext_buf, char **ext_buf_cur)
-{
-    sr_mod_data_dep_t *new_data_deps, *old_data_deps;
-    sr_mod_t *ref_mod;
-    char *str;
-    uint16_t i;
-    off_t ret;
-
-    if (!data_deps && !data_dep_count) {
-        /* no data dependencies */
-        return 0;
-    }
-    assert(data_deps && data_dep_count);
-
-    old_data_deps = (sr_mod_data_dep_t *)(ext_shm_addr + data_deps);
-
-    /* current offset */
-    ret = *ext_buf_cur - ext_buf;
-
-    /* allocate array */
-    new_data_deps = (sr_mod_data_dep_t *)(ext_buf + sr_shmcpy(ext_buf, ext_shm_addr + data_deps,
-            data_dep_count * sizeof *new_data_deps, ext_buf_cur));
-
-    /* copy all items */
-    for (i = 0; i < data_dep_count; ++i) {
-        /* assign module */
-        if (old_data_deps[i].module) {
-            ref_mod = sr_shmmain_find_module(shm_main, ext_buf, ext_shm_addr + old_data_deps[i].module, 0);
-            new_data_deps[i].module = ref_mod->name;
-        }
-
-        /* copy xpath */
-        if (old_data_deps[i].xpath) {
-            str = ext_shm_addr + old_data_deps[i].xpath;
-            new_data_deps[i].xpath = sr_shmstrcpy(ext_buf, str, ext_buf_cur);
-        }
-    }
-
-    return ret;
-}
-
-/**
- * @brief Copy inverse data deps array from main SHM to memory to defragment it.
- *
- * @param[in] shm_main Main SHM.
- * @param[in] ext_shm_addr Ext SHM address.
- * @param[in] inv_data_deps SHM offset of inverse data deps.
- * @param[in] inv_data_dep_count Inverse data dep count.
- * @param[in] ext_buf SHM memory copy.
- * @param[in,out] ext_buf_cur Current SHM memory position.
- * @return Memory offset of the copy.
- */
-static off_t
-sr_shmmain_defrag_copy_inv_data_deps(sr_shm_t *shm_main, char *ext_shm_addr, off_t inv_data_deps,
-        uint16_t inv_data_dep_count, char *ext_buf, char **ext_buf_cur)
-{
-    off_t *new_inv_data_deps, *old_inv_data_deps;
-    sr_mod_t *ref_mod;
-    uint16_t i;
-    off_t ret;
-
-    if (!inv_data_deps && !inv_data_dep_count) {
-        /* no inverse data dependencies */
-        return 0;
-    }
-    assert(inv_data_deps && inv_data_dep_count);
-
-    old_inv_data_deps = (off_t *)(ext_shm_addr + inv_data_deps);
-
-    /* current offset */
-    ret = *ext_buf_cur - ext_buf;
-
-    /* allocate array */
-    new_inv_data_deps = (off_t *)(ext_buf + sr_shmcpy(ext_buf, ext_shm_addr + inv_data_deps,
-            inv_data_dep_count * sizeof *new_inv_data_deps, ext_buf_cur));
-
-    /* copy all items */
-    for (i = 0; i < inv_data_dep_count; ++i) {
-        /* assign module */
-        ref_mod = sr_shmmain_find_module(shm_main, ext_buf, ext_shm_addr + old_inv_data_deps[i], 0);
-        new_inv_data_deps[i] = ref_mod->name;
-    }
-
-    return ret;
-}
-
-/**
- * @brief Copy an array from ext SHM to buffer to defragment it.
- *
- * @param[in] ext_shm_addr Ext SHM mapping address.
- * @param[in] array SHM offset of the array.
- * @param[in] size Array item size.
- * @param[in] count Array item count.
- * @param[in] ext_buf SHM ext buffer.
- * @param[in,out] ext_buf_cur Current SHM ext buffer position.
- * @return Buffer offset of the copy.
- */
-static off_t
-sr_shmmain_defrag_copy_array_with_string(char *ext_shm_addr, off_t array, size_t size, uint16_t count, char *ext_buf,
-        char **ext_buf_cur)
-{
-    off_t ret, *item;
-    uint16_t i;
-
-    if (!array && !count) {
-        /* empty array */
-        return 0;
-    }
-    assert(array && count);
-
-    /* current offset */
-    ret = *ext_buf_cur - ext_buf;
-
-    /* copy whole array */
-    item = (off_t *)(ext_buf + sr_shmcpy(ext_buf, ext_shm_addr + array, count * size, ext_buf_cur));
-
-    /* copy string for each item */
-    for (i = 0; i < count; ++i) {
-        if (*item) {
-            *item = sr_shmcpy(ext_buf, ext_shm_addr + *item, sr_strshmlen(ext_shm_addr + *item), ext_buf_cur);
-        }
-
-        /* next item */
-        item = (off_t *)(((uintptr_t)item) + size);
-    }
-
-    return ret;
-}
-
-/**
- * @brief Defragment Ext SHM.
- *
- * @param[in] shm_main Main SHM.
- * @param[in] shm_ext Ext SHM.
- * @param[out] defrag_ext_buf Defragmented Ext SHM memory copy.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_shmmain_ext_defrag(sr_shm_t *shm_main, sr_shm_t *shm_ext, char **defrag_ext_buf)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_mod_t *shm_mod;
-    sr_rpc_t *shm_rpc;
-    sr_mod_op_dep_t *old_op_deps, *new_op_deps;
-    char *ext_buf, *ext_buf_cur, *mod_name;
-    sr_main_shm_t *main_shm;
-    sr_mod_notif_sub_t *notif_subs;
-    uint16_t i;
-
-    *defrag_ext_buf = NULL;
-
-    /* resulting defragmented size is known */
-    ext_buf_cur = ext_buf = malloc(shm_ext->size - ((sr_ext_shm_t *)shm_ext->addr)->wasted);
-    SR_CHECK_MEM_RET(!ext_buf, err_info);
-
-    /* wasted ext number */
-    ((sr_ext_shm_t *)ext_buf_cur)->wasted = 0;
-    ext_buf_cur += sizeof(sr_ext_shm_t);
-
-    /* 1) copy all module names so that dependencies can reference them */
-    SR_SHM_MOD_FOR(shm_main->addr, shm_main->size, shm_mod) {
-        /* copy module name and update offset */
-        mod_name = shm_ext->addr + shm_mod->name;
-        shm_mod->name = sr_shmstrcpy(ext_buf, mod_name, &ext_buf_cur);
-    }
-
-    /* 2) copy the rest of arrays */
-    SR_SHM_MOD_FOR(shm_main->addr, shm_main->size, shm_mod) {
-        /* copy and update features */
-        shm_mod->features = sr_shmmain_defrag_copy_array_with_string(shm_ext->addr, shm_mod->features, sizeof(off_t),
-                shm_mod->feat_count, ext_buf, &ext_buf_cur);
-
-        /* copy and update data deps */
-        shm_mod->data_deps = sr_shmmain_defrag_copy_data_deps(shm_main, shm_ext->addr, shm_mod->data_deps,
-                shm_mod->data_dep_count, ext_buf, &ext_buf_cur);
-
-        /* allocate and copy inverse data deps */
-        shm_mod->inv_data_deps = sr_shmmain_defrag_copy_inv_data_deps(shm_main, shm_ext->addr, shm_mod->inv_data_deps,
-                shm_mod->inv_data_dep_count, ext_buf, &ext_buf_cur);
-
-        /* allocate and copy op deps, first only with their xpath ... */
-        old_op_deps = (sr_mod_op_dep_t *)(shm_ext->addr + shm_mod->op_deps);
-        shm_mod->op_deps = sr_shmmain_defrag_copy_array_with_string(shm_ext->addr, shm_mod->op_deps, sizeof(sr_mod_op_dep_t),
-                shm_mod->op_dep_count, ext_buf, &ext_buf_cur);
-
-        /* ... then copy both arrays as well */
-        new_op_deps = (sr_mod_op_dep_t *)(ext_buf + shm_mod->op_deps);
-        for (i = 0; i < shm_mod->op_dep_count; ++i) {
-            new_op_deps[i].in_deps = sr_shmmain_defrag_copy_data_deps(shm_main, shm_ext->addr, old_op_deps[i].in_deps,
-                    old_op_deps[i].in_dep_count, ext_buf, &ext_buf_cur);
-            new_op_deps[i].out_deps = sr_shmmain_defrag_copy_data_deps(shm_main, shm_ext->addr, old_op_deps[i].out_deps,
-                    old_op_deps[i].out_dep_count, ext_buf, &ext_buf_cur);
-        }
-
-        /* copy change subscriptions */
-        for (i = 0; i < SR_DS_COUNT; ++i) {
-            shm_mod->change_sub[i].subs = sr_shmmain_defrag_copy_array_with_string(shm_ext->addr, shm_mod->change_sub[i].subs,
-                    sizeof(sr_mod_change_sub_t), shm_mod->change_sub[i].sub_count, ext_buf, &ext_buf_cur);
-        }
-
-        /* copy operational subscriptions */
-        shm_mod->oper_subs = sr_shmmain_defrag_copy_array_with_string(shm_ext->addr, shm_mod->oper_subs,
-                sizeof(sr_mod_oper_sub_t), shm_mod->oper_sub_count, ext_buf, &ext_buf_cur);
-
-        /* copy notification subscriptions */
-        notif_subs = (sr_mod_notif_sub_t *)(shm_ext->addr + shm_mod->notif_subs);
-        shm_mod->notif_subs = sr_shmcpy(ext_buf, notif_subs, SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof *notif_subs),
-                &ext_buf_cur);
-    }
-
-    main_shm = (sr_main_shm_t *)shm_main->addr;
-
-    /* 3) copy RPCs and their subscriptions */
-    main_shm->rpc_subs = sr_shmmain_defrag_copy_array_with_string(shm_ext->addr, main_shm->rpc_subs,
-            sizeof(sr_rpc_t), main_shm->rpc_sub_count, ext_buf, &ext_buf_cur);
-
-    /* copy RPC subscriptions */
-    shm_rpc = (sr_rpc_t *)(ext_buf + main_shm->rpc_subs);
-    for (i = 0; i < main_shm->rpc_sub_count; ++i) {
-        shm_rpc[i].subs = sr_shmmain_defrag_copy_array_with_string(shm_ext->addr, shm_rpc[i].subs,
-                sizeof(sr_rpc_sub_t), shm_rpc[i].sub_count, ext_buf, &ext_buf_cur);
-    }
-
-    /* check size */
-    if ((unsigned)(ext_buf_cur - ext_buf) != shm_ext->size - ((sr_ext_shm_t *)shm_ext->addr)->wasted) {
-        SR_ERRINFO_INT(&err_info);
-        free(ext_buf);
-        return err_info;
-    }
-
-    *defrag_ext_buf = ext_buf;
-    return NULL;
-}
 
 sr_error_info_t *
 sr_shmmain_check_dirs(void)
@@ -1015,163 +443,6 @@ sr_shmmain_conn_list_del(sr_cid_t cid)
     return err_info;
 }
 
-/**
- * @brief Calculate how much ext SHM space is taken by connection state, RPCs,
- * their subscriptions, and any existing module subscriptions in main and ext SHM.
- *
- * @param[in] shm_main Main SHM.
- * @param[in] ext_shm_addr Ext SHM mapping address.
- * @return Ext SHM size of the considered data.
- */
-static size_t
-sr_shmmain_ext_get_size_main_shm(sr_shm_t *shm_main, char *ext_shm_addr)
-{
-    size_t shm_size = 0;
-    uint32_t i, j;
-    sr_main_shm_t *main_shm;
-    sr_rpc_t *shm_rpc;
-    sr_rpc_sub_t *rpc_subs;
-    sr_mod_t *shm_mod;
-    sr_mod_change_sub_t *change_subs;
-    sr_mod_oper_sub_t *oper_subs;
-
-    main_shm = (sr_main_shm_t *)shm_main->addr;
-
-    /* RPCs and their subscriptions */
-    shm_rpc = (sr_rpc_t *)(ext_shm_addr + main_shm->rpc_subs);
-    for (i = 0; i < main_shm->rpc_sub_count; ++i) {
-        assert(shm_rpc[i].op_path);
-        shm_size += sr_strshmlen(ext_shm_addr + shm_rpc[i].op_path);
-
-        rpc_subs = (sr_rpc_sub_t *)(ext_shm_addr + shm_rpc[i].subs);
-        for (j = 0; j < shm_rpc[i].sub_count; ++j) {
-            assert(rpc_subs[j].xpath);
-            shm_size += sr_strshmlen(ext_shm_addr + rpc_subs[j].xpath);
-        }
-        shm_size += SR_SHM_SIZE(shm_rpc[i].sub_count * sizeof *rpc_subs);
-    }
-    shm_size += SR_SHM_SIZE(main_shm->rpc_sub_count * sizeof *shm_rpc);
-
-    /* existing module subscriptions */
-    SR_SHM_MOD_FOR(shm_main->addr, shm_main->size, shm_mod) {
-        /* change subscriptions */
-        for (i = 0; i < SR_DS_COUNT; ++i) {
-            change_subs = (sr_mod_change_sub_t *)(ext_shm_addr + shm_mod->change_sub[i].subs);
-            for (j = 0; j < shm_mod->change_sub[i].sub_count; ++j) {
-                if (change_subs[j].xpath) {
-                    shm_size += sr_strshmlen(ext_shm_addr + change_subs[j].xpath);
-                }
-            }
-            shm_size += SR_SHM_SIZE(shm_mod->change_sub[i].sub_count * sizeof *change_subs);
-        }
-
-        /* oper subscriptions */
-        oper_subs = (sr_mod_oper_sub_t *)(ext_shm_addr + shm_mod->oper_subs);
-        for (i = 0; i < shm_mod->oper_sub_count; ++i) {
-            assert(oper_subs[i].xpath);
-            shm_size += sr_strshmlen(ext_shm_addr + oper_subs[i].xpath);
-        }
-        shm_size += SR_SHM_SIZE(shm_mod->oper_sub_count * sizeof *oper_subs);
-
-        /* notif subscriptions */
-        shm_size += SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof(sr_mod_notif_sub_t));
-    }
-
-    return shm_size;
-}
-
-/**
- * @brief Calculate how much ext SHM space is taken by sysrepo module data.
- *
- * @param[in] sr_mods Sysrepo module data.
- * @return Ext SHM size of the considered data.
- */
-static size_t
-sr_shmmain_ext_get_lydmods_size(struct lyd_node *sr_mods)
-{
-    struct lyd_node *sr_mod, *sr_child, *sr_op_dep, *sr_dep, *sr_instid;
-    size_t shm_size = 0;
-    uint16_t ddep_i, opdep_i;
-
-    assert(sr_mods);
-
-    LY_TREE_FOR(sr_mods->child, sr_mod) {
-        if (strcmp(sr_mod->schema->name, "module")) {
-            /* skip installed-module, for example */
-            continue;
-        }
-
-        LY_TREE_FOR(sr_mod->child, sr_child) {
-            opdep_i = 0;
-            if (!strcmp(sr_child->schema->name, "name")) {
-                /* a string */
-                shm_size += sr_strshmlen(((struct lyd_node_leaf_list *)sr_child)->value_str);
-            } else if (!strcmp(sr_child->schema->name, "enabled-feature")) {
-                /* another feature */
-                shm_size += sizeof(off_t);
-                /* a string */
-                shm_size += sr_strshmlen(((struct lyd_node_leaf_list *)sr_child)->value_str);
-            } else if (!strcmp(sr_child->schema->name, "data-deps")) {
-                ddep_i = 0;
-                LY_TREE_FOR(sr_child->child, sr_dep) {
-                    /* another data dependency */
-                    ++ddep_i;
-
-                    /* module name was already counted and type is an enum */
-                    if (!strcmp(sr_dep->schema->name, "inst-id")) {
-                        LY_TREE_FOR(sr_dep->child, sr_instid) {
-                            if (!strcmp(sr_instid->schema->name, "xpath")) {
-                                /* a string */
-                                shm_size += sr_strshmlen(((struct lyd_node_leaf_list *)sr_instid)->value_str);
-                            }
-                        }
-                    }
-                }
-
-                /* all data dependencies */
-                shm_size += SR_SHM_SIZE(ddep_i * sizeof(sr_mod_data_dep_t));
-            } else if (!strcmp(sr_child->schema->name, "inverse-data-deps")) {
-                /* another inverse dependency */
-                assert(sizeof(off_t) == SR_SHM_SIZE(sizeof(off_t)));
-                shm_size += sizeof(off_t);
-            } else if (!strcmp(sr_child->schema->name, "op-deps")) {
-                /* another op with dependencies */
-                ++opdep_i;
-
-                LY_TREE_FOR(sr_child->child, sr_op_dep) {
-                    if (!strcmp(sr_op_dep->schema->name, "xpath")) {
-                        /* operation xpath (a string) */
-                        shm_size += sr_strshmlen(((struct lyd_node_leaf_list *)sr_op_dep)->value_str);
-                    } else if (!strcmp(sr_op_dep->schema->name, "in") || !strcmp(sr_op_dep->schema->name, "out")) {
-                        ddep_i = 0;
-                        LY_TREE_FOR(sr_op_dep->child, sr_dep) {
-                            /* another data dependency */
-                            ++ddep_i;
-
-                            if (!strcmp(sr_dep->schema->name, "inst-id")) {
-                                LY_TREE_FOR(sr_dep->child, sr_instid) {
-                                    if (!strcmp(sr_instid->schema->name, "xpath")) {
-                                        /* a string */
-                                        shm_size += sr_strshmlen(((struct lyd_node_leaf_list *)sr_instid)->value_str);
-                                    }
-                                }
-                            }
-                        }
-
-                        /* all data dependencies */
-                        shm_size += SR_SHM_SIZE(ddep_i * sizeof(sr_mod_data_dep_t));
-                    }
-                }
-            }
-
-            /* all op dependencies */
-            shm_size += SR_SHM_SIZE(opdep_i * sizeof(sr_mod_op_dep_t));
-        }
-    }
-
-    return shm_size;
-}
-
 sr_error_info_t *
 sr_shmmain_ly_ctx_init(struct ly_ctx **ly_ctx)
 {
@@ -1194,15 +465,18 @@ sr_shmmain_ly_ctx_init(struct ly_ctx **ly_ctx)
 }
 
 sr_error_info_t *
-sr_shmmain_files_startup2running(sr_conn_ctx_t *conn, int replace)
+sr_shmmain_files_startup2running(sr_main_shm_t *main_shm, int replace)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod = NULL;
     char *startup_path, *running_path;
     const char *mod_name;
+    uint32_t i;
 
-    SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
-        mod_name = conn->ext_shm.addr + shm_mod->name;
+    for (i = 0; i < main_shm->mod_count; ++i) {
+        shm_mod = SR_SHM_MOD_IDX(main_shm, i);
+        mod_name = ((char *)main_shm) + shm_mod->name;
+
         if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, &running_path))) {
             goto error;
         }
@@ -1238,17 +512,16 @@ error:
 /**
  * @brief Fill main SHM data dependency information based on internal sysrepo data.
  *
- * @param[in] shm_main Main SHM.
- * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] main_shm Main SHM.
  * @param[in] sr_dep_parent Dependencies in internal sysrepo data.
  * @param[in] shm_deps Main SHM data dependencies to fill.
  * @param[out] dep_i Number of dependencies filled.
- * @param[in,out] ext_cur Current ext SHM position.
+ * @param[in,out] shm_end Current SHM end.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmmain_fill_data_deps(sr_shm_t *shm_main, char *ext_shm_addr, struct lyd_node *sr_dep_parent,
-        sr_mod_data_dep_t *shm_deps, uint32_t *dep_i, char **ext_cur)
+sr_shmmain_fill_data_deps(sr_main_shm_t *main_shm, struct lyd_node *sr_dep_parent, sr_mod_data_dep_t *shm_deps,
+        size_t *dep_i, char **shm_end)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *ref_shm_mod = NULL;
@@ -1269,7 +542,7 @@ sr_shmmain_fill_data_deps(sr_shm_t *shm_main, char *ext_shm_addr, struct lyd_nod
 
             /* copy module name offset */
             str = sr_ly_leaf_value_str(sr_dep);
-            ref_shm_mod = sr_shmmain_find_module(shm_main, ext_shm_addr, str, 0);
+            ref_shm_mod = sr_shmmain_find_module(main_shm, str, 0);
             SR_CHECK_INT_RET(!ref_shm_mod, err_info);
             shm_deps[*dep_i].module = ref_shm_mod->name;
 
@@ -1288,11 +561,11 @@ sr_shmmain_fill_data_deps(sr_shm_t *shm_main, char *ext_shm_addr, struct lyd_nod
                 if (!strcmp(sr_instid->schema->name, "xpath")) {
                     /* copy xpath */
                     str = sr_ly_leaf_value_str(sr_instid);
-                    shm_deps[*dep_i].xpath = sr_shmstrcpy(ext_shm_addr, str, ext_cur);
+                    shm_deps[*dep_i].xpath = sr_shmstrcpy((char *)main_shm, str, shm_end);
                 } else if (!strcmp(sr_instid->schema->name, "default-module")) {
                     /* copy module name offset */
                     str = sr_ly_leaf_value_str(sr_instid);
-                    ref_shm_mod = sr_shmmain_find_module(shm_main, ext_shm_addr, str, 0);
+                    ref_shm_mod = sr_shmmain_find_module(main_shm, str, 0);
                     SR_CHECK_INT_RET(!ref_shm_mod, err_info);
                     shm_deps[*dep_i].module = ref_shm_mod->name;
                 }
@@ -1309,352 +582,327 @@ sr_shmmain_fill_data_deps(sr_shm_t *shm_main, char *ext_shm_addr, struct lyd_nod
 }
 
 /**
- * @brief Add modules and their features into main SHM. Does not add data/op/inverse dependencies.
+ * @brief Fill a new SHM module and add its name and enabled features into main SHM. Does not add data/op/inverse dependencies.
  *
- * @param[in] ext_shm_addr Ext SHM address.
- * @param[in] first_sr_mod First new module to add.
- * @param[in] first_shm_mod First empty main SHM module for @p first_sr_mod to be filled in.
- * @param[in,out] shm_end Current main SHM end (does not equal to size if was preallocated).
+ * @param[in] sr_mod Module to read the information from.
+ * @param[in] shm_mod_idx Main SHM mod index to fill.
+ * @param[in] shm_main Main SHM structure to remap and add name/features at its end.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmmain_add_modules(char *ext_shm_addr, struct lyd_node *first_sr_mod, sr_mod_t *first_shm_mod, off_t *ext_end)
+sr_shmmain_fill_module(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr_shm_t *shm_main)
 {
     sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod;
     struct lyd_node *sr_child;
     off_t *shm_features;
-    char *ext_cur;
-    const char *str;
-    uint32_t i, feat_i;
+    const char *name, *str;
+    char *shm_end;
+    size_t feat_i, feat_names_len, old_shm_size;
+    sr_datastore_t ds;
 
-    assert(first_sr_mod && first_shm_mod);
-    ext_cur = ext_shm_addr + *ext_end;
+    shm_mod = SR_SHM_MOD_IDX(shm_main->addr, shm_mod_idx);
 
-    LY_TREE_FOR(first_sr_mod, first_sr_mod) {
-        if (strcmp(first_sr_mod->schema->name, "module")) {
-            /* skip installed-modules, for example */
-            continue;
-        }
-
-        /* set module structure */
-        memset(first_shm_mod, 0, sizeof *first_shm_mod);
-        for (i = 0; i < SR_DS_COUNT; ++i) {
-            if ((err_info = sr_rwlock_init(&first_shm_mod->data_lock_info[i].lock, 1))) {
-                return err_info;
-            }
-        }
-        if ((err_info = sr_rwlock_init(&first_shm_mod->replay_lock, 1))) {
+    /* init SHM module structure */
+    memset(shm_mod, 0, sizeof *shm_mod);
+    for (ds = 0; ds < SR_DS_COUNT; ++ds) {
+        if ((err_info = sr_rwlock_init(&shm_mod->data_lock_info[ds].lock, 1))) {
             return err_info;
         }
-        first_shm_mod->ver = 1;
-
-        /* set all arrays and pointers to ext SHM */
-        LY_TREE_FOR(first_sr_mod->child, sr_child) {
-            if (!strcmp(sr_child->schema->name, "name")) {
-                /* copy module name */
-                str = sr_ly_leaf_value_str(sr_child);
-                first_shm_mod->name = sr_shmstrcpy(ext_shm_addr, str, &ext_cur);
-            } else if (!strcmp(sr_child->schema->name, "revision")) {
-                /* copy revision */
-                str = sr_ly_leaf_value_str(sr_child);
-                strcpy(first_shm_mod->rev, str);
-            } else if (!strcmp(sr_child->schema->name, "replay-support")) {
-                /* set replay-support flag */
-                first_shm_mod->replay_supp = 1;
-            } else if (!strcmp(sr_child->schema->name, "enabled-feature")) {
-                /* just count features */
-                ++first_shm_mod->feat_count;
-            }
+    }
+    if ((err_info = sr_rwlock_init(&shm_mod->replay_lock, 1))) {
+        return err_info;
+    }
+    shm_mod->ver = 1;
+    for (ds = 0; ds < SR_DS_COUNT; ++ds) {
+        if ((err_info = sr_rwlock_init(&shm_mod->change_sub[ds].lock, 1))) {
+            return err_info;
         }
-
-        /* allocate and fill features */
-        first_shm_mod->features = sr_shmcpy(ext_shm_addr, NULL, first_shm_mod->feat_count * sizeof(off_t), &ext_cur);
-        shm_features = (off_t *)(ext_shm_addr + first_shm_mod->features);
-        feat_i = 0;
-
-        LY_TREE_FOR(first_sr_mod->child, sr_child) {
-            if (!strcmp(sr_child->schema->name, "enabled-feature")) {
-                /* copy feature name */
-                str = sr_ly_leaf_value_str(sr_child);
-                shm_features[feat_i] = sr_shmstrcpy(ext_shm_addr, str, &ext_cur);
-
-                ++feat_i;
-            }
-        }
-        SR_CHECK_INT_RET(feat_i != first_shm_mod->feat_count, err_info);
-
-        /* next iteration */
-        ++first_shm_mod;
+    }
+    if ((err_info = sr_rwlock_init(&shm_mod->oper_lock, 1))) {
+        return err_info;
+    }
+    if ((err_info = sr_rwlock_init(&shm_mod->notif_lock, 1))) {
+        return err_info;
     }
 
-    *ext_end = ext_cur - ext_shm_addr;
+    /* remember name, set fields from sr_mod, and count enabled features */
+    name = NULL;
+    feat_names_len = 0;
+    LY_TREE_FOR(sr_mod->child, sr_child) {
+        if (!strcmp(sr_child->schema->name, "name")) {
+            /* rememeber name */
+            name = sr_ly_leaf_value_str(sr_child);
+        } else if (!strcmp(sr_child->schema->name, "revision")) {
+            /* copy revision */
+            str = sr_ly_leaf_value_str(sr_child);
+            strcpy(shm_mod->rev, str);
+        } else if (!strcmp(sr_child->schema->name, "replay-support")) {
+            /* set replay-support flag */
+            ATOMIC_STORE_RELAXED(shm_mod->replay_supp, 1);
+        } else if (!strcmp(sr_child->schema->name, "enabled-feature")) {
+            /* count features and ther names length */
+            ++shm_mod->feat_count;
+            str = sr_ly_leaf_value_str(sr_child);
+            feat_names_len += sr_strshmlen(str);
+        }
+    }
+    assert(name);
+
+    /* remember main SHM size */
+    old_shm_size = shm_main->size;
+
+    /* enlarge and possibly remap main SHM */
+    if ((err_info = sr_shm_remap(shm_main, shm_main->size + sr_strshmlen(name) +
+            SR_SHM_SIZE(shm_mod->feat_count * sizeof(off_t)) + feat_names_len))) {
+        return err_info;
+    }
+    shm_mod = SR_SHM_MOD_IDX(shm_main->addr, shm_mod_idx);
+    shm_end = shm_main->addr + old_shm_size;
+
+    /* store module name */
+    shm_mod->name = sr_shmstrcpy(shm_main->addr, name, &shm_end);
+
+    /* store feature array */
+    shm_mod->features = sr_shmcpy(shm_main->addr, NULL, shm_mod->feat_count * sizeof(off_t), &shm_end);
+
+    /* store feature names */
+    shm_features = (off_t *)(shm_main->addr + shm_mod->features);
+    feat_i = 0;
+    LY_TREE_FOR(sr_mod->child, sr_child) {
+        if (!strcmp(sr_child->schema->name, "enabled-feature")) {
+            /* copy feature name */
+            str = sr_ly_leaf_value_str(sr_child);
+            shm_features[feat_i] = sr_shmstrcpy(shm_main->addr, str, &shm_end);
+
+            ++feat_i;
+        }
+    }
+    SR_CHECK_INT_RET(feat_i != shm_mod->feat_count, err_info);
+
+    /* main SHM size must be exactly what we allocated */
+    assert(shm_end == shm_main->addr + shm_main->size);
     return NULL;
 }
 
 /**
- * @brief Add modules data/op/inverse dependencies.
+ * @brief Add module data/op/inverse dependencies into main SHM.
  *
- * @param[in] shm_main Main SHM.
- * @param[in] ext_shm_addr Ext SHM address.
- * @param[in] first_sr_mod First module whose dependencies to add.
- * @param[in] first_shm_mod First main SHM module corresponding to @p first_sr_mod.
- * @param[in,out] shm_end Current main SHM end (does not equal to size if was preallocated).
+ * @param[in] sr_mod Module to read the information from.
+ * @param[in] shm_mod_idx Main SHM mod index of @p sr_mod.
+ * @param[in] shm_main Main SHM structure to remap and add all the deps at its end.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmmain_add_modules_deps(sr_shm_t *shm_main, char *ext_shm_addr, struct lyd_node *first_sr_mod, sr_mod_t *first_shm_mod,
-        off_t *ext_end)
+sr_shmmain_add_module_deps(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr_shm_t *shm_main)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *sr_child, *sr_dep, *sr_op, *sr_op_dep;
-    sr_mod_t *ref_shm_mod;
+    struct lyd_node *sr_child, *sr_dep, *sr_op, *sr_op_dep, *sr_instid;
+    sr_mod_t *shm_mod, *ref_shm_mod;
     sr_mod_data_dep_t *shm_data_deps, *shm_op_data_deps;
     sr_mod_op_dep_t *shm_op_deps;
     off_t *shm_inv_data_deps;
-    char *ext_cur;
+    sr_main_shm_t *main_shm;
+    char *shm_end;
     const char *str;
-    uint32_t data_dep_i, inv_data_dep_i, op_dep_i, op_data_dep_i;
+    size_t strings_len, op_data_deps_len, data_dep_i, inv_data_dep_i, op_dep_i, op_data_dep_i, old_shm_size;
 
-    assert(first_sr_mod && first_shm_mod);
-    ext_cur = ext_shm_addr + *ext_end;
+    shm_mod = SR_SHM_MOD_IDX(shm_main->addr, shm_mod_idx);
 
-    LY_TREE_FOR(first_sr_mod, first_sr_mod) {
-        if (strcmp(first_sr_mod->schema->name, "module")) {
-            /* skip installed-modules, for example */
-            continue;
-        }
+    assert(!shm_mod->data_dep_count);
+    assert(!shm_mod->inv_data_dep_count);
+    assert(!shm_mod->op_dep_count);
 
-        assert(!first_shm_mod->data_dep_count);
-        assert(!first_shm_mod->inv_data_dep_count);
-        assert(!first_shm_mod->op_dep_count);
+    /* count array and stirng length */
+    strings_len = 0;
+    op_data_deps_len = 0;
+    LY_TREE_FOR(sr_mod->child, sr_child) {
+        if (!strcmp(sr_child->schema->name, "data-deps")) {
+            LY_TREE_FOR(sr_child->child, sr_dep) {
+                /* another data dependency */
+                ++shm_mod->data_dep_count;
 
-        /* set all arrays and pointers to ext SHM */
-        LY_TREE_FOR(first_sr_mod->child, sr_child) {
-            if (!strcmp(sr_child->schema->name, "data-deps")) {
-                /* just count data dependencies */
-                LY_TREE_FOR(sr_child->child, sr_dep) {
-                    ++first_shm_mod->data_dep_count;
-                }
-            } else if (!strcmp(sr_child->schema->name, "inverse-data-deps")) {
-                /* just count inverse data dependencies */
-                ++first_shm_mod->inv_data_dep_count;
-            } else if (!strcmp(sr_child->schema->name, "op-deps")) {
-                /* just count op dependencies */
-                ++first_shm_mod->op_dep_count;
-            }
-        }
-
-        /* allocate and fill arrays */
-        first_shm_mod->data_deps = sr_shmcpy(ext_shm_addr, NULL, first_shm_mod->data_dep_count * sizeof(sr_mod_data_dep_t), &ext_cur);
-        shm_data_deps = (sr_mod_data_dep_t *)(ext_shm_addr + first_shm_mod->data_deps);
-        data_dep_i = 0;
-
-        first_shm_mod->inv_data_deps = sr_shmcpy(ext_shm_addr, NULL, first_shm_mod->inv_data_dep_count * sizeof(off_t), &ext_cur);
-        shm_inv_data_deps = (off_t *)(ext_shm_addr + first_shm_mod->inv_data_deps);
-        inv_data_dep_i = 0;
-
-        first_shm_mod->op_deps = sr_shmcpy(ext_shm_addr, NULL, first_shm_mod->op_dep_count * sizeof(sr_mod_op_dep_t), &ext_cur);
-        shm_op_deps = (sr_mod_op_dep_t *)(ext_shm_addr + first_shm_mod->op_deps);
-        op_dep_i = 0;
-
-        LY_TREE_FOR(first_sr_mod->child, sr_child) {
-            if (!strcmp(sr_child->schema->name, "data-deps")) {
-                /* now fill the dependency array */
-                if ((err_info = sr_shmmain_fill_data_deps(shm_main, ext_shm_addr, sr_child, shm_data_deps, &data_dep_i,
-                        &ext_cur))) {
-                    return err_info;
-                }
-            } else if (!strcmp(sr_child->schema->name, "inverse-data-deps")) {
-                /* now fill module references */
-                str = sr_ly_leaf_value_str(sr_child);
-                ref_shm_mod = sr_shmmain_find_module(shm_main, ext_shm_addr, str, 0);
-                SR_CHECK_INT_RET(!ref_shm_mod, err_info);
-                shm_inv_data_deps[inv_data_dep_i] = ref_shm_mod->name;
-
-                ++inv_data_dep_i;
-            } else if (!strcmp(sr_child->schema->name, "op-deps")) {
-                LY_TREE_FOR(sr_child->child, sr_op) {
-                    if (!strcmp(sr_op->schema->name, "xpath")) {
-                        /* copy xpath name */
-                        str = sr_ly_leaf_value_str(sr_op);
-                        shm_op_deps[op_dep_i].xpath = sr_shmstrcpy(ext_shm_addr, str, &ext_cur);
-                    } else if (!strcmp(sr_op->schema->name, "in")) {
-                        LY_TREE_FOR(sr_op->child, sr_op_dep) {
-                            /* count op input data deps first */
-                            ++shm_op_deps[op_dep_i].in_dep_count;
+                /* module name was already counted and type is an enum */
+                if (!strcmp(sr_dep->schema->name, "inst-id")) {
+                    LY_TREE_FOR(sr_dep->child, sr_instid) {
+                        if (!strcmp(sr_instid->schema->name, "xpath")) {
+                            /* a string */
+                            str = sr_ly_leaf_value_str(sr_instid);
+                            strings_len += sr_strshmlen(str);
                         }
-
-                        /* allocate array */
-                        shm_op_deps[op_dep_i].in_deps = sr_shmcpy(ext_shm_addr, NULL,
-                                shm_op_deps[op_dep_i].in_dep_count * sizeof(sr_mod_data_dep_t), &ext_cur);
-
-                        /* fill the array */
-                        shm_op_data_deps = (sr_mod_data_dep_t *)(ext_shm_addr + shm_op_deps[op_dep_i].in_deps);
-                        op_data_dep_i = 0;
-                        if ((err_info = sr_shmmain_fill_data_deps(shm_main, ext_shm_addr, sr_op, shm_op_data_deps,
-                                &op_data_dep_i, &ext_cur))) {
-                            return err_info;
-                        }
-                        SR_CHECK_INT_RET(op_data_dep_i != shm_op_deps[op_dep_i].in_dep_count, err_info);
-                    } else if (!strcmp(sr_op->schema->name, "out")) {
-                        LY_TREE_FOR(sr_op->child, sr_op_dep) {
-                            /* count op output data deps first */
-                            ++shm_op_deps[op_dep_i].out_dep_count;
-                        }
-
-                        /* allocate array */
-                        shm_op_deps[op_dep_i].out_deps = sr_shmcpy(ext_shm_addr, NULL,
-                                shm_op_deps[op_dep_i].out_dep_count * sizeof(sr_mod_data_dep_t), &ext_cur);
-
-                        /* fill the array */
-                        shm_op_data_deps = (sr_mod_data_dep_t *)(ext_shm_addr + shm_op_deps[op_dep_i].out_deps);
-                        op_data_dep_i = 0;
-                        if ((err_info = sr_shmmain_fill_data_deps(shm_main, ext_shm_addr, sr_op, shm_op_data_deps,
-                                &op_data_dep_i, &ext_cur))) {
-                            return err_info;
-                        }
-                        SR_CHECK_INT_RET(op_data_dep_i != shm_op_deps[op_dep_i].out_dep_count, err_info);
                     }
                 }
+            }
+        } else if (!strcmp(sr_child->schema->name, "inverse-data-deps")) {
+            /* another inverse data dependency */
+            ++shm_mod->inv_data_dep_count;
+        } else if (!strcmp(sr_child->schema->name, "op-deps")) {
+            /* another operation dependency */
+            ++shm_mod->op_dep_count;
 
-                ++op_dep_i;
+            LY_TREE_FOR(sr_child->child, sr_op_dep) {
+                if (!strcmp(sr_op_dep->schema->name, "xpath")) {
+                    /* operation xpath (a string) */
+                    str = sr_ly_leaf_value_str(sr_op_dep);
+                    strings_len += sr_strshmlen(str);
+                } else if (!strcmp(sr_op_dep->schema->name, "in") || !strcmp(sr_op_dep->schema->name, "out")) {
+                    data_dep_i = 0;
+                    LY_TREE_FOR(sr_op_dep->child, sr_dep) {
+                        /* another data dependency */
+                        ++data_dep_i;
+
+                        if (!strcmp(sr_dep->schema->name, "inst-id")) {
+                            LY_TREE_FOR(sr_dep->child, sr_instid) {
+                                if (!strcmp(sr_instid->schema->name, "xpath")) {
+                                    /* a string */
+                                    str = sr_ly_leaf_value_str(sr_instid);
+                                    strings_len += sr_strshmlen(str);
+                                }
+                            }
+                        }
+                    }
+
+                    /* all operation data dependencies */
+                    op_data_deps_len += SR_SHM_SIZE(data_dep_i * sizeof(sr_mod_data_dep_t));
+                }
             }
         }
-        SR_CHECK_INT_RET(data_dep_i != first_shm_mod->data_dep_count, err_info);
-        SR_CHECK_INT_RET(inv_data_dep_i != first_shm_mod->inv_data_dep_count, err_info);
-        SR_CHECK_INT_RET(op_dep_i != first_shm_mod->op_dep_count, err_info);
-
-        /* next iteration */
-        ++first_shm_mod;
     }
 
-    *ext_end = ext_cur - ext_shm_addr;
+    /* remember main SHM size */
+    old_shm_size = shm_main->size;
+
+    /* enlarge and possibly remap main SHM */
+    if ((err_info = sr_shm_remap(shm_main, shm_main->size + strings_len +
+            SR_SHM_SIZE(shm_mod->data_dep_count * sizeof(sr_mod_data_dep_t)) +
+            SR_SHM_SIZE(shm_mod->inv_data_dep_count * sizeof(off_t)) +
+            SR_SHM_SIZE(shm_mod->op_dep_count * sizeof(sr_mod_op_dep_t)) + op_data_deps_len))) {
+        return err_info;
+    }
+    shm_mod = SR_SHM_MOD_IDX(shm_main->addr, shm_mod_idx);
+    shm_end = shm_main->addr + old_shm_size;
+    main_shm = (sr_main_shm_t *)shm_main->addr;
+
+    /* allocate and fill arrays */
+    shm_mod->data_deps = sr_shmcpy(shm_main->addr, NULL, shm_mod->data_dep_count * sizeof(sr_mod_data_dep_t), &shm_end);
+    shm_data_deps = (sr_mod_data_dep_t *)(shm_main->addr + shm_mod->data_deps);
+    data_dep_i = 0;
+
+    shm_mod->inv_data_deps = sr_shmcpy(shm_main->addr, NULL, shm_mod->inv_data_dep_count * sizeof(off_t), &shm_end);
+    shm_inv_data_deps = (off_t *)(shm_main->addr + shm_mod->inv_data_deps);
+    inv_data_dep_i = 0;
+
+    shm_mod->op_deps = sr_shmcpy(shm_main->addr, NULL, shm_mod->op_dep_count * sizeof(sr_mod_op_dep_t), &shm_end);
+    shm_op_deps = (sr_mod_op_dep_t *)(shm_main->addr + shm_mod->op_deps);
+    op_dep_i = 0;
+
+    LY_TREE_FOR(sr_mod->child, sr_child) {
+        if (!strcmp(sr_child->schema->name, "data-deps")) {
+            /* now fill the dependency array */
+            if ((err_info = sr_shmmain_fill_data_deps(main_shm, sr_child, shm_data_deps, &data_dep_i, &shm_end))) {
+                return err_info;
+            }
+        } else if (!strcmp(sr_child->schema->name, "inverse-data-deps")) {
+            /* now fill module references */
+            str = sr_ly_leaf_value_str(sr_child);
+            ref_shm_mod = sr_shmmain_find_module(main_shm, str, 0);
+            SR_CHECK_INT_RET(!ref_shm_mod, err_info);
+            shm_inv_data_deps[inv_data_dep_i] = ref_shm_mod->name;
+
+            ++inv_data_dep_i;
+        } else if (!strcmp(sr_child->schema->name, "op-deps")) {
+            LY_TREE_FOR(sr_child->child, sr_op) {
+                if (!strcmp(sr_op->schema->name, "xpath")) {
+                    /* copy xpath name */
+                    str = sr_ly_leaf_value_str(sr_op);
+                    shm_op_deps[op_dep_i].xpath = sr_shmstrcpy(shm_main->addr, str, &shm_end);
+                } else if (!strcmp(sr_op->schema->name, "in")) {
+                    LY_TREE_FOR(sr_op->child, sr_op_dep) {
+                        /* count op input data deps first */
+                        ++shm_op_deps[op_dep_i].in_dep_count;
+                    }
+
+                    /* allocate array */
+                    shm_op_deps[op_dep_i].in_deps = sr_shmcpy(shm_main->addr, NULL,
+                            shm_op_deps[op_dep_i].in_dep_count * sizeof(sr_mod_data_dep_t), &shm_end);
+
+                    /* fill the array */
+                    shm_op_data_deps = (sr_mod_data_dep_t *)(shm_main->addr + shm_op_deps[op_dep_i].in_deps);
+                    op_data_dep_i = 0;
+                    if ((err_info = sr_shmmain_fill_data_deps(main_shm, sr_op, shm_op_data_deps, &op_data_dep_i, &shm_end))) {
+                        return err_info;
+                    }
+                    SR_CHECK_INT_RET(op_data_dep_i != shm_op_deps[op_dep_i].in_dep_count, err_info);
+                } else if (!strcmp(sr_op->schema->name, "out")) {
+                    LY_TREE_FOR(sr_op->child, sr_op_dep) {
+                        /* count op output data deps first */
+                        ++shm_op_deps[op_dep_i].out_dep_count;
+                    }
+
+                    /* allocate array */
+                    shm_op_deps[op_dep_i].out_deps = sr_shmcpy(shm_main->addr, NULL,
+                            shm_op_deps[op_dep_i].out_dep_count * sizeof(sr_mod_data_dep_t), &shm_end);
+
+                    /* fill the array */
+                    shm_op_data_deps = (sr_mod_data_dep_t *)(shm_main->addr + shm_op_deps[op_dep_i].out_deps);
+                    op_data_dep_i = 0;
+                    if ((err_info = sr_shmmain_fill_data_deps(main_shm, sr_op, shm_op_data_deps, &op_data_dep_i, &shm_end))) {
+                        return err_info;
+                    }
+                    SR_CHECK_INT_RET(op_data_dep_i != shm_op_deps[op_dep_i].out_dep_count, err_info);
+                }
+            }
+
+            ++op_dep_i;
+        }
+    }
+    SR_CHECK_INT_RET(data_dep_i != shm_mod->data_dep_count, err_info);
+    SR_CHECK_INT_RET(inv_data_dep_i != shm_mod->inv_data_dep_count, err_info);
+    SR_CHECK_INT_RET(op_dep_i != shm_mod->op_dep_count, err_info);
+
+    /* main SHM size must be exactly what we allocated */
+    assert(shm_end == shm_main->addr + shm_main->size);
     return NULL;
 }
 
-/**
- * @brief Remove modules data/op/inverse dependencies.
- *
- * @param[in] shm_main Main SHM.
- * @param[in] ext_shm_addr Ext SHM address.
- * @param[in] first_shm_mod First main SHM module whose dependencies to remove.
- */
-static void
-sr_shmmain_del_modules_deps(sr_shm_t *shm_main, char *ext_shm_addr, sr_mod_t *first_shm_mod)
-{
-    sr_mod_data_dep_t *shm_data_deps, *shm_op_data_deps;
-    sr_mod_op_dep_t *shm_op_deps;
-    size_t *ext_wasted;
-    uint32_t i, j;
-
-    assert(first_shm_mod);
-    ext_wasted = &((sr_ext_shm_t *)ext_shm_addr)->wasted;
-
-    do {
-        shm_data_deps = (sr_mod_data_dep_t *)(ext_shm_addr + first_shm_mod->data_deps);
-        for (i = 0; i < first_shm_mod->data_dep_count; ++i) {
-            /* add wasted for xpath */
-            if (shm_data_deps[i].xpath) {
-                *ext_wasted += sr_strshmlen(ext_shm_addr + shm_data_deps[i].xpath);
-            }
-        }
-
-        /* add wasted for data deps array and clear it */
-        *ext_wasted += first_shm_mod->data_dep_count * sizeof(sr_mod_data_dep_t);
-        first_shm_mod->data_deps = 0;
-        first_shm_mod->data_dep_count = 0;
-
-        /* add wasted for inv data deps array and clear it */
-        *ext_wasted += first_shm_mod->inv_data_dep_count * sizeof(off_t);
-        first_shm_mod->inv_data_deps = 0;
-        first_shm_mod->inv_data_dep_count = 0;
-
-        shm_op_deps = (sr_mod_op_dep_t *)(ext_shm_addr + first_shm_mod->op_deps);
-        for (i = 0; i < first_shm_mod->op_dep_count; ++i) {
-            if (shm_op_deps[i].xpath) {
-                /* add wasted for xpath */
-                *ext_wasted += sr_strshmlen(ext_shm_addr + shm_op_deps[i].xpath);
-            }
-
-            shm_op_data_deps = (sr_mod_data_dep_t *)(ext_shm_addr + shm_op_deps[i].in_deps);
-            for (j = 0; j < shm_op_deps[i].in_dep_count; ++j) {
-                if (shm_op_data_deps[j].xpath) {
-                    /* add wasted for xpath */
-                    *ext_wasted += sr_strshmlen(ext_shm_addr + shm_op_data_deps[j].xpath);
-                }
-            }
-
-            /* add wasted for in deps array */
-            *ext_wasted += shm_op_deps[i].in_dep_count * sizeof(sr_mod_data_dep_t);
-
-            shm_op_data_deps = (sr_mod_data_dep_t *)(ext_shm_addr + shm_op_deps[i].out_deps);
-            for (j = 0; j < shm_op_deps[i].out_dep_count; ++j) {
-                if (shm_op_data_deps[j].xpath) {
-                    /* add wasted for xpath */
-                    *ext_wasted += sr_strshmlen(ext_shm_addr + shm_op_data_deps[j].xpath);
-                }
-            }
-
-            /* add wasted for out deps array */
-            *ext_wasted += shm_op_deps[i].out_dep_count * sizeof(sr_mod_data_dep_t);
-        }
-
-        /* add wasted for op deps array and clear it */
-        *ext_wasted += first_shm_mod->op_dep_count * sizeof(sr_mod_op_dep_t);
-        first_shm_mod->op_deps = 0;
-        first_shm_mod->op_dep_count = 0;
-
-        /* next iteration */
-        ++first_shm_mod;
-    } while ((char *)first_shm_mod != shm_main->addr + shm_main->size);
-}
-
 sr_error_info_t *
-sr_shmmain_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod)
+sr_shmmain_store_modules(sr_conn_ctx_t *conn, struct lyd_node *first_sr_mod)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *next;
+    struct lyd_node *sr_mod;
     sr_mod_t *shm_mod;
-    sr_main_shm_t *main_shm;
-    off_t main_end, ext_end;
-    size_t *wasted_ext, new_ext_size, new_mod_count;
+    uint32_t i, mod_count;
 
-    /* count how many modules are we going to add */
-    new_mod_count = 0;
-    LY_TREE_FOR(sr_mod, next) {
-        if (!strcmp(next->schema->name, "module")) {
-            ++new_mod_count;
+    /* count how many modules are we going to store */
+    mod_count = 0;
+    LY_TREE_FOR(first_sr_mod, sr_mod) {
+        if (!strcmp(sr_mod->schema->name, "module")) {
+            ++mod_count;
         }
     }
 
-    /* remember current SHM and ext SHM end (size) */
-    main_end = conn->main_shm.size;
-    ext_end = conn->ext_shm.size;
-
-    /* enlarge main SHM for the new modules */
-    if ((err_info = sr_shm_remap(&conn->main_shm, conn->main_shm.size + new_mod_count * sizeof *shm_mod))) {
+    /* enlarge main SHM for all the modules */
+    if ((err_info = sr_shm_remap(&conn->main_shm, sizeof(sr_main_shm_t) + mod_count * sizeof *shm_mod))) {
         return err_info;
     }
 
-    /* enlarge ext SHM */
-    wasted_ext = &((sr_ext_shm_t *)conn->ext_shm.addr)->wasted;
-    new_ext_size = sizeof(sr_ext_shm_t) + sr_shmmain_ext_get_size_main_shm(&conn->main_shm, conn->ext_shm.addr) +
-            sr_shmmain_ext_get_lydmods_size(sr_mod->parent);
-    if ((err_info = sr_shm_remap(&conn->ext_shm, new_ext_size + *wasted_ext))) {
-        return err_info;
-    }
-    wasted_ext = &((sr_ext_shm_t *)conn->ext_shm.addr)->wasted;
+    /* set module count */
+    SR_CONN_MAIN_SHM(conn)->mod_count = mod_count;
 
-    /* add all newly implemented modules into SHM */
-    if ((err_info = sr_shmmain_add_modules(conn->ext_shm.addr, sr_mod, (sr_mod_t *)(conn->main_shm.addr + main_end),
-            &ext_end))) {
-        return err_info;
-    }
+    /* add all modules into SHM */
+    i = 0;
+    sr_mod = first_sr_mod;
+    while (i < mod_count) {
+        if (!strcmp(sr_mod->schema->name, "module")) {
+            if ((err_info = sr_shmmain_fill_module(sr_mod, i, &conn->main_shm))) {
+                return err_info;
+            }
 
-    /* add the new modules number */
-    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
-    main_shm->mod_count += new_mod_count;
-    assert(main_shm->mod_count == (conn->main_shm.size - sizeof *main_shm) / sizeof *shm_mod);
+            ++i;
+        }
+
+        sr_mod = sr_mod->next;
+    }
 
     /*
      * Dependencies of old modules are rebuild because of possible
@@ -1663,23 +911,20 @@ sr_shmmain_add(sr_conn_ctx_t *conn, struct lyd_node *sr_mod)
      * Checking these cases would probably be more costly than just always rebuilding all dependencies.
      */
 
-    /* remove all dependencies of all modules from SHM */
-    sr_shmmain_del_modules_deps(&conn->main_shm, conn->ext_shm.addr, SR_FIRST_SHM_MOD(conn->main_shm.addr));
+    /* add all dependencies for all modules in SHM, in separate loop because all modules must have their name set */
+    i = 0;
+    sr_mod = first_sr_mod;
+    while (i < mod_count) {
+        if (!strcmp(sr_mod->schema->name, "module")) {
+            if ((err_info = sr_shmmain_add_module_deps(sr_mod, i, &conn->main_shm))) {
+                return err_info;
+            }
 
-    /* enlarge ext SHM to account for the newly wasted memory */
-    if ((err_info = sr_shm_remap(&conn->ext_shm, new_ext_size + *wasted_ext))) {
-        return err_info;
+            ++i;
+        }
+
+        sr_mod = sr_mod->next;
     }
-    wasted_ext = &((sr_ext_shm_t *)conn->ext_shm.addr)->wasted;
-
-    /* add all dependencies for all modules in SHM */
-    if ((err_info = sr_shmmain_add_modules_deps(&conn->main_shm, conn->ext_shm.addr, sr_mod->parent->child,
-            SR_FIRST_SHM_MOD(conn->main_shm.addr), &ext_end))) {
-        return err_info;
-    }
-
-    /* check expected size */
-    SR_CHECK_INT_RET((unsigned)ext_end != new_ext_size + *wasted_ext, err_info);
 
     return NULL;
 }
@@ -1730,10 +975,10 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
     if (creat) {
         /* init the memory */
         main_shm->shm_ver = SR_SHM_VER;
-        if ((err_info = sr_rwlock_init(&main_shm->lock, 1))) {
+        if ((err_info = sr_mutex_init(&main_shm->lydmods_lock, 1))) {
             goto error;
         }
-        if ((err_info = sr_mutex_init(&main_shm->lydmods_lock, 1))) {
+        if ((err_info = sr_rwlock_init(&main_shm->rpc_lock, 1))) {
             goto error;
         }
         ATOMIC_STORE_RELAXED(main_shm->new_sr_cid, 1);
@@ -1790,7 +1035,7 @@ sr_shmmain_ext_open(sr_shm_t *shm, int zero)
         goto error;
     }
     if (zero) {
-        ((sr_ext_shm_t *)shm->addr)->wasted = 0;
+        ATOMIC_STORE_RELAXED(((sr_ext_shm_t *)shm->addr)->wasted, 0);
     }
 
     return NULL;
@@ -1801,16 +1046,18 @@ error:
 }
 
 sr_mod_t *
-sr_shmmain_find_module(sr_shm_t *shm_main, char *ext_shm_addr, const char *name, off_t name_off)
+sr_shmmain_find_module(sr_main_shm_t *main_shm, const char *name, off_t name_off)
 {
+    uint32_t i;
     sr_mod_t *shm_mod;
 
     assert(name || name_off);
 
-    SR_SHM_MOD_FOR(shm_main->addr, shm_main->size, shm_mod) {
+    for (i = 0; i < main_shm->mod_count; ++i) {
+        shm_mod = SR_SHM_MOD_IDX(main_shm, i);
         if (name_off && (shm_mod->name == name_off)) {
             return shm_mod;
-        } else if (name && !strcmp(ext_shm_addr + shm_mod->name, name)) {
+        } else if (name && !strcmp(((char *)main_shm) + shm_mod->name, name)) {
             return shm_mod;
         }
     }
@@ -1826,8 +1073,8 @@ sr_shmmain_find_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const char *op_
 
     assert(op_path || op_path_off);
 
-    shm_rpc = (sr_rpc_t *)(ext_shm_addr + main_shm->rpc_subs);
-    for (i = 0; i < main_shm->rpc_sub_count; ++i) {
+    shm_rpc = (sr_rpc_t *)(ext_shm_addr + main_shm->rpcs);
+    for (i = 0; i < main_shm->rpc_count; ++i) {
         if (op_path_off && (shm_rpc[i].op_path == op_path_off)) {
             return &shm_rpc[i];
         } else if (op_path && !strcmp(ext_shm_addr + shm_rpc[i].op_path, op_path)) {
@@ -1836,69 +1083,6 @@ sr_shmmain_find_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const char *op_
     }
 
     return NULL;
-}
-
-/**
- * @brief Lock local remap lock and remap ext SHM if needed.
- *
- * @param[in] conn Connection to use.
- * @param[in] remap_mode Mode of remap lock.
- * @param[in] func Caller function name for logging.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_shmmain_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t remap_mode, const char *func)
-{
-    sr_error_info_t *err_info = NULL;
-    size_t shm_file_size;
-
-    /* REMAP READ/WRITE LOCK */
-    if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, remap_mode, conn->cid, func, NULL, NULL))) {
-        return err_info;
-    }
-
-    /* remap ext SHM */
-    if (remap_mode == SR_LOCK_WRITE) {
-        /* we have WRITE lock, it is safe */
-        if ((err_info = sr_shm_remap(&conn->ext_shm, 0))) {
-            goto error_unlock;
-        }
-    } else {
-        if ((err_info = sr_file_get_size(conn->ext_shm.fd, &shm_file_size))) {
-            goto error_unlock;
-        }
-        if (shm_file_size > conn->ext_shm.size) {
-            /* ext SHM is larger now and we need to remap it */
-
-            /* REMAP READ UNLOCK */
-            sr_rwunlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, conn->cid, func);
-            /* REMAP WRITE LOCK */
-            if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, conn->cid,
-                    func, NULL, NULL))) {
-                return err_info;
-            }
-
-            if ((err_info = sr_shm_remap(&conn->ext_shm, shm_file_size))) {
-                remap_mode = SR_LOCK_WRITE;
-                goto error_unlock;
-            }
-
-            /* REMAP WRITE UNLOCK */
-            sr_rwunlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, conn->cid, func);
-            /* REMAP READ LOCK */
-            if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, conn->cid, func,
-                    NULL, NULL))) {
-                return err_info;
-            }
-        } /* else no remapping needed */
-    }
-
-    return NULL;
-
-error_unlock:
-    /* REMAP UNLOCK */
-    sr_rwunlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, remap_mode, conn->cid, func);
-    return err_info;
 }
 
 /**
@@ -1924,16 +1108,16 @@ sr_shmmain_conn_recover(sr_conn_ctx_t *conn, sr_cid_t cid)
     sr_error_info_t *err_info = NULL;
     sr_datastore_t ds;
     sr_mod_t *shm_mod;
-    sr_main_shm_t *main_shm;
     sr_rpc_t *shm_rpc;
     int last_removed;
-    uint16_t i;
+    uint32_t i;
     char *path;
 
     SR_LOG_WRN("Performing full recovery of a crashed connection with CID %" PRIu32 ".", cid);
 
     /* go through all the modules and recover their subscriptions */
-    SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
+    for (i = 0; i < SR_CONN_MAIN_SHM(conn)->mod_count; ++i) {
+        shm_mod = SR_SHM_MOD_IDX(conn->main_shm.addr, i);
         for (ds = 0; ds < SR_DS_COUNT; ++ds) {
             if ((err_info = sr_shmmod_change_subscription_stop(conn, shm_mod, ds, NULL, 0, 0, 0, cid, 1))) {
                 sr_errinfo_free(&err_info);
@@ -1948,10 +1132,9 @@ sr_shmmain_conn_recover(sr_conn_ctx_t *conn, sr_cid_t cid)
     }
 
     /* go through all the RPCs and recover their subscriptions */
-    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
-    shm_rpc = (sr_rpc_t *)(conn->ext_shm.addr + main_shm->rpc_subs);
+    shm_rpc = (sr_rpc_t *)(conn->ext_shm.addr + SR_CONN_MAIN_SHM(conn)->rpcs);
     i = 0;
-    while (i < main_shm->rpc_sub_count) {
+    while (i < SR_CONN_MAIN_SHM(conn)->rpc_count) {
         if ((err_info = sr_shmmain_rpc_subscription_stop(conn, &shm_rpc[i], NULL, 0, 0, cid, 1, &last_removed))) {
             sr_errinfo_free(&err_info);
         }
@@ -1978,130 +1161,38 @@ sr_shmmain_conn_recover(sr_conn_ctx_t *conn, sr_cid_t cid)
 }
 
 sr_error_info_t *
-sr_shmmain_lock_remap(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, const char *func)
+sr_shmmain_rpc_subscription_add(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath, uint32_t priority,
+        int sub_opts, uint32_t evpipe_num)
 {
     sr_error_info_t *err_info = NULL;
-    sr_main_shm_t *main_shm;
-    sr_cid_t *dead_cids;
-    uint32_t i, dead_count;
-
-    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
-
-    /* SHM LOCK */
-    if ((err_info = sr_rwlock(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, conn->cid, func, NULL, NULL))) {
-        return err_info;
-    }
-
-    /* REMAP READ/WRITE LOCK */
-    if ((err_info = sr_shmmain_remap_lock(conn, remap ? SR_LOCK_WRITE : SR_LOCK_READ, func))) {
-        goto error_unlock;
-    }
-
-    if ((mode == SR_LOCK_READ_UPGR) && remap) {
-        /* learn what connections are dead */
-        if ((err_info = sr_conn_info(NULL, NULL, NULL, &dead_cids, &dead_count))) {
-            goto error_remap_unlock;
-        }
-
-        for (i = 0; i < dead_count; ++i) {
-            /* perform recovery for any dead ones */
-            sr_shmmain_conn_recover(conn, dead_cids[i]);
-        }
-        free(dead_cids);
-    }
-
-    return NULL;
-
-error_remap_unlock:
-    sr_rwunlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, remap ? SR_LOCK_WRITE : SR_LOCK_READ, conn->cid, func);
-
-error_unlock:
-    sr_rwunlock(&main_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, conn->cid, func);
-    return err_info;
-}
-
-sr_error_info_t *
-sr_shmmain_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func)
-{
-    sr_error_info_t *err_info = NULL;
-
-    /* SHM RELOCK */
-    if ((err_info = sr_rwrelock(&((sr_main_shm_t *)conn->main_shm.addr)->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode,
-            conn->cid, func, NULL, NULL))) {
-        return err_info;
-    }
-
-    return NULL;
-}
-
-void
-sr_shmmain_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int remap, const char *func)
-{
-    sr_error_info_t *err_info = NULL;
-    char *buf;
-
-    /* wasted memory could have been added, defragment if needed */
-    if (remap && (((sr_ext_shm_t *)conn->ext_shm.addr)->wasted > SR_SHM_WASTED_MAX_MEM)) {
-        SR_LOG_DBG("#SHM before defrag");
-        sr_shmmain_ext_print(&conn->main_shm, conn->ext_shm.addr, conn->ext_shm.size);
-
-        /* defrag mem into a separate memory */
-        if (!(err_info = sr_shmmain_ext_defrag(&conn->main_shm, &conn->ext_shm, &buf))) {
-            /* remap ext SHM, it does not matter if it fails, will just be kept larger than needed */
-            err_info = sr_shm_remap(&conn->ext_shm, conn->ext_shm.size - ((sr_ext_shm_t *)conn->ext_shm.addr)->wasted);
-
-            SR_LOG_INF("Ext SHM was defragmented and %u B were saved.", ((sr_ext_shm_t *)conn->ext_shm.addr)->wasted);
-
-            /* copy the defragmented memory into ext SHM (has wasted set to 0) */
-            memcpy(conn->ext_shm.addr, buf, conn->ext_shm.size);
-            free(buf);
-
-            SR_LOG_DBG("#SHM after defrag");
-            sr_shmmain_ext_print(&conn->main_shm, conn->ext_shm.addr, conn->ext_shm.size);
-        }
-        sr_errinfo_free(&err_info);
-    }
-
-    /* REMAP UNLOCK */
-    sr_rwunlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, remap ? SR_LOCK_WRITE : SR_LOCK_READ, conn->cid, func);
-
-    /* SHM UNLOCK */
-    sr_rwunlock(&((sr_main_shm_t *)conn->main_shm.addr)->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, conn->cid, func);
-}
-
-sr_error_info_t *
-sr_shmmain_rpc_subscription_add(sr_conn_ctx_t *conn, off_t shm_rpc_off, const char *xpath, uint32_t priority, int sub_opts,
-        uint32_t evpipe_num)
-{
-    sr_error_info_t *err_info = NULL, *tmp_err;
-    sr_rpc_t *shm_rpc;
-    off_t xpath_off;
+    off_t xpath_off, rpc_off;
     sr_rpc_sub_t *shm_sub;
     uint32_t i;
 
     assert(xpath);
 
+    /* RPC SUB WRITE LOCK */
+    if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
+        return err_info;
+    }
+
     /* check that this exact subscription does not exist yet */
-    shm_rpc = (sr_rpc_t *)(conn->ext_shm.addr + shm_rpc_off);
     shm_sub = (sr_rpc_sub_t *)(conn->ext_shm.addr + shm_rpc->subs);
     for (i = 0; i < shm_rpc->sub_count; ++i) {
         if (shm_sub->priority == priority) {
             sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "RPC subscription for \"%s\" with priority %u "
                     "already exists.", conn->ext_shm.addr + shm_rpc->op_path, priority);
-            return err_info;
+            goto cleanup;
         }
     }
 
-    /* SHM LOCK UPGRADE */
-    if ((err_info = sr_shmmain_relock(conn, SR_LOCK_WRITE, __func__))) {
-        return err_info;
-    }
-
     /* add new subscription with its xpath */
+    rpc_off = ((char *)shm_rpc) - conn->ext_shm.addr;
     if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_rpc->subs, &shm_rpc->sub_count, 1, sizeof *shm_sub, -1,
             (void **)&shm_sub, sr_strshmlen(xpath), &xpath_off))) {
         goto cleanup;
     }
+    shm_rpc = (sr_rpc_t *)(conn->ext_shm.addr + rpc_off);
 
     /* fill new subscription */
     strcpy(conn->ext_shm.addr + xpath_off, xpath);
@@ -2112,23 +1203,27 @@ sr_shmmain_rpc_subscription_add(sr_conn_ctx_t *conn, off_t shm_rpc_off, const ch
     shm_sub->cid = conn->cid;
 
 cleanup:
-    /* SHM LOCK DOWNGRADE */
-    if ((tmp_err = sr_shmmain_relock(conn, SR_LOCK_READ_UPGR, __func__))) {
-        sr_errinfo_merge(&err_info, tmp_err);
-    }
+    /* RPC SUB WRITE UNLOCK */
+    sr_rwunlock(&shm_rpc->lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+
     return err_info;
 }
 
-int
+sr_error_info_t *
 sr_shmmain_rpc_subscription_del(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath, uint32_t priority,
-        uint32_t evpipe_num, sr_cid_t cid, int *last_removed, uint32_t *evpipe_num_p)
+        uint32_t evpipe_num, sr_cid_t cid, int *last_removed, uint32_t *evpipe_num_p, int *found)
 {
-    sr_error_info_t *lock_err = NULL;
+    sr_error_info_t *err_info = NULL;
     sr_rpc_sub_t *shm_sub;
     uint16_t i;
 
     if (last_removed) {
         *last_removed = 0;
+    }
+
+    /* RPC SUB WRITE LOCK */
+    if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
+        return err_info;
     }
 
     /* find the subscription */
@@ -2145,31 +1240,32 @@ sr_shmmain_rpc_subscription_del(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const ch
     }
     if (i == shm_rpc->sub_count) {
         /* no matching subscription found */
-        return 1;
+        if (found) {
+            *found = 0;
+        }
+        goto cleanup;
+    }
+    if (found) {
+        *found = 1;
     }
 
     if (evpipe_num_p) {
         *evpipe_num_p = shm_sub[i].evpipe_num;
     }
 
-    /* SHM LOCK UPGRADE */
-    lock_err = sr_shmmain_relock(conn, SR_LOCK_WRITE, __func__);
-
     /* delete the subscription */
     sr_shmrealloc_del(conn->ext_shm.addr, &shm_rpc->subs, &shm_rpc->sub_count, sizeof *shm_sub, i,
             sr_strshmlen(conn->ext_shm.addr + shm_sub[i].xpath));
-
-    /* SHM LOCK DOWNGRADE */
-    if (!lock_err) {
-        lock_err = sr_shmmain_relock(conn, SR_LOCK_READ_UPGR, __func__);
-    }
-    sr_errinfo_free(&lock_err);
 
     if (last_removed && !shm_rpc->subs) {
         *last_removed = 1;
     }
 
-    return 0;
+cleanup:
+    /* RPC SUB WRITE UNLOCK */
+    sr_rwunlock(&shm_rpc->lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+
+    return err_info;
 }
 
 sr_error_info_t *
@@ -2177,20 +1273,24 @@ sr_shmmain_rpc_subscription_stop(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const c
         uint32_t evpipe_num, sr_cid_t cid, int del_evpipe, int *last_removed)
 {
     sr_error_info_t *err_info = NULL;
-    const char *op_path;
     char *mod_name, *path;
-    int last_sub_removed;
+    const char *op_path;
+    int last_sub_removed, found;
     uint32_t evpipe_num_p;
 
-    op_path = conn->ext_shm.addr + shm_rpc->op_path;
     if (last_removed) {
         *last_removed = 0;
     }
 
+    op_path = conn->ext_shm.addr + shm_rpc->op_path;
+
     do {
         /* remove the subscription from the main SHM */
-        if (sr_shmmain_rpc_subscription_del(conn, shm_rpc, xpath, priority, evpipe_num, cid, &last_sub_removed,
-                &evpipe_num_p)) {
+        if ((err_info = sr_shmmain_rpc_subscription_del(conn, shm_rpc, xpath, priority, evpipe_num, cid, &last_sub_removed,
+                &evpipe_num_p, &found))) {
+            break;
+        }
+        if (!found) {
             if (!cid) {
                 SR_ERRINFO_INT(&err_info);
             }
@@ -2236,50 +1336,43 @@ sr_shmmain_rpc_subscription_stop(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const c
 sr_error_info_t *
 sr_shmmain_add_rpc(sr_conn_ctx_t *conn, const char *op_path, sr_rpc_t **shm_rpc_p)
 {
-    sr_error_info_t *err_info = NULL, *tmp_err;
+    sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
     off_t op_path_off;
     sr_rpc_t *shm_rpc;
 
-    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
-    shm_rpc = (sr_rpc_t *)(conn->ext_shm.addr + main_shm->rpc_subs);
+    main_shm = SR_CONN_MAIN_SHM(conn);
+    shm_rpc = (sr_rpc_t *)(conn->ext_shm.addr + main_shm->rpcs);
 
 #ifndef NDEBUG
-    uint16_t i;
+    uint32_t i;
 
     /* check that this RPC does not exist yet */
-    for (i = 0; i < main_shm->rpc_sub_count; ++i) {
+    for (i = 0; i < main_shm->rpc_count; ++i) {
         assert(strcmp(conn->ext_shm.addr + shm_rpc[i].op_path, op_path));
     }
 #endif
 
-    /* SHM LOCK UPGRADE */
-    if ((err_info = sr_shmmain_relock(conn, SR_LOCK_WRITE, __func__))) {
-        return err_info;
-    }
-
     /* add new RPC and allocate SHM for op_path */
-    if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &main_shm->rpc_subs, &main_shm->rpc_sub_count, 0,
-            sizeof *shm_rpc, -1, (void **)&shm_rpc, sr_strshmlen(op_path), &op_path_off))) {
-        goto cleanup;
+    if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &main_shm->rpcs, &main_shm->rpc_count, 0, sizeof *shm_rpc, -1,
+            (void **)&shm_rpc, sr_strshmlen(op_path), &op_path_off))) {
+        return err_info;
     }
 
     /* fill new RPC */
     strcpy(conn->ext_shm.addr + op_path_off, op_path);
     shm_rpc->op_path = op_path_off;
+
+    if ((err_info = sr_rwlock_init(&shm_rpc->lock, 1))) {
+        return err_info;
+    }
     shm_rpc->subs = 0;
     shm_rpc->sub_count = 0;
-
-cleanup:
-    /* SHM LOCK DOWNGRADE */
-    if ((tmp_err = sr_shmmain_relock(conn, SR_LOCK_READ_UPGR, __func__))) {
-        sr_errinfo_merge(&err_info, tmp_err);
-    }
 
     if (!err_info && shm_rpc_p) {
         *shm_rpc_p = shm_rpc;
     }
-    return err_info;
+    return NULL;
 }
 
 sr_error_info_t *
@@ -2290,71 +1383,41 @@ sr_shmmain_del_rpc(sr_conn_ctx_t *conn, const char *op_path, off_t op_path_off)
     sr_rpc_t *shm_rpc;
     uint16_t i;
 
-    main_shm = (sr_main_shm_t *)conn->main_shm.addr;
+    main_shm = SR_CONN_MAIN_SHM(conn);
 
     shm_rpc = sr_shmmain_find_rpc(main_shm, conn->ext_shm.addr, op_path, op_path_off);
     SR_CHECK_INT_RET(!shm_rpc, err_info);
 
     /* get index instead */
-    i = shm_rpc - ((sr_rpc_t *)(conn->ext_shm.addr + main_shm->rpc_subs));
-
-    /* SHM LOCK UPGRADE */
-    if ((err_info = sr_shmmain_relock(conn, SR_LOCK_WRITE, __func__))) {
-        return err_info;
-    }
+    i = shm_rpc - ((sr_rpc_t *)(conn->ext_shm.addr + main_shm->rpcs));
 
     /* remove the RPC and its op_path */
-    sr_shmrealloc_del(conn->ext_shm.addr, &main_shm->rpc_subs, &main_shm->rpc_sub_count, sizeof *shm_rpc, i,
+    sr_shmrealloc_del(conn->ext_shm.addr, &main_shm->rpcs, &main_shm->rpc_count, sizeof *shm_rpc, i,
             sr_strshmlen(conn->ext_shm.addr + shm_rpc->op_path));
-
-    /* SHM LOCK DOWNGRADE */
-    if ((err_info = sr_shmmain_relock(conn, SR_LOCK_READ_UPGR, __func__))) {
-        return err_info;
-    }
 
     return NULL;
 }
 
 sr_error_info_t *
-sr_shmmain_update_replay_support(sr_conn_ctx_t *conn, const char *mod_name, int replay_support)
+sr_shmmain_update_replay_support(sr_main_shm_t *main_shm, const char *mod_name, int replay_support)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
+    uint32_t i;
 
     if (mod_name) {
-        shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, mod_name, 0);
+        shm_mod = sr_shmmain_find_module(main_shm, mod_name, 0);
         SR_CHECK_INT_RET(!shm_mod, err_info);
 
-        /* SHM LOCK UPGRADE */
-        if ((err_info = sr_shmmain_relock(conn, SR_LOCK_WRITE, __func__))) {
-            return err_info;
-        }
-
         /* update flag */
-        if (replay_support) {
-            shm_mod->replay_supp = 1;
-        } else {
-            shm_mod->replay_supp = 0;
-        }
+        ATOMIC_STORE_RELAXED(shm_mod->replay_supp, replay_support);
     } else {
-        /* SHM LOCK UPGRADE */
-        if ((err_info = sr_shmmain_relock(conn, SR_LOCK_WRITE, __func__))) {
-            return err_info;
-        }
+        for (i = 0; i < main_shm->mod_count; ++i) {
+            shm_mod = SR_SHM_MOD_IDX(main_shm, i);
 
-        SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
             /* update flag */
-            if (replay_support) {
-                shm_mod->replay_supp = 1;
-            } else {
-                shm_mod->replay_supp = 0;
-            }
+            ATOMIC_STORE_RELAXED(shm_mod->replay_supp, replay_support);
         }
-    }
-
-    /* SHM LOCK DOWNGRADE */
-    if ((err_info = sr_shmmain_relock(conn, SR_LOCK_READ_UPGR, __func__))) {
-        return err_info;
     }
 
     return NULL;
@@ -2369,7 +1432,7 @@ sr_shmmain_update_notif_suspend(sr_conn_ctx_t *conn, const char *mod_name, uint3
     uint32_t i;
 
     /* find the subscription in SHM */
-    shm_mod = sr_shmmain_find_module(&conn->main_shm, conn->ext_shm.addr, mod_name, 0);
+    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), mod_name, 0);
     SR_CHECK_INT_RET(!shm_mod, err_info);
     shm_sub = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
     for (i = 0; i < shm_mod->notif_sub_count; ++i) {
@@ -2380,34 +1443,24 @@ sr_shmmain_update_notif_suspend(sr_conn_ctx_t *conn, const char *mod_name, uint3
     SR_CHECK_INT_RET(i == shm_mod->notif_sub_count, err_info);
 
     /* check whether the flag can be changed */
-    if (suspend && shm_sub[i].suspended) {
+    if (suspend && ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Notification subscription with ID \"%u\" already suspended.",
                 sub_id);
         return err_info;
-    } else if (!suspend && !shm_sub[i].suspended) {
+    } else if (!suspend && !ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Notification subscription with ID \"%u\" not suspended.",
                 sub_id);
         return err_info;
     }
 
-    /* SHM LOCK UPGRADE */
-    if ((err_info = sr_shmmain_relock(conn, SR_LOCK_WRITE, __func__))) {
-        return err_info;
-    }
-
     /* set the flag */
-    shm_sub[i].suspended = suspend;
-
-    /* SHM LOCK DOWNGRADE */
-    if ((err_info = sr_shmmain_relock(conn, SR_LOCK_READ_UPGR, __func__))) {
-        return err_info;
-    }
+    ATOMIC_STORE_RELAXED(shm_sub[i].suspended, suspend);
 
     return NULL;
 }
 
 sr_error_info_t *
-sr_shmmain_check_data_files(sr_conn_ctx_t *conn)
+sr_shmmain_check_data_files(sr_main_shm_t *main_shm)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
@@ -2415,9 +1468,11 @@ sr_shmmain_check_data_files(sr_conn_ctx_t *conn)
     char *owner, *cur_owner, *group, *cur_group, *path;
     mode_t perm, cur_perm;
     int exists;
+    uint32_t i;
 
-    SR_SHM_MOD_FOR(conn->main_shm.addr, conn->main_shm.size, shm_mod) {
-        mod_name = conn->ext_shm.addr + shm_mod->name;
+    for (i = 0; i < main_shm->mod_count; ++i) {
+        shm_mod = SR_SHM_MOD_IDX(main_shm, i);
+        mod_name = ((char *)main_shm) + shm_mod->name;
 
         /* this must succeed for every (sysrepo) user */
         if ((err_info = sr_perm_get(mod_name, SR_DS_STARTUP, &owner, &group, &perm))) {

@@ -390,7 +390,7 @@ sr_shmsub_change_is_valid(sr_sub_event_t ev, sr_subscr_options_t sub_opts)
 /**
  * @brief Learn whether there is a subscription for a change event.
  *
- * @param[in] ext_shm_addr Main SHM mapping address.
+ * @param[in] conn Connection to use.
  * @param[in] mod Mod info module to use.
  * @param[in] ds Datastore.
  * @param[in] ev Event.
@@ -398,14 +398,21 @@ sr_shmsub_change_is_valid(sr_sub_event_t ev, sr_subscr_options_t sub_opts)
  * @return 0 if not, non-zero if there is.
  */
 static int
-sr_shmsub_change_notify_has_subscription(char *ext_shm_addr, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
+sr_shmsub_change_notify_has_subscription(sr_conn_ctx_t *conn, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
         sr_sub_event_t ev, uint32_t *max_priority_p)
 {
+    sr_error_info_t *err_info = NULL;
     int has_sub = 0;
     uint32_t i;
     sr_mod_change_sub_t *shm_msub;
 
-    shm_msub = (sr_mod_change_sub_t *)(ext_shm_addr + mod->shm_mod->change_sub[ds].subs);
+    /* REMAP READ LOCK */
+    if ((err_info = sr_conn_remap_lock(conn, SR_LOCK_READ, __func__))) {
+        sr_errinfo_free(&err_info);
+        return 0;
+    }
+
+    shm_msub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + mod->shm_mod->change_sub[ds].subs);
     *max_priority_p = 0;
     for (i = 0; i < mod->shm_mod->change_sub[ds].sub_count; ++i) {
         if (!sr_shmsub_change_is_valid(ev, shm_msub[i].opts)) {
@@ -419,13 +426,16 @@ sr_shmsub_change_notify_has_subscription(char *ext_shm_addr, struct sr_mod_info_
         }
     }
 
+    /* REMAP READ UNLOCK */
+    sr_conn_remap_unlock(conn, SR_LOCK_READ, __func__);
+
     return has_sub;
 }
 
 /**
  * @brief Learn the priority of the next valid subscriber for a change event.
  *
- * @param[in] ext_shm_addr Main SHM mapping address.
+ * @param[in] conn Connection to use.
  * @param[in] mod Mod info module to use.
  * @param[in] ds Datastore.
  * @param[in] ev Change event.
@@ -433,16 +443,23 @@ sr_shmsub_change_notify_has_subscription(char *ext_shm_addr, struct sr_mod_info_
  * @param[out] next_priorty_p Next priorty of a subsciber(s).
  * @param[out] sub_count_p Number of subscribers with this priority.
  * @param[out] opts_p Optional options of all subscribers with this priority.
+ * @return err_info, NULL on success.
  */
-static void
-sr_shmsub_change_notify_next_subscription(char *ext_shm_addr, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
+static sr_error_info_t *
+sr_shmsub_change_notify_next_subscription(sr_conn_ctx_t *conn, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
         sr_sub_event_t ev, uint32_t last_priority, uint32_t *next_priority_p, uint32_t *sub_count_p, int *opts_p)
 {
+    sr_error_info_t *err_info = NULL;
     uint32_t i;
     sr_mod_change_sub_t *shm_msub;
     int opts = 0;
 
-    shm_msub = (sr_mod_change_sub_t *)(ext_shm_addr + mod->shm_mod->change_sub[ds].subs);
+    /* REMAP READ LOCK */
+    if ((err_info = sr_conn_remap_lock(conn, SR_LOCK_READ, __func__))) {
+        return err_info;
+    }
+
+    shm_msub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + mod->shm_mod->change_sub[ds].subs);
     *sub_count_p = 0;
     for (i = 0; i < mod->shm_mod->change_sub[ds].sub_count; ++i) {
         if (!sr_shmsub_change_is_valid(ev, shm_msub[i].opts)) {
@@ -475,6 +492,11 @@ sr_shmsub_change_notify_next_subscription(char *ext_shm_addr, struct sr_mod_info
     if (opts_p) {
         *opts_p = opts;
     }
+
+    /* REMAP READ UNLOCK */
+    sr_conn_remap_unlock(conn, SR_LOCK_READ, __func__);
+
+    return NULL;
 }
 
 sr_error_info_t *
@@ -517,7 +539,7 @@ cleanup:
 /**
  * @brief Write into change subscribers event pipe to notify them there is a new event.
  *
- * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] conn Connection to use.
  * @param[in] mod Mod info module to use.
  * @param[in] ds Datastore.
  * @param[in] ev Change event.
@@ -525,14 +547,19 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmsub_change_notify_evpipe(char *ext_shm_addr, struct sr_mod_info_mod_s *mod, sr_datastore_t ds, sr_sub_event_t ev,
+sr_shmsub_change_notify_evpipe(sr_conn_ctx_t *conn, struct sr_mod_info_mod_s *mod, sr_datastore_t ds, sr_sub_event_t ev,
         uint32_t priority)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t i;
     sr_mod_change_sub_t *shm_msub;
+    uint32_t i;
 
-    shm_msub = (sr_mod_change_sub_t *)(ext_shm_addr + mod->shm_mod->change_sub[ds].subs);
+    /* REMAP READ LOCK */
+    if ((err_info = sr_conn_remap_lock(conn, SR_LOCK_READ, __func__))) {
+        return err_info;
+    }
+
+    shm_msub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + mod->shm_mod->change_sub[ds].subs);
     for (i = 0; i < mod->shm_mod->change_sub[ds].sub_count; ++i) {
         if (!sr_shmsub_change_is_valid(ev, shm_msub[i].opts)) {
             continue;
@@ -541,12 +568,16 @@ sr_shmsub_change_notify_evpipe(char *ext_shm_addr, struct sr_mod_info_mod_s *mod
         /* valid subscription */
         if (shm_msub[i].priority == priority) {
             if ((err_info = sr_shmsub_notify_evpipe(shm_msub[i].evpipe_num))) {
-                return err_info;
+                goto cleanup;
             }
         }
     }
 
-    return NULL;
+cleanup:
+    /* REMAP READ UNLOCK */
+    sr_conn_remap_unlock(conn, SR_LOCK_READ, __func__);
+
+    return err_info;
 }
 
 /**
@@ -607,8 +638,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
         }
 
         /* just find out whether there are any subscriptions and if so, what is the highest priority */
-        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_UPDATE,
-                &cur_priority)) {
+        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_UPDATE, &cur_priority)) {
             continue;
         }
 
@@ -626,14 +656,16 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
         }
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
+        /* correctly start the loop, with fake last priority 1 higher than the actual highest */
+        if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_UPDATE,
+                cur_priority + 1, &cur_priority, &subscriber_count, NULL))) {
+            goto cleanup;
+        }
+
         /* SUB WRITE LOCK */
         if ((err_info = sr_shmsub_notify_new_wrlock((sr_sub_shm_t *)multi_sub_shm, mod->ly_mod->name, 0, cid))) {
             goto cleanup;
         }
-
-        /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        sr_shmsub_change_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_UPDATE,
-                cur_priority + 1, &cur_priority, &subscriber_count, NULL);
 
         do {
             /* there cannot be more subscribers on one module with the same priority */
@@ -653,8 +685,8 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
                     subscriber_count, 0, diff_lyb, diff_lyb_len, mod->ly_mod->name);
 
             /* notify using event pipe and wait until all the subscribers have processed the event */
-            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn->ext_shm.addr, mod, mod_info->ds,
-                    SR_SUB_EV_UPDATE, cur_priority))) {
+            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_UPDATE,
+                    cur_priority))) {
                 goto cleanup_wrunlock;
             }
 
@@ -700,13 +732,15 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
             } else if (edit) {
                 if (lyd_insert_after((*update_edit)->prev, edit)) {
                     sr_errinfo_new_ly(&err_info, ly_ctx);
-                    goto cleanup;
+                    goto cleanup_wrunlock;
                 }
             }
 
             /* find out what is the next priority and how many subscribers have it */
-            sr_shmsub_change_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_UPDATE,
-                    cur_priority, &cur_priority, &subscriber_count, NULL);
+            if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_UPDATE,
+                    cur_priority, &cur_priority, &subscriber_count, NULL))) {
+                goto cleanup_wrunlock;
+            }
         } while (subscriber_count);
 
         /* SUB WRITE UNLOCK */
@@ -803,15 +837,12 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
     sr_multi_sub_shm_t *multi_sub_shm;
     struct sr_mod_info_mod_s *mod = NULL;
     uint32_t cur_priority, subscriber_count, diff_lyb_len, *aux = NULL;
-    char *diff_lyb = NULL, *ext_shm_addr, *ext_shm_buf = NULL;
+    char *diff_lyb = NULL;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER;
     int opts;
     sr_cid_t cid;
 
     cid = mod_info->conn->cid;
-
-    /* use our ext SHM mapping by default */
-    ext_shm_addr = mod_info->conn->ext_shm.addr;
 
     while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff, &aux))) {
         /* first check that there actually are some value changes (and not only dflt changes) */
@@ -820,9 +851,8 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
         }
 
         /* just find out whether there are any subscriptions and if so, what is the highest priority */
-        if (!sr_shmsub_change_notify_has_subscription(ext_shm_addr, mod, mod_info->ds, SR_SUB_EV_CHANGE,
-                &cur_priority)) {
-            if (!sr_shmsub_change_notify_has_subscription(ext_shm_addr, mod, mod_info->ds, SR_SUB_EV_DONE,
+        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_CHANGE, &cur_priority)) {
+            if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_DONE,
                     &cur_priority)) {
                 if (mod_info->ds == SR_DS_RUNNING) {
                     SR_LOG_INF("There are no subscribers for changes of the module \"%s\" in %s DS.",
@@ -848,29 +878,18 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
         }
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
+        /* correctly start the loop, with fake last priority 1 higher than the actual highest */
+        if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_CHANGE,
+                cur_priority + 1, &cur_priority, &subscriber_count, &opts))) {
+            goto cleanup;
+        }
+
         /* SUB WRITE LOCK */
         if ((err_info = sr_shmsub_notify_new_wrlock((sr_sub_shm_t *)multi_sub_shm, mod->ly_mod->name, 0, cid))) {
             goto cleanup;
         }
 
-        /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        sr_shmsub_change_notify_next_subscription(ext_shm_addr, mod, mod_info->ds, SR_SUB_EV_CHANGE,
-                cur_priority + 1, &cur_priority, &subscriber_count, &opts);
-
         do {
-            if ((opts & SR_SUBSCR_UNLOCKED) && !ext_shm_buf) {
-                /* subscriber wants subscriptions (main/ext SHM) unlocked, so make a copy and unlock it */
-                ext_shm_buf = malloc(mod_info->conn->ext_shm.size);
-                SR_CHECK_MEM_GOTO(!ext_shm_buf, err_info, cleanup_wrunlock);
-                memcpy(ext_shm_buf, mod_info->conn->ext_shm.addr, mod_info->conn->ext_shm.size);
-
-                /* update pointers */
-                ext_shm_addr = ext_shm_buf;
-
-                /* SHM UNLOCK */
-                sr_shmmain_unlock(mod_info->conn, SR_LOCK_READ, 0, __func__);
-            }
-
             /* remap sub SHM once we have the lock, it will do anything only on the first call */
             if ((err_info = sr_shm_remap(&shm_sub, sizeof *multi_sub_shm + diff_lyb_len))) {
                 goto cleanup_wrunlock;
@@ -885,8 +904,8 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
                     subscriber_count, 0, diff_lyb, diff_lyb_len, mod->ly_mod->name);
 
             /* notify the subscribers using an event pipe */
-            if ((err_info = sr_shmsub_change_notify_evpipe(ext_shm_addr, mod, mod_info->ds,
-                    SR_SUB_EV_CHANGE, cur_priority))) {
+            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_CHANGE,
+                    cur_priority))) {
                 goto cleanup_wrunlock;
             }
 
@@ -907,8 +926,10 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
             }
 
             /* find out what is the next priority and how many subscribers have it */
-            sr_shmsub_change_notify_next_subscription(ext_shm_addr, mod, mod_info->ds, SR_SUB_EV_CHANGE,
-                    cur_priority, &cur_priority, &subscriber_count, &opts);
+            if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_CHANGE,
+                    cur_priority, &cur_priority, &subscriber_count, &opts))) {
+                goto cleanup_wrunlock;
+            }
         } while (subscriber_count);
 
         /* SUB WRITE UNLOCK */
@@ -916,14 +937,6 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
 
         /* next module */
         sr_shm_clear(&shm_sub);
-        if (ext_shm_buf) {
-            /* the unlocked callback was called, lock again */
-            free(ext_shm_buf);
-            ext_shm_buf = NULL;
-            ext_shm_addr = mod_info->conn->ext_shm.addr;
-            /* SHM LOCK */
-            err_info = sr_shmmain_lock_remap(mod_info->conn, SR_LOCK_READ, 0, __func__);
-        }
     }
 
     /* success */
@@ -937,11 +950,6 @@ cleanup:
     free(aux);
     free(diff_lyb);
     sr_shm_clear(&shm_sub);
-    if (ext_shm_buf) {
-        free(ext_shm_buf);
-        /* SHM LOCK */
-        err_info = sr_shmmain_lock_remap(mod_info->conn, SR_LOCK_READ, 0, __func__);
-    }
     return err_info;
 }
 
@@ -952,15 +960,12 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
     sr_multi_sub_shm_t *multi_sub_shm;
     struct sr_mod_info_mod_s *mod = NULL;
     uint32_t cur_priority, subscriber_count, diff_lyb_len, *aux = NULL;
-    char *diff_lyb = NULL, *ext_shm_addr, *ext_shm_buf = NULL;
+    char *diff_lyb = NULL;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER;
     int opts;
     sr_cid_t cid;
 
     cid = mod_info->conn->cid;
-
-    /* use our ext SHM mapping by default */
-    ext_shm_addr = mod_info->conn->ext_shm.addr;
 
     while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff, &aux))) {
         /* first check that there actually are some value changes (and not only dflt changes) */
@@ -968,8 +973,7 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
             continue;
         }
 
-        if (!sr_shmsub_change_notify_has_subscription(ext_shm_addr, mod, mod_info->ds, SR_SUB_EV_DONE,
-                &cur_priority)) {
+        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_DONE, &cur_priority)) {
             /* no subscriptions interested in this event */
             continue;
         }
@@ -990,29 +994,18 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
         }
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
+        /* correctly start the loop, with fake last priority 1 higher than the actual highest */
+        if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_DONE,
+                cur_priority + 1, &cur_priority, &subscriber_count, &opts))) {
+            goto cleanup;
+        }
+
         /* SUB WRITE LOCK */
         if ((err_info = sr_shmsub_notify_new_wrlock((sr_sub_shm_t *)multi_sub_shm, mod->ly_mod->name, 0, cid))) {
             goto cleanup;
         }
 
-        /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        sr_shmsub_change_notify_next_subscription(ext_shm_addr, mod, mod_info->ds, SR_SUB_EV_DONE,
-                cur_priority + 1, &cur_priority, &subscriber_count, &opts);
-
         do {
-            if ((opts & SR_SUBSCR_UNLOCKED) && !ext_shm_buf) {
-                /* subscriber wants subscriptions (main/ext SHM) unlocked, so make a copy and unlock it */
-                ext_shm_buf = malloc(mod_info->conn->ext_shm.size);
-                SR_CHECK_MEM_GOTO(!ext_shm_buf, err_info, cleanup_wrunlock);
-                memcpy(ext_shm_buf, mod_info->conn->ext_shm.addr, mod_info->conn->ext_shm.size);
-
-                /* update pointers */
-                ext_shm_addr = ext_shm_buf;
-
-                /* SHM UNLOCK */
-                sr_shmmain_unlock(mod_info->conn, SR_LOCK_READ, 0, __func__);
-            }
-
             /* remap sub SHM once we have the lock, it will do anything only on the first call */
             if ((err_info = sr_shm_remap(&shm_sub, sizeof *multi_sub_shm + diff_lyb_len))) {
                 goto cleanup_wrunlock;
@@ -1027,8 +1020,8 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
                     subscriber_count, 0, diff_lyb, diff_lyb_len, mod->ly_mod->name);
 
             /* notify the subscribers using event pipe */
-            if ((err_info = sr_shmsub_change_notify_evpipe(ext_shm_addr, mod, mod_info->ds,
-                    SR_SUB_EV_DONE, cur_priority))) {
+            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_DONE,
+                    cur_priority))) {
                 goto cleanup_wrunlock;
             }
 
@@ -1042,22 +1035,16 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
             sr_errinfo_free(&cb_err_info);
 
             /* find out what is the next priority and how many subscribers have it */
-            sr_shmsub_change_notify_next_subscription(ext_shm_addr, mod, mod_info->ds, SR_SUB_EV_DONE,
-                    cur_priority, &cur_priority, &subscriber_count, &opts);
+            if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_DONE,
+                    cur_priority, &cur_priority, &subscriber_count, &opts))) {
+                goto cleanup_wrunlock;
+            }
         } while (subscriber_count);
 
         /* SUB WRITE UNLOCK */
         sr_rwunlock(&multi_sub_shm->lock, 0, SR_LOCK_WRITE, cid, __func__);
 
         sr_shm_clear(&shm_sub);
-        if (ext_shm_buf) {
-            /* the unlocked callback was called, lock again */
-            free(ext_shm_buf);
-            ext_shm_buf = NULL;
-            ext_shm_addr = mod_info->conn->ext_shm.addr;
-            /* SHM LOCK */
-            err_info = sr_shmmain_lock_remap(mod_info->conn, SR_LOCK_READ, 0, __func__);
-        }
     }
 
     /* success */
@@ -1071,11 +1058,6 @@ cleanup:
     free(aux);
     free(diff_lyb);
     sr_shm_clear(&shm_sub);
-    if (ext_shm_buf) {
-        free(ext_shm_buf);
-        /* SHM LOCK */
-        err_info = sr_shmmain_lock_remap(mod_info->conn, SR_LOCK_READ, 0, __func__);
-    }
     return err_info;
 }
 
@@ -1112,8 +1094,7 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t si
             goto cleanup;
         }
 
-        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_ABORT,
-                &cur_priority)) {
+        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_ABORT, &cur_priority)) {
 clear_shm:
             /* no subscriptions interested in this event, but we still want to clear the event */
             if (multi_sub_shm->event == SR_SUB_EV_ERROR) {
@@ -1163,8 +1144,10 @@ clear_shm:
         }
 
         /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        sr_shmsub_change_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_ABORT,
-                cur_priority + 1, &cur_priority, &subscriber_count, NULL);
+        if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_ABORT,
+                cur_priority + 1, &cur_priority, &subscriber_count, NULL))) {
+            goto cleanup_wrunlock;
+        }
         if (last_subscr && (err_priority == cur_priority)) {
             /* do not notify subscribers that did not process the previous event */
             subscriber_count -= err_subscriber_count;
@@ -1185,8 +1168,8 @@ clear_shm:
                     subscriber_count, 0, diff_lyb, diff_lyb_len, mod->ly_mod->name);
 
             /* notify using event pipe */
-            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn->ext_shm.addr, mod, mod_info->ds,
-                    SR_SUB_EV_ABORT, cur_priority))) {
+            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_ABORT,
+                    cur_priority))) {
                 goto cleanup_wrunlock;
             }
 
@@ -1205,8 +1188,10 @@ clear_shm:
             }
 
             /* find out what is the next priority and how many subscribers have it */
-            sr_shmsub_change_notify_next_subscription(mod_info->conn->ext_shm.addr, mod, mod_info->ds, SR_SUB_EV_ABORT,
-                    cur_priority, &cur_priority, &subscriber_count, NULL);
+            if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds,
+                    SR_SUB_EV_ABORT, cur_priority, &cur_priority, &subscriber_count, NULL))) {
+                goto cleanup_wrunlock;
+            }
 
             if (last_subscr && (err_priority == cur_priority)) {
                 /* do not notify subscribers that did not process the previous event */
@@ -1468,12 +1453,11 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_node *input, sr_sid_t sid,
-        uint32_t timeout_ms, uint32_t *request_id, struct lyd_node **output, sr_error_info_t **cb_err_info)
+sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *op_path, const struct lyd_node *input,
+        sr_sid_t sid, uint32_t timeout_ms, uint32_t *request_id, struct lyd_node **output, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
-    sr_rpc_t *shm_rpc;
-    char *input_lyb = NULL, *ext_shm_addr, *ext_shm_buf = NULL;
+    char *input_lyb = NULL;
     uint32_t i, input_lyb_len, cur_priority, subscriber_count, *evpipes = NULL;
     int opts;
     sr_multi_sub_shm_t *multi_sub_shm;
@@ -1482,14 +1466,8 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_
     assert(!input->parent);
     *output = NULL;
 
-    /* use our ext SHM mapping by default */
-    ext_shm_addr = conn->ext_shm.addr;
-
-    /* find the RPC */
-    shm_rpc = sr_shmmain_find_rpc((sr_main_shm_t *)conn->main_shm.addr, ext_shm_addr, op_path, 0);
-
     /* just find out whether there are any subscriptions and if so, what is the highest priority */
-    if (!shm_rpc || !sr_shmsub_rpc_notify_has_subscription(ext_shm_addr, shm_rpc, input, &cur_priority)) {
+    if (!sr_shmsub_rpc_notify_has_subscription(conn->ext_shm.addr, shm_rpc, input, &cur_priority)) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, op_path, "There are no matching subscribers for RPC/action \"%s\".",
                 op_path);
         return err_info;
@@ -1515,25 +1493,10 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_
     }
 
     /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-    sr_shmsub_rpc_notify_next_subscription(ext_shm_addr, shm_rpc, input, cur_priority + 1, &cur_priority,
+    sr_shmsub_rpc_notify_next_subscription(conn->ext_shm.addr, shm_rpc, input, cur_priority + 1, &cur_priority,
             &evpipes, &subscriber_count, &opts);
 
     do {
-        if ((opts & SR_SUBSCR_UNLOCKED) && !ext_shm_buf) {
-            /* subscriber wants subscriptions (main/ext SHM) unlocked, so make a copy and unlock it */
-            ext_shm_buf = malloc(conn->ext_shm.size);
-            SR_CHECK_MEM_GOTO(!ext_shm_buf, err_info, cleanup_wrunlock);
-            memcpy(ext_shm_buf, conn->ext_shm.addr, conn->ext_shm.size);
-
-            /* update pointers */
-            ext_shm_addr = ext_shm_buf;
-            shm_rpc = sr_shmmain_find_rpc((sr_main_shm_t *)conn->main_shm.addr, ext_shm_addr, op_path, 0);
-            assert(shm_rpc);
-
-            /* SHM UNLOCK */
-            sr_shmmain_unlock(conn, SR_LOCK_READ, 0, __func__);
-        }
-
         /* remap sub SHM once we have the lock, it will do anything only on the first call */
         if ((err_info = sr_shm_remap(&shm_sub, sizeof *multi_sub_shm + input_lyb_len))) {
             goto cleanup_wrunlock;
@@ -1594,7 +1557,7 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_
 
         /* find out what is the next priority and how many subscribers have it */
         free(evpipes);
-        sr_shmsub_rpc_notify_next_subscription(ext_shm_addr, shm_rpc, input, cur_priority, &cur_priority,
+        sr_shmsub_rpc_notify_next_subscription(conn->ext_shm.addr, shm_rpc, input, cur_priority, &cur_priority,
                 &evpipes, &subscriber_count, &opts);
     } while (subscriber_count);
 
@@ -1606,11 +1569,6 @@ cleanup:
     sr_shm_clear(&shm_sub);
     free(input_lyb);
     free(evpipes);
-    if (ext_shm_buf) {
-        free(ext_shm_buf);
-        /* SHM LOCK */
-        err_info = sr_shmmain_lock_remap(conn, SR_LOCK_READ, 0, __func__);
-    }
     if (err_info) {
         lyd_free_withsiblings(*output);
         *output = NULL;
@@ -1619,11 +1577,10 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, const char *op_path, const struct lyd_node *input, sr_sid_t sid,
-        uint32_t timeout_ms, uint32_t request_id)
+sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *op_path, const struct lyd_node *input,
+        sr_sid_t sid, uint32_t timeout_ms, uint32_t request_id)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
-    sr_rpc_t *shm_rpc;
     char *input_lyb = NULL;
     uint32_t i, input_lyb_len, cur_priority, err_priority, subscriber_count, err_subscriber_count, *evpipes = NULL;
     sr_multi_sub_shm_t *multi_sub_shm;
@@ -1644,9 +1601,7 @@ sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, const char *op_path, const struc
         goto cleanup;
     }
 
-    /* find the RPC */
-    shm_rpc = sr_shmmain_find_rpc((sr_main_shm_t *)conn->main_shm.addr, conn->ext_shm.addr, op_path, 0);
-    if (!shm_rpc || !sr_shmsub_rpc_notify_has_subscription(conn->ext_shm.addr, shm_rpc, input, &cur_priority)) {
+    if (!sr_shmsub_rpc_notify_has_subscription(conn->ext_shm.addr, shm_rpc, input, &cur_priority)) {
         /* no subscriptions interested in this event, but we still want to clear the event */
 clear_shm:
         /* clear and shrink the SHM */
@@ -3042,29 +2997,6 @@ cleanup:
     return err_info;
 }
 
-int
-sr_shmsub_notif_listen_module_has_replay_or_stop(struct modsub_notif_s *notif_subs)
-{
-    time_t cur_time;
-    struct modsub_notifsub_s *notif_sub;
-    uint32_t i;
-
-    cur_time = time(NULL);
-
-    for (i = 0; i < notif_subs->sub_count; ++i) {
-        notif_sub = &notif_subs->subs[i];
-        if (notif_sub->start_time && !notif_sub->replayed) {
-            /* pending replay */
-            return 1;
-        } else if (notif_sub->stop_time && (notif_sub->stop_time < cur_time)) {
-            /* stop time elapsed */
-            return 1;
-        }
-    }
-
-    return 0;
-}
-
 void
 sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif_subs, time_t *stop_time_in)
 {
@@ -3135,13 +3067,14 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_su
             }
 
             /* find module */
-            shm_mod = sr_shmmain_find_module(&subs->conn->main_shm, subs->conn->ext_shm.addr, notif_subs->module_name, 0);
+            shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subs->conn), notif_subs->module_name, 0);
             SR_CHECK_INT_RET(!shm_mod, err_info);
 
             /* remove the subscription from main SHM */
-            if (sr_shmmod_notif_subscription_del(subs->conn, shm_mod, notif_sub->sub_id, subs->evpipe_num, 0, NULL, NULL)) {
+            if ((tmp_err = sr_shmmod_notif_subscription_del(subs->conn, shm_mod, notif_sub->sub_id, subs->evpipe_num, 0,
+                    NULL, NULL, NULL))) {
                 /* continue */
-                SR_ERRINFO_INT(&err_info);
+                sr_errinfo_merge(&err_info, tmp_err);
             }
 
             if (notif_subs->sub_count == 1) {
@@ -3150,7 +3083,7 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_su
             }
 
             /* remove the subscription from the sub structure */
-            sr_sub_notif_del(notif_subs->module_name, notif_sub->sub_id, subs, 1);
+            sr_sub_notif_del(notif_subs->module_name, notif_sub->sub_id, 1, subs);
 
             if (*mod_finished) {
                 /* there are no more subscriptions for this module */
@@ -3186,7 +3119,7 @@ sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subsc
             }
 
             /* find module */
-            shm_mod = sr_shmmain_find_module(&subs->conn->main_shm, subs->conn->ext_shm.addr, notif_subs->module_name, 0);
+            shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subs->conn), notif_subs->module_name, 0);
             SR_CHECK_INT_RET(!shm_mod, err_info);
 
             /* now we can add notification subscription into main SHM because it will process realtime notifications */
