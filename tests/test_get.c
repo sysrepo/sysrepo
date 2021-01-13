@@ -282,6 +282,164 @@ test_explicit_default(void **state)
     sr_apply_changes(st->sess, 0, 0);
 }
 
+/* TEST */
+static int
+dummy_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    (void)session;
+    (void)module_name;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+    (void)private_data;
+
+    return SR_ERR_OK;
+}
+
+static int
+union_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+        uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    struct lyd_node *node;
+    const struct ly_ctx *ctx;
+    const struct lys_module *mod;
+
+    (void)session;
+    (void)request_xpath;
+    (void)request_id;
+    (void)parent;
+    (void)private_data;
+
+    assert_string_equal(module_name, "simple");
+    assert_string_equal(xpath, "/simple:ac1/simple-aug:bauga2");
+
+    /* get augment module */
+    ctx = sr_get_context(sr_session_get_connection(session));
+    mod = ly_ctx_get_module(ctx, "simple-aug", NULL, 1);
+    assert_non_null(mod);
+
+    node = lyd_new_leaf(*parent, mod, "bauga2", "val");
+    assert_non_null(node);
+
+    return SR_ERR_OK;
+}
+
+static void
+test_union(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr;
+    struct lyd_node *data;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* set some configuration data */
+    ret = sr_set_item_str(st->sess, "/simple-aug:bc1/bcl1[bcs1='key']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to both modules so they are present in operational */
+    ret = sr_module_change_subscribe(st->sess, "simple", NULL, dummy_change_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(st->sess, "simple-aug", NULL, dummy_change_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* provide config false data */
+    ret = sr_oper_get_items_subscribe(st->sess, "simple", "/simple:ac1/simple-aug:bauga2", union_oper_cb, NULL,
+            SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+
+    /* get operational data of each module first first */
+    ret = sr_get_data(st->sess, "/simple:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS | LYP_WD_IMPL_TAG);
+    assert_int_equal(ret, 0);
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<ac1 xmlns=\"s\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
+        "<acd1 ncwd:default=\"true\">true</acd1>"
+        "<bauga1 xmlns=\"sa\" ncwd:default=\"true\">true</bauga1>"
+        "<bauga2 xmlns=\"sa\">val</bauga2>"
+    "</ac1>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    ret = sr_get_data(st->sess, "/simple-aug:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS | LYP_WD_IMPL_TAG);
+    assert_int_equal(ret, 0);
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<bc1 xmlns=\"sa\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
+        "<bcd1 ncwd:default=\"true\">true</bcd1>"
+        "<bcl1>"
+            "<bcs1>key</bcs1>"
+        "</bcl1>"
+    "</bc1>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* get data from both modules */
+    ret = sr_get_data(st->sess, "/simple-aug:* | /simple:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS | LYP_WD_IMPL_TAG);
+    assert_int_equal(ret, 0);
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<bc1 xmlns=\"sa\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
+        "<bcd1 ncwd:default=\"true\">true</bcd1>"
+        "<bcl1>"
+            "<bcs1>key</bcs1>"
+        "</bcl1>"
+    "</bc1>"
+    "<ac1 xmlns=\"s\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
+        "<acd1 ncwd:default=\"true\">true</acd1>"
+        "<bauga1 xmlns=\"sa\" ncwd:default=\"true\">true</bauga1>"
+        "<bauga2 xmlns=\"sa\">val</bauga2>"
+    "</ac1>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* get specific subtrees from both modules */
+    ret = sr_get_data(st->sess, "/simple-aug:bc1/bcl1 | /simple:ac1/simple-aug:bauga2", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS | LYP_WD_IMPL_TAG);
+    assert_int_equal(ret, 0);
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<bc1 xmlns=\"sa\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
+        "<bcl1>"
+            "<bcs1>key</bcs1>"
+        "</bcl1>"
+    "</bc1>"
+    "<ac1 xmlns=\"s\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
+        "<bauga2 xmlns=\"sa\">val</bauga2>"
+    "</ac1>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* cleanup */
+    sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    sr_unsubscribe(subscr);
+}
+
 int
 main(void)
 {
@@ -291,6 +449,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_no_read_access, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_no_read_access, setup_cached_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_explicit_default, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_union, setup_f, teardown_f),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

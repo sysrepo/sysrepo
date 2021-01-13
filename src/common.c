@@ -4098,6 +4098,29 @@ sr_xpath_first_node_with_predicates(const char *xpath)
     return strndup(xpath, ptr - xpath);
 }
 
+/**
+ * @brief Parse "..", "*", ".", or a YANG identifier.
+ *
+ * @param[in] id Identifier start.
+ * @return Pointer to the first non-identifier character.
+ */
+static const char *
+sr_xpath_next_identifier(const char *id)
+{
+    if (!strncmp(id, "..", 2)) {
+        id += 2;
+    } else if ((id[0] == '*') || (id[0] == '.')) {
+        id += 1;
+    } else {
+        /* must be valid name so we can ignore special first character rules */
+        while (isalpha(id[0]) || isdigit(id[0]) || (id[0] == '_') || (id[0] == '-') || (id[0] == '.')) {
+            ++id;
+        }
+    }
+
+    return id;
+}
+
 const char *
 sr_xpath_next_name(const char *xpath, const char **mod, int *mod_len, const char **name, int *len, int *double_slash,
         int *has_predicate)
@@ -4105,37 +4128,62 @@ sr_xpath_next_name(const char *xpath, const char **mod, int *mod_len, const char
     const char *ptr;
 
     assert(xpath && (xpath[0] == '/'));
-    *mod = NULL;
-    *mod_len = 0;
-    *name = NULL;
-    *len = 0;
-    *double_slash = 0;
+
+    if (mod) {
+        *mod = NULL;
+    }
+    if (mod_len) {
+        *mod_len = 0;
+    }
+    if (name) {
+        *name = NULL;
+    }
+    if (len) {
+        *len = 0;
+    }
+    if (double_slash) {
+        *double_slash = 0;
+    }
     *has_predicate = 0;
 
     ++xpath;
     if (xpath[0] == '/') {
         ++xpath;
-        *double_slash = 1;
+        if (double_slash) {
+            *double_slash = 1;
+        }
     }
 
-    ptr = xpath;
-    while (ptr[0] && (ptr[0] != '/')) {
-        if (ptr[0] == ':') {
+    /* module/node name */
+    ptr = sr_xpath_next_identifier(xpath);
+
+    /* it was actually module name */
+    if (ptr[0] == ':') {
+        if (mod) {
             *mod = xpath;
+        }
+        if (mod_len) {
             *mod_len = ptr - xpath;
-            xpath = ptr + 1;
         }
-        ++ptr;
-        if (ptr[0] == '[') {
-            *has_predicate = 1;
-            break;
-        }
+        xpath = ptr + 1;
+
+        /* node name */
+        ptr = sr_xpath_next_identifier(xpath);
     }
 
-    *name = xpath;
-    *len = ptr - xpath;
+    /* predicate follows node name */
+    if (ptr[0] == '[') {
+        *has_predicate = 1;
+    }
 
-    return xpath + *len;
+    if (name) {
+        *name = xpath;
+    }
+    if (len) {
+        *len = ptr - xpath;
+    }
+
+    return ptr;
 }
 
 const char *

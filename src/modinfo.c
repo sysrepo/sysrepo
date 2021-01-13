@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #include <libyang/libyang.h>
 
@@ -346,30 +347,24 @@ sr_xpath_oper_data_predicate_required(const char *pred1, int len1, const char *p
 }
 
 /**
- * @brief Check whether operational data are required.
+ * @brief Check whether operational data are required based on one request path and subscription path.
  *
- * @param[in] request_xpath Get request XPath.
+ * @param[in] request_path Get request single path.
  * @param[in] sub_xpath Operational subscription XPath.
  * @return 0 if not required, non-zero if required.
  */
 static int
-sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath)
+sr_xpath_oper_data_path_required(const char *request_path, const char *sub_xpath)
 {
-    const char *xpath1, *xpath2, *mod1, *mod2, *name1, *name2, *pred1, *pred2;
+    const char *path1, *path2, *mod1, *mod2, *name1, *name2, *pred1, *pred2;
     int wildc1, wildc2, mlen1, mlen2, len1, len2, dslash1, dslash2, has_pred1, has_pred2;
 
-    assert(sub_xpath);
+    path1 = request_path;
+    path2 = sub_xpath;
 
-    if (!request_xpath) {
-        /* we do not know, say it is required */
-        return 1;
-    }
-
-    xpath1 = request_xpath;
-    xpath2 = sub_xpath;
     do {
-        xpath1 = sr_xpath_next_name(xpath1, &mod1, &mlen1, &name1, &len1, &dslash1, &has_pred1);
-        xpath2 = sr_xpath_next_name(xpath2, &mod2, &mlen2, &name2, &len2, &dslash2, &has_pred2);
+        path1 = sr_xpath_next_name(path1, &mod1, &mlen1, &name1, &len1, &dslash1, &has_pred1);
+        path2 = sr_xpath_next_name(path2, &mod2, &mlen2, &name2, &len2, &dslash2, &has_pred2);
 
         /* double-slash */
         if ((dslash1 && !dslash2) || (!dslash1 && dslash2)) {
@@ -412,8 +407,8 @@ sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath)
         }
 
         while (has_pred1 && has_pred2) {
-            xpath1 = sr_xpath_next_predicate(xpath1, &pred1, &len1, &has_pred1);
-            xpath2 = sr_xpath_next_predicate(xpath2, &pred2, &len2, &has_pred2);
+            path1 = sr_xpath_next_predicate(path1, &pred1, &len1, &has_pred1);
+            path2 = sr_xpath_next_predicate(path2, &pred2, &len2, &has_pred2);
 
             /* predicate */
             if (!sr_xpath_oper_data_predicate_required(pred1, len1, pred2, len2)) {
@@ -424,15 +419,71 @@ sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath)
 
         /* skip any leftover predicates */
         while (has_pred1) {
-            xpath1 = sr_xpath_next_predicate(xpath1, NULL, NULL, &has_pred1);
+            path1 = sr_xpath_next_predicate(path1, NULL, NULL, &has_pred1);
         }
         while (has_pred2) {
-            xpath2 = sr_xpath_next_predicate(xpath2, NULL, NULL, &has_pred2);
+            path2 = sr_xpath_next_predicate(path2, NULL, NULL, &has_pred2);
         }
-    } while (xpath1[0] && xpath2[0]);
+    } while ((path1[0] == '/') && (path2[0] == '/'));
 
-    /* whole xpath matches */
+    /* whole path matches */
     return 1;
+}
+
+/**
+ * @brief Check whether operational data are required.
+ *
+ * @param[in] request_xpath Get request full XPath.
+ * @param[in] sub_xpath Operational subscription XPath.
+ * @return 0 if not required, non-zero if required.
+ */
+static int
+sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath)
+{
+    int has_pred;
+
+    assert(sub_xpath);
+
+    if (!request_xpath) {
+        /* we do not know, say it is required */
+        return 1;
+    }
+
+    goto next_path;
+    do {
+        /* only union can be used to specify more paths, no? */
+        assert(request_xpath[0] == '|');
+        ++request_xpath;
+
+next_path:
+        /* skip whitespaces */
+        while (isspace(request_xpath[0])) {
+            ++request_xpath;
+        }
+
+        /* oper data are required for this path */
+        if (sr_xpath_oper_data_path_required(request_xpath, sub_xpath)) {
+            return 1;
+        }
+
+        /* skip this path */
+        do {
+            request_xpath = sr_xpath_next_name(request_xpath, NULL, NULL, NULL, NULL, NULL, &has_pred);
+            while (has_pred) {
+                request_xpath = sr_xpath_next_predicate(request_xpath, NULL, NULL, &has_pred);
+            }
+        } while (request_xpath[0] == '/');
+
+        /* skip whitespaces */
+        while (isspace(request_xpath[0])) {
+            ++request_xpath;
+        }
+
+        /* no more paths */
+    } while (request_xpath[0]);
+
+    /* oper data not required for any single path, so not at all */
+    return 0;
 }
 
 /**
