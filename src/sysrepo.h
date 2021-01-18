@@ -1826,32 +1826,28 @@ typedef void (*srp_cleanup_cb_t)(sr_session_ctx_t *session, void *private_data);
 /**
  * @brief Log a plugin error message with format arguments.
  *
- * @param[in] format Message format.
- * @param[in] ... Format arguments.
+ * @param[in] ... Format string and arguments.
  */
 #define SRP_LOG_ERR(...) srp_log(SR_LL_ERR, __VA_ARGS__)
 
 /**
  * @brief Log a plugin warning message with format arguments.
  *
- * @param[in] format Message format.
- * @param[in] ... Format arguments.
+ * @param[in] ... Format string and arguments.
  */
 #define SRP_LOG_WRN(...) srp_log(SR_LL_WRN, __VA_ARGS__)
 
 /**
  * @brief Log a plugin info message with format arguments.
  *
- * @param[in] format Message format.
- * @param[in] ... Format arguments.
+ * @param[in] ... Format string and arguments.
  */
 #define SRP_LOG_INF(...) srp_log(SR_LL_INF, __VA_ARGS__)
 
 /**
  * @brief Log a plugin debug message with format arguments.
  *
- * @param[in] format Message format.
- * @param[in] ... Format arguments.
+ * @param[in] ... Format string and arguments.
  */
 #define SRP_LOG_DBG(...) srp_log(SR_LL_DBG, __VA_ARGS__)
 
