@@ -1761,6 +1761,8 @@ typedef int (*sr_oper_get_items_cb)(sr_session_ctx_t *session, const char *modul
  *
  * Required WRITE access.
  *
+ * @note Be aware of some specific [threading limitations](@ref oper_subs).
+ *
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] module_name Name of the affected module.
  * @param[in] path [Path](@ref paths) identifying the subtree (not strictly required, all list/leaf-list instances

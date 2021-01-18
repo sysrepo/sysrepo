@@ -96,6 +96,13 @@ they can also be used to provide _configuration_ data nodes. In that case they s
 configuration that is actually in-use by the managed device. Much more details and explanations can be found
 in the [NMDA RFC](@ref rfcs).
 
+When using these [pull operational data](@ref oper_data) subscriptions, the subscription must be **actively handling events**
+whenever **operational datastore data of the module are requested** (so these 2 operations cannot occur in a single thread,
+so they must have individual subscription structures) to **avoid a time out**. Note that operational datastore data are
+required not only when requested explicitly using a getter but also when validating operational datastore (all modules
+or the same module), setting push operational data (for the same module), or sending an RPC/action or a notification
+(if the specific module data are required for validation).
+
 Operational callback is not called unless its data are required so keep these rules in mind:
 
 - if the parent of the provided data does not exist in the __operational__ datastore, neither can its descendants,
