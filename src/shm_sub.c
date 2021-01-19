@@ -2785,7 +2785,7 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
     }
 
     /* process event */
-    SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %u priority %u (remaining %u subscribers).", rpc_subs->op_path,
+    SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %u priority %u (remaining %u subscribers).", rpc_subs->path,
             sr_ev2str(multi_sub_shm->event), multi_sub_shm->request_id, multi_sub_shm->priority, multi_sub_shm->subscriber_count);
 
     /* process individual subscriptions (starting at the last found subscription, it was valid) */
@@ -2811,7 +2811,7 @@ process_event:
         }
 
         /* SUB READ UPGR LOCK */
-        if (sr_shmsub_rpc_listen_relock(multi_sub_shm, SR_LOCK_READ_UPGR, &sub_info, rpc_sub, rpc_subs->op_path, ret,
+        if (sr_shmsub_rpc_listen_relock(multi_sub_shm, SR_LOCK_READ_UPGR, &sub_info, rpc_sub, rpc_subs->path, ret,
                 &tmp_sess, input_op, &err_info)) {
             goto cleanup;
         }
@@ -3071,7 +3071,7 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_su
             SR_CHECK_INT_RET(!shm_mod, err_info);
 
             /* remove the subscription from main SHM */
-            if ((tmp_err = sr_shmmod_notif_subscription_del(subs->conn, shm_mod, notif_sub->sub_id, subs->evpipe_num, 0,
+            if ((tmp_err = sr_shmext_notif_subscription_del(subs->conn, shm_mod, notif_sub->sub_id, subs->evpipe_num, 0,
                     NULL, NULL, NULL))) {
                 /* continue */
                 sr_errinfo_merge(&err_info, tmp_err);
@@ -3123,7 +3123,7 @@ sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subsc
             SR_CHECK_INT_RET(!shm_mod, err_info);
 
             /* now we can add notification subscription into main SHM because it will process realtime notifications */
-            if ((err_info = sr_shmmod_notif_subscription_add(subs->conn, shm_mod, notif_sub->sub_id, subs->evpipe_num))) {
+            if ((err_info = sr_shmext_notif_subscription_add(subs->conn, shm_mod, notif_sub->sub_id, subs->evpipe_num))) {
                 return err_info;
             }
 

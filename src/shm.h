@@ -5,7 +5,7 @@
  *
  * @copyright
  * Copyright 2018 Deutsche Telekom AG.
- * Copyright 2018 - 2019 CESNET, z.s.p.o.
+ * Copyright 2018 - 2021 CESNET, z.s.p.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,33 +55,109 @@
  */
 
 /**
- * @brief Ext SHM module dependency type.
+ * @brief Main SHM dependency type.
  */
-typedef enum sr_mod_dep_type_e {
+typedef enum sr_dep_type_e {
     SR_DEP_REF,         /**< Module reference (leafref, when, must). */
     SR_DEP_INSTID       /**< Instance-identifier. */
-} sr_mod_dep_type_t;
+} sr_dep_type_t;
 
 /**
- * @brief Ext SHM module data dependency.
- * (typedef sr_mod_data_dep_t)
+ * @brief Main SHM module dependency.
+ * (typedef sr_dep_t)
  */
-struct sr_mod_data_dep_s {
-    sr_mod_dep_type_t type;     /**< Dependency type. */
-    off_t module;               /**< Dependant module name. */
-    off_t xpath;                /**< XPath of the node with the dependency. */
+struct sr_dep_s {
+    sr_dep_type_t type; /**< Dependency type. */
+    off_t module;       /**< Dependant module name (offset in main SHM). */
+    off_t path;         /**< Path of the node with the dependency (offset in main SHM). */
 };
 
 /**
- * @brief Ext SHM module operation dependency.
+ * @brief Main SHM RPC/action.
  */
-typedef struct sr_mod_op_dep_s {
-    off_t xpath;                /**< XPath of the node with the dependency. */
-    off_t in_deps;              /**< Input operation dependencies (also notification). */
+typedef struct sr_rpc_s {
+    off_t path;                 /**< Path of the RPC/action (offset in main SHM). */
+
+    off_t in_deps;              /**< Input operation dependencies (offset in main SHM). */
     uint16_t in_dep_count;      /**< Input dependency count. */
-    off_t out_deps;             /**< Output operation dependencies. */
+    off_t out_deps;             /**< Output operation dependencies (offset in main SHM). */
     uint16_t out_dep_count;     /**< Output dependency count. */
-} sr_mod_op_dep_t;
+
+    sr_rwlock_t lock;           /**< Lock for accessing RPC/action subscriptions. */
+    off_t subs;                 /**< Array of RPC/action subscriptions (offset in ext SHM). */
+    uint32_t sub_count;         /**< Number of RPC/action subscriptions. */
+} sr_rpc_t;
+
+/**
+ * @brief Main SHM notification.
+ */
+typedef struct sr_notif_s {
+    off_t path;                 /**< Path of the notification (offset in main SHM). */
+
+    off_t deps;                 /**< Array of dependencies of the notification (offset in main SHM). */
+    uint16_t dep_count;         /**< Number of dependencies. */
+} sr_notif_t;
+
+/**
+ * @brief Main SHM module.
+ * (typedef sr_mod_t)
+ */
+struct sr_mod_s {
+    struct sr_mod_lock_s {
+        sr_rwlock_t lock;       /**< Process-shared lock for accessing module instance data. */
+        ATOMIC_T ds_locked;     /**< Whether module data are datastore locked (NETCONF locks). */
+        sr_sid_t sid;           /**< Session ID of the lock owner - of DS lock, if not of write/read-upgr-lock,
+                                     if not of read-lock */
+        time_t ds_ts;           /**< Timestamp of the datastore lock. */
+    } data_lock_info[SR_DS_COUNT]; /**< Module data lock information for each datastore. */
+    sr_rwlock_t replay_lock;    /**< Process-shared lock for accessing stored notifications for replay. */
+    uint32_t ver;               /**< Module data version (non-zero). */
+
+    off_t name;                 /**< Module name (offset in main SHM). */
+    char rev[11];               /**< Module revision. */
+    ATOMIC_T replay_supp;       /**< Whether module supports replay. */
+
+    off_t features;             /**< Array of enabled features (off_t *) (offset in main SHM). */
+    uint16_t feat_count;        /**< Number of enabled features. */
+    off_t rpcs;                 /**< Array of RPCs/actions of the module (offset in main SHM). */
+    uint16_t rpc_count;         /**< Number of RPCs/actions. */
+    off_t notifs;               /**< Array of notifications of the module (offset in main SHM). */
+    uint16_t notif_count;       /**< Number of notifications. */
+
+    off_t deps;                 /**< Array of module data dependencies (offset in main SHM). */
+    uint16_t dep_count;         /**< Number of module data dependencies. */
+    off_t inv_deps;             /**< Array of inverse module data dependencies (off_t *) (offset in main SHM). */
+    uint16_t inv_dep_count;     /**< Number of inverse module data dependencies. */
+
+    struct {
+        sr_rwlock_t lock;       /**< Lock for accessing change subscriptions. */
+        off_t subs;             /**< Array of change subscriptions (offset in ext SHM). */
+        uint32_t sub_count;     /**< Number of change subscriptions. */
+    } change_sub[SR_DS_COUNT];  /**< Change subscriptions for each datastore. */
+
+    sr_rwlock_t oper_lock;      /**< Lock for accessing operational subscriptions. */
+    off_t oper_subs;            /**< Array of operational subscriptions (offset in ext SHM). */
+    uint32_t oper_sub_count;    /**< Number of operational subscriptions. */
+
+    sr_rwlock_t notif_lock;     /** Lock for accessing notification subscriptions. */
+    off_t notif_subs;           /**< Array of notification subscriptions (offset in ext SHM). */
+    uint32_t notif_sub_count;   /**< Number of notification subscriptions. */
+};
+
+/**
+ * @brief Main SHM.
+ */
+typedef struct sr_main_shm_s {
+    uint32_t shm_ver;           /**< Main and ext SHM version of all expected data stored in them. Is increased with
+                                     every change of their structure content (ABI change). */
+    pthread_mutex_t lydmods_lock; /**< Process-shared lock for accessing sysrepo module data. */
+    uint32_t mod_count;         /**< Number of installed modules stored after this structure. */
+
+    ATOMIC_T new_sr_cid;        /**< Connection ID for a new connection. */
+    ATOMIC_T new_sr_sid;        /**< SID for a new session. */
+    ATOMIC_T new_sub_id;        /**< Subscription ID of a new notification subscription. */
+    ATOMIC_T new_evpipe_num;    /**< Event pipe number for a new subscription. */
+} sr_main_shm_t;
 
 /**
  * @brief Ext SHM module change subscriptions.
@@ -101,7 +177,7 @@ typedef enum sr_mod_oper_sub_type_e {
     SR_OPER_SUB_NONE = 0,         /**< Invalid type. */
     SR_OPER_SUB_STATE,            /**< Providing state data. */
     SR_OPER_SUB_CONFIG,           /**< Providing configuration data. */
-    SR_OPER_SUB_MIXED             /**< Providing both state and configuration data. */
+    SR_OPER_SUB_MIXED,            /**< Providing both state and configuration data. */
 } sr_mod_oper_sub_type_t;
 
 /**
@@ -126,50 +202,7 @@ typedef struct sr_mod_notif_sub_s {
 } sr_mod_notif_sub_t;
 
 /**
- * @brief Main SHM module.
- * (typedef sr_mod_t)
- */
-struct sr_mod_s {
-    struct sr_mod_lock_s {
-        sr_rwlock_t lock;       /**< Process-shared lock for accessing module instance data. */
-        ATOMIC_T ds_locked;     /**< Whether module data are datastore locked (NETCONF locks). */
-        sr_sid_t sid;           /**< Session ID of the lock owner - of DS lock, if not of write/read-upgr-lock,
-                                     if not of read-lock */
-        time_t ds_ts;           /**< Timestamp of the datastore lock. */
-    } data_lock_info[SR_DS_COUNT]; /**< Module data lock information for each datastore. */
-    sr_rwlock_t replay_lock;    /**< Process-shared lock for accessing stored notifications for replay. */
-    uint32_t ver;               /**< Module data version (non-zero). */
-
-    off_t name;                 /**< Module name (offset in main SHM). */
-    char rev[11];               /**< Module revision. */
-    ATOMIC_T replay_supp;       /**< Whether module supports replay. */
-
-    off_t features;             /**< Array of enabled features (off_t *) (offset in main SHM). */
-    uint16_t feat_count;        /**< Number of enabled features. */
-    off_t data_deps;            /**< Array of data dependencies (offset in main SHM). */
-    uint16_t data_dep_count;    /**< Number of data dependencies. */
-    off_t inv_data_deps;        /**< Array of inverse data dependencies (off_t *) (offset in main SHM). */
-    uint16_t inv_data_dep_count;    /**< Number of inverse data dependencies. */
-    off_t op_deps;              /**< Array of operation dependencies (offset in main SHM). */
-    uint16_t op_dep_count;      /**< Number of operation dependencies. */
-
-    struct {
-        sr_rwlock_t lock;       /**< Lock for accessing change subscriptions. */
-        off_t subs;             /**< Array of change subscriptions (offset in ext SHM). */
-        uint32_t sub_count;     /**< Number of change subscriptions. */
-    } change_sub[SR_DS_COUNT];  /**< Change subscriptions for each datastore. */
-
-    sr_rwlock_t oper_lock;      /**< Lock for accessing operational subscriptions. */
-    off_t oper_subs;            /**< Array of operational subscriptions (offset in ext SHM). */
-    uint32_t oper_sub_count;    /**< Number of operational subscriptions. */
-
-    sr_rwlock_t notif_lock;     /** Lock for accessing notification subscriptions. */
-    off_t notif_subs;           /**< Array of notification subscriptions (offset in ext SHM). */
-    uint32_t notif_sub_count;   /**< Number of notification subscriptions. */
-};
-
-/**
- * @brief Ext SHM RPC/action specific subscription.
+ * @brief Ext SHM RPC/action subscription.
  */
 typedef struct sr_rpc_sub_s {
     off_t xpath;                /**< Full XPath of the RPC/action subscription (offset in ext SHM). */
@@ -178,36 +211,6 @@ typedef struct sr_rpc_sub_s {
     uint32_t evpipe_num;        /**< Event pipe number. */
     sr_cid_t cid;               /**< Connection ID. */
 } sr_rpc_sub_t;
-
-/**
- * @brief Ext SHM RPC/action subscriptions for a single operation.
- */
-typedef struct sr_rpc_s {
-    off_t op_path;              /**< Simple path of the RPC/action subscribed to (offset in ext SHM). */
-
-    sr_rwlock_t lock;           /**< Lock for accessing RPC/action subscriptions. */
-    off_t subs;                 /**< Array of RPC/action subscriptions (offset in ext SHM). */
-    uint32_t sub_count;         /**< Number of RPC/action subscriptions. */
-} sr_rpc_t;
-
-/**
- * @brief Main SHM.
- */
-typedef struct sr_main_shm_s {
-    uint32_t shm_ver;           /**< Main and ext SHM version of all expected data stored in them. Is increased with
-                                     every change of their structure content (ABI change). */
-    pthread_mutex_t lydmods_lock; /**< Process-shared lock for accessing sysrepo module data. */
-    uint32_t mod_count;         /**< Number of installed modules stored after this structure. */
-
-    sr_rwlock_t rpc_lock;       /**< Lock for accessing RPC/actions with subscriptions. */
-    off_t rpcs;                 /**< Array of RPC/actions with subscriptions (offset in ext SHM). */
-    uint32_t rpc_count;         /**< Number of RPC/actions aith subscriptions. */
-
-    ATOMIC_T new_sr_cid;        /**< Connection ID for a new connection. */
-    ATOMIC_T new_sr_sid;        /**< SID for a new session. */
-    ATOMIC_T new_sub_id;        /**< Subscription ID of a new notification subscription. */
-    ATOMIC_T new_evpipe_num;    /**< Event pipe number for a new subscription. */
-} sr_main_shm_t;
 
 /**
  * @brief External (ext) SHM.
@@ -430,8 +433,8 @@ sr_error_info_t *sr_shmmain_ext_open(sr_shm_t *shm, int zero);
  * Either name or name_off must be set.
  *
  * @param[in] main_shm Main SHM.
- * @param[in] name String name of the module.
- * @param[in] name_off Ext SHM offset of the name (faster lookup).
+ * @param[in] name Name of the module.
+ * @param[in] name_off Main SHM offset of the name (faster lookup).
  * @return Found SHM module, NULL if not found.
  */
 sr_mod_t *sr_shmmain_find_module(sr_main_shm_t *main_shm, const char *name, off_t name_off);
@@ -440,97 +443,11 @@ sr_mod_t *sr_shmmain_find_module(sr_main_shm_t *main_shm, const char *name, off_
  * @brief Find a specific main SHM RPC.
  * Remap READ lock must be held, the return value also depends on it to stay valid!
  *
- * Either op_path or op_path_off must be set.
- *
  * @param[in] main_shm Main SHM.
- * @param[in] ext_shm_addr Ext SHM address.
- * @param[in] op_path String name of the RPCmodule.
- * @param[in] op_path_off Ext SHM offset of the op_path (faster lookup).
+ * @param[in] path Path of the RPC/ation.
  * @return Found SHM RPC, NULL if not found.
  */
-sr_rpc_t *sr_shmmain_find_rpc(sr_main_shm_t *main_shm, char *ext_shm_addr, const char *op_path, off_t op_path_off);
-
-/**
- * @brief Add main SHM RPC/action subscription.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- * May remap ext SHM!
- *
- * @param[in] conn Connection to use.
- * @param[in] shm_rpc SHM RPC.
- * @param[in] xpath Subscription XPath.
- * @param[in] priority Subscription priority.
- * @param[in] sub_opts Subscriptions options.
- * @param[in] evpipe_num Subscription event pipe number.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_rpc_subscription_add(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath,
-        uint32_t priority, int sub_opts, uint32_t evpipe_num);
-
-/**
- * @brief Remove main SHM RPC/action subscription.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- *
- * Either all params (1) or (2) must be set.
- *
- * @param[in] conn Connection to use.
- * @param[in] shm_rpc SHM RPC.
- * @param[in] xpath Subscription XPath. (1)
- * @param[in] priority Subscription priority. (1)
- * @param[in] evpipe_num Subscription event pipe number. (1)
- * @param[in] cid Connection ID of all the subscriptions to remove. (2)
- * @param[out] last_removed Whether this is the last RPC subscription that was removed.
- * @param[out] evpipe_num_p Optional evpipe number of the removed subscription.
- * @param[out] found Optional flag whether the sunscription was found.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_rpc_subscription_del(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath,
-        uint32_t priority, uint32_t evpipe_num, sr_cid_t cid, int *last_removed, uint32_t *evpipe_num_p, int *found);
-
-/**
- * @brief Remove main SHM module RPC/action subscription and do a proper cleanup.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- *
- * Calls ::sr_shmmain_rpc_subscription_del(), is a higher level wrapper.
- *
- * Either all params (1) or (2) must be set.
- *
- * @param[in] conn Connection to use.
- * @param[in] shm_rpc SHM RPC.
- * @param[in] xpath Subscription XPath. (1)
- * @param[in] priority Subscription priority. (1)
- * @param[in] evpipe_num Subscription event pipe number. (1)
- * @param[in] cid Connection ID of all the subscription to remove. (2)
- * @param[in] del_evpipe Whether to remove all evpipe files of the subscriptions as well. (2)
- * @param[out] last_removed Optional, set if the last subscription of the RPC was removed and hence also the RPC.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_rpc_subscription_stop(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath,
-        uint32_t priority, uint32_t evpipe_num, sr_cid_t cid, int del_evpipe, int *last_removed);
-
-/**
- * @brief Add an RPC/action into ext SHM.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- * May remap ext SHM!
- *
- * @param[in] conn Connection to use.
- * @param[in] op_path Simple RPC/action path.
- * @param[out] shm_rpc_p If set, return the newly added RPC/action on success.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_add_rpc(sr_conn_ctx_t *conn, const char *op_path, sr_rpc_t **shm_rpc_p);
-
-/**
- * @brief Remove an RPC/action from ext SHM.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- *
- * Either op_path or op_path_off must be set.
- *
- * @param[in] conn Connection to use.
- * @param[in] op_path RPC/action path.
- * @param[in] op_path_off RPC/action path offset.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_del_rpc(sr_conn_ctx_t *conn, const char *op_path, off_t op_path_off);
+sr_rpc_t *sr_shmmain_find_rpc(sr_main_shm_t *main_shm, const char *path);
 
 /**
  * @brief Change replay support of a module in main SHM.
@@ -566,6 +483,233 @@ sr_error_info_t *sr_shmmain_update_notif_suspend(sr_conn_ctx_t *conn, const char
 sr_error_info_t *sr_shmmain_check_data_files(sr_main_shm_t *main_shm);
 
 /*
+ * Ext SHM functions
+ */
+
+/**
+ * @brief Add main SHM module change subscription.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ * May remap ext SHM!
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] xpath Subscription XPath.
+ * @param[in] ds Datastore.
+ * @param[in] priority Subscription priority.
+ * @param[in] sub_opts Subscription options.
+ * @param[in] evpipe_num Subscription event pipe number.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath,
+        sr_datastore_t ds, uint32_t priority, int sub_opts, uint32_t evpipe_num);
+
+/**
+ * @brief Remove main SHM module change subscription.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ *
+ * Either all params (1) or (2) must be set.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] ds Datastore.
+ * @param[in] xpath Subscription XPath. (1)
+ * @param[in] priority Subscription priority. (1)
+ * @param[in] sub_opts Subscription options. (1)
+ * @param[in] evpipe_num Subscription event pipe number. (1)
+ * @param[in] cid Connection ID of all the subscriptions to remove. (2)
+ * @param[out] last_removed Optinal flag, whether this is the last module change subscription that was removed.
+ * @param[out] evpipe_num_p Optional evpipe number of the removed subscription.
+ * @param[out] found Optional flag whether the sunscription was found.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_change_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds,
+        const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num, sr_cid_t cid, int *last_removed,
+        uint32_t *evpipe_num_p, int *found);
+
+/**
+ * @brief Remove main SHM module change subscription and do a proper cleanup.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ *
+ * Calls ::sr_shmmod_change_subscription_del(), is a higher level wrapper.
+ *
+ * Either all params (1) or (2) must be set.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] ds Datastore.
+ * @param[in] xpath Subscription XPath. (1)
+ * @param[in] priority Subscription priority. (1)
+ * @param[in] sub_opts Subscription options. (1)
+ * @param[in] evpipe_num Subscription event pipe number. (1)
+ * @param[in] cid Connection ID of all the subscription to remove. (2)
+ * @param[in] del_evpipe Whether to remove all evpipe files of the subscriptions as well. (2)
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_change_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds,
+        const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num, sr_cid_t cid, int del_evpipe);
+
+/**
+ * @brief Add main SHM module operational subscription.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ * May remap ext SHM!
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] xpath Subscription XPath.
+ * @param[in] sub_type Data-provide subscription type.
+ * @param[in] sub_opts Subscription options.
+ * @param[in] evpipe_num Subscription event pipe number.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_oper_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath,
+        sr_mod_oper_sub_type_t sub_type, int sub_opts, uint32_t evpipe_num);
+
+/**
+ * @brief Remove main SHM module operational subscription.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ *
+ * Either all params (1) or (2) must be set.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] xpath Subscription XPath. (1)
+ * @param[in] evpipe_num Subscription event pipe number. (1)
+ * @param[in] cid Connection ID of all the subscriptions to remove. (2)
+ * @param[out] evpipe_num_p Optional evpipe number of the removed subscription.
+ * @param[out] found Optional flag whether the sunscription was found.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_oper_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath,
+        uint32_t evpipe_num, sr_cid_t cid, uint32_t *evpipe_num_p, int *found);
+
+/**
+ * @brief Remove main SHM module operational subscription and do a proper cleanup.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ *
+ * Calls ::sr_shmmod_oper_subscription_del(), is a higher level wrapper.
+ *
+ * Either all params (1) or (2) must be set.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] xpath Subscription XPath. (1)
+ * @param[in] evpipe_num Subscription event pipe number. (1)
+ * @param[in] cid Connection ID of all the subscription to remove. (2)
+ * @param[in] del_evpipe Whether to remove all evpipe files of the subscriptions as well. (2)
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_oper_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath,
+        uint32_t evpipe_num, sr_cid_t cid, int del_evpipe);
+
+/**
+ * @brief Add main SHM RPC/action subscription.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ * May remap ext SHM!
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_rpc SHM RPC.
+ * @param[in] xpath Subscription XPath.
+ * @param[in] priority Subscription priority.
+ * @param[in] sub_opts Subscriptions options.
+ * @param[in] evpipe_num Subscription event pipe number.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_rpc_subscription_add(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath,
+        uint32_t priority, int sub_opts, uint32_t evpipe_num);
+
+/**
+ * @brief Remove main SHM RPC/action subscription.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ *
+ * Either all params (1) or (2) must be set.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_rpc SHM RPC.
+ * @param[in] xpath Subscription XPath. (1)
+ * @param[in] priority Subscription priority. (1)
+ * @param[in] evpipe_num Subscription event pipe number. (1)
+ * @param[in] cid Connection ID of all the subscriptions to remove. (2)
+ * @param[out] last_removed Whether this is the last RPC subscription that was removed.
+ * @param[out] evpipe_num_p Optional evpipe number of the removed subscription.
+ * @param[out] found Optional flag whether the sunscription was found.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_rpc_subscription_del(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath,
+        uint32_t priority, uint32_t evpipe_num, sr_cid_t cid, int *last_removed, uint32_t *evpipe_num_p, int *found);
+
+/**
+ * @brief Remove main SHM module RPC/action subscription and do a proper cleanup.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ *
+ * Calls ::sr_shmmain_rpc_subscription_del(), is a higher level wrapper.
+ *
+ * Either all params (1) or (2) must be set.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_rpc SHM RPC.
+ * @param[in] xpath Subscription XPath. (1)
+ * @param[in] priority Subscription priority. (1)
+ * @param[in] evpipe_num Subscription event pipe number. (1)
+ * @param[in] cid Connection ID of all the subscription to remove. (2)
+ * @param[in] del_evpipe Whether to remove all evpipe files of the subscriptions as well. (2)
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_rpc_subscription_stop(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath,
+        uint32_t priority, uint32_t evpipe_num, sr_cid_t cid, int del_evpipe);
+
+/**
+ * @brief Add main SHM module notification subscription.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ * May remap ext SHM!
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] sub_id Unique notif sub ID.
+ * @param[in] evpipe_num Subscription event pipe number.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_notif_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
+        uint32_t evpipe_num);
+
+/**
+ * @brief Remove main SHM module notification subscription.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ *
+ * Either all params (1) or (2) must be set.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] sub_id Unique notif sub ID. (1)
+ * @param[in] evpipe_num Subscription event pipe number. (1)
+ * @param[in] cid Connection ID of all the subscription to remove. (2)
+ * @param[out] last_removed Whether this is the last module notification subscription that was removed.
+ * @param[out] evpipe_num_p Optional evpipe number of the removed subscription.
+ * @param[out] found Optional flag whether the sunscription was found.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_notif_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
+        uint32_t evpipe_num, sr_cid_t cid, int *last_removed, uint32_t *evpipe_num_p, int *found);
+
+/**
+ * @brief Remove main SHM module notification subscription and do a proper cleanup.
+ * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ *
+ * Calls ::sr_shmmod_notif_subscription_del(), is a higher level wrapper.
+ *
+ * Either all params (1) or (2) must be set.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] sub_id Unique notif sub ID in case a specific subscription should be removed. (1)
+ * @param[in] evpipe_num Subscription event pipe number in case all matching subscriptions should be removed. (1)
+ * @param[in] cid Connection ID of all the subscription to remove. (2)
+ * @param[in] del_evpipe Whether to remove all evpipe files of the subscriptions as well. (2)
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_notif_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
+        uint32_t evpipe_num, sr_cid_t cid, int del_evpipe);
+
+/*
  * Main SHM module functions
  */
 
@@ -591,19 +735,33 @@ sr_error_info_t *sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char
         struct ly_set *mod_set);
 
 /**
- * @brief Collect required modules found in an operation.
+ * @brief Collect required modules for an RPC/action validation.
  *
  * @param[in] main_shm Main SHM.
- * @param[in] op_mod Module of the operation.
- * @param[in] op_path Path identifying the operation.
- * @param[in] output Whether this is the operation output or input.
+ * @param[in] ly_ctx libyang context.
+ * @param[in] path Path identifying the RPC/action.
+ * @param[in] output Whether this is the RPC/action output or input.
  * @param[in,out] mod_set Set of modules to add to.
- * @param[out] shm_deps Main SHM operation dependencies.
- * @param[out] shm_dep_count Operation dependency count.
+ * @param[out] shm_deps Main SHM dependencies.
+ * @param[out] shm_dep_count Dependency count.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_op_deps(sr_main_shm_t *main_shm, const struct lys_module *op_mod, const char *op_path,
-        int output, struct ly_set *mod_set, sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count);
+sr_error_info_t *sr_shmmod_collect_rpc_deps(sr_main_shm_t *main_shm, const struct ly_ctx *ly_ctx, const char *path,
+        int output, struct ly_set *mod_set, sr_dep_t **shm_deps, uint16_t *shm_dep_count);
+
+/**
+ * @brief Collect required modules for a notification validation.
+ *
+ * @param[in] main_shm Main SHM.
+ * @param[in] notif_mod Module of the notification.
+ * @param[in] path Path identifying the notification.
+ * @param[in,out] mod_set Set of modules to add to.
+ * @param[out] shm_deps Main SHM dependencies.
+ * @param[out] shm_dep_count Dependency count.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_collect_notif_deps(sr_main_shm_t *main_shm, const struct lys_module *notif_mod, const char *path,
+        struct ly_set *mod_set, sr_dep_t **shm_deps, uint16_t *shm_dep_count);
 
 /**
  * @brief Collect required modules of instance-identifiers found in data.
@@ -616,8 +774,8 @@ sr_error_info_t *sr_shmmod_collect_op_deps(sr_main_shm_t *main_shm, const struct
  * @param[in,out] mod_set Set of modules to add to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_instid_deps_data(sr_main_shm_t *main_shm, sr_mod_data_dep_t *shm_deps,
-        uint16_t shm_dep_count, struct ly_ctx *ly_ctx, const struct lyd_node *data, struct ly_set *mod_set);
+sr_error_info_t *sr_shmmod_collect_instid_deps_data(sr_main_shm_t *main_shm, sr_dep_t *shm_deps, uint16_t shm_dep_count,
+        struct ly_ctx *ly_ctx, const struct lyd_node *data, struct ly_set *mod_set);
 
 /**
  * @brief Collect required modules of instance-identifiers found in
@@ -709,174 +867,6 @@ void sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, sr_sid_t sid);
  * @param[in] sid Sysrepo session ID.
  */
 void sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid);
-
-/**
- * @brief Add main SHM module change subscription.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- * May remap ext SHM!
- *
- * @param[in] conn Connection to use.
- * @param[in] shm_mod SHM module.
- * @param[in] xpath Subscription XPath.
- * @param[in] ds Datastore.
- * @param[in] priority Subscription priority.
- * @param[in] sub_opts Subscription options.
- * @param[in] evpipe_num Subscription event pipe number.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmod_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath,
-        sr_datastore_t ds, uint32_t priority, int sub_opts, uint32_t evpipe_num);
-
-/**
- * @brief Remove main SHM module change subscription.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- *
- * Either all params (1) or (2) must be set.
- *
- * @param[in] conn Connection to use.
- * @param[in] shm_mod SHM module.
- * @param[in] ds Datastore.
- * @param[in] xpath Subscription XPath. (1)
- * @param[in] priority Subscription priority. (1)
- * @param[in] sub_opts Subscription options. (1)
- * @param[in] evpipe_num Subscription event pipe number. (1)
- * @param[in] cid Connection ID of all the subscriptions to remove. (2)
- * @param[out] last_removed Optinal flag, whether this is the last module change subscription that was removed.
- * @param[out] evpipe_num_p Optional evpipe number of the removed subscription.
- * @param[out] found Optional flag whether the sunscription was found.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmod_change_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds,
-        const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num, sr_cid_t cid, int *last_removed,
-        uint32_t *evpipe_num_p, int *found);
-
-/**
- * @brief Remove main SHM module change subscription and do a proper cleanup.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- *
- * Calls ::sr_shmmod_change_subscription_del(), is a higher level wrapper.
- *
- * Either all params (1) or (2) must be set.
- *
- * @param[in] conn Connection to use.
- * @param[in] shm_mod SHM module.
- * @param[in] ds Datastore.
- * @param[in] xpath Subscription XPath. (1)
- * @param[in] priority Subscription priority. (1)
- * @param[in] sub_opts Subscription options. (1)
- * @param[in] evpipe_num Subscription event pipe number. (1)
- * @param[in] cid Connection ID of all the subscription to remove. (2)
- * @param[in] del_evpipe Whether to remove all evpipe files of the subscriptions as well. (2)
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmod_change_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds,
-        const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num, sr_cid_t cid, int del_evpipe);
-
-/**
- * @brief Add main SHM module operational subscription.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- * May remap ext SHM!
- *
- * @param[in] conn Connection to use.
- * @param[in] shm_mod SHM module.
- * @param[in] xpath Subscription XPath.
- * @param[in] sub_type Data-provide subscription type.
- * @param[in] sub_opts Subscription options.
- * @param[in] evpipe_num Subscription event pipe number.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmod_oper_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath,
-        sr_mod_oper_sub_type_t sub_type, int sub_opts, uint32_t evpipe_num);
-
-/**
- * @brief Remove main SHM module operational subscription.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- *
- * Either all params (1) or (2) must be set.
- *
- * @param[in] conn Connection to use.
- * @param[in] shm_mod SHM module.
- * @param[in] xpath Subscription XPath. (1)
- * @param[in] evpipe_num Subscription event pipe number. (1)
- * @param[in] cid Connection ID of all the subscriptions to remove. (2)
- * @param[out] xpath_p Optionally return the xpath of the removed subscription.
- * @param[out] evpipe_num_p Optional evpipe number of the removed subscription.
- * @param[out] found Optional flag whether the sunscription was found.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmod_oper_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath,
-        uint32_t evpipe_num, sr_cid_t cid, const char **xpath_p, uint32_t *evpipe_num_p, int *found);
-
-/**
- * @brief Remove main SHM module operational subscription and do a proper cleanup.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- *
- * Calls ::sr_shmmod_oper_subscription_del(), is a higher level wrapper.
- *
- * Either all params (1) or (2) must be set.
- *
- * @param[in] conn Connection to use.
- * @param[in] shm_mod SHM module.
- * @param[in] xpath Subscription XPath. (1)
- * @param[in] evpipe_num Subscription event pipe number. (1)
- * @param[in] cid Connection ID of all the subscription to remove. (2)
- * @param[in] del_evpipe Whether to remove all evpipe files of the subscriptions as well. (2)
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmod_oper_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath,
-        uint32_t evpipe_num, sr_cid_t cid, int del_evpipe);
-
-/**
- * @brief Add main SHM module notification subscription.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- * May remap ext SHM!
- *
- * @param[in] conn Connection to use.
- * @param[in] shm_mod SHM module.
- * @param[in] sub_id Unique notif sub ID.
- * @param[in] evpipe_num Subscription event pipe number.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmod_notif_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
-        uint32_t evpipe_num);
-
-/**
- * @brief Remove main SHM module notification subscription.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- *
- * Either all params (1) or (2) must be set.
- *
- * @param[in] conn Connection to use.
- * @param[in] shm_mod SHM module.
- * @param[in] sub_id Unique notif sub ID. (1)
- * @param[in] evpipe_num Subscription event pipe number. (1)
- * @param[in] cid Connection ID of all the subscription to remove. (2)
- * @param[out] last_removed Whether this is the last module notification subscription that was removed.
- * @param[out] evpipe_num_p Optional evpipe number of the removed subscription.
- * @param[out] found Optional flag whether the sunscription was found.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmod_notif_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
-        uint32_t evpipe_num, sr_cid_t cid, int *last_removed, uint32_t *evpipe_num_p, int *found);
-
-/**
- * @brief Remove main SHM module notification subscription and do a proper cleanup.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- *
- * Calls ::sr_shmmod_notif_subscription_del(), is a higher level wrapper.
- *
- * Either all params (1) or (2) must be set.
- *
- * @param[in] conn Connection to use.
- * @param[in] shm_mod SHM module.
- * @param[in] sub_id Unique notif sub ID in case a specific subscription should be removed. (1)
- * @param[in] evpipe_num Subscription event pipe number in case all matching subscriptions should be removed. (1)
- * @param[in] cid Connection ID of all the subscription to remove. (2)
- * @param[in] del_evpipe Whether to remove all evpipe files of the subscriptions as well. (2)
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmod_notif_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
-        uint32_t evpipe_num, sr_cid_t cid, int del_evpipe);
 
 /**
  * @brief Remove all stored operational data of a connection.

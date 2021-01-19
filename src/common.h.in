@@ -237,7 +237,7 @@ extern char sysrepo_yang[];
 
 typedef struct sr_mod_s sr_mod_t;
 
-typedef struct sr_mod_data_dep_s sr_mod_data_dep_t;
+typedef struct sr_dep_s sr_dep_t;
 
 /** static initializer of the shared memory structure */
 #define SR_SHM_INITIALIZER {.fd = -1, .size = 0, .addr = NULL}
@@ -442,7 +442,7 @@ struct sr_subscription_ctx_s {
     uint32_t notif_sub_count;       /**< Notification module subscription count. */
 
     struct opsub_rpc_s {
-        char *op_path;              /**< Subscription RPC/action path. */
+        char *path;                 /**< Subscription RPC/action path. */
         struct opsub_rpcsub_s {
             char *xpath;            /**< Subscription XPath. */
             uint32_t priority;      /**< Subscription priority. */
@@ -566,7 +566,7 @@ void sr_sub_notif_del(const char *mod_name, uint32_t sub_id, int has_subs_lock, 
  * @brief Add an RPC subscription into a subscription structure.
  *
  * @param[in] sess Subscription session.
- * @param[in] op_path Subscription operation path.
+ * @param[in] path Subscription RPC path.
  * @param[in] xpath Subscription XPath.
  * @param[in] rpc_cb Subscription value callback.
  * @param[in] rpc_tree_cb Subscription tree callback.
@@ -576,13 +576,13 @@ void sr_sub_notif_del(const char *mod_name, uint32_t sub_id, int has_subs_lock, 
  * @param[in,out] subs Subscription structure.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_sub_rpc_add(sr_session_ctx_t *sess, const char *op_path, const char *xpath, sr_rpc_cb rpc_cb,
+sr_error_info_t *sr_sub_rpc_add(sr_session_ctx_t *sess, const char *path, const char *xpath, sr_rpc_cb rpc_cb,
         sr_rpc_tree_cb rpc_tree_cb, void *private_data, uint32_t priority, int has_subs_lock, sr_subscription_ctx_t *subs);
 
 /**
  * @brief Delete an RPC subscription from a subscription structure.
  *
- * @param[in] op_path Subscription operation path.
+ * @param[in] path Subscription RPC path.
  * @param[in] xpath Subscription XPath.
  * @param[in] rpc_cb Subscription value callback.
  * @param[in] rpc_tree_cb Subscription tree callback.
@@ -591,7 +591,7 @@ sr_error_info_t *sr_sub_rpc_add(sr_session_ctx_t *sess, const char *op_path, con
  * @param[in] has_subs_lock Whether SUBS lock was already locked or not.
  * @param[in,out] subs Subscription structure.
  */
-void sr_sub_rpc_del(const char *op_path, const char *xpath, sr_rpc_cb rpc_cb, sr_rpc_tree_cb rpc_tree_cb,
+void sr_sub_rpc_del(const char *path, const char *xpath, sr_rpc_cb rpc_cb, sr_rpc_tree_cb rpc_tree_cb,
         void *private_data, uint32_t priority, int has_subs_lock, sr_subscription_ctx_t *subs);
 
 /**

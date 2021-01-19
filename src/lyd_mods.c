@@ -52,7 +52,7 @@
 #include "../modules/sysrepo_monitoring_yang.h"
 #include "../modules/sysrepo_plugind_yang.h"
 
-static sr_error_info_t *sr_lydmods_add_data_deps_r(struct lyd_node *sr_mod, struct lys_node *data_root, struct lyd_node *sr_deps);
+static sr_error_info_t *sr_lydmods_add_deps_r(struct lyd_node *sr_mod, struct lys_node *data_root, struct lyd_node *sr_deps);
 
 sr_error_info_t *
 sr_lydmods_parse(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
@@ -164,27 +164,27 @@ sr_lydmods_print(struct lyd_node **sr_mods)
 }
 
 /**
- * @brief Add (collect) operation data dependencies into internal sysrepo data.
+ * @brief Add (collect) RPC/action data dependencies into internal sysrepo data.
  *
  * @param[in] sr_mod Module of the data.
- * @param[in] op_root Root node of the operation data to inspect.
+ * @param[in] op_root Root node of the RPC/action data to inspect.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_add_op_deps(struct lyd_node *sr_mod, struct lys_node *op_root)
+sr_lydmods_add_rpc_deps(struct lyd_node *sr_mod, struct lys_node *op_root)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *sr_op_deps, *ly_cur_deps;
+    struct lyd_node *sr_rpc, *ly_cur_deps;
     struct lys_node *op_child;
     struct ly_set *set = NULL;
     char *data_path = NULL, *xpath = NULL;
     struct ly_ctx *ly_ctx = lys_node_module(op_root)->ctx;
 
-    assert(op_root->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF));
+    assert(op_root->nodetype & (LYS_RPC | LYS_ACTION));
 
     data_path = lys_data_path(op_root);
     SR_CHECK_MEM_GOTO(!data_path, err_info, cleanup);
-    if (asprintf(&xpath, "op-deps[xpath='%s']", data_path) == -1) {
+    if (asprintf(&xpath, "rpc[path='%s']", data_path) == -1) {
         SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }
@@ -197,53 +197,98 @@ sr_lydmods_add_op_deps(struct lyd_node *sr_mod, struct lys_node *op_root)
     }
     assert(!set->number);
 
-    sr_op_deps = lyd_new(sr_mod, NULL, "op-deps");
-    if (!sr_op_deps) {
+    sr_rpc = lyd_new(sr_mod, NULL, "rpc");
+    if (!sr_rpc) {
         sr_errinfo_new_ly(&err_info, ly_ctx);
         goto cleanup;
     }
 
-    /* operation dep xpath */
-    if (!lyd_new_leaf(sr_op_deps, NULL, "xpath", data_path)) {
+    /* RPC path */
+    if (!lyd_new_leaf(sr_rpc, NULL, "path", data_path)) {
         sr_errinfo_new_ly(&err_info, ly_ctx);
         goto cleanup;
     }
 
-    /* collect dependencies of nested data and put them into correct containers */
-    switch (op_root->nodetype) {
-    case LYS_NOTIF:
-        ly_cur_deps = lyd_new(sr_op_deps, NULL, "in");
+    /* collect RPC/action dependencies of nested data and put them into correct containers */
+    LY_TREE_FOR(op_root->child, op_child) {
+        SR_CHECK_INT_GOTO(!(op_child->nodetype & (LYS_INPUT | LYS_OUTPUT)), err_info, cleanup);
+
+        if (op_child->nodetype == LYS_INPUT) {
+            ly_cur_deps = lyd_new(sr_rpc, NULL, "in");
+        } else {
+            ly_cur_deps = lyd_new(sr_rpc, NULL, "out");
+        }
         if (!ly_cur_deps) {
             sr_errinfo_new_ly(&err_info, ly_ctx);
             goto cleanup;
         }
 
-        if ((err_info = sr_lydmods_add_data_deps_r(sr_mod, op_root, ly_cur_deps))) {
+        if ((err_info = sr_lydmods_add_deps_r(sr_mod, op_child, ly_cur_deps))) {
             goto cleanup;
         }
-        break;
-    case LYS_RPC:
-    case LYS_ACTION:
-        LY_TREE_FOR(op_root->child, op_child) {
-            SR_CHECK_INT_GOTO(!(op_child->nodetype & (LYS_INPUT | LYS_OUTPUT)), err_info, cleanup);
+    }
 
-            if (op_child->nodetype == LYS_INPUT) {
-                ly_cur_deps = lyd_new(sr_op_deps, NULL, "in");
-            } else {
-                ly_cur_deps = lyd_new(sr_op_deps, NULL, "out");
-            }
-            if (!ly_cur_deps) {
-                sr_errinfo_new_ly(&err_info, ly_ctx);
-                goto cleanup;
-            }
 
-            if ((err_info = sr_lydmods_add_data_deps_r(sr_mod, op_child, ly_cur_deps))) {
-                goto cleanup;
-            }
-        }
-        break;
-    default:
-        SR_ERRINFO_INT(&err_info);
+cleanup:
+    ly_set_free(set);
+    free(data_path);
+    free(xpath);
+    return err_info;
+}
+
+/**
+ * @brief Add (collect) notification data dependencies into internal sysrepo data.
+ *
+ * @param[in] sr_mod Module of the data.
+ * @param[in] op_root Root node of the notification data to inspect.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_lydmods_add_notif_deps(struct lyd_node *sr_mod, struct lys_node *op_root)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *sr_notif, *ly_cur_deps;
+    struct ly_set *set = NULL;
+    char *data_path = NULL, *xpath = NULL;
+    struct ly_ctx *ly_ctx = lys_node_module(op_root)->ctx;
+
+    assert(op_root->nodetype == LYS_NOTIF);
+
+    data_path = lys_data_path(op_root);
+    SR_CHECK_MEM_GOTO(!data_path, err_info, cleanup);
+    if (asprintf(&xpath, "notification[path='%s']", data_path) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        goto cleanup;
+    }
+
+    set = lyd_find_path(sr_mod, xpath);
+    SR_CHECK_INT_GOTO(!set, err_info, cleanup);
+    if (set->number == 1) {
+        /* already exists */
+        goto cleanup;
+    }
+    assert(!set->number);
+
+    sr_notif = lyd_new(sr_mod, NULL, "notification");
+    if (!sr_notif) {
+        sr_errinfo_new_ly(&err_info, ly_ctx);
+        goto cleanup;
+    }
+
+    /* operation dep xpath */
+    if (!lyd_new_leaf(sr_notif, NULL, "path", data_path)) {
+        sr_errinfo_new_ly(&err_info, ly_ctx);
+        goto cleanup;
+    }
+
+    /* collect dependencies of nested data and put them into correct containers */
+    ly_cur_deps = lyd_new(sr_notif, NULL, "deps");
+    if (!ly_cur_deps) {
+        sr_errinfo_new_ly(&err_info, ly_ctx);
+        goto cleanup;
+    }
+
+    if ((err_info = sr_lydmods_add_deps_r(sr_mod, op_root, ly_cur_deps))) {
         goto cleanup;
     }
 
@@ -264,7 +309,7 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_moddep_add(struct lyd_node *sr_deps, sr_mod_dep_type_t dep_type, const char *mod_name, const struct lys_node *node)
+sr_lydmods_moddep_add(struct lyd_node *sr_deps, sr_dep_type_t dep_type, const char *mod_name, const struct lys_node *node)
 {
     const struct lys_node *data_child;
     char *data_path = NULL, *expr = NULL;
@@ -313,7 +358,7 @@ sr_lydmods_moddep_add(struct lyd_node *sr_deps, sr_mod_dep_type_t dep_type, cons
 
         /* create xpath of the node */
         data_path = lys_data_path(node);
-        if (!data_path || (asprintf(&expr, "inst-id[xpath='%s']", data_path) == -1)) {
+        if (!data_path || (asprintf(&expr, "inst-id[path='%s']", data_path) == -1)) {
             SR_ERRINFO_MEM(&err_info);
             goto cleanup;
         }
@@ -346,7 +391,7 @@ sr_lydmods_moddep_add(struct lyd_node *sr_deps, sr_mod_dep_type_t dep_type, cons
             sr_errinfo_new_ly(&err_info, lyd_node_module(sr_deps)->ctx);
             goto cleanup;
         }
-        if (!lyd_new_leaf(sr_instid, NULL, "xpath", data_path)) {
+        if (!lyd_new_leaf(sr_instid, NULL, "path", data_path)) {
             sr_errinfo_new_ly(&err_info, lyd_node_module(sr_deps)->ctx);
             goto cleanup;
         }
@@ -528,16 +573,15 @@ sr_lydmods_moddep_type(const struct lys_type *type, struct lys_node *node, struc
 }
 
 /**
- * @brief Add (collect) (operation) data dependencies into internal sysrepo data tree
- * starting with a subtree, recursively.
+ * @brief Add (collect) dependencies into internal sysrepo data tree starting with a subtree, recursively.
  *
  * @param[in] sr_mod Module of the data from sysrepo data tree.
  * @param[in] data_root Root node of the data to inspect.
- * @param[in] sr_deps Internal sysrepo data dependencies to add to.
+ * @param[in] sr_deps Internal sysrepo dependencies to add to.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_add_data_deps_r(struct lyd_node *sr_mod, struct lys_node *data_root, struct lyd_node *sr_deps)
+sr_lydmods_add_deps_r(struct lyd_node *sr_mod, struct lys_node *data_root, struct lyd_node *sr_deps)
 {
     sr_error_info_t *err_info = NULL;
     struct lys_module **dep_mods;
@@ -598,8 +642,8 @@ sr_lydmods_add_data_deps_r(struct lyd_node *sr_mod, struct lys_node *data_root, 
             break;
         case LYS_RPC:
         case LYS_ACTION:
-            /* operation, put the dependencies separately */
-            if ((err_info = sr_lydmods_add_op_deps(sr_mod, elem))) {
+            /* RPC/action, put the dependencies separately */
+            if ((err_info = sr_lydmods_add_rpc_deps(sr_mod, elem))) {
                 return err_info;
             }
             goto next_sibling;
@@ -610,13 +654,13 @@ sr_lydmods_add_data_deps_r(struct lyd_node *sr_mod, struct lys_node *data_root, 
             musts = ((struct lys_node_inout *)elem)->must;
             break;
         case LYS_NOTIF:
-            if (!strcmp(sr_deps->schema->name, "in")) {
+            if (!strcmp(sr_deps->parent->schema->name, "notification")) {
                 /* recursive call in this case */
                 must_size = ((struct lys_node_notif *)elem)->must_size;
                 musts = ((struct lys_node_notif *)elem)->must;
             } else {
                 /* operation, put the dependencies separately */
-                if ((err_info = sr_lydmods_add_op_deps(sr_mod, elem))) {
+                if ((err_info = sr_lydmods_add_notif_deps(sr_mod, elem))) {
                     return err_info;
                 }
                 goto next_sibling;
@@ -1408,7 +1452,7 @@ sr_lydmods_add_inv_data_dep(struct lyd_node *sr_mod, const char *inv_dep_mod)
 
     /* does it exist already? */
     LY_TREE_FOR(sr_mod->child, node) {
-        if (strcmp(node->schema->name, "inverse-data-deps")) {
+        if (strcmp(node->schema->name, "inverse-deps")) {
             continue;
         }
 
@@ -1418,7 +1462,7 @@ sr_lydmods_add_inv_data_dep(struct lyd_node *sr_mod, const char *inv_dep_mod)
         }
     }
 
-    node = lyd_new_leaf(sr_mod, NULL, "inverse-data-deps", inv_dep_mod);
+    node = lyd_new_leaf(sr_mod, NULL, "inverse-deps", inv_dep_mod);
     if (!node) {
         sr_errinfo_new_ly(&err_info, lyd_node_module(sr_mod)->ctx);
     }
@@ -1427,46 +1471,47 @@ sr_lydmods_add_inv_data_dep(struct lyd_node *sr_mod, const char *inv_dep_mod)
 }
 
 /**
- * @brief Add all data, operational, and inverse dependencies into internal sysrepo data tree.
+ * @brief Add all dependencies (with inverse) and RPCs/notifications with dependencies into internal sysrepo data tree.
  *
  * @param[in] sr_mod Module data node from sysrepo data tree.
  * @param[in] ly_mod Parsed libyang module.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_add_all_deps(struct lyd_node *sr_mod, const struct lys_module *ly_mod)
+sr_lydmods_add_all(struct lyd_node *sr_mod, const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
     struct lys_node *root;
     struct ly_set *set = NULL, *set2;
-    struct lyd_node *ly_data_deps;
+    struct lyd_node *ly_deps;
     uint16_t i;
     char *xpath;
 
 #ifndef NDEBUG
-    /* there can be no dependencies yet */
-    set = lyd_find_path(sr_mod, "data-deps | op-deps");
-    assert(set && !set->number);
+    /* there can be no dependencies yet (but inverse ones yes) */
+    set = lyd_find_path(sr_mod, "deps | rpcs | notifications");
+    assert(set);
+    assert(!set->number || ((set->number == 1) && set->set.d[0]->dflt));
     ly_set_free(set);
     set = NULL;
 #endif
 
-    /* create new data deps */
-    ly_data_deps = lyd_new(sr_mod, NULL, "data-deps");
-    if (!ly_data_deps) {
+    /* create new deps */
+    ly_deps = lyd_new(sr_mod, NULL, "deps");
+    if (!ly_deps) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         goto cleanup;
     }
 
-    /* add data deps */
+    /* add all the data */
     LY_TREE_FOR(ly_mod->data, root) {
-        if ((err_info = sr_lydmods_add_data_deps_r(sr_mod, root, ly_data_deps))) {
+        if ((err_info = sr_lydmods_add_deps_r(sr_mod, root, ly_deps))) {
             goto cleanup;
         }
     }
 
     /* add inverse data deps */
-    set = lyd_find_path(sr_mod, "data-deps/module");
+    set = lyd_find_path(sr_mod, "deps/module");
     if (!set) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         goto cleanup;
@@ -2145,10 +2190,11 @@ sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *ch
                         }
                         /* sr_mod children were freed, iteration cannot continue */
                         break;
-                    } else if (!strcmp(node->schema->name, "data-deps") ||
-                            !strcmp(node->schema->name, "op-deps") ||
-                            !strcmp(node->schema->name, "inverse-data-deps")) {
-                        /* remove all stored dependencies of all the modules */
+                    } else if (!strcmp(node->schema->name, "deps")
+                            || !strcmp(node->schema->name, "inverse-deps")
+                            || !strcmp(node->schema->name, "rpc")
+                            || !strcmp(node->schema->name, "notification")) {
+                        /* remove all stored dependencies, RPCs, and notifications of all the modules */
                         lyd_free(node);
                     }
                 }
@@ -2160,11 +2206,11 @@ sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *ch
             }
         }
 
-        /* now add (rebuild) all dependencies of all the modules */
+        /* now add (rebuild) dependencies and RPCs, notifications of all the modules */
         LY_TREE_FOR(sr_mods->child, sr_mod) {
             ly_mod = ly_ctx_get_module(new_ctx, sr_ly_leaf_value_str(sr_mod->child), NULL, 1);
             assert(ly_mod);
-            if ((err_info = sr_lydmods_add_all_deps(sr_mod, ly_mod))) {
+            if ((err_info = sr_lydmods_add_all(sr_mod, ly_mod))) {
                 goto cleanup;
             }
         }

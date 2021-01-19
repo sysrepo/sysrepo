@@ -23,6 +23,11 @@ module sysrepo {
     description
         "Sysrepo YANG datastore internal attributes and information.";
 
+    revision "2021-01-18" {
+        description
+            "Reorganized dependencies.";
+    }
+
     revision "2020-01-15" {
         description
             "Added a new purge operation.";
@@ -137,12 +142,12 @@ module sysrepo {
         }
 
         list inst-id {
-            key "xpath";
+            key "path";
 
-            leaf xpath {
+            leaf path {
                 type yang:xpath1.0;
                 description
-                    "XPath identifying the node with the dependency.";
+                    "Path identifying the node with the dependency.";
             }
 
             leaf default-module {
@@ -218,26 +223,32 @@ module sysrepo {
                 }
             }
 
-            container data-deps {
+            container deps {
                 description
                     "Module data dependencies on other modules.";
                 uses deps-grp;
             }
 
-            list op-deps {
-                key "xpath";
+            leaf-list inverse-deps {
+                type module-ref;
                 description
-                    "Module operation (RPCs, Actions, Notifications) dependencies on other modules.";
+                    "List of modules that depend on this module.";
+            }
 
-                leaf xpath {
+            list rpc {
+                key "path";
+                description
+                    "Module RPC/actions.";
+
+                leaf path {
                     type yang:xpath1.0;
                     description
-                        "XPath identifying the operation.";
+                        "Path identifying the operation.";
                 }
 
                 container in {
                     description
-                        "Operation input or notification dependencies.";
+                        "Operation input dependencies.";
                     uses deps-grp;
                 }
 
@@ -248,10 +259,22 @@ module sysrepo {
                 }
             }
 
-            leaf-list inverse-data-deps {
-                type module-ref;
+            list notification {
+                key "path";
                 description
-                    "List of modules that depend on this module.";
+                    "Module notifications.";
+
+                leaf path {
+                    type yang:xpath1.0;
+                    description
+                        "Path identifying the notification.";
+                }
+
+                container deps {
+                    description
+                        "Notification dependencies.";
+                    uses deps-grp;
+                }
             }
         }
 

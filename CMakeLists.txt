@@ -181,6 +181,7 @@ set(LIB_SRC
     src/edit_diff.c
     src/lyd_mods.c
     src/shm_main.c
+    src/shm_ext.c
     src/shm_mod.c
     src/shm_sub.c
     src/utils/values.c

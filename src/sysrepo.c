@@ -2990,7 +2990,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     SR_CHECK_INT_GOTO(!shm_mod, err_info, error1);
 
     /* add module subscription into ext SHM */
-    if ((err_info = sr_shmmod_change_subscription_add(conn, shm_mod, xpath, session->ds, priority, sub_opts,
+    if ((err_info = sr_shmext_change_subscription_add(conn, shm_mod, xpath, session->ds, priority, sub_opts,
             (*subscription)->evpipe_num))) {
         goto error1;
     }
@@ -3013,7 +3013,7 @@ error3:
     sr_sub_change_del(module_name, xpath, session->ds, callback, private_data, priority, sub_opts, 0, *subscription);
 
 error2:
-    if ((tmp_err = sr_shmmod_change_subscription_del(conn, shm_mod, session->ds, xpath, priority, sub_opts,
+    if ((tmp_err = sr_shmext_change_subscription_del(conn, shm_mod, session->ds, xpath, priority, sub_opts,
             (*subscription)->evpipe_num, 0, NULL, NULL, NULL))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
@@ -3552,12 +3552,11 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
         void *private_data, uint32_t priority, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
-    char *module_name = NULL, *op_path = NULL;
+    char *module_name = NULL, *path = NULL;
     const struct lys_node *op;
     const struct lys_module *ly_mod;
     sr_conn_ctx_t *conn;
     sr_rpc_t *shm_rpc;
-    off_t shm_rpc_off;
     int last_removed;
 
     SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !xpath || (!callback && !tree_callback) || !subscription,
@@ -3572,127 +3571,85 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     module_name = sr_get_first_ns(xpath);
     if (!module_name) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Invalid xpath \"%s\".", xpath);
-        goto cleanup1;
+        goto error1;
     }
 
     /* is the module name valid? */
     ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" was not found in sysrepo.", module_name);
-        goto cleanup1;
+        goto error1;
     }
 
     /* check write perm */
     if ((err_info = sr_perm_check(module_name, 1, NULL))) {
-        goto cleanup1;
+        goto error1;
     }
 
     /* is the xpath valid? */
-    if ((err_info = sr_get_trim_predicates(xpath, &op_path))) {
-        goto cleanup1;
+    if ((err_info = sr_get_trim_predicates(xpath, &path))) {
+        goto error1;
     }
 
-    if (!(op = ly_ctx_get_node(conn->ly_ctx, NULL, op_path, 0))) {
+    if (!(op = ly_ctx_get_node(conn->ly_ctx, NULL, path, 0))) {
         sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-        goto cleanup1;
+        goto error1;
     }
     if (!(op->nodetype & (LYS_RPC | LYS_ACTION))) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Path \"%s\" does not identify an RPC nor an action.", op_path);
-        goto cleanup1;
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Path \"%s\" does not identify an RPC nor an action.", path);
+        goto error1;
     }
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* create a new subscription */
         if ((err_info = sr_subs_new(conn, opts, subscription))) {
-            goto cleanup1;
+            goto error1;
         }
     }
 
-    /* RPC WRITE LOCK */
-    if ((err_info = sr_rwlock(&SR_CONN_MAIN_SHM(conn)->rpc_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-            __func__, NULL, NULL))) {
-        goto cleanup2;
-    }
+    /* find the RPC */
+    shm_rpc = sr_shmmain_find_rpc(SR_CONN_MAIN_SHM(conn), path);
+    SR_CHECK_INT_GOTO(!shm_rpc, err_info, error2);
 
-    /* REMAP WRITE LOCK */
-    if ((err_info = sr_conn_remap_lock(conn, SR_LOCK_WRITE, __func__))) {
-        goto cleanup3;
+    /* add RPC/action subscription into ext SHM */
+    if ((err_info = sr_shmext_rpc_subscription_add(conn, shm_rpc, xpath, priority, 0, (*subscription)->evpipe_num))) {
+        goto error2;
     }
-
-    /* find RPC struct or add a new one */
-    shm_rpc = sr_shmmain_find_rpc(SR_CONN_MAIN_SHM(conn), conn->ext_shm.addr, op_path, 0);
-    if (!shm_rpc) {
-        if ((err_info = sr_shmmain_add_rpc(conn, op_path, &shm_rpc))) {
-            goto cleanup4;
-        }
-        /* needed for the cleanup */
-        last_removed = 1;
-    } else {
-        last_removed = 0;
-    }
-    shm_rpc_off = ((char *)shm_rpc) - conn->ext_shm.addr;
-
-    /* add RPC/action subscription into ext SHM (which may be remapped) */
-    if ((err_info = sr_shmmain_rpc_subscription_add(conn, shm_rpc, xpath, priority, 0, (*subscription)->evpipe_num))) {
-        goto cleanup5;
-    }
-    shm_rpc = (sr_rpc_t *)(conn->ext_shm.addr + shm_rpc_off);
 
     /* add subscription into structure and create separate specific SHM segment */
-    if ((err_info = sr_sub_rpc_add(session, op_path, xpath, callback, tree_callback, private_data, priority, 0,
+    if ((err_info = sr_sub_rpc_add(session, path, xpath, callback, tree_callback, private_data, priority, 0,
             *subscription))) {
-        goto cleanup6;
+        goto error3;
     }
 
     /* add the subscription into session */
     if ((err_info = sr_ptr_add(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
             *subscription))) {
-        goto cleanup7;
+        goto error4;
     }
 
-    /* REMAP WRITE UNLOCK */
-    sr_conn_remap_unlock(conn, SR_LOCK_WRITE, __func__);
+    free(module_name);
+    free(path);
+    return sr_api_ret(session, err_info);
 
-    /* RPC WRITE UNLOCK */
-    sr_rwunlock(&SR_CONN_MAIN_SHM(conn)->rpc_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+error4:
+    sr_sub_rpc_del(path, xpath, callback, tree_callback, private_data, priority, 0, *subscription);
 
-    /* ext SHM defrag */
-    sr_shmext_defrag_check(conn);
-
-    /* success */
-    goto cleanup1;
-
-cleanup7:
-    sr_sub_rpc_del(op_path, xpath, callback, tree_callback, private_data, priority, 0, *subscription);
-
-cleanup6:
-    if ((tmp_err = sr_shmmain_rpc_subscription_del(conn, shm_rpc, xpath, priority, (*subscription)->evpipe_num, 0,
+error3:
+    if ((tmp_err = sr_shmext_rpc_subscription_del(conn, shm_rpc, xpath, priority, (*subscription)->evpipe_num, 0,
             &last_removed, NULL, NULL))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
-cleanup5:
-    if (last_removed) {
-        sr_shmmain_del_rpc(conn, NULL, shm_rpc->op_path);
-    }
-
-cleanup4:
-    /* REMAP WRITE UNLOCK */
-    sr_conn_remap_unlock(conn, SR_LOCK_WRITE, __func__);
-
-cleanup3:
-    /* RPC WRITE UNLOCK */
-    sr_rwunlock(&SR_CONN_MAIN_SHM(conn)->rpc_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
-
-cleanup2:
+error2:
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         _sr_unsubscribe(*subscription);
         *subscription = NULL;
     }
 
-cleanup1:
+error1:
     free(module_name);
-    free(op_path);
+    free(path);
     return sr_api_ret(session, err_info);
 }
 
@@ -3791,9 +3748,9 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     sr_rpc_t *shm_rpc;
     struct ly_set mod_set = {0};
     struct lyd_node *input_op;
-    sr_mod_data_dep_t *shm_deps;
+    sr_dep_t *shm_deps;
     uint16_t shm_dep_count;
-    char *op_path = NULL, *str;
+    char *path = NULL, *str;
     uint32_t event_id = 0;
 
     SR_CHECK_ARG_APIRET(!session || !input || !output, session, err_info);
@@ -3840,7 +3797,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     /* get operation path (without predicates) */
     str = lyd_path(input_op);
     SR_CHECK_INT_GOTO(!str, err_info, cleanup);
-    err_info = sr_get_trim_predicates(str, &op_path);
+    err_info = sr_get_trim_predicates(str, &path);
     free(str);
     if (err_info) {
         goto cleanup;
@@ -3857,7 +3814,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     }
 
     /* collect all required module dependencies for input validation */
-    if ((err_info = sr_shmmod_collect_op_deps(SR_CONN_MAIN_SHM(session->conn), lyd_node_module(input), op_path, 0,
+    if ((err_info = sr_shmmod_collect_rpc_deps(SR_CONN_MAIN_SHM(session->conn), session->conn->ly_ctx, path, 0,
             &mod_set, &shm_deps, &shm_dep_count))) {
         goto cleanup;
     }
@@ -3889,51 +3846,38 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     sr_modinfo_free(&mod_info);
     SR_MODINFO_INIT(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING);
 
-    /* RPC READ LOCK */
-    if ((err_info = sr_rwlock(&SR_CONN_MAIN_SHM(session->conn)->rpc_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ,
-            session->conn->cid, __func__, NULL, NULL))) {
+    /* find the RPC */
+    shm_rpc = sr_shmmain_find_rpc(SR_CONN_MAIN_SHM(session->conn), path);
+    SR_CHECK_INT_GOTO(!shm_rpc, err_info, cleanup);
+
+    /* RPC SUB READ LOCK */
+    if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__, NULL,
+            NULL))) {
         goto cleanup;
     }
 
     /* REMAP READ LOCK */
     if ((err_info = sr_conn_remap_lock(session->conn, SR_LOCK_READ, __func__))) {
-        goto cleanup_rpc_unlock;
-    }
-
-    /* find the RPC */
-    shm_rpc = sr_shmmain_find_rpc(SR_CONN_MAIN_SHM(session->conn), session->conn->ext_shm.addr, op_path, 0);
-    if (!shm_rpc) {
-        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, op_path, "There are no subscribers for RPC/action \"%s\".", op_path);
-        goto cleanup_rpc_remap_unlock;
-    }
-
-    /* RPC SUB READ LOCK */
-    if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__, NULL,
-            NULL))) {
-        goto cleanup_rpc_remap_unlock;
+        goto cleanup_rpcsub_unlock;
     }
 
     /* publish RPC in an event and wait for a reply from the last subscriber */
-    if ((err_info = sr_shmsub_rpc_notify(session->conn, shm_rpc, op_path, input, session->sid, timeout_ms, &event_id,
+    if ((err_info = sr_shmsub_rpc_notify(session->conn, shm_rpc, path, input, session->sid, timeout_ms, &event_id,
             output, &cb_err_info))) {
-        goto cleanup_rpc_remap_rpcsub_unlock;
+        goto cleanup_rpcsub_remap_unlock;
     }
 
     if (cb_err_info) {
         /* "rpc" event failed, publish "abort" event and finish */
-        err_info = sr_shmsub_rpc_notify_abort(session->conn, shm_rpc, op_path, input, session->sid, timeout_ms, event_id);
-        goto cleanup_rpc_remap_rpcsub_unlock;
+        err_info = sr_shmsub_rpc_notify_abort(session->conn, shm_rpc, path, input, session->sid, timeout_ms, event_id);
+        goto cleanup_rpcsub_remap_unlock;
     }
-
-    /* RPC SUB READ UNLOCK */
-    sr_rwunlock(&shm_rpc->lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
 
     /* REMAP READ UNLOCK */
     sr_conn_remap_unlock(session->conn, SR_LOCK_READ, __func__);
 
-    /* RPC READ UNLOCK */
-    sr_rwunlock(&SR_CONN_MAIN_SHM(session->conn)->rpc_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid,
-            __func__);
+    /* RPC SUB READ UNLOCK */
+    sr_rwunlock(&shm_rpc->lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
 
     /* find operation */
     if ((err_info = sr_ly_find_last_parent(output, LYS_RPC | LYS_ACTION))) {
@@ -3941,7 +3885,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     }
 
     /* collect all required modules for output validation */
-    if ((err_info = sr_shmmod_collect_op_deps(SR_CONN_MAIN_SHM(session->conn), lyd_node_module(input), op_path, 1,
+    if ((err_info = sr_shmmod_collect_rpc_deps(SR_CONN_MAIN_SHM(session->conn), session->conn->ly_ctx, path, 1,
             &mod_set, &shm_deps, &shm_dep_count))) {
         goto cleanup;
     }
@@ -3969,24 +3913,19 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     /* success */
     goto cleanup;
 
-cleanup_rpc_remap_rpcsub_unlock:
-    /* RPC SUB READ UNLOCK */
-    sr_rwunlock(&shm_rpc->lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
-
-cleanup_rpc_remap_unlock:
+cleanup_rpcsub_remap_unlock:
     /* REMAP READ UNLOCK */
     sr_conn_remap_unlock(session->conn, SR_LOCK_READ, __func__);
 
-cleanup_rpc_unlock:
-    /* RPC READ UNLOCK */
-    sr_rwunlock(&SR_CONN_MAIN_SHM(session->conn)->rpc_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid,
-            __func__);
+cleanup_rpcsub_unlock:
+    /* RPC SUB READ UNLOCK */
+    sr_rwunlock(&shm_rpc->lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
 
 cleanup:
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info, session->sid);
 
-    free(op_path);
+    free(path);
     ly_set_clean(&mod_set);
     sr_modinfo_free(&mod_info);
     if (cb_err_info) {
@@ -4107,7 +4046,7 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
 
     if (!start_time) {
         /* add notification subscription into main SHM now if replay was not requested */
-        if ((err_info = sr_shmmod_notif_subscription_add(conn, shm_mod, sub_id, (*subscription)->evpipe_num))) {
+        if ((err_info = sr_shmext_notif_subscription_add(conn, shm_mod, sub_id, (*subscription)->evpipe_num))) {
             goto error1;
         }
     }
@@ -4138,7 +4077,7 @@ error3:
 
 error2:
     if (!start_time) {
-        if ((tmp_err = sr_shmmod_notif_subscription_del(conn, shm_mod, sub_id, (*subscription)->evpipe_num, 0, NULL,
+        if ((tmp_err = sr_shmext_notif_subscription_del(conn, shm_mod, sub_id, (*subscription)->evpipe_num, 0, NULL,
                 NULL, NULL))) {
             sr_errinfo_merge(&err_info, tmp_err);
         }
@@ -4215,7 +4154,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
     struct sr_mod_info_s mod_info;
     struct ly_set mod_set = {0};
     struct lyd_node *notif_op;
-    sr_mod_data_dep_t *shm_deps;
+    sr_dep_t *shm_deps;
     sr_mod_t *shm_mod;
     time_t notif_ts;
     uint16_t shm_dep_count;
@@ -4272,11 +4211,11 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
         ly_set_clean(&mod_set);
     }
 
-    /* collect all required modules for OP validation */
+    /* collect all required modules for notification validation */
     xpath = lys_data_path(notif_op->schema);
     SR_CHECK_MEM_GOTO(!xpath, err_info, cleanup);
-    if ((err_info = sr_shmmod_collect_op_deps(SR_CONN_MAIN_SHM(session->conn), lyd_node_module(notif), xpath, 0,
-            &mod_set, &shm_deps, &shm_dep_count))) {
+    if ((err_info = sr_shmmod_collect_notif_deps(SR_CONN_MAIN_SHM(session->conn), lyd_node_module(notif), xpath, &mod_set,
+            &shm_deps, &shm_dep_count))) {
         goto cleanup;
     }
     if (mod_set.number && (err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_READ,
@@ -4632,7 +4571,7 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     SR_CHECK_INT_GOTO(!shm_mod, err_info, error1);
 
     /* add oper subscription into main SHM */
-    if ((err_info = sr_shmmod_oper_subscription_add(conn, shm_mod, path, sub_type, sub_opts, (*subscription)->evpipe_num))) {
+    if ((err_info = sr_shmext_oper_subscription_add(conn, shm_mod, path, sub_type, sub_opts, (*subscription)->evpipe_num))) {
         goto error1;
     }
 
@@ -4653,8 +4592,7 @@ error3:
     sr_sub_oper_del(module_name, path, 0, *subscription);
 
 error2:
-    if ((tmp_err = sr_shmmod_oper_subscription_del(conn, shm_mod, path, (*subscription)->evpipe_num, 0, NULL, NULL,
-            NULL))) {
+    if ((tmp_err = sr_shmext_oper_subscription_del(conn, shm_mod, path, (*subscription)->evpipe_num, 0, NULL, NULL))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 

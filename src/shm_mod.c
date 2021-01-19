@@ -131,31 +131,21 @@ sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datas
 }
 
 sr_error_info_t *
-sr_shmmod_collect_op_deps(sr_main_shm_t *main_shm, const struct lys_module *op_mod, const char *op_path, int output,
-        struct ly_set *mod_set, sr_mod_data_dep_t **shm_deps, uint16_t *shm_dep_count)
+sr_shmmod_collect_rpc_deps(sr_main_shm_t *main_shm, const struct ly_ctx *ly_ctx, const char *path, int output,
+        struct ly_set *mod_set, sr_dep_t **shm_deps, uint16_t *shm_dep_count)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_t *shm_mod;
-    sr_mod_op_dep_t *shm_op_deps;
+    sr_rpc_t *shm_rpc;
     const struct lys_module *ly_mod;
     uint16_t i;
 
-    /* find the module in SHM */
-    shm_mod = sr_shmmain_find_module(main_shm, op_mod->name, 0);
-    SR_CHECK_INT_RET(!shm_mod, err_info);
-
-    /* find this operation dependencies */
-    shm_op_deps = (sr_mod_op_dep_t *)(((char *)main_shm) + shm_mod->op_deps);
-    for (i = 0; i < shm_mod->op_dep_count; ++i) {
-        if (!strcmp(op_path, ((char *)main_shm) + shm_op_deps[i].xpath)) {
-            break;
-        }
-    }
-    SR_CHECK_INT_RET(i == shm_mod->op_dep_count, err_info);
+    /* find the RPC in SHM */
+    shm_rpc = sr_shmmain_find_rpc(main_shm, path);
+    SR_CHECK_INT_RET(!shm_rpc, err_info);
 
     /* collect dependencies */
-    *shm_deps = (sr_mod_data_dep_t *)(((char *)main_shm) + (output ? shm_op_deps[i].out_deps : shm_op_deps[i].in_deps));
-    *shm_dep_count = (output ? shm_op_deps[i].out_dep_count : shm_op_deps[i].in_dep_count);
+    *shm_deps = (sr_dep_t *)(((char *)main_shm) + (output ? shm_rpc->out_deps : shm_rpc->in_deps));
+    *shm_dep_count = (output ? shm_rpc->out_dep_count : shm_rpc->in_dep_count);
     for (i = 0; i < *shm_dep_count; ++i) {
         if ((*shm_deps)[i].type == SR_DEP_INSTID) {
             /* we will handle those just before validation */
@@ -163,7 +153,7 @@ sr_shmmod_collect_op_deps(sr_main_shm_t *main_shm, const struct lys_module *op_m
         }
 
         /* find ly module */
-        ly_mod = ly_ctx_get_module(op_mod->ctx, ((char *)main_shm) + (*shm_deps)[i].module, NULL, 1);
+        ly_mod = ly_ctx_get_module(ly_ctx, ((char *)main_shm) + (*shm_deps)[i].module, NULL, 1);
         SR_CHECK_INT_RET(!ly_mod, err_info);
 
         /* add dependency */
@@ -174,7 +164,50 @@ sr_shmmod_collect_op_deps(sr_main_shm_t *main_shm, const struct lys_module *op_m
 }
 
 sr_error_info_t *
-sr_shmmod_collect_instid_deps_data(sr_main_shm_t *main_shm, sr_mod_data_dep_t *shm_deps, uint16_t shm_dep_count,
+sr_shmmod_collect_notif_deps(sr_main_shm_t *main_shm, const struct lys_module *notif_mod, const char *path,
+        struct ly_set *mod_set, sr_dep_t **shm_deps, uint16_t *shm_dep_count)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod;
+    sr_notif_t *shm_notif;
+    const struct lys_module *ly_mod;
+    uint32_t i;
+
+    /* find the module in SHM */
+    shm_mod = sr_shmmain_find_module(main_shm, notif_mod->name, 0);
+    SR_CHECK_INT_RET(!shm_mod, err_info);
+
+    /* find the notification in SHM */
+    shm_notif = (sr_notif_t *)(((char *)main_shm) + shm_mod->notifs);
+    for (i = 0; i < shm_mod->notif_count; ++i) {
+        if (!strcmp(path, ((char *)main_shm) + shm_notif[i].path)) {
+            break;
+        }
+    }
+    SR_CHECK_INT_RET(i == shm_mod->notif_count, err_info);
+
+    /* collect dependencies */
+    *shm_deps = (sr_dep_t *)(((char *)main_shm) + shm_notif[i].deps);
+    *shm_dep_count = shm_notif[i].dep_count;
+    for (i = 0; i < *shm_dep_count; ++i) {
+        if ((*shm_deps)[i].type == SR_DEP_INSTID) {
+            /* we will handle those just before validation */
+            continue;
+        }
+
+        /* find ly module */
+        ly_mod = ly_ctx_get_module(notif_mod->ctx, ((char *)main_shm) + (*shm_deps)[i].module, NULL, 1);
+        SR_CHECK_INT_RET(!ly_mod, err_info);
+
+        /* add dependency */
+        ly_set_add(mod_set, (void *)ly_mod, 0);
+    }
+
+    return NULL;
+}
+
+sr_error_info_t *
+sr_shmmod_collect_instid_deps_data(sr_main_shm_t *main_shm, sr_dep_t *shm_deps, uint16_t shm_dep_count,
         struct ly_ctx *ly_ctx, const struct lyd_node *data, struct ly_set *mod_set)
 {
     sr_error_info_t *err_info = NULL;
@@ -188,7 +221,7 @@ sr_shmmod_collect_instid_deps_data(sr_main_shm_t *main_shm, sr_mod_data_dep_t *s
     for (i = 0; i < shm_dep_count; ++i) {
         if (shm_deps[i].type == SR_DEP_INSTID) {
             if (data) {
-                set = lyd_find_path(data, ((char *)main_shm) + shm_deps[i].xpath);
+                set = lyd_find_path(data, ((char *)main_shm) + shm_deps[i].path);
             } else {
                 /* no data, just fake empty set */
                 set = ly_set_new();
@@ -257,8 +290,8 @@ sr_shmmod_collect_instid_deps_modinfo(const struct sr_mod_info_s *mod_info, stru
             /* this module data will be validated */
             assert(mod->state & MOD_INFO_DATA);
             if ((err_info = sr_shmmod_collect_instid_deps_data(SR_CONN_MAIN_SHM(mod_info->conn),
-                    (sr_mod_data_dep_t *)(mod_info->conn->main_shm.addr + mod->shm_mod->data_deps),
-                    mod->shm_mod->data_dep_count, mod_info->conn->ly_ctx, mod_info->data, mod_set))) {
+                    (sr_dep_t *)(mod_info->conn->main_shm.addr + mod->shm_mod->deps),
+                    mod->shm_mod->dep_count, mod_info->conn->ly_ctx, mod_info->data, mod_set))) {
                 return err_info;
             }
             break;
@@ -608,564 +641,6 @@ cleanup_modules:
             }
         }
     }
-}
-
-sr_error_info_t *
-sr_shmmod_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath, sr_datastore_t ds,
-        uint32_t priority, int sub_opts, uint32_t evpipe_num)
-{
-    sr_error_info_t *err_info = NULL;
-    off_t xpath_off;
-    sr_mod_change_sub_t *shm_sub;
-    uint16_t i;
-
-    /* CHANGE SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->change_sub[ds].lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
-            NULL, NULL))) {
-        return err_info;
-    }
-
-    /* REMAP WRITE LOCK */
-    if ((err_info = sr_conn_remap_lock(conn, SR_LOCK_WRITE, __func__))) {
-        goto cleanup_changesub_unlock;
-    }
-
-    if (sub_opts & SR_SUBSCR_UPDATE) {
-        /* check that there is not already an update subscription with the same priority */
-        shm_sub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs);
-        for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
-            if ((shm_sub[i].opts & SR_SUBSCR_UPDATE) && (shm_sub[i].priority == priority)) {
-                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL,
-                        "There already is an \"update\" subscription on module \"%s\" with priority %u for %s DS.",
-                        conn->main_shm.addr + shm_mod->name, priority, sr_ds2str(ds));
-                goto cleanup_changesub_remap_unlock;
-            }
-        }
-    }
-
-    /* allocate new subscription and its xpath, if any */
-    if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_mod->change_sub[ds].subs, &shm_mod->change_sub[ds].sub_count,
-            0, sizeof *shm_sub, -1, (void **)&shm_sub, xpath ? sr_strshmlen(xpath) : 0, &xpath_off))) {
-        goto cleanup_changesub_remap_unlock;
-    }
-
-    /* fill new subscription */
-    if (xpath) {
-        strcpy(conn->ext_shm.addr + xpath_off, xpath);
-        shm_sub->xpath = xpath_off;
-    } else {
-        shm_sub->xpath = 0;
-    }
-    shm_sub->priority = priority;
-    shm_sub->opts = sub_opts;
-    shm_sub->evpipe_num = evpipe_num;
-    shm_sub->cid = conn->cid;
-
-    /* REMAP WRITE UNLOCK */
-    sr_conn_remap_unlock(conn, SR_LOCK_WRITE, __func__);
-
-    /* CHANGE SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->change_sub[ds].lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
-
-    /* ext SHM defrag */
-    sr_shmext_defrag_check(conn);
-
-    if (ds == SR_DS_RUNNING) {
-        /* technically, operational data may have changed */
-        if ((err_info = sr_module_update_oper_diff(conn, conn->main_shm.addr + shm_mod->name))) {
-            return err_info;
-        }
-    }
-
-    return NULL;
-
-cleanup_changesub_remap_unlock:
-    /* REMAP WRITE UNLOCK */
-    sr_conn_remap_unlock(conn, SR_LOCK_WRITE, __func__);
-
-cleanup_changesub_unlock:
-    /* CHANGE SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->change_sub[ds].lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
-
-    return err_info;
-}
-
-sr_error_info_t *
-sr_shmmod_change_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, const char *xpath,
-        uint32_t priority, int sub_opts, uint32_t evpipe_num, sr_cid_t cid, int *last_removed, uint32_t *evpipe_num_p,
-        int *found)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_mod_change_sub_t *shm_sub;
-    uint16_t i;
-
-    if (last_removed) {
-        *last_removed = 0;
-    }
-
-    /* CHANGE SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->change_sub[ds].lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
-            NULL, NULL))) {
-        return err_info;
-    }
-
-    /* REMAP READ LOCK */
-    if ((err_info = sr_conn_remap_lock(conn, SR_LOCK_READ, __func__))) {
-        goto cleanup_changesub_unlock;
-    }
-
-    /* find the subscription(s) */
-    shm_sub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs);
-    for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
-        if (cid) {
-            if (shm_sub[i].cid == cid) {
-                break;
-            }
-        } else if ((!xpath && !shm_sub[i].xpath)
-                    || (xpath && shm_sub[i].xpath && !strcmp(conn->ext_shm.addr + shm_sub[i].xpath, xpath))) {
-            if ((shm_sub[i].priority == priority) && (shm_sub[i].opts == sub_opts) && (shm_sub[i].evpipe_num == evpipe_num)) {
-                break;
-            }
-        }
-    }
-    if (i == shm_mod->change_sub[ds].sub_count) {
-        /* subscription not found */
-        if (found) {
-            *found = 0;
-        }
-        goto cleanup_changesub_remap_unlock;
-    }
-    if (found) {
-        *found = 1;
-    }
-
-    if (evpipe_num_p) {
-        *evpipe_num_p = shm_sub[i].evpipe_num;
-    }
-
-    /* remove the subscription and its xpath, if any */
-    sr_shmrealloc_del(conn->ext_shm.addr, &shm_mod->change_sub[ds].subs, &shm_mod->change_sub[ds].sub_count, sizeof *shm_sub,
-            i, shm_sub[i].xpath ? sr_strshmlen(conn->ext_shm.addr + shm_sub[i].xpath) : 0);
-
-    if (!shm_mod->change_sub[ds].subs && last_removed) {
-        *last_removed = 1;
-    }
-
-cleanup_changesub_remap_unlock:
-    /* REMAP READ UNLOCK */
-    sr_conn_remap_unlock(conn, SR_LOCK_READ, __func__);
-
-cleanup_changesub_unlock:
-    /* CHANGE SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->change_sub[ds].lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
-
-    /* ext SHM defrag */
-    sr_shmext_defrag_check(conn);
-
-    return err_info;
-}
-
-sr_error_info_t *
-sr_shmmod_change_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, const char *xpath,
-        uint32_t priority, int sub_opts, uint32_t evpipe_num, sr_cid_t cid, int del_evpipe)
-{
-    sr_error_info_t *err_info = NULL;
-    char *path;
-    const char *mod_name;
-    int last_removed, found;
-    uint32_t evpipe_num_p;
-
-    mod_name = (char *)(conn->main_shm.addr + shm_mod->name);
-
-    do {
-        /* remove the subscription from the main SHM */
-        if ((err_info = sr_shmmod_change_subscription_del(conn, shm_mod, ds, xpath, priority, sub_opts, evpipe_num, cid,
-                &last_removed, &evpipe_num_p, &found))) {
-            break;
-        }
-        if (!found) {
-            if (!cid) {
-                /* error in this case */
-                SR_ERRINFO_INT(&err_info);
-            }
-            break;
-        }
-
-        if (ds == SR_DS_RUNNING) {
-            /* technically, operational data changed */
-            if ((err_info = sr_module_update_oper_diff(conn, mod_name))) {
-                break;
-            }
-        }
-
-        if (last_removed) {
-            /* delete the SHM file itself so that there is no leftover event */
-            if ((err_info = sr_path_sub_shm(mod_name, sr_ds2str(ds), -1, &path))) {
-                break;
-            }
-            if (unlink(path) == -1) {
-                SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
-            }
-            free(path);
-        }
-
-        if (del_evpipe) {
-            /* delete the evpipe file, it could have been already deleted */
-            if ((err_info = sr_path_evpipe(evpipe_num_p, &path))) {
-                break;
-            }
-            unlink(path);
-            free(path);
-        }
-    } while (cid);
-
-    return err_info;
-}
-
-sr_error_info_t *
-sr_shmmod_oper_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath, sr_mod_oper_sub_type_t sub_type,
-        int sub_opts, uint32_t evpipe_num)
-{
-    sr_error_info_t *err_info = NULL;
-    off_t xpath_off;
-    sr_mod_oper_sub_t *shm_sub;
-    size_t new_len, cur_len;
-    uint16_t i;
-
-    assert(xpath && sub_type);
-
-    /* OPER SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->oper_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
-            NULL, NULL))) {
-        return err_info;
-    }
-
-    /* REMAP WRITE LOCK */
-    if ((err_info = sr_conn_remap_lock(conn, SR_LOCK_WRITE, __func__))) {
-        goto cleanup_opersub_unlock;
-    }
-
-    /* check that this exact subscription does not exist yet while finding its position */
-    new_len = sr_xpath_len_no_predicates(xpath);
-    shm_sub = (sr_mod_oper_sub_t *)(conn->ext_shm.addr + shm_mod->oper_subs);
-    for (i = 0; i < shm_mod->oper_sub_count; ++i) {
-        cur_len = sr_xpath_len_no_predicates(conn->ext_shm.addr + shm_sub[i].xpath);
-        if (cur_len > new_len) {
-            /* we can insert it at i-th position */
-            break;
-        }
-
-        if ((cur_len == new_len) && !strcmp(conn->ext_shm.addr + shm_sub[i].xpath, xpath)) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL,
-                    "Data provider subscription for \"%s\" on \"%s\" already exists.",
-                    conn->main_shm.addr + shm_mod->name, xpath);
-            goto cleanup_opersub_remap_unlock;
-        }
-    }
-
-    /* allocate new subscription and its xpath, if any */
-    if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_mod->oper_subs, &shm_mod->oper_sub_count, 0, sizeof *shm_sub,
-            i, (void **)&shm_sub, xpath ? sr_strshmlen(xpath) : 0, &xpath_off))) {
-        goto cleanup_opersub_remap_unlock;
-    }
-
-    /* fill new subscription */
-    if (xpath) {
-        strcpy(conn->ext_shm.addr + xpath_off, xpath);
-        shm_sub->xpath = xpath_off;
-    } else {
-        shm_sub->xpath = 0;
-    }
-    shm_sub->sub_type = sub_type;
-    shm_sub->opts = sub_opts;
-    shm_sub->evpipe_num = evpipe_num;
-    shm_sub->cid = conn->cid;
-
-cleanup_opersub_remap_unlock:
-    /* REMAP WRITE UNLOCK */
-    sr_conn_remap_unlock(conn, SR_LOCK_WRITE, __func__);
-
-cleanup_opersub_unlock:
-    /* OPER SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->oper_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
-
-    /* ext SHM defrag */
-    sr_shmext_defrag_check(conn);
-
-    return err_info;
-}
-
-sr_error_info_t *
-sr_shmmod_oper_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath, uint32_t evpipe_num,
-        sr_cid_t cid, const char **xpath_p, uint32_t *evpipe_num_p, int *found)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_mod_oper_sub_t *shm_sub;
-    uint16_t i;
-
-    /* OPER SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->oper_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
-        return err_info;
-    }
-
-    /* REMAP READ LOCK */
-    if ((err_info = sr_conn_remap_lock(conn, SR_LOCK_READ, __func__))) {
-        goto cleanup_opersub_unlock;
-    }
-
-    /* find the subscription */
-    shm_sub = (sr_mod_oper_sub_t *)(conn->ext_shm.addr + shm_mod->oper_subs);
-    for (i = 0; i < shm_mod->oper_sub_count; ++i) {
-        if (cid) {
-            if (shm_sub[i].cid == cid) {
-                break;
-            }
-        } else if (shm_sub[i].xpath && !strcmp(conn->ext_shm.addr + shm_sub[i].xpath, xpath)
-                && (shm_sub[i].evpipe_num == evpipe_num)) {
-            break;
-        }
-    }
-    if (i == shm_mod->oper_sub_count) {
-        /* no matching subscription found */
-        if (found) {
-            *found = 0;
-        }
-        goto cleanup_opersub_remap_unlock;
-    }
-    if (found) {
-        *found = 1;
-    }
-
-    if (xpath_p) {
-        *xpath_p = conn->ext_shm.addr + shm_sub[i].xpath;
-    }
-    if (evpipe_num_p) {
-        *evpipe_num_p = shm_sub[i].evpipe_num;
-    }
-
-    /* delete the subscription */
-    sr_shmrealloc_del(conn->ext_shm.addr, &shm_mod->oper_subs, &shm_mod->oper_sub_count, sizeof *shm_sub, i,
-            shm_sub[i].xpath ? sr_strshmlen(conn->ext_shm.addr + shm_sub[i].xpath) : 0);
-
-cleanup_opersub_remap_unlock:
-    /* REMAP READ UNLOCK */
-    sr_conn_remap_unlock(conn, SR_LOCK_READ, __func__);
-
-cleanup_opersub_unlock:
-    /* OPER SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->oper_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
-
-    /* ext SHM defrag */
-    sr_shmext_defrag_check(conn);
-
-    return err_info;
-}
-
-sr_error_info_t *
-sr_shmmod_oper_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath, uint32_t evpipe_num,
-        sr_cid_t cid, int del_evpipe)
-{
-    sr_error_info_t *err_info = NULL;
-    char *path;
-    const char *mod_name;
-    uint32_t evpipe_num_p;
-    int found;
-
-     mod_name = (char *)(conn->main_shm.addr + shm_mod->name);
-
-    do {
-        /* remove the subscriptions from the main SHM */
-        if ((err_info = sr_shmmod_oper_subscription_del(conn, shm_mod, xpath, evpipe_num, cid, &xpath, &evpipe_num_p,
-                &found))) {
-            break;
-        }
-        if (!found) {
-            if (!cid) {
-                SR_ERRINFO_INT(&err_info);
-            }
-            break;
-        }
-
-        /* delete the SHM file itself so that there is no leftover event */
-        if ((err_info = sr_path_sub_shm(mod_name, "oper", sr_str_hash(xpath), &path))) {
-            break;
-        }
-        if (unlink(path) == -1) {
-            SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
-        }
-        free(path);
-
-        if (del_evpipe) {
-            /* delete the evpipe file, it could have been already deleted */
-            if ((err_info = sr_path_evpipe(evpipe_num_p, &path))) {
-                break;
-            }
-            unlink(path);
-            free(path);
-        }
-    } while (cid);
-
-    return err_info;
-}
-
-sr_error_info_t *
-sr_shmmod_notif_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_mod_notif_sub_t *shm_sub;
-
-    /* NOTIF SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->notif_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
-            NULL, NULL))) {
-        return err_info;
-    }
-
-    /* REMAP WRITE LOCK */
-    if ((err_info = sr_conn_remap_lock(conn, SR_LOCK_WRITE, __func__))) {
-        goto cleanup_notifsub_unlock;
-    }
-
-    /* add new item */
-    if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_mod->notif_subs, &shm_mod->notif_sub_count, 0,
-            sizeof *shm_sub, -1, (void **)&shm_sub, 0, NULL))) {
-        goto cleanup_notifsub_remap_unlock;
-    }
-
-    /* fill new subscription */
-    shm_sub->sub_id = sub_id;
-    shm_sub->evpipe_num = evpipe_num;
-    shm_sub->cid = conn->cid;
-
-cleanup_notifsub_remap_unlock:
-    /* REMAP WRITE UNLOCK */
-    sr_conn_remap_unlock(conn, SR_LOCK_WRITE, __func__);
-
-cleanup_notifsub_unlock:
-    /* NOTIF SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->notif_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
-
-    /* ext SHM defrag */
-    sr_shmext_defrag_check(conn);
-
-    return err_info;
-}
-
-sr_error_info_t *
-sr_shmmod_notif_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num,
-        sr_cid_t cid, int *last_removed, uint32_t *evpipe_num_p, int *found)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_mod_notif_sub_t *shm_sub;
-    uint16_t i;
-
-    if (last_removed) {
-        *last_removed = 0;
-    }
-
-    /* NOTIF SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->notif_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
-        return err_info;
-    }
-
-    /* REMAP READ LOCK */
-    if ((err_info = sr_conn_remap_lock(conn, SR_LOCK_READ, __func__))) {
-        goto cleanup_notifsub_unlock;
-    }
-
-    /* find the subscription */
-    shm_sub = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
-    for (i = 0; i < shm_mod->notif_sub_count; ++i) {
-        if (cid) {
-            if (shm_sub[i].cid == cid) {
-                break;
-            }
-        } else if ((shm_sub[i].sub_id == sub_id) && (shm_sub[i].evpipe_num == evpipe_num)) {
-            break;
-        }
-    }
-    if (i == shm_mod->notif_sub_count) {
-        /* no matching subscription found */
-        if (found) {
-            *found = 0;
-        }
-        goto cleanup_notifsub_remap_unlock;
-    }
-    if (found) {
-        *found = 1;
-    }
-
-    if (evpipe_num_p) {
-        *evpipe_num_p = shm_sub[i].evpipe_num;
-    }
-
-    /* remove the subscription */
-    sr_shmrealloc_del(conn->ext_shm.addr, &shm_mod->notif_subs, &shm_mod->notif_sub_count, sizeof *shm_sub, i, 0);
-
-    if (!shm_mod->notif_subs && last_removed) {
-        *last_removed = 1;
-    }
-
-cleanup_notifsub_remap_unlock:
-    /* REMAP READ UNLOCK */
-    sr_conn_remap_unlock(conn, SR_LOCK_READ, __func__);
-
-cleanup_notifsub_unlock:
-    /* NOTIF SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->notif_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
-
-    /* ext SHM defrag */
-    sr_shmext_defrag_check(conn);
-
-    return err_info;
-}
-
-sr_error_info_t *
-sr_shmmod_notif_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num,
-        sr_cid_t cid, int del_evpipe)
-{
-    sr_error_info_t *err_info = NULL;
-    char *path;
-    const char *mod_name;
-    int last_removed, found;
-    uint32_t evpipe_num_p;
-
-    mod_name = (char *)(conn->main_shm.addr + shm_mod->name);
-
-    do {
-        /* remove the subscriptions from the main SHM */
-        if ((err_info = sr_shmmod_notif_subscription_del(conn, shm_mod, sub_id, evpipe_num, cid, &last_removed,
-                &evpipe_num_p, &found))) {
-            break;
-        }
-        if (!found) {
-            if (!cid) {
-                SR_ERRINFO_INT(&err_info);
-            }
-            break;
-        }
-
-        if (last_removed) {
-            /* delete the SHM file itself so that there is no leftover event */
-            if ((err_info = sr_path_sub_shm(mod_name, "notif", -1, &path))) {
-                break;
-            }
-            if (unlink(path) == -1) {
-                SR_LOG_WRN("Failed to unlink SHM \"%s\" (%s).", path, strerror(errno));
-            }
-            free(path);
-        }
-
-        if (del_evpipe) {
-            /* delete the evpipe file, it could have been already deleted */
-            if ((err_info = sr_path_evpipe(evpipe_num_p, &path))) {
-                break;
-            }
-            unlink(path);
-            free(path);
-        }
-    } while (cid);
-
-    return err_info;
 }
 
 sr_error_info_t *

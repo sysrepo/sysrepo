@@ -247,13 +247,6 @@ module sysrepo-monitoring {
             }
         }
 
-        list rpc-lock {
-            description
-                "Held RPCs/actions lock.";
-
-            uses lock-params;
-        }
-
         list rpc {
             key "path";
             description
