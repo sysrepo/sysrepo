@@ -2952,7 +2952,7 @@ sr_error_info_t *
 sr_diff_mod_update(struct lyd_node **diff, const struct lys_module *ly_mod, const struct lyd_node *mod_data)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lyd_node *root, *next;
+    struct lyd_node *root, *next;
 
     assert(diff);
 
@@ -2963,7 +2963,7 @@ sr_diff_mod_update(struct lyd_node **diff, const struct lys_module *ly_mod, cons
         }
 
         /* update relevant nodes from the diff datatree */
-        if ((err_info = sr_diff_update_r(mod_data, *diff, diff))) {
+        if ((err_info = sr_diff_update_r(mod_data, root, diff))) {
             return err_info;
         }
     }

@@ -1,0 +1,277 @@
+module czechlight-roadm-device {
+  yang-version 1.1;
+  namespace
+    "http://czechlight.cesnet.cz/yang/czechlight-roadm-device";
+
+  prefix "cla-roadm";
+
+  import opendevice-types {
+    prefix "odt";
+    revision-date 2017-10-08;
+  }
+
+  import czechlight-roadm-common {
+    prefix "cla-common";
+    revision-date 2019-09-30;
+  }
+
+  organization "CESNET";
+  contact "photonic@cesnet.cz";
+  description "ROADM configuration";
+
+  revision 2019-09-30 {
+    description "Initial release";
+  }
+
+  feature "hw-add-drop-20" {
+    description "Add/Drop box with 20 client ports";
+  }
+
+  feature "hw-line-9" {
+    description "Line box with 9 express ports";
+  }
+
+  container channel-plan {
+    uses cla-common:channel-list-definition {
+      refine channel {
+        must "lower-frequency >= 191325000" {
+          error-message "Cannot use frequency lower than 191.325 THz";
+        }
+
+        must "upper-frequency <= 196125000" {
+          error-message "Cannot use frequency higher than 196.125 THz";
+        }
+
+        must "upper-frequency - lower-frequency >= 12500" {
+          error-message "Minimal channel width is 12.5 GHz";
+        }
+
+        must "(upper-frequency + (upper-frequency - lower-frequency) div 2) mod 6250 = 0" {
+          error-message "Channel must be aligned to the 6.25 GHz grid";
+        }
+      }
+    }
+  }
+
+  typedef device-dependent-port-type {
+    type enumeration {
+      enum E1 {
+        if-feature "hw-line-9";
+      }
+      enum E2 {
+        if-feature "hw-line-9";
+      }
+      enum E3 {
+        if-feature "hw-line-9";
+      }
+      enum E4 {
+        if-feature "hw-line-9";
+      }
+      enum E5 {
+        if-feature "hw-line-9";
+      }
+      enum E6 {
+        if-feature "hw-line-9";
+      }
+      enum E7 {
+        if-feature "hw-line-9";
+      }
+      enum E8 {
+        if-feature "hw-line-9";
+      }
+      enum E9 {
+        if-feature "hw-line-9";
+      }
+
+      enum 1 {
+        if-feature "hw-add-drop-20";
+      }
+      enum 2 {
+        if-feature "hw-add-drop-20";
+      }
+      enum 3 {
+        if-feature "hw-add-drop-20";
+      }
+      enum 4 {
+        if-feature "hw-add-drop-20";
+      }
+      enum 5 {
+        if-feature "hw-add-drop-20";
+      }
+      enum 6 {
+        if-feature "hw-add-drop-20";
+      }
+      enum 7 {
+        if-feature "hw-add-drop-20";
+      }
+      enum 8 {
+        if-feature "hw-add-drop-20";
+      }
+      enum 9 {
+        if-feature "hw-add-drop-20";
+      }
+      enum 10 {
+        if-feature "hw-add-drop-20";
+      }
+      enum 11 {
+        if-feature "hw-add-drop-20";
+      }
+      enum 12 {
+        if-feature "hw-add-drop-20";
+      }
+      enum 13 {
+        if-feature "hw-add-drop-20";
+      }
+      enum 14 {
+        if-feature "hw-add-drop-20";
+      }
+      enum 15 {
+        if-feature "hw-add-drop-20";
+      }
+      enum 16 {
+        if-feature "hw-add-drop-20";
+      }
+      enum 17 {
+        if-feature "hw-add-drop-20";
+      }
+      enum 18 {
+        if-feature "hw-add-drop-20";
+      }
+      enum 19 {
+        if-feature "hw-add-drop-20";
+      }
+      enum 20 {
+        if-feature "hw-add-drop-20";
+      }
+    }
+  }
+
+  grouping one-direction-routing {
+    leaf port {
+      description "What port to route this channel from/to";
+      type device-dependent-port-type;
+      mandatory true;
+    }
+  }
+
+  grouping roadm-port-config {
+    uses one-direction-routing;
+    uses cla-common:power-control;
+  }
+
+  grouping source-and-target-ports {
+    description "Directional ports for the switching matrix";
+
+    container add {
+      description "Source port
+
+      Add this container if the indicated channel should be routed in the
+      direction from the leaf ports towards the common port(s).
+      ";
+      presence true;
+      uses roadm-port-config;
+    }
+
+    container drop {
+      description "Sink port
+
+      Use this container if the indicated channel should be routed from the
+      common port(s) towards the leaf ports.
+";
+      presence true;
+      uses roadm-port-config;
+    }
+  }
+
+  list media-channels {
+    description "Spectrum routing and monitoring
+
+    Add channels here to activate their monitoring and possibly also their
+    routing.  Actual routing is controlled via the `add` and `drop` presence
+    containers.
+    ";
+    leaf channel {
+      type leafref {
+        path "/channel-plan/channel/name";
+      }
+    }
+    key "channel";
+
+    leaf description {
+      type string;
+      description "Free-form description for arbitrary use";
+    }
+
+    uses source-and-target-ports;
+
+    container power {
+      config false;
+      description "Per-MC optical measurements
+
+      The reported values correspond to the optical power per selected Media
+      Channel on a port on the front panel.";
+
+      leaf common-in {
+        type odt:optical-power-dBm;
+        mandatory true;
+        description "Power level for this MC at the common input port
+
+        This corresponds to the power level at the Line IN port for Line Degree
+        ROADMs, and to the power level at any of the Express IN ports for
+        Add/Drop ROADMs.";
+      }
+
+      leaf common-out {
+        type odt:optical-power-dBm;
+        mandatory true;
+        description "Power level for this MC at the common output port
+
+        This corresponds to the power level at the Line OUT port for Line Degree
+        ROADMs, and to the power level at any of the Express OUT ports for
+        Add/Drop ROADMs.";
+      }
+
+      leaf leaf-in {
+        type odt:optical-power-dBm;
+        mandatory true;
+        description "Power level for this MC at the common output port
+
+        This corresponds to the power level at the corresponding Express IN
+        port for Line Degree ROADMs, and to the corresponding ADD port for
+        Add/Drop ROADMs.  This value is only present when the ROADM device is
+        configured to \"add\" this Media Channel from some input port.";
+      }
+
+      leaf leaf-out {
+        type odt:optical-power-dBm;
+        mandatory true;
+        description "Power level for this MC at the leaf output port
+
+        This corresponds to the power level at the corresponding Express OUT
+        port for Line Degree ROADMs, and to the power level at the
+        corresponding DROP port for Add/Drop ROADMs.  This value is only
+        present when the ROADM device is configured to \"drop\" this Media
+        Channel to some output port.";
+      }
+    }
+
+    max-elements 254;
+
+    must "((count(add) = 0) and (count(drop) = 0)) or (deref(channel)/../upper-frequency - deref(channel)/../lower-frequency >= 50000)" {
+      error-message "Minimal channel width for routed MCs is 50GHz";
+    }
+  }
+
+  container line {
+    description "Line parameters";
+    if-feature "hw-line-9";
+
+    leaf output-voa {
+      description "Output Variable Optical Attenuator";
+      type cla-common:attenuation-type {
+        range "0.0..30.0";
+      }
+      default 0;
+    }
+  }
+}

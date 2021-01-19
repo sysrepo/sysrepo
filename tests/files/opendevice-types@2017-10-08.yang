@@ -1,0 +1,95 @@
+module opendevice-types {
+    yang-version 1;
+    namespace "http://www.opendevice.net/yang/opendevice-types";
+    prefix "od-types";
+    organization "Infinera";
+    contact 
+        "sales@infinera.com";
+    description 
+        "This module contains general type definitions and identities
+         for optical transport models.";
+    revision 2017-10-08;
+
+    revision 2017-07-31;
+
+  typedef percentage {
+    type uint8 {
+      range "0..100";
+    }
+    description
+      "Integer indicating a percentage value";
+  }
+
+  typedef dwdm-frequency-ghz {
+    type decimal64 { 
+     fraction-digits 3;
+    }
+    description
+      "Represents a DWDM Frequency in GHz.
+       ";
+  }
+
+  typedef dwdm-frequency-mhz {
+    type uint64 ;
+        units MHz;
+
+    description
+      "Represents a DWDM Frequency in MHz with a resolution of 1 MHz.
+       ";
+  }
+    typedef optical-power-mW {
+        type decimal64 {
+            fraction-digits 5;
+        }
+        units mW;
+        description "Represent an optical power in mW";
+        reference "";
+    }
+    typedef optical-power-dBm {
+        type decimal64 {
+            fraction-digits 5;
+        }
+        units dBm;
+        description "Represent an optical power in dBm";
+        reference "";
+    }
+    typedef optical-psd {
+        type decimal64 {
+            fraction-digits 5;
+        }
+        units dBm/GHz;
+        description "Represent optical power density in dBm/GHz";
+        reference "";
+    }
+
+
+
+
+    identity optical-band;
+    identity c-band {
+        base optical-band;
+    }
+    identity l-band {
+        base optical-band;
+    }
+    identity c-and-l-band {
+        base optical-band;
+    }
+
+  grouping optical-spectrum-spec {
+    description "Parameters for describing an optical media-channel spectrum.";
+    leaf lower-frequency {
+      type dwdm-frequency-mhz;
+      description "Channel Start Frequency in GHz";
+    }
+
+    leaf upper-frequency {
+      type dwdm-frequency-mhz;
+      description "Channel End Frequency in GHz";
+    }
+  }
+
+
+
+  
+}

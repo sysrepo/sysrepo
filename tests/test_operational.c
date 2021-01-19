@@ -46,7 +46,7 @@ setup(void **state)
 {
     struct state *st;
     uint32_t conn_count;
-    const char *act_feat = "advanced-testing";
+    const char *act_feat = "advanced-testing", *rd_feat = "hw-line-9";
 
     st = malloc(sizeof *st);
     if (!st) {
@@ -97,6 +97,10 @@ setup(void **state)
     if (sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL, 0) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/czechlight-roadm-device@2019-09-30.yang", TESTS_DIR "/files",
+            &rd_feat, 1) != SR_ERR_OK) {
+        return 1;
+    }
     sr_disconnect(st->conn);
 
     if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
@@ -121,6 +125,7 @@ teardown(void **state)
 {
     struct state *st = (struct state *)*state;
 
+    sr_remove_module(st->conn, "czechlight-roadm-device");
     sr_remove_module(st->conn, "ops-ref");
     sr_remove_module(st->conn, "ops");
     sr_remove_module(st->conn, "defaults");
@@ -150,6 +155,7 @@ clear_up(void **state)
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces-state", 0);
     sr_delete_item(st->sess, "/test:cont", 0);
+    sr_delete_item(st->sess, "/czechlight-roadm-device:media-channels", 0);
     sr_apply_changes(st->sess, 0, 0);
 
     /* create the containers back so there are effectively no stored changes */
@@ -168,6 +174,8 @@ clear_up(void **state)
 
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
     sr_delete_item(st->sess, "/test:cont", 0);
+    sr_delete_item(st->sess, "/czechlight-roadm-device:channel-plan", 0);
+    sr_delete_item(st->sess, "/czechlight-roadm-device:media-channels", 0);
     sr_apply_changes(st->sess, 0, 0);
 
     return 0;
@@ -446,6 +454,9 @@ test_sr_mon(void **state)
         "<module>"
             "<name>ops-ref</name>"
         "</module>"
+        "<module>"
+            "<name>czechlight-roadm-device</name>"
+        "</module>"
         "<connection>"
             "<cid></cid>"
             "<main-lock>read</main-lock>"
@@ -602,6 +613,9 @@ test_sr_mon(void **state)
         "</module>"
         "<module>"
             "<name>ops-ref</name>"
+        "</module>"
+        "<module>"
+            "<name>czechlight-roadm-device</name>"
         "</module>"
         "<rpc>"
             "<path xmlns:a=\"urn:act\">/a:capitalize</path>"
@@ -2339,6 +2353,146 @@ test_stored_config(void **state)
 
 /* TEST */
 static void
+test_stored_top_list(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr;
+    struct lyd_node *data;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* subscribe to data */
+    ret = sr_module_change_subscribe(st->sess, "czechlight-roadm-device", NULL, dummy_change_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some configuration data */
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:channel-plan/channel[name='13.5']/lower-frequency",
+            "191325000", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:channel-plan/channel[name='13.5']/upper-frequency",
+            "191375000", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:channel-plan/channel[name='14.0']/lower-frequency",
+            "191375000", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:channel-plan/channel[name='14.0']/upper-frequency",
+            "191425000", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='13.5']/channel",
+            "13.5", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='13.5']/power/common-in",
+            "0.1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='13.5']/power/common-out",
+            "0.2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* switch to running DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='14.0']/drop/port",
+            "E2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='14.0']/drop/attenuation",
+            "3.7", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='13.5']/power/common-in",
+            "0.9", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='13.5']/power/common-out",
+            "1.0", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='14.0']/power/common-in",
+            "1.2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='14.0']/power/common-out",
+            "1.3", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='14.0']/power/leaf-out",
+            "1.4", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* switch to running DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_delete_item(st->sess, "/czechlight-roadm-device:media-channels[channel='14.0']", SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the operational data */
+    ret = sr_get_data(st->sess, "/czechlight-roadm-device:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<line xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\" "
+            "xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+        "<output-voa or:origin=\"default\">0.0</output-voa>"
+    "</line>"
+    "<channel-plan xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\" "
+            "xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+        "<channel>"
+            "<name>13.5</name>"
+            "<lower-frequency>191325000</lower-frequency>"
+            "<upper-frequency>191375000</upper-frequency>"
+        "</channel>"
+        "<channel>"
+            "<name>14.0</name>"
+            "<lower-frequency>191375000</lower-frequency>"
+            "<upper-frequency>191425000</upper-frequency>"
+        "</channel>"
+    "</channel-plan>"
+    "<media-channels xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\" "
+            "xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+        "<channel>13.5</channel>"
+        "<power or:origin=\"unknown\">"
+            "<common-in>0.9</common-in>"
+            "<common-out>1.0</common-out>"
+        "</power>"
+    "</media-channels>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* cleanup */
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_unsubscribe(subscr);
+}
+
+/* TEST */
+static void
 test_stored_np_cont1(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -3378,6 +3532,7 @@ main(void)
         cmocka_unit_test_teardown(test_stored_state, clear_up),
         cmocka_unit_test_teardown(test_stored_state_list, clear_up),
         cmocka_unit_test_teardown(test_stored_config, clear_up),
+        cmocka_unit_test_teardown(test_stored_top_list, clear_up),
         cmocka_unit_test_teardown(test_stored_np_cont1, clear_up),
         cmocka_unit_test_teardown(test_stored_np_cont2, clear_up),
         cmocka_unit_test_teardown(test_stored_diff_merge_leaf, clear_up),
