@@ -184,7 +184,7 @@ typedef enum sr_mod_oper_sub_type_e {
  * @brief Ext SHM module operational subscription.
  */
 typedef struct sr_mod_oper_sub_s {
-    off_t xpath;                /**< XPath of the subscription. */
+    off_t xpath;                /**< XPath of the subscription (offset in ext SHM). */
     sr_mod_oper_sub_type_t sub_type;  /**< Type of the subscription. */
     int opts;                   /**< Subscription options. */
     uint32_t evpipe_num;        /** Event pipe number. */
@@ -202,15 +202,15 @@ typedef struct sr_mod_notif_sub_s {
 } sr_mod_notif_sub_t;
 
 /**
- * @brief Ext SHM RPC/action subscription.
+ * @brief Ext SHM module RPC/action subscription.
  */
-typedef struct sr_rpc_sub_s {
+typedef struct sr_mod_rpc_sub_s {
     off_t xpath;                /**< Full XPath of the RPC/action subscription (offset in ext SHM). */
     uint32_t priority;          /**< Subscription priority. */
     int opts;                   /**< Subscription options. */
     uint32_t evpipe_num;        /**< Event pipe number. */
     sr_cid_t cid;               /**< Connection ID. */
-} sr_rpc_sub_t;
+} sr_mod_rpc_sub_t;
 
 /**
  * @brief External (ext) SHM.
@@ -1072,11 +1072,12 @@ void sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif
  * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
  * @param[in] notif_subs Module notification subscriptions.
+ * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @param[in] subs Subscriptions structure.
  * @param[out] module_finished Whether the last module notification subscription was finished.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs,
+sr_error_info_t *sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lock_mode_t has_subs_lock,
         sr_subscription_ctx_t *subs, int *module_finished);
 
 /**

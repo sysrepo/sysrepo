@@ -163,11 +163,8 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** maximum ext SHM wasted memory (B) */
 #define SR_SHM_WASTED_MAX_MEM 4096
 
-/** timeout for processing all events on all subscriptions of one subscriber thread; used when modifying subscriptions (s) */
-#define SR_SUB_EVENT_LOOP_TIMEOUT 30
-
-/** timeout for locking subscriptions lock, used when modifying subscriptions (ms) */
-#define SR_SUB_SUBS_LOCK_TIMEOUT 100
+/** timeout for locking subscription structure lock, should be enough for a single ::sr_process_events() call (ms) */
+#define SR_SUB_SUBS_LOCK_TIMEOUT 30000
 
 /** timeout for locking notification buffer lock, used when adding/removing notifications (ms) */
 #define SR_NOTIF_BUF_LOCK_TIMEOUT 100
@@ -384,7 +381,7 @@ struct sr_subscription_ctx_s {
     int evpipe;                     /**< Event pipe opened for reading. */
     ATOMIC_T thread_running;        /**< Flag whether the thread handling this subscription is running. */
     pthread_t tid;                  /**< Thread ID of the handler thread. */
-    pthread_mutex_t subs_lock;      /**< Session-shared lock for accessing specific subscriptions. */
+    sr_rwlock_t subs_lock;          /**< Session-shared lock for accessing the subscriptions. */
 
     struct modsub_change_s {
         char *module_name;          /**< Module of the subscriptions. */
@@ -484,12 +481,13 @@ struct sr_change_iter_s {
  * @param[in] private_data Subscription callback private data.
  * @param[in] priority Subscription priority.
  * @param[in] sub_opts Subscription options.
- * @param[in] has_subs_lock Whether SUBS lock was already locked or not.
+ * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @param[in,out] subs Subscription structure.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_sub_change_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath, sr_module_change_cb change_cb,
-        void *private_data, uint32_t priority, sr_subscr_options_t sub_opts, int has_subs_lock, sr_subscription_ctx_t *subs);
+        void *private_data, uint32_t priority, sr_subscr_options_t sub_opts, sr_lock_mode_t has_subs_lock,
+        sr_subscription_ctx_t *subs);
 
 /**
  * @brief Delete a change subscription from a subscription structure.
@@ -501,11 +499,12 @@ sr_error_info_t *sr_sub_change_add(sr_session_ctx_t *sess, const char *mod_name,
  * @param[in] private_data Subscription callback private data.
  * @param[in] priority Subscription priority.
  * @param[in] sub_opts Subscription options.
- * @param[in] has_subs_lock Whether SUBS lock was already locked or not.
+ * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @param[in,out] subs Subscription structure.
  */
 void sr_sub_change_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr_module_change_cb change_cb,
-        void *private_data, uint32_t priority, sr_subscr_options_t sub_opts, int has_subs_lock, sr_subscription_ctx_t *subs);
+        void *private_data, uint32_t priority, sr_subscr_options_t sub_opts, sr_lock_mode_t has_subs_lock,
+        sr_subscription_ctx_t *subs);
 
 /**
  * @brief Add an operational subscription into a subscription structure.
@@ -515,22 +514,22 @@ void sr_sub_change_del(const char *mod_name, const char *xpath, sr_datastore_t d
  * @param[in] xpath Subscription XPath.
  * @param[in] oper_cb Subscription callback.
  * @param[in] private_data Subscription callback private data.
- * @param[in] has_subs_lock Whether SUBS lock was already locked or not.
+ * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @param[in,out] subs Subscription structure.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_sub_oper_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath,
-        sr_oper_get_items_cb oper_cb, void *private_data, int has_subs_lock, sr_subscription_ctx_t *subs);
+        sr_oper_get_items_cb oper_cb, void *private_data, sr_lock_mode_t has_subs_lock, sr_subscription_ctx_t *subs);
 
 /**
  * @brief Delete an operational subscription from a subscription structure.
  *
  * @param[in] mod_name Subscription module name.
  * @param[in] xpath Subscription XPath.
- * @param[in] has_subs_lock Whether SUBS lock was already locked or not.
+ * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @param[in,out] subs Subscription structure.
  */
-void sr_sub_oper_del(const char *mod_name, const char *xpath, int has_subs_lock, sr_subscription_ctx_t *subs);
+void sr_sub_oper_del(const char *mod_name, const char *xpath, sr_lock_mode_t has_subs_lock, sr_subscription_ctx_t *subs);
 
 /**
  * @brief Add a notification subscription into a subscription structure.
@@ -544,23 +543,23 @@ void sr_sub_oper_del(const char *mod_name, const char *xpath, int has_subs_lock,
  * @param[in] notif_cb Subscription value callback.
  * @param[in] notif_tree_cb Subscription tree callback.
  * @param[in] private_data Subscription callback private data.
- * @param[in] has_subs_lock Whether SUBS lock was already locked or not.
+ * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @param[in,out] subs Subscription structure.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_sub_notif_add(sr_session_ctx_t *sess, const char *mod_name, uint32_t sub_id, const char *xpath,
         time_t start_time, time_t stop_time, sr_event_notif_cb notif_cb, sr_event_notif_tree_cb notif_tree_cb,
-        void *private_data, int has_subs_lock, sr_subscription_ctx_t *subs);
+        void *private_data, sr_lock_mode_t has_subs_lock, sr_subscription_ctx_t *subs);
 
 /**
  * @brief Delete a notification subscription from a subscription structure.
  *
  * @param[in] mod_name Subscription module name.
  * @param[in] sub_id Unique notif sub ID.
- * @param[in] has_subs_lock Whether SUBS lock was already locked or not.
+ * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @param[in,out] subs Subscription structure.
  */
-void sr_sub_notif_del(const char *mod_name, uint32_t sub_id, int has_subs_lock, sr_subscription_ctx_t *subs);
+void sr_sub_notif_del(const char *mod_name, uint32_t sub_id, sr_lock_mode_t has_subs_lock, sr_subscription_ctx_t *subs);
 
 /**
  * @brief Add an RPC subscription into a subscription structure.
@@ -572,12 +571,13 @@ void sr_sub_notif_del(const char *mod_name, uint32_t sub_id, int has_subs_lock, 
  * @param[in] rpc_tree_cb Subscription tree callback.
  * @param[in] private_data Subscription callback private data.
  * @param[in] priority Subscription priority.
- * @param[in] has_subs_lock Whether SUBS lock was already locked or not.
+ * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @param[in,out] subs Subscription structure.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_sub_rpc_add(sr_session_ctx_t *sess, const char *path, const char *xpath, sr_rpc_cb rpc_cb,
-        sr_rpc_tree_cb rpc_tree_cb, void *private_data, uint32_t priority, int has_subs_lock, sr_subscription_ctx_t *subs);
+        sr_rpc_tree_cb rpc_tree_cb, void *private_data, uint32_t priority, sr_lock_mode_t has_subs_lock,
+        sr_subscription_ctx_t *subs);
 
 /**
  * @brief Delete an RPC subscription from a subscription structure.
@@ -588,31 +588,32 @@ sr_error_info_t *sr_sub_rpc_add(sr_session_ctx_t *sess, const char *path, const 
  * @param[in] rpc_tree_cb Subscription tree callback.
  * @param[in] private_data Subscription callback private data.
  * @param[in] priority Subscription priority.
- * @param[in] has_subs_lock Whether SUBS lock was already locked or not.
+ * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @param[in,out] subs Subscription structure.
  */
 void sr_sub_rpc_del(const char *path, const char *xpath, sr_rpc_cb rpc_cb, sr_rpc_tree_cb rpc_tree_cb,
-        void *private_data, uint32_t priority, int has_subs_lock, sr_subscription_ctx_t *subs);
+        void *private_data, uint32_t priority, sr_lock_mode_t has_subs_lock, sr_subscription_ctx_t *subs);
 
 /**
  * @brief Count subscriptions of session \p sess in subscriptions structure \p subs.
  *
  * @param[in] sess Subscription session.
+ * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @param[in] subs Session subscription.
  * @return Number of session subscriptions.
  */
-int sr_subs_session_count(sr_session_ctx_t *sess, sr_subscription_ctx_t *subs);
+int sr_subs_session_count(sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock, sr_subscription_ctx_t *subs);
 
 /**
  * @brief Delete all subscriptions in \p subs of session \p sess.
  * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
  * @param[in] sess Subscription session.
+ * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @param[in] subs Session subscription.
- * @param[in] has_subs_lock Whether SUBS lock was locked or not.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_subs_session_del(sr_session_ctx_t *sess, sr_subscription_ctx_t *subs, int has_subs_lock);
+sr_error_info_t *sr_subs_session_del(sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock, sr_subscription_ctx_t *subs);
 
 /**
  * @brief Delete all subscriptions in \p subs of all the sessions.
@@ -1545,13 +1546,6 @@ sr_error_info_t *sr_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, co
  * @param[in] func Caller function name for logging.
  */
 void sr_conn_remap_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func);
-
-/**
- * @brief Check whether ext SHM wasted memory did not reach the treshold and if so, defragment it.
- *
- * @param[in] conn Connection to use.
- */
-void sr_shmext_defrag_check(sr_conn_ctx_t *conn);
 
 /**
  * @brief Transform given time_t (seconds since the epoch) into the RFC 3339 format (YANG date-and-time).

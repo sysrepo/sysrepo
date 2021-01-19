@@ -1370,7 +1370,7 @@ sr_modinfo_module_srmon_rpc(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, struct lyd_n
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_rpc, *sr_sub;
-    sr_rpc_sub_t *rpc_sub;
+    sr_mod_rpc_sub_t *rpc_sub;
     uint16_t i;
     char buf[22];
     struct ly_ctx *ly_ctx;
@@ -1389,7 +1389,7 @@ sr_modinfo_module_srmon_rpc(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, struct lyd_n
         return err_info;
     }
 
-    rpc_sub = (sr_rpc_sub_t *)(conn->ext_shm.addr + shm_rpc->subs);
+    rpc_sub = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + shm_rpc->subs);
     for (i = 0; i < shm_rpc->sub_count; ++i) {
         /* rpc-sub */
         sr_sub = lyd_new(sr_rpc, NULL, "rpc-sub");

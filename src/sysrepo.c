@@ -471,7 +471,7 @@ sr_session_stop(sr_session_ctx_t *session)
 
     /* stop all subscriptions of this session */
     while (session->subscription_count) {
-        tmp_err = sr_subs_session_del(session, session->subscriptions[0], 0);
+        tmp_err = sr_subs_session_del(session, SR_LOCK_NONE, session->subscriptions[0]);
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
@@ -2603,8 +2603,9 @@ sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session
         *stop_time_in = 0;
     }
 
-    /* SUBS LOCK */
-    if ((err_info = sr_mlock(&subscription->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, __func__))) {
+    /* SUBS READ LOCK */
+    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid,
+            __func__, NULL, NULL))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -2649,7 +2650,7 @@ sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session
 
         /* check whether a subscription did not finish */
         mod_finished = 0;
-        if ((err_info = sr_shmsub_notif_listen_module_stop_time(&subscription->notif_subs[i], subscription,
+        if ((err_info = sr_shmsub_notif_listen_module_stop_time(&subscription->notif_subs[i], SR_LOCK_READ, subscription,
                 &mod_finished))) {
             goto cleanup_unlock;
         }
@@ -2672,8 +2673,9 @@ sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session
     }
 
 cleanup_unlock:
-    /* SUBS UNLOCK */
-    sr_munlock(&subscription->subs_lock);
+    /* SUBS READ UNLOCK */
+    sr_rwunlock(&subscription->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
+
     return sr_api_ret(session, err_info);
 }
 
@@ -2732,7 +2734,7 @@ _sr_unsubscribe(sr_subscription_ctx_t *subscription)
 
     /* free attributes */
     close(subscription->evpipe);
-    pthread_mutex_destroy(&subscription->subs_lock);
+    sr_rwlock_destroy(&subscription->subs_lock);
     free(subscription);
     return err_info;
 }
@@ -2876,7 +2878,7 @@ sr_subs_new(sr_conn_ctx_t *conn, sr_subscr_options_t opts, sr_subscription_ctx_t
     /* allocate new subscription */
     *subs_p = calloc(1, sizeof **subs_p);
     SR_CHECK_MEM_RET(!*subs_p, err_info);
-    sr_mutex_init(&(*subs_p)->subs_lock, 0);
+    sr_rwlock_init(&(*subs_p)->subs_lock, 0);
     (*subs_p)->conn = conn;
     (*subs_p)->evpipe = -1;
 
@@ -4357,8 +4359,9 @@ _sr_event_notif_sub_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_
 
     SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
 
-    /* SUBS LOCK */
-    if ((err_info = sr_mlock(&subscription->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, __func__))) {
+    /* SUBS READ LOCK */
+    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid,
+            __func__, NULL, NULL))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -4381,8 +4384,8 @@ _sr_event_notif_sub_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_
     }
 
 cleanup_unlock:
-    /* SUBS UNLOCK */
-    sr_munlock(&subscription->subs_lock);
+    /* SUBS READ UNLOCK */
+    sr_rwunlock(&subscription->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
 
     return sr_api_ret(NULL, err_info);
 }
