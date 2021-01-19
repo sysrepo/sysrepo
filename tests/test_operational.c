@@ -2233,6 +2233,8 @@ test_stored_state_list(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val2", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val1", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -2255,6 +2257,76 @@ test_stored_state_list(void **state)
         "</l>"
         "<ll or:origin=\"unknown\">val1</ll>"
         "<ll or:origin=\"unknown\">val2</ll>"
+        "<ll or:origin=\"unknown\">val1</ll>"
+    "</test-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* remove some oper data */
+    ret = sr_delete_item(st->sess, "/mixed-config:test-state/ll", SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the data */
+    ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+        "<l or:origin=\"unknown\">"
+            "<l1>val1</l1>"
+        "</l>"
+        "<l or:origin=\"unknown\">"
+            "<l1>val2</l1>"
+        "</l>"
+    "</test-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* create some new oper data */
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val3", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val3", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val2", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val3", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val1", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the data */
+    ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+        "<l or:origin=\"unknown\">"
+            "<l1>val1</l1>"
+        "</l>"
+        "<l or:origin=\"unknown\">"
+            "<l1>val2</l1>"
+        "</l>"
+        "<ll or:origin=\"unknown\">val3</ll>"
+        "<ll or:origin=\"unknown\">val3</ll>"
+        "<ll or:origin=\"unknown\">val2</ll>"
+        "<ll or:origin=\"unknown\">val3</ll>"
+        "<ll or:origin=\"unknown\">val1</ll>"
     "</test-state>";
 
     assert_string_equal(str1, str2);

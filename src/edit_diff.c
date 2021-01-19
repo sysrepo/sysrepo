@@ -1483,8 +1483,12 @@ sr_edit_apply_create(struct lyd_node **first_node, struct lyd_node *parent_node,
             *next_op = EDIT_NONE;
             return NULL;
         }
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Node \"%s\" to be created already exists.", edit_node->schema->name);
-        return err_info;
+
+        /* allow creating duplicate instances of state lists/leaf-lists */
+        if (!(edit_node->schema->nodetype & (LYS_LIST | LYS_LEAFLIST)) || !(edit_node->schema->flags & LYS_CONFIG_R)) {
+            sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Node \"%s\" to be created already exists.", edit_node->schema->name);
+            return err_info;
+        }
     }
 
     if (lys_parent(edit_node->schema) && (lys_parent(edit_node->schema)->nodetype == LYS_CASE)) {
@@ -2383,6 +2387,12 @@ sr_diff_merge_r(const struct lyd_node *src_node, enum edit_op parent_op, sr_conn
             }
             break;
         case EDIT_CREATE:
+            if ((cur_op == EDIT_CREATE) && (diff_node->schema->nodetype & (LYS_LIST | LYS_LEAFLIST)) &&
+                    (diff_node->schema->flags & LYS_CONFIG_R)) {
+                /* special case of creating duplicate state (leaf-)list instances */
+                goto add_diff;
+            }
+
             if ((err_info = sr_diff_merge_create(diff_node, cur_op, op_own, val_equal, oper_conn ? 1 : 0, src_node, change))) {
                 goto op_error;
             }
@@ -2431,6 +2441,7 @@ sr_diff_merge_r(const struct lyd_node *src_node, enum edit_op parent_op, sr_conn
             }
         }
     } else {
+add_diff:
         /* add new diff node with all descendants */
         if ((err_info = sr_diff_add(src_node, diff_parent, diff_root, &diff_node))) {
             return err_info;
@@ -2676,7 +2687,8 @@ sr_diff_apply_r(struct lyd_node **first_node, struct lyd_node *parent_node, cons
         break;
     case EDIT_CREATE:
         /* duplicate the node */
-        assert(!sr_edit_find(*first_node, diff_node, op, 0, NULL, 0, &match, NULL) && !match);
+        assert(((diff_node->schema->nodetype & (LYS_LIST | LYS_LEAFLIST)) && (diff_node->schema->flags & LYS_CONFIG_R)) ||
+                (!sr_edit_find(*first_node, diff_node, op, 0, NULL, 0, &match, NULL) && !match));
         match = lyd_dup(diff_node, LYD_DUP_OPT_WITH_KEYS | LYD_DUP_OPT_NO_ATTR);
         if (!match) {
             sr_errinfo_new_ly(&err_info, ly_ctx);
