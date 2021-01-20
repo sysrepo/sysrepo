@@ -60,8 +60,9 @@ sr_shmext_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock
         if ((err_info = sr_file_get_size(conn->ext_shm.fd, &shm_file_size))) {
             goto error_ext_remap_unlock;
         }
-        if (shm_file_size > conn->ext_shm.size) {
-            /* ext SHM is larger now and we need to remap it */
+        if (shm_file_size != conn->ext_shm.size) {
+            /* ext SHM size changed and we need to remap it
+             * !! even if the SHM got smaller to avoid having unaccounted wasted memory !! */
 
             if (mode == SR_LOCK_READ_UPGR) {
                 /* REMAP WRITE LOCK UPGRADE */
@@ -79,11 +80,13 @@ sr_shmext_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock
                 }
             }
 
-            if ((err_info = sr_shm_remap(&conn->ext_shm, shm_file_size))) {
+            /* remap SHM */
+            if ((err_info = sr_shm_remap(&conn->ext_shm, 0))) {
                 mode = SR_LOCK_WRITE;
                 goto error_ext_remap_unlock;
             }
 
+            /* do not release the lock anymore because ext SHM could be again remapped */
             if (mode == SR_LOCK_READ_UPGR) {
                 /* REMAP READ UPGR LOCK DOWNGRADE */
                 if ((err_info = sr_rwrelock(&conn->ext_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ_UPGR,
@@ -92,12 +95,11 @@ sr_shmext_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock
                     goto error_ext_remap_unlock;
                 }
             } else {
-                /* REMAP WRITE UNLOCK */
-                sr_rwunlock(&conn->ext_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, func);
-                /* REMAP READ LOCK */
-                if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
-                        func, NULL, NULL))) {
-                    goto error_ext_unlock;
+                /* REMAP READ LOCK DOWNGRADE */
+                if ((err_info = sr_rwrelock(&conn->ext_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ,
+                        conn->cid, func, NULL, NULL))) {
+                    mode = SR_LOCK_WRITE;
+                    goto error_ext_remap_unlock;
                 }
             }
         } /* else no remapping needed */
