@@ -910,7 +910,7 @@ sr_subs_session_del(sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock, sr_sub
         change_subs = &subs->change_subs[i];
 
         /* find module */
-        shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(sess->conn), change_subs->module_name, 0);
+        shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(sess->conn), change_subs->module_name);
         SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup_subs_unlock);
 
         del = 0;
@@ -945,7 +945,7 @@ sr_subs_session_del(sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock, sr_sub
         oper_subs = &subs->oper_subs[i];
 
         /* find module */
-        shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(sess->conn), oper_subs->module_name, 0);
+        shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(sess->conn), oper_subs->module_name);
         SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup_subs_unlock);
 
         del = 0;
@@ -977,7 +977,7 @@ sr_subs_session_del(sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock, sr_sub
         notif_subs = &subs->notif_subs[i];
 
         /* find module */
-        shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(sess->conn), notif_subs->module_name, 0);
+        shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(sess->conn), notif_subs->module_name);
         SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup_subs_unlock);
 
         del = 0;
@@ -1118,13 +1118,14 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif_sub_t **notif_subs, uint32_t *notif_sub_count)
+sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif_sub_t **notif_subs,
+        uint32_t *notif_sub_count)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
     uint32_t i;
 
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), mod_name, 0);
+    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), mod_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     *notif_subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
@@ -5140,85 +5141,6 @@ cleanup:
         *count = 0;
     }
     return err_info;
-}
-
-sr_error_info_t *
-sr_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func)
-{
-    sr_error_info_t *err_info = NULL;
-    size_t shm_file_size;
-
-    /* REMAP LOCK */
-    if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, conn->cid, func, NULL, NULL))) {
-        return err_info;
-    }
-
-    /* remap ext SHM */
-    if (mode == SR_LOCK_WRITE) {
-        /* we have WRITE lock, it is safe */
-        if ((err_info = sr_shm_remap(&conn->ext_shm, 0))) {
-            goto error_unlock;
-        }
-    } else {
-        if ((err_info = sr_file_get_size(conn->ext_shm.fd, &shm_file_size))) {
-            goto error_unlock;
-        }
-        if (shm_file_size > conn->ext_shm.size) {
-            /* ext SHM is larger now and we need to remap it */
-
-            if (mode == SR_LOCK_READ_UPGR) {
-                /* REMAP WRITE LOCK UPGRADE */
-                if ((err_info = sr_rwrelock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, conn->cid,
-                        func, NULL, NULL))) {
-                    return err_info;
-                }
-            } else {
-                /* REMAP READ UNLOCK */
-                sr_rwunlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, conn->cid, func);
-                /* REMAP WRITE LOCK */
-                if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, conn->cid,
-                        func, NULL, NULL))) {
-                    return err_info;
-                }
-            }
-
-            if ((err_info = sr_shm_remap(&conn->ext_shm, shm_file_size))) {
-                mode = SR_LOCK_WRITE;
-                goto error_unlock;
-            }
-
-            if (mode == SR_LOCK_READ_UPGR) {
-                /* REMAP READ UPGR LOCK DOWNGRADE */
-                if ((err_info = sr_rwrelock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ_UPGR,
-                        conn->cid, func, NULL, NULL))) {
-                    mode = SR_LOCK_WRITE;
-                    goto error_unlock;
-                }
-            } else {
-                /* REMAP WRITE UNLOCK */
-                sr_rwunlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, conn->cid, func);
-                /* REMAP READ LOCK */
-                if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, conn->cid, func,
-                        NULL, NULL))) {
-                    return err_info;
-                }
-            }
-        } /* else no remapping needed */
-    }
-
-    return NULL;
-
-error_unlock:
-    /* REMAP UNLOCK */
-    sr_rwunlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, conn->cid, func);
-    return err_info;
-}
-
-void
-sr_conn_remap_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func)
-{
-    /* REMAP UNLOCK */
-    sr_rwunlock(&conn->ext_remap_lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, conn->cid, func);
 }
 
 sr_error_info_t *

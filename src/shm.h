@@ -83,7 +83,8 @@ typedef struct sr_rpc_s {
     off_t out_deps;             /**< Output operation dependencies (offset in main SHM). */
     uint16_t out_dep_count;     /**< Output dependency count. */
 
-    sr_rwlock_t lock;           /**< Lock for accessing RPC/action subscriptions. */
+    sr_rwlock_t lock;           /**< Process-shared lock for reading or preventing changes (READ) or modifying (WRITE)
+                                     RPC/action subscriptions. */
     off_t subs;                 /**< Array of RPC/action subscriptions (offset in ext SHM). */
     uint32_t sub_count;         /**< Number of RPC/action subscriptions. */
 } sr_rpc_t;
@@ -130,16 +131,19 @@ struct sr_mod_s {
     uint16_t inv_dep_count;     /**< Number of inverse module data dependencies. */
 
     struct {
-        sr_rwlock_t lock;       /**< Lock for accessing change subscriptions. */
+        sr_rwlock_t lock;       /**< Process-shared lock for reading or preventing changes (READ) or modifying (WRITE)
+                                     change subscriptions. */
         off_t subs;             /**< Array of change subscriptions (offset in ext SHM). */
         uint32_t sub_count;     /**< Number of change subscriptions. */
     } change_sub[SR_DS_COUNT];  /**< Change subscriptions for each datastore. */
 
-    sr_rwlock_t oper_lock;      /**< Lock for accessing operational subscriptions. */
+    sr_rwlock_t oper_lock;      /**< Process-shared lock for reading or preventing changes (READ) or modifying (WRITE)
+                                     operational subscriptions. */
     off_t oper_subs;            /**< Array of operational subscriptions (offset in ext SHM). */
     uint32_t oper_sub_count;    /**< Number of operational subscriptions. */
 
-    sr_rwlock_t notif_lock;     /** Lock for accessing notification subscriptions. */
+    sr_rwlock_t notif_lock;     /**< Process-shared lock for reading or preventing changes (READ) or modifying (WRITE)
+                                     notification subscriptions. */
     off_t notif_subs;           /**< Array of notification subscriptions (offset in ext SHM). */
     uint32_t notif_sub_count;   /**< Number of notification subscriptions. */
 };
@@ -151,6 +155,7 @@ typedef struct sr_main_shm_s {
     uint32_t shm_ver;           /**< Main and ext SHM version of all expected data stored in them. Is increased with
                                      every change of their structure content (ABI change). */
     pthread_mutex_t lydmods_lock; /**< Process-shared lock for accessing sysrepo module data. */
+    pthread_mutex_t ext_lock;   /**< Process-shared lock for truncating (allocating more) ext SHM. */
     uint32_t mod_count;         /**< Number of installed modules stored after this structure. */
 
     ATOMIC_T new_sr_cid;        /**< Connection ID for a new connection. */
@@ -430,18 +435,14 @@ sr_error_info_t *sr_shmmain_ext_open(sr_shm_t *shm, int zero);
 /**
  * @brief Find a specific main SHM module.
  *
- * Either name or name_off must be set.
- *
  * @param[in] main_shm Main SHM.
  * @param[in] name Name of the module.
- * @param[in] name_off Main SHM offset of the name (faster lookup).
  * @return Found SHM module, NULL if not found.
  */
-sr_mod_t *sr_shmmain_find_module(sr_main_shm_t *main_shm, const char *name, off_t name_off);
+sr_mod_t *sr_shmmain_find_module(sr_main_shm_t *main_shm, const char *name);
 
 /**
- * @brief Find a specific main SHM RPC.
- * Remap READ lock must be held, the return value also depends on it to stay valid!
+ * @brief Find a specific main SHM module RPC.
  *
  * @param[in] main_shm Main SHM.
  * @param[in] path Path of the RPC/ation.
@@ -485,6 +486,28 @@ sr_error_info_t *sr_shmmain_check_data_files(sr_main_shm_t *main_shm);
 /*
  * Ext SHM functions
  */
+
+/**
+ * @brief Lock ext SHM lock and connection remap lock, remap ext SHM if needed.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] mode Mode of the remap lock.
+ * @param[in] ext_lock Whether ext SHM will also be truncated (enlarged, new memory allocated) when ext lock will
+ * be locked or not.
+ * @param[in] func Caller function name for logging.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock, const char *func);
+
+/**
+ * @brief Unlock ext SHM lock and connection remap lock.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] mode Mode of the remap lock.
+ * @param[in] ext_lock Whether to unlock ext lock or not.
+ * @param[in] func Caller function name for logging.
+ */
+void sr_shmext_conn_remap_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock, const char *func);
 
 /**
  * @brief Add main SHM module change subscription.
@@ -1012,16 +1035,14 @@ sr_error_info_t *sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, sr_rpc_t *shm_r
 /**
  * @brief Notify about (generate) a notification event.
  *
+ * @param[in] conn Connection to use.
  * @param[in] notif Notification data tree.
  * @param[in] notif_ts Notification timestamp.
  * @param[in] sid Originator sysrepo session ID.
- * @param[in] cid Connection ID.
- * @param[in] notif_subs Array of subscriptions for the specific notification.
- * @param[in] notif_sub_count Number of notification subscribers.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t sid, sr_cid_t cid,
-        const sr_mod_notif_sub_t *notif_subs, uint32_t notif_sub_count);
+sr_error_info_t *sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, time_t notif_ts,
+        sr_sid_t sid);
 
 /**
  * @brief Process all module change events, if any.

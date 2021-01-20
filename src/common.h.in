@@ -172,6 +172,12 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** timeout for locking main SHM and subscription SHM; maximum time an API call (sr_apply_changes()) is expected to take (s) */
 #define SR_MAIN_LOCK_TIMEOUT 15
 
+/** timeout for locking ext SHM lock; time that truncating a SHM may take (ms) */
+#define SR_EXT_LOCK_TIMEOUT 100
+
+/** timeout for locking connection remap lock; maximum time it can be continuously read/written to it (ms) */
+#define SR_CONN_REMAP_LOCK_TIMEOUT 10000
+
 /** timeout for locking (data of) a module; maximum time a module write lock is expected to be held (s) */
 #define SR_MOD_LOCK_TIMEOUT 2
 
@@ -1527,25 +1533,6 @@ struct lys_feature *sr_lys_next_feature(struct lys_feature *last, const struct l
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_conn_info(sr_cid_t **cids, pid_t **pids, uint32_t *count, sr_cid_t **dead_cids, uint32_t *dead_count);
-
-/**
- * @brief Lock connection remap lock and remap ext SHM if needed.
- *
- * @param[in] conn Connection to use.
- * @param[in] mode Mode of remap lock.
- * @param[in] func Caller function name for logging.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func);
-
-/**
- * @brief Unlock connection remap lock.
- *
- * @param[in] conn Connection to use.
- * @param[in] mode Mode of remap lock.
- * @param[in] func Caller function name for logging.
- */
-void sr_conn_remap_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func);
 
 /**
  * @brief Transform given time_t (seconds since the epoch) into the RFC 3339 format (YANG date-and-time).

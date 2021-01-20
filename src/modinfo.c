@@ -662,7 +662,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, sr_conn_
         sr_error_info_t **cb_error_info)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_oper_sub_t *shm_msub;
+    sr_mod_oper_sub_t *shm_sub;
     const char *sub_xpath;
     char *parent_xpath = NULL;
     uint16_t i, j;
@@ -688,26 +688,26 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, sr_conn_
 
     assert(timeout_ms && cb_error_info);
 
-    /* REMAP READ LOCK */
-    if ((err_info = sr_conn_remap_lock(conn, SR_LOCK_READ, __func__))) {
-        return err_info;
-    }
-
     /* OPER SUB READ LOCK */
     if ((err_info = sr_rwlock(&mod->shm_mod->oper_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
             NULL, NULL))) {
-        goto cleanup_remap_unlock;
+        return err_info;
+    }
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        goto cleanup_opersub_unlock;
     }
 
     /* XPaths are ordered based on depth */
     for (i = 0; i < mod->shm_mod->oper_sub_count; ++i) {
-        shm_msub = &((sr_mod_oper_sub_t *)(conn->ext_shm.addr + mod->shm_mod->oper_subs))[i];
-        sub_xpath = conn->ext_shm.addr + shm_msub->xpath;
+        shm_sub = &((sr_mod_oper_sub_t *)(conn->ext_shm.addr + mod->shm_mod->oper_subs))[i];
+        sub_xpath = conn->ext_shm.addr + shm_sub->xpath;
 
-        if ((shm_msub->sub_type == SR_OPER_SUB_CONFIG) && (opts & SR_OPER_NO_CONFIG)) {
+        if ((shm_sub->sub_type == SR_OPER_SUB_CONFIG) && (opts & SR_OPER_NO_CONFIG)) {
             /* useless to retrieve configuration data */
             continue;
-        } else if ((shm_msub->sub_type == SR_OPER_SUB_STATE) && (opts & SR_OPER_NO_STATE)) {
+        } else if ((shm_sub->sub_type == SR_OPER_SUB_STATE) && (opts & SR_OPER_NO_STATE)) {
             /* useless to retrieve state data */
             continue;
         } else if (!sr_xpath_oper_data_required(request_xpath, sub_xpath)) {
@@ -716,13 +716,13 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, sr_conn_
         }
 
         /* remove any present data */
-        if (!(shm_msub->opts & SR_SUBSCR_OPER_MERGE) && (err_info = sr_lyd_xpath_complement(data, sub_xpath))) {
-            goto cleanup_remap_oper_unlock;
+        if (!(shm_sub->opts & SR_SUBSCR_OPER_MERGE) && (err_info = sr_lyd_xpath_complement(data, sub_xpath))) {
+            goto cleanup_opersub_ext_unlock;
         }
 
         /* trim the last node to get the parent */
         if ((err_info = sr_xpath_trim_last_node(sub_xpath, &parent_xpath))) {
-            goto cleanup_remap_oper_unlock;
+            goto cleanup_opersub_ext_unlock;
         }
 
         if (parent_xpath) {
@@ -734,7 +734,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, sr_conn_
             set = lyd_find_path(*data, parent_xpath);
             if (!set) {
                 sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
-                goto cleanup_remap_oper_unlock;
+                goto cleanup_opersub_ext_unlock;
             }
 
             if (!set->number) {
@@ -744,9 +744,9 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, sr_conn_
 
             /* nested data */
             for (j = 0; j < set->number; ++j) {
-                if ((err_info = sr_xpath_oper_data_append(shm_msub, mod->ly_mod, sub_xpath, request_xpath, set->set.d[j],
+                if ((err_info = sr_xpath_oper_data_append(shm_sub, mod->ly_mod, sub_xpath, request_xpath, set->set.d[j],
                         sid, timeout_ms, conn->cid, data, cb_error_info))) {
-                    goto cleanup_remap_oper_unlock;
+                    goto cleanup_opersub_ext_unlock;
                 }
             }
 
@@ -758,22 +758,22 @@ next_iter:
             set = NULL;
         } else {
             /* top-level data */
-            if ((err_info = sr_xpath_oper_data_append(shm_msub, mod->ly_mod, sub_xpath, request_xpath, NULL, sid,
+            if ((err_info = sr_xpath_oper_data_append(shm_sub, mod->ly_mod, sub_xpath, request_xpath, NULL, sid,
                     timeout_ms, conn->cid, data, cb_error_info))) {
-                goto cleanup_remap_oper_unlock;
+                goto cleanup_opersub_ext_unlock;
             }
         }
     }
 
     /* success */
 
-cleanup_remap_oper_unlock:
+cleanup_opersub_ext_unlock:
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+cleanup_opersub_unlock:
     /* OPER SUB READ UNLOCK */
     sr_rwunlock(&mod->shm_mod->oper_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
-
-cleanup_remap_unlock:
-    /* REMAP READ UNLOCK */
-    sr_conn_remap_unlock(conn, SR_LOCK_READ, __func__);
 
     free(parent_xpath);
     ly_set_free(set);
@@ -1683,7 +1683,7 @@ sr_modinfo_add_mod(const struct lys_module *ly_mod, uint32_t mod_type, int mod_r
     cur_i = i;
 
     /* find module in SHM */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(mod_info->conn), ly_mod->name, 0);
+    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(mod_info->conn), ly_mod->name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     if (prev_mod_type < MOD_INFO_DEP) {
@@ -2291,13 +2291,23 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     /* remember when the notification was generated */
     notif_ts = time(NULL);
 
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(mod_info->conn, SR_LOCK_READ, 0, __func__))) {
+        return err_info;
+    }
+
     /* get subscriber count */
-    if ((err_info = sr_notif_find_subscriber(session->conn, "ietf-netconf-notifications", &notif_subs, &notif_sub_count))) {
+    err_info = sr_notif_find_subscriber(mod_info->conn, "ietf-netconf-notifications", &notif_subs, &notif_sub_count);
+
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(mod_info->conn, SR_LOCK_READ, 0, __func__);
+
+    if (err_info) {
         return err_info;
     }
 
     /* get this module and check replay support */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(mod_info->conn), "ietf-netconf-notifications", 0);
+    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(mod_info->conn), "ietf-netconf-notifications");
     SR_CHECK_INT_RET(!shm_mod, err_info);
     if (!ATOMIC_LOAD_RELAXED(shm_mod->replay_supp) && !notif_sub_count) {
         /* nothing to do */
@@ -2406,8 +2416,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     tmp_err_info = sr_replay_store(session, notif, notif_ts);
 
     /* send the notification (non-validated, if everything works correctly it must be valid) */
-    if (notif_sub_count && (err_info = sr_shmsub_notif_notify(notif, notif_ts, session->sid, mod_info->conn->cid,
-            notif_subs, notif_sub_count))) {
+    if ((err_info = sr_shmsub_notif_notify(mod_info->conn, notif, notif_ts, session->sid))) {
         goto cleanup;
     }
 

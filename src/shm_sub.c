@@ -406,8 +406,8 @@ sr_shmsub_change_notify_has_subscription(sr_conn_ctx_t *conn, struct sr_mod_info
     uint32_t i;
     sr_mod_change_sub_t *shm_msub;
 
-    /* REMAP READ LOCK */
-    if ((err_info = sr_conn_remap_lock(conn, SR_LOCK_READ, __func__))) {
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
         sr_errinfo_free(&err_info);
         return 0;
     }
@@ -426,8 +426,8 @@ sr_shmsub_change_notify_has_subscription(sr_conn_ctx_t *conn, struct sr_mod_info
         }
     }
 
-    /* REMAP READ UNLOCK */
-    sr_conn_remap_unlock(conn, SR_LOCK_READ, __func__);
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ,0, __func__);
 
     return has_sub;
 }
@@ -454,8 +454,8 @@ sr_shmsub_change_notify_next_subscription(sr_conn_ctx_t *conn, struct sr_mod_inf
     sr_mod_change_sub_t *shm_msub;
     int opts = 0;
 
-    /* REMAP READ LOCK */
-    if ((err_info = sr_conn_remap_lock(conn, SR_LOCK_READ, __func__))) {
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
         return err_info;
     }
 
@@ -493,8 +493,8 @@ sr_shmsub_change_notify_next_subscription(sr_conn_ctx_t *conn, struct sr_mod_inf
         *opts_p = opts;
     }
 
-    /* REMAP READ UNLOCK */
-    sr_conn_remap_unlock(conn, SR_LOCK_READ, __func__);
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
     return NULL;
 }
@@ -551,31 +551,31 @@ sr_shmsub_change_notify_evpipe(sr_conn_ctx_t *conn, struct sr_mod_info_mod_s *mo
         uint32_t priority)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_change_sub_t *shm_msub;
+    sr_mod_change_sub_t *shm_sub;
     uint32_t i;
 
-    /* REMAP READ LOCK */
-    if ((err_info = sr_conn_remap_lock(conn, SR_LOCK_READ, __func__))) {
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
         return err_info;
     }
 
-    shm_msub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + mod->shm_mod->change_sub[ds].subs);
+    shm_sub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + mod->shm_mod->change_sub[ds].subs);
     for (i = 0; i < mod->shm_mod->change_sub[ds].sub_count; ++i) {
-        if (!sr_shmsub_change_is_valid(ev, shm_msub[i].opts)) {
+        if (!sr_shmsub_change_is_valid(ev, shm_sub[i].opts)) {
             continue;
         }
 
         /* valid subscription */
-        if (shm_msub[i].priority == priority) {
-            if ((err_info = sr_shmsub_notify_evpipe(shm_msub[i].evpipe_num))) {
+        if (shm_sub[i].priority == priority) {
+            if ((err_info = sr_shmsub_notify_evpipe(shm_sub[i].evpipe_num))) {
                 goto cleanup;
             }
         }
     }
 
 cleanup:
-    /* REMAP READ UNLOCK */
-    sr_conn_remap_unlock(conn, SR_LOCK_READ, __func__);
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
     return err_info;
 }
@@ -1360,8 +1360,8 @@ sr_shmsub_rpc_notify_has_subscription(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, co
     uint32_t i;
     int has_sub = 0;
 
-    /* REMAP READ LOCK */
-    if ((err_info = sr_conn_remap_lock(conn, SR_LOCK_READ, __func__))) {
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
         sr_errinfo_free(&err_info);
         return 0;
     }
@@ -1383,8 +1383,8 @@ sr_shmsub_rpc_notify_has_subscription(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, co
         }
     }
 
-    /* REMAP READ UNLOCK */
-    sr_conn_remap_unlock(conn, SR_LOCK_READ, __func__);
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
     return has_sub;
 }
@@ -1411,8 +1411,8 @@ sr_shmsub_rpc_notify_next_subscription(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, c
     uint32_t i;
     int opts = 0;
 
-    /* REMAP READ LOCK */
-    if ((err_info = sr_conn_remap_lock(conn, SR_LOCK_READ, __func__))) {
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
         return err_info;
     }
 
@@ -1459,8 +1459,8 @@ sr_shmsub_rpc_notify_next_subscription(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, c
     }
 
 cleanup:
-    /* REMAP READ UNLOCK */
-    sr_conn_remap_unlock(conn, SR_LOCK_READ, __func__);
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
     if (!err_info && opts_p) {
         *opts_p = opts;
@@ -1720,13 +1720,13 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t sid, sr_cid_t cid,
-        const sr_mod_notif_sub_t *notif_subs, uint32_t notif_sub_count)
+sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, time_t notif_ts, sr_sid_t sid)
 {
     sr_error_info_t *err_info = NULL;
     struct lys_module *ly_mod;
+    sr_mod_notif_sub_t *notif_subs;
     char *notif_lyb = NULL;
-    uint32_t notif_lyb_len, request_id, i;
+    uint32_t notif_sub_count, notif_lyb_len, request_id, i;
     sr_multi_sub_shm_t *multi_sub_shm;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER;
 
@@ -1734,27 +1734,43 @@ sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t s
 
     ly_mod = lyd_node_module(notif);
 
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        goto cleanup;
+    }
+
+    /* check that there is a subscriber */
+    if ((err_info = sr_notif_find_subscriber(conn, ly_mod->name, &notif_subs, &notif_sub_count))) {
+        goto cleanup_ext_unlock;
+    }
+
+    if (!notif_sub_count) {
+        /* nothing to do */
+        SR_LOG_INF("There are no subscribers for \"%s\" notifications.", ly_mod->name);
+        goto cleanup_ext_unlock;
+    }
+
     /* print the notification into LYB */
     if (lyd_print_mem(&notif_lyb, notif, LYD_LYB, 0)) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-        goto cleanup;
+        goto cleanup_ext_unlock;
     }
     notif_lyb_len = lyd_lyb_data_length(notif_lyb);
 
     /* open sub SHM and map it */
     if ((err_info = sr_shmsub_open_map(ly_mod->name, "notif", -1, &shm_sub, sizeof *multi_sub_shm))) {
-        goto cleanup;
+        goto cleanup_ext_unlock;
     }
     multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
     /* SUB WRITE LOCK */
-    if ((err_info = sr_shmsub_notify_new_wrlock((sr_sub_shm_t *)multi_sub_shm, ly_mod->name, 0, cid))) {
-        goto cleanup;
+    if ((err_info = sr_shmsub_notify_new_wrlock((sr_sub_shm_t *)multi_sub_shm, ly_mod->name, 0, conn->cid))) {
+        goto cleanup_ext_unlock;
     }
 
     /* remap to make space for additional data */
     if ((err_info = sr_shm_remap(&shm_sub, sizeof *multi_sub_shm + sizeof notif_ts + notif_lyb_len))) {
-        goto cleanup_wrunlock;
+        goto cleanup_ext_sub_unlock;
     }
     multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
@@ -1771,7 +1787,7 @@ sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t s
         }
 
         if ((err_info = sr_shmsub_notify_evpipe(notif_subs[i].evpipe_num))) {
-            goto cleanup_wrunlock;
+            goto cleanup_ext_sub_unlock;
         }
     }
 
@@ -1779,9 +1795,13 @@ sr_shmsub_notif_notify(const struct lyd_node *notif, time_t notif_ts, sr_sid_t s
 
     /* success */
 
-cleanup_wrunlock:
+cleanup_ext_sub_unlock:
     /* SUB WRITE UNLOCK */
-    sr_rwunlock(&multi_sub_shm->lock, 0, SR_LOCK_WRITE, cid, __func__);
+    sr_rwunlock(&multi_sub_shm->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+
+cleanup_ext_unlock:
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
 cleanup:
     sr_shm_clear(&shm_sub);
@@ -3090,7 +3110,7 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lo
             }
 
             /* find module */
-            shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subs->conn), notif_subs->module_name, 0);
+            shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subs->conn), notif_subs->module_name);
             SR_CHECK_INT_RET(!shm_mod, err_info);
 
             /* remove the subscription from main SHM */
@@ -3142,7 +3162,7 @@ sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subsc
             }
 
             /* find module */
-            shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subs->conn), notif_subs->module_name, 0);
+            shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subs->conn), notif_subs->module_name);
             SR_CHECK_INT_RET(!shm_mod, err_info);
 
             /* now we can add notification subscription into main SHM because it will process realtime notifications */

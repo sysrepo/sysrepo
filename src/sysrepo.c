@@ -1131,7 +1131,7 @@ sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *o
         goto cleanup;
     }
 
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), module_name, 0);
+    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     if (ATOMIC_LOAD_RELAXED(shm_mod->replay_supp)) {
@@ -2988,7 +2988,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     }
 
     /* find module */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), module_name, 0);
+    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, error1);
 
     /* add module subscription into ext SHM */
@@ -3858,25 +3858,17 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
         goto cleanup;
     }
 
-    /* REMAP READ LOCK */
-    if ((err_info = sr_conn_remap_lock(session->conn, SR_LOCK_READ, __func__))) {
-        goto cleanup_rpcsub_unlock;
-    }
-
     /* publish RPC in an event and wait for a reply from the last subscriber */
     if ((err_info = sr_shmsub_rpc_notify(session->conn, shm_rpc, path, input, session->sid, timeout_ms, &event_id,
             output, &cb_err_info))) {
-        goto cleanup_rpcsub_remap_unlock;
+        goto cleanup_rpcsub_unlock;
     }
 
     if (cb_err_info) {
         /* "rpc" event failed, publish "abort" event and finish */
         err_info = sr_shmsub_rpc_notify_abort(session->conn, shm_rpc, path, input, session->sid, timeout_ms, event_id);
-        goto cleanup_rpcsub_remap_unlock;
+        goto cleanup_rpcsub_unlock;
     }
-
-    /* REMAP READ UNLOCK */
-    sr_conn_remap_unlock(session->conn, SR_LOCK_READ, __func__);
 
     /* RPC SUB READ UNLOCK */
     sr_rwunlock(&shm_rpc->lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
@@ -3914,10 +3906,6 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
 
     /* success */
     goto cleanup;
-
-cleanup_rpcsub_remap_unlock:
-    /* REMAP READ UNLOCK */
-    sr_conn_remap_unlock(session->conn, SR_LOCK_READ, __func__);
 
 cleanup_rpcsub_unlock:
     /* RPC SUB READ UNLOCK */
@@ -4043,7 +4031,7 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
     }
 
     /* find module */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), ly_mod->name, 0);
+    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), ly_mod->name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, error1);
 
     if (!start_time) {
@@ -4160,8 +4148,6 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
     sr_mod_t *shm_mod;
     time_t notif_ts;
     uint16_t shm_dep_count;
-    sr_mod_notif_sub_t *notif_subs;
-    uint32_t notif_sub_count;
     char *xpath = NULL;
 
     SR_CHECK_ARG_APIRET(!session || !notif, session, err_info);
@@ -4197,7 +4183,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
     }
 
     /* check write/read perm */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(session->conn), lyd_node_module(notif)->name, 0);
+    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(session->conn), lyd_node_module(notif)->name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
     if ((err_info = sr_perm_check(lyd_node_module(notif)->name, ATOMIC_LOAD_RELAXED(shm_mod->replay_supp), NULL))) {
         goto cleanup;
@@ -4253,31 +4239,12 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
         goto cleanup;
     }
 
-    /* REMAP READ LOCK */
-    if ((err_info = sr_conn_remap_lock(session->conn, SR_LOCK_READ, __func__))) {
+    /* publish notif in an event, do not wait for subscribers */
+    if ((tmp_err = sr_shmsub_notif_notify(session->conn, notif, notif_ts, session->sid))) {
         goto cleanup_notifsub_unlock;
     }
 
-    /* check that there is a subscriber */
-    if ((tmp_err = sr_notif_find_subscriber(session->conn, lyd_node_module(notif)->name, &notif_subs, &notif_sub_count))) {
-        goto cleanup_notifsub_remap_unlock;
-    }
-
-    if (notif_sub_count) {
-        /* publish notif in an event, do not wait for subscribers */
-        if ((tmp_err = sr_shmsub_notif_notify(notif, notif_ts, session->sid, session->conn->cid, notif_subs,
-                notif_sub_count))) {
-            goto cleanup_notifsub_remap_unlock;
-        }
-    } else {
-        SR_LOG_INF("There are no subscribers for \"%s\" notifications.", lyd_node_module(notif)->name);
-    }
-
     /* success */
-
-cleanup_notifsub_remap_unlock:
-    /* REMAP READ UNLOCK */
-    sr_conn_remap_unlock(session->conn, SR_LOCK_READ, __func__);
 
 cleanup_notifsub_unlock:
     /* NOTIF SUB READ UNLOCK */
@@ -4570,7 +4537,7 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     }
 
     /* find module */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), module_name, 0);
+    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, error1);
 
     /* add oper subscription into main SHM */

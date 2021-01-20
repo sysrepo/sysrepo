@@ -174,7 +174,7 @@ sr_shmmod_collect_notif_deps(sr_main_shm_t *main_shm, const struct lys_module *n
     uint32_t i;
 
     /* find the module in SHM */
-    shm_mod = sr_shmmain_find_module(main_shm, notif_mod->name, 0);
+    shm_mod = sr_shmmain_find_module(main_shm, notif_mod->name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     /* find the notification in SHM */

@@ -548,7 +548,7 @@ sr_shmmain_fill_deps(sr_main_shm_t *main_shm, struct lyd_node *sr_dep_parent, sr
 
             /* copy module name offset */
             str = sr_ly_leaf_value_str(sr_dep);
-            ref_shm_mod = sr_shmmain_find_module(main_shm, str, 0);
+            ref_shm_mod = sr_shmmain_find_module(main_shm, str);
             SR_CHECK_INT_RET(!ref_shm_mod, err_info);
             shm_deps[*dep_i].module = ref_shm_mod->name;
 
@@ -571,7 +571,7 @@ sr_shmmain_fill_deps(sr_main_shm_t *main_shm, struct lyd_node *sr_dep_parent, sr
                 } else if (!strcmp(sr_instid->schema->name, "default-module")) {
                     /* copy module name offset */
                     str = sr_ly_leaf_value_str(sr_instid);
-                    ref_shm_mod = sr_shmmain_find_module(main_shm, str, 0);
+                    ref_shm_mod = sr_shmmain_find_module(main_shm, str);
                     SR_CHECK_INT_RET(!ref_shm_mod, err_info);
                     shm_deps[*dep_i].module = ref_shm_mod->name;
                 }
@@ -772,7 +772,7 @@ sr_shmmain_add_module_deps(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr
         } else if (!strcmp(sr_child->schema->name, "inverse-deps")) {
             /* now fill module references */
             str = sr_ly_leaf_value_str(sr_child);
-            ref_shm_mod = sr_shmmain_find_module(main_shm, str, 0);
+            ref_shm_mod = sr_shmmain_find_module(main_shm, str);
             SR_CHECK_INT_RET(!ref_shm_mod, err_info);
             shm_inv_deps[inv_dep_i] = ref_shm_mod->name;
 
@@ -1161,6 +1161,9 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
         if ((err_info = sr_mutex_init(&main_shm->lydmods_lock, 1))) {
             goto error;
         }
+        if ((err_info = sr_mutex_init(&main_shm->ext_lock, 1))) {
+            goto error;
+        }
         ATOMIC_STORE_RELAXED(main_shm->new_sr_cid, 1);
         ATOMIC_STORE_RELAXED(main_shm->new_sr_sid, 1);
         ATOMIC_STORE_RELAXED(main_shm->new_sub_id, 1);
@@ -1226,18 +1229,16 @@ error:
 }
 
 sr_mod_t *
-sr_shmmain_find_module(sr_main_shm_t *main_shm, const char *name, off_t name_off)
+sr_shmmain_find_module(sr_main_shm_t *main_shm, const char *name)
 {
     sr_mod_t *shm_mod;
     uint32_t i;
 
-    assert(name || name_off);
+    assert(name);
 
     for (i = 0; i < main_shm->mod_count; ++i) {
         shm_mod = SR_SHM_MOD_IDX(main_shm, i);
-        if (name_off && (shm_mod->name == name_off)) {
-            return shm_mod;
-        } else if (name && !strcmp(((char *)main_shm) + shm_mod->name, name)) {
+        if (!strcmp(((char *)main_shm) + shm_mod->name, name)) {
             return shm_mod;
         }
     }
@@ -1257,7 +1258,7 @@ sr_shmmain_find_rpc(sr_main_shm_t *main_shm, const char *path)
 
     /* find module first */
     mod_name = sr_get_first_ns(path);
-    shm_mod = sr_shmmain_find_module(main_shm, mod_name, 0);
+    shm_mod = sr_shmmain_find_module(main_shm, mod_name);
     free(mod_name);
     if (!shm_mod) {
         return NULL;
@@ -1351,7 +1352,7 @@ sr_shmmain_update_replay_support(sr_main_shm_t *main_shm, const char *mod_name, 
     uint32_t i;
 
     if (mod_name) {
-        shm_mod = sr_shmmain_find_module(main_shm, mod_name, 0);
+        shm_mod = sr_shmmain_find_module(main_shm, mod_name);
         SR_CHECK_INT_RET(!shm_mod, err_info);
 
         /* update flag */
@@ -1377,31 +1378,41 @@ sr_shmmain_update_notif_suspend(sr_conn_ctx_t *conn, const char *mod_name, uint3
     uint32_t i;
 
     /* find the subscription in SHM */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), mod_name, 0);
+    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), mod_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        return err_info;
+    }
+
     shm_sub = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
     for (i = 0; i < shm_mod->notif_sub_count; ++i) {
         if (shm_sub[i].sub_id == sub_id) {
             break;
         }
     }
-    SR_CHECK_INT_RET(i == shm_mod->notif_sub_count, err_info);
+    SR_CHECK_INT_GOTO(i == shm_mod->notif_sub_count, err_info, cleanup_ext_unlock);
 
     /* check whether the flag can be changed */
     if (suspend && ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Notification subscription with ID \"%u\" already suspended.",
                 sub_id);
-        return err_info;
+        goto cleanup_ext_unlock;
     } else if (!suspend && !ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Notification subscription with ID \"%u\" not suspended.",
                 sub_id);
-        return err_info;
+        goto cleanup_ext_unlock;
     }
 
     /* set the flag */
     ATOMIC_STORE_RELAXED(shm_sub[i].suspended, suspend);
 
-    return NULL;
+cleanup_ext_unlock:
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+    return err_info;
 }
 
 sr_error_info_t *
