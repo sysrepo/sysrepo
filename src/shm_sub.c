@@ -36,7 +36,7 @@ sr_error_info_t *
 sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_shm_t *shm, size_t shm_struct_size)
 {
     sr_error_info_t *err_info = NULL;
-    char *path;
+    char *path = NULL;
     int created;
     mode_t um;
     sr_sub_shm_t *sub_shm;
@@ -50,7 +50,7 @@ sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_sh
 
     /* create/open shared memory */
     if ((err_info = sr_path_sub_shm(name, suffix1, suffix2, &path))) {
-        return err_info;
+        goto cleanup;
     }
     created = 1;
 
@@ -63,34 +63,34 @@ sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_sh
         created = 0;
         shm->fd = SR_OPEN(path, O_RDWR, SR_SUB_SHM_PERM);
     }
-    free(path);
     if (shm->fd == -1) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open shared memory (%s).", strerror(errno));
-        return err_info;
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" SHM (%s).", path, strerror(errno));
+        goto cleanup;
     }
 
     if (created) {
         /* truncate and map for initialization */
         if ((err_info = sr_shm_remap(shm, shm_struct_size))) {
-            goto error;
+            goto cleanup;
         }
 
         /* initialize */
         sub_shm = (sr_sub_shm_t *)shm->addr;
         if ((err_info = sr_rwlock_init(&sub_shm->lock, 1))) {
-            goto error;
+            goto cleanup;
         }
     } else {
         /* just map it */
         if ((err_info = sr_shm_remap(shm, 0))) {
-            goto error;
+            goto cleanup;
         }
     }
 
-    return NULL;
-
-error:
-    sr_shm_clear(shm);
+cleanup:
+    free(path);
+    if (err_info) {
+        sr_shm_clear(shm);
+    }
     return err_info;
 }
 

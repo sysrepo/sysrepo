@@ -100,6 +100,7 @@ sr_sub_change_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpat
     struct modsub_change_s *change_sub = NULL;
     uint32_t i;
     void *mem[4] = {NULL};
+    int new_sub = 0;
 
     /* just to prevent problems in future changes */
     assert(has_subs_lock == SR_LOCK_NONE);
@@ -134,12 +135,16 @@ sr_sub_change_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpat
         change_sub->ds = sess->ds;
 
         /* create/open shared memory and map it */
-        if ((err_info = sr_shmsub_open_map(mod_name, sr_ds2str(sess->ds), -1, &change_sub->sub_shm, sizeof(sr_multi_sub_shm_t)))) {
+        if ((err_info = sr_shmsub_open_map(mod_name, sr_ds2str(sess->ds), -1, &change_sub->sub_shm,
+                sizeof(sr_multi_sub_shm_t)))) {
             goto error_unlock;
         }
 
         /* make the subscription visible only after everything succeeds */
         ++subs->change_sub_count;
+
+        /* for cleanup */
+        new_sub = 1;
     } else {
         change_sub = &subs->change_subs[i];
     }
@@ -184,7 +189,7 @@ error_unlock:
     if (change_sub) {
         sr_shm_clear(&change_sub->sub_shm);
     }
-    if (mem[1]) {
+    if (new_sub) {
         --subs->change_sub_count;
     }
     return err_info;
@@ -287,6 +292,7 @@ sr_sub_oper_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath,
     struct modsub_oper_s *oper_sub = NULL;
     uint32_t i;
     void *mem[4] = {NULL};
+    int new_sub = 0;
 
     assert(mod_name && xpath);
 
@@ -322,6 +328,9 @@ sr_sub_oper_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath,
 
         /* make the subscription visible only after everything succeeds */
         ++subs->oper_sub_count;
+
+        /* for cleanup */
+        new_sub = 1;
     } else {
         oper_sub = &subs->oper_subs[i];
     }
@@ -361,7 +370,7 @@ error_unlock:
     for (i = 0; i < 4; ++i) {
         free(mem[i]);
     }
-    if (mem[1]) {
+    if (new_sub) {
         --subs->oper_sub_count;
     }
     return err_info;
@@ -458,6 +467,7 @@ sr_sub_notif_add(sr_session_ctx_t *sess, const char *mod_name, uint32_t sub_id, 
     struct modsub_notif_s *notif_sub = NULL;
     uint32_t i;
     void *mem[4] = {NULL};
+    int new_sub = 0;
 
     assert(mod_name);
 
@@ -499,6 +509,9 @@ sr_sub_notif_add(sr_session_ctx_t *sess, const char *mod_name, uint32_t sub_id, 
 
         /* make the subscription visible only after everything succeeds */
         ++subs->notif_sub_count;
+
+        /* for cleanup */
+        new_sub = 1;
     } else {
         notif_sub = &subs->notif_subs[i];
     }
@@ -537,7 +550,7 @@ error_unlock:
     for (i = 0; i < 4; ++i) {
         free(mem[i]);
     }
-    if (mem[1]) {
+    if (new_sub) {
         --subs->notif_sub_count;
         sr_shm_clear(&notif_sub->sub_shm);
     }
@@ -646,6 +659,7 @@ sr_sub_rpc_add(sr_session_ctx_t *sess, const char *path, const char *xpath, sr_r
     uint32_t i;
     char *mod_name;
     void *mem[4] = {NULL};
+    int new_sub = 0;
 
     assert(path && xpath && (rpc_cb || rpc_tree_cb) && (!rpc_cb || !rpc_tree_cb));
 
@@ -692,6 +706,9 @@ sr_sub_rpc_add(sr_session_ctx_t *sess, const char *path, const char *xpath, sr_r
 
         /* make the subscription visible only after everything succeeds */
         ++subs->rpc_sub_count;
+
+        /* for cleanup */
+        new_sub = 1;
     } else {
         rpc_sub = &subs->rpc_subs[i];
     }
@@ -726,7 +743,7 @@ error_unlock:
     for (i = 0; i < 4; ++i) {
         free(mem[i]);
     }
-    if (mem[1]) {
+    if (new_sub) {
         --subs->rpc_sub_count;
         sr_shm_clear(&rpc_sub->sub_shm);
     }

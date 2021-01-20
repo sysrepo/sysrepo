@@ -1145,7 +1145,7 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
     }
     free(shm_name);
     if (shm->fd == -1) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open shared memory (%s).", strerror(errno));
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open main shared memory (%s).", strerror(errno));
         goto error;
     }
 
