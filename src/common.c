@@ -2313,13 +2313,15 @@ sr_strshmlen(const char *str)
 }
 
 sr_error_info_t *
-sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array, uint32_t *shm_count, int in_ext_shm, size_t item_size,
+sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array_off, uint32_t *shm_count, int in_ext_shm, size_t item_size,
         int64_t add_idx, void **new_item, size_t dyn_attr_size, off_t *dyn_attr_off)
 {
     sr_error_info_t *err_info = NULL;
-    off_t old_array_off, new_array_off, old_count_off, attr_off;
+    off_t new_array_off, attr_off;
     size_t new_ext_size;
+    char *old_shm_addr;
 
+    assert((*shm_array_off && *shm_count) || (!*shm_array_off && !*shm_count));
     assert((add_idx > -2) && (add_idx <= *shm_count));
     assert(!dyn_attr_size || dyn_attr_off);
 
@@ -2331,12 +2333,6 @@ sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array, uint32_t *shm_count, int 
         add_idx = *shm_count;
     }
 
-    if (in_ext_shm) {
-        /* remember current offsets in ext SHM */
-        old_array_off = ((char *)shm_array) - shm_ext->addr;
-        old_count_off = ((char *)shm_count) - shm_ext->addr;
-    }
-
     /* we may not even need to resize ext SHM because of the alignment */
     if (SR_SHM_SIZE((*shm_count + 1) * item_size) + dyn_attr_size > SR_SHM_SIZE(*shm_count * item_size)) {
         /* get new offsets and size */
@@ -2344,15 +2340,18 @@ sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array, uint32_t *shm_count, int 
         attr_off = new_array_off + SR_SHM_SIZE((*shm_count + 1) * item_size);
         new_ext_size = attr_off + dyn_attr_size;
 
+        /* remember current SHM mapping address */
+        old_shm_addr = shm_ext->addr;
+
         /* remap ext SHM */
         if ((err_info = sr_shm_remap(shm_ext, new_ext_size))) {
             return err_info;
         }
 
         if (in_ext_shm) {
-            /* update our pointers */
-            shm_array = (off_t *)(shm_ext->addr + old_array_off);
-            shm_count = (uint32_t *)(shm_ext->addr + old_count_off);
+            /* update our pointers after ext SHM was remapped */
+            shm_array_off = (off_t *)(shm_ext->addr + (((char *)shm_array_off) - old_shm_addr));
+            shm_count = (uint32_t *)(shm_ext->addr + (((char *)shm_count) - old_shm_addr));
         }
 
         /* add wasted memory */
@@ -2360,17 +2359,17 @@ sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array, uint32_t *shm_count, int 
 
         /* copy preceding items */
         if (add_idx) {
-            memcpy(shm_ext->addr + new_array_off, shm_ext->addr + *shm_array, add_idx * item_size);
+            memcpy(shm_ext->addr + new_array_off, shm_ext->addr + *shm_array_off, add_idx * item_size);
         }
 
         /* copy succeeding items */
         if (add_idx < *shm_count) {
             memcpy(shm_ext->addr + new_array_off + (add_idx + 1) * item_size,
-                    shm_ext->addr + *shm_array + add_idx * item_size, (*shm_count - add_idx) * item_size);
+                    shm_ext->addr + *shm_array_off + add_idx * item_size, (*shm_count - add_idx) * item_size);
         }
 
         /* update array and attribute offset */
-        *shm_array = new_array_off;
+        *shm_array_off = new_array_off;
         if (dyn_attr_off && dyn_attr_size) {
             *dyn_attr_off = attr_off;
         }
@@ -2379,19 +2378,19 @@ sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array, uint32_t *shm_count, int 
         assert(!dyn_attr_size);
 
         /* we only need to move succeeding items */
-        memmove(shm_ext->addr + *shm_array + (add_idx + 1) * item_size,
-                shm_ext->addr + *shm_array + add_idx * item_size, (*shm_count - add_idx) * item_size);
+        memmove(shm_ext->addr + *shm_array_off + (add_idx + 1) * item_size,
+                shm_ext->addr + *shm_array_off + add_idx * item_size, (*shm_count - add_idx) * item_size);
     }
 
     /* return pointer to the new item and update count */
-    *new_item = (shm_ext->addr + *shm_array) + (add_idx * item_size);
+    *new_item = (shm_ext->addr + *shm_array_off) + (add_idx * item_size);
     ++(*shm_count);
 
     return NULL;
 }
 
 void
-sr_shmrealloc_del(char *ext_shm_addr, off_t *shm_array, uint32_t *shm_count, size_t item_size, uint32_t del_idx,
+sr_shmrealloc_del(char *ext_shm_addr, off_t *shm_array_off, uint32_t *shm_count, size_t item_size, uint32_t del_idx,
         size_t dyn_shm_size)
 {
     /* add wasted memory keeping alignment in mind */
@@ -2402,11 +2401,11 @@ sr_shmrealloc_del(char *ext_shm_addr, off_t *shm_array, uint32_t *shm_count, siz
     --(*shm_count);
     if (!*shm_count) {
         /* the only item removed */
-        *shm_array = 0;
+        *shm_array_off = 0;
     } else if (del_idx < *shm_count) {
         /* move all following items, we may need to keep the order intact */
-        memmove((ext_shm_addr + *shm_array) + (del_idx * item_size),
-                (ext_shm_addr + *shm_array) + ((del_idx + 1) * item_size),
+        memmove((ext_shm_addr + *shm_array_off) + (del_idx * item_size),
+                (ext_shm_addr + *shm_array_off) + ((del_idx + 1) * item_size),
                 (*shm_count - del_idx) * item_size);
     }
 }

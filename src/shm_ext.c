@@ -1054,7 +1054,7 @@ sr_shmext_rpc_subscription_add(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const cha
     }
 
     /* add new subscription with its xpath */
-    if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_rpc->subs, &shm_rpc->sub_count, 1, sizeof *shm_sub, -1,
+    if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_rpc->subs, &shm_rpc->sub_count, 0, sizeof *shm_sub, -1,
             (void **)&shm_sub, sr_strshmlen(xpath), &xpath_off))) {
         goto cleanup_rpcsub_ext_unlock;
     }
