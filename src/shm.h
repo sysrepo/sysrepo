@@ -718,6 +718,13 @@ sr_error_info_t *sr_shmext_rpc_subscription_del(sr_conn_ctx_t *conn, sr_rpc_t *s
 sr_error_info_t *sr_shmext_rpc_subscription_stop(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath,
         uint32_t priority, uint32_t evpipe_num, sr_cid_t cid, int del_evpipe);
 
+/**
+ * @brief Recover all subscriptions in main/ext SHM, their connection must be dead.
+ *
+ * @param[in] conn Connection to use.
+ */
+void sr_shmext_recover_subs_all(sr_conn_ctx_t *conn);
+
 /*
  * Main SHM module functions
  */

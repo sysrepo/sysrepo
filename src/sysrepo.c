@@ -176,6 +176,9 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     }
 
     if (changed || created) {
+        /* recover anything left in ext SHM */
+        sr_shmext_recover_subs_all(conn);
+
         /* clear all main SHM modules (if main SHM was just created, there aren't any anyway) */
         if ((err_info = sr_shm_remap(&conn->main_shm, sizeof(sr_main_shm_t)))) {
             goto cleanup_unlock;
@@ -186,6 +189,21 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         /* add all the modules in lydmods data into main SHM */
         if ((err_info = sr_shmmain_store_modules(conn, sr_mods->child))) {
             goto cleanup_unlock;
+        }
+
+        assert((conn->ext_shm.size != sizeof(sr_ext_shm_t)) || !ATOMIC_LOAD_RELAXED(SR_CONN_EXT_SHM(conn)->wasted));
+        if (conn->ext_shm.size != sizeof(sr_ext_shm_t)) {
+            /* there is something in ext SHM, is it only wasted memory? */
+            if (conn->ext_shm.size != sizeof(sr_ext_shm_t) + SR_CONN_EXT_SHM(conn)->wasted) {
+                /* no, this should never happen */
+                SR_ERRINFO_INT(&err_info);
+            }
+
+            /* clear ext SHM */
+            if ((err_info = sr_shm_remap(&conn->ext_shm, sizeof(sr_ext_shm_t)))) {
+                goto cleanup_unlock;
+            }
+            ATOMIC_STORE_RELAXED(SR_CONN_EXT_SHM(conn)->wasted, 0);
         }
 
         /* copy full datastore from <startup> to <running> */
