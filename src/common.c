@@ -134,9 +134,8 @@ sr_sub_change_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpat
         change_sub->module_name = mem[1];
         change_sub->ds = sess->ds;
 
-        /* create/open shared memory and map it */
-        if ((err_info = sr_shmsub_open_map(mod_name, sr_ds2str(sess->ds), -1, &change_sub->sub_shm,
-                sizeof(sr_multi_sub_shm_t)))) {
+        /* open shared memory and map it */
+        if ((err_info = sr_shmsub_open_map(mod_name, sr_ds2str(sess->ds), -1, &change_sub->sub_shm))) {
             goto error_unlock;
         }
 
@@ -350,9 +349,8 @@ sr_sub_oper_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpath,
     oper_sub->subs[oper_sub->sub_count].private_data = private_data;
     oper_sub->subs[oper_sub->sub_count].sess = sess;
 
-    /* create specific SHM and map it */
-    if ((err_info = sr_shmsub_open_map(mod_name, "oper", sr_str_hash(xpath), &oper_sub->subs[oper_sub->sub_count].sub_shm,
-            sizeof(sr_sub_shm_t)))) {
+    /* open sub SHM and map it */
+    if ((err_info = sr_shmsub_open_map(mod_name, "oper", sr_str_hash(xpath), &oper_sub->subs[oper_sub->sub_count].sub_shm))) {
         goto error_unlock;
     }
 
@@ -502,8 +500,8 @@ sr_sub_notif_add(sr_session_ctx_t *sess, const char *mod_name, uint32_t sub_id, 
         SR_CHECK_MEM_GOTO(!mem[1], err_info, error_unlock);
         notif_sub->module_name = mem[1];
 
-        /* create/open specific SHM and map it */
-        if ((err_info = sr_shmsub_open_map(mod_name, "notif", -1, &notif_sub->sub_shm, sizeof(sr_sub_shm_t)))) {
+        /* open specific SHM and map it */
+        if ((err_info = sr_shmsub_open_map(mod_name, "notif", -1, &notif_sub->sub_shm))) {
             goto error_unlock;
         }
 
@@ -697,8 +695,8 @@ sr_sub_rpc_add(sr_session_ctx_t *sess, const char *path, const char *xpath, sr_r
         /* get module name */
         mod_name = sr_get_first_ns(xpath);
 
-        /* create specific SHM and map it */
-        err_info = sr_shmsub_open_map(mod_name, "rpc", sr_str_hash(path), &rpc_sub->sub_shm, sizeof(sr_multi_sub_shm_t));
+        /* open specific SHM and map it */
+        err_info = sr_shmsub_open_map(mod_name, "rpc", sr_str_hash(path), &rpc_sub->sub_shm);
         free(mod_name);
         if (err_info) {
             goto error_unlock;

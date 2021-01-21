@@ -33,13 +33,56 @@
 #include <unistd.h>
 
 sr_error_info_t *
-sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_shm_t *shm, size_t shm_struct_size)
+sr_shmsub_create(const char *name, const char *suffix1, int64_t suffix2, size_t shm_struct_size)
 {
     sr_error_info_t *err_info = NULL;
     char *path = NULL;
-    int created;
+    sr_shm_t shm = SR_SHM_INITIALIZER;
     mode_t um;
     sr_sub_shm_t *sub_shm;
+
+    assert(name && suffix1);
+
+    /* get the path */
+    if ((err_info = sr_path_sub_shm(name, suffix1, suffix2, &path))) {
+        goto cleanup;
+    }
+
+    /* set umask so that the correct permissions are really set */
+    um = umask(SR_UMASK);
+
+    /* create shared memory */
+    shm.fd = SR_OPEN(path, O_RDWR | O_CREAT | O_EXCL, SR_SUB_SHM_PERM);
+    umask(um);
+    if (shm.fd == -1) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to create \"%s\" SHM (%s).", path, strerror(errno));
+        goto cleanup;
+    }
+
+    /* truncate and map for initialization */
+    if ((err_info = sr_shm_remap(&shm, shm_struct_size))) {
+        goto cleanup;
+    }
+
+    /* initialize */
+    sub_shm = (sr_sub_shm_t *)shm.addr;
+    if ((err_info = sr_rwlock_init(&sub_shm->lock, 1))) {
+        goto cleanup;
+    }
+
+    /* success */
+
+cleanup:
+    free(path);
+    sr_shm_clear(&shm);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_shm_t *shm)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path = NULL;
 
     assert(name && suffix1);
 
@@ -48,42 +91,21 @@ sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_sh
         return NULL;
     }
 
-    /* create/open shared memory */
+    /* get the path */
     if ((err_info = sr_path_sub_shm(name, suffix1, suffix2, &path))) {
         goto cleanup;
     }
-    created = 1;
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK);
-
-    shm->fd = SR_OPEN(path, O_RDWR | O_CREAT | O_EXCL, SR_SUB_SHM_PERM);
-    umask(um);
-    if ((shm->fd == -1) && (errno == EEXIST)) {
-        created = 0;
-        shm->fd = SR_OPEN(path, O_RDWR, SR_SUB_SHM_PERM);
-    }
+    /* open shared memory */
+    shm->fd = SR_OPEN(path, O_RDWR, SR_SUB_SHM_PERM);
     if (shm->fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" SHM (%s).", path, strerror(errno));
         goto cleanup;
     }
 
-    if (created) {
-        /* truncate and map for initialization */
-        if ((err_info = sr_shm_remap(shm, shm_struct_size))) {
-            goto cleanup;
-        }
-
-        /* initialize */
-        sub_shm = (sr_sub_shm_t *)shm->addr;
-        if ((err_info = sr_rwlock_init(&sub_shm->lock, 1))) {
-            goto cleanup;
-        }
-    } else {
-        /* just map it */
-        if ((err_info = sr_shm_remap(shm, 0))) {
-            goto cleanup;
-        }
+    /* map it */
+    if ((err_info = sr_shm_remap(shm, 0))) {
+        goto cleanup;
     }
 
 cleanup:
@@ -91,6 +113,32 @@ cleanup:
     if (err_info) {
         sr_shm_clear(shm);
     }
+    return err_info;
+}
+
+sr_error_info_t *
+sr_shmsub_unlink(const char *name, const char *suffix1, int64_t suffix2)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path = NULL;
+
+    assert(name && suffix1);
+
+    /* get the path */
+    if ((err_info = sr_path_sub_shm(name, suffix1, suffix2, &path))) {
+        goto cleanup;
+    }
+
+    /* unlink */
+    if (unlink(path) == -1) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to unlink \"%s\" SHM (%s).", path, strerror(errno));
+        goto cleanup;
+    }
+
+    /* success */
+
+cleanup:
+    free(path);
     return err_info;
 }
 
@@ -651,7 +699,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
         diff_lyb_len = lyd_lyb_data_length(diff_lyb);
 
         /* open sub SHM and map it */
-        if ((err_info = sr_shmsub_open_map(mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &shm_sub, sizeof *multi_sub_shm))) {
+        if ((err_info = sr_shmsub_open_map(mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &shm_sub))) {
             goto cleanup;
         }
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
@@ -781,7 +829,7 @@ sr_shmsub_change_notify_clear(struct sr_mod_info_s *mod_info)
 
     while ((mod = sr_modinfo_next_mod(mod, mod_info, mod_info->diff, &aux))) {
         /* open sub SHM and map it */
-        if ((err_info = sr_shmsub_open_map(mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &shm_sub, sizeof *multi_sub_shm))) {
+        if ((err_info = sr_shmsub_open_map(mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &shm_sub))) {
             goto cleanup;
         }
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
@@ -872,8 +920,7 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
         }
 
         /* open sub SHM and map it */
-        err_info = sr_shmsub_open_map(mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &shm_sub, sizeof *multi_sub_shm);
-        if (err_info) {
+        if ((err_info = sr_shmsub_open_map(mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &shm_sub))) {
             goto cleanup;
         }
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
@@ -988,8 +1035,7 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
         }
 
         /* open sub SHM and map it */
-        err_info = sr_shmsub_open_map(mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &shm_sub, sizeof *multi_sub_shm);
-        if (err_info) {
+        if ((err_info = sr_shmsub_open_map(mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &shm_sub))) {
             goto cleanup;
         }
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
@@ -1083,7 +1129,7 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t si
         }
 
         /* open sub SHM and map it */
-        if ((err_info = sr_shmsub_open_map(mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &shm_sub, sizeof *multi_sub_shm))) {
+        if ((err_info = sr_shmsub_open_map(mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &shm_sub))) {
             goto cleanup;
         }
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
@@ -1243,7 +1289,7 @@ sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const 
     parent_lyb_len = lyd_lyb_data_length(parent_lyb);
 
     /* open sub SHM and map it */
-    if ((err_info = sr_shmsub_open_map(ly_mod->name, "oper", sr_str_hash(xpath), &shm_sub, sizeof *sub_shm))) {
+    if ((err_info = sr_shmsub_open_map(ly_mod->name, "oper", sr_str_hash(xpath), &shm_sub))) {
         goto cleanup;
     }
     sub_shm = (sr_sub_shm_t *)shm_sub.addr;
@@ -1497,8 +1543,7 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *op_path
     input_lyb_len = lyd_lyb_data_length(input_lyb);
 
     /* open sub SHM and map it */
-    if ((err_info = sr_shmsub_open_map(lyd_node_module(input)->name, "rpc", sr_str_hash(op_path), &shm_sub,
-            sizeof *multi_sub_shm))) {
+    if ((err_info = sr_shmsub_open_map(lyd_node_module(input)->name, "rpc", sr_str_hash(op_path), &shm_sub))) {
         goto cleanup;
     }
     multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
@@ -1610,8 +1655,7 @@ sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *o
     assert(request_id);
 
     /* open sub SHM and map it */
-    if ((err_info = sr_shmsub_open_map(lyd_node_module(input)->name, "rpc", sr_str_hash(op_path), &shm_sub,
-            sizeof *multi_sub_shm))) {
+    if ((err_info = sr_shmsub_open_map(lyd_node_module(input)->name, "rpc", sr_str_hash(op_path), &shm_sub))) {
         goto cleanup;
     }
     multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
@@ -1758,7 +1802,7 @@ sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, time_t
     notif_lyb_len = lyd_lyb_data_length(notif_lyb);
 
     /* open sub SHM and map it */
-    if ((err_info = sr_shmsub_open_map(ly_mod->name, "notif", -1, &shm_sub, sizeof *multi_sub_shm))) {
+    if ((err_info = sr_shmsub_open_map(ly_mod->name, "notif", -1, &shm_sub))) {
         goto cleanup_ext_unlock;
     }
     multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;

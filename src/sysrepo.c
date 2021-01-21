@@ -3016,7 +3016,7 @@ error3:
 
 error2:
     if ((tmp_err = sr_shmext_change_subscription_del(conn, shm_mod, session->ds, xpath, priority, sub_opts,
-            (*subscription)->evpipe_num, 0, NULL, NULL, NULL))) {
+            (*subscription)->evpipe_num, 0, NULL, NULL))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
@@ -3559,7 +3559,6 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     const struct lys_module *ly_mod;
     sr_conn_ctx_t *conn;
     sr_rpc_t *shm_rpc;
-    int last_removed;
 
     SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !xpath || (!callback && !tree_callback) || !subscription,
             session, err_info);
@@ -3639,7 +3638,7 @@ error4:
 
 error3:
     if ((tmp_err = sr_shmext_rpc_subscription_del(conn, shm_rpc, xpath, priority, (*subscription)->evpipe_num, 0,
-            &last_removed, NULL, NULL))) {
+            NULL, NULL))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 

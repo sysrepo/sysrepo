@@ -510,9 +510,8 @@ sr_error_info_t *sr_shmext_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t m
 void sr_shmext_conn_remap_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock, const char *func);
 
 /**
- * @brief Add main SHM module change subscription.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- * May remap ext SHM!
+ * @brief Add main SHM module change subscription and create sub SHM if the first subscription was added.
+ * Ext SHM may be remapped!
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
@@ -527,8 +526,7 @@ sr_error_info_t *sr_shmext_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t
         sr_datastore_t ds, uint32_t priority, int sub_opts, uint32_t evpipe_num);
 
 /**
- * @brief Remove main SHM module change subscription.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ * @brief Remove main SHM module change subscription and unlink sub SHM if the last subscription was removed.
  *
  * Either all params (1) or (2) must be set.
  *
@@ -540,18 +538,16 @@ sr_error_info_t *sr_shmext_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t
  * @param[in] sub_opts Subscription options. (1)
  * @param[in] evpipe_num Subscription event pipe number. (1)
  * @param[in] cid Connection ID of all the subscriptions to remove. (2)
- * @param[out] last_removed Optinal flag, whether this is the last module change subscription that was removed.
  * @param[out] evpipe_num_p Optional evpipe number of the removed subscription.
  * @param[out] found Optional flag whether the sunscription was found.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmext_change_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds,
-        const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num, sr_cid_t cid, int *last_removed,
-        uint32_t *evpipe_num_p, int *found);
+        const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num, sr_cid_t cid, uint32_t *evpipe_num_p,
+        int *found);
 
 /**
  * @brief Remove main SHM module change subscription and do a proper cleanup.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
  * Calls ::sr_shmmod_change_subscription_del(), is a higher level wrapper.
  *
@@ -572,9 +568,8 @@ sr_error_info_t *sr_shmext_change_subscription_stop(sr_conn_ctx_t *conn, sr_mod_
         const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num, sr_cid_t cid, int del_evpipe);
 
 /**
- * @brief Add main SHM module operational subscription.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- * May remap ext SHM!
+ * @brief Add main SHM module operational subscription and create sub SHM.
+ * Ext SHM may be remapped!
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
@@ -588,8 +583,7 @@ sr_error_info_t *sr_shmext_oper_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *
         sr_mod_oper_sub_type_t sub_type, int sub_opts, uint32_t evpipe_num);
 
 /**
- * @brief Remove main SHM module operational subscription.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ * @brief Remove main SHM module operational subscription and unlink sub SHM.
  *
  * Either all params (1) or (2) must be set.
  *
@@ -607,7 +601,6 @@ sr_error_info_t *sr_shmext_oper_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *
 
 /**
  * @brief Remove main SHM module operational subscription and do a proper cleanup.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
  * Calls ::sr_shmmod_oper_subscription_del(), is a higher level wrapper.
  *
@@ -625,9 +618,57 @@ sr_error_info_t *sr_shmext_oper_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t 
         uint32_t evpipe_num, sr_cid_t cid, int del_evpipe);
 
 /**
- * @brief Add main SHM RPC/action subscription.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- * May remap ext SHM!
+ * @brief Add main SHM module notification subscription and create sub SHM if the first subscription was added.
+ * Ext SHM may be remapped!
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] sub_id Unique notif sub ID.
+ * @param[in] evpipe_num Subscription event pipe number.
+ * @param[in] suspended Whether the notification should be created suspended or not.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_notif_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
+        uint32_t evpipe_num, int suspended);
+
+/**
+ * @brief Remove main SHM module notification subscription and unlink sub SHM if the last subscription was removed.
+ *
+ * Either all params (1) or (2) must be set.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] sub_id Unique notif sub ID. (1)
+ * @param[in] evpipe_num Subscription event pipe number. (1)
+ * @param[in] cid Connection ID of all the subscription to remove. (2)
+ * @param[out] evpipe_num_p Optional evpipe number of the removed subscription.
+ * @param[out] found Optional flag whether the sunscription was found.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_notif_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
+        uint32_t evpipe_num, sr_cid_t cid, uint32_t *evpipe_num_p, int *found);
+
+/**
+ * @brief Remove main SHM module notification subscription and do a proper cleanup.
+ *
+ * Calls ::sr_shmmod_notif_subscription_del(), is a higher level wrapper.
+ *
+ * Either all params (1) or (2) must be set.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] sub_id Unique notif sub ID in case a specific subscription should be removed. (1)
+ * @param[in] evpipe_num Subscription event pipe number in case all matching subscriptions should be removed. (1)
+ * @param[in] cid Connection ID of all the subscription to remove. (2)
+ * @param[in] del_evpipe Whether to remove all evpipe files of the subscriptions as well. (2)
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_notif_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
+        uint32_t evpipe_num, sr_cid_t cid, int del_evpipe);
+
+/**
+ * @brief Add main SHM RPC/action subscription and create sub SHM if the first subscription was added.
+ * Ext SHM may be remapped!
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_rpc SHM RPC.
@@ -641,8 +682,7 @@ sr_error_info_t *sr_shmext_rpc_subscription_add(sr_conn_ctx_t *conn, sr_rpc_t *s
         uint32_t priority, int sub_opts, uint32_t evpipe_num);
 
 /**
- * @brief Remove main SHM RPC/action subscription.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ * @brief Remove main SHM RPC/action subscription and unlink sub SHM if the last subscription was removed.
  *
  * Either all params (1) or (2) must be set.
  *
@@ -652,17 +692,15 @@ sr_error_info_t *sr_shmext_rpc_subscription_add(sr_conn_ctx_t *conn, sr_rpc_t *s
  * @param[in] priority Subscription priority. (1)
  * @param[in] evpipe_num Subscription event pipe number. (1)
  * @param[in] cid Connection ID of all the subscriptions to remove. (2)
- * @param[out] last_removed Whether this is the last RPC subscription that was removed.
  * @param[out] evpipe_num_p Optional evpipe number of the removed subscription.
  * @param[out] found Optional flag whether the sunscription was found.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmext_rpc_subscription_del(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath,
-        uint32_t priority, uint32_t evpipe_num, sr_cid_t cid, int *last_removed, uint32_t *evpipe_num_p, int *found);
+        uint32_t priority, uint32_t evpipe_num, sr_cid_t cid, uint32_t *evpipe_num_p, int *found);
 
 /**
  * @brief Remove main SHM module RPC/action subscription and do a proper cleanup.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
  * Calls ::sr_shmmain_rpc_subscription_del(), is a higher level wrapper.
  *
@@ -679,58 +717,6 @@ sr_error_info_t *sr_shmext_rpc_subscription_del(sr_conn_ctx_t *conn, sr_rpc_t *s
  */
 sr_error_info_t *sr_shmext_rpc_subscription_stop(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath,
         uint32_t priority, uint32_t evpipe_num, sr_cid_t cid, int del_evpipe);
-
-/**
- * @brief Add main SHM module notification subscription.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- * May remap ext SHM!
- *
- * @param[in] conn Connection to use.
- * @param[in] shm_mod SHM module.
- * @param[in] sub_id Unique notif sub ID.
- * @param[in] evpipe_num Subscription event pipe number.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmext_notif_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
-        uint32_t evpipe_num);
-
-/**
- * @brief Remove main SHM module notification subscription.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- *
- * Either all params (1) or (2) must be set.
- *
- * @param[in] conn Connection to use.
- * @param[in] shm_mod SHM module.
- * @param[in] sub_id Unique notif sub ID. (1)
- * @param[in] evpipe_num Subscription event pipe number. (1)
- * @param[in] cid Connection ID of all the subscription to remove. (2)
- * @param[out] last_removed Whether this is the last module notification subscription that was removed.
- * @param[out] evpipe_num_p Optional evpipe number of the removed subscription.
- * @param[out] found Optional flag whether the sunscription was found.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmext_notif_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
-        uint32_t evpipe_num, sr_cid_t cid, int *last_removed, uint32_t *evpipe_num_p, int *found);
-
-/**
- * @brief Remove main SHM module notification subscription and do a proper cleanup.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- *
- * Calls ::sr_shmmod_notif_subscription_del(), is a higher level wrapper.
- *
- * Either all params (1) or (2) must be set.
- *
- * @param[in] conn Connection to use.
- * @param[in] shm_mod SHM module.
- * @param[in] sub_id Unique notif sub ID in case a specific subscription should be removed. (1)
- * @param[in] evpipe_num Subscription event pipe number in case all matching subscriptions should be removed. (1)
- * @param[in] cid Connection ID of all the subscription to remove. (2)
- * @param[in] del_evpipe Whether to remove all evpipe files of the subscriptions as well. (2)
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmext_notif_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
-        uint32_t evpipe_num, sr_cid_t cid, int del_evpipe);
 
 /*
  * Main SHM module functions
@@ -905,7 +891,18 @@ sr_error_info_t *sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_cid_t ci
  */
 
 /**
- * @brief Open and map a subscription SHM.
+ * @brief Create and initialize a subscription SHM.
+ *
+ * @param[in] name Subscription name (module name).
+ * @param[in] suffix1 First suffix.
+ * @param[in] suffix2 Second suffix, none if set to -1.
+ * @param[in] shm_struct_size Size of the used subscription SHM structure.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_create(const char *name, const char *suffix1, int64_t suffix2, size_t shm_struct_size);
+
+/**
+ * @brief Open and map an existing subscription SHM.
  *
  * @param[in] name Subscription name (module name).
  * @param[in] suffix1 First suffix.
@@ -914,8 +911,17 @@ sr_error_info_t *sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_cid_t ci
  * @param[in] shm_struct_size Size of the used subscription SHM structure.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_shm_t *shm,
-        size_t shm_struct_size);
+sr_error_info_t *sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_shm_t *shm);
+
+/**
+ * @brief Unlink a subscription SHM.
+ *
+ * @param[in] name Subscription name (module name).
+ * @param[in] suffix1 First suffix.
+ * @param[in] suffix2 Second suffix, none if set to -1.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_unlink(const char *name, const char *suffix1, int64_t suffix2);
 
 /**
  * @brief Write into a subscriber event pipe to notify it there is a new event.
