@@ -203,7 +203,7 @@ sr_sub_change_del(const char *mod_name, const char *xpath, sr_datastore_t ds, sr
     uint32_t i, j;
     struct modsub_change_s *change_sub;
 
-    assert((has_subs_lock == SR_LOCK_READ_UPGR) || (has_subs_lock == SR_LOCK_WRITE));
+    assert((has_subs_lock == SR_LOCK_READ_UPGR) || (has_subs_lock == SR_LOCK_NONE));
 
     if (has_subs_lock == SR_LOCK_READ_UPGR) {
         /* SUBS WRITE LOCK UPGRADE */
@@ -381,7 +381,7 @@ sr_sub_oper_del(const char *mod_name, const char *xpath, sr_lock_mode_t has_subs
     uint32_t i, j;
     struct modsub_oper_s *oper_sub;
 
-    assert((has_subs_lock == SR_LOCK_READ_UPGR) || (has_subs_lock == SR_LOCK_WRITE));
+    assert((has_subs_lock == SR_LOCK_READ_UPGR) || (has_subs_lock == SR_LOCK_NONE));
 
     if (has_subs_lock == SR_LOCK_READ_UPGR) {
         /* SUBS WRITE LOCK UPGRADE */
@@ -562,7 +562,7 @@ sr_sub_notif_del(const char *mod_name, uint32_t sub_id, sr_lock_mode_t has_subs_
     uint32_t i, j;
     struct modsub_notif_s *notif_sub;
 
-    assert((has_subs_lock == SR_LOCK_READ) || (has_subs_lock == SR_LOCK_READ_UPGR) || (has_subs_lock == SR_LOCK_WRITE));
+    assert((has_subs_lock == SR_LOCK_WRITE) || (has_subs_lock == SR_LOCK_READ_UPGR) || (has_subs_lock == SR_LOCK_NONE));
 
     if (has_subs_lock == SR_LOCK_READ_UPGR) {
         /* SUBS WRITE LOCK UPGRADE */
@@ -571,12 +571,7 @@ sr_sub_notif_del(const char *mod_name, uint32_t sub_id, sr_lock_mode_t has_subs_
             sr_errinfo_free(&err_info);
             has_subs_lock = SR_LOCK_WRITE;
         }
-    } else {
-        if (has_subs_lock == SR_LOCK_READ) {
-            /* SUBS READ UNLOCK */
-            sr_rwunlock(&subs->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, subs->conn->cid, __func__);
-        }
-
+    } else if (has_subs_lock == SR_LOCK_NONE) {
         /* SUBS WRITE LOCK */
         if ((err_info = sr_rwlock(&subs->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, subs->conn->cid, __func__,
                 NULL, NULL))) {
@@ -634,12 +629,6 @@ cleanup:
         /* SUBS READ UPGR LOCK DOWNGRADE */
         if ((err_info = sr_rwrelock(&subs->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, subs->conn->cid,
                 __func__, NULL, NULL))) {
-            sr_errinfo_free(&err_info);
-        }
-    } else if (has_subs_lock == SR_LOCK_READ) {
-        /* SUBS READ LOCK DOWNGRADE */
-        if ((err_info = sr_rwrelock(&subs->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, subs->conn->cid, __func__,
-                NULL, NULL))) {
             sr_errinfo_free(&err_info);
         }
     } else if (has_subs_lock == SR_LOCK_NONE) {
@@ -906,17 +895,18 @@ sr_subs_session_del(sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock, sr_sub
 
     assert((has_subs_lock == SR_LOCK_READ_UPGR) || (has_subs_lock == SR_LOCK_NONE));
 
-    /* remove ourselves from session subscriptions */
-    if ((err_info = sr_ptr_del(&sess->ptr_lock, (void ***)&sess->subscriptions, &sess->subscription_count, subs))) {
-        return err_info;
-    }
-
     if (has_subs_lock == SR_LOCK_NONE) {
         /* SUBS READ UPGR LOCK */
         if ((err_info = sr_rwlock(&subs->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, sess->conn->cid,
                 __func__, NULL, NULL))) {
             return err_info;
         }
+    }
+
+    /* remove ourselves from session subscriptions (needs SUBS lock to avoid removing it twice in case of reaching
+     * a notification stop time) */
+    if ((err_info = sr_ptr_del(&sess->ptr_lock, (void ***)&sess->subscriptions, &sess->subscription_count, subs))) {
+        goto cleanup_subs_unlock;
     }
 
     /* change subscriptions */

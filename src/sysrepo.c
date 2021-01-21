@@ -2603,6 +2603,8 @@ sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session
         *stop_time_in = 0;
     }
 
+    /* get only READ lock to allow event processing even during unsubscribe */
+
     /* SUBS READ LOCK */
     if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid,
             __func__, NULL, NULL))) {
@@ -2650,8 +2652,8 @@ sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session
 
         /* check whether a subscription did not finish */
         mod_finished = 0;
-        if ((err_info = sr_shmsub_notif_listen_module_stop_time(&subscription->notif_subs[i], SR_LOCK_READ, subscription,
-                &mod_finished))) {
+        if ((err_info = sr_shmsub_notif_listen_module_stop_time(&subscription->notif_subs[i], SR_LOCK_READ,
+                subscription, &mod_finished))) {
             goto cleanup_unlock;
         }
 
@@ -3012,7 +3014,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     return sr_api_ret(session, NULL);
 
 error3:
-    sr_sub_change_del(module_name, xpath, session->ds, callback, private_data, priority, sub_opts, 0, *subscription);
+    sr_sub_change_del(module_name, xpath, session->ds, callback, private_data, priority, sub_opts, SR_LOCK_NONE, *subscription);
 
 error2:
     if ((tmp_err = sr_shmext_change_subscription_del(conn, shm_mod, session->ds, xpath, priority, sub_opts,
@@ -3634,7 +3636,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     return sr_api_ret(session, err_info);
 
 error4:
-    sr_sub_rpc_del(path, xpath, callback, tree_callback, private_data, priority, 0, *subscription);
+    sr_sub_rpc_del(path, xpath, callback, tree_callback, private_data, priority, SR_LOCK_NONE, *subscription);
 
 error3:
     if ((tmp_err = sr_shmext_rpc_subscription_del(conn, shm_rpc, xpath, priority, (*subscription)->evpipe_num, 0,
@@ -4033,11 +4035,9 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
     shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), ly_mod->name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, error1);
 
-    if (!start_time) {
-        /* add notification subscription into main SHM now if replay was not requested */
-        if ((err_info = sr_shmext_notif_subscription_add(conn, shm_mod, sub_id, (*subscription)->evpipe_num))) {
-            goto error1;
-        }
+    /* add notification subscription into main SHM, suspended if replay was requested */
+    if ((err_info = sr_shmext_notif_subscription_add(conn, shm_mod, sub_id, (*subscription)->evpipe_num, start_time ? 1 : 0))) {
+        goto error1;
     }
 
     /* add subscription into structure and create separate specific SHM segment */
@@ -4062,14 +4062,11 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
     return sr_api_ret(session, NULL);
 
 error3:
-    sr_sub_notif_del(ly_mod->name, sub_id, 0, *subscription);
+    sr_sub_notif_del(ly_mod->name, sub_id, SR_LOCK_NONE, *subscription);
 
 error2:
-    if (!start_time) {
-        if ((tmp_err = sr_shmext_notif_subscription_del(conn, shm_mod, sub_id, (*subscription)->evpipe_num, 0, NULL,
-                NULL, NULL))) {
-            sr_errinfo_merge(&err_info, tmp_err);
-        }
+    if ((tmp_err = sr_shmext_notif_subscription_del(conn, shm_mod, sub_id, (*subscription)->evpipe_num, 0, NULL, NULL))) {
+        sr_errinfo_merge(&err_info, tmp_err);
     }
 
 error1:
@@ -4558,7 +4555,7 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     return sr_api_ret(session, err_info);
 
 error3:
-    sr_sub_oper_del(module_name, path, 0, *subscription);
+    sr_sub_oper_del(module_name, path, SR_LOCK_NONE, *subscription);
 
 error2:
     if ((tmp_err = sr_shmext_oper_subscription_del(conn, shm_mod, path, (*subscription)->evpipe_num, 0, NULL, NULL))) {

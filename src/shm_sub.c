@@ -3130,6 +3130,11 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lo
     sr_mod_t *shm_mod;
     uint32_t i;
     sr_sid_t sid = {0};
+    sr_lock_mode_t lock_mode = has_subs_lock;
+
+    /* safety measure for future changes */
+    assert(has_subs_lock == SR_LOCK_READ);
+    (void)has_subs_lock;
 
     *mod_finished = 0;
     cur_time = time(NULL);
@@ -3138,30 +3143,46 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lo
     while (i < notif_subs->sub_count) {
         notif_sub = &notif_subs->subs[i];
         if (notif_sub->stop_time && (notif_sub->stop_time < cur_time)) {
+            if (lock_mode != SR_LOCK_WRITE) {
+                /* SUBS READ UNLOCK */
+                sr_rwunlock(&subs->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, subs->conn->cid, __func__);
+                lock_mode = SR_LOCK_NONE;
+
+                /* SUBS WRITE LOCK */
+                if ((err_info = sr_rwlock(&subs->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, subs->conn->cid,
+                        __func__, NULL, NULL))) {
+                    goto cleanup;
+                }
+                lock_mode = SR_LOCK_WRITE;
+
+                /* restart the loop, now the subscriptions cannot change */
+                i = 0;
+                continue;
+            }
+
             /* subscription is finished */
             if ((err_info = sr_notif_call_callback(subs->conn, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
                     SR_EV_NOTIF_STOP, NULL, cur_time, sid))) {
-                return err_info;
+                goto cleanup;
             }
 
-            /* remove the subscription from the session if the only subscription */
-            if (sr_subs_session_count(notif_sub->sess, has_subs_lock, subs) == 1) {
-                if ((tmp_err = sr_ptr_del(&notif_sub->sess->ptr_lock, (void ***)&notif_sub->sess->subscriptions,
+            /* remove the subscription from the session if the only subscription (needs SUBS lock for
+             * unsubscribe synchronization) */
+            if (sr_subs_session_count(notif_sub->sess, lock_mode, subs) == 1) {
+                if ((err_info = sr_ptr_del(&notif_sub->sess->ptr_lock, (void ***)&notif_sub->sess->subscriptions,
                         &notif_sub->sess->subscription_count, subs))) {
-                    /* continue */
-                    sr_errinfo_merge(&err_info, tmp_err);
+                    goto cleanup;
                 }
             }
 
             /* find module */
             shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subs->conn), notif_subs->module_name);
-            SR_CHECK_INT_RET(!shm_mod, err_info);
+            SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
             /* remove the subscription from main SHM */
-            if ((tmp_err = sr_shmext_notif_subscription_del(subs->conn, shm_mod, notif_sub->sub_id, subs->evpipe_num, 0,
-                    NULL, NULL, NULL))) {
-                /* continue */
-                sr_errinfo_merge(&err_info, tmp_err);
+            if ((err_info = sr_shmext_notif_subscription_del(subs->conn, shm_mod, notif_sub->sub_id, subs->evpipe_num, 0,
+                    NULL, NULL))) {
+                goto cleanup;
             }
 
             if (notif_subs->sub_count == 1) {
@@ -3170,7 +3191,7 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lo
             }
 
             /* remove the subscription from the sub structure */
-            sr_sub_notif_del(notif_subs->module_name, notif_sub->sub_id, has_subs_lock, subs);
+            sr_sub_notif_del(notif_subs->module_name, notif_sub->sub_id, lock_mode, subs);
 
             if (*mod_finished) {
                 /* there are no more subscriptions for this module */
@@ -3183,6 +3204,25 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lo
         ++i;
     }
 
+cleanup:
+    if (has_subs_lock != lock_mode) {
+        if (lock_mode == SR_LOCK_NONE) {
+            /* SUBS LOCK */
+            if ((tmp_err = sr_rwlock(&subs->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, has_subs_lock, subs->conn->cid,
+                    __func__, NULL, NULL))) {
+                sr_errinfo_merge(&err_info, tmp_err);
+            }
+        } else {
+            assert(lock_mode == SR_LOCK_WRITE);
+
+            /* SUBS LOCK DOWNGRADE */
+            if ((tmp_err = sr_rwrelock(&subs->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, has_subs_lock, subs->conn->cid,
+                    __func__, NULL, NULL))) {
+                sr_errinfo_merge(&err_info, tmp_err);
+            }
+        }
+    }
+
     return err_info;
 }
 
@@ -3191,7 +3231,6 @@ sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subsc
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_notifsub_s *notif_sub;
-    sr_mod_t *shm_mod;
     uint32_t i;
 
     for (i = 0; i < notif_subs->sub_count; ++i) {
@@ -3205,12 +3244,8 @@ sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subsc
                 sr_errinfo_free(&err_info);
             }
 
-            /* find module */
-            shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subs->conn), notif_subs->module_name);
-            SR_CHECK_INT_RET(!shm_mod, err_info);
-
-            /* now we can add notification subscription into main SHM because it will process realtime notifications */
-            if ((err_info = sr_shmext_notif_subscription_add(subs->conn, shm_mod, notif_sub->sub_id, subs->evpipe_num))) {
+            /* now we can start the notification subscription to process realtime notifications */
+            if ((err_info = sr_shmmain_update_notif_suspend(subs->conn, notif_subs->module_name, notif_sub->sub_id, 0))) {
                 return err_info;
             }
 
