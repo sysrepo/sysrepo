@@ -163,7 +163,7 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
     int ret;
 
     /* WRITE LOCK */
-    if ((err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, cid, __func__, NULL, NULL))) {
+    if ((err_info = sr_rwlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_WRITE, cid, __func__, NULL, NULL))) {
         return err_info;
     }
 
@@ -172,7 +172,7 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
     sub_shm->lock.writer = 0;
 
     /* wait until there is no event and there are no readers (just like write lock) */
-    sr_time_get(&timeout_ts, SR_MAIN_LOCK_TIMEOUT * 1000);
+    sr_time_get(&timeout_ts, SR_SUBSHM_LOCK_TIMEOUT);
     ret = 0;
     while (!ret && (sub_shm->lock.readers[0] || (sub_shm->event && (sub_shm->event != lock_event)))) {
         /* COND WAIT */
@@ -835,7 +835,7 @@ sr_shmsub_change_notify_clear(struct sr_mod_info_s *mod_info)
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
         /* SUB WRITE LOCK */
-        if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, cid, __func__, NULL,
+        if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_WRITE, cid, __func__, NULL,
                 NULL))) {
             goto cleanup;
         }
@@ -2080,7 +2080,7 @@ sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t
     assert(!*err_info);
 
     /* SUB READ/WRITE LOCK */
-    if ((*err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, tmp_sess->conn->cid, __func__,
+    if ((*err_info = sr_rwlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, tmp_sess->conn->cid, __func__,
             NULL, NULL))) {
         return 1;
     }
@@ -2088,7 +2088,7 @@ sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t
     /* check that SHM is still valid even after the lock was released and re-acquired */
     if ((sub_info->event != multi_sub_shm->event) || (sub_info->request_id != multi_sub_shm->request_id)) {
         /* SUB READ/WRITE UNLOCK */
-        sr_rwunlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, tmp_sess->conn->cid, __func__);
+        sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, tmp_sess->conn->cid, __func__);
 
         SR_LOG_INF("%s processing of \"%s\" event with ID %u priority %u (after timeout or earlier error).",
                 err_code ? "Failed" : "Successful", sr_ev2str(sub_info->event), sub_info->request_id, sub_info->priority);
@@ -2138,7 +2138,7 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
     multi_sub_shm = (sr_multi_sub_shm_t *)change_subs->sub_shm.addr;
 
     /* SUB READ UPGR LOCK */
-    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ_UPGR, conn->cid, __func__,
+    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, conn->cid, __func__,
             NULL, NULL))) {
         goto cleanup;
     }
@@ -2191,7 +2191,7 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
 
 process_event:
         /* SUB READ UPGR UNLOCK */
-        sr_rwunlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ_UPGR, conn->cid, __func__);
+        sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, conn->cid, __func__);
 
         /* call callback if there are some changes */
         if (sr_shmsub_change_listen_has_diff(change_sub, diff)) {
@@ -2285,7 +2285,7 @@ process_event:
     }
 
     /* SUB WRITE LOCK UPGRADE */
-    if ((err_info = sr_rwrelock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, conn->cid, __func__,
+    if ((err_info = sr_rwrelock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
             NULL, NULL))) {
         goto cleanup_rdunlock;
     }
@@ -2310,7 +2310,7 @@ cleanup_wrunlock:
 
 cleanup_rdunlock:
     /* SUB READ UPGR UNLOCK */
-    sr_rwunlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ_UPGR, conn->cid, __func__);
+    sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, conn->cid, __func__);
 
 cleanup:
     /* clear callback session */
@@ -2383,14 +2383,14 @@ sr_shmsub_oper_listen_relock(sr_sub_shm_t *sub_shm, sr_lock_mode_t mode, sr_cid_
     assert(!*err_info);
 
     /* SUB READ/WRITE LOCK */
-    if ((*err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, cid, __func__, NULL, NULL))) {
+    if ((*err_info = sr_rwlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, cid, __func__, NULL, NULL))) {
         return 1;
     }
 
     /* check that SHM is still valid even after the lock was released and re-acquired */
     if ((SR_SUB_EV_OPER != sub_shm->event) || (exp_req_id != sub_shm->request_id)) {
         /* SUB READ/WRITE UNLOCK */
-        sr_rwunlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, cid, __func__);
+        sr_rwunlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, cid, __func__);
 
         SR_LOG_INF("%s processing of \"%s\" event with ID %u (after timeout).", err_code ? "Failed" : "Successful",
                 sr_ev2str(SR_SUB_EV_OPER), exp_req_id);
@@ -2426,7 +2426,7 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         sub_shm = (sr_sub_shm_t *)oper_sub->sub_shm.addr;
 
         /* SUB READ LOCK */
-        if ((err_info = sr_rwlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, conn->cid, __func__,
+        if ((err_info = sr_rwlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
                 NULL, NULL))) {
             goto error;
         }
@@ -2434,7 +2434,7 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         /* no new event */
         if ((sub_shm->event != SR_SUB_EV_OPER) || (sub_shm->request_id == oper_sub->request_id)) {
             /* SUB READ UNLOCK */
-            sr_rwunlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, conn->cid, __func__);
+            sr_rwunlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
             continue;
         }
         request_id = sub_shm->request_id;
@@ -2467,7 +2467,7 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         }
 
         /* SUB READ UNLOCK */
-        sr_rwunlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, conn->cid, __func__);
+        sr_rwunlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
         /* process event */
         SR_LOG_INF("Processing \"%s\" \"operational\" event with ID %u.", oper_subs->module_name, request_id);
@@ -2551,12 +2551,12 @@ next_iter:
 
 error_wrunlock:
     /* SUB WRITE UNLOCK */
-    sr_rwunlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, conn->cid, __func__);
+    sr_rwunlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
     goto error;
 
 error_rdunlock:
     /* SUB READ UNLOCK */
-    sr_rwunlock(&sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, conn->cid, __func__);
+    sr_rwunlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
 error:
     sr_clear_sess(&tmp_sess);
@@ -2760,7 +2760,7 @@ sr_shmsub_rpc_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t mo
     assert(!*err_info);
 
     /* SUB READ/WRITE LOCK */
-    if ((*err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, tmp_sess->conn->cid, __func__,
+    if ((*err_info = sr_rwlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, tmp_sess->conn->cid, __func__,
             NULL, NULL))) {
         return 1;
     }
@@ -2768,7 +2768,7 @@ sr_shmsub_rpc_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t mo
     /* check that SHM is still valid even after the lock was released and re-acquired */
     if ((sub_info->event != multi_sub_shm->event) || (sub_info->request_id != multi_sub_shm->request_id)) {
         /* SUB READ/WRITE UNLOCK */
-        sr_rwunlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, mode, tmp_sess->conn->cid, __func__);
+        sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, tmp_sess->conn->cid, __func__);
 
         SR_LOG_INF("%s processing of \"%s\" event with ID %u priority %u (after timeout or earlier error).",
                 err_code ? "Failed" : "Successful", sr_ev2str(sub_info->event), sub_info->request_id, sub_info->priority);
@@ -2818,7 +2818,7 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
     multi_sub_shm = (sr_multi_sub_shm_t *)rpc_subs->sub_shm.addr;
 
     /* SUB READ UPGR LOCK */
-    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ_UPGR, conn->cid, __func__,
+    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, conn->cid, __func__,
             NULL, NULL))) {
         goto cleanup;
     }
@@ -2885,7 +2885,7 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
 
 process_event:
         /* SUB READ UPGR UNLOCK */
-        sr_rwunlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ_UPGR, conn->cid, __func__);
+        sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, conn->cid, __func__);
 
         /* free any previous output, it is obviously not the last */
         lyd_free_withsiblings(output);
@@ -2943,7 +2943,7 @@ process_event:
     }
 
     /* SUB WRITE LOCK UPGRADE */
-    if ((err_info = sr_rwrelock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, conn->cid, __func__,
+    if ((err_info = sr_rwrelock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
             NULL, NULL))) {
         goto cleanup_rdunlock;
     }
@@ -2968,7 +2968,7 @@ cleanup_wrunlock:
 
 cleanup_rdunlock:
     /* SUB READ UPGR UNLOCK */
-    sr_rwunlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ_UPGR, conn->cid, __func__);
+    sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, conn->cid, __func__);
 
 cleanup:
     /* clear callback session */
@@ -2994,7 +2994,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     multi_sub_shm = (sr_multi_sub_shm_t *)notif_subs->sub_shm.addr;
 
     /* SUB READ LOCK */
-    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, conn->cid, __func__,
+    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
             NULL, NULL))) {
         goto cleanup;
     }
@@ -3026,12 +3026,12 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     sid = multi_sub_shm->sid;
 
     /* SUB READ UNLOCK */
-    sr_rwunlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, conn->cid, __func__);
+    sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
     SR_LOG_INF("Processing \"notif\" \"%s\" event with ID %u.", notif_subs->module_name, multi_sub_shm->request_id);
 
     /* SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, conn->cid, __func__,
+    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
             NULL, NULL))) {
         goto cleanup;
     }
@@ -3077,7 +3077,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
 
 cleanup_rdunlock:
     /* SUB READ UNLOCK */
-    sr_rwunlock(&multi_sub_shm->lock, SR_MAIN_LOCK_TIMEOUT * 1000, SR_LOCK_READ, conn->cid, __func__);
+    sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 cleanup:
     lyd_free_withsiblings(notif);
     return err_info;
@@ -3145,11 +3145,11 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lo
         if (notif_sub->stop_time && (notif_sub->stop_time < cur_time)) {
             if (lock_mode != SR_LOCK_WRITE) {
                 /* SUBS READ UNLOCK */
-                sr_rwunlock(&subs->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, subs->conn->cid, __func__);
+                sr_rwunlock(&subs->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subs->conn->cid, __func__);
                 lock_mode = SR_LOCK_NONE;
 
                 /* SUBS WRITE LOCK */
-                if ((err_info = sr_rwlock(&subs->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, subs->conn->cid,
+                if ((err_info = sr_rwlock(&subs->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subs->conn->cid,
                         __func__, NULL, NULL))) {
                     goto cleanup;
                 }
@@ -3208,7 +3208,7 @@ cleanup:
     if (has_subs_lock != lock_mode) {
         if (lock_mode == SR_LOCK_NONE) {
             /* SUBS LOCK */
-            if ((tmp_err = sr_rwlock(&subs->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, has_subs_lock, subs->conn->cid,
+            if ((tmp_err = sr_rwlock(&subs->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, has_subs_lock, subs->conn->cid,
                     __func__, NULL, NULL))) {
                 sr_errinfo_merge(&err_info, tmp_err);
             }
@@ -3216,7 +3216,7 @@ cleanup:
             assert(lock_mode == SR_LOCK_WRITE);
 
             /* SUBS LOCK DOWNGRADE */
-            if ((tmp_err = sr_rwrelock(&subs->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, has_subs_lock, subs->conn->cid,
+            if ((tmp_err = sr_rwrelock(&subs->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, has_subs_lock, subs->conn->cid,
                     __func__, NULL, NULL))) {
                 sr_errinfo_merge(&err_info, tmp_err);
             }

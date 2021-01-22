@@ -265,8 +265,8 @@ sr_modinfo_changesub_rdlock(struct sr_mod_info_s *mod_info)
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_CHANGED) {
             /* CHANGE SUB READ LOCK */
-            if ((err_info = sr_rwlock(&mod->shm_mod->change_sub[mod_info->ds].lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ,
-                    mod_info->conn->cid, __func__, NULL, NULL))) {
+            if ((err_info = sr_rwlock(&mod->shm_mod->change_sub[mod_info->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT,
+                    SR_LOCK_READ, mod_info->conn->cid, __func__, NULL, NULL))) {
                 goto error;
             }
         }
@@ -279,7 +279,7 @@ error:
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_CHANGED) {
             /* CHANGE SUB READ UNLOCK */
-            sr_rwunlock(&mod->shm_mod->change_sub[mod_info->ds].lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ,
+            sr_rwunlock(&mod->shm_mod->change_sub[mod_info->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ,
                     mod_info->conn->cid, __func__);
         }
     }
@@ -296,7 +296,7 @@ sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info)
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_CHANGED) {
             /* CHANGE SUB READ UNLOCK */
-            sr_rwunlock(&mod->shm_mod->change_sub[mod_info->ds].lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ,
+            sr_rwunlock(&mod->shm_mod->change_sub[mod_info->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ,
                     mod_info->conn->cid, __func__);
         }
     }
@@ -689,7 +689,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, sr_conn_
     assert(timeout_ms && cb_error_info);
 
     /* OPER SUB READ LOCK */
-    if ((err_info = sr_rwlock(&mod->shm_mod->oper_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
+    if ((err_info = sr_rwlock(&mod->shm_mod->oper_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
             NULL, NULL))) {
         return err_info;
     }
@@ -773,7 +773,7 @@ cleanup_opersub_ext_unlock:
 
 cleanup_opersub_unlock:
     /* OPER SUB READ UNLOCK */
-    sr_rwunlock(&mod->shm_mod->oper_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+    sr_rwunlock(&mod->shm_mod->oper_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
     free(parent_xpath);
     ly_set_free(set);
@@ -905,11 +905,11 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
         if (mod->shm_mod->ver > mod_cache->mods[i].ver) {
             if (read_locked) {
                 /* CACHE READ UNLOCK */
-                sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, cid, __func__);
+                sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, cid, __func__);
             }
 
             /* CACHE WRITE LOCK */
-            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, cid, __func__,
+            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, cid, __func__,
                     NULL, NULL))) {
                 goto error_rlock;
             }
@@ -921,11 +921,11 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
     } else {
         if (read_locked) {
             /* CACHE READ UNLOCK */
-            sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, cid, __func__);
+            sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, cid, __func__);
         }
 
         /* CACHE WRITE LOCK */
-        if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, cid, __func__,
+        if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, cid, __func__,
                 NULL, NULL))) {
             goto error_rlock;
         }
@@ -964,12 +964,12 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
 
 error_wrunlock:
         /* CACHE WRITE UNLOCK */
-        sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE, cid, __func__);
+        sr_rwunlock(&mod_cache->lock, 0, SR_LOCK_WRITE, cid, __func__);
 
 error_rlock:
         if (read_locked) {
             /* CACHE READ LOCK */
-            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, cid, __func__,
+            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, cid, __func__,
                     NULL, NULL))) {
                 return err_info;
             }
@@ -1562,7 +1562,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             /* ...but they are cached */
 
             /* CACHE READ LOCK */
-            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, conn->cid,
+            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
                     __func__, NULL, NULL))) {
                 return err_info;
             }
@@ -1576,7 +1576,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             }
 
             /* CACHE READ UNLOCK */
-            sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ, conn->cid, __func__);
+            sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
             if (err_info) {
                 return err_info;
@@ -1796,7 +1796,7 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, sr_sid_t sid, co
     if (!mod_info->data_cached && cache && (mod_info->conn->opts & SR_CONN_CACHE_RUNNING) &&
             (mod_info->ds == SR_DS_RUNNING)) {
         /* CACHE READ LOCK */
-        if ((err_info = sr_rwlock(&mod_info->conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ,
+        if ((err_info = sr_rwlock(&mod_info->conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
                 mod_info->conn->cid, __func__, NULL, NULL))) {
             return err_info;
         }
@@ -2211,7 +2211,7 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
                 mod_info->data_cached = 0;
 
                 /* CACHE READ UNLOCK */
-                sr_rwunlock(&mod_info->conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ,
+                sr_rwunlock(&mod_info->conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
                         session->conn->cid, __func__);
             }
 
@@ -2573,7 +2573,7 @@ sr_modinfo_free(struct sr_mod_info_s *mod_info)
         mod_info->data_cached = 0;
 
         /* CACHE READ UNLOCK */
-        sr_rwunlock(&mod_info->conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT * 1000, SR_LOCK_READ,
+        sr_rwunlock(&mod_info->conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
                 mod_info->conn->cid, __func__);
     } else {
         lyd_free_withsiblings(mod_info->data);

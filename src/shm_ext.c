@@ -460,7 +460,7 @@ sr_shmext_defrag_modules_lock(sr_conn_ctx_t *conn)
         shm_mod = SR_SHM_MOD_IDX(main_shm, idx);
         for (ds = 0; ds < SR_DS_COUNT; ++ds) {
             /* CHANGE SUB WRITE LOCK */
-            if ((err_info = sr_rwlock(&shm_mod->change_sub[ds].lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+            if ((err_info = sr_rwlock(&shm_mod->change_sub[ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
                     __func__, NULL, NULL))) {
                 goto error_changesub_unlock;
             }
@@ -469,21 +469,21 @@ sr_shmext_defrag_modules_lock(sr_conn_ctx_t *conn)
         shm_rpc = (sr_rpc_t *)(conn->main_shm.addr + shm_mod->rpcs);
         for (rpc_i = 0; rpc_i < shm_mod->rpc_count; ++rpc_i) {
             /* RPC SUB WRITE LOCK */
-            if ((err_info = sr_rwlock(&shm_rpc[rpc_i].lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
+            if ((err_info = sr_rwlock(&shm_rpc[rpc_i].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
                     NULL, NULL))) {
                 goto error_changesub_rpcsub_unlock;
             }
         }
 
         /* OPER SUB WRITE LOCK */
-        if ((err_info = sr_rwlock(&shm_mod->oper_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL,
-                NULL))) {
+        if ((err_info = sr_rwlock(&shm_mod->oper_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
+                NULL, NULL))) {
             goto error_changesub_rpcsub_unlock;
         }
 
         /* NOTIF SUB WRITE LOCK */
-        if ((err_info = sr_rwlock(&shm_mod->notif_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL,
-                NULL))) {
+        if ((err_info = sr_rwlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
+                NULL, NULL))) {
             goto error_changesub_rpcsub_opersub_unlock;
         }
     }
@@ -641,7 +641,7 @@ sr_shmext_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const 
     uint16_t i;
 
     /* CHANGE SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->change_sub[ds].lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
+    if ((err_info = sr_rwlock(&shm_mod->change_sub[ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
             NULL, NULL))) {
         return err_info;
     }
@@ -694,7 +694,7 @@ sr_shmext_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const 
     sr_shmext_conn_remap_unlock(conn, SR_LOCK_WRITE, 1, __func__);
 
     /* CHANGE SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->change_sub[ds].lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    sr_rwunlock(&shm_mod->change_sub[ds].lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
     /* ext SHM defrag */
     sr_shmext_defrag_check(conn);
@@ -714,7 +714,7 @@ cleanup_changesub_ext_unlock:
 
 cleanup_changesub_unlock:
     /* CHANGE SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->change_sub[ds].lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    sr_rwunlock(&shm_mod->change_sub[ds].lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
     return err_info;
 }
@@ -760,7 +760,7 @@ sr_shmext_change_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_dat
     uint16_t i;
 
     /* CHANGE SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->change_sub[ds].lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
+    if ((err_info = sr_rwlock(&shm_mod->change_sub[ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
             NULL, NULL))) {
         return err_info;
     }
@@ -810,7 +810,7 @@ cleanup_changesub_ext_unlock:
 
 cleanup_changesub_unlock:
     /* CHANGE SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->change_sub[ds].lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    sr_rwunlock(&shm_mod->change_sub[ds].lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
     /* ext SHM defrag */
     sr_shmext_defrag_check(conn);
@@ -877,7 +877,7 @@ sr_shmext_oper_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const ch
     assert(xpath && sub_type);
 
     /* OPER SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->oper_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
+    if ((err_info = sr_rwlock(&shm_mod->oper_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
             NULL, NULL))) {
         return err_info;
     }
@@ -931,7 +931,7 @@ cleanup_opersub_ext_unlock:
 
 cleanup_opersub_unlock:
     /* OPER SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->oper_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    sr_rwunlock(&shm_mod->oper_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
     /* ext SHM defrag */
     sr_shmext_defrag_check(conn);
@@ -978,7 +978,8 @@ sr_shmext_oper_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const ch
     uint16_t i;
 
     /* OPER SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->oper_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
+    if ((err_info = sr_rwlock(&shm_mod->oper_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL,
+            NULL))) {
         return err_info;
     }
 
@@ -1025,7 +1026,7 @@ cleanup_opersub_ext_unlock:
 
 cleanup_opersub_unlock:
     /* OPER SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->oper_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    sr_rwunlock(&shm_mod->oper_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
     /* ext SHM defrag */
     sr_shmext_defrag_check(conn);
@@ -1074,7 +1075,7 @@ sr_shmext_notif_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_
     sr_mod_notif_sub_t *shm_sub;
 
     /* NOTIF SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->notif_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
+    if ((err_info = sr_rwlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
             NULL, NULL))) {
         return err_info;
     }
@@ -1109,7 +1110,7 @@ cleanup_notifsub_ext_unlock:
 
 cleanup_notifsub_unlock:
     /* NOTIF SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->notif_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    sr_rwunlock(&shm_mod->notif_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
     /* ext SHM defrag */
     sr_shmext_defrag_check(conn);
@@ -1154,7 +1155,8 @@ sr_shmext_notif_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_
     uint16_t i;
 
     /* NOTIF SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->notif_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
+    if ((err_info = sr_rwlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL,
+            NULL))) {
         return err_info;
     }
 
@@ -1200,7 +1202,7 @@ cleanup_notifsub_ext_unlock:
 
 cleanup_notifsub_unlock:
     /* NOTIF SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->notif_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    sr_rwunlock(&shm_mod->notif_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
     /* ext SHM defrag */
     sr_shmext_defrag_check(conn);
@@ -1255,7 +1257,7 @@ sr_shmext_rpc_subscription_add(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const cha
     assert(xpath);
 
     /* RPC SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
+    if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
         return err_info;
     }
 
@@ -1303,7 +1305,7 @@ cleanup_rpcsub_ext_unlock:
 
 cleanup_rpcsub_unlock:
     /* RPC SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_rpc->lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    sr_rwunlock(&shm_rpc->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
     /* ext SHM defrag */
     sr_shmext_defrag_check(conn);
@@ -1355,7 +1357,7 @@ sr_shmext_rpc_subscription_del(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const cha
     uint16_t i;
 
     /* RPC SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
+    if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {
         return err_info;
     }
 
@@ -1402,7 +1404,7 @@ cleanup_rpcsub_ext_unlock:
 
 cleanup_rpcsub_unlock:
     /* RPC SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_rpc->lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    sr_rwunlock(&shm_rpc->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
     /* ext SHM defrag */
     sr_shmext_defrag_check(conn);

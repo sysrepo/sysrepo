@@ -2244,7 +2244,7 @@ sr_lydmods_conn_ctx_update(sr_main_shm_t *main_shm, struct ly_ctx **ly_ctx, int 
     chng = 0;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
         return err_info;
     }
 
@@ -2338,7 +2338,7 @@ sr_lydmods_deferred_add_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, c
     int i;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
         return err_info;
     }
 
@@ -2415,7 +2415,7 @@ sr_lydmods_unsched_add_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, co
     char *path = NULL;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
         return err_info;
     }
 
@@ -2525,7 +2525,7 @@ sr_lydmods_deferred_add_module_data(sr_main_shm_t *main_shm, struct ly_ctx *ly_c
     assert((data && !data_path) || (!data && data_path));
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
         return err_info;
     }
 
@@ -2623,7 +2623,7 @@ sr_lydmods_deferred_del_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, c
     char *path = NULL;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
         return err_info;
     }
 
@@ -2725,7 +2725,7 @@ sr_lydmods_unsched_del_module_with_imps(sr_main_shm_t *main_shm, struct ly_ctx *
     struct lyd_node *sr_mods = NULL;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
         return err_info;
     }
 
@@ -2759,7 +2759,7 @@ sr_lydmods_deferred_upd_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, c
     char *path = NULL, *yang_str = NULL;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
         return err_info;
     }
 
@@ -2819,7 +2819,7 @@ sr_lydmods_unsched_upd_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, co
     char *path = NULL;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
         return err_info;
     }
 
@@ -2872,7 +2872,7 @@ sr_lydmods_deferred_change_feature(sr_main_shm_t *main_shm, struct ly_ctx *ly_ct
     char *path = NULL;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
         return err_info;
     }
 
@@ -2986,7 +2986,7 @@ sr_lydmods_update_replay_support(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx,
     assert(s_replay);
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
         return err_info;
     }
 

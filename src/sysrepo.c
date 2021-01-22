@@ -1278,7 +1278,7 @@ sr_get_module_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data)
     SR_CHECK_ARG_APIRET(!conn || !sysrepo_data, NULL, err_info);
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&SR_CONN_MAIN_SHM(conn)->lydmods_lock, SR_MAIN_LOCK_TIMEOUT * 1000, __func__))) {
+    if ((err_info = sr_mlock(&SR_CONN_MAIN_SHM(conn)->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -2624,7 +2624,7 @@ sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session
     /* get only READ lock to allow event processing even during unsubscribe */
 
     /* SUBS READ LOCK */
-    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid,
+    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid,
             __func__, NULL, NULL))) {
         return sr_api_ret(session, err_info);
     }
@@ -2694,7 +2694,7 @@ sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session
 
 cleanup_unlock:
     /* SUBS READ UNLOCK */
-    sr_rwunlock(&subscription->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
+    sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
 
     return sr_api_ret(session, err_info);
 }
@@ -3872,8 +3872,8 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     SR_CHECK_INT_GOTO(!shm_rpc, err_info, cleanup);
 
     /* RPC SUB READ LOCK */
-    if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__, NULL,
-            NULL))) {
+    if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__,
+            NULL, NULL))) {
         goto cleanup;
     }
 
@@ -3890,7 +3890,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     }
 
     /* RPC SUB READ UNLOCK */
-    sr_rwunlock(&shm_rpc->lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
+    sr_rwunlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
 
     /* find operation */
     if ((err_info = sr_ly_find_last_parent(output, LYS_RPC | LYS_ACTION))) {
@@ -3928,7 +3928,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
 
 cleanup_rpcsub_unlock:
     /* RPC SUB READ UNLOCK */
-    sr_rwunlock(&shm_rpc->lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
+    sr_rwunlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
 
 cleanup:
     /* MODULES UNLOCK */
@@ -4248,7 +4248,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
     err_info = sr_replay_store(session, notif, notif_ts);
 
     /* NOTIF SUB READ LOCK */
-    if ((tmp_err = sr_rwlock(&shm_mod->notif_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__,
+    if ((tmp_err = sr_rwlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__,
             NULL, NULL))) {
         goto cleanup;
     }
@@ -4262,7 +4262,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
 
 cleanup_notifsub_unlock:
     /* NOTIF SUB READ UNLOCK */
-    sr_rwunlock(&shm_mod->notif_lock, SR_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
+    sr_rwunlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
 
 cleanup:
     /* MODULES UNLOCK */
@@ -4341,7 +4341,7 @@ _sr_event_notif_sub_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_
     SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
 
     /* SUBS READ LOCK */
-    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid,
+    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid,
             __func__, NULL, NULL))) {
         return sr_api_ret(NULL, err_info);
     }
@@ -4366,7 +4366,7 @@ _sr_event_notif_sub_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_
 
 cleanup_unlock:
     /* SUBS READ UNLOCK */
-    sr_rwunlock(&subscription->subs_lock, SR_SUB_SUBS_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
+    sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
 
     return sr_api_ret(NULL, err_info);
 }

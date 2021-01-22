@@ -420,7 +420,7 @@ sr_shmmod_modinfo_lock(struct sr_mod_info_s *mod_info, sr_datastore_t ds, uint32
         }
 
         /* MOD LOCK */
-        if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, mode,
+        if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT, mode,
                 mod_info->conn->cid, sid, 0))) {
             return err_info;
         }
@@ -499,7 +499,7 @@ sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid)
         /* upgrade only read-upgr-locked modules */
         if (mod->state & MOD_INFO_RLOCK_UPGR) {
             /* MOD WRITE UPGRADE */
-            if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, SR_LOCK_WRITE,
+            if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE,
                     mod_info->conn->cid, sid, 1))) {
                 return err_info;
             }
@@ -528,7 +528,7 @@ sr_shmmod_modinfo_wrlock_downgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid)
         /* downgrade only write-locked modules */
         if (mod->state & MOD_INFO_WLOCK) {
             /* MOD READ DOWNGRADE */
-            if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, SR_LOCK_READ_UPGR,
+            if ((err_info = sr_shmmod_lock(mod->ly_mod->name, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ_UPGR,
                     mod_info->conn->cid, sid, 1))) {
                 return err_info;
             }
@@ -567,7 +567,7 @@ sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, sr_sid_t sid)
             }
 
             /* MOD UNLOCK */
-            sr_shmmod_unlock(shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, mode, mod_info->conn->cid, sid);
+            sr_shmmod_unlock(shm_lock, SR_MOD_LOCK_TIMEOUT, mode, mod_info->conn->cid, sid);
         }
 
         if (mod->state & MOD_INFO_RLOCK2) {
@@ -575,7 +575,7 @@ sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, sr_sid_t sid)
             shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds2];
 
             /* MOD READ UNLOCK */
-            sr_shmmod_unlock(shm_lock, SR_MOD_LOCK_TIMEOUT * 1000, SR_LOCK_READ, mod_info->conn->cid, sid);
+            sr_shmmod_unlock(shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, mod_info->conn->cid, sid);
         }
 
         /* clear all flags */
