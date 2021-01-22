@@ -222,6 +222,8 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         goto cleanup_unlock;
     }
 
+    SR_LOG_INF("Connection %" PRIu32 " created.", conn->cid);
+
 cleanup_unlock:
     /* CREATE UNLOCK */
     sr_shmmain_createunlock(conn->main_create_lock);
@@ -381,7 +383,7 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_session
         goto error;
     }
 
-    SR_LOG_INF("Session %u (user \"%s\") created.", (*session)->sid.sr, (*session)->sid.user);
+    SR_LOG_INF("Session %u (user \"%s\", CID %" PRIu32 ") created.", (*session)->sid.sr, (*session)->sid.user, conn->cid);
 
     return sr_api_ret(NULL, NULL);
 
