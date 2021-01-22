@@ -700,18 +700,25 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, sr_conn_
     }
 
     /* XPaths are ordered based on depth */
-    for (i = 0; i < mod->shm_mod->oper_sub_count; ++i) {
+    i = 0;
+    while (i < mod->shm_mod->oper_sub_count) {
         shm_sub = &((sr_mod_oper_sub_t *)(conn->ext_shm.addr + mod->shm_mod->oper_subs))[i];
         sub_xpath = conn->ext_shm.addr + shm_sub->xpath;
 
-        if ((shm_sub->sub_type == SR_OPER_SUB_CONFIG) && (opts & SR_OPER_NO_CONFIG)) {
-            /* useless to retrieve configuration data */
+        /* check subscription aliveness */
+        if (!sr_conn_is_alive(shm_sub->cid)) {
+            /* recover the subscription */
+            if ((err_info = sr_shmext_oper_subscription_stop(conn, mod->shm_mod, i, 1, SR_LOCK_READ, 1))) {
+                sr_errinfo_free(&err_info);
+            }
             continue;
-        } else if ((shm_sub->sub_type == SR_OPER_SUB_STATE) && (opts & SR_OPER_NO_STATE)) {
-            /* useless to retrieve state data */
-            continue;
-        } else if (!sr_xpath_oper_data_required(request_xpath, sub_xpath)) {
-            /* useless to retrieve this data because they would be filtered out anyway */
+        }
+
+        /* useless to retrieve configuration data, state data, or filtered out data */
+        if (((shm_sub->sub_type == SR_OPER_SUB_CONFIG) && (opts & SR_OPER_NO_CONFIG)) ||
+                ((shm_sub->sub_type == SR_OPER_SUB_STATE) && (opts & SR_OPER_NO_STATE)) ||
+                !sr_xpath_oper_data_required(request_xpath, sub_xpath)) {
+            ++i;
             continue;
         }
 
@@ -763,6 +770,8 @@ next_iter:
                 goto cleanup_opersub_ext_unlock;
             }
         }
+
+        ++i;
     }
 
     /* success */

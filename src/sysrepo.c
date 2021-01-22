@@ -3036,7 +3036,7 @@ error3:
 
 error2:
     if ((tmp_err = sr_shmext_change_subscription_del(conn, shm_mod, session->ds, xpath, priority, sub_opts,
-            (*subscription)->evpipe_num, 0, NULL, NULL))) {
+            (*subscription)->evpipe_num))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
@@ -3657,8 +3657,7 @@ error4:
     sr_sub_rpc_del(path, xpath, callback, tree_callback, private_data, priority, SR_LOCK_NONE, *subscription);
 
 error3:
-    if ((tmp_err = sr_shmext_rpc_subscription_del(conn, shm_rpc, xpath, priority, (*subscription)->evpipe_num, 0,
-            NULL, NULL))) {
+    if ((tmp_err = sr_shmext_rpc_subscription_del(conn, shm_rpc, xpath, priority, (*subscription)->evpipe_num))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
@@ -4083,7 +4082,7 @@ error3:
     sr_sub_notif_del(ly_mod->name, sub_id, SR_LOCK_NONE, *subscription);
 
 error2:
-    if ((tmp_err = sr_shmext_notif_subscription_del(conn, shm_mod, sub_id, (*subscription)->evpipe_num, 0, NULL, NULL))) {
+    if ((tmp_err = sr_shmext_notif_subscription_del(conn, shm_mod, sub_id, (*subscription)->evpipe_num))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
@@ -4576,7 +4575,7 @@ error3:
     sr_sub_oper_del(module_name, path, SR_LOCK_NONE, *subscription);
 
 error2:
-    if ((tmp_err = sr_shmext_oper_subscription_del(conn, shm_mod, path, (*subscription)->evpipe_num, 0, NULL, NULL))) {
+    if ((tmp_err = sr_shmext_oper_subscription_del(conn, shm_mod, path, (*subscription)->evpipe_num))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 

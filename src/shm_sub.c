@@ -25,6 +25,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 #include <sys/mman.h>
 #include <sys/select.h>
 #include <sys/stat.h>
@@ -452,7 +453,7 @@ sr_shmsub_change_notify_has_subscription(sr_conn_ctx_t *conn, struct sr_mod_info
     sr_error_info_t *err_info = NULL;
     int has_sub = 0;
     uint32_t i;
-    sr_mod_change_sub_t *shm_msub;
+    sr_mod_change_sub_t *shm_sub;
 
     /* EXT READ LOCK */
     if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
@@ -460,22 +461,32 @@ sr_shmsub_change_notify_has_subscription(sr_conn_ctx_t *conn, struct sr_mod_info
         return 0;
     }
 
-    shm_msub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + mod->shm_mod->change_sub[ds].subs);
+    shm_sub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + mod->shm_mod->change_sub[ds].subs);
     *max_priority_p = 0;
-    for (i = 0; i < mod->shm_mod->change_sub[ds].sub_count; ++i) {
-        if (!sr_shmsub_change_is_valid(ev, shm_msub[i].opts)) {
+    i = 0;
+    while (i < mod->shm_mod->change_sub[ds].sub_count) {
+        /* check subscription aliveness */
+        if (!sr_conn_is_alive(shm_sub[i].cid)) {
+            /* recover the subscription */
+            if ((err_info = sr_shmext_change_subscription_stop(conn, mod->shm_mod, ds, i, 1, SR_LOCK_READ, 1))) {
+                sr_errinfo_free(&err_info);
+            }
             continue;
         }
 
-        /* valid subscription */
-        has_sub = 1;
-        if (shm_msub[i].priority > *max_priority_p) {
-            *max_priority_p = shm_msub[i].priority;
+        /* check whether the event is valid for the specific subscription or will be ignored */
+        if (sr_shmsub_change_is_valid(ev, shm_sub[i].opts)) {
+            has_sub = 1;
+            if (shm_sub[i].priority > *max_priority_p) {
+                *max_priority_p = shm_sub[i].priority;
+            }
         }
+
+        ++i;
     }
 
     /* EXT READ UNLOCK */
-    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ,0, __func__);
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
     return has_sub;
 }
@@ -499,7 +510,7 @@ sr_shmsub_change_notify_next_subscription(sr_conn_ctx_t *conn, struct sr_mod_inf
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
-    sr_mod_change_sub_t *shm_msub;
+    sr_mod_change_sub_t *shm_sub;
     int opts = 0;
 
     /* EXT READ LOCK */
@@ -507,34 +518,42 @@ sr_shmsub_change_notify_next_subscription(sr_conn_ctx_t *conn, struct sr_mod_inf
         return err_info;
     }
 
-    shm_msub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + mod->shm_mod->change_sub[ds].subs);
+    shm_sub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + mod->shm_mod->change_sub[ds].subs);
     *sub_count_p = 0;
-    for (i = 0; i < mod->shm_mod->change_sub[ds].sub_count; ++i) {
-        if (!sr_shmsub_change_is_valid(ev, shm_msub[i].opts)) {
+    i = 0;
+    while (i < mod->shm_mod->change_sub[ds].sub_count) {
+        /* check subscription aliveness */
+        if (!sr_conn_is_alive(shm_sub[i].cid)) {
+            /* recover the subscription */
+            if ((err_info = sr_shmext_change_subscription_stop(conn, mod->shm_mod, ds, i, 1, SR_LOCK_READ, 1))) {
+                sr_errinfo_free(&err_info);
+            }
             continue;
         }
 
         /* valid subscription */
-        if (last_priority > shm_msub[i].priority) {
+        if (sr_shmsub_change_is_valid(ev, shm_sub[i].opts) && (last_priority > shm_sub[i].priority)) {
             /* a subscription that was not notified yet */
             if (*sub_count_p) {
-                if (*next_priority_p < shm_msub[i].priority) {
+                if (*next_priority_p < shm_sub[i].priority) {
                     /* higher priority subscription */
-                    *next_priority_p = shm_msub[i].priority;
+                    *next_priority_p = shm_sub[i].priority;
                     *sub_count_p = 1;
-                    opts = shm_msub[i].opts;
-                } else if (shm_msub[i].priority == *next_priority_p) {
+                    opts = shm_sub[i].opts;
+                } else if (shm_sub[i].priority == *next_priority_p) {
                     /* same priority subscription */
                     ++(*sub_count_p);
-                    opts |= shm_msub[i].opts;
+                    opts |= shm_sub[i].opts;
                 }
             } else {
                 /* first lower priority subscription than the last processed */
-                *next_priority_p = shm_msub[i].priority;
+                *next_priority_p = shm_sub[i].priority;
                 *sub_count_p = 1;
-                opts = shm_msub[i].opts;
+                opts = shm_sub[i].opts;
             }
         }
+
+        ++i;
     }
 
     if (opts_p) {
@@ -1402,7 +1421,7 @@ sr_shmsub_rpc_notify_has_subscription(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, co
         uint32_t *max_priority_p)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_rpc_sub_t *shm_subs;
+    sr_mod_rpc_sub_t *shm_sub;
     uint32_t i;
     int has_sub = 0;
 
@@ -1412,21 +1431,29 @@ sr_shmsub_rpc_notify_has_subscription(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, co
         return 0;
     }
 
+    /* try to find a matching subscription */
+    shm_sub = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + shm_rpc->subs);
     *max_priority_p = 0;
-    if (shm_rpc) {
-        /* try to find a matching subscription */
-        shm_subs = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + shm_rpc->subs);
-        for (i = 0; i < shm_rpc->sub_count; ++i) {
-            if (!sr_shmsub_rpc_is_valid(input, conn->ext_shm.addr + shm_subs[i].xpath)) {
-                continue;
+    i = 0;
+    while (i < shm_rpc->sub_count) {
+        /* check subscription aliveness */
+        if (!sr_conn_is_alive(shm_sub[i].cid)) {
+            /* recover the subscription */
+            if ((err_info = sr_shmext_rpc_subscription_stop(conn, shm_rpc, i, 1, SR_LOCK_READ, 1))) {
+                sr_errinfo_free(&err_info);
             }
+            continue;
+        }
 
-            /* valid subscription */
+        /* valid subscription */
+        if (sr_shmsub_rpc_is_valid(input, conn->ext_shm.addr + shm_sub[i].xpath)) {
             has_sub = 1;
-            if (shm_subs[i].priority > *max_priority_p) {
-                *max_priority_p = shm_subs[i].priority;
+            if (shm_sub[i].priority > *max_priority_p) {
+                *max_priority_p = shm_sub[i].priority;
             }
         }
+
+        ++i;
     }
 
     /* EXT READ UNLOCK */
@@ -1453,7 +1480,7 @@ sr_shmsub_rpc_notify_next_subscription(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, c
         uint32_t last_priority, uint32_t *next_priority_p, uint32_t **evpipes_p, uint32_t *sub_count_p, int *opts_p)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_rpc_sub_t *shm_subs;
+    sr_mod_rpc_sub_t *shm_sub;
     uint32_t i;
     int opts = 0;
 
@@ -1462,46 +1489,55 @@ sr_shmsub_rpc_notify_next_subscription(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, c
         return err_info;
     }
 
-    shm_subs = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + shm_rpc->subs);
+    shm_sub = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + shm_rpc->subs);
 
     *evpipes_p = NULL;
     *sub_count_p = 0;
-    for (i = 0; i < shm_rpc->sub_count; ++i) {
-        if (!sr_shmsub_rpc_is_valid(input, conn->ext_shm.addr + shm_subs[i].xpath)) {
+    i = 0;
+    while (i < shm_rpc->sub_count) {
+        /* check subscription aliveness */
+        if (!sr_conn_is_alive(shm_sub[i].cid)) {
+            /* recover the subscription */
+            if ((err_info = sr_shmext_rpc_subscription_stop(conn, shm_rpc, i, 1, SR_LOCK_READ, 1))) {
+                sr_errinfo_free(&err_info);
+            }
             continue;
         }
 
         /* valid subscription */
-        if (last_priority > shm_subs[i].priority) {
+        if (sr_shmsub_rpc_is_valid(input, conn->ext_shm.addr + shm_sub[i].xpath) &&
+                (last_priority > shm_sub[i].priority)) {
             /* a subscription that was not notified yet */
             if (*sub_count_p) {
-                if (*next_priority_p < shm_subs[i].priority) {
+                if (*next_priority_p < shm_sub[i].priority) {
                     /* higher priority subscription */
-                    *next_priority_p = shm_subs[i].priority;
+                    *next_priority_p = shm_sub[i].priority;
                     free(*evpipes_p);
                     *evpipes_p = malloc(sizeof **evpipes_p);
                     SR_CHECK_MEM_GOTO(!*evpipes_p, err_info, cleanup);
-                    (*evpipes_p)[0] = shm_subs[i].evpipe_num;
+                    (*evpipes_p)[0] = shm_sub[i].evpipe_num;
                     *sub_count_p = 1;
-                    opts = shm_subs[i].opts;
-                } else if (shm_subs[i].priority == *next_priority_p) {
+                    opts = shm_sub[i].opts;
+                } else if (shm_sub[i].priority == *next_priority_p) {
                     /* same priority subscription */
                     *evpipes_p = sr_realloc(*evpipes_p, (*sub_count_p + 1) * sizeof **evpipes_p);
                     SR_CHECK_MEM_GOTO(!*evpipes_p, err_info, cleanup);
-                    (*evpipes_p)[*sub_count_p] = shm_subs[i].evpipe_num;
+                    (*evpipes_p)[*sub_count_p] = shm_sub[i].evpipe_num;
                     ++(*sub_count_p);
-                    opts |= shm_subs[i].opts;
+                    opts |= shm_sub[i].opts;
                 }
             } else {
                 /* first lower priority subscription than the last processed */
-                *next_priority_p = shm_subs[i].priority;
+                *next_priority_p = shm_sub[i].priority;
                 *evpipes_p = malloc(sizeof **evpipes_p);
                 SR_CHECK_MEM_GOTO(!*evpipes_p, err_info, cleanup);
-                (*evpipes_p)[0] = shm_subs[i].evpipe_num;
+                (*evpipes_p)[0] = shm_sub[i].evpipe_num;
                 *sub_count_p = 1;
-                opts = shm_subs[i].opts;
+                opts = shm_sub[i].opts;
             }
         }
+
+        ++i;
     }
 
 cleanup:
@@ -3180,8 +3216,7 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lo
             SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
             /* remove the subscription from main SHM */
-            if ((err_info = sr_shmext_notif_subscription_del(subs->conn, shm_mod, notif_sub->sub_id, subs->evpipe_num, 0,
-                    NULL, NULL))) {
+            if ((err_info = sr_shmext_notif_subscription_del(subs->conn, shm_mod, notif_sub->sub_id, subs->evpipe_num))) {
                 goto cleanup;
             }
 

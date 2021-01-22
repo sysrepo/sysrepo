@@ -1104,6 +1104,14 @@ sr_error_info_t *sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t
 void sr_rwunlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func);
 
 /**
+ * @brief Check whether a connection is alive.
+ *
+ * @param[in] cid Connection CID.
+ * @return 0 if it is dead, non-zero if it alive.
+ */
+int sr_conn_is_alive(sr_cid_t cid);
+
+/**
  * @brief Wrapper to realloc() that frees memory on failure.
  *
  * @param[in] ptr Pointer to the current memory.

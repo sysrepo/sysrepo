@@ -922,9 +922,9 @@ sr_subs_session_del(sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock, sr_sub
         for (j = 0; j < change_subs->sub_count; ++j) {
             if (change_subs->subs[j].sess == sess) {
                 /* properly remove the subscription from ext SHM */
-                if ((err_info = sr_shmext_change_subscription_stop(sess->conn, shm_mod, change_subs->ds,
+                if ((err_info = sr_shmext_change_subscription_del(sess->conn, shm_mod, change_subs->ds,
                         change_subs->subs[j].xpath, change_subs->subs[j].priority, change_subs->subs[j].opts,
-                        subs->evpipe_num, 0, 0))) {
+                        subs->evpipe_num))) {
                     goto cleanup_subs_unlock;
                 }
 
@@ -957,8 +957,8 @@ sr_subs_session_del(sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock, sr_sub
         for (j = 0; j < oper_subs->sub_count; ++j) {
             if (oper_subs->subs[j].sess == sess) {
                 /* properly remove the subscriptions from the main SHM */
-                if ((err_info = sr_shmext_oper_subscription_stop(sess->conn, shm_mod, oper_subs->subs[j].xpath,
-                        subs->evpipe_num, 0, 0))) {
+                if ((err_info = sr_shmext_oper_subscription_del(sess->conn, shm_mod, oper_subs->subs[j].xpath,
+                        subs->evpipe_num))) {
                     goto cleanup_subs_unlock;
                 }
 
@@ -989,8 +989,8 @@ sr_subs_session_del(sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock, sr_sub
         for (j = 0; j < notif_subs->sub_count; ++j) {
             if (notif_subs->subs[j].sess == sess) {
                 /* properly remove the subscriptions from the main SHM */
-                if ((err_info = sr_shmext_notif_subscription_stop(sess->conn, shm_mod, notif_subs->subs[j].sub_id,
-                        subs->evpipe_num, 0, 0))) {
+                if ((err_info = sr_shmext_notif_subscription_del(sess->conn, shm_mod, notif_subs->subs[j].sub_id,
+                        subs->evpipe_num))) {
                     goto cleanup_subs_unlock;
                 }
 
@@ -1021,8 +1021,8 @@ sr_subs_session_del(sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock, sr_sub
         for (j = 0; j < rpc_subs->sub_count; ++j) {
             if (rpc_subs->subs[j].sess == sess) {
                 /* properly remove the subscription from the main SHM */
-                if ((err_info = sr_shmext_rpc_subscription_stop(sess->conn, shm_rpc, rpc_subs->subs[j].xpath,
-                        rpc_subs->subs[j].priority, subs->evpipe_num, 0, 0))) {
+                if ((err_info = sr_shmext_rpc_subscription_del(sess->conn, shm_rpc, rpc_subs->subs[j].xpath,
+                        rpc_subs->subs[j].priority, subs->evpipe_num))) {
                     goto cleanup_subs_unlock;
                 }
 
@@ -1137,10 +1137,22 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
 
     /* do not count suspended subscribers */
     *notif_sub_count = 0;
-    for (i = 0; i < shm_mod->notif_sub_count; ++i) {
+    i = 0;
+    while (i < shm_mod->notif_sub_count) {
+        /* check subscription aliveness */
+        if (!sr_conn_is_alive((*notif_subs)[i].cid)) {
+            /* recover the subscription */
+            if ((err_info = sr_shmext_notif_subscription_stop(conn, shm_mod, i, 1, SR_LOCK_READ, 1))) {
+                sr_errinfo_free(&err_info);
+            }
+            continue;
+        }
+
         if (!ATOMIC_LOAD_RELAXED((*notif_subs)[i].suspended)) {
             ++(*notif_sub_count);
         }
+
+        ++i;
     }
 
     return NULL;
@@ -2572,28 +2584,6 @@ sr_rwlock_destroy(sr_rwlock_t *rwlock)
 }
 
 /**
- * @brief Check whether a connection exists.
- *
- * @param[in] cid Connection CID.
- * @return 0 if not, non-zero if it exists.
- */
-static int
-sr_conn_exists(sr_cid_t cid)
-{
-    int alive = 0;
-    sr_error_info_t *err_info;
-
-    if ((err_info = sr_shmmain_conn_check(cid, &alive, NULL))) {
-        SR_LOG_WRN("Failed to check connection %"PRIu32" aliveness.", cid);
-        sr_errinfo_free(&err_info);
-        /* if check fails, assume the connection is alive */
-        alive = 1;
-    }
-
-    return alive;
-}
-
-/**
  * @brief Add a reader CID to a rwlock.
  *
  * @param[in] rwlock Lock to add a reader to.
@@ -2700,7 +2690,7 @@ sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_rwlock_recover_cb cb
 
     /* readers */
     while (rwlock->readers[i] && (i < SR_RWLOCK_READ_LIMIT)) {
-        if (!sr_conn_exists(rwlock->readers[i])) {
+        if (!sr_conn_is_alive(rwlock->readers[i])) {
             /* remove the dead reader */
             cid = rwlock->readers[i];
             sr_rwlock_reader_del_(rwlock->readers, i);
@@ -2717,7 +2707,7 @@ sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_rwlock_recover_cb cb
 
     /* read-upgr */
     if (rwlock->upgr) {
-        if (!sr_conn_exists(rwlock->upgr)) {
+        if (!sr_conn_is_alive(rwlock->upgr)) {
             cid = rwlock->upgr;
             rwlock->upgr = 0;
 
@@ -2731,7 +2721,7 @@ sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_rwlock_recover_cb cb
 
     /* write */
     if (rwlock->writer) {
-        if (!sr_conn_exists(rwlock->writer)) {
+        if (!sr_conn_is_alive(rwlock->writer)) {
             cid = rwlock->writer;
             rwlock->writer = 0;
 
@@ -2976,6 +2966,22 @@ sr_rwunlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
 
     /* MUTEX UNLOCK */
     pthread_mutex_unlock(&rwlock->mutex);
+}
+
+int
+sr_conn_is_alive(sr_cid_t cid)
+{
+    int alive = 0;
+    sr_error_info_t *err_info;
+
+    if ((err_info = sr_shmmain_conn_check(cid, &alive, NULL))) {
+        SR_LOG_WRN("Failed to check connection %"PRIu32" aliveness.", cid);
+        sr_errinfo_free(&err_info);
+        /* if check fails, assume the connection is alive */
+        alive = 1;
+    }
+
+    return alive;
 }
 
 void *
@@ -4857,7 +4863,7 @@ sr_module_file_oper_data_load(struct sr_mod_info_mod_s *mod, struct lyd_node **d
 trim_retry:
     if (dead_cid) {
         /* this connection is dead, remove its stored diff */
-        SR_LOG_INF("Removing stored operational data of a dead connection (CID %u).", dead_cid);
+        SR_LOG_INF("Recovering stored operational data of CID %" PRIu32 ".", dead_cid);
         if ((err_info = sr_diff_del_conn(diff, dead_cid))) {
             return err_info;
         }
@@ -4868,7 +4874,7 @@ trim_retry:
         LY_TREE_DFS_BEGIN(root, next, elem) {
             LY_TREE_FOR(elem->attr, attr) {
                 if (!strcmp(attr->annotation->module->name, SR_YANG_MOD) && !strcmp(attr->name, "cid")) {
-                    if (!sr_conn_exists(attr->value.uint32)) {
+                    if (!sr_conn_is_alive(attr->value.uint32)) {
                         dead_cid = attr->value.uint32;
 
                         /* retry the whole check until there are no dead connections */
