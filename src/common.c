@@ -2427,8 +2427,16 @@ sr_shmrealloc_del(char *ext_shm_addr, off_t *shm_array_off, uint32_t *shm_count,
     }
 }
 
-sr_error_info_t *
-sr_mutex_init(pthread_mutex_t *lock, int shared)
+/**
+ * @brief Wrapper for pthread_mutex_init().
+ *
+ * @param[in,out] lock pthread mutex to initialize.
+ * @param[in] shared Whether the mutex will be shared between processes or not.
+ * @param[in] robust Whether the mutex should support recovery after its owner dies or not.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+_sr_mutex_init(pthread_mutex_t *lock, int shared, int robust)
 {
     sr_error_info_t *err_info = NULL;
     pthread_mutexattr_t attr;
@@ -2440,13 +2448,20 @@ sr_mutex_init(pthread_mutex_t *lock, int shared)
         return err_info;
     }
 
-    if (shared) {
+    if (shared || robust) {
         /* init attr */
         if ((ret = pthread_mutexattr_init(&attr))) {
             sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Initializing pthread attr failed (%s).", strerror(ret));
             return err_info;
         }
-        if ((ret = pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
+
+        if (shared && (ret = pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
+            pthread_mutexattr_destroy(&attr);
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Changing pthread attr failed (%s).", strerror(ret));
+            return err_info;
+        }
+
+        if (robust && (ret = pthread_mutexattr_setrobust(&attr, PTHREAD_MUTEX_ROBUST))) {
             pthread_mutexattr_destroy(&attr);
             sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Changing pthread attr failed (%s).", strerror(ret));
             return err_info;
@@ -2469,6 +2484,12 @@ sr_mutex_init(pthread_mutex_t *lock, int shared)
 }
 
 sr_error_info_t *
+sr_mutex_init(pthread_mutex_t *lock, int shared)
+{
+    return _sr_mutex_init(lock, shared, shared);
+}
+
+sr_error_info_t *
 sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *func)
 {
     sr_error_info_t *err_info = NULL;
@@ -2483,7 +2504,12 @@ sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *func)
         sr_time_get(&abs_ts, (uint32_t)timeout_ms);
         ret = pthread_mutex_timedlock(lock, &abs_ts);
     }
-    if (ret) {
+
+    if (ret == EOWNERDEAD) {
+        SR_LOG_WRN("Recovered a lock with dead owner (%s).", func);
+        ret = pthread_mutex_consistent(lock);
+        SR_CHECK_INT_RET(ret, err_info);
+    } else if (ret) {
         SR_ERRINFO_LOCK(&err_info, func, ret);
         return err_info;
     }
@@ -2563,7 +2589,7 @@ sr_rwlock_init(sr_rwlock_t *rwlock, int shared)
         return err_info;
     }
 
-    if ((err_info = sr_mutex_init(&rwlock->r_mutex, shared))) {
+    if ((err_info = _sr_mutex_init(&rwlock->r_mutex, shared, 0))) {
         pthread_mutex_destroy(&rwlock->mutex);
         pthread_cond_destroy(&rwlock->cond);
         return err_info;
@@ -2699,7 +2725,7 @@ sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_rwlock_recover_cb cb
             if (cb) {
                 cb(SR_LOCK_READ, cid, cb_data);
             }
-            SR_LOG_WRN("Recovered a read-lock of CID %" PRIu32 " in %s.", cid, func);
+            SR_LOG_WRN("Recovered a read-lock of CID %" PRIu32 " (%s).", cid, func);
         } else {
             ++i;
         }
@@ -2715,7 +2741,7 @@ sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_rwlock_recover_cb cb
             if (cb) {
                 cb(SR_LOCK_READ_UPGR, cid, cb_data);
             }
-            SR_LOG_WRN("Recovered a read-upgr-lock of CID %" PRIu32 " in %s.", cid, func);
+            SR_LOG_WRN("Recovered a read-upgr-lock of CID %" PRIu32 " (%s).", cid, func);
         }
     }
 
@@ -2729,7 +2755,7 @@ sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_rwlock_recover_cb cb
             if (cb) {
                 cb(SR_LOCK_WRITE, cid, cb_data);
             }
-            SR_LOG_WRN("Recovered a write-lock of CID %" PRIu32 " in %s.", cid, func);
+            SR_LOG_WRN("Recovered a write-lock of CID %" PRIu32 " (%s).", cid, func);
         }
     }
 }
@@ -2748,7 +2774,17 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid
 
     /* MUTEX LOCK */
     ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_ts);
-    if (ret) {
+
+    if (ret == EOWNERDEAD) {
+        /* recover the lock */
+        assert(rwlock->writer);
+        sr_rwlock_recover(rwlock, func, cb, cb_data);
+        assert(!rwlock->writer);
+
+        /* make it consistent */
+        ret = pthread_mutex_consistent(&rwlock->mutex);
+        SR_CHECK_INT_RET(ret, err_info);
+    } else if (ret) {
         SR_ERRINFO_LOCK(&err_info, func, ret);
         return err_info;
     }
