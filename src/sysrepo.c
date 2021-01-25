@@ -1280,7 +1280,7 @@ sr_get_module_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data)
     SR_CHECK_ARG_APIRET(!conn || !sysrepo_data, NULL, err_info);
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&SR_CONN_MAIN_SHM(conn)->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
+    if ((err_info = sr_lydmods_lock(&SR_CONN_MAIN_SHM(conn)->lydmods_lock, __func__))) {
         return sr_api_ret(NULL, err_info);
     }
 

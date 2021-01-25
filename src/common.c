@@ -1232,7 +1232,7 @@ sr_ptr_add(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *a
     void *mem;
 
     /* PTR LOCK */
-    if ((err_info = sr_mlock(ptr_lock, -1, __func__))) {
+    if ((err_info = sr_mlock(ptr_lock, -1, __func__, NULL, NULL))) {
         return err_info;
     }
 
@@ -1272,7 +1272,7 @@ sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *d
     int found = 0;
 
     /* PTR LOCK */
-    if ((err_info = sr_mlock(ptr_lock, -1, __func__))) {
+    if ((err_info = sr_mlock(ptr_lock, -1, __func__, NULL, NULL))) {
         return err_info;
     }
 
@@ -2490,7 +2490,7 @@ sr_mutex_init(pthread_mutex_t *lock, int shared)
 }
 
 sr_error_info_t *
-sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *func)
+sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *func, sr_lock_recover_cb cb, void *cb_data)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec abs_ts;
@@ -2506,9 +2506,16 @@ sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *func)
     }
 
     if (ret == EOWNERDEAD) {
-        SR_LOG_WRN("Recovered a lock with dead owner (%s).", func);
+        /* make consistent */
         ret = pthread_mutex_consistent(lock);
         SR_CHECK_INT_RET(ret, err_info);
+
+        /* recover */
+        if (cb) {
+            cb(SR_LOCK_WRITE, 0, cb_data);
+        }
+
+        SR_LOG_WRN("Recovered a lock with a dead owner (%s).", func);
     } else if (ret) {
         SR_ERRINFO_LOCK(&err_info, func, ret);
         return err_info;
@@ -2709,7 +2716,7 @@ unlock:
  * @param[in] cb_data User data for @p cb.
  */
 static void
-sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_rwlock_recover_cb cb, void *cb_data)
+sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_lock_recover_cb cb, void *cb_data)
 {
     uint32_t i = 0;
     sr_cid_t cid;
@@ -2762,7 +2769,7 @@ sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_rwlock_recover_cb cb
 
 sr_error_info_t *
 sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
-        sr_rwlock_recover_cb cb, void *cb_data)
+        sr_lock_recover_cb cb, void *cb_data)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
@@ -2776,13 +2783,13 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid
     ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_ts);
 
     if (ret == EOWNERDEAD) {
+        /* make it consistent */
+        ret = pthread_mutex_consistent(&rwlock->mutex);
+
         /* recover the lock */
         assert(rwlock->writer);
         sr_rwlock_recover(rwlock, func, cb, cb_data);
         assert(!rwlock->writer);
-
-        /* make it consistent */
-        ret = pthread_mutex_consistent(&rwlock->mutex);
         SR_CHECK_INT_RET(ret, err_info);
     } else if (ret) {
         SR_ERRINFO_LOCK(&err_info, func, ret);
@@ -2868,7 +2875,7 @@ error_cond_unlock:
 
 sr_error_info_t *
 sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
-        sr_rwlock_recover_cb cb, void *cb_data)
+        sr_lock_recover_cb cb, void *cb_data)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
@@ -4928,12 +4935,17 @@ trim_retry:
 
 sr_error_info_t *
 sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data, int create_flags,
-        mode_t create_mode)
+        mode_t file_mode)
 {
     sr_error_info_t *err_info = NULL;
-    char *path = NULL;
-    int fd = -1;
+    char *path = NULL, *bck_path = NULL;
+    int fd = -1, backup;
     mode_t um;
+
+    assert(file_mode);
+
+    /* set umask so that the correct permissions are really set */
+    um = umask(SR_UMASK);
 
     /* learn path */
     switch (ds) {
@@ -4950,13 +4962,34 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node
         goto cleanup;
     }
 
-    /* set umask so that the correct permissions are really set if the file is created */
-    um = umask(SR_UMASK);
+    /* generate the backup path */
+    if (asprintf(&bck_path, "%s%s", path, SR_FILE_BACKUP_SUFFIX) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        goto cleanup;
+    }
 
-    /* open */
-    fd = SR_OPEN(path, O_WRONLY | O_TRUNC | create_flags, create_mode);
-    umask(um);
-    if (fd == -1) {
+    /* back up any existing file */
+    if (rename(path, bck_path) == -1) {
+        if (errno != ENOENT) {
+            SR_ERRINFO_SYSERRNO(&err_info, "rename");
+            goto cleanup;
+        } else if (!(create_flags & O_CREAT) && !(create_flags & O_EXCL)) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "File \"%s\" does not exist.", path);
+            goto cleanup;
+        }
+
+        backup = 0;
+    } else {
+        if ((create_flags & O_CREAT) && (create_flags & O_EXCL)) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "File \"%s\" already exists and was backed-up.", path);
+            goto cleanup;
+        }
+
+        backup = 1;
+    }
+
+    /* open (actually always create because of the backup) the file */
+    if ((fd = SR_OPEN(path, O_WRONLY | O_CREAT | O_EXCL, file_mode)) == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" (%s).", path, strerror(errno));
         goto cleanup;
     }
@@ -4968,11 +5001,19 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node
         goto cleanup;
     }
 
+    /* delete the backup file */
+    if (backup && (unlink(bck_path) == -1)) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to remove backup \"%s\" (%s).", bck_path, strerror(errno));
+        goto cleanup;
+    }
+
 cleanup:
     if (fd > -1) {
         close(fd);
     }
+    umask(um);
     free(path);
+    free(bck_path);
     return err_info;
 }
 
@@ -5013,7 +5054,7 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     if ((err_info = sr_diff_mod_update(&diff, ly_mod, mod_info.data))) {
         goto cleanup;
     }
-    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, diff, 0, 0))) {
+    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, diff, 0, SR_FILE_PERM))) {
         goto cleanup;
     }
 

@@ -5,7 +5,7 @@
  *
  * @copyright
  * Copyright 2018 Deutsche Telekom AG.
- * Copyright 2018 - 2019 CESNET, z.s.p.o.
+ * Copyright 2018 - 2021 CESNET, z.s.p.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -148,6 +148,9 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** default prefix for SHM files in /dev/shm */
 #define SR_SHM_PREFIX_DEFAULT "sr"
 
+/** suffix of backed-up LYB files */
+#define SR_FILE_BACKUP_SUFFIX ".bck"
+
 /** environment variable for setting a custom prefix for SHM files */
 #define SR_SHM_PREFIX_ENV "SYSREPO_SHM_PREFIX"
 
@@ -177,6 +180,9 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 
 /** timeout for locking ext SHM lock; time that truncating and writing into SHM may take (ms) */
 #define SR_EXT_LOCK_TIMEOUT 100
+
+/** timeout for locking the local connection list; maximum time the list can be accessed (ms) */
+#define SR_CONN_LIST_LOCK_TIMEOUT 100
 
 /** timeout for locking connection remap lock; maximum time it can be continuously read/written to it (ms) */
 #define SR_CONN_REMAP_LOCK_TIMEOUT 10000
@@ -1018,14 +1024,26 @@ void sr_shmrealloc_del(char *ext_shm_addr, off_t *shm_array_off, uint32_t *shm_c
 sr_error_info_t *sr_mutex_init(pthread_mutex_t *lock, int shared);
 
 /**
+ * @brief Callback called for each recovered owner of a lock.
+ *
+ * @param[in] mode Dead owner lock mode.
+ * @param[in] cid Dead owner connection ID.
+ * @param[in] data Arbitrary user data.
+ */
+typedef void (*sr_lock_recover_cb)(sr_lock_mode_t mode, sr_cid_t cid, void *data);
+
+/**
  * @brief Lock a mutex.
  *
  * @param[in] lock Mutex to lock.
  * @param[in] timeout_ms Timeout in ms for locking.
  * @param[in] finc Name of the calling function for logging.
+ * @param[in] cb Optional callback called when recovering locks. When calling it, the lock is always held.
+ * Callback @p mode is set to ::SR_LOCK_WRITE and @p cid to 0.
+ * @param[in] cb_data Arbitrary user data for @p cb.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *func);
+sr_error_info_t *sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *func, sr_lock_recover_cb cb, void *cb_data);
 
 /**
  * @brief Unlock a mutex.
@@ -1051,15 +1069,6 @@ sr_error_info_t *sr_rwlock_init(sr_rwlock_t *rwlock, int shared);
 void sr_rwlock_destroy(sr_rwlock_t *rwlock);
 
 /**
- * @brief Callback called for each recovered owner of a RW lock.
- *
- * @param[in] mode Dead owner lock mode.
- * @param[in] cid Dead owner connection ID.
- * @param[in] data Arbitrary user data.
- */
-typedef void (*sr_rwlock_recover_cb)(sr_lock_mode_t mode, sr_cid_t cid, void *data);
-
-/**
  * @brief Lock a sysrepo RW lock. On failure, the lock is not changed in any way.
  *
  * @param[in] rwlock RW lock to lock.
@@ -1067,12 +1076,12 @@ typedef void (*sr_rwlock_recover_cb)(sr_lock_mode_t mode, sr_cid_t cid, void *da
  * @param[in] mode Lock mode to set.
  * @param[in] cid Lock owner connection ID.
  * @param[in] func Name of the calling function for logging.
- * @param[in] cb Optional callback called when recovering locks.
+ * @param[in] cb Optional callback called when recovering locks. When calling it, WRITE lock is always held.
  * @param[in] cb_data Arbitrary user data for @p cb.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
-        sr_rwlock_recover_cb cb, void *cb_data);
+        sr_lock_recover_cb cb, void *cb_data);
 
 /**
  * @brief Relock a sysrepo RW lock (upgrade or downgrade). On failure, the lock is not changed in any way.
@@ -1085,12 +1094,12 @@ sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t m
  * @param[in] mode Lock mode to set.
  * @param[in] cid Lock owner connection ID.
  * @param[in] func Name of the calling function for logging.
- * @param[in] cb Optional callback called when recovering locks.
+ * @param[in] cb Optional callback called when recovering locks. When calling it, WRITE lock is always held.
  * @param[in] cb_data Arbitrary user data for @p cb.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
-        sr_rwlock_recover_cb cb, void *cb_data);
+        sr_lock_recover_cb cb, void *cb_data);
 
 /**
  * @brief Unlock a sysrepo RW lock. On failure, whatever steps are possible are still performed.
@@ -1508,11 +1517,11 @@ sr_error_info_t *sr_module_file_oper_data_load(struct sr_mod_info_mod_s *mod, st
  * @param[in] mod_data Module data.
  * @param[in] create_flags Additional flags that will be used for opening the file,
  * any of O_CREATE and O_EXCL are expected.
- * @param[in] create_mode In case the file can be created, set these permissions (mode).
+ * @param[in] file_mode Permissions (mode) of the file, must always be correctly set because of the backup.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data,
-        int create_flags, mode_t create_mode);
+        int create_flags, mode_t file_mode);
 
 /**
  * @brief Update sysrepo stored operational diff of a module.

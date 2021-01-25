@@ -27,6 +27,15 @@
 #include "common.h"
 
 /**
+ * @brief Lock lydmods lock with a recovery callback.
+ *
+ * @param[in] lock Lydmods lock to lock.
+ * @param[in] func Name of the calling function for logging.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lydmods_lock(pthread_mutex_t *lock, const char *func);
+
+/**
  * @brief Parse internal module data.
  *
  * @param[in] ly_ctx Context to use for parsing the data.

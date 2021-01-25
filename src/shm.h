@@ -764,29 +764,18 @@ sr_error_info_t *sr_shmmod_collect_instid_deps_data(sr_main_shm_t *main_shm, sr_
 sr_error_info_t *sr_shmmod_collect_instid_deps_modinfo(const struct sr_mod_info_s *mod_info, struct ly_set *mod_set);
 
 /**
- * @brief Lock or relock a main SHM module.
- *
- * @param[in] mod_name Module name.
- * @param[in] shm_lock Main SHM module lock.
- * @param[in] timeout_ms Timeout in ms.
- * @param[in] mode Lock mode of the module.
- * @param[in] cid Connection ID.
- * @param[in] sid Sysrepo session ID to store.
- * @param[in] relock Whether some lock is already held or not.
+ * @brief Information structure for the SHM module recovery callback.
  */
-sr_error_info_t *sr_shmmod_lock(const char *mod_name, struct sr_mod_lock_s *shm_lock, int timeout_ms,
-        sr_lock_mode_t mode, sr_cid_t cid, sr_sid_t sid, int relock);
+struct sr_shmmod_recover_cb_s {
+    const char *mod_name;
+    sr_datastore_t ds;
+};
 
 /**
- * @brief Unlock a main SHM module.
- *
- * @param[in] shm_lock Main SHM module lock.
- * @param[in] timeout_ms Timeout in ms.
- * @param[in] mode Lock mode of the module.
- * @param[in] cid Connection ID.
- * @param[in] sid Sysrepo session ID of the lock owner.
+ * @brief Recovery callback for SHM module data locks.
+ * Recover possibly backed-up data file.
  */
-void sr_shmmod_unlock(struct sr_mod_lock_s *shm_lock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, sr_sid_t sid);
+void sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data);
 
 /**
  * @brief READ lock all modules in mod info.

@@ -209,7 +209,7 @@ sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive, pid_t *pid)
      */
     if (conn_list.head) {
         /* CONN LIST LOCK */
-        if ((err_info = sr_mlock(&conn_list.lock, 1000, __func__))) {
+        if ((err_info = sr_mlock(&conn_list.lock, SR_CONN_LIST_LOCK_TIMEOUT, __func__, NULL, NULL))) {
             goto cleanup;
         }
         for (ptr = conn_list.head; ptr; ptr = ptr->_next) {
@@ -367,7 +367,7 @@ sr_shmmain_conn_list_add(sr_cid_t cid)
     conn_item->lock_fd = lock_fd;
 
     /* CONN LIST LOCK */
-    if ((err_info = sr_mlock(&conn_list.lock, 1000, __func__))) {
+    if ((err_info = sr_mlock(&conn_list.lock, SR_CONN_LIST_LOCK_TIMEOUT, __func__, NULL, NULL))) {
         goto error;
     }
 
@@ -404,7 +404,7 @@ sr_shmmain_conn_list_del(sr_cid_t cid)
     sr_conn_list_item *ptr, *prev;
 
     /* CONN LIST LOCK */
-    if ((err_info = sr_mlock(&conn_list.lock, 1000, __func__))) {
+    if ((err_info = sr_mlock(&conn_list.lock, SR_CONN_LIST_LOCK_TIMEOUT, __func__, NULL, NULL))) {
         return err_info;
     }
 

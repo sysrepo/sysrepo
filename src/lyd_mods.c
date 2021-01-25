@@ -4,7 +4,7 @@
  * @brief Sysrepo module data routines
  *
  * @copyright
- * Copyright 2019 CESNET, z.s.p.o.
+ * Copyright 2019 - 2021 CESNET, z.s.p.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,6 +53,18 @@
 #include "../modules/sysrepo_plugind_yang.h"
 
 static sr_error_info_t *sr_lydmods_add_deps_r(struct lyd_node *sr_mod, struct lys_node *data_root, struct lyd_node *sr_deps);
+
+sr_error_info_t *
+sr_lydmods_lock(pthread_mutex_t *lock, const char *func)
+{
+    struct sr_shmmod_recover_cb_s cb_data;
+
+    cb_data.mod_name = SR_YANG_MOD;
+    cb_data.ds = SR_DS_STARTUP;
+
+    /* LOCK */
+    return sr_mlock(lock, SR_LYDMODS_LOCK_TIMEOUT, func, sr_shmmod_recover_cb, &cb_data);
+}
 
 sr_error_info_t *
 sr_lydmods_parse(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
@@ -131,8 +143,6 @@ sr_lydmods_print(struct lyd_node **sr_mods)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *sr_ly_mod;
-    char *path;
-    mode_t um;
 
     assert(sr_mods && *sr_mods && !strcmp((*sr_mods)->schema->module->name, SR_YANG_MOD));
 
@@ -145,22 +155,12 @@ sr_lydmods_print(struct lyd_node **sr_mods)
         return err_info;
     }
 
-    /* get path */
-    if ((err_info = sr_path_startup_file(SR_YANG_MOD, &path))) {
+    /* store the data */
+    if ((err_info = sr_module_file_data_set(SR_YANG_MOD, SR_DS_STARTUP, *sr_mods, O_CREAT, SR_INT_FILE_PERM))) {
         return err_info;
     }
 
-    /* set umask so that the correct permissions are set in case this file does not exist */
-    um = umask(SR_UMASK);
-
-    /* store the data tree */
-    if (lyd_print_path(path, *sr_mods, LYD_LYB, LYP_WITHSIBLINGS)) {
-        sr_errinfo_new_ly(&err_info, sr_ly_mod->ctx);
-    }
-    umask(um);
-    free(path);
-
-    return err_info;
+    return NULL;
 }
 
 /**
@@ -2244,7 +2244,7 @@ sr_lydmods_conn_ctx_update(sr_main_shm_t *main_shm, struct ly_ctx **ly_ctx, int 
     chng = 0;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
         return err_info;
     }
 
@@ -2338,7 +2338,7 @@ sr_lydmods_deferred_add_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, c
     int i;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
         return err_info;
     }
 
@@ -2415,7 +2415,7 @@ sr_lydmods_unsched_add_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, co
     char *path = NULL;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
         return err_info;
     }
 
@@ -2525,7 +2525,7 @@ sr_lydmods_deferred_add_module_data(sr_main_shm_t *main_shm, struct ly_ctx *ly_c
     assert((data && !data_path) || (!data && data_path));
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
         return err_info;
     }
 
@@ -2623,7 +2623,7 @@ sr_lydmods_deferred_del_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, c
     char *path = NULL;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
         return err_info;
     }
 
@@ -2725,7 +2725,7 @@ sr_lydmods_unsched_del_module_with_imps(sr_main_shm_t *main_shm, struct ly_ctx *
     struct lyd_node *sr_mods = NULL;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
         return err_info;
     }
 
@@ -2759,7 +2759,7 @@ sr_lydmods_deferred_upd_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, c
     char *path = NULL, *yang_str = NULL;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
         return err_info;
     }
 
@@ -2819,7 +2819,7 @@ sr_lydmods_unsched_upd_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, co
     char *path = NULL;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
         return err_info;
     }
 
@@ -2872,7 +2872,7 @@ sr_lydmods_deferred_change_feature(sr_main_shm_t *main_shm, struct ly_ctx *ly_ct
     char *path = NULL;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
         return err_info;
     }
 
@@ -2986,7 +2986,7 @@ sr_lydmods_update_replay_support(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx,
     assert(s_replay);
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_mlock(&main_shm->lydmods_lock, SR_LYDMODS_LOCK_TIMEOUT, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
         return err_info;
     }
 
