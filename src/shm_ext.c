@@ -1345,7 +1345,7 @@ sr_shmext_rpc_subscription_add(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const cha
     /* check that this exact subscription does not exist yet */
     shm_sub = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + shm_rpc->subs);
     for (i = 0; i < shm_rpc->sub_count; ++i) {
-        if (shm_sub->priority == priority) {
+        if (shm_sub[i].priority == priority) {
             sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "RPC subscription for \"%s\" with priority %u "
                     "already exists.", conn->main_shm.addr + shm_rpc->path, priority);
             goto cleanup_rpcsub_ext_unlock;
