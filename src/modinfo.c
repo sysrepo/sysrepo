@@ -1301,12 +1301,12 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
 #undef PATH_LEN
 
     /* oper-sub-lock */
-    if ((err_info = sr_modinfo_module_srmon_locks(&shm_mod->change_sub[ds].lock, "oper-sub-lock", sr_mod))) {
+    if ((err_info = sr_modinfo_module_srmon_locks(&shm_mod->oper_lock, "oper-sub-lock", sr_mod))) {
         return err_info;
     }
 
     /* notif-sub-lock */
-    if ((err_info = sr_modinfo_module_srmon_locks(&shm_mod->change_sub[ds].lock, "notif-sub-lock", sr_mod))) {
+    if ((err_info = sr_modinfo_module_srmon_locks(&shm_mod->notif_lock, "notif-sub-lock", sr_mod))) {
         return err_info;
     }
 
