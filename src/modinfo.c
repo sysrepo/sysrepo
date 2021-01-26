@@ -1886,8 +1886,11 @@ sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const struct ly_set *mod_
         }
     }
 
-    /* sort the modules based on their offsets in the SHM so that we have a uniform order for locking */
-    qsort(mod_info->mods, mod_info->mod_count, sizeof *mod_info->mods, sr_modinfo_qsort_cmp);
+    /* all modules could have been removed by the permission check */
+    if (mod_info->mod_count) {
+        /* sort the modules based on their offsets in the SHM so that we have a uniform order for locking */
+        qsort(mod_info->mods, mod_info->mod_count, sizeof *mod_info->mods, sr_modinfo_qsort_cmp);
+    }
 
     if (mod_lock) {
         if (mod_lock == SR_LOCK_READ) {
