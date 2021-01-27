@@ -12,31 +12,31 @@ Architecture: any
 Description: @PACKAGE_DESC@
 
 Package: @PACKAGE@-dev
-Depends: libyang-dev (>=@LIBYANG_DEP_VERSION@), @PACKAGE@ (=@SYSREPO_VERSION@)
+Depends: libyang-dev (>=@LIBYANG_DEP_VERSION@), @PACKAGE@ (=@SYSREPO_VERSION@-1)
 Section: libdevel
 Architecture: any
 Description: @PACKAGE_DEV_DESC@
 
 Package: @PACKAGE@-dbg
-Depends: @PACKAGE@ (=@SYSREPO_VERSION@)
+Depends: @PACKAGE@ (=@SYSREPO_VERSION@-1)
 Section: debug
 Architecture: any
 Description: @PACKAGE_DBG_DESC@
 
 Package: @CPP_PACKAGE@
-Depends: libyang-cpp@LIBYANG_DEP_SOVERSION_MAJOR@ (>=@LIBYANG_DEP_VERSION@), @PACKAGE@ (=@SYSREPO_VERSION@)
+Depends: libyang-cpp@LIBYANG_DEP_SOVERSION_MAJOR@ (>=@LIBYANG_DEP_VERSION@), @PACKAGE@ (=@SYSREPO_VERSION@-1)
 Section: libs
 Architecture: any
 Description: @CPP_PACKAGE_DESC@
 
 Package: @CPP_PACKAGE@-dev
-Depends: libyang-cpp-dev (>=@LIBYANG_DEP_VERSION@), @CPP_PACKAGE@ (=@SYSREPO_VERSION@)
+Depends: libyang-cpp-dev (>=@LIBYANG_DEP_VERSION@), @CPP_PACKAGE@ (=@SYSREPO_VERSION@-1)
 Section: libdevel
 Architecture: any
 Description: @CPP_PACKAGE_DEV_DESC@
 
 Package: @CPP_PACKAGE@-dbg
-Depends: @CPP_PACKAGE@ (=@SYSREPO_VERSION@)
+Depends: @CPP_PACKAGE@ (=@SYSREPO_VERSION@-1)
 Section: debug
 Architecture: any
 Description: @CPP_PACKAGE_DBG_DESC@
