@@ -131,11 +131,11 @@ sr_shmmod_collect_rpc_deps(sr_main_shm_t *main_shm, const struct ly_ctx *ly_ctx,
         }
 
         /* find ly module */
-        ly_mod = ly_ctx_get_module(ly_ctx, ((char *)main_shm) + (*shm_deps)[i].module, NULL, 1);
+        ly_mod = ly_ctx_get_module_implemented(ly_ctx, ((char *)main_shm) + (*shm_deps)[i].module);
         SR_CHECK_INT_RET(!ly_mod, err_info);
 
         /* add dependency */
-        ly_set_add(mod_set, (void *)ly_mod, 0);
+        ly_set_add(mod_set, (void *)ly_mod, 0, NULL);
     }
 
     return NULL;
@@ -174,7 +174,7 @@ sr_shmmod_collect_notif_deps(sr_main_shm_t *main_shm, const struct lys_module *n
         }
 
         /* find ly module */
-        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, ((char *)main_shm) + (*shm_deps)[i].module);
+        ly_mod = ly_ctx_get_module_implemented(notif_mod->ctx, ((char *)main_shm) + (*shm_deps)[i].module);
         SR_CHECK_INT_RET(!ly_mod, err_info);
 
         /* add dependency */

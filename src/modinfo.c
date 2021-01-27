@@ -185,7 +185,7 @@ sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *new
             /* merge relevant diff part */
             if (mod_info->ds == SR_DS_OPERATIONAL) {
                 lyrc = lyd_diff_merge_module(&mod_info->diff, new_diff, mod->ly_mod, sr_lyd_diff_merge_cb,
-                        &mod_info->conn->sr_cid, LYD_DIFF_MERGE_DEFAULTS);
+                        &mod_info->conn->cid, LYD_DIFF_MERGE_DEFAULTS);
             } else {
                 lyrc = lyd_diff_merge_module(&mod_info->diff, new_diff, mod->ly_mod, NULL, NULL, 0);
             }
@@ -558,7 +558,7 @@ sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const
         }
 
         /* go top-level */
-        for (parent_dup = last_parent; parent_dup->parent; parent_dup = parent_dup->parent) {}
+        for (parent_dup = last_parent; parent_dup->parent; parent_dup = lyd_parent(parent_dup)) {}
 
         if (request_xpath) {
             /* check whether the parent would not be filtered out */
@@ -740,7 +740,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, sr_conn_
 
             /* nested data */
             for (j = 0; j < set->count; ++j) {
-                if ((err_info = sr_xpath_oper_data_append(shm_msub, mod->ly_mod, sub_xpath, request_xpath, set->dnodes[j],
+                if ((err_info = sr_xpath_oper_data_append(shm_sub, mod->ly_mod, sub_xpath, request_xpath, set->dnodes[j],
                         sid, timeout_ms, conn->cid, data, cb_error_info))) {
                     goto cleanup_opersub_ext_unlock;
                 }
@@ -1096,20 +1096,17 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, const char *path_format, s
     int ret;
 #define PATH_LEN 128
     char path[PATH_LEN];
-    struct lyd_node *node;
     struct ly_ctx *ly_ctx;
 
-    ly_ctx = lyd_node_module(ctx_node)->ctx;
+    ly_ctx = (struct ly_ctx *)LYD_CTX(ctx_node);
 
     if ((cid = rwlock->writer)) {
         snprintf(path, PATH_LEN, path_format, cid);
-        node = lyd_new_path(ctx_node, NULL, path, "write", 0, 0);
-        SR_CHECK_LY_RET(!node, ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_path(ctx_node, NULL, path, "write", 0, NULL), ly_ctx, err_info);
     }
     if ((cid = rwlock->upgr)) {
         snprintf(path, PATH_LEN, path_format, cid);
-        node = lyd_new_path(ctx_node, NULL, path, "read-upgr", 0, 0);
-        SR_CHECK_LY_RET(!node, ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_path(ctx_node, NULL, path, "read-upgr", 0, NULL), ly_ctx, err_info);
     }
 
     /* READ MUTEX LOCK */
@@ -1121,8 +1118,7 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, const char *path_format, s
 
     for (i = 0; rwlock->readers[i] && (i < SR_RWLOCK_READ_LIMIT); ++i) {
         snprintf(path, PATH_LEN, path_format, rwlock->readers[i]);
-        node = lyd_new_path(ctx_node, NULL, path, "read", 0, 0);
-        if (!node) {
+        if (lyd_new_path(ctx_node, NULL, path, "read", 0, NULL)) {
             sr_errinfo_new_ly(&err_info, ly_ctx);
             break;
         }
@@ -1152,35 +1148,29 @@ sr_modinfo_module_srmon_locks(sr_rwlock_t *rwlock, const char *list_name, struct
     int ret;
 #define CID_STR_LEN 64
     char cid_str[CID_STR_LEN];
-    struct lyd_node *list, *node;
+    struct lyd_node *list;
     struct ly_ctx *ly_ctx;
 
-    ly_ctx = lyd_node_module(parent)->ctx;
+    ly_ctx = (struct ly_ctx *)LYD_CTX(parent);
 
     if ((cid = rwlock->writer)) {
         /* list instance */
-        list = lyd_new(parent, NULL, list_name);
-        SR_CHECK_LY_RET(!list, ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_list(parent, NULL, list_name, 0, &list), ly_ctx, err_info);
 
         /* cid */
         snprintf(cid_str, CID_STR_LEN, "%" PRIu32, cid);
-        node = lyd_new_leaf(list, NULL, "cid", cid_str);
-        SR_CHECK_LY_RET(!node, ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_term(list, NULL, "cid", cid_str, 0, NULL), ly_ctx, err_info);
 
         /* mode */
-        node = lyd_new_leaf(list, NULL, "mode", "write");
-        SR_CHECK_LY_RET(!node, ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_term(list, NULL, "mode", "write", 0, NULL), ly_ctx, err_info);
     }
     if ((cid = rwlock->upgr)) {
-        list = lyd_new(parent, NULL, list_name);
-        SR_CHECK_LY_RET(!list, ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_list(parent, NULL, list_name, 0, &list), ly_ctx, err_info);
 
         snprintf(cid_str, CID_STR_LEN, "%" PRIu32, cid);
-        node = lyd_new_leaf(list, NULL, "cid", cid_str);
-        SR_CHECK_LY_RET(!node, ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_term(list, NULL, "cid", cid_str, 0, NULL), ly_ctx, err_info);
 
-        node = lyd_new_leaf(list, NULL, "mode", "read-upgr");
-        SR_CHECK_LY_RET(!node, ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_term(list, NULL, "mode", "read-upgr", 0, NULL), ly_ctx, err_info);
     }
 
     /* READ MUTEX LOCK */
@@ -1191,15 +1181,12 @@ sr_modinfo_module_srmon_locks(sr_rwlock_t *rwlock, const char *list_name, struct
     }
 
     for (i = 0; rwlock->readers[i] && (i < SR_RWLOCK_READ_LIMIT); ++i) {
-        list = lyd_new(parent, NULL, list_name);
-        SR_CHECK_LY_GOTO(!list, ly_ctx, err_info, cleanup);
+        SR_CHECK_LY_GOTO(lyd_new_list(parent, NULL, list_name, 0, &list), ly_ctx, err_info, cleanup);
 
         snprintf(cid_str, CID_STR_LEN, "%" PRIu32, rwlock->readers[i]);
-        node = lyd_new_leaf(list, NULL, "cid", cid_str);
-        SR_CHECK_LY_GOTO(!node, ly_ctx, err_info, cleanup);
+        SR_CHECK_LY_GOTO(lyd_new_term(list, NULL, "cid", cid_str, 0, NULL), ly_ctx, err_info, cleanup);
 
-        node = lyd_new_leaf(list, NULL, "mode", "read");
-        SR_CHECK_LY_GOTO(!node, ly_ctx, err_info, cleanup);
+        SR_CHECK_LY_GOTO(lyd_new_term(list, NULL, "mode", "read", 0, NULL), ly_ctx, err_info, cleanup);
     }
 
 cleanup:
@@ -1252,21 +1239,18 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
             continue;
         }
 
-        sr_ds_lock = lyd_new(sr_mod, NULL, "ds-lock");
-        SR_CHECK_LY_RET(!sr_ds_lock, ly_ctx, err_info);
-
-        /* datastore */
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_ds_lock, NULL, "datastore", sr_ds2ident(ds)), ly_ctx, err_info);
+        /* list instance with datastore */
+        SR_CHECK_LY_RET(lyd_new_list(sr_mod, NULL, "ds-lock", 0, &sr_ds_lock, sr_ds2ident(ds)), ly_ctx, err_info);
 
         /* sid */
         sprintf(buf, "%"PRIu32, shm_mod->data_lock_info[ds].sid.sr);
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_ds_lock, NULL, "sid", buf), ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_term(sr_ds_lock, NULL, "sid", buf, 0, NULL), ly_ctx, err_info);
 
         /* timestamp */
         if ((err_info = sr_time2datetime(shm_mod->data_lock_info[ds].ds_ts, NULL, buf, NULL))) {
             return err_info;
         }
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_ds_lock, NULL, "timestamp", buf), ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_term(sr_ds_lock, NULL, "timestamp", buf, 0, NULL), ly_ctx, err_info);
     }
 
     /* change-sub-lock */
@@ -1309,34 +1293,33 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
 
             /* priority */
             sprintf(buf, "%" PRIu32, change_sub[i].priority);
-            SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "priority", buf), ly_ctx, err_info);
+            SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "priority", buf, 0, NULL), ly_ctx, err_info);
 
             /* cid */
             sprintf(buf, "%"PRIu32, change_sub[i].cid);
-            SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "cid", buf), ly_ctx, err_info);
+            SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info);
         }
     }
 
     oper_sub = (sr_mod_oper_sub_t *)(conn->ext_shm.addr + shm_mod->oper_subs);
     for (i = 0; i < shm_mod->oper_sub_count; ++i) {
         /* operational-sub */
-        sr_sub = lyd_new(sr_subs, NULL, "operational-sub");
-        SR_CHECK_LY_RET(!sr_sub, ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_list(sr_subs, NULL, "operational-sub", 0, &sr_sub), ly_ctx, err_info);
 
         /* xpath */
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "xpath", conn->ext_shm.addr + oper_sub[i].xpath),
+        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "xpath", conn->ext_shm.addr + oper_sub[i].xpath, 0, NULL),
                 ly_ctx, err_info);
 
         /* cid */
         sprintf(buf, "%"PRIu32, oper_sub[i].cid);
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "cid", buf), ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info);
     }
 
     notif_sub = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
     for (i = 0; i < shm_mod->notif_sub_count; ++i) {
         /* notification-sub with cid */
         sprintf(buf, "%"PRIu32, notif_sub[i].cid);
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_subs, NULL, "notification-sub", buf), ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_term(sr_subs, NULL, "notification-sub", buf, 0, NULL), ly_ctx, err_info);
     }
 
     return NULL;
@@ -1362,8 +1345,8 @@ sr_modinfo_module_srmon_rpc(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, struct lyd_n
 
     ly_ctx = LYD_CTX(sr_state);
 
-    /* path */
-    SR_CHECK_LY_RET(!lyd_new_leaf(sr_rpc, NULL, "path", conn->main_shm.addr + shm_rpc->path), ly_ctx, err_info);
+    /* rpc with path */
+    SR_CHECK_LY_RET(lyd_new_list(sr_state, NULL, "rpc", 0, &sr_rpc, conn->main_shm.addr + shm_rpc->path), ly_ctx, err_info);
 
     /* sub-lock */
     if ((err_info = sr_modinfo_module_srmon_locks(&shm_rpc->lock, "sub-lock", sr_rpc))) {
@@ -1376,21 +1359,21 @@ sr_modinfo_module_srmon_rpc(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, struct lyd_n
         SR_CHECK_LY_RET(lyd_new_list(sr_rpc, NULL, "rpc-sub", 0, &sr_sub), ly_ctx, err_info);
 
         /* xpath */
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "xpath", conn->ext_shm.addr + rpc_sub[i].xpath),
+        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "xpath", conn->ext_shm.addr + rpc_sub[i].xpath, 0, NULL),
                 ly_ctx, err_info);
 
         /* priority */
         sprintf(buf, "%" PRIu32, rpc_sub[i].priority);
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "priority", buf), ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "priority", buf, 0, NULL), ly_ctx, err_info);
 
         /* cid */
         sprintf(buf, "%"PRIu32, rpc_sub[i].cid);
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_sub, NULL, "cid", buf), ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info);
     }
 
-    if (!sr_rpc->child->next) {
+    if (!lyd_child(sr_rpc)->next) {
         /* there are no locks or subscriptions for the RPC, redundant */
-        lyd_free(sr_rpc);
+        lyd_free_tree(sr_rpc);
     }
 
     return NULL;
@@ -1413,7 +1396,7 @@ sr_modinfo_module_srmon_connections(struct lyd_node *sr_state)
     pid_t *pids;
     uint32_t conn_count, i;
 
-    ly_ctx = LD_CTX(sr_state);
+    ly_ctx = LYD_CTX(sr_state);
 
     /* get basic information about connections */
     if ((err_info = sr_conn_info(&cids, &pids, &conn_count, NULL, NULL))) {
@@ -1421,17 +1404,13 @@ sr_modinfo_module_srmon_connections(struct lyd_node *sr_state)
     }
 
     for (i = 0; i < conn_count; ++i) {
-        /* connection */
-        sr_conn = lyd_new(sr_state, NULL, "connection");
-        SR_CHECK_LY_RET(!sr_conn, ly_ctx, err_info);
-
-        /* cid */
+        /* connection with cid */
         sprintf(buf, "%"PRIu32, cids[i]);
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_conn, NULL, "cid", buf), ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_list(sr_state, NULL, "connection", 0, &sr_conn, buf), ly_ctx, err_info);
 
         /* pid */
         sprintf(buf, "%"PRIu32, pids[i]);
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_conn, NULL, "pid", buf), ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_term(sr_conn, NULL, "pid", buf, 0, NULL), ly_ctx, err_info);
     }
 
     free(cids);
@@ -2008,7 +1987,7 @@ sr_modinfo_add_np_cont(struct sr_mod_info_s *mod_info)
             }
 
             /* merge diff (keep origin the way it was, inherit) */
-            if (lyd_diff_merge_module(&mod_info->diff, d, mod->ly_mod, NULL, &mod_info->conn->sr_cid,
+            if (lyd_diff_merge_module(&mod_info->diff, d, mod->ly_mod, NULL, &mod_info->conn->cid,
                     LYD_DIFF_MERGE_DEFAULTS)) {
                 sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
                 return err_info;
@@ -2043,7 +2022,7 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int 
     assert(op->schema->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF));
 
     /* find top-level node */
-    for (top_op = op; top_op->parent; top_op = top_op->parent) {}
+    for (top_op = op; top_op->parent; top_op = lyd_parent(top_op)) {}
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
@@ -2399,7 +2378,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                     goto cleanup;
                 }
                 if (lyd_diff_merge_module(&diff, mod_info->diff, mod->ly_mod, sr_lyd_diff_merge_cb,
-                        &mod_info->conn->sr_cid, LYD_DIFF_MERGE_DEFAULTS)) {
+                        &mod_info->conn->cid, LYD_DIFF_MERGE_DEFAULTS)) {
                     sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
                     goto cleanup;
                 }

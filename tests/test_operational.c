@@ -2317,10 +2317,10 @@ test_stored_state_list(void **state)
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
-    lyd_free_withsiblings(data);
+    lyd_free_all(data);
 
     str2 =
     "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
@@ -2353,10 +2353,10 @@ test_stored_state_list(void **state)
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
-    lyd_free_withsiblings(data);
+    lyd_free_all(data);
 
     str2 =
     "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
@@ -2371,7 +2371,6 @@ test_stored_state_list(void **state)
         "<ll or:origin=\"unknown\">val2</ll>"
         "<ll or:origin=\"unknown\">val3</ll>"
         "<ll or:origin=\"unknown\">val1</ll>"
->>>>>>> devel
     "</test-state>";
 
     assert_string_equal(str1, str2);
@@ -2567,10 +2566,10 @@ test_stored_top_list(void **state)
     ret = sr_get_data(st->sess, "/czechlight-roadm-device:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
-    lyd_free_withsiblings(data);
+    lyd_free_all(data);
 
     str2 =
     "<line xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\" "

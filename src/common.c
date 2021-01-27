@@ -3754,7 +3754,7 @@ sr_lyd_copy_config_np_cont_r(struct lyd_node **first, struct lyd_node *parent, c
     }
 
     for (src = src_sibling; src; src = src->next) {
-        for (src_top = src; src_top->parent; src_top = src_top->parent) {}
+        for (src_top = src; src_top->parent; src_top = lyd_parent(src_top)) {}
         if (lyd_owner_module(src_top) != ly_mod) {
             /* these data do not belong to this module */
             continue;
@@ -3954,7 +3954,7 @@ sr_lyd_xpath_complement(struct lyd_node **data, const char *xpath)
     /* store the depth of every node */
     max_depth = 1;
     for (i = 0; i < node_set->count; ++i) {
-        for (parent = node_set->dnodes[i], depth = 0; parent; parent = parent->parent, ++depth) {}
+        for (parent = node_set->dnodes[i], depth = 0; parent; parent = lyd_parent(parent), ++depth) {}
 
         if (ly_set_add(depth_set, (void *)((uintptr_t)depth), 1, NULL)) {
             sr_errinfo_new_ly(&err_info, LYD_CTX(*data));
@@ -4455,8 +4455,8 @@ sr_error_info_t *
 sr_module_file_oper_data_load(struct sr_mod_info_mod_s *mod, struct lyd_node **diff)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *root, *next, *elem;
-    struct lyd_attr *attr;
+    struct lyd_node *root, *elem;
+    struct lyd_meta *meta;
     sr_cid_t dead_cid = 0;
 
     assert(!*diff);
@@ -4476,20 +4476,16 @@ trim_retry:
     }
 
     /* find diff belonging to a dead connection, if any */
-    LY_TREE_FOR(*diff, root) {
-        LY_TREE_DFS_BEGIN(root, next, elem) {
-            LY_TREE_FOR(elem->attr, attr) {
-                if (!strcmp(attr->annotation->module->name, SR_YANG_MOD) && !strcmp(attr->name, "cid")) {
-                    if (!sr_conn_is_alive(attr->value.uint32)) {
-                        dead_cid = attr->value.uint32;
+    LY_LIST_FOR(*diff, root) {
+        LYD_TREE_DFS_BEGIN(root, elem) {
+            meta = lyd_find_meta(elem->meta, NULL, SR_YANG_MOD ":cid");
+            if (meta && !sr_conn_is_alive(meta->value.uint32)) {
+                dead_cid = meta->value.uint32;
 
-                        /* retry the whole check until there are no dead connections */
-                        goto trim_retry;
-                    }
-                    break;
-                }
+                /* retry the whole check until there are no dead connections */
+                goto trim_retry;
             }
-            LY_TREE_DFS_END(root, next, elem);
+            LYD_TREE_DFS_END(root, elem);
         }
     }
 

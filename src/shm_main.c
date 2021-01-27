@@ -561,7 +561,7 @@ sr_shmmain_fill_deps(sr_main_shm_t *main_shm, struct lyd_node *sr_dep_parent, sr
             /* there may be no default value */
             shm_deps[*dep_i].module = 0;
 
-            LY_TREE_FOR(sr_dep->child, sr_instid) {
+            LY_LIST_FOR(lyd_child(sr_dep), sr_instid) {
                 if (!strcmp(sr_instid->schema->name, "path")) {
                     /* copy path */
                     shm_deps[*dep_i].path = sr_shmstrcpy((char *)main_shm, LYD_CANON_VALUE(sr_instid), shm_end);
@@ -631,10 +631,10 @@ sr_shmmain_fill_module(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr_shm
     /* remember name, set fields from sr_mod, and count enabled features */
     name = NULL;
     feat_names_len = 0;
-    LY_TREE_FOR(sr_mod->child, sr_child) {
+    LY_LIST_FOR(lyd_child(sr_mod), sr_child) {
         if (!strcmp(sr_child->schema->name, "name")) {
             /* rememeber name */
-            name = sr_ly_leaf_value_str(sr_child);
+            name = LYD_CANON_VALUE(sr_child);
         } else if (!strcmp(sr_child->schema->name, "revision")) {
             /* copy revision */
             strcpy(shm_mod->rev, LYD_CANON_VALUE(sr_child));
@@ -669,11 +669,10 @@ sr_shmmain_fill_module(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr_shm
     /* store feature names */
     shm_features = (off_t *)(shm_main->addr + shm_mod->features);
     feat_i = 0;
-    LY_TREE_FOR(sr_mod->child, sr_child) {
+    LY_LIST_FOR(lyd_child(sr_mod), sr_child) {
         if (!strcmp(sr_child->schema->name, "enabled-feature")) {
             /* copy feature name */
-            str = sr_ly_leaf_value_str(sr_child);
-            shm_features[feat_i] = sr_shmstrcpy(shm_main->addr, str, &shm_end);
+            shm_features[feat_i] = sr_shmstrcpy(shm_main->addr, LYD_CANON_VALUE(sr_child), &shm_end);
 
             ++feat_i;
         }
@@ -712,15 +711,15 @@ sr_shmmain_add_module_deps(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr
 
     /* count arrays and paths length */
     paths_len = 0;
-    LY_TREE_FOR(sr_mod->child, sr_child) {
+    LY_LIST_FOR(lyd_child(sr_mod), sr_child) {
         if (!strcmp(sr_child->schema->name, "deps")) {
-            LY_TREE_FOR(sr_child->child, sr_dep) {
+            LY_LIST_FOR(lyd_child(sr_child), sr_dep) {
                 /* another data dependency */
                 ++shm_mod->dep_count;
 
                 /* module name was already counted and type is an enum */
                 if (!strcmp(sr_dep->schema->name, "inst-id")) {
-                    LY_TREE_FOR(sr_dep->child, sr_instid) {
+                    LY_LIST_FOR(lyd_child(sr_dep), sr_instid) {
                         if (!strcmp(sr_instid->schema->name, "path")) {
                             /* a string */
                             paths_len += sr_strshmlen(LYD_CANON_VALUE(sr_instid));
@@ -755,7 +754,7 @@ sr_shmmain_add_module_deps(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr
     shm_inv_deps = (off_t *)(shm_main->addr + shm_mod->inv_deps);
     inv_dep_i = 0;
 
-    LY_TREE_FOR(sr_mod->child, sr_child) {
+    LY_LIST_FOR(lyd_child(sr_mod), sr_child) {
         if (!strcmp(sr_child->schema->name, "deps")) {
             /* now fill the dependency array */
             if ((err_info = sr_shmmain_fill_deps(main_shm, sr_child, shm_deps, &dep_i, &shm_end))) {
@@ -805,23 +804,23 @@ sr_shmmain_add_module_rpcs(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr
     /* count arrays and paths length */
     paths_len = 0;
     in_out_deps_len = 0;
-    LY_TREE_FOR(sr_mod->child, sr_child) {
+    LY_LIST_FOR(lyd_child(sr_mod), sr_child) {
         if (!strcmp(sr_child->schema->name, "rpc")) {
             /* another RPC/action */
             ++shm_mod->rpc_count;
 
-            LY_TREE_FOR(sr_child->child, sr_op_dep) {
+            LY_LIST_FOR(lyd_child(sr_child), sr_op_dep) {
                 if (!strcmp(sr_op_dep->schema->name, "path")) {
                     /* operation path (a string) */
                     paths_len += sr_strshmlen(LYD_CANON_VALUE(sr_op_dep));
                 } else if (!strcmp(sr_op_dep->schema->name, "in") || !strcmp(sr_op_dep->schema->name, "out")) {
                     dep_i = 0;
-                    LY_TREE_FOR(sr_op_dep->child, sr_dep) {
+                    LY_LIST_FOR(lyd_child(sr_op_dep), sr_dep) {
                         /* another dependency */
                         ++dep_i;
 
                         if (!strcmp(sr_dep->schema->name, "inst-id")) {
-                            LY_TREE_FOR(sr_dep->child, sr_instid) {
+                            LY_LIST_FOR(lyd_child(sr_dep), sr_instid) {
                                 if (!strcmp(sr_instid->schema->name, "path")) {
                                     /* a string */
                                     paths_len += sr_strshmlen(LYD_CANON_VALUE(sr_instid));
@@ -854,19 +853,19 @@ sr_shmmain_add_module_rpcs(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr
     shm_rpcs = (sr_rpc_t *)(shm_main->addr + shm_mod->rpcs);
     rpc_i = 0;
 
-    LY_TREE_FOR(sr_mod->child, sr_child) {
+    LY_LIST_FOR(lyd_child(sr_mod), sr_child) {
         if (!strcmp(sr_child->schema->name, "rpc")) {
             /* init lock */
             if ((err_info = sr_rwlock_init(&shm_rpcs[rpc_i].lock, 1))) {
                 return err_info;
             }
 
-            LY_TREE_FOR(sr_child->child, sr_op) {
+            LY_LIST_FOR(lyd_child(sr_child), sr_op) {
                 if (!strcmp(sr_op->schema->name, "path")) {
                     /* copy xpath name */
                     shm_rpcs[rpc_i].path = sr_shmstrcpy(shm_main->addr, LYD_CANON_VALUE(sr_op), &shm_end);
                 } else if (!strcmp(sr_op->schema->name, "in")) {
-                    LY_TREE_FOR(sr_op->child, sr_op_dep) {
+                    LY_LIST_FOR(lyd_child(sr_op), sr_op_dep) {
                         /* count input deps first */
                         ++shm_rpcs[rpc_i].in_dep_count;
                     }
@@ -883,7 +882,7 @@ sr_shmmain_add_module_rpcs(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr
                     }
                     SR_CHECK_INT_RET(dep_i != shm_rpcs[rpc_i].in_dep_count, err_info);
                 } else if (!strcmp(sr_op->schema->name, "out")) {
-                    LY_TREE_FOR(sr_op->child, sr_op_dep) {
+                    LY_LIST_FOR(lyd_child(sr_op), sr_op_dep) {
                         /* count op output data deps first */
                         ++shm_rpcs[rpc_i].out_dep_count;
                     }
@@ -930,7 +929,6 @@ sr_shmmain_add_module_notifs(const struct lyd_node *sr_mod, size_t shm_mod_idx, 
     sr_notif_t *shm_notifs;
     sr_main_shm_t *main_shm;
     char *shm_end;
-    const char *str;
     size_t paths_len, deps_len, dep_i, notif_i, old_shm_size;
 
     shm_mod = SR_SHM_MOD_IDX(shm_main->addr, shm_mod_idx);
@@ -940,28 +938,26 @@ sr_shmmain_add_module_notifs(const struct lyd_node *sr_mod, size_t shm_mod_idx, 
     /* count arrays and paths length */
     paths_len = 0;
     deps_len = 0;
-    LY_TREE_FOR(sr_mod->child, sr_child) {
+    LY_LIST_FOR(lyd_child(sr_mod), sr_child) {
         if (!strcmp(sr_child->schema->name, "notification")) {
             /* another notification */
             ++shm_mod->notif_count;
 
-            LY_TREE_FOR(sr_child->child, sr_op_dep) {
+            LY_LIST_FOR(lyd_child(sr_child), sr_op_dep) {
                 if (!strcmp(sr_op_dep->schema->name, "path")) {
                     /* operation path (a string) */
-                    str = sr_ly_leaf_value_str(sr_op_dep);
-                    paths_len += sr_strshmlen(str);
+                    paths_len += sr_strshmlen(LYD_CANON_VALUE(sr_op_dep));
                 } else if (!strcmp(sr_op_dep->schema->name, "deps")) {
                     dep_i = 0;
-                    LY_TREE_FOR(sr_op_dep->child, sr_dep) {
+                    LY_LIST_FOR(lyd_child(sr_op_dep), sr_dep) {
                         /* another dependency */
                         ++dep_i;
 
                         if (!strcmp(sr_dep->schema->name, "inst-id")) {
-                            LY_TREE_FOR(sr_dep->child, sr_instid) {
+                            LY_LIST_FOR(lyd_child(sr_dep), sr_instid) {
                                 if (!strcmp(sr_instid->schema->name, "path")) {
                                     /* a string */
-                                    str = sr_ly_leaf_value_str(sr_instid);
-                                    paths_len += sr_strshmlen(str);
+                                    paths_len += sr_strshmlen(LYD_CANON_VALUE(sr_instid));
                                 }
                             }
                         }
@@ -991,15 +987,14 @@ sr_shmmain_add_module_notifs(const struct lyd_node *sr_mod, size_t shm_mod_idx, 
     shm_notifs = (sr_notif_t *)(shm_main->addr + shm_mod->notifs);
     notif_i = 0;
 
-    LY_TREE_FOR(sr_mod->child, sr_child) {
+    LY_LIST_FOR(lyd_child(sr_mod), sr_child) {
         if (!strcmp(sr_child->schema->name, "notification")) {
-            LY_TREE_FOR(sr_child->child, sr_op) {
+            LY_LIST_FOR(lyd_child(sr_child), sr_op) {
                 if (!strcmp(sr_op->schema->name, "path")) {
                     /* copy xpath name */
-                    str = sr_ly_leaf_value_str(sr_op);
-                    shm_notifs[notif_i].path = sr_shmstrcpy(shm_main->addr, str, &shm_end);
+                    shm_notifs[notif_i].path = sr_shmstrcpy(shm_main->addr, LYD_CANON_VALUE(sr_op), &shm_end);
                 } else if (!strcmp(sr_op->schema->name, "deps")) {
-                    LY_TREE_FOR(sr_op->child, sr_op_dep) {
+                    LY_LIST_FOR(lyd_child(sr_op), sr_op_dep) {
                         /* count deps first */
                         ++shm_notifs[notif_i].dep_count;
                     }

@@ -78,11 +78,10 @@ sr_error_info_t *sr_lydmods_ctx_load_modules(const struct lyd_node *sr_mods, str
  * @param[in] ly_ctx Context to use for parsing the data.
  * @param[in] ly_mod Module that is scheduled to be installed.
  * @param[in] features Array of enabled features.
- * @param[in] feat_count Number of enabled features.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lydmods_deferred_add_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx,
-        const struct lys_module *ly_mod, const char **features, int feat_count);
+        const struct lys_module *ly_mod, const char **features);
 
 /**
  * @brief Unschedule module installation from sysrepo module data.

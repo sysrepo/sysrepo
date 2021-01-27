@@ -1473,4 +1473,28 @@ sr_error_info_t *sr_module_file_data_set(const char *mod_name, sr_datastore_t ds
  */
 sr_error_info_t *sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name);
 
+/**
+ * @brief Learn CIDs and PIDs of all the live connections.
+ *
+ * @param[out] cids Optional array of CIDs.
+ * @param[out] pids Optional array of PIDs.
+ * @param[out] count Connection count, length of both @p cids and @p pids.
+ * @param[out] dead_cids Optional array of dead CIDs.
+ * @param[out] dead_count Length of @p dead_cids.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_conn_info(sr_cid_t **cids, pid_t **pids, uint32_t *count, sr_cid_t **dead_cids, uint32_t *dead_count);
+
+/**
+ * @brief Transform given time_t (seconds since the epoch) into the RFC 3339 format (YANG date-and-time).
+ *
+ * @param[in] time Time to convert.
+ * @param[in] tz Timezone name for the result. See tzselect(1) for list of
+ * correct values. If not specified (NULL) or unknown/invalid, the result is provided in UTC (Zulu).
+ * @param[in,out] buf Buffer to print the datetime into, must be at least 26 characters long. If not set, @p buf2 is used.
+ * @param[in,out] buf2 Pointer to a buffer to allocate for the datetime.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_time2datetime(time_t time, const char *tz, char *buf, char **buf2);
+
 #endif

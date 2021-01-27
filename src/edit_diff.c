@@ -2379,7 +2379,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     }
 
     if (isolate) {
-        for (parent = node; parent->parent; parent = parent->parent) {}
+        for (parent = node; parent->parent; parent = lyd_parent(parent)) {}
 
         /* connect into one edit */
         lyd_insert_sibling(session->dt[session->ds].edit, parent, &session->dt[session->ds].edit);
@@ -2408,7 +2408,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
 
     op = sr_edit_diff_find_oper(node, 1, &own_oper);
     if (!op) {
-        for (parent = node; parent->parent; parent = parent->parent) {}
+        for (parent = node; parent->parent; parent = lyd_parent(parent)) {}
 
         /* add default operation if a new subtree was created */
         if ((parent != node) && ((err_info = sr_edit_set_oper(parent, def_operation)))) {
@@ -2522,7 +2522,7 @@ error:
     if (node) {
         if (isolate) {
             /* free only the isolated subtree */
-            for (parent = node; parent->parent; parent = parent->parent) {}
+            for (parent = node; parent->parent; parent = lyd_parent(parent)) {}
             if (session->dt[session->ds].edit == parent) {
                 session->dt[session->ds].edit = parent->next;
             }
