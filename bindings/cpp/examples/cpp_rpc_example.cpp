@@ -152,7 +152,7 @@ main(int argc, char **argv)
 
         cout << "\n ========== SUBSCRIBE TO RPC CALL ==========\n" << endl;
 
-        subscribe->rpc_subscribe("/test-examples:activate-software-image", cbVals);
+        subscribe->rpc_subscribe("/test-examples:activate-software-image", cbVals, 1);
 
         auto in_vals = std::make_shared<sysrepo::Vals>(2);
 
