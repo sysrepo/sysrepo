@@ -23,19 +23,19 @@
 #define _XOPEN_SOURCE 500 /* strdup */
 
 #include <assert.h>
-#include <sys/stat.h>
+#include <getopt.h>
+#include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
-#include <stdarg.h>
-#include <getopt.h>
+#include <sys/stat.h>
 
 #include <libyang/libyang.h>
 
+#include "bin_common.h"
 #include "compat.h"
 #include "sysrepo.h"
-#include "bin_common.h"
 
 #define SRCTL_LIST_NAME "Module Name"
 #define SRCTL_LIST_REVISION "Revision"
@@ -62,52 +62,50 @@ static void
 version_print(void)
 {
     printf(
-        "sysrepoctl - sysrepo YANG schema manipulation tool, compiled with libsysrepo v%s (SO v%s)\n"
-        "\n",
-        SR_VERSION, SR_SOVERSION
-    );
+            "sysrepoctl - sysrepo YANG schema manipulation tool, compiled with libsysrepo v%s (SO v%s)\n"
+            "\n",
+            SR_VERSION, SR_SOVERSION);
 }
 
 static void
 help_print(void)
 {
     printf(
-        "Usage:\n"
-        "  sysrepoctl <operation-option> [other-options]\n"
-        "\n"
-        "Available operation-options:\n"
-        "  -h, --help           Print usage help.\n"
-        "  -V, --version        Print only information about sysrepo version.\n"
-        "  -l, --list           List YANG modules in sysrepo.\n"
-        "  -i, --install <path> Install the specified schema into sysrepo. Can be in either YANG or YIN format.\n"
-        "  -u, --uninstall <module>[,<module2>,<module3> ...]\n"
-        "                       Uninstall the specified module(s) from sysrepo.\n"
-        "  -c, --change <module>\n"
-        "                       Change access rights, features, or replay support of the specified module.\n"
-        "                       Use special \":ALL\" module name to change the replay support of all the modules.\n"
-        "  -U, --update <path>  Update the specified schema in sysrepo. Can be in either YANG or YIN format.\n"
-        "  -C, --connection-count\n"
-        "                       Print the number of sysrepo connections to STDOUT.\n"
-        "\n"
-        "Available other-options:\n"
-        "  -s, --search-dirs <dir-path>[:<dir-path>]*\n"
-        "                       Directories to search for include/import modules. Directory with already-installed\n"
-        "                       modules is always searched (install, update op).\n"
-        "  -e, --enable-feature <feature-name>\n"
-        "                       Enabled specific feature. Can be specified multiple times (install, change op).\n"
-        "  -d, --disable-feature <feature-name>\n"
-        "                       Disable specific feature. Can be specified multiple times (change op).\n"
-        "  -r, --replay <state> Change replay support (storing notifications) for this module to on/off or 1/0 (change op).\n"
-        "  -o, --owner <user>   Set filesystem owner of a module (change op, if \"apply\" even install, update op).\n"
-        "  -g, --group <group>  Set filesystem group of a module (change op, if \"apply\" even install, update op).\n"
-        "  -p, --permissions <permissions>\n"
-        "                       Set filesystem permissions of a module (chmod format) (change op, if \"apply\" even \n"
-        "                       install, update op).\n"
-        "  -a, --apply          Apply schema changes immediately, not only schedule them.\n"
-        "  -v, --verbosity <level>\n"
-        "                       Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
-        "\n"
-    );
+            "Usage:\n"
+            "  sysrepoctl <operation-option> [other-options]\n"
+            "\n"
+            "Available operation-options:\n"
+            "  -h, --help           Print usage help.\n"
+            "  -V, --version        Print only information about sysrepo version.\n"
+            "  -l, --list           List YANG modules in sysrepo.\n"
+            "  -i, --install <path> Install the specified schema into sysrepo. Can be in either YANG or YIN format.\n"
+            "  -u, --uninstall <module>[,<module2>,<module3> ...]\n"
+            "                       Uninstall the specified module(s) from sysrepo.\n"
+            "  -c, --change <module>\n"
+            "                       Change access rights, features, or replay support of the specified module.\n"
+            "                       Use special \":ALL\" module name to change the replay support of all the modules.\n"
+            "  -U, --update <path>  Update the specified schema in sysrepo. Can be in either YANG or YIN format.\n"
+            "  -C, --connection-count\n"
+            "                       Print the number of sysrepo connections to STDOUT.\n"
+            "\n"
+            "Available other-options:\n"
+            "  -s, --search-dirs <dir-path>[:<dir-path>]*\n"
+            "                       Directories to search for include/import modules. Directory with already-installed\n"
+            "                       modules is always searched (install, update op).\n"
+            "  -e, --enable-feature <feature-name>\n"
+            "                       Enabled specific feature. Can be specified multiple times (install, change op).\n"
+            "  -d, --disable-feature <feature-name>\n"
+            "                       Disable specific feature. Can be specified multiple times (change op).\n"
+            "  -r, --replay <state> Change replay support (storing notifications) for this module to on/off or 1/0 (change op).\n"
+            "  -o, --owner <user>   Set filesystem owner of a module (change op, if \"apply\" even install, update op).\n"
+            "  -g, --group <group>  Set filesystem group of a module (change op, if \"apply\" even install, update op).\n"
+            "  -p, --permissions <permissions>\n"
+            "                       Set filesystem permissions of a module (chmod format) (change op, if \"apply\" even \n"
+            "                       install, update op).\n"
+            "  -a, --apply          Apply schema changes immediately, not only schedule them.\n"
+            "  -v, --verbosity <level>\n"
+            "                       Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
+            "\n");
 }
 
 static void
@@ -245,7 +243,7 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
                     real_state = LY_SUCCESS;
                 }
 
-                cur_item->features = realloc(cur_item->features, strlen(cur_item->features) + (!real_state ? 0 : 1) + 1
+                cur_item->features = realloc(cur_item->features, strlen(cur_item->features) + (!real_state ? 0 : 1) + 1 +
                         + strlen(str) + 1);
                 if (cur_item->features[0]) {
                     strcat(cur_item->features, " ");
@@ -375,8 +373,8 @@ srctl_list(sr_conn_ctx_t *conn)
             max_feat_len, "Features");
 
     /* print ruler */
-    line_len = max_name_len + 3 + rev_len + 3 + flag_len + 3 + max_owner_len + 3 + perm_len + 3 + max_submod_len + 3
-            + max_feat_len;
+    line_len = max_name_len + 3 + rev_len + 3 + flag_len + 3 + max_owner_len + 3 + perm_len + 3 + max_submod_len + 3 +
+            max_feat_len;
     for (i = 0; i < line_len; ++i) {
         printf("-");
     }
@@ -392,8 +390,8 @@ srctl_list(sr_conn_ctx_t *conn)
             perm_str[0] = '\0';
         }
         printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n", max_name_len, list[i].name, rev_len, list[i].revision,
-            flag_len, flags_str, max_owner_len, list[i].owner, perm_len, perm_str, max_submod_len, list[i].submodules,
-            max_feat_len, list[i].features);
+                flag_len, flags_str, max_owner_len, list[i].owner, perm_len, perm_str, max_submod_len, list[i].submodules,
+                max_feat_len, list[i].features);
     }
 
     /* print flag legend */
@@ -441,7 +439,7 @@ log_cb(sr_log_level_t level, const char *message)
 }
 
 int
-main(int argc, char** argv)
+main(int argc, char **argv)
 {
     sr_conn_ctx_t *conn = NULL;
     const char *file_path = NULL, *search_dirs = NULL, *module_name = NULL, *owner = NULL, *group = NULL;
@@ -458,7 +456,7 @@ main(int argc, char** argv)
         {"uninstall",       required_argument, NULL, 'u'},
         {"change",          required_argument, NULL, 'c'},
         {"update",          required_argument, NULL, 'U'},
-        {"connection-count",no_argument,       NULL, 'C'},
+        {"connection-count", no_argument,       NULL, 'C'},
         {"search-dirs",     required_argument, NULL, 's'},
         {"enable-feature",  required_argument, NULL, 'e'},
         {"disable-feature", required_argument, NULL, 'd'},

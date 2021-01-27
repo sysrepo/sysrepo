@@ -20,13 +20,13 @@
  */
 #define _POSIX_C_SOURCE 200809L
 
-#include <unistd.h>
 #include <inttypes.h>
 #include <stdarg.h>
 #include <string.h>
+#include <unistd.h>
 
-#include "values.h"
 #include "common.h"
+#include "values.h"
 
 /** get the larger item */
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -63,26 +63,26 @@ static char **
 sr_val_str_data_ptr(sr_val_t *value, sr_type_t type)
 {
     switch (type) {
-        case SR_BINARY_T:
-            return &value->data.binary_val;
-            break;
-        case SR_BITS_T:
-            return &value->data.bits_val;
-            break;
-        case SR_ENUM_T:
-            return &value->data.enum_val;
-            break;
-        case SR_IDENTITYREF_T:
-            return &value->data.identityref_val;
-            break;
-        case SR_INSTANCEID_T:
-            return &value->data.instanceid_val;
-            break;
-        case SR_STRING_T:
-            return &value->data.string_val;
-            break;
-        default:
-            return NULL;
+    case SR_BINARY_T:
+        return &value->data.binary_val;
+        break;
+    case SR_BITS_T:
+        return &value->data.bits_val;
+        break;
+    case SR_ENUM_T:
+        return &value->data.enum_val;
+        break;
+    case SR_IDENTITYREF_T:
+        return &value->data.identityref_val;
+        break;
+    case SR_INSTANCEID_T:
+        return &value->data.instanceid_val;
+        break;
+    case SR_STRING_T:
+        return &value->data.string_val;
+        break;
+    default:
+        return NULL;
     }
 }
 
@@ -157,7 +157,7 @@ sr_mem_edit_string(char **string_p, const char *new_val)
 {
     char *new_mem = NULL;
 
-    if (NULL != *string_p && strlen(*string_p) >= strlen(new_val)) {
+    if ((NULL != *string_p) && (strlen(*string_p) >= strlen(new_val))) {
         /* buffer large enough - overwrite */
         strcpy(*string_p, new_val);
         return SR_ERR_OK;
@@ -192,7 +192,7 @@ sr_mem_edit_string_va(char **string_p, const char *format, va_list args)
     len = vsnprintf(NULL, 0, format, args_copy);
     va_end(args_copy);
 
-    if (NULL != *string_p && strlen(*string_p) >= len) {
+    if ((NULL != *string_p) && (strlen(*string_p) >= len)) {
         /* buffer large enough - overwrite */
         vsnprintf(*string_p, len + 1, format, args);
         return SR_ERR_OK;
@@ -275,40 +275,40 @@ sr_dup_val_data(sr_val_t *dest, const sr_val_t *source)
     dest->dflt = source->dflt;
 
     switch (source->type) {
-        case SR_BINARY_T:
-            rc = sr_val_set_str_data(dest, source->type, source->data.binary_val);
-            break;
-        case SR_BITS_T:
-            rc = sr_val_set_str_data(dest, source->type, source->data.bits_val);
-            break;
-        case SR_ENUM_T:
-            rc = sr_val_set_str_data(dest, source->type, source->data.enum_val);
-            break;
-        case SR_IDENTITYREF_T:
-            rc = sr_val_set_str_data(dest, source->type, source->data.identityref_val);
-            break;
-        case SR_INSTANCEID_T:
-            rc = sr_val_set_str_data(dest, source->type, source->data.instanceid_val);
-            break;
-        case SR_STRING_T:
-            rc = sr_val_set_str_data(dest, source->type, source->data.string_val);
-            break;
-        case SR_BOOL_T:
-        case SR_DECIMAL64_T:
-        case SR_INT8_T:
-        case SR_INT16_T:
-        case SR_INT32_T:
-        case SR_INT64_T:
-        case SR_UINT8_T:
-        case SR_UINT16_T:
-        case SR_UINT32_T:
-        case SR_UINT64_T:
-            dest->data = source->data;
-            dest->type = source->type;
-            break;
-        default:
-            dest->type = source->type;
-            break;
+    case SR_BINARY_T:
+        rc = sr_val_set_str_data(dest, source->type, source->data.binary_val);
+        break;
+    case SR_BITS_T:
+        rc = sr_val_set_str_data(dest, source->type, source->data.bits_val);
+        break;
+    case SR_ENUM_T:
+        rc = sr_val_set_str_data(dest, source->type, source->data.enum_val);
+        break;
+    case SR_IDENTITYREF_T:
+        rc = sr_val_set_str_data(dest, source->type, source->data.identityref_val);
+        break;
+    case SR_INSTANCEID_T:
+        rc = sr_val_set_str_data(dest, source->type, source->data.instanceid_val);
+        break;
+    case SR_STRING_T:
+        rc = sr_val_set_str_data(dest, source->type, source->data.string_val);
+        break;
+    case SR_BOOL_T:
+    case SR_DECIMAL64_T:
+    case SR_INT8_T:
+    case SR_INT16_T:
+    case SR_INT32_T:
+    case SR_INT64_T:
+    case SR_UINT8_T:
+    case SR_UINT16_T:
+    case SR_UINT32_T:
+    case SR_UINT64_T:
+        dest->data = source->data;
+        dest->type = source->type;
+        break;
+    default:
+        dest->type = source->type;
+        break;
     }
 
     return rc;
@@ -383,49 +383,49 @@ sr_print(sr_print_ctx_t *print_ctx, const char *format, ...)
     va_start(va, format);
 
     switch (print_ctx->type) {
-        case SR_PRINT_FD:
-            count = vdprintf(print_ctx->method.fd, format, va);
-            if (count == -1) {
-                rc = SR_ERR_INTERNAL;
-                goto cleanup;
-            }
-            break;
-        case SR_PRINT_STREAM:
-            count = vfprintf(print_ctx->method.stream, format, va);
-            if (count == -1) {
-                rc = SR_ERR_INTERNAL;
-                goto cleanup;
-            }
-            break;
-        case SR_PRINT_MEM:
-            /* print string to a temporary memory buffer */
-            len = vsnprintf(NULL, 0, format, va);
-            str = calloc(len+1, sizeof *str);
-            if (!str) {
+    case SR_PRINT_FD:
+        count = vdprintf(print_ctx->method.fd, format, va);
+        if (count == -1) {
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+        break;
+    case SR_PRINT_STREAM:
+        count = vfprintf(print_ctx->method.stream, format, va);
+        if (count == -1) {
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+        break;
+    case SR_PRINT_MEM:
+        /* print string to a temporary memory buffer */
+        len = vsnprintf(NULL, 0, format, va);
+        str = calloc(len + 1, sizeof *str);
+        if (!str) {
+            rc = SR_ERR_NOMEM;
+            goto cleanup;
+        }
+        va_end(va);     /**< restart va_list */
+        va_start(va, format);
+        count = vsnprintf(str, len + 1, format, va);
+        if (count == -1) {
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+        /* append the string to already printed data */
+        if (print_ctx->method.mem.len + count + 1 > print_ctx->method.mem.size) {
+            new_size = MAX(2 * print_ctx->method.mem.size, print_ctx->method.mem.len + count + 1);
+            aux = realloc(print_ctx->method.mem.buf, new_size * sizeof *aux);
+            if (!aux) {
                 rc = SR_ERR_NOMEM;
                 goto cleanup;
             }
-            va_end(va); /**< restart va_list */
-            va_start(va, format);
-            count = vsnprintf(str, len+1, format, va);
-            if (count == -1) {
-                rc = SR_ERR_INTERNAL;
-                goto cleanup;
-            }
-            /* append the string to already printed data */
-            if (print_ctx->method.mem.len + count + 1 > print_ctx->method.mem.size) {
-                new_size = MAX(2 * print_ctx->method.mem.size, print_ctx->method.mem.len + count + 1);
-                aux = realloc(print_ctx->method.mem.buf, new_size * sizeof *aux);
-                if (!aux) {
-                    rc = SR_ERR_NOMEM;
-                    goto cleanup;
-                }
-                print_ctx->method.mem.buf = aux;
-                print_ctx->method.mem.size = new_size;
-            }
-            strcpy(print_ctx->method.mem.buf + print_ctx->method.mem.len, str);
-            print_ctx->method.mem.len += count;
-            break;
+            print_ctx->method.mem.buf = aux;
+            print_ctx->method.mem.size = new_size;
+        }
+        strcpy(print_ctx->method.mem.buf + print_ctx->method.mem.len, str);
+        print_ctx->method.mem.len += count;
+        break;
     }
 
 cleanup:
@@ -531,7 +531,7 @@ sr_print_val_ctx(sr_print_ctx_t *print_ctx, const sr_val_t *value)
 API int
 sr_print_val(const sr_val_t *value)
 {
-    sr_print_ctx_t print_ctx = { 0, };
+    sr_print_ctx_t print_ctx = {0, };
 
     print_ctx.type = SR_PRINT_STREAM;
     print_ctx.method.stream = stdout;
@@ -542,7 +542,7 @@ sr_print_val(const sr_val_t *value)
 API int
 sr_print_val_fd(int fd, const sr_val_t *value)
 {
-    sr_print_ctx_t print_ctx = { 0, };
+    sr_print_ctx_t print_ctx = {0, };
 
     print_ctx.type = SR_PRINT_FD;
     print_ctx.method.fd = fd;
@@ -553,7 +553,7 @@ sr_print_val_fd(int fd, const sr_val_t *value)
 API int
 sr_print_val_stream(FILE *stream, const sr_val_t *value)
 {
-    sr_print_ctx_t print_ctx = { 0, };
+    sr_print_ctx_t print_ctx = {0, };
 
     print_ctx.type = SR_PRINT_STREAM;
     print_ctx.method.stream = stream;
@@ -565,7 +565,7 @@ API int
 sr_print_val_mem(char **mem_p, const sr_val_t *value)
 {
     int rc = SR_ERR_OK;
-    sr_print_ctx_t print_ctx = { 0, };
+    sr_print_ctx_t print_ctx = {0, };
 
     print_ctx.type = SR_PRINT_MEM;
     print_ctx.method.mem.buf = NULL;
@@ -690,19 +690,19 @@ sr_val_to_str(const sr_val_t *value)
             }
             break;
         case SR_INT8_T:
-            sr_asprintf(&out, "%"PRId8, value->data.int8_val);
+            sr_asprintf(&out, "%" PRId8, value->data.int8_val);
             break;
         case SR_INT16_T:
-            sr_asprintf(&out, "%"PRId16, value->data.int16_val);
+            sr_asprintf(&out, "%" PRId16, value->data.int16_val);
             break;
         case SR_INT32_T:
-            sr_asprintf(&out, "%"PRId32, value->data.int32_val);
+            sr_asprintf(&out, "%" PRId32, value->data.int32_val);
             break;
         case SR_INT64_T:
-            sr_asprintf(&out, "%"PRId64, value->data.int64_val);
+            sr_asprintf(&out, "%" PRId64, value->data.int64_val);
             break;
         case SR_STRING_T:
-            if (NULL != value->data.string_val){
+            if (NULL != value->data.string_val) {
                 out = strdup(value->data.string_val);
                 if (!out) {
                     goto cleanup;
@@ -710,19 +710,19 @@ sr_val_to_str(const sr_val_t *value)
             }
             break;
         case SR_UINT8_T:
-            sr_asprintf(&out, "%"PRIu8, value->data.uint8_val);
+            sr_asprintf(&out, "%" PRIu8, value->data.uint8_val);
             break;
         case SR_UINT16_T:
-            sr_asprintf(&out, "%"PRIu16, value->data.uint16_val);
+            sr_asprintf(&out, "%" PRIu16, value->data.uint16_val);
             break;
         case SR_UINT32_T:
-            sr_asprintf(&out, "%"PRIu32, value->data.uint32_val);
+            sr_asprintf(&out, "%" PRIu32, value->data.uint32_val);
             break;
         case SR_UINT64_T:
-            sr_asprintf(&out, "%"PRIu64, value->data.uint64_val);
+            sr_asprintf(&out, "%" PRIu64, value->data.uint64_val);
             break;
         case SR_ANYXML_T:
-            if (NULL != value->data.anyxml_val){
+            if (NULL != value->data.anyxml_val) {
                 out = strdup(value->data.anyxml_val);
                 if (!out) {
                     goto cleanup;
@@ -730,7 +730,7 @@ sr_val_to_str(const sr_val_t *value)
             }
             break;
         case SR_ANYDATA_T:
-            if (NULL != value->data.anydata_val){
+            if (NULL != value->data.anydata_val) {
                 out = strdup(value->data.anydata_val);
                 if (!out) {
                     goto cleanup;
@@ -793,16 +793,16 @@ sr_val_to_buff(const sr_val_t *value, char buffer[], size_t size)
         }
         break;
     case SR_INT8_T:
-        len = snprintf(buffer, size, "%"PRId8, value->data.int8_val);
+        len = snprintf(buffer, size, "%" PRId8, value->data.int8_val);
         break;
     case SR_INT16_T:
-        len = snprintf(buffer, size, "%"PRId16, value->data.int16_val);
+        len = snprintf(buffer, size, "%" PRId16, value->data.int16_val);
         break;
     case SR_INT32_T:
-        len = snprintf(buffer, size, "%"PRId32, value->data.int32_val);
+        len = snprintf(buffer, size, "%" PRId32, value->data.int32_val);
         break;
     case SR_INT64_T:
-        len = snprintf(buffer, size, "%"PRId64, value->data.int64_val);
+        len = snprintf(buffer, size, "%" PRId64, value->data.int64_val);
         break;
     case SR_STRING_T:
         if (NULL != value->data.string_val) {
@@ -810,16 +810,16 @@ sr_val_to_buff(const sr_val_t *value, char buffer[], size_t size)
         }
         break;
     case SR_UINT8_T:
-        len = snprintf(buffer, size, "%"PRIu8, value->data.uint8_val);
+        len = snprintf(buffer, size, "%" PRIu8, value->data.uint8_val);
         break;
     case SR_UINT16_T:
-        len = snprintf(buffer, size, "%"PRIu16, value->data.uint16_val);
+        len = snprintf(buffer, size, "%" PRIu16, value->data.uint16_val);
         break;
     case SR_UINT32_T:
-        len = snprintf(buffer, size, "%"PRIu32, value->data.uint32_val);
+        len = snprintf(buffer, size, "%" PRIu32, value->data.uint32_val);
         break;
     case SR_UINT64_T:
-        len = snprintf(buffer, size, "%"PRIu64, value->data.uint64_val);
+        len = snprintf(buffer, size, "%" PRIu64, value->data.uint64_val);
         break;
     case SR_ANYXML_T:
         if (NULL != value->data.anyxml_val) {

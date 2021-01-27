@@ -153,9 +153,10 @@ not be shared__ among multiple threads. Each thread should always create its own
 Other than that there should be no restrictions and all Sysrepo API functions should be correctly synchronized for
 any number of processes, each with several threads.
 
-As for [subscriptions](@ref subs), it is up to the application to divide its events-of-interest
-(all `*_subscribe()` calls) into subscriptions. All events on a subscription are handled together. The usual reason for
-splitting application events into several subscriptions is to allow for their concurrent handling (such as reacting
+As for [subscriptions](@ref subs), they are fully synchronized but it makes no sense to process events of a single
+subscription in several threads (theoretically possible when ::SR_SUBSCR_NO_THREAD is used) because all events on
+a single subscription are handled sequentially. It is up to the application to divide its events-of-interest
+(all `*_subscribe()` calls) into individual subscription structures to allow their concurrent handling (such as reacting
 to configuration changes while notifications are being received).
 
 Every subscription can then be handled in various ways. It can be fully managed by Sysrepo and it will by default create

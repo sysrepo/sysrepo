@@ -1,0 +1,147 @@
+module czechlight-roadm-common {
+  yang-version 1.1;
+  namespace
+    "http://czechlight.cesnet.cz/yang/czechlight-roadm-common";
+
+  prefix "cla-common";
+
+  import opendevice-types {
+    prefix "odt";
+    revision-date 2017-10-08;
+  }
+
+  organization "CESNET";
+  contact "photonic@cesnet.cz";
+  description "Definitions of common DWDM data";
+
+  revision 2019-09-30 {
+    description "Initial release";
+  }
+
+  grouping one-channel-definition {
+    description "Definition of a single media channel";
+    leaf name {
+      type string;
+    }
+    uses odt:optical-spectrum-spec {
+      refine lower-frequency {
+        mandatory true;
+      }
+      refine upper-frequency {
+        mandatory true;
+        must "../lower-frequency < ." {
+          error-message "Lower frequency must be lower than the upper one";
+        }
+      }
+    }
+  }
+
+  grouping channel-list-definition {
+    description "A list of channels which might or might not overlap";
+    list channel {
+      key "name";
+      uses one-channel-definition;
+    }
+  }
+
+  typedef attenuation-type {
+    description "Attenuation for the optical signal";
+    type decimal64 {
+      fraction-digits 1;
+    }
+    units dBm;
+  }
+
+  grouping power-control {
+    choice mode {
+      mandatory true;
+      case attenuation {
+        leaf attenuation {
+          description "Fixed attenuation";
+          type attenuation-type;
+          mandatory true;
+        }
+      }
+
+      case power {
+        leaf power {
+          description "Target power";
+          type odt:optical-power-dBm;
+          mandatory true;
+        }
+      }
+    }
+  }
+
+  grouping power-threshold-with-hysteresis {
+    leaf level {
+      description "Threshold value";
+      mandatory true;
+      type odt:optical-power-dBm {
+        range "-100..30";
+      }
+    }
+    leaf hysteresis {
+      type odt:optical-power-dBm {
+        range "0..10";
+      }
+      default 1.0;
+    }
+  }
+
+  grouping power-alarm-thresholds {
+    container critical-low {
+      description "Threshold for a critical low condition";
+      presence true;
+      uses power-threshold-with-hysteresis;
+    }
+    container warning-low {
+      description "Threshold for a non-critical low condition";
+      presence true;
+      uses power-threshold-with-hysteresis;
+      must "count(../critical-low) = 0 or level + 0.5 * hysteresis > ../critical-low/level + 0.5 * ../critical-low/hysteresis" {
+        error-message "Cannot set warning-low threshold lower than critical-low (with hysteresis)";
+      }
+    }
+    container warning-high {
+      description "Threshold for a non-critical high condition";
+      presence true;
+      uses power-threshold-with-hysteresis;
+      must "count(../critical-low) = 0 or level + 0.5 * hysteresis > ../critical-low/level + 0.5 * ../critical-low/hysteresis" {
+        error-message "Cannot set warning-high threshold lower than critical-low (with hysteresis)";
+      }
+      must "count(../warning-low) = 0 or level + 0.5 * hysteresis > ../warning-low/level + 0.5 * ../warning-low/hysteresis" {
+        error-message "Cannot set warning-high threshold lower than warning-low (with hysteresis)";
+      }
+    }
+    container critical-high {
+      description "Threshold for a critical high condition";
+      presence true;
+      uses power-threshold-with-hysteresis;
+      must "count(../critical-low) = 0 or level + 0.5 * hysteresis > ../critical-low/level + 0.5 * ../critical-low/hysteresis" {
+        error-message "Cannot set critical-high threshold lower than critical-low (with hysteresis)";
+      }
+      must "count(../warning-low) = 0 or level + 0.5 * hysteresis > ../warning-low/level + 0.5 * ../warning-low/hysteresis" {
+        error-message "Cannot set critical-high threshold lower than warning-low (with hysteresis)";
+      }
+      must "count(../warning-high) = 0 or level + 0.5 * hysteresis > ../warning-high/level + 0.5 * ../warning-high/hysteresis" {
+        error-message "Cannot set critical-high threshold lower than warning-high (with hysteresis)";
+      }
+    }
+  }
+
+  grouping spectral-scan {
+    description "Detailed scan of optical spectrum";
+    list spectrum {
+      leaf frequency {
+        type odt:dwdm-frequency-mhz;
+      }
+      leaf power {
+        type odt:optical-power-dBm;
+        mandatory true;
+      }
+      key frequency;
+    }
+  }
+
+}

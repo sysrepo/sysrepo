@@ -21,5 +21,9 @@ module simple-aug {
             type boolean;
             default true;
         }
+        leaf bauga2 {
+            type string;
+            config false;
+        }
     }
 }

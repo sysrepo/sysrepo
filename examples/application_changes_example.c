@@ -15,12 +15,12 @@
 #define _QNX_SOURCE /* sleep */
 #define _GNU_SOURCE
 
+#include <inttypes.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
-#include <signal.h>
-#include <inttypes.h>
+#include <unistd.h>
 
 #include "sysrepo.h"
 
@@ -116,7 +116,7 @@ print_val(const sr_val_t *value)
 static void
 print_change(sr_change_oper_t op, sr_val_t *old_val, sr_val_t *new_val)
 {
-    switch(op) {
+    switch (op) {
     case SR_OP_CREATED:
         printf("CREATED: ");
         print_val(new_val);
@@ -151,7 +151,7 @@ print_current_config(sr_session_ctx_t *session, const char *module_name)
         return rc;
     }
 
-    for (size_t i = 0; i < count; i++){
+    for (size_t i = 0; i < count; i++) {
         print_val(&values[i]);
     }
     sr_free_values(values, count);
@@ -289,4 +289,3 @@ cleanup:
     sr_disconnect(connection);
     return rc ? EXIT_FAILURE : EXIT_SUCCESS;
 }
-

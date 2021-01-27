@@ -1,0 +1,19 @@
+module sysrepo-plugind {
+    namespace "urn:sysrepo:plugind";
+    prefix srpd;
+
+    revision 2020-12-10 {
+        description "Initial revision.";
+    }
+
+    container sysrepo-plugind {
+        container plugin-order {
+            description "The order in which to run plugins from the sysrepo-plugind.";
+            leaf-list plugin {
+                description "The name of the plugin file, which may or may not include the extension.";
+                type string;
+                ordered-by user;
+            }
+        }
+    }
+}

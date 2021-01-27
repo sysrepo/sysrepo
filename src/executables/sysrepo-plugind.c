@@ -19,69 +19,71 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define _POSIX_C_SOURCE 199309L /* sigaction */
+#define _POSIX_C_SOURCE 200809L /* sigaction */
 #define _DEFAULT_SOURCE /* struct dirent.d_type */
 #define _GNU_SOURCE /* asprintf */
 #define _XOPEN_SOURCE 500 /* strdup */
 
+#include <dirent.h>
+#include <dlfcn.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <getopt.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
-#include <stdarg.h>
-#include <signal.h>
-#include <getopt.h>
-#include <pthread.h>
-#include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
-#include <dirent.h>
-#include <fcntl.h>
-#include <dlfcn.h>
 
+#include "bin_common.h"
 #include "compat.h"
 #include "sysrepo.h"
-#include "bin_common.h"
 
 /** protected flag for terminating sysrepo-plugind */
 int loop_finish;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
+/** The name of the configuration module for the sysrepo-plugind program itself. */
+#define SRPD_MODULE_NAME "sysrepo-plugind"
+
 struct srpd_plugin_s {
     void *handle;
     srp_init_cb_t init_cb;
     srp_cleanup_cb_t cleanup_cb;
     void *private_data;
+    char *plugin_name;
 };
 
 static void
 version_print(void)
 {
     printf(
-        "sysrepo-plugind - sysrepo plugin daemon, compiled with libsysrepo v%s (SO v%s)\n"
-        "\n",
-        SR_VERSION, SR_SOVERSION
-    );
+            "sysrepo-plugind - sysrepo plugin daemon, compiled with libsysrepo v%s (SO v%s)\n"
+            "\n",
+            SR_VERSION, SR_SOVERSION);
 }
 
 static void
 help_print(void)
 {
     printf(
-        "Usage:\n"
-        "  sysrepo-plugind [-h] [-v <level>] [-d]\n"
-        "\n"
-        "Options:\n"
-        "  -h, --help           Prints usage help.\n"
-        "  -V, --version        Prints only information about sysrepo version.\n"
-        "  -v, --verbosity <level>\n"
-        "                       Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
-        "  -d, --debug          Debug mode - is not daemonized and logs to stderr instead of syslog.\n"
-        "\n"
-        "Environment variable $SRPD_PLUGINS_PATH overwrites the default plugins path.\n"
-        "\n"
-    );
+            "Usage:\n"
+            "  sysrepo-plugind [-h] [-v <level>] [-d]\n"
+            "\n"
+            "Options:\n"
+            "  -h, --help           Prints usage help.\n"
+            "  -V, --version        Prints only information about sysrepo version.\n"
+            "  -v, --verbosity <level>\n"
+            "                       Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
+            "  -d, --debug          Debug mode - is not daemonized and logs to stderr instead of syslog.\n"
+            "\n"
+            "Environment variable $SRPD_PLUGINS_PATH overwrites the default plugins path.\n"
+            "\n");
 }
 
 static void
@@ -209,7 +211,7 @@ daemon_init(int debug, sr_log_level_t log_level)
 }
 
 /* from src/common.c */
-int
+static int
 sr_mkpath(const char *path, mode_t mode)
 {
     char *p, *dup;
@@ -236,6 +238,16 @@ sr_mkpath(const char *path, mode_t mode)
     return 0;
 }
 
+static size_t
+length_without_extension(const char *src)
+{
+    char *dot;
+
+    dot = strrchr(src, '.');
+
+    return dot ? (size_t)(dot - src) : strlen(src);
+}
+
 static int
 load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
 {
@@ -244,6 +256,7 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
     struct dirent *ent;
     const char *plugins_dir;
     char *path;
+    size_t name_len;
     int rc = 0;
 
     *plugins = NULL;
@@ -323,6 +336,23 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
         /* finally store the plugin */
         (*plugins)[*plugin_count].handle = handle;
         (*plugins)[*plugin_count].private_data = NULL;
+
+        name_len = length_without_extension(ent->d_name);
+        if (name_len == 0) {
+            error_print(0, "Wrong filename \"%s\".", ent->d_name);
+            dlclose(handle);
+            rc = -1;
+            break;
+        }
+
+        (*plugins)[*plugin_count].plugin_name = strndup(ent->d_name, name_len);
+        if (!((*plugins)[*plugin_count].plugin_name)) {
+            error_print(0, "strndup() failed.");
+            dlclose(handle);
+            rc = -1;
+            break;
+        }
+
         ++(*plugin_count);
     }
 
@@ -330,8 +360,81 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
     return rc;
 }
 
+static void
+swap(struct srpd_plugin_s *a, struct srpd_plugin_s *b)
+{
+    struct srpd_plugin_s tmp;
+
+    if (a == b) {
+        return;
+    }
+
+    tmp = *a;
+    *a = *b;
+    *b = tmp;
+}
+
+static int
+plugin_names_cmp(const struct srpd_plugin_s *plugin, const char *str2)
+{
+    /* str1 does not have the filename extension */
+    const char *str1 = plugin->plugin_name;
+    size_t n;
+
+    if (str1 == str2) {
+        return 0;
+    }
+
+    n = length_without_extension(str2);
+
+    return (strlen(str1) == n) ? strncmp(str1, str2, n) : -1;
+}
+
+static int
+sorting_plugins(int plugin_count, sr_session_ctx_t *sess, struct srpd_plugin_s *plugins)
+{
+    const char *xpath = "/sysrepo-plugind:sysrepo-plugind/plugin-order/plugin";
+    sr_val_t *values;
+    size_t value_cnt;
+    int rc;
+
+    if ((rc = sr_get_items(sess, xpath, 0, SR_OPER_DEFAULT, &values, &value_cnt))) {
+        error_print(0, "The XPath \"%s\" application failed.", xpath);
+        return rc;
+    }
+
+    int ordered_part = 0;
+
+    for (size_t i = 0; i < value_cnt; ++i) {
+        for (int j = ordered_part; j < plugin_count; ++j) {
+            if (!plugin_names_cmp(&plugins[j], values[i].data.string_val)) {
+                swap(&plugins[ordered_part], &plugins[j]);
+                ++ordered_part;
+            }
+        }
+    }
+    /* If values[i] wasn't found in plugins, it doesn't matter, it'll just be ignored. */
+
+    sr_free_values(values, value_cnt);
+
+    return 0;
+}
+
+static int
+apply_plugind_module(int plugin_count, sr_session_ctx_t *sess, struct srpd_plugin_s *plugins)
+{
+    int rc = 0;
+
+    if ((rc = sorting_plugins(plugin_count, sess, plugins))) {
+        error_print(0, "Sorting of plugins failed.");
+        return rc;
+    }
+
+    return rc;
+}
+
 int
-main(int argc, char** argv)
+main(int argc, char **argv)
 {
     struct srpd_plugin_s *plugins = NULL;
     sr_conn_ctx_t *conn = NULL;
@@ -412,6 +515,12 @@ main(int argc, char** argv)
         goto cleanup;
     }
 
+    /* apply sysrepo-plugind module if exists */
+    if (apply_plugind_module(plugin_count, sess, plugins)) {
+        error_print(0, "The sysrepo-plugind module application failed.");
+        goto cleanup;
+    }
+
     /* init plugins */
     for (i = 0; i < plugin_count; ++i) {
         r = plugins[i].init_cb(sess, &plugins[i].private_data);
@@ -439,6 +548,7 @@ main(int argc, char** argv)
 cleanup:
     for (i = 0; i < plugin_count; ++i) {
         dlclose(plugins[i].handle);
+        free(plugins[i].plugin_name);
     }
     free(plugins);
 

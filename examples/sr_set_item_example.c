@@ -14,12 +14,12 @@
  */
 #define _GNU_SOURCE
 
+#include <inttypes.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
-#include <signal.h>
-#include <inttypes.h>
+#include <unistd.h>
 
 #include "sysrepo.h"
 
@@ -62,7 +62,7 @@ main(int argc, char **argv)
     }
 
     /* apply the change */
-    rc = sr_apply_changes(session, 0, 0);
+    rc = sr_apply_changes(session, 0, 1);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }
@@ -71,4 +71,3 @@ cleanup:
     sr_disconnect(connection);
     return rc ? EXIT_FAILURE : EXIT_SUCCESS;
 }
-

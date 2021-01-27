@@ -46,7 +46,7 @@ setup(void **state)
 {
     struct state *st;
     uint32_t conn_count;
-    const char *act_feats[] = {"advanced-testing", NULL};
+    const char *act_feats[] = {"advanced-testing", NULL}, *rd_feats[] = {"hw-line-9", NULL};
 
     st = malloc(sizeof *st);
     if (!st) {
@@ -100,6 +100,10 @@ setup(void **state)
     if (sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/czechlight-roadm-device@2019-09-30.yang", TESTS_DIR "/files",
+            rd_feats) != SR_ERR_OK) {
+        return 1;
+    }
     sr_disconnect(st->conn);
 
     if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
@@ -124,6 +128,7 @@ teardown(void **state)
 {
     struct state *st = (struct state *)*state;
 
+    sr_remove_module(st->conn, "czechlight-roadm-device");
     sr_remove_module(st->conn, "ops-ref");
     sr_remove_module(st->conn, "ops");
     sr_remove_module(st->conn, "defaults");
@@ -154,25 +159,28 @@ clear_up(void **state)
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces-state", 0);
     sr_delete_item(st->sess, "/test:cont", 0);
-    sr_apply_changes(st->sess, 0, 0);
+    sr_delete_item(st->sess, "/czechlight-roadm-device:media-channels", 0);
+    sr_apply_changes(st->sess, 0, 1);
 
     /* create the containers back so there are effectively no stored changes */
     sr_set_item_str(st->sess, "/ietf-interfaces:interfaces", NULL, NULL, 0);
     sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state", NULL, NULL, 0);
     sr_set_item_str(st->sess, "/test:cont", NULL, NULL, 0);
-    sr_apply_changes(st->sess, 0, 0);
+    sr_apply_changes(st->sess, 0, 1);
 
     sr_session_switch_ds(st->sess, SR_DS_STARTUP);
 
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
     sr_delete_item(st->sess, "/test:cont", 0);
-    sr_apply_changes(st->sess, 0, 0);
+    sr_apply_changes(st->sess, 0, 1);
 
     sr_session_switch_ds(st->sess, SR_DS_RUNNING);
 
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
     sr_delete_item(st->sess, "/test:cont", 0);
-    sr_apply_changes(st->sess, 0, 0);
+    sr_delete_item(st->sess, "/czechlight-roadm-device:channel-plan", 0);
+    sr_delete_item(st->sess, "/czechlight-roadm-device:media-channels", 0);
+    sr_apply_changes(st->sess, 0, 1);
 
     return 0;
 }
@@ -192,46 +200,48 @@ dummy_change_cb(sr_session_ctx_t *session, const char *module_name, const char *
 }
 
 /**
- * @brief delete content between two strings.
+ * @brief Delete content between two strings.
+ *
  * The content between consecutive pairs of open and close will be deleted. For
  * example with open="<cid>" and close="</cid>" the string <cid>1234</cid> will
  * be replaced with <cid></cid>.
- * @param[in,out] input The string to be modified
- * @param[in] open The string which starts the section(s) to be deleted
- * @param[in] close The string which ends the section(s) to be deleted
- * @return 0 on success, non-zero on error (input will not be modified)
+ *
+ * @param[in,out] input String to be modified
+ * @param[in] open String which starts the section(s) to be deleted.
+ * @param[in] close String which ends the section(s) to be deleted.
  */
-int
-sr_str_subs(char *input, const char *open, const char *close)
+static void
+sr_str_del(char *input, const char *open, const char *close)
 {
     int idx = 0;
     int len = strlen(input);
-    int segment_len=0;
-    char *openIdx = NULL;
-    char *closeIdx = NULL;
-    char *resp = calloc( sizeof(char), len+1);
-    if (!resp) {
-        return 1;
-    }
+    int segment_len = 0;
+    char *open_idx = NULL;
+    char *close_idx = NULL;
+    char *resp = calloc(1, len + 1);
+
+    assert_true(resp);
     for (idx = 0; idx < len; ) {
-        openIdx = strstr( &input[idx], open);
-        closeIdx = strstr( &input[idx], close);
-        if ((NULL == openIdx) || (NULL == closeIdx)) {
+        open_idx = strstr(&input[idx], open);
+        close_idx = strstr(&input[idx], close);
+        if (!open_idx || !close_idx) {
             break;
         }
-        segment_len = openIdx + strlen(open) - input - idx;
+
+        segment_len = open_idx + strlen(open) - input - idx;
         strncat(resp, &input[idx], segment_len);
         strncat(resp, close, strlen(close));
         segment_len += strlen(close);
-        resp[idx+segment_len] = 0;
-        idx = closeIdx - input + strlen(close);
+        resp[idx + segment_len] = 0;
+        idx = close_idx - input + strlen(close);
     }
+
     /* pick up any remaining content */
     strncat(resp, &input[idx], len);
+
     /* copy the modified string to the input */
     strcpy(input, resp);
     free(resp);
-    return 0;
 }
 
 /* TEST */
@@ -373,9 +383,7 @@ test_sr_mon(void **state)
     struct state *st = (struct state *)*state;
     struct lyd_node *data;
     sr_subscription_ctx_t *subscr;
-    int sub_ok = 0;
-    char *str1;
-    const char *str2;
+    char *str1, *str2 = malloc(8192);
     int ret;
 
     /* get almost empty monitoring data */
@@ -389,7 +397,7 @@ test_sr_mon(void **state)
     assert_int_equal(ret, 0);
     lyd_free_all(data);
 
-    str2 = "<sysrepo-state xmlns=\"http://www.sysrepo.org/yang/sysrepo-monitoring\">"
+    strcpy(str2, "<sysrepo-state xmlns=\"http://www.sysrepo.org/yang/sysrepo-monitoring\">"
         "<module>"
             "<name>yang</name>"
         "</module>"
@@ -401,6 +409,19 @@ test_sr_mon(void **state)
         "</module>"
         "<module>"
             "<name>sysrepo-monitoring</name>"
+            "<data-lock>"
+                "<cid></cid>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<mode>read</mode>"
+            "</data-lock>"
+            "<data-lock>"
+                "<cid></cid>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:operational</datastore>"
+                "<mode>read</mode>"
+            "</data-lock>"
+        "</module>"
+        "<module>"
+            "<name>sysrepo-plugind</name>"
         "</module>"
         "<module>"
             "<name>ietf-netconf</name>"
@@ -453,23 +474,16 @@ test_sr_mon(void **state)
         "<module>"
             "<name>ops-ref</name>"
         "</module>"
+        "<module>"
+            "<name>czechlight-roadm-device</name>"
+        "</module>"
         "<connection>"
             "<cid></cid>"
-            "<main-lock>read</main-lock>"
-            "<module-lock>"
-                "<name>sysrepo-monitoring</name>"
-                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
-                "<lock>read</lock>"
-            "</module-lock>"
-            "<module-lock>"
-                "<name>sysrepo-monitoring</name>"
-                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:operational</datastore>"
-                "<lock>read</lock>"
-            "</module-lock>"
+            "<pid></pid>"
         "</connection>"
-        "</sysrepo-state>";
-    sub_ok = sr_str_subs(str1, "<cid>","</cid>");
-    assert_int_equal(sub_ok, 0);
+        "</sysrepo-state>");
+    sr_str_del(str1, "<cid>","</cid>");
+    sr_str_del(str1, "<pid>","</pid>");
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -506,6 +520,10 @@ test_sr_mon(void **state)
     ret = sr_rpc_subscribe(st->sess, "/act:basics/animals/convert", dummy_rpc_cb, NULL, 4, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
+    /* lock modules */
+    ret = sr_lock(st->sess, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
     /* get new monitoring data */
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
@@ -517,39 +535,113 @@ test_sr_mon(void **state)
     assert_int_equal(ret, 0);
     lyd_free_all(data);
 
-    str2= "<sysrepo-state xmlns=\"http://www.sysrepo.org/yang/sysrepo-monitoring\">"
+    strcpy(str2, "<sysrepo-state xmlns=\"http://www.sysrepo.org/yang/sysrepo-monitoring\">"
         "<module>"
             "<name>yang</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
         "</module>"
         "<module>"
             "<name>ietf-datastores</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
         "</module>"
         "<module>"
             "<name>ietf-yang-library</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
         "</module>"
         "<module>"
             "<name>sysrepo-monitoring</name>"
+            "<data-lock>"
+                "<cid></cid>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<mode>read</mode>"
+            "</data-lock>"
+            "<data-lock>"
+                "<cid></cid>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:operational</datastore>"
+                "<mode>read</mode>"
+            "</data-lock>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
+        "</module>"
+        "<module>"
+            "<name>sysrepo-plugind</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
         "</module>"
         "<module>"
             "<name>ietf-netconf</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
         "</module>"
         "<module>"
             "<name>ietf-netconf-with-defaults</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
         "</module>"
         "<module>"
             "<name>ietf-netconf-notifications</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
         "</module>"
         "<module>"
             "<name>ietf-origin</name>"
-        "</module>"
-        "<module>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
+        "</module>");
+
+    strcat(str2, "<module>"
             "<name>test</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
         "</module>"
         "<module>"
             "<name>ietf-if-aug</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
         "</module>"
         "<module>"
             "<name>ietf-interfaces</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
             "<subscriptions>"
                 "<change-sub>"
                     "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:operational</datastore>"
@@ -565,12 +657,27 @@ test_sr_mon(void **state)
         "</module>"
         "<module>"
             "<name>iana-if-type</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
         "</module>"
         "<module>"
             "<name>ietf-microwave-radio-link</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
         "</module>"
         "<module>"
             "<name>mixed-config</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
             "<subscriptions>"
                 "<change-sub>"
                     "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
@@ -581,9 +688,19 @@ test_sr_mon(void **state)
         "</module>"
         "<module>"
             "<name>act3</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
         "</module>"
         "<module>"
             "<name>act</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
             "<subscriptions>"
                 "<operational-sub>"
                     "<xpath xmlns:a=\"urn:act\" xmlns:a2=\"urn:act2\">/a:basics/a:subbasics/a2:complex_number/a2:imaginary_part</xpath>"
@@ -593,12 +710,27 @@ test_sr_mon(void **state)
         "</module>"
         "<module>"
             "<name>act2</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
         "</module>"
         "<module>"
             "<name>defaults</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
         "</module>"
         "<module>"
             "<name>ops</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
             "<subscriptions>"
                 "<notification-sub></notification-sub>"
                 "<notification-sub></notification-sub>"
@@ -606,15 +738,20 @@ test_sr_mon(void **state)
         "</module>"
         "<module>"
             "<name>ops-ref</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
         "</module>"
-        "<rpc>"
-            "<path xmlns:a=\"urn:act\">/a:capitalize</path>"
-            "<rpc-sub>"
-                "<xpath xmlns:a=\"urn:act\">/a:capitalize</xpath>"
-                "<priority>0</priority>"
-                "<cid></cid>"
-            "</rpc-sub>"
-        "</rpc>"
+        "<module>"
+            "<name>czechlight-roadm-device</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
+        "</module>"
         "<rpc>"
             "<path xmlns:a=\"urn:act\">/a:basics/a:animals/a:convert</path>"
             "<rpc-sub>"
@@ -628,30 +765,33 @@ test_sr_mon(void **state)
                 "<cid></cid>"
             "</rpc-sub>"
         "</rpc>"
+        "<rpc>"
+            "<path xmlns:a=\"urn:act\">/a:capitalize</path>"
+            "<rpc-sub>"
+                "<xpath xmlns:a=\"urn:act\">/a:capitalize</xpath>"
+                "<priority>0</priority>"
+                "<cid></cid>"
+            "</rpc-sub>"
+        "</rpc>"
         "<connection>"
             "<cid></cid>"
-            "<main-lock>read</main-lock>"
-            "<module-lock>"
-                "<name>sysrepo-monitoring</name>"
-                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
-                "<lock>read</lock>"
-            "</module-lock>"
-            "<module-lock>"
-                "<name>sysrepo-monitoring</name>"
-                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:operational</datastore>"
-                "<lock>read</lock>"
-            "</module-lock>"
+            "<pid></pid>"
         "</connection>"
-        "</sysrepo-state>";
-    sub_ok = sr_str_subs(str1, "<cid>","</cid>");
-    assert_int_equal(sub_ok, 0);
-    sub_ok = sr_str_subs(str1, "<notification-sub>","</notification-sub>");
-    assert_int_equal(sub_ok, 0);
+        "</sysrepo-state>");
+    sr_str_del(str1, "<cid>","</cid>");
+    sr_str_del(str1, "<pid>","</pid>");
+    sr_str_del(str1, "<timestamp>","</timestamp>");
+    sr_str_del(str1, "<sid>","</sid>");
+    sr_str_del(str1, "<notification-sub>","</notification-sub>");
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr);
     sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+
+    sr_unsubscribe(subscr);
+    ret = sr_unlock(st->sess, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+    free(str2);
 }
 
 /* TEST */
@@ -798,7 +938,7 @@ test_enabled_partial(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth128']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* nothing should be in "operational" because there is no subscription */
@@ -916,7 +1056,7 @@ test_simple(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -1021,7 +1161,7 @@ test_fail(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as state data provider*/
@@ -1081,7 +1221,7 @@ test_config(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -1161,7 +1301,7 @@ test_list(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -1268,7 +1408,7 @@ test_nested(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -1369,7 +1509,7 @@ test_invalid(void **state)
     /* set some configuration data */
     ret = sr_set_item_str(st->sess, "/test:test-leaf", "25", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -1451,7 +1591,7 @@ test_mixed(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -1667,7 +1807,7 @@ test_state_only(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/mixed-config:test-state/test-case[name='three']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -1712,7 +1852,7 @@ test_state_only(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/mixed-config:test-state/test-case[name='five']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read some state data (callback should not be called for a filtered-out parent) */
@@ -1759,7 +1899,7 @@ test_config_only(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -1820,7 +1960,7 @@ test_conn_owner1(void **state)
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0, 0);
+    ret = sr_apply_changes(sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -1886,7 +2026,7 @@ test_conn_owner2(void **state)
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/speed",
             "1024", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0, 0);
+    ret = sr_apply_changes(sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -1919,7 +2059,7 @@ test_conn_owner2(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/statistics/discontinuity-time",
             "2019-10-29T09:43:12Z", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2056,9 +2196,6 @@ oper_change_cb(sr_session_ctx_t *session, const char *module_name, const char *x
     }
 
     ++st->cb_called;
-    if (event == SR_EV_DONE) {
-        pthread_barrier_wait(&st->barrier);
-    }
     return SR_ERR_OK;
 }
 
@@ -2086,11 +2223,10 @@ test_stored_state(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* callback was called now */
-    pthread_barrier_wait(&st->barrier);
+    /* callback was called */
     assert_int_equal(st->cb_called, 2);
 
     /* read the data */
@@ -2140,7 +2276,9 @@ test_stored_state_list(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val2", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val1", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2163,6 +2301,77 @@ test_stored_state_list(void **state)
         "</l>"
         "<ll or:origin=\"or:unknown\">val1</ll>"
         "<ll or:origin=\"or:unknown\">val2</ll>"
+        "<ll or:origin=\"or:unknown\">val1</ll>"
+    "</test-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* remove some oper data */
+    ret = sr_delete_item(st->sess, "/mixed-config:test-state/ll", SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the data */
+    ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+        "<l or:origin=\"unknown\">"
+            "<l1>val1</l1>"
+        "</l>"
+        "<l or:origin=\"unknown\">"
+            "<l1>val2</l1>"
+        "</l>"
+    "</test-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* create some new oper data */
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val3", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val3", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val2", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val3", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val1", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the data */
+    ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+        "<l or:origin=\"unknown\">"
+            "<l1>val1</l1>"
+        "</l>"
+        "<l or:origin=\"unknown\">"
+            "<l1>val2</l1>"
+        "</l>"
+        "<ll or:origin=\"unknown\">val3</ll>"
+        "<ll or:origin=\"unknown\">val3</ll>"
+        "<ll or:origin=\"unknown\">val2</ll>"
+        "<ll or:origin=\"unknown\">val3</ll>"
+        "<ll or:origin=\"unknown\">val1</ll>"
+>>>>>>> devel
     "</test-state>";
 
     assert_string_equal(str1, str2);
@@ -2190,7 +2399,7 @@ test_stored_config(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled",
             "false", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -2206,7 +2415,7 @@ test_stored_config(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/description",
             "oper-description", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the operational data */
@@ -2237,7 +2446,7 @@ test_stored_config(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']", SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* there should be no operational data then */
@@ -2251,11 +2460,151 @@ test_stored_config(void **state)
     /* it should not be possible to delete a non-existing node just like in conventional datastores */
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']", SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_NOT_FOUND);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
+    sr_unsubscribe(subscr);
+}
+
+/* TEST */
+static void
+test_stored_top_list(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr;
+    struct lyd_node *data;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* subscribe to data */
+    ret = sr_module_change_subscribe(st->sess, "czechlight-roadm-device", NULL, dummy_change_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some configuration data */
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:channel-plan/channel[name='13.5']/lower-frequency",
+            "191325000", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:channel-plan/channel[name='13.5']/upper-frequency",
+            "191375000", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:channel-plan/channel[name='14.0']/lower-frequency",
+            "191375000", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:channel-plan/channel[name='14.0']/upper-frequency",
+            "191425000", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='13.5']/channel",
+            "13.5", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='13.5']/power/common-in",
+            "0.1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='13.5']/power/common-out",
+            "0.2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* switch to running DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='14.0']/drop/port",
+            "E2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='14.0']/drop/attenuation",
+            "3.7", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='13.5']/power/common-in",
+            "0.9", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='13.5']/power/common-out",
+            "1.0", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='14.0']/power/common-in",
+            "1.2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='14.0']/power/common-out",
+            "1.3", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='14.0']/power/leaf-out",
+            "1.4", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* switch to running DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_delete_item(st->sess, "/czechlight-roadm-device:media-channels[channel='14.0']", SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the operational data */
+    ret = sr_get_data(st->sess, "/czechlight-roadm-device:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<line xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\" "
+            "xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+        "<output-voa or:origin=\"default\">0.0</output-voa>"
+    "</line>"
+    "<channel-plan xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\" "
+            "xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+        "<channel>"
+            "<name>13.5</name>"
+            "<lower-frequency>191325000</lower-frequency>"
+            "<upper-frequency>191375000</upper-frequency>"
+        "</channel>"
+        "<channel>"
+            "<name>14.0</name>"
+            "<lower-frequency>191375000</lower-frequency>"
+            "<upper-frequency>191425000</upper-frequency>"
+        "</channel>"
+    "</channel-plan>"
+    "<media-channels xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\" "
+            "xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+        "<channel>13.5</channel>"
+        "<power or:origin=\"unknown\">"
+            "<common-in>0.9</common-in>"
+            "<common-out>1.0</common-out>"
+        "</power>"
+    "</media-channels>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* cleanup */
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
     sr_unsubscribe(subscr);
 }
 
@@ -2276,7 +2625,7 @@ test_stored_np_cont1(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type",
             "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -2291,7 +2640,7 @@ test_stored_np_cont1(void **state)
     /* set some operational data */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-if-aug:c1/oper1", "val", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the operational data */
@@ -2325,7 +2674,7 @@ test_stored_np_cont1(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/description", "test-desc", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check operational data again */
@@ -2374,7 +2723,7 @@ test_stored_np_cont2(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type",
             "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -2386,7 +2735,7 @@ test_stored_np_cont2(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-if-aug:c1/oper1", "val", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check operational data */
@@ -2453,7 +2802,7 @@ test_stored_diff_merge_leaf(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled",
             "false", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2483,7 +2832,7 @@ test_stored_diff_merge_leaf(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/description",
             "oper-description2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2508,7 +2857,7 @@ test_stored_diff_merge_leaf(void **state)
     /* set some other operational data, should be merged with the previous data */
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2546,7 +2895,7 @@ test_stored_diff_merge_replace(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -2561,7 +2910,7 @@ test_stored_diff_merge_replace(void **state)
     /* set some operational data */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", "false", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2589,7 +2938,7 @@ test_stored_diff_merge_replace(void **state)
     ret = sr_edit_batch(st->sess, data, "replace");
     lyd_free_all(data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2612,7 +2961,7 @@ test_stored_diff_merge_replace(void **state)
     /* set some other operational data to be merged */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", "true", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2656,7 +3005,7 @@ test_stored_diff_merge_userord(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:cont/l2[k='key2']/v", "26", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -2672,7 +3021,7 @@ test_stored_diff_merge_userord(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:cont/l2[k='key3']/v", "27", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2705,7 +3054,7 @@ test_stored_diff_merge_userord(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:cont/l2[k='key2']/v", "20", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2736,7 +3085,7 @@ test_stored_diff_merge_userord(void **state)
     /* merge some operational data (merge move into none) */
     ret = sr_move_item(st->sess, "/test:cont/l2[k='key2']", SR_MOVE_BEFORE, "[k='key1']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2767,7 +3116,7 @@ test_stored_diff_merge_userord(void **state)
     /* merge some operational data (merge move into create) */
     ret = sr_move_item(st->sess, "/test:cont/l2[k='key3']", SR_MOVE_BEFORE, "[k='key2']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -3138,7 +3487,7 @@ test_disabled_default(void **state)
     /* set some configuration data */
     ret = sr_set_item_str(st->sess, "/defaults:pcont", NULL, NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to some configuration data just to enable them */
@@ -3221,7 +3570,7 @@ test_merge_flag(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth2']/enabled",
             "false", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -3292,6 +3641,7 @@ main(void)
         cmocka_unit_test_teardown(test_stored_state, clear_up),
         cmocka_unit_test_teardown(test_stored_state_list, clear_up),
         cmocka_unit_test_teardown(test_stored_config, clear_up),
+        cmocka_unit_test_teardown(test_stored_top_list, clear_up),
         cmocka_unit_test_teardown(test_stored_np_cont1, clear_up),
         cmocka_unit_test_teardown(test_stored_np_cont2, clear_up),
         cmocka_unit_test_teardown(test_stored_diff_merge_leaf, clear_up),

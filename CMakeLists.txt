@@ -12,6 +12,7 @@ include(CheckFunctionExists)
 include(CheckLibraryExists)
 include(CheckIncludeFile)
 include(UseCompat)
+include(SourceFormat)
 if(POLICY CMP0075)
     cmake_policy(SET CMP0075 NEW)
 endif()
@@ -45,7 +46,7 @@ endif()
 # micro version is changed with a set of small changes or bugfixes anywhere in the project.
 set(SYSREPO_MAJOR_VERSION 1)
 set(SYSREPO_MINOR_VERSION 4)
-set(SYSREPO_MICRO_VERSION 96)
+set(SYSREPO_MICRO_VERSION 103)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # Version of the library
@@ -53,7 +54,7 @@ set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_
 # with backward compatible change and micro version is connected with any internal change of the library.
 set(SYSREPO_MAJOR_SOVERSION 5)
 set(SYSREPO_MINOR_SOVERSION 6)
-set(SYSREPO_MICRO_SOVERSION 12)
+set(SYSREPO_MICRO_SOVERSION 19)
 set(SYSREPO_SOVERSION_FULL ${SYSREPO_MAJOR_SOVERSION}.${SYSREPO_MINOR_SOVERSION}.${SYSREPO_MICRO_SOVERSION})
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_SOVERSION})
 
@@ -127,6 +128,12 @@ message(STATUS "ietf-yang-library revision: ${YANGLIB_REVISION}")
 # umask
 set(SYSREPO_UMASK "00000" CACHE STRING "Umask used for any files created by sysrepo.")
 
+# super user
+set(SYSREPO_SUPERUSER_UID "0" CACHE STRING "UID of the system user that can execute sensitive functions.")
+if(NOT SYSREPO_SUPERUSER_UID MATCHES "^[0-9]+$")
+    message(FATAL_ERROR "Invalid superuser UID \"${SYSREPO_SUPERUSER_UID}\"!")
+endif()
+
 # paths
 if(NOT REPO_PATH)
     if(CMAKE_BUILD_TYPE_LOWER STREQUAL debug)
@@ -174,6 +181,7 @@ set(LIB_SRC
     src/edit_diff.c
     src/lyd_mods.c
     src/shm_main.c
+    src/shm_ext.c
     src/shm_mod.c
     src/shm_sub.c
     src/utils/values.c
@@ -190,6 +198,18 @@ set (SYSREPOPLUGIND_SRC
 
 # use compat
 use_compat()
+
+# source files to be covered by the 'format' target
+set(format_sources
+    compat/*
+    examples/*.c
+    examples/plugin/*.c
+    src/*.c
+    src/*.h
+    src/executables/*
+    src/utils/*)
+
+source_format(${format_sources})
 
 # sysrepo
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)

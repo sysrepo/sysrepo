@@ -21,13 +21,13 @@
  */
 #include "common.h"
 
-#include <pthread.h>
 #include <assert.h>
-#include <stdlib.h>
+#include <inttypes.h>
+#include <pthread.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
-#include <inttypes.h>
 #include <unistd.h>
 
 #include <libyang/libyang.h>
@@ -659,7 +659,7 @@ sr_edit_insert(struct lyd_node **first_node, struct lyd_node *parent_node, struc
         /* simply insert into parent, no other children */
         if (key_or_value) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Node \"%s\" instance to insert next to not found.",
-                           new_node->schema->name);
+                    new_node->schema->name);
             return err_info;
         }
         if (lyd_insert_child(parent_node, new_node)) {
@@ -933,7 +933,7 @@ sr_diff_add_meta(struct lyd_node *diff_node, const char *meta_val, const char *p
                 goto ly_error;
             }
         }
-        /* fallthrough */
+    /* fallthrough */
     case EDIT_CREATE:
         if (lysc_is_userordered(diff_node->schema)) {
             /* add info about inserted place as a metadata (meta_val can be NULL, inserted on the first place) */
@@ -1612,8 +1612,12 @@ sr_edit_apply_create(struct lyd_node **first_node, struct lyd_node *parent_node,
             *next_op = EDIT_NONE;
             return NULL;
         }
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Node \"%s\" to be created already exists.", edit_node->schema->name);
-        return err_info;
+
+        /* allow creating duplicate instances of state lists/leaf-lists */
+        if (!(edit_node->schema->nodetype & (LYS_LIST | LYS_LEAFLIST)) || !(edit_node->schema->flags & LYS_CONFIG_R)) {
+            sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Node \"%s\" to be created already exists.", edit_node->schema->name);
+            return err_info;
+        }
     }
 
     if (lysc_is_userordered(edit_node->schema)) {
@@ -1793,7 +1797,7 @@ reapply:
         case EDIT_AUTO_REMOVE:
         case EDIT_PURGE:
             prev_op = next_op;
-            /* fallthrough */
+        /* fallthrough */
         case EDIT_REMOVE:
             if ((err_info = sr_edit_apply_remove(first_node, parent_node, &match, diff_parent, diff_root, &diff_node,
                     &next_op, &flags, change))) {
@@ -2145,7 +2149,7 @@ sr_error_info_t *
 sr_diff_mod_update(struct lyd_node **diff, const struct lys_module *ly_mod, const struct lyd_node *mod_data)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lyd_node *root, *next;
+    struct lyd_node *root, *next;
 
     assert(diff);
 
@@ -2156,7 +2160,7 @@ sr_diff_mod_update(struct lyd_node **diff, const struct lys_module *ly_mod, cons
         }
 
         /* update relevant nodes from the diff datatree */
-        if ((err_info = sr_diff_update_r(mod_data, *diff, diff))) {
+        if ((err_info = sr_diff_update_r(mod_data, root, diff))) {
             return err_info;
         }
     }
@@ -2177,6 +2181,7 @@ static sr_error_info_t *
 sr_edit_is_superior_op(enum edit_op *new_op, enum edit_op cur_op, int *is_superior)
 {
     sr_error_info_t *err_info = NULL;
+
     *is_superior = 0;
 
     /* actually, cur_op cannot be purge because that would mean a descendant node was created and
@@ -2366,7 +2371,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     for (parent = node; parent; parent = lyd_parent(parent)) {
         if (parent->schema && (parent->schema->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF))) {
             sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "RPC/action/notification node \"%s\" cannot be created.",
-                           parent->schema->name);
+                    parent->schema->name);
             /* no need to throw away the whole edit */
             isolate = 1;
             goto error;
@@ -2374,7 +2379,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     }
 
     if (isolate) {
-        for (parent = node; parent->parent; parent = lyd_parent(parent));
+        for (parent = node; parent->parent; parent = parent->parent) {}
 
         /* connect into one edit */
         lyd_insert_sibling(session->dt[session->ds].edit, parent, &session->dt[session->ds].edit);
@@ -2403,7 +2408,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
 
     op = sr_edit_diff_find_oper(node, 1, &own_oper);
     if (!op) {
-        for (parent = node; parent->parent; parent = lyd_parent(parent));
+        for (parent = node; parent->parent; parent = parent->parent) {}
 
         /* add default operation if a new subtree was created */
         if ((parent != node) && ((err_info = sr_edit_set_oper(parent, def_operation)))) {
@@ -2517,7 +2522,7 @@ error:
     if (node) {
         if (isolate) {
             /* free only the isolated subtree */
-            for (parent = node; parent->parent; parent = lyd_parent(parent));
+            for (parent = node; parent->parent; parent = parent->parent) {}
             if (session->dt[session->ds].edit == parent) {
                 session->dt[session->ds].edit = parent->next;
             }
@@ -2612,7 +2617,7 @@ sr_diff_del_conn(struct lyd_node **diff, sr_cid_t cid)
         return NULL;
     }
 
-    if (asprintf(&xpath, "//*[@cid='%"PRIu32"']", cid) == -1) {
+    if (asprintf(&xpath, "//*[@cid='%" PRIu32 "']", cid) == -1) {
         SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }
