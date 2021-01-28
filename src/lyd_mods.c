@@ -55,11 +55,11 @@
 static sr_error_info_t *sr_lydmods_add_deps_r(struct lyd_node *sr_mod, struct lys_node *data_root, struct lyd_node *sr_deps);
 
 sr_error_info_t *
-sr_lydmods_lock(pthread_mutex_t *lock, const char *func)
+sr_lydmods_lock(pthread_mutex_t *lock, const struct ly_ctx *ly_ctx, const char *func)
 {
     struct sr_shmmod_recover_cb_s cb_data;
 
-    cb_data.mod_name = SR_YANG_MOD;
+    cb_data.ly_mod = ly_ctx_get_module(ly_ctx, SR_YANG_MOD, NULL, 1);
     cb_data.ds = SR_DS_STARTUP;
 
     /* LOCK */
@@ -2244,7 +2244,7 @@ sr_lydmods_conn_ctx_update(sr_main_shm_t *main_shm, struct ly_ctx **ly_ctx, int 
     chng = 0;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, *ly_ctx, __func__))) {
         return err_info;
     }
 
@@ -2338,7 +2338,7 @@ sr_lydmods_deferred_add_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, c
     int i;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, ly_ctx, __func__))) {
         return err_info;
     }
 
@@ -2415,7 +2415,7 @@ sr_lydmods_unsched_add_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, co
     char *path = NULL;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, ly_ctx, __func__))) {
         return err_info;
     }
 
@@ -2525,7 +2525,7 @@ sr_lydmods_deferred_add_module_data(sr_main_shm_t *main_shm, struct ly_ctx *ly_c
     assert((data && !data_path) || (!data && data_path));
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, ly_ctx, __func__))) {
         return err_info;
     }
 
@@ -2623,7 +2623,7 @@ sr_lydmods_deferred_del_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, c
     char *path = NULL;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, ly_ctx, __func__))) {
         return err_info;
     }
 
@@ -2725,7 +2725,7 @@ sr_lydmods_unsched_del_module_with_imps(sr_main_shm_t *main_shm, struct ly_ctx *
     struct lyd_node *sr_mods = NULL;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, ly_ctx, __func__))) {
         return err_info;
     }
 
@@ -2759,7 +2759,7 @@ sr_lydmods_deferred_upd_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, c
     char *path = NULL, *yang_str = NULL;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, ly_ctx, __func__))) {
         return err_info;
     }
 
@@ -2819,7 +2819,7 @@ sr_lydmods_unsched_upd_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, co
     char *path = NULL;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, ly_ctx, __func__))) {
         return err_info;
     }
 
@@ -2872,7 +2872,7 @@ sr_lydmods_deferred_change_feature(sr_main_shm_t *main_shm, struct ly_ctx *ly_ct
     char *path = NULL;
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, ly_ctx, __func__))) {
         return err_info;
     }
 
@@ -2986,7 +2986,7 @@ sr_lydmods_update_replay_support(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx,
     assert(s_replay);
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, __func__))) {
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, ly_ctx, __func__))) {
         return err_info;
     }
 

@@ -497,7 +497,7 @@ sr_shmmain_files_startup2running(sr_main_shm_t *main_shm, int replace)
             free(running_path);
             goto error;
         }
-        err_info = sr_cp_file2shm(running_path, startup_path, SR_FILE_PERM);
+        err_info = sr_cp_path(running_path, startup_path, SR_FILE_PERM);
         free(startup_path);
         free(running_path);
         if (err_info) {

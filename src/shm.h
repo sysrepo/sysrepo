@@ -767,7 +767,7 @@ sr_error_info_t *sr_shmmod_collect_instid_deps_modinfo(const struct sr_mod_info_
  * @brief Information structure for the SHM module recovery callback.
  */
 struct sr_shmmod_recover_cb_s {
-    const char *mod_name;
+    const struct lys_module *ly_mod;
     sr_datastore_t ds;
 };
 

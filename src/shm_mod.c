@@ -312,6 +312,7 @@ sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data)
     sr_error_info_t *err_info = NULL;
     struct sr_shmmod_recover_cb_s *cb_data = data;
     char *path = NULL, *bck_path = NULL;
+    struct lyd_node *mod_data = NULL;
     (void)cid;
 
     if (mode != SR_LOCK_WRITE) {
@@ -322,48 +323,83 @@ sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data)
     /* learn standard path */
     switch (cb_data->ds) {
     case SR_DS_STARTUP:
-        err_info = sr_path_startup_file(cb_data->mod_name, &path);
+        err_info = sr_path_startup_file(cb_data->ly_mod->name, &path);
         break;
     case SR_DS_RUNNING:
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
-        err_info = sr_path_ds_shm(cb_data->mod_name, cb_data->ds, &path);
+        err_info = sr_path_ds_shm(cb_data->ly_mod->name, cb_data->ds, &path);
         break;
     }
     if (err_info) {
         goto cleanup;
     }
 
-    /* generate the backup path */
-    if (asprintf(&bck_path, "%s%s", path, SR_FILE_BACKUP_SUFFIX) == -1) {
-        SR_ERRINFO_MEM(&err_info);
+    /* check whether the file is valid */
+    err_info = sr_module_file_data_append(cb_data->ly_mod, cb_data->ds, &mod_data);
+    if (!err_info) {
+        /* data are valid, nothing to do */
         goto cleanup;
     }
+    sr_errinfo_free(&err_info);
 
-    if (!sr_file_exists(bck_path)) {
-        /* no backup file, nothing to do */
-        goto cleanup;
-    }
+    if (cb_data->ds == SR_DS_STARTUP) {
+        /* there must be a backup file for startup data */
+        SR_LOG_WRN("Recovering \"%s\" startup data from a backup.", cb_data->ly_mod->name);
 
-    /* remove any (possibly corrupted) current data */
-    unlink(path);
+        /* generate the backup path */
+        if (asprintf(&bck_path, "%s%s", path, SR_FILE_BACKUP_SUFFIX) == -1) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
 
-    /* restore the backup */
-    if (rename(bck_path, path) == -1) {
-        SR_ERRINFO_SYSERRNO(&err_info, "rename");
-        goto cleanup;
+        /* restore the backup data, avoid changing permissions of the target file */
+        if ((err_info = sr_cp_path(path, bck_path, 0))) {
+            SR_ERRINFO_SYSERRNO(&err_info, "rename");
+            goto cleanup;
+        }
+
+        /* remove the backup file */
+        if (unlink(bck_path) == -1) {
+            SR_ERRINFO_SYSERRNO(&err_info, "unlink");
+            goto cleanup;
+        }
+    } else if (cb_data->ds == SR_DS_RUNNING) {
+        /* perform startup->running data file copy */
+        SR_LOG_WRN("Recovering \"%s\" running data from the startup data.", cb_data->ly_mod->name);
+
+        /* generate the startup data file path */
+        if ((err_info = sr_path_startup_file(cb_data->ly_mod->name, &bck_path))) {
+            goto cleanup;
+        }
+
+        /* copy startup data to running */
+        if ((err_info = sr_cp_path(path, bck_path, 0))) {
+            SR_ERRINFO_SYSERRNO(&err_info, "rename");
+            goto cleanup;
+        }
+    } else {
+        /* there is not much to do but remove the corrupted file */
+        SR_LOG_WRN("Recovering \"%s\" %s data by removing the corrupted data file.", cb_data->ly_mod->name,
+                sr_ds2str(cb_data->ds));
+
+        if (unlink(path) == -1) {
+            SR_ERRINFO_SYSERRNO(&err_info, "unlink");
+            goto cleanup;
+        }
     }
 
 cleanup:
     free(path);
     free(bck_path);
+    lyd_free_withsiblings(mod_data);
     sr_errinfo_free(&err_info);
 }
 
 /**
  * @brief Lock or relock a main SHM module.
  *
- * @param[in] mod_name Module name.
+ * @param[in] ly_mod libyang module.
  * @param[in] ds Datastore.
  * @param[in] shm_lock Main SHM module lock.
  * @param[in] timeout_ms Timeout in ms.
@@ -373,14 +409,14 @@ cleanup:
  * @param[in] relock Whether some lock is already held or not.
  */
 static sr_error_info_t *
-sr_shmmod_lock(const char *mod_name, sr_datastore_t ds, struct sr_mod_lock_s *shm_lock, int timeout_ms,
+sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod_lock_s *shm_lock, int timeout_ms,
         sr_lock_mode_t mode, sr_cid_t cid, sr_sid_t sid, int relock)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     struct sr_shmmod_recover_cb_s cb_data;
 
     /* fill recovery callback information */
-    cb_data.mod_name = mod_name;
+    cb_data.ly_mod = ly_mod;
     cb_data.ds = ds;
 
     if (relock) {
@@ -395,7 +431,7 @@ sr_shmmod_lock(const char *mod_name, sr_datastore_t ds, struct sr_mod_lock_s *sh
     if (err_info) {
         if (err_info->err_code == SR_ERR_TIME_OUT) {
             sr_errinfo_new(&err_info, SR_ERR_LOCKED, NULL, "Module \"%s\" is %s by session %u (NC SID %u).",
-                    mod_name, ATOMIC_LOAD_RELAXED(shm_lock->ds_locked) ? "locked" : "being used", shm_lock->sid.sr,
+                    ly_mod->name, ATOMIC_LOAD_RELAXED(shm_lock->ds_locked) ? "locked" : "being used", shm_lock->sid.sr,
                     shm_lock->sid.nc);
         }
         return err_info;
@@ -408,7 +444,7 @@ sr_shmmod_lock(const char *mod_name, sr_datastore_t ds, struct sr_mod_lock_s *sh
             assert(shm_lock->sid.sr);
             if (shm_lock->sid.sr != sid.sr) {
                 sr_errinfo_new(&err_info, SR_ERR_LOCKED, NULL, "Module \"%s\" is locked by session %u (NC SID %u).",
-                        mod_name, shm_lock->sid.sr, shm_lock->sid.nc);
+                        ly_mod->name, shm_lock->sid.sr, shm_lock->sid.nc);
                 goto revert_lock;
             }
             /* we hold DS lock */
@@ -512,8 +548,7 @@ sr_shmmod_modinfo_lock(struct sr_mod_info_s *mod_info, sr_datastore_t ds, uint32
         }
 
         /* MOD LOCK */
-        if ((err_info = sr_shmmod_lock(mod->ly_mod->name, ds, shm_lock, SR_MOD_LOCK_TIMEOUT, mode,
-                mod_info->conn->cid, sid, 0))) {
+        if ((err_info = sr_shmmod_lock(mod->ly_mod, ds, shm_lock, SR_MOD_LOCK_TIMEOUT, mode, mod_info->conn->cid, sid, 0))) {
             return err_info;
         }
 
@@ -591,7 +626,7 @@ sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid)
         /* upgrade only read-upgr-locked modules */
         if (mod->state & MOD_INFO_RLOCK_UPGR) {
             /* MOD WRITE UPGRADE */
-            if ((err_info = sr_shmmod_lock(mod->ly_mod->name, mod_info->ds, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE,
+            if ((err_info = sr_shmmod_lock(mod->ly_mod, mod_info->ds, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE,
                     mod_info->conn->cid, sid, 1))) {
                 return err_info;
             }
@@ -620,8 +655,8 @@ sr_shmmod_modinfo_wrlock_downgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid)
         /* downgrade only write-locked modules */
         if (mod->state & MOD_INFO_WLOCK) {
             /* MOD READ DOWNGRADE */
-            if ((err_info = sr_shmmod_lock(mod->ly_mod->name, mod_info->ds, shm_lock, SR_MOD_LOCK_TIMEOUT,
-                    SR_LOCK_READ_UPGR, mod_info->conn->cid, sid, 1))) {
+            if ((err_info = sr_shmmod_lock(mod->ly_mod, mod_info->ds, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ_UPGR,
+                    mod_info->conn->cid, sid, 1))) {
                 return err_info;
             }
 
