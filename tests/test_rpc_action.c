@@ -324,7 +324,7 @@ test_rpc(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
     assert_string_equal(err_info->err[0].message, "Invalid leafref value \"l1-val\" - no existing target instance \"/or:l1\".");
-    assert_string_equal(err_info->err[0].xpath, "Schema location /ops:rpc1/l1, data location /ops:rpc1/l1.");
+    assert_string_equal(err_info->err[0].xpath, "Schema location /ops:rpc1/input/l1, data location /ops:rpc1/l1.");
     assert_string_equal(err_info->err[1].message, "RPC input validation failed.");
     assert_null(err_info->err[1].xpath);
     assert_null(output);
@@ -354,7 +354,7 @@ test_rpc(void **state)
     assert_int_equal(err_info->err_count, 2);
     assert_string_equal(err_info->err[0].message, "Invalid leafref value \"inval-ref\" - no target instance \"/or:l2\" "
             "with the same value.");
-    assert_string_equal(err_info->err[0].xpath, "Schema location /ops:rpc2/cont/l3, data location /ops:rpc2/cont/l3.");
+    assert_string_equal(err_info->err[0].xpath, "Schema location /ops:rpc2/output/cont/l3, data location /ops:rpc2/cont/l3.");
     assert_string_equal(err_info->err[1].message, "RPC output validation failed.");
     assert_null(err_info->err[1].xpath);
 

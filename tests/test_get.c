@@ -356,14 +356,15 @@ test_union(void **state)
     ret = sr_get_data(st->sess, "/simple:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
     lyd_free_all(data);
 
     str2 =
-    "<ac1 xmlns=\"s\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
-        "<acd1 ncwd:default=\"true\">true</acd1>"
-        "<bauga1 xmlns=\"sa\" ncwd:default=\"true\">true</bauga1>"
+    "<ac1 xmlns=\"s\">"
+        "<acd1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">true</acd1>"
+        "<bauga1 xmlns=\"sa\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" "
+                "ncwd:default=\"true\">true</bauga1>"
         "<bauga2 xmlns=\"sa\">val</bauga2>"
     "</ac1>";
 
@@ -373,13 +374,13 @@ test_union(void **state)
     ret = sr_get_data(st->sess, "/simple-aug:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
     lyd_free_all(data);
 
     str2 =
-    "<bc1 xmlns=\"sa\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
-        "<bcd1 ncwd:default=\"true\">true</bcd1>"
+    "<bc1 xmlns=\"sa\">"
+        "<bcd1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">true</bcd1>"
         "<bcl1>"
             "<bcs1>key</bcs1>"
         "</bcl1>"
@@ -392,22 +393,23 @@ test_union(void **state)
     ret = sr_get_data(st->sess, "/simple-aug:* | /simple:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
     lyd_free_all(data);
 
     str2 =
-    "<bc1 xmlns=\"sa\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
-        "<bcd1 ncwd:default=\"true\">true</bcd1>"
+    "<ac1 xmlns=\"s\">"
+        "<acd1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">true</acd1>"
+        "<bauga1 xmlns=\"sa\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" "
+                "ncwd:default=\"true\">true</bauga1>"
+        "<bauga2 xmlns=\"sa\">val</bauga2>"
+    "</ac1>"
+    "<bc1 xmlns=\"sa\">"
+        "<bcd1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">true</bcd1>"
         "<bcl1>"
             "<bcs1>key</bcs1>"
         "</bcl1>"
-    "</bc1>"
-    "<ac1 xmlns=\"s\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
-        "<acd1 ncwd:default=\"true\">true</acd1>"
-        "<bauga1 xmlns=\"sa\" ncwd:default=\"true\">true</bauga1>"
-        "<bauga2 xmlns=\"sa\">val</bauga2>"
-    "</ac1>";
+    "</bc1>";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -416,19 +418,19 @@ test_union(void **state)
     ret = sr_get_data(st->sess, "/simple-aug:bc1/bcl1 | /simple:ac1/simple-aug:bauga2", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
     lyd_free_all(data);
 
     str2 =
-    "<bc1 xmlns=\"sa\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
+    "<ac1 xmlns=\"s\">"
+        "<bauga2 xmlns=\"sa\">val</bauga2>"
+    "</ac1>"
+    "<bc1 xmlns=\"sa\">"
         "<bcl1>"
             "<bcs1>key</bcs1>"
         "</bcl1>"
-    "</bc1>"
-    "<ac1 xmlns=\"s\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
-        "<bauga2 xmlns=\"sa\">val</bauga2>"
-    "</ac1>";
+    "</bc1>";
 
     assert_string_equal(str1, str2);
     free(str1);

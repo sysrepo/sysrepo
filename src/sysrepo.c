@@ -171,7 +171,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 
     /* update connection context based on stored lydmods data */
     if ((err_info = sr_lydmods_conn_ctx_update(main_shm, &conn->ly_ctx, created || !(opts & SR_CONN_NO_SCHED_CHANGES),
-            opts & SR_CONN_ERR_ON_SCHED_FAIL, &sr_mods, &changed))) {
+            opts & SR_CONN_ERR_ON_SCHED_FAIL, &changed))) {
         goto cleanup_unlock;
     }
 
@@ -187,6 +187,9 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         main_shm->mod_count = 0;
 
         /* add all the modules in lydmods data into main SHM */
+        if ((err_info = sr_lydmods_parse(conn->ly_ctx, &sr_mods))) {
+            goto cleanup_unlock;
+        }
         if ((err_info = sr_shmmain_store_modules(conn, lyd_child(sr_mods)))) {
             goto cleanup_unlock;
         }

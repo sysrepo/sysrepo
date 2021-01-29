@@ -3863,6 +3863,7 @@ sr_lyd_dup_enabled_xpath(const struct lyd_node *data, char **xpaths, uint16_t xp
     const struct lyd_node *src;
     struct ly_set *cur_set, *set = NULL;
     size_t i;
+    LY_ERR lyrc;
 
     if (!xp_count) {
         /* no XPaths */
@@ -3878,11 +3879,9 @@ sr_lyd_dup_enabled_xpath(const struct lyd_node *data, char **xpaths, uint16_t xp
 
         /* merge into one set */
         if (set) {
-            if (ly_set_merge(set, cur_set, 0, NULL)) {
-                ly_set_free(cur_set, NULL);
-                sr_errinfo_new_ly(&err_info, LYD_CTX(data));
-                goto cleanup;
-            }
+            lyrc = ly_set_merge(set, cur_set, 0, NULL);
+            ly_set_free(cur_set, NULL);
+            SR_CHECK_LY_GOTO(lyrc, LYD_CTX(data), err_info, cleanup);
         } else {
             set = cur_set;
         }

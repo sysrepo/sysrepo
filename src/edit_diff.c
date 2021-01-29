@@ -1614,8 +1614,9 @@ sr_edit_apply_create(struct lyd_node **first_node, struct lyd_node *parent_node,
         }
 
         /* allow creating duplicate instances of state lists/leaf-lists */
-        if (!(edit_node->schema->nodetype & (LYS_LIST | LYS_LEAFLIST)) || !(edit_node->schema->flags & LYS_CONFIG_R)) {
-            sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Node \"%s\" to be created already exists.", edit_node->schema->name);
+        if (!lysc_is_dup_inst_list(edit_node->schema)) {
+            sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Node \"%s\" to be created already exists.",
+                    edit_node->schema->name);
             return err_info;
         }
     }
@@ -2367,7 +2368,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     }
     session->dt[session->ds].edit = lyd_first_sibling(session->dt[session->ds].edit);
 
-    /* check alllowed node types */
+    /* check allowed node types */
     for (parent = node; parent; parent = lyd_parent(parent)) {
         if (parent->schema && (parent->schema->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF))) {
             sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "RPC/action/notification node \"%s\" cannot be created.",

@@ -51,12 +51,11 @@ sr_error_info_t *sr_lydmods_parse(struct ly_ctx *ly_ctx, struct lyd_node **sr_mo
  * @param[in,out] ly_ctx libyang context to use, may be destroyed and created anew.
  * @param[in] apply_sched Whether we can attempt to apply scheduled changes.
  * @param[in] err_on_sched_fail Whether to return an error if applying scheduled changes fails.
- * @param[out] sr_mods Parsed lydmods data.
  * @param[out] changed Whether stored lydmods data were changed (created or scheduled changes applied).
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lydmods_conn_ctx_update(sr_main_shm_t *main_shm, struct ly_ctx **ly_ctx, int apply_sched,
-        int err_on_sched_fail, struct lyd_node **sr_mods, int *changed);
+        int err_on_sched_fail, int *changed);
 
 /**
  * @brief Load modules from sysrepo module data into context.

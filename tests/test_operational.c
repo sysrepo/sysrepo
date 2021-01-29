@@ -2317,17 +2317,18 @@ test_stored_state_list(void **state)
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
 
     lyd_free_all(data);
 
     str2 =
-    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
-        "<l or:origin=\"unknown\">"
+    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" "
+            "or:origin=\"or:intended\">"
+        "<l or:origin=\"or:unknown\">"
             "<l1>val1</l1>"
         "</l>"
-        "<l or:origin=\"unknown\">"
+        "<l or:origin=\"or:unknown\">"
             "<l1>val2</l1>"
         "</l>"
     "</test-state>";
@@ -2353,24 +2354,25 @@ test_stored_state_list(void **state)
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
 
     lyd_free_all(data);
 
     str2 =
-    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
-        "<l or:origin=\"unknown\">"
+    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" "
+            "or:origin=\"or:intended\">"
+        "<l or:origin=\"or:unknown\">"
             "<l1>val1</l1>"
         "</l>"
-        "<l or:origin=\"unknown\">"
+        "<l or:origin=\"or:unknown\">"
             "<l1>val2</l1>"
         "</l>"
-        "<ll or:origin=\"unknown\">val3</ll>"
-        "<ll or:origin=\"unknown\">val3</ll>"
-        "<ll or:origin=\"unknown\">val2</ll>"
-        "<ll or:origin=\"unknown\">val3</ll>"
-        "<ll or:origin=\"unknown\">val1</ll>"
+        "<ll or:origin=\"or:unknown\">val3</ll>"
+        "<ll or:origin=\"or:unknown\">val3</ll>"
+        "<ll or:origin=\"or:unknown\">val2</ll>"
+        "<ll or:origin=\"or:unknown\">val3</ll>"
+        "<ll or:origin=\"or:unknown\">val1</ll>"
     "</test-state>";
 
     assert_string_equal(str1, str2);
@@ -2566,18 +2568,14 @@ test_stored_top_list(void **state)
     ret = sr_get_data(st->sess, "/czechlight-roadm-device:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
 
     lyd_free_all(data);
 
     str2 =
-    "<line xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\" "
-            "xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
-        "<output-voa or:origin=\"default\">0.0</output-voa>"
-    "</line>"
     "<channel-plan xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\" "
-            "xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+            "xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
         "<channel>"
             "<name>13.5</name>"
             "<lower-frequency>191325000</lower-frequency>"
@@ -2590,13 +2588,17 @@ test_stored_top_list(void **state)
         "</channel>"
     "</channel-plan>"
     "<media-channels xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\" "
-            "xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+            "xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
         "<channel>13.5</channel>"
-        "<power or:origin=\"unknown\">"
+        "<power or:origin=\"or:unknown\">"
             "<common-in>0.9</common-in>"
             "<common-out>1.0</common-out>"
         "</power>"
-    "</media-channels>";
+    "</media-channels>"
+    "<line xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\" "
+            "xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
+        "<output-voa or:origin=\"or:default\">0.0</output-voa>"
+    "</line>";
 
     assert_string_equal(str1, str2);
     free(str1);
