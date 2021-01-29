@@ -3059,7 +3059,7 @@ sr_realloc(void *ptr, size_t size)
 }
 
 sr_error_info_t *
-sr_cp_file2shm(const char *to, const char *from, mode_t perm)
+sr_cp_path(const char *to, const char *from, mode_t file_mode)
 {
     sr_error_info_t *err_info = NULL;
     int fd_to = -1, fd_from = -1;
@@ -3078,7 +3078,7 @@ sr_cp_file2shm(const char *to, const char *from, mode_t perm)
     um = umask(SR_UMASK);
 
     /* open "to" */
-    fd_to = SR_OPEN(to, O_WRONLY | O_TRUNC | O_CREAT, perm);
+    fd_to = SR_OPEN(to, O_WRONLY | O_TRUNC | O_CREAT, file_mode);
     umask(um);
     if (fd_to < 0) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening \"%s\" failed (%s).", to, strerror(errno));
@@ -4498,7 +4498,7 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node
 {
     sr_error_info_t *err_info = NULL;
     char *path = NULL, *bck_path = NULL;
-    int fd = -1, backup;
+    int fd = -1, backup = 0;
     mode_t um;
 
     assert(file_mode);
@@ -4521,34 +4521,23 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node
         goto cleanup;
     }
 
-    /* generate the backup path */
-    if (asprintf(&bck_path, "%s%s", path, SR_FILE_BACKUP_SUFFIX) == -1) {
-        SR_ERRINFO_MEM(&err_info);
-        goto cleanup;
-    }
-
-    /* back up any existing file */
-    if (rename(path, bck_path) == -1) {
-        if (errno != ENOENT) {
-            SR_ERRINFO_SYSERRNO(&err_info, "rename");
-            goto cleanup;
-        } else if (!(create_flags & O_CREAT) && !(create_flags & O_EXCL)) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "File \"%s\" does not exist.", path);
+    if ((ds == SR_DS_STARTUP) && (!(create_flags & O_CREAT) && !(create_flags & O_EXCL))) {
+        /* generate the backup path */
+        if (asprintf(&bck_path, "%s%s", path, SR_FILE_BACKUP_SUFFIX) == -1) {
+            SR_ERRINFO_MEM(&err_info);
             goto cleanup;
         }
 
-        backup = 0;
-    } else {
-        if ((create_flags & O_CREAT) && (create_flags & O_EXCL)) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "File \"%s\" already exists and was backed-up.", path);
+        /* back up any existing file */
+        if ((err_info = sr_cp_path(bck_path, path, file_mode))) {
             goto cleanup;
         }
 
         backup = 1;
     }
 
-    /* open (actually always create because of the backup) the file */
-    if ((fd = SR_OPEN(path, O_WRONLY | O_CREAT | O_EXCL, file_mode)) == -1) {
+    /* open the file */
+    if ((fd = SR_OPEN(path, O_WRONLY | create_flags, file_mode)) == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" (%s).", path, strerror(errno));
         goto cleanup;
     }

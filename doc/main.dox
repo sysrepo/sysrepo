@@ -170,14 +170,11 @@ be called periodically without any checking for new events.
 @anchor recovery
 
 Because Sysrepo uses shared memory, no automatic OS cleanup is performed in case an application crashes or does not
-[properly terminate](@ref ::sr_disconnect) all its connections. Hence the current state of each connection is
-continuously updated and stored so that other applications are able to perform the cleanup after a corrupt application.
+[properly terminate](@ref ::sr_disconnect) all its connections. There are mechanisms tracking the general state
+that allow to always recover correct state after a corrupt crashed application.
 
-This cleanup is performed automatically as part of almost every API function. Note
-that this mechanism is not foolproof and cannot cover all the cases. So, only the most common ones are covered, namely
-when an application crashes **while not executing any Sysrepo function** or in an **application callback** called
-by Sysrepo. In other words, if the applications crashes in its own code. In case a crash occurs in Sysrepo code,
-the state may not be recoverable and all the shared memory must be removed in order for Sysrepo to work correctly again.
+This recovery occurs whenever the particular state is being used (such as checking all relevant subscriptions when
+a new event is generated). Every recovery task should print warnings about what exactly is being recovered.
 
 # Access Control
 @anchor access_control

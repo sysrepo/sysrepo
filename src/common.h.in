@@ -1134,14 +1134,14 @@ int sr_conn_is_alive(sr_cid_t cid);
 void *sr_realloc(void *ptr, size_t size);
 
 /**
- * @brief Copy a file to a SHM.
+ * @brief Copy file contents to another file.
  *
- * @param[in] to Destination SHM path (name).
+ * @param[in] to Destination file path.
  * @param[in] from Source file path.
- * @param[in] perm Permissions of \p to SHM file, if being created.
+ * @param[in] file_mode Permissions of \p to file, if being created.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_cp_file2shm(const char *to, const char *from, mode_t perm);
+sr_error_info_t *sr_cp_path(const char *to, const char *from, mode_t file_mode);
 
 /**
  * @brief Create all directories in the path.

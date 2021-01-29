@@ -497,7 +497,7 @@ sr_shmmain_files_startup2running(sr_main_shm_t *main_shm, int replace)
             free(running_path);
             goto error;
         }
-        err_info = sr_cp_file2shm(running_path, startup_path, SR_FILE_PERM);
+        err_info = sr_cp_path(running_path, startup_path, SR_FILE_PERM);
         free(startup_path);
         free(running_path);
         if (err_info) {
@@ -1196,7 +1196,7 @@ sr_shmmain_ext_open(sr_shm_t *shm, int zero)
     }
 
     /* either zero the memory or keep it exactly the way it was */
-    if ((err_info = sr_shm_remap(shm, zero ? sizeof(sr_ext_shm_t) : 0))) {
+    if ((err_info = sr_shm_remap(shm, zero ? SR_SHM_SIZE(sizeof(sr_ext_shm_t)) : 0))) {
         goto error;
     }
     if (zero) {

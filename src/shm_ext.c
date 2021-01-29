@@ -157,14 +157,12 @@ sr_shmext_print_cmp(const void *ptr1, const void *ptr2)
     item1 = (struct shm_item *)ptr1;
     item2 = (struct shm_item *)ptr2;
 
-    assert(item1->start != item2->start);
-    assert((item1->start > item2->start) || (item1->start + item1->size <= (unsigned)item2->start));
-    assert((item1->start < item2->start) || (item2->start + item2->size <= (unsigned)item1->start));
-
     if (item1->start < item2->start) {
         return -1;
+    } else if (item1->start > item2->start) {
+        return 1;
     }
-    return 1;
+    return 0;
 }
 
 /**
@@ -198,7 +196,7 @@ sr_shmext_print(sr_main_shm_t *main_shm, char *ext_shm_addr, size_t ext_shm_size
     item_count = 0;
     items = malloc(sizeof *items);
     items[item_count].start = 0;
-    items[item_count].size = sizeof(sr_ext_shm_t);
+    items[item_count].size = SR_SHM_SIZE(sizeof(sr_ext_shm_t));
     asprintf(&(items[item_count].name), "ext wasted %lu", ATOMIC_LOAD_RELAXED(((sr_ext_shm_t *)ext_shm_addr)->wasted));
     ++item_count;
 
@@ -294,10 +292,6 @@ sr_shmext_print(sr_main_shm_t *main_shm, char *ext_shm_addr, size_t ext_shm_size
     printed = 0;
     wasted = 0;
     for (i = 0; i < item_count; ++i) {
-        /* check alignment */
-        assert(items[i].size == SR_SHM_SIZE(items[i].size));
-        assert((unsigned)items[i].start == SR_SHM_SIZE(items[i].start));
-
         if (items[i].start > cur_off) {
             printed += sr_sprintf(&msg, &msg_len, printed, "%06ld-%06ld [%6ld]: (wasted %ld)\n",
                     cur_off, items[i].start, items[i].start - cur_off, items[i].start - cur_off);
@@ -316,11 +310,27 @@ sr_shmext_print(sr_main_shm_t *main_shm, char *ext_shm_addr, size_t ext_shm_size
                 cur_off, ext_shm_size, ext_shm_size - cur_off, ext_shm_size - cur_off);
         wasted += ext_shm_size - cur_off;
     }
-    free(items);
 
     /* print all the information about SHM */
     SR_LOG_DBG("#SHM:\n%s", msg);
     free(msg);
+
+    /* fail on an assert if something is wrong */
+    for (i = 0; i < item_count; ++i) {
+        if (i < item_count - 1) {
+            /* checks on 2 following items */
+            assert(items[i].start != items[i + 1].start);
+            assert((items[i].start > items[i + 1].start) ||
+                    (items[i].start + items[i].size <= (unsigned)items[i + 1].start));
+            assert((items[i].start < items[i + 1].start) ||
+                    (items[i + 1].start + items[i + 1].size <= (unsigned)items[i].start));
+        }
+
+        /* check alignment */
+        assert(items[i].size == SR_SHM_SIZE(items[i].size));
+        assert((unsigned)items[i].start == SR_SHM_SIZE(items[i].start));
+    }
+    free(items);
 
     /* check that no item exists after the mapped segment */
     assert((unsigned)cur_off <= ext_shm_size);
@@ -400,7 +410,7 @@ sr_shmext_defrag(sr_conn_ctx_t *conn, char **defrag_ext_buf)
 
     /* wasted ext number */
     ((sr_ext_shm_t *)ext_buf_cur)->wasted = 0;
-    ext_buf_cur += sizeof(sr_ext_shm_t);
+    ext_buf_cur += SR_SHM_SIZE(sizeof(sr_ext_shm_t));
 
     for (i = 0; i < main_shm->mod_count; ++i) {
         shm_mod = SR_SHM_MOD_IDX(main_shm, i);

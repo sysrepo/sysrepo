@@ -191,16 +191,16 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
             goto cleanup_unlock;
         }
 
-        assert((conn->ext_shm.size != sizeof(sr_ext_shm_t)) || !ATOMIC_LOAD_RELAXED(SR_CONN_EXT_SHM(conn)->wasted));
-        if (conn->ext_shm.size != sizeof(sr_ext_shm_t)) {
+        assert((conn->ext_shm.size != SR_SHM_SIZE(sizeof(sr_ext_shm_t))) || !ATOMIC_LOAD_RELAXED(SR_CONN_EXT_SHM(conn)->wasted));
+        if (conn->ext_shm.size != SR_SHM_SIZE(sizeof(sr_ext_shm_t))) {
             /* there is something in ext SHM, is it only wasted memory? */
-            if (conn->ext_shm.size != sizeof(sr_ext_shm_t) + SR_CONN_EXT_SHM(conn)->wasted) {
+            if (conn->ext_shm.size != SR_SHM_SIZE(sizeof(sr_ext_shm_t)) + SR_CONN_EXT_SHM(conn)->wasted) {
                 /* no, this should never happen */
                 SR_ERRINFO_INT(&err_info);
             }
 
             /* clear ext SHM */
-            if ((err_info = sr_shm_remap(&conn->ext_shm, sizeof(sr_ext_shm_t)))) {
+            if ((err_info = sr_shm_remap(&conn->ext_shm, SR_SHM_SIZE(sizeof(sr_ext_shm_t))))) {
                 goto cleanup_unlock;
             }
             ATOMIC_STORE_RELAXED(SR_CONN_EXT_SHM(conn)->wasted, 0);
@@ -1241,7 +1241,7 @@ sr_get_module_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data)
     SR_CHECK_ARG_APIRET(!conn || !sysrepo_data, NULL, err_info);
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_lydmods_lock(&SR_CONN_MAIN_SHM(conn)->lydmods_lock, __func__))) {
+    if ((err_info = sr_lydmods_lock(&SR_CONN_MAIN_SHM(conn)->lydmods_lock, conn->ly_ctx, __func__))) {
         return sr_api_ret(NULL, err_info);
     }
 
