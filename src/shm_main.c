@@ -1214,7 +1214,7 @@ sr_shmmain_ext_open(sr_shm_t *shm, int zero)
     }
 
     /* either zero the memory or keep it exactly the way it was */
-    if ((err_info = sr_shm_remap(shm, zero ? sizeof(sr_ext_shm_t) : 0))) {
+    if ((err_info = sr_shm_remap(shm, zero ? SR_SHM_SIZE(sizeof(sr_ext_shm_t)) : 0))) {
         goto error;
     }
     if (zero) {

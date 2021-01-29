@@ -196,7 +196,7 @@ sr_shmext_print(sr_main_shm_t *main_shm, char *ext_shm_addr, size_t ext_shm_size
     item_count = 0;
     items = malloc(sizeof *items);
     items[item_count].start = 0;
-    items[item_count].size = sizeof(sr_ext_shm_t);
+    items[item_count].size = SR_SHM_SIZE(sizeof(sr_ext_shm_t));
     asprintf(&(items[item_count].name), "ext wasted %lu", ATOMIC_LOAD_RELAXED(((sr_ext_shm_t *)ext_shm_addr)->wasted));
     ++item_count;
 
@@ -410,7 +410,7 @@ sr_shmext_defrag(sr_conn_ctx_t *conn, char **defrag_ext_buf)
 
     /* wasted ext number */
     ((sr_ext_shm_t *)ext_buf_cur)->wasted = 0;
-    ext_buf_cur += sizeof(sr_ext_shm_t);
+    ext_buf_cur += SR_SHM_SIZE(sizeof(sr_ext_shm_t));
 
     for (i = 0; i < main_shm->mod_count; ++i) {
         shm_mod = SR_SHM_MOD_IDX(main_shm, i);
