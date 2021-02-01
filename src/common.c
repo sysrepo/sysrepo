@@ -5024,7 +5024,7 @@ cleanup:
 sr_error_info_t *
 sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     const struct lys_module *ly_mod;
     struct sr_mod_info_s mod_info;
     struct ly_set mod_set = {0};
@@ -5038,10 +5038,10 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     ly_mod = ly_ctx_get_module(conn->ly_ctx, mod_name, NULL, 1);
     SR_CHECK_INT_RET(!ly_mod, err_info);
 
-    /* add the module into mod_info and load its enabled running data */
+    /* just lock the module for now */
     ly_set_add(&mod_set, (void *)ly_mod, 0);
-    if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_WRITE, SR_MI_PERM_NO | SR_MI_DATA_CACHE,
-            sid, NULL, 0, SR_OPER_NO_STORED | SR_OPER_NO_SUBS))) {
+    if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_WRITE, SR_MI_PERM_NO | SR_MI_DATA_NO,
+            sid, NULL, 0, 0))) {
         goto cleanup;
     }
 
@@ -5051,6 +5051,17 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     }
     if (!diff) {
         /* no stored diff */
+        goto cleanup;
+    }
+
+    /* now just load all the data */
+    if ((err_info = sr_modinfo_data_load(&mod_info, 1, sid, NULL, 0, SR_OPER_NO_STORED | SR_OPER_NO_SUBS, &cb_err_info))) {
+        goto cleanup;
+    }
+    if (cb_err_info) {
+        /* return callback error if some was generated */
+        cb_err_info->err_code = SR_ERR_CALLBACK_FAILED;
+        sr_errinfo_merge(&err_info, cb_err_info);
         goto cleanup;
     }
 

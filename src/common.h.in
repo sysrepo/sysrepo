@@ -1508,7 +1508,6 @@ sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, sr_
 
 /**
  * @brief Load operational data (diff) loaded from a SHM for a specific module.
- * The lock may be temporarily changed.
  *
  * @param[in] mod Mod info mod.
  * @param[out] diff Loaded diff to return.
