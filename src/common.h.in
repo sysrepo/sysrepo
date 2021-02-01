@@ -1395,6 +1395,13 @@ int sr_ly_is_userord(const struct lyd_node *node);
 sr_error_info_t *sr_lyd_anydata_equal(const struct lyd_node *any1, const struct lyd_node *any2, int *equal);
 
 /**
+ * @brief Free anydata/anyxml value.
+ *
+ * @param[in] any Node with value to free.
+ */
+void sr_lyd_anydata_free(struct lyd_node *any);
+
+/**
  * @brief Copy anydata/anyxml value from src to trg.
  *
  * @param[in] trg Target to copy to.

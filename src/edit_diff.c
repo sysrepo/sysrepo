@@ -729,8 +729,9 @@ sr_diff_add_attrs(struct lyd_node *diff_node, const char *attr_val, const char *
         }
         break;
     case EDIT_REPLACE:
-        if (diff_node->schema->nodetype == LYS_LEAF) {
+        if (diff_node->schema->nodetype & (LYS_LEAF | LYS_ANYXML | LYS_ANYDATA)) {
             assert(attr_val);
+            assert(!prev_attr_val || (diff_node->schema->nodetype == LYS_LEAF));
 
             /* add info about previous value as an attribute */
             if (!lyd_insert_attr(diff_node, NULL, SR_YANG_MOD ":orig-value", attr_val)) {
@@ -2733,7 +2734,7 @@ sr_diff_apply_r(struct lyd_node **first_node, struct lyd_node *parent_node, cons
         /* we are not going recursively in this case, the whole subtree was already deleted */
         return NULL;
     case EDIT_REPLACE:
-        SR_CHECK_INT_RET(diff_node->schema->nodetype != LYS_LEAF, err_info);
+        SR_CHECK_INT_RET(!(diff_node->schema->nodetype & (LYS_LEAF | LYS_ANYXML | LYS_ANYDATA)), err_info);
 
         /* find the node */
         SR_CHECK_INT_RET(!(*first_node), err_info);
@@ -2742,13 +2743,20 @@ sr_diff_apply_r(struct lyd_node **first_node, struct lyd_node *parent_node, cons
         }
         SR_CHECK_INT_RET(!match, err_info);
 
-        /* update its value */
-        if ((ret = lyd_change_leaf((struct lyd_node_leaf_list *)match, sr_ly_leaf_value_str(diff_node))) < 0) {
-            sr_errinfo_new_ly(&err_info, ly_ctx);
-            return err_info;
+        if (diff_node->schema->nodetype == LYS_LEAF) {
+            /* update its value */
+            if ((ret = lyd_change_leaf((struct lyd_node_leaf_list *)match, sr_ly_leaf_value_str(diff_node))) < 0) {
+                sr_errinfo_new_ly(&err_info, ly_ctx);
+                return err_info;
+            }
+            /* a change must occur */
+            SR_CHECK_INT_RET(ret, err_info);
+        } else {
+            /* update the value */
+            if ((err_info = sr_lyd_anydata_copy(match, diff_node))) {
+                return err_info;
+            }
         }
-        /* a change must occur */
-        SR_CHECK_INT_RET(ret, err_info);
 
         /* with validity and dflt */
         match->validity = diff_node->validity;
@@ -2831,7 +2839,7 @@ sr_diff_update_r(const struct lyd_node *first_node, struct lyd_node *diff_node, 
     enum edit_op op;
     struct lyd_node *match = NULL, *next, *diff_child;
     const char *key_or_value;
-    int op_own;
+    int op_own, equal;
 
     /* read all the valid attributes */
     if ((err_info = sr_diff_op(diff_node, &op, &op_own, &key_or_value))) {
@@ -2916,7 +2924,7 @@ sr_diff_update_r(const struct lyd_node *first_node, struct lyd_node *diff_node, 
         }
         break;
     case EDIT_REPLACE:
-        SR_CHECK_INT_RET(diff_node->schema->nodetype != LYS_LEAF, err_info);
+        SR_CHECK_INT_RET(!(diff_node->schema->nodetype & (LYS_LEAF | LYS_ANYXML | LYS_ANYDATA)), err_info);
 
         /* find the node */
         if ((err_info = sr_edit_find(first_node, diff_node, op, 0, NULL, 0, &match, NULL))) {
@@ -2924,9 +2932,18 @@ sr_diff_update_r(const struct lyd_node *first_node, struct lyd_node *diff_node, 
         }
 
         if (match) {
-            /* leaf must be different */
-            if ((match->dflt == diff_node->dflt) && (sr_ly_leaf_value_str(match) == sr_ly_leaf_value_str(diff_node))) {
-                match = NULL;
+            /* value must be different */
+            if (diff_node->schema->nodetype == LYS_LEAF) {
+                if ((match->dflt == diff_node->dflt) && (sr_ly_leaf_value_str(match) == sr_ly_leaf_value_str(diff_node))) {
+                    match = NULL;
+                }
+            } else {
+                if ((err_info = sr_lyd_anydata_equal(match, diff_node, &equal))) {
+                    return err_info;
+                }
+                if (equal) {
+                    match = NULL;
+                }
             }
         }
         break;
@@ -3660,7 +3677,7 @@ sr_diff_set_getnext(struct ly_set *set, uint32_t *idx, struct lyd_node **node, s
         } else if (attr->value_str[0] == 'r') {
             assert(!strcmp(attr->annotation->module->name, "ietf-netconf"));
             assert(!strcmp(attr->value_str, "replace"));
-            if ((*node)->schema->nodetype == LYS_LEAF) {
+            if ((*node)->schema->nodetype & (LYS_LEAF | LYS_ANYXML | LYS_ANYDATA)) {
                 *op = SR_OP_MODIFIED;
             } else if ((*node)->schema->nodetype & (LYS_LIST | LYS_LEAFLIST)) {
                 *op = SR_OP_MOVED;
@@ -3687,6 +3704,7 @@ sr_diff_reverse(const struct lyd_node *diff, struct lyd_node **reverse_diff)
     struct ly_ctx *ly_ctx;
     const struct lys_module *ly_sr_mod, *ly_yang_mod;
     struct lyd_node *root, *next, *elem;
+    struct lyd_node_anydata *any;
     enum edit_op op;
     struct lyd_attr *at, *attr1, *attr2;
     char *val_str = NULL;
@@ -3770,6 +3788,39 @@ sr_diff_reverse(const struct lyd_node *diff, struct lyd_node **reverse_diff)
                     free(val_str);
                     val_str = NULL;
                     break;
+                case LYS_ANYXML:
+                case LYS_ANYDATA:
+                    /* switch any value for attr "orig-value" and vice versa */
+                    if ((err_info = sr_ly_anydata_value_str(elem, &val_str))) {
+                        return err_info;
+                    }
+
+                    attr1 = NULL;
+                    LY_TREE_FOR(elem->attr, at) {
+                        if (!strcmp(at->name, "orig-value")) {
+                            assert(at->annotation->module == ly_sr_mod);
+                            attr1 = at;
+                            break;
+                        }
+                    }
+                    assert(attr1);
+
+                    /* update the node */
+                    sr_lyd_anydata_free(elem);
+                    any = (struct lyd_node_anydata *)elem;
+                    any->value_type = LYD_ANYDATA_CONSTSTRING;
+                    any->value.str = lydict_insert(ly_ctx, attr1->value_str, 0);
+
+                    /* update attribute */
+                    lyd_free_attr(ly_ctx, elem, attr1, 0);
+                    if (!lyd_insert_attr(elem, ly_sr_mod, "orig-value", val_str)) {
+                        sr_errinfo_new_ly(&err_info, ly_ctx);
+                        goto error;
+                    }
+
+                    free(val_str);
+                    val_str = NULL;
+                    break;
                 case LYS_LEAFLIST:
                     /* switch "orig-value" for "value" and vice versa */
                     attr1_name = "orig-value";
@@ -3777,6 +3828,7 @@ sr_diff_reverse(const struct lyd_node *diff, struct lyd_node **reverse_diff)
 
                 /* fallthrough */
                 case LYS_LIST:
+                    assert(sr_ly_is_userord(elem));
                     if (elem->schema->nodetype == LYS_LIST) {
                         /* switch "orig-key" for "key" and vice versa */
                         attr1_name = "orig-key";

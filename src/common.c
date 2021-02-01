@@ -4307,21 +4307,18 @@ cleanup:
     return err_info;
 }
 
-sr_error_info_t *
-sr_lyd_anydata_copy(struct lyd_node *trg, const struct lyd_node *src)
+void
+sr_lyd_anydata_free(struct lyd_node *any)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node_anydata *t;
-    const struct lyd_node_anydata *s;
     struct ly_ctx *ly_ctx;
-    int len;
 
-    assert(trg->schema->nodetype & src->schema->nodetype & LYS_ANYDATA);
-    t = (struct lyd_node_anydata *)trg;
-    s = (const struct lyd_node_anydata *)src;
+    assert(any->schema->nodetype & LYS_ANYDATA);
+    t = (struct lyd_node_anydata *)any;
     ly_ctx = t->schema->module->ctx;
 
-    /* free trg */
+    /* free any value */
     switch (t->value_type) {
     case LYD_ANYDATA_CONSTSTRING:
     case LYD_ANYDATA_SXML:
@@ -4343,9 +4340,27 @@ sr_lyd_anydata_copy(struct lyd_node *trg, const struct lyd_node *src)
     case LYD_ANYDATA_LYBD:
         /* dynamic strings are used only as input parameters */
         SR_ERRINFO_INT(&err_info);
-        return err_info;
+        sr_errinfo_free(&err_info);
     }
     t->value.str = NULL;
+}
+
+sr_error_info_t *
+sr_lyd_anydata_copy(struct lyd_node *trg, const struct lyd_node *src)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node_anydata *t;
+    const struct lyd_node_anydata *s;
+    struct ly_ctx *ly_ctx;
+    int len;
+
+    assert(trg->schema->nodetype & src->schema->nodetype & LYS_ANYDATA);
+    t = (struct lyd_node_anydata *)trg;
+    s = (const struct lyd_node_anydata *)src;
+    ly_ctx = t->schema->module->ctx;
+
+    /* free trg */
+    sr_lyd_anydata_free(trg);
 
     /* copy src */
     t->value_type = s->value_type;
