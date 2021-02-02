@@ -396,6 +396,11 @@ cleanup:
     sr_errinfo_free(&err_info);
 }
 
+inline static int sr_sid_compare(sr_sid_t *a, sr_sid_t *b)
+{
+    return a->sr == b->sr && a->nc == b ->nc;
+}
+
 /**
  * @brief Lock or relock a main SHM module.
  *
@@ -420,7 +425,7 @@ sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod
     cb_data.ds = ds;
 
     if (relock) {
-        assert(!memcmp(&shm_lock->sid, &sid, sizeof sid));
+        assert(sr_sid_compare(&shm_lock->sid, &sid));
 
         /* RELOCK */
         err_info = sr_rwrelock(&shm_lock->lock, timeout_ms, mode, cid, __func__, sr_shmmod_recover_cb, &cb_data);
@@ -448,7 +453,7 @@ sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod
                 goto revert_lock;
             }
             /* we hold DS lock */
-            assert(!memcmp(&shm_lock->sid, &sid, sizeof sid));
+            assert(sr_sid_compare(&shm_lock->sid, &sid));
         } else {
             /* read-upgr-lock or write-lock, store */
             shm_lock->sid = sid;
@@ -497,7 +502,7 @@ sr_shmmod_unlock(struct sr_mod_lock_s *shm_lock, int timeout_ms, sr_lock_mode_t 
 
     /* remove our SID */
     if ((mode == SR_LOCK_READ_UPGR) || (mode == SR_LOCK_WRITE)) {
-        assert(!memcmp(&shm_lock->sid, &sid, sizeof sid));
+        assert(sr_sid_compare(&shm_lock->sid, &sid));
 
         /* if we still have DS lock, keep our SID set */
         if (!ATOMIC_LOAD_RELAXED(shm_lock->ds_locked)) {
@@ -506,7 +511,7 @@ sr_shmmod_unlock(struct sr_mod_lock_s *shm_lock, int timeout_ms, sr_lock_mode_t 
     } else if (!ATOMIC_LOAD_RELAXED(shm_lock->ds_locked) && !shm_lock->lock.upgr) {
         /* there is no other higher-priority lock (recursive locks) so set SID 0 even if there are other readers
          * (rather print SID 0 than our since we have just released the lock) */
-        if (!memcmp(&shm_lock->sid, &sid, sizeof sid)) {
+        if (!sr_sid_compare(&shm_lock->sid, &sid)) {
             memset(&shm_lock->sid, 0, sizeof shm_lock->sid);
         }
     }
