@@ -695,7 +695,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, sr_conn_
     }
 
     /* EXT READ LOCK */
-    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, __func__))) {
         goto cleanup_opersub_unlock;
     }
 
@@ -778,7 +778,7 @@ next_iter:
 
 cleanup_opersub_ext_unlock:
     /* EXT READ UNLOCK */
-    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, __func__);
 
 cleanup_opersub_unlock:
     /* OPER SUB READ UNLOCK */
@@ -2292,7 +2292,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     notif_ts = time(NULL);
 
     /* EXT READ LOCK */
-    if ((err_info = sr_shmext_conn_remap_lock(mod_info->conn, SR_LOCK_READ, 0, __func__))) {
+    if ((err_info = sr_shmext_conn_remap_lock(mod_info->conn, SR_LOCK_READ, __func__))) {
         return err_info;
     }
 
@@ -2300,7 +2300,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     err_info = sr_notif_find_subscriber(mod_info->conn, "ietf-netconf-notifications", &notif_subs, &notif_sub_count);
 
     /* EXT READ UNLOCK */
-    sr_shmext_conn_remap_unlock(mod_info->conn, SR_LOCK_READ, 0, __func__);
+    sr_shmext_conn_remap_unlock(mod_info->conn, SR_LOCK_READ, __func__);
 
     if (err_info) {
         return err_info;

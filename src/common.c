@@ -2290,6 +2290,123 @@ sr_shm_clear(sr_shm_t *shm)
     shm->size = 0;
 }
 
+sr_ext_hole_t *
+sr_ext_hole_next(sr_ext_hole_t *last, sr_ext_shm_t *ext_shm)
+{
+    if (!last) {
+        if (!ext_shm->first_hole_off) {
+            return NULL;
+        }
+        return (sr_ext_hole_t *)(((char *)ext_shm) + ext_shm->first_hole_off);
+    } else if (!last->next_hole_off) {
+        return NULL;
+    }
+
+    return (sr_ext_hole_t *)(((char *)ext_shm) + last->next_hole_off);
+}
+
+sr_ext_hole_t *
+sr_ext_hole_find(sr_ext_shm_t *ext_shm, uint32_t off, uint32_t min_size)
+{
+    sr_ext_hole_t *hole;
+
+    for (hole = sr_ext_hole_next(NULL, ext_shm); hole; hole = sr_ext_hole_next(hole, ext_shm)) {
+        if (off) {
+            if (((char *)hole - (char *)ext_shm == off) && (hole->size >= min_size)) {
+                return hole;
+            }
+            if ((char *)hole - (char *)ext_shm > off) {
+                /* foo large offset, it cannot be found anymore */
+                break;
+            }
+        } else if (hole->size >= min_size) {
+            return hole;
+        }
+    }
+
+    return NULL;
+}
+
+void
+sr_ext_hole_del(sr_ext_shm_t *ext_shm, sr_ext_hole_t *hole)
+{
+    sr_ext_hole_t *h, *prev = NULL;
+
+    for (h = sr_ext_hole_next(NULL, ext_shm); h; h = sr_ext_hole_next(h, ext_shm)) {
+        if (h == hole) {
+            /* found the hole */
+            break;
+        }
+
+        prev = h;
+    }
+    assert(h);
+
+    /* fíx offsets */
+    if (prev) {
+        prev->next_hole_off = hole->next_hole_off;
+    } else {
+        ext_shm->first_hole_off = hole->next_hole_off;
+    }
+}
+
+void
+sr_ext_hole_add(sr_ext_shm_t *ext_shm, uint32_t off, uint32_t size)
+{
+    sr_ext_hole_t *next, *prev = NULL, *hole;
+    int con_prev = 0, con_next = 0;
+
+    for (next = sr_ext_hole_next(NULL, ext_shm); next; next = sr_ext_hole_next(next, ext_shm)) {
+        if ((char *)next - (char *)ext_shm > off) {
+            /* found the next hole */
+            break;
+        }
+
+        prev = next;
+    }
+
+    if (prev && (((char *)prev - (char *)ext_shm) + prev->size == off)) {
+        /* connecting with prev */
+        con_prev = 1;
+    }
+    if (next && (off + size == (char *)next - (char *)ext_shm)) {
+        /* connecting with next */
+        con_next = 1;
+    }
+
+    hole = (sr_ext_hole_t *)((char *)ext_shm + off);
+    if (con_prev && con_next) {
+        /* prev + hole + next */
+        prev->size += size + next->size;
+        prev->next_hole_off = next->next_hole_off;
+    } else if (con_prev) {
+        /* prev + hole -> (next) */
+        prev->size += size;
+    } else if (con_next) {
+        /* (prev) -> hole + next */
+        if (prev) {
+            prev->next_hole_off = off;
+        } else {
+            ext_shm->first_hole_off = off;
+        }
+        hole->size = size + next->size;
+        hole->next_hole_off = next->next_hole_off;
+    } else {
+        /* (prev) -> hole -> (next) */
+        if (prev) {
+            prev->next_hole_off = off;
+        } else {
+            ext_shm->first_hole_off = off;
+        }
+        hole->size = size;
+        if (next) {
+            hole->next_hole_off = (char *)next - (char *)ext_shm;
+        } else {
+            hole->next_hole_off = 0;
+        }
+    }
+}
+
 off_t
 sr_shmcpy(char *shm_addr, const void *src, size_t size, char **shm_end)
 {
@@ -2329,14 +2446,38 @@ sr_strshmlen(const char *str)
     return SR_SHM_SIZE(strlen(str) + 1);
 }
 
+/**
+ * @brief Use a found hole (remove it), add a smaller hole if it is not used fully.
+ *
+ * @param[in] ext_shm Ext SHM.
+ * @param[in] hole Hole to use.
+ * @param[in] used_size Used size from the hole.
+ */
+static void
+sr_shmrealloc_use_hole(sr_ext_shm_t *ext_shm, sr_ext_hole_t *hole, uint32_t used_size)
+{
+    uint32_t new_hole_size;
+
+    new_hole_size = hole->size - used_size;
+
+    /* we are using this hole, remove it */
+    sr_ext_hole_del(ext_shm, hole);
+    if (new_hole_size) {
+        /* the full hole will not be used, add a smaller one */
+        sr_ext_hole_add(ext_shm, (((char *)hole) - (char *)ext_shm) + used_size, new_hole_size);
+    }
+}
+
 sr_error_info_t *
 sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array_off, uint32_t *shm_count, int in_ext_shm, size_t item_size,
         int64_t add_idx, void **new_item, size_t dyn_attr_size, off_t *dyn_attr_off)
 {
     sr_error_info_t *err_info = NULL;
-    off_t new_array_off, attr_off;
-    size_t new_ext_size;
+    off_t new_array_off = 0, attr_off = 0;
+    size_t new_ext_size, new_array_size, array_size_diff;
     char *old_shm_addr;
+    sr_ext_shm_t *ext_shm = (sr_ext_shm_t *)shm_ext->addr;
+    sr_ext_hole_t *con_array_hole = NULL, *array_hole = NULL, *attr_hole = NULL;
 
     assert((*shm_array_off && *shm_count) || (!*shm_array_off && !*shm_count));
     assert((add_idx > -2) && (add_idx <= *shm_count));
@@ -2349,14 +2490,49 @@ sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array_off, uint32_t *shm_count, 
         /* add at the end */
         add_idx = *shm_count;
     }
+    new_ext_size = shm_ext->size;
+    new_array_size = SR_SHM_SIZE((*shm_count + 1) * item_size);
+    array_size_diff = new_array_size - SR_SHM_SIZE(*shm_count * item_size);
 
-    /* we may not even need to resize ext SHM because of the alignment */
-    if (SR_SHM_SIZE((*shm_count + 1) * item_size) + dyn_attr_size > SR_SHM_SIZE(*shm_count * item_size)) {
-        /* get new offsets and size */
-        new_array_off = shm_ext->size;
-        attr_off = new_array_off + SR_SHM_SIZE((*shm_count + 1) * item_size);
-        new_ext_size = attr_off + dyn_attr_size;
+    /*
+     * get all the suitable holes or offsets
+     * !! the holes are immediately updated (removed, so that the holes are not reused) so they must only be used as pointers !!
+     */
 
+    /* sizes may be equal because of alignment */
+    if (array_size_diff) {
+        if (*shm_array_off) {
+            /* try to find a hole right after the current array, we would not need to move the array then */
+            con_array_hole = sr_ext_hole_find(ext_shm, *shm_array_off + array_size_diff, array_size_diff);
+        }
+        if (!con_array_hole) {
+            /* find suitable hole or new offset for the array */
+            array_hole = sr_ext_hole_find(ext_shm, 0, new_array_size);
+            if (!array_hole) {
+                new_array_off = new_ext_size;
+                new_ext_size += new_array_size;
+            } else {
+                sr_shmrealloc_use_hole(ext_shm, array_hole, new_array_size);
+            }
+        } else {
+            sr_shmrealloc_use_hole(ext_shm, con_array_hole, array_size_diff);
+        }
+    }
+    if (dyn_attr_size) {
+        /* find suitable hole or new offset for the dynamic attribute */
+        attr_hole = sr_ext_hole_find(ext_shm, 0, dyn_attr_size);
+        if (!attr_hole) {
+            attr_off = new_ext_size;
+            new_ext_size += dyn_attr_size;
+        } else {
+            sr_shmrealloc_use_hole(ext_shm, attr_hole, dyn_attr_size);
+        }
+    }
+
+    /*
+     * we need to enlarge the ext SHM
+     */
+    if (new_ext_size > shm_ext->size) {
         /* remember current SHM mapping address */
         old_shm_addr = shm_ext->addr;
 
@@ -2365,38 +2541,64 @@ sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array_off, uint32_t *shm_count, 
             return err_info;
         }
 
+        /* update our pointers after ext SHM was remapped */
         if (in_ext_shm) {
-            /* update our pointers after ext SHM was remapped */
             shm_array_off = (off_t *)(shm_ext->addr + (((char *)shm_array_off) - old_shm_addr));
             shm_count = (uint32_t *)(shm_ext->addr + (((char *)shm_count) - old_shm_addr));
         }
-
-        /* add wasted memory */
-        ATOMIC_ADD_RELAXED(((sr_ext_shm_t *)shm_ext->addr)->wasted, SR_SHM_SIZE(*shm_count * item_size));
-
-        /* copy preceding items */
-        if (add_idx) {
-            memcpy(shm_ext->addr + new_array_off, shm_ext->addr + *shm_array_off, add_idx * item_size);
+        if (con_array_hole) {
+            con_array_hole = (sr_ext_hole_t *)(shm_ext->addr + (((char *)con_array_hole) - old_shm_addr));
         }
-
-        /* copy succeeding items */
-        if (add_idx < *shm_count) {
-            memcpy(shm_ext->addr + new_array_off + (add_idx + 1) * item_size,
-                    shm_ext->addr + *shm_array_off + add_idx * item_size, (*shm_count - add_idx) * item_size);
+        if (array_hole) {
+            array_hole = (sr_ext_hole_t *)(shm_ext->addr + (((char *)array_hole) - old_shm_addr));
         }
-
-        /* update array and attribute offset */
-        *shm_array_off = new_array_off;
-        if (dyn_attr_off && dyn_attr_size) {
-            *dyn_attr_off = attr_off;
+        if (attr_hole) {
+            attr_hole = (sr_ext_hole_t *)(shm_ext->addr + (((char *)attr_hole) - old_shm_addr));
         }
+        ext_shm = (sr_ext_shm_t *)shm_ext->addr;
+    }
 
-    } else if (add_idx < *shm_count) {
-        assert(!dyn_attr_size);
+    /*
+     * set the offsets for the new array/dynamic attribute
+     */
+    if (!array_size_diff || con_array_hole) {
+        /* array is not moved */
+        new_array_off = *shm_array_off;
+    } else if (array_hole) {
+        /* moving the array to this hole */
+        new_array_off = ((char *)array_hole) - shm_ext->addr;
+    } /* else new_array_off is set */
+    assert(new_array_off);
+    if (dyn_attr_size) {
+        if (attr_hole) {
+            attr_off = ((char *)attr_hole) - shm_ext->addr;
+        }
+        assert(attr_off);
+    }
 
-        /* we only need to move succeeding items */
-        memmove(shm_ext->addr + *shm_array_off + (add_idx + 1) * item_size,
+    /*
+     * perform the actual (re)allocation
+     */
+    if (array_size_diff && !con_array_hole && add_idx) {
+        /* copy preceding items (only if the array is moved) */
+        memcpy(shm_ext->addr + new_array_off, shm_ext->addr + *shm_array_off, add_idx * item_size);
+    }
+
+    if (add_idx < *shm_count) {
+        /* copy succeeding items (always, because we are inserting into the array, the memory can overlap) */
+        memmove(shm_ext->addr + new_array_off + (add_idx + 1) * item_size,
                 shm_ext->addr + *shm_array_off + add_idx * item_size, (*shm_count - add_idx) * item_size);
+    }
+
+    /* add new hole if the array was moved */
+    if (array_size_diff && *shm_array_off && !con_array_hole) {
+        sr_ext_hole_add(ext_shm, *shm_array_off, SR_SHM_SIZE(*shm_count * item_size));
+    }
+
+    /* update array and attribute offset */
+    *shm_array_off = new_array_off;
+    if (dyn_attr_size) {
+        *dyn_attr_off = attr_off;
     }
 
     /* return pointer to the new item and update count */
@@ -2407,23 +2609,51 @@ sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array_off, uint32_t *shm_count, 
 }
 
 void
-sr_shmrealloc_del(char *ext_shm_addr, off_t *shm_array_off, uint32_t *shm_count, size_t item_size, uint32_t del_idx,
-        size_t dyn_shm_size)
+sr_shmrealloc_del(sr_shm_t *shm_ext, off_t *shm_array_off, uint32_t *shm_count, size_t item_size, uint32_t del_idx,
+        size_t dyn_attr_size, off_t dyn_attr_off)
 {
-    /* add wasted memory keeping alignment in mind */
-    ATOMIC_ADD_RELAXED(((sr_ext_shm_t *)ext_shm_addr)->wasted, SR_SHM_SIZE(*shm_count * item_size)
-        - SR_SHM_SIZE((*shm_count - 1) * item_size));
-    ATOMIC_ADD_RELAXED(((sr_ext_shm_t *)ext_shm_addr)->wasted, dyn_shm_size);
+    sr_ext_shm_t *ext_shm = (sr_ext_shm_t *)shm_ext->addr;
+    size_t array_size_diff;
+    uint32_t new_hole_off[2] = {0}, new_hole_size[2] = {0}, i;
 
+    assert((!dyn_attr_size && !dyn_attr_off) || (dyn_attr_size && dyn_attr_off));
+    assert(dyn_attr_size == SR_SHM_SIZE(dyn_attr_size));
+
+    array_size_diff = SR_SHM_SIZE(*shm_count * item_size) - SR_SHM_SIZE((*shm_count - 1) * item_size);
+
+    /*
+     * remember new holes
+     */
+    if (array_size_diff) {
+        new_hole_off[0] = *shm_array_off + SR_SHM_SIZE((*shm_count - 1) * item_size);
+        new_hole_size[0] = array_size_diff;
+    }
+    if (dyn_attr_size) {
+        new_hole_off[1] = dyn_attr_off;
+        new_hole_size[1] = dyn_attr_size;
+    }
+
+    /*
+     * perform the removal
+     */
     --(*shm_count);
     if (!*shm_count) {
         /* the only item removed */
         *shm_array_off = 0;
     } else if (del_idx < *shm_count) {
         /* move all following items, we may need to keep the order intact */
-        memmove((ext_shm_addr + *shm_array_off) + (del_idx * item_size),
-                (ext_shm_addr + *shm_array_off) + ((del_idx + 1) * item_size),
+        memmove((shm_ext->addr + *shm_array_off) + (del_idx * item_size),
+                (shm_ext->addr + *shm_array_off) + ((del_idx + 1) * item_size),
                 (*shm_count - del_idx) * item_size);
+    }
+
+    /*
+     * add new holes
+     */
+    for (i = 0; i < 2; ++i) {
+        if (new_hole_size[i]) {
+            sr_ext_hole_add(ext_shm, new_hole_off[i], new_hole_size[i]);
+        }
     }
 }
 
