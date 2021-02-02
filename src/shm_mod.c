@@ -512,6 +512,7 @@ sr_shmmod_unlock(struct sr_mod_lock_s *shm_lock, int timeout_ms, sr_lock_mode_t 
         /* there is no other higher-priority lock (recursive locks) so set SID 0 even if there are other readers
          * (rather print SID 0 than our since we have just released the lock) */
         if (!sr_sid_compare(&shm_lock->sid, &sid)) {
+            free(shm_lock->sid.user);
             memset(&shm_lock->sid, 0, sizeof shm_lock->sid);
         }
     }
