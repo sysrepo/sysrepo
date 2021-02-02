@@ -123,6 +123,34 @@ error_ext_unlock:
 void
 sr_shmext_conn_remap_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock, const char *func)
 {
+    sr_error_info_t *err_info = NULL;
+    sr_ext_hole_t *iter, *last = NULL;
+    uint32_t last_size;
+    size_t shm_file_size;
+
+    /* make ext SHM smaller if there is a memory hole at its end */
+    if ((mode == SR_LOCK_WRITE) && ext_lock) {
+        while ((iter = sr_ext_hole_next(last, SR_CONN_EXT_SHM(conn)))) {
+            last = iter;
+        }
+
+        if (last && (((char *)last - conn->ext_shm.addr) + last->size == (signed)conn->ext_shm.size)) {
+            if ((err_info = sr_file_get_size(conn->ext_shm.fd, &shm_file_size))) {
+                goto cleanup_unlock;
+            }
+
+            /* remove the hole */
+            last_size = last->size;
+            sr_ext_hole_del(SR_CONN_EXT_SHM(conn), last);
+
+            /* remap (and truncate) ext SHM */
+            if ((err_info = sr_shm_remap(&conn->ext_shm, shm_file_size - last_size))) {
+                goto cleanup_unlock;
+            }
+        }
+    }
+
+cleanup_unlock:
     /* REMAP UNLOCK */
     sr_rwunlock(&conn->ext_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, mode, conn->cid, func);
 
@@ -130,6 +158,8 @@ sr_shmext_conn_remap_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lo
         /* EXT UNLOCK */
         sr_munlock(&SR_CONN_MAIN_SHM(conn)->ext_lock);
     }
+
+    sr_errinfo_free(&err_info);
 }
 
 /**
