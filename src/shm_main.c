@@ -1161,7 +1161,7 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
         if ((err_info = sr_mutex_init(&main_shm->lydmods_lock, 1))) {
             goto error;
         }
-        if ((err_info = sr_rwlock_init(&main_shm->ext_lock, 1))) {
+        if ((err_info = sr_mutex_init(&main_shm->ext_lock, 1))) {
             goto error;
         }
         ATOMIC_STORE_RELAXED(main_shm->new_sr_cid, 1);
@@ -1312,7 +1312,7 @@ sr_shmmain_update_notif_suspend(sr_conn_ctx_t *conn, const char *mod_name, uint3
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     /* EXT READ LOCK */
-    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, __func__))) {
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
         return err_info;
     }
 
@@ -1340,7 +1340,7 @@ sr_shmmain_update_notif_suspend(sr_conn_ctx_t *conn, const char *mod_name, uint3
 
 cleanup_ext_unlock:
     /* EXT READ UNLOCK */
-    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, __func__);
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
     return err_info;
 }

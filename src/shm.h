@@ -142,7 +142,7 @@ typedef struct sr_main_shm_s {
     uint32_t shm_ver;           /**< Main and ext SHM version of all expected data stored in them. Is increased with
                                      every change of their structure content (ABI change). */
     pthread_mutex_t lydmods_lock; /**< Process-shared lock for accessing sysrepo module data. */
-    sr_rwlock_t ext_lock;       /**< Process-shared lock for accessing ext SHM. */
+    pthread_mutex_t ext_lock;   /**< Process-shared lock for accessing holes and truncating ext SHM. */
     uint32_t mod_count;         /**< Number of installed modules stored after this structure. */
 
     ATOMIC_T new_sr_cid;        /**< Connection ID for a new connection. */
@@ -486,20 +486,22 @@ sr_error_info_t *sr_shmmain_check_data_files(sr_main_shm_t *main_shm);
  * @brief Lock ext SHM lock and connection remap lock, remap ext SHM if needed.
  *
  * @param[in] conn Connection to use.
- * @param[in] mode Mode of the ext and remap lock.
+ * @param[in] mode Mode of the remap lock.
+ * @param[in] ext_lock Whether to lock ext lock.
  * @param[in] func Caller function name for logging.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func);
+sr_error_info_t *sr_shmext_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock, const char *func);
 
 /**
  * @brief Unlock ext SHM lock and connection remap lock.
  *
  * @param[in] conn Connection to use.
  * @param[in] mode Mode of the ext and remap lock.
+ * @param[in] ext_lock Whether to unlock ext lock.
  * @param[in] func Caller function name for logging.
  */
-void sr_shmext_conn_remap_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func);
+void sr_shmext_conn_remap_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock, const char *func);
 
 /**
  * @brief Debug print the contents of ext SHM.
