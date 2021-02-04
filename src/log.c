@@ -195,9 +195,14 @@ sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *xpat
     va_list vargs;
     int idx;
 
-    va_start(vargs, format);
-    sr_errinfo_add(err_info, err_code, xpath, format, &vargs);
-    va_end(vargs);
+    if ((err_code == SR_ERR_NOMEM) && !xpath && !format) {
+        /* there is no dynamic memory, use the static error structure */
+        *err_info = &sr_errinfo_mem;
+    } else {
+        va_start(vargs, format);
+        sr_errinfo_add(err_info, err_code, xpath, format, &vargs);
+        va_end(vargs);
+    }
 
     /* print it */
     idx = (*err_info)->err_count - 1;
