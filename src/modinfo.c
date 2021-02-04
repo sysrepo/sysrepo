@@ -2229,21 +2229,15 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
     /* filter return data */
     if (mod_info->data) {
         *result = lyd_find_path(mod_info->data, xpath);
+        SR_CHECK_LY_GOTO(!*result, mod_info->conn->ly_ctx, err_info, cleanup);
     } else {
         *result = ly_set_new();
-    }
-    if (!*result) {
-        SR_ERRINFO_MEM(&err_info);
-        goto cleanup;
+        SR_CHECK_MEM_GOTO(!*result, err_info, cleanup);
     }
 
     /* success */
 
 cleanup:
-    if (err_info) {
-        ly_set_free(*result);
-        *result = NULL;
-    }
     return err_info;
 }
 

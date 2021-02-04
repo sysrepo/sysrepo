@@ -1526,10 +1526,7 @@ sr_lydmods_add_all(struct lyd_node *sr_mod, const struct lys_module *ly_mod)
         /* find the dependent module */
         set2 = lyd_find_path(sr_mod->parent, xpath);
         free(xpath);
-        if (!set2) {
-            SR_ERRINFO_MEM(&err_info);
-            goto cleanup;
-        }
+        SR_CHECK_LY_GOTO(!set2, ly_mod->ctx, err_info, cleanup);
         assert(set2->number == 1);
 
         /* add inverse dependency */

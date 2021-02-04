@@ -109,6 +109,19 @@ teardown_f(void **state)
 
 /* TEST */
 static void
+test_invalid(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    int ret;
+
+    /* invalid xpath */
+    ret = sr_get_data(st->sess, "name()//.", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_LY);
+}
+
+/* TEST */
+static void
 test_cached_datastore(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -444,6 +457,7 @@ int
 main(void)
 {
     const struct CMUnitTest tests[] = {
+        cmocka_unit_test_setup_teardown(test_invalid, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_cached_datastore, setup_cached_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_enable_cached_get, setup_cached_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_no_read_access, setup_f, teardown_f),
