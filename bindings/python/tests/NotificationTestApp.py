@@ -118,10 +118,9 @@ if __name__ == "__main__":
     with open("pipe_"+settings['filename'], "w") as fifo:
         fifo.write("subscribed")
     sr.global_loop()
-    subscribe.unsubscribe()
 
     sess.session_stop()
-    
+
     conn = None
 
     print("Application exit requested, exiting.")
