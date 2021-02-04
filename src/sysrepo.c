@@ -3946,6 +3946,7 @@ cleanup:
     }
     if (err_info) {
         /* free any received output in case of an error */
+        for ( ; *output && (*output)->parent; *output = (*output)->parent) {}
         lyd_free_withsiblings(*output);
         *output = NULL;
     }
