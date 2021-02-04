@@ -399,6 +399,7 @@ libyang::S_Data_Node Session::rpc_send(libyang::S_Data_Node input, uint32_t time
         throw_exception(ret);
     }
 
+    for ( ; output && output->parent; output = output->parent) {}
     return std::make_shared<libyang::Data_Node>(output, std::make_shared<libyang::Deleter>(output));
 }
 
