@@ -96,7 +96,7 @@ teardown(void **state)
     return 0;
 }
 
-/* TEST 1 */
+/* TEST */
 static void
 test_one_session(void **state)
 {
@@ -174,7 +174,93 @@ test_one_session(void **state)
     sr_session_stop(sess);
 }
 
-/* TEST 2 */
+/* TEST */
+static void
+test_multi_session(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_session_ctx_t *sess1, *sess2;
+    int ret;
+
+    /*
+     * running
+     */
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess1);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess2);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* lock all modules */
+    ret = sr_lock(sess1, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* try lock/unlock from other session */
+    ret = sr_lock(sess2, NULL);
+    assert_int_equal(ret, SR_ERR_LOCKED);
+    ret = sr_unlock(sess2, NULL);
+    assert_int_equal(ret, SR_ERR_LOCKED);
+
+    /* unlock all modules */
+    ret = sr_unlock(sess1, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* lock all modules from the other session, leave locked */
+    ret = sr_lock(sess2, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /*
+     * candidate
+     */
+    sr_session_switch_ds(sess1, SR_DS_CANDIDATE);
+    sr_session_switch_ds(sess2, SR_DS_CANDIDATE);
+
+    /* lock all modules */
+    ret = sr_lock(sess1, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* try lock/unlock from other session */
+    ret = sr_lock(sess2, NULL);
+    assert_int_equal(ret, SR_ERR_LOCKED);
+    ret = sr_unlock(sess2, NULL);
+    assert_int_equal(ret, SR_ERR_LOCKED);
+
+    /* unlock all modules */
+    ret = sr_unlock(sess1, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* lock all modules from the other session, leave locked */
+    ret = sr_lock(sess2, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /*
+     * startup
+     */
+    sr_session_switch_ds(sess1, SR_DS_STARTUP);
+    sr_session_switch_ds(sess2, SR_DS_STARTUP);
+
+    /* lock all modules */
+    ret = sr_lock(sess1, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* try lock/unlock from other session */
+    ret = sr_lock(sess2, NULL);
+    assert_int_equal(ret, SR_ERR_LOCKED);
+    ret = sr_unlock(sess2, NULL);
+    assert_int_equal(ret, SR_ERR_LOCKED);
+
+    /* unlock all modules */
+    ret = sr_unlock(sess1, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* lock all modules from the other session, leave locked */
+    ret = sr_lock(sess2, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_session_stop(sess1);
+    sr_session_stop(sess2);
+}
+
+/* TEST */
 static void
 test_session_stop_unlock(void **state)
 {
@@ -215,6 +301,7 @@ test_session_stop_unlock(void **state)
     sr_session_stop(sess2);
 }
 
+/* TEST */
 static void
 test_get_lock(void **state)
 {
@@ -284,6 +371,7 @@ main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_one_session),
+        cmocka_unit_test(test_multi_session),
         cmocka_unit_test(test_session_stop_unlock),
         cmocka_unit_test(test_get_lock),
     };
