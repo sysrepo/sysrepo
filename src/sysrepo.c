@@ -1968,33 +1968,46 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
             goto cleanup_unlock;
         }
 
+        /* unlock so that we can lock after additonal modules were marked as changed */
+
+        /* CHANGE SUB READ UNLOCK */
+        sr_modinfo_changesub_rdunlock(mod_info);
+
         /* validate updated data trees and finish new diff */
         switch (session->ds) {
         case SR_DS_STARTUP:
         case SR_DS_RUNNING:
             if ((err_info = sr_shmmod_collect_instid_deps_modinfo(mod_info, &mod_set))) {
-                goto cleanup_unlock;
+                goto cleanup;
             }
+
+            /* add new modules */
             if (mod_set.count && (err_info = sr_modinfo_add_modules(mod_info, &mod_set, 0, SR_LOCK_READ,
                     SR_MI_MOD_DEPS | SR_MI_PERM_NO, session->sid, NULL, 0, 0))) {
-                goto cleanup_unlock;
+                goto cleanup;
             }
             ly_set_clean(&mod_set, NULL);
 
+            /* validate */
             if ((err_info = sr_modinfo_validate(mod_info, MOD_INFO_CHANGED | MOD_INFO_INV_DEP, 1))) {
-                goto cleanup_unlock;
+                goto cleanup;
             }
             break;
         case SR_DS_CANDIDATE:
             if ((err_info = sr_modinfo_add_defaults(mod_info, 1))) {
-                goto cleanup_unlock;
+                goto cleanup;
             }
             break;
         case SR_DS_OPERATIONAL:
             if ((err_info = sr_modinfo_add_np_cont(mod_info))) {
-                goto cleanup_unlock;
+                goto cleanup;
             }
             break;
+        }
+
+        /* CHANGE SUB READ LOCK */
+        if ((err_info = sr_modinfo_changesub_rdlock(mod_info))) {
+            goto cleanup;
         }
 
         /* put the old diff back */
