@@ -1308,8 +1308,8 @@ sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const 
         goto cleanup;
     }
 
-    /* remap to make space for additional data (parent) */
-    if ((err_info = sr_shm_remap(&shm_sub, sizeof *sub_shm + parent_lyb_len))) {
+    /* remap to make space for additional data */
+    if ((err_info = sr_shm_remap(&shm_sub, sizeof *sub_shm + sr_strshmlen(request_xpath) + parent_lyb_len))) {
         goto cleanup_wrunlock;
     }
     sub_shm = (sr_sub_shm_t *)shm_sub.addr;

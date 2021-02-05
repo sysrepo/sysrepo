@@ -64,6 +64,10 @@ module test {
         leaf server {
             type inet:host;
         }
+
+        anyxml anyx;
+
+        anydata anyd;
     }
 
     list l3 {

@@ -907,8 +907,9 @@ sr_diff_add_meta(struct lyd_node *diff_node, const char *meta_val, const char *p
         }
         break;
     case EDIT_REPLACE:
-        if (diff_node->schema->nodetype == LYS_LEAF) {
+        if (diff_node->schema->nodetype & (LYS_LEAF | LYS_ANYXML | LYS_ANYDATA)) {
             assert(meta_val);
+            assert(!prev_meta_val || (diff_node->schema->nodetype == LYS_LEAF));
 
             /* add info about previous value and default state as an attribute */
             if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:orig-value", meta_val, 0, NULL)) {
@@ -1550,7 +1551,8 @@ sr_edit_apply_replace(struct lyd_node *match_node, int val_equal, const struct l
         case LYS_ANYXML:
         case LYS_ANYDATA:
             /* remember previous value */
-            if ((err_info = sr_ly_anydata_value_str(match_node, &prev_val))) {
+            if (lyd_any_value_str(match_node, &prev_val)) {
+                sr_errinfo_new_ly(&err_info, LYD_CTX(match_node));
                 return err_info;
             }
 
@@ -2096,7 +2098,7 @@ sr_diff_update_r(const struct lyd_node *first_node, struct lyd_node *diff_node, 
         }
         break;
     case EDIT_REPLACE:
-        SR_CHECK_INT_RET(diff_node->schema->nodetype != LYS_LEAF, err_info);
+        SR_CHECK_INT_RET(!(diff_node->schema->nodetype & (LYS_LEAF | LYS_ANYXML | LYS_ANYDATA)), err_info);
 
         /* find the node */
         if ((err_info = sr_edit_find(first_node, diff_node, op, 0, NULL, 0, &match, NULL))) {
@@ -2104,7 +2106,7 @@ sr_diff_update_r(const struct lyd_node *first_node, struct lyd_node *diff_node, 
         }
 
         if (match) {
-            /* leaf must be different */
+            /* flags/value must be different */
             if (((match->flags & LYD_DEFAULT) == (diff_node->flags & LYD_DEFAULT))
                     && !lyd_compare_single(match, diff_node, 0)) {
                 match = NULL;
@@ -2586,7 +2588,7 @@ sr_diff_set_getnext(struct ly_set *set, uint32_t *idx, struct lyd_node **node, s
         } else if (meta->value.enum_item->name[0] == 'd') {
             *op = SR_OP_DELETED;
         } else if (meta->value.enum_item->name[0] == 'r') {
-            if ((*node)->schema->nodetype == LYS_LEAF) {
+            if ((*node)->schema->nodetype & (LYS_LEAF | LYS_ANYDATA)) {
                 *op = SR_OP_MODIFIED;
             } else if ((*node)->schema->nodetype & (LYS_LIST | LYS_LEAFLIST)) {
                 *op = SR_OP_MOVED;

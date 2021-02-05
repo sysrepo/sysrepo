@@ -136,6 +136,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     struct lyd_node *sr_mods = NULL;
     int created = 0, changed;
     sr_main_shm_t *main_shm;
+    sr_ext_hole_t *hole;
 
     SR_CHECK_ARG_APIRET(!conn_p, NULL, err_info);
 
@@ -194,10 +195,10 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
             goto cleanup_unlock;
         }
 
-        assert((conn->ext_shm.size != SR_SHM_SIZE(sizeof(sr_ext_shm_t))) || !ATOMIC_LOAD_RELAXED(SR_CONN_EXT_SHM(conn)->wasted));
-        if (conn->ext_shm.size != SR_SHM_SIZE(sizeof(sr_ext_shm_t))) {
-            /* there is something in ext SHM, is it only wasted memory? */
-            if (conn->ext_shm.size != SR_SHM_SIZE(sizeof(sr_ext_shm_t)) + SR_CONN_EXT_SHM(conn)->wasted) {
+        assert((conn->ext_shm.size == SR_SHM_SIZE(sizeof(sr_ext_shm_t))) || sr_ext_hole_next(NULL, SR_CONN_EXT_SHM(conn)));
+        if ((hole = sr_ext_hole_next(NULL, SR_CONN_EXT_SHM(conn)))) {
+            /* there is something in ext SHM, is it only a single memory hole? */
+            if (conn->ext_shm.size != SR_SHM_SIZE(sizeof(sr_ext_shm_t)) + hole->size) {
                 /* no, this should never happen */
                 SR_ERRINFO_INT(&err_info);
             }
@@ -206,7 +207,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
             if ((err_info = sr_shm_remap(&conn->ext_shm, SR_SHM_SIZE(sizeof(sr_ext_shm_t))))) {
                 goto cleanup_unlock;
             }
-            ATOMIC_STORE_RELAXED(SR_CONN_EXT_SHM(conn)->wasted, 0);
+            SR_CONN_EXT_SHM(conn)->first_hole_off = 0;
         }
 
         /* copy full datastore from <startup> to <running> */

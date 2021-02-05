@@ -76,8 +76,6 @@ try:
         print (e)
 
     sr.global_loop()
-    
-    subscribe.unsubscribe()
 
     sess.session_stop()
 

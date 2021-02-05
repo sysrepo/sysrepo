@@ -91,7 +91,7 @@ try:
     # connect to sysrepo
     conn = sr.Connection(sr.SR_CONN_DEFAULT)
 
-    # start session 
+    # start session
     sess = sr.Session(conn)
 
     # subscribe for changes in running config */
@@ -105,8 +105,6 @@ try:
     #    print (e)
 
     sr.global_loop()
-
-    subscribe.unsubscribe()
 
     sess.session_stop()
 

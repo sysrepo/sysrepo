@@ -1724,19 +1724,7 @@ sr_modinfo_qsort_cmp(const void *ptr1, const void *ptr2)
     return 0;
 }
 
-/**
- * @brief Load data for modules in mod info.
- *
- * @param[in] mod_info Mod info to use.
- * @param[in] cache Whether it makes sense to use cached data, if available.
- * @param[in] sid Sysrepo session ID.
- * @param[in] request_id XPath of the data request.
- * @param[in] timeout_ms Operational callback timeout in milliseconds.
- * @param[in] opts Get oper data options.
- * @param[out] cb_error_info Callback error info in case an operational subscriber of required data failed.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
 sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, sr_sid_t sid, const char *request_xpath,
         uint32_t timeout_ms, sr_get_oper_options_t opts, sr_error_info_t **cb_error_info)
 {
@@ -2160,10 +2148,6 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
     /* success */
 
 cleanup:
-    if (err_info) {
-        ly_set_free(*result, NULL);
-        *result = NULL;
-    }
     return err_info;
 }
 

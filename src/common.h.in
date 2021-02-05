@@ -157,14 +157,11 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** maximum number of possible system-wide concurrent owners of a read lock */
 #define SR_RWLOCK_READ_LIMIT 10
 
-/** all ext SHM item sizes will be aligned to this number (B) */
-#define SR_SHM_MEM_ALIGN (sizeof(void *))
+/** all ext SHM item sizes will be aligned to this number; also represents the allocation unit (B) */
+#define SR_SHM_MEM_ALIGN 8
 
 /** notification file will never exceed this size (kB) */
 #define SR_EV_NOTIF_FILE_MAX_SIZE 1024
-
-/** maximum ext SHM wasted memory (B) */
-#define SR_SHM_WASTED_MAX_MEM 4096
 
 /** timeout for locking subscription structure lock, should be enough for a single ::sr_process_events() call (ms) */
 #define SR_SUBSCR_LOCK_TIMEOUT 30000
@@ -956,6 +953,43 @@ sr_error_info_t *sr_shm_remap(sr_shm_t *shm, size_t new_shm_size);
 void sr_shm_clear(sr_shm_t *shm);
 
 /**
+ * @brief Get the next ext SHM memory hole.
+ *
+ * @param[in] last Last returned hole, NULL on first call.
+ * @param[in] ext_shm Ext SHM.
+ * @return Next ext SHM memor hole, NULL if the last was returned.
+ */
+sr_ext_hole_t *sr_ext_hole_next(sr_ext_hole_t *last, sr_ext_shm_t *ext_shm);
+
+/**
+ * @brief Find an existing hole.
+ *
+ * @param[in] ext_shm Ext SHM.
+ * @param[in] off Optional offset of the hole.
+ * @param[in] min_size Minimum matching hole size.
+ * @return First suitable hole, NULL if none found.
+ */
+sr_ext_hole_t *sr_ext_hole_find(sr_ext_shm_t *ext_shm, uint32_t off, uint32_t min_size);
+
+/**
+ * @brief Delete an existing hole.
+ *
+ * @param[in] ext_shm Ext SHM.
+ * @param[in] hole Hole to delete.
+ */
+void sr_ext_hole_del(sr_ext_shm_t *ext_shm, sr_ext_hole_t *hole);
+
+/**
+ * @brief Add a new hole.
+ *
+ * @param[in] ext_shm Ext SHM.
+ * @param[in] off Offset of the new hole.
+ * @param[in] size Size of the new hole.
+ * @return First suitable hole, NULL if none found.
+ */
+void sr_ext_hole_add(sr_ext_shm_t *ext_shm, uint32_t off, uint32_t size);
+
+/**
  * @brief Copy memory into SHM.
  *
  * @param[in] shm_addr Mapped SHM address.
@@ -1008,15 +1042,16 @@ sr_error_info_t *sr_shmrealloc_add(sr_shm_t *shm_ext, off_t *shm_array_off, uint
 /**
  * @brief Realloc for an array in SHM deleting one item.
  *
- * @param[in] ext_shm_addr Ext SHM address.
+ * @param[in] shm_ext Ext SHM structure.
  * @param[in,out] shm_array_off Pointer to array in SHM, set to 0 if last item was removed.
  * @param[in,out] shm_count Pointer to array count in SHM, will be updated.
  * @param[in] item_size Array item size.
  * @param[in] del_idx Item index to delete.
- * @param[in] dyn_attr_size Aligned size of dynamic attributes of the deleted item.
+ * @param[in] dyn_attr_size Aligned size of dynamic attributes of the deleted item, if any.
+ * @param[in] dyn_attr_off Offset of the dynamic attribute, if any.
  */
-void sr_shmrealloc_del(char *ext_shm_addr, off_t *shm_array_off, uint32_t *shm_count, size_t item_size, uint32_t del_idx,
-        size_t dyn_shm_size);
+void sr_shmrealloc_del(sr_shm_t *shm_ext, off_t *shm_array_off, uint32_t *shm_count, size_t item_size, uint32_t del_idx,
+        size_t dyn_attr_size, off_t dyn_attr_off);
 
 /**
  * @brief Wrapper for pthread_mutex_init().
@@ -1335,15 +1370,6 @@ sr_error_info_t *sr_lyd_dup_enabled_xpath(const struct lyd_node *data, char **xp
 sr_error_info_t *sr_lyd_xpath_complement(struct lyd_node **data, const char *xpath);
 
 /**
- * @brief Get string value of an anydata/anyxml node.
- *
- * @param[in] any Anydata/anyxml to get the value from.
- * @param[out] value_str String value.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_ly_anydata_value_str(const struct lyd_node *any, char **value_str);
-
-/**
  * @brief Get a hash of a string value.
  *
  * @param[in] str String to hash.
@@ -1442,7 +1468,6 @@ sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, sr_
 
 /**
  * @brief Load operational data (diff) loaded from a SHM for a specific module.
- * The lock may be temporarily changed.
  *
  * @param[in] mod Mod info mod.
  * @param[out] diff Loaded diff to return.

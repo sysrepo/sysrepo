@@ -1200,7 +1200,7 @@ sr_shmmain_ext_open(sr_shm_t *shm, int zero)
         goto error;
     }
     if (zero) {
-        ATOMIC_STORE_RELAXED(((sr_ext_shm_t *)shm->addr)->wasted, 0);
+        ((sr_ext_shm_t *)shm->addr)->first_hole_off = 0;
     }
 
     return NULL;

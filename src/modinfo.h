@@ -125,6 +125,23 @@ sr_error_info_t *sr_modinfo_changesub_rdlock(struct sr_mod_info_s *mod_info);
  */
 void sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info);
 
+/**
+ * @brief Load data for modules in mod info.
+ * Should not be called directly because it is normally a part of ::sr_modinfo_add_modules()!
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] cache Whether it makes sense to use cached data, if available.
+ * @param[in] sid Sysrepo session ID.
+ * @param[in] request_id XPath of the data request.
+ * @param[in] timeout_ms Operational callback timeout in milliseconds.
+ * @param[in] opts Get oper data options.
+ * @param[out] cb_error_info Callback error info in case an operational subscriber of required data failed.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *
+sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, sr_sid_t sid, const char *request_xpath,
+        uint32_t timeout_ms, sr_get_oper_options_t opts, sr_error_info_t **cb_error_info);
+
 #define SR_MI_MOD_DEPS          0x01    /**< add modules not as MOD_INFO_REQ but as MOD_INFO_DEP */
 #define SR_MI_LOCK_UPGRADEABLE  0x02    /**< only valid for a read lock, make it upgradeable into a write lock */
 #define SR_MI_DATA_CACHE        0x04    /**< enable cache when loading module data */

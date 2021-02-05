@@ -2293,6 +2293,309 @@ test_no_changes(void **state)
 
 /* TEST */
 static int
+module_change_any_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    sr_change_oper_t op;
+    sr_change_iter_t *iter;
+    struct lyd_node *subtree;
+    const struct lyd_node *node;
+    char *str1;
+    const char *str2, *prev_val, *prev_list;
+    bool prev_dflt;
+    int ret;
+
+    (void)request_id;
+
+    assert_string_equal(module_name, "test");
+    assert_null(xpath);
+
+    switch (st->cb_called) {
+    case 0:
+    case 1:
+        if (st->cb_called == 0) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/test:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "anyx");
+
+        /* 2nd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "anyd");
+
+        /* no more changes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+
+        /* check current data tree */
+        ret = sr_get_subtree(session, "/test:cont", 0, &subtree);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        ret = lyd_print_mem(&str1, subtree, LYD_XML, LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS);
+        assert_int_equal(ret, 0);
+        lyd_free_tree(subtree);
+
+        str2 =
+        "<cont xmlns=\"urn:test\">"
+            "<anyx>&lt;some-xml&gt;&lt;elem&gt;value&lt;/elem&gt;&lt;/some-xml&gt;</anyx>"
+            "<anyd>{\"mod:some-data\": 24}</anyd>"
+        "</cont>";
+
+        assert_string_equal(str1, str2);
+        free(str1);
+        break;
+    case 2:
+    case 3:
+        if (st->cb_called == 2) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/test:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_MODIFIED);
+        assert_string_equal(prev_val, "<some-xml><elem>value</elem></some-xml>");
+        assert_string_equal(node->schema->name, "anyx");
+
+        /* 2nd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_MODIFIED);
+        assert_string_equal(prev_val, "{\"mod:some-data\": 24}");
+        assert_string_equal(node->schema->name, "anyd");
+
+        /* no more changes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+
+        /* check current data tree */
+        ret = sr_get_subtree(session, "/test:cont", 0, &subtree);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        ret = lyd_print_mem(&str1, subtree, LYD_XML, LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS);
+        assert_int_equal(ret, 0);
+        lyd_free_tree(subtree);
+
+        str2 =
+        "<cont xmlns=\"urn:test\">"
+            "<anyx>&lt;other-xml&gt;&lt;elem2&gt;value2&lt;/elem2&gt;&lt;/other-xml&gt;</anyx>"
+            "<anyd>{\"mod:new-data\": 48}</anyd>"
+        "</cont>";
+
+        assert_string_equal(str1, str2);
+        free(str1);
+        break;
+    case 4:
+    case 5:
+        if (st->cb_called == 4) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/test:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "anyx");
+
+        /* 2nd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_null(prev_val);
+        assert_string_equal(node->schema->name, "anyd");
+
+        /* no more changes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, &prev_list, &prev_dflt);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+
+        /* check current data tree */
+        ret = sr_get_subtree(session, "/test:cont", 0, &subtree);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_true(subtree->flags & LYD_DEFAULT);
+        lyd_free_tree(subtree);
+        break;
+    default:
+        fail();
+    }
+
+    ++st->cb_called;
+    return SR_ERR_OK;
+}
+
+static void *
+apply_change_any_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    struct lyd_node *subtree;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(sess, "/test:cont/anyx", "<some-xml><elem>value</elem></some-xml>", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/test:cont/anyd", "{\"mod:some-data\": 24}", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for subscription before applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    /* perform 1st change */
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check current data tree */
+    ret = sr_get_subtree(sess, "/test:cont", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, subtree, LYD_XML, LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    lyd_free_tree(subtree);
+
+    str2 =
+        "<cont xmlns=\"urn:test\">"
+            "<anyx>&lt;some-xml&gt;&lt;elem&gt;value&lt;/elem&gt;&lt;/some-xml&gt;</anyx>"
+            "<anyd>{\"mod:some-data\": 24}</anyd>"
+        "</cont>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* perform 2nd change */
+    ret = sr_set_item_str(sess, "/test:cont/anyx", "<other-xml><elem2>value2</elem2></other-xml>", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/test:cont/anyd", "{\"mod:new-data\": 48}", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check current data tree */
+    ret = sr_get_subtree(sess, "/test:cont", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, subtree, LYD_XML, LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    lyd_free_tree(subtree);
+
+    str2 =
+        "<cont xmlns=\"urn:test\">"
+            "<anyx>&lt;other-xml&gt;&lt;elem2&gt;value2&lt;/elem2&gt;&lt;/other-xml&gt;</anyx>"
+            "<anyd>{\"mod:new-data\": 48}</anyd>"
+        "</cont>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* perform 3rd change */
+    ret = sr_delete_item(sess, "/test:cont/anyx", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(sess, "/test:cont/anyd", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check current data tree */
+    ret = sr_get_subtree(sess, "/test:cont", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_true(subtree->flags & LYD_DEFAULT);
+    lyd_free_tree(subtree);
+
+    /* signal that we have finished applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+subscribe_change_any_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr;
+    int count, ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "test", NULL, module_change_any_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that subscription was created */
+    pthread_barrier_wait(&st->barrier);
+
+    count = 0;
+    while ((st->cb_called < 6) && (count < 1500)) {
+        usleep(10000);
+        ++count;
+    }
+    assert_int_equal(st->cb_called, 6);
+
+    /* wait for the other thread to finish */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_unsubscribe(subscr);
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_change_any(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, apply_change_any_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_change_any_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
+/* TEST */
+static int
 module_change_dflt_leaf_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
 {
@@ -5380,12 +5683,13 @@ main(void)
         cmocka_unit_test_setup_teardown(test_change_fail, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_fail2, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_no_changes, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_change_any, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_dflt_leaf, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_dflt_leaflist, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_dflt_choice, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_done_when, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_done_xpath, setup_f, teardown_f),
-        //cmocka_unit_test_setup_teardown(test_change_unlocked, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_change_unlocked, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_timeout, setup_f, teardown_f),
         //cmocka_unit_test_setup_teardown(test_change_order, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_userord, setup_f, teardown_f),

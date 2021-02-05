@@ -32,26 +32,13 @@
 #include "common.h"
 
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
-#define SR_SHM_VER 5                        /**< Main and ext SHM version of their expected content structures. */
+#define SR_SHM_VER 6                        /**< Main and ext SHM version of their expected content structures. */
 
 /**
  * Main SHM organization
  *
  * Except for main and ext SHM there are individual SHM segments for subscriptions and
- * running data files. These are not covered in the following text.
- *
- * There are 2 SHM segments, main SHM and ext SHM.
- *
- * Main SHM starts with ::sr_main_shm_t structure. Then is followed by all installed
- * modules, each with a ::sr_mod_t structure until the end of main SHM. All `off_t`
- * types in these structures are offset pointers to ext SHM.
- *
- * Ext shm starts with a `size_t` value representing the number of wasted
- * bytes in this SHM segment. It is followed by arrays and strings pointed to
- * by main SHM `off_t` pointers. First, there is the sysrepo connections state ::sr_conn_shm_t
- * meaning all currently running connections. Then, there is information from ::sr_mod_t
- * which includes names, dependencies, and subscriptions. Lastly, there are RPCs ::sr_rpc_t.
- * Also, any pointers in all the previous structures point, again, into ext SHM.
+ * running data files.
  */
 
 /**
@@ -155,7 +142,7 @@ typedef struct sr_main_shm_s {
     uint32_t shm_ver;           /**< Main and ext SHM version of all expected data stored in them. Is increased with
                                      every change of their structure content (ABI change). */
     pthread_mutex_t lydmods_lock; /**< Process-shared lock for accessing sysrepo module data. */
-    pthread_mutex_t ext_lock;   /**< Process-shared lock for truncating (allocating more) ext SHM. */
+    pthread_mutex_t ext_lock;   /**< Process-shared lock for accessing holes and truncating ext SHM. */
     uint32_t mod_count;         /**< Number of installed modules stored after this structure. */
 
     ATOMIC_T new_sr_cid;        /**< Connection ID for a new connection. */
@@ -218,11 +205,19 @@ typedef struct sr_mod_rpc_sub_s {
 } sr_mod_rpc_sub_t;
 
 /**
- * @brief External (ext) SHM.
+ * @brief Ext SHM structure.
  */
 typedef struct sr_ext_shm_s {
-    ATOMIC_T wasted;            /**< Number of unused allocated bytes in the memory. */
+    uint32_t first_hole_off;    /**< Offset of the first memory hole, 0 if there is none. */
 } sr_ext_shm_t;
+
+/**
+ * @brief Ext SHM memory hole.
+ */
+typedef struct sr_ext_hole_s {
+    uint32_t size;
+    uint32_t next_hole_off;
+} sr_ext_hole_t;
 
 /**
  * @brief Subscription event.
@@ -492,22 +487,29 @@ sr_error_info_t *sr_shmmain_check_data_files(sr_main_shm_t *main_shm);
  *
  * @param[in] conn Connection to use.
  * @param[in] mode Mode of the remap lock.
- * @param[in] ext_lock Whether ext SHM will also be truncated (enlarged, new memory allocated) when ext lock will
- * be locked or not.
+ * @param[in] ext_lock Whether to lock ext lock.
  * @param[in] func Caller function name for logging.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmext_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock, const char *func);
 
 /**
- * @brief Unlock ext SHM lock and connection remap lock.
+ * @brief Unlock ext SHM lock and connection remap lock, truncate ext SHM if possible.
  *
  * @param[in] conn Connection to use.
- * @param[in] mode Mode of the remap lock.
- * @param[in] ext_lock Whether to unlock ext lock or not.
+ * @param[in] mode Mode of the ext and remap lock.
+ * @param[in] ext_lock Whether to unlock ext lock.
  * @param[in] func Caller function name for logging.
  */
 void sr_shmext_conn_remap_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock, const char *func);
+
+/**
+ * @brief Debug print the contents of ext SHM.
+ *
+ * @param[in] main_shm Main SHM.
+ * @param[in] shm_ext Ext SHM.
+ */
+void sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext);
 
 /**
  * @brief Add main SHM module change subscription and create sub SHM if the first subscription was added.
