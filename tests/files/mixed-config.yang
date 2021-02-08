@@ -25,12 +25,14 @@ module mixed-config {
                     fraction-digits 4;
                 }
                 config false;
+                default 3.3;
             }
             leaf z {
                 type decimal64 {
                     fraction-digits 4;
                 }
                 config false;
+                default 4.4;
             }
         }
 
