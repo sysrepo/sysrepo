@@ -782,6 +782,17 @@ sr_error_info_t *sr_path_ext_shm(char **path);
 sr_error_info_t *sr_path_sub_shm(const char *mod_name, const char *suffix1, int64_t suffix2, char **path);
 
 /**
+ * @brief Get the path to a subscription data SHM.
+ *
+ * @param[in] mod_name Module name.
+ * @param[in] suffix1 First suffix.
+ * @param[in] suffix2 Second suffix, none if equals -1.
+ * @param[out] path Created path.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_path_sub_data_shm(const char *mod_name, const char *suffix1, int64_t suffix2, char **path);
+
+/**
  * @brief Get the path to a volatile datastore SHM.
  *
  * @param[in] mod_name Module name.

@@ -1220,6 +1220,7 @@ sr_notif_call_callback(sr_conn_ctx_t *conn, sr_event_notif_cb cb, sr_event_notif
 cleanup:
     free(notif_xpath);
     sr_free_values(vals, val_count);
+    tmp_sess.sid.user = NULL;
     sr_clear_sess(&tmp_sess);
     return err_info;
 }
@@ -1308,13 +1309,14 @@ sr_clear_sess(sr_session_ctx_t *tmp_sess)
 {
     uint16_t i;
 
-    sr_errinfo_free(&tmp_sess->err_info);
+    free(tmp_sess->sid.user);
     for (i = 0; i < SR_DS_COUNT; ++i) {
         lyd_free_withsiblings(tmp_sess->dt[i].edit);
         tmp_sess->dt[i].edit = NULL;
         lyd_free_withsiblings(tmp_sess->dt[i].diff);
         tmp_sess->dt[i].diff = NULL;
     }
+    sr_errinfo_free(&tmp_sess->err_info);
 }
 
 sr_error_info_t *
@@ -1687,6 +1689,32 @@ sr_path_sub_shm(const char *mod_name, const char *suffix1, int64_t suffix2, char
                 prefix, mod_name, suffix1, (uint32_t)suffix2);
     } else {
         ret = asprintf(path, "%s/%ssub_%s.%s", SR_SHM_DIR,
+                prefix, mod_name, suffix1);
+    }
+
+    if (ret == -1) {
+        SR_ERRINFO_MEM(&err_info);
+    }
+    return err_info;
+}
+
+sr_error_info_t *
+sr_path_sub_data_shm(const char *mod_name, const char *suffix1, int64_t suffix2, char **path)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *prefix;
+    int ret;
+
+    err_info = sr_shm_prefix(&prefix);
+    if (err_info) {
+        return err_info;
+    }
+
+    if (suffix2 > -1) {
+        ret = asprintf(path, "%s/%ssub_data_%s.%s.%08x", SR_SHM_DIR,
+                prefix, mod_name, suffix1, (uint32_t)suffix2);
+    } else {
+        ret = asprintf(path, "%s/%ssub_data_%s.%s", SR_SHM_DIR,
                 prefix, mod_name, suffix1);
     }
 
