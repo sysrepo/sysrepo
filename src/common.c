@@ -1307,14 +1307,15 @@ sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *d
 void
 sr_clear_sess(sr_session_ctx_t *tmp_sess)
 {
-    uint16_t i;
+    sr_datastore_t ds;
 
     free(tmp_sess->sid.user);
-    for (i = 0; i < SR_DS_COUNT; ++i) {
-        lyd_free_withsiblings(tmp_sess->dt[i].edit);
-        tmp_sess->dt[i].edit = NULL;
-        lyd_free_withsiblings(tmp_sess->dt[i].diff);
-        tmp_sess->dt[i].diff = NULL;
+    tmp_sess->sid.user = NULL;
+    for (ds = 0; ds < SR_DS_COUNT; ++ds) {
+        lyd_free_withsiblings(tmp_sess->dt[ds].edit);
+        tmp_sess->dt[ds].edit = NULL;
+        lyd_free_withsiblings(tmp_sess->dt[ds].diff);
+        tmp_sess->dt[ds].diff = NULL;
     }
     sr_errinfo_free(&tmp_sess->err_info);
 }

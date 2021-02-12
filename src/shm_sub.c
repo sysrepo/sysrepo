@@ -2733,17 +2733,17 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
 
 next_iter:
         /* next iteration */
+        sr_clear_sess(&tmp_sess);
+        free(request_xpath);
+        request_xpath = NULL;
         free(data);
         data = NULL;
         lyd_free_withsiblings(parent);
         parent = NULL;
-        free(request_xpath);
-        request_xpath = NULL;
         sr_shm_clear(&shm_data_sub);
     }
 
     /* success */
-    sr_clear_sess(&tmp_sess);
     return NULL;
 
 error_wrunlock:
