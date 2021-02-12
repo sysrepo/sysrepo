@@ -1200,12 +1200,6 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
         }
 
         do {
-            /* remap sub SHM once we have the lock, it will do anything only on the first call */
-            if ((err_info = sr_shm_remap(&shm_sub, sizeof *multi_sub_shm + diff_lyb_len))) {
-                goto cleanup_wrunlock;
-            }
-            multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
-
             /* write "done" event with the same LYB data trees */
             if (!mod->request_id) {
                 mod->request_id = ++multi_sub_shm->request_id;
