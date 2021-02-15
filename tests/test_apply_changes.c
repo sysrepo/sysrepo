@@ -33,12 +33,13 @@
 #include <cmocka.h>
 #include <libyang/libyang.h>
 
+#include "common.h"
 #include "tests/config.h"
 #include "sysrepo.h"
 
 struct state {
     sr_conn_ctx_t *conn;
-    volatile int cb_called, cb_called2;
+    ATOMIC_T cb_called, cb_called2;
     pthread_barrier_t barrier, barrier2;
 };
 
@@ -115,8 +116,8 @@ setup_f(void **state)
 {
     struct state *st = (struct state *)*state;
 
-    st->cb_called = 0;
-    st->cb_called2 = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+    ATOMIC_STORE_RELAXED(st->cb_called2, 0);
     pthread_barrier_init(&st->barrier, NULL, 2);
     pthread_barrier_init(&st->barrier2, NULL, 2);
     return 0;
@@ -153,11 +154,11 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
     assert_string_equal(module_name, "ietf-interfaces");
     assert_null(xpath);
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
     case 1:
     case 2:
-        if (st->cb_called < 2) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) < 2) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -293,7 +294,7 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
         break;
     case 3:
     case 4:
-        if (st->cb_called == 3) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 3) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -410,8 +411,8 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
         fail();
     }
 
-    ++st->cb_called;
-    if (st->cb_called == 1) {
+    ATOMIC_INC_RELAXED(st->cb_called);
+    if (ATOMIC_LOAD_RELAXED(st->cb_called) == 1) {
         return SR_ERR_CALLBACK_SHELVE;
     }
     return SR_ERR_OK;
@@ -512,22 +513,22 @@ subscribe_change_done_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 1) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 1) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /* callback was shelved, process it again */
     ret = sr_process_events(subscr, NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     count = 0;
-    while ((st->cb_called < 5) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 5) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 5);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 5);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
@@ -568,7 +569,7 @@ module_update_cb(sr_session_ctx_t *session, const char *module_name, const char 
     assert_string_equal(module_name, "ietf-interfaces");
     assert_null(xpath);
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
         assert_int_equal(event, SR_EV_UPDATE);
 
@@ -733,7 +734,7 @@ module_update_cb(sr_session_ctx_t *session, const char *module_name, const char 
         fail();
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -835,11 +836,11 @@ subscribe_update_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 6) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 6) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 6);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 6);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
@@ -905,7 +906,7 @@ module_update2_l1_cb(sr_session_ctx_t *session, const char *module_name, const c
     }
     sr_free_change_iter(iter);
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -952,7 +953,7 @@ module_update2_l2_cb(sr_session_ctx_t *session, const char *module_name, const c
     }
     sr_free_change_iter(iter);
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -971,10 +972,10 @@ module_update2_cb(sr_session_ctx_t *session, const char *module_name, const char
     assert_string_equal(module_name, "when1");
     assert_null(xpath);
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 2:
     case 3:
-        if (st->cb_called == 2) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 2) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -1014,7 +1015,7 @@ module_update2_cb(sr_session_ctx_t *session, const char *module_name, const char
         break;
     case 5:
     case 6:
-        if (st->cb_called == 5) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 5) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -1054,7 +1055,7 @@ module_update2_cb(sr_session_ctx_t *session, const char *module_name, const char
         break;
     case 9:
     case 10:
-        if (st->cb_called == 9) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 9) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -1094,7 +1095,7 @@ module_update2_cb(sr_session_ctx_t *session, const char *module_name, const char
         break;
     case 12:
     case 13:
-        if (st->cb_called == 12) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 12) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -1136,7 +1137,7 @@ module_update2_cb(sr_session_ctx_t *session, const char *module_name, const char
         fail();
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -1162,14 +1163,14 @@ apply_update2_thread(void *arg)
 
     ret = sr_apply_changes(sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(st->cb_called, 4);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
     /* delete only l1 */
     ret = sr_delete_item(sess, "/when1:l1", 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(st->cb_called, 7);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 7);
 
     /* check current data tree */
     ret = sr_get_data(sess, "/when1:*", 0, 0, 0, &data);
@@ -1183,14 +1184,14 @@ apply_update2_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(st->cb_called, 11);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 11);
 
     /* delete only l2 this time */
     ret = sr_delete_item(sess, "/when1:l2", 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(st->cb_called, 14);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 14);
 
     /* check current data tree */
     ret = sr_get_data(sess, "/when1:*", 0, 0, 0, &data);
@@ -1228,7 +1229,7 @@ subscribe_update2_thread(void *arg)
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
-    assert_int_equal(st->cb_called, 14);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 14);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);
@@ -1262,7 +1263,7 @@ module_update_fail_cb(sr_session_ctx_t *session, const char *module_name, const 
     assert_null(xpath);
     assert_int_equal(event, SR_EV_UPDATE);
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
         /* update fails */
         sr_set_error(session, "/path/to/a/node", "Custom user callback error.");
@@ -1272,7 +1273,7 @@ module_update_fail_cb(sr_session_ctx_t *session, const char *module_name, const 
         fail();
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return ret;
 }
 
@@ -1350,11 +1351,11 @@ subscribe_update_fail_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 1) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 1) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
@@ -1392,7 +1393,7 @@ module_test_change_fail_cb(sr_session_ctx_t *session, const char *module_name, c
     assert_string_equal(module_name, "test");
     assert_null(xpath);
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
         assert_int_equal(event, SR_EV_CHANGE);
 
@@ -1447,7 +1448,7 @@ module_test_change_fail_cb(sr_session_ctx_t *session, const char *module_name, c
         fail();
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -1466,7 +1467,7 @@ module_ifc_change_fail_cb(sr_session_ctx_t *session, const char *module_name, co
     assert_string_equal(module_name, "ietf-interfaces");
     assert_null(xpath);
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 1:
         assert_int_equal(event, SR_EV_CHANGE);
 
@@ -1591,7 +1592,7 @@ module_ifc_change_fail_cb(sr_session_ctx_t *session, const char *module_name, co
         fail();
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return ret;
 }
 
@@ -1721,21 +1722,21 @@ subscribe_change_fail_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 3) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 3) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 3);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
 
     /* wait for the other thread to signal #1 */
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 4) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 4) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 4);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
     /* wait for the other thread to signal #2 */
     pthread_barrier_wait(&st->barrier);
@@ -2239,10 +2240,10 @@ module_change_any_cb(sr_session_ctx_t *session, const char *module_name, const c
     assert_string_equal(module_name, "test");
     assert_null(xpath);
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
     case 1:
-        if (st->cb_called == 0) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 0) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -2293,7 +2294,7 @@ module_change_any_cb(sr_session_ctx_t *session, const char *module_name, const c
         break;
     case 2:
     case 3:
-        if (st->cb_called == 2) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 2) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -2344,7 +2345,7 @@ module_change_any_cb(sr_session_ctx_t *session, const char *module_name, const c
         break;
     case 4:
     case 5:
-        if (st->cb_called == 4) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 4) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -2386,7 +2387,7 @@ module_change_any_cb(sr_session_ctx_t *session, const char *module_name, const c
         fail();
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -2496,11 +2497,11 @@ subscribe_change_any_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 6) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 6) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 6);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 6);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
@@ -2539,10 +2540,10 @@ module_change_dflt_leaf_cb(sr_session_ctx_t *session, const char *module_name, c
     assert_string_equal(module_name, "defaults");
     assert_null(xpath);
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
     case 1:
-        if (st->cb_called == 0) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 0) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -2644,7 +2645,7 @@ module_change_dflt_leaf_cb(sr_session_ctx_t *session, const char *module_name, c
         break;
     case 2:
     case 3:
-        if (st->cb_called == 2) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 2) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -2690,7 +2691,7 @@ module_change_dflt_leaf_cb(sr_session_ctx_t *session, const char *module_name, c
         break;
     case 4:
     case 5:
-        if (st->cb_called == 4) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 4) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -2742,7 +2743,7 @@ module_change_dflt_leaf_cb(sr_session_ctx_t *session, const char *module_name, c
         break;
     case 6:
     case 7:
-        if (st->cb_called == 6) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 6) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -2777,7 +2778,7 @@ module_change_dflt_leaf_cb(sr_session_ctx_t *session, const char *module_name, c
         break;
     case 8:
     case 9:
-        if (st->cb_called == 8) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 8) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -2876,7 +2877,7 @@ module_change_dflt_leaf_cb(sr_session_ctx_t *session, const char *module_name, c
         lyd_free_withsiblings(data);
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -3088,11 +3089,11 @@ subscribe_change_dflt_leaf_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 10) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 10) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 10);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 10);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);
@@ -3128,10 +3129,10 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, const char *module_nam
     assert_string_equal(module_name, "defaults");
     assert_null(xpath);
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
     case 1:
-        if (st->cb_called == 0) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 0) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -3233,7 +3234,7 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, const char *module_nam
         break;
     case 2:
     case 3:
-        if (st->cb_called == 2) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 2) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -3347,7 +3348,7 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, const char *module_nam
         break;
     case 4:
     case 5:
-        if (st->cb_called == 4) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 4) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -3463,7 +3464,7 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, const char *module_nam
         break;
     case 6:
     case 7:
-        if (st->cb_called == 6) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 6) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -3558,7 +3559,7 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, const char *module_nam
     case 8:
     case 9:
         /* cleanup */
-        if (st->cb_called == 8) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 8) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -3575,7 +3576,7 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, const char *module_nam
         lyd_free_withsiblings(data);
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -3779,11 +3780,11 @@ subscribe_change_dflt_leaflist_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 10) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 10) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 10);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 10);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);
@@ -3819,10 +3820,10 @@ module_change_dflt_choice_cb(sr_session_ctx_t *session, const char *module_name,
     assert_string_equal(module_name, "defaults");
     assert_null(xpath);
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
     case 1:
-        if (st->cb_called == 0) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 0) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -3876,7 +3877,7 @@ module_change_dflt_choice_cb(sr_session_ctx_t *session, const char *module_name,
         break;
     case 2:
     case 3:
-        if (st->cb_called == 2) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 2) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -3939,7 +3940,7 @@ module_change_dflt_choice_cb(sr_session_ctx_t *session, const char *module_name,
         lyd_free_withsiblings(data);
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -4025,11 +4026,11 @@ subscribe_change_dflt_choice_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 4) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 4) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 4);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);
@@ -4064,10 +4065,10 @@ module_change_done_when_cb(sr_session_ctx_t *session, const char *module_name, c
     assert_null(xpath);
 
     if (!strcmp(module_name, "when1")) {
-        switch (st->cb_called) {
+        switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
         case 0:
         case 1:
-            if (st->cb_called == 0) {
+            if (ATOMIC_LOAD_RELAXED(st->cb_called) == 0) {
                 assert_int_equal(event, SR_EV_CHANGE);
             } else {
                 assert_int_equal(event, SR_EV_DONE);
@@ -4096,7 +4097,7 @@ module_change_done_when_cb(sr_session_ctx_t *session, const char *module_name, c
             break;
         case 2:
         case 3:
-            if (st->cb_called == 2) {
+            if (ATOMIC_LOAD_RELAXED(st->cb_called) == 2) {
                 assert_int_equal(event, SR_EV_CHANGE);
             } else {
                 assert_int_equal(event, SR_EV_DONE);
@@ -4136,7 +4137,7 @@ module_change_done_when_cb(sr_session_ctx_t *session, const char *module_name, c
             break;
         case 4:
         case 5:
-            if (st->cb_called == 4) {
+            if (ATOMIC_LOAD_RELAXED(st->cb_called) == 4) {
                 assert_int_equal(event, SR_EV_CHANGE);
             } else {
                 assert_int_equal(event, SR_EV_DONE);
@@ -4167,12 +4168,12 @@ module_change_done_when_cb(sr_session_ctx_t *session, const char *module_name, c
             fail();
         }
 
-        ++st->cb_called;
+        ATOMIC_INC_RELAXED(st->cb_called);
     } else if (!strcmp(module_name, "when2")) {
-        switch (st->cb_called2) {
+        switch (ATOMIC_LOAD_RELAXED(st->cb_called2)) {
         case 0:
         case 1:
-            if (st->cb_called2 == 0) {
+            if (ATOMIC_LOAD_RELAXED(st->cb_called2) == 0) {
                 assert_int_equal(event, SR_EV_CHANGE);
             } else {
                 assert_int_equal(event, SR_EV_DONE);
@@ -4212,7 +4213,7 @@ module_change_done_when_cb(sr_session_ctx_t *session, const char *module_name, c
             break;
         case 2:
         case 3:
-            if (st->cb_called2 == 2) {
+            if (ATOMIC_LOAD_RELAXED(st->cb_called2) == 2) {
                 assert_int_equal(event, SR_EV_CHANGE);
             } else {
                 assert_int_equal(event, SR_EV_DONE);
@@ -4264,7 +4265,7 @@ module_change_done_when_cb(sr_session_ctx_t *session, const char *module_name, c
             break;
         case 4:
         case 5:
-            if (st->cb_called2 == 4) {
+            if (ATOMIC_LOAD_RELAXED(st->cb_called2) == 4) {
                 assert_int_equal(event, SR_EV_CHANGE);
             } else {
                 assert_int_equal(event, SR_EV_DONE);
@@ -4296,7 +4297,7 @@ module_change_done_when_cb(sr_session_ctx_t *session, const char *module_name, c
             fail();
         }
 
-        ++st->cb_called2;
+        ATOMIC_INC_RELAXED(st->cb_called2);
     } else {
         fail();
     }
@@ -4426,12 +4427,12 @@ subscribe_change_done_when_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while (((st->cb_called < 6) || (st->cb_called2 < 6)) && (count < 1500)) {
+    while (((ATOMIC_LOAD_RELAXED(st->cb_called) < 6) || (ATOMIC_LOAD_RELAXED(st->cb_called2) < 6)) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 6);
-    assert_int_equal(st->cb_called2, 6);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 6);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called2), 6);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
@@ -4468,11 +4469,11 @@ module_change_done_xpath_cb(sr_session_ctx_t *session, const char *module_name, 
 
     assert_string_equal(module_name, "test");
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
     case 2:
         assert_string_equal(xpath, "/test:l1[k='subscr']");
-        if (st->cb_called == 0) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 0) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -4524,7 +4525,7 @@ module_change_done_xpath_cb(sr_session_ctx_t *session, const char *module_name, 
     case 1:
     case 3:
         assert_string_equal(xpath, "/test:cont");
-        if (st->cb_called == 1) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 1) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -4611,7 +4612,7 @@ module_change_done_xpath_cb(sr_session_ctx_t *session, const char *module_name, 
     case 4:
     case 6:
         assert_string_equal(xpath, "/test:l1[k='subscr']");
-        if (st->cb_called == 4) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 4) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -4663,7 +4664,7 @@ module_change_done_xpath_cb(sr_session_ctx_t *session, const char *module_name, 
     case 5:
     case 7:
         assert_string_equal(xpath, "/test:cont");
-        if (st->cb_called == 5) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 5) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -4749,7 +4750,7 @@ module_change_done_xpath_cb(sr_session_ctx_t *session, const char *module_name, 
         fail();
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -4826,11 +4827,11 @@ subscribe_change_done_xpath_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 8) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 8) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 8);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 8);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
@@ -4867,11 +4868,11 @@ module_change_unlocked_cb(sr_session_ctx_t *session, const char *module_name, co
 
     assert_string_equal(module_name, "test");
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
     case 1:
         assert_string_equal(xpath, "/test:l1[k='subscr']");
-        if (st->cb_called == 0) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 0) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -4889,7 +4890,7 @@ module_change_unlocked_cb(sr_session_ctx_t *session, const char *module_name, co
         fail();
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -4939,11 +4940,11 @@ subscribe_change_unlocked_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 2) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 2) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
@@ -4978,7 +4979,7 @@ module_change_timeout_cb(sr_session_ctx_t *session, const char *module_name, con
 
     assert_string_equal(module_name, "test");
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
         assert_int_equal(event, SR_EV_CHANGE);
 
@@ -5002,7 +5003,7 @@ module_change_timeout_cb(sr_session_ctx_t *session, const char *module_name, con
         fail();
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -5067,21 +5068,21 @@ subscribe_change_timeout_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 2) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 2) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     /* wait for the other thread to report timeout */
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 4) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 4) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 4);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
@@ -5114,7 +5115,7 @@ module_change_order_cb(sr_session_ctx_t *session, const char *module_name, const
     (void)xpath;
     (void)request_id;
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
     case 5:
     case 9:
@@ -5140,7 +5141,7 @@ module_change_order_cb(sr_session_ctx_t *session, const char *module_name, const
         fail();
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -5219,29 +5220,29 @@ subscribe_change_order_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 4) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 4) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 4);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 8) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 8) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 8);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 8);
 
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 12) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 12) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 12);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 12);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
@@ -5280,10 +5281,10 @@ module_change_userord_cb(sr_session_ctx_t *session, const char *module_name, con
 
     assert_string_equal(module_name, "test");
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
     case 1:
-        if (st->cb_called == 0) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 0) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -5435,7 +5436,7 @@ module_change_userord_cb(sr_session_ctx_t *session, const char *module_name, con
         fail();
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -5492,11 +5493,11 @@ subscribe_change_userord_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 2) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 2) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
