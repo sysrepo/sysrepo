@@ -1159,8 +1159,8 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
 }
 
 sr_error_info_t *
-sr_notif_call_callback(sr_conn_ctx_t *conn, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data,
-        const sr_ev_notif_type_t notif_type, const struct lyd_node *notif_op, time_t notif_ts, sr_sid_t sid)
+sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data,
+        const sr_ev_notif_type_t notif_type, const struct lyd_node *notif_op, time_t notif_ts)
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *next, *elem;
@@ -1168,21 +1168,13 @@ sr_notif_call_callback(sr_conn_ctx_t *conn, sr_event_notif_cb cb, sr_event_notif
     char *notif_xpath = NULL;
     sr_val_t *vals = NULL;
     size_t val_count = 0;
-    sr_session_ctx_t tmp_sess;
 
     assert(!notif_op || (notif_op->schema->nodetype == LYS_NOTIF));
     assert((tree_cb && !cb) || (!tree_cb && cb));
 
-    /* prepare temporary session */
-    memset(&tmp_sess, 0, sizeof tmp_sess);
-    tmp_sess.conn = conn;
-    tmp_sess.ds = SR_DS_OPERATIONAL;
-    tmp_sess.ev = SR_SUB_EV_NOTIF;
-    tmp_sess.sid = sid;
-
     if (tree_cb) {
         /* callback */
-        tree_cb(&tmp_sess, notif_type, notif_op, notif_ts, private_data);
+        tree_cb(ev_sess, notif_type, notif_op, notif_ts, private_data);
     } else {
         if (notif_op) {
             /* prepare XPath */
@@ -1212,7 +1204,7 @@ sr_notif_call_callback(sr_conn_ctx_t *conn, sr_event_notif_cb cb, sr_event_notif
         }
 
         /* callback */
-        cb(&tmp_sess, notif_type, notif_xpath, vals, val_count, notif_ts, private_data);
+        cb(ev_sess, notif_type, notif_xpath, vals, val_count, notif_ts, private_data);
     }
 
     /* success */
@@ -1220,8 +1212,6 @@ sr_notif_call_callback(sr_conn_ctx_t *conn, sr_event_notif_cb cb, sr_event_notif
 cleanup:
     free(notif_xpath);
     sr_free_values(vals, val_count);
-    tmp_sess.sid.user = NULL;
-    sr_clear_sess(&tmp_sess);
     return err_info;
 }
 
@@ -1302,22 +1292,6 @@ sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *d
     sr_munlock(ptr_lock);
 
     return err_info;
-}
-
-void
-sr_clear_sess(sr_session_ctx_t *tmp_sess)
-{
-    sr_datastore_t ds;
-
-    free(tmp_sess->sid.user);
-    tmp_sess->sid.user = NULL;
-    for (ds = 0; ds < SR_DS_COUNT; ++ds) {
-        lyd_free_withsiblings(tmp_sess->dt[ds].edit);
-        tmp_sess->dt[ds].edit = NULL;
-        lyd_free_withsiblings(tmp_sess->dt[ds].diff);
-        tmp_sess->dt[ds].diff = NULL;
-    }
-    sr_errinfo_free(&tmp_sess->err_info);
 }
 
 sr_error_info_t *

@@ -2303,10 +2303,9 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
     struct modsub_changesub_s *change_sub;
     sr_multi_sub_shm_t *multi_sub_shm;
     sr_shm_t shm_data_sub = SR_SHM_INITIALIZER;
-    sr_session_ctx_t tmp_sess;
+    sr_session_ctx_t *ev_sess = NULL;
     struct info_sub_s sub_info;
 
-    memset(&tmp_sess, 0, sizeof tmp_sess);
     multi_sub_shm = (sr_multi_sub_shm_t *)change_subs->sub_shm.addr;
 
     /* SUB READ UPGR LOCK */
@@ -2336,24 +2335,19 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
     sub_info.request_id = multi_sub_shm->request_id;
     sub_info.priority = multi_sub_shm->priority;
 
-    /* parse user */
-    tmp_sess.sid.user = strdup(shm_data_ptr);
-    SR_CHECK_MEM_GOTO(!tmp_sess.sid.user, err_info, cleanup_rdunlock);
-    shm_data_ptr += sr_strshmlen(tmp_sess.sid.user);
-
-    /* prepare implicit session */
-    tmp_sess.conn = conn;
-    tmp_sess.ds = change_subs->ds;
-    tmp_sess.ev = multi_sub_shm->event;
-    tmp_sess.sid.sr = multi_sub_shm->sid;
-    tmp_sess.sid.nc = multi_sub_shm->ncid;
+    /* parse user (while creating the event session) */
+    if ((err_info = _sr_session_start(conn, change_subs->ds, multi_sub_shm->event, multi_sub_shm->sid,
+            multi_sub_shm->ncid, shm_data_ptr, &ev_sess))) {
+        goto cleanup_rdunlock;
+    }
+    shm_data_ptr += sr_strshmlen(shm_data_ptr);
 
     /* parse event diff */
     diff = lyd_parse_mem(conn->ly_ctx, shm_data_ptr, LYD_LYB, LYD_OPT_EDIT | LYD_OPT_STRICT);
     SR_CHECK_INT_GOTO(!diff, err_info, cleanup_rdunlock);
 
     /* assign to session */
-    tmp_sess.dt[tmp_sess.ds].diff = diff;
+    ev_sess->dt[ev_sess->ds].diff = diff;
 
     /* process event */
     SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %u priority %u (remaining %u subscribers).", change_subs->module_name,
@@ -2375,13 +2369,13 @@ process_event:
 
         /* call callback if there are some changes */
         if (sr_shmsub_change_listen_has_diff(change_sub, diff)) {
-            ret = change_sub->cb(&tmp_sess, change_subs->module_name, change_sub->xpath, sr_ev2api(sub_info.event),
+            ret = change_sub->cb(ev_sess, change_subs->module_name, change_sub->xpath, sr_ev2api(sub_info.event),
                     sub_info.request_id, change_sub->private_data);
         }
 
         /* SUB READ UPGR LOCK */
         if (sr_shmsub_change_listen_relock(multi_sub_shm, SR_LOCK_READ_UPGR, &sub_info, change_sub,
-                change_subs->module_name, ret, &tmp_sess, &err_info)) {
+                change_subs->module_name, ret, ev_sess, &err_info)) {
             goto cleanup;
         }
 
@@ -2418,18 +2412,18 @@ process_event:
     case SR_SUB_EV_UPDATE:
         if (err_code == SR_ERR_OK) {
             /* we may have an updated edit (empty is fine), check it */
-            LY_TREE_FOR(tmp_sess.dt[tmp_sess.ds].edit, iter) {
+            LY_TREE_FOR(ev_sess->dt[ev_sess->ds].edit, iter) {
                 if (strcmp(lyd_node_module(iter)->name, change_subs->module_name)) {
                     /* generate an error */
                     path = lyd_path(iter);
-                    sr_set_error(&tmp_sess, path, "Updated edit with data from another module \"%s\".",
+                    sr_set_error(ev_sess, path, "Updated edit with data from another module \"%s\".",
                             lyd_node_module(iter)->name);
                     free(path);
-                    sr_log_msg(0, SR_LL_ERR, tmp_sess.err_info->err[0].message, tmp_sess.err_info->err[0].xpath);
+                    sr_log_msg(0, SR_LL_ERR, ev_sess->err_info->err[0].message, ev_sess->err_info->err[0].xpath);
 
                     /* prepare the error */
                     err_code = SR_ERR_INVAL_ARG;
-                    if ((err_info = sr_shmsub_prepare_error(err_code, &tmp_sess, &data, &data_len))) {
+                    if ((err_info = sr_shmsub_prepare_error(err_code, ev_sess, &data, &data_len))) {
                         goto cleanup_rdunlock;
                     }
                     break;
@@ -2440,7 +2434,7 @@ process_event:
             }
 
             /* print it into LYB */
-            if (lyd_print_mem(&data, tmp_sess.dt[tmp_sess.ds].edit, LYD_LYB, LYP_WITHSIBLINGS)) {
+            if (lyd_print_mem(&data, ev_sess->dt[ev_sess->ds].edit, LYD_LYB, LYP_WITHSIBLINGS)) {
                 sr_errinfo_new_ly(&err_info, conn->ly_ctx);
                 goto cleanup_rdunlock;
             }
@@ -2450,7 +2444,7 @@ process_event:
     case SR_SUB_EV_CHANGE:
         if (err_code != SR_ERR_OK) {
             /* prepare error from session to be written to SHM */
-            if ((err_info = sr_shmsub_prepare_error(err_code, &tmp_sess, &data, &data_len))) {
+            if ((err_info = sr_shmsub_prepare_error(err_code, ev_sess, &data, &data_len))) {
                 goto cleanup_rdunlock;
             }
         }
@@ -2487,10 +2481,8 @@ cleanup_rdunlock:
     sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, conn->cid, __func__);
 
 cleanup:
-    /* clear callback session */
-    sr_clear_sess(&tmp_sess);
-
     free(data);
+    sr_session_stop(ev_sess);
     sr_shm_clear(&shm_data_sub);
     return err_info;
 }
@@ -2600,12 +2592,7 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
     struct lyd_node *parent = NULL, *orig_parent, *node;
     sr_sub_shm_t *sub_shm;
     sr_shm_t shm_data_sub = SR_SHM_INITIALIZER;
-    sr_session_ctx_t tmp_sess;
-
-    memset(&tmp_sess, 0, sizeof tmp_sess);
-    tmp_sess.conn = conn;
-    tmp_sess.ds = SR_DS_OPERATIONAL;
-    tmp_sess.ev = SR_SUB_EV_CHANGE;
+    sr_session_ctx_t *ev_sess = NULL;
 
     for (i = 0; (err_code == SR_ERR_OK) && (i < oper_subs->sub_count); ++i) {
         oper_sub = &oper_subs->subs[i];
@@ -2632,14 +2619,12 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         }
         shm_data_ptr = shm_data_sub.addr;
 
-        /* read SIDs */
-        tmp_sess.sid.sr = sub_shm->sid;
-        tmp_sess.sid.nc = sub_shm->ncid;
-
-        /* parse user */
-        tmp_sess.sid.user = strdup(shm_data_ptr);
-        SR_CHECK_MEM_GOTO(!tmp_sess.sid.user, err_info, error_rdunlock);
-        shm_data_ptr += sr_strshmlen(tmp_sess.sid.user);
+        /* parse user (while creating the event session) */
+        if ((err_info = _sr_session_start(conn, SR_DS_OPERATIONAL, SR_SUB_EV_CHANGE, sub_shm->sid, sub_shm->ncid,
+                shm_data_ptr, &ev_sess))) {
+            goto error_rdunlock;
+        }
+        shm_data_ptr += sr_strshmlen(shm_data_ptr);
 
         /* parse xpath */
         request_xpath = strdup(shm_data_ptr);
@@ -2667,7 +2652,7 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
 
         /* call callback */
         orig_parent = parent;
-        err_code = oper_sub->cb(&tmp_sess, oper_subs->module_name, oper_sub->xpath, request_xpath[0] ? request_xpath : NULL,
+        err_code = oper_sub->cb(ev_sess, oper_subs->module_name, oper_sub->xpath, request_xpath[0] ? request_xpath : NULL,
                 request_id, &parent, oper_sub->private_data);
 
         /* go again to the top-level root for printing */
@@ -2699,7 +2684,7 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
          * prepare additional event data written into subscription SHM (after the structure)
          */
         if (err_code) {
-            if ((err_info = sr_shmsub_prepare_error(err_code, &tmp_sess, &data, &data_len))) {
+            if ((err_info = sr_shmsub_prepare_error(err_code, ev_sess, &data, &data_len))) {
                 goto error;
             }
         } else {
@@ -2727,7 +2712,8 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
 
 next_iter:
         /* next iteration */
-        sr_clear_sess(&tmp_sess);
+        sr_session_stop(ev_sess);
+        ev_sess = NULL;
         free(request_xpath);
         request_xpath = NULL;
         free(data);
@@ -2750,7 +2736,7 @@ error_rdunlock:
     sr_rwunlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
 error:
-    sr_clear_sess(&tmp_sess);
+    sr_session_stop(ev_sess);
     free(data);
     lyd_free_withsiblings(parent);
     free(request_xpath);
@@ -3000,13 +2986,8 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
     struct opsub_rpcsub_s *rpc_sub;
     sr_multi_sub_shm_t *multi_sub_shm;
     sr_shm_t shm_data_sub = SR_SHM_INITIALIZER;
-    sr_session_ctx_t tmp_sess;
+    sr_session_ctx_t *ev_sess = NULL;
     struct info_sub_s sub_info;
-
-    memset(&tmp_sess, 0, sizeof tmp_sess);
-    tmp_sess.conn = conn;
-    tmp_sess.ds = SR_DS_OPERATIONAL;
-    tmp_sess.ev = SR_SUB_EV_RPC;
 
     multi_sub_shm = (sr_multi_sub_shm_t *)rpc_subs->sub_shm.addr;
 
@@ -3016,15 +2997,11 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
         goto cleanup;
     }
 
-    /* read SIDs */
-    tmp_sess.sid.sr = multi_sub_shm->sid;
-    tmp_sess.sid.nc = multi_sub_shm->ncid;
-
     for (i = 0; i < rpc_subs->sub_count; ++i) {
         rpc_sub = &rpc_subs->subs[i];
         if (sr_shmsub_rpc_listen_is_new_event(multi_sub_shm, rpc_sub)) {
             /* there is a new event so there is some operation that can be parsed */
-            if (!input) {
+            if (!ev_sess) {
                 /* open sub data SHM */
                 module_name = sr_get_first_ns(rpc_subs->path);
                 if ((err_info = sr_shmsub_data_open_remap(module_name, "rpc", sr_str_hash(rpc_subs->path), &shm_data_sub, 0))) {
@@ -3032,21 +3009,20 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
                 }
                 shm_data_ptr = shm_data_sub.addr;
 
-                /* parse user */
-                tmp_sess.sid.user = strdup(shm_data_ptr);
-                SR_CHECK_MEM_GOTO(!tmp_sess.sid.user, err_info, cleanup_rdunlock);
-                shm_data_ptr += sr_strshmlen(tmp_sess.sid.user);
+                /* parse user (while creating the event session) */
+                if ((err_info = _sr_session_start(conn, SR_DS_OPERATIONAL, SR_SUB_EV_RPC, multi_sub_shm->sid,
+                        multi_sub_shm->ncid, shm_data_ptr, &ev_sess))) {
+                    goto cleanup_rdunlock;
+                }
+                shm_data_ptr += sr_strshmlen(shm_data_ptr);
 
                 /* parse RPC/action input */
                 ly_errno = 0;
                 input = lyd_parse_mem(conn->ly_ctx, shm_data_ptr, LYD_LYB, LYD_OPT_RPC | LYD_OPT_STRICT | LYD_OPT_TRUSTED,
                         NULL);
-                if (ly_errno) {
-                    sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-                    SR_ERRINFO_INT(&err_info);
-                    goto cleanup_rdunlock;
-                }
+                SR_CHECK_LY_GOTO(ly_errno, conn->ly_ctx, err_info, cleanup_rdunlock);
             }
+            assert(input);
 
             /* XPath filtering */
             if (sr_shmsub_rpc_is_valid(input, rpc_sub->xpath)) {
@@ -3091,14 +3067,14 @@ process_event:
         lyd_free_withsiblings(output);
 
         /* call callback */
-        if ((err_info = sr_shmsub_rpc_listen_call_callback(rpc_sub, &tmp_sess, input_op, sub_info.event,
+        if ((err_info = sr_shmsub_rpc_listen_call_callback(rpc_sub, ev_sess, input_op, sub_info.event,
                 sub_info.request_id, &output, &ret))) {
             goto cleanup;
         }
 
         /* SUB READ UPGR LOCK */
         if (sr_shmsub_rpc_listen_relock(multi_sub_shm, SR_LOCK_READ_UPGR, &sub_info, rpc_sub, rpc_subs->path, ret,
-                &tmp_sess, input_op, &err_info)) {
+                ev_sess, input_op, &err_info)) {
             goto cleanup;
         }
 
@@ -3131,7 +3107,7 @@ process_event:
      * prepare additional event data written into subscription SHM (after the structure)
      */
     if (err_code) {
-        if ((err_info = sr_shmsub_prepare_error(err_code, &tmp_sess, &data, &data_len))) {
+        if ((err_info = sr_shmsub_prepare_error(err_code, ev_sess, &data, &data_len))) {
             goto cleanup_rdunlock;
         }
     } else {
@@ -3165,9 +3141,7 @@ cleanup_rdunlock:
     sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, conn->cid, __func__);
 
 cleanup:
-    /* clear callback session */
-    sr_clear_sess(&tmp_sess);
-
+    sr_session_stop(ev_sess);
     free(module_name);
     free(data);
     lyd_free_withsiblings(input);
@@ -3187,7 +3161,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     char *shm_data_ptr;
     sr_multi_sub_shm_t *multi_sub_shm;
     sr_shm_t shm_data_sub = SR_SHM_INITIALIZER;
-    sr_sid_t sid = {0};
+    sr_session_ctx_t *ev_sess = NULL;
 
     multi_sub_shm = (sr_multi_sub_shm_t *)notif_subs->sub_shm.addr;
 
@@ -3208,14 +3182,12 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     }
     shm_data_ptr = shm_data_sub.addr;
 
-    /* read SIDs */
-    sid.sr = multi_sub_shm->sid;
-    sid.nc = multi_sub_shm->ncid;
-
-    /* parse user */
-    sid.user = strdup(shm_data_ptr);
-    SR_CHECK_MEM_GOTO(!sid.user, err_info, cleanup_rdunlock);
-    shm_data_ptr += sr_strshmlen(sid.user);
+    /* parse user (while creating the event session) */
+    if ((err_info = _sr_session_start(conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, multi_sub_shm->sid,
+            multi_sub_shm->ncid, shm_data_ptr, &ev_sess))) {
+        goto cleanup_rdunlock;
+    }
+    shm_data_ptr += sr_strshmlen(shm_data_ptr);
 
     /* parse timestamp */
     notif_ts = *(time_t *)shm_data_ptr;
@@ -3273,8 +3245,8 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
             ly_set_free(set);
         }
 
-        if ((err_info = sr_notif_call_callback(conn, notif_subs->subs[i].cb, notif_subs->subs[i].tree_cb,
-                notif_subs->subs[i].private_data, SR_EV_NOTIF_REALTIME, notif_op, notif_ts, sid))) {
+        if ((err_info = sr_notif_call_callback(ev_sess, notif_subs->subs[i].cb, notif_subs->subs[i].tree_cb,
+                notif_subs->subs[i].private_data, SR_EV_NOTIF_REALTIME, notif_op, notif_ts))) {
             goto cleanup;
         }
     }
@@ -3292,7 +3264,7 @@ cleanup_rdunlock:
     sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
 cleanup:
-    free(sid.user);
+    sr_session_stop(ev_sess);
     lyd_free_withsiblings(notif);
     sr_shm_clear(&shm_data_sub);
     return err_info;
@@ -3343,8 +3315,8 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lo
     time_t cur_time;
     struct modsub_notifsub_s *notif_sub;
     sr_mod_t *shm_mod;
+    sr_session_ctx_t *ev_sess;
     uint32_t i;
-    sr_sid_t sid = {0};
     sr_lock_mode_t lock_mode = has_subs_lock;
 
     /* safety measure for future changes */
@@ -3375,9 +3347,17 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lo
                 continue;
             }
 
+            /* create event session */
+            if ((err_info = _sr_session_start(subs->conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, 0, 0, NULL, &ev_sess))) {
+                goto cleanup;
+            }
+
             /* subscription is finished */
-            if ((err_info = sr_notif_call_callback(subs->conn, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
-                    SR_EV_NOTIF_STOP, NULL, cur_time, sid))) {
+            err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
+                    SR_EV_NOTIF_STOP, NULL, cur_time);
+
+            sr_session_stop(ev_sess);
+            if (err_info) {
                 goto cleanup;
             }
 

@@ -356,8 +356,9 @@ struct sr_conn_ctx_s {
 struct sr_session_ctx_s {
     sr_conn_ctx_t *conn;            /**< Connection used for creating this session. */
     sr_datastore_t ds;              /**< Datastore of the session. */
-    sr_sub_event_t ev;              /**< Event of a callback session. ::SR_EV_NONE for standard user sessions. */
+    sr_sub_event_t ev;              /**< Event of a callback session. ::SR_SUB_EV_NONE for standard user sessions. */
     sr_sid_t sid;                   /**< Session information. */
+    sr_sid_t ev_sid;                /**< Event (originator) session information. Valid only if ev is not ::SR_SUB_EV_NONE. */
     sr_error_info_t *err_info;      /**< Session error information. */
 
     pthread_mutex_t ptr_lock;       /**< Lock for accessing pointers to subscriptions. */
@@ -478,6 +479,25 @@ struct sr_change_iter_s {
     struct ly_set *set;             /**< Set of all the selected diff nodes. */
     uint32_t idx;                   /**< Index of the next change. */
 };
+
+/*
+ * From sysrepo.c
+ */
+
+/**
+ * @brief Start a new session.
+ *
+ * @param[in] conn Connection of the session.
+ * @param[in] datastore Datastore of the session.
+ * @param[in] event Optional event the session is handling, SR_SUB_EV_NONE for a standard session.
+ * @param[in] ev_sid Event originator SID.
+ * @param[in] ev_ncid Event originator NCID.
+ * @param[in] ev_user Event originator user.
+ * @param[out] session Created session.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *_sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_sub_event_t event,
+        uint32_t ev_sid, uint32_t ev_ncid, const char *ev_user, sr_session_ctx_t **session);
 
 /*
  * Subscription functions
@@ -651,19 +671,17 @@ sr_error_info_t *sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_n
 /**
  * @brief Call notification callback for a notification.
  *
- * @param[in] conn Connection to use.
+ * @param[in] ev_sess Event session to provide for the callback.
  * @param[in] cb Value callback.
  * @param[in] tree_cb Tree callback.
  * @param[in] private_data Callback private data.
  * @param[in] notif_type Notification type.
  * @param[in] notif_op Notification node of the notification (relevant for nested notifications).
  * @param[in] notif_ts Timestamp of when the notification was generated.
- * @param[in] sid Sysrepo session ID.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_notif_call_callback(sr_conn_ctx_t *conn, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb,
-        void *private_data, const sr_ev_notif_type_t notif_type, const struct lyd_node *notif_op, time_t notif_ts,
-        sr_sid_t sid);
+sr_error_info_t *sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb,
+        void *private_data, const sr_ev_notif_type_t notif_type, const struct lyd_node *notif_op, time_t notif_ts);
 
 /*
  * Utility functions
@@ -689,13 +707,6 @@ sr_error_info_t *sr_ptr_add(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *p
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *del_ptr);
-
-/**
- * @brief Clear a temporary (callback) session.
- *
- * @param[in] tmp_sess Session to clear.
- */
-void sr_clear_sess(sr_session_ctx_t *tmp_sess);
 
 /**
  * @brief Wrapper for libyang ly_ctx_new().

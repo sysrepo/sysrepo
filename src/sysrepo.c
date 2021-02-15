@@ -343,18 +343,20 @@ sr_set_diff_check_callback(sr_conn_ctx_t *conn, sr_diff_check_cb callback)
     conn->diff_check_cb = callback;
 }
 
-API int
-sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_session_ctx_t **session)
+sr_error_info_t *
+_sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_sub_event_t event, uint32_t ev_sid,
+        uint32_t ev_ncid, const char *ev_user, sr_session_ctx_t **session)
 {
     sr_error_info_t *err_info = NULL;
     uid_t uid;
 
-    SR_CHECK_ARG_APIRET(!conn || !session, NULL, err_info);
+    assert(conn && session);
+    assert((event != SR_SUB_EV_SUCCESS) && (event != SR_SUB_EV_ERROR));
 
     *session = calloc(1, sizeof **session);
     if (!*session) {
         SR_ERRINFO_MEM(&err_info);
-        return sr_api_ret(NULL, err_info);
+        return err_info;
     }
 
     /* use new SR session ID and increment it (no lock needed, we are just reading and main SHM is never remapped) */
@@ -377,6 +379,15 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_session
 
     (*session)->conn = conn;
     (*session)->ds = datastore;
+    (*session)->ev = event;
+    if (event) {
+        (*session)->ev_sid.sr = ev_sid;
+        (*session)->ev_sid.nc = ev_ncid;
+        if (ev_user) {
+            (*session)->ev_sid.user = strdup(ev_user);
+            SR_CHECK_MEM_GOTO(!(*session)->ev_sid.user, err_info, error);
+        }
+    }
     if ((err_info = sr_mutex_init(&(*session)->ptr_lock, 0))) {
         goto error;
     }
@@ -384,14 +395,29 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_session
         goto error;
     }
 
-    SR_LOG_INF("Session %u (user \"%s\", CID %" PRIu32 ") created.", (*session)->sid.sr, (*session)->sid.user, conn->cid);
+    if (!event) {
+        SR_LOG_INF("Session %u (user \"%s\", CID %" PRIu32 ") created.", (*session)->sid.sr, (*session)->sid.user,
+                conn->cid);
+    }
 
-    return sr_api_ret(NULL, NULL);
+    return NULL;
 
 error:
     free((*session)->sid.user);
+    free((*session)->ev_sid.user);
     free(*session);
     *session = NULL;
+    return err_info;
+}
+
+API int
+sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_session_ctx_t **session)
+{
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(!conn || !session, NULL, err_info);
+
+    err_info = _sr_session_start(conn, datastore, SR_SUB_EV_NONE, 0, 0, NULL, session);
     return sr_api_ret(NULL, err_info);
 }
 
@@ -470,8 +496,10 @@ _sr_session_stop(sr_session_ctx_t *session)
 
     /* free attributes */
     free(session->sid.user);
+    free(session->ev_sid.user);
     for (i = 0; i < SR_DS_COUNT; ++i) {
         lyd_free_withsiblings(session->dt[i].edit);
+        lyd_free_withsiblings(session->dt[i].diff);
     }
     sr_errinfo_free(&session->err_info);
     pthread_mutex_destroy(&session->ptr_lock);
@@ -589,6 +617,16 @@ sr_session_get_id(sr_session_ctx_t *session)
     return session->sid.sr;
 }
 
+API uint32_t
+sr_session_get_event_sr_id(sr_session_ctx_t *session)
+{
+    if (!session || !session->ev) {
+        return 0;
+    }
+
+    return session->ev_sid.sr;
+}
+
 API void
 sr_session_set_nc_id(sr_session_ctx_t *session, uint32_t nc_sid)
 {
@@ -607,6 +645,16 @@ sr_session_get_nc_id(sr_session_ctx_t *session)
     }
 
     return session->sid.nc;
+}
+
+API uint32_t
+sr_session_get_event_nc_id(sr_session_ctx_t *session)
+{
+    if (!session || !session->ev) {
+        return 0;
+    }
+
+    return session->ev_sid.nc;
 }
 
 API int
@@ -656,6 +704,16 @@ sr_session_get_user(sr_session_ctx_t *session)
 
     /* return the user */
     return session->sid.user;
+}
+
+API const char *
+sr_session_get_event_user(sr_session_ctx_t *session)
+{
+    if (!session || !session->ev) {
+        return NULL;
+    }
+
+    return session->ev_sid.user;
 }
 
 API sr_conn_ctx_t *
@@ -4339,7 +4397,7 @@ _sr_event_notif_sub_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_
     sr_error_info_t *err_info = NULL;
     struct modsub_notifsub_s *notif_sub;
     const char *module_name;
-    sr_sid_t sid = {0};
+    sr_session_ctx_t *ev_sess = NULL;
 
     SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
 
@@ -4361,9 +4419,14 @@ _sr_event_notif_sub_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_
         goto cleanup_unlock;
     }
 
+    /* create event session */
+    if ((err_info = _sr_session_start(subscription->conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, 0, 0, NULL, &ev_sess))) {
+        goto cleanup_unlock;
+    }
+
     /* send the special notification */
-    if ((err_info = sr_notif_call_callback(subscription->conn, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
-            suspend ? SR_EV_NOTIF_SUSPENDED : SR_EV_NOTIF_RESUMED, NULL, time(NULL), sid))) {
+    if ((err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
+            suspend ? SR_EV_NOTIF_SUSPENDED : SR_EV_NOTIF_RESUMED, NULL, time(NULL)))) {
         goto cleanup_unlock;
     }
 
@@ -4371,6 +4434,7 @@ cleanup_unlock:
     /* SUBS READ UNLOCK */
     sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
 
+    sr_session_stop(ev_sess);
     return sr_api_ret(NULL, err_info);
 }
 

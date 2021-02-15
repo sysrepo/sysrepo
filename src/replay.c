@@ -710,8 +710,8 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, t
     time_t file_from_ts, file_to_ts, notif_ts;
     struct ly_set *set = NULL;
     struct lyd_node *notif = NULL, *notif_op;
+    sr_session_ctx_t *ev_sess = NULL;
     int fd = -1;
-    sr_sid_t sid = {0};
 
     /* find SHM mod for replay lock and check if replay is even supported */
     shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), mod_name);
@@ -720,6 +720,11 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, t
     if (!ATOMIC_LOAD_RELAXED(shm_mod->replay_supp)) {
         /* nothing to do */
         SR_LOG_WRN("Module \"%s\" does not support notification replay.", mod_name);
+        goto cleanup;
+    }
+
+    /* create event session */
+    if ((err_info = _sr_session_start(conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, 0, 0, NULL, &ev_sess))) {
         goto cleanup;
     }
 
@@ -774,8 +779,8 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, t
                 SR_CHECK_INT_GOTO(notif_op->schema->nodetype != LYS_NOTIF, err_info, cleanup);
 
                 /* call callback */
-                if ((err_info = sr_notif_call_callback(conn, cb, tree_cb, private_data, SR_EV_NOTIF_REPLAY, notif_op,
-                        notif_ts, sid))) {
+                if ((err_info = sr_notif_call_callback(ev_sess, cb, tree_cb, private_data, SR_EV_NOTIF_REPLAY, notif_op,
+                        notif_ts))) {
                     goto cleanup;
                 }
             }
@@ -799,8 +804,8 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, t
 
     /* replay last notification if the subscription continues */
     notif_ts = time(NULL);
-    if ((!stop_time || (stop_time >= notif_ts)) && (err_info = sr_notif_call_callback(conn, cb, tree_cb, private_data,
-            SR_EV_NOTIF_REPLAY_COMPLETE, NULL, stop_time ? stop_time : notif_ts, sid))) {
+    if ((!stop_time || (stop_time >= notif_ts)) && (err_info = sr_notif_call_callback(ev_sess, cb, tree_cb, private_data,
+            SR_EV_NOTIF_REPLAY_COMPLETE, NULL, stop_time ? stop_time : notif_ts))) {
         goto cleanup;
     }
 
@@ -810,6 +815,7 @@ cleanup:
     if (fd > -1) {
         close(fd);
     }
+    sr_session_stop(ev_sess);
     lyd_free_withsiblings(notif);
     ly_set_free(set);
     return err_info;

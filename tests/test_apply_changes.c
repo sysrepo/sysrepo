@@ -149,7 +149,7 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
 
     (void)request_id;
 
-    assert_int_equal(sr_session_get_nc_id(session), 52);
+    assert_int_equal(sr_session_get_event_nc_id(session), 52);
     assert_string_equal(module_name, "ietf-interfaces");
     assert_null(xpath);
 

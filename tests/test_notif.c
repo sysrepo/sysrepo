@@ -348,7 +348,7 @@ notif_simple_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, 
     (void)timestamp;
 
     assert_int_equal(notif_type, SR_EV_NOTIF_REALTIME);
-    assert_int_equal(sr_session_get_nc_id(session), 1000);
+    assert_int_equal(sr_session_get_event_nc_id(session), 1000);
 
     /* check input data */
     if (!strcmp(xpath, "/ops:notif3")) {
@@ -1100,22 +1100,22 @@ notif_suspend_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type,
 
     switch (st->cb_called) {
     case 0:
-        assert_int_equal(sr_session_get_nc_id(session), 1000);
+        assert_int_equal(sr_session_get_event_nc_id(session), 1000);
         assert_int_equal(notif_type, SR_EV_NOTIF_REALTIME);
         assert_string_equal(xpath, "/ops:notif4");
         break;
     case 1:
-        assert_int_equal(sr_session_get_nc_id(session), 0);
+        assert_int_equal(sr_session_get_event_nc_id(session), 0);
         assert_int_equal(notif_type, SR_EV_NOTIF_SUSPENDED);
         assert_null(xpath);
         break;
     case 2:
-        assert_int_equal(sr_session_get_nc_id(session), 0);
+        assert_int_equal(sr_session_get_event_nc_id(session), 0);
         assert_int_equal(notif_type, SR_EV_NOTIF_RESUMED);
         assert_null(xpath);
         break;
     case 3:
-        assert_int_equal(sr_session_get_nc_id(session), 1000);
+        assert_int_equal(sr_session_get_event_nc_id(session), 1000);
         assert_int_equal(notif_type, SR_EV_NOTIF_REALTIME);
         assert_string_equal(xpath, "/ops:notif4");
         break;

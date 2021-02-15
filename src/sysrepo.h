@@ -384,6 +384,15 @@ int sr_set_error(sr_session_ctx_t *session, const char *path, const char *format
 uint32_t sr_session_get_id(sr_session_ctx_t *session);
 
 /**
+ * @brief Return the session ID of the event originator sysrepo session.
+ * Should be used on the implicit session in event callbacks.
+ *
+ * @param [in] session Event session (not [DS](@ref sr_datastore_t)-specific) to use.
+ * @return sysrepo SID or 0 in case of error.
+ */
+uint32_t sr_session_get_event_sr_id(sr_session_ctx_t *session);
+
+/**
  * @brief Set a NETCONF session ID for a sysrepo session. Any application
  * callbacks handling operations initiated by this session will be able to
  * read this ID from the session provided.
@@ -394,14 +403,21 @@ uint32_t sr_session_get_id(sr_session_ctx_t *session);
 void sr_session_set_nc_id(sr_session_ctx_t *session, uint32_t nc_sid);
 
 /**
- * @brief Learn NETCONF session ID from a sysrepo session. Either reads back
- * the value set by ::sr_session_set_nc_id or of the initiating session when used
- * in an application callback.
+ * @brief Learn NETCONF session ID set for a sysrepo session.
  *
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @return Session NETCONF SID.
  */
 uint32_t sr_session_get_nc_id(sr_session_ctx_t *session);
+
+/**
+ * @brief Learn NETCONF session ID set for the event originator sysrepo session.
+ * Should be used on the implicit session in event callbacks.
+ *
+ * @param[in] session Event session (not [DS](@ref sr_datastore_t)-specific) to use.
+ * @return Session NETCONF SID.
+ */
+uint32_t sr_session_get_event_nc_id(sr_session_ctx_t *session);
 
 /**
  * @brief Set the effective user of a session to a different one that the process owner.
@@ -423,6 +439,15 @@ int sr_session_set_user(sr_session_ctx_t *session, const char *user);
  * @return Session user.
  */
 const char *sr_session_get_user(sr_session_ctx_t *session);
+
+/**
+ * @brief Get the effective user of the event originator sysrepo session.
+ * Should be used on the implicit session in event callbacks.
+ *
+ * @param[in] session Event session (not [DS](@ref sr_datastore_t)-specific) to use.
+ * @return Session user.
+ */
+const char *sr_session_get_event_user(sr_session_ctx_t *session);
 
 /**
  * @brief Get the connection the session was created on.
@@ -1299,7 +1324,7 @@ typedef struct sr_change_iter_s sr_change_iter_t;
  * @note Callback must not modify the same module and datastore change subscriptions, it would result in a deadlock.
  *
  * @param[in] session Implicit session (do not stop) with information about the changed data (retrieved by
- * ::sr_get_changes_iter) the event originator session IDs.
+ * ::sr_get_changes_iter) and the event originator session IDs.
  * @param[in] module_name Name of the module where the change has occurred.
  * @param[in] xpath [XPath](@ref paths) used when subscribing, NULL if the whole module was subscribed to.
  * @param[in] event Type of the callback event that has occurred.

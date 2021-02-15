@@ -1063,7 +1063,7 @@ simple_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *x
     struct lyd_node *node;
 
     assert_string_equal(request_xpath, "/ietf-interfaces:*");
-    assert_int_equal(sr_session_get_nc_id(session), 64);
+    assert_int_equal(sr_session_get_event_nc_id(session), 64);
     (void)request_id;
     (void)private_data;
 
