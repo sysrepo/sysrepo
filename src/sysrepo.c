@@ -2435,12 +2435,12 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, sr_sid_t sid)
         assert(shm_lock->sid.sr == sid.sr);
 
         /* it was successfully WRITE-locked, check that DS lock state is as expected */
-        if (shm_lock->ds_locked && lock) {
+        if (ATOMIC_LOAD_RELAXED(shm_lock->ds_locked) && lock) {
             assert(shm_lock->sid.sr == sid.sr);
             sr_errinfo_new(&err_info, SR_ERR_LOCKED, NULL, "Module \"%s\" is already locked by this session %u (NC SID %u).",
                     mod->ly_mod->name, sid.sr, sid.nc);
             goto error;
-        } else if (!shm_lock->ds_locked && !lock) {
+        } else if (!ATOMIC_LOAD_RELAXED(shm_lock->ds_locked) && !lock) {
             assert(shm_lock->sid.sr == sid.sr);
             sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, NULL, "Module \"%s\" was not locked by this session %u (NC SID %u).",
                     mod->ly_mod->name, sid.sr, sid.nc);
@@ -2463,7 +2463,7 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, sr_sid_t sid)
         }
 
         /* change DS lock state and remember the time */
-        shm_lock->ds_locked = lock;
+        ATOMIC_STORE_RELAXED(shm_lock->ds_locked, lock);
         if (lock) {
             shm_lock->ds_ts = time(NULL);
         } else {
@@ -2478,12 +2478,12 @@ error:
     for (j = 0; j < i; ++j) {
         shm_lock = &mod_info->mods[j].shm_mod->data_lock_info[mod_info->ds];
 
-        assert((shm_lock->ds_locked && lock) || (!shm_lock->ds_locked && !lock));
+        assert((ATOMIC_LOAD_RELAXED(shm_lock->ds_locked) && lock) || (!ATOMIC_LOAD_RELAXED(shm_lock->ds_locked) && !lock));
 
         if (lock) {
-            shm_lock->ds_locked = 0;
+            ATOMIC_STORE_RELAXED(shm_lock->ds_locked, 0);
         } else {
-            shm_lock->ds_locked = 1;
+            ATOMIC_STORE_RELAXED(shm_lock->ds_locked, 1);
         }
     }
     return err_info;
@@ -2617,7 +2617,7 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
     for (i = 0; i < mod_info.mod_count; ++i) {
         shm_lock = &mod_info.mods[i].shm_mod->data_lock_info[mod_info.ds];
 
-        if (!shm_lock->ds_locked) {
+        if (!ATOMIC_LOAD_RELAXED(shm_lock->ds_locked)) {
             /* there is at least one module that is not DS-locked */
             break;
         }

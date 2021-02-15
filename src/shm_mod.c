@@ -733,7 +733,7 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid)
                     sr_errinfo_free(&err_info);
                     shm_lock->lock.upgr = 0;
                 }
-                if (!shm_lock->ds_locked) {
+                if (!ATOMIC_LOAD_RELAXED(shm_lock->ds_locked)) {
                     /* why our SID matched then? */
                     SR_ERRINFO_INT(&err_info);
                     sr_errinfo_free(&err_info);
@@ -762,7 +762,7 @@ cleanup_modules:
                 }
 
                 /* DS unlock */
-                shm_lock->ds_locked = 0;
+                ATOMIC_STORE_RELAXED(shm_lock->ds_locked, 0);
                 memset(&shm_lock->sid, 0, sizeof shm_lock->sid);
                 shm_lock->ds_ts = 0;
             }
