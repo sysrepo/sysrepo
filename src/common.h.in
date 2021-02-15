@@ -224,7 +224,7 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 #define SR_FILE_PERM 00600
 
 /** permissions of data files of internal modules */
-#define SR_INT_FILE_PERM 00666
+#define SR_INT_FILE_PERM 00664
 
 /** permission of data files of sysrepo-monitoring internal module */
 #define SR_MON_INT_FILE_PERM 00600
