@@ -35,6 +35,7 @@
 #include <cmocka.h>
 #include <libyang/libyang.h>
 
+#include "common.h"
 #include "tests/config.h"
 #include "sysrepo.h"
 
@@ -43,7 +44,7 @@ const time_t start_ts = 1550233816;
 struct state {
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sess;
-    volatile int cb_called;
+    ATOMIC_T cb_called;
     pthread_barrier_t barrier;
 };
 
@@ -365,7 +366,7 @@ notif_simple_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, 
     }
 
     /* signal that we were called */
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     pthread_barrier_wait(&st->barrier);
 }
 
@@ -392,7 +393,7 @@ test_simple(void **state)
     sr_val_t input[2];
     int ret;
 
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
     /* subscribe */
     ret = sr_event_notif_subscribe(st->sess, "ops", NULL, 0, 0, notif_simple_cb, st, 0, &subscr);
@@ -456,7 +457,7 @@ test_simple(void **state)
 
     /* wait for the callback */
     pthread_barrier_wait(&st->barrier);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /*
      * create the second notification
@@ -486,7 +487,7 @@ test_simple(void **state)
 
     /* wait for the callback */
     pthread_barrier_wait(&st->barrier);
-    assert_int_equal(st->cb_called, 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     sr_unsubscribe(subscr);
     sr_unsubscribe(subscr2);
@@ -503,7 +504,7 @@ notif_stop_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, co
     (void)session;
     (void)timestamp;
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
         assert_int_equal(notif_type, SR_EV_NOTIF_STOP);
         assert_null(notif);
@@ -513,7 +514,7 @@ notif_stop_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, co
     }
 
     /* signal that we were called */
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     pthread_barrier_wait(&st->barrier);
 }
 
@@ -524,7 +525,7 @@ test_stop(void **state)
     sr_subscription_ctx_t *subscr;
     int ret;
 
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
     /* subscribe and expect only the stop notification */
     ret = sr_event_notif_subscribe_tree(st->sess, "ops", NULL, time(NULL) - 2, time(NULL) - 1, notif_stop_cb, st, 0, &subscr);
@@ -532,7 +533,7 @@ test_stop(void **state)
 
     /* wait for the stop notification */
     pthread_barrier_wait(&st->barrier);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     sr_unsubscribe(subscr);
 }
@@ -547,7 +548,7 @@ notif_replay_simple_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif
     (void)session;
     (void)timestamp;
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY);
         assert_non_null(notif);
@@ -566,7 +567,7 @@ notif_replay_simple_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif
     }
 
     /* signal that we were called */
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     pthread_barrier_wait(&st->barrier);
 }
 
@@ -579,7 +580,7 @@ test_replay_simple(void **state)
     time_t cur_ts;
     int ret;
 
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
     /* set some data needed for validation */
     ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, NULL, 0);
@@ -614,7 +615,7 @@ test_replay_simple(void **state)
     pthread_barrier_wait(&st->barrier);
     pthread_barrier_wait(&st->barrier);
     pthread_barrier_wait(&st->barrier);
-    assert_int_equal(st->cb_called, 3);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
 
     sr_unsubscribe(subscr);
 }
@@ -629,7 +630,7 @@ notif_replay_interval_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t not
     (void)session;
     (void)timestamp;
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY);
         assert_non_null(notif);
@@ -732,7 +733,7 @@ notif_replay_interval_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t not
     }
 
     /* signal that we were called */
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     pthread_barrier_wait(&st->barrier);
 }
 
@@ -743,7 +744,7 @@ test_replay_interval(void **state)
     sr_subscription_ctx_t *subscr;
     int ret, i = 0;
 
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
     /* subscribe to the first replay interval */
     ret = sr_event_notif_subscribe_tree(st->sess, "ops", NULL, start_ts + 2, start_ts + 13, notif_replay_interval_cb, st,
@@ -754,7 +755,7 @@ test_replay_interval(void **state)
     for (; i < 9; ++i) {
         pthread_barrier_wait(&st->barrier);
     }
-    assert_int_equal(st->cb_called, i);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), i);
 
     /* subscribe to the second replay interval */
     ret = sr_event_notif_subscribe_tree(st->sess, "ops", NULL, start_ts - 20, start_ts + 4, notif_replay_interval_cb, st,
@@ -765,7 +766,7 @@ test_replay_interval(void **state)
     for (; i < 13; ++i) {
         pthread_barrier_wait(&st->barrier);
     }
-    assert_int_equal(st->cb_called, i);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), i);
 
     /* subscribe to the third replay interval */
     ret = sr_event_notif_subscribe_tree(st->sess, "ops", NULL, start_ts + 9, start_ts + 40, notif_replay_interval_cb, st,
@@ -776,7 +777,7 @@ test_replay_interval(void **state)
     for (; i < 20; ++i) {
         pthread_barrier_wait(&st->barrier);
     }
-    assert_int_equal(st->cb_called, i);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), i);
 
     sr_unsubscribe(subscr);
 }
@@ -791,7 +792,7 @@ notif_no_replay_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_typ
     (void)session;
     (void)timestamp;
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY_COMPLETE);
         assert_null(notif);
@@ -806,7 +807,7 @@ notif_no_replay_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_typ
     }
 
     /* signal that we were called */
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     pthread_barrier_wait(&st->barrier);
 }
 
@@ -818,7 +819,7 @@ test_no_replay(void **state)
     struct lyd_node *notif;
     int ret;
 
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
     /* set some data needed for validation */
     ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, NULL, 0);
@@ -843,7 +844,7 @@ test_no_replay(void **state)
 
     /* wait for the complete notification */
     pthread_barrier_wait(&st->barrier);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /* send the realtime notification */
     ret = sr_event_notif_send_tree(st->sess, notif);
@@ -852,7 +853,7 @@ test_no_replay(void **state)
 
     /* wait for the realtime notification */
     pthread_barrier_wait(&st->barrier);
-    assert_int_equal(st->cb_called, 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     sr_unsubscribe(subscr);
 }
@@ -873,7 +874,7 @@ notif_config_change_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif
     (void)session;
     (void)timestamp;
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
         lyd_print_mem(&str1, notif->child->next, LYD_XML, LYP_WITHSIBLINGS);
         str2 =
@@ -979,7 +980,7 @@ notif_config_change_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif
     }
 
     /* signal that we were called */
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     pthread_barrier_wait(&st->barrier);
 }
 
@@ -990,7 +991,7 @@ test_notif_config_change(void **state)
     sr_subscription_ctx_t *subscr;
     int ret;
 
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
     /* subscribe to netconf-config-change */
     ret = sr_event_notif_subscribe_tree(st->sess, "ietf-netconf-notifications",
@@ -1005,7 +1006,7 @@ test_notif_config_change(void **state)
 
     /* wait for the notification */
     pthread_barrier_wait(&st->barrier);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     ret = sr_set_item_str(st->sess, "/test:test-leaf", "52", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1022,7 +1023,7 @@ test_notif_config_change(void **state)
 
     /* wait for the notification */
     pthread_barrier_wait(&st->barrier);
-    assert_int_equal(st->cb_called, 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     ret = sr_move_item(st->sess, "/test:cont/l2[k='one']", SR_MOVE_AFTER, "[k='two:three']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1033,7 +1034,7 @@ test_notif_config_change(void **state)
 
     /* wait for the notification */
     pthread_barrier_wait(&st->barrier);
-    assert_int_equal(st->cb_called, 3);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
 
     ret = sr_delete_item(st->sess, "/test:test-leaf", 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1046,7 +1047,7 @@ test_notif_config_change(void **state)
 
     /* wait for the notification */
     pthread_barrier_wait(&st->barrier);
-    assert_int_equal(st->cb_called, 4);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
     sr_unsubscribe(subscr);
 }
@@ -1098,7 +1099,7 @@ notif_suspend_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type,
     (void)values_cnt;
     (void)timestamp;
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
         assert_int_equal(sr_session_get_event_nc_id(session), 1000);
         assert_int_equal(notif_type, SR_EV_NOTIF_REALTIME);
@@ -1124,7 +1125,7 @@ notif_suspend_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type,
     }
 
     /* signal that we were called */
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     if (notif_type == SR_EV_NOTIF_REALTIME) {
         pthread_barrier_wait(&st->barrier);
     }
@@ -1138,7 +1139,7 @@ test_suspend(void **state)
     int ret;
     uint32_t sub_id;
 
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
     /* subscribe */
     ret = sr_event_notif_subscribe(st->sess, "ops", NULL, 0, 0, notif_suspend_cb, st, 0, &subscr);
@@ -1150,14 +1151,14 @@ test_suspend(void **state)
 
     /* wait for the callback */
     pthread_barrier_wait(&st->barrier);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /* suspend */
     sub_id = sr_event_notif_sub_id_get_last(subscr);
     ret = sr_event_notif_sub_suspend(subscr, sub_id);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_int_equal(st->cb_called, 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     /* send a notif, it is not delivered */
     ret = sr_event_notif_send(st->sess, "/ops:notif4", NULL, 0);
@@ -1167,7 +1168,7 @@ test_suspend(void **state)
     ret = sr_event_notif_sub_resume(subscr, sub_id);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_int_equal(st->cb_called, 3);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
 
     /* send a notif */
     ret = sr_event_notif_send(st->sess, "/ops:notif4", NULL, 0);
@@ -1175,7 +1176,7 @@ test_suspend(void **state)
 
     /* wait for the callback */
     pthread_barrier_wait(&st->barrier);
-    assert_int_equal(st->cb_called, 4);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
     sr_unsubscribe(subscr);
 }

@@ -31,13 +31,14 @@
 #include <cmocka.h>
 #include <libyang/libyang.h>
 
+#include "common.h"
 #include "tests/config.h"
 #include "sysrepo.h"
 
 struct state {
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sess;
-    int cb_called;
+    ATOMIC_T cb_called;
     pthread_barrier_t barrier;
 };
 
@@ -113,7 +114,7 @@ setup(void **state)
 
     sr_session_set_nc_id(st->sess, 64);
 
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
     pthread_barrier_init(&st->barrier, NULL, 2);
 
@@ -1729,7 +1730,7 @@ xpath_check_oper_cb(sr_session_ctx_t *session, const char *module_name, const ch
     (void)request_id;
     (void)parent;
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -1750,18 +1751,18 @@ test_xpath_check(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read interfaces from operational, callback not called */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     lyd_free_withsiblings(data);
-    assert_int_equal(st->cb_called, 0);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 0);
 
     /* read all from operational, callback called */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     lyd_free_withsiblings(data);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     sr_unsubscribe(subscr);
     subscr = NULL;
@@ -1772,18 +1773,18 @@ test_xpath_check(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read interfaces from operational, callback not called */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     lyd_free_withsiblings(data);
-    assert_int_equal(st->cb_called, 0);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 0);
 
     /* read all from operational, callback called */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth0']/type", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     lyd_free_withsiblings(data);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     sr_unsubscribe(subscr);
 }
@@ -1829,7 +1830,7 @@ state_only_oper_cb(sr_session_ctx_t *session, const char *module_name, const cha
         fail();
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -1852,10 +1853,10 @@ test_state_only(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_NO_CONFIG | SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
     assert_int_equal(ret, 0);
@@ -1900,10 +1901,10 @@ test_state_only(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_NO_CONFIG | SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
     assert_int_equal(ret, 0);
@@ -1935,11 +1936,11 @@ test_state_only(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_get_data(st->sess, "/mixed-config:test-state/test-case[name='four']", 0, 0,
             SR_OPER_NO_CONFIG | SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS);
     assert_int_equal(ret, 0);
@@ -2206,9 +2207,9 @@ oper_change_cb(sr_session_ctx_t *session, const char *module_name, const char *x
     if (!strcmp(xpath, "/ietf-interfaces:interfaces-state")) {
         assert_string_equal(module_name, "ietf-interfaces");
 
-        if (st->cb_called == 0) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 0) {
             assert_int_equal(event, SR_EV_CHANGE);
-        } else if (st->cb_called == 1) {
+        } else if (ATOMIC_LOAD_RELAXED(st->cb_called) == 1) {
             assert_int_equal(event, SR_EV_DONE);
         } else {
             fail();
@@ -2271,7 +2272,7 @@ oper_change_cb(sr_session_ctx_t *session, const char *module_name, const char *x
         fail();
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -2290,7 +2291,7 @@ test_stored_state(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to operational data changes */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", oper_change_cb,
             st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2303,7 +2304,7 @@ test_stored_state(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* callback was called */
-    assert_int_equal(st->cb_called, 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     /* read the data */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
@@ -3240,7 +3241,7 @@ change_cb_stored_cb(sr_session_ctx_t *session, const char *module_name, const ch
     assert_string_equal(module_name, "ietf-interfaces");
     assert_null(xpath);
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
         assert_int_equal(event, SR_EV_CHANGE);
 
@@ -3383,7 +3384,7 @@ change_cb_stored_cb(sr_session_ctx_t *session, const char *module_name, const ch
         fail();
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -3402,13 +3403,13 @@ test_change_cb_stored(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some configuration data and trigger the callback */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 500000, 1);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(st->cb_called, 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     /* read all data from operational */
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
