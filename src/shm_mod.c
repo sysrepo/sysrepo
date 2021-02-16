@@ -235,8 +235,13 @@ sr_shmmod_collect_instid_deps_data(sr_main_shm_t *main_shm, sr_dep_t *shm_deps, 
                 /* extract module names from all the existing instance-identifiers */
                 for (j = 0; j < set->number; ++j) {
                     assert(set->set.d[j]->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST));
-                    val_str = sr_ly_leaf_value_str(set->set.d[j]);
+                    /* it can be a union and a non-instid value stored */
+                    if (((struct lyd_node_leaf_list *)set->set.d[j])->value_type != LY_TYPE_INST) {
+                        continue;
+                    }
 
+                    /* get target module name from the value */
+                    val_str = sr_ly_leaf_value_str(set->set.d[j]);
                     mod_name = sr_get_first_ns(val_str);
                     ly_mod = ly_ctx_get_module(ly_ctx, mod_name, NULL, 1);
                     free(mod_name);
