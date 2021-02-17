@@ -497,9 +497,6 @@ revert_lock:
 static void
 sr_shmmod_unlock(struct sr_mod_lock_s *shm_lock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, sr_sid_t sid)
 {
-    /* UNLOCK */
-    sr_rwunlock(&shm_lock->lock, timeout_ms, mode, cid, __func__);
-
     /* remove our SID */
     if ((mode == SR_LOCK_READ_UPGR) || (mode == SR_LOCK_WRITE)) {
         assert(!memcmp(&shm_lock->sid, &sid, sizeof sid));
@@ -515,6 +512,9 @@ sr_shmmod_unlock(struct sr_mod_lock_s *shm_lock, int timeout_ms, sr_lock_mode_t 
             memset(&shm_lock->sid, 0, sizeof shm_lock->sid);
         }
     }
+
+    /* UNLOCK */
+    sr_rwunlock(&shm_lock->lock, timeout_ms, mode, cid, __func__);
 }
 
 /**
