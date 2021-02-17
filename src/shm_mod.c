@@ -452,7 +452,7 @@ sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod
                         ly_mod->name, shm_lock->sid.sr, shm_lock->sid.nc);
                 goto revert_lock;
             }
-            /* we hold DS lock */
+            /* we must be holding the DS lock */
             assert(!memcmp(&shm_lock->sid, &sid, sizeof sid));
         } else {
             /* read-upgr-lock or write-lock, store */
