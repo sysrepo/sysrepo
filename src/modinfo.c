@@ -792,15 +792,15 @@ cleanup_opersub_unlock:
 /**
  * @brief Duplicate operational (enabled) data from configuration data tree.
  *
+ * @param[in] conn Connection to use.
  * @param[in] data Configuration data.
- * @param[in] ext_shm_addr Main SHM address.
  * @param[in] mod Mod info module to process.
  * @param[in] opts Get oper data options.
  * @param[out] enabled_mod_data Enabled operational data of the module.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr, struct sr_mod_info_mod_s *mod,
+sr_module_oper_data_dup_enabled(sr_conn_ctx_t *conn, const struct lyd_node *data, struct sr_mod_info_mod_s *mod,
         sr_get_oper_options_t opts, struct lyd_node **enabled_mod_data)
 {
     sr_error_info_t *err_info = NULL;
@@ -822,14 +822,25 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
         data_duplicated = 1;
     }
 
+    /* CHANGE SUB READ LOCK */
+    if ((err_info = sr_rwlock(&mod->shm_mod->change_sub[SR_DS_RUNNING].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT,
+            SR_LOCK_READ, conn->cid, __func__, NULL, NULL))) {
+        return err_info;
+    }
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        goto error_sub_unlock;
+    }
+
     if (!data_duplicated) {
         /* try to find a subscription for the whole module */
-        shm_changesubs = (sr_mod_change_sub_t *)(ext_shm_addr + mod->shm_mod->change_sub[SR_DS_RUNNING].subs);
+        shm_changesubs = (sr_mod_change_sub_t *)(conn->ext_shm.addr + mod->shm_mod->change_sub[SR_DS_RUNNING].subs);
         for (i = 0; i < mod->shm_mod->change_sub[SR_DS_RUNNING].sub_count; ++i) {
             if (!shm_changesubs[i].xpath && !(shm_changesubs[i].opts & SR_SUBSCR_PASSIVE)) {
                 /* the whole module is enabled */
                 if ((err_info = sr_lyd_dup_module_data(data, mod->ly_mod, 1, enabled_mod_data))) {
-                    return err_info;
+                    goto error_ext_sub_unlock;
                 }
                 data_duplicated = 1;
                 break;
@@ -843,9 +854,9 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
         for (i = 0, xp_i = 0; i < mod->shm_mod->change_sub[SR_DS_RUNNING].sub_count; ++i) {
             if (shm_changesubs[i].xpath && !(shm_changesubs[i].opts & SR_SUBSCR_PASSIVE)) {
                 xpaths = sr_realloc(xpaths, (xp_i + 1) * sizeof *xpaths);
-                SR_CHECK_MEM_RET(!xpaths, err_info);
+                SR_CHECK_MEM_GOTO(!xpaths, err_info, error_ext_sub_unlock);
 
-                xpaths[xp_i] = ext_shm_addr + shm_changesubs[i].xpath;
+                xpaths[xp_i] = conn->ext_shm.addr + shm_changesubs[i].xpath;
                 ++xp_i;
             }
         }
@@ -854,9 +865,15 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
         err_info = sr_lyd_dup_enabled_xpath(data, xpaths, xp_i, enabled_mod_data);
         free(xpaths);
         if (err_info) {
-            return err_info;
+            goto error_ext_sub_unlock;
         }
     }
+
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+    /* CHANGE SUB READ UNLOCK */
+    sr_rwunlock(&mod->shm_mod->change_sub[SR_DS_RUNNING].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
     if (opts & SR_OPER_WITH_ORIGIN) {
         LY_TREE_FOR(*enabled_mod_data, root) {
@@ -880,6 +897,16 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
     }
 
     return NULL;
+
+error_ext_sub_unlock:
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+error_sub_unlock:
+    /* CHANGE SUB READ UNLOCK */
+    sr_rwunlock(&mod->shm_mod->change_sub[SR_DS_RUNNING].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+    return err_info;
 }
 
 /**
@@ -1578,7 +1605,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
 
             if (mod_info->ds == SR_DS_OPERATIONAL) {
                 /* copy only enabled module data */
-                err_info = sr_module_oper_data_dup_enabled(mod_cache->data, conn->ext_shm.addr, mod, opts, &mod_data);
+                err_info = sr_module_oper_data_dup_enabled(conn, mod_cache->data, mod, opts, &mod_data);
             } else {
                 /* copy all module data */
                 err_info = sr_lyd_dup_module_data(mod_cache->data, mod->ly_mod, 0, &mod_data);
@@ -1609,8 +1636,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
 
             if (mod_info->ds == SR_DS_OPERATIONAL) {
                 /* keep only enabled module data */
-                if ((err_info = sr_module_oper_data_dup_enabled(mod_info->data, conn->ext_shm.addr, mod, opts,
-                        &mod_data))) {
+                if ((err_info = sr_module_oper_data_dup_enabled(conn, mod_info->data, mod, opts, &mod_data))) {
                     return err_info;
                 }
                 lyd_free_withsiblings(sr_module_data_unlink(&mod_info->data, mod->ly_mod));
