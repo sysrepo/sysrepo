@@ -925,8 +925,21 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *mod_data;
+    sr_lock_mode_t cur_mode = SR_LOCK_NONE;
     uint32_t i;
     void *mem;
+
+    if (read_locked) {
+        /* CACHE READ UNLOCK */
+        sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, cid, __func__);
+    }
+
+    /* CACHE READ UPGR LOCK */
+    if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, cid, __func__,
+            NULL, NULL))) {
+        goto cleanup;
+    }
+    cur_mode = SR_LOCK_READ_UPGR;
 
     /* find the module in the cache */
     for (i = 0; i < mod_cache->mod_count; ++i) {
@@ -939,36 +952,28 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
         /* this module data are already in the cache */
         assert(mod->shm_mod->ver >= mod_cache->mods[i].ver);
         if (mod->shm_mod->ver > mod_cache->mods[i].ver) {
-            if (read_locked) {
-                /* CACHE READ UNLOCK */
-                sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, cid, __func__);
-            }
-
-            /* CACHE WRITE LOCK */
-            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, cid, __func__,
+            /* CACHE WRITE LOCK UPGRADE */
+            if ((err_info = sr_rwrelock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, cid, __func__,
                     NULL, NULL))) {
-                goto error_rlock;
+                goto cleanup;
             }
+            cur_mode = SR_LOCK_WRITE;
 
             /* data needs to be updated, remove old data */
             lyd_free_withsiblings(sr_module_data_unlink(&mod_cache->data, mod->ly_mod));
             mod_cache->mods[i].ver = 0;
         }
     } else {
-        if (read_locked) {
-            /* CACHE READ UNLOCK */
-            sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, cid, __func__);
-        }
-
-        /* CACHE WRITE LOCK */
-        if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, cid, __func__,
+        /* CACHE WRITE LOCK UPGRADE */
+        if ((err_info = sr_rwrelock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, cid, __func__,
                 NULL, NULL))) {
-            goto error_rlock;
+            goto cleanup;
         }
+        cur_mode = SR_LOCK_WRITE;
 
         /* module is not in cache yet, add an item */
         mem = realloc(mod_cache->mods, (i + 1) * sizeof *mod_cache->mods);
-        SR_CHECK_MEM_RET(!mem, err_info);
+        SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
         mod_cache->mods = mem;
         ++mod_cache->mod_count;
 
@@ -983,7 +988,7 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
             mod_data = lyd_dup_withsiblings(upd_mod_data, LYD_DUP_OPT_RECURSIVE | LYD_DUP_OPT_WITH_WHEN);
             if (!mod_data) {
                 sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
-                goto error_wrunlock;
+                goto cleanup;
             }
             if (mod_cache->data) {
                 sr_ly_link(mod_cache->data, mod_data);
@@ -993,22 +998,23 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
         } else {
             /* we need to load current data from persistent storage */
             if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_RUNNING, &mod_cache->data))) {
-                goto error_wrunlock;
+                goto cleanup;
             }
         }
         mod_cache->mods[i].ver = mod->shm_mod->ver;
+    }
 
-error_wrunlock:
-        /* CACHE WRITE UNLOCK */
-        sr_rwunlock(&mod_cache->lock, 0, SR_LOCK_WRITE, cid, __func__);
+cleanup:
+    if (cur_mode != SR_LOCK_NONE) {
+        /* CACHE UNLOCK */
+        sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, cur_mode, cid, __func__);
+    }
 
-error_rlock:
-        if (read_locked) {
-            /* CACHE READ LOCK */
-            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, cid, __func__,
-                    NULL, NULL))) {
-                return err_info;
-            }
+    if (read_locked) {
+        /* CACHE READ LOCK */
+        if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, cid, __func__,
+                NULL, NULL))) {
+            return err_info;
         }
     }
 
