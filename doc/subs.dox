@@ -21,6 +21,12 @@ These are the most common kinds of subscriptions. A callback can be set to be ca
 changes occur so that it can appropriately react and adjust the system or whatever it manages accordingly. There can
 be many subscribers for the same data and arbitrary XPath filters can be applied.
 
+Any datastore can be subscribed to (startup, running and operational). The datastore is determined by the current
+datastore at the time of subscription (that is, the call to @ref sr_module_change_subscribe). Changing the active
+datastore after that does not have an effect on subscriptions that have already been made. For example, it is possible
+to subscribe to running datastore, switch to the startup datastore, subscribe to it, and then switch back to edit the
+running datastore all with one session and one subscription context.
+
 On changes, the callback is called with an event. By default, there are always 2 events following one after
 the other. On _change_, the new datastore content is prepared but not written yet and so the changes can be refused
 for any reason. If they are not, the changes are committed and hence visible for any subsequent operations. Right
