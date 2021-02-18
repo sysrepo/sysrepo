@@ -1937,11 +1937,10 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *update_edit = NULL, *old_diff = NULL, *new_diff = NULL;
-    sr_session_ctx_t tmp_sess;
+    sr_session_ctx_t *ev_sess = NULL;
     struct ly_set mod_set = {0};
     int ret;
 
-    memset(&tmp_sess, 0, sizeof tmp_sess);
     *cb_err_info = NULL;
 
     if (!mod_info->diff) {
@@ -1951,17 +1950,25 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
 
     /* call connection diff callback */
     if (session->conn->diff_check_cb) {
-        /* create temporary session */
-        tmp_sess.conn = session->conn;
-        tmp_sess.ds = session->ds;
-        tmp_sess.ev = SR_SUB_EV_CHANGE;
-        tmp_sess.sid = session->sid;
+        /* create event session */
+        if (session->ev) {
+            /* since these changes are applied from another event, just reuse that event information */
+            err_info = _sr_session_start(session->conn, session->ds, SR_SUB_EV_CHANGE, session->ev_sid.sr,
+                    session->ev_sid.nc, session->ev_sid.user, &ev_sess);
+        } else {
+            /* use the session information */
+            err_info = _sr_session_start(session->conn, session->ds, SR_SUB_EV_CHANGE, session->sid.sr, session->sid.nc,
+                    session->sid.user, &ev_sess);
+        }
+        if (err_info) {
+            goto cleanup;
+        }
 
-        ret = session->conn->diff_check_cb(&tmp_sess, mod_info->diff);
+        ret = session->conn->diff_check_cb(ev_sess, mod_info->diff);
         if (ret) {
             /* create cb_err_info */
-            if (tmp_sess.err_info && (tmp_sess.err_info->err_code == SR_ERR_OK)) {
-                sr_errinfo_new(cb_err_info, ret, tmp_sess.err_info->err[0].xpath, tmp_sess.err_info->err[0].message);
+            if (ev_sess->err_info && (ev_sess->err_info->err_code == SR_ERR_OK)) {
+                sr_errinfo_new(cb_err_info, ret, ev_sess->err_info->err[0].xpath, ev_sess->err_info->err[0].message);
             } else {
                 sr_errinfo_new(cb_err_info, ret, NULL, "Diff check callback failed (%s).", sr_strerror(ret));
             }
@@ -2125,11 +2132,11 @@ cleanup_unlock:
     sr_modinfo_changesub_rdunlock(mod_info);
 
 cleanup:
+    sr_session_stop(ev_sess);
     ly_set_clean(&mod_set);
     lyd_free_withsiblings(update_edit);
     lyd_free_withsiblings(old_diff);
     lyd_free_withsiblings(new_diff);
-    sr_errinfo_free(&tmp_sess.err_info);
     return err_info;
 }
 
