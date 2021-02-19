@@ -208,6 +208,9 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** permissions of main SHM lock file and main SHM itself */
 #define SR_MAIN_SHM_PERM 00666
 
+/** permissions of connection lock files */
+#define SR_CONN_LOCKFILE_PERM 00666
+
 /** permissions of all subscription SHMs */
 #define SR_SUB_SHM_PERM 00666
 
