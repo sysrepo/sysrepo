@@ -102,6 +102,8 @@ if(ENABLE_COVERAGE)
     endif()
 endif()
 
+option(INSTALL_SYSCTL_CONF "Install sysctl conf file to allow shared access to SHM files." OFF)
+
 # binding options
 option(GEN_LANGUAGE_BINDINGS "Enable library bindings for different languages." OFF)
 
@@ -284,7 +286,9 @@ install(TARGETS sysrepoctl sysrepocfg sysrepo-plugind DESTINATION ${CMAKE_INSTAL
 
 install(FILES "${PROJECT_BINARY_DIR}/sysrepo.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 
-install(FILES "${PROJECT_SOURCE_DIR}/66-sysrepo-disable-fs-protected_regular.conf" DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/sysctl.d/")
+if(INSTALL_SYSCTL_CONF)
+    install(FILES "${PROJECT_SOURCE_DIR}/66-sysrepo-disable-fs-protected_regular.conf" DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/sysctl.d/")
+endif()
 
 # examples
 if(BUILD_EXAMPLES)
