@@ -147,14 +147,13 @@ sr_shmmain_createlock_open(int *shm_lock)
     um = umask(SR_UMASK);
 
     *shm_lock = SR_OPEN(path, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
-    free(path);
     umask(um);
-    if (*shm_lock == -1) {
-        SR_ERRINFO_SYSERRNO(&err_info, "open");
-        return err_info;
-    }
 
-    return NULL;
+    if (*shm_lock == -1) {
+        SR_ERRINFO_OPEN(&err_info, path);
+    }
+    free(path);
+    return err_info;
 }
 
 sr_error_info_t *
@@ -236,15 +235,15 @@ sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive, pid_t *pid)
     }
     fd = open(path, O_RDWR);
     if (fd == -1) {
-        /* the file does not exist in which case there is no connection established */
         if (errno == ENOENT) {
+            /* the file does not exist in which case there is no connection established */
             *conn_alive = 0;
             if (pid) {
                 *pid = 0;
             }
             goto cleanup;
         }
-        SR_ERRINFO_SYSERRNO(&err_info, "open");
+        SR_ERRINFO_OPEN(&err_info, path);
         goto cleanup;
     }
 
@@ -312,7 +311,7 @@ sr_shmmain_conn_new_lockfile(sr_cid_t cid, int *lock_fd)
     fd = SR_OPEN(path, O_CREAT | O_RDWR, SR_INT_FILE_PERM);
     umask(um);
     if (fd == -1) {
-        SR_ERRINFO_SYSERRNO(&err_info, "open");
+        SR_ERRINFO_OPEN(&err_info, path);
         goto cleanup;
     }
 

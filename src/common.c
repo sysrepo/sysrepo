@@ -3285,7 +3285,7 @@ sr_cp_path(const char *to, const char *from, mode_t file_mode)
     /* open "from" file */
     fd_from = SR_OPEN(from, O_RDONLY, 0);
     if (fd_from < 0) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening \"%s\" file failed (%s).", from, strerror(errno));
+        SR_ERRINFO_OPEN(&err_info, from);
         goto cleanup;
     }
 
@@ -3296,7 +3296,7 @@ sr_cp_path(const char *to, const char *from, mode_t file_mode)
     fd_to = SR_OPEN(to, O_WRONLY | O_TRUNC | O_CREAT, file_mode);
     umask(um);
     if (fd_to < 0) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening \"%s\" failed (%s).", to, strerror(errno));
+        SR_ERRINFO_OPEN(&err_info, to);
         goto cleanup;
     }
 
@@ -5094,7 +5094,7 @@ retry_open:
             goto retry_open;
         }
 
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" (%s).", path, strerror(errno));
+        SR_ERRINFO_OPEN(&err_info, path);
         goto error;
     }
 
@@ -5227,7 +5227,7 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node
 
     /* open the file */
     if ((fd = SR_OPEN(path, O_WRONLY | create_flags, file_mode)) == -1) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" (%s).", path, strerror(errno));
+        SR_ERRINFO_OPEN(&err_info, path);
         goto cleanup;
     }
 

@@ -100,7 +100,7 @@ sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_sh
     /* open shared memory */
     shm->fd = SR_OPEN(path, O_RDWR, SR_SUB_SHM_PERM);
     if (shm->fd == -1) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" SHM (%s).", path, strerror(errno));
+        SR_ERRINFO_OPEN(&err_info, path);
         goto cleanup;
     }
 
@@ -172,7 +172,7 @@ sr_shmsub_data_open_remap(const char *name, const char *suffix1, int64_t suffix2
         /* open shared memory, it may exist already */
         shm->fd = SR_OPEN(path, O_RDWR | O_CREAT, SR_SUB_SHM_PERM);
         if (shm->fd == -1) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" data SHM (%s).", path, strerror(errno));
+            SR_ERRINFO_OPEN(&err_info, path);
             goto cleanup;
         }
     }
