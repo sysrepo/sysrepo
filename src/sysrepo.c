@@ -1076,10 +1076,17 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
         goto cleanup;
     }
 
-    /* it must be a different module from the installed one */
-    if (ly_mod->rev_size && !strcmp(upd_ly_mod->rev[0].date, ly_mod->rev[0].date)) {
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s@%s\" already installed.", mod_name, ly_mod->rev[0].date);
-        goto cleanup;
+    /* it must be a different and newer module than the installed one */
+    if (ly_mod->rev_size) {
+        if (!strcmp(upd_ly_mod->rev[0].date, ly_mod->rev[0].date)) {
+            sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s@%s\" already installed.", mod_name,
+                    ly_mod->rev[0].date);
+            goto cleanup;
+        } else if (strcmp(upd_ly_mod->rev[0].date, ly_mod->rev[0].date) < 0) {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Module \"%s@%s\" installed in a newer revision.",
+                    mod_name, ly_mod->rev[0].date);
+            goto cleanup;
+        }
     }
 
     /* schedule module update */
