@@ -380,13 +380,11 @@ _sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_sub_ev
     (*session)->conn = conn;
     (*session)->ds = datastore;
     (*session)->ev = event;
-    if (event) {
-        (*session)->ev_sid.sr = ev_sid;
-        (*session)->ev_sid.nc = ev_ncid;
-        if (ev_user) {
-            (*session)->ev_sid.user = strdup(ev_user);
-            SR_CHECK_MEM_GOTO(!(*session)->ev_sid.user, err_info, error);
-        }
+    (*session)->ev_sid.sr = ev_sid;
+    (*session)->ev_sid.nc = ev_ncid;
+    if (ev_user) {
+        (*session)->ev_sid.user = strdup(ev_user);
+        SR_CHECK_MEM_GOTO(!(*session)->ev_sid.user, err_info, error);
     }
     if ((err_info = sr_mutex_init(&(*session)->ptr_lock, 0))) {
         goto error;
@@ -2865,11 +2863,10 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, struct sr_m
     sr_error_info_t *err_info = NULL;
     struct lyd_node *enabled_data = NULL, *node;
     struct ly_set mod_set = {0};
-    sr_session_ctx_t tmp_sess;
+    sr_session_ctx_t *ev_sess = NULL;
     sr_error_t err_code;
 
     SR_MODINFO_INIT((*mod_info), session->conn, SR_DS_RUNNING, SR_DS_RUNNING);
-    memset(&tmp_sess, 0, sizeof tmp_sess);
 
     /* create mod_info structure with this module only */
     ly_set_add(&mod_set, (void *)ly_mod, 0);
@@ -2909,33 +2906,38 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, struct sr_m
         }
     }
 
-    tmp_sess.conn = session->conn;
-    tmp_sess.ds = SR_DS_RUNNING;
-    tmp_sess.dt[tmp_sess.ds].diff = enabled_data;
+    /* create event session */
+    if ((err_info = _sr_session_start(session->conn, SR_DS_RUNNING, SR_SUB_EV_NONE, session->sid.sr, session->sid.nc,
+            session->sid.user, &ev_sess))) {
+        goto cleanup;
+    }
+    ev_sess->dt[ev_sess->ds].diff = enabled_data;
+    enabled_data = NULL;
 
     if (!(opts & SR_SUBSCR_DONE_ONLY)) {
-        tmp_sess.ev = SR_SUB_EV_ENABLED;
-        SR_LOG_INF("Triggering \"%s\" \"%s\" event on enabled data.", ly_mod->name, sr_ev2str(tmp_sess.ev));
+        ev_sess->ev = SR_SUB_EV_ENABLED;
+        SR_LOG_INF("Triggering \"%s\" \"%s\" event on enabled data.", ly_mod->name, sr_ev2str(ev_sess->ev));
 
         /* present all changes in an "enabled" event */
-        err_code = callback(&tmp_sess, ly_mod->name, xpath, sr_ev2api(tmp_sess.ev), 0, private_data);
+        err_code = callback(ev_sess, ly_mod->name, xpath, sr_ev2api(ev_sess->ev), 0, private_data);
         if (err_code != SR_ERR_OK) {
             /* callback failed but it is the only one so no "abort" event is necessary */
             sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, NULL, "Subscribing to \"%s\" changes failed.", ly_mod->name);
-            if (tmp_sess.err_info && (tmp_sess.err_info->err_code == SR_ERR_OK)) {
+            if (ev_sess->err_info && (ev_sess->err_info->err_code == SR_ERR_OK)) {
                 /* remember callback error info */
-                sr_errinfo_merge(&err_info, tmp_sess.err_info);
+                sr_errinfo_merge(&err_info, ev_sess->err_info);
             }
             goto cleanup;
         }
     }
 
     /* finish with a "done" event just because this event should imitate a regular change */
-    tmp_sess.ev = SR_SUB_EV_DONE;
-    SR_LOG_INF("Triggering \"%s\" \"%s\" event on enabled data.", ly_mod->name, sr_ev2str(tmp_sess.ev));
-    callback(&tmp_sess, ly_mod->name, xpath, sr_ev2api(tmp_sess.ev), 0, private_data);
+    ev_sess->ev = SR_SUB_EV_DONE;
+    SR_LOG_INF("Triggering \"%s\" \"%s\" event on enabled data.", ly_mod->name, sr_ev2str(ev_sess->ev));
+    callback(ev_sess, ly_mod->name, xpath, sr_ev2api(ev_sess->ev), 0, private_data);
 
 cleanup:
+    sr_session_stop(ev_sess);
     ly_set_clean(&mod_set);
     lyd_free_withsiblings(enabled_data);
     return err_info;

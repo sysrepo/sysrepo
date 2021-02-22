@@ -2171,13 +2171,13 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
  * @brief Prepeare error that will be written after subscription structure into SHM.
  *
  * @param[in] err_code Error code.
- * @param[in] tmp_sess Callback temporary session with the error.
+ * @param[in] ev_sess Callback event session with the error.
  * @param[out] data_p Additional data to be written.
  * @param[out] data_len_p Additional data length.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmsub_prepare_error(sr_error_t err_code, sr_session_ctx_t *tmp_sess, char **data_p, uint32_t *data_len_p)
+sr_shmsub_prepare_error(sr_error_t err_code, sr_session_ctx_t *ev_sess, char **data_p, uint32_t *data_len_p)
 {
     sr_error_info_t *err_info = NULL;
     char *data;
@@ -2192,21 +2192,21 @@ sr_shmsub_prepare_error(sr_error_t err_code, sr_session_ctx_t *tmp_sess, char **
     memset(data, 0, data_len);
     *((sr_error_t *)data) = err_code;
 
-    if (tmp_sess->err_info && (tmp_sess->err_info->err_code == SR_ERR_OK)) {
+    if (ev_sess->err_info && (ev_sess->err_info->err_code == SR_ERR_OK)) {
         /* error message */
-        msg_len = sr_strshmlen(tmp_sess->err_info->err[0].message) - 1;
+        msg_len = sr_strshmlen(ev_sess->err_info->err[0].message) - 1;
         data_len += msg_len;
         data = sr_realloc(data, data_len);
         SR_CHECK_MEM_RET(!data, err_info);
-        strcpy(data + sizeof err_code, tmp_sess->err_info->err[0].message);
+        strcpy(data + sizeof err_code, ev_sess->err_info->err[0].message);
 
         /* error xpath */
-        if (tmp_sess->err_info->err[0].xpath) {
-            data_len += sr_strshmlen(tmp_sess->err_info->err[0].xpath) - 1;
+        if (ev_sess->err_info->err[0].xpath) {
+            data_len += sr_strshmlen(ev_sess->err_info->err[0].xpath) - 1;
             data = sr_realloc(data, data_len);
             SR_CHECK_MEM_RET(!data, err_info);
             /* print it after the error message string */
-            strcpy(data + sizeof err_code + msg_len + 1, tmp_sess->err_info->err[0].xpath);
+            strcpy(data + sizeof err_code + msg_len + 1, ev_sess->err_info->err[0].xpath);
         } else {
             /* ending '\0' was already accounted for */
             data[sizeof err_code + msg_len + 1] = '\0';
@@ -2235,7 +2235,7 @@ struct info_sub_s {
  * @param[in] sub Current change subscription.
  * @param[in] module_name Subscription module name.
  * @param[in] err_code Error code of the callback.
- * @param[in] tmp_sess Implicit session to use.
+ * @param[in] ev_sess Temporary event session to use.
  * @param[out] err_info Optional error info on error.
  * @return 0 if SHM content is as expected.
  * @return non-zero if SHM content changed unexpectedly and event processing was finished specially, @p err_info
@@ -2243,7 +2243,7 @@ struct info_sub_s {
  */
 static int
 sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t mode, struct info_sub_s *sub_info,
-        struct modsub_changesub_s *sub, const char *module_name, sr_error_t err_code, sr_session_ctx_t *tmp_sess,
+        struct modsub_changesub_s *sub, const char *module_name, sr_error_t err_code, sr_session_ctx_t *ev_sess,
         sr_error_info_t **err_info)
 {
     struct lyd_node *abort_diff;
@@ -2251,7 +2251,7 @@ sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t
     assert(!*err_info);
 
     /* SUB READ/WRITE LOCK */
-    if ((*err_info = sr_rwlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, tmp_sess->conn->cid, __func__,
+    if ((*err_info = sr_rwlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, ev_sess->conn->cid, __func__,
             NULL, NULL))) {
         return 1;
     }
@@ -2259,7 +2259,7 @@ sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t
     /* check that SHM is still valid even after the lock was released and re-acquired */
     if ((sub_info->event != multi_sub_shm->event) || (sub_info->request_id != multi_sub_shm->request_id)) {
         /* SUB READ/WRITE UNLOCK */
-        sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, tmp_sess->conn->cid, __func__);
+        sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, ev_sess->conn->cid, __func__);
 
         SR_LOG_INF("%s processing of \"%s\" event with ID %u priority %u (after timeout or earlier error).",
                 err_code ? "Failed" : "Successful", sr_ev2str(sub_info->event), sub_info->request_id, sub_info->priority);
@@ -2268,18 +2268,18 @@ sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t
         if ((sub_info->event == SR_SUB_EV_CHANGE) && (err_code == SR_ERR_OK) &&
                 sr_shmsub_change_is_valid(SR_SUB_EV_ABORT, sub->opts)) {
             /* update session */
-            tmp_sess->ev = SR_SUB_EV_ABORT;
-            if ((*err_info = sr_diff_reverse(tmp_sess->dt[tmp_sess->ds].diff, &abort_diff))) {
+            ev_sess->ev = SR_SUB_EV_ABORT;
+            if ((*err_info = sr_diff_reverse(ev_sess->dt[ev_sess->ds].diff, &abort_diff))) {
                 return 1;
             }
-            lyd_free_withsiblings(tmp_sess->dt[tmp_sess->ds].diff);
-            tmp_sess->dt[tmp_sess->ds].diff = abort_diff;
+            lyd_free_withsiblings(ev_sess->dt[ev_sess->ds].diff);
+            ev_sess->dt[ev_sess->ds].diff = abort_diff;
 
             SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %u priority %u (self-generated).",
                     module_name, sr_ev2str(SR_SUB_EV_ABORT), sub_info->request_id, sub_info->priority);
 
             /* call callback */
-            sub->cb(tmp_sess, module_name, sub->xpath, sr_ev2api(SR_SUB_EV_ABORT), sub_info->request_id,
+            sub->cb(ev_sess, module_name, sub->xpath, sr_ev2api(SR_SUB_EV_ABORT), sub_info->request_id,
                     sub->private_data);
         }
 
@@ -2748,7 +2748,7 @@ error:
  * @brief Call RPC/action callback.
  *
  * @param[in] rpc_sub RPC/action subscription.
- * @param[in] tmp_sess Temporary callback session.
+ * @param[in] ev_sess Temporary event callback session.
  * @param[in] input_op Input tree pointing to the operation node.
  * @param[in] event Subscription event.
  * @param[in] request_id Request ID.
@@ -2756,7 +2756,7 @@ error:
  * @param[out] err_code Returned error code if the callback failed.
  */
 static sr_error_info_t *
-sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ctx_t *tmp_sess, const struct lyd_node *input_op,
+sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ctx_t *ev_sess, const struct lyd_node *input_op,
         sr_sub_event_t event, uint32_t request_id, struct lyd_node **output_op, sr_error_t *err_code)
 {
     sr_error_info_t *err_info = NULL;
@@ -2776,12 +2776,12 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
         /* prepare output for tree CB */
         *output_op = lyd_dup(input_op, LYD_DUP_OPT_WITH_PARENTS);
         if (!*output_op) {
-            sr_errinfo_new_ly(&err_info, tmp_sess->conn->ly_ctx);
+            sr_errinfo_new_ly(&err_info, ev_sess->conn->ly_ctx);
             goto cleanup;
         }
 
         /* callback */
-        *err_code = rpc_sub->tree_cb(tmp_sess, rpc_sub->xpath, input_op, sr_ev2api(event), request_id, *output_op,
+        *err_code = rpc_sub->tree_cb(ev_sess, rpc_sub->xpath, input_op, sr_ev2api(event), request_id, *output_op,
                 rpc_sub->private_data);
         if (*err_code) {
             goto cleanup;
@@ -2817,7 +2817,7 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
         /* callback */
         output_vals = NULL;
         output_val_count = 0;
-        *err_code = rpc_sub->cb(tmp_sess, op_xpath, input_vals, input_val_count, sr_ev2api(event), request_id,
+        *err_code = rpc_sub->cb(ev_sess, op_xpath, input_vals, input_val_count, sr_ev2api(event), request_id,
                 &output_vals, &output_val_count, rpc_sub->private_data);
         if (*err_code) {
             goto cleanup;
@@ -2826,12 +2826,12 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
         /* prepare output */
         *output_op = lyd_dup(input_op, LYD_DUP_OPT_WITH_PARENTS);
         if (!*output_op) {
-            sr_errinfo_new_ly(&err_info, tmp_sess->conn->ly_ctx);
+            sr_errinfo_new_ly(&err_info, ev_sess->conn->ly_ctx);
             goto cleanup;
         }
         for (i = 0; i < output_val_count; ++i) {
-            val_str = sr_val_sr2ly_str(tmp_sess->conn->ly_ctx, &output_vals[i], output_vals[i].xpath, buf, 1);
-            if ((err_info = sr_val_sr2ly(tmp_sess->conn->ly_ctx, output_vals[i].xpath, val_str, output_vals[i].dflt, 1,
+            val_str = sr_val_sr2ly_str(ev_sess->conn->ly_ctx, &output_vals[i], output_vals[i].xpath, buf, 1);
+            if ((err_info = sr_val_sr2ly(ev_sess->conn->ly_ctx, output_vals[i].xpath, val_str, output_vals[i].dflt, 1,
                     output_op))) {
                 /* output sr_vals are invalid */
                 goto fake_cb_error;
@@ -2858,8 +2858,8 @@ fake_cb_error:
     /* fake callback error so that the subscription continues normally */
     *err_code = err_info->err_code;
     err_info->err_code = SR_ERR_OK;
-    sr_errinfo_free(&tmp_sess->err_info);
-    tmp_sess->err_info = err_info;
+    sr_errinfo_free(&ev_sess->err_info);
+    ev_sess->err_info = err_info;
     err_info = NULL;
 
 cleanup:
@@ -2921,7 +2921,7 @@ sr_shmsub_rpc_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct opsu
  * @param[in] sub Current RPC subscription.
  * @param[in] op_path Subscription RPC path.
  * @param[in] err_code Error code of the callback.
- * @param[in] tmp_sess Implicit session to use.
+ * @param[in] ev_sess Implicit callback session to use.
  * @param[in] input_op RPC input structure.
  * @param[out] err_info Optional error info on error.
  * @return 0 if SHM content is as expected.
@@ -2930,7 +2930,7 @@ sr_shmsub_rpc_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct opsu
  */
 static int
 sr_shmsub_rpc_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t mode, struct info_sub_s *sub_info,
-        struct opsub_rpcsub_s *sub, const char *op_path, sr_error_t err_code, sr_session_ctx_t *tmp_sess,
+        struct opsub_rpcsub_s *sub, const char *op_path, sr_error_t err_code, sr_session_ctx_t *ev_sess,
         const struct lyd_node *input_op, sr_error_info_t **err_info)
 {
     struct lyd_node *output;
@@ -2938,7 +2938,7 @@ sr_shmsub_rpc_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t mo
     assert(!*err_info);
 
     /* SUB READ/WRITE LOCK */
-    if ((*err_info = sr_rwlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, tmp_sess->conn->cid, __func__,
+    if ((*err_info = sr_rwlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, ev_sess->conn->cid, __func__,
             NULL, NULL))) {
         return 1;
     }
@@ -2946,7 +2946,7 @@ sr_shmsub_rpc_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t mo
     /* check that SHM is still valid even after the lock was released and re-acquired */
     if ((sub_info->event != multi_sub_shm->event) || (sub_info->request_id != multi_sub_shm->request_id)) {
         /* SUB READ/WRITE UNLOCK */
-        sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, tmp_sess->conn->cid, __func__);
+        sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, ev_sess->conn->cid, __func__);
 
         SR_LOG_INF("%s processing of \"%s\" event with ID %u priority %u (after timeout or earlier error).",
                 err_code ? "Failed" : "Successful", sr_ev2str(sub_info->event), sub_info->request_id, sub_info->priority);
@@ -2954,13 +2954,13 @@ sr_shmsub_rpc_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t mo
         /* self-generate abort event in case the RPC was applied successfully */
         if (err_code == SR_ERR_OK) {
             /* update session */
-            tmp_sess->ev = SR_SUB_EV_ABORT;
+            ev_sess->ev = SR_SUB_EV_ABORT;
 
             SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %u priority %u (self-generated).",
                     op_path, sr_ev2str(SR_SUB_EV_ABORT), sub_info->request_id, sub_info->priority);
 
             /* call callback */
-            *err_info = sr_shmsub_rpc_listen_call_callback(sub, tmp_sess, input_op, SR_SUB_EV_ABORT,
+            *err_info = sr_shmsub_rpc_listen_call_callback(sub, ev_sess, input_op, SR_SUB_EV_ABORT,
                     sub_info->request_id, &output, &err_code);
 
             /* we do not care about output of error code */
