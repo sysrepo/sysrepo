@@ -2868,10 +2868,10 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, struct sr_m
 
     SR_MODINFO_INIT((*mod_info), session->conn, SR_DS_RUNNING, SR_DS_RUNNING);
 
-    /* create mod_info structure with this module only */
+    /* create mod_info structure with this module only, do not use cache to allow reading data in the callback
+     * (avoid dead-lock) */
     ly_set_add(&mod_set, (void *)ly_mod, 0);
-    if ((err_info = sr_modinfo_add_modules(mod_info, &mod_set, 0, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_NO,
-            session->sid, NULL, 0, 0))) {
+    if ((err_info = sr_modinfo_add_modules(mod_info, &mod_set, 0, SR_LOCK_READ, SR_MI_PERM_NO, session->sid, NULL, 0, 0))) {
         goto cleanup;
     }
 
