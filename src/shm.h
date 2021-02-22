@@ -525,6 +525,7 @@ void sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext);
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
+ * @param[in] has_lock Whether CHANGE SUB lock is already held.
  * @param[in] xpath Subscription XPath.
  * @param[in] ds Datastore.
  * @param[in] priority Subscription priority.
@@ -532,8 +533,8 @@ void sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext);
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath,
-        sr_datastore_t ds, uint32_t priority, int sub_opts, uint32_t evpipe_num);
+sr_error_info_t *sr_shmext_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t has_lock,
+        const char *xpath, sr_datastore_t ds, uint32_t priority, int sub_opts, uint32_t evpipe_num);
 
 /**
  * @brief Remove main SHM module change subscription and unlink sub SHM if the last subscription was removed.

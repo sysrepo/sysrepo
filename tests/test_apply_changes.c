@@ -5471,6 +5471,15 @@ apply_change_userord_thread(void *arg)
     /* signal that we have finished applying changes */
     pthread_barrier_wait(&st->barrier);
 
+    /* wait for unsubscribe */
+    pthread_barrier_wait(&st->barrier);
+
+    /* cleanup */
+    ret = sr_delete_item(sess, "/test:l1", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
     sr_session_stop(sess);
     return NULL;
 }
@@ -5503,6 +5512,10 @@ subscribe_change_userord_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     sr_unsubscribe(subscr);
+
+    /* signal unsubscribe */
+    pthread_barrier_wait(&st->barrier);
+
     sr_session_stop(sess);
     return NULL;
 }
@@ -5514,6 +5527,175 @@ test_change_userord(void **state)
 
     pthread_create(&tid[0], NULL, apply_change_userord_thread, *state);
     pthread_create(&tid[1], NULL, subscribe_change_userord_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
+/* TEST */
+static int
+module_change_enabled_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    sr_change_oper_t op;
+    sr_change_iter_t *iter;
+    sr_val_t *old_val, *new_val;
+    int ret;
+
+    (void)request_id;
+    (void)xpath;
+
+    assert_string_equal(module_name, "test");
+    assert_int_equal(event, SR_EV_DONE);
+
+    /* get changes iter */
+    ret = sr_get_changes_iter(session, "/test:*//.", &iter);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* 1st change */
+    ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    if (op == SR_OP_CREATED) {
+        /* skip default value */
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:cont");
+        sr_free_val(new_val);
+
+        /* next change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:test-leaf");
+
+        /* old value must be equal to the initial one */
+        assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 0);
+
+        /* store the first value */
+        ATOMIC_STORE_RELAXED(st->cb_called, new_val->data.uint8_val);
+
+        sr_free_val(new_val);
+    } else if (op == SR_OP_MODIFIED) {
+        assert_non_null(old_val);
+        assert_string_equal(old_val->xpath, "/test:test-leaf");
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:test-leaf");
+
+        /* old value must be equal to the previous one */
+        assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), old_val->data.uint8_val);
+
+        /* there can be only difference 1 between the old value and the new value */
+        assert_int_equal(old_val->data.uint8_val + 1, new_val->data.uint8_val);
+
+        /* store the new value */
+        ATOMIC_STORE_RELAXED(st->cb_called, new_val->data.uint8_val);
+
+        sr_free_val(old_val);
+        sr_free_val(new_val);
+    } else {
+        fail();
+    }
+
+    /* no more changes */
+    ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+    sr_free_change_iter(iter);
+
+    return SR_ERR_OK;
+}
+
+static void *
+apply_change_enabled_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    int ret;
+    uint32_t i;
+    char num_str[4];
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set the leaf to 0 */
+    ret = sr_set_item_str(sess, "/test:test-leaf", "0", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* initial value */
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+
+    /* subscription can start */
+    pthread_barrier_wait(&st->barrier);
+
+    /* perform the changes in a loop */
+    for (i = 1; i < 20; ++i) {
+        sprintf(num_str, "%u", i);
+        ret = sr_set_item_str(sess, "/test:test-leaf", num_str, NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        ret = sr_apply_changes(sess, 0, 1);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    /* signal that we have finished applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    /* wait for unsubscribe */
+    pthread_barrier_wait(&st->barrier);
+
+    /* cleanup */
+    ret = sr_delete_item(sess, "/test:test-leaf", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+subscribe_change_enabled_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait until the leaf is set to its initial value */
+    pthread_barrier_wait(&st->barrier);
+
+    ret = sr_module_change_subscribe(sess, "test", NULL, module_change_enabled_cb, st, 0,
+            SR_SUBSCR_DONE_ONLY | SR_SUBSCR_ENABLED, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for the other thread to finish */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_unsubscribe(subscr);
+
+    /* signal that we have unsubscribed */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_change_enabled(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, apply_change_enabled_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_change_enabled_thread, *state);
 
     pthread_join(tid[0], NULL);
     pthread_join(tid[1], NULL);
@@ -5541,6 +5723,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_change_timeout, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_order, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_userord, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_change_enabled, setup_f, teardown_f),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
