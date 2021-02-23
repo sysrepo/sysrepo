@@ -2907,7 +2907,7 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, struct sr_m
     }
 
     /* create event session */
-    if ((err_info = _sr_session_start(session->conn, SR_DS_RUNNING, SR_SUB_EV_NONE, session->sid.sr, session->sid.nc,
+    if ((err_info = _sr_session_start(session->conn, SR_DS_RUNNING, SR_SUB_EV_ENABLED, session->sid.sr, session->sid.nc,
             session->sid.user, &ev_sess))) {
         goto cleanup;
     }
@@ -2915,7 +2915,6 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, struct sr_m
     enabled_data = NULL;
 
     if (!(opts & SR_SUBSCR_DONE_ONLY)) {
-        ev_sess->ev = SR_SUB_EV_ENABLED;
         SR_LOG_INF("Triggering \"%s\" \"%s\" event on enabled data.", ly_mod->name, sr_ev2str(ev_sess->ev));
 
         /* present all changes in an "enabled" event */
