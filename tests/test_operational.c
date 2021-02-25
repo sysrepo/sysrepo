@@ -3642,7 +3642,7 @@ state_default_merge_oper_cb(sr_session_ctx_t *session, const char *module_name, 
     assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "test-case[name='a']/result", "1", 0, NULL));
     assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "test-case[name='a']/z", "4.4", 0, &node));
     node->flags |= LYD_DEFAULT;
-    assert_int_equal(LY_SUCCESS, lyd_new_meta(NULL, node, NULL, "ietf-origin:origin", "default", 0, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_meta(NULL, node, NULL, "ietf-origin:origin", "ietf-origin:default", 0, NULL));
     assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "test-case[name='b']/x", "2.2", 0, NULL));
 
     return SR_ERR_OK;
@@ -3683,7 +3683,8 @@ test_state_default_merge(void **state)
     lyd_free_all(data);
 
     str2 =
-    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" "
+            "or:origin=\"or:intended\">"
         "<test-case>"
             "<name>a</name>"
             "<a>vala</a>"
@@ -3712,12 +3713,13 @@ test_state_default_merge(void **state)
     lyd_free_all(data);
 
     str2 =
-    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" "
+            "or:origin=\"or:intended\">"
         "<test-case>"
             "<name>a</name>"
             "<a>vala</a>"
             "<result>1</result>"
-            "<z or:origin=\"default\">4.4</z>"
+            "<z or:origin=\"or:default\">4.4</z>"
         "</test-case>"
         "<test-case>"
             "<name>b</name>"

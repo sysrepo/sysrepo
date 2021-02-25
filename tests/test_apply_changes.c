@@ -5699,16 +5699,6 @@ module_change_enabled_cb(sr_session_ctx_t *session, const char *module_name, con
     assert_int_equal(ret, SR_ERR_OK);
 
     if (op == SR_OP_CREATED) {
-        /* skip default value */
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/test:cont");
-        sr_free_val(new_val);
-
-        /* next change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
         assert_null(old_val);
         assert_non_null(new_val);
         assert_string_equal(new_val->xpath, "/test:test-leaf");
@@ -5740,10 +5730,6 @@ module_change_enabled_cb(sr_session_ctx_t *session, const char *module_name, con
     } else {
         fail();
     }
-
-    /* no more changes */
-    ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-    assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
     sr_free_change_iter(iter);
 

@@ -4064,7 +4064,7 @@ sr_lyd_dup_module_data(const struct lyd_node *data, const struct lys_module *ly_
 
             if (add_state_np_conts) {
                 /* add any nested state NP containers */
-                if (lyd_new_implicit_tree(dup, LYD_IMPLICIT_NO_CONFIG, NULL)) {
+                if (lyd_new_implicit_tree(dup, LYD_IMPLICIT_NO_CONFIG | LYD_IMPLICIT_NO_DEFAULTS, NULL)) {
                     sr_errinfo_new_ly(&err_info, ly_mod->ctx);
                     return err_info;
                 }
@@ -4134,7 +4134,7 @@ sr_lyd_dup_enabled_xpath(const struct lyd_node *data, char **xpaths, uint16_t xp
         }
 
         /* add any state NP containers */
-        if (lyd_new_implicit_tree(root, LYD_IMPLICIT_NO_CONFIG, NULL)) {
+        if (lyd_new_implicit_tree(root, LYD_IMPLICIT_NO_DEFAULTS, NULL)) {
             sr_errinfo_new_ly(&err_info, LYD_CTX(data));
             goto cleanup;
         }

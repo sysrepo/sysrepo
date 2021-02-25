@@ -579,7 +579,7 @@ sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const
 
     if (*oper_data) {
         /* add any missing NP containers, redundant to add top-level containers */
-        if (lyd_new_implicit_tree(*oper_data, 0, NULL)) {
+        if (lyd_new_implicit_tree(*oper_data, LYD_IMPLICIT_NO_DEFAULTS, NULL)) {
             sr_errinfo_new_ly(&err_info, ly_mod->ctx);
             goto cleanup;
         }

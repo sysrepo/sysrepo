@@ -1054,7 +1054,8 @@ static sr_error_info_t *
 sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx *new_ctx, int *fail)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *old_start_data = NULL, *new_start_data = NULL, *old_run_data = NULL, *new_run_data = NULL, *mod_data;
+    struct lyd_node *old_start_data = NULL, *new_start_data = NULL, *old_run_data = NULL, *new_run_data = NULL;
+    struct lyd_node *mod_data, *new_mod_data = NULL, *old_mod_data = NULL;
     struct ly_ctx *old_ctx = NULL;
     struct ly_set *set = NULL, *startup_set = NULL;
     const struct lys_module *ly_mod;
@@ -1171,25 +1172,45 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
         goto cleanup;
     }
 
-    /* print all modules data with the updated module context and free them, no longer needed */
+    /* Print all modules data with the updated module context if the new data is different from the old ones.
+     * Then free them, no longer needed.
+     */
     for (idx = 0; idx < set->count; ++idx) {
+        LY_ERR lyrc;
+
         ly_mod = set->objs[idx];
 
         /* startup data */
-        mod_data = sr_module_data_unlink(&new_start_data, ly_mod);
-        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, mod_data, O_CREAT, SR_FILE_PERM))) {
-            lyd_free_siblings(mod_data);
+        lyd_free_siblings(new_mod_data);
+        lyd_free_siblings(old_mod_data);
+        new_mod_data = sr_module_data_unlink(&new_start_data, ly_mod);
+        old_mod_data = sr_module_data_unlink(&old_start_data, ly_mod);
+
+        lyrc = lyd_compare_siblings(new_mod_data, old_mod_data, LYD_COMPARE_FULL_RECURSION | LYD_COMPARE_DEFAULTS);
+        if (lyrc && (lyrc != LY_ENOT)) {
+            sr_errinfo_new_ly(&err_info, new_ctx);
             goto cleanup;
         }
-        lyd_free_siblings(mod_data);
+        if ((lyrc == LY_ENOT) && (err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, new_mod_data, O_CREAT,
+                SR_FILE_PERM))) {
+            goto cleanup;
+        }
 
         /* running data */
-        mod_data = sr_module_data_unlink(&new_run_data, ly_mod);
-        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_RUNNING, mod_data, O_CREAT, SR_FILE_PERM))) {
-            lyd_free_siblings(mod_data);
+        lyd_free_siblings(new_mod_data);
+        lyd_free_siblings(old_mod_data);
+        new_mod_data = sr_module_data_unlink(&new_start_data, ly_mod);
+        old_mod_data = sr_module_data_unlink(&old_start_data, ly_mod);
+
+        lyrc = lyd_compare_siblings(new_mod_data, old_mod_data, LYD_COMPARE_FULL_RECURSION | LYD_COMPARE_DEFAULTS);
+        if (lyrc && (lyrc != LY_ENOT)) {
+            sr_errinfo_new_ly(&err_info, new_ctx);
             goto cleanup;
         }
-        lyd_free_siblings(mod_data);
+        if ((lyrc == LY_ENOT) && (err_info = sr_module_file_data_set(ly_mod->name, SR_DS_RUNNING, new_mod_data, O_CREAT,
+                SR_FILE_PERM))) {
+            goto cleanup;
+        }
     }
 
     /* success */
@@ -1201,6 +1222,8 @@ cleanup:
     lyd_free_siblings(new_start_data);
     lyd_free_siblings(old_run_data);
     lyd_free_siblings(new_run_data);
+    lyd_free_siblings(new_mod_data);
+    lyd_free_siblings(old_mod_data);
     free(start_data_json);
     free(run_data_json);
     ly_ctx_destroy(old_ctx, NULL);
