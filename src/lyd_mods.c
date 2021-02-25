@@ -1054,6 +1054,7 @@ sr_lydmods_ctx_load_modules(const struct lyd_node *sr_mods, struct ly_ctx *ly_ct
 
 /**
  * @brief Compare two unlinked Data tree.
+ *
  * @param[in] new unlinked Data tree.
  * @param[in] old unlinked Data tree.
  * @param[out] data_changed is the result of a comparison. Value 1 if they are different, 0 if they are the same.
@@ -1082,6 +1083,57 @@ sr_compare_data(struct lyd_node *new, struct lyd_node *old, int *data_changed)
 }
 
 /**
+ * @brief Learn whether any module in a set augments/deviates a specific module.
+ *
+ * @param[in] mod Module that can be augmented/deviated.
+ * @param[in] mod_set Set with modules possibly augmenting/deviating @p mod.
+ * @return Whether any module in @p mod_set was augmenting/deviating @p mod.
+ */
+static int
+sr_contains_dev_aug_module(const struct lys_module *ly_mod, struct ly_set *mod_set)
+{
+    const struct lys_module *mod;
+    const struct lys_submodule *submod;
+    uint32_t k, i, j;
+
+    for (k = 0; k < mod_set->number; ++k) {
+        mod = mod_set->set.g[k];
+
+        /* deviations */
+        for (i = 0; i < mod->deviation_size; ++i) {
+            if (mod->deviation[i].orig_node && !strcmp(lys_node_module(mod->deviation[i].orig_node)->name, ly_mod->name)) {
+                return 1;
+            }
+        }
+
+        /* augments */
+        for (i = 0; i < mod->augment_size; ++i) {
+            if (!strcmp(lys_node_module(mod->augment[i].target)->name, ly_mod->name)) {
+                return 1;
+            }
+        }
+
+        /* submodules */
+        for (j = 0; j < mod->inc_size; ++j) {
+            submod = mod->inc[j].submodule;
+            for (i = 0; i < submod->deviation_size; ++i) {
+                if (submod->deviation[i].orig_node &&
+                        !strcmp(lys_node_module(submod->deviation[i].orig_node)->name, ly_mod->name)) {
+                    return 1;
+                }
+            }
+            for (i = 0; i < submod->augment_size; ++i) {
+                if (!strcmp(lys_node_module(submod->augment[i].target)->name, ly_mod->name)) {
+                    return 1;
+                }
+            }
+        }
+    }
+
+    return 0;
+}
+
+/**
  * @brief Check that persistent (startup) module data can be loaded into updated context.
  * On success print the new updated LYB data.
  *
@@ -1097,14 +1149,16 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
     struct lyd_node *old_start_data = NULL, *new_start_data = NULL, *old_run_data = NULL, *new_run_data = NULL;
     struct lyd_node *mod_data, *new_mod_data = NULL, *old_mod_data = NULL;
     struct ly_ctx *old_ctx = NULL;
-    struct ly_set *set = NULL, *startup_set = NULL;
-    const struct lys_module *ly_mod;
+    struct ly_set *mod_set = NULL, *del_mod_set = NULL, *startup_set = NULL;
+    const struct lys_module *ly_mod, *ly_mod2;
     char *start_data_json = NULL, *run_data_json = NULL, *path;
     uint32_t idx;
     int exists;
 
-    set = ly_set_new();
-    SR_CHECK_MEM_GOTO(!set, err_info, cleanup);
+    mod_set = ly_set_new();
+    SR_CHECK_MEM_GOTO(!mod_set, err_info, cleanup);
+    del_mod_set = ly_set_new();
+    SR_CHECK_MEM_GOTO(!del_mod_set, err_info, cleanup);
 
     /* first build context without any scheduled changes */
     if ((err_info = sr_ly_ctx_new(&old_ctx))) {
@@ -1141,12 +1195,14 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
             }
         }
 
-        /* remember this module from the new context */
-        ly_mod = ly_ctx_get_module(new_ctx, ly_mod->name, NULL, 1);
-        if (ly_mod) {
-            assert(ly_mod->implemented);
-            ly_set_add(set, (void *)ly_mod, LY_SET_OPT_USEASLIST);
-        } /* else the module was removed */
+        ly_mod2 = ly_ctx_get_module(new_ctx, ly_mod->name, NULL, 1);
+        if (ly_mod2) {
+            /* remember this module from the new context */
+            ly_set_add(mod_set, (void *)ly_mod2, LY_SET_OPT_USEASLIST);
+        } else {
+            /* module was removed, remember it as well */
+            ly_set_add(del_mod_set, (void *)ly_mod, LY_SET_OPT_USEASLIST);
+        }
     }
 
     /* print the data of all the modules into JSON */
@@ -1191,7 +1247,7 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
         }
 
         /* remember this module */
-        ly_set_add(set, (void *)lyd_node_module(mod_data), LY_SET_OPT_USEASLIST);
+        ly_set_add(mod_set, (void *)lyd_node_module(mod_data), LY_SET_OPT_USEASLIST);
 
         /* link to the new startup/running data */
         if (!new_start_data) {
@@ -1220,9 +1276,13 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
     /* Print all modules data with the updated module context if the new data is different from the old ones.
      * Then free them, no longer needed.
      */
-    for (idx = 0; idx < set->number; ++idx) {
-        int data_changed;
-        ly_mod = (struct lys_module *)set->set.g[idx];
+    for (idx = 0; idx < mod_set->number; ++idx) {
+        int ctx_changed, data_changed = 0;
+        ly_mod = (struct lys_module *)mod_set->set.g[idx];
+
+        /* check whether a removed module was not augmenting/deviating this module,
+         * if it was, we must always write the data because their metadata changed */
+        ctx_changed = sr_contains_dev_aug_module(ly_mod, del_mod_set);
 
         /* startup data */
         lyd_free_withsiblings(new_mod_data);
@@ -1230,12 +1290,13 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
         new_mod_data = sr_module_data_unlink(&new_start_data, ly_mod);
         old_mod_data = sr_module_data_unlink(&old_start_data, ly_mod);
 
-        if ((err_info = sr_compare_data(new_mod_data, old_mod_data, &data_changed))) {
+        if (!ctx_changed && (err_info = sr_compare_data(new_mod_data, old_mod_data, &data_changed))) {
             goto cleanup;
         }
-
-        if (data_changed && (err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, new_mod_data, O_CREAT, SR_FILE_PERM))) {
-            goto cleanup;
+        if (ctx_changed || data_changed) {
+            if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, new_mod_data, O_CREAT, SR_FILE_PERM))) {
+                goto cleanup;
+            }
         }
 
         /* running data */
@@ -1244,19 +1305,21 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
         new_mod_data = sr_module_data_unlink(&new_start_data, ly_mod);
         old_mod_data = sr_module_data_unlink(&old_start_data, ly_mod);
 
-        if ((err_info = sr_compare_data(new_mod_data, old_mod_data, &data_changed))) {
+        if (!ctx_changed && (err_info = sr_compare_data(new_mod_data, old_mod_data, &data_changed))) {
             goto cleanup;
         }
-
-        if (data_changed && (err_info = sr_module_file_data_set(ly_mod->name, SR_DS_RUNNING, new_mod_data, O_CREAT, SR_FILE_PERM))) {
-            goto cleanup;
+        if (ctx_changed || data_changed) {
+            if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_RUNNING, new_mod_data, O_CREAT, SR_FILE_PERM))) {
+                goto cleanup;
+            }
         }
     }
 
     /* success */
 
 cleanup:
-    ly_set_free(set);
+    ly_set_free(mod_set);
+    ly_set_free(del_mod_set);
     ly_set_free(startup_set);
     lyd_free_withsiblings(old_start_data);
     lyd_free_withsiblings(new_start_data);
