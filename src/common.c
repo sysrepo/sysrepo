@@ -165,12 +165,6 @@ sr_sub_change_add(sr_session_ctx_t *sess, const char *mod_name, const char *xpat
     change_sub->subs[change_sub->sub_count].private_data = private_data;
     change_sub->subs[change_sub->sub_count].sess = sess;
 
-    /* if there is already some event, do not process it (such as timeouted DONE event and this subscription
-     * is DONE-only, it should also never happen that CHANGE event is being processed and we are allowed to subscribe) */
-    change_sub->subs[change_sub->sub_count].request_id = ((sr_multi_sub_shm_t *)change_sub->sub_shm.addr)->request_id;
-    assert(((sr_multi_sub_shm_t *)change_sub->sub_shm.addr)->event != SR_SUB_EV_CHANGE);
-    change_sub->subs[change_sub->sub_count].event = ((sr_multi_sub_shm_t *)change_sub->sub_shm.addr)->event;
-
     ++change_sub->sub_count;
 
     /* SUBS WRITE UNLOCK */
@@ -1159,8 +1153,8 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
 }
 
 sr_error_info_t *
-sr_notif_call_callback(sr_conn_ctx_t *conn, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data,
-        const sr_ev_notif_type_t notif_type, const struct lyd_node *notif_op, time_t notif_ts, sr_sid_t sid)
+sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data,
+        const sr_ev_notif_type_t notif_type, const struct lyd_node *notif_op, time_t notif_ts)
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *elem;
@@ -1168,21 +1162,13 @@ sr_notif_call_callback(sr_conn_ctx_t *conn, sr_event_notif_cb cb, sr_event_notif
     char *notif_xpath = NULL;
     sr_val_t *vals = NULL;
     size_t val_count = 0;
-    sr_session_ctx_t tmp_sess;
 
     assert(!notif_op || (notif_op->schema->nodetype == LYS_NOTIF));
     assert((tree_cb && !cb) || (!tree_cb && cb));
 
-    /* prepare temporary session */
-    memset(&tmp_sess, 0, sizeof tmp_sess);
-    tmp_sess.conn = conn;
-    tmp_sess.ds = SR_DS_OPERATIONAL;
-    tmp_sess.ev = SR_SUB_EV_NOTIF;
-    tmp_sess.sid = sid;
-
     if (tree_cb) {
         /* callback */
-        tree_cb(&tmp_sess, notif_type, notif_op, notif_ts, private_data);
+        tree_cb(ev_sess, notif_type, notif_op, notif_ts, private_data);
     } else {
         if (notif_op) {
             /* prepare XPath */
@@ -1212,7 +1198,7 @@ sr_notif_call_callback(sr_conn_ctx_t *conn, sr_event_notif_cb cb, sr_event_notif
         }
 
         /* callback */
-        cb(&tmp_sess, notif_type, notif_xpath, vals, val_count, notif_ts, private_data);
+        cb(ev_sess, notif_type, notif_xpath, vals, val_count, notif_ts, private_data);
     }
 
     /* success */
@@ -1220,7 +1206,6 @@ sr_notif_call_callback(sr_conn_ctx_t *conn, sr_event_notif_cb cb, sr_event_notif
 cleanup:
     free(notif_xpath);
     sr_free_values(vals, val_count);
-    sr_clear_sess(&tmp_sess);
     return err_info;
 }
 
@@ -1303,20 +1288,6 @@ sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *d
     return err_info;
 }
 
-void
-sr_clear_sess(sr_session_ctx_t *tmp_sess)
-{
-    uint16_t i;
-
-    sr_errinfo_free(&tmp_sess->err_info);
-    for (i = 0; i < SR_DS_COUNT; ++i) {
-        lyd_free_all(tmp_sess->dt[i].edit);
-        tmp_sess->dt[i].edit = NULL;
-        lyd_free_all(tmp_sess->dt[i].diff);
-        tmp_sess->dt[i].diff = NULL;
-    }
-}
-
 sr_error_info_t *
 sr_ly_ctx_new(struct ly_ctx **ly_ctx)
 {
@@ -1375,7 +1346,7 @@ sr_store_module_file(const struct lys_module *ly_mod, const struct lysp_submodul
     /* print the (sub)module file */
     ly_out_new_filepath(path, &out);
     if (lysp_submod) {
-        if (lys_print_submodule(out, ly_mod, lysp_submod, LYS_OUT_YANG, 0, 0)) {
+        if (lys_print_submodule(out, lysp_submod, LYS_OUT_YANG, 0, 0)) {
             sr_errinfo_new_ly(&err_info, ly_mod->ctx);
             goto cleanup;
         }
@@ -1705,6 +1676,32 @@ sr_path_sub_shm(const char *mod_name, const char *suffix1, int64_t suffix2, char
                 prefix, mod_name, suffix1, (uint32_t)suffix2);
     } else {
         ret = asprintf(path, "%s/%ssub_%s.%s", SR_SHM_DIR,
+                prefix, mod_name, suffix1);
+    }
+
+    if (ret == -1) {
+        SR_ERRINFO_MEM(&err_info);
+    }
+    return err_info;
+}
+
+sr_error_info_t *
+sr_path_sub_data_shm(const char *mod_name, const char *suffix1, int64_t suffix2, char **path)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *prefix;
+    int ret;
+
+    err_info = sr_shm_prefix(&prefix);
+    if (err_info) {
+        return err_info;
+    }
+
+    if (suffix2 > -1) {
+        ret = asprintf(path, "%s/%ssub_data_%s.%s.%08x", SR_SHM_DIR,
+                prefix, mod_name, suffix1, (uint32_t)suffix2);
+    } else {
+        ret = asprintf(path, "%s/%ssub_data_%s.%s", SR_SHM_DIR,
                 prefix, mod_name, suffix1);
     }
 
@@ -3300,7 +3297,7 @@ sr_cp_path(const char *to, const char *from, mode_t file_mode)
     /* open "from" file */
     fd_from = SR_OPEN(from, O_RDONLY, 0);
     if (fd_from < 0) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening \"%s\" file failed (%s).", from, strerror(errno));
+        SR_ERRINFO_OPEN(&err_info, from);
         goto cleanup;
     }
 
@@ -3311,7 +3308,7 @@ sr_cp_path(const char *to, const char *from, mode_t file_mode)
     fd_to = SR_OPEN(to, O_WRONLY | O_TRUNC | O_CREAT, file_mode);
     umask(um);
     if (fd_to < 0) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening \"%s\" failed (%s).", to, strerror(errno));
+        SR_ERRINFO_OPEN(&err_info, to);
         goto cleanup;
     }
 
@@ -4588,7 +4585,7 @@ retry_open:
             goto retry_open;
         }
 
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" (%s).", path, strerror(errno));
+        SR_ERRINFO_OPEN(&err_info, path);
         goto error;
     }
 
@@ -4702,7 +4699,7 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node
 
     /* open the file */
     if ((fd = SR_OPEN(path, O_WRONLY | create_flags, file_mode)) == -1) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open \"%s\" (%s).", path, strerror(errno));
+        SR_ERRINFO_OPEN(&err_info, path);
         goto cleanup;
     }
 

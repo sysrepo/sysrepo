@@ -46,7 +46,7 @@ endif()
 # micro version is changed with a set of small changes or bugfixes anywhere in the project.
 set(SYSREPO_MAJOR_VERSION 1)
 set(SYSREPO_MINOR_VERSION 4)
-set(SYSREPO_MICRO_VERSION 109)
+set(SYSREPO_MICRO_VERSION 119)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # Version of the library
@@ -54,7 +54,7 @@ set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_
 # with backward compatible change and micro version is connected with any internal change of the library.
 set(SYSREPO_MAJOR_SOVERSION 5)
 set(SYSREPO_MINOR_SOVERSION 6)
-set(SYSREPO_MICRO_SOVERSION 25)
+set(SYSREPO_MICRO_SOVERSION 35)
 set(SYSREPO_SOVERSION_FULL ${SYSREPO_MAJOR_SOVERSION}.${SYSREPO_MINOR_SOVERSION}.${SYSREPO_MICRO_SOVERSION})
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_SOVERSION})
 
@@ -101,6 +101,8 @@ if(ENABLE_COVERAGE)
         set(CMAKE_C_FLAGS_COVERAGE "${CMAKE_C_FLAGS} --coverage -fprofile-arcs -ftest-coverage")
     endif()
 endif()
+
+option(INSTALL_SYSCTL_CONF "Install sysctl conf file to allow shared access to SHM files." OFF)
 
 # binding options
 option(GEN_LANGUAGE_BINDINGS "Enable library bindings for different languages." OFF)
@@ -284,6 +286,10 @@ install(FILES ${PROJECT_SOURCE_DIR}/src/utils/values.h ${PROJECT_SOURCE_DIR}/src
 install(TARGETS sysrepoctl sysrepocfg sysrepo-plugind DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 install(FILES "${PROJECT_BINARY_DIR}/sysrepo.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+
+if(INSTALL_SYSCTL_CONF)
+    install(FILES "${PROJECT_SOURCE_DIR}/66-sysrepo-disable-fs-protected_regular.conf" DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/sysctl.d/")
+endif()
 
 # examples
 if(BUILD_EXAMPLES)

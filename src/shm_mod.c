@@ -213,9 +213,14 @@ sr_shmmod_collect_instid_deps_data(sr_main_shm_t *main_shm, sr_dep_t *shm_deps, 
             if (set->count) {
                 /* extract module names from all the existing instance-identifiers */
                 for (j = 0; j < set->count; ++j) {
-                    assert(set->snodes[j]->nodetype & (LYS_LEAF | LYS_LEAFLIST));
-                    val_str = LYD_CANON_VALUE(set->dnodes[j]);
+                    assert(set->dnodes[j]->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST));
+                    /* it can be a union and a non-instid value stored */
+                    if (((struct lyd_node_term *)set->dnodes[j])->value.realtype->basetype != LY_TYPE_INST) {
+                        continue;
+                    }
 
+                    /* get target module name from the value */
+                    val_str = LYD_CANON_VALUE(set->dnodes[j]);
                     mod_name = sr_get_first_ns(val_str);
                     ly_mod = ly_ctx_get_module_implemented(ly_ctx, mod_name);
                     free(mod_name);
@@ -426,7 +431,7 @@ sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod
                         ly_mod->name, shm_lock->sid.sr, shm_lock->sid.nc);
                 goto revert_lock;
             }
-            /* we hold DS lock */
+            /* we must be holding the DS lock */
             assert(!memcmp(&shm_lock->sid, &sid, sizeof sid));
         } else {
             /* read-upgr-lock or write-lock, store */
@@ -471,9 +476,6 @@ revert_lock:
 static void
 sr_shmmod_unlock(struct sr_mod_lock_s *shm_lock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, sr_sid_t sid)
 {
-    /* UNLOCK */
-    sr_rwunlock(&shm_lock->lock, timeout_ms, mode, cid, __func__);
-
     /* remove our SID */
     if ((mode == SR_LOCK_READ_UPGR) || (mode == SR_LOCK_WRITE)) {
         assert(!memcmp(&shm_lock->sid, &sid, sizeof sid));
@@ -489,6 +491,9 @@ sr_shmmod_unlock(struct sr_mod_lock_s *shm_lock, int timeout_ms, sr_lock_mode_t 
             memset(&shm_lock->sid, 0, sizeof shm_lock->sid);
         }
     }
+
+    /* UNLOCK */
+    sr_rwunlock(&shm_lock->lock, timeout_ms, mode, cid, __func__);
 }
 
 /**
@@ -712,7 +717,7 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid)
                     sr_errinfo_free(&err_info);
                     shm_lock->lock.upgr = 0;
                 }
-                if (!shm_lock->ds_locked) {
+                if (!ATOMIC_LOAD_RELAXED(shm_lock->ds_locked)) {
                     /* why our SID matched then? */
                     SR_ERRINFO_INT(&err_info);
                     sr_errinfo_free(&err_info);
@@ -741,7 +746,7 @@ cleanup_modules:
                 }
 
                 /* DS unlock */
-                shm_lock->ds_locked = 0;
+                ATOMIC_STORE_RELAXED(shm_lock->ds_locked, 0);
                 memset(&shm_lock->sid, 0, sizeof shm_lock->sid);
                 shm_lock->ds_ts = 0;
             }

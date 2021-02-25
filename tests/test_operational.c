@@ -31,13 +31,14 @@
 #include <cmocka.h>
 #include <libyang/libyang.h>
 
+#include "common.h"
 #include "tests/config.h"
 #include "sysrepo.h"
 
 struct state {
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sess;
-    int cb_called;
+    ATOMIC_T cb_called;
     pthread_barrier_t barrier;
 };
 
@@ -116,7 +117,7 @@ setup(void **state)
 
     sr_session_set_nc_id(st->sess, 64);
 
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
     pthread_barrier_init(&st->barrier, NULL, 2);
 
@@ -159,6 +160,7 @@ clear_up(void **state)
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces-state", 0);
     sr_delete_item(st->sess, "/test:cont", 0);
+    sr_delete_item(st->sess, "/mixed-config:test-state", 0);
     sr_delete_item(st->sess, "/czechlight-roadm-device:media-channels", 0);
     sr_apply_changes(st->sess, 0, 1);
 
@@ -166,6 +168,7 @@ clear_up(void **state)
     sr_set_item_str(st->sess, "/ietf-interfaces:interfaces", NULL, NULL, 0);
     sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state", NULL, NULL, 0);
     sr_set_item_str(st->sess, "/test:cont", NULL, NULL, 0);
+    sr_set_item_str(st->sess, "/mixed-config:test-state", NULL, NULL, 0);
     sr_apply_changes(st->sess, 0, 1);
 
     sr_session_switch_ds(st->sess, SR_DS_STARTUP);
@@ -178,6 +181,7 @@ clear_up(void **state)
 
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
     sr_delete_item(st->sess, "/test:cont", 0);
+    sr_delete_item(st->sess, "/mixed-config:test-state", 0);
     sr_delete_item(st->sess, "/czechlight-roadm-device:channel-plan", 0);
     sr_delete_item(st->sess, "/czechlight-roadm-device:media-channels", 0);
     sr_apply_changes(st->sess, 0, 1);
@@ -1021,7 +1025,7 @@ simple_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *x
     const struct ly_ctx *ly_ctx;
 
     assert_string_equal(request_xpath, "/ietf-interfaces:*");
-    assert_int_equal(sr_session_get_nc_id(session), 64);
+    assert_int_equal(sr_session_get_event_nc_id(session), 64);
     (void)request_id;
     (void)private_data;
 
@@ -1655,7 +1659,7 @@ xpath_check_oper_cb(sr_session_ctx_t *session, const char *module_name, const ch
     (void)request_id;
     (void)parent;
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -1676,18 +1680,18 @@ test_xpath_check(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read interfaces from operational, callback not called */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     lyd_free_all(data);
-    assert_int_equal(st->cb_called, 0);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 0);
 
     /* read all from operational, callback called */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     lyd_free_all(data);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     sr_unsubscribe(subscr);
     subscr = NULL;
@@ -1698,18 +1702,18 @@ test_xpath_check(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read interfaces from operational, callback not called */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     lyd_free_all(data);
-    assert_int_equal(st->cb_called, 0);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 0);
 
     /* read all from operational, callback called */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth0']/type", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     lyd_free_all(data);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     sr_unsubscribe(subscr);
 }
@@ -1753,7 +1757,7 @@ state_only_oper_cb(sr_session_ctx_t *session, const char *module_name, const cha
         fail();
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -1776,10 +1780,10 @@ test_state_only(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_NO_CONFIG | SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
@@ -1824,10 +1828,10 @@ test_state_only(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_NO_CONFIG | SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
@@ -1859,11 +1863,11 @@ test_state_only(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_get_data(st->sess, "/mixed-config:test-state/test-case[name='four']", 0, 0,
             SR_OPER_NO_CONFIG | SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
@@ -2130,9 +2134,9 @@ oper_change_cb(sr_session_ctx_t *session, const char *module_name, const char *x
     if (!strcmp(xpath, "/ietf-interfaces:interfaces-state")) {
         assert_string_equal(module_name, "ietf-interfaces");
 
-        if (st->cb_called == 0) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 0) {
             assert_int_equal(event, SR_EV_CHANGE);
-        } else if (st->cb_called == 1) {
+        } else if (ATOMIC_LOAD_RELAXED(st->cb_called) == 1) {
             assert_int_equal(event, SR_EV_DONE);
         } else {
             fail();
@@ -2195,7 +2199,7 @@ oper_change_cb(sr_session_ctx_t *session, const char *module_name, const char *x
         fail();
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -2214,7 +2218,7 @@ test_stored_state(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to operational data changes */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", oper_change_cb,
             st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2227,7 +2231,7 @@ test_stored_state(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* callback was called */
-    assert_int_equal(st->cb_called, 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     /* read the data */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
@@ -3166,7 +3170,7 @@ change_cb_stored_cb(sr_session_ctx_t *session, const char *module_name, const ch
     assert_string_equal(module_name, "ietf-interfaces");
     assert_null(xpath);
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
         assert_int_equal(event, SR_EV_CHANGE);
 
@@ -3309,7 +3313,7 @@ change_cb_stored_cb(sr_session_ctx_t *session, const char *module_name, const ch
         fail();
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -3328,13 +3332,13 @@ test_change_cb_stored(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some configuration data and trigger the callback */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 500000, 1);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(st->cb_called, 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     /* read all data from operational */
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
@@ -3620,6 +3624,114 @@ test_merge_flag(void **state)
     sr_unsubscribe(subscr);
 }
 
+/* TEST */
+static int
+state_default_merge_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
+        uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    struct lyd_node *node;
+
+    (void)session;
+    (void)request_id;
+    (void)private_data;
+
+    assert_string_equal(module_name, "mixed-config");
+    assert_string_equal(xpath, "/mixed-config:test-state/test-case");
+    assert_string_equal(request_xpath, "/mixed-config:*");
+
+    assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "test-case[name='a']/result", "1", 0, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "test-case[name='a']/z", "4.4", 0, &node));
+    node->flags |= LYD_DEFAULT;
+    assert_int_equal(LY_SUCCESS, lyd_new_meta(NULL, node, NULL, "ietf-origin:origin", "default", 0, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "test-case[name='b']/x", "2.2", 0, NULL));
+
+    return SR_ERR_OK;
+}
+
+static void
+test_state_default_merge(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    sr_subscription_ctx_t *subscr;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* set some configuration data */
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/test-case[name='a']/a", "vala", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/test-case[name='b']/a", "valb", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to all configuration data just to enable them */
+    ret = sr_module_change_subscribe(st->sess, "mixed-config", NULL, dummy_change_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read all data from operational */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+
+    lyd_free_all(data);
+
+    str2 =
+    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+        "<test-case>"
+            "<name>a</name>"
+            "<a>vala</a>"
+        "</test-case>"
+        "<test-case>"
+            "<name>b</name>"
+            "<a>valb</a>"
+        "</test-case>"
+    "</test-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* subscribe as state data provider and listen */
+    ret = sr_oper_get_items_subscribe(st->sess, "mixed-config", "/mixed-config:test-state/test-case",
+            state_default_merge_oper_cb, NULL, SR_SUBSCR_CTX_REUSE | SR_SUBSCR_OPER_MERGE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read all data from operational */
+    ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+
+    lyd_free_all(data);
+
+    str2 =
+    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"intended\">"
+        "<test-case>"
+            "<name>a</name>"
+            "<a>vala</a>"
+            "<result>1</result>"
+            "<z or:origin=\"default\">4.4</z>"
+        "</test-case>"
+        "<test-case>"
+            "<name>b</name>"
+            "<a>valb</a>"
+            "<x>2.2</x>"
+        "</test-case>"
+    "</test-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    sr_unsubscribe(subscr);
+}
+
 int
 main(void)
 {
@@ -3653,6 +3765,7 @@ main(void)
         cmocka_unit_test_teardown(test_nested_default, clear_up),
         cmocka_unit_test_teardown(test_disabled_default, clear_up),
         cmocka_unit_test_teardown(test_merge_flag, clear_up),
+        cmocka_unit_test_teardown(test_state_default_merge, clear_up),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

@@ -253,7 +253,8 @@ typedef struct sr_sub_shm_s {
 
     uint32_t request_id;        /**< Request ID. */
     sr_sub_event_t event;       /**< Event. */
-    sr_sid_t sid;               /**< Originator SID information. */
+    uint32_t sid;               /**< Originator sysrepo session ID. */
+    uint32_t ncid;              /**< Originator NETCONF session ID. */
 } sr_sub_shm_t;
 
 /**
@@ -264,7 +265,8 @@ typedef struct sr_multi_sub_shm_s {
 
     uint32_t request_id;        /**< Request ID. */
     sr_sub_event_t event;       /**< Event. */
-    sr_sid_t sid;               /**< Originator SID information. */
+    uint32_t sid;               /**< Originator sysrepo session ID. */
+    uint32_t ncid;              /**< Originator NETCONF session ID. */
 
     /* specific fields */
     uint32_t priority;          /**< Priority of the subscriber. */
@@ -273,12 +275,12 @@ typedef struct sr_multi_sub_shm_s {
 /*
  * change data subscription SHM (multi)
  *
- * FOR SUBSCRIBERS
- * followed by:
- * event SR_SUB_EV_UPDATE, SR_SUB_EV_CHANGE, SR_SUB_EV_DONE, SR_SUB_EV_ABORT - char *diff_lyb - diff tree
+ * data SHM contents
  *
- * FOR ORIGINATOR (when subscriber_count is 0)
- * followed by:
+ * FOR SUBSCRIBERS:
+ * event SR_SUB_EV_UPDATE, SR_SUB_EV_CHANGE, SR_SUB_EV_DONE, SR_SUB_EV_ABORT - char *user; char *diff_lyb - diff tree
+ *
+ * FOR ORIGINATOR (when subscriber_count is 0):
  * event SR_SUB_EV_SUCCESS - char *edit_lyb
  * event SR_SUB_EV_ERROR - char *error_message; char *error_xpath
  */
@@ -286,17 +288,21 @@ typedef struct sr_multi_sub_shm_s {
 /*
  * notification subscription SHM (multi)
  *
+ * data SHM contents
+ *
  * FOR SUBSCRIBERS
  * followed by:
- * event SR_SUB_EV_NOTIF - time_t notif_timestamp; char *notif_lyb - notification
+ * event SR_SUB_EV_NOTIF - char *user; time_t notif_timestamp; char *notif_lyb - notification
  */
 
 /*
  * operational subscription SHM (generic)
  *
+ * data SHM contents
+ *
  * FOR SUBSCRIBER
  * followed by:
- * event SR_SUB_EV_OPER - char *request_xpath; char *parent_lyb - existing data tree parent
+ * event SR_SUB_EV_OPER - char *user; char *request_xpath; char *parent_lyb - existing data tree parent
  *
  * FOR ORIGINATOR
  * followed by:
@@ -307,9 +313,11 @@ typedef struct sr_multi_sub_shm_s {
 /*
  * RPC subscription SHM (generic)
  *
+ * data SHM contents
+ *
  * FOR SUBSCRIBER
  * followed by:
- * event SR_SUB_EV_RPC - char *input_lyb - RPC/action with input
+ * event SR_SUB_EV_RPC - char *user; char *input_lyb - RPC/action with input
  *
  * FOR ORIGINATOR
  * followed by:
@@ -517,6 +525,7 @@ void sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext);
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
+ * @param[in] has_lock Whether CHANGE SUB lock is already held.
  * @param[in] xpath Subscription XPath.
  * @param[in] ds Datastore.
  * @param[in] priority Subscription priority.
@@ -524,8 +533,8 @@ void sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext);
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath,
-        sr_datastore_t ds, uint32_t priority, int sub_opts, uint32_t evpipe_num);
+sr_error_info_t *sr_shmext_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t has_lock,
+        const char *xpath, sr_datastore_t ds, uint32_t priority, int sub_opts, uint32_t evpipe_num);
 
 /**
  * @brief Remove main SHM module change subscription and unlink sub SHM if the last subscription was removed.
@@ -880,6 +889,16 @@ sr_error_info_t *sr_shmsub_open_map(const char *name, const char *suffix1, int64
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmsub_unlink(const char *name, const char *suffix1, int64_t suffix2);
+
+/**
+ * @brief Unlink a subscription data SHM.
+ *
+ * @param[in] name Subscription name (module name).
+ * @param[in] suffix1 First suffix.
+ * @param[in] suffix2 Second suffix, none if set to -1.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_data_unlink(const char *name, const char *suffix1, int64_t suffix2);
 
 /**
  * @brief Write into a subscriber event pipe to notify it there is a new event.

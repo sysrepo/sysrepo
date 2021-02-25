@@ -361,18 +361,22 @@ sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext)
 }
 
 sr_error_info_t *
-sr_shmext_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath, sr_datastore_t ds,
-        uint32_t priority, int sub_opts, uint32_t evpipe_num)
+sr_shmext_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t has_lock,
+        const char *xpath, sr_datastore_t ds, uint32_t priority, int sub_opts, uint32_t evpipe_num)
 {
     sr_error_info_t *err_info = NULL;
     off_t xpath_off;
     sr_mod_change_sub_t *shm_sub;
     uint16_t i;
 
-    /* CHANGE SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->change_sub[ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
-            NULL, NULL))) {
-        return err_info;
+    assert((has_lock == SR_LOCK_NONE) || (has_lock == SR_LOCK_WRITE));
+
+    if (has_lock == SR_LOCK_NONE) {
+        /* CHANGE SUB WRITE LOCK */
+        if ((err_info = sr_rwlock(&shm_mod->change_sub[ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+                __func__, NULL, NULL))) {
+            return err_info;
+        }
     }
 
     /* EXT WRITE LOCK */
@@ -438,8 +442,10 @@ sr_shmext_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const 
     /* EXT WRITE UNLOCK */
     sr_shmext_conn_remap_unlock(conn, SR_LOCK_WRITE, 1, __func__);
 
-    /* CHANGE SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->change_sub[ds].lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+    if (has_lock == SR_LOCK_NONE) {
+        /* CHANGE SUB WRITE UNLOCK */
+        sr_rwunlock(&shm_mod->change_sub[ds].lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+    }
 
     if (ds == SR_DS_RUNNING) {
         /* technically, operational data may have changed */
@@ -455,8 +461,10 @@ cleanup_changesub_ext_unlock:
     sr_shmext_conn_remap_unlock(conn, SR_LOCK_WRITE, 1, __func__);
 
 cleanup_changesub_unlock:
-    /* CHANGE SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->change_sub[ds].lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+    if (has_lock == SR_LOCK_NONE) {
+        /* CHANGE SUB WRITE UNLOCK */
+        sr_rwunlock(&shm_mod->change_sub[ds].lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+    }
 
     return err_info;
 }
@@ -492,6 +500,11 @@ sr_shmext_change_subscription_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_da
     if (!shm_mod->change_sub[ds].sub_count) {
         /* unlink the sub SHM */
         if ((err_info = sr_shmsub_unlink(conn->main_shm.addr + shm_mod->name, sr_ds2str(ds), -1))) {
+            goto cleanup;
+        }
+
+        /* unlink the sub data SHM */
+        if ((err_info = sr_shmsub_data_unlink(conn->main_shm.addr + shm_mod->name, sr_ds2str(ds), -1))) {
             goto cleanup;
         }
     }
@@ -754,6 +767,12 @@ sr_shmext_oper_subscription_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_
         goto cleanup;
     }
 
+    /* unlink the sub data SHM */
+    if ((err_info = sr_shmsub_data_unlink(conn->main_shm.addr + shm_mod->name, "oper",
+            sr_str_hash(conn->ext_shm.addr + shm_sub[del_idx].xpath)))) {
+        goto cleanup;
+    }
+
     SR_LOG_DBG("#SHM before (removing oper sub)");
     sr_shmext_print(SR_CONN_MAIN_SHM(conn), &conn->ext_shm);
 
@@ -976,6 +995,11 @@ sr_shmext_notif_subscription_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32
     if (!shm_mod->notif_sub_count) {
         /* unlink the sub SHM */
         if ((err_info = sr_shmsub_unlink(conn->main_shm.addr + shm_mod->name, "notif", -1))) {
+            goto cleanup;
+        }
+
+        /* unlink the sub data SHM */
+        if ((err_info = sr_shmsub_data_unlink(conn->main_shm.addr + shm_mod->name, "notif", -1))) {
             goto cleanup;
         }
     }
@@ -1223,6 +1247,11 @@ sr_shmext_rpc_subscription_free(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, uint32_t
         /* unlink the sub SHM */
         mod_name = sr_get_first_ns(conn->main_shm.addr + shm_rpc->path);
         if ((err_info = sr_shmsub_unlink(mod_name, "rpc", sr_str_hash(conn->main_shm.addr + shm_rpc->path)))) {
+            goto cleanup;
+        }
+
+        /* unlink the sub data SHM */
+        if ((err_info = sr_shmsub_data_unlink(mod_name, "rpc", sr_str_hash(conn->main_shm.addr + shm_rpc->path)))) {
             goto cleanup;
         }
     }

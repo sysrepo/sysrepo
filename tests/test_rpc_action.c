@@ -33,6 +33,7 @@
 #include <cmocka.h>
 #include <libyang/libyang.h>
 
+#include "common.h"
 #include "tests/config.h"
 #include "sysrepo.h"
 #include "utils/values.h"
@@ -40,7 +41,7 @@
 struct state {
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sess;
-    volatile int cb_called;
+    ATOMIC_T cb_called;
     pthread_barrier_t barrier;
 };
 
@@ -57,7 +58,7 @@ setup(void **state)
     sr_connection_count(&conn_count);
     assert_int_equal(conn_count, 0);
 
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     pthread_barrier_init(&st->barrier, NULL, 2);
 
     if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
@@ -151,7 +152,7 @@ rpc_fail_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node 
     (void)output;
     (void)private_data;
 
-    assert_int_equal(sr_session_get_nc_id(session), 128);
+    assert_int_equal(sr_session_get_event_nc_id(session), 128);
     assert_string_equal(xpath, "/ops:rpc1");
 
     /* check input data tree */
@@ -658,7 +659,7 @@ rpc_multi_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_no
     (void)request_id;
     (void)output;
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -707,13 +708,13 @@ test_multi(void **state)
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l7", "val", 0, NULL));
 
     /* send action */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_all(input_op);
     lyd_free_all(output_op);
 
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /*
      * create second action
@@ -724,13 +725,13 @@ test_multi(void **state)
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l7", "val2", 0, NULL));
 
     /* send action */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_all(input_op);
     lyd_free_all(output_op);
 
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(st->cb_called, 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     /*
      * create third action
@@ -741,13 +742,13 @@ test_multi(void **state)
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l7", "val3", 0, NULL));
 
     /* send action */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_all(input_op);
     lyd_free_all(output_op);
 
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(st->cb_called, 3);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
 
     sr_unsubscribe(subscr);
 }
@@ -766,7 +767,7 @@ rpc_multi_fail0_cb(sr_session_ctx_t *session, const char *op_path, const struct 
     (void)input;
     (void)request_id;
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
 
     /* create output data in all cases, it should always be freed */
     assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "l5", "0", LYD_NEW_PATH_OUTPUT, NULL));
@@ -774,14 +775,14 @@ rpc_multi_fail0_cb(sr_session_ctx_t *session, const char *op_path, const struct 
     switch (call_no) {
     case 1:
         assert_int_equal(event, SR_EV_RPC);
-        assert_int_equal(st->cb_called, 3);
+        assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
         /* callback fails */
         ret = SR_ERR_NOMEM;
         ++call_no;
         break;
     case 2:
         assert_int_equal(event, SR_EV_RPC);
-        assert_int_equal(st->cb_called, 3);
+        assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
         ++call_no;
         break;
     default:
@@ -804,7 +805,7 @@ rpc_multi_fail1_cb(sr_session_ctx_t *session, const char *op_path, const struct 
     (void)input;
     (void)request_id;
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
 
     /* create output data in all cases, it should always be freed */
     assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "l5", "1", LYD_NEW_PATH_OUTPUT, NULL));
@@ -812,23 +813,23 @@ rpc_multi_fail1_cb(sr_session_ctx_t *session, const char *op_path, const struct 
     switch (call_no) {
     case 1:
         if (event == SR_EV_RPC) {
-            assert_int_equal(st->cb_called, 2);
+            assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
         } else {
             assert_int_equal(event, SR_EV_ABORT);
-            assert_int_equal(st->cb_called, 5);
+            assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 5);
             ++call_no;
         }
         break;
     case 2:
         assert_int_equal(event, SR_EV_RPC);
-        assert_int_equal(st->cb_called, 2);
+        assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
         /* callback fails */
         ret = SR_ERR_NOT_FOUND;
         ++call_no;
         break;
     case 3:
         assert_int_equal(event, SR_EV_RPC);
-        assert_int_equal(st->cb_called, 2);
+        assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
         ++call_no;
         break;
     default:
@@ -851,7 +852,7 @@ rpc_multi_fail2_cb(sr_session_ctx_t *session, const char *op_path, const struct 
     (void)input;
     (void)request_id;
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
 
     /* create output data in all cases, it should always be freed */
     assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "l5", "2", LYD_NEW_PATH_OUTPUT, NULL));
@@ -859,32 +860,32 @@ rpc_multi_fail2_cb(sr_session_ctx_t *session, const char *op_path, const struct 
     switch (call_no) {
     case 1:
         if (event == SR_EV_RPC) {
-            assert_int_equal(st->cb_called, 1);
+            assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
         } else {
             assert_int_equal(event, SR_EV_ABORT);
-            assert_int_equal(st->cb_called, 4);
+            assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
             ++call_no;
         }
         break;
     case 2:
         if (event == SR_EV_RPC) {
-            assert_int_equal(st->cb_called, 1);
+            assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
         } else {
             assert_int_equal(event, SR_EV_ABORT);
-            assert_int_equal(st->cb_called, 3);
+            assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
             ++call_no;
         }
         break;
     case 3:
         assert_int_equal(event, SR_EV_RPC);
-        assert_int_equal(st->cb_called, 1);
+        assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
         /* callback fails, last callback (but there is no callback for abort, synchronizing would block) */
         ret = SR_ERR_LOCKED;
         ++call_no;
         break;
     case 4:
         assert_int_equal(event, SR_EV_RPC);
-        assert_int_equal(st->cb_called, 1);
+        assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
         ++call_no;
         break;
     default:
@@ -917,14 +918,14 @@ test_multi_fail(void **state)
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l4", "val", 0, NULL));
 
     /* send RPC */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_all(input_op);
     lyd_free_all(output_op);
 
     /* it should fail with 5 total callback calls */
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
-    assert_int_equal(st->cb_called, 5);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 5);
 
     /*
      * create second RPC
@@ -933,14 +934,14 @@ test_multi_fail(void **state)
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l4", "val", 0, NULL));
 
     /* send RPC */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_all(input_op);
     lyd_free_all(output_op);
 
     /* it should fail with 3 total callback calls */
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
-    assert_int_equal(st->cb_called, 3);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
 
     /*
      * create third RPC
@@ -949,14 +950,14 @@ test_multi_fail(void **state)
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l4", "val", 0, NULL));
 
     /* send RPC */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_all(input_op);
     lyd_free_all(output_op);
 
     /* it should fail with 1 total callback calls */
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /*
      * create fourth RPC
@@ -965,13 +966,13 @@ test_multi_fail(void **state)
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l4", "val", 0, NULL));
 
     /* send RPC */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_all(input_op);
 
     /* it should not fail */
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(st->cb_called, 3);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
 
     /* check output */
     assert_string_equal(lyd_child(output_op)->schema->name, "l5");
@@ -995,7 +996,7 @@ action_deps_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_
     (void)request_id;
     (void)output;
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
 
     return SR_ERR_OK;
 }
@@ -1019,10 +1020,10 @@ test_action_deps(void **state)
             "conditional_action", NULL, 0, 0, NULL, &input_op));
 
     /* send action, its parent does not exist so it should fail */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     assert_null(output_op);
-    assert_int_equal(st->cb_called, 0);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
     /* create the necessary data in operational */
@@ -1040,11 +1041,11 @@ test_action_deps(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* send the action again, should succeed now */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     assert_int_equal(ret, SR_ERR_OK);
     lyd_free_all(output_op);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
     lyd_free_all(input_op);
 
     /* create another action */
@@ -1052,11 +1053,11 @@ test_action_deps(void **state)
             NULL, 0, 0, NULL, &input_op));
 
     /* send the action, should succeed */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     assert_int_equal(ret, SR_ERR_OK);
     lyd_free_all(output_op);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
     lyd_free_all(input_op);
 
     sr_unsubscribe(subscr);
@@ -1085,7 +1086,7 @@ action_change_config_cb(sr_session_ctx_t *session, const char *xpath, const sr_v
     ret = sr_apply_changes(session, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
 
     /* create some output data */
     sr_new_values(1, output);
@@ -1123,11 +1124,11 @@ test_action_change_config(void **state)
             NULL, 0, 0, NULL, &input_op));
 
     /* send the action */
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_all(output_op);
 
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
     assert_int_equal(ret, SR_ERR_OK);
 
     lyd_free_all(input_op);
@@ -1161,8 +1162,8 @@ rpc_shelve_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_n
     (void)request_id;
 
     /* callback called */
-    ++st->cb_called;
-    if (st->cb_called == 1) {
+    ATOMIC_INC_RELAXED(st->cb_called);
+    if (ATOMIC_LOAD_RELAXED(st->cb_called) == 1) {
         return SR_ERR_CALLBACK_SHELVE;
     }
 
@@ -1179,7 +1180,7 @@ send_rpc_shelve_thread(void *arg)
     struct lyd_node *input_op, *output_op;
     int ret;
 
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
     /* create the RPC */
     assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, sr_get_context(st->conn), "/ops:rpc3/l4", "vall", 0, &input_op));
@@ -1221,22 +1222,22 @@ subscribe_rpc_shelve_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((st->cb_called < 1) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 1) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /* callback was shelved, process it again */
     ret = sr_process_events(subscr, NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     count = 0;
-    while ((st->cb_called < 2) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 2) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(st->cb_called, 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
@@ -1462,7 +1463,7 @@ rpc_rpc_oper_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd
     (void)request_id;
 
     /* callback called */
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
 
     /* create output data */
     lyd_new_path(output, NULL, "l5", "256", LYD_NEW_PATH_OUTPUT, &node);
@@ -1494,10 +1495,10 @@ test_rpc_oper(void **state)
     input.data.string_val = "l4-val";
     input.dflt = 0;
 
-    st->cb_called = 0;
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send(st->sess, "/ops:rpc3", &input, 1, 0, &output, &output_count);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(st->cb_called, 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     sr_free_values(output, output_count);
     sr_unsubscribe(subscr);

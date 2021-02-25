@@ -256,17 +256,17 @@ step_load_data(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format,
     switch (data_type) {
     case DATA_CONFIG:
         parse_flags = LYD_PARSE_NO_STATE | LYD_PARSE_ONLY | (not_strict ? 0 : LYD_PARSE_STRICT);
-        lyrc = lyd_parse_data(ly_ctx, in, format, parse_flags, 0, data);
+        lyrc = lyd_parse_data(ly_ctx, NULL, in, format, parse_flags, 0, data);
         break;
     case DATA_EDIT:
         parse_flags = LYD_PARSE_NO_STATE | LYD_PARSE_ONLY | LYD_PARSE_OPAQ;
-        lyrc = lyd_parse_data(ly_ctx, in, format, parse_flags, 0, data);
+        lyrc = lyd_parse_data(ly_ctx, NULL, in, format, parse_flags, 0, data);
         break;
     case DATA_RPC:
-        lyrc = lyd_parse_rpc(ly_ctx, in, format, data, NULL);
+        lyrc = lyd_parse_op(ly_ctx, NULL, in, format, LYD_TYPE_RPC_YANG, data, NULL);
         break;
     case DATA_NOTIF:
-        lyrc = lyd_parse_notif(ly_ctx, in, format, data, NULL);
+        lyrc = lyd_parse_op(ly_ctx, NULL, in, format, LYD_TYPE_NOTIF_YANG, data, NULL);
         break;
     }
     ly_in_free(in, 1);

@@ -781,15 +781,15 @@ cleanup_opersub_unlock:
 /**
  * @brief Duplicate operational (enabled) data from configuration data tree.
  *
+ * @param[in] conn Connection to use.
  * @param[in] data Configuration data.
- * @param[in] ext_shm_addr Main SHM address.
  * @param[in] mod Mod info module to process.
  * @param[in] opts Get oper data options.
  * @param[out] enabled_mod_data Enabled operational data of the module.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr, struct sr_mod_info_mod_s *mod,
+sr_module_oper_data_dup_enabled(sr_conn_ctx_t *conn, const struct lyd_node *data, struct sr_mod_info_mod_s *mod,
         sr_get_oper_options_t opts, struct lyd_node **enabled_mod_data)
 {
     sr_error_info_t *err_info = NULL;
@@ -811,14 +811,25 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
         data_duplicated = 1;
     }
 
+    /* CHANGE SUB READ LOCK */
+    if ((err_info = sr_rwlock(&mod->shm_mod->change_sub[SR_DS_RUNNING].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT,
+            SR_LOCK_READ, conn->cid, __func__, NULL, NULL))) {
+        return err_info;
+    }
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        goto error_sub_unlock;
+    }
+
     if (!data_duplicated) {
         /* try to find a subscription for the whole module */
-        shm_changesubs = (sr_mod_change_sub_t *)(ext_shm_addr + mod->shm_mod->change_sub[SR_DS_RUNNING].subs);
+        shm_changesubs = (sr_mod_change_sub_t *)(conn->ext_shm.addr + mod->shm_mod->change_sub[SR_DS_RUNNING].subs);
         for (i = 0; i < mod->shm_mod->change_sub[SR_DS_RUNNING].sub_count; ++i) {
             if (!shm_changesubs[i].xpath && !(shm_changesubs[i].opts & SR_SUBSCR_PASSIVE)) {
                 /* the whole module is enabled */
                 if ((err_info = sr_lyd_dup_module_data(data, mod->ly_mod, 1, enabled_mod_data))) {
-                    return err_info;
+                    goto error_ext_sub_unlock;
                 }
                 data_duplicated = 1;
                 break;
@@ -832,9 +843,9 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
         for (i = 0, xp_i = 0; i < mod->shm_mod->change_sub[SR_DS_RUNNING].sub_count; ++i) {
             if (shm_changesubs[i].xpath && !(shm_changesubs[i].opts & SR_SUBSCR_PASSIVE)) {
                 xpaths = sr_realloc(xpaths, (xp_i + 1) * sizeof *xpaths);
-                SR_CHECK_MEM_RET(!xpaths, err_info);
+                SR_CHECK_MEM_GOTO(!xpaths, err_info, error_ext_sub_unlock);
 
-                xpaths[xp_i] = ext_shm_addr + shm_changesubs[i].xpath;
+                xpaths[xp_i] = conn->ext_shm.addr + shm_changesubs[i].xpath;
                 ++xp_i;
             }
         }
@@ -843,9 +854,15 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
         err_info = sr_lyd_dup_enabled_xpath(data, xpaths, xp_i, enabled_mod_data);
         free(xpaths);
         if (err_info) {
-            return err_info;
+            goto error_ext_sub_unlock;
         }
     }
+
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+    /* CHANGE SUB READ UNLOCK */
+    sr_rwunlock(&mod->shm_mod->change_sub[SR_DS_RUNNING].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
     if (opts & SR_OPER_WITH_ORIGIN) {
         LY_LIST_FOR(*enabled_mod_data, root) {
@@ -869,6 +886,16 @@ sr_module_oper_data_dup_enabled(const struct lyd_node *data, char *ext_shm_addr,
     }
 
     return NULL;
+
+error_ext_sub_unlock:
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+error_sub_unlock:
+    /* CHANGE SUB READ UNLOCK */
+    sr_rwunlock(&mod->shm_mod->change_sub[SR_DS_RUNNING].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+    return err_info;
 }
 
 /**
@@ -887,8 +914,21 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *mod_data;
+    sr_lock_mode_t cur_mode = SR_LOCK_NONE;
     uint32_t i;
     void *mem;
+
+    if (read_locked) {
+        /* CACHE READ UNLOCK */
+        sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, cid, __func__);
+    }
+
+    /* CACHE READ UPGR LOCK */
+    if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, cid, __func__,
+            NULL, NULL))) {
+        goto cleanup;
+    }
+    cur_mode = SR_LOCK_READ_UPGR;
 
     /* find the module in the cache */
     for (i = 0; i < mod_cache->mod_count; ++i) {
@@ -901,36 +941,28 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
         /* this module data are already in the cache */
         assert(mod->shm_mod->ver >= mod_cache->mods[i].ver);
         if (mod->shm_mod->ver > mod_cache->mods[i].ver) {
-            if (read_locked) {
-                /* CACHE READ UNLOCK */
-                sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, cid, __func__);
-            }
-
-            /* CACHE WRITE LOCK */
-            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, cid, __func__,
+            /* CACHE WRITE LOCK UPGRADE */
+            if ((err_info = sr_rwrelock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, cid, __func__,
                     NULL, NULL))) {
-                goto error_rlock;
+                goto cleanup;
             }
+            cur_mode = SR_LOCK_WRITE;
 
             /* data needs to be updated, remove old data */
             lyd_free_all(sr_module_data_unlink(&mod_cache->data, mod->ly_mod));
             mod_cache->mods[i].ver = 0;
         }
     } else {
-        if (read_locked) {
-            /* CACHE READ UNLOCK */
-            sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, cid, __func__);
-        }
-
-        /* CACHE WRITE LOCK */
-        if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, cid, __func__,
+        /* CACHE WRITE LOCK UPGRADE */
+        if ((err_info = sr_rwrelock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, cid, __func__,
                 NULL, NULL))) {
-            goto error_rlock;
+            goto cleanup;
         }
+        cur_mode = SR_LOCK_WRITE;
 
         /* module is not in cache yet, add an item */
         mem = realloc(mod_cache->mods, (i + 1) * sizeof *mod_cache->mods);
-        SR_CHECK_MEM_RET(!mem, err_info);
+        SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
         mod_cache->mods = mem;
         ++mod_cache->mod_count;
 
@@ -944,28 +976,29 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
             /* current data were provided, use them */
             if (lyd_dup_siblings(upd_mod_data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &mod_data)) {
                 sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
-                goto error_wrunlock;
+                goto cleanup;
             }
             lyd_insert_sibling(mod_cache->data, mod_data, &mod_cache->data);
         } else {
             /* we need to load current data from persistent storage */
             if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_RUNNING, &mod_cache->data))) {
-                goto error_wrunlock;
+                goto cleanup;
             }
         }
         mod_cache->mods[i].ver = mod->shm_mod->ver;
+    }
 
-error_wrunlock:
-        /* CACHE WRITE UNLOCK */
-        sr_rwunlock(&mod_cache->lock, 0, SR_LOCK_WRITE, cid, __func__);
+cleanup:
+    if (cur_mode != SR_LOCK_NONE) {
+        /* CACHE UNLOCK */
+        sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, cur_mode, cid, __func__);
+    }
 
-error_rlock:
-        if (read_locked) {
-            /* CACHE READ LOCK */
-            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, cid, __func__,
-                    NULL, NULL))) {
-                return err_info;
-            }
+    if (read_locked) {
+        /* CACHE READ LOCK */
+        if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, cid, __func__,
+                NULL, NULL))) {
+            return err_info;
         }
     }
 
@@ -1525,7 +1558,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
 
             if (mod_info->ds == SR_DS_OPERATIONAL) {
                 /* copy only enabled module data */
-                err_info = sr_module_oper_data_dup_enabled(mod_cache->data, conn->ext_shm.addr, mod, opts, &mod_data);
+                err_info = sr_module_oper_data_dup_enabled(conn, mod_cache->data, mod, opts, &mod_data);
             } else {
                 /* copy all module data */
                 err_info = sr_lyd_dup_module_data(mod_cache->data, mod->ly_mod, 0, &mod_data);
@@ -1554,8 +1587,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
 
             if (mod_info->ds == SR_DS_OPERATIONAL) {
                 /* keep only enabled module data */
-                if ((err_info = sr_module_oper_data_dup_enabled(mod_info->data, conn->ext_shm.addr, mod, opts,
-                        &mod_data))) {
+                if ((err_info = sr_module_oper_data_dup_enabled(conn, mod_info->data, mod, opts, &mod_data))) {
                     return err_info;
                 }
                 lyd_free_siblings(sr_module_data_unlink(&mod_info->data, mod->ly_mod));
@@ -2005,7 +2037,7 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int 
     struct sr_mod_info_mod_s *mod;
     uint32_t i;
     char *parent_xpath = NULL;
-    LYD_VALIDATE_OP op_type;
+    enum lyd_type op_type;
 
     assert(op->schema->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF));
 
@@ -2051,7 +2083,7 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int 
 
     /* validate */
     op_type = ((op->schema->nodetype & (LYS_RPC | LYS_ACTION)) ?
-            (output ? LYD_VALIDATE_OP_REPLY : LYD_VALIDATE_OP_RPC) : LYD_VALIDATE_OP_NOTIF);
+            (output ? LYD_TYPE_REPLY_YANG : LYD_TYPE_RPC_YANG) : LYD_TYPE_NOTIF_YANG);
     if (lyd_validate_op(top_op, mod_info->data, op_type, NULL)) {
         sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
         sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "%s %svalidation failed.",
