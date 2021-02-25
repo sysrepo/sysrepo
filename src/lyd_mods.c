@@ -1053,6 +1053,35 @@ sr_lydmods_ctx_load_modules(const struct lyd_node *sr_mods, struct ly_ctx *ly_ct
 }
 
 /**
+ * @brief Compare two unlinked Data tree.
+ * @param[in] new unlinked Data tree.
+ * @param[in] old unlinked Data tree.
+ * @param[out] data_changed is the result of a comparison. Value 1 if they are different, 0 if they are the same.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_compare_data(struct lyd_node *new, struct lyd_node *old, int *data_changed)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_difflist *difflist;
+
+    if (!new && !old) {
+        *data_changed = 0;
+    } else if (!new && old) {
+        *data_changed = 1;
+    } else if (new && !old) {
+        *data_changed = 1;
+    } else if ((difflist = lyd_diff(new, old, LYD_DIFFOPT_WITHDEFAULTS))) {
+        *data_changed = difflist->type == LYD_DIFF_END ? 0 : 1;
+        lyd_free_diff(difflist);
+    } else {
+        SR_ERRINFO_INT(&err_info);
+    }
+
+    return err_info;
+}
+
+/**
  * @brief Check that persistent (startup) module data can be loaded into updated context.
  * On success print the new updated LYB data.
  *
@@ -1065,7 +1094,8 @@ static sr_error_info_t *
 sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx *new_ctx, int *fail)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *old_start_data = NULL, *new_start_data = NULL, *old_run_data = NULL, *new_run_data = NULL, *mod_data;
+    struct lyd_node *old_start_data = NULL, *new_start_data = NULL, *old_run_data = NULL, *new_run_data = NULL;
+    struct lyd_node *mod_data, *new_mod_data = NULL, *old_mod_data = NULL;
     struct ly_ctx *old_ctx = NULL;
     struct ly_set *set = NULL, *startup_set = NULL;
     const struct lys_module *ly_mod;
@@ -1187,25 +1217,40 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
         goto cleanup;
     }
 
-    /* print all modules data with the updated module context and free them, no longer needed */
+    /* Print all modules data with the updated module context if the new data is different from the old ones.
+     * Then free them, no longer needed.
+     */
     for (idx = 0; idx < set->number; ++idx) {
+        int data_changed;
         ly_mod = (struct lys_module *)set->set.g[idx];
 
         /* startup data */
-        mod_data = sr_module_data_unlink(&new_start_data, ly_mod);
-        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, mod_data, O_CREAT, SR_FILE_PERM))) {
-            lyd_free_withsiblings(mod_data);
+        lyd_free_withsiblings(new_mod_data);
+        lyd_free_withsiblings(old_mod_data);
+        new_mod_data = sr_module_data_unlink(&new_start_data, ly_mod);
+        old_mod_data = sr_module_data_unlink(&old_start_data, ly_mod);
+
+        if ((err_info = sr_compare_data(new_mod_data, old_mod_data, &data_changed))) {
             goto cleanup;
         }
-        lyd_free_withsiblings(mod_data);
+
+        if (data_changed && (err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, new_mod_data, O_CREAT, SR_FILE_PERM))) {
+            goto cleanup;
+        }
 
         /* running data */
-        mod_data = sr_module_data_unlink(&new_run_data, ly_mod);
-        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_RUNNING, mod_data, O_CREAT, SR_FILE_PERM))) {
-            lyd_free_withsiblings(mod_data);
+        lyd_free_withsiblings(new_mod_data);
+        lyd_free_withsiblings(old_mod_data);
+        new_mod_data = sr_module_data_unlink(&new_start_data, ly_mod);
+        old_mod_data = sr_module_data_unlink(&old_start_data, ly_mod);
+
+        if ((err_info = sr_compare_data(new_mod_data, old_mod_data, &data_changed))) {
             goto cleanup;
         }
-        lyd_free_withsiblings(mod_data);
+
+        if (data_changed && (err_info = sr_module_file_data_set(ly_mod->name, SR_DS_RUNNING, new_mod_data, O_CREAT, SR_FILE_PERM))) {
+            goto cleanup;
+        }
     }
 
     /* success */
@@ -1217,6 +1262,8 @@ cleanup:
     lyd_free_withsiblings(new_start_data);
     lyd_free_withsiblings(old_run_data);
     lyd_free_withsiblings(new_run_data);
+    lyd_free_withsiblings(new_mod_data);
+    lyd_free_withsiblings(old_mod_data);
     free(start_data_json);
     free(run_data_json);
     ly_ctx_destroy(old_ctx, NULL);
