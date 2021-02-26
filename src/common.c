@@ -2417,7 +2417,7 @@ sr_shmcpy(char *shm_addr, const void *src, size_t size, char **shm_end)
         memcpy(*shm_end, src, size);
     }
     ret = *shm_end - shm_addr;
-    *shm_end += size;
+    *shm_end += SR_SHM_SIZE(size);
 
     return ret;
 }
