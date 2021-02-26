@@ -43,6 +43,7 @@
 #endif
 
 #include "../modules/sysrepo_monitoring_yang.h"
+#include "../modules/ietf_netconf_acm_yang.h"
 #include "../modules/ietf_netconf_yang.h"
 #include "../modules/ietf_netconf_with_defaults_yang.h"
 #include "../modules/ietf_netconf_notifications_yang.h"
@@ -758,6 +759,28 @@ cleanup:
 }
 
 /**
+ * @brief libyang import callback to provide internal non-implemented dependencies.
+ */
+static LY_ERR
+sr_ly_nacm_module_imp_clb(const char *mod_name, const char *mod_rev, const char *submod_name, const char *submod_rev,
+        void *user_data, LYS_INFORMAT *format, const char **module_data, ly_module_imp_data_free_clb *free_module_data)
+{
+    (void)mod_rev;
+    (void)submod_name;
+    (void)submod_rev;
+    (void)user_data;
+
+    if (!strcmp(mod_name, "ietf-netconf-acm")) {
+        *format = LYS_IN_YANG;
+        *module_data = ietf_netconf_acm_yang;
+        *free_module_data = NULL;
+        return LY_SUCCESS;
+    }
+
+    return LY_ENOT;
+}
+
+/**
  * @brief Create default sysrepo module data. All libyang internal implemented modules
  * are installed into sysrepo. Sysrepo internal modules ietf-netconf, ietf-netconf-with-defaults,
  * and ietf-netconf-notifications are also installed.
@@ -809,9 +832,14 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     /* install sysrepo-monitoring */
     SR_INSTALL_INT_MOD(sysrepo_monitoring_yang, 0);
 
+    /* make sure ietf-netconf-acm is found as an import */
+    ly_ctx_set_module_imp_clb(ly_ctx, sr_ly_nacm_module_imp_clb, NULL);
+
     /* install ietf-netconf (implemented dependency) and ietf-netconf-with-defaults */
     SR_INSTALL_INT_MOD(ietf_netconf_yang, 1);
     SR_INSTALL_INT_MOD(ietf_netconf_with_defaults_yang, 0);
+
+    ly_ctx_set_module_imp_clb(ly_ctx, NULL, NULL);
 
     /* install ietf-netconf-notifications */
     SR_INSTALL_INT_MOD(ietf_netconf_notifications_yang, 0);
