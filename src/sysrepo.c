@@ -2990,7 +2990,7 @@ sr_subs_new(sr_conn_ctx_t *conn, sr_subscr_options_t opts, sr_subscription_ctx_t
 
     /* open it for reading AND writing (just so that there always is a "writer", otherwise it is always ready
      * for reading by select() but returns just EOF on read) */
-    (*subs_p)->evpipe = SR_OPEN(path, O_RDWR | O_NONBLOCK, 0);
+    (*subs_p)->evpipe = sr_open(path, O_RDWR | O_NONBLOCK, 0);
     if ((*subs_p)->evpipe == -1) {
         SR_ERRINFO_OPEN(&err_info, path);
         goto error;

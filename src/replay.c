@@ -131,7 +131,7 @@ sr_replay_open_file(const char *mod_name, time_t from_ts, time_t to_ts, int flag
 {
     sr_error_info_t *err_info = NULL;
     char *path = NULL;
-    mode_t perm = SR_FILE_PERM, um;
+    mode_t perm = SR_FILE_PERM;
 
     *notif_fd = -1;
 
@@ -146,11 +146,7 @@ sr_replay_open_file(const char *mod_name, time_t from_ts, time_t to_ts, int flag
         goto cleanup;
     }
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK);
-
-    *notif_fd = SR_OPEN(path, flags, perm);
-    umask(um);
+    *notif_fd = sr_open(path, flags, perm);
     if (*notif_fd == -1) {
         SR_ERRINFO_OPEN(&err_info, path);
         goto cleanup;

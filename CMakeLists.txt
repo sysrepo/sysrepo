@@ -130,6 +130,9 @@ message(STATUS "ietf-yang-library revision: ${YANGLIB_REVISION}")
 # umask
 set(SYSREPO_UMASK "00000" CACHE STRING "Umask used for any files created by sysrepo.")
 
+# global group settings
+set(SYSREPO_GROUP "" CACHE STRING "System group that will own all sysrepo-related files. If empty, the specific process group will be kept.")
+
 # super user
 set(SYSREPO_SUPERUSER_UID "0" CACHE STRING "UID of the system user that can execute sensitive functions.")
 if(NOT SYSREPO_SUPERUSER_UID MATCHES "^[0-9]+$")

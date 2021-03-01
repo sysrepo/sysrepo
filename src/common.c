@@ -3276,21 +3276,16 @@ sr_cp_path(const char *to, const char *from, mode_t file_mode)
     int fd_to = -1, fd_from = -1;
     char *out_ptr, buf[4096];
     ssize_t nread, nwritten;
-    mode_t um;
 
     /* open "from" file */
-    fd_from = SR_OPEN(from, O_RDONLY, 0);
+    fd_from = sr_open(from, O_RDONLY, 0);
     if (fd_from < 0) {
         SR_ERRINFO_OPEN(&err_info, from);
         goto cleanup;
     }
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK);
-
     /* open "to" */
-    fd_to = SR_OPEN(to, O_WRONLY | O_TRUNC | O_CREAT, file_mode);
-    umask(um);
+    fd_to = sr_open(to, O_WRONLY | O_TRUNC | O_CREAT, file_mode);
     if (fd_to < 0) {
         SR_ERRINFO_OPEN(&err_info, to);
         goto cleanup;
@@ -3326,38 +3321,140 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Set the correct group owner of a path.
+ *
+ * @param[in] path Path to use.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_path_set_group(const char *path)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_error_t err_code;
+    struct stat st;
+    const char *sr_group = SR_GROUP;
+    gid_t sr_gid;
+
+    if (!strlen(sr_group)) {
+        /* nothing to do */
+        return NULL;
+    }
+
+    /* get the desired GID */
+    if ((err_info = sr_get_grp(&sr_gid, (char **)&sr_group))) {
+        return err_info;
+    }
+
+    /* stat */
+    if (stat(path, &st) == -1) {
+        if (errno == EACCES) {
+            sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "Stat of \"%s\" failed.", path);
+        } else {
+            SR_ERRINFO_SYSERRNO(&err_info, "stat");
+        }
+        return err_info;
+    }
+
+    if (st.st_gid == sr_gid) {
+        /* fine, nothing to do */
+        return NULL;
+    }
+
+    /* set correct GID */
+    if (chown(path, -1, sr_gid) == -1) {
+        if ((errno == EACCES) || (errno = EPERM)) {
+            err_code = SR_ERR_UNAUTHORIZED;
+        } else {
+            err_code = SR_ERR_INTERNAL;
+        }
+        sr_errinfo_new(&err_info, err_code, NULL, "Changing owner of \"%s\" failed (%s).", path, strerror(errno));
+        return err_info;
+    }
+
+    return NULL;
+}
+
+int
+sr_open(const char *pathname, int flags, mode_t mode)
+{
+    sr_error_info_t *err_info = NULL;
+    mode_t um;
+    int fd;
+
+    /* O_NOFOLLOW enforces that files are not symlinks -- all opened
+     *   files are created by sysrepo so there cannot be any symlinks.
+     * O_CLOEXEC enforces that forking with an open sysrepo connection
+     *   is forbidden.
+     */
+    flags |= O_NOFOLLOW | O_CLOEXEC;
+
+    /* set umask so that the correct permissions are really set */
+    um = umask(SR_UMASK);
+
+    /* open the file */
+    fd = open(pathname, flags, mode);
+
+    /* restore umask (should not modify errno) */
+    umask(um);
+
+    if (fd == -1) {
+        /* error */
+        return fd;
+    }
+
+    /* set GID correctly */
+    if ((err_info = sr_path_set_group(pathname))) {
+        /* errno is kept */
+        sr_errinfo_free(&err_info);
+        close(fd);
+        return -1;
+    }
+
+    /* success */
+    return fd;
+}
+
 sr_error_info_t *
 sr_mkpath(char *path, mode_t mode)
 {
     sr_error_info_t *err_info = NULL;
     mode_t um;
-    char *p;
+    char *p = NULL;
 
     assert(path[0] == '/');
 
     /* set umask so that the correct permissions are really set */
     um = umask(SR_UMASK);
 
+    /* create each directory in the path */
     for (p = strchr(path + 1, '/'); p; p = strchr(p + 1, '/')) {
         *p = '\0';
         if (mkdir(path, mode) == -1) {
             if (errno != EEXIST) {
                 sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
-                *p = '/';
                 goto cleanup;
             }
+        } else if ((err_info = sr_path_set_group(path))) {
+            goto cleanup;
         }
         *p = '/';
     }
 
+    /* create the last directory in the path */
     if (mkdir(path, mode) == -1) {
         if (errno != EEXIST) {
             sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
             goto cleanup;
         }
+    } else if ((err_info = sr_path_set_group(path))) {
+        goto cleanup;
     }
 
 cleanup:
+    if (p) {
+        *p = '/';
+    }
     umask(um);
     return err_info;
 }
@@ -5080,7 +5177,7 @@ retry_open:
     }
 
     /* open fd */
-    fd = SR_OPEN(path, O_RDONLY, 0);
+    fd = sr_open(path, O_RDONLY, 0);
     if (fd == -1) {
         if ((errno == ENOENT) && (ds == SR_DS_CANDIDATE)) {
             /* no candidate exists, just use running */
@@ -5184,12 +5281,8 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node
     sr_error_info_t *err_info = NULL;
     char *path = NULL, *bck_path = NULL;
     int fd = -1, backup = 0;
-    mode_t um;
 
     assert(file_mode);
-
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK);
 
     /* learn path */
     switch (ds) {
@@ -5222,7 +5315,7 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node
     }
 
     /* open the file */
-    if ((fd = SR_OPEN(path, O_WRONLY | create_flags, file_mode)) == -1) {
+    if ((fd = sr_open(path, O_WRONLY | create_flags, file_mode)) == -1) {
         SR_ERRINFO_OPEN(&err_info, path);
         goto cleanup;
     }
@@ -5244,7 +5337,6 @@ cleanup:
     if (fd > -1) {
         close(fd);
     }
-    umask(um);
     free(path);
     free(bck_path);
     return err_info;

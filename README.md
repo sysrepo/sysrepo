@@ -47,6 +47,28 @@ at the documentation where you will find information about major design changes 
 * Custom RPC, Event Notifications, YANG 1.1 Actions support
 * Notification store & notification replay
 
+## Security Notes
+
+Sysrepo does not have any master process that could enforce complex access control. So instead, it relies on and
+utilizes standard file system permissions but there are some things to bear in mind.
+
+To prevent any sensitive data from being accessible by unauthorized processes, it is imperative to **always
+set correct permissions and owner** for all YANG modules being installed. The utility `sysrepoctl` can help
+with both displaying all the permissions (`--list`) and modifying them (`--change <module>`) in addition
+to this functionality being available in the API.
+
+Having made certain of this, the default configuration should be suitable for a reasonably secure machine
+that has no malicious running processes. Specifically, it is trivial for such a process to completely break
+sysrepo by writing into shared files that must be accessible for all the processes linked with sysrepo. Also,
+with some reverse engineering, it may even be possible to access data by an unathorized process when they are being
+communicated in these shared files.
+
+In order to avoid all such security issues, there are 2 `cmake` variables `SYSREPO_UMASK` and `SYSREPO_GROUP`
+that should be adjusted. Generally, a new system group should be created and set for `SYSREPO_GROUP` and then
+all outside access frobidden by setting `SYSREPO_UMASK` to `00007`. If then all the users executing sysrepo
+processes belong to this group, none of sysrepo files and no sensitive information should be accessible to
+other users.
+
 ## Requirements
 
 ### Build Requirements
@@ -102,6 +124,16 @@ Set custom repository path:
 Set custom `sysrepo-plugind` plugins path:
 ```
 -DPLUGINS_PATH=/opt/sysrepo-plugind/plugins
+```
+
+Set global `umask` for all sysrepo file and directory creation:
+```
+-DSYSREPO_UMASK=00007
+```
+
+Set system group to own all sysrepo-related files:
+```
+-DSYSREPO_GROUP=sysrepo
 ```
 
 ### Useful CMake Build Options
