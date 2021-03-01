@@ -1323,7 +1323,9 @@ static sr_error_info_t *
 sr_store_module_file(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
+    mode_t um;
     char *path;
+    int r;
 
     if ((err_info = sr_path_yang_file(ly_mod->name, ly_mod->rev_size ? ly_mod->rev[0].date : NULL, &path))) {
         return err_info;
@@ -1334,15 +1336,15 @@ sr_store_module_file(const struct lys_module *ly_mod)
         goto cleanup;
     }
 
-    /* print the (sub)module file */
-    if (lys_print_path(path, ly_mod, LYS_YANG, NULL, 0, 0)) {
-        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-        goto cleanup;
-    }
+    /* set umask so that the correct permissions are really set */
+    um = umask(SR_UMASK | (~SR_YANG_PERM));
 
-    /* set permissions */
-    if (chmod(path, SR_YANG_PERM)) {
-        SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+    /* print the (sub)module file */
+    r = lys_print_path(path, ly_mod, LYS_YANG, NULL, 0, 0);
+
+    umask(um);
+    if (r) {
+        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         goto cleanup;
     }
 
