@@ -842,6 +842,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
 {
     sr_error_info_t *err_info = NULL;
     struct ly_ctx *tmp_ly_ctx = NULL;
+    struct lyd_node *sr_mods = NULL;
     const struct lys_module *ly_mod, *ly_iter, *ly_iter2;
     LYS_INFORMAT format;
     char *mod_name = NULL;
@@ -850,8 +851,14 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
     SR_CHECK_ARG_APIRET(!conn || !schema_path, NULL, err_info);
 
     /* create new temporary context */
-    if ((err_info = sr_ly_ctx_new(&tmp_ly_ctx))) {
-        return sr_api_ret(NULL, err_info);
+    if ((err_info = sr_shmmain_ly_ctx_init(&tmp_ly_ctx))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_lydmods_parse(tmp_ly_ctx, &sr_mods))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_lydmods_ctx_load_modules(sr_mods, tmp_ly_ctx, 1, 1, 0, NULL))) {
+        goto cleanup;
     }
 
     /* learn module name and format */
@@ -921,6 +928,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
     /* success */
 
 cleanup:
+    lyd_free_all(sr_mods);
     ly_ctx_destroy(tmp_ly_ctx, NULL);
     free(mod_name);
     return sr_api_ret(NULL, err_info);
