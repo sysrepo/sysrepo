@@ -1329,29 +1329,26 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
             SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "priority", buf, 0, NULL), ly_ctx, err_info);
 
             /* cid */
-            sprintf(buf, "%"PRIu32, change_sub[i].cid);
+            sprintf(buf, "%" PRIu32, change_sub[i].cid);
             SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info);
         }
     }
 
     oper_sub = (sr_mod_oper_sub_t *)(conn->ext_shm.addr + shm_mod->oper_subs);
     for (i = 0; i < shm_mod->oper_sub_count; ++i) {
-        /* operational-sub */
-        SR_CHECK_LY_RET(lyd_new_list(sr_subs, NULL, "operational-sub", 0, &sr_sub), ly_ctx, err_info);
-
-        /* xpath */
-        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "xpath", conn->ext_shm.addr + oper_sub[i].xpath, 0, NULL),
+        /* operational-sub with xpath */
+        SR_CHECK_LY_RET(lyd_new_list(sr_subs, NULL, "operational-sub", 0, &sr_sub, conn->ext_shm.addr + oper_sub[i].xpath),
                 ly_ctx, err_info);
 
         /* cid */
-        sprintf(buf, "%"PRIu32, oper_sub[i].cid);
+        sprintf(buf, "%" PRIu32, oper_sub[i].cid);
         SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info);
     }
 
     notif_sub = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
     for (i = 0; i < shm_mod->notif_sub_count; ++i) {
         /* notification-sub with cid */
-        sprintf(buf, "%"PRIu32, notif_sub[i].cid);
+        sprintf(buf, "%" PRIu32, notif_sub[i].cid);
         SR_CHECK_LY_RET(lyd_new_term(sr_subs, NULL, "notification-sub", buf, 0, NULL), ly_ctx, err_info);
     }
 
