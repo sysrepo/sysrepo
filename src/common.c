@@ -916,7 +916,7 @@ sr_subs_session_del(sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock, sr_sub
         for (j = 0; j < change_subs->sub_count; ++j) {
             if (change_subs->subs[j].sess == sess) {
                 /* properly remove the subscription from ext SHM */
-                if ((err_info = sr_shmext_change_subscription_del(sess->conn, shm_mod, change_subs->ds,
+                if ((err_info = sr_shmext_change_subscription_del(sess->conn, shm_mod, SR_LOCK_NONE, change_subs->ds,
                         change_subs->subs[j].xpath, change_subs->subs[j].priority, change_subs->subs[j].opts,
                         subs->evpipe_num))) {
                     goto cleanup_subs_unlock;

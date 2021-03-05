@@ -3089,7 +3089,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     }
 
     /* add module subscription into ext SHM */
-    if ((err_info = sr_shmext_change_subscription_add(conn, shm_mod, chsub_lock_mode, xpath, session->ds, priority,
+    if ((err_info = sr_shmext_change_subscription_add(conn, shm_mod, chsub_lock_mode, session->ds, xpath, priority,
             sub_opts, (*subscription)->evpipe_num))) {
         goto error1;
     }
@@ -3113,8 +3113,8 @@ error3:
     sr_sub_change_del(module_name, xpath, session->ds, callback, private_data, priority, sub_opts, SR_LOCK_NONE, *subscription);
 
 error2:
-    if ((tmp_err = sr_shmext_change_subscription_del(conn, shm_mod, session->ds, xpath, priority, sub_opts,
-            (*subscription)->evpipe_num))) {
+    if ((tmp_err = sr_shmext_change_subscription_del(conn, shm_mod, chsub_lock_mode, session->ds, xpath, priority,
+            sub_opts, (*subscription)->evpipe_num))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
