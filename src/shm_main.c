@@ -78,8 +78,8 @@ sr_shmmain_check_dirs(void)
         return err_info;
     }
     if (((ret = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
+        SR_ERRINFO_SYSERRPATH(&err_info, "access", dir_path);
         free(dir_path);
-        SR_ERRINFO_SYSERRNO(&err_info, "access");
         return err_info;
     }
     if (ret && (err_info = sr_mkpath(dir_path, SR_DIR_PERM))) {
@@ -93,8 +93,8 @@ sr_shmmain_check_dirs(void)
         return err_info;
     }
     if (((ret = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
+        SR_ERRINFO_SYSERRPATH(&err_info, "access", dir_path);
         free(dir_path);
-        SR_ERRINFO_SYSERRNO(&err_info, "access");
         return err_info;
     }
     if (ret && (err_info = sr_mkpath(dir_path, SR_DIR_PERM))) {
@@ -108,8 +108,8 @@ sr_shmmain_check_dirs(void)
         return err_info;
     }
     if (((ret = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
+        SR_ERRINFO_SYSERRPATH(&err_info, "access", dir_path);
         free(dir_path);
-        SR_ERRINFO_SYSERRNO(&err_info, "access");
         return err_info;
     }
     if (ret && (err_info = sr_mkpath(dir_path, SR_DIR_PERM))) {
@@ -136,21 +136,16 @@ sr_shmmain_createlock_open(int *shm_lock)
 {
     sr_error_info_t *err_info = NULL;
     char *path;
-    mode_t um;
 
     if (asprintf(&path, "%s/%s", sr_get_repo_path(), SR_MAIN_SHM_LOCK) == -1) {
         SR_ERRINFO_MEM(&err_info);
         return err_info;
     }
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK);
-
-    *shm_lock = SR_OPEN(path, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
-    umask(um);
+    *shm_lock = sr_open(path, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
 
     if (*shm_lock == -1) {
-        SR_ERRINFO_OPEN(&err_info, path);
+        SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
     }
     free(path);
     return err_info;
@@ -233,7 +228,7 @@ sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive, pid_t *pid)
     if ((err_info = sr_path_conn_lockfile(cid, &path))) {
         goto cleanup;
     }
-    fd = SR_OPEN(path, O_WRONLY, 0);
+    fd = sr_open(path, O_WRONLY, 0);
     if (fd == -1) {
         if (errno == ENOENT) {
             /* the file does not exist in which case there is no connection established */
@@ -243,7 +238,7 @@ sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive, pid_t *pid)
             }
             goto cleanup;
         }
-        SR_ERRINFO_OPEN(&err_info, path);
+        SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
         goto cleanup;
     }
 
@@ -300,18 +295,15 @@ sr_shmmain_conn_new_lockfile(sr_cid_t cid, int *lock_fd)
     char *path = NULL;
     int fd = -1;
     struct flock fl = {0};
-    mode_t um;
     char buf[64];
 
     /* open the connection lock file with the correct permissions */
     if ((err_info = sr_path_conn_lockfile(cid, &path))) {
         return err_info;
     }
-    um = umask(SR_UMASK);
-    fd = SR_OPEN(path, O_CREAT | O_RDWR, SR_CONN_LOCKFILE_PERM);
-    umask(um);
+    fd = sr_open(path, O_CREAT | O_RDWR, SR_CONN_LOCKFILE_PERM);
     if (fd == -1) {
-        SR_ERRINFO_OPEN(&err_info, path);
+        SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
         goto cleanup;
     }
 
@@ -1100,7 +1092,6 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
     sr_main_shm_t *main_shm;
     char *shm_name = NULL;
     int creat = 0;
-    mode_t um;
 
     err_info = sr_path_main_shm(&shm_name);
     if (err_info) {
@@ -1108,7 +1099,7 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
     }
 
     /* try to open the shared memory */
-    shm->fd = SR_OPEN(shm_name, O_RDWR, SR_MAIN_SHM_PERM);
+    shm->fd = sr_open(shm_name, O_RDWR, SR_MAIN_SHM_PERM);
     if ((shm->fd == -1) && (errno == ENOENT)) {
         if (!created) {
             /* we do not want to create the memory now */
@@ -1116,12 +1107,8 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
             return NULL;
         }
 
-        /* set umask so that the correct permissions are really set */
-        um = umask(SR_UMASK);
-
         /* create shared memory */
-        shm->fd = SR_OPEN(shm_name, O_RDWR | O_CREAT | O_EXCL, SR_MAIN_SHM_PERM);
-        umask(um);
+        shm->fd = sr_open(shm_name, O_RDWR | O_CREAT | O_EXCL, SR_MAIN_SHM_PERM);
         creat = 1;
     }
     free(shm_name);
@@ -1176,19 +1163,14 @@ sr_shmmain_ext_open(sr_shm_t *shm, int zero)
 {
     sr_error_info_t *err_info = NULL;
     char *shm_name = NULL;
-    mode_t um;
 
     err_info = sr_path_ext_shm(&shm_name);
     if (err_info) {
         return err_info;
     }
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK);
-
-    shm->fd = SR_OPEN(shm_name, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
+    shm->fd = sr_open(shm_name, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
     free(shm_name);
-    umask(um);
     if (shm->fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open ext shared memory (%s).", strerror(errno));
         goto error;

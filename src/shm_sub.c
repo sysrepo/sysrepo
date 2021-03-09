@@ -39,7 +39,6 @@ sr_shmsub_create(const char *name, const char *suffix1, int64_t suffix2, size_t 
     sr_error_info_t *err_info = NULL;
     char *path = NULL;
     sr_shm_t shm = SR_SHM_INITIALIZER;
-    mode_t um;
     sr_sub_shm_t *sub_shm;
 
     assert(name && suffix1);
@@ -49,12 +48,8 @@ sr_shmsub_create(const char *name, const char *suffix1, int64_t suffix2, size_t 
         goto cleanup;
     }
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK);
-
     /* create shared memory */
-    shm.fd = SR_OPEN(path, O_RDWR | O_CREAT | O_EXCL, SR_SUB_SHM_PERM);
-    umask(um);
+    shm.fd = sr_open(path, O_RDWR | O_CREAT | O_EXCL, SR_SUB_SHM_PERM);
     if (shm.fd == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to create \"%s\" SHM (%s).", path, strerror(errno));
         goto cleanup;
@@ -98,9 +93,9 @@ sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_sh
     }
 
     /* open shared memory */
-    shm->fd = SR_OPEN(path, O_RDWR, SR_SUB_SHM_PERM);
+    shm->fd = sr_open(path, O_RDWR, SR_SUB_SHM_PERM);
     if (shm->fd == -1) {
-        SR_ERRINFO_OPEN(&err_info, path);
+        SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
         goto cleanup;
     }
 
@@ -170,9 +165,9 @@ sr_shmsub_data_open_remap(const char *name, const char *suffix1, int64_t suffix2
         }
 
         /* open shared memory, it may exist already */
-        shm->fd = SR_OPEN(path, O_RDWR | O_CREAT, SR_SUB_SHM_PERM);
+        shm->fd = sr_open(path, O_RDWR | O_CREAT, SR_SUB_SHM_PERM);
         if (shm->fd == -1) {
-            SR_ERRINFO_OPEN(&err_info, path);
+            SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
             goto cleanup;
         }
     }
@@ -707,7 +702,7 @@ sr_shmsub_notify_evpipe(uint32_t evpipe_num)
     }
 
     /* open pipe for writing */
-    if ((fd = SR_OPEN(path, O_WRONLY | O_NONBLOCK, 0)) == -1) {
+    if ((fd = sr_open(path, O_WRONLY | O_NONBLOCK, 0)) == -1) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening \"%s\" for writing failed (%s).", path, strerror(errno));
         goto cleanup;
     }

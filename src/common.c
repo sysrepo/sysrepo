@@ -916,7 +916,7 @@ sr_subs_session_del(sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock, sr_sub
         for (j = 0; j < change_subs->sub_count; ++j) {
             if (change_subs->subs[j].sess == sess) {
                 /* properly remove the subscription from ext SHM */
-                if ((err_info = sr_shmext_change_subscription_del(sess->conn, shm_mod, change_subs->ds,
+                if ((err_info = sr_shmext_change_subscription_del(sess->conn, shm_mod, SR_LOCK_NONE, change_subs->ds,
                         change_subs->subs[j].xpath, change_subs->subs[j].priority, change_subs->subs[j].opts,
                         subs->evpipe_num))) {
                     goto cleanup_subs_unlock;
@@ -1327,6 +1327,8 @@ sr_store_module_file(const struct lys_module *ly_mod, const struct lysp_submodul
     sr_error_info_t *err_info = NULL;
     struct ly_out *out = NULL;
     char *path = NULL;
+    mode_t um;
+    LY_ERR lyrc;
 
     if (lysp_submod) {
         if ((err_info = sr_path_yang_file(lysp_submod->name, lysp_submod->revs ? lysp_submod->revs[0].date : NULL, &path))) {
@@ -1343,23 +1345,20 @@ sr_store_module_file(const struct lys_module *ly_mod, const struct lysp_submodul
         goto cleanup;
     }
 
+    /* set umask so that the correct permissions are really set */
+    um = umask(SR_UMASK | (~SR_YANG_PERM));
+
     /* print the (sub)module file */
     ly_out_new_filepath(path, &out);
     if (lysp_submod) {
-        if (lys_print_submodule(out, lysp_submod, LYS_OUT_YANG, 0, 0)) {
-            sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-            goto cleanup;
-        }
+        lyrc = lys_print_submodule(out, lysp_submod, LYS_OUT_YANG, 0, 0);
     } else {
-        if (lys_print_module(out, ly_mod, LYS_OUT_YANG, 0, 0)) {
-            sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-            goto cleanup;
-        }
+        lyrc = lys_print_module(out, ly_mod, LYS_OUT_YANG, 0, 0);
     }
 
-    /* set permissions */
-    if (chmod(path, SR_YANG_PERM)) {
-        SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+    umask(um);
+    if (lyrc) {
+        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         goto cleanup;
     }
 
@@ -2140,7 +2139,7 @@ sr_perm_check(const char *mod_name, int wr, int *has_access)
                         wr ? "Write" : "Read", mod_name);
             }
         } else {
-            SR_ERRINFO_SYSERRNO(&err_info, "eaccess");
+            SR_ERRINFO_SYSERRPATH(&err_info, "eaccess", path);
         }
     } else if (has_access) {
         *has_access = 1;
@@ -2435,7 +2434,7 @@ sr_shmcpy(char *shm_addr, const void *src, size_t size, char **shm_end)
         memcpy(*shm_end, src, size);
     }
     ret = *shm_end - shm_addr;
-    *shm_end += size;
+    *shm_end += SR_SHM_SIZE(size);
 
     return ret;
 }
@@ -3292,23 +3291,18 @@ sr_cp_path(const char *to, const char *from, mode_t file_mode)
     int fd_to = -1, fd_from = -1;
     char *out_ptr, buf[4096];
     ssize_t nread, nwritten;
-    mode_t um;
 
     /* open "from" file */
-    fd_from = SR_OPEN(from, O_RDONLY, 0);
+    fd_from = sr_open(from, O_RDONLY, 0);
     if (fd_from < 0) {
-        SR_ERRINFO_OPEN(&err_info, from);
+        SR_ERRINFO_SYSERRPATH(&err_info, "open", from);
         goto cleanup;
     }
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK);
-
     /* open "to" */
-    fd_to = SR_OPEN(to, O_WRONLY | O_TRUNC | O_CREAT, file_mode);
-    umask(um);
+    fd_to = sr_open(to, O_WRONLY | O_TRUNC | O_CREAT, file_mode);
     if (fd_to < 0) {
-        SR_ERRINFO_OPEN(&err_info, to);
+        SR_ERRINFO_SYSERRPATH(&err_info, "open", to);
         goto cleanup;
     }
 
@@ -3342,38 +3336,140 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Set the correct group owner of a path.
+ *
+ * @param[in] path Path to use.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_path_set_group(const char *path)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_error_t err_code;
+    struct stat st;
+    const char *sr_group = SR_GROUP;
+    gid_t sr_gid;
+
+    if (!strlen(sr_group)) {
+        /* nothing to do */
+        return NULL;
+    }
+
+    /* get the desired GID */
+    if ((err_info = sr_get_grp(&sr_gid, (char **)&sr_group))) {
+        return err_info;
+    }
+
+    /* stat */
+    if (stat(path, &st) == -1) {
+        if (errno == EACCES) {
+            sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "Stat of \"%s\" failed.", path);
+        } else {
+            SR_ERRINFO_SYSERRNO(&err_info, "stat");
+        }
+        return err_info;
+    }
+
+    if (st.st_gid == sr_gid) {
+        /* fine, nothing to do */
+        return NULL;
+    }
+
+    /* set correct GID */
+    if (chown(path, -1, sr_gid) == -1) {
+        if ((errno == EACCES) || (errno = EPERM)) {
+            err_code = SR_ERR_UNAUTHORIZED;
+        } else {
+            err_code = SR_ERR_INTERNAL;
+        }
+        sr_errinfo_new(&err_info, err_code, NULL, "Changing owner of \"%s\" failed (%s).", path, strerror(errno));
+        return err_info;
+    }
+
+    return NULL;
+}
+
+int
+sr_open(const char *pathname, int flags, mode_t mode)
+{
+    sr_error_info_t *err_info = NULL;
+    mode_t um;
+    int fd;
+
+    /* O_NOFOLLOW enforces that files are not symlinks -- all opened
+     *   files are created by sysrepo so there cannot be any symlinks.
+     * O_CLOEXEC enforces that forking with an open sysrepo connection
+     *   is forbidden.
+     */
+    flags |= O_NOFOLLOW | O_CLOEXEC;
+
+    /* set umask so that the correct permissions are really set */
+    um = umask(SR_UMASK);
+
+    /* open the file */
+    fd = open(pathname, flags, mode);
+
+    /* restore umask (should not modify errno) */
+    umask(um);
+
+    if (fd == -1) {
+        /* error */
+        return fd;
+    }
+
+    /* set GID correctly */
+    if ((err_info = sr_path_set_group(pathname))) {
+        /* errno is kept */
+        sr_errinfo_free(&err_info);
+        close(fd);
+        return -1;
+    }
+
+    /* success */
+    return fd;
+}
+
 sr_error_info_t *
 sr_mkpath(char *path, mode_t mode)
 {
     sr_error_info_t *err_info = NULL;
     mode_t um;
-    char *p;
+    char *p = NULL;
 
     assert(path[0] == '/');
 
     /* set umask so that the correct permissions are really set */
     um = umask(SR_UMASK);
 
+    /* create each directory in the path */
     for (p = strchr(path + 1, '/'); p; p = strchr(p + 1, '/')) {
         *p = '\0';
         if (mkdir(path, mode) == -1) {
             if (errno != EEXIST) {
                 sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
-                *p = '/';
                 goto cleanup;
             }
+        } else if ((err_info = sr_path_set_group(path))) {
+            goto cleanup;
         }
         *p = '/';
     }
 
+    /* create the last directory in the path */
     if (mkdir(path, mode) == -1) {
         if (errno != EEXIST) {
             sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
             goto cleanup;
         }
+    } else if ((err_info = sr_path_set_group(path))) {
+        goto cleanup;
     }
 
 cleanup:
+    if (p) {
+        *p = '/';
+    }
     umask(um);
     return err_info;
 }
@@ -4575,7 +4671,7 @@ retry_open:
     }
 
     /* open fd */
-    fd = SR_OPEN(path, O_RDONLY, 0);
+    fd = sr_open(path, O_RDONLY, 0);
     if (fd == -1) {
         if ((errno == ENOENT) && (ds == SR_DS_CANDIDATE)) {
             /* no candidate exists, just use running */
@@ -4585,7 +4681,7 @@ retry_open:
             goto retry_open;
         }
 
-        SR_ERRINFO_OPEN(&err_info, path);
+        SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
         goto error;
     }
 
@@ -4660,12 +4756,8 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node
     sr_error_info_t *err_info = NULL;
     char *path = NULL, *bck_path = NULL;
     int fd = -1, backup = 0;
-    mode_t um;
 
     assert(file_mode);
-
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK);
 
     /* learn path */
     switch (ds) {
@@ -4698,8 +4790,8 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node
     }
 
     /* open the file */
-    if ((fd = SR_OPEN(path, O_WRONLY | create_flags, file_mode)) == -1) {
-        SR_ERRINFO_OPEN(&err_info, path);
+    if ((fd = sr_open(path, O_WRONLY | create_flags, file_mode)) == -1) {
+        SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
         goto cleanup;
     }
 
@@ -4720,7 +4812,6 @@ cleanup:
     if (fd > -1) {
         close(fd);
     }
-    umask(um);
     free(path);
     free(bck_path);
     return err_info;

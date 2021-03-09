@@ -114,7 +114,7 @@ sr_lydmods_exists(int *exists)
     /* check the existence of the data file */
     if (access(path, F_OK) == -1) {
         if (errno != ENOENT) {
-            SR_ERRINFO_SYSERRNO(&err_info, "access");
+            SR_ERRINFO_SYSERRPATH(&err_info, "access", path);
             goto cleanup;
         }
         *exists = 0;
@@ -1070,43 +1070,6 @@ sr_lydmods_ctx_load_modules(const struct lyd_node *sr_mods, struct ly_ctx *ly_ct
 }
 
 /**
- * @brief Learn whether any module in a set augments/deviates a specific module.
- *
- * It is expected the modules are from the same context.
- *
- * @param[in] mod Module that can be augmented/deviated.
- * @param[in] mod_set Set with modules possibly augmenting/deviating @p mod.
- * @return Whether any module in @p mod_set was augmenting/deviating @p mod.
- */
-static int
-sr_contains_dev_aug_module(const struct lys_module *ly_mod, struct ly_set *mod_set)
-{
-    const struct lys_module *mod;
-    uint32_t i;
-    LY_ARRAY_COUNT_TYPE u;
-
-    for (i = 0; i < mod_set->count; ++i) {
-        mod = mod_set->objs[i];
-
-        /* deviations */
-        LY_ARRAY_FOR(ly_mod->deviated_by, u) {
-            if (ly_mod->deviated_by[u] == mod) {
-                return 1;
-            }
-        }
-
-        /* augments */
-        LY_ARRAY_FOR(ly_mod->augmented_by, u) {
-            if (ly_mod->augmented_by[u] == mod) {
-                return 1;
-            }
-        }
-    }
-
-    return 0;
-}
-
-/**
  * @brief Check that persistent (startup) module data can be loaded into updated context.
  * On success print the new updated LYB data.
  *
@@ -1119,8 +1082,7 @@ static sr_error_info_t *
 sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx *new_ctx, int *fail)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *old_start_data = NULL, *new_start_data = NULL, *old_run_data = NULL, *new_run_data = NULL;
-    struct lyd_node *mod_data, *new_mod_data = NULL, *old_mod_data = NULL;
+    struct lyd_node *old_start_data = NULL, *new_start_data = NULL, *old_run_data = NULL, *new_run_data = NULL, *mod_data;
     struct ly_ctx *old_ctx = NULL;
     struct ly_set *mod_set = NULL, *del_mod_set = NULL, *startup_set = NULL;
     const struct lys_module *ly_mod, *ly_mod2;
@@ -1242,58 +1204,25 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
         goto cleanup;
     }
 
-    /* print all modules data with the updated module context if the new data is different from the old ones,
-     * then free them, no longer needed
-     */
+    /* print all modules data with the updated module context and free them, no longer needed */
     for (idx = 0; idx < mod_set->count; ++idx) {
-        LY_ERR lyrc;
-        int ctx_changed;
-
         ly_mod = mod_set->objs[idx];
 
-        /* check whether a removed module was not augmenting/deviating this module,
-         * if it was, we must always write the data because their metadata changed */
-        ctx_changed = sr_contains_dev_aug_module(ly_ctx_get_module_implemented(old_ctx, ly_mod->name), del_mod_set);
-
         /* startup data */
-        lyd_free_siblings(new_mod_data);
-        lyd_free_siblings(old_mod_data);
-        new_mod_data = sr_module_data_unlink(&new_start_data, ly_mod);
-        old_mod_data = sr_module_data_unlink(&old_start_data, ly_mod);
-
-        if (ctx_changed) {
-            lyrc = LY_ENOT;
-        } else {
-            lyrc = lyd_compare_siblings(new_mod_data, old_mod_data, LYD_COMPARE_FULL_RECURSION | LYD_COMPARE_DEFAULTS);
-        }
-        if (lyrc && (lyrc != LY_ENOT)) {
-            sr_errinfo_new_ly(&err_info, new_ctx);
+        mod_data = sr_module_data_unlink(&new_start_data, ly_mod);
+        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, mod_data, O_CREAT, SR_FILE_PERM))) {
+            lyd_free_siblings(mod_data);
             goto cleanup;
         }
-        if ((lyrc == LY_ENOT) && (err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, new_mod_data, O_CREAT,
-                SR_FILE_PERM))) {
-            goto cleanup;
-        }
+        lyd_free_siblings(mod_data);
 
         /* running data */
-        lyd_free_siblings(new_mod_data);
-        lyd_free_siblings(old_mod_data);
-        new_mod_data = sr_module_data_unlink(&new_start_data, ly_mod);
-        old_mod_data = sr_module_data_unlink(&old_start_data, ly_mod);
-
-        if (ctx_changed) {
-            lyrc = LY_ENOT;
-        } else {
-            lyrc = lyd_compare_siblings(new_mod_data, old_mod_data, LYD_COMPARE_FULL_RECURSION | LYD_COMPARE_DEFAULTS);
-        }
-        if (lyrc && (lyrc != LY_ENOT)) {
-            sr_errinfo_new_ly(&err_info, new_ctx);
+        mod_data = sr_module_data_unlink(&new_run_data, ly_mod);
+        if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_RUNNING, mod_data, O_CREAT, SR_FILE_PERM))) {
+            lyd_free_siblings(mod_data);
             goto cleanup;
         }
-        if ((lyrc == LY_ENOT) && (err_info = sr_module_file_data_set(ly_mod->name, SR_DS_RUNNING, new_mod_data, O_CREAT,
-                SR_FILE_PERM))) {
-            goto cleanup;
-        }
+        lyd_free_siblings(mod_data);
     }
 
     /* success */
@@ -1306,8 +1235,6 @@ cleanup:
     lyd_free_siblings(new_start_data);
     lyd_free_siblings(old_run_data);
     lyd_free_siblings(new_run_data);
-    lyd_free_siblings(new_mod_data);
-    lyd_free_siblings(old_mod_data);
     free(start_data_json);
     free(run_data_json);
     ly_ctx_destroy(old_ctx, NULL);

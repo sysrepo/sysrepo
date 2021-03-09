@@ -2472,15 +2472,17 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, sr_sid_t sid)
                 goto error;
             }
             r = access(path, F_OK);
-            free(path);
             if ((r == -1) && (errno != ENOENT)) {
-                SR_ERRINFO_SYSERRNO(&err_info, "access");
+                SR_ERRINFO_SYSERRPATH(&err_info, "access", path);
+                free(path);
                 goto error;
             } else if (!r) {
                 sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Module \"%s\" candidate datastore data have "
                         "already been modified.", mod->ly_mod->name);
+                free(path);
                 goto error;
             }
+            free(path);
         }
 
         /* change DS lock state and remember the time */
@@ -2507,6 +2509,7 @@ error:
             ATOMIC_STORE_RELAXED(shm_lock->ds_locked, 1);
         }
     }
+
     return err_info;
 }
 
@@ -2999,9 +3002,9 @@ sr_subs_new(sr_conn_ctx_t *conn, sr_subscr_options_t opts, sr_subscription_ctx_t
 
     /* open it for reading AND writing (just so that there always is a "writer", otherwise it is always ready
      * for reading by select() but returns just EOF on read) */
-    (*subs_p)->evpipe = SR_OPEN(path, O_RDWR | O_NONBLOCK, 0);
+    (*subs_p)->evpipe = sr_open(path, O_RDWR | O_NONBLOCK, 0);
     if ((*subs_p)->evpipe == -1) {
-        SR_ERRINFO_OPEN(&err_info, path);
+        SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
         goto error;
     }
 
@@ -3098,7 +3101,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     }
 
     /* add module subscription into ext SHM */
-    if ((err_info = sr_shmext_change_subscription_add(conn, shm_mod, chsub_lock_mode, xpath, session->ds, priority,
+    if ((err_info = sr_shmext_change_subscription_add(conn, shm_mod, chsub_lock_mode, session->ds, xpath, priority,
             sub_opts, (*subscription)->evpipe_num))) {
         goto error1;
     }
@@ -3122,8 +3125,8 @@ error3:
     sr_sub_change_del(module_name, xpath, session->ds, callback, private_data, priority, sub_opts, SR_LOCK_NONE, *subscription);
 
 error2:
-    if ((tmp_err = sr_shmext_change_subscription_del(conn, shm_mod, session->ds, xpath, priority, sub_opts,
-            (*subscription)->evpipe_num))) {
+    if ((tmp_err = sr_shmext_change_subscription_del(conn, shm_mod, chsub_lock_mode, session->ds, xpath, priority,
+            sub_opts, (*subscription)->evpipe_num))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 

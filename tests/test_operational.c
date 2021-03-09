@@ -882,6 +882,18 @@ enabled_change_cb(sr_session_ctx_t *session, const char *module_name, const char
 
         sr_free_val(new_val);
 
+        /* 6th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces/interface[name='eth128']/ietf-if-aug:c1");
+        assert_int_equal(new_val->dflt, 1);
+
+        sr_free_val(new_val);
+
         /* no more changes */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_NOT_FOUND);

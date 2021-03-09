@@ -791,7 +791,7 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_cid_t cid)
             }
 
             /* error */
-            SR_ERRINFO_SYSERRNO(&err_info, "eaccess");
+            SR_ERRINFO_SYSERRPATH(&err_info, "eaccess", path);
             goto cleanup;
         }
 
