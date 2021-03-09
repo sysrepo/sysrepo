@@ -119,7 +119,7 @@ sr_lydmods_exists(int *exists)
     /* check the existence of the data file */
     if (access(path, F_OK) == -1) {
         if (errno != ENOENT) {
-            SR_ERRINFO_SYSERRNO(&err_info, "access");
+            SR_ERRINFO_SYSERRPATH(&err_info, "access", path);
             goto cleanup;
         }
         *exists = 0;

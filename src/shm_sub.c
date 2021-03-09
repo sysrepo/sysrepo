@@ -95,7 +95,7 @@ sr_shmsub_open_map(const char *name, const char *suffix1, int64_t suffix2, sr_sh
     /* open shared memory */
     shm->fd = sr_open(path, O_RDWR, SR_SUB_SHM_PERM);
     if (shm->fd == -1) {
-        SR_ERRINFO_OPEN(&err_info, path);
+        SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
         goto cleanup;
     }
 
@@ -167,7 +167,7 @@ sr_shmsub_data_open_remap(const char *name, const char *suffix1, int64_t suffix2
         /* open shared memory, it may exist already */
         shm->fd = sr_open(path, O_RDWR | O_CREAT, SR_SUB_SHM_PERM);
         if (shm->fd == -1) {
-            SR_ERRINFO_OPEN(&err_info, path);
+            SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
             goto cleanup;
         }
     }

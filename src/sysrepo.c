@@ -2432,7 +2432,7 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, sr_sid_t sid)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
-    char *path;
+    char *path = NULL;
     int r;
     struct sr_mod_info_mod_s *mod;
     struct sr_mod_lock_s *shm_lock;
@@ -2463,9 +2463,8 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, sr_sid_t sid)
                 goto error;
             }
             r = access(path, F_OK);
-            free(path);
             if ((r == -1) && (errno != ENOENT)) {
-                SR_ERRINFO_SYSERRNO(&err_info, "access");
+                SR_ERRINFO_SYSERRPATH(&err_info, "access", path);
                 goto error;
             } else if (!r) {
                 sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Module \"%s\" candidate datastore data have "
@@ -2483,6 +2482,7 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, sr_sid_t sid)
         }
     }
 
+    free(path);
     return NULL;
 
 error:
@@ -2498,6 +2498,8 @@ error:
             ATOMIC_STORE_RELAXED(shm_lock->ds_locked, 1);
         }
     }
+
+    free(path);
     return err_info;
 }
 
@@ -2992,7 +2994,7 @@ sr_subs_new(sr_conn_ctx_t *conn, sr_subscr_options_t opts, sr_subscription_ctx_t
      * for reading by select() but returns just EOF on read) */
     (*subs_p)->evpipe = sr_open(path, O_RDWR | O_NONBLOCK, 0);
     if ((*subs_p)->evpipe == -1) {
-        SR_ERRINFO_OPEN(&err_info, path);
+        SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
         goto error;
     }
 

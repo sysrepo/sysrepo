@@ -2124,7 +2124,7 @@ sr_perm_check(const char *mod_name, int wr, int *has_access)
                         wr ? "Write" : "Read", mod_name);
             }
         } else {
-            SR_ERRINFO_SYSERRNO(&err_info, "eaccess");
+            SR_ERRINFO_SYSERRPATH(&err_info, "eaccess", path);
         }
     } else if (has_access) {
         *has_access = 1;
@@ -3280,14 +3280,14 @@ sr_cp_path(const char *to, const char *from, mode_t file_mode)
     /* open "from" file */
     fd_from = sr_open(from, O_RDONLY, 0);
     if (fd_from < 0) {
-        SR_ERRINFO_OPEN(&err_info, from);
+        SR_ERRINFO_SYSERRPATH(&err_info, "open", from);
         goto cleanup;
     }
 
     /* open "to" */
     fd_to = sr_open(to, O_WRONLY | O_TRUNC | O_CREAT, file_mode);
     if (fd_to < 0) {
-        SR_ERRINFO_OPEN(&err_info, to);
+        SR_ERRINFO_SYSERRPATH(&err_info, "open", to);
         goto cleanup;
     }
 
@@ -5187,7 +5187,7 @@ retry_open:
             goto retry_open;
         }
 
-        SR_ERRINFO_OPEN(&err_info, path);
+        SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
         goto error;
     }
 
@@ -5316,7 +5316,7 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node
 
     /* open the file */
     if ((fd = sr_open(path, O_WRONLY | create_flags, file_mode)) == -1) {
-        SR_ERRINFO_OPEN(&err_info, path);
+        SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
         goto cleanup;
     }
 

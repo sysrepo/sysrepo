@@ -33,7 +33,8 @@
         NULL, "Waiting on a conditional variable failed (%s: %s).", func, strerror(ret))
 #define SR_ERRINFO_SYSERRNO(err_info, func) sr_errinfo_new(err_info, SR_ERR_SYS, NULL, "%s() failed (%s).", func, strerror(errno))
 #define SR_ERRINFO_VALID(err_info) sr_errinfo_new(err_info, SR_ERR_VALIDATION_FAILED, NULL, "Validation failed.")
-#define SR_ERRINFO_OPEN(err_info, path) sr_errinfo_new(err_info, SR_ERR_SYS, NULL, "Opening \"%s\" failed (%s).", path, strerror(errno))
+#define SR_ERRINFO_SYSERRPATH(err_info, func, path) sr_errinfo_new(err_info, SR_ERR_SYS, NULL, "%s() on \"%s\" failed (%s).", \
+        func, path, strerror(errno))
 
 #define SR_LOG_WRN(...) sr_log(SR_LL_WRN, __VA_ARGS__)
 #define SR_LOG_INF(...) sr_log(SR_LL_INF, __VA_ARGS__)

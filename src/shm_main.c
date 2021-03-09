@@ -78,8 +78,8 @@ sr_shmmain_check_dirs(void)
         return err_info;
     }
     if (((ret = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
+        SR_ERRINFO_SYSERRPATH(&err_info, "access", dir_path);
         free(dir_path);
-        SR_ERRINFO_SYSERRNO(&err_info, "access");
         return err_info;
     }
     if (ret && (err_info = sr_mkpath(dir_path, SR_DIR_PERM))) {
@@ -93,8 +93,8 @@ sr_shmmain_check_dirs(void)
         return err_info;
     }
     if (((ret = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
+        SR_ERRINFO_SYSERRPATH(&err_info, "access", dir_path);
         free(dir_path);
-        SR_ERRINFO_SYSERRNO(&err_info, "access");
         return err_info;
     }
     if (ret && (err_info = sr_mkpath(dir_path, SR_DIR_PERM))) {
@@ -108,8 +108,8 @@ sr_shmmain_check_dirs(void)
         return err_info;
     }
     if (((ret = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
+        SR_ERRINFO_SYSERRPATH(&err_info, "access", dir_path);
         free(dir_path);
-        SR_ERRINFO_SYSERRNO(&err_info, "access");
         return err_info;
     }
     if (ret && (err_info = sr_mkpath(dir_path, SR_DIR_PERM))) {
@@ -145,7 +145,7 @@ sr_shmmain_createlock_open(int *shm_lock)
     *shm_lock = sr_open(path, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
 
     if (*shm_lock == -1) {
-        SR_ERRINFO_OPEN(&err_info, path);
+        SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
     }
     free(path);
     return err_info;
@@ -238,7 +238,7 @@ sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive, pid_t *pid)
             }
             goto cleanup;
         }
-        SR_ERRINFO_OPEN(&err_info, path);
+        SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
         goto cleanup;
     }
 
@@ -303,7 +303,7 @@ sr_shmmain_conn_new_lockfile(sr_cid_t cid, int *lock_fd)
     }
     fd = sr_open(path, O_CREAT | O_RDWR, SR_CONN_LOCKFILE_PERM);
     if (fd == -1) {
-        SR_ERRINFO_OPEN(&err_info, path);
+        SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
         goto cleanup;
     }
 
