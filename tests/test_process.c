@@ -386,11 +386,12 @@ test_rpc_crash2(int rp, int wp)
 
 /* TEST */
 static void
-notif_instid_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const char *xpath,
+notif_instid_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id, const char *xpath,
         const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data)
 {
     (void)session;
     (void)notif_type;
+    (void)sub_id;
     (void)xpath;
     (void)values;
     (void)values_cnt;

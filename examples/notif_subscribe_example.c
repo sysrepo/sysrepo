@@ -116,13 +116,14 @@ print_val(const sr_val_t *value)
 }
 
 static void
-notif_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const char *path, const sr_val_t *values,
-        const size_t values_cnt, time_t timestamp, void *private_data)
+notif_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id, const char *path,
+        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data)
 {
     size_t i;
 
     (void)session;
     (void)notif_type;
+    (void)sub_id;
     (void)timestamp;
     (void)private_data;
 

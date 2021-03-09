@@ -682,12 +682,14 @@ sr_error_info_t *sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_n
  * @param[in] tree_cb Tree callback.
  * @param[in] private_data Callback private data.
  * @param[in] notif_type Notification type.
+ * @param[in] sub_id Subscription ID.
  * @param[in] notif_op Notification node of the notification (relevant for nested notifications).
  * @param[in] notif_ts Timestamp of when the notification was generated.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb,
-        void *private_data, const sr_ev_notif_type_t notif_type, const struct lyd_node *notif_op, time_t notif_ts);
+        void *private_data, const sr_ev_notif_type_t notif_type, uint32_t sub_id, const struct lyd_node *notif_op,
+        time_t notif_ts);
 
 /*
  * Utility functions

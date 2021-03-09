@@ -1585,10 +1585,11 @@ typedef enum sr_ev_notif_type_e {
     SR_EV_NOTIF_REPLAY,           /**< Replayed notification. */
     SR_EV_NOTIF_REPLAY_COMPLETE,  /**< Not a real notification, just a signal that the notification replay has completed
                                        (all the stored notifications from the given time interval have been delivered). */
-    SR_EV_NOTIF_STOP,             /**< Not a real notification, just a signal that replay stop time has been reached
+    SR_EV_NOTIF_STOP,             /**< Not a real notification, just a signal that stop time has been reached
                                        (delivered only if stop_time was specified when subscribing). */
-    SR_EV_NOTIF_SUSPENDED,        /**< Not a real notification, just a signal that the notification was suspended. */
-    SR_EV_NOTIF_RESUMED           /**< Not a real notification, just a signal that the notification was resumed after
+    SR_EV_NOTIF_MODIFIED,         /**< Not a real notification, just a signal that the subscription parameters were modified. */
+    SR_EV_NOTIF_SUSPENDED,        /**< Not a real notification, just a signal that the subscription was suspended. */
+    SR_EV_NOTIF_RESUMED           /**< Not a real notification, just a signal that the subscription was resumed after
                                        previously suspended. */
 } sr_ev_notif_type_t;
 
@@ -1599,6 +1600,7 @@ typedef enum sr_ev_notif_type_e {
  *
  * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
  * @param[in] notif_type Type of the notification.
+ * @param[in] sub_id Subscription ID.
  * @param[in] xpath Full operation [xpath](@ref paths) identifying the exact notification executed.
  * @param[in] values Array of all nodes that hold some data in event notification subtree.
  * @param[in] values_cnt Number of items inside the values array.
@@ -1606,8 +1608,8 @@ typedef enum sr_ev_notif_type_e {
  * @param[in] private_data Private context opaque to sysrepo,
  * as passed to ::sr_event_notif_subscribe call.
  */
-typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const char *xpath,
-        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data);
+typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id,
+        const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data);
 
 /**
  * @brief Callback to be called for the delivery of a notification. Data are represented as _libyang_ subtrees.
@@ -1616,11 +1618,12 @@ typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, const sr_ev_notif_t
  *
  * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
  * @param[in] notif_type Type of the notification.
+ * @param[in] sub_id Subscription ID.
  * @param[in] notif Notification data tree. Always points to the __notification__ itself, even for nested ones.
  * @param[in] timestamp Time when the notification was generated
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_event_notif_subscribe_tree call.
  */
-typedef void (*sr_event_notif_tree_cb)(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type,
+typedef void (*sr_event_notif_tree_cb)(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id,
         const struct lyd_node *notif, time_t timestamp, void *private_data);
 
 /**
@@ -1709,7 +1712,54 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif);
 uint32_t sr_event_notif_sub_id_get_last(const sr_subscription_ctx_t *subscription);
 
 /**
- * @brief Suspend a notification subscription, special ::SR_EV_NOTIF_SUSPENDED notification is delivered.
+ * @brief Get parameters of an existing notification subscription.
+ *
+ * @param[in] subscription Subscription structure to use.
+ * @param[in] sub_id Subscription ID of the specific subscription to modify.
+ * @param[out] module_name Optional name of the module whose notifications were subscribed.
+ * @param[out] xpath Optional [XPath](@ref paths) filter of the subscription.
+ * @param[out] start_time Optional start time of the subscription.
+ * @param[out] stop_time Optional stop time of the subscription.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_event_notif_sub_get_params(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char **module_name,
+        const char **xpath, time_t *start_time, time_t *stop_time);
+
+/**
+ * @brief Modify an existing notification subscription by changing its XPath filter.
+ * Special ::SR_EV_NOTIF_MODIFIED notification is delivered.
+ *
+ * @param[in] subscription Subscription structure to use.
+ * @param[in] sub_id Subscription ID of the specific subscription to modify.
+ * @param[in] xpath New xpath filter to use by the subscription.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_event_notif_sub_modify_filter(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char *xpath);
+
+/**
+ * @brief Modify an existing notification subscription by changing its stop time.
+ * Special ::SR_EV_NOTIF_MODIFIED notification is delivered.
+ *
+ * @param[in] subscription Subscription structure to use.
+ * @param[in] sub_id Subscription ID of the specific subscription to modify.
+ * @param[in] stop_time New stop time of the subscription.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t sub_id, time_t stop_time);
+
+/**
+ * @brief Learn the suspend state of a notification subscription.
+ *
+ * @param[in] subscription Subscription context to use.
+ * @param[in] sub_id Subscription ID of the specific subscription to suspend.
+ * @param[out] suspended Whether the subscription is suspended or not.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_event_notif_sub_is_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_id, int *suspended);
+
+/**
+ * @brief Suspend a notification subscription.
+ * Special ::SR_EV_NOTIF_SUSPENDED notification is delivered.
  *
  * @param[in] subscription Subscription context to use.
  * @param[in] sub_id Subscription ID of the specific subscription to suspend.
@@ -1718,8 +1768,8 @@ uint32_t sr_event_notif_sub_id_get_last(const sr_subscription_ctx_t *subscriptio
 int sr_event_notif_sub_suspend(sr_subscription_ctx_t *subscription, uint32_t sub_id);
 
 /**
- * @brief Resume a previously suspended notification subscription, special ::SR_EV_NOTIF_RESUMED notification is
- * delivered.
+ * @brief Resume a previously suspended notification subscription.
+ * Special ::SR_EV_NOTIF_RESUMED notification is delivered.
  *
  * @param[in] subscription Subscription context to use.
  * @param[in] sub_id Subscription ID of the specific subscription to resume.

@@ -4269,7 +4269,9 @@ sr_event_notif_find_sub(const sr_subscription_ctx_t *subscription, uint32_t sub_
     for (i = 0; i < subscription->notif_sub_count; ++i) {
         for (j = 0; j < subscription->notif_subs[i].sub_count; ++j) {
             if (subscription->notif_subs[i].subs[j].sub_id == sub_id) {
-                *module_name = subscription->notif_subs[i].module_name;
+                if (module_name) {
+                    *module_name = subscription->notif_subs[i].module_name;
+                }
                 return &subscription->notif_subs[i].subs[j];
             }
         }
@@ -4278,21 +4280,12 @@ sr_event_notif_find_sub(const sr_subscription_ctx_t *subscription, uint32_t sub_
     return NULL;
 }
 
-/**
- * @brief Change suspended state of a subscription.
- *
- * @param[in] subscription Subscription context to use.
- * @param[in] sub_id Subscription notification ID.
- * @param[in] suspend Whether to suspend or resume the subscription.
- * @return Error code.
- */
-static int
-_sr_event_notif_sub_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_id, int suspend)
+API int
+sr_event_notif_sub_get_params(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char **module_name,
+        const char **xpath, time_t *start_time, time_t *stop_time)
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_notifsub_s *notif_sub;
-    const char *module_name;
-    sr_session_ctx_t *ev_sess = NULL;
 
     SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
 
@@ -4303,15 +4296,58 @@ _sr_event_notif_sub_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_
     }
 
     /* find the subscription in the subscription context */
-    notif_sub = sr_event_notif_find_sub(subscription, sub_id, &module_name);
+    notif_sub = sr_event_notif_find_sub(subscription, sub_id, module_name);
     if (!notif_sub) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Notification subscription with ID \"%u\" not found.", sub_id);
         goto cleanup_unlock;
     }
 
-    /* update suspend flag in SHM */
-    if ((err_info = sr_shmmain_update_notif_suspend(subscription->conn, module_name, sub_id, suspend))) {
+    /* fill parameters */
+    if (xpath) {
+        *xpath = notif_sub->xpath;
+    }
+    if (start_time) {
+        *start_time = notif_sub->start_time;
+    }
+    if (stop_time) {
+        *stop_time = notif_sub->stop_time;
+    }
+
+cleanup_unlock:
+    /* SUBS READ UNLOCK */
+    sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
+
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_event_notif_sub_modify_filter(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char *xpath)
+{
+    sr_error_info_t *err_info = NULL;
+    struct modsub_notifsub_s *notif_sub;
+    sr_session_ctx_t *ev_sess = NULL;
+
+    SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
+
+    /* SUBS WRITE LOCK */
+    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscription->conn->cid,
+            __func__, NULL, NULL))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* find the subscription in the subscription context */
+    notif_sub = sr_event_notif_find_sub(subscription, sub_id, NULL);
+    if (!notif_sub) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Notification subscription with ID \"%u\" not found.", sub_id);
         goto cleanup_unlock;
+    }
+
+    /* update xpath */
+    free(notif_sub->xpath);
+    notif_sub->xpath = NULL;
+    if (xpath) {
+        notif_sub->xpath = strdup(xpath);
+        SR_CHECK_MEM_GOTO(!notif_sub->xpath, err_info, cleanup_unlock);
     }
 
     /* create event session */
@@ -4321,7 +4357,90 @@ _sr_event_notif_sub_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_
 
     /* send the special notification */
     if ((err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
-            suspend ? SR_EV_NOTIF_SUSPENDED : SR_EV_NOTIF_RESUMED, NULL, time(NULL)))) {
+            SR_EV_NOTIF_MODIFIED, sub_id, NULL, time(NULL)))) {
+        goto cleanup_unlock;
+    }
+
+cleanup_unlock:
+    /* SUBS WRITE UNLOCK */
+    sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscription->conn->cid, __func__);
+
+    sr_session_stop(ev_sess);
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t sub_id, time_t stop_time)
+{
+    sr_error_info_t *err_info = NULL;
+    struct modsub_notifsub_s *notif_sub;
+    sr_session_ctx_t *ev_sess = NULL;
+
+    SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
+
+    /* SUBS WRITE LOCK */
+    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscription->conn->cid,
+            __func__, NULL, NULL))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* find the subscription in the subscription context */
+    notif_sub = sr_event_notif_find_sub(subscription, sub_id, NULL);
+    if (!notif_sub) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Notification subscription with ID \"%u\" not found.", sub_id);
+        goto cleanup_unlock;
+    }
+
+    /* check stop time validity */
+    if (stop_time && !notif_sub->start_time && (stop_time < notif_sub->start_time)) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Stop time cannot be earlier than start time.");
+        goto cleanup_unlock;
+    }
+
+    /* update stop time */
+    notif_sub->stop_time = stop_time;
+
+    /* create event session */
+    if ((err_info = _sr_session_start(subscription->conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, 0, 0, NULL, &ev_sess))) {
+        goto cleanup_unlock;
+    }
+
+    /* send the special notification */
+    if ((err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
+            SR_EV_NOTIF_MODIFIED, sub_id, NULL, time(NULL)))) {
+        goto cleanup_unlock;
+    }
+
+cleanup_unlock:
+    /* SUBS WRITE UNLOCK */
+    sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscription->conn->cid, __func__);
+
+    sr_session_stop(ev_sess);
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_event_notif_sub_is_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_id, int *suspended)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *module_name;
+
+    SR_CHECK_ARG_APIRET(!subscription || !sub_id || !suspended, NULL, err_info);
+
+    /* SUBS READ LOCK */
+    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid,
+            __func__, NULL, NULL))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* find the subscription in the subscription context */
+    if (!sr_event_notif_find_sub(subscription, sub_id, &module_name)) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Notification subscription with ID \"%u\" not found.", sub_id);
+        goto cleanup_unlock;
+    }
+
+    /* read suspend flag from SHM */
+    if ((err_info = sr_shmmain_get_notif_suspend(subscription->conn, module_name, sub_id, suspended))) {
         goto cleanup_unlock;
     }
 
@@ -4329,20 +4448,97 @@ cleanup_unlock:
     /* SUBS READ UNLOCK */
     sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
 
-    sr_session_stop(ev_sess);
     return sr_api_ret(NULL, err_info);
+}
+
+/**
+ * @brief Change suspended state of a subscription.
+ *
+ * @param[in] subscription Subscription context to use.
+ * @param[in] sub_id Subscription notification ID.
+ * @param[in] suspend Whether to suspend or resume the subscription.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+_sr_event_notif_sub_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_id, int suspend)
+{
+    sr_error_info_t *err_info = NULL;
+    struct modsub_notifsub_s *notif_sub;
+    const char *module_name;
+    sr_session_ctx_t *ev_sess = NULL;
+
+    assert(subscription && sub_id);
+
+    /* find the subscription in the subscription context */
+    notif_sub = sr_event_notif_find_sub(subscription, sub_id, &module_name);
+    if (!notif_sub) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Notification subscription with ID \"%u\" not found.", sub_id);
+        goto cleanup;
+    }
+
+    /* update suspend flag in SHM */
+    if ((err_info = sr_shmmain_update_notif_suspend(subscription->conn, module_name, sub_id, suspend))) {
+        goto cleanup;
+    }
+
+    /* create event session */
+    if ((err_info = _sr_session_start(subscription->conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, 0, 0, NULL, &ev_sess))) {
+        goto cleanup;
+    }
+
+    /* send the special notification */
+    if ((err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
+            suspend ? SR_EV_NOTIF_SUSPENDED : SR_EV_NOTIF_RESUMED, sub_id, NULL, time(NULL)))) {
+        goto cleanup;
+    }
+
+cleanup:
+    sr_session_stop(ev_sess);
+    return err_info;
 }
 
 API int
 sr_event_notif_sub_suspend(sr_subscription_ctx_t *subscription, uint32_t sub_id)
 {
-    return _sr_event_notif_sub_suspended(subscription, sub_id, 1);
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
+
+    /* SUBS READ LOCK */
+    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid,
+            __func__, NULL, NULL))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* suspend */
+    err_info = _sr_event_notif_sub_suspended(subscription, sub_id, 1);
+
+    /* SUBS READ UNLOCK */
+    sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
+
+    return sr_api_ret(NULL, err_info);
 }
 
 API int
 sr_event_notif_sub_resume(sr_subscription_ctx_t *subscription, uint32_t sub_id)
 {
-    return _sr_event_notif_sub_suspended(subscription, sub_id, 0);
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
+
+    /* SUBS READ LOCK */
+    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid,
+            __func__, NULL, NULL))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* resume */
+    err_info = _sr_event_notif_sub_suspended(subscription, sub_id, 0);
+
+    /* SUBS READ UNLOCK */
+    sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
+
+    return sr_api_ret(NULL, err_info);
 }
 
 /**

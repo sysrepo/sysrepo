@@ -1281,6 +1281,41 @@ sr_shmmain_update_replay_support(sr_main_shm_t *main_shm, const char *mod_name, 
 }
 
 sr_error_info_t *
+sr_shmmain_get_notif_suspend(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, int *suspended)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod;
+    sr_mod_notif_sub_t *shm_sub;
+    uint32_t i;
+
+    /* find the subscription in SHM */
+    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), mod_name);
+    SR_CHECK_INT_RET(!shm_mod, err_info);
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        return err_info;
+    }
+
+    shm_sub = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
+    for (i = 0; i < shm_mod->notif_sub_count; ++i) {
+        if (shm_sub[i].sub_id == sub_id) {
+            break;
+        }
+    }
+    SR_CHECK_INT_GOTO(i == shm_mod->notif_sub_count, err_info, cleanup_ext_unlock);
+
+    /* read the flag */
+    *suspended = ATOMIC_LOAD_RELAXED(shm_sub[i].suspended);
+
+cleanup_ext_unlock:
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+    return err_info;
+}
+
+sr_error_info_t *
 sr_shmmain_update_notif_suspend(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, int suspend)
 {
     sr_error_info_t *err_info = NULL;

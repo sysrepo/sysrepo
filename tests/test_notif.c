@@ -274,11 +274,12 @@ create_ops_notif(void **state)
 
 /* TEST */
 static void
-notif_dummy_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values,
-        const size_t values_cnt, time_t timestamp, void *private_data)
+notif_dummy_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id, const char *xpath,
+        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data)
 {
     (void)session;
     (void)notif_type;
+    (void)sub_id;
     (void)xpath;
     (void)values;
     (void)values_cnt;
@@ -338,11 +339,12 @@ test_input_parameters(void **state)
 
 /* TEST */
 static void
-notif_simple_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values,
-        const size_t values_cnt, time_t timestamp, void *private_data)
+notif_simple_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id, const char *xpath,
+        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
+    (void)sub_id;
     (void)timestamp;
 
     assert_int_equal(notif_type, SR_EV_NOTIF_REALTIME);
@@ -492,12 +494,13 @@ test_simple(void **state)
 
 /* TEST */
 static void
-notif_stop_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const struct lyd_node *notif,
-        time_t timestamp, void *private_data)
+notif_stop_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id,
+        const struct lyd_node *notif, time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
     (void)session;
+    (void)sub_id;
     (void)timestamp;
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
@@ -536,12 +539,13 @@ test_stop(void **state)
 
 /* TEST */
 static void
-notif_replay_simple_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const struct lyd_node *notif,
-        time_t timestamp, void *private_data)
+notif_replay_simple_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id,
+        const struct lyd_node *notif, time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
     (void)session;
+    (void)sub_id;
     (void)timestamp;
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
@@ -617,12 +621,13 @@ test_replay_simple(void **state)
 
 /* TEST */
 static void
-notif_replay_interval_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const struct lyd_node *notif,
-        time_t timestamp, void *private_data)
+notif_replay_interval_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id,
+        const struct lyd_node *notif, time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
     (void)session;
+    (void)sub_id;
     (void)timestamp;
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
@@ -779,12 +784,13 @@ test_replay_interval(void **state)
 
 /* TEST */
 static void
-notif_no_replay_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const struct lyd_node *notif,
-        time_t timestamp, void *private_data)
+notif_no_replay_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id,
+        const struct lyd_node *notif, time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
     (void)session;
+    (void)sub_id;
     (void)timestamp;
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
@@ -854,8 +860,8 @@ test_no_replay(void **state)
 
 /* TEST */
 static void
-notif_config_change_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const struct lyd_node *notif,
-        time_t timestamp, void *private_data)
+notif_config_change_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id,
+        const struct lyd_node *notif, time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     char *str1;
@@ -865,7 +871,9 @@ notif_config_change_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif
     assert_non_null(notif);
     assert_string_equal(notif->schema->name, "netconf-config-change");
     assert_string_equal(lyd_child(notif)->schema->name, "changed-by");
+
     (void)session;
+    (void)sub_id;
     (void)timestamp;
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
@@ -1083,13 +1091,14 @@ test_notif_buffer(void **state)
 
 /* TEST */
 static void
-notif_suspend_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, const char *xpath, const sr_val_t *values,
-        const size_t values_cnt, time_t timestamp, void *private_data)
+notif_suspend_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id, const char *xpath,
+        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
     (void)values;
     (void)values_cnt;
+    (void)sub_id;
     (void)timestamp;
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
@@ -1129,7 +1138,7 @@ test_suspend(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_subscription_ctx_t *subscr;
-    int ret;
+    int ret, suspended;
     uint32_t sub_id;
 
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
@@ -1137,6 +1146,7 @@ test_suspend(void **state)
     /* subscribe */
     ret = sr_event_notif_subscribe(st->sess, "ops", NULL, 0, 0, notif_suspend_cb, st, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
+    sub_id = sr_event_notif_sub_id_get_last(subscr);
 
     /* send a notif */
     ret = sr_event_notif_send(st->sess, "/ops:notif4", NULL, 0);
@@ -1146,8 +1156,12 @@ test_suspend(void **state)
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
+    /* get suspended */
+    ret = sr_event_notif_sub_is_suspended(subscr, sub_id, &suspended);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(suspended, 0);
+
     /* suspend */
-    sub_id = sr_event_notif_sub_id_get_last(subscr);
     ret = sr_event_notif_sub_suspend(subscr, sub_id);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1156,6 +1170,11 @@ test_suspend(void **state)
     /* send a notif, it is not delivered */
     ret = sr_event_notif_send(st->sess, "/ops:notif4", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
+
+    /* get suspended */
+    ret = sr_event_notif_sub_is_suspended(subscr, sub_id, &suspended);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(suspended, 1);
 
     /* resume */
     ret = sr_event_notif_sub_resume(subscr, sub_id);
@@ -1170,6 +1189,85 @@ test_suspend(void **state)
     /* wait for the callback */
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
+
+    /* get suspended */
+    ret = sr_event_notif_sub_is_suspended(subscr, sub_id, &suspended);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(suspended, 0);
+
+    sr_unsubscribe(subscr);
+}
+
+/* TEST */
+static void
+notif_params_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id, const char *xpath,
+        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)xpath;
+    (void)values;
+    (void)values_cnt;
+    (void)timestamp;
+
+    assert_int_equal(notif_type, SR_EV_NOTIF_MODIFIED);
+
+    /* signal that we were called */
+    ATOMIC_INC_RELAXED(st->cb_called);
+}
+
+static void
+test_params(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr;
+    int ret;
+    uint32_t sub_id;
+    const char *module_name, *xpath;
+    time_t cur_time = time(NULL), start_time, stop_time;
+
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+
+    /* subscribe */
+    ret = sr_event_notif_subscribe(st->sess, "ops", "/ops:notif4", 0, 0, notif_params_cb, st, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    sub_id = sr_event_notif_sub_id_get_last(subscr);
+
+    /* read params */
+    ret = sr_event_notif_sub_get_params(subscr, sub_id, &module_name, &xpath, &start_time, &stop_time);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(module_name, "ops");
+    assert_string_equal(xpath, "/ops:notif4");
+    assert_int_equal(start_time, 0);
+    assert_int_equal(stop_time, 0);
+
+    /* change filter, callback called */
+    ret = sr_event_notif_sub_modify_filter(subscr, sub_id, "/ops:notif4[leaf='5']");
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
+
+    /* read params */
+    ret = sr_event_notif_sub_get_params(subscr, sub_id, &module_name, &xpath, &start_time, &stop_time);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(module_name, "ops");
+    assert_string_equal(xpath, "/ops:notif4[leaf='5']");
+    assert_int_equal(start_time, 0);
+    assert_int_equal(stop_time, 0);
+
+    /* change stop time, callback called */
+    ret = sr_event_notif_sub_modify_stop_time(subscr, sub_id, cur_time + 10);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
+
+    /* read params */
+    ret = sr_event_notif_sub_get_params(subscr, sub_id, &module_name, &xpath, &start_time, &stop_time);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(module_name, "ops");
+    assert_string_equal(xpath, "/ops:notif4[leaf='5']");
+    assert_int_equal(start_time, 0);
+    assert_int_equal(stop_time, cur_time + 10);
 
     sr_unsubscribe(subscr);
 }
@@ -1188,6 +1286,7 @@ main(void)
         cmocka_unit_test_teardown(test_notif_config_change, clear_ops),
         cmocka_unit_test(test_notif_buffer),
         cmocka_unit_test(test_suspend),
+        cmocka_unit_test(test_params),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

@@ -68,6 +68,7 @@ void *sr_notif_buf_thread(void *arg);
  *
  * @param[in] conn Connection to use.
  * @param[in] mod_name Module name.
+ * @param[in] sub_id Subscription ID.
  * @param[in] xpath Optional selected notifications.
  * @param[in] start_time Earliest notification of interest.
  * @param[in] stop_time Latest notification of interest.
@@ -76,7 +77,8 @@ void *sr_notif_buf_thread(void *arg);
  * @param[in] private_data Notification callback private data.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, time_t start_time,
-        time_t stop_time, sr_event_notif_cb callback, sr_event_notif_tree_cb tree_callback, void *private_data);
+sr_error_info_t *sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, const char *xpath,
+        time_t start_time, time_t stop_time, sr_event_notif_cb callback, sr_event_notif_tree_cb tree_callback,
+        void *private_data);
 
 #endif

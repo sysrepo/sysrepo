@@ -703,8 +703,8 @@ sr_replay_skip_notif(int notif_fd)
 }
 
 sr_error_info_t *
-sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, time_t start_time, time_t stop_time,
-        sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data)
+sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, const char *xpath, time_t start_time,
+        time_t stop_time, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
@@ -779,8 +779,8 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, t
                 SR_CHECK_INT_GOTO(notif_op->schema->nodetype != LYS_NOTIF, err_info, cleanup);
 
                 /* call callback */
-                if ((err_info = sr_notif_call_callback(ev_sess, cb, tree_cb, private_data, SR_EV_NOTIF_REPLAY, notif_op,
-                        notif_ts))) {
+                if ((err_info = sr_notif_call_callback(ev_sess, cb, tree_cb, private_data, SR_EV_NOTIF_REPLAY, sub_id,
+                        notif_op, notif_ts))) {
                     goto cleanup;
                 }
             }
@@ -805,7 +805,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, const char *xpath, t
     /* replay last notification if the subscription continues */
     notif_ts = time(NULL);
     if ((!stop_time || (stop_time >= notif_ts)) && (err_info = sr_notif_call_callback(ev_sess, cb, tree_cb, private_data,
-            SR_EV_NOTIF_REPLAY_COMPLETE, NULL, stop_time ? stop_time : notif_ts))) {
+            SR_EV_NOTIF_REPLAY_COMPLETE, sub_id, NULL, stop_time ? stop_time : notif_ts))) {
         goto cleanup;
     }
 

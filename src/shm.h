@@ -455,7 +455,6 @@ sr_rpc_t *sr_shmmain_find_rpc(sr_main_shm_t *main_shm, const char *path);
 
 /**
  * @brief Change replay support of a module in main SHM.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
  * @param[in] main_shm Main SHM.
  * @param[in] mod_name Module name. NUll for all the modules.
@@ -465,8 +464,18 @@ sr_rpc_t *sr_shmmain_find_rpc(sr_main_shm_t *main_shm, const char *path);
 sr_error_info_t *sr_shmmain_update_replay_support(sr_main_shm_t *main_shm, const char *mod_name, int replay_support);
 
 /**
+ * @brief Get notification subscription suspend state (flag) in ext SHM.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] mod_name Module name. NUll for all the modules.
+ * @param[in] sub_id Subscription ID.
+ * @param[out] suspended Whether the subscription is suspended or not.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmain_get_notif_suspend(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, int *suspended);
+
+/**
  * @brief Change notification subscription suspend state (flag) in ext SHM.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
  * @param[in] conn Connection to use.
  * @param[in] mod_name Module name. NUll for all the modules.

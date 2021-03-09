@@ -3237,7 +3237,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
         }
 
         if ((err_info = sr_notif_call_callback(ev_sess, notif_subs->subs[i].cb, notif_subs->subs[i].tree_cb,
-                notif_subs->subs[i].private_data, SR_EV_NOTIF_REALTIME, notif_op, notif_ts))) {
+                notif_subs->subs[i].private_data, SR_EV_NOTIF_REALTIME, notif_subs->subs[i].sub_id, notif_op, notif_ts))) {
             goto cleanup;
         }
     }
@@ -3346,7 +3346,7 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lo
 
             /* subscription is finished */
             err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
-                    SR_EV_NOTIF_STOP, NULL, cur_time);
+                    SR_EV_NOTIF_STOP, notif_sub->sub_id, NULL, cur_time);
 
             sr_session_stop(ev_sess);
             if (err_info) {
@@ -3423,8 +3423,8 @@ sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subsc
         notif_sub = &notif_subs->subs[i];
         if (notif_sub->start_time && !notif_sub->replayed) {
             /* we need to perform the requested replay */
-            if ((err_info = sr_replay_notify(subs->conn, notif_subs->module_name, notif_sub->xpath, notif_sub->start_time,
-                    notif_sub->stop_time, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data))) {
+            if ((err_info = sr_replay_notify(subs->conn, notif_subs->module_name, notif_sub->sub_id, notif_sub->xpath,
+                    notif_sub->start_time, notif_sub->stop_time, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data))) {
                 /* continue even on error so that the subscription is at least added into SHM,
                  * otherwise there are problems with removing it */
                 sr_errinfo_free(&err_info);
