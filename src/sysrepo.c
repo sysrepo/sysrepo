@@ -841,7 +841,7 @@ API int
 sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs, const char **features)
 {
     sr_error_info_t *err_info = NULL;
-    struct ly_ctx *tmp_ly_ctx = NULL;
+    struct ly_ctx *tmp_ly_ctx = NULL, *tmp_ly_ctx2 = NULL;
     struct lyd_node *sr_mods = NULL;
     const struct lys_module *ly_mod, *ly_iter, *ly_iter2;
     LYS_INFORMAT format;
@@ -854,12 +854,20 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
     if ((err_info = sr_shmmain_ly_ctx_init(&tmp_ly_ctx))) {
         goto cleanup;
     }
-    if ((err_info = sr_lydmods_parse(tmp_ly_ctx, &sr_mods))) {
+    /* create second temporary context to free memory correctly in sr_mods */
+    if ((err_info = sr_shmmain_ly_ctx_init(&tmp_ly_ctx2))) {
         goto cleanup;
     }
+    /* create a bond with the second temporary context */
+    if ((err_info = sr_lydmods_parse(tmp_ly_ctx2, &sr_mods))) {
+        goto cleanup;
+    }
+    /* use first temporary context to load modules */
     if ((err_info = sr_lydmods_ctx_load_modules(sr_mods, tmp_ly_ctx, 1, 1, 0, NULL))) {
         goto cleanup;
     }
+    lyd_free_all(sr_mods);
+    ly_ctx_destroy(tmp_ly_ctx2, NULL);
 
     /* learn module name and format */
     if ((err_info = sr_get_module_name_format(schema_path, &mod_name, &format))) {
@@ -928,7 +936,6 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
     /* success */
 
 cleanup:
-    lyd_free_all(sr_mods);
     ly_ctx_destroy(tmp_ly_ctx, NULL);
     free(mod_name);
     return sr_api_ret(NULL, err_info);
