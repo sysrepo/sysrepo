@@ -1777,6 +1777,15 @@ int sr_event_notif_sub_suspend(sr_subscription_ctx_t *subscription, uint32_t sub
  */
 int sr_event_notif_sub_resume(sr_subscription_ctx_t *subscription, uint32_t sub_id);
 
+/**
+ * @brief Unsubscribe a specific notification subscription.
+ *
+ * @param[in] subscription Subscription context to use.
+ * @param[in] sub_id Subscription ID of the subscription to unsubscribe.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_event_notif_sub_unsubscribe(sr_subscription_ctx_t *subscription, uint32_t sub_id);
+
 /** @} notifsubs */
 
 ////////////////////////////////////////////////////////////////////////////////

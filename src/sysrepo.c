@@ -4544,6 +4544,46 @@ sr_event_notif_sub_resume(sr_subscription_ctx_t *subscription, uint32_t sub_id)
     return sr_api_ret(NULL, err_info);
 }
 
+API int
+sr_event_notif_sub_unsubscribe(sr_subscription_ctx_t *subscription, uint32_t sub_id)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *module_name;
+    sr_mod_t *shm_mod;
+
+    SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
+
+    /* SUBS WRITE LOCK */
+    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscription->conn->cid,
+            __func__, NULL, NULL))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* find the subscription in the subscription context */
+    if (!sr_event_notif_find_sub(subscription, sub_id, &module_name)) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Notification subscription with ID \"%u\" not found.", sub_id);
+        goto cleanup_unlock;
+    }
+
+    /* find module */
+    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subscription->conn), module_name);
+    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup_unlock);
+
+    /* properly remove the subscriptions from the main SHM */
+    if ((err_info = sr_shmext_notif_subscription_del(subscription->conn, shm_mod, sub_id, subscription->evpipe_num))) {
+        goto cleanup_unlock;
+    }
+
+    /* remove the subscription from the subscription structure */
+    sr_sub_notif_del(module_name, sub_id, SR_LOCK_WRITE, subscription);
+
+cleanup_unlock:
+    /* SUBS WRITE UNLOCK */
+    sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscription->conn->cid, __func__);
+
+    return sr_api_ret(NULL, err_info);
+}
+
 /**
  * @brief Learn what kinds (config) of nodes are provided by an operational subscription
  * to determine its type.
