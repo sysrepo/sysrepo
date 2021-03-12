@@ -444,6 +444,7 @@ struct sr_subscription_ctx_s {
             sr_event_notif_tree_cb tree_cb; /**< Subscription tree callback. */
             void *private_data;     /**< Subscription callback private data. */
             sr_session_ctx_t *sess; /**< Subscription session. */
+            ATOMIC_T filtered_out;  /**< Number of subscriptions that were filtered out. */
         } *subs;                    /**< Notification subscriptions for each XPath. */
         uint32_t sub_count;         /**< Notification module XPath subscription count. */
 

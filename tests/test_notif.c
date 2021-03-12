@@ -1249,7 +1249,7 @@ test_params(void **state)
     struct state *st = (struct state *)*state;
     sr_subscription_ctx_t *subscr;
     int ret;
-    uint32_t sub_id;
+    uint32_t sub_id, filtered_out;
     const char *module_name, *xpath;
     time_t cur_time = time(NULL), start_time, stop_time;
 
@@ -1261,12 +1261,13 @@ test_params(void **state)
     sub_id = sr_event_notif_sub_id_get_last(subscr);
 
     /* read params */
-    ret = sr_event_notif_sub_get_params(subscr, sub_id, &module_name, &xpath, &start_time, &stop_time);
+    ret = sr_event_notif_sub_get_info(subscr, sub_id, &module_name, &xpath, &start_time, &stop_time, &filtered_out);
     assert_int_equal(ret, SR_ERR_OK);
     assert_string_equal(module_name, "ops");
     assert_string_equal(xpath, "/ops:notif4");
     assert_int_equal(start_time, 0);
     assert_int_equal(stop_time, 0);
+    assert_int_equal(filtered_out, 0);
 
     /* change filter, callback called */
     ret = sr_event_notif_sub_modify_filter(subscr, sub_id, "/ops:notif4[leaf='5']");
@@ -1274,12 +1275,13 @@ test_params(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /* read params */
-    ret = sr_event_notif_sub_get_params(subscr, sub_id, &module_name, &xpath, &start_time, &stop_time);
+    ret = sr_event_notif_sub_get_info(subscr, sub_id, &module_name, &xpath, &start_time, &stop_time, &filtered_out);
     assert_int_equal(ret, SR_ERR_OK);
     assert_string_equal(module_name, "ops");
     assert_string_equal(xpath, "/ops:notif4[leaf='5']");
     assert_int_equal(start_time, 0);
     assert_int_equal(stop_time, 0);
+    assert_int_equal(filtered_out, 0);
 
     /* change stop time, callback called */
     ret = sr_event_notif_sub_modify_stop_time(subscr, sub_id, cur_time + 10);
@@ -1287,12 +1289,13 @@ test_params(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     /* read params */
-    ret = sr_event_notif_sub_get_params(subscr, sub_id, &module_name, &xpath, &start_time, &stop_time);
+    ret = sr_event_notif_sub_get_info(subscr, sub_id, &module_name, &xpath, &start_time, &stop_time, &filtered_out);
     assert_int_equal(ret, SR_ERR_OK);
     assert_string_equal(module_name, "ops");
     assert_string_equal(xpath, "/ops:notif4[leaf='5']");
     assert_int_equal(start_time, 0);
     assert_int_equal(stop_time, cur_time + 10);
+    assert_int_equal(filtered_out, 0);
 
     sr_unsubscribe(subscr);
 }

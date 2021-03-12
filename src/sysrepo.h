@@ -1712,7 +1712,7 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif);
 uint32_t sr_event_notif_sub_id_get_last(const sr_subscription_ctx_t *subscription);
 
 /**
- * @brief Get parameters of an existing notification subscription.
+ * @brief Get information about an existing notification subscription.
  *
  * @param[in] subscription Subscription structure to use.
  * @param[in] sub_id Subscription ID of the specific subscription to modify.
@@ -1720,10 +1720,11 @@ uint32_t sr_event_notif_sub_id_get_last(const sr_subscription_ctx_t *subscriptio
  * @param[out] xpath Optional [XPath](@ref paths) filter of the subscription.
  * @param[out] start_time Optional start time of the subscription.
  * @param[out] stop_time Optional stop time of the subscription.
+ * @param[out] filtered_out Optional number of filtered-out notifications of the subscription.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_event_notif_sub_get_params(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char **module_name,
-        const char **xpath, time_t *start_time, time_t *stop_time);
+int sr_event_notif_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char **module_name,
+        const char **xpath, time_t *start_time, time_t *stop_time, uint32_t *filtered_out);
 
 /**
  * @brief Modify an existing notification subscription by changing its XPath filter.

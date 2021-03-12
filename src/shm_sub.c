@@ -3226,6 +3226,9 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
             }
             if (!set->count) {
                 ly_set_free(set, NULL);
+
+                /* filtered out */
+                ATOMIC_INC_RELAXED(notif_subs->subs[i].filtered_out);
                 continue;
             }
             ly_set_free(set, NULL);

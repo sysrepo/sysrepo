@@ -4291,8 +4291,8 @@ sr_event_notif_find_sub(const sr_subscription_ctx_t *subscription, uint32_t sub_
 }
 
 API int
-sr_event_notif_sub_get_params(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char **module_name,
-        const char **xpath, time_t *start_time, time_t *stop_time)
+sr_event_notif_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char **module_name,
+        const char **xpath, time_t *start_time, time_t *stop_time, uint32_t *filtered_out)
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_notifsub_s *notif_sub;
@@ -4321,6 +4321,9 @@ sr_event_notif_sub_get_params(sr_subscription_ctx_t *subscription, uint32_t sub_
     }
     if (stop_time) {
         *stop_time = notif_sub->stop_time;
+    }
+    if (filtered_out) {
+        *filtered_out = ATOMIC_LOAD_RELAXED(notif_sub->filtered_out);
     }
 
 cleanup_unlock:
