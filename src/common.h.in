@@ -237,7 +237,7 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 #define SR_CONFIG_ORIGIN "ietf-origin:intended"
 
 /** get string value of the first child of a node */
-#define SR_LY_CHILD_VALUE(node) LYD_CANON_VALUE(((struct lyd_node_inner *)(node))->child)
+#define SR_LY_CHILD_VALUE(node) LYD_CANON_VALUE(lyd_child(node))
 
 /*
  * Internal declarations + definitions
