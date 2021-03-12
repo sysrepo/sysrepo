@@ -347,6 +347,11 @@ notif_simple_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, 
     (void)sub_id;
     (void)timestamp;
 
+    if (notif_type == SR_EV_NOTIF_TERMINATED) {
+        /* ignore */
+        return;
+    }
+
     assert_int_equal(notif_type, SR_EV_NOTIF_REALTIME);
     assert_int_equal(sr_session_get_event_nc_id(session), 1000);
 
@@ -505,7 +510,7 @@ notif_stop_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, ui
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
-        assert_int_equal(notif_type, SR_EV_NOTIF_STOP);
+        assert_int_equal(notif_type, SR_EV_NOTIF_TERMINATED);
         assert_null(notif);
         break;
     default:
@@ -559,7 +564,7 @@ notif_replay_simple_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif
         assert_null(notif);
         break;
     case 2:
-        assert_int_equal(notif_type, SR_EV_NOTIF_STOP);
+        assert_int_equal(notif_type, SR_EV_NOTIF_TERMINATED);
         assert_null(notif);
         break;
     default:
@@ -672,7 +677,7 @@ notif_replay_interval_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t not
         assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "10");
         break;
     case 8:
-        assert_int_equal(notif_type, SR_EV_NOTIF_STOP);
+        assert_int_equal(notif_type, SR_EV_NOTIF_TERMINATED);
         assert_null(notif);
         break;
     case 9:
@@ -691,7 +696,7 @@ notif_replay_interval_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t not
         assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "3");
         break;
     case 12:
-        assert_int_equal(notif_type, SR_EV_NOTIF_STOP);
+        assert_int_equal(notif_type, SR_EV_NOTIF_TERMINATED);
         assert_null(notif);
         break;
     case 13:
@@ -725,7 +730,7 @@ notif_replay_interval_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t not
         assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "11");
         break;
     case 19:
-        assert_int_equal(notif_type, SR_EV_NOTIF_STOP);
+        assert_int_equal(notif_type, SR_EV_NOTIF_TERMINATED);
         assert_null(notif);
         break;
     default:
@@ -792,6 +797,11 @@ notif_no_replay_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_typ
     (void)session;
     (void)sub_id;
     (void)timestamp;
+
+    if (notif_type == SR_EV_NOTIF_TERMINATED) {
+        /* ignore */
+        return;
+    }
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
@@ -866,6 +876,11 @@ notif_config_change_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif
     struct state *st = (struct state *)private_data;
     char *str1;
     const char *str2;
+
+    if (notif_type == SR_EV_NOTIF_TERMINATED) {
+        /* ignore */
+        return;
+    }
 
     assert_int_equal(notif_type, SR_EV_NOTIF_REALTIME);
     assert_non_null(notif);
@@ -1101,6 +1116,11 @@ notif_suspend_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type,
     (void)sub_id;
     (void)timestamp;
 
+    if (notif_type == SR_EV_NOTIF_TERMINATED) {
+        /* ignore */
+        return;
+    }
+
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
         assert_int_equal(sr_session_get_event_nc_id(session), 1000);
@@ -1211,6 +1231,11 @@ notif_params_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, 
     (void)values;
     (void)values_cnt;
     (void)timestamp;
+
+    if (notif_type == SR_EV_NOTIF_TERMINATED) {
+        /* ignore */
+        return;
+    }
 
     assert_int_equal(notif_type, SR_EV_NOTIF_MODIFIED);
 

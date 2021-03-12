@@ -3299,10 +3299,8 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lo
         sr_subscription_ctx_t *subs, int *mod_finished)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
-    time_t cur_time;
     struct modsub_notifsub_s *notif_sub;
     sr_mod_t *shm_mod;
-    sr_session_ctx_t *ev_sess;
     uint32_t i;
     sr_lock_mode_t lock_mode = has_subs_lock;
 
@@ -3311,12 +3309,11 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lo
     (void)has_subs_lock;
 
     *mod_finished = 0;
-    cur_time = time(NULL);
 
     i = 0;
     while (i < notif_subs->sub_count) {
         notif_sub = &notif_subs->subs[i];
-        if (notif_sub->stop_time && (notif_sub->stop_time < cur_time)) {
+        if (notif_sub->stop_time && (notif_sub->stop_time < time(NULL))) {
             if (lock_mode != SR_LOCK_WRITE) {
                 /* SUBS READ UNLOCK */
                 sr_rwunlock(&subs->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subs->conn->cid, __func__);
@@ -3332,20 +3329,6 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lo
                 /* restart the loop, now the subscriptions cannot change */
                 i = 0;
                 continue;
-            }
-
-            /* create event session */
-            if ((err_info = _sr_session_start(subs->conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, 0, 0, NULL, &ev_sess))) {
-                goto cleanup;
-            }
-
-            /* subscription is finished */
-            err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
-                    SR_EV_NOTIF_STOP, notif_sub->sub_id, NULL, cur_time);
-
-            sr_session_stop(ev_sess);
-            if (err_info) {
-                goto cleanup;
             }
 
             /* remove the subscription from the session if the only subscription (needs SUBS lock for

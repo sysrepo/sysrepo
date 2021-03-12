@@ -555,23 +555,35 @@ sr_sub_notif_del(const char *mod_name, uint32_t sub_id, sr_lock_mode_t has_subs_
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
     struct modsub_notif_s *notif_sub;
+    struct modsub_notifsub_s *sub;
+    sr_session_ctx_t *ev_sess = NULL;
+    sr_lock_mode_t cur_mode = has_subs_lock;
 
     assert((has_subs_lock == SR_LOCK_WRITE) || (has_subs_lock == SR_LOCK_READ_UPGR) || (has_subs_lock == SR_LOCK_NONE));
 
-    if (has_subs_lock == SR_LOCK_READ_UPGR) {
-        /* SUBS WRITE LOCK UPGRADE */
-        if ((err_info = sr_rwrelock(&subs->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subs->conn->cid, __func__,
-                NULL, NULL))) {
+    if (has_subs_lock == SR_LOCK_WRITE) {
+        /* SUBS READ UPGR LOCK DOWNGRADE */
+        if ((err_info = sr_rwrelock(&subs->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, subs->conn->cid,
+                __func__, NULL, NULL))) {
             sr_errinfo_free(&err_info);
-            has_subs_lock = SR_LOCK_WRITE;
+        } else {
+            cur_mode = SR_LOCK_READ_UPGR;
         }
     } else if (has_subs_lock == SR_LOCK_NONE) {
-        /* SUBS WRITE LOCK */
-        if ((err_info = sr_rwlock(&subs->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subs->conn->cid, __func__,
+        /* SUBS READ UPGR LOCK */
+        if ((err_info = sr_rwlock(&subs->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, subs->conn->cid, __func__,
                 NULL, NULL))) {
             sr_errinfo_free(&err_info);
-            has_subs_lock = SR_LOCK_WRITE;
+        } else {
+            cur_mode = SR_LOCK_READ_UPGR;
         }
+    }
+    /* we should always have READ UPGR lock now */
+
+    /* create event session */
+    if ((err_info = _sr_session_start(subs->conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, 0, 0, NULL, &ev_sess))) {
+        /* special notification will not be sent */
+        sr_errinfo_free(&err_info);
     }
 
     for (i = 0; i < subs->notif_sub_count; ++i) {
@@ -582,14 +594,32 @@ sr_sub_notif_del(const char *mod_name, uint32_t sub_id, sr_lock_mode_t has_subs_
         }
 
         for (j = 0; j < notif_sub->sub_count; ++j) {
-            if (sub_id != notif_sub->subs[j].sub_id) {
+            /* find the subscription */
+            sub = &notif_sub->subs[j];
+            if (sub_id != sub->sub_id) {
                 continue;
             }
 
-            /* found our subscription, replace it with the last */
-            free(notif_sub->subs[j].xpath);
+            if (ev_sess) {
+                /* send special last notification */
+                if ((err_info = sr_notif_call_callback(ev_sess, sub->cb, sub->tree_cb, sub->private_data,
+                        SR_EV_NOTIF_TERMINATED, sub->sub_id, NULL, time(NULL)))) {
+                    sr_errinfo_free(&err_info);
+                }
+            }
+
+            /* SUBS WRITE LOCK UPGRADE */
+            if ((err_info = sr_rwrelock(&subs->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subs->conn->cid,
+                    __func__, NULL, NULL))) {
+                sr_errinfo_free(&err_info);
+            } else {
+                cur_mode = SR_LOCK_WRITE;
+            }
+
+            /* replace the subscription with the last */
+            free(sub->xpath);
             if (j < notif_sub->sub_count - 1) {
-                memcpy(&notif_sub->subs[j], &notif_sub->subs[notif_sub->sub_count - 1], sizeof *notif_sub->subs);
+                memcpy(sub, &notif_sub->subs[notif_sub->sub_count - 1], sizeof *notif_sub->subs);
             }
             --notif_sub->sub_count;
 
@@ -619,16 +649,20 @@ sr_sub_notif_del(const char *mod_name, uint32_t sub_id, sr_lock_mode_t has_subs_
     assert(0);
 
 cleanup:
-    if (has_subs_lock == SR_LOCK_READ_UPGR) {
-        /* SUBS READ UPGR LOCK DOWNGRADE */
-        if ((err_info = sr_rwrelock(&subs->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, subs->conn->cid,
-                __func__, NULL, NULL))) {
-            sr_errinfo_free(&err_info);
+    if (cur_mode != has_subs_lock) {
+        if (has_subs_lock == SR_LOCK_NONE) {
+            /* SUBS UNLOCK */
+            sr_rwunlock(&subs->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, cur_mode, subs->conn->cid, __func__);
+        } else {
+            /* SUBS RELOCK */
+            if ((err_info = sr_rwrelock(&subs->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, has_subs_lock, subs->conn->cid,
+                    __func__, NULL, NULL))) {
+                sr_errinfo_free(&err_info);
+            }
         }
-    } else if (has_subs_lock == SR_LOCK_NONE) {
-        /* SUBS WRITE UNLOCK */
-        sr_rwunlock(&subs->subs_lock, 0, SR_LOCK_WRITE, subs->conn->cid, __func__);
     }
+
+    sr_session_stop(ev_sess);
 }
 
 sr_error_info_t *

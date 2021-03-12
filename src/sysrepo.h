@@ -1585,8 +1585,8 @@ typedef enum sr_ev_notif_type_e {
     SR_EV_NOTIF_REPLAY,           /**< Replayed notification. */
     SR_EV_NOTIF_REPLAY_COMPLETE,  /**< Not a real notification, just a signal that the notification replay has completed
                                        (all the stored notifications from the given time interval have been delivered). */
-    SR_EV_NOTIF_STOP,             /**< Not a real notification, just a signal that stop time has been reached
-                                       (delivered only if stop_time was specified when subscribing). */
+    SR_EV_NOTIF_TERMINATED,       /**< Not a real notification, just a signal that the subscription was terminated,
+                                       for whatever reason, it is always the last notification all subscriptions receive. */
     SR_EV_NOTIF_MODIFIED,         /**< Not a real notification, just a signal that the subscription parameters were modified. */
     SR_EV_NOTIF_SUSPENDED,        /**< Not a real notification, just a signal that the subscription was suspended. */
     SR_EV_NOTIF_RESUMED           /**< Not a real notification, just a signal that the subscription was resumed after
