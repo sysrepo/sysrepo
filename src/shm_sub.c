@@ -1277,11 +1277,18 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, sr_sid_t si
             goto cleanup_wrunlock;
         }
 
+        /* remember what priority callback failed, that is the first priority callbacks that will NOT be called */
+        if (multi_sub_shm->event == SR_SUB_EV_ERROR) {
+            err_priority = multi_sub_shm->priority;
+            err_subscriber_count = multi_sub_shm->subscriber_count;
+            last_subscr = 1;
+        }
+
         if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_ABORT, &cur_priority)) {
 clear_shm:
             /* no subscriptions interested in this event, but we still want to clear the event */
-            if (multi_sub_shm->event == SR_SUB_EV_ERROR) {
-                /* this must be the right subscription SHM, we still have apply-changes locks, clear it */
+            if (last_subscr) {
+                /* this must be the right subscription SHM */
                 assert(multi_sub_shm->request_id == mod->request_id);
                 if ((err_info = sr_shmsub_multi_notify_write_event(multi_sub_shm, mod->request_id, cur_priority, 0,
                         NULL, 0, &shm_data_sub, 0, NULL, 0, NULL))) {
@@ -1299,13 +1306,6 @@ clear_shm:
             sr_shm_clear(&shm_sub);
             sr_shm_clear(&shm_data_sub);
             continue;
-        }
-
-        /* remember what priority callback failed, that is the first priority callbacks that will NOT be called */
-        if (multi_sub_shm->event == SR_SUB_EV_ERROR) {
-            err_priority = multi_sub_shm->priority;
-            err_subscriber_count = multi_sub_shm->subscriber_count;
-            last_subscr = 1;
         }
 
         assert(mod_info->diff);
@@ -1374,6 +1374,9 @@ clear_shm:
             if (last_subscr && (err_priority == cur_priority)) {
                 /* do not notify subscribers that did not process the previous event */
                 subscriber_count -= err_subscriber_count;
+                if (!subscriber_count) {
+                    goto clear_shm;
+                }
             }
         } while (subscriber_count);
 

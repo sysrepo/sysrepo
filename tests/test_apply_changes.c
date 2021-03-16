@@ -2123,6 +2123,139 @@ test_change_fail2(void **state)
 
 /* TEST */
 static int
+test_change_fail_priority_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    int ret;
+
+    (void)session;
+    (void)module_name;
+    (void)xpath;
+    (void)request_id;
+    (void)private_data;
+
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
+    case 0:
+        assert_int_equal(event, SR_EV_CHANGE);
+        ret = SR_ERR_OK;
+        break;
+    case 1:
+        assert_int_equal(event, SR_EV_CHANGE);
+        ret = SR_ERR_OPERATION_FAILED;
+        break;
+    case 2:
+        assert_int_equal(event, SR_EV_ABORT);
+        ret = SR_ERR_OK;
+        break;
+    default:
+        fail();
+    }
+
+    ATOMIC_INC_RELAXED(st->cb_called);
+    return ret;
+}
+
+static void *
+apply_change_fail_priority_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    const sr_error_info_t *err_info;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* change config */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/description", "newval", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for subscription before applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    /* perform the change (it should fail) */
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+
+    /* check error */
+    ret = sr_get_error(sess, &err_info);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(err_info->err_count, 1);
+    assert_string_equal(err_info->err[0].message, "Operation failed");
+    assert_null(err_info->err[0].xpath);
+
+    ret = sr_discard_changes(sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that we have finished applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+subscribe_change_fail_priority_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some configuration */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/description", "initval", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type", "iana-if-type:ethernetCsmacd",
+            NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe */
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface",
+            test_change_fail_priority_cb, st, 1, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface",
+            test_change_fail_priority_cb, st, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that subscriptions were created */
+    pthread_barrier_wait(&st->barrier);
+
+    /* wait for the other thread to signal */
+    pthread_barrier_wait(&st->barrier);
+    assert_int_equal(3, ATOMIC_LOAD_RELAXED(st->cb_called));
+
+    sr_unsubscribe(subscr);
+
+    /* cleanup after ourselves */
+    ret = sr_delete_item(sess, "/ietf-interfaces:interfaces", SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_change_fail_priority(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, apply_change_fail_priority_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_change_fail_priority_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
+/* TEST */
+static int
 module_no_changes_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
 {
@@ -5839,6 +5972,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_update_fail, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_fail, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_fail2, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_change_fail_priority, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_no_changes, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_any, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_dflt_leaf, setup_f, teardown_f),
