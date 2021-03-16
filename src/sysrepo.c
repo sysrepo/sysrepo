@@ -2471,6 +2471,8 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, sr_sid_t sid)
                         "already been modified.", mod->ly_mod->name);
                 goto error;
             }
+            free(path);
+            path = NULL;
         }
 
         /* change DS lock state and remember the time */
@@ -2482,7 +2484,6 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, sr_sid_t sid)
         }
     }
 
-    free(path);
     return NULL;
 
 error:
