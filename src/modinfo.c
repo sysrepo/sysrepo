@@ -592,45 +592,6 @@ cleanup:
 }
 
 /**
- * @brief Append operational data for a specific XPath.
- *
- * @param[in] shm_msub SHM subscription.
- * @param[in] ly_mod Module of the data to get.
- * @param[in] sub_xpath Subscription XPath.
- * @param[in] request_xpath XPath of the specific data request.
- * @param[in] oper_parent Operational parent of the data to retrieve. NULL for top-level.
- * @param[in] sid Sysrepo session ID.
- * @param[in] timeout_ms Operational callback timeout in milliseconds.
- * @param[in] cid Connection ID.
- * @param[in,out] data Operational data tree.
- * @param[out] cb_error_info Callback error info returned by the client, if any.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_xpath_oper_data_append(sr_mod_oper_sub_t *shm_msub, const struct lys_module *ly_mod, const char *sub_xpath,
-        const char *request_xpath, struct lyd_node *oper_parent, sr_sid_t sid, uint32_t timeout_ms, sr_cid_t cid,
-        struct lyd_node **data, sr_error_info_t **cb_error_info)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *oper_data;
-
-    /* get oper data from the client */
-    if ((err_info = sr_xpath_oper_data_get(ly_mod, sub_xpath, request_xpath, sid, shm_msub->evpipe_num,
-            oper_parent, timeout_ms, cid, &oper_data, cb_error_info))) {
-        return err_info;
-    }
-
-    /* merge into one data tree */
-    if (lyd_merge_siblings(data, oper_data, LYD_MERGE_DESTRUCT)) {
-        lyd_free_all(oper_data);
-        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-        return err_info;
-    }
-
-    return NULL;
-}
-
-/**
  * @brief Update (replace or append) operational data for a specific module.
  *
  * @param[in] mod Mod info module to process.
@@ -655,7 +616,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, sr_conn_
     char *parent_xpath = NULL;
     uint16_t i, j;
     struct ly_set *set = NULL;
-    struct lyd_node *diff = NULL;
+    struct lyd_node *diff = NULL, *oper_data;
     LY_ERR lyrc;
 
     if (!(opts & SR_OPER_NO_STORED)) {
@@ -698,9 +659,14 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, sr_conn_
         /* check subscription aliveness */
         if (!sr_conn_is_alive(shm_sub->cid)) {
             /* recover the subscription */
-            if ((err_info = sr_shmext_oper_subscription_stop(conn, mod->shm_mod, i, 1, SR_LOCK_READ, 1))) {
+            if ((err_info = sr_shmext_oper_sub_stop(conn, mod->shm_mod, i, 1, SR_LOCK_READ, 1))) {
                 sr_errinfo_free(&err_info);
             }
+            continue;
+        }
+
+        /* skip suspsended subscriptions */
+        if (ATOMIC_LOAD_RELAXED(shm_sub->suspended)) {
             continue;
         }
 
@@ -740,8 +706,16 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, sr_sid_t sid, sr_conn_
 
             /* nested data */
             for (j = 0; j < set->count; ++j) {
-                if ((err_info = sr_xpath_oper_data_append(shm_sub, mod->ly_mod, sub_xpath, request_xpath, set->dnodes[j],
-                        sid, timeout_ms, conn->cid, data, cb_error_info))) {
+                /* get oper data from the client */
+                if ((err_info = sr_xpath_oper_data_get(mod->ly_mod, sub_xpath, request_xpath, sid, shm_sub->evpipe_num,
+                        set->dnodes[j], timeout_ms, conn->cid, &oper_data, cb_error_info))) {
+                    goto cleanup_opersub_ext_unlock;
+                }
+
+                /* merge into one data tree */
+                if (lyd_merge_siblings(data, oper_data, LYD_MERGE_DESTRUCT)) {
+                    lyd_free_all(oper_data);
+                    sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
                     goto cleanup_opersub_ext_unlock;
                 }
             }
@@ -754,8 +728,14 @@ next_iter:
             set = NULL;
         } else {
             /* top-level data */
-            if ((err_info = sr_xpath_oper_data_append(shm_sub, mod->ly_mod, sub_xpath, request_xpath, NULL, sid,
-                    timeout_ms, conn->cid, data, cb_error_info))) {
+            if ((err_info = sr_xpath_oper_data_get(mod->ly_mod, sub_xpath, request_xpath, sid, shm_sub->evpipe_num,
+                    NULL, timeout_ms, conn->cid, &oper_data, cb_error_info))) {
+                goto cleanup_opersub_ext_unlock;
+            }
+
+            if (lyd_merge_siblings(data, oper_data, LYD_MERGE_DESTRUCT)) {
+                lyd_free_all(oper_data);
+                sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
                 goto cleanup_opersub_ext_unlock;
             }
         }

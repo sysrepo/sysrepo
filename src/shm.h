@@ -147,7 +147,7 @@ typedef struct sr_main_shm_s {
 
     ATOMIC_T new_sr_cid;        /**< Connection ID for a new connection. */
     ATOMIC_T new_sr_sid;        /**< SID for a new session. */
-    ATOMIC_T new_sub_id;        /**< Subscription ID of a new notification subscription. */
+    ATOMIC_T new_sub_id;        /**< Subscription ID of a new subscription. */
     ATOMIC_T new_evpipe_num;    /**< Event pipe number for a new subscription. */
 } sr_main_shm_t;
 
@@ -158,7 +158,9 @@ typedef struct sr_mod_change_sub_s {
     off_t xpath;                /**< XPath of the subscription. */
     uint32_t priority;          /**< Subscription priority. */
     int opts;                   /**< Subscription options. */
+    uint32_t sub_id;            /**< Unique subscription ID. */
     uint32_t evpipe_num;        /**< Event pipe number. */
+    ATOMIC_T suspended;         /**< Whether the subscription is suspended. */
     sr_cid_t cid;               /**< Connection ID. */
 } sr_mod_change_sub_t;
 
@@ -179,7 +181,9 @@ typedef struct sr_mod_oper_sub_s {
     off_t xpath;                /**< XPath of the subscription (offset in ext SHM). */
     sr_mod_oper_sub_type_t sub_type;  /**< Type of the subscription. */
     int opts;                   /**< Subscription options. */
+    uint32_t sub_id;            /**< Unique subscription ID. */
     uint32_t evpipe_num;        /** Event pipe number. */
+    ATOMIC_T suspended;         /**< Whether the subscription is suspended. */
     sr_cid_t cid;               /**< Connection ID. */
 } sr_mod_oper_sub_t;
 
@@ -187,9 +191,9 @@ typedef struct sr_mod_oper_sub_s {
  * @brief Ext SHM notification subscription.
  */
 typedef struct sr_mod_notif_sub_s {
-    uint32_t sub_id;            /**< Unique (notification) subscription ID. */
+    uint32_t sub_id;            /**< Unique subscription ID. */
     uint32_t evpipe_num;        /**< Event pipe number. */
-    ATOMIC_T suspended;         /**< Whether the subscription is not suspended. */
+    ATOMIC_T suspended;         /**< Whether the subscription is suspended. */
     sr_cid_t cid;               /**< Connection ID. */
 } sr_mod_notif_sub_t;
 
@@ -200,7 +204,9 @@ typedef struct sr_mod_rpc_sub_s {
     off_t xpath;                /**< Full XPath of the RPC/action subscription (offset in ext SHM). */
     uint32_t priority;          /**< Subscription priority. */
     int opts;                   /**< Subscription options. */
+    uint32_t sub_id;            /**< Unique subscription ID. */
     uint32_t evpipe_num;        /**< Event pipe number. */
+    ATOMIC_T suspended;         /**< Whether the subscription is suspended. */
     sr_cid_t cid;               /**< Connection ID. */
 } sr_mod_rpc_sub_t;
 
@@ -464,28 +470,6 @@ sr_rpc_t *sr_shmmain_find_rpc(sr_main_shm_t *main_shm, const char *path);
 sr_error_info_t *sr_shmmain_update_replay_support(sr_main_shm_t *main_shm, const char *mod_name, int replay_support);
 
 /**
- * @brief Get notification subscription suspend state (flag) in ext SHM.
- *
- * @param[in] conn Connection to use.
- * @param[in] mod_name Module name. NUll for all the modules.
- * @param[in] sub_id Subscription ID.
- * @param[out] suspended Whether the subscription is suspended or not.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_get_notif_suspend(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, int *suspended);
-
-/**
- * @brief Change notification subscription suspend state (flag) in ext SHM.
- *
- * @param[in] conn Connection to use.
- * @param[in] mod_name Module name. NUll for all the modules.
- * @param[in] sub_id Subscription ID.
- * @param[in] suspend Whether the subscription should be suspended or resumed.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_update_notif_suspend(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, int suspend);
-
-/**
  * @brief Check data file existence and owner/permissions of all the modules in main SHM.
  * Startup file must always exist, owner/permissions are read from it.
  * For running and operational, create them if they do not exist, then change their owner/permissions.
@@ -536,14 +520,29 @@ void sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext);
  * @param[in] shm_mod SHM module.
  * @param[in] has_lock Whether CHANGE SUB lock is already held.
  * @param[in] ds Datastore.
+ * @param[in] sub_id Unique sub ID.
  * @param[in] xpath Subscription XPath.
  * @param[in] priority Subscription priority.
  * @param[in] sub_opts Subscription options.
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t has_lock,
-        sr_datastore_t ds, const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num);
+sr_error_info_t *sr_shmext_change_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t has_lock,
+        sr_datastore_t ds, uint32_t sub_id, const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num);
+
+/**
+ * @brief Modify existing main SHM module change subscription.
+ * Ext SHM may be remapped!
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] ds Datastore.
+ * @param[in] sub_id Unique sub ID.
+ * @param[in] xpath New subscription XPath.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_change_sub_modify(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, uint32_t sub_id,
+        const char *xpath);
 
 /**
  * @brief Remove main SHM module change subscription and unlink sub SHM if the last subscription was removed.
@@ -552,14 +551,11 @@ sr_error_info_t *sr_shmext_change_subscription_add(sr_conn_ctx_t *conn, sr_mod_t
  * @param[in] shm_mod SHM module.
  * @param[in] has_lock Whether CHANGE SUB lock is already held.
  * @param[in] ds Datastore.
- * @param[in] xpath Subscription XPath.
- * @param[in] priority Subscription priority.
- * @param[in] sub_opts Subscription options.
- * @param[in] evpipe_num Subscription event pipe number.
+ * @param[in] sub_id Unique sub ID.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_change_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t has_lock,
-        sr_datastore_t ds, const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num);
+sr_error_info_t *sr_shmext_change_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t has_lock,
+        sr_datastore_t ds, uint32_t sub_id);
 
 /**
  * @brief Remove main SHM module change subscription with param-based cleanup.
@@ -573,8 +569,8 @@ sr_error_info_t *sr_shmext_change_subscription_del(sr_conn_ctx_t *conn, sr_mod_t
  * @param[in] recovery Whether to print subscription recovery warning.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_change_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds,
-        uint32_t del_idx, int del_evpipe, sr_lock_mode_t has_locks, int recovery);
+sr_error_info_t *sr_shmext_change_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, uint32_t del_idx,
+        int del_evpipe, sr_lock_mode_t has_locks, int recovery);
 
 /**
  * @brief Add main SHM module operational subscription and create sub SHM.
@@ -582,13 +578,14 @@ sr_error_info_t *sr_shmext_change_subscription_stop(sr_conn_ctx_t *conn, sr_mod_
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
+ * @param[in] sub_id Unique sub ID.
  * @param[in] xpath Subscription XPath.
  * @param[in] sub_type Data-provide subscription type.
  * @param[in] sub_opts Subscription options.
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_oper_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath,
+sr_error_info_t *sr_shmext_oper_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, const char *xpath,
         sr_mod_oper_sub_type_t sub_type, int sub_opts, uint32_t evpipe_num);
 
 /**
@@ -596,12 +593,10 @@ sr_error_info_t *sr_shmext_oper_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
- * @param[in] xpath Subscription XPath.
- * @param[in] evpipe_num Subscription event pipe number.
+ * @param[in] sub_id Unique sub ID.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_oper_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *xpath,
-        uint32_t evpipe_num);
+sr_error_info_t *sr_shmext_oper_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id);
 
 /**
  * @brief Remove main SHM module operational subscription with param-based cleanup.
@@ -614,8 +609,8 @@ sr_error_info_t *sr_shmext_oper_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *
  * @param[in] recovery Whether to print subscription recovery warning.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_oper_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx,
-        int del_evpipe, sr_lock_mode_t has_locks, int recovery);
+sr_error_info_t *sr_shmext_oper_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx, int del_evpipe,
+        sr_lock_mode_t has_locks, int recovery);
 
 /**
  * @brief Add main SHM module notification subscription and create sub SHM if the first subscription was added.
@@ -623,25 +618,23 @@ sr_error_info_t *sr_shmext_oper_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t 
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
- * @param[in] sub_id Unique notif sub ID.
+ * @param[in] sub_id Unique sub ID.
  * @param[in] evpipe_num Subscription event pipe number.
  * @param[in] suspended Whether the notification should be created suspended or not.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_notif_subscription_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
-        uint32_t evpipe_num, int suspended);
+sr_error_info_t *sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num,
+        int suspended);
 
 /**
  * @brief Remove main SHM module notification subscription and unlink sub SHM if the last subscription was removed.
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
- * @param[in] sub_id Unique notif sub ID.
- * @param[in] evpipe_num Subscription event pipe number.
+ * @param[in] sub_id Unique sub ID.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_notif_subscription_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
-        uint32_t evpipe_num);
+sr_error_info_t *sr_shmext_notif_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id);
 
 /**
  * @brief Remove main SHM module notification subscription with param-based cleanup.
@@ -654,8 +647,8 @@ sr_error_info_t *sr_shmext_notif_subscription_del(sr_conn_ctx_t *conn, sr_mod_t 
  * @param[in] recovery Whether to print subscription recovery warning.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_notif_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx,
-        int del_evpipe, sr_lock_mode_t has_locks, int recovery);
+sr_error_info_t *sr_shmext_notif_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx, int del_evpipe,
+        sr_lock_mode_t has_locks, int recovery);
 
 /**
  * @brief Add main SHM RPC/action subscription and create sub SHM if the first subscription was added.
@@ -663,13 +656,14 @@ sr_error_info_t *sr_shmext_notif_subscription_stop(sr_conn_ctx_t *conn, sr_mod_t
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_rpc SHM RPC.
+ * @param[in] sub_id Unique sub ID.
  * @param[in] xpath Subscription XPath.
  * @param[in] priority Subscription priority.
  * @param[in] sub_opts Subscriptions options.
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_rpc_subscription_add(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath,
+sr_error_info_t *sr_shmext_rpc_sub_add(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, uint32_t sub_id, const char *xpath,
         uint32_t priority, int sub_opts, uint32_t evpipe_num);
 
 /**
@@ -677,13 +671,10 @@ sr_error_info_t *sr_shmext_rpc_subscription_add(sr_conn_ctx_t *conn, sr_rpc_t *s
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_rpc SHM RPC.
- * @param[in] xpath Subscription XPath.
- * @param[in] priority Subscription priority.
- * @param[in] evpipe_num Subscription event pipe number.
+ * @param[in] sub_id Unique sub ID.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_rpc_subscription_del(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *xpath,
-        uint32_t priority, uint32_t evpipe_num);
+sr_error_info_t *sr_shmext_rpc_sub_del(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, uint32_t sub_id);
 
 /**
  * @brief Remove main SHM module RPC/action subscription with param-based cleanup.
@@ -696,15 +687,68 @@ sr_error_info_t *sr_shmext_rpc_subscription_del(sr_conn_ctx_t *conn, sr_rpc_t *s
  * @param[in] recovery Whether to print subscription recovery warning.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_rpc_subscription_stop(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, uint32_t del_idx,
-        int del_evpipe, sr_lock_mode_t has_locks, int recovery);
+sr_error_info_t *sr_shmext_rpc_sub_stop(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, uint32_t del_idx, int del_evpipe,
+        sr_lock_mode_t has_locks, int recovery);
 
 /**
  * @brief Recover all subscriptions in ext SHM, their connection must be dead.
  *
  * @param[in] conn Connection to use.
  */
-void sr_shmext_recover_subs_all(sr_conn_ctx_t *conn);
+void sr_shmext_recover_sub_all(sr_conn_ctx_t *conn);
+
+/**
+ * @brief Get or set change subscription suspended state (flag).
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] mod_name Module name.
+ * @param[in] ds Subscription datastore.
+ * @param[in] sub_id Subscription ID.
+ * @param[in] set_suspended Set suspended to this value, leave unmodified if -1.
+ * @param[out] get_suspended Current suspended state.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_change_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, sr_datastore_t ds,
+        uint32_t sub_id, int set_suspended, int *get_suspended);
+
+/**
+ * @brief Get or set operational subscription suspended state (flag).
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] mod_name Module name.
+ * @param[in] sub_id Subscription ID.
+ * @param[in] set_suspended Set suspended to this value, leave unmodified if -1.
+ * @param[out] get_suspended Current suspended state.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_oper_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id,
+        int set_suspended, int *get_suspended);
+
+/**
+ * @brief Get or set notification subscription suspended state (flag).
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] mod_name Module name.
+ * @param[in] sub_id Subscription ID.
+ * @param[in] set_suspended Set suspended to this value, leave unmodified if -1.
+ * @param[out] get_suspended Current suspended state.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_notif_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id,
+        int set_suspended, int *get_suspended);
+
+/**
+ * @brief Get or set RPC/action subscription suspended state (flag).
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] path RPC/action path.
+ * @param[in] sub_id Subscription ID.
+ * @param[in] set_suspended Set suspended to this value, leave unmodified if -1.
+ * @param[out] get_suspended Current suspended state.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_rpc_sub_suspended(sr_conn_ctx_t *conn, const char *path, uint32_t sub_id, int set_suspended,
+        int *get_suspended);
 
 /*
  * Main SHM module functions
@@ -1087,12 +1131,12 @@ void sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif
  *
  * @param[in] notif_subs Module notification subscriptions.
  * @param[in] has_subs_lock What kind of SUBS lock is held.
- * @param[in] subs Subscriptions structure.
+ * @param[in] subscr Subscriptions structure.
  * @param[out] module_finished Whether the last module notification subscription was finished.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lock_mode_t has_subs_lock,
-        sr_subscription_ctx_t *subs, int *module_finished);
+        sr_subscription_ctx_t *subscr, int *module_finished);
 
 /**
  * @brief Check notification subscription replay state and perform it if requested.
@@ -1100,10 +1144,10 @@ sr_error_info_t *sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *
  * May remap ext SHM!
  *
  * @param[in] notif_subs Module notification subscriptions.
- * @param[in] subs Subscriptions structure.
+ * @param[in] subscr Subscriptions structure.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subscription_ctx_t *subs);
+sr_error_info_t *sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subscription_ctx_t *subscr);
 
 /**
  * @brief Listener handler thread of all subscriptions.

@@ -1245,18 +1245,58 @@ int sr_get_event_pipe(sr_subscription_ctx_t *subscription, int *event_pipe);
 int sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session, time_t *stop_time_in);
 
 /**
- * @brief Unsubscribes from a subscription acquired by any of sr_*_subscribe
- * calls and releases all subscription-related data.
+ * @brief Get the subscription ID of the last created subscription.
  *
- * In case that the same subscription context was used to subscribe for
- * multiple subscriptions, unsubscribes from all of them.
+ * @param[in] subscription Subscription context to read from.
+ * @return Unique subscription ID.
+ */
+uint32_t sr_subscription_get_last_sub_id(const sr_subscription_ctx_t *subscription);
+
+/**
+ * @brief Learn the suspend state of a specific subscription.
  *
- * @note Subscription will no longer work even on error.
- *
- * @param[in] subscription Subscription context acquired by any of sr_*_subscribe calls.
+ * @param[in] subscription Subscription context to use.
+ * @param[in] sub_id Subscription ID of the subscription to check.
+ * @param[out] suspended Whether the subscription is suspended or not.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_unsubscribe(sr_subscription_ctx_t *subscription);
+int sr_subscription_get_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_id, int *suspended);
+
+/**
+ * @brief Suspend a specific subscription.
+ * Special ::SR_EV_NOTIF_SUSPENDED notification is delivered for suspended notification subscriptions.
+ *
+ * @param[in] subscription Subscription context to use.
+ * @param[in] sub_id Subscription ID of the specific subscription to suspend.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_subscription_suspend(sr_subscription_ctx_t *subscription, uint32_t sub_id);
+
+/**
+ * @brief Resume a previously suspended subscription.
+ * Special ::SR_EV_NOTIF_RESUMED notification is delivered for resumed notification subscriptions.
+ *
+ * @param[in] subscription Subscription context to use.
+ * @param[in] sub_id Subscription ID of the specific subscription to resume.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_subscription_resume(sr_subscription_ctx_t *subscription, uint32_t sub_id);
+
+/**
+ * @brief Unsubscribe a specific or all the subscriptions in a subscription structure.
+ *
+ * If all subscriptions are being unsubscribed, the whole structure is freed.
+ * If only a specific subscription is unsubscribed, the structure remains valid and
+ * can be used normally, even if there are no actual subscriptions left in it.
+ *
+ * @note Even on error, all the possible tasks are still performed and the subscripton(s)
+ * are unsubscribed/freed.
+ *
+ * @param[in] subscription Subscription context to use.
+ * @param[in] sub_id Subscription ID of the subscription to unsubscribe, 0 for all the subscriptions.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_unsubscribe(sr_subscription_ctx_t *subscription, uint32_t sub_id);
 
 /** @} subs */
 
@@ -1355,6 +1395,30 @@ typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module
 int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
         sr_module_change_cb callback, void *private_data, uint32_t priority, sr_subscr_options_t opts,
         sr_subscription_ctx_t **subscription);
+
+/**
+ * @brief Get information about an existing change subscription.
+ *
+ * @param[in] subscription Subscription structure to use.
+ * @param[in] sub_id Subscription ID of the specific subscription.
+ * @param[out] module_name Optional name of the module whose changes were subscribed.
+ * @param[out] ds Optional datastore of the subscription.
+ * @param[out] xpath Optional [XPath](@ref paths) filter of the subscription.
+ * @param[out] filtered_out Optional number of filtered-out change events of the subscription.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_module_change_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char **module_name,
+        sr_datastore_t *ds, const char **xpath, uint32_t *filtered_out);
+
+/**
+ * @brief Modify an existing change subscription by changing its XPath filter.
+ *
+ * @param[in] subscription Subscription structure to use.
+ * @param[in] sub_id Subscription ID of the specific subscription to modify.
+ * @param[in] xpath New XPath filter to use by the subscription.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_module_change_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char *xpath);
 
 /**
  * @brief Create an iterator for retrieving the changes (list of newly added / removed / modified nodes)
@@ -1704,18 +1768,10 @@ int sr_event_notif_send(sr_session_ctx_t *session, const char *path, const sr_va
 int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif);
 
 /**
- * @brief Get the subscription ID of the last notification subscription.
- *
- * @param[in] subscription Subscription context to read from.
- * @return Unique notification subscription ID.
- */
-uint32_t sr_event_notif_sub_id_get_last(const sr_subscription_ctx_t *subscription);
-
-/**
  * @brief Get information about an existing notification subscription.
  *
  * @param[in] subscription Subscription structure to use.
- * @param[in] sub_id Subscription ID of the specific subscription to modify.
+ * @param[in] sub_id Subscription ID of the specific subscription.
  * @param[out] module_name Optional name of the module whose notifications were subscribed.
  * @param[out] xpath Optional [XPath](@ref paths) filter of the subscription.
  * @param[out] start_time Optional start time of the subscription.
@@ -1732,10 +1788,10 @@ int sr_event_notif_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t su
  *
  * @param[in] subscription Subscription structure to use.
  * @param[in] sub_id Subscription ID of the specific subscription to modify.
- * @param[in] xpath New xpath filter to use by the subscription.
+ * @param[in] xpath New XPath filter to use by the subscription.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_event_notif_sub_modify_filter(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char *xpath);
+int sr_event_notif_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char *xpath);
 
 /**
  * @brief Modify an existing notification subscription by changing its stop time.
@@ -1747,45 +1803,6 @@ int sr_event_notif_sub_modify_filter(sr_subscription_ctx_t *subscription, uint32
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t sub_id, time_t stop_time);
-
-/**
- * @brief Learn the suspend state of a notification subscription.
- *
- * @param[in] subscription Subscription context to use.
- * @param[in] sub_id Subscription ID of the specific subscription to suspend.
- * @param[out] suspended Whether the subscription is suspended or not.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_event_notif_sub_is_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_id, int *suspended);
-
-/**
- * @brief Suspend a notification subscription.
- * Special ::SR_EV_NOTIF_SUSPENDED notification is delivered.
- *
- * @param[in] subscription Subscription context to use.
- * @param[in] sub_id Subscription ID of the specific subscription to suspend.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_event_notif_sub_suspend(sr_subscription_ctx_t *subscription, uint32_t sub_id);
-
-/**
- * @brief Resume a previously suspended notification subscription.
- * Special ::SR_EV_NOTIF_RESUMED notification is delivered.
- *
- * @param[in] subscription Subscription context to use.
- * @param[in] sub_id Subscription ID of the specific subscription to resume.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_event_notif_sub_resume(sr_subscription_ctx_t *subscription, uint32_t sub_id);
-
-/**
- * @brief Unsubscribe a specific notification subscription.
- *
- * @param[in] subscription Subscription context to use.
- * @param[in] sub_id Subscription ID of the subscription to unsubscribe.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_event_notif_sub_unsubscribe(sr_subscription_ctx_t *subscription, uint32_t sub_id);
 
 /** @} notifsubs */
 

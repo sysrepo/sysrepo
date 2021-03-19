@@ -332,7 +332,7 @@ test_yang_lib(void **state)
 
     /* cleanup */
     sr_session_switch_ds(st->sess, SR_DS_RUNNING);
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -793,7 +793,7 @@ test_sr_mon(void **state)
 
     sr_session_switch_ds(st->sess, SR_DS_RUNNING);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
     ret = sr_unlock(st->sess, NULL);
     assert_int_equal(ret, SR_ERR_OK);
     free(str2);
@@ -1006,7 +1006,7 @@ test_enabled_partial(void **state)
     free(str);
 
     /* unsusbcribe */
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 
     /* subscribe to a not-present interface */
     called = 0;
@@ -1027,7 +1027,7 @@ test_enabled_partial(void **state)
     lyd_free_all(data);
 
     /* unsusbcribe */
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -1143,7 +1143,7 @@ test_simple(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -1193,7 +1193,7 @@ test_fail(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -1274,7 +1274,7 @@ test_config(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -1366,7 +1366,7 @@ test_list(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -1488,7 +1488,7 @@ test_nested(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -1558,7 +1558,7 @@ test_invalid(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -1655,7 +1655,7 @@ test_mixed(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -1706,7 +1706,7 @@ test_xpath_check(void **state)
     lyd_free_all(data);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
     subscr = NULL;
 
     /* subscribe as state data provider */
@@ -1728,7 +1728,7 @@ test_xpath_check(void **state)
     lyd_free_all(data);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -1817,7 +1817,7 @@ test_state_only(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 
     /* set some configuration data */
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
@@ -1898,7 +1898,7 @@ test_state_only(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -1952,7 +1952,7 @@ test_config_only(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -2267,7 +2267,7 @@ test_stored_state(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -2483,7 +2483,7 @@ test_stored_config(void **state)
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -2623,7 +2623,7 @@ test_stored_top_list(void **state)
     /* cleanup */
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -2723,7 +2723,7 @@ test_stored_np_cont1(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -2784,7 +2784,7 @@ test_stored_np_cont2(void **state)
     free(str1);
 
     /* unsubscribe */
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 
     /* check operational data again, there should be none */
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
@@ -3004,7 +3004,7 @@ test_stored_diff_merge_replace(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -3162,7 +3162,7 @@ test_stored_diff_merge_userord(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -3379,7 +3379,7 @@ test_change_cb_stored(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -3488,7 +3488,7 @@ test_nested_default(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -3536,7 +3536,7 @@ test_disabled_default(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -3634,7 +3634,7 @@ test_merge_flag(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -3744,7 +3744,7 @@ test_state_default_merge(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 int

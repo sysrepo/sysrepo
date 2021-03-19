@@ -500,7 +500,7 @@ subscribe_empty_thread(void *arg)
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
     sr_session_stop(sess);
     return NULL;
 }
@@ -840,7 +840,7 @@ subscribe_simple_thread(void *arg)
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
     sr_session_stop(sess);
     return NULL;
 }
@@ -949,7 +949,7 @@ subscribe_fail_thread(void *arg)
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
     sr_session_stop(sess);
     return NULL;
 }
@@ -1215,7 +1215,7 @@ subscribe_userord_thread(void *arg)
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
     sr_session_stop(sess);
     return NULL;
 }
@@ -1570,7 +1570,7 @@ subscribe_replace_thread(void *arg)
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
     sr_session_stop(sess);
     return NULL;
 }
@@ -1819,7 +1819,7 @@ subscribe_replace_dflt_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
     sr_session_stop(sess);
     return NULL;
 }
@@ -2001,7 +2001,7 @@ subscribe_replace_case_thread(void *arg)
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
     sr_session_stop(sess);
     return NULL;
 }
@@ -2168,7 +2168,7 @@ subscribe_replace_when_thread(void *arg)
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
     sr_session_stop(sess);
     return NULL;
 }

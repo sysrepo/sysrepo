@@ -334,7 +334,7 @@ test_input_parameters(void **state)
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
     lyd_free_all(input);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -492,9 +492,9 @@ test_simple(void **state)
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
-    sr_unsubscribe(subscr);
-    sr_unsubscribe(subscr2);
-    sr_unsubscribe(subscr3);
+    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr2, 0);
+    sr_unsubscribe(subscr3, 0);
 }
 
 /* TEST */
@@ -539,7 +539,7 @@ test_stop(void **state)
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -621,7 +621,7 @@ test_replay_simple(void **state)
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -784,7 +784,7 @@ test_replay_interval(void **state)
     }
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), i);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -865,7 +865,7 @@ test_no_replay(void **state)
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -1066,7 +1066,7 @@ test_notif_config_change(void **state)
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -1166,7 +1166,7 @@ test_suspend(void **state)
     /* subscribe */
     ret = sr_event_notif_subscribe(st->sess, "ops", NULL, 0, 0, notif_suspend_cb, st, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    sub_id = sr_event_notif_sub_id_get_last(subscr);
+    sub_id = sr_subscription_get_last_sub_id(subscr);
 
     /* send a notif */
     ret = sr_event_notif_send(st->sess, "/ops:notif4", NULL, 0);
@@ -1177,12 +1177,12 @@ test_suspend(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /* get suspended */
-    ret = sr_event_notif_sub_is_suspended(subscr, sub_id, &suspended);
+    ret = sr_subscription_get_suspended(subscr, sub_id, &suspended);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(suspended, 0);
 
     /* suspend */
-    ret = sr_event_notif_sub_suspend(subscr, sub_id);
+    ret = sr_subscription_suspend(subscr, sub_id);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
@@ -1192,12 +1192,12 @@ test_suspend(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* get suspended */
-    ret = sr_event_notif_sub_is_suspended(subscr, sub_id, &suspended);
+    ret = sr_subscription_get_suspended(subscr, sub_id, &suspended);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(suspended, 1);
 
     /* resume */
-    ret = sr_event_notif_sub_resume(subscr, sub_id);
+    ret = sr_subscription_resume(subscr, sub_id);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
@@ -1211,11 +1211,11 @@ test_suspend(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
     /* get suspended */
-    ret = sr_event_notif_sub_is_suspended(subscr, sub_id, &suspended);
+    ret = sr_subscription_get_suspended(subscr, sub_id, &suspended);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(suspended, 0);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* TEST */
@@ -1250,27 +1250,39 @@ test_params(void **state)
     sr_subscription_ctx_t *subscr;
     int ret;
     uint32_t sub_id, filtered_out;
+    struct lyd_node *notif;
     const char *module_name, *xpath;
     time_t cur_time = time(NULL), start_time, stop_time;
 
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
     /* subscribe */
-    ret = sr_event_notif_subscribe(st->sess, "ops", "/ops:notif4", 0, 0, notif_params_cb, st, 0, &subscr);
+    ret = sr_event_notif_subscribe(st->sess, "ops", "/ops:notif4[l='right']", 0, 0, notif_params_cb, st,
+            SR_SUBSCR_NO_THREAD, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    sub_id = sr_event_notif_sub_id_get_last(subscr);
+    sub_id = sr_subscription_get_last_sub_id(subscr);
+
+    /* send filtered-out notif */
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, sr_get_context(st->conn), "/ops:notif4/l", "neither", 0, &notif));
+    ret = sr_event_notif_send_tree(st->sess, notif);
+    lyd_free_tree(notif);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* process the notification (filter it out) */
+    ret = sr_process_events(subscr, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
 
     /* read params */
     ret = sr_event_notif_sub_get_info(subscr, sub_id, &module_name, &xpath, &start_time, &stop_time, &filtered_out);
     assert_int_equal(ret, SR_ERR_OK);
     assert_string_equal(module_name, "ops");
-    assert_string_equal(xpath, "/ops:notif4");
+    assert_string_equal(xpath, "/ops:notif4[l='right']");
     assert_int_equal(start_time, 0);
     assert_int_equal(stop_time, 0);
-    assert_int_equal(filtered_out, 0);
+    assert_int_equal(filtered_out, 1);
 
     /* change filter, callback called */
-    ret = sr_event_notif_sub_modify_filter(subscr, sub_id, "/ops:notif4[leaf='5']");
+    ret = sr_event_notif_sub_modify_xpath(subscr, sub_id, "/ops:notif4[l='wrong']");
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
@@ -1278,10 +1290,10 @@ test_params(void **state)
     ret = sr_event_notif_sub_get_info(subscr, sub_id, &module_name, &xpath, &start_time, &stop_time, &filtered_out);
     assert_int_equal(ret, SR_ERR_OK);
     assert_string_equal(module_name, "ops");
-    assert_string_equal(xpath, "/ops:notif4[leaf='5']");
+    assert_string_equal(xpath, "/ops:notif4[l='wrong']");
     assert_int_equal(start_time, 0);
     assert_int_equal(stop_time, 0);
-    assert_int_equal(filtered_out, 0);
+    assert_int_equal(filtered_out, 1);
 
     /* change stop time, callback called */
     ret = sr_event_notif_sub_modify_stop_time(subscr, sub_id, cur_time + 10);
@@ -1292,12 +1304,12 @@ test_params(void **state)
     ret = sr_event_notif_sub_get_info(subscr, sub_id, &module_name, &xpath, &start_time, &stop_time, &filtered_out);
     assert_int_equal(ret, SR_ERR_OK);
     assert_string_equal(module_name, "ops");
-    assert_string_equal(xpath, "/ops:notif4[leaf='5']");
+    assert_string_equal(xpath, "/ops:notif4[l='wrong']");
     assert_int_equal(start_time, 0);
     assert_int_equal(stop_time, cur_time + 10);
-    assert_int_equal(filtered_out, 0);
+    assert_int_equal(filtered_out, 1);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr, 0);
 }
 
 /* MAIN */

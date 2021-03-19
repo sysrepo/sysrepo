@@ -98,7 +98,7 @@ main(void)
     lyd_free_all(data);
 
     /* unsubscribe */
-    sr_unsubscribe(subscription);
+    sr_unsubscribe(subscription, 0);
 
     /* set push operational data (their lifetime is limited by the lifetime of the connection!) */
     rc = sr_set_item_str(session, "/examples:stats/counter", "852", NULL, 0);

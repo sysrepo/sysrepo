@@ -4,8 +4,8 @@
  * @brief sysrepo API routines
  *
  * @copyright
- * Copyright 2018 Deutsche Telekom AG.
- * Copyright 2018 - 2019 CESNET, z.s.p.o.
+ * Copyright 2018 - 2021 Deutsche Telekom AG.
+ * Copyright 2018 - 2021 CESNET, z.s.p.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@
 
 static sr_error_info_t *sr_session_notif_buf_stop(sr_session_ctx_t *session);
 static sr_error_info_t *_sr_session_stop(sr_session_ctx_t *session);
-static sr_error_info_t *_sr_unsubscribe(sr_subscription_ctx_t *subscription);
+static sr_error_info_t *_sr_unsubscribe(sr_subscription_ctx_t *subscription, uint32_t sub_id);
 
 /**
  * @brief Allocate a new connection structure.
@@ -178,7 +178,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 
     if (changed || created) {
         /* recover anything left in ext SHM */
-        sr_shmext_recover_subs_all(conn);
+        sr_shmext_recover_sub_all(conn);
 
         /* clear all main SHM modules (if main SHM was just created, there aren't any anyway) */
         if ((err_info = sr_shm_remap(&conn->main_shm, sizeof(sr_main_shm_t)))) {
@@ -278,7 +278,7 @@ sr_disconnect(sr_conn_ctx_t *conn)
     /* stop all subscriptions */
     for (i = 0; i < conn->session_count; ++i) {
         while (conn->sessions[i]->subscription_count && conn->sessions[i]->subscriptions[0]) {
-            tmp_err = _sr_unsubscribe(conn->sessions[i]->subscriptions[0]);
+            tmp_err = _sr_unsubscribe(conn->sessions[i]->subscriptions[0], 0);
             sr_errinfo_merge(&err_info, tmp_err);
         }
     }
@@ -521,7 +521,7 @@ sr_session_stop(sr_session_ctx_t *session)
 
     /* stop all subscriptions of this session */
     while (session->subscription_count) {
-        tmp_err = sr_subs_session_del(session, SR_LOCK_NONE, session->subscriptions[0]);
+        tmp_err = sr_subscr_session_del(session->subscriptions[0], session, SR_LOCK_NONE);
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
@@ -2791,16 +2791,180 @@ cleanup_unlock:
     return sr_api_ret(session, err_info);
 }
 
+API uint32_t
+sr_subscription_get_last_sub_id(const sr_subscription_ctx_t *subscription)
+{
+    if (!subscription) {
+        return 0;
+    }
+
+    return subscription->last_sub_id;
+}
+
+API int
+sr_subscription_get_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_id, int *suspended)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *module_name, *path;
+    sr_datastore_t ds;
+
+    SR_CHECK_ARG_APIRET(!subscription || !sub_id || !suspended, NULL, err_info);
+
+    /* SUBS READ LOCK */
+    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid,
+            __func__, NULL, NULL))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* find the subscription in the subscription context and read its suspended from ext SHM */
+    if (sr_subscr_change_sub_find(subscription, sub_id, &module_name, &ds)) {
+        /* change sub */
+        if ((err_info = sr_shmext_change_sub_suspended(subscription->conn, module_name, ds, sub_id, -1, suspended))) {
+            goto cleanup_unlock;
+        }
+    } else if (sr_subscr_oper_sub_find(subscription, sub_id, &module_name)) {
+        /* oper sub */
+        if ((err_info = sr_shmext_oper_sub_suspended(subscription->conn, module_name, sub_id, -1, suspended))) {
+            goto cleanup_unlock;
+        }
+    } else if (sr_subscr_notif_sub_find(subscription, sub_id, &module_name)) {
+        /* notif sub */
+        if ((err_info = sr_shmext_notif_sub_suspended(subscription->conn, module_name, sub_id, -1, suspended))) {
+            goto cleanup_unlock;
+        }
+    } else if (sr_subscr_rpc_sub_find(subscription, sub_id, &path)) {
+        /* RPC/action sub */
+        if ((err_info = sr_shmext_rpc_sub_suspended(subscription->conn, path, sub_id, -1, suspended))) {
+            goto cleanup_unlock;
+        }
+    } else {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Subscription with ID %" PRIu32 " was not found.", sub_id);
+        goto cleanup_unlock;
+    }
+
+cleanup_unlock:
+    /* SUBS READ UNLOCK */
+    sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
+
+    return sr_api_ret(NULL, err_info);
+}
+
 /**
- * @brief Unlocked unsubscribe (free) a subscription.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
+ * @brief Change suspended state of a subscription.
  *
- * @param[in] subscription Subscription to free.
- * @param[in] main_lock_upgr Main SHM lock read-upgr locked.
+ * @param[in] subscription Subscription context to use.
+ * @param[in] sub_id Subscription notification ID.
+ * @param[in] suspend Whether to suspend or resume the subscription.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-_sr_unsubscribe(sr_subscription_ctx_t *subscription)
+_sr_subscription_suspend_change(sr_subscription_ctx_t *subscription, uint32_t sub_id, int suspend)
+{
+    sr_error_info_t *err_info = NULL;
+    struct modsub_notifsub_s *notif_sub = NULL;
+    const char *module_name, *path;
+    sr_datastore_t ds;
+    sr_session_ctx_t *ev_sess = NULL;
+
+    assert(subscription && sub_id);
+
+    /* find the subscription in the subscription context and read its suspended from ext SHM */
+    if (sr_subscr_change_sub_find(subscription, sub_id, &module_name, &ds)) {
+        /* change sub */
+        if ((err_info = sr_shmext_change_sub_suspended(subscription->conn, module_name, ds, sub_id, suspend, NULL))) {
+            goto cleanup;
+        }
+    } else if (sr_subscr_oper_sub_find(subscription, sub_id, &module_name)) {
+        /* oper sub */
+        if ((err_info = sr_shmext_oper_sub_suspended(subscription->conn, module_name, sub_id, suspend, NULL))) {
+            goto cleanup;
+        }
+    } else if ((notif_sub = sr_subscr_notif_sub_find(subscription, sub_id, &module_name))) {
+        /* notif sub */
+        if ((err_info = sr_shmext_notif_sub_suspended(subscription->conn, module_name, sub_id, suspend, NULL))) {
+            goto cleanup;
+        }
+    } else if (sr_subscr_rpc_sub_find(subscription, sub_id, &path)) {
+        /* RPC/action sub */
+        if ((err_info = sr_shmext_rpc_sub_suspended(subscription->conn, path, sub_id, suspend, NULL))) {
+            goto cleanup;
+        }
+    } else {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Subscription with ID %" PRIu32 " was not found.", sub_id);
+        goto cleanup;
+    }
+
+    if (notif_sub) {
+        /* create event session */
+        if ((err_info = _sr_session_start(subscription->conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, 0, 0, NULL, &ev_sess))) {
+            goto cleanup;
+        }
+
+        /* send the special notification */
+        if ((err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
+                suspend ? SR_EV_NOTIF_SUSPENDED : SR_EV_NOTIF_RESUMED, sub_id, NULL, time(NULL)))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    sr_session_stop(ev_sess);
+    return err_info;
+}
+
+API int
+sr_subscription_suspend(sr_subscription_ctx_t *subscription, uint32_t sub_id)
+{
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
+
+    /* SUBS READ LOCK */
+    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid,
+            __func__, NULL, NULL))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* suspend */
+    err_info = _sr_subscription_suspend_change(subscription, sub_id, 1);
+
+    /* SUBS READ UNLOCK */
+    sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
+
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_subscription_resume(sr_subscription_ctx_t *subscription, uint32_t sub_id)
+{
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
+
+    /* SUBS READ LOCK */
+    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid,
+            __func__, NULL, NULL))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* resume */
+    err_info = _sr_subscription_suspend_change(subscription, sub_id, 0);
+
+    /* SUBS READ UNLOCK */
+    sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
+
+    return sr_api_ret(NULL, err_info);
+}
+
+/**
+ * @brief Unlocked unsubscribe (free) of a specific subscription or all the subscriptions in a subscription structure.
+ *
+ * @param[in] subscription Subscription to free.
+ * @param[in] sub_id Subscription ID to remove, 0 for all the subscriptions.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+_sr_unsubscribe(sr_subscription_ctx_t *subscription, uint32_t sub_id)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     char *path;
@@ -2808,10 +2972,15 @@ _sr_unsubscribe(sr_subscription_ctx_t *subscription)
 
     assert(subscription);
 
-    /* delete all subscriptions (also removes this subscription from all the sessions) */
-    if ((tmp_err = sr_subs_del_all(subscription))) {
+    /* delete a specific subscription or delete all subscriptions which also removes this subscription from all the sessions */
+    if ((tmp_err = sr_subscr_del(subscription, sub_id, SR_LOCK_NONE))) {
         /* continue */
         sr_errinfo_merge(&err_info, tmp_err);
+    }
+
+    if (sub_id) {
+        /* nothing more to do in this case */
+        return err_info;
     }
 
     /* no new events can be generated at this point */
@@ -2852,7 +3021,7 @@ _sr_unsubscribe(sr_subscription_ctx_t *subscription)
 }
 
 API int
-sr_unsubscribe(sr_subscription_ctx_t *subscription)
+sr_unsubscribe(sr_subscription_ctx_t *subscription, uint32_t sub_id)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -2860,7 +3029,7 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
         return sr_api_ret(NULL, NULL);
     }
 
-    err_info = _sr_unsubscribe(subscription);
+    err_info = _sr_unsubscribe(subscription, sub_id);
     return sr_api_ret(NULL, err_info);
 }
 
@@ -2970,7 +3139,7 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_subs_new(sr_conn_ctx_t *conn, sr_subscr_options_t opts, sr_subscription_ctx_t **subs_p)
+sr_subscr_new(sr_conn_ctx_t *conn, sr_subscr_options_t opts, sr_subscription_ctx_t **subs_p)
 {
     sr_error_info_t *err_info = NULL;
     char *path = NULL;
@@ -3049,6 +3218,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     const struct lys_module *ly_mod;
     struct sr_mod_info_s mod_info;
     sr_conn_ctx_t *conn;
+    uint32_t sub_id;
     sr_subscr_options_t sub_opts;
     sr_mod_t *shm_mod;
 
@@ -3102,20 +3272,27 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* create a new subscription */
-        if ((err_info = sr_subs_new(conn, opts, subscription))) {
+        if ((err_info = sr_subscr_new(conn, opts, subscription))) {
             goto cleanup;
         }
     }
 
+    /* get new sub ID */
+    sub_id = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id);
+    if (sub_id == (uint32_t)(ATOMIC_T_MAX - 1)) {
+        /* the value in the main SHM is actually ATOMIC_T_MAX and calling another INC would cause an overflow */
+        ATOMIC_STORE_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id, 1);
+    }
+
     /* add module subscription into ext SHM */
-    if ((err_info = sr_shmext_change_subscription_add(conn, shm_mod, chsub_lock_mode, session->ds, xpath, priority,
+    if ((err_info = sr_shmext_change_sub_add(conn, shm_mod, chsub_lock_mode, session->ds, sub_id, xpath, priority,
             sub_opts, (*subscription)->evpipe_num))) {
         goto error1;
     }
 
     /* add subscription into structure and create separate specific SHM segment */
-    if ((err_info = sr_sub_change_add(session, module_name, xpath, callback, private_data, priority, sub_opts, 0,
-            *subscription))) {
+    if ((err_info = sr_subscr_change_sub_add(*subscription, sub_id, session, module_name, xpath, callback, private_data,
+            priority, sub_opts, 0))) {
         goto error2;
     }
 
@@ -3129,17 +3306,16 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     goto cleanup;
 
 error3:
-    sr_sub_change_del(module_name, xpath, session->ds, callback, private_data, priority, sub_opts, SR_LOCK_NONE, *subscription);
+    sr_subscr_change_sub_del(*subscription, sub_id, SR_LOCK_NONE);
 
 error2:
-    if ((tmp_err = sr_shmext_change_subscription_del(conn, shm_mod, chsub_lock_mode, session->ds, xpath, priority,
-            sub_opts, (*subscription)->evpipe_num))) {
+    if ((tmp_err = sr_shmext_change_sub_del(conn, shm_mod, chsub_lock_mode, session->ds, sub_id))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
 error1:
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        _sr_unsubscribe(*subscription);
+        _sr_unsubscribe(*subscription, 0);
         *subscription = NULL;
     }
 
@@ -3157,6 +3333,98 @@ cleanup:
 
     sr_modinfo_free(&mod_info);
     return sr_api_ret(session, err_info);
+}
+
+API int
+sr_module_change_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char **module_name,
+        sr_datastore_t *ds, const char **xpath, uint32_t *filtered_out)
+{
+    sr_error_info_t *err_info = NULL;
+    struct modsub_changesub_s *change_sub;
+
+    SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
+
+    /* SUBS READ LOCK */
+    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid,
+            __func__, NULL, NULL))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* find the subscription in the subscription context */
+    change_sub = sr_subscr_change_sub_find(subscription, sub_id, module_name, ds);
+    if (!change_sub) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Change subscription with ID \"%u\" not found.", sub_id);
+        goto cleanup_unlock;
+    }
+
+    /* fill parameters */
+    if (xpath) {
+        *xpath = change_sub->xpath;
+    }
+    if (filtered_out) {
+        *filtered_out = ATOMIC_LOAD_RELAXED(change_sub->filtered_out);
+    }
+
+cleanup_unlock:
+    /* SUBS READ UNLOCK */
+    sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
+
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_module_change_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char *xpath)
+{
+    sr_error_info_t *err_info = NULL;
+    struct modsub_changesub_s *change_sub;
+    sr_mod_t *shm_mod;
+    const char *module_name;
+    sr_datastore_t ds;
+
+    SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
+
+    /* SUBS WRITE LOCK */
+    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscription->conn->cid,
+            __func__, NULL, NULL))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* find the subscription in the subscription context */
+    change_sub = sr_subscr_change_sub_find(subscription, sub_id, &module_name, &ds);
+    if (!change_sub) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Change subscription with ID \"%u\" not found.", sub_id);
+        goto cleanup_unlock;
+    }
+
+    /* if the xpath is the same, there is nothing to modify */
+    if (!xpath && !change_sub->xpath) {
+        goto cleanup_unlock;
+    } else if (xpath && change_sub->xpath && !strcmp(xpath, change_sub->xpath)) {
+        goto cleanup_unlock;
+    }
+
+    /* update xpath in the subscription */
+    free(change_sub->xpath);
+    change_sub->xpath = NULL;
+    if (xpath) {
+        change_sub->xpath = strdup(xpath);
+        SR_CHECK_MEM_GOTO(!change_sub->xpath, err_info, cleanup_unlock);
+    }
+
+    /* find the module in SHM */
+    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subscription->conn), module_name);
+    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup_unlock);
+
+    /* modify the subscription in ext SHM */
+    if ((err_info = sr_shmext_change_sub_modify(subscription->conn, shm_mod, ds, sub_id, xpath))) {
+        goto cleanup_unlock;
+    }
+
+cleanup_unlock:
+    /* SUBS WRITE UNLOCK */
+    sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscription->conn->cid, __func__);
+
+    return sr_api_ret(NULL, err_info);
 }
 
 static int
@@ -3530,6 +3798,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     char *module_name = NULL, *path = NULL;
     const struct lysc_node *op;
     const struct lys_module *ly_mod;
+    uint32_t sub_id;
     sr_conn_ctx_t *conn;
     sr_rpc_t *shm_rpc;
 
@@ -3576,9 +3845,16 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* create a new subscription */
-        if ((err_info = sr_subs_new(conn, opts, subscription))) {
+        if ((err_info = sr_subscr_new(conn, opts, subscription))) {
             goto error1;
         }
+    }
+
+    /* get new sub ID */
+    sub_id = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id);
+    if (sub_id == (uint32_t)(ATOMIC_T_MAX - 1)) {
+        /* the value in the main SHM is actually ATOMIC_T_MAX and calling another INC would cause an overflow */
+        ATOMIC_STORE_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id, 1);
     }
 
     /* find the RPC */
@@ -3586,13 +3862,13 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     SR_CHECK_INT_GOTO(!shm_rpc, err_info, error2);
 
     /* add RPC/action subscription into ext SHM */
-    if ((err_info = sr_shmext_rpc_subscription_add(conn, shm_rpc, xpath, priority, 0, (*subscription)->evpipe_num))) {
+    if ((err_info = sr_shmext_rpc_sub_add(conn, shm_rpc, sub_id, xpath, priority, 0, (*subscription)->evpipe_num))) {
         goto error2;
     }
 
     /* add subscription into structure and create separate specific SHM segment */
-    if ((err_info = sr_sub_rpc_add(session, path, xpath, callback, tree_callback, private_data, priority, 0,
-            *subscription))) {
+    if ((err_info = sr_subscr_rpc_sub_add(*subscription, sub_id, session, path, xpath, callback, tree_callback,
+            private_data, priority, 0))) {
         goto error3;
     }
 
@@ -3607,16 +3883,16 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     return sr_api_ret(session, err_info);
 
 error4:
-    sr_sub_rpc_del(path, xpath, callback, tree_callback, private_data, priority, SR_LOCK_NONE, *subscription);
+    sr_subscr_rpc_sub_del(*subscription, sub_id, SR_LOCK_NONE);
 
 error3:
-    if ((tmp_err = sr_shmext_rpc_subscription_del(conn, shm_rpc, xpath, priority, (*subscription)->evpipe_num))) {
+    if ((tmp_err = sr_shmext_rpc_sub_del(conn, shm_rpc, sub_id))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
 error2:
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        _sr_unsubscribe(*subscription);
+        _sr_unsubscribe(*subscription, 0);
         *subscription = NULL;
     }
 
@@ -4003,16 +4279,16 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* create a new subscription */
-        if ((err_info = sr_subs_new(conn, opts, subscription))) {
+        if ((err_info = sr_subscr_new(conn, opts, subscription))) {
             return sr_api_ret(session, err_info);
         }
     }
 
     /* get new sub ID */
-    sub_id = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(session->conn)->new_sub_id);
+    sub_id = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id);
     if (sub_id == (uint32_t)(ATOMIC_T_MAX - 1)) {
         /* the value in the main SHM is actually ATOMIC_T_MAX and calling another INC would cause an overflow */
-        ATOMIC_STORE_RELAXED(SR_CONN_MAIN_SHM(session->conn)->new_sub_id, 1);
+        ATOMIC_STORE_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id, 1);
     }
 
     /* find module */
@@ -4020,13 +4296,13 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
     SR_CHECK_INT_GOTO(!shm_mod, err_info, error1);
 
     /* add notification subscription into main SHM, suspended if replay was requested */
-    if ((err_info = sr_shmext_notif_subscription_add(conn, shm_mod, sub_id, (*subscription)->evpipe_num, start_time ? 1 : 0))) {
+    if ((err_info = sr_shmext_notif_sub_add(conn, shm_mod, sub_id, (*subscription)->evpipe_num, start_time ? 1 : 0))) {
         goto error1;
     }
 
     /* add subscription into structure and create separate specific SHM segment */
-    if ((err_info = sr_sub_notif_add(session, ly_mod->name, sub_id, xpath, start_time, stop_time, callback, tree_callback,
-            private_data, 0, *subscription))) {
+    if ((err_info = sr_subscr_notif_sub_add(*subscription, sub_id, session, ly_mod->name, xpath, start_time, stop_time,
+            callback, tree_callback, private_data, 0))) {
         goto error2;
     }
 
@@ -4046,16 +4322,16 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
     return sr_api_ret(session, NULL);
 
 error3:
-    sr_sub_notif_del(ly_mod->name, sub_id, SR_LOCK_NONE, *subscription);
+    sr_subscr_notif_sub_del(*subscription, sub_id, SR_LOCK_NONE);
 
 error2:
-    if ((tmp_err = sr_shmext_notif_subscription_del(conn, shm_mod, sub_id, (*subscription)->evpipe_num))) {
+    if ((tmp_err = sr_shmext_notif_sub_del(conn, shm_mod, sub_id))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
 error1:
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        _sr_unsubscribe(*subscription);
+        _sr_unsubscribe(*subscription, 0);
         *subscription = NULL;
     }
 
@@ -4243,53 +4519,6 @@ cleanup:
     return sr_api_ret(session, err_info);
 }
 
-API uint32_t
-sr_event_notif_sub_id_get_last(const sr_subscription_ctx_t *subscription)
-{
-    uint32_t i, last_sub_id = 0, cur_sub_id;
-
-    if (!subscription) {
-        return 0;
-    }
-
-    for (i = 0; i < subscription->notif_sub_count; ++i) {
-        /* last subscription must be at the array end */
-        cur_sub_id = subscription->notif_subs[i].subs[subscription->notif_subs[i].sub_count - 1].sub_id;
-        if (cur_sub_id > last_sub_id) {
-            last_sub_id = cur_sub_id;
-        }
-    }
-
-    return last_sub_id;
-}
-
-/**
- * @brief Find a specific notification subscription.
- *
- * @param[in] subscription Subscription context to use.
- * @param[in] sub_id Subscription ID to find.
- * @param[out] module_name Found subscription module name.
- * @return Matching notification subscription, NULL if not found.
- */
-static struct modsub_notifsub_s *
-sr_event_notif_find_sub(const sr_subscription_ctx_t *subscription, uint32_t sub_id, const char **module_name)
-{
-    uint32_t i, j;
-
-    for (i = 0; i < subscription->notif_sub_count; ++i) {
-        for (j = 0; j < subscription->notif_subs[i].sub_count; ++j) {
-            if (subscription->notif_subs[i].subs[j].sub_id == sub_id) {
-                if (module_name) {
-                    *module_name = subscription->notif_subs[i].module_name;
-                }
-                return &subscription->notif_subs[i].subs[j];
-            }
-        }
-    }
-
-    return NULL;
-}
-
 API int
 sr_event_notif_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char **module_name,
         const char **xpath, time_t *start_time, time_t *stop_time, uint32_t *filtered_out)
@@ -4306,7 +4535,7 @@ sr_event_notif_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t sub_id
     }
 
     /* find the subscription in the subscription context */
-    notif_sub = sr_event_notif_find_sub(subscription, sub_id, module_name);
+    notif_sub = sr_subscr_notif_sub_find(subscription, sub_id, module_name);
     if (!notif_sub) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Notification subscription with ID \"%u\" not found.", sub_id);
         goto cleanup_unlock;
@@ -4334,7 +4563,7 @@ cleanup_unlock:
 }
 
 API int
-sr_event_notif_sub_modify_filter(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char *xpath)
+sr_event_notif_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char *xpath)
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_notifsub_s *notif_sub;
@@ -4349,9 +4578,16 @@ sr_event_notif_sub_modify_filter(sr_subscription_ctx_t *subscription, uint32_t s
     }
 
     /* find the subscription in the subscription context */
-    notif_sub = sr_event_notif_find_sub(subscription, sub_id, NULL);
+    notif_sub = sr_subscr_notif_sub_find(subscription, sub_id, NULL);
     if (!notif_sub) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Notification subscription with ID \"%u\" not found.", sub_id);
+        goto cleanup_unlock;
+    }
+
+    /* if the xpath is the same, there is nothing to modify */
+    if (!xpath && !notif_sub->xpath) {
+        goto cleanup_unlock;
+    } else if (xpath && notif_sub->xpath && !strcmp(xpath, notif_sub->xpath)) {
         goto cleanup_unlock;
     }
 
@@ -4398,7 +4634,7 @@ sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_
     }
 
     /* find the subscription in the subscription context */
-    notif_sub = sr_event_notif_find_sub(subscription, sub_id, NULL);
+    notif_sub = sr_subscr_notif_sub_find(subscription, sub_id, NULL);
     if (!notif_sub) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Notification subscription with ID \"%u\" not found.", sub_id);
         goto cleanup_unlock;
@@ -4407,6 +4643,11 @@ sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_
     /* check stop time validity */
     if (stop_time && !notif_sub->start_time && (stop_time < notif_sub->start_time)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Stop time cannot be earlier than start time.");
+        goto cleanup_unlock;
+    }
+
+    /* if the stop time is the same, there is nothing to modify */
+    if (stop_time == notif_sub->stop_time) {
         goto cleanup_unlock;
     }
 
@@ -4429,168 +4670,6 @@ cleanup_unlock:
     sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscription->conn->cid, __func__);
 
     sr_session_stop(ev_sess);
-    return sr_api_ret(NULL, err_info);
-}
-
-API int
-sr_event_notif_sub_is_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_id, int *suspended)
-{
-    sr_error_info_t *err_info = NULL;
-    const char *module_name;
-
-    SR_CHECK_ARG_APIRET(!subscription || !sub_id || !suspended, NULL, err_info);
-
-    /* SUBS READ LOCK */
-    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid,
-            __func__, NULL, NULL))) {
-        return sr_api_ret(NULL, err_info);
-    }
-
-    /* find the subscription in the subscription context */
-    if (!sr_event_notif_find_sub(subscription, sub_id, &module_name)) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Notification subscription with ID \"%u\" not found.", sub_id);
-        goto cleanup_unlock;
-    }
-
-    /* read suspend flag from SHM */
-    if ((err_info = sr_shmmain_get_notif_suspend(subscription->conn, module_name, sub_id, suspended))) {
-        goto cleanup_unlock;
-    }
-
-cleanup_unlock:
-    /* SUBS READ UNLOCK */
-    sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
-
-    return sr_api_ret(NULL, err_info);
-}
-
-/**
- * @brief Change suspended state of a subscription.
- *
- * @param[in] subscription Subscription context to use.
- * @param[in] sub_id Subscription notification ID.
- * @param[in] suspend Whether to suspend or resume the subscription.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-_sr_event_notif_sub_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_id, int suspend)
-{
-    sr_error_info_t *err_info = NULL;
-    struct modsub_notifsub_s *notif_sub;
-    const char *module_name;
-    sr_session_ctx_t *ev_sess = NULL;
-
-    assert(subscription && sub_id);
-
-    /* find the subscription in the subscription context */
-    notif_sub = sr_event_notif_find_sub(subscription, sub_id, &module_name);
-    if (!notif_sub) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Notification subscription with ID \"%u\" not found.", sub_id);
-        goto cleanup;
-    }
-
-    /* update suspend flag in SHM */
-    if ((err_info = sr_shmmain_update_notif_suspend(subscription->conn, module_name, sub_id, suspend))) {
-        goto cleanup;
-    }
-
-    /* create event session */
-    if ((err_info = _sr_session_start(subscription->conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, 0, 0, NULL, &ev_sess))) {
-        goto cleanup;
-    }
-
-    /* send the special notification */
-    if ((err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
-            suspend ? SR_EV_NOTIF_SUSPENDED : SR_EV_NOTIF_RESUMED, sub_id, NULL, time(NULL)))) {
-        goto cleanup;
-    }
-
-cleanup:
-    sr_session_stop(ev_sess);
-    return err_info;
-}
-
-API int
-sr_event_notif_sub_suspend(sr_subscription_ctx_t *subscription, uint32_t sub_id)
-{
-    sr_error_info_t *err_info = NULL;
-
-    SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
-
-    /* SUBS READ LOCK */
-    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid,
-            __func__, NULL, NULL))) {
-        return sr_api_ret(NULL, err_info);
-    }
-
-    /* suspend */
-    err_info = _sr_event_notif_sub_suspended(subscription, sub_id, 1);
-
-    /* SUBS READ UNLOCK */
-    sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
-
-    return sr_api_ret(NULL, err_info);
-}
-
-API int
-sr_event_notif_sub_resume(sr_subscription_ctx_t *subscription, uint32_t sub_id)
-{
-    sr_error_info_t *err_info = NULL;
-
-    SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
-
-    /* SUBS READ LOCK */
-    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid,
-            __func__, NULL, NULL))) {
-        return sr_api_ret(NULL, err_info);
-    }
-
-    /* resume */
-    err_info = _sr_event_notif_sub_suspended(subscription, sub_id, 0);
-
-    /* SUBS READ UNLOCK */
-    sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
-
-    return sr_api_ret(NULL, err_info);
-}
-
-API int
-sr_event_notif_sub_unsubscribe(sr_subscription_ctx_t *subscription, uint32_t sub_id)
-{
-    sr_error_info_t *err_info = NULL;
-    const char *module_name;
-    sr_mod_t *shm_mod;
-
-    SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
-
-    /* SUBS WRITE LOCK */
-    if ((err_info = sr_rwlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscription->conn->cid,
-            __func__, NULL, NULL))) {
-        return sr_api_ret(NULL, err_info);
-    }
-
-    /* find the subscription in the subscription context */
-    if (!sr_event_notif_find_sub(subscription, sub_id, &module_name)) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Notification subscription with ID \"%u\" not found.", sub_id);
-        goto cleanup_unlock;
-    }
-
-    /* find module */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subscription->conn), module_name);
-    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup_unlock);
-
-    /* properly remove the subscriptions from the main SHM */
-    if ((err_info = sr_shmext_notif_subscription_del(subscription->conn, shm_mod, sub_id, subscription->evpipe_num))) {
-        goto cleanup_unlock;
-    }
-
-    /* remove the subscription from the subscription structure */
-    sr_sub_notif_del(module_name, sub_id, SR_LOCK_WRITE, subscription);
-
-cleanup_unlock:
-    /* SUBS WRITE UNLOCK */
-    sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscription->conn->cid, __func__);
-
     return sr_api_ret(NULL, err_info);
 }
 
@@ -4682,6 +4761,7 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     sr_conn_ctx_t *conn;
     const struct lys_module *ly_mod;
     sr_mod_oper_sub_type_t sub_type;
+    uint32_t sub_id;
     sr_subscr_options_t sub_opts;
     sr_mod_t *shm_mod;
 
@@ -4715,9 +4795,16 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
 
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
         /* create a new subscription */
-        if ((err_info = sr_subs_new(conn, opts, subscription))) {
+        if ((err_info = sr_subscr_new(conn, opts, subscription))) {
             return sr_api_ret(session, err_info);
         }
+    }
+
+    /* get new sub ID */
+    sub_id = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id);
+    if (sub_id == (uint32_t)(ATOMIC_T_MAX - 1)) {
+        /* the value in the main SHM is actually ATOMIC_T_MAX and calling another INC would cause an overflow */
+        ATOMIC_STORE_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id, 1);
     }
 
     /* find module */
@@ -4725,12 +4812,13 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     SR_CHECK_INT_GOTO(!shm_mod, err_info, error1);
 
     /* add oper subscription into main SHM */
-    if ((err_info = sr_shmext_oper_subscription_add(conn, shm_mod, path, sub_type, sub_opts, (*subscription)->evpipe_num))) {
+    if ((err_info = sr_shmext_oper_sub_add(conn, shm_mod, sub_id, path, sub_type, sub_opts,
+            (*subscription)->evpipe_num))) {
         goto error1;
     }
 
     /* add subscription into structure and create separate specific SHM segment */
-    if ((err_info = sr_sub_oper_add(session, module_name, path, callback, private_data, 0, *subscription))) {
+    if ((err_info = sr_subscr_oper_sub_add(*subscription, sub_id, session, module_name, path, callback, private_data, 0))) {
         goto error2;
     }
 
@@ -4743,16 +4831,16 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     return sr_api_ret(session, err_info);
 
 error3:
-    sr_sub_oper_del(module_name, path, SR_LOCK_NONE, *subscription);
+    sr_subscr_oper_sub_del(*subscription, sub_id, SR_LOCK_NONE);
 
 error2:
-    if ((tmp_err = sr_shmext_oper_subscription_del(conn, shm_mod, path, (*subscription)->evpipe_num))) {
+    if ((tmp_err = sr_shmext_oper_sub_del(conn, shm_mod, sub_id))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
 error1:
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        _sr_unsubscribe(*subscription);
+        _sr_unsubscribe(*subscription, 0);
         *subscription = NULL;
     }
     return sr_api_ret(session, err_info);
