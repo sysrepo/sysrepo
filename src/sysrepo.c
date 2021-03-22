@@ -3042,11 +3042,14 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription, uint32_t sub_id)
  * @param[in] xpath Optional subscription xpath.
  * @param[in] callback Callback to call.
  * @param[in] private_data Arbitrary callback data.
+ * @param[in] sub_id Subscription ID.
+ * @param[in] opts Subscription options.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info,
-        const struct lys_module *ly_mod, const char *xpath, sr_module_change_cb callback, void *private_data, int opts)
+        const struct lys_module *ly_mod, const char *xpath, sr_module_change_cb callback, void *private_data,
+        uint32_t sub_id, int opts)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *enabled_data = NULL, *node;
@@ -3106,7 +3109,7 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, struct sr_m
         SR_LOG_INF("Triggering \"%s\" \"%s\" event on enabled data.", ly_mod->name, sr_ev2str(ev_sess->ev));
 
         /* present all changes in an "enabled" event */
-        err_code = callback(ev_sess, ly_mod->name, xpath, sr_ev2api(ev_sess->ev), 0, private_data);
+        err_code = callback(ev_sess, sub_id, ly_mod->name, xpath, sr_ev2api(ev_sess->ev), 0, private_data);
         if (err_code != SR_ERR_OK) {
             /* callback failed but it is the only one so no "abort" event is necessary */
             sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, NULL, "Subscribing to \"%s\" changes failed.", ly_mod->name);
@@ -3121,7 +3124,7 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, struct sr_m
     /* finish with a "done" event just because this event should imitate a regular change */
     ev_sess->ev = SR_SUB_EV_DONE;
     SR_LOG_INF("Triggering \"%s\" \"%s\" event on enabled data.", ly_mod->name, sr_ev2str(ev_sess->ev));
-    callback(ev_sess, ly_mod->name, xpath, sr_ev2api(ev_sess->ev), 0, private_data);
+    callback(ev_sess, sub_id, ly_mod->name, xpath, sr_ev2api(ev_sess->ev), 0, private_data);
 
 cleanup:
     sr_session_stop(ev_sess);
@@ -3249,6 +3252,13 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         goto cleanup;
     }
 
+    /* get new sub ID */
+    sub_id = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id);
+    if (sub_id == (uint32_t)(ATOMIC_T_MAX - 1)) {
+        /* the value in the main SHM is actually ATOMIC_T_MAX and calling another INC would cause an overflow */
+        ATOMIC_STORE_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id, 1);
+    }
+
     /* find the module in SHM */
     shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
@@ -3265,7 +3275,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
 
         /* call the callback with the current running configuration, keep any used modules locked in mod_info */
         if ((err_info = sr_module_change_subscribe_running_enable(session, &mod_info, ly_mod, xpath, callback,
-                private_data, opts))) {
+                private_data, sub_id, opts))) {
             goto cleanup;
         }
     }
@@ -3275,13 +3285,6 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         if ((err_info = sr_subscr_new(conn, opts, subscription))) {
             goto cleanup;
         }
-    }
-
-    /* get new sub ID */
-    sub_id = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id);
-    if (sub_id == (uint32_t)(ATOMIC_T_MAX - 1)) {
-        /* the value in the main SHM is actually ATOMIC_T_MAX and calling another INC would cause an overflow */
-        ATOMIC_STORE_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id, 1);
     }
 
     /* add module subscription into ext SHM */

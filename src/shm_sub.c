@@ -2293,7 +2293,7 @@ sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t
                     module_name, sr_ev2str(SR_SUB_EV_ABORT), sub_info->request_id, sub_info->priority);
 
             /* call callback */
-            sub->cb(ev_sess, module_name, sub->xpath, sr_ev2api(SR_SUB_EV_ABORT), sub_info->request_id,
+            sub->cb(ev_sess, sub->sub_id, module_name, sub->xpath, sr_ev2api(SR_SUB_EV_ABORT), sub_info->request_id,
                     sub->private_data);
         }
 
@@ -2386,8 +2386,8 @@ process_event:
 
         /* call callback if there are some changes */
         if (sr_shmsub_change_listen_filter_is_valid(change_sub, diff)) {
-            ret = change_sub->cb(ev_sess, change_subs->module_name, change_sub->xpath, sr_ev2api(sub_info.event),
-                    sub_info.request_id, change_sub->private_data);
+            ret = change_sub->cb(ev_sess, change_sub->sub_id, change_subs->module_name, change_sub->xpath,
+                    sr_ev2api(sub_info.event), sub_info.request_id, change_sub->private_data);
         } else {
             /* filtered out */
             ATOMIC_INC_RELAXED(change_sub->filtered_out);
@@ -2667,8 +2667,8 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
 
         /* call callback */
         orig_parent = parent;
-        err_code = oper_sub->cb(ev_sess, oper_subs->module_name, oper_sub->xpath, request_xpath[0] ? request_xpath : NULL,
-                request_id, &parent, oper_sub->private_data);
+        err_code = oper_sub->cb(ev_sess, oper_sub->sub_id, oper_subs->module_name, oper_sub->xpath,
+                request_xpath[0] ? request_xpath : NULL, request_id, &parent, oper_sub->private_data);
 
         /* go again to the top-level root for printing */
         if (parent) {
@@ -2794,8 +2794,8 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
         }
 
         /* callback */
-        *err_code = rpc_sub->tree_cb(ev_sess, rpc_sub->xpath, input_op, sr_ev2api(event), request_id, *output_op,
-                rpc_sub->private_data);
+        *err_code = rpc_sub->tree_cb(ev_sess, rpc_sub->sub_id, rpc_sub->xpath, input_op, sr_ev2api(event), request_id,
+                *output_op, rpc_sub->private_data);
         if (*err_code) {
             goto cleanup;
         }
@@ -2830,8 +2830,8 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
         /* callback */
         output_vals = NULL;
         output_val_count = 0;
-        *err_code = rpc_sub->cb(ev_sess, op_xpath, input_vals, input_val_count, sr_ev2api(event), request_id,
-                &output_vals, &output_val_count, rpc_sub->private_data);
+        *err_code = rpc_sub->cb(ev_sess, rpc_sub->sub_id, op_xpath, input_vals, input_val_count, sr_ev2api(event),
+                request_id, &output_vals, &output_val_count, rpc_sub->private_data);
         if (*err_code) {
             goto cleanup;
         }

@@ -190,10 +190,11 @@ clear_up(void **state)
 }
 
 static int
-dummy_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+dummy_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)module_name;
     (void)xpath;
     (void)event;
@@ -250,10 +251,11 @@ sr_str_del(char *input, const char *open, const char *close)
 
 /* TEST */
 static int
-yang_lib_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
-        uint32_t request_id, struct lyd_node **parent, void *private_data)
+yang_lib_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)module_name;
     (void)xpath;
     (void)request_xpath;
@@ -337,10 +339,11 @@ test_yang_lib(void **state)
 
 /* TEST */
 static int
-dummy_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
-        uint32_t request_id, struct lyd_node **parent, void *private_data)
+dummy_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)module_name;
     (void)xpath;
     (void)request_xpath;
@@ -352,12 +355,12 @@ dummy_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xp
 }
 
 static void
-dummy_notif_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id, const char *path,
+dummy_notif_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *path,
         const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data)
 {
     (void)session;
-    (void)notif_type;
     (void)sub_id;
+    (void)notif_type;
     (void)path;
     (void)values;
     (void)values_cnt;
@@ -366,10 +369,11 @@ dummy_notif_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, u
 }
 
 static int
-dummy_rpc_cb(sr_session_ctx_t *session, const char *op_path, const sr_val_t *input, const size_t input_cnt,
+dummy_rpc_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const sr_val_t *input, const size_t input_cnt,
         sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)op_path;
     (void)input;
     (void)input_cnt;
@@ -801,13 +805,15 @@ test_sr_mon(void **state)
 
 /* TEST */
 static int
-enabled_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+enabled_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
 {
     sr_change_oper_t op;
     sr_change_iter_t *iter;
     sr_val_t *old_val, *new_val;
     int ret, *called = (int *)private_data;
+
+    (void)sub_id;
 
     assert_int_equal(request_id, 0);
 
@@ -1032,15 +1038,17 @@ test_enabled_partial(void **state)
 
 /* TEST */
 static int
-simple_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
-        uint32_t request_id, struct lyd_node **parent, void *private_data)
+simple_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     const struct ly_ctx *ly_ctx;
 
-    assert_string_equal(request_xpath, "/ietf-interfaces:*");
-    assert_int_equal(sr_session_get_event_nc_id(session), 64);
+    (void)sub_id;
     (void)request_id;
     (void)private_data;
+
+    assert_string_equal(request_xpath, "/ietf-interfaces:*");
+    assert_int_equal(sr_session_get_event_nc_id(session), 64);
 
     ly_ctx = sr_get_context(sr_session_get_connection(session));
 
@@ -1148,10 +1156,11 @@ test_simple(void **state)
 
 /* TEST */
 static int
-fail_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
-        uint32_t request_id, struct lyd_node **parent, void *private_data)
+fail_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)request_id;
     (void)private_data;
 
@@ -1198,11 +1207,12 @@ test_fail(void **state)
 
 /* TEST */
 static int
-config_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
-        uint32_t request_id, struct lyd_node **parent, void *private_data)
+config_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     const struct ly_ctx *ly_ctx;
 
+    (void)sub_id;
     (void)request_id;
     (void)private_data;
 
@@ -1279,10 +1289,11 @@ test_config(void **state)
 
 /* TEST */
 static int
-list_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
-        uint32_t request_id, struct lyd_node **parent, void *private_data)
+list_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)request_id;
     (void)private_data;
 
@@ -1371,11 +1382,12 @@ test_list(void **state)
 
 /* TEST */
 static int
-nested_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
-        uint32_t request_id, struct lyd_node **parent, void *private_data)
+nested_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     const struct ly_ctx *ly_ctx;
 
+    (void)sub_id;
     (void)request_id;
     (void)private_data;
 
@@ -1493,11 +1505,12 @@ test_nested(void **state)
 
 /* TEST */
 static int
-invalid_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
-        uint32_t request_id, struct lyd_node **parent, void *private_data)
+invalid_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     const struct ly_ctx *ly_ctx;
 
+    (void)sub_id;
     (void)request_id;
     (void)private_data;
 
@@ -1563,11 +1576,12 @@ test_invalid(void **state)
 
 /* TEST */
 static int
-mixed_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
-        uint32_t request_id, struct lyd_node **parent, void *private_data)
+mixed_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     const struct ly_ctx *ly_ctx;
 
+    (void)sub_id;
     (void)request_id;
     (void)private_data;
 
@@ -1660,12 +1674,13 @@ test_mixed(void **state)
 
 /* TEST */
 static int
-xpath_check_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
-        uint32_t request_id, struct lyd_node **parent, void *private_data)
+xpath_check_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
     (void)session;
+    (void)sub_id;
     (void)module_name;
     (void)xpath;
     (void)request_xpath;
@@ -1733,12 +1748,13 @@ test_xpath_check(void **state)
 
 /* TEST */
 static int
-state_only_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
-        uint32_t request_id, struct lyd_node **parent, void *private_data)
+state_only_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     const struct ly_ctx *ly_ctx;
 
+    (void)sub_id;
     (void)request_xpath;
     (void)request_id;
 
@@ -2133,7 +2149,7 @@ test_conn_owner2(void **state)
 
 /* TEST */
 static int
-oper_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+oper_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
@@ -2142,6 +2158,7 @@ oper_change_cb(sr_session_ctx_t *session, const char *module_name, const char *x
     sr_val_t *old_val, *new_val;
     int ret;
 
+    (void)sub_id;
     (void)request_id;
 
     if (!strcmp(xpath, "/ietf-interfaces:interfaces-state")) {
@@ -3167,7 +3184,7 @@ test_stored_diff_merge_userord(void **state)
 
 /* TEST */
 static int
-change_cb_stored_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+change_cb_stored_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
@@ -3178,6 +3195,7 @@ change_cb_stored_cb(sr_session_ctx_t *session, const char *module_name, const ch
     char *str;
     int ret;
 
+    (void)sub_id;
     (void)request_id;
 
     assert_string_equal(module_name, "ietf-interfaces");
@@ -3416,11 +3434,12 @@ test_default_when(void **state)
 
 /* TEST */
 static int
-nested_default_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
-        uint32_t request_id, struct lyd_node **parent, void *private_data)
+nested_default_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     const struct ly_ctx *ly_ctx;
 
+    (void)sub_id;
     (void)request_id;
     (void)private_data;
 
@@ -3541,10 +3560,11 @@ test_disabled_default(void **state)
 
 /* TEST */
 static int
-merge_flag_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
-        uint32_t request_id, struct lyd_node **parent, void *private_data)
+merge_flag_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)request_id;
     (void)private_data;
 
@@ -3639,12 +3659,13 @@ test_merge_flag(void **state)
 
 /* TEST */
 static int
-state_default_merge_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
-        uint32_t request_id, struct lyd_node **parent, void *private_data)
+state_default_merge_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     struct lyd_node *node;
 
     (void)session;
+    (void)sub_id;
     (void)request_id;
     (void)private_data;
 

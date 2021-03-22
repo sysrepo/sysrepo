@@ -1363,6 +1363,7 @@ typedef struct sr_change_iter_s sr_change_iter_t;
  *
  * @param[in] session Implicit session (do not stop) with information about the changed data (retrieved by
  * ::sr_get_changes_iter) and the event originator session IDs.
+ * @param[in] sub_id Subscription ID.
  * @param[in] module_name Name of the module where the change has occurred.
  * @param[in] xpath [XPath](@ref paths) used when subscribing, NULL if the whole module was subscribed to.
  * @param[in] event Type of the callback event that has occurred.
@@ -1371,7 +1372,7 @@ typedef struct sr_change_iter_s sr_change_iter_t;
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_module_change_subscribe call.
  * @return User error code (::SR_ERR_OK on success).
  */
-typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, const char *module_name, const char *xpath,
+typedef int (*sr_module_change_cb)(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data);
 
 /**
@@ -1524,6 +1525,7 @@ void sr_free_change_iter(sr_change_iter_t *iter);
  * @note Callback must not modify any RPC/action subscriptions, it would result in a deadlock.
  *
  * @param[in] session Implicit session (do not stop) with information about event originator session IDs.
+ * @param[in] sub_id Subscription ID.
  * @param[in] xpath Full operation [xpath](@ref paths) identifying the exact RPC/action executed.
  * @param[in] input Array of input parameters.
  * @param[in] input_cnt Number of input parameters.
@@ -1535,8 +1537,9 @@ void sr_free_change_iter(sr_change_iter_t *iter);
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_rpc_subscribe call.
  * @return User error code (::SR_ERR_OK on success).
  */
-typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
-        sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data);
+typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, uint32_t sub_id, const char *xpath, const sr_val_t *input,
+        const size_t input_cnt, sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt,
+        void *private_data);
 
 /**
  * @brief Callback to be called for the delivery of an RPC/action. Data are represented as _libyang_ subtrees.
@@ -1544,6 +1547,7 @@ typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *xpath, const sr_
  * @note Callback must not modify any RPC/action subscriptions, it would result in a deadlock.
  *
  * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
+ * @param[in] sub_id Subscription ID.
  * @param[in] op_path Simple operation [path](@ref paths) identifying the RPC/action.
  * @param[in] input Data tree of input parameters. Always points to the __RPC/action__ itself, even for nested operations.
  * @param[in] event Type of the callback event that has occurred.
@@ -1552,7 +1556,7 @@ typedef int (*sr_rpc_cb)(sr_session_ctx_t *session, const char *xpath, const sr_
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_rpc_subscribe_tree call.
  * @return User error code (::SR_ERR_OK on success).
  */
-typedef int (*sr_rpc_tree_cb)(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input,
+typedef int (*sr_rpc_tree_cb)(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const struct lyd_node *input,
         sr_event_t event, uint32_t request_id, struct lyd_node *output, void *private_data);
 
 /**
@@ -1663,8 +1667,8 @@ typedef enum sr_ev_notif_type_e {
  * @note Callback must not modify the same module notification subscriptions, it would result in a deadlock.
  *
  * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
- * @param[in] notif_type Type of the notification.
  * @param[in] sub_id Subscription ID.
+ * @param[in] notif_type Type of the notification.
  * @param[in] xpath Full operation [xpath](@ref paths) identifying the exact notification executed.
  * @param[in] values Array of all nodes that hold some data in event notification subtree.
  * @param[in] values_cnt Number of items inside the values array.
@@ -1672,7 +1676,7 @@ typedef enum sr_ev_notif_type_e {
  * @param[in] private_data Private context opaque to sysrepo,
  * as passed to ::sr_event_notif_subscribe call.
  */
-typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id,
+typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
         const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data);
 
 /**
@@ -1681,13 +1685,13 @@ typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, const sr_ev_notif_t
  * @note Callback must not modify the same module notification subscriptions, it would result in a deadlock.
  *
  * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
- * @param[in] notif_type Type of the notification.
  * @param[in] sub_id Subscription ID.
+ * @param[in] notif_type Type of the notification.
  * @param[in] notif Notification data tree. Always points to the __notification__ itself, even for nested ones.
  * @param[in] timestamp Time when the notification was generated
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_event_notif_subscribe_tree call.
  */
-typedef void (*sr_event_notif_tree_cb)(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id,
+typedef void (*sr_event_notif_tree_cb)(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
         const struct lyd_node *notif, time_t timestamp, void *private_data);
 
 /**
@@ -1828,6 +1832,7 @@ int sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uin
  * @note Callback must not modify the same module operational subscriptions, it would result in a deadlock.
  *
  * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
+ * @param[in] sub_id Subscription ID.
  * @param[in] module_name Name of the affected module.
  * @param[in] path [Path](@ref paths) identifying the subtree that is supposed to be provided, same as the one used
  * for the subscription.
@@ -1839,7 +1844,7 @@ int sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uin
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_oper_get_items_subscribe call.
  * @return User error code (::SR_ERR_OK on success).
  */
-typedef int (*sr_oper_get_items_cb)(sr_session_ctx_t *session, const char *module_name, const char *path,
+typedef int (*sr_oper_get_items_cb)(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *path,
         const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data);
 
 /**

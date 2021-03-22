@@ -174,7 +174,7 @@ ev_to_str(sr_event_t ev)
 }
 
 static int
-module_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+module_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
 {
     sr_change_iter_t *it = NULL;
@@ -184,6 +184,7 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, const char 
     sr_val_t *old_value = NULL;
     sr_val_t *new_value = NULL;
 
+    (void)sub_id;
     (void)request_id;
     (void)private_data;
 

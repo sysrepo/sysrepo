@@ -116,12 +116,13 @@ print_val(const sr_val_t *value)
 }
 
 static int
-rpc_cb(sr_session_ctx_t *session, const char *path, const sr_val_t *input, const size_t input_cnt,
+rpc_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *path, const sr_val_t *input, const size_t input_cnt,
         sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data)
 {
     size_t i;
 
     (void)session;
+    (void)sub_id;
     (void)event;
     (void)request_id;
     (void)private_data;

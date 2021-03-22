@@ -169,7 +169,7 @@ test_cached_datastore(void **state)
 
 /* TEST */
 static int
-enable_cached_get_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+enable_cached_get_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
 {
     sr_val_t *values = NULL;
@@ -177,6 +177,7 @@ enable_cached_get_cb(sr_session_ctx_t *session, const char *module_name, const c
     int ret;
     char *xp;
 
+    (void)sub_id;
     (void)xpath;
     (void)event;
     (void)request_id;
@@ -297,10 +298,11 @@ test_explicit_default(void **state)
 
 /* TEST */
 static int
-dummy_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+dummy_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)module_name;
     (void)xpath;
     (void)event;
@@ -311,13 +313,14 @@ dummy_change_cb(sr_session_ctx_t *session, const char *module_name, const char *
 }
 
 static int
-union_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
-        uint32_t request_id, struct lyd_node **parent, void *private_data)
+union_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     const struct ly_ctx *ctx;
     const struct lys_module *mod;
 
     (void)session;
+    (void)sub_id;
     (void)request_xpath;
     (void)request_id;
     (void)parent;

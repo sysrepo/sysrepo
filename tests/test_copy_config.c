@@ -149,7 +149,7 @@ teardown_f(void **state)
 
 /* TEST */
 static int
-module_empty_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+module_empty_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
@@ -158,9 +158,11 @@ module_empty_cb(sr_session_ctx_t *session, const char *module_name, const char *
     sr_val_t *old_val, *new_val;
     int ret;
 
+    (void)sub_id;
+    (void)request_id;
+
     assert_string_equal(module_name, "ietf-interfaces");
     assert_null(xpath);
-    (void)request_id;
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
@@ -519,7 +521,7 @@ test_empty(void **state)
 
 /* TEST */
 static int
-module_simple_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+module_simple_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
@@ -528,9 +530,11 @@ module_simple_cb(sr_session_ctx_t *session, const char *module_name, const char 
     sr_val_t *old_val, *new_val;
     int ret;
 
+    (void)sub_id;
+    (void)request_id;
+
     assert_string_equal(module_name, "ietf-interfaces");
     assert_null(xpath);
-    (void)request_id;
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
@@ -859,14 +863,16 @@ test_simple(void **state)
 
 /* TEST */
 static int
-module_fail_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+module_fail_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
 
+    (void)sub_id;
+    (void)request_id;
+
     assert_string_equal(module_name, "ietf-interfaces");
     assert_null(xpath);
-    (void)request_id;
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
@@ -968,7 +974,7 @@ test_fail(void **state)
 
 /* TEST */
 static int
-module_userord_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+module_userord_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
@@ -977,9 +983,11 @@ module_userord_cb(sr_session_ctx_t *session, const char *module_name, const char
     sr_val_t *old_val, *new_val;
     int ret;
 
+    (void)sub_id;
+    (void)request_id;
+
     assert_string_equal(module_name, "test");
     assert_null(xpath);
-    (void)request_id;
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
@@ -1234,7 +1242,7 @@ test_userord(void **state)
 
 /* TEST */
 static int
-module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+module_replace_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
@@ -1243,9 +1251,10 @@ module_replace_cb(sr_session_ctx_t *session, const char *module_name, const char
     sr_val_t *old_val, *new_val;
     int ret;
 
-    assert_null(xpath);
-
+    (void)sub_id;
     (void)request_id;
+
+    assert_null(xpath);
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
@@ -1589,8 +1598,8 @@ test_replace(void **state)
 
 /* TEST */
 static int
-module_replace_dflt_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_ctx)
+module_replace_dflt_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
     sr_change_oper_t op;
@@ -1598,11 +1607,12 @@ module_replace_dflt_cb(sr_session_ctx_t *session, const char *module_name, const
     sr_val_t *old_val, *new_val;
     int ret;
 
-    assert_string_equal(module_name, "ietf-interfaces");
-    assert_null(xpath);
-
+    (void)sub_id;
     (void)event;
     (void)request_id;
+
+    assert_string_equal(module_name, "ietf-interfaces");
+    assert_null(xpath);
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
@@ -1838,8 +1848,8 @@ test_replace_dflt(void **state)
 
 /* TEST */
 static int
-module_replace_case_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_ctx)
+module_replace_case_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
     sr_change_oper_t op;
@@ -1848,11 +1858,12 @@ module_replace_case_cb(sr_session_ctx_t *session, const char *module_name, const
     struct lyd_node *data;
     int ret;
 
-    assert_string_equal(module_name, "list-case");
-    assert_null(xpath);
-
+    (void)sub_id;
     (void)event;
     (void)request_id;
+
+    assert_string_equal(module_name, "list-case");
+    assert_null(xpath);
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
@@ -2020,8 +2031,8 @@ test_replace_case(void **state)
 
 /* TEST */
 static int
-module_replace_when_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_ctx)
+module_replace_when_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_ctx)
 {
     struct state *st = (struct state *)private_ctx;
     sr_change_oper_t op;
@@ -2030,10 +2041,11 @@ module_replace_when_cb(sr_session_ctx_t *session, const char *module_name, const
     struct lyd_node *data;
     int ret;
 
-    assert_null(xpath);
-
+    (void)sub_id;
     (void)event;
     (void)request_id;
+
+    assert_null(xpath);
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:

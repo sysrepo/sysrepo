@@ -140,13 +140,14 @@ clear_ops(void **state)
 
 /* TEST */
 static int
-rpc_fail_cb(sr_session_ctx_t *session, const char *xpath, const struct lyd_node *input, sr_event_t event,
+rpc_fail_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *xpath, const struct lyd_node *input, sr_event_t event,
         uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     char *str1;
     const char *str2;
     int ret;
 
+    (void)sub_id;
     (void)event;
     (void)request_id;
     (void)output;
@@ -209,12 +210,13 @@ test_fail(void **state)
 
 /* TEST */
 static int
-rpc_rpc_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt, sr_event_t event,
-        uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data)
+rpc_rpc_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *xpath, const sr_val_t *input, const size_t input_cnt,
+        sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data)
 {
     static int rpc2_called = 0;
 
     (void)session;
+    (void)sub_id;
     (void)event;
     (void)request_id;
     (void)private_data;
@@ -271,10 +273,11 @@ rpc_rpc_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, 
 }
 
 static int
-module_change_dummy_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_change_dummy_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)module_name;
     (void)xpath;
     (void)event;
@@ -411,8 +414,8 @@ test_rpc(void **state)
 
 /* TEST */
 static int
-rpc_action_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
-        uint32_t request_id, struct lyd_node *output, void *private_data)
+rpc_action_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const struct lyd_node *input,
+        sr_event_t event, uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     struct lyd_node *node;
     char *str1;
@@ -420,6 +423,7 @@ rpc_action_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_n
     LY_ERR ret;
 
     (void)session;
+    (void)sub_id;
     (void)event;
     (void)request_id;
     (void)private_data;
@@ -528,14 +532,15 @@ test_action(void **state)
 
 /* TEST */
 static int
-rpc_action_pred_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
-        uint32_t request_id, struct lyd_node *output, void *private_data)
+rpc_action_pred_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const struct lyd_node *input,
+        sr_event_t event, uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     char *str1;
     const char *str2;
     LY_ERR ret;
 
     (void)session;
+    (void)sub_id;
     (void)event;
     (void)request_id;
     (void)output;
@@ -647,12 +652,13 @@ test_action_pred(void **state)
 
 /* TEST */
 static int
-rpc_multi_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
-        uint32_t request_id, struct lyd_node *output, void *private_data)
+rpc_multi_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const struct lyd_node *input,
+        sr_event_t event, uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
     (void)session;
+    (void)sub_id;
     (void)op_path;
     (void)input;
     (void)event;
@@ -755,14 +761,15 @@ test_multi(void **state)
 
 /* TEST */
 static int
-rpc_multi_fail0_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
-        uint32_t request_id, struct lyd_node *output, void *private_data)
+rpc_multi_fail0_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const struct lyd_node *input,
+        sr_event_t event, uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     static int call_no = 1;
     int ret = SR_ERR_OK;
 
     (void)session;
+    (void)sub_id;
     (void)op_path;
     (void)input;
     (void)request_id;
@@ -793,14 +800,15 @@ rpc_multi_fail0_cb(sr_session_ctx_t *session, const char *op_path, const struct 
 }
 
 static int
-rpc_multi_fail1_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
-        uint32_t request_id, struct lyd_node *output, void *private_data)
+rpc_multi_fail1_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const struct lyd_node *input,
+        sr_event_t event, uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     static int call_no = 1;
     int ret = SR_ERR_OK;
 
     (void)session;
+    (void)sub_id;
     (void)op_path;
     (void)input;
     (void)request_id;
@@ -840,14 +848,15 @@ rpc_multi_fail1_cb(sr_session_ctx_t *session, const char *op_path, const struct 
 }
 
 static int
-rpc_multi_fail2_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
-        uint32_t request_id, struct lyd_node *output, void *private_data)
+rpc_multi_fail2_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const struct lyd_node *input,
+        sr_event_t event, uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     static int call_no = 1;
     int ret = SR_ERR_OK;
 
     (void)session;
+    (void)sub_id;
     (void)op_path;
     (void)input;
     (void)request_id;
@@ -984,12 +993,13 @@ test_multi_fail(void **state)
 
 /* TEST */
 static int
-action_deps_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
-        uint32_t request_id, struct lyd_node *output, void *private_data)
+action_deps_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const struct lyd_node *input,
+        sr_event_t event, uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
     (void)session;
+    (void)sub_id;
     (void)op_path;
     (void)input;
     (void)event;
@@ -1065,12 +1075,14 @@ test_action_deps(void **state)
 
 /* TEST */
 static int
-action_change_config_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
-        sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data)
+action_change_config_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *xpath, const sr_val_t *input,
+        const size_t input_cnt, sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt,
+        void *private_data)
 {
     struct state *st = (struct state *)private_data;
     int ret;
 
+    (void)sub_id;
     (void)input;
     (void)input_cnt;
     (void)event;
@@ -1150,12 +1162,13 @@ test_action_change_config(void **state)
 
 /* TEST */
 static int
-rpc_shelve_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
-        uint32_t request_id, struct lyd_node *output, void *private_data)
+rpc_shelve_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const struct lyd_node *input,
+        sr_event_t event, uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
     (void)session;
+    (void)sub_id;
     (void)op_path;
     (void)input;
     (void)event;
@@ -1261,10 +1274,11 @@ test_rpc_shelve(void **state)
 
 /* TEST */
 static int
-rpc_dummy_cb(sr_session_ctx_t *session, const char *xpath, const sr_val_t *input, const size_t input_cnt,
+rpc_dummy_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *xpath, const sr_val_t *input, const size_t input_cnt,
         sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)xpath;
     (void)input;
     (void)input_cnt;
@@ -1434,10 +1448,11 @@ test_rpc_action_with_no_thread(void **state)
 
 /* TEST */
 static int
-oper_rpc_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
-        uint32_t request_id, struct lyd_node **parent, void *private_data)
+oper_rpc_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)module_name;
     (void)xpath;
     (void)request_xpath;
@@ -1450,13 +1465,14 @@ oper_rpc_oper_cb(sr_session_ctx_t *session, const char *module_name, const char 
 }
 
 static int
-rpc_rpc_oper_cb(sr_session_ctx_t *session, const char *op_path, const struct lyd_node *input, sr_event_t event,
-        uint32_t request_id, struct lyd_node *output, void *private_data)
+rpc_rpc_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const struct lyd_node *input,
+        sr_event_t event, uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     struct lyd_node *node;
 
     (void)session;
+    (void)sub_id;
     (void)op_path;
     (void)input;
     (void)event;

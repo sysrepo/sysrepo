@@ -26,10 +26,11 @@
 #include "sysrepo.h"
 
 static int
-dp_get_items_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
-        uint32_t request_id, struct lyd_node **parent, void *private_data)
+dp_get_items_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)request_xpath;
     (void)request_id;
     (void)private_data;

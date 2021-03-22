@@ -85,13 +85,14 @@ oven_thread(void *arg)
 }
 
 static int
-oven_config_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+oven_config_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     int rc;
     sr_val_t *val;
     pthread_t tid;
 
+    (void)sub_id;
     (void)module_name;
     (void)xpath;
     (void)event;
@@ -145,12 +146,13 @@ sys_error:
 }
 
 static int
-oven_state_cb(sr_session_ctx_t *session, const char *module_name, const char *path, const char *request_xpath,
-        uint32_t request_id, struct lyd_node **parent, void *private_data)
+oven_state_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *path,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     char str[32];
 
     (void)session;
+    (void)sub_id;
     (void)module_name;
     (void)path;
     (void)request_xpath;
@@ -165,10 +167,12 @@ oven_state_cb(sr_session_ctx_t *session, const char *module_name, const char *pa
 }
 
 static int
-oven_insert_food_cb(sr_session_ctx_t *session, const char *path, const sr_val_t *input, const size_t input_cnt,
-        sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data)
+oven_insert_food_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *path, const sr_val_t *input,
+        const size_t input_cnt, sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt,
+        void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)path;
     (void)input;
     (void)input_cnt;
@@ -199,10 +203,12 @@ oven_insert_food_cb(sr_session_ctx_t *session, const char *path, const sr_val_t 
 }
 
 static int
-oven_remove_food_cb(sr_session_ctx_t *session, const char *path, const sr_val_t *input, const size_t input_cnt,
-        sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data)
+oven_remove_food_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *path, const sr_val_t *input,
+        const size_t input_cnt, sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt,
+        void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)path;
     (void)input;
     (void)input_cnt;

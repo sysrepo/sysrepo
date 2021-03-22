@@ -135,8 +135,8 @@ teardown_f(void **state)
 
 /* TEST */
 static int
-module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_change_done_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     sr_change_oper_t op;
@@ -148,6 +148,7 @@ module_change_done_cb(sr_session_ctx_t *session, const char *module_name, const 
     bool prev_dflt;
     int ret;
 
+    (void)sub_id;
     (void)request_id;
 
     assert_int_equal(sr_session_get_event_nc_id(session), 52);
@@ -552,7 +553,7 @@ test_change_done(void **state)
 
 /* TEST */
 static int
-module_update_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+module_update_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
@@ -564,6 +565,7 @@ module_update_cb(sr_session_ctx_t *session, const char *module_name, const char 
     const char *str2;
     int ret;
 
+    (void)sub_id;
     (void)request_id;
 
     assert_string_equal(module_name, "ietf-interfaces");
@@ -865,8 +867,8 @@ test_update(void **state)
 
 /* TEST */
 static int
-module_update2_l1_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_update2_l1_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     sr_change_oper_t op;
@@ -875,6 +877,7 @@ module_update2_l1_cb(sr_session_ctx_t *session, const char *module_name, const c
     struct lyd_node *subtree;
     int ret;
 
+    (void)sub_id;
     (void)request_id;
 
     assert_string_equal(module_name, "when1");
@@ -912,8 +915,8 @@ module_update2_l1_cb(sr_session_ctx_t *session, const char *module_name, const c
 }
 
 static int
-module_update2_l2_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_update2_l2_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     sr_change_oper_t op;
@@ -922,6 +925,7 @@ module_update2_l2_cb(sr_session_ctx_t *session, const char *module_name, const c
     struct lyd_node *subtree;
     int ret;
 
+    (void)sub_id;
     (void)request_id;
 
     assert_string_equal(module_name, "when1");
@@ -959,7 +963,7 @@ module_update2_l2_cb(sr_session_ctx_t *session, const char *module_name, const c
 }
 
 static int
-module_update2_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+module_update2_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
@@ -968,6 +972,7 @@ module_update2_cb(sr_session_ctx_t *session, const char *module_name, const char
     sr_val_t *old_val, *new_val;
     int ret;
 
+    (void)sub_id;
     (void)request_id;
 
     assert_string_equal(module_name, "when1");
@@ -1257,13 +1262,14 @@ test_update2(void **state)
 
 /* TEST */
 static int
-module_update_fail_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_update_fail_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     int ret = SR_ERR_OK;
 
     (void)session;
+    (void)sub_id;
     (void)request_id;
 
     assert_string_equal(module_name, "ietf-interfaces");
@@ -1387,8 +1393,8 @@ test_update_fail(void **state)
 
 /* TEST */
 static int
-module_test_change_fail_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_test_change_fail_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     sr_change_oper_t op;
@@ -1396,6 +1402,7 @@ module_test_change_fail_cb(sr_session_ctx_t *session, const char *module_name, c
     sr_val_t *old_val, *new_val;
     int ret;
 
+    (void)sub_id;
     (void)request_id;
 
     assert_string_equal(module_name, "test");
@@ -1461,8 +1468,8 @@ module_test_change_fail_cb(sr_session_ctx_t *session, const char *module_name, c
 }
 
 static int
-module_ifc_change_fail_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_ifc_change_fail_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     sr_change_oper_t op;
@@ -1470,6 +1477,7 @@ module_ifc_change_fail_cb(sr_session_ctx_t *session, const char *module_name, co
     sr_val_t *old_val, *new_val;
     int ret, rc = SR_ERR_OK;
 
+    (void)sub_id;
     (void)request_id;
 
     assert_string_equal(module_name, "ietf-interfaces");
@@ -1659,13 +1667,14 @@ module_ifc_change_fail_cb(sr_session_ctx_t *session, const char *module_name, co
 }
 
 static int
-module_when1_change_fail_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_when1_change_fail_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     int ret = SR_ERR_OK;
 
     (void)session;
+    (void)sub_id;
     (void)request_id;
 
     assert_string_equal(module_name, "when1");
@@ -1841,10 +1850,11 @@ test_change_fail(void **state)
 
 /* TEST */
 static int
-dummy_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+dummy_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)module_name;
     (void)xpath;
     (void)event;
@@ -1855,8 +1865,8 @@ dummy_change_cb(sr_session_ctx_t *session, const char *module_name, const char *
 }
 
 static int
-test_change_fail2_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+test_change_fail2_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     int ret;
     sr_change_oper_t op;
@@ -1864,6 +1874,7 @@ test_change_fail2_cb(sr_session_ctx_t *session, const char *module_name, const c
     sr_val_t *old_value = NULL;
     sr_val_t *new_value = NULL;
 
+    (void)sub_id;
     (void)module_name;
     (void)event;
     (void)request_id;
@@ -2123,13 +2134,14 @@ test_change_fail2(void **state)
 
 /* TEST */
 static int
-test_change_fail_priority_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+test_change_fail_priority_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     int ret;
 
     (void)session;
+    (void)sub_id;
     (void)module_name;
     (void)xpath;
     (void)request_id;
@@ -2256,10 +2268,11 @@ test_change_fail_priority(void **state)
 
 /* TEST */
 static int
-module_no_changes_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_no_changes_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)module_name;
     (void)xpath;
     (void)event;
@@ -2427,8 +2440,8 @@ test_no_changes(void **state)
 
 /* TEST */
 static int
-module_change_any_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_change_any_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     sr_change_oper_t op;
@@ -2440,6 +2453,7 @@ module_change_any_cb(sr_session_ctx_t *session, const char *module_name, const c
     bool prev_dflt;
     int ret;
 
+    (void)sub_id;
     (void)request_id;
 
     assert_string_equal(module_name, "test");
@@ -2730,8 +2744,8 @@ test_change_any(void **state)
 
 /* TEST */
 static int
-module_change_dflt_leaf_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_change_dflt_leaf_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     sr_change_oper_t op;
@@ -2740,6 +2754,7 @@ module_change_dflt_leaf_cb(sr_session_ctx_t *session, const char *module_name, c
     struct lyd_node *data;
     int ret;
 
+    (void)sub_id;
     (void)request_id;
 
     assert_string_equal(module_name, "defaults");
@@ -3348,8 +3363,8 @@ test_change_dflt_leaf(void **state)
 
 /* TEST */
 static int
-module_change_dflt_leaflist_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_change_dflt_leaflist_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     sr_change_oper_t op;
@@ -3358,6 +3373,7 @@ module_change_dflt_leaflist_cb(sr_session_ctx_t *session, const char *module_nam
     struct lyd_node *data;
     int ret;
 
+    (void)sub_id;
     (void)request_id;
 
     assert_string_equal(module_name, "defaults");
@@ -4058,8 +4074,8 @@ test_change_dflt_leaflist(void **state)
 
 /* TEST */
 static int
-module_change_dflt_choice_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_change_dflt_choice_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     sr_change_oper_t op;
@@ -4068,6 +4084,7 @@ module_change_dflt_choice_cb(sr_session_ctx_t *session, const char *module_name,
     struct lyd_node *data;
     int ret;
 
+    (void)sub_id;
     (void)request_id;
 
     assert_string_equal(module_name, "defaults");
@@ -4304,8 +4321,8 @@ test_change_dflt_choice(void **state)
 
 /* TEST */
 static int
-module_change_done_when_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_change_done_when_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     sr_change_oper_t op;
@@ -4313,6 +4330,7 @@ module_change_done_when_cb(sr_session_ctx_t *session, const char *module_name, c
     sr_val_t *old_val, *new_val;
     int ret;
 
+    (void)sub_id;
     (void)request_id;
 
     assert_null(xpath);
@@ -4717,8 +4735,8 @@ test_change_done_when(void **state)
 
 /* TEST */
 static int
-module_change_done_xpath_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_change_done_xpath_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     sr_change_oper_t op;
@@ -4726,6 +4744,7 @@ module_change_done_xpath_cb(sr_session_ctx_t *session, const char *module_name, 
     sr_val_t *old_val, *new_val;
     int ret;
 
+    (void)sub_id;
     (void)request_id;
 
     assert_string_equal(module_name, "test");
@@ -5116,8 +5135,8 @@ test_change_done_xpath(void **state)
 
 /* TEST */
 static int
-module_change_unlocked_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_change_unlocked_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     sr_session_ctx_t *sess;
@@ -5125,6 +5144,7 @@ module_change_unlocked_cb(sr_session_ctx_t *session, const char *module_name, co
     int ret;
 
     (void)session;
+    (void)sub_id;
     (void)request_id;
 
     assert_string_equal(module_name, "test");
@@ -5229,12 +5249,13 @@ test_change_unlocked(void **state)
 
 /* TEST */
 static int
-module_change_timeout_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_change_timeout_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
     (void)session;
+    (void)sub_id;
     (void)xpath;
     (void)request_id;
 
@@ -5380,12 +5401,13 @@ test_change_timeout(void **state)
 
 /* TEST */
 static int
-module_change_order_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_change_order_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
     (void)session;
+    (void)sub_id;
     (void)xpath;
     (void)request_id;
 
@@ -5540,8 +5562,8 @@ test_change_order(void **state)
 
 /* TEST */
 static int
-module_change_userord_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_change_userord_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     sr_change_oper_t op;
@@ -5550,6 +5572,7 @@ module_change_userord_cb(sr_session_ctx_t *session, const char *module_name, con
     size_t val_count;
     int ret;
 
+    (void)sub_id;
     (void)request_id;
     (void)xpath;
 
@@ -5808,8 +5831,8 @@ test_change_userord(void **state)
 
 /* TEST */
 static int
-module_change_enabled_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_change_enabled_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     sr_change_oper_t op;
@@ -5817,6 +5840,7 @@ module_change_enabled_cb(sr_session_ctx_t *session, const char *module_name, con
     sr_val_t *old_val, *new_val;
     int ret;
 
+    (void)sub_id;
     (void)request_id;
     (void)xpath;
 

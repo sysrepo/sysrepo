@@ -1432,7 +1432,7 @@ sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_notif_cb cb, sr_event
 
     if (tree_cb) {
         /* callback */
-        tree_cb(ev_sess, notif_type, sub_id, notif_op, notif_ts, private_data);
+        tree_cb(ev_sess, sub_id, notif_type, notif_op, notif_ts, private_data);
     } else {
         if (notif_op) {
             /* prepare XPath */
@@ -1462,7 +1462,7 @@ sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_notif_cb cb, sr_event
         }
 
         /* callback */
-        cb(ev_sess, notif_type, sub_id, notif_xpath, vals, val_count, notif_ts, private_data);
+        cb(ev_sess, sub_id, notif_type, notif_xpath, vals, val_count, notif_ts, private_data);
     }
 
     /* success */

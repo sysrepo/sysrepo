@@ -274,12 +274,12 @@ create_ops_notif(void **state)
 
 /* TEST */
 static void
-notif_dummy_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id, const char *xpath,
+notif_dummy_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
         const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data)
 {
     (void)session;
-    (void)notif_type;
     (void)sub_id;
+    (void)notif_type;
     (void)xpath;
     (void)values;
     (void)values_cnt;
@@ -339,7 +339,7 @@ test_input_parameters(void **state)
 
 /* TEST */
 static void
-notif_simple_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id, const char *xpath,
+notif_simple_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
         const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
@@ -375,10 +375,11 @@ notif_simple_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, 
 }
 
 static int
-module_change_dummy_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data)
+module_change_dummy_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)module_name;
     (void)xpath;
     (void)event;
@@ -499,7 +500,7 @@ test_simple(void **state)
 
 /* TEST */
 static void
-notif_stop_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id,
+notif_stop_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
         const struct lyd_node *notif, time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
@@ -544,7 +545,7 @@ test_stop(void **state)
 
 /* TEST */
 static void
-notif_replay_simple_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id,
+notif_replay_simple_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
         const struct lyd_node *notif, time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
@@ -626,7 +627,7 @@ test_replay_simple(void **state)
 
 /* TEST */
 static void
-notif_replay_interval_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id,
+notif_replay_interval_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
         const struct lyd_node *notif, time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
@@ -789,7 +790,7 @@ test_replay_interval(void **state)
 
 /* TEST */
 static void
-notif_no_replay_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id,
+notif_no_replay_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
         const struct lyd_node *notif, time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
@@ -870,12 +871,16 @@ test_no_replay(void **state)
 
 /* TEST */
 static void
-notif_config_change_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id,
+notif_config_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
         const struct lyd_node *notif, time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     char *str1;
     const char *str2;
+
+    (void)session;
+    (void)sub_id;
+    (void)timestamp;
 
     if (notif_type == SR_EV_NOTIF_TERMINATED) {
         /* ignore */
@@ -886,10 +891,6 @@ notif_config_change_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif
     assert_non_null(notif);
     assert_string_equal(notif->schema->name, "netconf-config-change");
     assert_string_equal(lyd_child(notif)->schema->name, "changed-by");
-
-    (void)session;
-    (void)sub_id;
-    (void)timestamp;
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
@@ -1106,14 +1107,14 @@ test_notif_buffer(void **state)
 
 /* TEST */
 static void
-notif_suspend_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id, const char *xpath,
+notif_suspend_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
         const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
+    (void)sub_id;
     (void)values;
     (void)values_cnt;
-    (void)sub_id;
     (void)timestamp;
 
     if (notif_type == SR_EV_NOTIF_TERMINATED) {
@@ -1220,7 +1221,7 @@ test_suspend(void **state)
 
 /* TEST */
 static void
-notif_params_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id, const char *xpath,
+notif_params_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
         const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;

@@ -206,10 +206,11 @@ teardown(void)
 
 /* TEST */
 static int
-rpc_sub_cb(sr_session_ctx_t *session, const char *op_path, const sr_val_t *input, const size_t input_cnt,
+rpc_sub_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const sr_val_t *input, const size_t input_cnt,
         sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)op_path;
     (void)input;
     (void)input_cnt;
@@ -330,10 +331,11 @@ test_rpc_crash1(int rp, int wp)
 }
 
 static int
-rpc_crash_cb(sr_session_ctx_t *session, const char *op_path, const sr_val_t *input, const size_t input_cnt,
+rpc_crash_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const sr_val_t *input, const size_t input_cnt,
         sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)op_path;
     (void)input;
     (void)input_cnt;
@@ -386,10 +388,11 @@ test_rpc_crash2(int rp, int wp)
 
 /* TEST */
 static void
-notif_instid_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, uint32_t sub_id, const char *xpath,
+notif_instid_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
         const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)notif_type;
     (void)sub_id;
     (void)xpath;
@@ -400,10 +403,11 @@ notif_instid_cb(sr_session_ctx_t *session, const sr_ev_notif_type_t notif_type, 
 }
 
 static int
-notif_instid_change_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath,
+notif_instid_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data)
 {
     (void)session;
+    (void)sub_id;
     (void)module_name;
     (void)xpath;
     (void)event;
