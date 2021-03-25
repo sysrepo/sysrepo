@@ -2860,7 +2860,7 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info,
+sr_module_change_subscribe_enable(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info,
         const struct lys_module *ly_mod, const char *xpath, sr_module_change_cb callback, void *private_data, int opts)
 {
     sr_error_info_t *err_info = NULL;
@@ -2869,7 +2869,7 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, struct sr_m
     sr_session_ctx_t *ev_sess = NULL;
     sr_error_t err_code;
 
-    SR_MODINFO_INIT((*mod_info), session->conn, SR_DS_RUNNING, SR_DS_RUNNING);
+    SR_MODINFO_INIT((*mod_info), session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds);
 
     /* create mod_info structure with this module only, do not use cache to allow reading data in the callback
      * (avoid dead-lock) */
@@ -2910,7 +2910,7 @@ sr_module_change_subscribe_running_enable(sr_session_ctx_t *session, struct sr_m
     }
 
     /* create event session */
-    if ((err_info = _sr_session_start(session->conn, SR_DS_RUNNING, SR_SUB_EV_ENABLED, session->sid.sr, session->sid.nc,
+    if ((err_info = _sr_session_start(session->conn, session->ds, SR_SUB_EV_ENABLED, session->sid.sr, session->sid.nc,
             session->sid.user, &ev_sess))) {
         goto cleanup;
     }
@@ -3067,7 +3067,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
-    if ((session->ds == SR_DS_RUNNING) && (opts & SR_SUBSCR_ENABLED)) {
+    if (opts & SR_SUBSCR_ENABLED) {
         /* we need to lock write subscriptions here to keep CHANGE SUB and MODULES lock order */
 
         /* CHANGE SUB WRITE LOCK */
@@ -3077,9 +3077,8 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         }
         chsub_lock_mode = SR_LOCK_WRITE;
 
-        /* call the callback with the current running configuration, keep any used modules locked in mod_info */
-        if ((err_info = sr_module_change_subscribe_running_enable(session, &mod_info, ly_mod, xpath, callback,
-                private_data, opts))) {
+        /* call the callback with the current configuration, keep any used modules locked in mod_info */
+        if ((err_info = sr_module_change_subscribe_enable(session, &mod_info, ly_mod, xpath, callback, private_data, opts))) {
             goto cleanup;
         }
     }
