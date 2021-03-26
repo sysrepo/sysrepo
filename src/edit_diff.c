@@ -3919,39 +3919,103 @@ error:
     return err_info;
 }
 
+/**
+ * @brief Update a stored diff subtree after a connection was terminated.
+ *
+ * @param[in] subtree Subtree to update, may be freed.
+ * @param[in] cid CID of the deleted connection.
+ * @param[in] parent_cid CID effective for (inherited from) the @p subtree parent.
+ * @param[out] child_cid_p CID effective for the @p subtree, 0 if it was deleted.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_diff_del_conn_r(struct lyd_node *subtree, sr_cid_t cid, sr_cid_t parent_cid, sr_cid_t *child_cid_p)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *next, *child;
+    struct lyd_attr *attr;
+    sr_cid_t cur_cid, child_cid, ch_cid;
+    char cid_str[11];
+
+    /* find our CID attribute, if any */
+    for (attr = subtree->attr; attr; attr = attr->next) {
+        if (!strcmp(attr->name, "cid") && !strcmp(attr->annotation->module->name, SR_YANG_MOD)) {
+            break;
+        }
+    }
+    if (attr) {
+        cur_cid = attr->value.uint32;
+    } else {
+        cur_cid = parent_cid;
+    }
+
+    /* process children */
+    child_cid = 0;
+    LY_TREE_FOR_SAFE(sr_lyd_child(subtree, 1), next, child) {
+        if ((err_info = sr_diff_del_conn_r(child, cid, cur_cid, &ch_cid))) {
+            return err_info;
+        }
+
+        /* try to find a child with the parent CID, then we can simply keep it */
+        if (ch_cid && (!child_cid || (child_cid != parent_cid))) {
+            child_cid = ch_cid;
+        }
+    }
+
+    if (cur_cid != cid) {
+        /* this node is not owned by the deleted connection, the subtree is kept */
+        *child_cid_p = cur_cid;
+        return NULL;
+    }
+
+    if (child_cid) {
+        /* this node was "deleted" but there are still some children */
+        if (attr) {
+            lyd_free_attr(lyd_node_module(subtree)->ctx, subtree, attr, 0);
+        }
+        if (parent_cid != child_cid) {
+            /* update the owner of this node */
+            sprintf(cid_str, "%" PRIu32, child_cid);
+            if (!lyd_insert_attr(subtree, NULL, SR_YANG_MOD ":cid", cid_str)) {
+                sr_errinfo_new_ly(&err_info, lyd_node_module(subtree)->ctx);
+                return err_info;
+            }
+        }
+
+        /* this subtree is kept */
+        *child_cid_p = child_cid;
+    } else {
+        /* there are no children left and this node belongs to the deleted connection, remove it */
+        lyd_free(subtree);
+
+        /* this subtree was deleted */
+        *child_cid_p = 0;
+    }
+
+    return NULL;
+}
+
 sr_error_info_t *
 sr_diff_del_conn(struct lyd_node **diff, sr_cid_t cid)
 {
     sr_error_info_t *err_info = NULL;
-    struct ly_set *set = NULL;
-    char *xpath = NULL;
-    uint16_t i;
+    struct lyd_node *next, *elem;
+    sr_cid_t child_cid;
 
     if (!*diff) {
         return NULL;
     }
 
-    if (asprintf(&xpath, "//*[@cid='%" PRIu32 "']", cid) == -1) {
-        SR_ERRINFO_MEM(&err_info);
-        goto cleanup;
-    }
-
-    set = lyd_find_path(*diff, xpath);
-    if (!set) {
-        sr_errinfo_new_ly(&err_info, lyd_node_module(*diff)->ctx);
-        goto cleanup;
-    }
-
-    /* free all subtrees, they cannot overlap */
-    for (i = 0; i < set->number; ++i) {
-        if (*diff == set->set.d[i]) {
-            *diff = (*diff)->next;
+    LY_TREE_FOR_SAFE(*diff, next, elem) {
+        if ((err_info = sr_diff_del_conn_r(elem, cid, 0, &child_cid))) {
+            return err_info;
         }
-        lyd_free(set->set.d[i]);
+
+        if (!child_cid && (*diff == elem)) {
+            /* first top-level node was removed, move the diff */
+            *diff = next;
+        }
     }
 
-cleanup:
-    ly_set_free(set);
-    free(xpath);
-    return err_info;
+    return NULL;
 }
