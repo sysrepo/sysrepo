@@ -116,7 +116,7 @@ test_invalid(void **state)
     int ret;
 
     /* invalid xpath */
-    ret = sr_get_data(st->sess, "name()//.", 0, 0, 0, &data);
+    ret = sr_get_data(st->sess, "/simple:*/name()//.", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_LY);
 }
 

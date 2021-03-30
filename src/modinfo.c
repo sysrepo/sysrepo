@@ -1792,6 +1792,11 @@ sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const struct ly_set *mod_
 
     assert(mi_opts & (SR_MI_PERM_NO | SR_MI_PERM_READ | SR_MI_PERM_WRITE));
 
+    if (!mod_set->count) {
+        /* nothing to add */
+        return NULL;
+    }
+
     if (mi_opts & SR_MI_MOD_DEPS) {
         mod_type = MOD_INFO_DEP;
     } else {

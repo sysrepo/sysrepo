@@ -157,7 +157,7 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig
  * @brief Add new modules and their dependnecies into mod_info, check their permissions, lock, and load their data.
  *
  * @param[in,out] mod_info Mod info to use.
- * @param[in] mod_set Module set with modules to add to @p mod_info. Empty set means add all the modules.
+ * @param[in] mod_set Module set with modules to add to @p mod_info.
  * @param[in] mod_deps Dependency modules to add for each added module. 0 for adding no dependency modules.
  * @param[in] mod_lock Mode of module lock.
  * @param[in] mi_opts Mod info options modifying the default behavior but some SR_MI_PERM_* must always be used.
