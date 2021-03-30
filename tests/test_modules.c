@@ -1586,6 +1586,66 @@ test_update_data_deviation(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
+static void
+test_update_data_no_write_perm(void **state)
+{
+    struct state *st = (struct state *)*state;
+    uint32_t conn_count;
+    struct passwd *pwd;
+    struct group *grp;
+    const char *user;
+    const char *group;
+    int ret;
+
+    /* get user */
+    pwd = getpwuid(getuid());
+    user = pwd->pw_name;
+
+    /* get group */
+    grp = getgrgid(getgid());
+    group = grp->gr_name;
+
+    /* install module with default values */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/defaults.yang", TESTS_DIR "/files", NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(SR_CONN_ERR_ON_SCHED_FAIL, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* change module filesystem permissions to read-only */
+    ret = sr_set_module_access(st->conn, "defaults", user, group, 00400);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* install some module to change context */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/test-cont.yang", TESTS_DIR "/files", NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(SR_CONN_ERR_ON_SCHED_FAIL, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* change module permission to remove the modul */
+    ret = sr_set_module_access(st->conn, "defaults", user, group, 00600);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* clean up */
+    ret = sr_remove_module(st->conn, "defaults");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "test-cont");
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 int
 main(void)
 {
@@ -1608,6 +1668,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_get_module_info, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_feature_dependencies_across_modules, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_update_data_deviation, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_update_data_no_write_perm, setup_f, teardown_f),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
