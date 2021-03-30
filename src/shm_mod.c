@@ -724,6 +724,9 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid)
                 if (ds == SR_DS_CANDIDATE) {
                     /* collect all modules */
                     SR_MODINFO_INIT(mod_info, conn, ds, ds);
+                    if (!mod_set.count) {
+                        sr_ly_set_add_all_modules_with_data(&mod_set, conn->ly_ctx, 0);
+                    }
                     if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_WRITE,
                             SR_MI_DATA_NO | SR_MI_PERM_NO, sid, NULL, NULL, NULL, 0, 0))) {
                         goto cleanup_modules;
@@ -749,6 +752,8 @@ cleanup_modules:
             }
         }
     }
+
+    ly_set_erase(&mod_set, NULL);
 }
 
 sr_error_info_t *
@@ -767,6 +772,7 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_cid_t cid)
     SR_MODINFO_INIT(mod_info, conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL);
     memset(&sid, 0, sizeof sid);
 
+    sr_ly_set_add_all_modules_with_data(&mod_set, conn->ly_ctx, 1);
     if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_WRITE, SR_MI_DATA_NO | SR_MI_PERM_NO, sid,
             NULL, NULL, NULL, 0, 0))) {
         goto cleanup;
@@ -815,6 +821,7 @@ cleanup:
 
     free(path);
     lyd_free_all(diff);
+    ly_set_erase(&mod_set, NULL);
     sr_modinfo_free(&mod_info);
     return err_info;
 }

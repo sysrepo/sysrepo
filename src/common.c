@@ -1807,10 +1807,11 @@ sr_create_startup_file(const struct lys_module *ly_mod)
     }
 
     if (sr_module_is_internal(ly_mod)) {
-        if (!strcmp(ly_mod->name, "sysrepo-monitoring")) {
-            mode = SR_MON_INT_FILE_PERM;
+        if (!strcmp(ly_mod->name, "sysrepo-monitoring") || !strcmp(ly_mod->name, "sysrepo-plugind") ||
+                !strcmp(ly_mod->name, "ietf-yang-library") || !strcmp(ly_mod->name, "ietf-netconf-notifications")) {
+            mode = SR_INTMOD_WITHDATA_FILE_PERM;
         } else {
-            mode = SR_INT_FILE_PERM;
+            mode = SR_INTMOD_NODATA_FILE_PERM;
         }
     } else {
         mode = SR_FILE_PERM;
@@ -5065,6 +5066,36 @@ sr_lyd_print_lyb(const struct lyd_node *data, char **str, uint32_t *len)
     ly_out_free(out, NULL, 0);
 
     return NULL;
+}
+
+void
+sr_ly_set_add_all_modules_with_data(struct ly_set *mod_set, const struct ly_ctx *ly_ctx, int state_data)
+{
+    const struct lys_module *mod;
+    const struct lysc_node *root;
+    uint32_t i = 0;
+
+    while ((mod = ly_ctx_get_module_iter(ly_ctx, &i))) {
+        if (!mod->implemented) {
+            continue;
+        } else if (!strcmp(mod->name, SR_YANG_MOD)) {
+            /* sysrepo module cannot be locked because it is not in SHM with other modules */
+            continue;
+        } else if (!strcmp(mod->name, "ietf-netconf")) {
+            /* ietf-netconf defines data but only internal that should be ignored */
+            continue;
+        }
+
+        LY_LIST_FOR(mod->compiled->data, root) {
+            if (!(root->nodetype & (LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA | LYS_CHOICE))) {
+                continue;
+            }
+
+            if ((root->flags & LYS_CONFIG_W) || (state_data && (root->flags & LYS_CONFIG_R))) {
+                ly_set_add(mod_set, (void *)mod, 1, NULL);
+            }
+        }
+    }
 }
 
 struct lyd_node *
