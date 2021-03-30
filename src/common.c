@@ -4,8 +4,8 @@
  * @brief common routines
  *
  * @copyright
- * Copyright 2018 Deutsche Telekom AG.
- * Copyright 2018 - 2019 CESNET, z.s.p.o.
+ * Copyright 2018 - 2021 Deutsche Telekom AG.
+ * Copyright 2018 - 2021 CESNET, z.s.p.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -577,7 +577,7 @@ sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_
     /* we should always have READ UPGR lock now */
 
     /* create event session */
-    if ((err_info = _sr_session_start(subscr->conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, 0, 0, NULL, &ev_sess))) {
+    if ((err_info = _sr_session_start(subscr->conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, NULL, &ev_sess))) {
         /* special notification will not be sent */
         sr_errinfo_free(&err_info);
     }
@@ -1368,7 +1368,7 @@ cleanup:
                 }
             }
         } else {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Subscription with ID %" PRIu32 " was not found.", sub_id);
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Subscription with ID %" PRIu32 " was not found.", sub_id);
         }
     }
 
@@ -1566,7 +1566,7 @@ sr_ly_ctx_new(struct ly_ctx **ly_ctx)
     free(yang_dir);
 
     if (lyrc) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to create a new libyang context.");
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to create a new libyang context.");
         goto cleanup;
     }
 
@@ -1818,7 +1818,7 @@ sr_create_startup_file(const struct lys_module *ly_mod)
 
     /* print them into the startup file */
     if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, root, O_CREAT | O_EXCL, mode))) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to create startup file of \"%s\".", ly_mod->name);
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to create startup file of \"%s\".", ly_mod->name);
         goto cleanup;
     }
 
@@ -1878,7 +1878,7 @@ sr_shm_prefix(const char **prefix)
         *prefix = SR_SHM_PREFIX_DEFAULT;
     } else if (strchr(*prefix, '/') != NULL) {
         *prefix = NULL;
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "%s cannot contain slashes.", SR_SHM_PREFIX_ENV);
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "%s cannot contain slashes.", SR_SHM_PREFIX_ENV);
     }
 
     return err_info;
@@ -2215,19 +2215,19 @@ sr_get_pwd(uid_t *uid, char **user)
     } while (ret && (ret == ERANGE));
     if (ret) {
         if (*user) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Retrieving user \"%s\" passwd entry failed (%s).",
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Retrieving user \"%s\" passwd entry failed (%s).",
                     *user, strerror(ret));
         } else {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Retrieving UID \"%lu\" passwd entry failed (%s).",
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Retrieving UID \"%lu\" passwd entry failed (%s).",
                     (unsigned long int)*uid, strerror(ret));
         }
         goto cleanup;
     } else if (!pwd_p) {
         if (*user) {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Retrieving user \"%s\" passwd entry failed (No such user).",
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Retrieving user \"%s\" passwd entry failed (No such user).",
                     *user);
         } else {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Retrieving UID \"%lu\" passwd entry failed (No such UID).",
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Retrieving UID \"%lu\" passwd entry failed (No such UID).",
                     (unsigned long int)*uid);
         }
         goto cleanup;
@@ -2293,19 +2293,19 @@ sr_get_grp(gid_t *gid, char **group)
     } while (ret && (ret == ERANGE));
     if (ret) {
         if (*group) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Retrieving group \"%s\" grp entry failed (%s).",
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Retrieving group \"%s\" grp entry failed (%s).",
                     *group, strerror(ret));
         } else {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Retrieving GID \"%lu\" grp entry failed (%s).",
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Retrieving GID \"%lu\" grp entry failed (%s).",
                     (unsigned long int)*gid, strerror(ret));
         }
         goto cleanup;
     } else if (!grp_p) {
         if (*group) {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Retrieving group \"%s\" grp entry failed (No such group).",
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Retrieving group \"%s\" grp entry failed (No such group).",
                     *group);
         } else {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Retrieving GID \"%lu\" grp entry failed (No such GID).",
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Retrieving GID \"%lu\" grp entry failed (No such GID).",
                     (unsigned long int)*gid);
         }
         goto cleanup;
@@ -2339,10 +2339,10 @@ sr_chmodown(const char *path, const char *owner, const char *group, mode_t perm)
 
     if ((int)perm != -1) {
         if (perm > 00777) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Invalid permissions 0%.3o.", perm);
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid permissions 0%.3o.", perm);
             return err_info;
         } else if (perm & 00111) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Setting execute permissions has no effect.");
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Setting execute permissions has no effect.");
             return err_info;
         }
     }
@@ -2364,7 +2364,7 @@ sr_chmodown(const char *path, const char *owner, const char *group, mode_t perm)
         } else {
             err_code = SR_ERR_INTERNAL;
         }
-        sr_errinfo_new(&err_info, err_code, NULL, "Changing owner of \"%s\" failed (%s).", path, strerror(errno));
+        sr_errinfo_new(&err_info, err_code, "Changing owner of \"%s\" failed (%s).", path, strerror(errno));
         return err_info;
     }
 
@@ -2375,7 +2375,7 @@ sr_chmodown(const char *path, const char *owner, const char *group, mode_t perm)
         } else {
             err_code = SR_ERR_INTERNAL;
         }
-        sr_errinfo_new(&err_info, err_code, NULL, "Changing permissions (mode) of \"%s\" failed (%s).", path, strerror(errno));
+        sr_errinfo_new(&err_info, err_code, "Changing permissions (mode) of \"%s\" failed (%s).", path, strerror(errno));
         return err_info;
     }
 
@@ -2399,7 +2399,7 @@ sr_perm_check(const char *mod_name, int wr, int *has_access)
             if (has_access) {
                 *has_access = 0;
             } else {
-                sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "%s permission \"%s\" check failed.",
+                sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, "%s permission \"%s\" check failed.",
                         wr ? "Write" : "Read", mod_name);
             }
         } else {
@@ -2443,7 +2443,7 @@ sr_perm_get(const char *mod_name, sr_datastore_t ds, char **owner, char **group,
     free(path);
     if (ret == -1) {
         if (errno == EACCES) {
-            sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "Learning \"%s\" permissions failed.", mod_name);
+            sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, "Learning \"%s\" permissions failed.", mod_name);
         } else {
             SR_ERRINFO_SYSERRNO(&err_info, "stat");
         }
@@ -2537,7 +2537,7 @@ sr_shm_remap(sr_shm_t *shm, size_t new_shm_size)
     /* truncate if needed */
     if (new_shm_size && (ftruncate(shm->fd, new_shm_size) == -1)) {
         shm->addr = NULL;
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to truncate shared memory (%s).", strerror(errno));
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to truncate shared memory (%s).", strerror(errno));
         return err_info;
     }
 
@@ -2547,7 +2547,7 @@ sr_shm_remap(sr_shm_t *shm, size_t new_shm_size)
     shm->addr = mmap(NULL, shm->size, PROT_READ | PROT_WRITE, MAP_SHARED, shm->fd, 0);
     if (shm->addr == MAP_FAILED) {
         shm->addr = NULL;
-        sr_errinfo_new(&err_info, SR_ERR_NOMEM, NULL, "Failed to map shared memory (%s).", strerror(errno));
+        sr_errinfo_new(&err_info, SR_ERR_NO_MEMORY, "Failed to map shared memory (%s).", strerror(errno));
         return err_info;
     }
 
@@ -3029,6 +3029,91 @@ sr_shmrealloc_del(sr_shm_t *shm_ext, off_t *shm_array_off, uint32_t *shm_count, 
     }
 }
 
+uint32_t
+sr_ev_data_size(const void *data)
+{
+    uint32_t i, count;
+    const char *ptr = data;
+
+    /* number of data chunks */
+    count = *(uint32_t *)ptr;
+
+    ptr += sizeof count;
+    for (i = 0; i < count; ++i) {
+        /* chunk size + chunk itself */
+        ptr += sizeof(uint32_t) + *(uint32_t *)ptr;
+    }
+
+    return ptr - (char *)data;
+}
+
+sr_error_info_t *
+sr_ev_data_push(void **ev_data, uint32_t size, const void *data)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t new_size;
+    void *mem;
+    char *ptr;
+
+    if (*ev_data) {
+        new_size = sr_ev_data_size(*ev_data) + sizeof size + size;
+    } else {
+        new_size = sizeof(uint32_t) + sizeof size + size;
+    }
+    mem = realloc(*ev_data, new_size);
+    if (!mem) {
+        SR_ERRINFO_MEM(&err_info);
+        return err_info;
+    }
+    if (!*ev_data) {
+        *(uint32_t *)mem = 0;
+    }
+
+    *ev_data = mem;
+    ptr = ((char *)(*ev_data)) + sr_ev_data_size(*ev_data);
+
+    /* new data chunk */
+    ++*((uint32_t *)(*ev_data));
+
+    /* data chunk size */
+    *(uint32_t *)ptr = size;
+
+    /* data chunk */
+    memcpy(ptr + sizeof size, data, size);
+
+    return NULL;
+}
+
+sr_error_t
+sr_ev_data_get(const void *ev_data, uint32_t idx, uint32_t *size, void **data)
+{
+    uint32_t count, i;
+    char *ptr;
+
+    count = *(uint32_t *)ev_data;
+    if (idx >= count) {
+        /* out-of-bounds */
+        return SR_ERR_NOT_FOUND;
+    }
+
+    ptr = ((char *)ev_data) + sizeof count;
+    for (i = 0; i < idx; ++i) {
+        /* skip data chunk size and the chunk */
+        ptr += sizeof count + *(uint32_t *)ptr;
+    }
+
+    /* chunk size */
+    if (size) {
+        *size = *(uint32_t *)ptr;
+    }
+    ptr += sizeof count;
+
+    /* chunk data */
+    *data = ptr;
+
+    return SR_ERR_OK;
+}
+
 /**
  * @brief Wrapper for pthread_mutex_init().
  *
@@ -3046,38 +3131,38 @@ _sr_mutex_init(pthread_mutex_t *lock, int shared, int robust)
 
     /* check address alignment */
     if (SR_MUTEX_ALIGN_CHECK(lock)) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Mutex address not aligned.");
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Mutex address not aligned.");
         return err_info;
     }
 
     if (shared || robust) {
         /* init attr */
         if ((ret = pthread_mutexattr_init(&attr))) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Initializing pthread attr failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Initializing pthread attr failed (%s).", strerror(ret));
             return err_info;
         }
 
         if (shared && (ret = pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
             pthread_mutexattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Changing pthread attr failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Changing pthread attr failed (%s).", strerror(ret));
             return err_info;
         }
 
         if (robust && (ret = pthread_mutexattr_setrobust(&attr, PTHREAD_MUTEX_ROBUST))) {
             pthread_mutexattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Changing pthread attr failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Changing pthread attr failed (%s).", strerror(ret));
             return err_info;
         }
 
         if ((ret = pthread_mutex_init(lock, &attr))) {
             pthread_mutexattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Initializing pthread mutex failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Initializing pthread mutex failed (%s).", strerror(ret));
             return err_info;
         }
         pthread_mutexattr_destroy(&attr);
     } else {
         if ((ret = pthread_mutex_init(lock, NULL))) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Initializing pthread mutex failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Initializing pthread mutex failed (%s).", strerror(ret));
             return err_info;
         }
     }
@@ -3153,31 +3238,31 @@ sr_cond_init(pthread_cond_t *cond, int shared)
 
     /* check address alignment */
     if (SR_COND_ALIGN_CHECK(cond)) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Condition variable address not aligned.");
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Condition variable address not aligned.");
         return err_info;
     }
 
     if (shared) {
         /* init attr */
         if ((ret = pthread_condattr_init(&attr))) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Initializing pthread attr failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Initializing pthread attr failed (%s).", strerror(ret));
             return err_info;
         }
         if ((ret = pthread_condattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
             pthread_condattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Changing pthread attr failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Changing pthread attr failed (%s).", strerror(ret));
             return err_info;
         }
 
         if ((ret = pthread_cond_init(cond, &attr))) {
             pthread_condattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Initializing pthread rwlock failed (%s).", strerror(ret));
             return err_info;
         }
         pthread_condattr_destroy(&attr);
     } else {
         if ((ret = pthread_cond_init(cond, NULL))) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Initializing pthread rwlock failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Initializing pthread rwlock failed (%s).", strerror(ret));
             return err_info;
         }
     }
@@ -3241,7 +3326,7 @@ sr_rwlock_reader_add(sr_rwlock_t *rwlock, sr_cid_t cid)
     /* find first free item */
     for (i = 0; rwlock->readers[i] && (i < SR_RWLOCK_READ_LIMIT); ++i) {}
     if (i == SR_RWLOCK_READ_LIMIT) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Concurrent reader limit %d reached!", SR_RWLOCK_READ_LIMIT);
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Concurrent reader limit %d reached!", SR_RWLOCK_READ_LIMIT);
         sr_errinfo_free(&err_info);
         goto unlock;
     }
@@ -3722,7 +3807,7 @@ sr_path_set_group(const char *path)
     /* stat */
     if (stat(path, &st) == -1) {
         if (errno == EACCES) {
-            sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, NULL, "Stat of \"%s\" failed.", path);
+            sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, "Stat of \"%s\" failed.", path);
         } else {
             SR_ERRINFO_SYSERRNO(&err_info, "stat");
         }
@@ -3741,7 +3826,7 @@ sr_path_set_group(const char *path)
         } else {
             err_code = SR_ERR_INTERNAL;
         }
-        sr_errinfo_new(&err_info, err_code, NULL, "Changing owner of \"%s\" failed (%s).", path, strerror(errno));
+        sr_errinfo_new(&err_info, err_code, "Changing owner of \"%s\" failed (%s).", path, strerror(errno));
         return err_info;
     }
 
@@ -3805,7 +3890,7 @@ sr_mkpath(char *path, mode_t mode)
         *p = '\0';
         if (mkdir(path, mode) == -1) {
             if (errno != EEXIST) {
-                sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
+                sr_errinfo_new(&err_info, SR_ERR_SYS, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
                 goto cleanup;
             }
         } else if ((err_info = sr_path_set_group(path))) {
@@ -3817,7 +3902,7 @@ sr_mkpath(char *path, mode_t mode)
     /* create the last directory in the path */
     if (mkdir(path, mode) == -1) {
         if (errno != EEXIST) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
             goto cleanup;
         }
     } else if ((err_info = sr_path_set_group(path))) {
@@ -3886,7 +3971,7 @@ sr_get_trim_predicates(const char *expr, char **expr2)
         } else if (ptr[0] == ']') {
             --pred;
             if (pred < 0) {
-                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Unexpected character '%c'(%.5s) in expression.", ptr[0], ptr);
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Unexpected character '%c'(%.5s) in expression.", ptr[0], ptr);
                 free(str);
                 return err_info;
             } else if (pred == 0) {
@@ -3897,7 +3982,7 @@ sr_get_trim_predicates(const char *expr, char **expr2)
     }
 
     if (quot || pred) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Unterminated %s in expression.", quot ? "literal" : "predicate");
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Unterminated %s in expression.", quot ? "literal" : "predicate");
         free(str);
         return err_info;
     }
@@ -4138,7 +4223,7 @@ store_value:
             sr_val->type = SR_DECIMAL64_T;
             sr_val->data.decimal64_val = strtod(val->canonical, &ptr);
             if (ptr[0]) {
-                sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "Value \"%s\" is not a valid decimal64 number.",
+                sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Value \"%s\" is not a valid decimal64 number.",
                         val->canonical);
                 goto error;
             }
@@ -4238,7 +4323,7 @@ store_value:
             /* try to convert into a data tree */
             if (lyd_parse_data_mem(LYD_CTX(node), any->value.mem, LYD_LYB, LYD_PARSE_STRICT, 0, &tree)) {
                 sr_errinfo_new_ly(&err_info, LYD_CTX(node));
-                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Failed to convert LYB anyxml/anydata into XML.");
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to convert LYB anyxml/anydata into XML.");
                 return err_info;
             }
             free(any->value.mem);
@@ -5156,13 +5241,13 @@ sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node
     /* print data */
     if (lyd_print_fd(fd, mod_data, LYD_LYB, LYD_PRINT_WITHSIBLINGS)) {
         sr_errinfo_new_ly(&err_info, LYD_CTX(mod_data));
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Failed to store data into \"%s\".", path);
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to store data into \"%s\".", path);
         goto cleanup;
     }
 
     /* delete the backup file */
     if (backup && (unlink(bck_path) == -1)) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to remove backup \"%s\" (%s).", bck_path, strerror(errno));
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to remove backup \"%s\" (%s).", bck_path, strerror(errno));
         goto cleanup;
     }
 
@@ -5195,7 +5280,7 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     /* just lock the module for now */
     ly_set_add(&mod_set, (void *)ly_mod, 0, NULL);
     if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_WRITE, SR_MI_PERM_NO | SR_MI_DATA_NO,
-            sid, NULL, 0, 0))) {
+            sid, NULL, NULL, NULL, 0, 0))) {
         goto cleanup;
     }
 
@@ -5209,13 +5294,14 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     }
 
     /* now just load all the data */
-    if ((err_info = sr_modinfo_data_load(&mod_info, 1, sid, NULL, 0, SR_OPER_NO_STORED | SR_OPER_NO_SUBS, &cb_err_info))) {
+    if ((err_info = sr_modinfo_data_load(&mod_info, 1, NULL, NULL, NULL, 0, SR_OPER_NO_STORED | SR_OPER_NO_SUBS,
+            &cb_err_info))) {
         goto cleanup;
     }
     if (cb_err_info) {
         /* return callback error if some was generated */
-        cb_err_info->err_code = SR_ERR_CALLBACK_FAILED;
         sr_errinfo_merge(&err_info, cb_err_info);
+        sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, "User callback failed.");
         goto cleanup;
     }
 
@@ -5276,7 +5362,7 @@ sr_conn_info(sr_cid_t **cids, pid_t **pids, uint32_t *count, sr_cid_t **dead_cid
             goto cleanup;
         }
 
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Opening directory \"%s\" failed (%s).", path, strerror(errno));
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Opening directory \"%s\" failed (%s).", path, strerror(errno));
         goto cleanup;
     }
 

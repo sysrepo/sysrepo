@@ -184,7 +184,7 @@ sr_replay_find_file(const char *mod_name, time_t from_ts, time_t to_ts, time_t *
 
     dir = opendir(dir_path);
     if (!dir) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Opening directory \"%s\" failed (%s).", dir_path, strerror(errno));
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Opening directory \"%s\" failed (%s).", dir_path, strerror(errno));
         goto cleanup;
     }
 
@@ -721,7 +721,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     }
 
     /* create event session */
-    if ((err_info = _sr_session_start(conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, 0, 0, NULL, &ev_sess))) {
+    if ((err_info = _sr_session_start(conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, NULL, &ev_sess))) {
         goto cleanup;
     }
 
@@ -743,7 +743,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
                 goto cleanup;
             }
             if (!notif_ts) {
-                sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Unexpected notification file EOF.");
+                sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unexpected notification file EOF.");
                 goto cleanup;
             }
             if ((notif_ts < start_time) && (err_info = sr_replay_skip_notif(fd))) {

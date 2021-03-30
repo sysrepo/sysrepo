@@ -46,7 +46,7 @@ static int
 setup(void **state)
 {
     struct state *st;
-    uint32_t conn_count;
+    uint32_t conn_count, nc_id;
     const char *act_feats[] = {"advanced-testing", NULL}, *rd_feats[] = {"hw-line-9", NULL};
 
     st = malloc(sizeof *st);
@@ -115,7 +115,10 @@ setup(void **state)
         return 1;
     }
 
-    sr_session_set_nc_id(st->sess, 64);
+    sr_session_set_orig_name(st->sess, "test_operational");
+    nc_id = 64;
+    sr_session_push_orig_data(st->sess, sizeof nc_id, &nc_id);
+    sr_session_push_orig_data(st->sess, 12, "test_string");
 
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
@@ -1042,13 +1045,22 @@ simple_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_na
         const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     const struct ly_ctx *ly_ctx;
+    uint32_t size, *nc_id;
+    const char *str;
 
     (void)sub_id;
     (void)request_id;
     (void)private_data;
 
     assert_string_equal(request_xpath, "/ietf-interfaces:*");
-    assert_int_equal(sr_session_get_event_nc_id(session), 64);
+    assert_string_equal(sr_session_get_orig_name(session), "test_operational");
+    assert_int_equal(sr_session_get_orig_data(session, 0, &size, (const void **)&nc_id), SR_ERR_OK);
+    assert_int_equal(size, sizeof *nc_id);
+    assert_int_equal(*nc_id, 64);
+    assert_int_equal(sr_session_get_orig_data(session, 1, &size, (const void **)&str), SR_ERR_OK);
+    assert_int_equal(size, 12);
+    assert_string_equal(str, "test_string");
+    assert_int_equal(sr_session_get_orig_data(session, 2, &size, (const void **)&str), SR_ERR_NOT_FOUND);
 
     ly_ctx = sr_get_context(sr_session_get_connection(session));
 
@@ -1171,7 +1183,7 @@ fail_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name
     assert_non_null(parent);
     assert_null(*parent);
 
-    sr_set_error(session, "/no/special/xpath", "Callback failed with an error.");
+    sr_session_set_error_message(session, "Callback failed with an error.");
     return SR_ERR_UNAUTHORIZED;
 }
 

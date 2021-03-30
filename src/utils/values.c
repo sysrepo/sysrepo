@@ -165,7 +165,7 @@ sr_mem_edit_string(char **string_p, const char *new_val)
 
     new_mem = strdup(new_val);
     if (!new_mem) {
-        return SR_ERR_NOMEM;
+        return SR_ERR_NO_MEMORY;
     }
 
     free(*string_p);
@@ -200,7 +200,7 @@ sr_mem_edit_string_va(char **string_p, const char *format, va_list args)
 
     new_mem = (char *)calloc(len + 1, sizeof(*new_mem));
     if (!new_mem) {
-        return SR_ERR_NOMEM;
+        return SR_ERR_NO_MEMORY;
     }
 
     vsnprintf(new_mem, len + 1, format, args);
@@ -402,7 +402,7 @@ sr_print(sr_print_ctx_t *print_ctx, const char *format, ...)
         len = vsnprintf(NULL, 0, format, va);
         str = calloc(len + 1, sizeof *str);
         if (!str) {
-            rc = SR_ERR_NOMEM;
+            rc = SR_ERR_NO_MEMORY;
             goto cleanup;
         }
         va_end(va);     /**< restart va_list */
@@ -417,7 +417,7 @@ sr_print(sr_print_ctx_t *print_ctx, const char *format, ...)
             new_size = MAX(2 * print_ctx->method.mem.size, print_ctx->method.mem.len + count + 1);
             aux = realloc(print_ctx->method.mem.buf, new_size * sizeof *aux);
             if (!aux) {
-                rc = SR_ERR_NOMEM;
+                rc = SR_ERR_NO_MEMORY;
                 goto cleanup;
             }
             print_ctx->method.mem.buf = aux;
@@ -597,7 +597,7 @@ sr_vasprintf(char **strp, const char *fmt, va_list ap)
     /* allocate memory for the string */
     buffer = calloc(size, sizeof *buffer);
     if (!buffer) {
-        return SR_ERR_NOMEM;
+        return SR_ERR_NO_MEMORY;
     }
 
     /* print */
@@ -856,7 +856,7 @@ sr_tree_to_val(const struct lyd_node *data, const char *path, sr_val_t **value)
         ly_set_free(set, NULL);
         return SR_ERR_NOT_FOUND;
     } else if (set->count > 1) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "More subtrees match \"%s\".", path);
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "More subtrees match \"%s\".", path);
         goto cleanup;
     }
 

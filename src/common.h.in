@@ -357,10 +357,22 @@ struct sr_conn_ctx_s {
 struct sr_session_ctx_s {
     sr_conn_ctx_t *conn;            /**< Connection used for creating this session. */
     sr_datastore_t ds;              /**< Datastore of the session. */
-    sr_sub_event_t ev;              /**< Event of a callback session. ::SR_SUB_EV_NONE for standard user sessions. */
     sr_sid_t sid;                   /**< Session information. */
-    sr_sid_t ev_sid;                /**< Event (originator) session information. Valid only if ev is not ::SR_SUB_EV_NONE. */
     sr_error_info_t *err_info;      /**< Session error information. */
+
+    char *orig_name;                /**< Originator name used for all events sent on this session. */
+    void *orig_data;                /**< Originator data used for all events sent on this session. */
+
+    sr_sub_event_t ev;              /**< Event of a callback session. ::SR_SUB_EV_NONE for standard user sessions. */
+    struct {
+        char *orig_name;            /**< Set originator name by the event originator. */
+        void *orig_data;            /**< Set originator data by the event originator. */
+    } ev_data;                      /**< Event data from the originator. Valid only if ev is not ::SR_SUB_EV_NONE. */
+    struct {
+        char *message;              /**< Event error message. */
+        char *format;               /**< Event error data format. */
+        void *data;                 /**< Event error data. */
+    } ev_error;                     /**< Event error for the originator. Valid only if ev is not ::SR_SUB_EV_NONE. */
 
     pthread_mutex_t ptr_lock;       /**< Lock for accessing pointers to subscriptions. */
     sr_subscription_ctx_t **subscriptions;  /**< Array of subscriptions of this session. */
@@ -497,14 +509,12 @@ struct sr_change_iter_s {
  * @param[in] conn Connection of the session.
  * @param[in] datastore Datastore of the session.
  * @param[in] event Optional event the session is handling, SR_SUB_EV_NONE for a standard session.
- * @param[in] ev_sid Event originator SID.
- * @param[in] ev_ncid Event originator NCID.
- * @param[in] ev_user Event originator user.
+ * @param[in,out] shm_data_ptr Optional pointer to SHM sub data where originator name and data are stored, is updated.
  * @param[out] session Created session.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *_sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_sub_event_t event,
-        uint32_t ev_sid, uint32_t ev_ncid, const char *ev_user, sr_session_ctx_t **session);
+        char **shm_data_ptr, sr_session_ctx_t **session);
 
 /*
  * Subscription functions
@@ -1128,6 +1138,35 @@ sr_error_info_t *sr_shmrealloc(sr_shm_t *shm_ext, off_t *dyn_attr_off, int in_ex
  */
 void sr_shmrealloc_del(sr_shm_t *shm_ext, off_t *shm_array_off, uint32_t *shm_count, size_t item_size, uint32_t del_idx,
         size_t dyn_attr_size, off_t dyn_attr_off);
+
+/**
+ * @brief Get exact size of event data. Those are both originator data or error data.
+ *
+ * @param[in] data Beginning of the event data.
+ * @return Size of @p data.
+ */
+uint32_t sr_ev_data_size(const void *data);
+
+/**
+ * @brief Push another data chunk into event data.
+ *
+ * @param[in,out] ev_data Event data to modify.
+ * @param[in] size New @p data chunk size.
+ * @param[in] data New data chunk.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_ev_data_push(void **ev_data, uint32_t size, const void *data);
+
+/**
+ * @brief Get specific data chunk from event data.
+ *
+ * @param[in] ev_data Event data.
+ * @param[in] idx Index of the data chunk to get.
+ * @param[out] size Data chunk size.
+ * @param[out] data Data chunk.
+ * @return SR_ERR_OK on success, SR_ERR_NOT_FOUND if the index is out-of-bounds.
+ */
+sr_error_t sr_ev_data_get(const void *ev_data, uint32_t idx, uint32_t *size, void **data);
 
 /**
  * @brief Wrapper for pthread_mutex_init().

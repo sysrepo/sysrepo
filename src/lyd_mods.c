@@ -1239,7 +1239,7 @@ cleanup:
     free(run_data_json);
     ly_ctx_destroy(old_ctx, NULL);
     if (err_info) {
-        sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, NULL, "Failed to update data for the new context.");
+        sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Failed to update data for the new context.");
     }
     return err_info;
 }
@@ -1933,7 +1933,7 @@ sr_lydmods_conn_ctx_update(sr_main_shm_t *main_shm, struct ly_ctx **ly_ctx, int 
                 }
                 if (fail) {
                     if (err_on_sched_fail) {
-                        sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, NULL, "Applying scheduled changes failed.");
+                        sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Applying scheduled changes failed.");
                         goto cleanup;
                     }
 
@@ -2006,7 +2006,7 @@ sr_lydmods_deferred_add_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, c
     }
     SR_CHECK_INT_GOTO(lyd_find_xpath(sr_mods, path, &set), err_info, cleanup);
     if (set->count == 1) {
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" already scheduled for installation.", ly_mod->name);
+        sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Module \"%s\" already scheduled for installation.", ly_mod->name);
         goto cleanup;
     }
 
@@ -2082,7 +2082,7 @@ sr_lydmods_unsched_add_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, co
     }
     SR_CHECK_INT_GOTO(lyd_find_xpath(sr_mods, path, &set), err_info, cleanup);
     if (!set->count) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" not scheduled for installation.", module_name);
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" not scheduled for installation.", module_name);
         goto cleanup;
     }
 
@@ -2149,7 +2149,7 @@ sr_lydmods_ctx_load_installed_module_all(const struct lyd_node *sr_mods, struct 
     }
 
     if (!*ly_mod) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" not scheduled for installation.", module_name);
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" not scheduled for installation.", module_name);
         goto cleanup;
     }
 
@@ -2207,7 +2207,7 @@ sr_lydmods_deferred_add_module_data(sr_main_shm_t *main_shm, struct ly_ctx *ly_c
     /* check that there are only this module data */
     LY_LIST_FOR(mod_data, node) {
         if (!(node->flags & LYD_DEFAULT) && (lyd_owner_module(node) != ly_mod)) {
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Only data for the module \"%s\" can be set.", module_name);
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Only data for the module \"%s\" can be set.", module_name);
             goto cleanup;
         }
     }
@@ -2219,7 +2219,7 @@ sr_lydmods_deferred_add_module_data(sr_main_shm_t *main_shm, struct ly_ctx *ly_c
     }
     SR_CHECK_INT_GOTO(lyd_find_xpath(sr_mods, path, &set), err_info, cleanup);
     if (!set->count) {
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" not scheduled for installation.", module_name);
+        sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Module \"%s\" not scheduled for installation.", module_name);
         goto cleanup;
     }
 
@@ -2286,7 +2286,7 @@ sr_lydmods_deferred_del_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, c
     }
     SR_CHECK_INT_GOTO(lyd_find_xpath(sr_mods, path, &set), err_info, cleanup);
     if (set->count == 1) {
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" already scheduled for deletion.", mod_name);
+        sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Module \"%s\" already scheduled for deletion.", mod_name);
         goto cleanup;
     }
 
@@ -2338,7 +2338,7 @@ sr_lydmods_unsched_del_module_r(struct lyd_node *sr_mods, const struct lys_modul
     SR_CHECK_INT_GOTO(lyd_find_xpath(sr_mods, path, &set), err_info, cleanup);
     if (!set->count) {
         if (first) {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" not scheduled for deletion.", ly_mod->name);
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" not scheduled for deletion.", ly_mod->name);
             goto cleanup;
         }
     } else {
@@ -2420,7 +2420,7 @@ sr_lydmods_deferred_upd_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, c
     }
     SR_CHECK_INT_GOTO(lyd_find_xpath(sr_mods, path, &set), err_info, cleanup);
     if (set->count == 1) {
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" already scheduled for an update.", ly_upd_mod->name);
+        sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Module \"%s\" already scheduled for an update.", ly_upd_mod->name);
         goto cleanup;
     }
 
@@ -2479,7 +2479,7 @@ sr_lydmods_unsched_upd_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, co
     }
     SR_CHECK_INT_GOTO(lyd_find_xpath(sr_mods, path, &set), err_info, cleanup);
     if (!set->count) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Module \"%s\" not scheduled for an update.", mod_name);
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" not scheduled for an update.", mod_name);
         goto cleanup;
     }
 
@@ -2536,7 +2536,7 @@ sr_lydmods_deferred_change_feature(sr_main_shm_t *main_shm, struct ly_ctx *ly_ct
 
         if ((to_enable && !strcmp(LYD_CANON_VALUE(leaf), "enable")) ||
                 (!to_enable && !strcmp(LYD_CANON_VALUE(leaf), "disable"))) {
-            sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" feature \"%s\" already scheduled to be %s.",
+            sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Module \"%s\" feature \"%s\" already scheduled to be %s.",
                     ly_mod->name, feat_name, to_enable ? "enabled" : "disabled");
             goto cleanup;
         }
@@ -2547,7 +2547,7 @@ sr_lydmods_deferred_change_feature(sr_main_shm_t *main_shm, struct ly_ctx *ly_ct
                 to_enable ? "disabling" : "enabling");
     } else {
         if ((to_enable && is_enabled) || (!to_enable && !is_enabled)) {
-            sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Module \"%s\" feature \"%s\" is already %s.",
+            sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Module \"%s\" feature \"%s\" is already %s.",
                     ly_mod->name, feat_name, to_enable ? "enabled" : "disabled");
             goto cleanup;
         }

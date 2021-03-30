@@ -40,7 +40,7 @@ static const char * const sr_errlist[] = {
     "Invalid argument",                         /* SR_ERR_INVAL_ARG */
     "libyang error",                            /* SR_ERR_LY */
     "System function call failed",              /* SR_ERR_SYS */
-    "Out of memory",                            /* SR_ERR_NOMEM */
+    "Out of memory",                            /* SR_ERR_NO_MEM */
     "Item not found",                           /* SR_ERR_NOT_FOUND */
     "Item already exists",                      /* SR_ERR_EXISTS */
     "Internal error",                           /* SR_ERR_INTERNAL */
@@ -54,21 +54,24 @@ static const char * const sr_errlist[] = {
     "User callback shelved",                    /* SR_ERR_CALLBACK_SHELVE */
 };
 
-struct sr_error_info_err_s {
-    const char *message;
-    const char *xpath;
+struct sr_error_info_err2_s {
+    sr_error_t err_code;
+    char *message;
+    char *error_format;
+    void *error_data;
 };
 
-static struct sr_error_info_err_s mem_err = {
+static struct sr_error_info_err2_s mem_err = {
+    .err_code = SR_ERR_NO_MEMORY,
     .message = "Memory allocation failed.",
-    .xpath = NULL
+    .error_format = NULL,
+    .error_data = NULL,
 };
 
 /**
  * @brief Internal static error structure after a memory allocation error.
  */
 static sr_error_info_t sr_errinfo_mem = {
-    .err_code = SR_ERR_NOMEM,
     .err = (void *)&mem_err,
     .err_count = 1
 };
@@ -84,7 +87,7 @@ sr_api_ret(sr_session_ctx_t *session, sr_error_info_t *err_info)
     }
 
     if (err_info) {
-        err_code = err_info->err_code;
+        err_code = err_info->err[err_info->err_count - 1].err_code;
         if (session) {
             /* store error info in the session */
             session->err_info = err_info;
@@ -98,7 +101,7 @@ sr_api_ret(sr_session_ctx_t *session, sr_error_info_t *err_info)
 }
 
 void
-sr_log_msg(int plugin, sr_log_level_t ll, const char *msg, const char *path)
+sr_log_msg(int plugin, sr_log_level_t ll, const char *msg)
 {
     int priority;
     const char *severity;
@@ -127,11 +130,7 @@ sr_log_msg(int plugin, sr_log_level_t ll, const char *msg, const char *path)
 
     /* stderr logging */
     if (ll <= stderr_ll) {
-        if (path) {
-            fprintf(stderr, "[%s]:%s %s (path: %s)\n", severity, plugin ? " plugin:" : "", msg, path);
-        } else {
-            fprintf(stderr, "[%s]:%s %s\n", severity, plugin ? " plugin:" : "", msg);
-        }
+        fprintf(stderr, "[%s]:%s %s\n", severity, plugin ? " plugin:" : "", msg);
     }
 
     /* syslog logging */
@@ -146,9 +145,13 @@ sr_log_msg(int plugin, sr_log_level_t ll, const char *msg, const char *path)
 }
 
 void
-sr_errinfo_add(sr_error_info_t **err_info, sr_error_t err_code, const char *xpath, const char *format, va_list *vargs)
+sr_errinfo_add(sr_error_info_t **err_info, sr_error_t err_code, const char *err_format, const void *err_data,
+        const char *msg_format, va_list *vargs)
 {
     void *mem;
+    sr_error_info_err_t *e;
+
+    assert(!err_data || err_format);
 
     if (!*err_info) {
         *err_info = calloc(1, sizeof **err_info);
@@ -158,55 +161,95 @@ sr_errinfo_add(sr_error_info_t **err_info, sr_error_t err_code, const char *xpat
         }
     }
 
-    (*err_info)->err_code = err_code;
-
     mem = realloc((*err_info)->err, ((*err_info)->err_count + 1) * sizeof *(*err_info)->err);
     if (!mem) {
         return;
     }
     (*err_info)->err = mem;
+    e = &(*err_info)->err[(*err_info)->err_count];
 
+    /* error code */
+    e->err_code = err_code;
+
+    /* error message */
     if (vargs) {
-        if (vasprintf(&(*err_info)->err[(*err_info)->err_count].message, format, *vargs) == -1) {
+        if (vasprintf(&e->message, msg_format, *vargs) == -1) {
             return;
         }
     } else {
-        if (!((*err_info)->err[(*err_info)->err_count].message = strdup(format))) {
+        if (!(e->message = strdup(msg_format))) {
             return;
         }
     }
 
-    if (xpath) {
-        (*err_info)->err[(*err_info)->err_count].xpath = strdup(xpath);
-        if (!(*err_info)->err[(*err_info)->err_count].xpath) {
-            free((*err_info)->err[(*err_info)->err_count].message);
+    /* error format */
+    if (err_format) {
+        e->error_format = strdup(err_format);
+        if (!e->error_format) {
+            free(e->message);
             return;
         }
     } else {
-        (*err_info)->err[(*err_info)->err_count].xpath = NULL;
+        e->error_format = NULL;
+    }
+
+    /* error data */
+    if (err_data) {
+        e->error_data = malloc(sr_ev_data_size(err_data));
+        if (!e->error_data) {
+            free(e->message);
+            free(e->error_format);
+            return;
+        }
+        memcpy(e->error_data, err_data, sr_ev_data_size(err_data));
+    } else {
+        e->error_data = NULL;
     }
 
     ++(*err_info)->err_count;
 }
 
 void
-sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *xpath, const char *format, ...)
+sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *msg_format, ...)
 {
     va_list vargs;
     int idx;
 
-    if ((err_code == SR_ERR_NOMEM) && !xpath && !format) {
+    if ((err_code == SR_ERR_NO_MEMORY) && !msg_format) {
         /* there is no dynamic memory, use the static error structure */
+        sr_errinfo_free(err_info);
         *err_info = &sr_errinfo_mem;
     } else {
-        va_start(vargs, format);
-        sr_errinfo_add(err_info, err_code, xpath, format, &vargs);
+        va_start(vargs, msg_format);
+        sr_errinfo_add(err_info, err_code, NULL, NULL, msg_format, &vargs);
         va_end(vargs);
     }
 
     /* print it */
     idx = (*err_info)->err_count - 1;
-    sr_log_msg(0, SR_LL_ERR, (*err_info)->err[idx].message, (*err_info)->err[idx].xpath);
+    sr_log_msg(0, SR_LL_ERR, (*err_info)->err[idx].message);
+}
+
+void
+sr_errinfo_new_data(sr_error_info_t **err_info, sr_error_t err_code, const char *err_format, const void *err_data,
+        const char *msg_format, ...)
+{
+    va_list vargs;
+    int idx;
+
+    if ((err_code == SR_ERR_NO_MEMORY) && !err_format && !err_data && !msg_format) {
+        /* there is no dynamic memory, use the static error structure */
+        sr_errinfo_free(err_info);
+        *err_info = &sr_errinfo_mem;
+    } else {
+        va_start(vargs, msg_format);
+        sr_errinfo_add(err_info, err_code, err_format, err_data, msg_format, &vargs);
+        va_end(vargs);
+    }
+
+    /* print it */
+    idx = (*err_info)->err_count - 1;
+    sr_log_msg(0, SR_LL_ERR, (*err_info)->err[idx].message);
 }
 
 void
@@ -220,18 +263,18 @@ sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx)
      * will be none -> libyang problem or simply the error was externally processed, sysrepo is
      * unable to detect that */
     if (!e) {
-        sr_errinfo_new(err_info, SR_ERR_LY, NULL, "Unknown libyang error.");
+        sr_errinfo_new(err_info, SR_ERR_LY, "Unknown libyang error.");
         return;
     }
 
     do {
         if (e->level == LY_LLWRN) {
             /* just print it */
-            sr_log_msg(0, SR_LL_WRN, e->msg, e->path);
+            sr_log_msg(0, SR_LL_WRN, e->msg);
         } else {
             assert(e->level == LY_LLERR);
             /* store it and print it */
-            sr_errinfo_new(err_info, SR_ERR_LY, e->path, e->msg);
+            sr_errinfo_new(err_info, SR_ERR_LY, e->msg);
         }
 
         e = e->next;
@@ -251,11 +294,11 @@ sr_errinfo_new_ly_first(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx)
 
     if (e->level == LY_LLWRN) {
         /* just print it */
-        sr_log_msg(0, SR_LL_WRN, e->msg, e->path);
+        sr_log_msg(0, SR_LL_WRN, e->msg);
     } else {
         assert(e->level == LY_LLERR);
         /* store it and print it */
-        sr_errinfo_new(err_info, SR_ERR_LY, e->path, e->msg);
+        sr_errinfo_new(err_info, SR_ERR_LY, e->msg);
     }
 
     ly_err_clean((struct ly_ctx *)ly_ctx, NULL);
@@ -272,7 +315,7 @@ sr_log_wrn_ly(const struct ly_ctx *ly_ctx)
 
     do {
         /* print everything as warnings */
-        sr_log_msg(0, SR_LL_WRN, e->msg, e->path);
+        sr_log_msg(0, SR_LL_WRN, e->msg);
 
         e = e->next;
     } while (e);
@@ -286,11 +329,12 @@ sr_errinfo_free(sr_error_info_t **err_info)
     size_t i;
 
     if (err_info && *err_info) {
-        /* NOMEM is always a static error info structure */
-        if ((*err_info)->err_code != SR_ERR_NOMEM) {
+        /* NO_MEM is always a static error info structure */
+        if (((*err_info)->err_count != 1) || ((*err_info)->err[0].err_code != SR_ERR_NO_MEMORY)) {
             for (i = 0; i < (*err_info)->err_count; ++i) {
                 free((*err_info)->err[i].message);
-                free((*err_info)->err[i].xpath);
+                free((*err_info)->err[i].error_format);
+                free((*err_info)->err[i].error_data);
             }
             free((*err_info)->err);
             free(*err_info);
@@ -314,10 +358,12 @@ sr_errinfo_merge(sr_error_info_t **err_info, sr_error_info_t *err_info2)
     }
 
     for (i = 0; i < err_info2->err_count; ++i) {
-        sr_errinfo_add(err_info, err_info2->err_code, err_info2->err[i].xpath, err_info2->err[i].message, NULL);
+        sr_errinfo_add(err_info, err_info2->err[i].err_code, err_info2->err[i].error_format,
+                err_info2->err[i].error_data, err_info2->err[i].message, NULL);
 
-        free(err_info2->err[i].xpath);
         free(err_info2->err[i].message);
+        free(err_info2->err[i].error_format);
+        free(err_info2->err[i].error_data);
     }
     free(err_info2->err);
     free(err_info2);
@@ -334,7 +380,7 @@ sr_log(sr_log_level_t ll, const char *format, ...)
     sr_vsprintf(&msg, &msg_len, 0, format, ap);
     va_end(ap);
 
-    sr_log_msg(0, ll, msg, NULL);
+    sr_log_msg(0, ll, msg);
     free(msg);
 }
 
@@ -349,7 +395,7 @@ srp_log(sr_log_level_t ll, const char *format, ...)
     sr_vsprintf(&msg, &msg_len, 0, format, ap);
     va_end(ap);
 
-    sr_log_msg(1, ll, msg, NULL);
+    sr_log_msg(1, ll, msg);
     free(msg);
 }
 

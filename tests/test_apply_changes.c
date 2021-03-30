@@ -147,11 +147,15 @@ module_change_done_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
     const char *str2, *prev_val, *prev_list;
     bool prev_dflt;
     int ret;
+    uint32_t size, *nc_id;
 
     (void)sub_id;
     (void)request_id;
 
-    assert_int_equal(sr_session_get_event_nc_id(session), 52);
+    assert_string_equal(sr_session_get_orig_name(session), "test_apply_changes");
+    assert_int_equal(sr_session_get_orig_data(session, 0, &size, (const void **)&nc_id), SR_ERR_OK);
+    assert_int_equal(size, sizeof *nc_id);
+    assert_int_equal(*nc_id, 52);
     assert_string_equal(module_name, "ietf-interfaces");
     assert_null(xpath);
 
@@ -428,12 +432,15 @@ apply_change_done_thread(void *arg)
     char *str1;
     const char *str2;
     int ret;
+    uint32_t nc_id;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set NC SID so we can read it in the callback */
-    sr_session_set_nc_id(sess, 52);
+    sr_session_set_orig_name(sess, "test_apply_changes");
+    nc_id = 52;
+    sr_session_push_orig_data(sess, sizeof nc_id, &nc_id);
 
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth52']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1279,7 +1286,7 @@ module_update_fail_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
         /* update fails */
-        sr_set_error(session, "/path/to/a/node", "Custom user callback error.");
+        sr_session_set_error_message(session, "Custom user callback error.");
         ret = SR_ERR_UNSUPPORTED;
         break;
     default:
@@ -1319,11 +1326,15 @@ apply_update_fail_thread(void *arg)
     /* perform the change (it should fail) */
     ret = sr_apply_changes(sess, 0, 1);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
-    ret = sr_get_error(sess, &err_info);
+    ret = sr_session_get_error(sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(err_info->err_count, 1);
+    assert_int_equal(err_info->err_count, 2);
+    assert_int_equal(err_info->err[0].err_code, SR_ERR_UNSUPPORTED);
     assert_string_equal(err_info->err[0].message, "Custom user callback error.");
-    assert_string_equal(err_info->err[0].xpath, "/path/to/a/node");
+    assert_null(err_info->err[0].error_format);
+    assert_int_equal(err_info->err[1].err_code, SR_ERR_CALLBACK_FAILED);
+    assert_string_equal(err_info->err[1].message, "User callback failed.");
+    assert_null(err_info->err[1].error_format);
 
     ret = sr_discard_changes(sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1686,6 +1697,8 @@ module_when1_change_fail_cb(sr_session_ctx_t *session, uint32_t sub_id, const ch
 
         /* fail */
         ret = SR_ERR_UNSUPPORTED;
+        sr_session_set_error_format(session, "error1");
+        sr_session_push_error_data(session, 6, "empty");
         break;
     default:
         fail();
@@ -1703,6 +1716,7 @@ apply_change_fail_thread(void *arg)
     const sr_error_info_t *err_info;
     struct lyd_node *subtree;
     char *str1;
+    uint32_t size;
     int ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
@@ -1723,11 +1737,18 @@ apply_change_fail_thread(void *arg)
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
 
     /* no custom error message set */
-    ret = sr_get_error(sess, &err_info);
+    ret = sr_session_get_error(sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(err_info->err_count, 1);
+    assert_int_equal(err_info->err_count, 2);
+    assert_int_equal(err_info->err[0].err_code, SR_ERR_UNSUPPORTED);
     assert_string_equal(err_info->err[0].message, "Operation not supported");
-    assert_null(err_info->err[0].xpath);
+    assert_string_equal(err_info->err[0].error_format, "error1");
+    assert_int_equal(sr_get_error_data(&err_info->err[0], 0, &size, (const void **)&str1), SR_ERR_OK);
+    assert_int_equal(size, 6);
+    assert_string_equal(str1, "empty");
+    assert_int_equal(err_info->err[1].err_code, SR_ERR_CALLBACK_FAILED);
+    assert_string_equal(err_info->err[1].message, "User callback failed.");
+    assert_null(err_info->err[1].error_format);
 
     ret = sr_discard_changes(sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1888,7 +1909,7 @@ test_change_fail2_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
         sr_free_val(new_value);
 
         if (op == SR_OP_MODIFIED) {
-            sr_set_error(session, xpath, "Modifications are not supported for %s", xpath);
+            sr_session_set_error_message(session, "Modifications are not supported for %s", xpath);
             ret = SR_ERR_OPERATION_FAILED;
             break;
         }
@@ -1973,12 +1994,12 @@ apply_change_fail2_thread(void *arg)
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
 
     /* no custom error message set */
-    ret = sr_get_error(sess, &err_info);
+    ret = sr_session_get_error(sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(err_info->err_count, 1);
+    assert_int_equal(err_info->err_count, 2);
     assert_string_equal(err_info->err[0].message, "Modifications are not supported for "
             "/ietf-interfaces:interfaces/interface/ietf-if-aug:bridge-port/enable-ingress-filtering");
-    assert_non_null(err_info->err[0].xpath);
+    assert_null(err_info->err[0].error_format);
 
     ret = sr_discard_changes(sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2191,11 +2212,12 @@ apply_change_fail_priority_thread(void *arg)
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
 
     /* check error */
-    ret = sr_get_error(sess, &err_info);
+    ret = sr_session_get_error(sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(err_info->err_count, 1);
+    assert_int_equal(err_info->err_count, 2);
+    assert_int_equal(err_info->err[0].err_code, SR_ERR_OPERATION_FAILED);
     assert_string_equal(err_info->err[0].message, "Operation failed");
-    assert_null(err_info->err[0].xpath);
+    assert_null(err_info->err[0].error_format);
 
     ret = sr_discard_changes(sess);
     assert_int_equal(ret, SR_ERR_OK);

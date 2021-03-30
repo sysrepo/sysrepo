@@ -878,7 +878,7 @@ module_fail_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_na
     case 0:
         assert_int_equal(event, SR_EV_CHANGE);
 
-        sr_set_error(session, "/path/to/some/node", "Custom error.");
+        sr_session_set_error_message(session, "Custom error.");
         break;
     default:
         fail();
@@ -915,9 +915,8 @@ copy_fail_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_CANDIDATE, 0, 1);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
-    ret = sr_get_error(sess, &err_info);
+    ret = sr_session_get_error(sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(err_info->err[0].xpath, "/path/to/some/node");
     assert_string_equal(err_info->err[0].message, "Custom error.");
 
     /* signal that we have finished copying */

@@ -642,7 +642,7 @@ sr_session_get_orig_data(sr_session_ctx_t *session, uint32_t idx, uint32_t *size
 {
     sr_error_info_t *err_info = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || !session->ev || !size || !data, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !session->ev || !data, session, err_info);
 
     return sr_ev_data_get(session->ev_data.orig_data, idx, size, (void **)data);
 }
@@ -724,7 +724,7 @@ sr_get_error_data(sr_error_info_err_t *err, uint32_t idx, uint32_t *size, const 
 {
     sr_error_info_t *err_info = NULL;
 
-    SR_CHECK_ARG_APIRET(!err || !size || !data, NULL, err_info);
+    SR_CHECK_ARG_APIRET(!err || !data, NULL, err_info);
 
     return sr_ev_data_get(err->error_data, idx, size, (void **)data);
 }

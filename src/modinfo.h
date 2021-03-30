@@ -131,7 +131,8 @@ void sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info);
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] cache Whether it makes sense to use cached data, if available.
- * @param[in] sid Sysrepo session ID.
+ * @param[in] orig_name Event originator name.
+ * @param[in] orig_data Event originator data.
  * @param[in] request_id XPath of the data request.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
  * @param[in] opts Get oper data options.
@@ -139,8 +140,8 @@ void sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *
-sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, sr_sid_t sid, const char *request_xpath,
-        uint32_t timeout_ms, sr_get_oper_options_t opts, sr_error_info_t **cb_error_info);
+sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig_name, const void *orig_data,
+        const char *request_xpath, uint32_t timeout_ms, sr_get_oper_options_t opts, sr_error_info_t **cb_error_info);
 
 #define SR_MI_MOD_DEPS          0x01    /**< add modules not as MOD_INFO_REQ but as MOD_INFO_DEP */
 #define SR_MI_LOCK_UPGRADEABLE  0x02    /**< only valid for a read lock, make it upgradeable into a write lock */
@@ -161,13 +162,15 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, sr_sid_t sid, co
  * @param[in] mod_lock Mode of module lock.
  * @param[in] mi_opts Mod info options modifying the default behavior but some SR_MI_PERM_* must always be used.
  * @param[in] sid Session ID to store in lock information and optionally to present for operational callbacks.
+ * @param[in] orig_name Event originator name.
+ * @param[in] orig_data Event originator data.
  * @param[in] request_xpath Request XPath for operational callbacks.
  * @param[in] timeout_ms Timeout for operational callbacks.
  * @param[in] get_opts Get operational data options.
  */
 sr_error_info_t *sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const struct ly_set *mod_set, int mod_deps,
-        sr_lock_mode_t mod_lock, int mi_opts, sr_sid_t sid, const char *request_xpath, uint32_t timeout_ms,
-        sr_get_oper_options_t get_opts);
+        sr_lock_mode_t mod_lock, int mi_opts, sr_sid_t sid, const char *orig_name, const void *orig_data,
+        const char *request_xpath, uint32_t timeout_ms, sr_get_oper_options_t get_opts);
 
 /**
  * @brief Validate data for modules in mod info.

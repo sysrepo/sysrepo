@@ -40,7 +40,6 @@ sr_shmmod_collect_edit(const struct lyd_node *edit, struct ly_set *mod_set)
     sr_error_info_t *err_info = NULL;
     const struct lys_module *mod;
     const struct lyd_node *root;
-    char *str;
 
     /* add all the modules from the edit into our array */
     mod = NULL;
@@ -48,10 +47,8 @@ sr_shmmod_collect_edit(const struct lyd_node *edit, struct ly_set *mod_set)
         if (lyd_owner_module(root) == mod) {
             continue;
         } else if (!strcmp(lyd_owner_module(root)->name, SR_YANG_MOD)) {
-            str = lyd_path(root, LYD_PATH_STD, NULL, 0);
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, str, "Data of internal module \"%s\" cannot be modified.",
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"%s\" cannot be modified.",
                     SR_YANG_MOD);
-            free(str);
             return err_info;
         }
 
@@ -413,8 +410,8 @@ sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod
         err_info = sr_rwlock(&shm_lock->lock, timeout_ms, mode, cid, __func__, sr_shmmod_recover_cb, &cb_data);
     }
     if (err_info) {
-        if (err_info->err_code == SR_ERR_TIME_OUT) {
-            sr_errinfo_new(&err_info, SR_ERR_LOCKED, NULL, "Module \"%s\" is %s by session %u (NC SID %u).",
+        if (err_info->err[0].err_code == SR_ERR_TIME_OUT) {
+            sr_errinfo_new(&err_info, SR_ERR_LOCKED, "Module \"%s\" is %s by session %u (NC SID %u).",
                     ly_mod->name, ATOMIC_LOAD_RELAXED(shm_lock->ds_locked) ? "locked" : "being used", shm_lock->sid.sr,
                     shm_lock->sid.nc);
         }
@@ -427,7 +424,7 @@ sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod
         if (ATOMIC_LOAD_RELAXED(shm_lock->ds_locked)) {
             assert(shm_lock->sid.sr);
             if (shm_lock->sid.sr != sid.sr) {
-                sr_errinfo_new(&err_info, SR_ERR_LOCKED, NULL, "Module \"%s\" is locked by session %u (NC SID %u).",
+                sr_errinfo_new(&err_info, SR_ERR_LOCKED, "Module \"%s\" is locked by session %u (NC SID %u).",
                         ly_mod->name, shm_lock->sid.sr, shm_lock->sid.nc);
                 goto revert_lock;
             }
@@ -712,7 +709,7 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid)
             if (shm_lock->sid.sr == sid.sr) {
                 if (shm_lock->lock.upgr) {
                     /* this should never happen, write lock is held during some API calls */
-                    sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Session %u (NC SID %u) was working with"
+                    sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Session %u (NC SID %u) was working with"
                             " module \"%s\"!", sid.sr, sid.nc, conn->main_shm.addr + shm_mod->name);
                     sr_errinfo_free(&err_info);
                     shm_lock->lock.upgr = 0;
@@ -728,7 +725,7 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid)
                     /* collect all modules */
                     SR_MODINFO_INIT(mod_info, conn, ds, ds);
                     if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_WRITE,
-                            SR_MI_DATA_NO | SR_MI_PERM_NO, sid, NULL, 0, 0))) {
+                            SR_MI_DATA_NO | SR_MI_PERM_NO, sid, NULL, NULL, NULL, 0, 0))) {
                         goto cleanup_modules;
                     }
 
@@ -771,7 +768,7 @@ sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_cid_t cid)
     memset(&sid, 0, sizeof sid);
 
     if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_WRITE, SR_MI_DATA_NO | SR_MI_PERM_NO, sid,
-            NULL, 0, 0))) {
+            NULL, NULL, NULL, 0, 0))) {
         goto cleanup;
     }
 

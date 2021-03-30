@@ -66,7 +66,7 @@ static int
 setup(void **state)
 {
     struct state *st;
-    uint32_t conn_count;
+    uint32_t conn_count, nc_id;
     const char *ops_ref_feats[] = {"feat1", NULL};
 
     st = calloc(1, sizeof *st);
@@ -107,7 +107,9 @@ setup(void **state)
     if (sr_session_start(st->conn, SR_DS_RUNNING, &st->sess) != SR_ERR_OK) {
         return 1;
     }
-    sr_session_set_nc_id(st->sess, 1000);
+    sr_session_set_orig_name(st->sess, "test_notif");
+    nc_id = 1000;
+    sr_session_push_orig_data(st->sess, sizeof nc_id, &nc_id);
 
     pthread_barrier_init(&st->barrier, NULL, 2);
 
@@ -343,6 +345,7 @@ notif_simple_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_ty
         const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
+    uint32_t size, *nc_id;
 
     (void)sub_id;
     (void)timestamp;
@@ -353,7 +356,10 @@ notif_simple_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_ty
     }
 
     assert_int_equal(notif_type, SR_EV_NOTIF_REALTIME);
-    assert_int_equal(sr_session_get_event_nc_id(session), 1000);
+    assert_string_equal(sr_session_get_orig_name(session), "test_notif");
+    assert_int_equal(sr_session_get_orig_data(session, 0, &size, (const void **)&nc_id), SR_ERR_OK);
+    assert_int_equal(size, sizeof *nc_id);
+    assert_int_equal(*nc_id, 1000);
 
     /* check input data */
     if (!strcmp(xpath, "/ops:notif3")) {
@@ -429,13 +435,11 @@ test_simple(void **state)
     /* try to send the first notif, expect an error */
     ret = sr_event_notif_send(st->sess, "/ops:notif3", input, 2);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
-    ret = sr_get_error(st->sess, &err_info);
+    ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
     assert_string_equal(err_info->err[0].message, "Invalid instance-identifier \"/ops:cont/list1[k='key']/cont2\" value - required instance not found.");
-    assert_string_equal(err_info->err[0].xpath, "Schema location /ops:notif3/list2/l15, data location /ops:notif3/list2[k='k']/l15.");
     assert_string_equal(err_info->err[1].message, "Notification validation failed.");
-    assert_null(err_info->err[1].xpath);
 
     /* subscribe to the data so they are actually present in operational */
     ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, 0, &subscr2);
@@ -444,13 +448,11 @@ test_simple(void **state)
     /* try to send the first notif again, still fails */
     ret = sr_event_notif_send(st->sess, "/ops:notif3", input, 2);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
-    ret = sr_get_error(st->sess, &err_info);
+    ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
     assert_string_equal(err_info->err[0].message, "Invalid leafref value \"l1-val\" - no existing target instance \"/or:l1\".");
-    assert_string_equal(err_info->err[0].xpath, "Schema location /ops:notif3/list2/l14, data location /ops:notif3/list2[k='k']/l14.");
     assert_string_equal(err_info->err[1].message, "Notification validation failed.");
-    assert_null(err_info->err[1].xpath);
 
     /* subscribe to the data so they are actually present in operational */
     ret = sr_module_change_subscribe(st->sess, "ops-ref", NULL, module_change_dummy_cb, NULL, 0, 0, &subscr3);
@@ -475,11 +477,10 @@ test_simple(void **state)
     /* try to send the second notif, expect an error */
     ret = sr_event_notif_send(st->sess, "/ops:cont/cont3/notif2", input, 1);
     assert_int_equal(ret, SR_ERR_LY);
-    ret = sr_get_error(st->sess, &err_info);
+    ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
     assert_string_equal(err_info->err[0].message, "Not found node \"l101\" in path.");
-    assert_string_equal(err_info->err[0].xpath, "Schema location /ops:cont/cont3/notif2/l13.");
     assert_string_equal(err_info->err[1].message, "Invalid instance-identifier \"/ops-ref:l101\" value - semantic error.");
 
     /* correct the instance-identifier */
@@ -1124,22 +1125,22 @@ notif_suspend_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_t
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
-        assert_int_equal(sr_session_get_event_nc_id(session), 1000);
+        assert_string_equal(sr_session_get_orig_name(session), "test_notif");
         assert_int_equal(notif_type, SR_EV_NOTIF_REALTIME);
         assert_string_equal(xpath, "/ops:notif4");
         break;
     case 1:
-        assert_int_equal(sr_session_get_event_nc_id(session), 0);
+        assert_null(sr_session_get_orig_name(session));
         assert_int_equal(notif_type, SR_EV_NOTIF_SUSPENDED);
         assert_null(xpath);
         break;
     case 2:
-        assert_int_equal(sr_session_get_event_nc_id(session), 0);
+        assert_null(sr_session_get_orig_name(session));
         assert_int_equal(notif_type, SR_EV_NOTIF_RESUMED);
         assert_null(xpath);
         break;
     case 3:
-        assert_int_equal(sr_session_get_event_nc_id(session), 1000);
+        assert_string_equal(sr_session_get_orig_name(session), "test_notif");
         assert_int_equal(notif_type, SR_EV_NOTIF_REALTIME);
         assert_string_equal(xpath, "/ops:notif4");
         break;

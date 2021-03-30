@@ -49,7 +49,7 @@ static int
 setup(void **state)
 {
     struct state *st;
-    uint32_t conn_count;
+    uint32_t conn_count, nc_id;
     const char *ops_ref_feats[] = {"feat1", NULL}, *act_feats[] = {"advanced-testing", NULL};
 
     st = calloc(1, sizeof *st);
@@ -99,7 +99,9 @@ setup(void **state)
         return 1;
     }
 
-    sr_session_set_nc_id(st->sess, 128);
+    sr_session_set_orig_name(st->sess, "test_rpc_action");
+    nc_id = 128;
+    sr_session_push_orig_data(st->sess, sizeof nc_id, &nc_id);
 
     return 0;
 }
@@ -146,6 +148,8 @@ rpc_fail_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *xpath, const
     char *str1;
     const char *str2;
     int ret;
+    uint32_t size;
+    const uint32_t *nc_id;
 
     (void)sub_id;
     (void)event;
@@ -153,7 +157,11 @@ rpc_fail_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *xpath, const
     (void)output;
     (void)private_data;
 
-    assert_int_equal(sr_session_get_event_nc_id(session), 128);
+    assert_string_equal(sr_session_get_orig_name(session), "test_rpc_action");
+    assert_int_equal(sr_session_get_orig_data(session, 0, &size, (const void **)&nc_id), SR_ERR_OK);
+    assert_int_equal(size, sizeof *nc_id);
+    assert_int_equal(*nc_id, 128);
+    assert_int_equal(sr_session_get_orig_data(session, 1, &size, (const void **)&nc_id), SR_ERR_NOT_FOUND);
     assert_string_equal(xpath, "/ops:rpc1");
 
     /* check input data tree */
@@ -166,7 +174,7 @@ rpc_fail_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *xpath, const
     free(str1);
 
     /* error */
-    sr_set_error(session, NULL, "RPC FAIL");
+    sr_session_set_error_message(session, "RPC FAIL");
     return SR_ERR_SYS;
 }
 
@@ -190,11 +198,12 @@ test_fail(void **state)
     ret = sr_rpc_send_tree(st->sess, input, 0, &output);
     lyd_free_all(input);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
-    ret = sr_get_error(st->sess, &err_info);
+    ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(err_info->err_count, 1);
+    assert_int_equal(err_info->err_count, 2);
+    assert_int_equal(err_info->err[0].err_code, SR_ERR_SYS);
     assert_string_equal(err_info->err[0].message, "RPC FAIL");
-    assert_null(err_info->err[0].xpath);
+    assert_null(err_info->err[0].error_format);
     assert_null(output);
 
     /* try to send an action */
@@ -324,13 +333,13 @@ test_rpc(void **state)
     /* try to send first RPC, expect an error */
     ret = sr_rpc_send(st->sess, "/ops:rpc1", &input, 1, 0, &output, &output_count);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
-    ret = sr_get_error(st->sess, &err_info);
+    ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
     assert_string_equal(err_info->err[0].message, "Invalid leafref value \"l1-val\" - no existing target instance \"/or:l1\".");
-    assert_string_equal(err_info->err[0].xpath, "Schema location /ops:rpc1/input/l1, data location /ops:rpc1/l1.");
+    assert_null(err_info->err[0].error_format);
     assert_string_equal(err_info->err[1].message, "RPC input validation failed.");
-    assert_null(err_info->err[1].xpath);
+    assert_null(err_info->err[1].error_format);
     assert_null(output);
     assert_int_equal(output_count, 0);
 
@@ -353,14 +362,14 @@ test_rpc(void **state)
     /* try to send second RPC, expect an error */
     ret = sr_rpc_send(st->sess, "/ops:rpc2", NULL, 0, 0, &output, &output_count);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
-    ret = sr_get_error(st->sess, &err_info);
+    ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
     assert_string_equal(err_info->err[0].message, "Invalid leafref value \"inval-ref\" - no target instance \"/or:l2\" "
             "with the same value.");
-    assert_string_equal(err_info->err[0].xpath, "Schema location /ops:rpc2/output/cont/l3, data location /ops:rpc2/cont/l3.");
+    assert_null(err_info->err[0].error_format);
     assert_string_equal(err_info->err[1].message, "RPC output validation failed.");
-    assert_null(err_info->err[1].xpath);
+    assert_null(err_info->err[1].error_format);
 
     /* try to send second RPC again, should succeed now */
     ret = sr_rpc_send(st->sess, "/ops:rpc2", NULL, 0, 0, &output, &output_count);
@@ -402,7 +411,7 @@ test_rpc(void **state)
      */
     ret = sr_rpc_send(st->sess, "/ops:invalid", &input, 1, 0, &output, &output_count);
     assert_int_equal(ret, SR_ERR_LY);
-    ret = sr_get_error(st->sess, &err_info);
+    ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 1);
     assert_string_equal(err_info->err[0].message, "Not found node \"invalid\" in path.");
@@ -784,7 +793,7 @@ rpc_multi_fail0_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_pa
         assert_int_equal(event, SR_EV_RPC);
         assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
         /* callback fails */
-        ret = SR_ERR_NOMEM;
+        ret = SR_ERR_NO_MEMORY;
         ++call_no;
         break;
     case 2:

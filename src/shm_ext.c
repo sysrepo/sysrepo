@@ -399,7 +399,7 @@ sr_shmext_change_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t 
                     break;
                 }
 
-                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL,
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG,
                         "There already is an \"update\" subscription on module \"%s\" with priority %u for %s DS.",
                         conn->main_shm.addr + shm_mod->name, priority, sr_ds2str(ds));
                 goto cleanup_changesub_ext_unlock;
@@ -788,7 +788,7 @@ sr_shmext_oper_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, 
                 break;
             }
 
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL,
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG,
                     "Operational data provider subscription for \"%s\" on \"%s\" already exists.",
                     conn->main_shm.addr + shm_mod->name, xpath);
             goto cleanup_opersub_ext_unlock;
@@ -1257,7 +1257,7 @@ sr_shmext_rpc_sub_add(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, uint32_t sub_id, c
                 break;
             }
 
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "RPC subscription for \"%s\" with priority %u "
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "RPC subscription for \"%s\" with priority %u "
                     "already exists.", conn->main_shm.addr + shm_rpc->path, priority);
             goto cleanup_rpcsub_ext_unlock;
         }
@@ -1560,11 +1560,11 @@ sr_shmext_change_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, sr_dat
     if (set_suspended > -1) {
         /* check whether the flag can be changed */
         if (set_suspended && ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Change subscription with ID %" PRIu32
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Change subscription with ID %" PRIu32
                     " already suspended.", sub_id);
             goto cleanup_changesub_ext_unlock;
         } else if (!set_suspended && !ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Change subscription with ID %" PRIu32
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Change subscription with ID %" PRIu32
                     " not suspended.", sub_id);
             goto cleanup_changesub_ext_unlock;
         }
@@ -1629,11 +1629,11 @@ sr_shmext_oper_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, uint32_t
     if (set_suspended > -1) {
         /* check whether the flag can be changed */
         if (set_suspended && ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Operational subscription with ID %" PRIu32
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Operational subscription with ID %" PRIu32
                     " already suspended.", sub_id);
             goto cleanup_opersub_ext_unlock;
         } else if (!set_suspended && !ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Operational subscription with ID %" PRIu32
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Operational subscription with ID %" PRIu32
                     " not suspended.", sub_id);
             goto cleanup_opersub_ext_unlock;
         }
@@ -1698,11 +1698,11 @@ sr_shmext_notif_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, uint32_
     if (set_suspended > -1) {
         /* check whether the flag can be changed */
         if (set_suspended && ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Notification subscription with ID %" PRIu32
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Notification subscription with ID %" PRIu32
                     " already suspended.", sub_id);
             goto cleanup_notifsub_ext_unlock;
         } else if (!set_suspended && !ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Notification subscription with ID %" PRIu32
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Notification subscription with ID %" PRIu32
                     " not suspended.", sub_id);
             goto cleanup_notifsub_ext_unlock;
         }
@@ -1766,11 +1766,11 @@ sr_shmext_rpc_sub_suspended(sr_conn_ctx_t *conn, const char *path, uint32_t sub_
     if (set_suspended > -1) {
         /* check whether the flag can be changed */
         if (set_suspended && ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "RPC/action subscription with ID %" PRIu32
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "RPC/action subscription with ID %" PRIu32
                     " already suspended.", sub_id);
             goto cleanup_rpcsub_ext_unlock;
         } else if (!set_suspended && !ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "RPC/action subscription with ID %" PRIu32
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "RPC/action subscription with ID %" PRIu32
                     " not suspended.", sub_id);
             goto cleanup_rpcsub_ext_unlock;
         }

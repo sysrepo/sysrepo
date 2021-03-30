@@ -502,7 +502,7 @@ sr_shmmain_files_startup2running(sr_main_shm_t *main_shm, int replace)
     return NULL;
 
 error:
-    sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Copying module \"%s\" data from <startup> to <running> failed.", mod_name);
+    sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Copying module \"%s\" data from <startup> to <running> failed.", mod_name);
     return err_info;
 }
 
@@ -1113,7 +1113,7 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
     }
     free(shm_name);
     if (shm->fd == -1) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open main shared memory (%s).", strerror(errno));
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to open main shared memory (%s).", strerror(errno));
         goto error;
     }
 
@@ -1142,7 +1142,7 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
     } else {
         /* check versions  */
         if (main_shm->shm_ver != SR_SHM_VER) {
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Shared memory version mismatch (%u, expected %u),"
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Shared memory version mismatch (%u, expected %u),"
                     " remove the SHM to fix.", main_shm->shm_ver, SR_SHM_VER);
             goto error;
         }
@@ -1172,7 +1172,7 @@ sr_shmmain_ext_open(sr_shm_t *shm, int zero)
     shm->fd = sr_open(shm_name, O_RDWR | O_CREAT, SR_MAIN_SHM_PERM);
     free(shm_name);
     if (shm->fd == -1) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Failed to open ext shared memory (%s).", strerror(errno));
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to open ext shared memory (%s).", strerror(errno));
         goto error;
     }
 
