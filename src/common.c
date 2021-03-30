@@ -5084,7 +5084,7 @@ sr_module_file_oper_data_load(struct sr_mod_info_mod_s *mod, struct lyd_node **d
 trim_retry:
     if (dead_cid) {
         /* this connection is dead, remove its stored diff */
-        SR_LOG_INF("Recovering stored operational data of CID %" PRIu32 ".", dead_cid);
+        SR_LOG_INF("Recovering module \"%s\" stored operational data of CID %" PRIu32 ".", mod->ly_mod->name, dead_cid);
         if ((err_info = sr_diff_del_conn(diff, dead_cid))) {
             return err_info;
         }

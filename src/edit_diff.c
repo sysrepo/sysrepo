@@ -311,7 +311,7 @@ sr_edit_find_userord_predicate(const struct lyd_node *sibling, const struct lyd_
 
     lyrc = lyd_find_sibling_val(sibling, llist->schema, key_or_value, strlen(key_or_value), match);
     if (lyrc == LY_ENOTFOUND) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Node \"%s\" instance to insert next to not found.",
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" instance to insert next to not found.",
                 llist->schema->name);
         return err_info;
     } else if (lyrc) {
@@ -616,7 +616,7 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
     }
 
     if (user_order_list && ((ins == INSERT_BEFORE) || (ins == INSERT_AFTER)) && !(k_or_val)) {
-        sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, NULL, "Missing attribute \"%s\" required by the \"insert\" attribute.",
+        sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Missing attribute \"%s\" required by the \"insert\" attribute.",
                 edit_node->schema->nodetype == LYS_LIST ? "key" : "value");
         return err_info;
     }
@@ -658,7 +658,7 @@ sr_edit_insert(struct lyd_node **first_node, struct lyd_node *parent_node, struc
 
         /* simply insert into parent, no other children */
         if (key_or_value) {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Node \"%s\" instance to insert next to not found.",
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" instance to insert next to not found.",
                     new_node->schema->name);
             return err_info;
         }
@@ -1280,7 +1280,7 @@ sr_edit_apply_none(struct lyd_node *match_node, const struct lyd_node *edit_node
     assert(edit_node || match_node);
 
     if (!match_node) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Node \"%s\" does not exist.", edit_node->schema->name);
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" does not exist.", edit_node->schema->name);
         return err_info;
     }
 
@@ -1617,7 +1617,7 @@ sr_edit_apply_create(struct lyd_node **first_node, struct lyd_node *parent_node,
 
         /* allow creating duplicate instances of state lists/leaf-lists */
         if (!lysc_is_dup_inst_list(edit_node->schema)) {
-            sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Node \"%s\" to be created already exists.",
+            sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Node \"%s\" to be created already exists.",
                     edit_node->schema->name);
             return err_info;
         }
@@ -1702,7 +1702,7 @@ sr_edit_apply_delete(struct lyd_node *match_node, const struct lyd_node *edit_no
     sr_error_info_t *err_info = NULL;
 
     if (!match_node) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL, "Node \"%s\" to be deleted does not exist.", edit_node->schema->name);
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" to be deleted does not exist.", edit_node->schema->name);
         return err_info;
     }
 
@@ -1762,7 +1762,7 @@ reapply:
         switch (next_op) {
         case EDIT_REPLACE:
             if (flags & EDIT_APPLY_CHECK_OP_R) {
-                sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL,
+                sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
                         "Node \"%s\" cannot be created because its parent does not exist.", edit_node->schema->name);
                 goto op_error;
             }
@@ -1773,7 +1773,7 @@ reapply:
             break;
         case EDIT_CREATE:
             if (flags & EDIT_APPLY_CHECK_OP_R) {
-                sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL,
+                sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
                         "Node \"%s\" cannot be created because its parent does not exist.", edit_node->schema->name);
                 goto op_error;
             }
@@ -1784,7 +1784,7 @@ reapply:
             break;
         case EDIT_MERGE:
             if (flags & EDIT_APPLY_CHECK_OP_R) {
-                sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL,
+                sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
                         "Node \"%s\" cannot be created because its parent does not exist.", edit_node->schema->name);
                 goto op_error;
             }
@@ -1909,7 +1909,7 @@ reapply:
 
 op_error:
     assert(err_info);
-    sr_errinfo_new(&err_info, err_info->err_code, NULL, "Applying operation \"%s\" failed.", sr_edit_op2str(op));
+    sr_errinfo_new(&err_info, err_info->err[0].err_code, "Applying operation \"%s\" failed.", sr_edit_op2str(op));
     return err_info;
 }
 
@@ -2243,7 +2243,7 @@ sr_edit_is_superior_op(enum edit_op *new_op, enum edit_op cur_op, int *is_superi
     return NULL;
 
 op_error:
-    sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, NULL, "Operation \"%s\" cannot have children with operation \"%s\".",
+    sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Operation \"%s\" cannot have children with operation \"%s\".",
             sr_edit_op2str(cur_op), sr_edit_op2str(*new_op));
     return err_info;
 }
@@ -2291,7 +2291,7 @@ sr_edit_add_check_same_node_op(sr_session_ctx_t *session, const char *xpath, con
     }
 
     sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
-    sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Invalid datastore edit.");
+    sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid datastore edit.");
     return err_info;
 }
 
@@ -2373,7 +2373,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     /* check allowed node types */
     for (parent = node; parent; parent = lyd_parent(parent)) {
         if (parent->schema && (parent->schema->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF))) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "RPC/action/notification node \"%s\" cannot be created.",
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "RPC/action/notification node \"%s\" cannot be created.",
                     parent->schema->name);
             /* no need to throw away the whole edit */
             isolate = 1;
@@ -2391,18 +2391,18 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     /* check arguments */
     if (position) {
         if (!lysc_is_userordered(node->schema)) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Position can be specified only for user-ordered nodes.");
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Position can be specified only for user-ordered nodes.");
             goto error;
         }
         if (node->schema->nodetype == LYS_LIST) {
             if (((*position == SR_MOVE_BEFORE) || (*position == SR_MOVE_AFTER)) && !keys) {
-                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Missing relative item for a list move operation.");
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Missing relative item for a list move operation.");
                 goto error;
             }
             meta_val = keys;
         } else {
             if (((*position == SR_MOVE_BEFORE) || (*position == SR_MOVE_AFTER)) && !val) {
-                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, NULL, "Missing relative item for a leaf-list move operation.");
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Missing relative item for a leaf-list move operation.");
                 goto error;
             }
             meta_val = val;
@@ -2535,7 +2535,7 @@ error:
             lyd_free_all(session->dt[session->ds].edit);
             session->dt[session->ds].edit = NULL;
 
-            sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, NULL, "Edit was discarded.");
+            sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Edit was discarded.");
         }
     }
     return err_info;
@@ -2608,38 +2608,99 @@ sr_diff_set_getnext(struct ly_set *set, uint32_t *idx, struct lyd_node **node, s
     return NULL;
 }
 
+/**
+ * @brief Update a stored diff subtree after a connection was terminated.
+ *
+ * @param[in] subtree Subtree to update, may be freed.
+ * @param[in] cid CID of the deleted connection.
+ * @param[in] parent_cid CID effective for (inherited from) the @p subtree parent.
+ * @param[out] child_cid_p CID effective for the @p subtree, 0 if it was deleted.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_diff_del_conn_r(struct lyd_node *subtree, sr_cid_t cid, sr_cid_t parent_cid, sr_cid_t *child_cid_p)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *next, *child;
+    struct lyd_meta *meta;
+    sr_cid_t cur_cid, child_cid, ch_cid;
+    char cid_str[11];
+
+    /* find our CID attribute, if any */
+    meta = lyd_find_meta(subtree->meta, NULL, SR_YANG_MOD ":cid");
+    if (meta) {
+        cur_cid = meta->value.uint32;
+    } else {
+        cur_cid = parent_cid;
+    }
+
+    /* process children */
+    child_cid = 0;
+    LY_LIST_FOR_SAFE(lyd_child_no_keys(subtree), next, child) {
+        if ((err_info = sr_diff_del_conn_r(child, cid, cur_cid, &ch_cid))) {
+            return err_info;
+        }
+
+        /* try to find a child with the parent CID, then we can simply keep it */
+        if (ch_cid && (!child_cid || (child_cid != parent_cid))) {
+            child_cid = ch_cid;
+        }
+    }
+
+    if (cur_cid != cid) {
+        /* this node is not owned by the deleted connection, the subtree is kept */
+        *child_cid_p = cur_cid;
+        return NULL;
+    }
+
+    if (child_cid) {
+        /* this node was "deleted" but there are still some children */
+        if (meta) {
+            lyd_free_meta_single(meta);
+        }
+        if (parent_cid != child_cid) {
+            /* update the owner of this node */
+            sprintf(cid_str, "%" PRIu32, child_cid);
+            if (lyd_new_meta(NULL, subtree, NULL, SR_YANG_MOD ":cid", cid_str, 0, NULL)) {
+                sr_errinfo_new_ly(&err_info, LYD_CTX(subtree));
+                return err_info;
+            }
+        }
+
+        /* this subtree is kept */
+        *child_cid_p = child_cid;
+    } else {
+        /* there are no children left and this node belongs to the deleted connection, remove it */
+        lyd_free_tree(subtree);
+
+        /* this subtree was deleted */
+        *child_cid_p = 0;
+    }
+
+    return NULL;
+}
+
 sr_error_info_t *
 sr_diff_del_conn(struct lyd_node **diff, sr_cid_t cid)
 {
     sr_error_info_t *err_info = NULL;
-    struct ly_set *set = NULL;
-    char *xpath = NULL;
-    uint16_t i;
+    struct lyd_node *next, *elem;
+    sr_cid_t child_cid;
 
     if (!*diff) {
         return NULL;
     }
 
-    if (asprintf(&xpath, "//*[@cid='%" PRIu32 "']", cid) == -1) {
-        SR_ERRINFO_MEM(&err_info);
-        goto cleanup;
-    }
-
-    if (lyd_find_xpath(*diff, xpath, &set)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(*diff));
-        goto cleanup;
-    }
-
-    /* free all subtrees, they cannot overlap */
-    for (i = 0; i < set->count; ++i) {
-        if (*diff == set->dnodes[i]) {
-            *diff = (*diff)->next;
+    LY_LIST_FOR_SAFE(*diff, next, elem) {
+        if ((err_info = sr_diff_del_conn_r(elem, cid, 0, &child_cid))) {
+            return err_info;
         }
-        lyd_free_tree(set->dnodes[i]);
+
+        if (!child_cid && (*diff == elem)) {
+            /* first top-level node was removed, move the diff */
+            *diff = next;
+        }
     }
 
-cleanup:
-    ly_set_free(set, NULL);
-    free(xpath);
-    return err_info;
+    return NULL;
 }

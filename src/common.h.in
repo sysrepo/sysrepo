@@ -167,13 +167,13 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** timeout for locking subscription SHM; maximum time an event handling should take (ms) */
 #define SR_SUBSHM_LOCK_TIMEOUT 10000
 
-/** timeout for locking ext SHM lock; time that truncating and writing into SHM may take (ms) */
-#define SR_EXT_LOCK_TIMEOUT 100
+/** timeout for locking ext SHM lock; time that truncating, writing into SHM but even recovering may take (ms) */
+#define SR_EXT_LOCK_TIMEOUT 500
 
 /** timeout for locking the local connection list; maximum time the list can be accessed (ms) */
 #define SR_CONN_LIST_LOCK_TIMEOUT 100
 
-/** timeout for locking connection remap lock; maximum time it can be continuously read/written to it (ms) */
+/** timeout for locking connection remap lock; maximum time it can be continuously read/written to (ms) */
 #define SR_CONN_REMAP_LOCK_TIMEOUT 10000
 
 /** timeout for locking (data of) a module; maximum time a module write lock is expected to be held (ms) */
