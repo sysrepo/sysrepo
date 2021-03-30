@@ -498,6 +498,98 @@ test_notif_instid2(int rp, int wp)
     return 0;
 }
 
+/* TEST */
+static int
+pull_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *path, const char *request_xpath,
+        uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    const struct ly_ctx *ly_ctx = sr_get_context(sr_session_get_connection(session));
+    struct lyd_node *node;
+
+    (void)module_name;
+    (void)path;
+    (void)request_xpath;
+    (void)request_id;
+    (void)private_data;
+
+    *parent = lyd_new_path(NULL, ly_ctx, "/ietf-interfaces:interfaces-state/interface[name='lo']/statistics/discontinuity-time",
+            "2021-03-01T00:00:00Z", 0, 0);
+    sr_assert(*parent);
+    node = lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='lo']/statistics/in-octets", "42", 0, 0);
+    sr_assert(node);
+    node = lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='lo']/statistics/out-octets", "42", 0, 0);
+    sr_assert(node);
+
+    return SR_ERR_OK;
+}
+
+static int
+test_pull_push_oper1(int rp, int wp)
+{
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *sub;
+    int ret, i;
+
+    ret = sr_connect(0, &conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_start(conn, SR_DS_OPERATIONAL, &sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to providing operational data */
+    ret = sr_oper_get_items_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state/interface/statistics",
+            pull_oper_cb, NULL, 0, &sub);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for the other process */
+    barrier(rp, wp);
+
+    /* keep changing push operational data */
+    for (i = 0; i < 200; ++i) {
+        ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='lo']/phys-address",
+                (i % 2) ? "00:00:00:00:00:00" : "11:11:11:11:11:11", NULL, 0);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='lo']/oper-status",
+                (i % 2) ? "unknown" : "down", NULL, 0);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_apply_changes(sess, 0, 1);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    sr_unsubscribe(sub);
+    sr_disconnect(conn);
+    return 0;
+}
+
+static int
+test_pull_push_oper2(int rp, int wp)
+{
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    struct lyd_node *data;
+    int ret, i;
+
+    ret = sr_connect(0, &conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_start(conn, SR_DS_OPERATIONAL, &sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for the other process */
+    barrier(rp, wp);
+
+    /* keep getting the operational data */
+    for (i = 0; i < 200; ++i) {
+        ret = sr_get_data(sess, "/ietf-interfaces:interfaces/interface", 0, 0, 0, &data);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+        lyd_free_withsiblings(data);
+    }
+
+    sr_disconnect(conn);
+    return 0;
+}
+
 int
 main(void)
 {
@@ -505,6 +597,7 @@ main(void)
         {"rpc sub", test_rpc_sub1, test_rpc_sub2, setup, teardown},
         {"rpc crash", test_rpc_crash1, test_rpc_crash2, setup, teardown},
         {"notif instid", test_notif_instid1, test_notif_instid2, setup, teardown},
+        {"pull push oper data", test_pull_push_oper1, test_pull_push_oper2, setup, teardown},
     };
 
     sr_log_set_cb(test_log_cb);
