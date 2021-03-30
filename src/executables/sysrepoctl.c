@@ -58,6 +58,8 @@ struct list_item {
     char *features;
 };
 
+sr_log_level_t log_level = SR_LL_ERR;
+
 static void
 version_print(void)
 {
@@ -123,6 +125,10 @@ error_print(int sr_error, const char *format, ...)
     va_start(ap, format);
     vfprintf(stderr, msg, ap);
     va_end(ap);
+
+    if (log_level < SR_LL_INF) {
+        fprintf(stderr, "For more details you may try to increase the verbosity up to \"-v3\".\n");
+    }
 }
 
 static void
@@ -442,7 +448,6 @@ main(int argc, char **argv)
     const char *file_path = NULL, *search_dirs = NULL, *module_name = NULL, *owner = NULL, *group = NULL;
     char **features = NULL, **dis_features = NULL, *ptr;
     mode_t perms = -1;
-    sr_log_level_t log_level = SR_LL_ERR;
     int r, i, rc = EXIT_FAILURE, opt, operation = 0, feat_count = 0, dis_feat_count = 0, replay = -1, apply = 0;
     uint32_t conn_count;
     struct option options[] = {
