@@ -307,7 +307,7 @@ if(ENABLE_TESTS)
         add_subdirectory(tests)
     else()
         message(STATUS "Disabling tests because of missing CMocka.")
-        set(ENABLE_BUILD_TESTS NO)
+        set(ENABLE_TESTS NO)
     endif()
 endif()
 
