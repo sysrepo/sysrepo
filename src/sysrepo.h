@@ -264,6 +264,15 @@ int sr_connection_count(uint32_t *conn_count);
 const struct ly_ctx *sr_get_context(sr_conn_ctx_t *conn);
 
 /**
+ * @brief Get content ID of the current YANG module set. It conforms to the requirements for ietf-yang-library
+ * "content-id" node value.
+ *
+ * @param[in] conn Connection to use.
+ * @return Content ID.
+ */
+uint32_t sr_get_content_id(sr_conn_ctx_t *conn);
+
+/**
  * @brief Callback to be called before applying a diff. Set it using ::sr_set_diff_check_callback.
  *
  * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.

@@ -23,6 +23,11 @@ module sysrepo {
     description
         "Sysrepo YANG datastore internal attributes and information.";
 
+    revision "2021-03-31" {
+        description
+            "Add content-id yang-library data identifier.";
+    }
+
     revision "2021-01-18" {
         description
             "Reorganized dependencies.";
@@ -144,6 +149,13 @@ module sysrepo {
         config false;
         description
             "All installed Sysrepo modules.";
+
+        leaf content-id {
+            type uint32;
+            mandatory true;
+            description
+                "Sysrepo module-set content-id to be used for its generated yang-library data.";
+        }
 
         list module {
             key "name";

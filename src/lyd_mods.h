@@ -45,6 +45,16 @@ sr_error_info_t *sr_lydmods_lock(pthread_mutex_t *lock, const struct ly_ctx *ly_
 sr_error_info_t *sr_lydmods_parse(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p);
 
 /**
+ * @brief Get current content-id of sysrepo modules.
+ *
+ * @param[in] main_shm Main SHM.
+ * @param[in] ly_ctx libyang context to use.
+ * @param[out] cont_id Content ID.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lydmods_get_content_id(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, uint32_t *cont_id);
+
+/**
  * @brief Load stored lydmods data, apply any scheduled changes if possible, and update connection context.
  *
  * @param[in] main_shm Main SHM.

@@ -1056,9 +1056,16 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *mod_data;
+    uint32_t content_id;
+
+    /* get content-id */
+    if ((err_info = sr_lydmods_get_content_id(SR_CONN_MAIN_SHM(mod_info->conn), mod_info->conn->ly_ctx, &content_id))) {
+        return err_info;
+    }
 
     /* get the data from libyang */
-    SR_CHECK_LY_RET(ly_ctx_get_yanglib_data(mod_info->conn->ly_ctx, &mod_data), mod_info->conn->ly_ctx, err_info);
+    SR_CHECK_LY_RET(ly_ctx_get_yanglib_data(mod_info->conn->ly_ctx, &mod_data, "%u", content_id),
+            mod_info->conn->ly_ctx, err_info);
 
     if (!strcmp(mod->ly_mod->revision, "2019-01-04")) {
         assert(!strcmp(mod_data->schema->name, "yang-library"));

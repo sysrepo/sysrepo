@@ -186,6 +186,10 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
     LY_ARRAY_COUNT_TYPE u, v;
 
     LY_LIST_FOR(lyd_child(sr_data), module) {
+        if (strcmp(module->schema->name, "module") && strcmp(module->schema->name, "installed-module")) {
+            continue;
+        }
+
         /* new module */
         *list = realloc(*list, (*list_count + 1) * sizeof **list);
         cur_item = &(*list)[*list_count];

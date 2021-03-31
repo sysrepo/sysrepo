@@ -94,6 +94,36 @@ cleanup:
     return err_info;
 }
 
+sr_error_info_t *
+sr_lydmods_get_content_id(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, uint32_t *cont_id)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *sr_mods = NULL;
+
+    /* LYDMODS LOCK */
+    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, ly_ctx, __func__))) {
+        return err_info;
+    }
+
+    /* parse sysrepo module data */
+    err_info = sr_lydmods_parse(ly_ctx, &sr_mods);
+
+    /* LYDMODS UNLOCK */
+    sr_munlock(&main_shm->lydmods_lock);
+
+    if (err_info) {
+        goto cleanup;
+    }
+
+    /* get content-id */
+    assert(!strcmp(LYD_NAME(lyd_child(sr_mods)), "content-id"));
+    *cont_id = ((struct lyd_node_term *)lyd_child(sr_mods))->value.uint32;
+
+cleanup:
+    lyd_free_all(sr_mods);
+    return err_info;
+}
+
 /**
  * @brief Check whether sysrepo module data file exists.
  *
@@ -813,6 +843,9 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     /* create empty container */
     SR_CHECK_INT_RET(lyd_new_inner(NULL, ly_mod, "sysrepo-modules", 0, &sr_mods), err_info);
 
+    /* add content-id */
+    SR_CHECK_INT_RET(lyd_new_term(sr_mods, NULL, "content-id", "1", 0, NULL), err_info);
+
     /* for internal libyang modules create files and store in the persistent module data tree */
     i = 0;
     while ((i < ly_ctx_internal_modules_count(ly_ctx)) && (ly_mod = ly_ctx_get_module_iter(ly_ctx, &i))) {
@@ -1040,7 +1073,7 @@ sr_lydmods_ctx_load_modules(const struct lyd_node *sr_mods, struct ly_ctx *ly_ct
     struct lyd_node *sr_mod, *node;
 
     LY_LIST_FOR(lyd_child(sr_mods), sr_mod) {
-        if (!strcmp(sr_mod->schema->name, "installed-module")) {
+        if (strcmp(sr_mod->schema->name, "module")) {
             continue;
         }
         if (!removed || !updated) {
@@ -1780,6 +1813,8 @@ sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *ch
     sr_error_info_t *err_info = NULL;
     struct lyd_node *next, *next2, *sr_mod, *node;
     const struct lys_module *ly_mod;
+    uint32_t content_id;
+    char buf[11];
 
     assert(sr_mods && new_ctx && change);
     assert(LYD_CTX(sr_mods) != new_ctx);
@@ -1851,9 +1886,17 @@ sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *ch
                         lyd_free_tree(node);
                     }
                 }
-            } else {
-                assert(!strcmp(sr_mod->schema->name, "installed-module"));
+            } else if (!strcmp(sr_mod->schema->name, "installed-module")) {
                 if ((err_info = sr_lydmods_sched_finalize_module_install(sr_mod, new_ctx))) {
+                    goto cleanup;
+                }
+            } else {
+                /* increase content-id */
+                assert(!strcmp(sr_mod->schema->name, "content-id"));
+                content_id = ((struct lyd_node_term *)sr_mod)->value.uint32 + 1;
+                sprintf(buf, "%u", content_id);
+                if (lyd_change_term(sr_mod, buf)) {
+                    SR_ERRINFO_INT(&err_info);
                     goto cleanup;
                 }
             }
@@ -1861,6 +1904,10 @@ sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *ch
 
         /* now add (rebuild) dependencies and RPCs, notifications of all the modules */
         LY_LIST_FOR(lyd_child(sr_mods), sr_mod) {
+            if (strcmp(sr_mod->schema->name, "module")) {
+                continue;
+            }
+
             ly_mod = ly_ctx_get_module_implemented(new_ctx, LYD_CANON_VALUE(lyd_child(sr_mod)));
             assert(ly_mod);
             if ((err_info = sr_lydmods_add_all(sr_mod, ly_mod))) {

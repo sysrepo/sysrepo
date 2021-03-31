@@ -327,6 +327,24 @@ sr_get_context(sr_conn_ctx_t *conn)
     return conn->ly_ctx;
 }
 
+API uint32_t
+sr_get_content_id(sr_conn_ctx_t *conn)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t content_id;
+
+    if (!conn) {
+        return 0;
+    }
+
+    if ((err_info = sr_lydmods_get_content_id(SR_CONN_MAIN_SHM(conn), conn->ly_ctx, &content_id))) {
+        sr_errinfo_free(&err_info);
+        return 0;
+    }
+
+    return content_id;
+}
+
 API void
 sr_set_diff_check_callback(sr_conn_ctx_t *conn, sr_diff_check_cb callback)
 {
