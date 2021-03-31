@@ -436,7 +436,7 @@ test_notif_instid1(int rp, int wp)
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type", "iana-if-type:ethernetCsmacd",
             NULL, 0);
     sr_assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0, 1);
+    ret = sr_apply_changes(sess, 0);
     sr_assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to it so it appears in operational */
@@ -490,14 +490,14 @@ test_notif_instid2(int rp, int wp)
         sr_assert_int_equal(ret, SR_ERR_OK);
         ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/description", "desc", NULL, 0);
         sr_assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_apply_changes(sess, 0, 1);
+        ret = sr_apply_changes(sess, 0);
         sr_assert_int_equal(ret, SR_ERR_OK);
 
         ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/enabled", "true", NULL, 0);
         sr_assert_int_equal(ret, SR_ERR_OK);
         ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/description", "desc2", NULL, 0);
         sr_assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_apply_changes(sess, 0, 1);
+        ret = sr_apply_changes(sess, 0);
         sr_assert_int_equal(ret, SR_ERR_OK);
     }
 
@@ -563,7 +563,7 @@ test_pull_push_oper1(int rp, int wp)
         ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='lo']/oper-status",
                 (i % 2) ? "unknown" : "down", NULL, 0);
         sr_assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_apply_changes(sess, 0, 1);
+        ret = sr_apply_changes(sess, 0);
         sr_assert_int_equal(ret, SR_ERR_OK);
     }
 

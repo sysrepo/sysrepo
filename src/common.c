@@ -4216,7 +4216,7 @@ store_value:
             break;
         case LY_TYPE_BOOL:
             sr_val->type = SR_BOOL_T;
-            sr_val->data.bool_val = val->boolean ? true : false;
+            sr_val->data.bool_val = val->boolean ? 1 : 0;
             break;
         case LY_TYPE_DEC64:
             sr_val->type = SR_DECIMAL64_T;

@@ -275,7 +275,7 @@ test_explicit_default(void **state)
     /* set explicit default value */
     ret = sr_set_item_str(st->sess, "/defaults:cont/interval", "30", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read it back */
@@ -293,7 +293,7 @@ test_explicit_default(void **state)
 
     /* cleanup */
     sr_delete_item(st->sess, "/defaults:cont", 0);
-    sr_apply_changes(st->sess, 0, 1);
+    sr_apply_changes(st->sess, 0);
 }
 
 /* TEST */
@@ -352,7 +352,7 @@ test_union(void **state)
     /* set some configuration data */
     ret = sr_set_item_str(st->sess, "/simple-aug:bc1/bcl1[bcs1='key']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to both modules so they are present in operational */
@@ -469,7 +469,7 @@ test_key(void **state)
     /* set a list */
     ret = sr_set_item_str(st->sess, "/defaults:l1[k='val']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read it back */
@@ -490,7 +490,7 @@ test_key(void **state)
 
     /* cleanup */
     sr_delete_item(st->sess, "/defaults:l1", 0);
-    sr_apply_changes(st->sess, 0, 0);
+    sr_apply_changes(st->sess, 0);
 }
 
 int

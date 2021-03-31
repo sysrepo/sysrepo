@@ -26,7 +26,7 @@
 #include "xpath.h"
 
 static char *
-sr_get_next_node_internal(char *xpath, sr_xpath_ctx_t *state, bool skip_namespace)
+sr_get_next_node_internal(char *xpath, sr_xpath_ctx_t *state, int skip_namespace)
 {
     char *index = NULL, *quot = NULL;
 
@@ -93,13 +93,13 @@ sr_get_next_node_internal(char *xpath, sr_xpath_ctx_t *state, bool skip_namespac
 API char *
 sr_xpath_next_node(char *xpath, sr_xpath_ctx_t *state)
 {
-    return sr_get_next_node_internal(xpath, state, true);
+    return sr_get_next_node_internal(xpath, state, 1);
 }
 
 API char *
 sr_xpath_next_node_with_ns(char *xpath, sr_xpath_ctx_t *state)
 {
-    return sr_get_next_node_internal(xpath, state, false);
+    return sr_get_next_node_internal(xpath, state, 0);
 }
 
 API char *
@@ -569,7 +569,7 @@ sr_xpath_node_name(const char *xpath)
     return (char *)res;
 }
 
-API bool
+API int
 sr_xpath_node_name_eq(const char *xpath, const char *node_name)
 {
     char *xp_node_name = NULL;
@@ -577,7 +577,7 @@ sr_xpath_node_name_eq(const char *xpath, const char *node_name)
     xp_node_name = sr_xpath_node_name(xpath);
 
     if ((NULL == xp_node_name) || (NULL == node_name)) {
-        return false;
+        return 0;
     } else {
         return 0 == strcmp(xp_node_name, node_name);
     }

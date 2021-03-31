@@ -345,23 +345,21 @@ sr_get_content_id(sr_conn_ctx_t *conn)
     return content_id;
 }
 
-API void
+API int
 sr_set_diff_check_callback(sr_conn_ctx_t *conn, sr_diff_check_cb callback)
 {
     sr_error_info_t *err_info = NULL;
 
-    if (!conn) {
-        return;
-    }
+    SR_CHECK_ARG_APIRET(!conn, NULL, err_info);
 
     if (geteuid() != SR_SU_UID) {
         /* not the superuser */
         sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, "Superuser access required.");
-        sr_errinfo_free(&err_info);
-        return;
+        return sr_api_ret(NULL, err_info);
     }
 
     conn->diff_check_cb = callback;
+    return sr_api_ret(NULL, NULL);
 }
 
 sr_error_info_t *
@@ -2235,7 +2233,7 @@ cleanup:
 }
 
 API int
-sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms, int wait)
+sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -2243,7 +2241,6 @@ sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms, int wait)
     sr_get_oper_options_t get_opts;
 
     SR_CHECK_ARG_APIRET(!session, session, err_info);
-    (void)wait;
 
     if (!session->dt[session->ds].edit) {
         return sr_api_ret(session, NULL);
@@ -2382,14 +2379,13 @@ cleanup:
 }
 
 API int
-sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config, uint32_t timeout_ms,
-        int wait)
+sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod = NULL;
 
     SR_CHECK_ARG_APIRET(!session || !SR_IS_CONVENTIONAL_DS(session->ds), session, err_info);
-    (void)wait;
+
     if (src_config && (session->conn->ly_ctx != src_config->schema->module->ctx)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Data trees must be created using the session connection libyang context.");
         return sr_api_ret(session, err_info);
@@ -2424,8 +2420,7 @@ cleanup:
 }
 
 API int
-sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms,
-        int wait)
+sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -2434,7 +2429,6 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
 
     SR_CHECK_ARG_APIRET(!session || !SR_IS_CONVENTIONAL_DS(src_datastore) || !SR_IS_CONVENTIONAL_DS(session->ds),
             session, err_info);
-    (void)wait;
 
     if (src_datastore == session->ds) {
         /* nothing to do */
@@ -3770,17 +3764,23 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
 
 API int
 sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_oper_t *operation,
-        const struct lyd_node **node, const char **prev_value, const char **prev_list, bool *prev_dflt)
+        const struct lyd_node **node, const char **prev_value, const char **prev_list, int *prev_dflt)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_meta *meta, *meta2;
     const char *meta_name;
 
-    SR_CHECK_ARG_APIRET(!session || !iter || !operation || !node || !prev_value || !prev_list || !prev_dflt, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !iter || !operation || !node, session, err_info);
 
-    *prev_value = NULL;
-    *prev_list = NULL;
-    *prev_dflt = 0;
+    if (prev_value) {
+        *prev_value = NULL;
+    }
+    if (prev_list) {
+        *prev_list = NULL;
+    }
+    if (prev_dflt) {
+        *prev_dflt = 0;
+    }
 
     /* get next change */
     if ((err_info = sr_diff_set_getnext(iter->set, &iter->idx, (struct lyd_node **)node, operation))) {
@@ -3812,8 +3812,10 @@ sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_ch
             SR_ERRINFO_INT(&err_info);
             return sr_api_ret(session, err_info);
         }
-        *prev_value = meta->value.canonical;
-        if (meta2->value.boolean) {
+        if (prev_value) {
+            *prev_value = meta->value.canonical;
+        }
+        if (prev_dflt && meta2->value.boolean) {
             *prev_dflt = 1;
         }
         break;
@@ -3840,10 +3842,14 @@ sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_ch
             return sr_api_ret(session, err_info);
         }
         if ((*node)->schema->nodetype == LYS_LEAFLIST) {
-            *prev_value = meta->value.canonical;
+            if (prev_value) {
+                *prev_value = meta->value.canonical;
+            }
         } else {
             assert((*node)->schema->nodetype == LYS_LIST);
-            *prev_list = meta->value.canonical;
+            if (prev_list) {
+                *prev_list = meta->value.canonical;
+            }
         }
         break;
     }

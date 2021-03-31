@@ -110,7 +110,7 @@ main(void)
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }
-    rc = sr_apply_changes(session, 0, 1);
+    rc = sr_apply_changes(session, 0);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }

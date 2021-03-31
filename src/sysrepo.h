@@ -23,7 +23,6 @@
 #ifndef _SYSREPO_H
 #define _SYSREPO_H
 
-#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -291,8 +290,9 @@ typedef int (*sr_diff_check_cb)(sr_session_ctx_t *session, const struct lyd_node
  *
  * @param[in] conn Connection, whose all sessions diffs will be passed to this callback.
  * @param[in] callback Callback to call for every diff.
+ * @return Error code (::SR_ERR_OK on success).
  */
-void sr_set_diff_check_callback(sr_conn_ctx_t *conn, sr_diff_check_cb callback);
+int sr_set_diff_check_callback(sr_conn_ctx_t *conn, sr_diff_check_cb callback);
 
 /**
  * @brief Start a new session.
@@ -708,7 +708,7 @@ typedef enum sr_type_e {
 typedef union sr_data_u {
     char *binary_val;       /**< Base64-encoded binary data ([RFC 7950 sec 9.8](http://tools.ietf.org/html/rfc7950#section-9.8)) */
     char *bits_val;         /**< A set of bits or flags ([RFC 7950 sec 9.7](http://tools.ietf.org/html/rfc7950#section-9.7)) */
-    bool bool_val;          /**< A boolean value ([RFC 7950 sec 9.5](http://tools.ietf.org/html/rfc7950#section-9.5)) */
+    int bool_val;           /**< A boolean value ([RFC 7950 sec 9.5](http://tools.ietf.org/html/rfc7950#section-9.5)) */
     double decimal64_val;   /**< 64-bit signed decimal number ([RFC 7950 sec 9.3](http://tools.ietf.org/html/rfc7950#section-9.3))
                                  __Be careful with this value!__ It is not always possible and the value can change when converting
                                  between a double and YANG decimal64. Because of that you may see some unexpected behavior setting
@@ -745,7 +745,7 @@ typedef struct sr_val_s {
      * module schema. Explicitly set/modified data element (through the sysrepo API) always
      * has this flag unset regardless of the entered value.
      */
-    bool dflt;
+    int dflt;
 
     /** [Origin](@ref oper_ds) of the value. */
     char *origin;
@@ -1048,10 +1048,9 @@ int sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t tim
  * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used. Note that this timeout
  * is measured separately for each callback meaning this whole function call can easily __take more time__ than this
  * timeout if there are changes applied for several subscribers.
- * @param[in] wait Deprecated and ignored, the function always waits until all the events are processed.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms, int wait);
+int sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms);
 
 /**
  * @brief Learn whether there are any prepared non-applied changes in the session.
@@ -1078,12 +1077,11 @@ int sr_discard_changes(sr_session_ctx_t *session);
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific - target datastore) to use.
  * @param[in] module_name If specified, limits the replace operation only to this module.
  * @param[in] src_config Source data to replace the datastore. Is ALWAYS spent and cannot be further used by the application!
- * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
- * @param[in] wait Deprecated and ignored, the function always waits until all the events are processed.
+ * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.ň
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config,
-        uint32_t timeout_ms, int wait);
+        uint32_t timeout_ms);
 
 /**
  * @brief Replaces a conventional datastore with the contents of
@@ -1100,11 +1098,9 @@ int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct
  * @param[in] module_name Optional module name that limits the copy operation only to this module.
  * @param[in] src_datastore Source datastore.
  * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
- * @param[in] wait Deprecated and ignored, the function always waits until all the events are processed.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms,
-        int wait);
+int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms);
 
 /** @} editdata */
 
@@ -1236,17 +1232,11 @@ typedef enum sr_subscr_flag_e {
     SR_SUBSCR_UPDATE = 32,
 
     /**
-     * @brief The options should not be used as it is deprecated and ignored. Callbacks can always modify other
-     * subscriptions except for those that are relevant for the particular subscription and callback.
-     */
-    SR_SUBSCR_UNLOCKED = 64,
-
-    /**
      * @brief Instead of removing any previous existing matching data before getting them from an operational
      * subscription callback, keep them. Then the returned data are merged into the existing data. Accepted
      * only for operational subscriptions.
      */
-    SR_SUBSCR_OPER_MERGE = 128
+    SR_SUBSCR_OPER_MERGE = 64,
 
 } sr_subscr_flag_t;
 
@@ -1547,13 +1537,13 @@ int sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_cha
  * @param[in,out] iter Iterator acquired with ::sr_get_changes_iter call.
  * @param[out] operation Type of the operation made on the returned item.
  * @param[out] node Affected data node always with all parents, depends on the operation.
- * @param[out] prev_value Previous value, depends on the operation.
- * @param[out] prev_list Previous list keys predicate (`[key1="val1"][key2="val2"]...`), depends on the operation.
- * @param[out] prev_dflt Previous value default flag, depends on the operation.
+ * @param[out] prev_value Previous value, depends on the operation, may be NULL.
+ * @param[out] prev_list Previous list keys predicate (`[key1="val1"][key2="val2"]...`), depends on the operation, may be NULL.
+ * @param[out] prev_dflt Previous value default flag, depends on the operation, may be NULL.
  * @return Error code (::SR_ERR_OK on success, ::SR_ERR_NOT_FOUND on no more changes).
  */
 int sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_oper_t *operation,
-        const struct lyd_node **node, const char **prev_value, const char **prev_list, bool *prev_dflt);
+        const struct lyd_node **node, const char **prev_value, const char **prev_list, int *prev_dflt);
 
 /**
  * @brief Frees ::sr_change_iter_t iterator and all memory allocated within it.
@@ -1996,35 +1986,7 @@ typedef void (*srp_cleanup_cb_t)(sr_session_ctx_t *session, void *private_data);
  */
 #define SRP_LOG_DBG(...) srp_log(SR_LL_DBG, __VA_ARGS__)
 
-/**
- * @brief Log a simple plugin error message.
- *
- * @param[in] msg Message to log.
- */
-#define SRP_LOG_ERRMSG(msg) srp_log(SR_LL_ERR, msg)
-
-/**
- * @brief Log a simple plugin warning message.
- *
- * @param[in] msg Message to log.
- */
-#define SRP_LOG_WRNMSG(msg) srp_log(SR_LL_WRN, msg)
-
-/**
- * @brief Log a simple plugin info message.
- *
- * @param[in] msg Message to log.
- */
-#define SRP_LOG_INFMSG(msg) srp_log(SR_LL_INF, msg)
-
-/**
- * @brief Log a simple plugin debug message.
- *
- * @param[in] msg Message to log.
- */
-#define SRP_LOG_DBGMSG(msg) srp_log(SR_LL_DBG, msg)
-
-/**@} plugin */
+/** @} plugin */
 
 /**
  * @internal

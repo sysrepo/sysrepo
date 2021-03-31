@@ -22,8 +22,6 @@
 #ifndef SYSREPO_XPATH_H_
 #define SYSREPO_XPATH_H_
 
-#include <stdbool.h>
-
 #include "../sysrepo.h"
 
 #ifdef __cplusplus
@@ -216,7 +214,7 @@ char *sr_xpath_node_name(const char *xpath);
  * @param [in] node_str String to test for equality.
  * @return true in case that the Node names are equal, false otherwise
  */
-bool sr_xpath_node_name_eq(const char *xpath, const char *node_str);
+int sr_xpath_node_name_eq(const char *xpath, const char *node_str);
 
 /**
  * @brief Recovers the xpath string to the original state (puts back the character
@@ -226,7 +224,7 @@ bool sr_xpath_node_name_eq(const char *xpath, const char *node_str);
  */
 void sr_xpath_recover(sr_xpath_ctx_t *state);
 
-/**@} xpath_utils */
+/** @} xpath_utils */
 
 #ifdef __cplusplus
 }

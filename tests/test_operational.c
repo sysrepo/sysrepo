@@ -165,20 +165,20 @@ clear_up(void **state)
     sr_delete_item(st->sess, "/test:cont", 0);
     sr_delete_item(st->sess, "/mixed-config:test-state", 0);
     sr_delete_item(st->sess, "/czechlight-roadm-device:media-channels", 0);
-    sr_apply_changes(st->sess, 0, 1);
+    sr_apply_changes(st->sess, 0);
 
     /* create the containers back so there are effectively no stored changes */
     sr_set_item_str(st->sess, "/ietf-interfaces:interfaces", NULL, NULL, 0);
     sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state", NULL, NULL, 0);
     sr_set_item_str(st->sess, "/test:cont", NULL, NULL, 0);
     sr_set_item_str(st->sess, "/mixed-config:test-state", NULL, NULL, 0);
-    sr_apply_changes(st->sess, 0, 1);
+    sr_apply_changes(st->sess, 0);
 
     sr_session_switch_ds(st->sess, SR_DS_STARTUP);
 
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
     sr_delete_item(st->sess, "/test:cont", 0);
-    sr_apply_changes(st->sess, 0, 1);
+    sr_apply_changes(st->sess, 0);
 
     sr_session_switch_ds(st->sess, SR_DS_RUNNING);
 
@@ -187,7 +187,7 @@ clear_up(void **state)
     sr_delete_item(st->sess, "/mixed-config:test-state", 0);
     sr_delete_item(st->sess, "/czechlight-roadm-device:channel-plan", 0);
     sr_delete_item(st->sess, "/czechlight-roadm-device:media-channels", 0);
-    sr_apply_changes(st->sess, 0, 1);
+    sr_apply_changes(st->sess, 0);
 
     return 0;
 }
@@ -964,7 +964,7 @@ test_enabled_partial(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth128']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* nothing should be in "operational" because there is no subscription */
@@ -1093,7 +1093,7 @@ test_simple(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -1199,7 +1199,7 @@ test_fail(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as state data provider*/
@@ -1260,7 +1260,7 @@ test_config(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -1341,7 +1341,7 @@ test_list(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -1449,7 +1449,7 @@ test_nested(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -1551,7 +1551,7 @@ test_invalid(void **state)
     /* set some configuration data */
     ret = sr_set_item_str(st->sess, "/test:test-leaf", "25", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -1634,7 +1634,7 @@ test_mixed(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -1852,7 +1852,7 @@ test_state_only(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/mixed-config:test-state/test-case[name='three']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -1897,7 +1897,7 @@ test_state_only(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/mixed-config:test-state/test-case[name='five']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read some state data (callback should not be called for a filtered-out parent) */
@@ -1944,7 +1944,7 @@ test_config_only(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -2005,7 +2005,7 @@ test_conn_owner1(void **state)
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0, 1);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2071,7 +2071,7 @@ test_conn_owner2(void **state)
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/speed",
             "1024", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0, 1);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2104,7 +2104,7 @@ test_conn_owner2(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/statistics/discontinuity-time",
             "2019-10-29T09:43:12Z", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2269,7 +2269,7 @@ test_stored_state(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* callback was called */
@@ -2324,7 +2324,7 @@ test_stored_state_list(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val1", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2356,7 +2356,7 @@ test_stored_state_list(void **state)
     /* remove some oper data */
     ret = sr_delete_item(st->sess, "/mixed-config:test-state/ll", SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2393,7 +2393,7 @@ test_stored_state_list(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val1", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 0);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2446,7 +2446,7 @@ test_stored_config(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled",
             "false", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -2462,7 +2462,7 @@ test_stored_config(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/description",
             "oper-description", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the operational data */
@@ -2493,7 +2493,7 @@ test_stored_config(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']", SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* there should be no operational data then */
@@ -2507,7 +2507,7 @@ test_stored_config(void **state)
     /* it should not be possible to delete a non-existing node just like in conventional datastores */
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']", SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_NOT_FOUND);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2546,7 +2546,7 @@ test_stored_top_list(void **state)
     ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='13.5']/channel",
             "13.5", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* switch to operational DS */
@@ -2559,7 +2559,7 @@ test_stored_top_list(void **state)
     ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='13.5']/power/common-out",
             "0.2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* switch to running DS */
@@ -2572,7 +2572,7 @@ test_stored_top_list(void **state)
     ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='14.0']/drop/attenuation",
             "3.7", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* switch to operational DS */
@@ -2594,7 +2594,7 @@ test_stored_top_list(void **state)
     ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='14.0']/power/leaf-out",
             "1.4", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* switch to running DS */
@@ -2603,7 +2603,7 @@ test_stored_top_list(void **state)
 
     ret = sr_delete_item(st->sess, "/czechlight-roadm-device:media-channels[channel='14.0']", SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* switch to operational DS */
@@ -2672,7 +2672,7 @@ test_stored_np_cont1(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type",
             "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -2687,7 +2687,7 @@ test_stored_np_cont1(void **state)
     /* set some operational data */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-if-aug:c1/oper1", "val", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the operational data */
@@ -2721,7 +2721,7 @@ test_stored_np_cont1(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/description", "test-desc", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check operational data again */
@@ -2770,7 +2770,7 @@ test_stored_np_cont2(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type",
             "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -2782,7 +2782,7 @@ test_stored_np_cont2(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/ietf-if-aug:c1/oper1", "val", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check operational data */
@@ -2849,7 +2849,7 @@ test_stored_diff_merge_leaf(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled",
             "false", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2879,7 +2879,7 @@ test_stored_diff_merge_leaf(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/description",
             "oper-description2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2904,7 +2904,7 @@ test_stored_diff_merge_leaf(void **state)
     /* set some other operational data, should be merged with the previous data */
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2942,7 +2942,7 @@ test_stored_diff_merge_replace(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -2957,7 +2957,7 @@ test_stored_diff_merge_replace(void **state)
     /* set some operational data */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", "false", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -2985,7 +2985,7 @@ test_stored_diff_merge_replace(void **state)
     ret = sr_edit_batch(st->sess, data, "replace");
     lyd_free_all(data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -3008,7 +3008,7 @@ test_stored_diff_merge_replace(void **state)
     /* set some other operational data to be merged */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", "true", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -3052,7 +3052,7 @@ test_stored_diff_merge_userord(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:cont/l2[k='key2']/v", "26", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -3068,7 +3068,7 @@ test_stored_diff_merge_userord(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:cont/l2[k='key3']/v", "27", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -3101,7 +3101,7 @@ test_stored_diff_merge_userord(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:cont/l2[k='key2']/v", "20", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -3132,7 +3132,7 @@ test_stored_diff_merge_userord(void **state)
     /* merge some operational data (merge move into none) */
     ret = sr_move_item(st->sess, "/test:cont/l2[k='key2']", SR_MOVE_BEFORE, "[k='key1']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -3163,7 +3163,7 @@ test_stored_diff_merge_userord(void **state)
     /* merge some operational data (merge move into create) */
     ret = sr_move_item(st->sess, "/test:cont/l2[k='key3']", SR_MOVE_BEFORE, "[k='key2']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the data */
@@ -3237,7 +3237,7 @@ change_cb_stored_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *modu
         ret = sr_set_item_str(sess, str, "descr1", NULL, 0);
         assert_int_equal(ret, SR_ERR_OK);
         free(str);
-        ret = sr_apply_changes(sess, 0, 1);
+        ret = sr_apply_changes(sess, 0);
         assert_int_equal(ret, SR_ERR_OK);
         sr_session_stop(sess);
 
@@ -3306,7 +3306,7 @@ change_cb_stored_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *modu
         ret = sr_set_item_str(sess, str, "descr2", NULL, 0);
         assert_int_equal(ret, SR_ERR_OK);
         free(str);
-        ret = sr_apply_changes(sess, 0, 1);
+        ret = sr_apply_changes(sess, 0);
         assert_int_equal(ret, SR_ERR_OK);
         sr_session_stop(sess);
 
@@ -3379,7 +3379,7 @@ test_change_cb_stored(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 500000, 1);
+    ret = sr_apply_changes(st->sess, 500000);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
@@ -3536,7 +3536,7 @@ test_disabled_default(void **state)
     /* set some configuration data */
     ret = sr_set_item_str(st->sess, "/defaults:pcont", NULL, NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to some configuration data just to enable them */
@@ -3620,7 +3620,7 @@ test_merge_flag(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth2']/enabled",
             "false", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */
@@ -3709,7 +3709,7 @@ test_state_default_merge(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/mixed-config:test-state/test-case[name='b']/a", "valb", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0, 1);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to all configuration data just to enable them */

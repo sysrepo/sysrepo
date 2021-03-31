@@ -77,7 +77,7 @@ oven_thread(void *arg)
             /* food is inserted once the oven is ready */
             insert_food_on_ready = 0;
             food_inside = 1;
-            SRP_LOG_DBGMSG("OVEN: Food put into the oven.");
+            SRP_LOG_DBG("OVEN: Food put into the oven.");
         }
     }
 
@@ -183,13 +183,13 @@ oven_insert_food_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *path
     (void)private_data;
 
     if (food_inside) {
-        SRP_LOG_ERRMSG("OVEN: Food already in the oven.");
+        SRP_LOG_ERR("OVEN: Food already in the oven.");
         return SR_ERR_OPERATION_FAILED;
     }
 
     if (strcmp(input[0].data.enum_val, "on-oven-ready") == 0) {
         if (insert_food_on_ready) {
-            SRP_LOG_ERRMSG("OVEN: Food already waiting for the oven to be ready.");
+            SRP_LOG_ERR("OVEN: Food already waiting for the oven to be ready.");
             return SR_ERR_OPERATION_FAILED;
         }
         insert_food_on_ready = 1;
@@ -198,7 +198,7 @@ oven_insert_food_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *path
 
     insert_food_on_ready = 0;
     food_inside = 1;
-    SRP_LOG_DBGMSG("OVEN: Food put into the oven.");
+    SRP_LOG_DBG("OVEN: Food put into the oven.");
     return SR_ERR_OK;
 }
 
@@ -219,12 +219,12 @@ oven_remove_food_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *path
     (void)private_data;
 
     if (!food_inside) {
-        SRP_LOG_ERRMSG("OVEN: Food not in the oven.");
+        SRP_LOG_ERR("OVEN: Food not in the oven.");
         return SR_ERR_OPERATION_FAILED;
     }
 
     food_inside = 0;
-    SRP_LOG_DBGMSG("OVEN: Food taken out of the oven.");
+    SRP_LOG_DBG("OVEN: Food taken out of the oven.");
     return SR_ERR_OK;
 }
 
@@ -270,7 +270,7 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_data)
     }
 
     /* sysrepo/plugins.h provides an interface for logging */
-    SRP_LOG_DBGMSG("OVEN: Oven plugin initialized successfully.");
+    SRP_LOG_DBG("OVEN: Oven plugin initialized successfully.");
     return SR_ERR_OK;
 
 error:
@@ -287,5 +287,5 @@ sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_data)
 
     /* nothing to cleanup except freeing the subscriptions */
     sr_unsubscribe(subscription);
-    SRP_LOG_DBGMSG("OVEN: Oven plugin cleanup finished.");
+    SRP_LOG_DBG("OVEN: Oven plugin cleanup finished.");
 }

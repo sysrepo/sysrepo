@@ -336,7 +336,7 @@ op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     }
 
     /* replace config (always spends data) */
-    r = sr_replace_config(sess, module_name, data, timeout_s * 1000, 1);
+    r = sr_replace_config(sess, module_name, data, timeout_s * 1000);
     if (r) {
         error_print(r, "Replace config failed");
         return EXIT_FAILURE;
@@ -416,7 +416,7 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
             return EXIT_FAILURE;
         }
 
-        r = sr_apply_changes(sess, timeout_s * 1000, 1);
+        r = sr_apply_changes(sess, timeout_s * 1000);
         if (r != SR_ERR_OK) {
             error_print(r, "Failed to merge edit data");
             return EXIT_FAILURE;
@@ -560,14 +560,14 @@ op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds,
         }
 
         /* replace data */
-        r = sr_replace_config(sess, module_name, data, timeout_s * 1000, 1);
+        r = sr_replace_config(sess, module_name, data, timeout_s * 1000);
         if (r) {
             error_print(r, "Replace config failed");
             return EXIT_FAILURE;
         }
     } else {
         /* copy config */
-        r = sr_copy_config(sess, module_name, source_ds, timeout_s * 1000, 1);
+        r = sr_copy_config(sess, module_name, source_ds, timeout_s * 1000);
         if (r) {
             error_print(r, "Copy config failed");
             return EXIT_FAILURE;

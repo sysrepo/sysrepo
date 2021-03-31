@@ -120,7 +120,7 @@ clear_interfaces(void **state)
     struct state *st = (struct state *)*state;
 
     sr_delete_item(st->sess1, "/ietf-interfaces:interfaces", 0);
-    sr_apply_changes(st->sess1, 0, 1);
+    sr_apply_changes(st->sess1, 0);
 
     return 0;
 }
@@ -167,7 +167,7 @@ test_create1(void **state)
     ret = sr_set_item_str(st->sess1, "/ietf-interfaces:interfaces/interface[name='ethS1']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess1, 0, 1);
+    ret = sr_apply_changes(st->sess1, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_set_item_str(st->sess2, "/ietf-interfaces:interfaces/interface[name='ethS2']", NULL, NULL, SR_EDIT_STRICT);
@@ -175,7 +175,7 @@ test_create1(void **state)
     ret = sr_set_item_str(st->sess2, "/ietf-interfaces:interfaces/interface[name='ethS2']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess2, 0, 1);
+    ret = sr_apply_changes(st->sess2, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_get_subtree(st->sess3, "/ietf-interfaces:interfaces", 0, &subtree);
