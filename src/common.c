@@ -3516,7 +3516,7 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid
     } else {
         /* read lock */
         if (mode == SR_LOCK_READ_UPGR) {
-            if (rwlock->readers[0]) {
+            if (rwlock->upgr) {
                 /* instead of waiting, try to recover the lock immediately */
                 sr_rwlock_recover(rwlock, func, cb, cb_data);
             }
@@ -3587,39 +3587,34 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
         /* consistency checks */
         assert(rwlock->upgr == cid);
 
-        /* remove our reader */
-        sr_rwlock_reader_del(rwlock, cid);
-
-        if (rwlock->readers[0]) {
+        if (rwlock->readers[1]) {
             /* instead of waiting, try to recover the lock immediately */
             sr_rwlock_recover(rwlock, func, cb, cb_data);
         }
 
-        /* wait until there are no readers */
+        /* wait until there are no readers except for this one */
         ret = 0;
-        while (!ret && rwlock->readers[0]) {
+        while (!ret && rwlock->readers[1]) {
             /* COND WAIT */
             ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
         }
         if (ret == ETIMEDOUT) {
             sr_rwlock_recover(rwlock, func, cb, cb_data);
-            if (!rwlock->readers[0]) {
+            if (!rwlock->readers[1]) {
                 /* recovered */
                 ret = 0;
             }
         }
         if (ret) {
-            /* put back our reader */
-            sr_rwlock_reader_add(rwlock, cid);
-
             SR_ERRINFO_COND(&err_info, func, ret);
             goto cleanup_unlock;
         }
 
         /* additional consistency check */
-        assert(rwlock->upgr == cid);
+        assert((rwlock->upgr == cid) && (rwlock->readers[0] == cid));
 
         /* update flags */
+        sr_rwlock_reader_del(rwlock, cid);
         rwlock->upgr = 0;
         rwlock->writer = cid;
 
@@ -3644,6 +3639,9 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
 
     /* add a reader */
     sr_rwlock_reader_add(rwlock, cid);
+
+    /* redundant to broadcast on condition because we were holding write-lock, so something can only be
+     * waiting on the mutex, never the condition */
 
 cleanup_unlock:
     /* MUTEX UNLOCK */
@@ -3688,8 +3686,9 @@ sr_rwunlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
         rwlock->writer = 0;
     }
 
-    /* write-unlock, last read-unlock, or upgradeable read-lock (there may be another upgr-read-lock waiting) */
-    if (!rwlock->readers[0] || (mode == SR_LOCK_READ_UPGR)) {
+    /* write-unlock/last read-unlock, last read-unlock with read-upgr lock waiting for an upgrade,
+     * or upgradeable read-unlock (there may be another upgr-read-lock waiting) */
+    if (!rwlock->readers[0] || (!rwlock->readers[1] && rwlock->upgr) || (mode == SR_LOCK_READ_UPGR)) {
         /* broadcast on condition */
         pthread_cond_broadcast(&rwlock->cond);
     }
