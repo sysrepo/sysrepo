@@ -336,7 +336,7 @@ test_input_parameters(void **state)
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
     lyd_free_all(input);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 }
 
 /* TEST */
@@ -494,9 +494,9 @@ test_simple(void **state)
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
-    sr_unsubscribe(subscr, 0);
-    sr_unsubscribe(subscr2, 0);
-    sr_unsubscribe(subscr3, 0);
+    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr2);
+    sr_unsubscribe(subscr3);
 }
 
 /* TEST */
@@ -541,7 +541,7 @@ test_stop(void **state)
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 }
 
 /* TEST */
@@ -623,7 +623,7 @@ test_replay_simple(void **state)
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 }
 
 /* TEST */
@@ -786,7 +786,7 @@ test_replay_interval(void **state)
     }
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), i);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 }
 
 /* TEST */
@@ -867,7 +867,7 @@ test_no_replay(void **state)
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 }
 
 /* TEST */
@@ -1068,7 +1068,7 @@ test_notif_config_change(void **state)
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 }
 
 /* TEST */
@@ -1217,7 +1217,7 @@ test_suspend(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(suspended, 0);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 }
 
 /* TEST */
@@ -1311,7 +1311,7 @@ test_params(void **state)
     assert_int_equal(stop_time, cur_time + 10);
     assert_int_equal(filtered_out, 1);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 }
 
 /* MAIN */

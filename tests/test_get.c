@@ -210,7 +210,7 @@ test_enable_cached_get(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* cleanup */
-    sr_unsubscribe(sub, 0);
+    sr_unsubscribe(sub);
 }
 
 /* TEST */
@@ -453,7 +453,7 @@ test_union(void **state)
 
     /* cleanup */
     sr_session_switch_ds(st->sess, SR_DS_RUNNING);
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 }
 
 /* TEST */

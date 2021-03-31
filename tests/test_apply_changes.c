@@ -541,7 +541,7 @@ subscribe_change_done_thread(void *arg)
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
     sr_session_stop(sess);
     return NULL;
 }
@@ -855,7 +855,7 @@ subscribe_update_thread(void *arg)
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
     sr_session_stop(sess);
     return NULL;
 }
@@ -1250,7 +1250,7 @@ subscribe_update2_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 14);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
     sr_session_stop(sess);
     return NULL;
 }
@@ -1385,7 +1385,7 @@ subscribe_update_fail_thread(void *arg)
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
     sr_session_stop(sess);
     return NULL;
 }
@@ -1843,7 +1843,7 @@ subscribe_change_fail_thread(void *arg)
     /* wait for the other thread to signal #2 */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 
     /* cleanup after ourselves */
     ret = sr_delete_item(sess, "/test:l1[k='key1']", SR_EDIT_STRICT);
@@ -2128,7 +2128,7 @@ subscribe_change_fail2_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     for (i = 0; i < 13; ++i) {
-        sr_unsubscribe(subscr[i], 0);
+        sr_unsubscribe(subscr[i]);
     }
 
     /* cleanup after ourselves */
@@ -2264,7 +2264,7 @@ subscribe_change_fail_priority_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(3, ATOMIC_LOAD_RELAXED(st->cb_called));
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 
     /* cleanup after ourselves */
     ret = sr_delete_item(sess, "/ietf-interfaces:interfaces", SR_EDIT_STRICT);
@@ -2441,7 +2441,7 @@ subscribe_no_changes_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* cleanup */
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
     sr_delete_item(sess, "/defaults:pcont", 0);
     sr_apply_changes(sess, 0, 1);
     sr_session_stop(sess);
@@ -2747,7 +2747,7 @@ subscribe_change_any_thread(void *arg)
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
     sr_session_stop(sess);
     return NULL;
 }
@@ -3366,7 +3366,7 @@ subscribe_change_dflt_leaf_thread(void *arg)
     }
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 10);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
     sr_session_stop(sess);
     return NULL;
 }
@@ -4077,7 +4077,7 @@ subscribe_change_dflt_leaflist_thread(void *arg)
     }
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 10);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
     sr_session_stop(sess);
     return NULL;
 }
@@ -4324,7 +4324,7 @@ subscribe_change_dflt_choice_thread(void *arg)
     }
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
     sr_session_stop(sess);
     return NULL;
 }
@@ -4738,7 +4738,7 @@ subscribe_change_done_when_thread(void *arg)
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
     sr_session_stop(sess);
     return NULL;
 }
@@ -5138,7 +5138,7 @@ subscribe_change_done_xpath_thread(void *arg)
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
     sr_session_stop(sess);
     return NULL;
 }
@@ -5187,7 +5187,7 @@ module_change_unlocked_cb(sr_session_ctx_t *session, uint32_t sub_id, const char
         ret = sr_module_change_subscribe(sess, "test", "/test:cont", module_change_unlocked_cb, st, 0, 0, &tmp);
         assert_int_equal(ret, SR_ERR_OK);
         sr_session_stop(sess);
-        sr_unsubscribe(tmp, 0);
+        sr_unsubscribe(tmp);
         break;
     default:
         fail();
@@ -5252,7 +5252,7 @@ subscribe_change_unlocked_thread(void *arg)
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
     sr_session_stop(sess);
     return NULL;
 }
@@ -5400,7 +5400,7 @@ subscribe_change_timeout_thread(void *arg)
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 
     /* signal unsubscribe */
     pthread_barrier_wait(&st->barrier);
@@ -5565,7 +5565,7 @@ subscribe_change_order_thread(void *arg)
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
     sr_session_stop(sess);
     return NULL;
 }
@@ -5830,7 +5830,7 @@ subscribe_change_userord_thread(void *arg)
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 
     /* signal unsubscribe */
     pthread_barrier_wait(&st->barrier);
@@ -5986,7 +5986,7 @@ subscribe_change_enabled_thread(void *arg)
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 
     /* signal that we have unsubscribed */
     pthread_barrier_wait(&st->barrier);

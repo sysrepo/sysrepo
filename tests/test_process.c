@@ -255,7 +255,7 @@ test_rpc_sub1(int rp, int wp)
         ret = sr_rpc_subscribe(sess, "/ops:cont/list1/act2", rpc_sub_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
         sr_assert_int_equal(ret, SR_ERR_OK);
 
-        sr_unsubscribe(sub, 0);
+        sr_unsubscribe(sub);
     }
 
     sr_disconnect(conn);
@@ -294,7 +294,7 @@ test_rpc_sub2(int rp, int wp)
         ret = sr_rpc_subscribe(sess, "/ops:cont/list1/act2", rpc_sub_cb, NULL, 1, SR_SUBSCR_CTX_REUSE, &sub);
         sr_assert_int_equal(ret, SR_ERR_OK);
 
-        sr_unsubscribe(sub, 0);
+        sr_unsubscribe(sub);
     }
 
     sr_disconnect(conn);
@@ -381,7 +381,7 @@ test_rpc_crash2(int rp, int wp)
     }
 
     /* unreachable */
-    sr_unsubscribe(sub, 0);
+    sr_unsubscribe(sub);
     sr_disconnect(conn);
     return 0;
 }
@@ -463,7 +463,7 @@ test_notif_instid1(int rp, int wp)
 
     lyd_free_tree(notif);
 
-    sr_unsubscribe(sub, 0);
+    sr_unsubscribe(sub);
     sr_disconnect(conn);
     return 0;
 }
@@ -567,7 +567,7 @@ test_pull_push_oper1(int rp, int wp)
         sr_assert_int_equal(ret, SR_ERR_OK);
     }
 
-    sr_unsubscribe(sub, 0);
+    sr_unsubscribe(sub);
     sr_disconnect(conn);
     return 0;
 }

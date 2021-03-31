@@ -214,7 +214,7 @@ test_fail(void **state)
     lyd_free_all(input);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 }
 
 /* TEST */
@@ -418,7 +418,7 @@ test_rpc(void **state)
     assert_null(output);
     assert_int_equal(output_count, 0);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 }
 
 /* TEST */
@@ -536,7 +536,7 @@ test_action(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 }
 
 /* TEST */
@@ -656,7 +656,7 @@ test_action_pred(void **state)
 
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 }
 
 /* TEST */
@@ -765,7 +765,7 @@ test_multi(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 }
 
 /* TEST */
@@ -997,7 +997,7 @@ test_multi_fail(void **state)
     assert_int_equal(((struct lyd_node_term *)lyd_child(output_op))->value.uint16, 0);
     lyd_free_all(output_op);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 }
 
 /* TEST */
@@ -1079,7 +1079,7 @@ test_action_deps(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
     lyd_free_all(input_op);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 }
 
 /* TEST */
@@ -1165,8 +1165,8 @@ test_action_change_config(void **state)
     assert_string_equal(lyd_child(data)->next->next->schema->name, "cont3");
     lyd_free_all(data);
 
-    sr_unsubscribe(subscr1, 0);
-    sr_unsubscribe(subscr2, 0);
+    sr_unsubscribe(subscr1);
+    sr_unsubscribe(subscr2);
 }
 
 /* TEST */
@@ -1264,7 +1264,7 @@ subscribe_rpc_shelve_thread(void *arg)
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
     sr_session_stop(sess);
     return NULL;
 }
@@ -1365,7 +1365,7 @@ test_input_parameters(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_rpc_subscribe(st->sess, "/ops:rpc1", rpc_dummy_cb, NULL, 5, SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 }
 
 /* TEST */
@@ -1422,8 +1422,8 @@ test_rpc_action_with_no_thread(void **state)
     ret = sr_process_events(subscr2, st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_unsubscribe(subscr, 0);
-    sr_unsubscribe(subscr2, 0);
+    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr2);
 
     /* action subscribe */
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1", rpc_action_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &subscr2);
@@ -1452,7 +1452,7 @@ test_rpc_action_with_no_thread(void **state)
     lyd_free_all(input_op);
     assert_int_equal(ret, SR_ERR_OK);
 
-    sr_unsubscribe(subscr2, 0);
+    sr_unsubscribe(subscr2);
 }
 
 /* TEST */
@@ -1526,7 +1526,7 @@ test_rpc_oper(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     sr_free_values(output, output_count);
-    sr_unsubscribe(subscr, 0);
+    sr_unsubscribe(subscr);
 }
 
 /* MAIN */

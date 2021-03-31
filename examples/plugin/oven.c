@@ -275,7 +275,7 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_data)
 
 error:
     SRP_LOG_ERR("OVEN: Oven plugin initialization failed: %s.", sr_strerror(rc));
-    sr_unsubscribe(subscription, 0);
+    sr_unsubscribe(subscription);
     return rc;
 }
 
@@ -286,6 +286,6 @@ sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_data)
     (void)private_data;
 
     /* nothing to cleanup except freeing the subscriptions */
-    sr_unsubscribe(subscription, 0);
+    sr_unsubscribe(subscription);
     SRP_LOG_DBGMSG("OVEN: Oven plugin cleanup finished.");
 }

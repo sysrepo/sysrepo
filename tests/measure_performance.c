@@ -255,7 +255,7 @@ data_provide_teardown(void **state)
 {
     dp_setup_t *dp_setup = (dp_setup_t *) *state;
 
-    sr_unsubscribe(dp_setup->subs, 0);
+    sr_unsubscribe(dp_setup->subs);
     sr_session_stop(dp_setup->session);
     sr_disconnect(dp_setup->conn);
 
@@ -802,7 +802,7 @@ perf_rpc_test(void **state, int op_num, int *items)
     }
 
     /* unsubscribe from RPCs */
-    rc = sr_unsubscribe(subscription, 0);
+    rc = sr_unsubscribe(subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* stop the session */
@@ -877,7 +877,7 @@ perf_ev_notification_test(void **state, int op_num, int *items, bool ephemeral)
     }
 
     /* unsubscribe from notifications */
-    rc = sr_unsubscribe(subscription, 0);
+    rc = sr_unsubscribe(subscription);
     assert_int_equal(rc, SR_ERR_OK);
 
     /* stop the session */

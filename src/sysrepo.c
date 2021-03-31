@@ -40,7 +40,7 @@
 
 static sr_error_info_t *sr_session_notif_buf_stop(sr_session_ctx_t *session);
 static sr_error_info_t *_sr_session_stop(sr_session_ctx_t *session);
-static sr_error_info_t *_sr_unsubscribe(sr_subscription_ctx_t *subscription, uint32_t sub_id);
+static sr_error_info_t *_sr_unsubscribe(sr_subscription_ctx_t *subscription);
 
 /**
  * @brief Allocate a new connection structure.
@@ -278,7 +278,7 @@ sr_disconnect(sr_conn_ctx_t *conn)
     /* stop all subscriptions */
     for (i = 0; i < conn->session_count; ++i) {
         while (conn->sessions[i]->subscription_count && conn->sessions[i]->subscriptions[0]) {
-            tmp_err = _sr_unsubscribe(conn->sessions[i]->subscriptions[0], 0);
+            tmp_err = _sr_unsubscribe(conn->sessions[i]->subscriptions[0]);
             sr_errinfo_merge(&err_info, tmp_err);
         }
     }
@@ -3030,15 +3030,27 @@ sr_subscription_resume(sr_subscription_ctx_t *subscription, uint32_t sub_id)
     return sr_api_ret(NULL, err_info);
 }
 
+API int
+sr_unsubscribe_sub(sr_subscription_ctx_t *subscription, uint32_t sub_id)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if (!subscription) {
+        return sr_api_ret(NULL, NULL);
+    }
+
+    err_info = sr_subscr_del(subscription, sub_id, SR_LOCK_NONE);
+    return sr_api_ret(NULL, err_info);
+}
+
 /**
- * @brief Unlocked unsubscribe (free) of a specific subscription or all the subscriptions in a subscription structure.
+ * @brief Unlocked unsubscribe (free) of all the subscriptions in a subscription structure.
  *
- * @param[in] subscription Subscription to free.
- * @param[in] sub_id Subscription ID to remove, 0 for all the subscriptions.
+ * @param[in] subscription Subscription to unsubscribe and free.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-_sr_unsubscribe(sr_subscription_ctx_t *subscription, uint32_t sub_id)
+_sr_unsubscribe(sr_subscription_ctx_t *subscription)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     char *path;
@@ -3047,14 +3059,9 @@ _sr_unsubscribe(sr_subscription_ctx_t *subscription, uint32_t sub_id)
     assert(subscription);
 
     /* delete a specific subscription or delete all subscriptions which also removes this subscription from all the sessions */
-    if ((tmp_err = sr_subscr_del(subscription, sub_id, SR_LOCK_NONE))) {
+    if ((tmp_err = sr_subscr_del(subscription, 0, SR_LOCK_NONE))) {
         /* continue */
         sr_errinfo_merge(&err_info, tmp_err);
-    }
-
-    if (sub_id) {
-        /* nothing more to do in this case */
-        return err_info;
     }
 
     /* no new events can be generated at this point */
@@ -3095,7 +3102,7 @@ _sr_unsubscribe(sr_subscription_ctx_t *subscription, uint32_t sub_id)
 }
 
 API int
-sr_unsubscribe(sr_subscription_ctx_t *subscription, uint32_t sub_id)
+sr_unsubscribe(sr_subscription_ctx_t *subscription)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -3103,7 +3110,7 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription, uint32_t sub_id)
         return sr_api_ret(NULL, NULL);
     }
 
-    err_info = _sr_unsubscribe(subscription, sub_id);
+    err_info = _sr_unsubscribe(subscription);
     return sr_api_ret(NULL, err_info);
 }
 
@@ -3393,7 +3400,7 @@ error2:
 
 error1:
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        _sr_unsubscribe(*subscription, 0);
+        _sr_unsubscribe(*subscription);
         *subscription = NULL;
     }
 
@@ -3970,7 +3977,7 @@ error3:
 
 error2:
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        _sr_unsubscribe(*subscription, 0);
+        _sr_unsubscribe(*subscription);
         *subscription = NULL;
     }
 
@@ -4414,7 +4421,7 @@ error2:
 
 error1:
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        _sr_unsubscribe(*subscription, 0);
+        _sr_unsubscribe(*subscription);
         *subscription = NULL;
     }
 
@@ -4925,7 +4932,7 @@ error2:
 
 error1:
     if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        _sr_unsubscribe(*subscription, 0);
+        _sr_unsubscribe(*subscription);
         *subscription = NULL;
     }
     return sr_api_ret(session, err_info);

@@ -1328,18 +1328,29 @@ int sr_subscription_resume(sr_subscription_ctx_t *subscription, uint32_t sub_id)
 /**
  * @brief Unsubscribe a specific or all the subscriptions in a subscription structure.
  *
- * If all subscriptions are being unsubscribed, the whole structure is freed.
- * If only a specific subscription is unsubscribed, the structure remains valid and
- * can be used normally, even if there are no actual subscriptions left in it.
+ * If all subscriptions are being unsubscribed, the subscription structure can still be used normally
+ * until ::sr_unsubscribe() is called, even if there are no actual subscriptions left in it. This
+ * is useful for preventing dead locks if using the subscription in a custom event loop.
  *
  * @note Even on error, all the possible tasks are still performed and the subscripton(s)
- * are unsubscribed/freed.
+ * are unsubscribed.
  *
  * @param[in] subscription Subscription context to use.
  * @param[in] sub_id Subscription ID of the subscription to unsubscribe, 0 for all the subscriptions.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_unsubscribe(sr_subscription_ctx_t *subscription, uint32_t sub_id);
+int sr_unsubscribe_sub(sr_subscription_ctx_t *subscription, uint32_t sub_id);
+
+/**
+ * @brief Unsubscribe all the subscriptions in a subscription structure and free it.
+ *
+ * @note Even on error, all the possible tasks are still performed and the subscripton(s)
+ * are unsubscribed and freed. So it cannot be used anymore after calling this function.
+ *
+ * @param[in] subscription Subscription context to use.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_unsubscribe(sr_subscription_ctx_t *subscription);
 
 /** @} subs */
 
@@ -1846,7 +1857,7 @@ int sr_event_notif_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_
  *
  * @param[in] subscription Subscription structure to use.
  * @param[in] sub_id Subscription ID of the specific subscription to modify.
- * @param[in] stop_time New stop time of the subscription.
+ * @param[in] stop_time New stop time of the subscription.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t sub_id, time_t stop_time);
