@@ -1103,6 +1103,175 @@ sr_lydmods_ctx_load_modules(const struct lyd_node *sr_mods, struct ly_ctx *ly_ct
 }
 
 /**
+ * @brief Append startup and running data by implemented modules from context.
+ *
+ * @param[in] ctx Context containing modules.
+ * @param[out] start_data Startup data tree.
+ * @param[out] run_data Running data tree.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_append_startup_and_running_data(const struct ly_ctx *ctx, struct lyd_node **start_data, struct lyd_node **run_data)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+    uint32_t idx = 0;
+    int exists;
+    char *path;
+
+    while ((ly_mod = ly_ctx_get_module_iter(ctx, &idx))) {
+        if (!ly_mod->implemented) {
+            /* we need data of only implemented modules */
+            continue;
+        }
+
+        /* append startup data */
+        if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_STARTUP, start_data))) {
+            break;
+        }
+
+        /* check that running data file exists */
+        if ((err_info = sr_path_ds_shm(ly_mod->name, SR_DS_RUNNING, &path))) {
+            break;
+        }
+        exists = sr_file_exists(path);
+        free(path);
+
+        if (exists) {
+            /* append running data */
+            if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_RUNNING, run_data))) {
+                break;
+            }
+        }
+    }
+
+    return err_info;
+}
+
+/**
+ * @brief Iterate over modules from @p old_ctx and find those that have the same name as in @p new_ctx.
+ *
+ * @param[in] old_ctx Iterated context.
+ * @param[in] new_ctx Context to compare.
+ * @param[out] intersection_set Set that will contain modules that are in both @p old_ctx and @p new_ctx.
+ * @param[out] old_ctx_complement_set Set that will contain modules which were not found in @p new_ctx.
+ */
+static void
+sr_get_same_modules_by_name(const struct ly_ctx *old_ctx, const struct ly_ctx *new_ctx,
+        struct ly_set *intersection_set, struct ly_set *old_ctx_complement_set)
+{
+    const struct lys_module *old_ly_mod, *new_ly_mod;
+    uint32_t idx = 0;
+
+    assert(intersection_set && old_ctx_complement_set);
+
+    while ((old_ly_mod = ly_ctx_get_module_iter(old_ctx, &idx))) {
+        if (!old_ly_mod->implemented) {
+            /* we need data of only implemented modules */
+            continue;
+        }
+
+        new_ly_mod = ly_ctx_get_module_implemented(new_ctx, old_ly_mod->name);
+        if (new_ly_mod) {
+            /* remember this module from the new context */
+            ly_set_add(intersection_set, (void *)new_ly_mod, 1, NULL);
+        } else {
+            /* module was removed, remember it as well */
+            ly_set_add(old_ctx_complement_set, (void *)old_ly_mod, 1, NULL);
+        }
+    }
+}
+
+/**
+ * @brief Get new startup and running data.
+ *
+ * @param[in] sr_mods Sysrepo module data.
+ * @param[in] old_ctx Context before scheduled changes.
+ * @param[in] old_start_data Startup data tree from @p old_ctx.
+ * @param[in] old_run_data Running data tree from @p old_ctx.
+ * @param[in] new_ctx Context with all scheduled module changes.
+ * @param[out] new_start_data Startup data tree from @p new_ctx.
+ * @param[out] new_run_data Running data tree from @p new_ctx.
+ * @param[out] mod_set Set of modules that are in either @p new_start_data or @p new_run_data.
+ * @param[out] fail Whether any data failed to be parsed.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_load_by_installed_startup_data(const struct lyd_node *sr_mods,
+        const struct ly_ctx *old_ctx, const struct lyd_node *old_start_data, const struct lyd_node *old_run_data,
+        const struct ly_ctx *new_ctx, struct lyd_node **new_start_data, struct lyd_node **new_run_data,
+        struct ly_set *mod_set, int *fail)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *mod_data;
+    struct ly_set *startup_set = NULL;
+    char *start_data_json = NULL, *run_data_json = NULL;
+    uint32_t idx;
+
+    /* print the data of all the modules into JSON */
+    if (lyd_print_mem(&start_data_json, old_start_data, LYD_JSON, LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS)) {
+        sr_errinfo_new_ly(&err_info, old_ctx);
+        return err_info;
+    }
+    if (lyd_print_mem(&run_data_json, old_run_data, LYD_JSON, LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS)) {
+        sr_errinfo_new_ly(&err_info, old_ctx);
+        return err_info;
+    }
+
+    /* try to load it into the new updated context skipping any unknown nodes */
+    if (lyd_parse_data_mem(new_ctx, start_data_json, LYD_JSON, LYD_PARSE_NO_STATE | LYD_PARSE_ONLY, 0, new_start_data)) {
+        /* it failed, some of the scheduled changes are not compatible with the stored data, abort them all */
+        sr_log_wrn_ly(new_ctx);
+        *fail = 1;
+        goto cleanup;
+    }
+    if (lyd_parse_data_mem(new_ctx, run_data_json, LYD_JSON, LYD_PARSE_NO_STATE | LYD_PARSE_ONLY, 0, new_run_data)) {
+        sr_log_wrn_ly(new_ctx);
+        *fail = 1;
+        goto cleanup;
+    }
+
+    if (lyd_find_xpath(sr_mods, "installed-module/data", &startup_set)) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(sr_mods));
+        goto cleanup;
+    }
+    for (idx = 0; idx < startup_set->count; ++idx) {
+        /* this was parsed before */
+        lyd_parse_data_mem(new_ctx, LYD_CANON_VALUE(startup_set->dnodes[idx]), LYD_JSON,
+                LYD_PARSE_NO_STATE | LYD_PARSE_STRICT | LYD_PARSE_ONLY, 0, &mod_data);
+        if (!mod_data) {
+            continue;
+        }
+
+        /* remember this module */
+        ly_set_add(mod_set, (void *)lyd_owner_module(mod_data), 1, NULL);
+
+        /* link to the new startup/running data */
+        if (!(*new_start_data)) {
+            if (lyd_dup_siblings(mod_data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, new_start_data)) {
+                SR_ERRINFO_MEM(&(err_info));
+                break;
+            }
+        } else if (lyd_merge_siblings(new_start_data, mod_data, 0)) {
+            sr_errinfo_new_ly(&err_info, new_ctx);
+            break;
+        }
+        if (!(*new_run_data)) {
+            *new_run_data = mod_data;
+        } else if (lyd_merge_siblings(new_run_data, mod_data, LYD_MERGE_DESTRUCT)) {
+            sr_errinfo_new_ly(&err_info, new_ctx);
+            break;
+        }
+    }
+
+cleanup:
+    ly_set_free(startup_set, NULL);
+    free(start_data_json);
+    free(run_data_json);
+    return err_info;
+}
+
+/**
  * @brief Learn whether any module in a set augments/deviates a specific module.
  *
  * @param[in] old_base_mod Module that can be augmented/deviated.
@@ -1110,7 +1279,7 @@ sr_lydmods_ctx_load_modules(const struct lyd_node *sr_mods, struct ly_ctx *ly_ct
  * @return Whether any module in @p old_mod_set was augmenting/deviating @p old_base_mod.
  */
 static int
-sr_contains_dev_aug_module(const struct lys_module *old_base_mod, struct ly_set *old_mod_set)
+sr_contains_dev_aug_module(const struct lys_module *old_base_mod, const struct ly_set *old_mod_set)
 {
     const struct lys_module *old_mod;
     uint32_t i;
@@ -1138,6 +1307,99 @@ sr_contains_dev_aug_module(const struct lys_module *old_base_mod, struct ly_set 
 }
 
 /**
+ * @brief Print modules data if they are different.
+ *
+ * @param[in] mod_set Set of investigated modules.
+ * @param[in] del_mod_set Set of modules that are not in a @p new_ctx.
+ * @param[in] old_ctx Context before scheduled changes.
+ * @param[in,out] old_start_data Startup data tree from @p old_ctx.
+ * @param[in,out] old_run_data Running data tree from @p old_ctx.
+ * @param[in] new_ctx Context with all scheduled module changes.
+ * @param[in,out] new_start_data Startup data tree from @p new_ctx.
+ * @param[in,out] new_run_data Running data tree from @p new_ctx.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_print_if_different(const struct ly_set *mod_set, const struct ly_set *del_mod_set,
+        const struct ly_ctx *old_ctx, struct lyd_node **old_start_data, struct lyd_node **old_run_data,
+        const struct ly_ctx *new_ctx, struct lyd_node **new_start_data, struct lyd_node **new_run_data)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *new_ly_mod, *old_ly_mod;
+    struct lyd_node *new_mod_data = NULL, *old_mod_data = NULL;
+    uint32_t idx;
+    int store_data;
+    LY_ERR lyrc;
+
+    for (idx = 0; idx < mod_set->count; ++idx) {
+        new_ly_mod = (struct lys_module *)mod_set->objs[idx];
+        old_ly_mod = ly_ctx_get_module_implemented(old_ctx, new_ly_mod->name);
+
+        if (!old_ly_mod) {
+            /* module was added, we always want to store its data */
+            store_data = 1;
+        } else {
+            /* check whether a removed module was not augmenting/deviating this module,
+             * if it was, we must always write the data because their metadata changed */
+            store_data = sr_contains_dev_aug_module(old_ly_mod, del_mod_set);
+        }
+
+        /* startup data */
+        lyd_free_siblings(new_mod_data);
+        lyd_free_siblings(old_mod_data);
+        new_mod_data = sr_module_data_unlink(new_start_data, new_ly_mod);
+        if (old_ly_mod) {
+            old_mod_data = sr_module_data_unlink(old_start_data, old_ly_mod);
+        } else {
+            old_mod_data = NULL;
+        }
+
+        if (!store_data) {
+            lyrc = lyd_compare_siblings(new_mod_data, old_mod_data, LYD_COMPARE_FULL_RECURSION | LYD_COMPARE_DEFAULTS);
+            if (lyrc == LY_ENOT) {
+                store_data = 1;
+            } else if (lyrc) {
+                sr_errinfo_new_ly(&err_info, new_ctx);
+                break;
+            }
+        }
+        if (store_data) {
+            if ((err_info = sr_module_file_data_set(new_ly_mod->name, SR_DS_STARTUP, new_mod_data, O_CREAT, SR_FILE_PERM))) {
+                break;
+            }
+        }
+
+        /* running data */
+        lyd_free_siblings(new_mod_data);
+        lyd_free_siblings(old_mod_data);
+        new_mod_data = sr_module_data_unlink(new_run_data, new_ly_mod);
+        if (old_ly_mod) {
+            old_mod_data = sr_module_data_unlink(old_run_data, old_ly_mod);
+        } else {
+            old_mod_data = NULL;
+        }
+
+        if (!store_data) {
+            lyrc = lyd_compare_siblings(new_mod_data, old_mod_data, LYD_COMPARE_FULL_RECURSION | LYD_COMPARE_DEFAULTS);
+            if (lyrc == LY_ENOT) {
+                store_data = 1;
+            } else if (lyrc) {
+                sr_errinfo_new_ly(&err_info, new_ctx);
+                break;
+            }
+        }
+        if (store_data) {
+            if ((err_info = sr_module_file_data_set(new_ly_mod->name, SR_DS_RUNNING, new_mod_data, O_CREAT, SR_FILE_PERM))) {
+                break;
+            }
+        }
+    }
+    lyd_free_siblings(new_mod_data);
+    lyd_free_siblings(old_mod_data);
+    return err_info;
+}
+
+/**
  * @brief Check that persistent (startup) module data can be loaded into updated context.
  * On success print the new updated LYB data.
  *
@@ -1151,13 +1413,8 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *old_start_data = NULL, *new_start_data = NULL, *old_run_data = NULL, *new_run_data = NULL;
-    struct lyd_node *mod_data, *new_mod_data = NULL, *old_mod_data = NULL;
     struct ly_ctx *old_ctx = NULL;
-    struct ly_set *mod_set = NULL, *del_mod_set = NULL, *startup_set = NULL;
-    const struct lys_module *new_ly_mod, *old_ly_mod;
-    char *start_data_json = NULL, *run_data_json = NULL, *path;
-    uint32_t idx;
-    int exists;
+    struct ly_set *mod_set = NULL, *del_mod_set = NULL;
     LY_ERR lyrc;
 
     lyrc = ly_set_new(&mod_set);
@@ -1174,95 +1431,17 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
     }
 
     /* parse all the startup/running data using the old context (that must succeed) */
-    idx = 0;
-    while ((old_ly_mod = ly_ctx_get_module_iter(old_ctx, &idx))) {
-        if (!old_ly_mod->implemented) {
-            /* we need data of only implemented modules */
-            continue;
-        }
-
-        /* append startup data */
-        if ((err_info = sr_module_file_data_append(old_ly_mod, SR_DS_STARTUP, &old_start_data))) {
-            goto cleanup;
-        }
-
-        /* check that running data file exists */
-        if ((err_info = sr_path_ds_shm(old_ly_mod->name, SR_DS_RUNNING, &path))) {
-            goto cleanup;
-        }
-        exists = sr_file_exists(path);
-        free(path);
-
-        if (exists) {
-            /* append running data */
-            if ((err_info = sr_module_file_data_append(old_ly_mod, SR_DS_RUNNING, &old_run_data))) {
-                goto cleanup;
-            }
-        }
-
-        new_ly_mod = ly_ctx_get_module_implemented(new_ctx, old_ly_mod->name);
-        if (new_ly_mod) {
-            /* remember this module from the new context */
-            ly_set_add(mod_set, (void *)new_ly_mod, 1, NULL);
-        } else {
-            /* module was removed, remember it as well */
-            ly_set_add(del_mod_set, (void *)old_ly_mod, 1, NULL);
-        }
-    }
-
-    /* print the data of all the modules into JSON */
-    if (lyd_print_mem(&start_data_json, old_start_data, LYD_JSON, LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS)) {
-        sr_errinfo_new_ly(&err_info, old_ctx);
+    if ((err_info = sr_append_startup_and_running_data(old_ctx, &old_start_data, &old_run_data))) {
         goto cleanup;
     }
-    if (lyd_print_mem(&run_data_json, old_run_data, LYD_JSON, LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS)) {
-        sr_errinfo_new_ly(&err_info, old_ctx);
-        goto cleanup;
-    }
-
-    /* try to load it into the new updated context skipping any unknown nodes */
-    if (lyd_parse_data_mem(new_ctx, start_data_json, LYD_JSON, LYD_PARSE_NO_STATE | LYD_PARSE_ONLY, 0, &new_start_data)) {
-        /* it failed, some of the scheduled changes are not compatible with the stored data, abort them all */
-        sr_log_wrn_ly(new_ctx);
-        *fail = 1;
-        goto cleanup;
-    }
-    if (lyd_parse_data_mem(new_ctx, run_data_json, LYD_JSON, LYD_PARSE_NO_STATE | LYD_PARSE_ONLY, 0, &new_run_data)) {
-        sr_log_wrn_ly(new_ctx);
-        *fail = 1;
-        goto cleanup;
-    }
+    sr_get_same_modules_by_name(old_ctx, new_ctx, mod_set, del_mod_set);
 
     /* check that any startup data can be loaded and are valid */
-    if (lyd_find_xpath(sr_mods, "installed-module/data", &startup_set)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(sr_mods));
+    if ((err_info = sr_load_by_installed_startup_data(sr_mods,
+            old_ctx, old_start_data, old_run_data,
+            new_ctx, &new_start_data, &new_run_data,
+            mod_set, fail))) {
         goto cleanup;
-    }
-    for (idx = 0; idx < startup_set->count; ++idx) {
-        /* this was parsed before */
-        lyd_parse_data_mem(new_ctx, LYD_CANON_VALUE(startup_set->dnodes[idx]), LYD_JSON,
-                LYD_PARSE_NO_STATE | LYD_PARSE_STRICT | LYD_PARSE_ONLY, 0, &mod_data);
-        if (!mod_data) {
-            continue;
-        }
-
-        /* remember this module */
-        ly_set_add(mod_set, (void *)lyd_owner_module(mod_data), 1, NULL);
-
-        /* link to the new startup/running data */
-        if (!new_start_data) {
-            lyrc = lyd_dup_siblings(mod_data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &new_start_data);
-            SR_CHECK_MEM_GOTO(lyrc, err_info, cleanup);
-        } else if (lyd_merge_siblings(&new_start_data, mod_data, 0)) {
-            sr_errinfo_new_ly(&err_info, new_ctx);
-            goto cleanup;
-        }
-        if (!new_run_data) {
-            new_run_data = mod_data;
-        } else if (lyd_merge_siblings(&new_run_data, mod_data, LYD_MERGE_DESTRUCT)) {
-            sr_errinfo_new_ly(&err_info, new_ctx);
-            goto cleanup;
-        }
     }
 
     /* fully validate complete startup and running datastore */
@@ -1276,69 +1455,10 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
     /* Print all modules data with the updated module context if the new data is different from the old ones.
      * Then free them, no longer needed.
      */
-    for (idx = 0; idx < mod_set->count; ++idx) {
-        int store_data;
-        new_ly_mod = (struct lys_module *)mod_set->objs[idx];
-        old_ly_mod = ly_ctx_get_module_implemented(old_ctx, new_ly_mod->name);
-
-        if (!old_ly_mod) {
-            /* module was added, we always want to store its data */
-            store_data = 1;
-        } else {
-            /* check whether a removed module was not augmenting/deviating this module,
-             * if it was, we must always write the data because their metadata changed */
-            store_data = sr_contains_dev_aug_module(old_ly_mod, del_mod_set);
-        }
-
-        /* startup data */
-        lyd_free_siblings(new_mod_data);
-        lyd_free_siblings(old_mod_data);
-        new_mod_data = sr_module_data_unlink(&new_start_data, new_ly_mod);
-        if (old_ly_mod) {
-            old_mod_data = sr_module_data_unlink(&old_start_data, old_ly_mod);
-        } else {
-            old_mod_data = NULL;
-        }
-
-        if (!store_data) {
-            lyrc = lyd_compare_siblings(new_mod_data, old_mod_data, LYD_COMPARE_FULL_RECURSION | LYD_COMPARE_DEFAULTS);
-            if (lyrc == LY_ENOT) {
-                store_data = 1;
-            } else if (lyrc) {
-                sr_errinfo_new_ly(&err_info, new_ctx);
-                goto cleanup;
-            }
-        }
-        if (store_data) {
-            if ((err_info = sr_module_file_data_set(new_ly_mod->name, SR_DS_STARTUP, new_mod_data, O_CREAT, SR_FILE_PERM))) {
-                goto cleanup;
-            }
-        }
-
-        /* running data */
-        lyd_free_siblings(new_mod_data);
-        lyd_free_siblings(old_mod_data);
-        new_mod_data = sr_module_data_unlink(&new_run_data, new_ly_mod);
-        if (old_ly_mod) {
-            old_mod_data = sr_module_data_unlink(&old_run_data, old_ly_mod);
-        } else {
-            old_mod_data = NULL;
-        }
-
-        if (!store_data) {
-            lyrc = lyd_compare_siblings(new_mod_data, old_mod_data, LYD_COMPARE_FULL_RECURSION | LYD_COMPARE_DEFAULTS);
-            if (lyrc == LY_ENOT) {
-                store_data = 1;
-            } else if (lyrc) {
-                sr_errinfo_new_ly(&err_info, new_ctx);
-                goto cleanup;
-            }
-        }
-        if (store_data) {
-            if ((err_info = sr_module_file_data_set(new_ly_mod->name, SR_DS_RUNNING, new_mod_data, O_CREAT, SR_FILE_PERM))) {
-                goto cleanup;
-            }
-        }
+    if ((err_info = sr_print_if_different(mod_set, del_mod_set,
+            old_ctx, &old_start_data, &old_run_data,
+            new_ctx, &new_start_data, &new_run_data))) {
+        goto cleanup;
     }
 
     /* success */
@@ -1346,15 +1466,10 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
 cleanup:
     ly_set_free(mod_set, NULL);
     ly_set_free(del_mod_set, NULL);
-    ly_set_free(startup_set, NULL);
     lyd_free_siblings(old_start_data);
     lyd_free_siblings(new_start_data);
     lyd_free_siblings(old_run_data);
     lyd_free_siblings(new_run_data);
-    lyd_free_siblings(new_mod_data);
-    lyd_free_siblings(old_mod_data);
-    free(start_data_json);
-    free(run_data_json);
     ly_ctx_destroy(old_ctx, NULL);
     if (err_info) {
         sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Failed to update data for the new context.");
