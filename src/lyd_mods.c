@@ -4,7 +4,7 @@
  * @brief Sysrepo module data routines
  *
  * @copyright
- * Copyright 2019 CESNET, z.s.p.o.
+ * Copyright 2019 - 2021 CESNET, z.s.p.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1183,13 +1183,13 @@ sr_get_same_modules_by_name(const struct ly_ctx *old_ctx, const struct ly_ctx *n
 }
 
 /**
- * @brief Get new startup and running data.
+ * @brief Update data parsed with old context to be parsed with a new context.
  *
  * @param[in] sr_mods Sysrepo module data.
- * @param[in] old_ctx Context before scheduled changes.
+ * @param[in] old_ctx Old context.
  * @param[in] old_start_data Startup data tree from @p old_ctx.
  * @param[in] old_run_data Running data tree from @p old_ctx.
- * @param[in] new_ctx Context with all scheduled module changes.
+ * @param[in] new_ctx New context.
  * @param[out] new_start_data Startup data tree from @p new_ctx.
  * @param[out] new_run_data Running data tree from @p new_ctx.
  * @param[out] mod_set Set of modules that are in either @p new_start_data or @p new_run_data.
@@ -1197,7 +1197,7 @@ sr_get_same_modules_by_name(const struct ly_ctx *old_ctx, const struct ly_ctx *n
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_load_by_installed_startup_data(const struct lyd_node *sr_mods,
+sr_update_data(const struct lyd_node *sr_mods,
         const struct ly_ctx *old_ctx, const struct lyd_node *old_start_data, const struct lyd_node *old_run_data,
         const struct ly_ctx *new_ctx, struct lyd_node **new_start_data, struct lyd_node **new_run_data,
         struct ly_set *mod_set, int *fail)
@@ -1307,7 +1307,8 @@ sr_contains_dev_aug_module(const struct lys_module *old_base_mod, const struct l
 }
 
 /**
- * @brief Print modules data if they are different.
+ * @brief Print data if they differ, are completely new, or their LYB metadata differ (augment/deviation module was removed).
+ * Is evaluated for each module data separately.
  *
  * @param[in] mod_set Set of investigated modules.
  * @param[in] del_mod_set Set of modules that are not in a @p new_ctx.
@@ -1320,7 +1321,7 @@ sr_contains_dev_aug_module(const struct lys_module *old_base_mod, const struct l
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_print_if_different(const struct ly_set *mod_set, const struct ly_set *del_mod_set,
+sr_print_data_if_differ(const struct ly_set *mod_set, const struct ly_set *del_mod_set,
         const struct ly_ctx *old_ctx, struct lyd_node **old_start_data, struct lyd_node **old_run_data,
         const struct ly_ctx *new_ctx, struct lyd_node **new_start_data, struct lyd_node **new_run_data)
 {
@@ -1415,12 +1416,9 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
     struct lyd_node *old_start_data = NULL, *new_start_data = NULL, *old_run_data = NULL, *new_run_data = NULL;
     struct ly_ctx *old_ctx = NULL;
     struct ly_set *mod_set = NULL, *del_mod_set = NULL;
-    LY_ERR lyrc;
 
-    lyrc = ly_set_new(&mod_set);
-    SR_CHECK_MEM_GOTO(lyrc, err_info, cleanup);
-    lyrc = ly_set_new(&del_mod_set);
-    SR_CHECK_MEM_GOTO(lyrc, err_info, cleanup);
+    SR_CHECK_MEM_GOTO(ly_set_new(&mod_set), err_info, cleanup);
+    SR_CHECK_MEM_GOTO(ly_set_new(&del_mod_set), err_info, cleanup);
 
     /* first build context without any scheduled changes */
     if ((err_info = sr_ly_ctx_new(&old_ctx))) {
@@ -1436,11 +1434,9 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
     }
     sr_get_same_modules_by_name(old_ctx, new_ctx, mod_set, del_mod_set);
 
-    /* check that any startup data can be loaded and are valid */
-    if ((err_info = sr_load_by_installed_startup_data(sr_mods,
-            old_ctx, old_start_data, old_run_data,
-            new_ctx, &new_start_data, &new_run_data,
-            mod_set, fail))) {
+    /* update all the data for the new context */
+    if ((err_info = sr_update_data(sr_mods, old_ctx, old_start_data, old_run_data, new_ctx, &new_start_data,
+            &new_run_data, mod_set, fail))) {
         goto cleanup;
     }
 
@@ -1452,12 +1448,9 @@ sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx
         goto cleanup;
     }
 
-    /* Print all modules data with the updated module context if the new data is different from the old ones.
-     * Then free them, no longer needed.
-     */
-    if ((err_info = sr_print_if_different(mod_set, del_mod_set,
-            old_ctx, &old_start_data, &old_run_data,
-            new_ctx, &new_start_data, &new_run_data))) {
+    /* print all modules data with the updated module context if the new data is different from the old one */
+    if ((err_info = sr_print_data_if_differ(mod_set, del_mod_set, old_ctx, &old_start_data, &old_run_data, new_ctx,
+            &new_start_data, &new_run_data))) {
         goto cleanup;
     }
 
