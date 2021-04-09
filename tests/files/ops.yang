@@ -138,5 +138,9 @@ module ops {
         }
     }
 
-    notification notif4;
+    notification notif4 {
+        leaf-list l {
+            type string;
+        }
+    }
 }
