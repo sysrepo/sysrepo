@@ -1314,6 +1314,87 @@ test_params(void **state)
     sr_unsubscribe(subscr);
 }
 
+/* TEST */
+static void
+notif_dup_inst_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
+        const struct lyd_node *notif, time_t timestamp, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    char *str;
+
+    (void)session;
+    (void)sub_id;
+    (void)timestamp;
+
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
+    case 0:
+        assert_int_equal(notif_type, SR_EV_NOTIF_REALTIME);
+
+        lyd_print_mem(&str, notif, LYD_XML, 0);
+        assert_string_equal(str,
+                "<notif4 xmlns=\"urn:ops\">\n"
+                "  <l>a</l>\n"
+                "  <l>a</l>\n"
+                "  <l>b</l>\n"
+                "  <l>c</l>\n"
+                "  <l>d</l>\n"
+                "  <l>a</l>\n"
+                "</notif4>\n");
+        free(str);
+        break;
+    case 1:
+        assert_int_equal(notif_type, SR_EV_NOTIF_TERMINATED);
+        break;
+    default:
+        fail();
+    }
+
+    /* signal that we were called */
+    ATOMIC_INC_RELAXED(st->cb_called);
+}
+
+static void
+test_dup_inst(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr;
+    int ret;
+    struct lyd_node *notif;
+
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+
+    /* subscribe */
+    ret = sr_event_notif_subscribe_tree(st->sess, "ops", "/ops:notif4[l='a']", 0, 0, notif_dup_inst_cb, st,
+            SR_SUBSCR_NO_THREAD, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* send filtered-out notif */
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, sr_get_context(st->conn), "/ops:notif4/l", "b", 0, &notif));
+     assert_int_equal(SR_ERR_OK, sr_event_notif_send_tree(st->sess, notif));
+    lyd_free_tree(notif);
+
+    /* process the notification (filter it out) */
+    ret = sr_process_events(subscr, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* send notif with duplicate instances */
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, sr_get_context(st->conn), "/ops:notif4/l", "a", 0, &notif));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(notif, NULL, "/ops:notif4/l", "a", 0, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(notif, NULL, "/ops:notif4/l", "b", 0, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(notif, NULL, "/ops:notif4/l", "c", 0, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(notif, NULL, "/ops:notif4/l", "d", 0, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(notif, NULL, "/ops:notif4/l", "a", 0, NULL));
+    assert_int_equal(SR_ERR_OK, sr_event_notif_send_tree(st->sess, notif));
+    lyd_free_tree(notif);
+
+    /* process the notification */
+    ret = sr_process_events(subscr, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
+
+    sr_unsubscribe(subscr);
+}
+
 /* MAIN */
 int
 main(void)
@@ -1329,6 +1410,7 @@ main(void)
         cmocka_unit_test(test_notif_buffer),
         cmocka_unit_test(test_suspend),
         cmocka_unit_test(test_params),
+        cmocka_unit_test(test_dup_inst),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

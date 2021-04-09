@@ -139,7 +139,7 @@ module ops {
     }
 
     notification notif4 {
-        leaf l {
+        leaf-list l {
             type string;
         }
     }
