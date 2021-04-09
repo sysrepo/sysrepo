@@ -1142,7 +1142,7 @@ sr_shmmain_main_open(sr_shm_t *shm, int *created)
     } else {
         /* check versions  */
         if (main_shm->shm_ver != SR_SHM_VER) {
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Shared memory version mismatch (%u, expected %u),"
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Shared memory version mismatch (%" PRIu32 ", expected %d),"
                     " remove the SHM to fix.", main_shm->shm_ver, SR_SHM_VER);
             goto error;
         }

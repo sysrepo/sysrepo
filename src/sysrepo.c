@@ -415,7 +415,7 @@ _sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_sub_ev
     }
 
     if (!event) {
-        SR_LOG_INF("Session %u (user \"%s\", CID %" PRIu32 ") created.", (*session)->sid.sr, (*session)->sid.user,
+        SR_LOG_INF("Session %" PRIu32 " (user \"%s\", CID %" PRIu32 ") created.", (*session)->sid.sr, (*session)->sid.user,
                 conn->cid);
     }
 
@@ -2538,13 +2538,13 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, sr_sid_t sid)
         /* it was successfully WRITE-locked, check that DS lock state is as expected */
         if (ATOMIC_LOAD_RELAXED(shm_lock->ds_locked) && lock) {
             assert(shm_lock->sid.sr == sid.sr);
-            sr_errinfo_new(&err_info, SR_ERR_LOCKED, "Module \"%s\" is already locked by this session %u (NC SID %u).",
-                    mod->ly_mod->name, sid.sr, sid.nc);
+            sr_errinfo_new(&err_info, SR_ERR_LOCKED, "Module \"%s\" is already locked by this session %" PRIu32
+                    " (NC SID %" PRIu32 ").", mod->ly_mod->name, sid.sr, sid.nc);
             goto error;
         } else if (!ATOMIC_LOAD_RELAXED(shm_lock->ds_locked) && !lock) {
             assert(shm_lock->sid.sr == sid.sr);
-            sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Module \"%s\" was not locked by this session %u (NC SID %u).",
-                    mod->ly_mod->name, sid.sr, sid.nc);
+            sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Module \"%s\" was not locked by this session %" PRIu32
+                    " (NC SID %" PRIu32 ").", mod->ly_mod->name, sid.sr, sid.nc);
             goto error;
         } else if (lock && (mod_info->ds == SR_DS_CANDIDATE)) {
             /* candidate DS file cannot exist */
@@ -3442,7 +3442,7 @@ sr_module_change_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t sub_
     /* find the subscription in the subscription context */
     change_sub = sr_subscr_change_sub_find(subscription, sub_id, module_name, ds);
     if (!change_sub) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Change subscription with ID \"%u\" not found.", sub_id);
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Change subscription with ID \"%" PRIu32 "\" not found.", sub_id);
         goto cleanup_unlock;
     }
 
@@ -3481,7 +3481,7 @@ sr_module_change_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t 
     /* find the subscription in the subscription context */
     change_sub = sr_subscr_change_sub_find(subscription, sub_id, &module_name, &ds);
     if (!change_sub) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Change subscription with ID \"%u\" not found.", sub_id);
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Change subscription with ID \"%" PRIu32 "\" not found.", sub_id);
         goto cleanup_unlock;
     }
 
@@ -4645,7 +4645,7 @@ sr_event_notif_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t sub_id
     /* find the subscription in the subscription context */
     notif_sub = sr_subscr_notif_sub_find(subscription, sub_id, module_name);
     if (!notif_sub) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Notification subscription with ID \"%u\" not found.", sub_id);
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Notification subscription with ID \"%" PRIu32 "\" not found.", sub_id);
         goto cleanup_unlock;
     }
 
@@ -4688,7 +4688,7 @@ sr_event_notif_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t su
     /* find the subscription in the subscription context */
     notif_sub = sr_subscr_notif_sub_find(subscription, sub_id, NULL);
     if (!notif_sub) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Notification subscription with ID \"%u\" not found.", sub_id);
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Notification subscription with ID \"%" PRIu32 "\" not found.", sub_id);
         goto cleanup_unlock;
     }
 
@@ -4744,7 +4744,7 @@ sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_
     /* find the subscription in the subscription context */
     notif_sub = sr_subscr_notif_sub_find(subscription, sub_id, NULL);
     if (!notif_sub) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Notification subscription with ID \"%u\" not found.", sub_id);
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Notification subscription with ID \"%" PRIu32 "\" not found.", sub_id);
         goto cleanup_unlock;
     }
 

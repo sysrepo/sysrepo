@@ -411,7 +411,7 @@ sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod
     }
     if (err_info) {
         if (err_info->err[0].err_code == SR_ERR_TIME_OUT) {
-            sr_errinfo_new(&err_info, SR_ERR_LOCKED, "Module \"%s\" is %s by session %u (NC SID %u).",
+            sr_errinfo_new(&err_info, SR_ERR_LOCKED, "Module \"%s\" is %s by session %" PRIu32 " (NC SID %" PRIu32 ").",
                     ly_mod->name, ATOMIC_LOAD_RELAXED(shm_lock->ds_locked) ? "locked" : "being used", shm_lock->sid.sr,
                     shm_lock->sid.nc);
         }
@@ -424,7 +424,7 @@ sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod
         if (ATOMIC_LOAD_RELAXED(shm_lock->ds_locked)) {
             assert(shm_lock->sid.sr);
             if (shm_lock->sid.sr != sid.sr) {
-                sr_errinfo_new(&err_info, SR_ERR_LOCKED, "Module \"%s\" is locked by session %u (NC SID %u).",
+                sr_errinfo_new(&err_info, SR_ERR_LOCKED, "Module \"%s\" is locked by session %" PRIu32 " (NC SID %" PRIu32 ").",
                         ly_mod->name, shm_lock->sid.sr, shm_lock->sid.nc);
                 goto revert_lock;
             }
@@ -709,7 +709,7 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid)
             if (shm_lock->sid.sr == sid.sr) {
                 if (shm_lock->lock.upgr) {
                     /* this should never happen, write lock is held during some API calls */
-                    sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Session %u (NC SID %u) was working with"
+                    sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Session %" PRIu32 " (NC SID %" PRIu32 ") was working with"
                             " module \"%s\"!", sid.sr, sid.nc, conn->main_shm.addr + shm_mod->name);
                     sr_errinfo_free(&err_info);
                     shm_lock->lock.upgr = 0;

@@ -1064,7 +1064,7 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
     }
 
     /* get the data from libyang */
-    SR_CHECK_LY_RET(ly_ctx_get_yanglib_data(mod_info->conn->ly_ctx, &mod_data, "%u", content_id),
+    SR_CHECK_LY_RET(ly_ctx_get_yanglib_data(mod_info->conn->ly_ctx, &mod_data, "%" PRIu32, content_id),
             mod_info->conn->ly_ctx, err_info);
 
     if (!strcmp(mod->ly_mod->revision, "2019-01-04")) {
@@ -2276,7 +2276,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     }
 
     /* changed-by session-id */
-    sprintf(nc_str, "%u", session->sid.nc);
+    sprintf(nc_str, "%" PRIu32, session->sid.nc);
     if (lyd_new_term(root, NULL, "session-id", nc_str, 0, NULL)) {
         sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
         goto cleanup;

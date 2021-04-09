@@ -2087,7 +2087,7 @@ sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *ch
                 /* increase content-id */
                 assert(!strcmp(sr_mod->schema->name, "content-id"));
                 content_id = ((struct lyd_node_term *)sr_mod)->value.uint32 + 1;
-                sprintf(buf, "%u", content_id);
+                sprintf(buf, "%" PRIu32, content_id);
                 if (lyd_change_term(sr_mod, buf)) {
                     SR_ERRINFO_INT(&err_info);
                     goto cleanup;

@@ -230,7 +230,7 @@ sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext)
         items = sr_realloc(items, (item_count + 1) * sizeof *items);
         items[item_count].start = ((char *)hole) - shm_ext->addr;
         items[item_count].size = hole->size;
-        asprintf(&(items[item_count].name), "memory hole (size %u)", hole->size);
+        asprintf(&(items[item_count].name), "memory hole (size %" PRIu32 ")", hole->size);
         ++item_count;
     }
 
@@ -243,7 +243,7 @@ sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext)
                 items = sr_realloc(items, (item_count + 1) * sizeof *items);
                 items[item_count].start = shm_mod->change_sub[ds].subs;
                 items[item_count].size = SR_SHM_SIZE(shm_mod->change_sub[ds].sub_count * sizeof *change_subs);
-                asprintf(&(items[item_count].name), "%s change subs (%u, mod \"%s\")", sr_ds2str(ds),
+                asprintf(&(items[item_count].name), "%s change subs (%" PRIu32 ", mod \"%s\")", sr_ds2str(ds),
                         shm_mod->change_sub[ds].sub_count, ((char *)main_shm) + shm_mod->name);
                 ++item_count;
 
@@ -267,7 +267,7 @@ sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext)
             items = sr_realloc(items, (item_count + 1) * sizeof *items);
             items[item_count].start = shm_mod->oper_subs;
             items[item_count].size = SR_SHM_SIZE(shm_mod->oper_sub_count * sizeof *oper_subs);
-            asprintf(&(items[item_count].name), "oper subs (%u, mod \"%s\")", shm_mod->oper_sub_count,
+            asprintf(&(items[item_count].name), "oper subs (%" PRIu32 ", mod \"%s\")", shm_mod->oper_sub_count,
                     ((char *)main_shm) + shm_mod->name);
             ++item_count;
 
@@ -290,7 +290,7 @@ sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext)
                 items = sr_realloc(items, (item_count + 1) * sizeof *items);
                 items[item_count].start = shm_rpc[i].subs;
                 items[item_count].size = SR_SHM_SIZE(shm_rpc[i].sub_count * sizeof *rpc_subs);
-                asprintf(&(items[item_count].name), "rpc subs (%u, path \"%s\")", shm_rpc[i].sub_count,
+                asprintf(&(items[item_count].name), "rpc subs (%" PRIu32 ", path \"%s\")", shm_rpc[i].sub_count,
                         ((char *)main_shm) + shm_rpc[i].path);
                 ++item_count;
 
@@ -312,7 +312,7 @@ sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext)
             items = sr_realloc(items, (item_count + 1) * sizeof *items);
             items[item_count].start = shm_mod->notif_subs;
             items[item_count].size = SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof(sr_mod_notif_sub_t));
-            asprintf(&(items[item_count].name), "notif subs (%u, mod \"%s\")", shm_mod->notif_sub_count,
+            asprintf(&(items[item_count].name), "notif subs (%" PRIu32 ", mod \"%s\")", shm_mod->notif_sub_count,
                     ((char *)main_shm) + shm_mod->name);
             ++item_count;
         }
@@ -400,7 +400,7 @@ sr_shmext_change_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t 
                 }
 
                 sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG,
-                        "There already is an \"update\" subscription on module \"%s\" with priority %u for %s DS.",
+                        "There already is an \"update\" subscription on module \"%s\" with priority %" PRIu32 " for %s DS.",
                         conn->main_shm.addr + shm_mod->name, priority, sr_ds2str(ds));
                 goto cleanup_changesub_ext_unlock;
             }
@@ -1257,8 +1257,8 @@ sr_shmext_rpc_sub_add(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, uint32_t sub_id, c
                 break;
             }
 
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "RPC subscription for \"%s\" with priority %u "
-                    "already exists.", conn->main_shm.addr + shm_rpc->path, priority);
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "RPC subscription for \"%s\" with priority %" PRIu32
+                    " already exists.", conn->main_shm.addr + shm_rpc->path, priority);
             goto cleanup_rpcsub_ext_unlock;
         }
     }

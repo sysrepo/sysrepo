@@ -745,7 +745,7 @@ main(int argc, char **argv)
             error_print(r, "Failed to get connection count");
             goto cleanup;
         }
-        fprintf(stdout, "%u\n", conn_count);
+        fprintf(stdout, "%" PRIu32 "\n", conn_count);
         break;
     case 0:
         error_print(0, "No operation specified");
