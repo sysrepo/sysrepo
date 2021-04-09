@@ -298,25 +298,46 @@ sr_edit_userord_is_moved(const struct lyd_node *match_node, enum insert_val inse
  *
  * @param[in] sibling First data tree sibling.
  * @param[in] llist Arbitrary instance of the (leaf-)list.
- * @param[in] key_or_value List instance keys or leaf-list value of the searched instance.
+ * @param[in] userord_anchor Preceding user-ordered anchor of the searched instance.
  * @param[out] match Matching instance in the data tree.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_find_userord_predicate(const struct lyd_node *sibling, const struct lyd_node *llist, const char *key_or_value,
+sr_edit_find_userord_predicate(const struct lyd_node *sibling, const struct lyd_node *llist, const char *userord_anchor,
         struct lyd_node **match)
 {
     sr_error_info_t *err_info = NULL;
+    struct lyd_node *iter;
+    uint32_t cur_pos, pos;
+    int found = 0;
     LY_ERR lyrc;
 
-    lyrc = lyd_find_sibling_val(sibling, llist->schema, key_or_value, strlen(key_or_value), match);
-    if (lyrc == LY_ENOTFOUND) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" instance to insert next to not found.",
-                llist->schema->name);
-        return err_info;
-    } else if (lyrc) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(llist));
-        return err_info;
+    if (lysc_is_dup_inst_list(llist->schema)) {
+        pos = atoi(userord_anchor);
+        cur_pos = 1;
+        LYD_LIST_FOR_INST(sibling, llist->schema, iter) {
+            if (cur_pos == pos) {
+                found = 1;
+                break;
+            }
+            ++cur_pos;
+        }
+        if (!found) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" instance to insert next to not found.",
+                    llist->schema->name);
+            return err_info;
+        }
+        *match = iter;
+    } else {
+        lyrc = lyd_find_sibling_val(sibling, llist->schema, userord_anchor, strlen(userord_anchor), match);
+        if (lyrc == LY_ENOTFOUND) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" instance to insert next to not found.",
+                    llist->schema->name);
+            return err_info;
+        } else if (lyrc) {
+            sr_errinfo_new_ly(&err_info, LYD_CTX(llist));
+            return err_info;
+        }
     }
 
     return NULL;
@@ -376,7 +397,7 @@ sr_edit_find_match(const struct lyd_node *first_node, const struct lyd_node *edi
  * @param[in] edit_node Edit node to match.
  * @param[in] op Operation of the edit node.
  * @param[in] insert Optional insert place of the operation.
- * @param[in] key_or_value Optional predicate of relative (leaf-)list instance of the operation.
+ * @param[in] userord_anchor Optional user-ordered list anchor of relative (leaf-)list instance of the operation.
  * @param[in] dflt_ll_skip Whether to skip found default leaf-list instance.
  * @param[out] match_p Matching node.
  * @param[out] val_equal_p Whether even the value matches.
@@ -384,7 +405,7 @@ sr_edit_find_match(const struct lyd_node *first_node, const struct lyd_node *edi
  */
 static sr_error_info_t *
 sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node, enum edit_op op, enum insert_val insert,
-        const char *key_or_value, int dflt_ll_skip, struct lyd_node **match_p, int *val_equal_p)
+        const char *userord_anchor, int dflt_ll_skip, struct lyd_node **match_p, int *val_equal_p)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *anchor_node;
@@ -436,9 +457,9 @@ sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node
                 } else if (lysc_is_userordered(match->schema)) {
                     /* check if even the order matches for user-ordered (leaf-)lists */
                     anchor_node = NULL;
-                    if (key_or_value) {
+                    if (userord_anchor) {
                         /* find the anchor node if set */
-                        if ((err_info = sr_edit_find_userord_predicate(first_node, match, key_or_value, &anchor_node))) {
+                        if ((err_info = sr_edit_find_userord_predicate(first_node, match, userord_anchor, &anchor_node))) {
                             return err_info;
                         }
                     }
@@ -552,18 +573,18 @@ sr_edit_str2op(const char *str)
  * @param[in] parent_op Parent operation.
  * @param[out] op Edit node operation.
  * @param[out] insert Optional insert place of the operation.
- * @param[out] key_or_value Optional predicte of relative (leaf-)list instance for the operation.
+ * @param[out] userord_anchor Optional user-ordered anchor of relative (leaf-)list instance for the operation.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_op *op, enum insert_val *insert,
-        const char **key_or_value)
+        const char **userord_anchor)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_meta *meta;
     struct lyd_attr *attr;
     enum insert_val ins = INSERT_DEFAULT;
-    const char *k_or_val = NULL, *val_str;
+    const char *meta_name, *meta_anchor = NULL, *val_str;
     int user_order_list = 0;
 
     *op = parent_op;
@@ -572,6 +593,16 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
     }
 
     if (edit_node->schema) {
+        if (user_order_list) {
+            if (lysc_is_dup_inst_list(edit_node->schema)) {
+                meta_name = "position";
+            } else if (edit_node->schema->nodetype == LYS_LIST) {
+                meta_name = "key";
+            } else {
+                meta_name = "value";
+            }
+        }
+
         LY_LIST_FOR(edit_node->meta, meta) {
             val_str = meta->value.canonical;
             if (!strcmp(meta->name, "operation") && (!strcmp(meta->annotation->module->name, SR_YANG_MOD)
@@ -590,12 +621,8 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
                     SR_ERRINFO_INT(&err_info);
                     return err_info;
                 }
-            } else if (user_order_list && (edit_node->schema->nodetype == LYS_LIST) && !strcmp(meta->name, "key")
-                    && !strcmp(meta->annotation->module->name, "yang")) {
-                k_or_val = val_str;
-            } else if (user_order_list && (edit_node->schema->nodetype == LYS_LEAFLIST) && !strcmp(meta->name, "value")
-                    && !strcmp(meta->annotation->module->name, "yang")) {
-                k_or_val = val_str;
+            } else if (user_order_list && !strcmp(meta->name, meta_name) && !strcmp(meta->annotation->module->name, "yang")) {
+                meta_anchor = val_str;
             }
         }
     } else {
@@ -615,17 +642,17 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
         }
     }
 
-    if (user_order_list && ((ins == INSERT_BEFORE) || (ins == INSERT_AFTER)) && !(k_or_val)) {
+    if (user_order_list && ((ins == INSERT_BEFORE) || (ins == INSERT_AFTER)) && !(meta_anchor)) {
         sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Missing attribute \"%s\" required by the \"insert\" attribute.",
-                edit_node->schema->nodetype == LYS_LIST ? "key" : "value");
+                meta_name);
         return err_info;
     }
 
     if (insert) {
         *insert = ins;
     }
-    if (key_or_value) {
-        *key_or_value = k_or_val;
+    if (userord_anchor) {
+        *userord_anchor = meta_anchor;
     }
     return NULL;
 }
@@ -637,12 +664,12 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
  * @param[in] parent_node Data tree sibling parent node.
  * @param[in] new_node Edit node to insert.
  * @param[in] insert Place where to insert the node.
- * @param[in] keys_or_value Optional predicate of relative (leaf-)list instance.
+ * @param[in] userord_anchor Optional user-ordered anchor of relative (leaf-)list instance.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_edit_insert(struct lyd_node **first_node, struct lyd_node *parent_node, struct lyd_node *new_node,
-        enum insert_val insert, const char *key_or_value)
+        enum insert_val insert, const char *userord_anchor)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *anchor;
@@ -657,7 +684,7 @@ sr_edit_insert(struct lyd_node **first_node, struct lyd_node *parent_node, struc
         }
 
         /* simply insert into parent, no other children */
-        if (key_or_value) {
+        if (userord_anchor) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" instance to insert next to not found.",
                     new_node->schema->name);
             return err_info;
@@ -693,10 +720,10 @@ sr_edit_insert(struct lyd_node **first_node, struct lyd_node *parent_node, struc
         return NULL;
     }
 
-    assert(lysc_is_userordered(new_node->schema) && key_or_value);
+    assert(lysc_is_userordered(new_node->schema) && userord_anchor);
 
     /* find the anchor sibling */
-    if ((err_info = sr_edit_find_userord_predicate(*first_node, new_node, key_or_value, &anchor))) {
+    if ((err_info = sr_edit_find_userord_predicate(*first_node, new_node, userord_anchor, &anchor))) {
         return err_info;
     }
 
@@ -719,8 +746,8 @@ sr_edit_insert(struct lyd_node **first_node, struct lyd_node *parent_node, struc
 }
 
 /**
- * @brief Create a predicate for a user-ordered (leaf-)list. In case of list,
- * it is an array of predicates for each key. For leaf-list, it is simply its value.
+ * @brief Create a predicate for a user-ordered (leaf-)list. For dpulicate-instance list, it is its position.
+ * In case of list, it is an array of predicates for each key. For leaf-list, it is simply its value.
  *
  * @param[in] llist (Leaf-)list to process.
  * @return Predicate, NULL on error.
@@ -734,8 +761,16 @@ sr_edit_create_userord_predicate(const struct lyd_node *llist)
 
     assert(lysc_is_userordered(llist->schema));
 
-    /* leaf-list uses the value directly */
+    if (lysc_is_dup_inst_list(llist->schema)) {
+        /* duplicate-instance lists use their position */
+        if (asprintf(&pred, "%" PRIu32, lyd_list_pos(llist)) == -1) {
+            return NULL;
+        }
+        return pred;
+    }
+
     if (llist->schema->nodetype == LYS_LEAFLIST) {
+        /* leaf-list uses the value directly */
         pred = strdup(LYD_CANON_VALUE(llist));
         return pred;
     }
@@ -925,7 +960,11 @@ sr_diff_add_meta(struct lyd_node *diff_node, const char *meta_val, const char *p
         assert(lysc_is_userordered(diff_node->schema));
 
         /* add info about current place for abort */
-        if (diff_node->schema->nodetype == LYS_LIST) {
+        if (lysc_is_dup_inst_list(diff_node->schema)) {
+            if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:orig-position", prev_meta_val, 0, NULL)) {
+                goto ly_error;
+            }
+        } else if (diff_node->schema->nodetype == LYS_LIST) {
             if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:orig-key", prev_meta_val, 0, NULL)) {
                 goto ly_error;
             }
@@ -938,7 +977,11 @@ sr_diff_add_meta(struct lyd_node *diff_node, const char *meta_val, const char *p
     case EDIT_CREATE:
         if (lysc_is_userordered(diff_node->schema)) {
             /* add info about inserted place as a metadata (meta_val can be NULL, inserted on the first place) */
-            if (diff_node->schema->nodetype == LYS_LIST) {
+            if (lysc_is_dup_inst_list(diff_node->schema)) {
+                if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:position", meta_val, 0, NULL)) {
+                    goto ly_error;
+                }
+            } else if (diff_node->schema->nodetype == LYS_LIST) {
                 if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:key", meta_val, 0, NULL)) {
                     goto ly_error;
                 }
@@ -949,9 +992,27 @@ sr_diff_add_meta(struct lyd_node *diff_node, const char *meta_val, const char *p
             }
         }
         break;
-    default:
-        /* nothing to do */
+    case EDIT_DELETE:
+        if (lysc_is_userordered(diff_node->schema)) {
+            /* add info about current place for abort */
+            if (lysc_is_dup_inst_list(diff_node->schema)) {
+                if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:orig-position", prev_meta_val, 0, NULL)) {
+                    goto ly_error;
+                }
+            } else if (diff_node->schema->nodetype == LYS_LIST) {
+                if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:orig-key", prev_meta_val, 0, NULL)) {
+                    goto ly_error;
+                }
+            } else {
+                if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:orig-value", prev_meta_val, 0, NULL)) {
+                    goto ly_error;
+                }
+            }
+        }
         break;
+    default:
+        SR_ERRINFO_INT(&err_info);
+        return err_info;
     }
 
     return NULL;
@@ -1333,11 +1394,21 @@ sr_edit_apply_remove(struct lyd_node **first_node, struct lyd_node *parent_node,
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *parent;
+    const struct lyd_node *sibling_before;
+    char *sibling_before_val = NULL;
 
     /* just use the value because it is only in an assert */
     (void)parent_node;
 
     if (*match_node) {
+        if (lysc_is_userordered((*match_node)->schema)) {
+            /* get original (current) previous instance to be stored in diff */
+            sibling_before = sr_edit_find_previous_instance(*match_node);
+            if (sibling_before) {
+                sibling_before_val = sr_edit_create_userord_predicate(sibling_before);
+            }
+        }
+
         if ((*match_node == *first_node) && !(*match_node)->parent) {
             assert(!parent_node);
 
@@ -1347,8 +1418,9 @@ sr_edit_apply_remove(struct lyd_node **first_node, struct lyd_node *parent_node,
         parent = lyd_parent(*match_node);
 
         /* update diff, remove the whole subtree by relinking it to the diff */
-        if ((err_info = sr_edit_diff_add(*match_node, NULL, NULL, EDIT_DELETE, 1, diff_parent, diff_root, diff_node))) {
-            return err_info;
+        if ((err_info = sr_edit_diff_add(*match_node, NULL, sibling_before_val, EDIT_DELETE, 1, diff_parent, diff_root,
+                diff_node))) {
+            goto cleanup;
         }
 
         /* set empty non-presence container dflt flag */
@@ -1370,7 +1442,9 @@ sr_edit_apply_remove(struct lyd_node **first_node, struct lyd_node *parent_node,
         *change = 1;
     }
 
-    return NULL;
+cleanup:
+    free(sibling_before_val);
+    return err_info;
 }
 
 /**
@@ -1615,12 +1689,9 @@ sr_edit_apply_create(struct lyd_node **first_node, struct lyd_node *parent_node,
             return NULL;
         }
 
-        /* allow creating duplicate instances of state lists/leaf-lists */
-        if (!lysc_is_dup_inst_list(edit_node->schema)) {
-            sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Node \"%s\" to be created already exists.",
-                    edit_node->schema->name);
-            return err_info;
-        }
+        sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Node \"%s\" to be created already exists.",
+                edit_node->schema->name);
+        return err_info;
     }
 
     if (lysc_is_userordered(edit_node->schema)) {

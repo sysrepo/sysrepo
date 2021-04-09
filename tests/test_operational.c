@@ -2262,8 +2262,6 @@ test_stored_state_list(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val2", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val1", NULL, SR_EDIT_STRICT);
-    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -2287,7 +2285,6 @@ test_stored_state_list(void **state)
         "</l>"
         "<ll or:origin=\"or:unknown\">val1</ll>"
         "<ll or:origin=\"or:unknown\">val2</ll>"
-        "<ll or:origin=\"or:unknown\">val1</ll>"
     "</test-state>";
 
     assert_string_equal(str1, str2);
@@ -2325,11 +2322,7 @@ test_stored_state_list(void **state)
     /* create some new oper data */
     ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val3", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val3", NULL, SR_EDIT_STRICT);
-    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val2", NULL, SR_EDIT_STRICT);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val3", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val1", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2355,9 +2348,7 @@ test_stored_state_list(void **state)
             "<l1>val2</l1>"
         "</l>"
         "<ll or:origin=\"or:unknown\">val3</ll>"
-        "<ll or:origin=\"or:unknown\">val3</ll>"
         "<ll or:origin=\"or:unknown\">val2</ll>"
-        "<ll or:origin=\"or:unknown\">val3</ll>"
         "<ll or:origin=\"or:unknown\">val1</ll>"
     "</test-state>";
 
