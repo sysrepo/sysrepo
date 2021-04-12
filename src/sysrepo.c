@@ -487,7 +487,7 @@ _sr_session_stop(sr_session_ctx_t *session)
     sr_errinfo_merge(&err_info, tmp_err);
 
     /* release any held locks */
-    sr_shmmod_release_locks(session->conn, session->sid);
+    sr_shmmod_release_locks(session->conn, session->sid.sr);
 
     /* stop notification buffering thread */
     sr_session_notif_buf_stop(session);
@@ -1408,7 +1408,7 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
 
 cleanup:
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info, session->sid);
+    sr_shmmod_modinfo_unlock(&mod_info);
 
     ly_set_free(set);
     ly_set_clean(&mod_set);
@@ -1468,7 +1468,7 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
 
 cleanup:
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info, session->sid);
+    sr_shmmod_modinfo_unlock(&mod_info);
 
     ly_set_free(set);
     ly_set_clean(&mod_set);
@@ -1531,7 +1531,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
 
 cleanup:
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info, session->sid);
+    sr_shmmod_modinfo_unlock(&mod_info);
 
     ly_set_free(set);
     ly_set_clean(&mod_set);
@@ -1617,7 +1617,7 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
 
 cleanup:
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info, session->sid);
+    sr_shmmod_modinfo_unlock(&mod_info);
 
     ly_set_free(subtrees);
     ly_set_clean(&mod_set);
@@ -1919,7 +1919,7 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
 
 cleanup:
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info, session->sid);
+    sr_shmmod_modinfo_unlock(&mod_info);
 
     ly_set_clean(&mod_set);
     sr_modinfo_free(&mod_info);
@@ -2106,7 +2106,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     }
 
     /* MODULES WRITE LOCK (upgrade) */
-    if ((err_info = sr_shmmod_modinfo_rdlock_upgrade(mod_info, session->sid))) {
+    if ((err_info = sr_shmmod_modinfo_rdlock_upgrade(mod_info, session->sid.sr))) {
         goto cleanup_unlock;
     }
 
@@ -2116,7 +2116,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     }
 
     /* MODULES READ LOCK (downgrade) */
-    if ((err_info = sr_shmmod_modinfo_wrlock_downgrade(mod_info, session->sid))) {
+    if ((err_info = sr_shmmod_modinfo_wrlock_downgrade(mod_info, session->sid.sr))) {
         goto cleanup_unlock;
     }
 
@@ -2194,7 +2194,7 @@ sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms, int wait)
 
 cleanup:
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info, session->sid);
+    sr_shmmod_modinfo_unlock(&mod_info);
 
     if (!err_info && !cb_err_info) {
         /* free applied edit */
@@ -2280,7 +2280,7 @@ _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, s
 
 cleanup:
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info, session->sid);
+    sr_shmmod_modinfo_unlock(&mod_info);
 
     ly_set_clean(&mod_set);
     sr_modinfo_free(&mod_info);
@@ -2390,7 +2390,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
     }
 
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info, session->sid);
+    sr_shmmod_modinfo_unlock(&mod_info);
 
     /* replace the data */
     if ((err_info = _sr_replace_config(session, ly_mod, &mod_info.data, timeout_ms))) {
@@ -2399,7 +2399,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
 
     if ((src_datastore == SR_DS_CANDIDATE) && (session->ds == SR_DS_RUNNING)) {
         /* MODULES WRITE LOCK */
-        if ((err_info = sr_shmmod_modinfo_wrlock(&mod_info, session->sid))) {
+        if ((err_info = sr_shmmod_modinfo_wrlock(&mod_info, session->sid.sr))) {
             goto cleanup;
         }
 
@@ -2412,7 +2412,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
 
 cleanup:
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info, session->sid);
+    sr_shmmod_modinfo_unlock(&mod_info);
 
     ly_set_clean(&mod_set);
     sr_modinfo_free(&mod_info);
@@ -2428,7 +2428,7 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, sr_sid_t sid)
+sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, uint32_t sid)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
@@ -2443,19 +2443,15 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, sr_sid_t sid)
 
         assert(mod->state & MOD_INFO_REQ);
 
-        /* we assume these modules are write-locked by this session */
-        assert(shm_lock->sid.sr == sid.sr);
-
         /* it was successfully WRITE-locked, check that DS lock state is as expected */
-        if (ATOMIC_LOAD_RELAXED(shm_lock->ds_locked) && lock) {
-            assert(shm_lock->sid.sr == sid.sr);
-            sr_errinfo_new(&err_info, SR_ERR_LOCKED, NULL, "Module \"%s\" is already locked by this session %u (NC SID %u).",
-                    mod->ly_mod->name, sid.sr, sid.nc);
+        if (shm_lock->ds_lock_sid && lock) {
+            assert(shm_lock->ds_lock_sid == sid);
+            sr_errinfo_new(&err_info, SR_ERR_LOCKED, NULL, "Module \"%s\" is already locked by this session %u.",
+                    mod->ly_mod->name, sid);
             goto error;
-        } else if (!ATOMIC_LOAD_RELAXED(shm_lock->ds_locked) && !lock) {
-            assert(shm_lock->sid.sr == sid.sr);
-            sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, NULL, "Module \"%s\" was not locked by this session %u (NC SID %u).",
-                    mod->ly_mod->name, sid.sr, sid.nc);
+        } else if (!shm_lock->ds_lock_sid  && !lock) {
+            sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, NULL, "Module \"%s\" was not locked by this session %u.",
+                    mod->ly_mod->name, sid);
             goto error;
         } else if (lock && (mod_info->ds == SR_DS_CANDIDATE)) {
             /* candidate DS file cannot exist */
@@ -2476,11 +2472,12 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, sr_sid_t sid)
         }
 
         /* change DS lock state and remember the time */
-        ATOMIC_STORE_RELAXED(shm_lock->ds_locked, lock);
         if (lock) {
-            shm_lock->ds_ts = time(NULL);
+            shm_lock->ds_lock_sid = sid;
+            shm_lock->ds_lock_ts = time(NULL);
         } else {
-            shm_lock->ds_ts = 0;
+            shm_lock->ds_lock_sid = 0;
+            shm_lock->ds_lock_ts = 0;
         }
     }
 
@@ -2491,12 +2488,14 @@ error:
     for (j = 0; j < i; ++j) {
         shm_lock = &mod_info->mods[j].shm_mod->data_lock_info[mod_info->ds];
 
-        assert((ATOMIC_LOAD_RELAXED(shm_lock->ds_locked) && lock) || (!ATOMIC_LOAD_RELAXED(shm_lock->ds_locked) && !lock));
+        assert(((shm_lock->ds_lock_sid == sid) && lock) || (!shm_lock->ds_lock_sid && !lock));
 
         if (lock) {
-            ATOMIC_STORE_RELAXED(shm_lock->ds_locked, 0);
+            shm_lock->ds_lock_sid = 0;
+            shm_lock->ds_lock_ts = 0;
         } else {
-            ATOMIC_STORE_RELAXED(shm_lock->ds_locked, 1);
+            shm_lock->ds_lock_sid = sid;
+            shm_lock->ds_lock_ts = time(NULL);
         }
     }
 
@@ -2537,23 +2536,18 @@ _sr_un_lock(sr_session_ctx_t *session, const char *module_name, int lock)
     if (ly_mod) {
         ly_set_add(&mod_set, (void *)ly_mod, 0);
     }
-    if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_READ,
-            SR_MI_LOCK_UPGRADEABLE | SR_MI_DATA_NO | SR_MI_PERM_READ | SR_MI_PERM_STRICT, session->sid, NULL, 0, 0))) {
+    if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_WRITE,
+            SR_MI_DATA_NO | SR_MI_PERM_READ | SR_MI_PERM_STRICT, session->sid, NULL, 0, 0))) {
         goto cleanup;
     }
 
     /* DS-(un)lock them */
-    if ((err_info = sr_change_dslock(&mod_info, lock, session->sid))) {
+    if ((err_info = sr_change_dslock(&mod_info, lock, session->sid.sr))) {
         goto cleanup;
     }
 
     /* candidate datastore unlocked, reset its state */
     if (!lock && (mod_info.ds == SR_DS_CANDIDATE)) {
-        /* MODULES WRITE LOCK (upgrade) */
-        if ((err_info = sr_shmmod_modinfo_rdlock_upgrade(&mod_info, session->sid))) {
-            goto cleanup;
-        }
-
         if ((err_info = sr_modinfo_candidate_reset(&mod_info))) {
             goto cleanup;
         }
@@ -2563,7 +2557,7 @@ _sr_un_lock(sr_session_ctx_t *session, const char *module_name, int lock)
 
 cleanup:
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info, session->sid);
+    sr_shmmod_modinfo_unlock(&mod_info);
 
     ly_set_clean(&mod_set);
     sr_modinfo_free(&mod_info);
@@ -2591,22 +2585,19 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
     struct ly_set mod_set = {0};
     const struct lys_module *ly_mod = NULL;
     struct sr_mod_lock_s *shm_lock;
-    uint32_t i;
-    sr_sid_t sid;
+    uint32_t i, sid;
+    sr_sid_t sid_s = {0};
 
     SR_CHECK_ARG_APIRET(!conn || !SR_IS_CONVENTIONAL_DS(datastore) || !is_locked, NULL, err_info);
+    (void)nc_id;
 
     if (id) {
         *id = 0;
-    }
-    if (nc_id) {
-        *nc_id = 0;
     }
     if (timestamp) {
         *timestamp = 0;
     }
     SR_MODINFO_INIT(mod_info, conn, datastore, datastore);
-    memset(&sid, 0, sizeof sid);
 
     /* no lock required, accessing only main SHM (modules) */
 
@@ -2623,24 +2614,25 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
     if (ly_mod) {
         ly_set_add(&mod_set, (void *)ly_mod, 0);
     }
-    if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_NONE,
-            SR_MI_DATA_NO | SR_MI_PERM_READ | SR_MI_PERM_STRICT, sid, NULL, 0, 0))) {
+    if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_READ,
+            SR_MI_DATA_NO | SR_MI_PERM_READ | SR_MI_PERM_STRICT, sid_s, NULL, 0, 0))) {
         goto cleanup;
     }
 
     /* check DS-lock of the module(s) */
+    sid = 0;
     for (i = 0; i < mod_info.mod_count; ++i) {
         shm_lock = &mod_info.mods[i].shm_mod->data_lock_info[mod_info.ds];
 
-        if (!ATOMIC_LOAD_RELAXED(shm_lock->ds_locked)) {
+        if (!shm_lock->ds_lock_sid) {
             /* there is at least one module that is not DS-locked */
             break;
         }
 
-        if (!sid.sr) {
+        if (!sid) {
             /* remember the first DS lock owner */
-            sid = shm_lock->sid;
-        } else if (sid.sr != shm_lock->sid.sr) {
+            sid = shm_lock->ds_lock_sid;
+        } else if (sid != shm_lock->ds_lock_sid) {
             /* more DS module lock owners, not a full DS lock */
             break;
         }
@@ -2653,19 +2645,19 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
         /* the module or all modules is DS locked by a single SR session */
         *is_locked = 1;
         if (id) {
-            *id = sid.sr;
-        }
-        if (nc_id) {
-            *nc_id = sid.nc;
+            *id = shm_lock->ds_lock_sid;
         }
         if (timestamp) {
-            *timestamp = shm_lock->ds_ts;
+            *timestamp = shm_lock->ds_lock_ts;
         }
     }
 
     /* success */
 
 cleanup:
+    /* MODULES UNLOCK */
+    sr_shmmod_modinfo_unlock(&mod_info);
+
     ly_set_clean(&mod_set);
     sr_modinfo_free(&mod_info);
     return sr_api_ret(NULL, err_info);
@@ -2874,7 +2866,8 @@ sr_module_change_subscribe_enable(sr_session_ctx_t *session, struct sr_mod_info_
     /* create mod_info structure with this module only, do not use cache to allow reading data in the callback
      * (avoid dead-lock) */
     ly_set_add(&mod_set, (void *)ly_mod, 0);
-    if ((err_info = sr_modinfo_add_modules(mod_info, &mod_set, 0, SR_LOCK_READ, SR_MI_PERM_NO, session->sid, NULL, 0, 0))) {
+    if ((err_info = sr_modinfo_add_modules(mod_info, &mod_set, 0, SR_LOCK_READ, SR_MI_PERM_NO, session->sid, NULL,
+            0, 0))) {
         goto cleanup;
     }
 
@@ -3136,7 +3129,7 @@ cleanup:
      * to avoid losing any changes */
 
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info, session->sid);
+    sr_shmmod_modinfo_unlock(&mod_info);
 
     sr_modinfo_free(&mod_info);
     return sr_api_ret(session, err_info);
@@ -3954,7 +3947,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     }
 
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info, session->sid);
+    sr_shmmod_modinfo_unlock(&mod_info);
 
     ly_set_clean(&mod_set);
     sr_modinfo_free(&mod_info);
@@ -4025,7 +4018,7 @@ cleanup_rpcsub_unlock:
 
 cleanup:
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info, session->sid);
+    sr_shmmod_modinfo_unlock(&mod_info);
 
     free(path);
     ly_set_clean(&mod_set);
@@ -4336,7 +4329,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
     }
 
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info, session->sid);
+    sr_shmmod_modinfo_unlock(&mod_info);
 
     /* store the notification for a replay, we continue on failure */
     err_info = sr_replay_store(session, notif, notif_ts);
@@ -4360,7 +4353,7 @@ cleanup_notifsub_unlock:
 
 cleanup:
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info, session->sid);
+    sr_shmmod_modinfo_unlock(&mod_info);
 
     free(xpath);
     ly_set_clean(&mod_set);

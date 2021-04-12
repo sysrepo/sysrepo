@@ -1135,12 +1135,14 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
  * @brief Add held datastore-specific lock nodes to a data tree.
  *
  * @param[in] rwlock Lock to read CIDs from.
+ * @param[in] skip_read_cid Sysrepo CID to skip a read lock once for, no skipped if 0.
  * @param[in] path_format Path string used for lyd_new_path() after printing specific CID into it.
  * @param[in] ctx_node Context node to use for lyd_new_path().
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, const char *path_format, struct lyd_node *ctx_node)
+sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, const char *path_format,
+        struct lyd_node *ctx_node)
 {
     sr_error_info_t *err_info = NULL;
     sr_cid_t cid;
@@ -1172,6 +1174,11 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, const char *path_format, s
     }
 
     for (i = 0; rwlock->readers[i] && (i < SR_RWLOCK_READ_LIMIT); ++i) {
+        if (skip_read_cid == rwlock->readers[i]) {
+            skip_read_cid = 0;
+            continue;
+        }
+
         snprintf(path, PATH_LEN, path_format, rwlock->readers[i]);
         node = lyd_new_path(ctx_node, NULL, path, "read", 0, 0);
         if (!node) {
@@ -1279,6 +1286,7 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
     sr_mod_change_sub_t *change_sub;
     sr_mod_oper_sub_t *oper_sub;
     sr_mod_notif_sub_t *notif_sub;
+    struct sr_mod_lock_s *shm_lock;
     uint16_t i;
 #define PATH_LEN 128
     char buf[28], path[PATH_LEN];
@@ -1293,41 +1301,54 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
     /* name */
     SR_CHECK_LY_RET(!lyd_new_leaf(sr_mod, NULL, "name", conn->main_shm.addr + shm_mod->name), ly_ctx, err_info);
 
-    /* data-lock */
     for (ds = 0; ds < SR_DS_COUNT; ++ds) {
-        snprintf(path, PATH_LEN, "data-lock[cid='%%"PRIu32"'][datastore='%s']/mode", sr_ds2ident(ds));
-        if ((err_info = sr_modinfo_module_srmon_locks_ds(&shm_mod->data_lock_info[ds].lock, path, sr_mod))) {
+        shm_lock = &shm_mod->data_lock_info[ds];
+
+        /* MOD READ LOCK */
+        if ((err_info = sr_rwlock(&shm_lock->lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__, NULL, NULL))) {
             return err_info;
         }
-    }
 
-    /* ds-lock */
-    for (ds = 0; ds < SR_DS_COUNT; ++ds) {
-        if (!ATOMIC_LOAD_RELAXED(shm_mod->data_lock_info[ds].ds_locked)) {
-            continue;
+        /* data-lock */
+        snprintf(path, PATH_LEN, "data-lock[cid='%%"PRIu32"'][datastore='%s']/mode", sr_ds2ident(ds));
+        if ((err_info = sr_modinfo_module_srmon_locks_ds(&shm_lock->lock, conn->cid, path, sr_mod))) {
+            goto mod_unlock;
         }
 
+        if (!shm_lock->ds_lock_sid) {
+            goto mod_unlock;
+        }
+
+        /* ds-lock */
         sr_ds_lock = lyd_new(sr_mod, NULL, "ds-lock");
-        SR_CHECK_LY_RET(!sr_ds_lock, ly_ctx, err_info);
+        SR_CHECK_LY_GOTO(!sr_ds_lock, ly_ctx, err_info, mod_unlock);
 
         /* datastore */
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_ds_lock, NULL, "datastore", sr_ds2ident(ds)), ly_ctx, err_info);
+        SR_CHECK_LY_GOTO(!lyd_new_leaf(sr_ds_lock, NULL, "datastore", sr_ds2ident(ds)), ly_ctx, err_info, mod_unlock);
 
         /* sid */
-        sprintf(buf, "%"PRIu32, shm_mod->data_lock_info[ds].sid.sr);
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_ds_lock, NULL, "sid", buf), ly_ctx, err_info);
+        sprintf(buf, "%"PRIu32, shm_lock->ds_lock_sid);
+        SR_CHECK_LY_GOTO(!lyd_new_leaf(sr_ds_lock, NULL, "sid", buf), ly_ctx, err_info, mod_unlock);
 
         /* timestamp */
-        if ((err_info = sr_time2datetime(shm_mod->data_lock_info[ds].ds_ts, NULL, buf, NULL))) {
+        if ((err_info = sr_time2datetime(shm_lock->ds_lock_ts, NULL, buf, NULL))) {
+            goto mod_unlock;
+        }
+        SR_CHECK_LY_GOTO(!lyd_new_leaf(sr_ds_lock, NULL, "timestamp", buf), ly_ctx, err_info, mod_unlock);
+
+mod_unlock:
+        /* MOD READ UNLOCK */
+        sr_rwunlock(&shm_lock->lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+        if (err_info) {
             return err_info;
         }
-        SR_CHECK_LY_RET(!lyd_new_leaf(sr_ds_lock, NULL, "timestamp", buf), ly_ctx, err_info);
     }
 
     /* change-sub-lock */
     for (ds = 0; ds < SR_DS_COUNT; ++ds) {
         snprintf(path, PATH_LEN, "change-sub-lock[cid='%%"PRIu32"'][datastore='%s']/mode", sr_ds2ident(ds));
-        if ((err_info = sr_modinfo_module_srmon_locks_ds(&shm_mod->change_sub[ds].lock, path, sr_mod))) {
+        if ((err_info = sr_modinfo_module_srmon_locks_ds(&shm_mod->change_sub[ds].lock, 0, path, sr_mod))) {
             return err_info;
         }
     }
@@ -1507,7 +1528,6 @@ sr_modinfo_module_srmon_connections(struct lyd_node *sr_state)
  * SHM READ lock is expected to be held.
  *
  * @param[in] mod_info Mod info to use.
- * @param[in] mod Mod info module to use.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
@@ -1915,12 +1935,12 @@ sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const struct ly_set *mod_
     if (mod_lock) {
         if (mod_lock == SR_LOCK_READ) {
             /* MODULES READ LOCK */
-            if ((err_info = sr_shmmod_modinfo_rdlock(mod_info, mi_opts & SR_MI_LOCK_UPGRADEABLE, sid))) {
+            if ((err_info = sr_shmmod_modinfo_rdlock(mod_info, mi_opts & SR_MI_LOCK_UPGRADEABLE, sid.sr))) {
                 return err_info;
             }
         } else {
             /* MODULES WRITE LOCK */
-            if ((err_info = sr_shmmod_modinfo_wrlock(mod_info, sid))) {
+            if ((err_info = sr_shmmod_modinfo_wrlock(mod_info, sid.sr))) {
                 return err_info;
             }
         }
@@ -2573,21 +2593,15 @@ sr_modinfo_candidate_reset(struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
-    char *path;
     uint32_t i;
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_REQ) {
             /* just remove the candidate SHM files */
-            if ((err_info = sr_path_ds_shm(mod->ly_mod->name, SR_DS_CANDIDATE, &path))) {
+            if ((err_info = sr_remove_candidate_file(mod->ly_mod->name))) {
                 return err_info;
             }
-
-            if ((unlink(path) == -1) && (errno != ENOENT)) {
-                SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
-            }
-            free(path);
         }
     }
 

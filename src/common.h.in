@@ -732,6 +732,14 @@ sr_error_info_t *sr_remove_module_file(const char *name, const char *revision);
 sr_error_info_t *sr_store_module_files(const struct lys_module *ly_mod);
 
 /**
+ * @brief Unlink candidate file of a module.
+ *
+ * @param[in] mod_name Module name.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_remove_candidate_file(const char *mod_name);
+
+/**
  * @brief Unlink startup, running, and candidate files of a module.
  *
  * @param[in] mod_name Module name.

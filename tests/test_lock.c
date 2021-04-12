@@ -312,7 +312,7 @@ test_get_lock(void **state)
     time_t timestamp;
 
     /* params error, connection null or datastore is operational */
-    ret=sr_get_lock(NULL, SR_DS_RUNNING, NULL, &is_locked, &id, &nc_id, &timestamp);
+    ret = sr_get_lock(NULL, SR_DS_RUNNING, NULL, &is_locked, &id, &nc_id, &timestamp);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
 
     ret = sr_get_lock(st->conn, SR_DS_OPERATIONAL, NULL, &is_locked, &id, &nc_id, &timestamp);

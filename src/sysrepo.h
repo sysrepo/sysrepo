@@ -1116,7 +1116,7 @@ int sr_unlock(sr_session_ctx_t *session, const char *module_name);
  * @param[in] module_name Optional name of the module to check.
  * @param[out] is_locked True is the module or whole datastore is locked.
  * @param[out] id Optional Sysrepo SID of the session if the module/datastore is locked.
- * @param[out] nc_id Optional NETCONF SID of the session if the module/datatsore is locked.
+ * @param[out] nc_id Deprecated, will never be set.
  * @param[out] timestamp Optional timestamp of the lock.
  * @return Error code (::SR_ERR_OK on success).
  */
