@@ -4219,6 +4219,7 @@ sr_lyd_cont_has_meaning(const struct lys_node *snode, const struct lyd_node *sib
 {
     const struct lys_node *schild;
     struct lyd_node *node;
+    struct lys_node *parent;
 
     assert(snode->nodetype == LYS_CONTAINER);
 
@@ -4227,12 +4228,18 @@ sr_lyd_cont_has_meaning(const struct lys_node *snode, const struct lyd_node *sib
         return 1;
     }
 
-    assert(!lys_parent(snode) || (lys_parent(snode)->nodetype != LYS_CHOICE));
-    if (lys_parent(snode) && (lys_parent(snode)->nodetype == LYS_CASE)) {
+    parent = lys_parent(snode);
+    assert(!parent || parent->nodetype != LYS_CHOICE);
+
+    if (parent && parent->nodetype == LYS_USES) {
+        parent = lys_parent(parent);
+    }
+
+    if (parent && parent->nodetype == LYS_CASE) {
         /* container is in a case and in case no other nodes from the case exist, it would carry
          * meaning of selecting the case */
         schild = NULL;
-        while ((schild = lys_getnext(schild, lys_parent(snode), NULL, 0))) {
+        while ((schild = lys_getnext(schild, parent, NULL, 0))) {
             if (schild == snode) {
                 continue;
             }
