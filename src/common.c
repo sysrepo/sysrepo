@@ -1709,6 +1709,23 @@ sr_store_module_files(const struct lys_module *ly_mod)
 }
 
 sr_error_info_t *
+sr_remove_candidate_file(const char *mod_name)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path;
+
+    if ((err_info = sr_path_ds_shm(mod_name, SR_DS_CANDIDATE, &path))) {
+        return err_info;
+    }
+    if ((unlink(path) == -1) && (errno != ENOENT)) {
+        SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
+    }
+    free(path);
+
+    return NULL;
+}
+
+sr_error_info_t *
 sr_remove_data_files(const char *mod_name)
 {
     sr_error_info_t *err_info = NULL;
@@ -1738,13 +1755,9 @@ sr_remove_data_files(const char *mod_name)
     }
     free(path);
 
-    if ((err_info = sr_path_ds_shm(mod_name, SR_DS_CANDIDATE, &path))) {
+    if ((err_info = sr_remove_candidate_file(mod_name))) {
         return err_info;
     }
-    if ((unlink(path) == -1) && (errno != ENOENT)) {
-        SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
-    }
-    free(path);
 
     return NULL;
 }
@@ -5297,11 +5310,9 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     const struct lys_module *ly_mod;
     struct sr_mod_info_s mod_info;
     struct ly_set mod_set = {0};
-    sr_sid_t sid;
     struct lyd_node *diff = NULL;
 
     SR_MODINFO_INIT(mod_info, conn, SR_DS_OPERATIONAL, SR_DS_RUNNING);
-    memset(&sid, 0, sizeof sid);
 
     /* get the module */
     ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, mod_name);
@@ -5310,7 +5321,7 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     /* just lock the module for now */
     ly_set_add(&mod_set, (void *)ly_mod, 0, NULL);
     if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_WRITE, SR_MI_PERM_NO | SR_MI_DATA_NO,
-            sid, NULL, NULL, NULL, 0, 0))) {
+            0, NULL, NULL, NULL, 0, 0))) {
         goto cleanup;
     }
 
@@ -5345,7 +5356,7 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
 
 cleanup:
     /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info, sid);
+    sr_shmmod_modinfo_unlock(&mod_info);
 
     lyd_free_all(diff);
     ly_set_erase(&mod_set, NULL);

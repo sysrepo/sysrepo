@@ -105,6 +105,9 @@ setup(void **state)
             rd_feats) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_install_module(st->conn, TESTS_DIR "/files/oper-group-test.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+        return 1;
+    }
     sr_disconnect(st->conn);
 
     if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
@@ -132,6 +135,7 @@ teardown(void **state)
 {
     struct state *st = (struct state *)*state;
 
+    sr_remove_module(st->conn, "oper-group-test");
     sr_remove_module(st->conn, "czechlight-roadm-device");
     sr_remove_module(st->conn, "ops-ref");
     sr_remove_module(st->conn, "ops");
@@ -489,6 +493,9 @@ test_sr_mon(void **state)
         "<module>"
             "<name>czechlight-roadm-device</name>"
         "</module>"
+        "<module>"
+            "<name>oper-group-test</name>"
+        "</module>"
         "<connection>"
             "<cid></cid>"
             "<pid></pid>"
@@ -698,6 +705,14 @@ test_sr_mon(void **state)
         "</module>"
         "<module>"
             "<name>czechlight-roadm-device</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
+        "</module>"
+        "<module>"
+            "<name>oper-group-test</name>"
             "<ds-lock>"
                 "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
                 "<sid></sid>"
@@ -1451,6 +1466,195 @@ test_nested(void **state)
 
     assert_string_equal(str1, str2);
     free(str1);
+
+    sr_unsubscribe(subscr);
+}
+
+/* TEST */
+static int
+choice_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    struct state *st = private_data;
+    const struct ly_ctx *ly_ctx;
+    char xp_resdesc[256];
+    char xp_g1leaf1[256];
+    char xp_g2leaf1[256];
+    char xp_nongroup[256];
+
+    (void)sub_id;
+    (void)request_xpath;
+    (void)request_id;
+    (void)private_data;
+
+    ly_ctx = sr_get_context(sr_session_get_connection(session));
+
+    assert_string_equal(module_name, "oper-group-test");
+    if (!strcmp(xpath, "/oper-group-test:oper-data-choice") || !strcmp(xpath, "/oper-group-test:oper-data-direct")) {
+        sprintf(xp_resdesc, "%s/results-description", xpath);
+        sprintf(xp_g1leaf1, "%s/g1container/g1leaf1", xpath);
+        sprintf(xp_g2leaf1, "%s/g2container/g2leaf1", xpath);
+        sprintf(xp_nongroup, "%s/nongroup", xpath);
+
+        switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
+        case 0:
+        case 1:
+            assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, xp_resdesc, "Grouping 1 values", 0, parent));
+            assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, xp_g1leaf1, "value2", 0, NULL));
+            break;
+        case 2:
+        case 3:
+            assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, xp_resdesc, "Grouping 2 values", 0, parent));
+            assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, xp_g2leaf1, "value3", 0, NULL));
+            break;
+        case 4:
+        case 5:
+            assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, xp_resdesc, "Non-grouping values", 0, parent));
+            assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, xp_nongroup, "value4", 0, NULL));
+            break;
+        default:
+            fail();
+        }
+    } else {
+        fail();
+    }
+
+    ATOMIC_INC_RELAXED(st->cb_called);
+    return SR_ERR_OK;
+}
+
+static void
+test_choice(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    sr_subscription_ctx_t *subscr;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* subscribe as state data provider */
+    ret = sr_oper_get_items_subscribe(st->sess, "oper-group-test", "/oper-group-test:oper-data-direct", choice_oper_cb,
+            st, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_oper_get_items_subscribe(st->sess, "oper-group-test", "/oper-group-test:oper-data-choice", choice_oper_cb,
+            st, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+
+    /* read the data from operational (#1 and #2) */
+    str2 =
+    "<oper-data-direct xmlns=\"http://example.org/oper-group-test\">"
+        "<results-description>Grouping 1 values</results-description>"
+        "<g1container>"
+            "<g1leaf1>value2</g1leaf1>"
+        "</g1container>"
+    "</oper-data-direct>";
+
+    ret = sr_get_data(st->sess, "/oper-group-test:oper-data-direct", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+    lyd_free_siblings(data);
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    str2 =
+    "<oper-data-choice xmlns=\"http://example.org/oper-group-test\">"
+        "<results-description>Grouping 1 values</results-description>"
+        "<g1container>"
+            "<g1leaf1>value2</g1leaf1>"
+        "</g1container>"
+    "</oper-data-choice>";
+
+    ret = sr_get_data(st->sess, "/oper-group-test:oper-data-choice", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+    lyd_free_siblings(data);
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* read the data from operational (#3 and #4) */
+    str2 =
+    "<oper-data-direct xmlns=\"http://example.org/oper-group-test\">"
+        "<results-description>Grouping 2 values</results-description>"
+        "<g2container>"
+            "<g2leaf1>value3</g2leaf1>"
+        "</g2container>"
+    "</oper-data-direct>";
+
+    ret = sr_get_data(st->sess, "/oper-group-test:oper-data-direct", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+    lyd_free_siblings(data);
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    str2 =
+    "<oper-data-choice xmlns=\"http://example.org/oper-group-test\">"
+        "<results-description>Grouping 2 values</results-description>"
+        "<g2container>"
+            "<g2leaf1>value3</g2leaf1>"
+        "</g2container>"
+    "</oper-data-choice>";
+
+    ret = sr_get_data(st->sess, "/oper-group-test:oper-data-choice", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+    lyd_free_siblings(data);
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* read the data from operational (#5 and #6) */
+    str2 =
+    "<oper-data-direct xmlns=\"http://example.org/oper-group-test\">"
+        "<results-description>Non-grouping values</results-description>"
+        "<nongroup>value4</nongroup>"
+    "</oper-data-direct>";
+
+    ret = sr_get_data(st->sess, "/oper-group-test:oper-data-direct", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+    lyd_free_siblings(data);
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    str2 =
+    "<oper-data-choice xmlns=\"http://example.org/oper-group-test\">"
+        "<results-description>Non-grouping values</results-description>"
+        "<nongroup>value4</nongroup>"
+    "</oper-data-choice>";
+
+    ret = sr_get_data(st->sess, "/oper-group-test:oper-data-choice", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+    lyd_free_siblings(data);
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* cleanup */
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 6);
 
     sr_unsubscribe(subscr);
 }
@@ -3723,6 +3927,7 @@ main(void)
         cmocka_unit_test_teardown(test_config, clear_up),
         cmocka_unit_test_teardown(test_list, clear_up),
         cmocka_unit_test_teardown(test_nested, clear_up),
+        cmocka_unit_test_teardown(test_choice, clear_up),
         cmocka_unit_test_teardown(test_invalid, clear_up),
         cmocka_unit_test_teardown(test_mixed, clear_up),
         cmocka_unit_test_teardown(test_xpath_check, clear_up),

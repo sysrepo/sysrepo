@@ -1,0 +1,56 @@
+module oper-group-test
+{
+    namespace "http://example.org/oper-group-test";
+    prefix "ogt";
+    yang-version 1.1;
+
+    grouping localgroup1
+    {
+        container g1container
+        {
+            leaf g1leaf1 { type string; }
+            leaf g1leaf2 { type string; }
+        }
+    }
+
+    grouping localgroup2
+    {
+        container g2container
+        {
+            leaf g2leaf1 { type string; }
+            leaf g2leaf2 { type string; }
+        }
+    }
+
+    container oper-data-choice
+    {
+        config false;
+        leaf results-description { type string; }
+
+        choice mychoice
+        {
+            case group1-case
+            {
+                uses localgroup1;
+            }
+            case group2-case
+            {
+                uses localgroup2;
+            }
+            case non-group-case
+            {
+                leaf nongroup { type string; }
+            }
+        }
+    }
+
+    container oper-data-direct
+    {
+        config false;
+        leaf results-description { type string; }
+
+        uses localgroup1;
+        uses localgroup2;
+        leaf nongroup { type string; }
+    }
+}

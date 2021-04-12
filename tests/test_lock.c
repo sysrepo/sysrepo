@@ -308,14 +308,14 @@ test_get_lock(void **state)
     struct state *st = (struct state *)*state;
     sr_session_ctx_t *sess;
     int ret, is_locked;
-    uint32_t id, nc_id;
+    uint32_t id;
     time_t timestamp;
 
     /* params error, connection null or datastore is operational */
-    ret=sr_get_lock(NULL, SR_DS_RUNNING, NULL, &is_locked, &id, &nc_id, &timestamp);
+    ret = sr_get_lock(NULL, SR_DS_RUNNING, NULL, &is_locked, &id, &timestamp);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
 
-    ret = sr_get_lock(st->conn, SR_DS_OPERATIONAL, NULL, &is_locked, &id, &nc_id, &timestamp);
+    ret = sr_get_lock(st->conn, SR_DS_OPERATIONAL, NULL, &is_locked, &id, &timestamp);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
@@ -326,12 +326,12 @@ test_get_lock(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* get lock for a locked module */
-    ret = sr_get_lock(st->conn, SR_DS_RUNNING, "test", &is_locked, &id, &nc_id, &timestamp);
+    ret = sr_get_lock(st->conn, SR_DS_RUNNING, "test", &is_locked, &id, &timestamp);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(is_locked, 1);
 
     /* get lock for all modules */
-    ret = sr_get_lock(st->conn, SR_DS_RUNNING, NULL, &is_locked, &id, &nc_id, &timestamp);
+    ret = sr_get_lock(st->conn, SR_DS_RUNNING, NULL, &is_locked, &id, &timestamp);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(is_locked, 0);
 
@@ -340,7 +340,7 @@ test_get_lock(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* get lock for a unlocked module */
-    ret = sr_get_lock(st->conn, SR_DS_RUNNING, "test", &is_locked, &id, &nc_id, &timestamp);
+    ret = sr_get_lock(st->conn, SR_DS_RUNNING, "test", &is_locked, &id, &timestamp);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(is_locked, 0);
 
@@ -349,12 +349,12 @@ test_get_lock(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* get lock for all modules */
-    ret = sr_get_lock(st->conn, SR_DS_RUNNING, NULL, &is_locked, &id, &nc_id, &timestamp);
+    ret = sr_get_lock(st->conn, SR_DS_RUNNING, NULL, &is_locked, &id, &timestamp);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(is_locked, 1);
 
     /* get lock for another module */
-    ret = sr_get_lock(st->conn, SR_DS_RUNNING, "when1", &is_locked, &id, &nc_id, &timestamp);
+    ret = sr_get_lock(st->conn, SR_DS_RUNNING, "when1", &is_locked, &id, &timestamp);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(is_locked, 1);
 

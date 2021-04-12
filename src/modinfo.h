@@ -161,7 +161,7 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig
  * @param[in] mod_deps Dependency modules to add for each added module. 0 for adding no dependency modules.
  * @param[in] mod_lock Mode of module lock.
  * @param[in] mi_opts Mod info options modifying the default behavior but some SR_MI_PERM_* must always be used.
- * @param[in] sid Session ID to store in lock information and optionally to present for operational callbacks.
+ * @param[in] sid Session ID to store in lock information.
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
  * @param[in] request_xpath Request XPath for operational callbacks.
@@ -169,7 +169,7 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig
  * @param[in] get_opts Get operational data options.
  */
 sr_error_info_t *sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const struct ly_set *mod_set, int mod_deps,
-        sr_lock_mode_t mod_lock, int mi_opts, sr_sid_t sid, const char *orig_name, const void *orig_data,
+        sr_lock_mode_t mod_lock, int mi_opts, uint32_t sid, const char *orig_name, const void *orig_data,
         const char *request_xpath, uint32_t timeout_ms, sr_get_oper_options_t get_opts);
 
 /**

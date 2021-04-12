@@ -92,11 +92,10 @@ typedef struct sr_notif_s {
  */
 struct sr_mod_s {
     struct sr_mod_lock_s {
-        sr_rwlock_t lock;       /**< Process-shared lock for accessing module instance data. */
-        ATOMIC_T ds_locked;     /**< Whether module data are datastore locked (NETCONF locks). */
-        sr_sid_t sid;           /**< Session ID of the lock owner - of DS lock, if not of write/read-upgr-lock,
-                                     if not of read-lock */
-        time_t ds_ts;           /**< Timestamp of the datastore lock. */
+        sr_rwlock_t lock;       /**< Process-shared lock for accessing module instance data and DS lock information. */
+        uint32_t ds_lock_sid;   /**< SID of the module data datastore lock (NETCONF lock), the data can be modified only
+                                     by this session. If 0, the DS lock is not held. */
+        time_t ds_lock_ts;      /**< Timestamp of the datastore lock. */
     } data_lock_info[SR_DS_COUNT]; /**< Module data lock information for each datastore. */
     sr_rwlock_t replay_lock;    /**< Process-shared lock for accessing stored notifications for replay. */
     uint32_t ver;               /**< Module data version (non-zero). */
@@ -846,7 +845,7 @@ void sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data);
  * @param[in] sid Sysrepo session ID.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradeable, sr_sid_t sid);
+sr_error_info_t *sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradeable, uint32_t sid);
 
 /**
  * @brief WRITE lock all modules in mod info. Secondary DS modules, if any, are READ locked.
@@ -855,7 +854,7 @@ sr_error_info_t *sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int up
  * @param[in] sid Sysrepo session ID.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_modinfo_wrlock(struct sr_mod_info_s *mod_info, sr_sid_t sid);
+sr_error_info_t *sr_shmmod_modinfo_wrlock(struct sr_mod_info_s *mod_info, uint32_t sid);
 
 /**
  * @brief Upgrade READ lock on modules in mod info to WRITE lock.
@@ -866,7 +865,7 @@ sr_error_info_t *sr_shmmod_modinfo_wrlock(struct sr_mod_info_s *mod_info, sr_sid
  * @param[in] sid Sysrepo session ID.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid);
+sr_error_info_t *sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, uint32_t sid);
 
 /**
  * @brief Downgrade WRITE lock on modules in mod info to READ lock.
@@ -876,15 +875,14 @@ sr_error_info_t *sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info
  * @param[in] sid Sysrepo session ID.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_modinfo_wrlock_downgrade(struct sr_mod_info_s *mod_info, sr_sid_t sid);
+sr_error_info_t *sr_shmmod_modinfo_wrlock_downgrade(struct sr_mod_info_s *mod_info, uint32_t sid);
 
 /**
  * @brief Unlock mod info.
  *
  * @param[in] mod_info Mod info to use.
- * @param[in] sid Sysrepo session ID.
  */
-void sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, sr_sid_t sid);
+void sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Release any locks matching the provided SID.
@@ -892,7 +890,7 @@ void sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info, sr_sid_t sid);
  * @param[in] conn Connection to use.
  * @param[in] sid Sysrepo session ID.
  */
-void sr_shmmod_release_locks(sr_conn_ctx_t *conn, sr_sid_t sid);
+void sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid);
 
 /**
  * @brief Remove all stored operational data of a connection.

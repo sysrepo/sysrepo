@@ -269,15 +269,6 @@ typedef struct sr_shm_s {
 } sr_shm_t;
 
 /**
- * @brief Session information structure.
- */
-typedef struct sr_sid_s {
-    uint32_t sr;                    /**< Sysrepo session ID. */
-    uint32_t nc;                    /**< NETCONF session ID. */
-    char *user;                     /**< Sysrepo user. */
-} sr_sid_t;
-
-/**
  * @brief Connection ID.
  */
 typedef uint32_t sr_cid_t;
@@ -360,7 +351,8 @@ struct sr_conn_ctx_s {
 struct sr_session_ctx_s {
     sr_conn_ctx_t *conn;            /**< Connection used for creating this session. */
     sr_datastore_t ds;              /**< Datastore of the session. */
-    sr_sid_t sid;                   /**< Session information. */
+    uint32_t sid;                   /**< Session ID. */
+    char *user;                     /**< Session (system) user. */
     sr_error_info_t *err_info;      /**< Session error information. */
 
     char *orig_name;                /**< Originator name used for all events sent on this session. */
@@ -786,6 +778,14 @@ sr_error_info_t *sr_remove_module_file(const char *name, const char *revision);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_store_module_files(const struct lys_module *ly_mod);
+
+/**
+ * @brief Unlink candidate file of a module.
+ *
+ * @param[in] mod_name Module name.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_remove_candidate_file(const char *mod_name);
 
 /**
  * @brief Unlink startup, running, and candidate files of a module.
