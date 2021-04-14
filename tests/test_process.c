@@ -346,7 +346,7 @@ rpc_crash_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, co
     (void)private_data;
 
     /* avoid leaks (valgrind probably cannot keep track of leafref attributes because they are shared) */
-    ly_ctx_destroy((struct ly_ctx *)sr_get_context(sr_session_get_connection(session)), NULL);
+    ly_ctx_destroy((struct ly_ctx *)sr_get_context(sr_session_get_connection(session)));
 
     /* callback crashes */
     exit(0);

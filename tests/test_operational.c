@@ -3920,7 +3920,7 @@ main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_yang_lib),
-        //cmocka_unit_test(test_sr_mon),
+        cmocka_unit_test(test_sr_mon),
         cmocka_unit_test_teardown(test_enabled_partial, clear_up),
         cmocka_unit_test_teardown(test_simple, clear_up),
         cmocka_unit_test_teardown(test_fail, clear_up),

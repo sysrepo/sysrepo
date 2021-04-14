@@ -1572,7 +1572,7 @@ sr_ly_ctx_new(struct ly_ctx **ly_ctx)
 
 cleanup:
     if (err_info) {
-        ly_ctx_destroy(*ly_ctx, NULL);
+        ly_ctx_destroy(*ly_ctx);
         *ly_ctx = NULL;
     }
     return err_info;

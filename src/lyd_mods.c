@@ -32,8 +32,8 @@
 #include <unistd.h>
 #include <assert.h>
 
-#include "../modules/sysrepo_yang.h"
 #include "../modules/ietf_datastores_yang.h"
+#include "../modules/sysrepo_yang.h"
 #if SR_YANGLIB_REVISION == 2019-01-04
 # include "../modules/ietf_yang_library@2019_01_04_yang.h"
 #elif SR_YANGLIB_REVISION == 2016-06-21
@@ -42,12 +42,13 @@
 # error "Unknown yang-library revision!"
 #endif
 
-#include "../modules/sysrepo_monitoring_yang.h"
 #include "../modules/ietf_netconf_acm_yang.h"
 #include "../modules/ietf_netconf_yang.h"
 #include "../modules/ietf_netconf_with_defaults_yang.h"
 #include "../modules/ietf_netconf_notifications_yang.h"
 #include "../modules/ietf_origin_yang.h"
+#include "../modules/sysrepo_monitoring_yang.h"
+#include "../modules/sysrepo_plugind_yang.h"
 
 sr_error_info_t *
 sr_lydmods_lock(pthread_mutex_t *lock, const struct ly_ctx *ly_ctx, const char *func)
@@ -865,6 +866,9 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     /* install sysrepo-monitoring */
     SR_INSTALL_INT_MOD(sysrepo_monitoring_yang, 0);
 
+    /* install sysrepo-plugind */
+    SR_INSTALL_INT_MOD(sysrepo_plugind_yang, 0);
+
     /* make sure ietf-netconf-acm is found as an import */
     ly_ctx_set_module_imp_clb(ly_ctx, sr_ly_nacm_module_imp_clb, NULL);
 
@@ -1463,7 +1467,7 @@ cleanup:
     lyd_free_siblings(new_start_data);
     lyd_free_siblings(old_run_data);
     lyd_free_siblings(new_run_data);
-    ly_ctx_destroy(old_ctx, NULL);
+    ly_ctx_destroy(old_ctx);
     if (err_info) {
         sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Failed to update data for the new context.");
     }
@@ -2178,7 +2182,7 @@ sr_lydmods_conn_ctx_update(sr_main_shm_t *main_shm, struct ly_ctx **ly_ctx, int 
                     }
 
                     /* the context is not valid anymore, we have to create it from scratch in the connection */
-                    ly_ctx_destroy(*ly_ctx, NULL);
+                    ly_ctx_destroy(*ly_ctx);
                     if ((err_info = sr_shmmain_ly_ctx_init(ly_ctx))) {
                         goto cleanup;
                     }
@@ -2215,7 +2219,7 @@ cleanup:
     sr_munlock(&main_shm->lydmods_lock);
 
     lyd_free_all(sr_mods);
-    ly_ctx_destroy(sr_mods_ctx, NULL);
+    ly_ctx_destroy(sr_mods_ctx);
     return err_info;
 }
 

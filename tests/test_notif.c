@@ -327,7 +327,7 @@ test_input_parameters(void **state)
     ret = sr_event_notif_send_tree(st->sess, input);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
     lyd_free_all(input);
-    ly_ctx_destroy(ctx, NULL);
+    ly_ctx_destroy(ctx);
 
     /* data tree not a valid notification invovation */
     assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='key']/cont2", NULL,

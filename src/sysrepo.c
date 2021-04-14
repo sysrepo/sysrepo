@@ -93,7 +93,7 @@ error4:
 error3:
     pthread_mutex_destroy(&conn->ptr_lock);
 error2:
-    ly_ctx_destroy(conn->ly_ctx, NULL);
+    ly_ctx_destroy(conn->ly_ctx);
 error1:
     free(conn);
     return err_info;
@@ -115,7 +115,7 @@ sr_conn_free(sr_conn_ctx_t *conn)
             free(conn->mod_cache.mods);
         }
 
-        ly_ctx_destroy(conn->ly_ctx, NULL);
+        ly_ctx_destroy(conn->ly_ctx);
         pthread_mutex_destroy(&conn->ptr_lock);
         if (conn->main_create_lock > -1) {
             close(conn->main_create_lock);
@@ -1011,9 +1011,9 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
     /* success */
 
 cleanup:
-    ly_ctx_destroy(tmp_ly_ctx, NULL);
+    ly_ctx_destroy(tmp_ly_ctx);
     lyd_free_all(sr_mods);
-    ly_ctx_destroy(sr_mods_ctx, NULL);
+    ly_ctx_destroy(sr_mods_ctx);
     free(mod_name);
     return sr_api_ret(NULL, err_info);
 }
@@ -1041,7 +1041,7 @@ sr_install_module_data(sr_conn_ctx_t *conn, const char *module_name, const char 
     /* success */
 
 cleanup:
-    ly_ctx_destroy(tmp_ly_ctx, NULL);
+    ly_ctx_destroy(tmp_ly_ctx);
     return sr_api_ret(NULL, err_info);
 }
 
@@ -1156,7 +1156,7 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
     /* success */
 
 cleanup:
-    ly_ctx_destroy(tmp_ly_ctx, NULL);
+    ly_ctx_destroy(tmp_ly_ctx);
     free(mod_name);
     return sr_api_ret(NULL, err_info);
 }

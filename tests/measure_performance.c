@@ -180,7 +180,7 @@ void
 libyang_teardown(void **state)
 {
     struct ly_ctx *ctx = *state;
-    ly_ctx_destroy(ctx, NULL);
+    ly_ctx_destroy(ctx);
 }
 
 typedef struct dp_setup_s {
