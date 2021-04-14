@@ -224,7 +224,6 @@ sr_lydmods_add_op_deps(struct lyd_node *sr_mod, const struct lysc_node *op_root)
     struct lyd_node *sr_op_deps, *ly_cur_deps;
     struct ly_set *set = NULL;
     char *data_path = NULL, *xpath = NULL;
-    const struct ly_ctx *ly_ctx = op_root->module->ctx;
     struct sr_lydmods_deps_dfs_arg dfs_arg;
     int is_rpc;
 
@@ -252,7 +251,7 @@ sr_lydmods_add_op_deps(struct lyd_node *sr_mod, const struct lysc_node *op_root)
 
     /* RPC/notification with path */
     if (lyd_new_list(sr_mod, NULL, is_rpc ? "rpc" : "notification", 0, &sr_op_deps, data_path)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(sr_mod));
         goto cleanup;
     }
 
@@ -260,7 +259,7 @@ sr_lydmods_add_op_deps(struct lyd_node *sr_mod, const struct lysc_node *op_root)
     switch (op_root->nodetype) {
     case LYS_NOTIF:
         if (lyd_new_inner(sr_op_deps, NULL, "deps", 0, &ly_cur_deps)) {
-            sr_errinfo_new_ly(&err_info, ly_ctx);
+            sr_errinfo_new_ly(&err_info, LYD_CTX(sr_op_deps));
             goto cleanup;
         }
 
@@ -278,7 +277,7 @@ sr_lydmods_add_op_deps(struct lyd_node *sr_mod, const struct lysc_node *op_root)
     case LYS_ACTION:
         /* input */
         if (lyd_new_inner(sr_op_deps, NULL, "in", 0, &ly_cur_deps)) {
-            sr_errinfo_new_ly(&err_info, ly_ctx);
+            sr_errinfo_new_ly(&err_info, LYD_CTX(sr_op_deps));
             goto cleanup;
         }
         op_root = lysc_node_child(op_root);
@@ -294,7 +293,7 @@ sr_lydmods_add_op_deps(struct lyd_node *sr_mod, const struct lysc_node *op_root)
 
         /* output */
         if (lyd_new_inner(sr_op_deps, NULL, "out", 0, &ly_cur_deps)) {
-            sr_errinfo_new_ly(&err_info, ly_ctx);
+            sr_errinfo_new_ly(&err_info, LYD_CTX(sr_op_deps));
             goto cleanup;
         }
         op_root = op_root->next;
