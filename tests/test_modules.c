@@ -339,6 +339,9 @@ test_op_deps(void **state)
     "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>ops</name>"
         "<rpc>"
+            "<path xmlns:o=\"urn:ops\">/o:cont/o:list1/o:act2</path>"
+        "</rpc>"
+        "<rpc>"
             "<path xmlns:o=\"urn:ops\">/o:cont/o:list1/o:cont2/o:act1</path>"
             "<out>"
                 "<module>ops</module>"
@@ -347,9 +350,6 @@ test_op_deps(void **state)
                     "<default-module>ops</default-module>"
                 "</inst-id>"
             "</out>"
-        "</rpc>"
-        "<rpc>"
-            "<path xmlns:o=\"urn:ops\">/o:cont/o:list1/o:act2</path>"
         "</rpc>"
         "<rpc>"
             "<path xmlns:o=\"urn:ops\">/o:rpc1</path>"
@@ -1651,13 +1651,13 @@ main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup_teardown(test_install_module, setup_f, teardown_f),
-        //cmocka_unit_test_setup_teardown(test_data_deps, setup_f, teardown_f),
-        //cmocka_unit_test_setup_teardown(test_op_deps, setup_f, teardown_f),
-        //cmocka_unit_test_setup_teardown(test_inv_deps, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_data_deps, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_op_deps, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_inv_deps, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_remove_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_remove_dep_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_remove_imp_module, setup_f, teardown_f),
-        //cmocka_unit_test_setup_teardown(test_update_module, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_update_module, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_feature, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_replay_support, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_foreign_aug, setup_f, teardown_f),
