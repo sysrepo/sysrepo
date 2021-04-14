@@ -196,16 +196,17 @@ sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive, pid_t *pid)
 
     assert(cid && conn_alive);
 
+    /* CONN LIST LOCK */
+    if ((err_info = sr_mlock(&conn_list.lock, SR_CONN_LIST_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+        goto cleanup;
+    }
+
     /* If the connection is owned by this process a check using flock which
      * requires an open/close would release the lock. Check if the CID is a
      * connection owned by this process and return status before we do an
      * open().
      */
     if (conn_list.head) {
-        /* CONN LIST LOCK */
-        if ((err_info = sr_mlock(&conn_list.lock, SR_CONN_LIST_LOCK_TIMEOUT, __func__, NULL, NULL))) {
-            goto cleanup;
-        }
         for (ptr = conn_list.head; ptr; ptr = ptr->_next) {
             if (cid == ptr->cid) {
                 /* alive connection of this process */
@@ -219,10 +220,10 @@ sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive, pid_t *pid)
                 goto cleanup;
             }
         }
-
-        /* CONN LIST UNLOCK */
-        sr_munlock(&conn_list.lock);
     }
+
+    /* CONN LIST UNLOCK */
+    sr_munlock(&conn_list.lock);
 
     /* open the file to test the lock */
     if ((err_info = sr_path_conn_lockfile(cid, &path))) {
