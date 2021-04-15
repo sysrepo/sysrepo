@@ -308,9 +308,6 @@ if(GEN_LANGUAGE_BINDINGS)
     add_subdirectory(bindings)
 endif()
 
-# packages
-add_subdirectory(packages)
-
 # doxygen documentation
 find_package(Doxygen)
 if(DOXYGEN_FOUND)
