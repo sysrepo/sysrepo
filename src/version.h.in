@@ -1,0 +1,31 @@
+/**
+ * @file version.h
+ * @author Michal Vasko <mvasko@cesnet.cz>
+ * @brief sysrepo version definitions
+ *
+ * @copyright
+ * Copyright 2021 Deutsche Telekom AG.
+ * Copyright 2021 CESNET, z.s.p.o.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#ifndef _SYSREPO_VERSION_H_
+#define _SYSREPO_VERSION_H_
+
+#define SR_VERSION_MAJOR @SYSREPO_MAJOR_SOVERSION@ /**< sysrepo major version number */
+#define SR_VERSION_MINOR @SYSREPO_MINOR_SOVERSION@ /**< sysrepo minor version number */
+#define SR_VERSION_MICRO @SYSREPO_MICRO_SOVERSION@ /**< sysrepo micro version number */
+#define SR_VERSION "@SYSREPO_SOVERSION_FULL@" /**< sysrepo version string */
+
+#endif /* _SYSREPO_VERSION_H_ */
