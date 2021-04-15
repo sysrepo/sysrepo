@@ -18,14 +18,6 @@ This means that when only stable official releases are to be used, either `maste
 If all the latest bugfixes should be applied, `devel` branch is the  one to be used. Note that whenever **a new issue is created**
 and it occurs on the `master` branch, the **first response will likely be** to use `devel` before any further provided support.
 
-## Packages
-
-We are using openSUSE Build Service to automaticaly prepare binary packages for number of GNU/Linux distros.
-The [sysrepo](https://software.opensuse.org//download.html?project=home%3Aliberouter&package=sysrepo)
-packages are always build from current `master` branch (latest release). If you are interested in any other packages
-(such as *devel* or C++ and Python bindings), you can browse
-[all packages](https://download.opensuse.org/repositories/home:/liberouter/) from our repository.
-
 ## Migration from Sysrepo version 0.7.x or older
 
 This Sysrepo is a complete rewrite of these older versions. Latest version of the `0.7` version is found in the `legacy` branch.

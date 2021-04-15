@@ -1,4 +1,0 @@
-usr/bin/sysrepoctl
-usr/bin/sysrepocfg
-usr/bin/sysrepo-plugind
-usr/lib/*/libsysrepo.so.*
