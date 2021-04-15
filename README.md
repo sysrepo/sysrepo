@@ -111,11 +111,6 @@ Sysrepo like YANG, XPath, NETCONF and others.
 
 ### Useful CMake sysrepo Options
 
-Generate C++ and Python3 bindings:
-```
--DGEN_LANGUAGE_BINDINGS=ON
-```
-
 Set custom repository path:
 ```
 -DREPO_PATH=/opt/sysrepo/my_repository

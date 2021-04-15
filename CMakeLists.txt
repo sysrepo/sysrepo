@@ -104,15 +104,6 @@ endif()
 
 option(INSTALL_SYSCTL_CONF "Install sysctl conf file to allow shared access to SHM files." OFF)
 
-# binding options
-option(GEN_LANGUAGE_BINDINGS "Enable library bindings for different languages." OFF)
-
-option(GEN_CPP_BINDINGS "Enable C++ bindings." ON)
-option(BUILD_CPP_EXAMPLES "Enable C++ example application compilation." ON)
-
-option(GEN_PYTHON_BINDINGS "Enable Python bindings." ON)
-option(ENABLE_PYTHON_TESTS "Enable Python tests." ON)
-
 # compilation flags
 set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_COVERAGE} -Wall -Wextra -Wpedantic -std=c99")
 set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2")
@@ -327,10 +318,6 @@ if(DOXYGEN_FOUND)
     else()
         set(HAVE_DOT "NO")
         message(AUTHOR_WARNING "Doxygen: to generate UML diagrams please install graphviz")
-    endif()
-
-    if(GEN_LANGUAGE_BINDINGS AND GEN_CPP_BINDINGS)
-        set(CPP_HEADERS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/bindings/cpp/src)
     endif()
 
     add_custom_target(doc
