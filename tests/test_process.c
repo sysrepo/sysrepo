@@ -457,7 +457,7 @@ test_notif_instid1(int rp, int wp)
 
     /* keep sending notification with instance-identifier */
     for (i = 0; i < 50; ++i) {
-        ret = sr_event_notif_send_tree(sess, notif);
+        ret = sr_event_notif_send_tree(sess, notif, 0, 0);
         sr_assert_int_equal(ret, SR_ERR_OK);
     }
 

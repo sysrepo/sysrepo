@@ -1980,9 +1980,9 @@ cleanup:
 
 sr_error_info_t *
 sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, time_t notif_ts, const char *orig_name,
-        const void *orig_data)
+        const void *orig_data, uint32_t timeout_ms, int wait)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     const struct lys_module *ly_mod;
     sr_mod_notif_sub_t *notif_subs;
     char *notif_lyb = NULL;
@@ -2052,9 +2052,26 @@ sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, time_t
         ++i;
     }
 
-    /* do not wait for notification processing */
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+    if (wait) {
+        /* wait until the event is processed */
+        if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_NONE, timeout_ms, conn->cid,
+                &shm_data_sub, &cb_err_info))) {
+            goto cleanup_sub_unlock;
+        }
+
+        /* we do not care about an error */
+        sr_errinfo_free(&cb_err_info);
+    }
+
+cleanup_sub_unlock:
+    /* SUB WRITE UNLOCK */
+    sr_rwunlock(&multi_sub_shm->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
     /* success */
+    goto cleanup;
 
 cleanup_ext_sub_unlock:
     /* SUB WRITE UNLOCK */
@@ -3265,7 +3282,7 @@ sr_error_info_t *
 sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t i;
+    uint32_t i, request_id;
     struct lyd_node *notif = NULL, *notif_op;
     struct ly_in *in = NULL;
     time_t notif_ts;
@@ -3286,6 +3303,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     if ((multi_sub_shm->event != SR_SUB_EV_NOTIF) || (multi_sub_shm->request_id == notif_subs->request_id)) {
         goto cleanup_rdunlock;
     }
+    request_id = multi_sub_shm->request_id;
 
     /* open sub data SHM */
     if ((err_info = sr_shmsub_data_open_remap(notif_subs->module_name, "notif", -1, &shm_data_sub, 0))) {
@@ -3310,34 +3328,11 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
         goto cleanup_rdunlock;
     }
 
-    /* remember request ID so that we do not process it again */
-    notif_subs->request_id = multi_sub_shm->request_id;
-
     /* SUB READ UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
-    SR_LOG_INF("Processing \"notif\" \"%s\" event with ID %" PRIu32 ".", notif_subs->module_name, multi_sub_shm->request_id);
-
-    /* SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
-            NULL, NULL))) {
-        goto cleanup;
-    }
-
-    /* no error/timeout should be possible */
-    if ((multi_sub_shm->event != SR_SUB_EV_NOTIF) || (multi_sub_shm->request_id != notif_subs->request_id)) {
-        SR_ERRINFO_INT(&err_info);
-        goto cleanup_wrunlock;
-    }
-
-    /* finish event */
-    if ((err_info = sr_shmsub_multi_listen_write_event(multi_sub_shm, notif_subs->sub_count, 0, &shm_data_sub, NULL, 0,
-            "Successful"))) {
-        goto cleanup_wrunlock;
-    }
-
-    /* SUB WRITE UNLOCK */
-    sr_rwunlock(&multi_sub_shm->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+    /* process event */
+    SR_LOG_INF("Processing \"notif\" \"%s\" event with ID %" PRIu32 ".", notif_subs->module_name, request_id);
 
     /* go to the operation, not the root */
     notif_op = notif;
@@ -3358,8 +3353,26 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
         }
     }
 
-    /* success */
-    goto cleanup;
+    /* remember request ID so that we do not process it again */
+    notif_subs->request_id = request_id;
+
+    /* SUB WRITE LOCK */
+    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
+            NULL, NULL))) {
+        goto cleanup;
+    }
+
+    /* no error/timeout should be possible */
+    if ((multi_sub_shm->event != SR_SUB_EV_NOTIF) || (multi_sub_shm->request_id != notif_subs->request_id)) {
+        SR_ERRINFO_INT(&err_info);
+        goto cleanup_wrunlock;
+    }
+
+    /* finish event */
+    if ((err_info = sr_shmsub_multi_listen_write_event(multi_sub_shm, notif_subs->sub_count, 0, &shm_data_sub, NULL, 0,
+            "Successful"))) {
+        goto cleanup_wrunlock;
+    }
 
 cleanup_wrunlock:
     /* SUB WRITE UNLOCK */

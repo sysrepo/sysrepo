@@ -872,7 +872,7 @@ perf_ev_notification_test(void **state, int op_num, int *items, bool ephemeral)
 
     /* send the notification */
     for (int i = 0; i < op_num; i++) {
-        rc = sr_event_notif_send(session, "/test-module:link-discovered", values, 4);
+        rc = sr_event_notif_send(session, "/test-module:link-discovered", values, 4, 0, 0);
         assert_int_equal(rc, SR_ERR_OK);
     }
 

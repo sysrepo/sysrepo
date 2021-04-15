@@ -4454,7 +4454,8 @@ sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name
 }
 
 API int
-sr_event_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t *values, const size_t values_cnt)
+sr_event_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t *values, const size_t values_cnt,
+        uint32_t timeout_ms, int wait)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *notif_tree = NULL;
@@ -4478,7 +4479,7 @@ sr_event_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t 
     }
 
     /* API function */
-    if ((ret = sr_event_notif_send_tree(session, notif_tree)) != SR_ERR_OK) {
+    if ((ret = sr_event_notif_send_tree(session, notif_tree, timeout_ms, wait)) != SR_ERR_OK) {
         lyd_free_all(notif_tree);
         return ret;
     }
@@ -4491,7 +4492,7 @@ cleanup:
 }
 
 API int
-sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
+sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t timeout_ms, int wait)
 {
     sr_error_info_t *err_info = NULL, *tmp_err = NULL;
     struct sr_mod_info_s mod_info;
@@ -4509,6 +4510,9 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
         return sr_api_ret(session, err_info);
     }
 
+    if (!timeout_ms) {
+        timeout_ms = SR_NOTIF_CB_TIMEOUT;
+    }
     SR_MODINFO_INIT(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING);
 
     /* remember when the notification was generated */
@@ -4594,8 +4598,9 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif)
         goto cleanup;
     }
 
-    /* publish notif in an event, do not wait for subscribers */
-    if ((tmp_err = sr_shmsub_notif_notify(session->conn, notif, notif_ts, session->orig_name, session->orig_data))) {
+    /* publish notif in an event */
+    if ((tmp_err = sr_shmsub_notif_notify(session->conn, notif, notif_ts, session->orig_name, session->orig_data,
+            timeout_ms, wait))) {
         goto cleanup_notifsub_unlock;
     }
 

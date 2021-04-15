@@ -1795,9 +1795,14 @@ int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_
  * @param[in] values Array of all nodes that hold some data in event notification subtree
  * (same as ::sr_get_items would return).
  * @param[in] values_cnt Number of items inside the values array.
+ * @param[in] timeout_ms Notification callback timeout in milliseconds. If 0, default is used. Relevant only
+ * if @p wait is set.
+ * @param[in] wait Whether to wait until all (if any) notification callbacks were called (synchronous delivery)
+ * or just publish the notification without waiting for its processing (asynchronous delivery).
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_event_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t *values, const size_t values_cnt);
+int sr_event_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t *values, const size_t values_cnt,
+        uint32_t timeout_ms, int wait);
 
 /**
  * @brief Send a notification. Data are represented as _libyang_ subtrees. In case there are
@@ -1810,9 +1815,13 @@ int sr_event_notif_send(sr_session_ctx_t *session, const char *path, const sr_va
  *
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] notif Notification data tree to send.
+ * @param[in] timeout_ms Notification callback timeout in milliseconds. If 0, default is used. Relevant only
+ * if @p wait is set.
+ * @param[in] wait Whether to wait until all (if any) notification callbacks were called (synchronous delivery)
+ * or just publish the notification without waiting for its processing (asynchronous delivery).
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif);
+int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t timeout_ms, int wait);
 
 /**
  * @brief Get information about an existing notification subscription.

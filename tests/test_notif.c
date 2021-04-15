@@ -324,7 +324,7 @@ test_input_parameters(void **state)
     const struct lys_module *mod;
     assert_int_equal(LY_SUCCESS, lys_parse_path(ctx, TESTS_DIR"/files/simple.yang", LYS_IN_YANG, &mod));
     assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, ctx, "/simple:ac1", NULL, 0, 0, NULL, &input));
-    ret = sr_event_notif_send_tree(st->sess, input);
+    ret = sr_event_notif_send_tree(st->sess, input, 0, 0);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
     lyd_free_all(input);
     ly_ctx_destroy(ctx);
@@ -332,7 +332,7 @@ test_input_parameters(void **state)
     /* data tree not a valid notification invovation */
     assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='key']/cont2", NULL,
             0, 0, NULL, &input));
-    ret = sr_event_notif_send_tree(st->sess, input);
+    ret = sr_event_notif_send_tree(st->sess, input, 0, 0);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
     lyd_free_all(input);
 
@@ -375,9 +375,7 @@ notif_simple_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_ty
         fail();
     }
 
-    /* signal that we were called */
     ATOMIC_INC_RELAXED(st->cb_called);
-    pthread_barrier_wait(&st->barrier);
 }
 
 static int
@@ -433,7 +431,7 @@ test_simple(void **state)
     input[1].dflt = 0;
 
     /* try to send the first notif, expect an error */
-    ret = sr_event_notif_send(st->sess, "/ops:notif3", input, 2);
+    ret = sr_event_notif_send(st->sess, "/ops:notif3", input, 2, 0, 1);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
     ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
@@ -446,7 +444,7 @@ test_simple(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to send the first notif again, still fails */
-    ret = sr_event_notif_send(st->sess, "/ops:notif3", input, 2);
+    ret = sr_event_notif_send(st->sess, "/ops:notif3", input, 2, 0, 1);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
     ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
@@ -459,11 +457,8 @@ test_simple(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to send the first notif for the last time, should succeed */
-    ret = sr_event_notif_send(st->sess, "/ops:notif3", input, 2);
+    ret = sr_event_notif_send(st->sess, "/ops:notif3", input, 2, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
-
-    /* wait for the callback */
-    pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /*
@@ -475,7 +470,7 @@ test_simple(void **state)
     input[0].dflt = 0;
 
     /* try to send the second notif, expect an error */
-    ret = sr_event_notif_send(st->sess, "/ops:cont/cont3/notif2", input, 1);
+    ret = sr_event_notif_send(st->sess, "/ops:cont/cont3/notif2", input, 1, 0, 1);
     assert_int_equal(ret, SR_ERR_LY);
     ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
@@ -487,11 +482,8 @@ test_simple(void **state)
     input[0].data.string_val = "/ops-ref:l2";
 
     /* try to send the second notif again, should succeed */
-    ret = sr_event_notif_send(st->sess, "/ops:cont/cont3/notif2", input, 1);
+    ret = sr_event_notif_send(st->sess, "/ops:cont/cont3/notif2", input, 1, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
-
-    /* wait for the callback */
-    pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     sr_unsubscribe(subscr);
@@ -608,7 +600,7 @@ test_replay_simple(void **state)
     cur_ts = time(NULL);
 
     /* send the notification, it should be stored for replay */
-    ret = sr_event_notif_send_tree(st->sess, notif);
+    ret = sr_event_notif_send_tree(st->sess, notif, 0, 0);
     lyd_free_all(notif);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -859,7 +851,7 @@ test_no_replay(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /* send the realtime notification */
-    ret = sr_event_notif_send_tree(st->sess, notif);
+    ret = sr_event_notif_send_tree(st->sess, notif, 0, 0);
     lyd_free_all(notif);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1087,11 +1079,11 @@ test_notif_buffer(void **state)
     assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/ops:notif4", NULL, 0, &notif));
 
     /* send first notification */
-    ret = sr_event_notif_send_tree(st->sess, notif);
+    ret = sr_event_notif_send_tree(st->sess, notif, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* send another */
-    ret = sr_event_notif_send_tree(st->sess, notif);
+    ret = sr_event_notif_send_tree(st->sess, notif, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* let buffer do its work */
@@ -1099,7 +1091,7 @@ test_notif_buffer(void **state)
 
     /* send 20 notifications */
     for (i = 0; i < 20; ++i) {
-        ret = sr_event_notif_send_tree(st->sess, notif);
+        ret = sr_event_notif_send_tree(st->sess, notif, 0, 0);
         assert_int_equal(ret, SR_ERR_OK);
     }
 
@@ -1171,7 +1163,7 @@ test_suspend(void **state)
     sub_id = sr_subscription_get_last_sub_id(subscr);
 
     /* send a notif */
-    ret = sr_event_notif_send(st->sess, "/ops:notif4", NULL, 0);
+    ret = sr_event_notif_send(st->sess, "/ops:notif4", NULL, 0, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for the callback */
@@ -1190,7 +1182,7 @@ test_suspend(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     /* send a notif, it is not delivered */
-    ret = sr_event_notif_send(st->sess, "/ops:notif4", NULL, 0);
+    ret = sr_event_notif_send(st->sess, "/ops:notif4", NULL, 0, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* get suspended */
@@ -1205,7 +1197,7 @@ test_suspend(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
 
     /* send a notif */
-    ret = sr_event_notif_send(st->sess, "/ops:notif4", NULL, 0);
+    ret = sr_event_notif_send(st->sess, "/ops:notif4", NULL, 0, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for the callback */
@@ -1266,7 +1258,7 @@ test_params(void **state)
 
     /* send filtered-out notif */
     assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, sr_get_context(st->conn), "/ops:notif4/l", "neither", 0, &notif));
-    ret = sr_event_notif_send_tree(st->sess, notif);
+    ret = sr_event_notif_send_tree(st->sess, notif, 0, 0);
     lyd_free_tree(notif);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1370,7 +1362,7 @@ test_dup_inst(void **state)
 
     /* send filtered-out notif */
     assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, sr_get_context(st->conn), "/ops:notif4/l", "b", 0, &notif));
-     assert_int_equal(SR_ERR_OK, sr_event_notif_send_tree(st->sess, notif));
+     assert_int_equal(SR_ERR_OK, sr_event_notif_send_tree(st->sess, notif, 0, 0));
     lyd_free_tree(notif);
 
     /* process the notification (filter it out) */
@@ -1384,13 +1376,60 @@ test_dup_inst(void **state)
     assert_int_equal(LY_SUCCESS, lyd_new_path(notif, NULL, "/ops:notif4/l", "c", 0, NULL));
     assert_int_equal(LY_SUCCESS, lyd_new_path(notif, NULL, "/ops:notif4/l", "d", 0, NULL));
     assert_int_equal(LY_SUCCESS, lyd_new_path(notif, NULL, "/ops:notif4/l", "a", 0, NULL));
-    assert_int_equal(SR_ERR_OK, sr_event_notif_send_tree(st->sess, notif));
+    assert_int_equal(SR_ERR_OK, sr_event_notif_send_tree(st->sess, notif, 0, 0));
     lyd_free_tree(notif);
 
     /* process the notification */
     ret = sr_process_events(subscr, NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
+
+    sr_unsubscribe(subscr);
+}
+
+/* TEST */
+static void
+notif_wait_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)values;
+    (void)values_cnt;
+    (void)timestamp;
+
+    if (notif_type == SR_EV_NOTIF_TERMINATED) {
+        /* ignore */
+        return;
+    }
+
+    assert_int_equal(notif_type, SR_EV_NOTIF_REALTIME);
+    assert_string_equal(xpath, "/ops:notif4");
+
+    ATOMIC_INC_RELAXED(st->cb_called);
+}
+
+static void
+test_wait(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr;
+    int i, ret;
+
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+
+    /* subscribe */
+    ret = sr_event_notif_subscribe(st->sess, "ops", NULL, 0, 0, notif_wait_cb, st, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* send a notif 10x */
+    for (i = 0; i < 10; ++i) {
+        ret = sr_event_notif_send(st->sess, "/ops:notif4", NULL, 0, 0, 1);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 10);
 
     sr_unsubscribe(subscr);
 }
@@ -1411,6 +1450,7 @@ main(void)
         cmocka_unit_test(test_suspend),
         cmocka_unit_test(test_params),
         cmocka_unit_test(test_dup_inst),
+        cmocka_unit_test(test_wait),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

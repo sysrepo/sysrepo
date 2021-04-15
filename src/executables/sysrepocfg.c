@@ -536,7 +536,7 @@ op_notif(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_
     }
 
     /* send notification */
-    r = sr_event_notif_send_tree(sess, notif);
+    r = sr_event_notif_send_tree(sess, notif, 0, 1);
     lyd_free_all(notif);
     if (r) {
         error_print(r, "Sending notification failed");

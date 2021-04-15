@@ -2355,7 +2355,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     tmp_err_info = sr_replay_store(session, notif, notif_ts);
 
     /* send the notification (non-validated, if everything works correctly it must be valid) */
-    if ((err_info = sr_shmsub_notif_notify(mod_info->conn, notif, notif_ts, session->orig_name, session->orig_data))) {
+    if ((err_info = sr_shmsub_notif_notify(mod_info->conn, notif, notif_ts, session->orig_name, session->orig_data, 0, 0))) {
         goto cleanup;
     }
 

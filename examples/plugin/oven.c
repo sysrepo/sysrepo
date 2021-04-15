@@ -58,7 +58,7 @@ oven_thread(void *arg)
             } else {
                 oven_temperature = config_temperature;
                 /* oven reached the desired temperature, create a notification */
-                rc = sr_event_notif_send(sess, "/oven:oven-ready", NULL, 0);
+                rc = sr_event_notif_send(sess, "/oven:oven-ready", NULL, 0, 0, 0);
                 if (rc != SR_ERR_OK) {
                     SRP_LOG_ERR("OVEN: Oven-ready notification generation failed: %s.", sr_strerror(rc));
                 }

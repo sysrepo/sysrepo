@@ -78,7 +78,7 @@ main(int argc, char **argv)
     }
 
     /* send the notification */
-    rc = sr_event_notif_send_tree(session, notif);
+    rc = sr_event_notif_send_tree(session, notif, 0, 0);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }
