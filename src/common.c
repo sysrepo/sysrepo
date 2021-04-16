@@ -1821,7 +1821,8 @@ sr_create_startup_file(const struct lys_module *ly_mod)
 
     if (sr_module_is_internal(ly_mod)) {
         if (!strcmp(ly_mod->name, "sysrepo-monitoring") || !strcmp(ly_mod->name, "sysrepo-plugind") ||
-                !strcmp(ly_mod->name, "ietf-yang-library") || !strcmp(ly_mod->name, "ietf-netconf-notifications")) {
+                !strcmp(ly_mod->name, "ietf-yang-library") || !strcmp(ly_mod->name, "ietf-netconf-notifications") ||
+                !strcmp(ly_mod->name, "ietf-netconf")) {
             mode = SR_INTMOD_WITHDATA_FILE_PERM;
         } else {
             mode = SR_INTMOD_NODATA_FILE_PERM;

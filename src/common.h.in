@@ -227,10 +227,10 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** permissions of data files of "sysrepo" internal module, it includes all the metadata */
 #define SR_INTMOD_MAIN_FILE_PERM 00666
 
-/** default permissions of data files of internal modules that have no data */
+/** default permissions of data files of internal modules that have no data or features */
 #define SR_INTMOD_NODATA_FILE_PERM 00444
 
-/** default permission of data files of internal modules with some data (sysrepo-monitoring, sysrepo-plugind, ietf-yang-library) */
+/** default permission of data files of internal modules with some data or features */
 #define SR_INTMOD_WITHDATA_FILE_PERM 00644
 
 /** initial length of message buffer (B) */
