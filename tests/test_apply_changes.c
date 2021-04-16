@@ -1690,7 +1690,7 @@ module_when1_change_fail_cb(sr_session_ctx_t *session, uint32_t sub_id, const ch
     assert_string_equal(module_name, "when1");
     assert_null(xpath);
 
-    switch (st->cb_called) {
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 2:
         assert_int_equal(event, SR_EV_CHANGE);
 
@@ -1703,7 +1703,7 @@ module_when1_change_fail_cb(sr_session_ctx_t *session, uint32_t sub_id, const ch
         fail();
     }
 
-    ++st->cb_called;
+    ATOMIC_INC_RELAXED(st->cb_called);
     return ret;
 }
 
