@@ -532,7 +532,7 @@ sr_replay_store(sr_session_ctx_t *sess, const struct lyd_node *notif, time_t not
     }
 
     /* notif_lyb is always spent! */
-    if (sess->notif_buf.tid) {
+    if (ATOMIC_LOAD_RELAXED(sess->notif_buf.thread_running)) {
         /* store the notification in the buffer */
         if ((err_info = sr_notif_buf_store(&sess->notif_buf, ly_mod, notif_lyb, notif_ts))) {
             return err_info;
@@ -549,24 +549,60 @@ sr_replay_store(sr_session_ctx_t *sess, const struct lyd_node *notif, time_t not
     return NULL;
 }
 
+/**
+ * @brief Write all the buffered notifications.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] first First notification structure to write, with all the following ones.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_notif_buf_thread_write_notifs(sr_conn_ctx_t *conn, struct sr_sess_notif_buf_node *first)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_sess_notif_buf_node *prev;
+    sr_mod_t *shm_mod;
+
+    while (first) {
+        /* find SHM mod */
+        shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), first->notif_mod->name);
+        if (!shm_mod) {
+            SR_ERRINFO_INT(&err_info);
+            return err_info;
+        }
+
+        /* store the notification, continue normally on error (notif_lyb is spent!) */
+        err_info = sr_notif_write(first->notif_mod, shm_mod, first->notif_lyb, first->notif_ts, conn->cid);
+        sr_errinfo_free(&err_info);
+
+        /* next iter */
+        prev = first;
+        first = first->next;
+
+        /* free prev */
+        free(prev);
+    }
+
+    return NULL;
+}
+
 void *
 sr_notif_buf_thread(void *arg)
 {
     sr_error_info_t *err_info = NULL;
     sr_session_ctx_t *sess = (sr_session_ctx_t *)arg;
-    sr_mod_t *shm_mod;
-    struct sr_sess_notif_buf_node *first, *prev;
+    struct sr_sess_notif_buf_node *first;
     struct timespec timeout_ts;
     int ret;
 
     sr_time_get(&timeout_ts, SR_NOTIF_BUF_LOCK_TIMEOUT);
 
-    while (ATOMIC_LOAD_RELAXED(sess->notif_buf.thread_running) || sess->notif_buf.first) {
+    while (ATOMIC_LOAD_RELAXED(sess->notif_buf.thread_running)) {
         /* MUTEX LOCK */
         ret = pthread_mutex_timedlock(&sess->notif_buf.lock.mutex, &timeout_ts);
         if (ret) {
             SR_ERRINFO_LOCK(&err_info, __func__, ret);
-            break;
+            goto cleanup;
         }
 
         /* write lock, wait for notifications */
@@ -580,7 +616,7 @@ sr_notif_buf_thread(void *arg)
             pthread_mutex_unlock(&sess->notif_buf.lock.mutex);
 
             SR_ERRINFO_COND(&err_info, __func__, ret);
-            break;
+            goto cleanup;
         }
 
         /* remember and clear the buffer */
@@ -591,27 +627,31 @@ sr_notif_buf_thread(void *arg)
         /* MUTEX UNLOCK */
         pthread_mutex_unlock(&sess->notif_buf.lock.mutex);
 
-        while (first) {
-            /* find SHM mod */
-            shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(sess->conn), first->notif_mod->name);
-            if (!shm_mod) {
-                SR_ERRINFO_INT(&err_info);
-                break;
-            }
-
-            /* store the notification, continue normally on error (notif_lyb is spent!) */
-            err_info = sr_notif_write(first->notif_mod, shm_mod, first->notif_lyb, first->notif_ts, sess->conn->cid);
-            sr_errinfo_free(&err_info);
-
-            /* next iter */
-            prev = first;
-            first = first->next;
-
-            /* free prev */
-            free(prev);
+        /* store the notifications */
+        if ((err_info = sr_notif_buf_thread_write_notifs(sess->conn, first))) {
+            goto cleanup;
         }
     }
 
+    /* MUTEX LOCK */
+    ret = pthread_mutex_timedlock(&sess->notif_buf.lock.mutex, &timeout_ts);
+    if (ret) {
+        SR_ERRINFO_LOCK(&err_info, __func__, ret);
+        goto cleanup;
+    }
+
+    /* remember and clear the buffer of any last notifications */
+    first = sess->notif_buf.first;
+    sess->notif_buf.first = NULL;
+    sess->notif_buf.last = NULL;
+
+    /* MUTEX UNLOCK */
+    pthread_mutex_unlock(&sess->notif_buf.lock.mutex);
+
+    /* store the last notifications, if any */
+    err_info = sr_notif_buf_thread_write_notifs(sess->conn, first);
+
+cleanup:
     sr_errinfo_free(&err_info);
     return NULL;
 }
