@@ -267,8 +267,8 @@ test_explicit_default(void **state)
     assert_string_equal(data->schema->name, "cont");
     assert_true(data->flags & LYD_DEFAULT);
     assert_non_null(lyd_child(data));
-    assert_string_equal(lyd_child(data)->schema->name, "interval");
-    assert_true(lyd_child(data)->flags & LYD_DEFAULT);
+    assert_string_equal(lyd_child(data)->next->schema->name, "interval");
+    assert_true(lyd_child(data)->next->flags & LYD_DEFAULT);
 
     lyd_free_all(data);
 
@@ -286,8 +286,8 @@ test_explicit_default(void **state)
     assert_string_equal(data->schema->name, "cont");
     assert_false(data->flags & LYD_DEFAULT);
     assert_non_null(lyd_child(data));
-    assert_string_equal(lyd_child(data)->schema->name, "interval");
-    assert_false(lyd_child(data)->flags & LYD_DEFAULT);
+    assert_string_equal(lyd_child(data)->next->schema->name, "interval");
+    assert_false(lyd_child(data)->next->flags & LYD_DEFAULT);
 
     lyd_free_all(data);
 

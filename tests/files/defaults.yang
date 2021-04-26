@@ -74,6 +74,11 @@ module defaults {
     }
 
     container cont {
+        leaf l {
+            type string;
+            default "dflt";
+        }
+
         choice ch {
             default interval;
             case interval {
