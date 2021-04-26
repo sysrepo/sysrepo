@@ -266,8 +266,8 @@ test_explicit_default(void **state)
     assert_string_equal(data->schema->name, "cont");
     assert_int_equal(data->dflt, 1);
     assert_non_null(data->child);
-    assert_string_equal(data->child->schema->name, "interval");
-    assert_int_equal(data->child->dflt, 1);
+    assert_string_equal(data->child->next->schema->name, "interval");
+    assert_int_equal(data->child->next->dflt, 1);
 
     lyd_free_withsiblings(data);
 
@@ -285,8 +285,8 @@ test_explicit_default(void **state)
     assert_string_equal(data->schema->name, "cont");
     assert_int_equal(data->dflt, 0);
     assert_non_null(data->child);
-    assert_string_equal(data->child->schema->name, "interval");
-    assert_int_equal(data->child->dflt, 0);
+    assert_string_equal(data->child->next->schema->name, "interval");
+    assert_int_equal(data->child->next->dflt, 0);
 
     lyd_free_withsiblings(data);
 

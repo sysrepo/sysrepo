@@ -1461,6 +1461,7 @@ sr_edit_apply_replace(struct lyd_node *match_node, int val_equal, const struct l
  * @param[in,out] first_node First sibling of the data tree.
  * @param[in] parent_node Parent of the first sibling.
  * @param[in,out] match_node Matching data tree node, may be created.
+ * @param[in] val_equal Whether even values of the nodes match.
  * @param[in] edit_node Current edit node.
  * @param[in] diff_parent Current sysrepo diff parent.
  * @param[in,out] diff_root Sysrepo diff root node.
@@ -1471,7 +1472,7 @@ sr_edit_apply_replace(struct lyd_node *match_node, int val_equal, const struct l
  */
 static sr_error_info_t *
 sr_edit_apply_create(struct lyd_node **first_node, struct lyd_node *parent_node, struct lyd_node **match_node,
-        const struct lyd_node *edit_node, struct lyd_node *diff_parent, struct lyd_node **diff_root,
+        int val_equal, const struct lyd_node *edit_node, struct lyd_node *diff_parent, struct lyd_node **diff_root,
         struct lyd_node **diff_node, enum edit_op *next_op, int *change)
 {
     sr_error_info_t *err_info = NULL;
@@ -1485,7 +1486,17 @@ sr_edit_apply_create(struct lyd_node **first_node, struct lyd_node *parent_node,
             return NULL;
         }
 
-        /* allow creating duplicate instances of state lists/leaf-lists */
+        if ((edit_node->schema->nodetype == LYS_LEAF) && (*match_node)->dflt) {
+            /* allow creating existing default leaves */
+            if (val_equal) {
+                *next_op = EDIT_NONE;
+            } else {
+                *next_op = EDIT_REPLACE;
+            }
+            return NULL;
+        }
+
+        /* allow creating duplicate instances of state lists/leaf-lists and explicit leaves instead of default ones */
         if (!(edit_node->schema->nodetype & (LYS_LIST | LYS_LEAFLIST)) || !(edit_node->schema->flags & LYS_CONFIG_R)) {
             sr_errinfo_new(&err_info, SR_ERR_EXISTS, NULL, "Node \"%s\" to be created already exists.", edit_node->schema->name);
             return err_info;
@@ -1684,8 +1695,8 @@ reapply:
                         "Node \"%s\" cannot be created because its parent does not exist.", edit_node->schema->name);
                 goto op_error;
             }
-            if ((err_info = sr_edit_apply_create(first_node, parent_node, &match, edit_node, diff_parent, diff_root,
-                    &diff_node, &next_op, change))) {
+            if ((err_info = sr_edit_apply_create(first_node, parent_node, &match, val_equal, edit_node, diff_parent,
+                    diff_root, &diff_node, &next_op, change))) {
                 goto op_error;
             }
             break;

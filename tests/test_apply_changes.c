@@ -2237,6 +2237,7 @@ apply_no_changes_thread(void *arg)
 
     str2 =
     "<cont xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
+        "<l ncwd:default=\"true\">dflt</l>"
         "<interval ncwd:default=\"true\">30</interval>"
     "</cont>"
     "<pcont xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
@@ -2285,6 +2286,7 @@ apply_no_changes_thread(void *arg)
 
     str2 =
     "<cont xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
+        "<l ncwd:default=\"true\">dflt</l>"
         "<interval ncwd:default=\"true\">30</interval>"
     "</cont>"
     "<pcont xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
@@ -3051,6 +3053,7 @@ apply_change_dflt_leaf_thread(void *arg)
 
     str2 =
     "<cont xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
+        "<l ncwd:default=\"true\">dflt</l>"
         "<interval ncwd:default=\"true\">30</interval>"
     "</cont>"
     "<l1 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
@@ -3092,6 +3095,7 @@ apply_change_dflt_leaf_thread(void *arg)
 
     str2 =
     "<cont xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
+        "<l ncwd:default=\"true\">dflt</l>"
         "<interval ncwd:default=\"true\">30</interval>"
     "</cont>"
     "<l1 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
@@ -4107,9 +4111,9 @@ apply_change_dflt_choice_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_string_equal(data->schema->name, "cont");
-    assert_string_equal(data->child->schema->name, "daily");
-    assert_string_equal(data->child->next->schema->name, "time-of-day");
-    assert_int_equal(data->child->next->dflt, 1);
+    assert_string_equal(data->child->next->schema->name, "daily");
+    assert_string_equal(data->child->next->next->schema->name, "time-of-day");
+    assert_int_equal(data->child->next->next->dflt, 1);
 
     lyd_free_withsiblings(data);
 
@@ -4130,9 +4134,9 @@ apply_change_dflt_choice_thread(void *arg)
 
     assert_string_equal(data->schema->name, "cont");
     assert_int_equal(data->dflt, 1);
-    assert_string_equal(data->child->schema->name, "interval");
-    assert_int_equal(data->child->dflt, 1);
-    assert_null(data->child->next);
+    assert_string_equal(data->child->next->schema->name, "interval");
+    assert_int_equal(data->child->next->dflt, 1);
+    assert_null(data->child->next->next);
 
     lyd_free_withsiblings(data);
 
@@ -4177,6 +4181,133 @@ test_change_dflt_choice(void **state)
 
     pthread_create(&tid[0], NULL, apply_change_dflt_choice_thread, *state);
     pthread_create(&tid[1], NULL, subscribe_change_dflt_choice_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
+/* TEST */
+static int
+module_change_dflt_create_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    (void)session;
+    (void)module_name;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+    (void)private_data;
+
+    /* should not be called */
+    fail();
+
+    return SR_ERR_OK;
+}
+
+static void *
+apply_change_dflt_create_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    struct lyd_node *data;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for subscription before applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    /* create a leaf explicitly with its default value (no changes so callback not called) */
+    ret = sr_set_item_str(sess, "/defaults:cont/l", "dflt", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check current data tree */
+    ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS | LYP_WD_IMPL_TAG);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<cont xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
+        "<l>dflt</l>"
+        "<interval ncwd:default=\"true\">30</interval>"
+    "</cont>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* delete it */
+    ret = sr_delete_item(sess, "/defaults:cont/l", SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check current data tree */
+    ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYP_WITHSIBLINGS | LYP_WD_IMPL_TAG);
+    assert_int_equal(ret, 0);
+
+    lyd_free_withsiblings(data);
+
+    str2 =
+    "<cont xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\">"
+        "<interval ncwd:default=\"true\">30</interval>"
+        "<l ncwd:default=\"true\">dflt</l>"
+    "</cont>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* all done */
+    pthread_barrier_wait(&st->barrier);
+
+    /* cleanup */
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+subscribe_change_dflt_create_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "defaults", NULL, module_change_dflt_create_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that subscription was created */
+    pthread_barrier_wait(&st->barrier);
+
+    /* wait until applying changes is finished */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_unsubscribe(subscr);
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_change_dflt_create(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, apply_change_dflt_create_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_change_dflt_create_thread, *state);
 
     pthread_join(tid[0], NULL);
     pthread_join(tid[1], NULL);
@@ -5851,6 +5982,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_change_dflt_leaf, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_dflt_leaflist, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_dflt_choice, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_change_dflt_create, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_done_when, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_done_xpath, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_unlocked, setup_f, teardown_f),
