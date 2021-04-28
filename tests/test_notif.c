@@ -323,7 +323,7 @@ test_input_parameters(void **state)
     assert_int_equal(LY_SUCCESS, ly_ctx_new(TESTS_DIR"/files/", 0, &ctx));
     const struct lys_module *mod;
     assert_int_equal(LY_SUCCESS, lys_parse_path(ctx, TESTS_DIR"/files/simple.yang", LYS_IN_YANG, &mod));
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, ctx, "/simple:ac1", NULL, 0, 0, NULL, &input));
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, ctx, "/simple:ac1", NULL, 0, 0, 0, NULL, &input));
     ret = sr_event_notif_send_tree(st->sess, input, 0, 0);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
     lyd_free_all(input);
@@ -331,7 +331,7 @@ test_input_parameters(void **state)
 
     /* data tree not a valid notification invovation */
     assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='key']/cont2", NULL,
-            0, 0, NULL, &input));
+            0, 0, 0, NULL, &input));
     ret = sr_event_notif_send_tree(st->sess, input, 0, 0);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
     lyd_free_all(input);
@@ -633,42 +633,42 @@ notif_replay_interval_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev
     case 0:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY);
         assert_non_null(notif);
-        assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "3");
+        assert_string_equal(lyd_get_value(lyd_child(lyd_child(notif))), "3");
         break;
     case 1:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY);
         assert_non_null(notif);
-        assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "4");
+        assert_string_equal(lyd_get_value(lyd_child(lyd_child(notif))), "4");
         break;
     case 2:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY);
         assert_non_null(notif);
-        assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "5");
+        assert_string_equal(lyd_get_value(lyd_child(lyd_child(notif))), "5");
         break;
     case 3:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY);
         assert_non_null(notif);
-        assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "6");
+        assert_string_equal(lyd_get_value(lyd_child(lyd_child(notif))), "6");
         break;
     case 4:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY);
         assert_non_null(notif);
-        assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "7");
+        assert_string_equal(lyd_get_value(lyd_child(lyd_child(notif))), "7");
         break;
     case 5:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY);
         assert_non_null(notif);
-        assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "8");
+        assert_string_equal(lyd_get_value(lyd_child(lyd_child(notif))), "8");
         break;
     case 6:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY);
         assert_non_null(notif);
-        assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "9");
+        assert_string_equal(lyd_get_value(lyd_child(lyd_child(notif))), "9");
         break;
     case 7:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY);
         assert_non_null(notif);
-        assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "10");
+        assert_string_equal(lyd_get_value(lyd_child(lyd_child(notif))), "10");
         break;
     case 8:
         assert_int_equal(notif_type, SR_EV_NOTIF_TERMINATED);
@@ -677,17 +677,17 @@ notif_replay_interval_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev
     case 9:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY);
         assert_non_null(notif);
-        assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "1");
+        assert_string_equal(lyd_get_value(lyd_child(lyd_child(notif))), "1");
         break;
     case 10:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY);
         assert_non_null(notif);
-        assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "2");
+        assert_string_equal(lyd_get_value(lyd_child(lyd_child(notif))), "2");
         break;
     case 11:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY);
         assert_non_null(notif);
-        assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "3");
+        assert_string_equal(lyd_get_value(lyd_child(lyd_child(notif))), "3");
         break;
     case 12:
         assert_int_equal(notif_type, SR_EV_NOTIF_TERMINATED);
@@ -696,32 +696,32 @@ notif_replay_interval_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev
     case 13:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY);
         assert_non_null(notif);
-        assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "6");
+        assert_string_equal(lyd_get_value(lyd_child(lyd_child(notif))), "6");
         break;
     case 14:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY);
         assert_non_null(notif);
-        assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "7");
+        assert_string_equal(lyd_get_value(lyd_child(lyd_child(notif))), "7");
         break;
     case 15:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY);
         assert_non_null(notif);
-        assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "8");
+        assert_string_equal(lyd_get_value(lyd_child(lyd_child(notif))), "8");
         break;
     case 16:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY);
         assert_non_null(notif);
-        assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "9");
+        assert_string_equal(lyd_get_value(lyd_child(lyd_child(notif))), "9");
         break;
     case 17:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY);
         assert_non_null(notif);
-        assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "10");
+        assert_string_equal(lyd_get_value(lyd_child(lyd_child(notif))), "10");
         break;
     case 18:
         assert_int_equal(notif_type, SR_EV_NOTIF_REPLAY);
         assert_non_null(notif);
-        assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "11");
+        assert_string_equal(lyd_get_value(lyd_child(lyd_child(notif))), "11");
         break;
     case 19:
         assert_int_equal(notif_type, SR_EV_NOTIF_TERMINATED);
@@ -805,7 +805,7 @@ notif_no_replay_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif
     case 1:
         assert_int_equal(notif_type, SR_EV_NOTIF_REALTIME);
         assert_non_null(notif);
-        assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(notif))), "key");
+        assert_string_equal(lyd_get_value(lyd_child(lyd_child(notif))), "key");
         break;
     default:
         fail();

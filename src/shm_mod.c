@@ -217,7 +217,7 @@ sr_shmmod_collect_instid_deps_data(sr_main_shm_t *main_shm, sr_dep_t *shm_deps, 
                     }
 
                     /* get target module name from the value */
-                    val_str = LYD_CANON_VALUE(set->dnodes[j]);
+                    val_str = lyd_get_value(set->dnodes[j]);
                     mod_name = sr_get_first_ns(val_str);
                     ly_mod = ly_ctx_get_module_implemented(ly_ctx, mod_name);
                     free(mod_name);

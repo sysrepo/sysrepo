@@ -144,9 +144,9 @@ test_leafref(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_string_equal(data->schema->name, "lref");
-    assert_string_equal(LYD_CANON_VALUE(data), "10");
+    assert_string_equal(lyd_get_value(data), "10");
     assert_string_equal(data->next->schema->name, "test-leaf");
-    assert_string_equal(LYD_CANON_VALUE(data->next), "10");
+    assert_string_equal(lyd_get_value(data->next), "10");
     assert_string_equal(data->next->next->schema->name, "cont");
 
     lyd_free_all(data);

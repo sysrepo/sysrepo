@@ -1498,13 +1498,13 @@ replace_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_string_equal(config->schema->name, "l1");
-    assert_string_equal(LYD_CANON_VALUE(lyd_child(config)), "c");
+    assert_string_equal(lyd_get_value(lyd_child(config)), "c");
 
     assert_string_equal(config->next->schema->name, "l1");
-    assert_string_equal(LYD_CANON_VALUE(lyd_child(config->next)), "a");
+    assert_string_equal(lyd_get_value(lyd_child(config->next)), "a");
 
     assert_string_equal(config->next->next->schema->name, "l1");
-    assert_string_equal(LYD_CANON_VALUE(lyd_child(config->next->next)), "b");
+    assert_string_equal(lyd_get_value(lyd_child(config->next->next)), "b");
 
     ret = lyd_print_mem(&str1, config->next->next->next, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);

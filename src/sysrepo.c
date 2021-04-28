@@ -3704,7 +3704,7 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
             SR_ERRINFO_INT(&err_info);
             return sr_api_ret(session, err_info);
         }
-        if ((err_info = sr_change_ly2sr(node, meta->value.canonical, NULL, old_value))) {
+        if ((err_info = sr_change_ly2sr(node, lyd_get_meta_value(meta), NULL, old_value))) {
             return sr_api_ret(session, err_info);
         }
         if (meta2->value.boolean) {
@@ -3740,11 +3740,11 @@ sr_get_change_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_change_
             return sr_api_ret(session, err_info);
         }
 
-        if (meta->value.canonical[0]) {
+        if (lyd_get_meta_value(meta)[0]) {
             if (node->schema->nodetype == LYS_LEAFLIST) {
-                err_info = sr_change_ly2sr(node, meta->value.canonical, NULL, old_value);
+                err_info = sr_change_ly2sr(node, lyd_get_meta_value(meta), NULL, old_value);
             } else {
-                err_info = sr_change_ly2sr(node, NULL, meta->value.canonical, old_value);
+                err_info = sr_change_ly2sr(node, NULL, lyd_get_meta_value(meta), old_value);
             }
             if (err_info) {
                 return sr_api_ret(session, err_info);
@@ -3814,7 +3814,7 @@ sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_ch
             return sr_api_ret(session, err_info);
         }
         if (prev_value) {
-            *prev_value = meta->value.canonical;
+            *prev_value = lyd_get_meta_value(meta);
         }
         if (prev_dflt && meta2->value.boolean) {
             *prev_dflt = 1;
@@ -3844,12 +3844,12 @@ sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_ch
         }
         if ((*node)->schema->nodetype == LYS_LEAFLIST) {
             if (prev_value) {
-                *prev_value = meta->value.canonical;
+                *prev_value = lyd_get_meta_value(meta);
             }
         } else {
             assert((*node)->schema->nodetype == LYS_LIST);
             if (prev_list) {
-                *prev_list = meta->value.canonical;
+                *prev_list = lyd_get_meta_value(meta);
             }
         }
         break;

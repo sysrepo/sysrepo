@@ -1222,7 +1222,7 @@ test_startup_data_foreign_identityref(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     assert_string_equal(tree->schema->name, "haha");
     assert_string_equal(lyd_child(tree)->schema->name, "layer-protocol-name");
-    assert_string_equal(LYD_CANON_VALUE(lyd_child(tree)), "t2:desc");
+    assert_string_equal(lyd_get_value(lyd_child(tree)), "t2:desc");
     assert_null(tree->next);
 
     /* check running data */
@@ -1233,7 +1233,7 @@ test_startup_data_foreign_identityref(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     assert_string_equal(tree->schema->name, "haha");
     assert_string_equal(lyd_child(tree)->schema->name, "layer-protocol-name");
-    assert_string_equal(LYD_CANON_VALUE(lyd_child(tree)), "t2:desc");
+    assert_string_equal(lyd_get_value(lyd_child(tree)), "t2:desc");
     assert_null(tree->next);
 
     /* cleanup, remove its data so that it can be uninstalled */

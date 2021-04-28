@@ -604,7 +604,7 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
         }
 
         LY_LIST_FOR(edit_node->meta, meta) {
-            val_str = meta->value.canonical;
+            val_str = lyd_get_meta_value(meta);
             if (!strcmp(meta->name, "operation") && (!strcmp(meta->annotation->module->name, SR_YANG_MOD)
                     || !strcmp(meta->annotation->module->name, "ietf-netconf"))) {
                 *op = sr_edit_str2op(val_str);
@@ -633,7 +633,7 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
                 if (!lyd_new_meta2(LYD_CTX(edit_node), NULL, 0, attr, &meta)) {
                     if (!strcmp(meta->annotation->module->name, SR_YANG_MOD)
                             || !strcmp(meta->annotation->module->name, "ietf-netconf")) {
-                        *op = sr_edit_str2op(meta->value.canonical);
+                        *op = sr_edit_str2op(lyd_get_meta_value(meta));
                     }
                     lyd_free_meta_single(meta);
                 }
@@ -771,7 +771,7 @@ sr_edit_create_userord_predicate(const struct lyd_node *llist)
 
     if (llist->schema->nodetype == LYS_LEAFLIST) {
         /* leaf-list uses the value directly */
-        pred = strdup(LYD_CANON_VALUE(llist));
+        pred = strdup(lyd_get_value(llist));
         return pred;
     }
 
@@ -779,13 +779,13 @@ sr_edit_create_userord_predicate(const struct lyd_node *llist)
     pred_len = 0;
     pred = NULL;
     for (key = lyd_child(llist); key && (key->schema->flags & LYS_KEY); key = key->next) {
-        key_len = 1 + strlen(key->schema->name) + 2 + strlen(LYD_CANON_VALUE(key)) + 2;
+        key_len = 1 + strlen(key->schema->name) + 2 + strlen(lyd_get_value(key)) + 2;
         pred = sr_realloc(pred, pred_len + key_len + 1);
         if (!pred) {
             return NULL;
         }
 
-        sprintf(pred + pred_len, "[%s='%s']", key->schema->name, LYD_CANON_VALUE(key));
+        sprintf(pred + pred_len, "[%s='%s']", key->schema->name, lyd_get_value(key));
         pred_len += key_len;
     }
 
@@ -825,7 +825,7 @@ sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper
                     if (!strcmp(meta->annotation->module->name, SR_YANG_MOD)
                             || !strcmp(meta->annotation->module->name, "ietf-netconf")
                             || !strcmp(meta->annotation->module->name, "yang")) {
-                        return sr_edit_str2op(meta->value.canonical);
+                        return sr_edit_str2op(lyd_get_meta_value(meta));
                     }
                 }
             }
@@ -837,7 +837,7 @@ sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper
                     if (!lyd_new_meta2(LYD_CTX(edit), NULL, 0, attr, &meta)) {
                         if (!strcmp(meta->annotation->module->name, SR_YANG_MOD)
                                 || !strcmp(meta->annotation->module->name, "ietf-netconf")) {
-                            return sr_edit_str2op(meta->value.canonical);
+                            return sr_edit_str2op(lyd_get_meta_value(meta));
                         }
                         lyd_free_meta_single(meta);
                     }
@@ -881,7 +881,7 @@ sr_edit_del_meta_attr(struct lyd_node *edit, const char *name)
         LY_LIST_FOR(((struct lyd_node_opaq *)edit)->attr, attr) {
             if (!strcmp(attr->name.name, name)) {
                 switch (attr->format) {
-                case LY_PREF_JSON:
+                case LY_VALUE_JSON:
                     if (!strcmp(attr->name.module_name, SR_YANG_MOD)
                             || !strcmp(attr->name.module_name, "ietf-netconf")
                             || !strcmp(attr->name.module_name, "yang")
@@ -890,7 +890,7 @@ sr_edit_del_meta_attr(struct lyd_node *edit, const char *name)
                         return;
                     }
                     break;
-                case LY_PREF_XML:
+                case LY_VALUE_XML:
                     if (!strcmp(attr->name.module_ns, "http://www.sysrepo.org/yang/sysrepo")
                             || !strcmp(attr->name.module_ns, "urn:ietf:params:xml:ns:netconf:base:1.0")
                             || !strcmp(attr->name.module_ns, "urn:ietf:params:xml:ns:yang:1")
@@ -1067,7 +1067,7 @@ sr_edit_diff_get_origin(const struct lyd_node *node, char **origin, int *origin_
     }
 
     if (meta) {
-        *origin = strdup(meta->value.canonical);
+        *origin = strdup(lyd_get_meta_value(meta));
         if (origin_own && (parent == node)) {
             *origin_own = 1;
         }
@@ -1597,12 +1597,12 @@ sr_edit_apply_replace(struct lyd_node *match_node, int val_equal, const struct l
             break;
         case LYS_LEAF:
             /* remember previous value */
-            prev_val = strdup(LYD_CANON_VALUE(match_node));
+            prev_val = strdup(lyd_get_value(match_node));
             SR_CHECK_MEM_RET(!prev_val, err_info);
             prev_dflt = match_node->flags & LYD_DEFAULT;
 
             /* modify the node */
-            lyrc = lyd_change_term(match_node, LYD_CANON_VALUE(edit_node));
+            lyrc = lyd_change_term(match_node, lyd_get_value(edit_node));
             if (lyrc && (lyrc != LY_EEXIST)) {
                 free(prev_val);
                 SR_ERRINFO_INT(&err_info);
@@ -2057,12 +2057,12 @@ sr_diff_op(const struct lyd_node *diff_node, enum edit_op *op, const char **key_
             continue;
         }
 
-        if (!strcmp(meta->value.canonical, "replace") && (diff_parent != diff_node)) {
+        if (!strcmp(lyd_get_meta_value(meta), "replace") && (diff_parent != diff_node)) {
             /* we do not care about this operation if it's in our parent */
             continue;
         }
 
-        *op = sr_edit_str2op(meta->value.canonical);
+        *op = sr_edit_str2op(lyd_get_meta_value(meta));
         break;
     }
     SR_CHECK_INT_RET(!diff_parent, err_info);
@@ -2077,7 +2077,7 @@ sr_diff_op(const struct lyd_node *diff_node, enum edit_op *op, const char **key_
             }
             SR_CHECK_INT_RET(!meta, err_info);
 
-            *key_or_value = meta->value.canonical;
+            *key_or_value = lyd_get_meta_value(meta);
         }
     }
 
@@ -2441,7 +2441,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         opts |= LYD_NEW_PATH_OPAQ;
     }
     lyrc = lyd_new_path2(isolate ? NULL : session->dt[session->ds].edit, session->conn->ly_ctx, xpath, (void *)value,
-            LYD_ANYDATA_STRING, opts, NULL, &node);
+            value ? strlen(value) : 0, LYD_ANYDATA_STRING, opts, NULL, &node);
     if (lyrc) {
         /* check whether it is an error */
         if ((err_info = sr_edit_add_check_same_node_op(session, xpath, value, sr_edit_str2op(operation), lyrc))) {
@@ -2647,7 +2647,7 @@ sr_diff_set_getnext(struct ly_set *set, uint32_t *idx, struct lyd_node **node, s
         }
 
         if (((*node)->schema->flags & LYS_KEY) && lysc_is_userordered((*node)->parent->schema)
-                && (meta->value.canonical[0] == 'r')) {
+                && (lyd_get_meta_value(meta)[0] == 'r')) {
             /* skip keys of list move operations */
             ++(*idx);
             continue;

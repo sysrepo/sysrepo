@@ -187,7 +187,7 @@ module_change_done_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(prev_val);
         assert_string_equal(node->schema->name, "name");
-        assert_string_equal(LYD_CANON_VALUE(node), "eth52");
+        assert_string_equal(lyd_get_value(node), "eth52");
 
         /* 3rd change */
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, NULL, NULL);
@@ -196,7 +196,7 @@ module_change_done_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(prev_val);
         assert_string_equal(node->schema->name, "type");
-        assert_string_equal(LYD_CANON_VALUE(node), "iana-if-type:ethernetCsmacd");
+        assert_string_equal(lyd_get_value(node), "iana-if-type:ethernetCsmacd");
 
         /* 4th change */
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, NULL, NULL);
@@ -248,7 +248,7 @@ module_change_done_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(prev_val);
         assert_string_equal(node->schema->name, "ip");
-        assert_string_equal(LYD_CANON_VALUE(node), "192.168.2.100");
+        assert_string_equal(lyd_get_value(node), "192.168.2.100");
 
         /* 10th change */
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, NULL, NULL);
@@ -257,7 +257,7 @@ module_change_done_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(prev_val);
         assert_string_equal(node->schema->name, "prefix-length");
-        assert_string_equal(LYD_CANON_VALUE(node), "24");
+        assert_string_equal(lyd_get_value(node), "24");
 
         /* no more changes */
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, NULL, NULL);
@@ -323,7 +323,7 @@ module_change_done_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
         assert_int_equal(op, SR_OP_DELETED);
         assert_null(prev_val);
         assert_string_equal(node->schema->name, "name");
-        assert_string_equal(LYD_CANON_VALUE(node), "eth52");
+        assert_string_equal(lyd_get_value(node), "eth52");
 
         /* 3rd change */
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, NULL, NULL);
@@ -332,7 +332,7 @@ module_change_done_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
         assert_int_equal(op, SR_OP_DELETED);
         assert_null(prev_val);
         assert_string_equal(node->schema->name, "type");
-        assert_string_equal(LYD_CANON_VALUE(node), "iana-if-type:ethernetCsmacd");
+        assert_string_equal(lyd_get_value(node), "iana-if-type:ethernetCsmacd");
 
         /* 4th change */
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, NULL, NULL);
@@ -384,7 +384,7 @@ module_change_done_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
         assert_int_equal(op, SR_OP_DELETED);
         assert_null(prev_val);
         assert_string_equal(node->schema->name, "ip");
-        assert_string_equal(LYD_CANON_VALUE(node), "192.168.2.100");
+        assert_string_equal(lyd_get_value(node), "192.168.2.100");
 
         /* 10th change */
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, NULL, NULL);
@@ -393,7 +393,7 @@ module_change_done_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
         assert_int_equal(op, SR_OP_DELETED);
         assert_null(prev_val);
         assert_string_equal(node->schema->name, "prefix-length");
-        assert_string_equal(LYD_CANON_VALUE(node), "24");
+        assert_string_equal(lyd_get_value(node), "24");
 
         /* no more changes */
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_val, NULL, NULL);
@@ -3317,7 +3317,7 @@ apply_change_dflt_leaf_thread(void *arg)
     /* check only second node */
     assert_string_equal(data->schema->name, "l1");
     assert_true(lyd_child(lyd_child(lyd_child(data)->next))->flags & LYD_DEFAULT);
-    assert_string_equal(LYD_CANON_VALUE(lyd_child(lyd_child(lyd_child(data)->next))), "10");
+    assert_string_equal(lyd_get_value(lyd_child(lyd_child(lyd_child(data)->next))), "10");
 
     lyd_free_all(data);
 
@@ -4784,7 +4784,7 @@ apply_change_done_when_thread(void *arg)
     assert_string_equal(data->next->schema->name, "cont");
     assert_true(data->next->flags & LYD_DEFAULT);
     assert_string_equal(data->next->next->schema->name, "cont");
-    assert_string_equal(LYD_CANON_VALUE(lyd_child(data->next->next)), "bye");
+    assert_string_equal(lyd_get_value(lyd_child(data->next->next)), "bye");
 
     lyd_free_all(data);
 
@@ -4810,7 +4810,7 @@ apply_change_done_when_thread(void *arg)
     assert_true(data->next->flags & LYD_DEFAULT);
     assert_string_equal(data->next->next->schema->name, "ll");
     assert_true(data->next->next->flags & LYD_DEFAULT);
-    assert_string_equal(LYD_CANON_VALUE(data->next->next), "zzZZzz");
+    assert_string_equal(lyd_get_value(data->next->next), "zzZZzz");
 
     lyd_free_all(data);
 

@@ -812,7 +812,7 @@ test_decimal64(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/decimal:d1", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(LYD_CANON_VALUE(data), "255.5");
+    assert_string_equal(lyd_get_value(data), "255.5");
     lyd_free_tree(data);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -824,7 +824,7 @@ test_decimal64(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(LYD_CANON_VALUE(data), "9.0000000000000001");
+    assert_string_equal(lyd_get_value(data), "9.0000000000000001");
     lyd_free_tree(data);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -833,7 +833,7 @@ test_decimal64(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(LYD_CANON_VALUE(data), "2.01");
+    assert_string_equal(lyd_get_value(data), "2.01");
     lyd_free_tree(data);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -852,7 +852,7 @@ test_decimal64(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/decimal:d1", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(LYD_CANON_VALUE(data), "255.6");
+    assert_string_equal(lyd_get_value(data), "255.6");
     lyd_free_tree(data);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -863,7 +863,7 @@ test_decimal64(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(LYD_CANON_VALUE(data), "10.0");
+    assert_string_equal(lyd_get_value(data), "10.0");
     lyd_free_tree(data);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -874,7 +874,7 @@ test_decimal64(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(LYD_CANON_VALUE(data), "9.0");
+    assert_string_equal(lyd_get_value(data), "9.0");
     lyd_free_tree(data);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -885,7 +885,7 @@ test_decimal64(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(LYD_CANON_VALUE(data), "2.01");
+    assert_string_equal(lyd_get_value(data), "2.01");
     lyd_free_tree(data);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -907,7 +907,7 @@ test_mutiple_types(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/test-module:main/string", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(LYD_CANON_VALUE(data), "string\"\"\'");
+    assert_string_equal(lyd_get_value(data), "string\"\"\'");
     lyd_free_tree(data);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -919,7 +919,7 @@ test_mutiple_types(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/test-module:main/raw", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(LYD_CANON_VALUE(data), "VGhpcyBpcyBleGFtcGxlIG1lc3NhZ2Uu");
+    assert_string_equal(lyd_get_value(data), "VGhpcyBpcyBleGFtcGxlIG1lc3NhZ2Uu");
     lyd_free_tree(data);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -931,7 +931,7 @@ test_mutiple_types(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/test-module:main/options", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(LYD_CANON_VALUE(data), "strict");
+    assert_string_equal(lyd_get_value(data), "strict");
     lyd_free_tree(data);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -943,7 +943,7 @@ test_mutiple_types(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/test-module:main/enum", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(LYD_CANON_VALUE(data), "yes");
+    assert_string_equal(lyd_get_value(data), "yes");
     lyd_free_tree(data);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -955,7 +955,7 @@ test_mutiple_types(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/test-module:main/id_ref", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(LYD_CANON_VALUE(data), "test-module:id_1");
+    assert_string_equal(lyd_get_value(data), "test-module:id_1");
     lyd_free_tree(data);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -997,7 +997,7 @@ test_mutiple_types(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/test-module:main/empty", 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(LYD_CANON_VALUE(data), "");
+    assert_string_equal(lyd_get_value(data), "");
     lyd_free_tree(data);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);

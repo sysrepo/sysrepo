@@ -927,9 +927,9 @@ sr_lydmods_sched_change_features(const struct lyd_node *sr_mod, struct ly_set **
     for (i = 0; i < set->count; ++i) {
         inner = set->objs[i];
         assert(!strcmp(inner->child->schema->name, "name"));
-        feat_name = LYD_CANON_VALUE(inner->child);
+        feat_name = lyd_get_value(inner->child);
         assert(!strcmp(inner->child->next->schema->name, "change"));
-        enable = !strcmp(LYD_CANON_VALUE(inner->child->next), "enable") ? 1 : 0;
+        enable = !strcmp(lyd_get_value(inner->child->next), "enable") ? 1 : 0;
 
         if (enable) {
             if (!*feat_set && ly_set_new(feat_set)) {
@@ -945,7 +945,7 @@ sr_lydmods_sched_change_features(const struct lyd_node *sr_mod, struct ly_set **
         } else {
             /* remove the disabled feature */
             for (j = 0; *feat_set && (j < (*feat_set)->count); ++j) {
-                if (LYD_CANON_VALUE((*feat_set)->dnodes[j]) == feat_name) {
+                if (lyd_get_value((*feat_set)->dnodes[j]) == feat_name) {
                     break;
                 }
             }
@@ -992,7 +992,7 @@ sr_lydmods_features_array(const struct ly_set *feat_set, const char ***features)
     }
 
     for (i = 0; i < feat_set->count; ++i) {
-        (*features)[i] = LYD_CANON_VALUE(feat_set->dnodes[i]);
+        (*features)[i] = lyd_get_value(feat_set->dnodes[i]);
     }
     (*features)[i] = NULL;
 
@@ -1027,9 +1027,9 @@ sr_lydmods_ctx_load_module(const struct lyd_node *sr_mod, struct ly_ctx *ly_ctx,
     revision = NULL;
     LY_LIST_FOR(lyd_child(sr_mod), node) {
         if (!strcmp(node->schema->name, "name")) {
-            mod_name = LYD_CANON_VALUE(node);
+            mod_name = lyd_get_value(node);
         } else if (!strcmp(node->schema->name, "revision")) {
-            revision = LYD_CANON_VALUE(node);
+            revision = lyd_get_value(node);
             break;
         }
     }
@@ -1244,7 +1244,7 @@ sr_update_data(const struct lyd_node *sr_mods,
     }
     for (idx = 0; idx < startup_set->count; ++idx) {
         /* this was parsed before */
-        lyd_parse_data_mem(new_ctx, LYD_CANON_VALUE(startup_set->dnodes[idx]), LYD_JSON,
+        lyd_parse_data_mem(new_ctx, lyd_get_value(startup_set->dnodes[idx]), LYD_JSON,
                 LYD_PARSE_NO_STATE | LYD_PARSE_STRICT | LYD_PARSE_ONLY, 0, &mod_data);
         if (!mod_data) {
             continue;
@@ -1498,9 +1498,9 @@ sr_lydmods_sched_finalize_module_remove(struct lyd_node *sr_mod, const struct ly
 
     child = lyd_child(sr_mod);
     assert(!strcmp(child->schema->name, "name"));
-    mod_name = LYD_CANON_VALUE(child);
+    mod_name = lyd_get_value(child);
     if (child->next && !strcmp(child->next->schema->name, "revision")) {
-        mod_rev = LYD_CANON_VALUE(child->next);
+        mod_rev = lyd_get_value(child->next);
     } else {
         mod_rev = NULL;
     }
@@ -1608,8 +1608,8 @@ sr_lydmods_sched_finalize_module_change_features(struct lyd_node *sr_mod, const 
             assert(!strcmp(inner->child->schema->name, "name"));
             assert(!strcmp(inner->child->next->schema->name, "change"));
 
-            feat_name = LYD_CANON_VALUE(inner->child);
-            enable = !strcmp(LYD_CANON_VALUE(inner->child->next), "enable") ? 1 : 0;
+            feat_name = lyd_get_value(inner->child);
+            enable = !strcmp(lyd_get_value(inner->child->next), "enable") ? 1 : 0;
 
             /* update internal sysrepo data tree */
             if (enable) {
@@ -1714,7 +1714,7 @@ sr_lydmods_add_inv_data_dep(struct lyd_node *sr_mod, const char *inv_dep_mod)
             continue;
         }
 
-        if (!strcmp(LYD_CANON_VALUE(node), inv_dep_mod)) {
+        if (!strcmp(lyd_get_value(node), inv_dep_mod)) {
             /* exists already */
             return NULL;
         }
@@ -1766,7 +1766,7 @@ sr_lydmods_add_all(struct lyd_node *sr_mod, const struct lys_module *ly_mod)
     SR_CHECK_LY_GOTO(lyd_find_xpath(sr_mod, "deps/module", &set), ly_mod->ctx, err_info, cleanup);
 
     for (i = 0; i < set->count; ++i) {
-        if (asprintf(&xpath, "module[name='%s']", LYD_CANON_VALUE(set->dnodes[i])) == -1) {
+        if (asprintf(&xpath, "module[name='%s']", lyd_get_value(set->dnodes[i])) == -1) {
             SR_ERRINFO_MEM(&err_info);
             goto cleanup;
         }
@@ -1778,7 +1778,7 @@ sr_lydmods_add_all(struct lyd_node *sr_mod, const struct lys_module *ly_mod)
         assert(set2->count == 1);
 
         /* add inverse dependency */
-        err_info = sr_lydmods_add_inv_data_dep(set2->dnodes[0], LYD_CANON_VALUE(lyd_child(sr_mod)));
+        err_info = sr_lydmods_add_inv_data_dep(set2->dnodes[0], lyd_get_value(lyd_child(sr_mod)));
         ly_set_free(set2, NULL);
         if (err_info) {
             goto cleanup;
@@ -1857,9 +1857,9 @@ sr_lydmods_sched_check_removed_modules(const struct lyd_node *sr_mods, const str
         revision = NULL;
         LY_LIST_FOR(lyd_child(set->dnodes[i]), node) {
             if (!strcmp(node->schema->name, "name")) {
-                mod_name = LYD_CANON_VALUE(node);
+                mod_name = lyd_get_value(node);
             } else if (!strcmp(node->schema->name, "revision")) {
-                revision = LYD_CANON_VALUE(node);
+                revision = lyd_get_value(node);
                 break;
             }
         }
@@ -1919,7 +1919,7 @@ sr_lydmods_sched_ctx_update_modules(const struct lyd_node *sr_mods, struct ly_ct
         }
 
         /* load the updated module */
-        if ((err_info = sr_lys_parse_mem(new_ctx, LYD_CANON_VALUE(set->dnodes[i]), feat_set, &ly_mod, NULL))) {
+        if ((err_info = sr_lys_parse_mem(new_ctx, lyd_get_value(set->dnodes[i]), feat_set, &ly_mod, NULL))) {
             goto cleanup;
         }
 
@@ -1972,7 +1972,7 @@ sr_lydmods_sched_ctx_install_modules(const struct lyd_node *sr_mods, struct ly_c
         }
 
         /* parse the module */
-        if ((err_info = sr_lys_parse_mem(new_ctx, LYD_CANON_VALUE(set->dnodes[i]), feat_set, &ly_mod, fail))) {
+        if ((err_info = sr_lys_parse_mem(new_ctx, lyd_get_value(set->dnodes[i]), feat_set, &ly_mod, fail))) {
             goto cleanup;
         }
         if (*fail) {
@@ -2108,7 +2108,7 @@ sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *ch
                 continue;
             }
 
-            ly_mod = ly_ctx_get_module_implemented(new_ctx, LYD_CANON_VALUE(lyd_child(sr_mod)));
+            ly_mod = ly_ctx_get_module_implemented(new_ctx, lyd_get_value(lyd_child(sr_mod)));
             assert(ly_mod);
             if ((err_info = sr_lydmods_add_all(sr_mod, ly_mod))) {
                 goto cleanup;
@@ -2379,7 +2379,7 @@ sr_lydmods_ctx_load_installed_module_all(const struct lyd_node *sr_mods, struct 
 
     /* load all the modules, it must succeed */
     for (i = 0; i < set->count; ++i) {
-        if (lys_parse_mem(ly_ctx, LYD_CANON_VALUE(set->dnodes[i]), LYS_IN_YANG, &lmod)) {
+        if (lys_parse_mem(ly_ctx, lyd_get_value(set->dnodes[i]), LYS_IN_YANG, &lmod)) {
             sr_errinfo_new_ly(&err_info, ly_ctx);
             SR_ERRINFO_INT(&err_info);
             goto cleanup;
@@ -2765,7 +2765,6 @@ sr_lydmods_deferred_change_feature(sr_main_shm_t *main_shm, struct ly_ctx *ly_ct
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mods = NULL;
-    struct lyd_node_term *leaf;
     struct ly_set *set = NULL;
     char *path = NULL;
 
@@ -2787,10 +2786,8 @@ sr_lydmods_deferred_change_feature(sr_main_shm_t *main_shm, struct ly_ctx *ly_ct
     }
     SR_CHECK_INT_GOTO(lyd_find_xpath(sr_mods, path, &set), err_info, cleanup);
     if (set->count == 1) {
-        leaf = (struct lyd_node_term *)set->dnodes[0];
-
-        if ((to_enable && !strcmp(LYD_CANON_VALUE(leaf), "enable")) ||
-                (!to_enable && !strcmp(LYD_CANON_VALUE(leaf), "disable"))) {
+        if ((to_enable && !strcmp(lyd_get_value(set->dnodes[0]), "enable")) ||
+                (!to_enable && !strcmp(lyd_get_value(set->dnodes[0]), "disable"))) {
             sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Module \"%s\" feature \"%s\" already scheduled to be %s.",
                     ly_mod->name, feat_name, to_enable ? "enabled" : "disabled");
             goto cleanup;
@@ -2854,7 +2851,7 @@ sr_lydmods_update_replay_support_module(struct lyd_node *sr_mod, int replay_supp
         lyd_free_tree(sr_replay);
     } else if (replay_support && !sr_replay) {
         /* find earliest stored notification or use current time */
-        if ((err_info = sr_replay_find_file(LYD_CANON_VALUE(lyd_child(sr_mod)), 1, 0, &from_ts, &to_ts))) {
+        if ((err_info = sr_replay_find_file(lyd_get_value(lyd_child(sr_mod)), 1, 0, &from_ts, &to_ts))) {
             return err_info;
         }
         if (!from_ts) {

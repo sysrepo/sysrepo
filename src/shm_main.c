@@ -538,7 +538,7 @@ sr_shmmain_fill_deps(sr_main_shm_t *main_shm, struct lyd_node *sr_dep_parent, sr
             shm_deps[*dep_i].type = SR_DEP_REF;
 
             /* copy module name offset */
-            ref_shm_mod = sr_shmmain_find_module(main_shm, LYD_CANON_VALUE(sr_dep));
+            ref_shm_mod = sr_shmmain_find_module(main_shm, lyd_get_value(sr_dep));
             SR_CHECK_INT_RET(!ref_shm_mod, err_info);
             shm_deps[*dep_i].module = ref_shm_mod->name;
 
@@ -556,10 +556,10 @@ sr_shmmain_fill_deps(sr_main_shm_t *main_shm, struct lyd_node *sr_dep_parent, sr
             LY_LIST_FOR(lyd_child(sr_dep), sr_instid) {
                 if (!strcmp(sr_instid->schema->name, "path")) {
                     /* copy path */
-                    shm_deps[*dep_i].path = sr_shmstrcpy((char *)main_shm, LYD_CANON_VALUE(sr_instid), shm_end);
+                    shm_deps[*dep_i].path = sr_shmstrcpy((char *)main_shm, lyd_get_value(sr_instid), shm_end);
                 } else if (!strcmp(sr_instid->schema->name, "default-module")) {
                     /* copy module name offset */
-                    ref_shm_mod = sr_shmmain_find_module(main_shm, LYD_CANON_VALUE(sr_instid));
+                    ref_shm_mod = sr_shmmain_find_module(main_shm, lyd_get_value(sr_instid));
                     SR_CHECK_INT_RET(!ref_shm_mod, err_info);
                     shm_deps[*dep_i].module = ref_shm_mod->name;
                 }
@@ -626,17 +626,17 @@ sr_shmmain_fill_module(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr_shm
     LY_LIST_FOR(lyd_child(sr_mod), sr_child) {
         if (!strcmp(sr_child->schema->name, "name")) {
             /* rememeber name */
-            name = LYD_CANON_VALUE(sr_child);
+            name = lyd_get_value(sr_child);
         } else if (!strcmp(sr_child->schema->name, "revision")) {
             /* copy revision */
-            strcpy(shm_mod->rev, LYD_CANON_VALUE(sr_child));
+            strcpy(shm_mod->rev, lyd_get_value(sr_child));
         } else if (!strcmp(sr_child->schema->name, "replay-support")) {
             /* set replay-support flag */
             ATOMIC_STORE_RELAXED(shm_mod->replay_supp, 1);
         } else if (!strcmp(sr_child->schema->name, "enabled-feature")) {
             /* count features and ther names length */
             ++shm_mod->feat_count;
-            feat_names_len += sr_strshmlen(LYD_CANON_VALUE(sr_child));
+            feat_names_len += sr_strshmlen(lyd_get_value(sr_child));
         }
     }
     assert(name);
@@ -664,7 +664,7 @@ sr_shmmain_fill_module(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr_shm
     LY_LIST_FOR(lyd_child(sr_mod), sr_child) {
         if (!strcmp(sr_child->schema->name, "enabled-feature")) {
             /* copy feature name */
-            shm_features[feat_i] = sr_shmstrcpy(shm_main->addr, LYD_CANON_VALUE(sr_child), &shm_end);
+            shm_features[feat_i] = sr_shmstrcpy(shm_main->addr, lyd_get_value(sr_child), &shm_end);
 
             ++feat_i;
         }
@@ -714,7 +714,7 @@ sr_shmmain_add_module_deps(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr
                     LY_LIST_FOR(lyd_child(sr_dep), sr_instid) {
                         if (!strcmp(sr_instid->schema->name, "path")) {
                             /* a string */
-                            paths_len += sr_strshmlen(LYD_CANON_VALUE(sr_instid));
+                            paths_len += sr_strshmlen(lyd_get_value(sr_instid));
                         }
                     }
                 }
@@ -754,7 +754,7 @@ sr_shmmain_add_module_deps(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr
             }
         } else if (!strcmp(sr_child->schema->name, "inverse-deps")) {
             /* now fill module references */
-            ref_shm_mod = sr_shmmain_find_module(main_shm, LYD_CANON_VALUE(sr_child));
+            ref_shm_mod = sr_shmmain_find_module(main_shm, lyd_get_value(sr_child));
             SR_CHECK_INT_RET(!ref_shm_mod, err_info);
             shm_inv_deps[inv_dep_i] = ref_shm_mod->name;
 
@@ -804,7 +804,7 @@ sr_shmmain_add_module_rpcs(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr
             LY_LIST_FOR(lyd_child(sr_child), sr_op_dep) {
                 if (!strcmp(sr_op_dep->schema->name, "path")) {
                     /* operation path (a string) */
-                    paths_len += sr_strshmlen(LYD_CANON_VALUE(sr_op_dep));
+                    paths_len += sr_strshmlen(lyd_get_value(sr_op_dep));
                 } else if (!strcmp(sr_op_dep->schema->name, "in") || !strcmp(sr_op_dep->schema->name, "out")) {
                     dep_i = 0;
                     LY_LIST_FOR(lyd_child(sr_op_dep), sr_dep) {
@@ -815,7 +815,7 @@ sr_shmmain_add_module_rpcs(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr
                             LY_LIST_FOR(lyd_child(sr_dep), sr_instid) {
                                 if (!strcmp(sr_instid->schema->name, "path")) {
                                     /* a string */
-                                    paths_len += sr_strshmlen(LYD_CANON_VALUE(sr_instid));
+                                    paths_len += sr_strshmlen(lyd_get_value(sr_instid));
                                 }
                             }
                         }
@@ -855,7 +855,7 @@ sr_shmmain_add_module_rpcs(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr
             LY_LIST_FOR(lyd_child(sr_child), sr_op) {
                 if (!strcmp(sr_op->schema->name, "path")) {
                     /* copy xpath name */
-                    shm_rpcs[rpc_i].path = sr_shmstrcpy(shm_main->addr, LYD_CANON_VALUE(sr_op), &shm_end);
+                    shm_rpcs[rpc_i].path = sr_shmstrcpy(shm_main->addr, lyd_get_value(sr_op), &shm_end);
                 } else if (!strcmp(sr_op->schema->name, "in")) {
                     LY_LIST_FOR(lyd_child(sr_op), sr_op_dep) {
                         /* count input deps first */
@@ -938,7 +938,7 @@ sr_shmmain_add_module_notifs(const struct lyd_node *sr_mod, size_t shm_mod_idx, 
             LY_LIST_FOR(lyd_child(sr_child), sr_op_dep) {
                 if (!strcmp(sr_op_dep->schema->name, "path")) {
                     /* operation path (a string) */
-                    paths_len += sr_strshmlen(LYD_CANON_VALUE(sr_op_dep));
+                    paths_len += sr_strshmlen(lyd_get_value(sr_op_dep));
                 } else if (!strcmp(sr_op_dep->schema->name, "deps")) {
                     dep_i = 0;
                     LY_LIST_FOR(lyd_child(sr_op_dep), sr_dep) {
@@ -949,7 +949,7 @@ sr_shmmain_add_module_notifs(const struct lyd_node *sr_mod, size_t shm_mod_idx, 
                             LY_LIST_FOR(lyd_child(sr_dep), sr_instid) {
                                 if (!strcmp(sr_instid->schema->name, "path")) {
                                     /* a string */
-                                    paths_len += sr_strshmlen(LYD_CANON_VALUE(sr_instid));
+                                    paths_len += sr_strshmlen(lyd_get_value(sr_instid));
                                 }
                             }
                         }
@@ -984,7 +984,7 @@ sr_shmmain_add_module_notifs(const struct lyd_node *sr_mod, size_t shm_mod_idx, 
             LY_LIST_FOR(lyd_child(sr_child), sr_op) {
                 if (!strcmp(sr_op->schema->name, "path")) {
                     /* copy xpath name */
-                    shm_notifs[notif_i].path = sr_shmstrcpy(shm_main->addr, LYD_CANON_VALUE(sr_op), &shm_end);
+                    shm_notifs[notif_i].path = sr_shmstrcpy(shm_main->addr, lyd_get_value(sr_op), &shm_end);
                 } else if (!strcmp(sr_op->schema->name, "deps")) {
                     LY_LIST_FOR(lyd_child(sr_op), sr_op_dep) {
                         /* count deps first */

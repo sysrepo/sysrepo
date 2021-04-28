@@ -211,11 +211,11 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
         /* name and revision must be first */
         child = lyd_child(module);
         assert(!strcmp(child->schema->name, "name"));
-        cur_item->name = strdup(LYD_CANON_VALUE(child));
+        cur_item->name = strdup(lyd_get_value(child));
 
         child = child->next;
         if (!strcmp(child->schema->name, "revision")) {
-            cur_item->revision = strdup(LYD_CANON_VALUE(child));
+            cur_item->revision = strdup(lyd_get_value(child));
         }
 
         /* get the module */
@@ -244,7 +244,7 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
             } else if (!strcmp(child->schema->name, "updated-yang")) {
                 cur_item->change_flag = "U";
             } else if (!strcmp(child->schema->name, "enabled-feature")) {
-                str = LYD_CANON_VALUE(child);
+                str = lyd_get_value(child);
 
                 if (ly_mod) {
                     /* check the real state of the feature */

@@ -4221,12 +4221,12 @@ store_value:
         switch (val->realtype->basetype) {
         case LY_TYPE_BINARY:
             sr_val->type = SR_BINARY_T;
-            sr_val->data.binary_val = strdup(val->canonical);
+            sr_val->data.binary_val = strdup(lyd_value_get_canonical(LYD_CTX(node), val));
             SR_CHECK_MEM_GOTO(!sr_val->data.binary_val, err_info, error);
             break;
         case LY_TYPE_BITS:
             sr_val->type = SR_BITS_T;
-            sr_val->data.bits_val = strdup(val->canonical);
+            sr_val->data.bits_val = strdup(lyd_value_get_canonical(LYD_CTX(node), val));
             SR_CHECK_MEM_GOTO(!sr_val->data.bits_val, err_info, error);
             break;
         case LY_TYPE_BOOL:
@@ -4235,10 +4235,10 @@ store_value:
             break;
         case LY_TYPE_DEC64:
             sr_val->type = SR_DECIMAL64_T;
-            sr_val->data.decimal64_val = strtod(val->canonical, &ptr);
+            sr_val->data.decimal64_val = strtod(lyd_value_get_canonical(LYD_CTX(node), val), &ptr);
             if (ptr[0]) {
                 sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Value \"%s\" is not a valid decimal64 number.",
-                        val->canonical);
+                        lyd_value_get_canonical(LYD_CTX(node), val));
                 goto error;
             }
             break;
@@ -4248,17 +4248,17 @@ store_value:
             break;
         case LY_TYPE_ENUM:
             sr_val->type = SR_ENUM_T;
-            sr_val->data.enum_val = strdup(val->canonical);
+            sr_val->data.enum_val = strdup(lyd_value_get_canonical(LYD_CTX(node), val));
             SR_CHECK_MEM_GOTO(!sr_val->data.enum_val, err_info, error);
             break;
         case LY_TYPE_IDENT:
             sr_val->type = SR_IDENTITYREF_T;
-            sr_val->data.identityref_val = strdup(val->canonical);
+            sr_val->data.identityref_val = strdup(lyd_value_get_canonical(LYD_CTX(node), val));
             SR_CHECK_MEM_GOTO(!sr_val->data.identityref_val, err_info, error);
             break;
         case LY_TYPE_INST:
             sr_val->type = SR_INSTANCEID_T;
-            sr_val->data.instanceid_val = strdup(val->canonical);
+            sr_val->data.instanceid_val = strdup(lyd_value_get_canonical(LYD_CTX(node), val));
             SR_CHECK_MEM_GOTO(!sr_val->data.instanceid_val, err_info, error);
             break;
         case LY_TYPE_INT8:
@@ -4279,7 +4279,7 @@ store_value:
             break;
         case LY_TYPE_STRING:
             sr_val->type = SR_STRING_T;
-            sr_val->data.string_val = strdup(val->canonical);
+            sr_val->data.string_val = strdup(lyd_value_get_canonical(LYD_CTX(node), val));
             SR_CHECK_MEM_GOTO(!sr_val->data.string_val, err_info, error);
             break;
         case LY_TYPE_UINT8:
@@ -4461,7 +4461,7 @@ sr_val_sr2ly(struct ly_ctx *ctx, const char *xpath, const char *val_str, int dfl
 
     opts = LYD_NEW_PATH_UPDATE | (output ? LYD_NEW_PATH_OUTPUT : 0);
 
-    if (lyd_new_path2(*root, ctx, xpath, val_str, 0, opts, &parent, &node)) {
+    if (lyd_new_path2(*root, ctx, xpath, val_str, val_str ? strlen(val_str) : 0, 0, opts, &parent, &node)) {
         sr_errinfo_new_ly(&err_info, ctx);
         return err_info;
     }
