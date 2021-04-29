@@ -4322,8 +4322,8 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
     int found;
 
     SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !mod_name || (start_time && (start_time > cur_ts)) ||
-            (stop_time && (!start_time || (stop_time < start_time))) || (!callback && !tree_callback) || !subscription,
-            session, err_info);
+            (stop_time && ((start_time && (stop_time < start_time)) || (!start_time && (stop_time < cur_ts)))) ||
+            (!callback && !tree_callback) || !subscription, session, err_info);
 
     /* is the module name valid? */
     ly_mod = ly_ctx_get_module_implemented(session->conn->ly_ctx, mod_name);
@@ -4403,8 +4403,8 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
         goto error2;
     }
 
-    if (start_time) {
-        /* notify subscription there are already some events (replay needs to be performed) */
+    if (start_time || stop_time) {
+        /* notify subscription there are already some events (replay needs to be performed) or stop time needs to be checked */
         if ((err_info = sr_shmsub_notify_evpipe((*subscription)->evpipe_num))) {
             goto error3;
         }
