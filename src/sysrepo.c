@@ -1443,7 +1443,7 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
 
     /* add modules into mod_info with deps, locking, and their data */
     if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_READ,
-            session->sid, xpath, timeout_ms, 0))) {
+            session->sid, xpath, timeout_ms, opts))) {
         goto cleanup;
     }
 
