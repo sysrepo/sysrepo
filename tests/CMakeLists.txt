@@ -34,6 +34,7 @@ foreach(test_name IN LISTS tests)
     add_test(NAME ${test_name} COMMAND $<TARGET_FILE:${test_name}>)
     set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
         "MALLOC_CHECK_=3"
+        "TZ=CET+02:00"
         "CMOCKA_TEST_ABORT=1"
         "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"
         "SYSREPO_SHM_PREFIX=_tests_sr_${test_name}"
@@ -58,6 +59,7 @@ if(ENABLE_VALGRIND_TESTS)
         foreach(test_name IN LISTS tests)
             add_test(NAME ${test_name}_valgrind COMMAND valgrind --leak-check=full --show-leak-kinds=all --error-exitcode=1 ${CMAKE_BINARY_DIR}/tests/${test_name})
             set_property(TEST ${test_name}_valgrind APPEND PROPERTY ENVIRONMENT
+                "TZ=CET+02:00"
                 "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"
                 "SYSREPO_SHM_PREFIX=_tests_sr_${test_name}"
             )
