@@ -594,7 +594,7 @@ int sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, i
  * Required WRITE access.
  *
  * @param[in] conn Connection to use.
- * @param[in] module_name Name of the module to change.
+ * @param[in] module_name Name of the module to change, NULL for all the modules.
  * @param[in] owner If set, new owner of the module.
  * @param[in] group If set, new group of the module.
  * @param[in] perm If set, new permissions of the module.

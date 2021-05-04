@@ -1221,79 +1221,116 @@ cleanup:
     return sr_api_ret(NULL, err_info);
 }
 
+/**
+ * @brief Set permissions for a single module.
+ *
+ * @param[in] module_name Module name.
+ * @param[in] shm_mod SHM mod structure.
+ * @param[in] owner Module owner, NULL to keep unchanged.
+ * @param[in] group Module group, NULL to keep unchanged.
+ * @param[in] perm Module permissions, -1 to keep unchanged.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+_sr_set_module_access(const char *module_name, sr_mod_t *shm_mod, const char *owner, const char *group, mode_t perm)
+{
+    sr_error_info_t *err_info = NULL;
+    time_t from_ts, to_ts;
+    char *path = NULL;
+
+    assert(module_name && shm_mod && (owner || group || ((int)perm != -1)));
+
+    /* get startup file path */
+    if ((err_info = sr_path_startup_file(module_name, &path))) {
+        return err_info;
+    }
+
+    /* update startup file permissions and owner */
+    err_info = sr_chmodown(path, owner, group, perm);
+    free(path);
+    if (err_info) {
+        return err_info;
+    }
+
+    /* get running SHM file path */
+    if ((err_info = sr_path_ds_shm(module_name, SR_DS_RUNNING, &path))) {
+        return err_info;
+    }
+
+    /* update running file permissions and owner */
+    err_info = sr_chmodown(path, owner, group, perm);
+    free(path);
+    if (err_info) {
+        return err_info;
+    }
+
+    /* get operational SHM file path */
+    if ((err_info = sr_path_ds_shm(module_name, SR_DS_OPERATIONAL, &path))) {
+        return err_info;
+    }
+
+    /* update operational file permissions and owner */
+    err_info = sr_chmodown(path, owner, group, perm);
+    free(path);
+    if (err_info) {
+        return err_info;
+    }
+
+    if (ATOMIC_LOAD_RELAXED(shm_mod->replay_supp)) {
+        if ((err_info = sr_replay_find_file(module_name, 1, 1, &from_ts, &to_ts))) {
+            return err_info;
+        }
+        while (from_ts && to_ts) {
+            /* get next notification file path */
+            if ((err_info = sr_path_notif_file(module_name, from_ts, to_ts, &path))) {
+                return err_info;
+            }
+
+            /* update notification file permissions and owner */
+            err_info = sr_chmodown(path, owner, group, perm);
+            free(path);
+            if (err_info) {
+                return err_info;
+            }
+        }
+    }
+
+    return NULL;
+}
+
 API int
 sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *owner, const char *group, mode_t perm)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
-    time_t from_ts, to_ts;
-    char *path = NULL;
-    const struct lys_module *ly_mod;
+    uint32_t i;
+    sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
 
-    SR_CHECK_ARG_APIRET(!conn || !module_name || (!owner && !group && ((int)perm == -1)), NULL, err_info);
+    SR_CHECK_ARG_APIRET(!conn || (!owner && !group && ((int)perm == -1)), NULL, err_info);
 
-    /* try to find the module */
-    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
-    if (!ly_mod) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
-        goto cleanup;
-    }
-
-    /* get startup file path */
-    if ((err_info = sr_path_startup_file(module_name, &path))) {
-        goto cleanup;
-    }
-
-    /* update startup file permissions and owner */
-    if ((err_info = sr_chmodown(path, owner, group, perm))) {
-        goto cleanup;
-    }
-
-    /* get running SHM file path */
-    free(path);
-    if ((err_info = sr_path_ds_shm(module_name, SR_DS_RUNNING, &path))) {
-        goto cleanup;
-    }
-
-    /* update running file permissions and owner */
-    if ((err_info = sr_chmodown(path, owner, group, perm))) {
-        goto cleanup;
-    }
-
-    /* get operational SHM file path */
-    free(path);
-    if ((err_info = sr_path_ds_shm(module_name, SR_DS_OPERATIONAL, &path))) {
-        goto cleanup;
-    }
-
-    /* update operational file permissions and owner */
-    if ((err_info = sr_chmodown(path, owner, group, perm))) {
-        goto cleanup;
-    }
-
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), module_name);
-    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
-
-    if (ATOMIC_LOAD_RELAXED(shm_mod->replay_supp)) {
-        if ((err_info = sr_replay_find_file(module_name, 1, 1, &from_ts, &to_ts))) {
-            goto cleanup;
+    if (module_name) {
+        /* find the module in SHM */
+        shm_mod = sr_shmmain_find_module(main_shm, module_name);
+        if (!shm_mod) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
+            return sr_api_ret(NULL, err_info);
         }
-        while (from_ts && to_ts) {
-            /* get next notification file path */
-            free(path);
-            if ((err_info = sr_path_notif_file(module_name, from_ts, to_ts, &path))) {
-                goto cleanup;
-            }
 
-            /* update notification file permissions and owner */
-            if ((err_info = sr_chmodown(path, owner, group, perm))) {
-                goto cleanup;
+        /* set permissions of this module */
+        err_info = _sr_set_module_access(module_name, shm_mod, owner, group, perm);
+    } else {
+       /* go through all the modules */
+       for (i = 0; i < main_shm->mod_count; ++i) {
+            shm_mod = SR_SHM_MOD_IDX(main_shm, i);
+            module_name = ((char *)main_shm) + shm_mod->name;
+
+            /* set permissions of this module */
+            if ((err_info = _sr_set_module_access(module_name, shm_mod, owner, group, perm))) {
+                break;
             }
         }
     }
 
-cleanup:
-    free(path);
     return sr_api_ret(NULL, err_info);
 }
 
