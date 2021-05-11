@@ -2451,7 +2451,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
 
                     if (diff) {
                         /* add any missing NP containers so that stored diff can be properly applied */
-                        if (lyd_new_implicit_module(&mod_data, mod->ly_mod, 0, NULL)) {
+                        if (lyd_new_implicit_module(&mod_data, mod->ly_mod, LYD_IMPLICIT_NO_DEFAULTS, NULL)) {
                             sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
                             goto cleanup;
                         }
