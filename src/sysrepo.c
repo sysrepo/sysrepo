@@ -1304,9 +1304,10 @@ sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *o
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
     uint32_t i;
-    sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
+    sr_main_shm_t *main_shm;
 
     SR_CHECK_ARG_APIRET(!conn || (!owner && !group && ((int)perm == -1)), NULL, err_info);
+    main_shm = SR_CONN_MAIN_SHM(conn);
 
     if (module_name) {
         /* find the module in SHM */

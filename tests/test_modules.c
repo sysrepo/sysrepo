@@ -1304,9 +1304,6 @@ test_set_module_access(void **state)
     ret = sr_set_module_access(NULL, "test", user, group, 00666);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
 
-    ret = sr_set_module_access(st->conn, NULL, user, group, 00666);
-    assert_int_equal(ret, SR_ERR_INVAL_ARG);
-
     ret = sr_set_module_access(st->conn, "test", NULL, NULL, (mode_t)-1);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
 
