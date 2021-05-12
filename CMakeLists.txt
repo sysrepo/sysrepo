@@ -71,7 +71,7 @@ else()
     option(ENABLE_TESTS "Build tests" OFF)
     option(ENABLE_VALGRIND_TESTS "Build tests with valgrind" OFF)
 endif()
-option(BUILD_EXAMPLES "Build examples." ON)
+option(ENABLE_EXAMPLES "Build examples." ON)
 option(ENABLE_COVERAGE "Build code coverage report from tests" OFF)
 
 if(ENABLE_COVERAGE)
@@ -231,16 +231,16 @@ include_directories("${PROJECT_SOURCE_DIR}/src")
 include_directories(${PROJECT_BINARY_DIR})
 
 # dependencies
-# librt (shm_open, shm_unlink, not required on OSX or QNX)
-find_library(LIBRT rt)
-if(LIBRT)
-    target_link_libraries(sysrepo ${LIBRT})
+# libatomic
+check_library_exists(atomic __atomic_fetch_add_4 "" LIBATOMIC)
+if(LIBATOMIC)
+    target_link_libraries(sysrepo atomic)
 endif()
 
-# atomic
-check_library_exists(atomic __atomic_fetch_add_4 "" HAVE_ATOMIC)
-if(HAVE_ATOMIC)
-    target_link_libraries(sysrepo atomic)
+# librt (shm_open, shm_unlink, not required on QNX or OSX)
+find_library(LIBRT_LIBRARIES rt)
+if(LIBRT_LIBRARIES)
+    target_link_libraries(sysrepo ${LIBRT_LIBRARIES})
 endif()
 
 # libyang, check version
@@ -286,11 +286,6 @@ if(INSTALL_SYSCTL_CONF)
     install(FILES "${PROJECT_SOURCE_DIR}/66-sysrepo-disable-fs-protected_regular.conf" DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/sysctl.d/")
 endif()
 
-# examples
-if(BUILD_EXAMPLES)
-    add_subdirectory(examples)
-endif()
-
 # tests
 if(ENABLE_TESTS)
     find_package(CMocka 1.0.0)
@@ -303,9 +298,9 @@ if(ENABLE_TESTS)
     endif()
 endif()
 
-# bindings
-if(GEN_LANGUAGE_BINDINGS)
-    add_subdirectory(bindings)
+# examples
+if(ENABLE_EXAMPLES)
+    add_subdirectory(examples)
 endif()
 
 # doxygen documentation

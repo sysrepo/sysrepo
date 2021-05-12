@@ -3594,7 +3594,7 @@ wait_for_event:
             SR_ERRINFO_SYSERRNO(&err_info, "select");
             sr_errinfo_free(&err_info);
             goto error;
-        } else if ((!ret || ((ret == -1) && (errno == EINTR))) && !stop_time_in) {
+        } else if (!stop_time_in && (!ret || ((ret == -1) && (errno == EINTR)))) {
             /* timeout/signal received, retry */
             goto wait_for_event;
         }
