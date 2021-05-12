@@ -1216,8 +1216,14 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
                 goto cleanup_wrunlock;
             }
 
-            /* we do not care about an error */
-            sr_errinfo_free(&cb_err_info);
+            if (cb_err_info) {
+                /* timeout */
+                SR_LOG_WRN("Event \"%s\" with ID %u priority %u failed (%s).", sr_ev2str(SR_SUB_EV_DONE),
+                        mod->request_id, cur_priority, sr_strerror(cb_err_info->err_code));
+
+                /* free and continue, the changes are stored in DS */
+                sr_errinfo_free(&cb_err_info);
+            }
 
             /* find out what is the next priority and how many subscribers have it */
             if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_DONE,
