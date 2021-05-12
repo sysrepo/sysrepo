@@ -1783,7 +1783,8 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
     sr_error_info_t *err_info = NULL;
     char str[22], *str_val;
 
-    SR_CHECK_ARG_APIRET(!session || (!path && (!value || !value->xpath)), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || (!path && (!value || !value->xpath)) || (!SR_IS_CONVENTIONAL_DS(session->ds) &&
+            (opts & (SR_EDIT_STRICT | SR_EDIT_NON_RECURSIVE))), session, err_info);
 
     if (!path) {
         path = value->xpath;
@@ -1800,7 +1801,8 @@ sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, 
     sr_error_info_t *err_info = NULL;
     char *pref_origin = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || !path, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !path || (!SR_IS_CONVENTIONAL_DS(session->ds) &&
+            (opts & (SR_EDIT_STRICT | SR_EDIT_NON_RECURSIVE))), session, err_info);
 
     /* we do not need any lock, ext SHM is not accessed */
 
@@ -1830,11 +1832,11 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     const struct lysc_node *snode;
     int ly_log_opts;
 
-    SR_CHECK_ARG_APIRET(!session || !path, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !path || (!SR_IS_CONVENTIONAL_DS(session->ds) && (opts & SR_EDIT_STRICT)),
+            session, err_info);
 
     /* turn off logging */
     ly_log_opts = ly_log_options(0);
-
     if ((path[strlen(path) - 1] != ']') && (snode = lys_find_path(session->conn->ly_ctx, NULL, path, 0)) &&
             (snode->nodetype & (LYS_LEAFLIST | LYS_LIST)) && !strcmp((path + strlen(path)) - strlen(snode->name), snode->name)) {
         operation = "purge";
@@ -1843,7 +1845,6 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     } else {
         operation = "remove";
     }
-
     ly_log_options(ly_log_opts);
 
     /* add the operation into edit */
@@ -1860,7 +1861,8 @@ sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position
     sr_error_info_t *err_info = NULL;
     char *pref_origin = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || !path, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !path || (!SR_IS_CONVENTIONAL_DS(session->ds) &&
+            (opts & (SR_EDIT_STRICT | SR_EDIT_NON_RECURSIVE))), session, err_info);
 
     if (origin) {
         if (!strchr(origin, ':')) {
@@ -1885,13 +1887,14 @@ API int
 sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char *default_operation)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *dup_edit = NULL, *node;
+    struct lyd_node *dup_edit = NULL, *root, *elem;
+    enum edit_op op;
 
     SR_CHECK_ARG_APIRET(!session || !edit || !default_operation, session, err_info);
     SR_CHECK_ARG_APIRET(strcmp(default_operation, "merge") && strcmp(default_operation, "replace") &&
             strcmp(default_operation, "none"), session, err_info);
 
-    if (session->conn->ly_ctx != edit->schema->module->ctx) {
+    if (session->conn->ly_ctx != LYD_CTX(edit)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Data trees must be created using the session connection libyang context.");
         return sr_api_ret(session, err_info);
     } else if (session->dt[session->ds].edit) {
@@ -1906,12 +1909,26 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
     }
 
     /* add default operation and default origin */
-    LY_LIST_FOR(dup_edit, node) {
-        if (!sr_edit_diff_find_oper(node, 0, NULL) && (err_info = sr_edit_set_oper(node, default_operation))) {
+    LY_LIST_FOR(dup_edit, root) {
+        if (!sr_edit_diff_find_oper(root, 0, NULL) && (err_info = sr_edit_set_oper(root, default_operation))) {
             goto error;
         }
-        if ((session->ds == SR_DS_OPERATIONAL) && (err_info = sr_edit_diff_set_origin(node, SR_OPER_ORIGIN, 0))) {
-            goto error;
+        if (session->ds == SR_DS_OPERATIONAL) {
+            if ((err_info = sr_edit_diff_set_origin(root, SR_OPER_ORIGIN, 0))) {
+                goto error;
+            }
+
+            /* check that no forbidden operations are set */
+            LYD_TREE_DFS_BEGIN(root, elem) {
+                op = sr_edit_diff_find_oper(elem, 0, NULL);
+                if (op && (op != EDIT_MERGE) && (op != EDIT_REPLACE) && (op != EDIT_REMOVE) && (op != EDIT_PURGE)) {
+                    sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Operation \"%s\" is not allowed for operational "
+                            "datastore changes.", sr_edit_op2str(op));
+                    return sr_api_ret(session, err_info);
+                }
+
+                LYD_TREE_DFS_END(root, elem);
+            }
         }
     }
 

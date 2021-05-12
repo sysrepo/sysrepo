@@ -2145,7 +2145,7 @@ test_conn_owner1(void **state)
 
     /* set some operational data */
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
-            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+            "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2205,13 +2205,13 @@ test_conn_owner2(void **state)
 
     /* set some operational data */
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
-            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+            "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/oper-status",
-            "up", NULL, SR_EDIT_STRICT);
+            "up", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/speed",
-            "1024", NULL, SR_EDIT_STRICT);
+            "1024", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2244,7 +2244,7 @@ test_conn_owner2(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/statistics/discontinuity-time",
-            "2019-10-29T09:43:12Z", NULL, SR_EDIT_STRICT);
+            "2019-10-29T09:43:12Z", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2409,7 +2409,7 @@ test_stored_state(void **state)
 
     /* set some operational data */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
-            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+            "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2456,13 +2456,13 @@ test_stored_state_list(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some operational data */
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/l[1]/l1", "val1", NULL, SR_EDIT_STRICT);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/l[1]/l1", "val1", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/l[2]/l1", "val2", NULL, SR_EDIT_STRICT);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/l[2]/l1", "val2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val1", NULL, SR_EDIT_STRICT);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val1", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val2", NULL, SR_EDIT_STRICT);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2493,7 +2493,7 @@ test_stored_state_list(void **state)
     free(str1);
 
     /* remove some oper data */
-    ret = sr_delete_item(st->sess, "/mixed-config:test-state/ll", SR_EDIT_STRICT);
+    ret = sr_delete_item(st->sess, "/mixed-config:test-state/ll", 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2522,11 +2522,11 @@ test_stored_state_list(void **state)
     free(str1);
 
     /* create some new oper data */
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val3", NULL, SR_EDIT_STRICT);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val3", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val2", NULL, SR_EDIT_STRICT);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val1", NULL, SR_EDIT_STRICT);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val1", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2636,14 +2636,6 @@ test_stored_config(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     assert_true(data->flags & LYD_DEFAULT);
     lyd_free_all(data);
-
-    /* it should not be possible to delete a non-existing node just like in conventional datastores */
-    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']", SR_EDIT_STRICT);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_NOT_FOUND);
-    ret = sr_discard_changes(st->sess);
-    assert_int_equal(ret, SR_ERR_OK);
 
     sr_unsubscribe(subscr);
 }
@@ -2974,13 +2966,13 @@ test_stored_diff_merge_leaf(void **state)
 
     /* set some operational data */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
-            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+            "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/description",
-            "oper-description", NULL, SR_EDIT_STRICT);
+            "oper-description", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled",
-            "false", NULL, SR_EDIT_STRICT);
+            "false", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -3197,9 +3189,9 @@ test_stored_diff_merge_userord(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some operational data (move list and create list) */
-    ret = sr_move_item(st->sess, "/test:cont/l2[k='key2']", SR_MOVE_BEFORE, "[k='key1']", NULL, NULL, SR_EDIT_NON_RECURSIVE);
+    ret = sr_move_item(st->sess, "/test:cont/l2[k='key2']", SR_MOVE_BEFORE, "[k='key1']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/test:cont/l2[k='key3']/v", "27", NULL, SR_EDIT_STRICT);
+    ret = sr_set_item_str(st->sess, "/test:cont/l2[k='key3']/v", "27", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -3221,9 +3213,9 @@ test_stored_diff_merge_userord(void **state)
             "<k>key1</k>"
             "<v>25</v>"
         "</l2>"
-        "<l2 or:origin=\"or:unknown\">"
+        "<l2>"
             "<k>key3</k>"
-            "<v>27</v>"
+            "<v or:origin=\"or:unknown\">27</v>"
         "</l2>"
     "</cont>";
     assert_string_equal(str1, str2);
@@ -3250,9 +3242,9 @@ test_stored_diff_merge_userord(void **state)
             "<k>key1</k>"
             "<v>25</v>"
         "</l2>"
-        "<l2 or:origin=\"or:unknown\">"
+        "<l2>"
             "<k>key3</k>"
-            "<v>27</v>"
+            "<v or:origin=\"or:unknown\">27</v>"
         "</l2>"
         "<l2 or:origin=\"or:learned\">"
             "<k>key2</k>"

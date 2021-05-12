@@ -71,6 +71,14 @@ LY_ERR sr_lyd_diff_merge_cb(const struct lyd_node *src_node, struct lyd_node *tr
 LY_ERR sr_lyd_diff_apply_cb(const struct lyd_node *diff_node, struct lyd_node *data_node, void *user_data);
 
 /**
+ * @brief Return string name of an operation.
+ *
+ * @param[in] op Operation.
+ * @return String operation name.
+ */
+const char *sr_edit_op2str(enum edit_op op);
+
+/**
  * @brief Set an operation (attribute) for an edit node. They are defined in sysrepo and ietf-netconf module.
  *
  * @param[in] edit Node to modify.

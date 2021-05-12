@@ -132,8 +132,9 @@ This method is suitable for data that change often such as some counters or stat
 
 As for the second push method, its main principle is that the state data need to be set only when they change. Otherwise
 they are stored and reused whenever needed without any interaction with the provider client. These data are
-[set normally](@ref edit_data) but they are owned by the client. As soon as the client [disconnects](@ref conn_sess), the
-data are considered to no longer be in-use and are deleted. This method is suitable for data that do not change
+[set normally](@ref edit_data) but they are owned by the client and only _merge_, _replace_, _remove_, and _purge_ operations
+are supported. As soon as the client [disconnects](@ref conn_sess), the
+data are considered to no longer be in-use and are discarded. This method is suitable for data that do not change
 often or not at all such as network interface state or basic information about the system.
 
 These methods can be combined and provided data can overlap. Later push data overwrite older stored push data and

@@ -4,8 +4,8 @@
  * @brief public API sysrepo header
  *
  * @copyright
- * Copyright 2018 Deutsche Telekom AG.
- * Copyright 2018 - 2019 CESNET, z.s.p.o.
+ * Copyright 2018 - 2021 Deutsche Telekom AG.
+ * Copyright 2018 - 2021 CESNET, z.s.p.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -931,7 +931,8 @@ typedef enum sr_move_position_e {
  * With default options it recursively creates all missing nodes (containers and
  * lists including their key leaves) in the xpath to the specified node (can be
  * turned off with ::SR_EDIT_NON_RECURSIVE option). If ::SR_EDIT_STRICT flag is set,
- * the node must not exist (otherwise an error is returned).
+ * the node must not exist (otherwise an error is returned). Neither option is allowed
+ * for ::SR_DS_OPERATIONAL.
  *
  * To create a list use xpath with key values included and pass NULL as value argument.
  *
@@ -969,7 +970,8 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
  * @brief Prepare to selete the nodes matching the specified xpath. These changes are applied only
  * after calling ::sr_apply_changes. The accepted values are the same as for ::sr_set_item_str.
  *
- * If ::SR_EDIT_STRICT flag is set the specified node must must exist in the datastore.
+ * If ::SR_EDIT_STRICT flag is set the specified node must must exist in the datastore. Not supported for
+ * ::SR_DS_OPERATIONAL.
  * If the @p path includes the list keys/leaf-list value, the specified instance is deleted.
  * If the @p path of list/leaf-list does not include keys/value, all instances are deleted.
  *
@@ -989,7 +991,8 @@ int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_op
  * With default options it recursively creates all missing nodes (containers and
  * lists including their key leaves) in the xpath to the specified node (can be
  * turned off with ::SR_EDIT_NON_RECURSIVE option). If ::SR_EDIT_STRICT flag is set,
- * the node must not exist (otherwise an error is returned).
+ * the node must not exist (otherwise an error is returned). Neither option is allowed
+ * for ::SR_DS_OPERATIONAL.
  *
  * @note To determine current order, you can issue a ::sr_get_items call
  * (without specifying keys of particular list).
@@ -1010,7 +1013,9 @@ int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_posi
 
 /**
  * @brief Provide a prepared edit data tree to be applied.
- * These changes are applied only after calling ::sr_apply_changes.
+ * These changes are applied only after calling ::sr_apply_changes().
+ *
+ * Only operations `merge`, `replace`, `remove`, and `purge` are allowed for ::SR_DS_OPERATIONAL.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] edit Edit content, similar semantics to

@@ -487,13 +487,7 @@ sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node
     return NULL;
 }
 
-/**
- * @brief Return string name of an operation.
- *
- * @param[in] op Operation.
- * @return String operation name.
- */
-static const char *
+const char *
 sr_edit_op2str(enum edit_op op)
 {
     switch (op) {
