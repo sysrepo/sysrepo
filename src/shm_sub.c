@@ -284,6 +284,7 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
  *              ::SR_SUB_EV_SUCCESS - an answer (success/error) is expected but SHM will not be accessed, so
  *                                    success (never error) event is cleared,
  *              ::SR_SUB_EV_ERROR - an answer is expected and SHM will be further accessed so do not clear any events.
+ * @param[in] clear_ev_on_timeout Whether to clear the current event if timeout occurs or leave it be.
  * @param[in] timeout_ms Timeout in milliseconds.
  * @param[in] cid Connection ID.
  * @param[in] shm_data_sub Opened sub data SHM.
@@ -291,8 +292,8 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, uint32_t timeout_ms, sr_cid_t cid,
-        sr_shm_t *shm_data_sub, sr_error_info_t **cb_err_info)
+sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int clear_ev_on_timeout, uint32_t timeout_ms,
+        sr_cid_t cid, sr_shm_t *shm_data_sub, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
@@ -320,25 +321,36 @@ sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, uint
         /* COND WAIT */
         ret = pthread_cond_timedwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, &timeout_ts);
     }
-
-    /* FAKE WRITE LOCK */
-    sub_shm->lock.writer = cid;
+    /* we are holding the mutex but no lock flags are set */
 
     if (ret) {
         if ((ret == ETIMEDOUT) && (sub_shm->event && !SR_IS_NOTIFY_EVENT(sub_shm->event))) {
-            /* event timeout */
-            sr_errinfo_new(cb_err_info, SR_ERR_TIME_OUT, "Callback event \"%s\" with ID %" PRIu32 " processing timed out.",
-                    sr_ev2str(event), request_id);
-            if ((event == sub_shm->event) && (request_id == sub_shm->request_id) &&
-                    ((expected_ev == SR_SUB_EV_SUCCESS) || (expected_ev == SR_SUB_EV_ERROR))) {
-                sub_shm->event = SR_SUB_EV_ERROR;
+            /* WRITE LOCK, chances are we will get it if we ignore the event */
+            if ((err_info = sr_sub_rwlock_has_mutex(&sub_shm->lock, timeout_ms, SR_LOCK_WRITE, cid, __func__, NULL, NULL))) {
+                /* we still have the mutex but are unable to get the WRITE lock back, risk setting it back */
+                sub_shm->lock.writer = cid;
+            } else {
+                /* event timeout */
+                sr_errinfo_new(cb_err_info, SR_ERR_TIME_OUT, "Callback event \"%s\" with ID %" PRIu32
+                        " processing timed out.", sr_ev2str(event), request_id);
+                if ((event == sub_shm->event) && (request_id == sub_shm->request_id)) {
+                    if (clear_ev_on_timeout) {
+                        sub_shm->event = SR_SUB_EV_NONE;
+                    } else if ((expected_ev == SR_SUB_EV_SUCCESS) || (expected_ev == SR_SUB_EV_ERROR)) {
+                        sub_shm->event = SR_SUB_EV_ERROR;
+                    }
+                }
             }
         } else {
-            /* other error */
+            /* other error, set the WRITE lock back but it may not be safe, depends on the error */
             SR_ERRINFO_COND(&err_info, __func__, ret);
+            sub_shm->lock.writer = cid;
         }
         return err_info;
     }
+
+    /* FAKE WRITE LOCK */
+    sub_shm->lock.writer = cid;
 
     /* remap sub data SHM */
     if ((err_info = sr_shmsub_data_open_remap(NULL, NULL, -1, shm_data_sub, 0))) {
@@ -934,7 +946,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, const char *orig_
             }
 
             /* wait until the event is processed */
-            if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_ERROR, timeout_ms, cid,
+            if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_ERROR, 0, timeout_ms, cid,
                     &shm_data_sub, cb_err_info))) {
                 goto cleanup_wrunlock;
             }
@@ -1142,7 +1154,7 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
             }
 
             /* wait until the event is processed */
-            if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_SUCCESS, timeout_ms, cid,
+            if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_SUCCESS, 0, timeout_ms, cid,
                     &shm_data_sub, cb_err_info))) {
                 goto cleanup_wrunlock;
             }
@@ -1258,7 +1270,7 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
             }
 
             /* wait until the event is processed */
-            if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_NONE, timeout_ms, cid,
+            if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_NONE, 1, timeout_ms, cid,
                     &shm_data_sub, &cb_err_info))) {
                 goto cleanup_wrunlock;
             }
@@ -1410,7 +1422,7 @@ clear_shm:
             }
 
             /* wait until the event is processed */
-            if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_NONE, timeout_ms, cid,
+            if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_NONE, 1, timeout_ms, cid,
                     &shm_data_sub, &cb_err_info))) {
                 goto cleanup_wrunlock;
             }
@@ -1512,7 +1524,7 @@ sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const 
     }
 
     /* wait until the event is processed */
-    if ((err_info = sr_shmsub_notify_wait_wr(sub_shm, SR_SUB_EV_ERROR, timeout_ms, cid, &shm_data_sub, cb_err_info))) {
+    if ((err_info = sr_shmsub_notify_wait_wr(sub_shm, SR_SUB_EV_ERROR, 1, timeout_ms, cid, &shm_data_sub, cb_err_info))) {
         goto cleanup_wrunlock;
     }
 
@@ -1520,9 +1532,6 @@ sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const 
         /* failed callback or timeout */
         SR_LOG_WRN("Event \"operational\" with ID %" PRIu32 " failed (%s).", request_id,
                 sr_strerror((*cb_err_info)->err[0].err_code));
-
-        /* clear SHM */
-        err_info = sr_shmsub_notify_write_event(sub_shm, request_id, 0, NULL, NULL, &shm_data_sub, NULL, NULL, 0, NULL);
         goto cleanup_wrunlock;
     } else {
         SR_LOG_INF("Event \"operational\" with ID %" PRIu32 " succeeded.", request_id);
@@ -1801,7 +1810,7 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *op_path
         }
 
         /* wait until the event is processed */
-        if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_ERROR, timeout_ms, conn->cid,
+        if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_ERROR, 0, timeout_ms, conn->cid,
                 &shm_data_sub, cb_err_info))) {
             goto cleanup_wrunlock;
         }
@@ -1948,7 +1957,7 @@ clear_shm:
         }
 
         /* wait until the event is processed */
-        if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_NONE, timeout_ms, conn->cid,
+        if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_NONE, 1, timeout_ms, conn->cid,
                 &shm_data_sub, &cb_err_info))) {
             goto cleanup_wrunlock;
         }
@@ -2057,7 +2066,7 @@ sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, time_t
 
     if (wait) {
         /* wait until the event is processed */
-        if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_NONE, timeout_ms, conn->cid,
+        if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_NONE, 1, timeout_ms, conn->cid,
                 &shm_data_sub, &cb_err_info))) {
             goto cleanup_sub_unlock;
         }

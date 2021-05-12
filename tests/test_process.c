@@ -600,6 +600,27 @@ test_pull_push_oper2(int rp, int wp)
     return 0;
 }
 
+/* TEST */
+static int
+test_conn_create(int rp, int wp)
+{
+    sr_conn_ctx_t *conn;
+    int ret, i;
+
+    /* wait for the other process */
+    barrier(rp, wp);
+
+    /* keep creating and destroying connections */
+    for (i = 0; i < 10; ++i) {
+        ret = sr_connect(0, &conn);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+
+        sr_disconnect(conn);
+    }
+
+    return 0;
+}
+
 int
 main(void)
 {
@@ -608,6 +629,7 @@ main(void)
         {"rpc crash", test_rpc_crash1, test_rpc_crash2, setup, teardown},
         {"notif instid", test_notif_instid1, test_notif_instid2, setup, teardown},
         {"pull push oper data", test_pull_push_oper1, test_pull_push_oper2, setup, teardown},
+        {"conn create", test_conn_create, test_conn_create, setup, teardown},
     };
 
     sr_log_set_cb(test_log_cb);

@@ -5554,6 +5554,153 @@ test_change_timeout(void **state)
 
 /* TEST */
 static int
+module_done_timeout_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)xpath;
+    (void)request_id;
+
+    assert_string_equal(module_name, "test");
+
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
+    case 0:
+        assert_int_equal(event, SR_EV_DONE);
+
+        /* time out */
+        pthread_barrier_wait(&st->barrier2);
+        break;
+    case 1:
+        assert_int_equal(event, SR_EV_DONE);
+        break;
+    default:
+        fail();
+    }
+
+    ATOMIC_INC_RELAXED(st->cb_called);
+    return SR_ERR_OK;
+}
+
+static void *
+apply_done_timeout_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(sess, "/test:test-leaf", "30", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for subscription before applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    /* perform the change, time out (subscription is not handling events) */
+    ret = sr_apply_changes(sess, 1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* sync #1 */
+    pthread_barrier_wait(&st->barrier);
+
+    /* try again, time out again (callback is called but gets stuck) */
+    ret = sr_set_item_str(sess, "/test:test-leaf", "31", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 100);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* unstuck the callback so it finishes */
+    pthread_barrier_wait(&st->barrier2);
+
+    /* sync #2 */
+    pthread_barrier_wait(&st->barrier);
+
+    /* final try, success */
+    ret = sr_set_item_str(sess, "/test:test-leaf", "32", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that we are done */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+subscribe_done_timeout_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr;
+    int count, ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "test", NULL, module_done_timeout_cb, st, 0,
+            SR_SUBSCR_DONE_ONLY | SR_SUBSCR_NO_THREAD, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that subscription was created */
+    pthread_barrier_wait(&st->barrier);
+
+    /* sync #1 */
+    pthread_barrier_wait(&st->barrier);
+
+    /* keep handling events */
+    count = 0;
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 1) && (count < 1500)) {
+        ret = sr_process_events(subscr, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        usleep(10000);
+        ++count;
+    }
+
+    /* sync #2 */
+    pthread_barrier_wait(&st->barrier);
+
+    /* keep handling events */
+    count = 0;
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 2) && (count < 1500)) {
+        ret = sr_process_events(subscr, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        usleep(10000);
+        ++count;
+    }
+
+    /* wait for the other thread to finish */
+    pthread_barrier_wait(&st->barrier);
+
+    /* check callback call count */
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
+
+    sr_unsubscribe(subscr);
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_done_timeout(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, apply_done_timeout_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_done_timeout_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
+/* TEST */
+static int
 module_change_order_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data)
 {
@@ -6160,6 +6307,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_change_done_xpath, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_unlocked, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_timeout, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_done_timeout, setup_f, teardown_f),
         //cmocka_unit_test_setup_teardown(test_change_order, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_userord, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_enabled, setup_f, teardown_f),

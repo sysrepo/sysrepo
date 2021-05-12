@@ -264,9 +264,12 @@ sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive, pid_t *pid)
             *pid = 0;
         }
 
-        /* print message and delete the file on first detection */
-        SR_LOG_WRN("Connection with CID %" PRIu32 " is dead.", cid);
-        if (unlink(path) == -1) {
+        /* delete the file */
+        if (!unlink(path)) {
+            /* print message, file was deleted */
+            SR_LOG_WRN("Connection with CID %" PRIu32 " is dead.", cid);
+        } else if (errno != ENOENT) {
+            /* removing the file is subject to a (harmless) data race, account for it */
             SR_ERRINFO_SYSERRNO(&err_info, "unlink");
         }
     } else {
