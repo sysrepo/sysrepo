@@ -3009,20 +3009,35 @@ sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_lock_recover_cb cb, 
     }
 }
 
-sr_error_info_t *
-sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
-        sr_lock_recover_cb cb, void *cb_data)
+/**
+ * @brief Lock a sysrepo RW lock. On failure, the lock is not changed in any way.
+ *
+ * @param[in] rwlock RW lock to lock.
+ * @param[in] timeout_ms Timeout in ms for locking.
+ * @param[in] mode Lock mode to set.
+ * @param[in] cid Lock owner connection ID.
+ * @param[in] func Name of the calling function for logging.
+ * @param[in] cb Optional callback called when recovering locks. When calling it, WRITE lock is always held.
+ * @param[in] cb_data Arbitrary user data for @p cb.
+ * @param[in] has_mutex Set if the lock mutex is already held.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+_sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
+        sr_lock_recover_cb cb, void *cb_data, int has_mutex)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
-    int ret;
+    int ret = 0;
 
     assert(mode && (timeout_ms > 0) && cid);
 
     sr_time_get(&timeout_ts, timeout_ms);
 
-    /* MUTEX LOCK */
-    ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_ts);
+    if (!has_mutex) {
+        /* MUTEX LOCK */
+        ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_ts);
+    }
 
     if (ret == EOWNERDEAD) {
         /* make it consistent */
@@ -3108,11 +3123,27 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid
     return NULL;
 
 error_cond_unlock:
-    /* MUTEX UNLOCK */
-    pthread_mutex_unlock(&rwlock->mutex);
+    if (!has_mutex) {
+        /* MUTEX UNLOCK */
+        pthread_mutex_unlock(&rwlock->mutex);
+    }
 
     SR_ERRINFO_COND(&err_info, func, ret);
     return err_info;
+}
+
+sr_error_info_t *
+sr_sub_rwlock_has_mutex(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
+        sr_lock_recover_cb cb, void *cb_data)
+{
+    return _sr_rwlock(rwlock, timeout_ms, mode, cid, func, cb, cb_data, 1);
+}
+
+sr_error_info_t *
+sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
+        sr_lock_recover_cb cb, void *cb_data)
+{
+    return _sr_rwlock(rwlock, timeout_ms, mode, cid, func, cb, cb_data, 0);
 }
 
 sr_error_info_t *
