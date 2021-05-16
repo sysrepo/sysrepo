@@ -529,7 +529,7 @@ sr_shmsub_multi_notify_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t r
     }
 
     if (event) {
-        SR_LOG_INF("Published event \"%s\" \"%s\" with ID %u priority %u for %u subscribers.", sr_ev2str(event),
+        SR_LOG_DBG("Published event \"%s\" \"%s\" with ID %u priority %u for %u subscribers.", sr_ev2str(event),
                 event_desc, request_id, priority, subscriber_count);
     }
     return NULL;
