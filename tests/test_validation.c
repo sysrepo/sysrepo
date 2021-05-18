@@ -236,7 +236,7 @@ test_operational(void **state)
     ret = lyd_new_implicit_all(&edit, sr_get_context(st->conn), 0, NULL);
     assert_int_equal(ret, 0);
 
-    ret = sr_edit_batch(st->sess, edit, "replace");
+    ret = sr_edit_batch(st->sess, edit, "merge");
     lyd_free_all(edit);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -254,7 +254,7 @@ test_operational(void **state)
     /* parse it properly now */
     assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(sr_get_context(st->conn), data, LYD_JSON, LYD_PARSE_ONLY, 0, &edit));
 
-    ret = sr_edit_batch(st->sess, edit, "replace");
+    ret = sr_edit_batch(st->sess, edit, "merge");
     lyd_free_all(edit);
     assert_int_equal(ret, SR_ERR_OK);
 

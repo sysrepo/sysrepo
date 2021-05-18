@@ -4,8 +4,8 @@
  * @brief header for routines for sysrepo edit and diff data tree handling
  *
  * @copyright
- * Copyright 2018 Deutsche Telekom AG.
- * Copyright 2018 - 2019 CESNET, z.s.p.o.
+ * Copyright 2018 - 2021 Deutsche Telekom AG.
+ * Copyright 2018 - 2021 CESNET, z.s.p.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,24 +51,43 @@ enum edit_op {
 };
 
 /**
- * @brief Callback for libyang diff merge.
+ * @brief Callback data for libyang merge callback.
+ */
+struct sr_lyd_merge_cb_data {
+    sr_cid_t cid;           /**< Source edit owner CID. */
+    struct lyd_node **diff; /**< Pointer to generated diff, do not generate if NULL. */
+    int changed;            /**< Whether there was any change at all. */
+    sr_error_info_t *err_info;  /**< Error info in case of error. */
+};
+
+/**
+ * @brief Callback for libyang merge, used for operational edit merge.
  *
- * @param[in] src_node Source diff node.
- * @param[in] trg_node Target diff node.
- * @param[in] cid_p Pointer to the operational data owner connection CID.
+ * @param[in] trg_node Target node.
+ * @param[in] src_node Source node, NULL if there was no target node found.
+ * @param[in] cb_data Pointer to ::sr_lyd_merge_cb_data structure.
  * @return LY_ERR value.
  */
-LY_ERR sr_lyd_diff_merge_cb(const struct lyd_node *src_node, struct lyd_node *trg_node, void *cid_p);
+LY_ERR sr_lyd_merge_cb(struct lyd_node *trg_node, const struct lyd_node *src_node, void *cb_data);
 
 /**
  * @brief Callback for libyang diff apply.
  *
  * @param[in] diff_node Diff node.
  * @param[in] data_node Matching node in data.
- * @param[in] user_data Unused user data.
+ * @param[in] cb_data Unused callback data.
  * @return LY_ERR value.
  */
-LY_ERR sr_lyd_diff_apply_cb(const struct lyd_node *diff_node, struct lyd_node *data_node, void *user_data);
+LY_ERR sr_lyd_diff_apply_cb(const struct lyd_node *diff_node, struct lyd_node *data_node, void *cb_data);
+
+/**
+ * @brief Transform edit into best-effort diff.
+ *
+ * @param[in] edit Edit to transform.
+ * @param[out] diff Created diff.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_edit2diff(const struct lyd_node *edit, struct lyd_node **diff);
 
 /**
  * @brief Return string name of an operation.
@@ -156,17 +175,6 @@ sr_error_info_t *sr_edit_mod_apply(const struct lyd_node *edit, const struct lys
         struct lyd_node **diff, int *change);
 
 /**
- * @brief Update sysrepo diff on a specific module data tree.
- * Meaning remove diff parts that cannot be applied.
- *
- * @param[in,out] diff Diff to update.
- * @param[in] ly_mod Data tree module.
- * @param[in] mod_data Data tree to use.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_diff_mod_update(struct lyd_node **diff, const struct lys_module *ly_mod, const struct lyd_node *mod_data);
-
-/**
  * @brief Add change into sysrepo edit.
  *
  * @param[in] session Session to use.
@@ -197,12 +205,14 @@ sr_error_info_t *sr_edit_add(sr_session_ctx_t *session, const char *xpath, const
 sr_error_info_t *sr_diff_set_getnext(struct ly_set *set, uint32_t *idx, struct lyd_node **node, sr_change_oper_t *op);
 
 /**
- * @brief Remove all stored diff nodes that belong to a connection that is being deleted.
+ * @brief Remove stored edit nodes that belong to a connection and that optionally match an xpath.
  *
- * @param[in,out] diff Diff to remove from.
+ * @param[in,out] edit Edit to remove from.
  * @param[in] cid Connection ID of the deleted connection.
+ * @param[in] xpath XPath selecting nodes to consider for deletion, NULL for all the nodes.
+ * @param[out] change_edit Optional change edit created for subscribers based on the changes made in oper edit.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_diff_del_conn(struct lyd_node **diff, sr_cid_t cid);
+sr_error_info_t *sr_edit_oper_del(struct lyd_node **edit, sr_cid_t cid, const char *xpath, struct lyd_node **change_edit);
 
 #endif

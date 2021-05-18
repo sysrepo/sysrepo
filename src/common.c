@@ -5227,31 +5227,31 @@ error:
 }
 
 sr_error_info_t *
-sr_module_file_oper_data_load(struct sr_mod_info_mod_s *mod, struct lyd_node **diff)
+sr_module_file_oper_data_load(struct sr_mod_info_mod_s *mod, struct lyd_node **edit)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *root, *elem;
     struct lyd_meta *meta;
     sr_cid_t dead_cid = 0;
 
-    assert(!*diff);
+    assert(!*edit);
 
-    /* load the operational data (diff) */
-    if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_OPERATIONAL, diff))) {
+    /* load the operational data (edit) */
+    if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_OPERATIONAL, edit))) {
         return err_info;
     }
 
 trim_retry:
     if (dead_cid) {
-        /* this connection is dead, remove its stored diff */
+        /* this connection is dead, remove its stored edit */
         SR_LOG_INF("Recovering module \"%s\" stored operational data of CID %" PRIu32 ".", mod->ly_mod->name, dead_cid);
-        if ((err_info = sr_diff_del_conn(diff, dead_cid))) {
+        if ((err_info = sr_edit_oper_del(edit, dead_cid, NULL, NULL))) {
             return err_info;
         }
     }
 
-    /* find diff belonging to a dead connection, if any */
-    LY_LIST_FOR(*diff, root) {
+    /* find edit belonging to a dead connection, if any */
+    LY_LIST_FOR(*edit, root) {
         LYD_TREE_DFS_BEGIN(root, elem) {
             meta = lyd_find_meta(elem->meta, NULL, SR_YANG_MOD ":cid");
             if (meta && !sr_conn_is_alive(meta->value.uint32)) {
@@ -5332,67 +5332,6 @@ cleanup:
     }
     free(path);
     free(bck_path);
-    return err_info;
-}
-
-sr_error_info_t *
-sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
-{
-    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
-    const struct lys_module *ly_mod;
-    struct sr_mod_info_s mod_info;
-    struct ly_set mod_set = {0};
-    struct lyd_node *diff = NULL;
-
-    SR_MODINFO_INIT(mod_info, conn, SR_DS_OPERATIONAL, SR_DS_RUNNING);
-
-    /* get the module */
-    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, mod_name);
-    SR_CHECK_INT_RET(!ly_mod, err_info);
-
-    /* just lock the module for now */
-    ly_set_add(&mod_set, (void *)ly_mod, 0, NULL);
-    if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_WRITE, SR_MI_PERM_NO | SR_MI_DATA_NO,
-            0, NULL, NULL, NULL, 0, 0))) {
-        goto cleanup;
-    }
-
-    /* load the stored diff */
-    if ((err_info = sr_module_file_oper_data_load(&mod_info.mods[0], &diff))) {
-        goto cleanup;
-    }
-    if (!diff) {
-        /* no stored diff */
-        goto cleanup;
-    }
-
-    /* now just load all the data */
-    if ((err_info = sr_modinfo_data_load(&mod_info, 1, NULL, NULL, NULL, 0, SR_OPER_NO_STORED | SR_OPER_NO_SUBS,
-            &cb_err_info))) {
-        goto cleanup;
-    }
-    if (cb_err_info) {
-        /* return callback error if some was generated */
-        sr_errinfo_merge(&err_info, cb_err_info);
-        sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, "User callback failed.");
-        goto cleanup;
-    }
-
-    /* update diff */
-    if ((err_info = sr_diff_mod_update(&diff, ly_mod, mod_info.data))) {
-        goto cleanup;
-    }
-    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_OPERATIONAL, diff, 0, SR_FILE_PERM))) {
-        goto cleanup;
-    }
-
-cleanup:
-    /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info);
-
-    lyd_free_all(diff);
-    ly_set_erase(&mod_set, NULL);
-    sr_modinfo_free(&mod_info);
     return err_info;
 }
 

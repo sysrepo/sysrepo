@@ -4,8 +4,8 @@
  * @brief header for modinfo routines
  *
  * @copyright
- * Copyright 2018 Deutsche Telekom AG.
- * Copyright 2018 - 2019 CESNET, z.s.p.o.
+ * Copyright 2018 - 2021 Deutsche Telekom AG.
+ * Copyright 2018 - 2021 CESNET, z.s.p.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -135,7 +135,7 @@ void sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info);
  * @param[in] orig_data Event originator data.
  * @param[in] request_id XPath of the data request.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
- * @param[in] opts Get oper data options.
+ * @param[in] opts Get oper data options, ignored if getting only ::SR_DS_OPERATIONAL data (edit).
  * @param[out] cb_error_info Callback error info in case an operational subscriber of required data failed.
  * @return err_info, NULL on success.
  */
@@ -166,7 +166,7 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig
  * @param[in] orig_data Event originator data.
  * @param[in] request_xpath Request XPath for operational callbacks.
  * @param[in] timeout_ms Timeout for operational callbacks.
- * @param[in] get_opts Get operational data options.
+ * @param[in] get_opts Get operational data options, ignored if getting only ::SR_DS_OPERATIONAL data (edit).
  */
 sr_error_info_t *sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const struct ly_set *mod_set, int mod_deps,
         sr_lock_mode_t mod_lock, int mi_opts, uint32_t sid, const char *orig_name, const void *orig_data,
@@ -190,14 +190,6 @@ sr_error_info_t *sr_modinfo_validate(struct sr_mod_info_s *mod_info, int mod_sta
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff);
-
-/**
- * @brief Add config/state NP containers for modules in mod info.
- *
- * @param[in] mod_info Mod info to use.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_modinfo_add_np_cont(struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Validate operation using modules in mod info.

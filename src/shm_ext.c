@@ -364,7 +364,7 @@ sr_error_info_t *
 sr_shmext_change_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t has_lock, sr_datastore_t ds,
         uint32_t sub_id, const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num)
 {
-    sr_error_info_t *err_info = NULL, *tmp_err;
+    sr_error_info_t *err_info = NULL;
     off_t xpath_off;
     sr_mod_change_sub_t *shm_sub;
     uint16_t i;
@@ -441,26 +441,7 @@ sr_shmext_change_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t 
         }
     }
 
-    /* EXT WRITE UNLOCK */
-    sr_shmext_conn_remap_unlock(conn, SR_LOCK_WRITE, 1, __func__);
-
-    if (has_lock == SR_LOCK_NONE) {
-        /* CHANGE SUB WRITE UNLOCK */
-        sr_rwunlock(&shm_mod->change_sub[ds].lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
-    }
-
-    if (ds == SR_DS_RUNNING) {
-        /* technically, operational data may have changed */
-        if ((err_info = sr_module_update_oper_diff(conn, conn->main_shm.addr + shm_mod->name))) {
-            /* remove the added subscription */
-            if ((tmp_err = sr_shmext_change_sub_del(conn, shm_mod, has_lock, ds, sub_id))) {
-                sr_errinfo_merge(&err_info, tmp_err);
-            }
-            return err_info;
-        }
-    }
-
-    return NULL;
+    /* success */
 
 cleanup_changesub_ext_unlock:
     /* EXT WRITE UNLOCK */
@@ -478,7 +459,7 @@ cleanup_changesub_unlock:
 sr_error_info_t *
 sr_shmext_change_sub_modify(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, uint32_t sub_id, const char *xpath)
 {
-    sr_error_info_t *err_info = NULL, *tmp_err;
+    sr_error_info_t *err_info = NULL;
     sr_mod_change_sub_t *shm_sub;
     uint16_t i;
     int cur_size, new_size;
@@ -523,24 +504,7 @@ sr_shmext_change_sub_modify(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore
     SR_LOG_DBG("#SHM after (modifying change sub)");
     sr_shmext_print(SR_CONN_MAIN_SHM(conn), &conn->ext_shm);
 
-    /* EXT WRITE UNLOCK */
-    sr_shmext_conn_remap_unlock(conn, SR_LOCK_WRITE, 1, __func__);
-
-    /* CHANGE SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->change_sub[ds].lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
-
-    if (ds == SR_DS_RUNNING) {
-        /* technically, operational data may have changed */
-        if ((err_info = sr_module_update_oper_diff(conn, conn->main_shm.addr + shm_mod->name))) {
-            /* remove the added subscription */
-            if ((tmp_err = sr_shmext_change_sub_del(conn, shm_mod, SR_LOCK_NONE, ds, sub_id))) {
-                sr_errinfo_merge(&err_info, tmp_err);
-            }
-            return err_info;
-        }
-    }
-
-    return NULL;
+    /* success */
 
 cleanup_changesub_ext_unlock:
     /* EXT WRITE UNLOCK */
@@ -647,11 +611,6 @@ cleanup_changesub_unlock:
         sr_rwunlock(&shm_mod->change_sub[ds].lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
     }
 
-    if (!err_info && (ds == SR_DS_RUNNING)) {
-        /* technically, operational data changed */
-        err_info = sr_module_update_oper_diff(conn, conn->main_shm.addr + shm_mod->name);
-    }
-
     return err_info;
 }
 
@@ -732,13 +691,6 @@ sr_shmext_change_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t
         }
         unlink(path);
         free(path);
-    }
-
-    if (ds == SR_DS_RUNNING) {
-        /* technically, operational data changed */
-        if ((tmp_err = sr_module_update_oper_diff(conn, conn->main_shm.addr + shm_mod->name))) {
-            sr_errinfo_merge(&err_info, tmp_err);
-        }
     }
 
     return err_info;

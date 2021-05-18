@@ -174,7 +174,7 @@ test_edit_item(void **state)
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* whole edit should be removed */
+    /* user-ordered lists */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
             "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
@@ -183,8 +183,10 @@ test_edit_item(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_move_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth2']",
             SR_MOVE_FIRST, NULL, NULL, NULL, 0);
-    assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
-    assert_false(sr_has_changes(st->sess));
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    assert_true(sr_has_changes(st->sess));
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
 }
 
 static void

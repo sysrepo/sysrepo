@@ -295,6 +295,21 @@ typedef int (*sr_diff_check_cb)(sr_session_ctx_t *session, const struct lyd_node
 int sr_set_diff_check_callback(sr_conn_ctx_t *conn, sr_diff_check_cb callback);
 
 /**
+ * @brief Discard stored push operational data owned by this connection.
+ *
+ * Required WRITE access.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] session Optional session to read SID and originator data from.
+ * @param[in] xpath Selected data to discard, if NULL all the data owned by the connection are discarded.
+ * @param[in] timeout_ms Change callback timeout in milliseconds. If 0, default is used. Note that this timeout
+ * is measured separately for each callback meaning this whole function call can easily __take more time__ than this
+ * timeout if there are changes applied for several subscribers.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms);
+
+/**
  * @brief Start a new session.
  *
  * @param[in] conn Connection acquired with ::sr_connect call.
@@ -1015,7 +1030,7 @@ int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_posi
  * @brief Provide a prepared edit data tree to be applied.
  * These changes are applied only after calling ::sr_apply_changes().
  *
- * Only operations `merge`, `replace`, `remove`, and `purge` are allowed for ::SR_DS_OPERATIONAL.
+ * Only operations `merge`, `remove`, and `ether` are allowed for ::SR_DS_OPERATIONAL.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] edit Edit content, similar semantics to
@@ -1050,7 +1065,7 @@ int sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t tim
  * Required WRITE access.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to apply changes of.
- * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used. Note that this timeout
+ * @param[in] timeout_ms Change callback timeout in milliseconds. If 0, default is used. Note that this timeout
  * is measured separately for each callback meaning this whole function call can easily __take more time__ than this
  * timeout if there are changes applied for several subscribers.
  * @return Error code (::SR_ERR_OK on success).

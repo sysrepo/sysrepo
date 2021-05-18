@@ -892,15 +892,6 @@ void sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info);
  */
 void sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid);
 
-/**
- * @brief Remove all stored operational data of a connection.
- *
- * @param[in] conn Connection to use.
- * @param[in] cid Connection ID whose data to remove.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmod_oper_stored_del_conn(sr_conn_ctx_t *conn, sr_cid_t cid);
-
 /*
  * Subscription SHM functions.
  */
