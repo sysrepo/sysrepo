@@ -51,56 +51,6 @@
 #include "sysrepo.h"
 #include "shm.h"
 
-#ifndef SR_HAVE_PTHREAD_MUTEX_TIMEDLOCK
-
-int
-pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *abstime)
-{
-    int64_t nsec_diff;
-    int32_t diff;
-    struct timespec cur, dur;
-    int rc;
-
-    /* try to acquire the lock and, if we fail, sleep for 5ms. */
-    while ((rc = pthread_mutex_trylock(mutex)) == EBUSY) {
-        /* get real time */
-#ifdef CLOCK_REALTIME
-        clock_gettime(CLOCK_REALTIME, &cur);
-#else
-        struct timeval tv;
-
-        gettimeofday(&tv, NULL);
-        cur.tv_sec = (time_t)tv.tv_sec;
-        cur.tv_nsec = 1000L * (long)tv.tv_usec;
-#endif
-
-        /* get time diff */
-        nsec_diff = 0;
-        nsec_diff += (((int64_t)abstime->tv_sec) - ((int64_t)cur.tv_sec)) * 1000000000L;
-        nsec_diff += ((int64_t)abstime->tv_nsec) - ((int64_t)cur.tv_nsec);
-        diff = (nsec_diff ? nsec_diff / 1000000L : 0);
-
-        if (diff < 1) {
-            /* timeout */
-            break;
-        } else if (diff < 5) {
-            /* sleep until timeout */
-            dur.tv_sec = 0;
-            dur.tv_nsec = (long)diff * 1000000;
-        } else {
-            /* sleep 5 ms */
-            dur.tv_sec = 0;
-            dur.tv_nsec = 5000000;
-        }
-
-        nanosleep(&dur, NULL);
-    }
-
-    return rc;
-}
-
-#endif
-
 sr_error_info_t *
 sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess, const char *mod_name,
         const char *xpath, sr_module_change_cb change_cb, void *private_data, uint32_t priority,

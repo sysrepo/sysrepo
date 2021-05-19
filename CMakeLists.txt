@@ -8,9 +8,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
 include(GNUInstallDirs)
 include(CheckSymbolExists)
-include(CheckFunctionExists)
 include(CheckLibraryExists)
-include(CheckIncludeFile)
 include(UseCompat)
 include(SourceFormat)
 if(POLICY CMP0075)
@@ -256,7 +254,6 @@ set(CMAKE_REQUIRED_LIBRARIES pthread)
 
 # required functions
 set(CMAKE_REQUIRED_DEFINITIONS "-D_GNU_SOURCE;-D_DEFAULT_SOURCE")
-check_function_exists(pthread_mutex_timedlock SR_HAVE_PTHREAD_MUTEX_TIMEDLOCK)
 check_symbol_exists(eaccess "unistd.h" SR_HAVE_EACCESS)
 if(NOT SR_HAVE_EACCESS)
     message(WARNING "Function eaccess() is not supported, using access() instead which may "
