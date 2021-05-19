@@ -269,7 +269,7 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_writev_notif(int fd, const char *notif_lyb, uint32_t notif_lyb_len, time_t notif_ts)
+sr_writev_notif(int fd, const char *notif_lyb, uint32_t notif_lyb_len, struct timespec notif_ts)
 {
     sr_error_info_t *err_info = NULL;
     struct iovec iov[3];
@@ -359,7 +359,7 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_notif_write(const struct lys_module *ly_mod, sr_mod_t *shm_mod, char *notif_lyb, time_t notif_ts, sr_cid_t cid)
+sr_notif_write(const struct lys_module *ly_mod, sr_mod_t *shm_mod, char *notif_lyb, struct timespec notif_ts, sr_cid_t cid)
 {
     sr_error_info_t *err_info = NULL;
     time_t from_ts, to_ts;
@@ -398,7 +398,7 @@ sr_notif_write(const struct lys_module *ly_mod, sr_mod_t *shm_mod, char *notif_l
             }
 
             /* update notification file name */
-            if ((err_info = sr_replay_rename_file(ly_mod->name, from_ts, to_ts, notif_ts))) {
+            if ((err_info = sr_replay_rename_file(ly_mod->name, from_ts, to_ts, notif_ts.tv_sec))) {
                 goto cleanup_unlock;
             }
 
@@ -412,7 +412,8 @@ sr_notif_write(const struct lys_module *ly_mod, sr_mod_t *shm_mod, char *notif_l
     }
 
     /* creating a new file */
-    if ((err_info = sr_replay_open_file(ly_mod->name, notif_ts, notif_ts, O_WRONLY | O_APPEND | O_CREAT | O_EXCL, &fd))) {
+    if ((err_info = sr_replay_open_file(ly_mod->name, notif_ts.tv_sec, notif_ts.tv_sec,
+            O_WRONLY | O_APPEND | O_CREAT | O_EXCL, &fd))) {
         goto cleanup_unlock;
     }
 
@@ -444,7 +445,8 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_notif_buf_store(struct sr_sess_notif_buf *notif_buf, const struct lys_module *ly_mod, char *notif_lyb, time_t notif_ts)
+sr_notif_buf_store(struct sr_sess_notif_buf *notif_buf, const struct lys_module *ly_mod, char *notif_lyb,
+        struct timespec notif_ts)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_sess_notif_buf_node *node = NULL;
@@ -499,7 +501,7 @@ error:
 }
 
 sr_error_info_t *
-sr_replay_store(sr_session_ctx_t *sess, const struct lyd_node *notif, time_t notif_ts)
+sr_replay_store(sr_session_ctx_t *sess, const struct lyd_node *notif, struct timespec notif_ts)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
@@ -664,9 +666,9 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_replay_read_ts(int notif_fd, time_t *notif_ts)
+sr_replay_read_ts(int notif_fd, struct timespec *notif_ts)
 {
-    *notif_ts = 0;
+    memset(notif_ts, 0, sizeof *notif_ts);
     return sr_read(notif_fd, notif_ts, sizeof *notif_ts);
 }
 
@@ -744,7 +746,8 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
-    time_t file_from_ts, file_to_ts, notif_ts;
+    time_t file_from_ts, file_to_ts;
+    struct timespec notif_ts;
     struct ly_set *set = NULL;
     struct lyd_node *notif = NULL, *notif_op;
     sr_session_ctx_t *ev_sess = NULL;
@@ -782,17 +785,17 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
             if ((err_info = sr_replay_read_ts(fd, &notif_ts))) {
                 goto cleanup;
             }
-            if (!notif_ts) {
+            if (!notif_ts.tv_sec) {
                 sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unexpected notification file EOF.");
                 goto cleanup;
             }
-            if ((notif_ts < start_time) && (err_info = sr_replay_skip_notif(fd))) {
+            if ((notif_ts.tv_sec < start_time) && (err_info = sr_replay_skip_notif(fd))) {
                 goto cleanup;
             }
-        } while (notif_ts < start_time);
+        } while (notif_ts.tv_sec < start_time);
 
         /* replay notifications until stop_time is reached */
-        while (notif_ts && (!stop_time || (notif_ts <= stop_time))) {
+        while (notif_ts.tv_sec && (!stop_time || (notif_ts.tv_sec <= stop_time))) {
 
             /* parse notification */
             lyd_free_all(notif);
@@ -828,7 +831,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
         }
 
         /* no more notifications should be replayed */
-        if (stop_time && (notif_ts > stop_time)) {
+        if (stop_time && (notif_ts.tv_sec > stop_time)) {
             break;
         }
 
@@ -839,9 +842,9 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     }
 
     /* replay last notification if the subscription continues */
-    notif_ts = time(NULL);
-    if ((!stop_time || (stop_time >= notif_ts)) && (err_info = sr_notif_call_callback(ev_sess, cb, tree_cb, private_data,
-            SR_EV_NOTIF_REPLAY_COMPLETE, sub_id, NULL, stop_time ? stop_time : notif_ts))) {
+    sr_time_get(&notif_ts, 0);
+    if ((!stop_time || (stop_time >= notif_ts.tv_sec)) && (err_info = sr_notif_call_callback(ev_sess, cb, tree_cb,
+            private_data, SR_EV_NOTIF_REPLAY_COMPLETE, sub_id, NULL, notif_ts))) {
         goto cleanup;
     }
 

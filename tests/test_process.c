@@ -19,6 +19,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+#define _POSIX_C_SOURCE 199309L
+
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -389,7 +392,7 @@ test_rpc_crash2(int rp, int wp)
 /* TEST */
 static void
 notif_instid_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
-        const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data)
+        const sr_val_t *values, const size_t values_cnt, struct timespec timestamp, void *private_data)
 {
     (void)session;
     (void)sub_id;

@@ -1075,7 +1075,7 @@ sr_error_info_t *sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, sr_rpc_t *shm_r
  * @param[in] wait Whether to wait for the callbacks or not.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, time_t notif_ts,
+sr_error_info_t *sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, struct timespec notif_ts,
         const char *orig_name, const void *orig_data, uint32_t timeout_ms, int wait);
 
 /**

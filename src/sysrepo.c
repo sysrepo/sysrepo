@@ -3065,6 +3065,7 @@ _sr_subscription_suspend_change(sr_subscription_ctx_t *subscription, uint32_t su
     const char *module_name, *path;
     sr_datastore_t ds;
     sr_session_ctx_t *ev_sess = NULL;
+    struct timespec cur_time;
 
     assert(subscription && sub_id);
 
@@ -3101,8 +3102,9 @@ _sr_subscription_suspend_change(sr_subscription_ctx_t *subscription, uint32_t su
         }
 
         /* send the special notification */
+        sr_time_get(&cur_time, 0);
         if ((err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
-                suspend ? SR_EV_NOTIF_SUSPENDED : SR_EV_NOTIF_RESUMED, sub_id, NULL, time(NULL)))) {
+                suspend ? SR_EV_NOTIF_SUSPENDED : SR_EV_NOTIF_RESUMED, sub_id, NULL, cur_time))) {
             goto cleanup;
         }
     }
@@ -4639,7 +4641,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint
     struct lyd_node *notif_op;
     sr_dep_t *shm_deps;
     sr_mod_t *shm_mod;
-    time_t notif_ts;
+    struct timespec notif_ts;
     uint16_t shm_dep_count;
     char *xpath = NULL;
 
@@ -4655,7 +4657,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint
     SR_MODINFO_INIT(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING);
 
     /* remember when the notification was generated */
-    notif_ts = time(NULL);
+    sr_time_get(&notif_ts, 0);
 
     /* check notif data tree */
     switch (notif->schema->nodetype) {
@@ -4811,6 +4813,7 @@ sr_event_notif_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t su
     sr_error_info_t *err_info = NULL;
     struct modsub_notifsub_s *notif_sub;
     sr_session_ctx_t *ev_sess = NULL;
+    struct timespec cur_time;
 
     SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
 
@@ -4848,8 +4851,9 @@ sr_event_notif_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t su
     }
 
     /* send the special notification */
+    sr_time_get(&cur_time, 0);
     if ((err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
-            SR_EV_NOTIF_MODIFIED, sub_id, NULL, time(NULL)))) {
+            SR_EV_NOTIF_MODIFIED, sub_id, NULL, cur_time))) {
         goto cleanup_unlock;
     }
 
@@ -4867,6 +4871,7 @@ sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_
     sr_error_info_t *err_info = NULL;
     struct modsub_notifsub_s *notif_sub;
     sr_session_ctx_t *ev_sess = NULL;
+    struct timespec cur_time;
 
     SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
 
@@ -4903,8 +4908,9 @@ sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_
     }
 
     /* send the special notification */
+    sr_time_get(&cur_time, 0);
     if ((err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
-            SR_EV_NOTIF_MODIFIED, sub_id, NULL, time(NULL)))) {
+            SR_EV_NOTIF_MODIFIED, sub_id, NULL, cur_time))) {
         goto cleanup_unlock;
     }
 

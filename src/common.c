@@ -554,6 +554,7 @@ sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_
     struct modsub_notifsub_s *sub;
     sr_session_ctx_t *ev_sess = NULL;
     sr_lock_mode_t cur_mode = has_subs_lock;
+    struct timespec cur_time;
 
     assert((has_subs_lock == SR_LOCK_WRITE) || (has_subs_lock == SR_LOCK_READ_UPGR) || (has_subs_lock == SR_LOCK_NONE));
 
@@ -594,8 +595,9 @@ sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_
 
             if (ev_sess) {
                 /* send special last notification */
+                sr_time_get(&cur_time, 0);
                 if ((err_info = sr_notif_call_callback(ev_sess, sub->cb, sub->tree_cb, sub->private_data,
-                        SR_EV_NOTIF_TERMINATED, sub->sub_id, NULL, time(NULL)))) {
+                        SR_EV_NOTIF_TERMINATED, sub->sub_id, NULL, cur_time))) {
                     sr_errinfo_free(&err_info);
                 }
             }
@@ -1418,7 +1420,7 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
 
 sr_error_info_t *
 sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data,
-        const sr_ev_notif_type_t notif_type, uint32_t sub_id, const struct lyd_node *notif_op, time_t notif_ts)
+        const sr_ev_notif_type_t notif_type, uint32_t sub_id, const struct lyd_node *notif_op, struct timespec notif_ts)
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *elem;
@@ -2523,8 +2525,14 @@ sr_time_get(struct timespec *ts, uint32_t add_ms)
         return;
     }
 
-    add_ms += ts->tv_nsec / 1000000;
-    ts->tv_nsec %= 1000000;
+    if (!add_ms) {
+        return;
+    }
+
+    if (ts->tv_nsec) {
+        add_ms += ts->tv_nsec / 1000000;
+        ts->tv_nsec %= 1000000;
+    }
     ts->tv_nsec += (add_ms % 1000) * 1000000;
     ts->tv_sec += add_ms / 1000;
 }

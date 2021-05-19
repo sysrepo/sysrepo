@@ -388,7 +388,7 @@ struct sr_session_ctx_s {
                                          (READ-lock is not used). */
         struct sr_sess_notif_buf_node {
             char *notif_lyb;        /**< Buffered notification to be stored in LYB format. */
-            time_t notif_ts;        /**< Buffered notification timestamp. */
+            struct timespec notif_ts;   /**< Buffered notification timestamp. */
             const struct lys_module *notif_mod; /**< Buffered notification modules. */
             struct sr_sess_notif_buf_node *next;    /**< Next stored notification buffer node. */
         } *first;                   /**< First stored notification buffer node. */
@@ -730,7 +730,7 @@ sr_error_info_t *sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_n
  */
 sr_error_info_t *sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb,
         void *private_data, const sr_ev_notif_type_t notif_type, uint32_t sub_id, const struct lyd_node *notif_op,
-        time_t notif_ts);
+        struct timespec notif_ts);
 
 /*
  * Utility functions

@@ -2178,7 +2178,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     struct lyd_node *root, *elem, *notif = NULL;
     struct ly_set *set;
     sr_mod_t *shm_mod;
-    time_t notif_ts;
+    struct timespec notif_ts;
     sr_mod_notif_sub_t *notif_subs;
     uint32_t idx = 0, notif_sub_count;
     char *xpath;
@@ -2214,7 +2214,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     }
 
     /* remember when the notification was generated */
-    notif_ts = time(NULL);
+    sr_time_get(&notif_ts, 0);
 
     /* EXT READ LOCK */
     if ((err_info = sr_shmext_conn_remap_lock(mod_info->conn, SR_LOCK_READ, 0, __func__))) {

@@ -1740,7 +1740,7 @@ typedef enum sr_ev_notif_type_e {
  * as passed to ::sr_event_notif_subscribe call.
  */
 typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
-        const char *xpath, const sr_val_t *values, const size_t values_cnt, time_t timestamp, void *private_data);
+        const char *xpath, const sr_val_t *values, const size_t values_cnt, struct timespec timestamp, void *private_data);
 
 /**
  * @brief Callback to be called for the delivery of a notification. Data are represented as _libyang_ subtrees.
@@ -1755,7 +1755,7 @@ typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, uint32_t sub_id, co
  * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_event_notif_subscribe_tree call.
  */
 typedef void (*sr_event_notif_tree_cb)(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
-        const struct lyd_node *notif, time_t timestamp, void *private_data);
+        const struct lyd_node *notif, struct timespec timestamp, void *private_data);
 
 /**
  * @brief Subscribe for the delivery of a notification(s). Data are represented as ::sr_val_t structures.

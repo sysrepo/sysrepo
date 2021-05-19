@@ -53,7 +53,7 @@ sr_error_info_t *sr_replay_find_file(const char *mod_name, time_t from_ts, time_
  * @param[in] notif_ts Notification timestamp to store.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_replay_store(sr_session_ctx_t *sess, const struct lyd_node *notif, time_t notif_ts);
+sr_error_info_t *sr_replay_store(sr_session_ctx_t *sess, const struct lyd_node *notif, struct timespec notif_ts);
 
 /**
  * @brief Notification buffer thread.
