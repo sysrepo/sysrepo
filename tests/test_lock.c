@@ -29,6 +29,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <time.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
@@ -309,7 +310,7 @@ test_get_lock(void **state)
     sr_session_ctx_t *sess;
     int ret, is_locked;
     uint32_t id;
-    time_t timestamp;
+    struct timespec timestamp;
 
     /* params error, connection null or datastore is operational */
     ret = sr_get_lock(NULL, SR_DS_RUNNING, NULL, &is_locked, &id, &timestamp);

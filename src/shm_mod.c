@@ -689,7 +689,7 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid)
 
                 /* DS unlock */
                 shm_lock->ds_lock_sid = 0;
-                shm_lock->ds_lock_ts = 0;
+                memset(&shm_lock->ds_lock_ts, 0, sizeof shm_lock->ds_lock_ts);
             }
 
             /* MOD WRITE UNLOCK */

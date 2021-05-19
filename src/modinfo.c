@@ -1258,8 +1258,8 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
     sr_mod_notif_sub_t *notif_sub;
     struct sr_mod_lock_s *shm_lock;
     uint16_t i;
-#define PATH_LEN 128
-    char buf[28], path[PATH_LEN];
+#define BUF_LEN 128
+    char buf[BUF_LEN], *str = NULL;
     const struct ly_ctx *ly_ctx;
 
     ly_ctx = LYD_CTX(sr_state);
@@ -1277,8 +1277,8 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
         }
 
         /* data-lock */
-        snprintf(path, PATH_LEN, "data-lock[cid='%%"PRIu32"'][datastore='%s']/mode", sr_ds2ident(ds));
-        if ((err_info = sr_modinfo_module_srmon_locks_ds(&shm_lock->lock, conn->cid, path, sr_mod))) {
+        snprintf(buf, BUF_LEN, "data-lock[cid='%%"PRIu32"'][datastore='%s']/mode", sr_ds2ident(ds));
+        if ((err_info = sr_modinfo_module_srmon_locks_ds(&shm_lock->lock, conn->cid, buf, sr_mod))) {
             goto mod_unlock;
         }
 
@@ -1294,15 +1294,18 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
         SR_CHECK_LY_GOTO(lyd_new_term(sr_ds_lock, NULL, "sid", buf, 0, NULL), ly_ctx, err_info, mod_unlock);
 
         /* timestamp */
-        if ((err_info = sr_time2datetime(shm_lock->ds_lock_ts, NULL, buf, NULL))) {
+        if (ly_time_ts2str(&shm_lock->ds_lock_ts, &str)) {
+            SR_ERRINFO_MEM(&err_info);
             goto mod_unlock;
         }
-        SR_CHECK_LY_GOTO(lyd_new_term(sr_ds_lock, NULL, "timestamp", buf, 0, NULL), ly_ctx, err_info, mod_unlock);
+        SR_CHECK_LY_GOTO(lyd_new_term(sr_ds_lock, NULL, "timestamp", str, 0, NULL), ly_ctx, err_info, mod_unlock);
 
 mod_unlock:
         /* MOD READ UNLOCK */
         sr_rwunlock(&shm_lock->lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
+        free(str);
+        str = NULL;
         if (err_info) {
             return err_info;
         }
@@ -1310,12 +1313,12 @@ mod_unlock:
 
     /* change-sub-lock */
     for (ds = 0; ds < SR_DS_COUNT; ++ds) {
-        snprintf(path, PATH_LEN, "change-sub-lock[cid='%%"PRIu32"'][datastore='%s']/mode", sr_ds2ident(ds));
-        if ((err_info = sr_modinfo_module_srmon_locks_ds(&shm_mod->change_sub[ds].lock, 0, path, sr_mod))) {
+        snprintf(buf, BUF_LEN, "change-sub-lock[cid='%%"PRIu32"'][datastore='%s']/mode", sr_ds2ident(ds));
+        if ((err_info = sr_modinfo_module_srmon_locks_ds(&shm_mod->change_sub[ds].lock, 0, buf, sr_mod))) {
             return err_info;
         }
     }
-#undef PATH_LEN
+#undef BUF_LEN
 
     /* oper-sub-lock */
     if ((err_info = sr_modinfo_module_srmon_locks(&shm_mod->oper_lock, "oper-sub-lock", sr_mod))) {

@@ -2696,10 +2696,10 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, uint32_t sid)
         /* change DS lock state and remember the time */
         if (lock) {
             shm_lock->ds_lock_sid = sid;
-            shm_lock->ds_lock_ts = time(NULL);
+            sr_time_get(&shm_lock->ds_lock_ts, 0);
         } else {
             shm_lock->ds_lock_sid = 0;
-            shm_lock->ds_lock_ts = 0;
+            memset(&shm_lock->ds_lock_ts, 0, sizeof shm_lock->ds_lock_ts);
         }
     }
 
@@ -2714,10 +2714,10 @@ error:
 
         if (lock) {
             shm_lock->ds_lock_sid = 0;
-            shm_lock->ds_lock_ts = 0;
+            memset(&shm_lock->ds_lock_ts, 0, sizeof shm_lock->ds_lock_ts);
         } else {
             shm_lock->ds_lock_sid = sid;
-            shm_lock->ds_lock_ts = time(NULL);
+            sr_time_get(&shm_lock->ds_lock_ts, 0);
         }
     }
 
@@ -2802,7 +2802,7 @@ sr_unlock(sr_session_ctx_t *session, const char *module_name)
 
 API int
 sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_name, int *is_locked, uint32_t *id,
-        time_t *timestamp)
+        struct timespec *timestamp)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -2817,7 +2817,7 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
         *id = 0;
     }
     if (timestamp) {
-        *timestamp = 0;
+        memset(timestamp, 0, sizeof *timestamp);
     }
     SR_MODINFO_INIT(mod_info, conn, datastore, datastore);
 

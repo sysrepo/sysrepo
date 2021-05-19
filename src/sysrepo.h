@@ -1177,7 +1177,7 @@ int sr_unlock(sr_session_ctx_t *session, const char *module_name);
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_name, int *is_locked, uint32_t *id,
-        time_t *timestamp);
+        struct timespec *timestamp);
 
 /** @} lock */
 
