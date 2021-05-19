@@ -19,7 +19,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "common.h"
+#define _GNU_SOURCE /* asprintf */
+
+#include "edit_diff.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -32,6 +34,10 @@
 #include <unistd.h>
 
 #include <libyang/libyang.h>
+
+#include "common.h"
+#include "compat.h"
+#include "log.h"
 
 enum insert_val {
     INSERT_DEFAULT = 0,

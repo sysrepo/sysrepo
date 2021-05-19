@@ -15,6 +15,7 @@
 #ifndef _COMPAT_H_
 #define _COMPAT_H_
 
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <sys/types.h>
@@ -37,18 +38,29 @@
 #  endif
 #endif
 
+#if (@CMAKE_C_COMPILER_ID@ == GNU) || (@CMAKE_C_COMPILER_ID@ == Clang)
+# define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
+# define _PACKED __attribute__((__packed__))
+#else
+# define UNUSED(x) UNUSED_ ## x
+# define _PACKED
+#endif
+
 #cmakedefine HAVE_VDPRINTF
 #cmakedefine HAVE_ASPRINTF
 #cmakedefine HAVE_VASPRINTF
 #cmakedefine HAVE_STRNDUP
+#cmakedefine HAVE_STRNSTR
 #cmakedefine HAVE_GETLINE
 #cmakedefine HAVE_GET_CURRENT_DIR_NAME
 
+#ifndef bswap64
 #define bswap64(val) \
     ( (((val) >> 56) & 0x00000000000000FF) | (((val) >> 40) & 0x000000000000FF00) | \
     (((val) >> 24) & 0x0000000000FF0000) | (((val) >>  8) & 0x00000000FF000000) | \
     (((val) <<  8) & 0x000000FF00000000) | (((val) << 24) & 0x0000FF0000000000) | \
     (((val) << 40) & 0x00FF000000000000) | (((val) << 56) & 0xFF00000000000000) )
+#endif
 
 #undef le64toh
 #undef htole64
@@ -63,9 +75,31 @@
 # define htole64(x) (x)
 #endif
 
-#ifndef MAP_ANONYMOUS
-#define MAP_ANONYMOUS MAP_ANON
-#endif /* !MAP_ANONYMOUS */
+#cmakedefine HAVE_STDATOMIC
+
+#ifdef HAVE_STDATOMIC
+# include <stdatomic.h>
+
+# define ATOMIC_T atomic_uint_fast32_t
+# define ATOMIC_T_MAX UINT_FAST32_MAX
+
+# define ATOMIC_STORE_RELAXED(var, x) atomic_store_explicit(&(var), x, memory_order_relaxed)
+# define ATOMIC_LOAD_RELAXED(var) atomic_load_explicit(&(var), memory_order_relaxed)
+# define ATOMIC_INC_RELAXED(var) atomic_fetch_add_explicit(&(var), 1, memory_order_relaxed)
+# define ATOMIC_ADD_RELAXED(var, x) atomic_fetch_add_explicit(&(var), x, memory_order_relaxed)
+# define ATOMIC_DEC_RELAXED(var) atomic_fetch_sub_explicit(&(var), 1, memory_order_relaxed)
+# define ATOMIC_SUB_RELAXED(var, x) atomic_fetch_sub_explicit(&(var), x, memory_order_relaxed)
+#else
+# define ATOMIC_T uint32_t
+# define ATOMIC_T_MAX UINT32_MAX
+
+# define ATOMIC_STORE_RELAXED(var, x) ((var) = (x))
+# define ATOMIC_LOAD_RELAXED(var) (var)
+# define ATOMIC_INC_RELAXED(var) __sync_fetch_and_add(&(var), 1)
+# define ATOMIC_ADD_RELAXED(var, x) __sync_fetch_and_add(&(var), x)
+# define ATOMIC_DEC_RELAXED(var) __sync_fetch_and_sub(&(var), 1)
+# define ATOMIC_SUB_RELAXED(var, x) __sync_fetch_and_sub(&(var), x)
+#endif
 
 #ifndef HAVE_VDPRINTF
 int vdprintf(int fd, const char *format, va_list ap);
@@ -81,6 +115,10 @@ int vasprintf(char **strp, const char *fmt, va_list ap);
 
 #ifndef HAVE_STRNDUP
 char *strndup(const char *s, size_t n);
+#endif
+
+#ifndef HAVE_STRNSTR
+char *strnstr(const char *s, const char *find, size_t slen);
 #endif
 
 #ifndef HAVE_GETLINE

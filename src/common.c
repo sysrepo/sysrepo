@@ -19,6 +19,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#define _XOPEN_SOURCE 500 /* strdup */
+#define _GNU_SOURCE /* asprintf */
+
 #include "common.h"
 
 #include <assert.h>
@@ -40,6 +43,13 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+
+#include "compat.h"
+#include "edit_diff.h"
+#include "log.h"
+#include "modinfo.h"
+#include "sysrepo.h"
+#include "shm.h"
 
 #ifndef SR_HAVE_PTHREAD_MUTEX_TIMEDLOCK
 
@@ -597,7 +607,7 @@ sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_
                 /* send special last notification */
                 sr_time_get(&cur_time, 0);
                 if ((err_info = sr_notif_call_callback(ev_sess, sub->cb, sub->tree_cb, sub->private_data,
-                        SR_EV_NOTIF_TERMINATED, sub->sub_id, NULL, cur_time))) {
+                        SR_EV_NOTIF_TERMINATED, sub->sub_id, NULL, &cur_time))) {
                     sr_errinfo_free(&err_info);
                 }
             }
@@ -1420,7 +1430,7 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
 
 sr_error_info_t *
 sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data,
-        const sr_ev_notif_type_t notif_type, uint32_t sub_id, const struct lyd_node *notif_op, struct timespec notif_ts)
+        const sr_ev_notif_type_t notif_type, uint32_t sub_id, const struct lyd_node *notif_op, struct timespec *notif_ts)
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *elem;

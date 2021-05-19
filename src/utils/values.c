@@ -20,13 +20,15 @@
  */
 #define _POSIX_C_SOURCE 200809L
 
+#include "values.h"
+
 #include <inttypes.h>
 #include <stdarg.h>
 #include <string.h>
 #include <unistd.h>
 
 #include "common.h"
-#include "values.h"
+#include "log.h"
 
 /** get the larger item */
 #define MAX(a, b) ((a) > (b) ? (a) : (b))

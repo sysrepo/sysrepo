@@ -209,21 +209,21 @@ source_format(${format_sources})
 
 # sysrepo
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
-add_library(srobj OBJECT ${LIB_SRC})
+add_library(srobj OBJECT ${LIB_SRC} ${compatsrc})
 set_target_properties(srobj PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
-add_library(sysrepo SHARED $<TARGET_OBJECTS:srobj> $<TARGET_OBJECTS:compat>)
+add_library(sysrepo SHARED $<TARGET_OBJECTS:srobj>)
 set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_SOVERSION_FULL} SOVERSION ${SYSREPO_SOVERSION})
 
 # sysrepoctl tool
-add_executable(sysrepoctl ${SYSREPOCTL_SRC} $<TARGET_OBJECTS:compat>)
+add_executable(sysrepoctl ${SYSREPOCTL_SRC} ${compatsrc})
 target_link_libraries(sysrepoctl sysrepo)
 
 # sysrepocfg tool
-add_executable(sysrepocfg ${SYSREPOCFG_SRC} $<TARGET_OBJECTS:compat>)
+add_executable(sysrepocfg ${SYSREPOCFG_SRC} ${compatsrc})
 target_link_libraries(sysrepocfg sysrepo)
 
 # sysrepo-plugind daemon
-add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC} $<TARGET_OBJECTS:compat>)
+add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC} ${compatsrc})
 target_link_libraries(sysrepo-plugind sysrepo ${CMAKE_DL_LIBS})
 
 # include repository files with highest priority
@@ -262,7 +262,6 @@ if(NOT SR_HAVE_EACCESS)
     message(WARNING "Function eaccess() is not supported, using access() instead which may "
         "change results of access control checks!")
 endif()
-check_include_file("stdatomic.h" SR_HAVE_STDATOMIC)
 check_symbol_exists(mkstemps "stdlib.h" SR_HAVE_MKSTEMPS)
 unset(CMAKE_REQUIRED_DEFINITIONS)
 
@@ -274,9 +273,10 @@ configure_file("${PROJECT_SOURCE_DIR}/sysrepo.pc.in" "${PROJECT_BINARY_DIR}/sysr
 
 # installation
 install(TARGETS sysrepo DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES ${PROJECT_SOURCE_DIR}/src/sysrepo.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES ${PROJECT_SOURCE_DIR}/src/sysrepo.h ${PROJECT_SOURCE_DIR}/src/sysrepo_types.h
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES ${PROJECT_BINARY_DIR}/version.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sysrepo)
-install(FILES ${PROJECT_SOURCE_DIR}/src/utils/values.h ${PROJECT_SOURCE_DIR}/src/utils/xpath.h
+install(FILES ${PROJECT_SOURCE_DIR}/src/types.h ${PROJECT_SOURCE_DIR}/src/utils/values.h ${PROJECT_SOURCE_DIR}/src/utils/xpath.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sysrepo)
 install(TARGETS sysrepoctl sysrepocfg sysrepo-plugind DESTINATION ${CMAKE_INSTALL_BINDIR})
 

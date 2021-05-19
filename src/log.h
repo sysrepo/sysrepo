@@ -4,8 +4,8 @@
  * @brief header for logging routines
  *
  * @copyright
- * Copyright 2018 Deutsche Telekom AG.
- * Copyright 2018 - 2019 CESNET, z.s.p.o.
+ * Copyright 2018 - 2021 Deutsche Telekom AG.
+ * Copyright 2018 - 2021 CESNET, z.s.p.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.

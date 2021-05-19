@@ -4,7 +4,7 @@
  * @brief header for sysrepo module data routines
  *
  * @copyright
- * Copyright 2019 CESNET, z.s.p.o.
+ * Copyright 2019 - 2021 CESNET, z.s.p.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,9 +21,12 @@
 #ifndef _LYD_MODS_H
 #define _LYD_MODS_H
 
+#include <pthread.h>
+
 #include <libyang/libyang.h>
 
-#include "common.h"
+#include "shm_types.h"
+#include "sysrepo_types.h"
 
 /**
  * @brief Lock lydmods lock with a recovery callback.

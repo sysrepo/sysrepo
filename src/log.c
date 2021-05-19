@@ -5,7 +5,7 @@
  *
  * @copyright
  * Copyright 2018 Deutsche Telekom AG.
- * Copyright 2018 - 2019 CESNET, z.s.p.o.
+ * Copyright 2018 - 2021 CESNET, z.s.p.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,13 +19,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "common.h"
+#define _XOPEN_SOURCE 500 /*strdup */
+#define _GNU_SOURCE /* vasprintf */
+
+#include "log.h"
 
 #include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <syslog.h>
+
+#include <libyang/libyang.h>
+
+#include "compat.h"
 
 sr_log_level_t stderr_ll = SR_LL_NONE;  /**< stderr log level */
 sr_log_level_t syslog_ll = SR_LL_NONE;  /**< syslog log level */

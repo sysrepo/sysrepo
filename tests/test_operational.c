@@ -347,7 +347,7 @@ dummy_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_nam
 
 static void
 dummy_notif_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *path,
-        const sr_val_t *values, const size_t values_cnt, struct timespec timestamp, void *private_data)
+        const sr_val_t *values, const size_t values_cnt, struct timespec *timestamp, void *private_data)
 {
     (void)session;
     (void)sub_id;

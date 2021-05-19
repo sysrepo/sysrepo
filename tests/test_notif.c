@@ -277,7 +277,7 @@ create_ops_notif(void **state)
 /* TEST */
 static void
 notif_dummy_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
-        const sr_val_t *values, const size_t values_cnt, struct timespec timestamp, void *private_data)
+        const sr_val_t *values, const size_t values_cnt, struct timespec *timestamp, void *private_data)
 {
     (void)session;
     (void)sub_id;
@@ -342,7 +342,7 @@ test_input_parameters(void **state)
 /* TEST */
 static void
 notif_simple_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
-        const sr_val_t *values, const size_t values_cnt, struct timespec timestamp, void *private_data)
+        const sr_val_t *values, const size_t values_cnt, struct timespec *timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     uint32_t size, *nc_id;
@@ -494,7 +494,7 @@ test_simple(void **state)
 /* TEST */
 static void
 notif_stop_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
-        const struct lyd_node *notif, struct timespec timestamp, void *private_data)
+        const struct lyd_node *notif, struct timespec *timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
@@ -539,7 +539,7 @@ test_stop(void **state)
 /* TEST */
 static void
 notif_replay_simple_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
-        const struct lyd_node *notif, struct timespec timestamp, void *private_data)
+        const struct lyd_node *notif, struct timespec *timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
@@ -621,7 +621,7 @@ test_replay_simple(void **state)
 /* TEST */
 static void
 notif_replay_interval_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
-        const struct lyd_node *notif, struct timespec timestamp, void *private_data)
+        const struct lyd_node *notif, struct timespec *timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
@@ -784,7 +784,7 @@ test_replay_interval(void **state)
 /* TEST */
 static void
 notif_no_replay_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
-        const struct lyd_node *notif, struct timespec timestamp, void *private_data)
+        const struct lyd_node *notif, struct timespec *timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
@@ -865,7 +865,7 @@ test_no_replay(void **state)
 /* TEST */
 static void
 notif_config_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
-        const struct lyd_node *notif, struct timespec timestamp, void *private_data)
+        const struct lyd_node *notif, struct timespec *timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     char *str1;
@@ -1101,7 +1101,7 @@ test_notif_buffer(void **state)
 /* TEST */
 static void
 notif_suspend_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
-        const sr_val_t *values, const size_t values_cnt, struct timespec timestamp, void *private_data)
+        const sr_val_t *values, const size_t values_cnt, struct timespec *timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
@@ -1215,7 +1215,7 @@ test_suspend(void **state)
 /* TEST */
 static void
 notif_params_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
-        const sr_val_t *values, const size_t values_cnt, struct timespec timestamp, void *private_data)
+        const sr_val_t *values, const size_t values_cnt, struct timespec *timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 
@@ -1309,7 +1309,7 @@ test_params(void **state)
 /* TEST */
 static void
 notif_dup_inst_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
-        const struct lyd_node *notif, struct timespec timestamp, void *private_data)
+        const struct lyd_node *notif, struct timespec *timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     char *str;
@@ -1390,7 +1390,7 @@ test_dup_inst(void **state)
 /* TEST */
 static void
 notif_wait_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
-        const sr_val_t *values, const size_t values_cnt, struct timespec timestamp, void *private_data)
+        const sr_val_t *values, const size_t values_cnt, struct timespec *timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
 

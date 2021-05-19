@@ -19,7 +19,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "common.h"
+#define _GNU_SOURCE /*asprintf */
+
+#include "replay.h"
 
 #include <assert.h>
 #include <dirent.h>
@@ -33,6 +35,11 @@
 #include <sys/uio.h>
 #include <time.h>
 #include <unistd.h>
+
+#include "compat.h"
+#include "log.h"
+#include "shm.h"
+#include "sysrepo.h"
 
 /**
  * @brief Wrapper for writev().
@@ -819,7 +826,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
 
                 /* call callback */
                 if ((err_info = sr_notif_call_callback(ev_sess, cb, tree_cb, private_data, SR_EV_NOTIF_REPLAY, sub_id,
-                        notif_op, notif_ts))) {
+                        notif_op, &notif_ts))) {
                     goto cleanup;
                 }
             }
@@ -844,7 +851,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     /* replay last notification if the subscription continues */
     sr_time_get(&notif_ts, 0);
     if ((!stop_time || (stop_time >= notif_ts.tv_sec)) && (err_info = sr_notif_call_callback(ev_sess, cb, tree_cb,
-            private_data, SR_EV_NOTIF_REPLAY_COMPLETE, sub_id, NULL, notif_ts))) {
+            private_data, SR_EV_NOTIF_REPLAY_COMPLETE, sub_id, NULL, &notif_ts))) {
         goto cleanup;
     }
 

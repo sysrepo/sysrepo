@@ -18,12 +18,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "xpath.h"
 
 #include <stdlib.h>
 #include <string.h>
 
 #include "common.h"
-#include "xpath.h"
 
 static char *
 sr_get_next_node_internal(char *xpath, sr_xpath_ctx_t *state, int skip_namespace)

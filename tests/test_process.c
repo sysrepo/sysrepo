@@ -392,7 +392,7 @@ test_rpc_crash2(int rp, int wp)
 /* TEST */
 static void
 notif_instid_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
-        const sr_val_t *values, const size_t values_cnt, struct timespec timestamp, void *private_data)
+        const sr_val_t *values, const size_t values_cnt, struct timespec *timestamp, void *private_data)
 {
     (void)session;
     (void)sub_id;

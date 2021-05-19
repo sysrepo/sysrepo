@@ -4,8 +4,8 @@
  * @brief main SHM routines
  *
  * @copyright
- * Copyright 2018 Deutsche Telekom AG.
- * Copyright 2018 - 2019 CESNET, z.s.p.o.
+ * Copyright 2018 - 2021 Deutsche Telekom AG.
+ * Copyright 2018 - 2021 CESNET, z.s.p.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,10 +19,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "common.h"
+#define _GNU_SOURCE /* asprintf */
+
+#include "shm.h"
 
 #include <assert.h>
-#include <ctype.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <pthread.h>
@@ -34,6 +36,13 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+#include <libyang/libyang.h>
+
+#include "common.h"
+#include "compat.h"
+#include "log.h"
+#include "sysrepo.h"
 
 /**
  * @brief Item holding information about active connections owned by this process.

@@ -4,8 +4,8 @@
  * @brief routines for working with modinfo structure
  *
  * @copyright
- * Copyright 2018 Deutsche Telekom AG.
- * Copyright 2018 - 2019 CESNET, z.s.p.o.
+ * Copyright 2018 - 2021 Deutsche Telekom AG.
+ * Copyright 2018 - 2021 CESNET, z.s.p.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,18 +19,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "common.h"
+#include "modinfo.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <unistd.h>
-#include <ctype.h>
 
 #include <libyang/libyang.h>
+
+#include "common.h"
+#include "edit_diff.h"
+#include "log.h"
+#include "lyd_mods.h"
+#include "replay.h"
+#include "shm.h"
 
 sr_error_info_t *
 sr_modinfo_perm_check(struct sr_mod_info_s *mod_info, int wr, int strict)

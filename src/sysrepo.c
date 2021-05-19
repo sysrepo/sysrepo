@@ -19,7 +19,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "common.h"
+#define _XOPEN_SOURCE 500 /* strdup */
+#define _GNU_SOURCE /* pthread_mutex_timedlock */
+
+#include "sysrepo.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -37,6 +40,15 @@
 #include <unistd.h>
 
 #include <libyang/libyang.h>
+
+#include "common.h"
+#include "compat.h"
+#include "edit_diff.h"
+#include "log.h"
+#include "lyd_mods.h"
+#include "modinfo.h"
+#include "replay.h"
+#include "shm.h"
 
 static sr_error_info_t *sr_session_notif_buf_stop(sr_session_ctx_t *session);
 static sr_error_info_t *_sr_session_stop(sr_session_ctx_t *session);
@@ -3104,7 +3116,7 @@ _sr_subscription_suspend_change(sr_subscription_ctx_t *subscription, uint32_t su
         /* send the special notification */
         sr_time_get(&cur_time, 0);
         if ((err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
-                suspend ? SR_EV_NOTIF_SUSPENDED : SR_EV_NOTIF_RESUMED, sub_id, NULL, cur_time))) {
+                suspend ? SR_EV_NOTIF_SUSPENDED : SR_EV_NOTIF_RESUMED, sub_id, NULL, &cur_time))) {
             goto cleanup;
         }
     }
@@ -4853,7 +4865,7 @@ sr_event_notif_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t su
     /* send the special notification */
     sr_time_get(&cur_time, 0);
     if ((err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
-            SR_EV_NOTIF_MODIFIED, sub_id, NULL, cur_time))) {
+            SR_EV_NOTIF_MODIFIED, sub_id, NULL, &cur_time))) {
         goto cleanup_unlock;
     }
 
@@ -4910,7 +4922,7 @@ sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_
     /* send the special notification */
     sr_time_get(&cur_time, 0);
     if ((err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
-            SR_EV_NOTIF_MODIFIED, sub_id, NULL, cur_time))) {
+            SR_EV_NOTIF_MODIFIED, sub_id, NULL, &cur_time))) {
         goto cleanup_unlock;
     }
 

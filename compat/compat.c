@@ -11,9 +11,10 @@
  *
  *     https://opensource.org/licenses/BSD-3-Clause
  */
-#define _POSIX_C_SOURCE 1 /* fdopen, _POSIX_PATH_MAX */
+#include "compat.h"
+
+#define _POSIX_C_SOURCE 200809L /* fdopen, _POSIX_PATH_MAX, strdup */
 #define _ISOC99_SOURCE /* vsnprintf */
-#define _XOPEN_SOURCE 500 /* strdup */
 
 #include <errno.h>
 #include <limits.h>
@@ -23,14 +24,12 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "compat.h"
-
 #ifndef HAVE_VDPRINTF
 int
 vdprintf(int fd, const char *format, va_list ap)
 {
     FILE *stream;
-    int count;
+    int count = 0;
 
     stream = fdopen(dup(fd), "a+");
     if (stream) {
@@ -98,13 +97,39 @@ strndup(const char *s, size_t n)
 
 #endif
 
+#ifndef HAVE_STRNSTR
+char *
+strnstr(const char *s, const char *find, size_t slen)
+{
+    char c, sc;
+    size_t len;
+
+    if ((c = *find++) != '\0') {
+        len = strlen(find);
+        do {
+            do {
+                if ((slen-- < 1) || ((sc = *s++) == '\0')) {
+                    return NULL;
+                }
+            } while (sc != c);
+            if (len > slen) {
+                return NULL;
+            }
+        } while (strncmp(s, find, len));
+        s--;
+    }
+    return (char *)s;
+}
+
+#endif
+
 #ifndef HAVE_GETLINE
 ssize_t
 getline(char **lineptr, size_t *n, FILE *stream)
 {
     static char line[256];
     char *ptr;
-    unsigned int len;
+    ssize_t len;
 
     if (!lineptr || !n) {
         errno = EINVAL;

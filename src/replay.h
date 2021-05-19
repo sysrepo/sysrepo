@@ -27,7 +27,7 @@
 
 #include <libyang/libyang.h>
 
-#include "common.h"
+#include "sysrepo_types.h"
 
 /**
  * @brief Find specific replay notification file:

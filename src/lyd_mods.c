@@ -18,19 +18,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "common.h"
+#define _GNU_SOURCE /* asprintf */
 
+#include "lyd_mods.h"
+
+#include <assert.h>
+#include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <pthread.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <pthread.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
-#include <ctype.h>
-#include <fcntl.h>
 #include <unistd.h>
-#include <assert.h>
+
+#include "common.h"
+#include "compat.h"
+#include "log.h"
+#include "replay.h"
+#include "shm.h"
 
 #include "../modules/ietf_datastores_yang.h"
 #include "../modules/sysrepo_yang.h"

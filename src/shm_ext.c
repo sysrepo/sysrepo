@@ -4,7 +4,7 @@
  * @brief ext SHM routines
  *
  * @copyright
- * Copyright 2018 Deutsche Telekom AG.
+ * Copyright 2018 - 2021 Deutsche Telekom AG.
  * Copyright 2018 - 2021 CESNET, z.s.p.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,21 +19,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "common.h"
+#define _GNU_SOURCE /* asprintf */
 
+#include "shm.h"
+
+#include <assert.h>
+#include <fcntl.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <inttypes.h>
-#include <time.h>
-#include <assert.h>
-#include <sys/types.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <fcntl.h>
+#include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <libyang/libyang.h>
+
+#include "common.h"
+#include "compat.h"
+#include "log.h"
 
 sr_error_info_t *
 sr_shmext_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock, const char *func)

@@ -19,9 +19,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "common.h"
+#define _XOPEN_SOURCE 500 /* strdup */
+
+#include "shm.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,6 +35,14 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+
+#include "common.h"
+#include "compat.h"
+#include "edit_diff.h"
+#include "log.h"
+#include "modinfo.h"
+#include "replay.h"
+#include "sysrepo.h"
 
 sr_error_info_t *
 sr_shmsub_create(const char *name, const char *suffix1, int64_t suffix2, size_t shm_struct_size)
@@ -3353,7 +3364,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     for (i = 0; i < notif_subs->sub_count; ++i) {
         if (sr_shmsub_notif_listen_filter_is_valid(notif_op, notif_subs->subs[i].xpath)) {
             if ((err_info = sr_notif_call_callback(ev_sess, notif_subs->subs[i].cb, notif_subs->subs[i].tree_cb,
-                    notif_subs->subs[i].private_data, SR_EV_NOTIF_REALTIME, notif_subs->subs[i].sub_id, notif_op, notif_ts))) {
+                    notif_subs->subs[i].private_data, SR_EV_NOTIF_REALTIME, notif_subs->subs[i].sub_id, notif_op, &notif_ts))) {
                 goto cleanup;
             }
         } else {

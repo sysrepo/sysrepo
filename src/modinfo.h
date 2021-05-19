@@ -25,7 +25,8 @@
 
 #include <libyang/libyang.h>
 
-#include "common.h"
+#include "sysrepo_types.h"
+#include "shm_types.h"
 
 #define MOD_INFO_DEP        0x0001 /* dependency module, its data cannot be changed, but are required for validation */
 #define MOD_INFO_INV_DEP    0x0002 /* inverse dependency module, its data cannot be changed, but will be validated */

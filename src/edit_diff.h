@@ -25,7 +25,8 @@
 
 #include <libyang/libyang.h>
 
-#include "common.h"
+#include "common_types.h"
+#include "sysrepo_types.h"
 
 /**
  * @brief All edit operations.
