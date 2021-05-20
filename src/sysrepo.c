@@ -446,6 +446,39 @@ cleanup:
     return sr_api_ret(NULL, err_info);
 }
 
+/**
+ * @brief Set originator name and data for a session.
+ *
+ * @param[in] sess Session to use.
+ * @param[in] orig_name Originator name.
+ * @param[in] orig_data Originator data.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_session_set_orig(sr_session_ctx_t *sess, const char *orig_name, const void *orig_data)
+{
+    sr_error_info_t *err_info = NULL;
+    const uint32_t empty_data[] = {0};
+
+    if (!orig_name) {
+        orig_name = "";
+    }
+    if (!orig_data) {
+        orig_data = empty_data;
+    }
+
+    /* orig name */
+    sess->ev_data.orig_name = strdup(orig_name);
+    SR_CHECK_MEM_RET(!sess->ev_data.orig_name, err_info);
+
+    /* orig data */
+    sess->ev_data.orig_data = malloc(sr_ev_data_size(orig_data));
+    SR_CHECK_MEM_RET(!sess->ev_data.orig_data, err_info);
+    memcpy(sess->ev_data.orig_data, orig_data, sr_ev_data_size(orig_data));
+
+    return NULL;
+}
+
 sr_error_info_t *
 _sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_sub_event_t event, char **shm_data_ptr,
         sr_session_ctx_t **session)
@@ -484,11 +517,10 @@ _sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_sub_ev
     (*session)->ds = datastore;
     (*session)->ev = event;
     if (shm_data_ptr) {
-        (*session)->ev_data.orig_name = strdup(*shm_data_ptr);
+        if ((err_info = sr_session_set_orig(*session, *shm_data_ptr, (*shm_data_ptr) + sr_strshmlen(*shm_data_ptr)))) {
+            goto error;
+        }
         *shm_data_ptr += sr_strshmlen(*shm_data_ptr);
-
-        (*session)->ev_data.orig_data = malloc(sr_ev_data_size(*shm_data_ptr));
-        memcpy((*session)->ev_data.orig_data, *shm_data_ptr, sr_ev_data_size(*shm_data_ptr));
         *shm_data_ptr += SR_SHM_SIZE(sr_ev_data_size(*shm_data_ptr));
     }
     if ((err_info = sr_mutex_init(&(*session)->ptr_lock, 0))) {
@@ -2189,6 +2221,11 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     if (mod_info->conn->diff_check_cb) {
         /* create event session */
         if ((err_info = _sr_session_start(mod_info->conn, mod_info->ds, SR_SUB_EV_CHANGE, NULL, &ev_sess))) {
+            goto cleanup;
+        }
+
+        /* set originator data */
+        if ((err_info = sr_session_set_orig(ev_sess, orig_name, orig_data))) {
             goto cleanup;
         }
 
