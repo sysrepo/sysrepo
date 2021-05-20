@@ -3073,6 +3073,11 @@ sr_ev_data_get(const void *ev_data, uint32_t idx, uint32_t *size, void **data)
     uint32_t count, i;
     char *ptr;
 
+    if (!ev_data) {
+        /* no data */
+        return SR_ERR_NOT_FOUND;
+    }
+
     count = *(uint32_t *)ev_data;
     if (idx >= count) {
         /* out-of-bounds */

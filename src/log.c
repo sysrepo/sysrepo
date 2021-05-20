@@ -184,10 +184,12 @@ sr_errinfo_add(sr_error_info_t **err_info, sr_error_t err_code, const char *err_
         if (vasprintf(&e->message, msg_format, *vargs) == -1) {
             return;
         }
-    } else {
+    } else if (msg_format) {
         if (!(e->message = strdup(msg_format))) {
             return;
         }
+    } else {
+        e->message = NULL;
     }
 
     /* error format */
