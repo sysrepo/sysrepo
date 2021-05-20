@@ -793,6 +793,46 @@ sr_session_get_error(sr_session_ctx_t *session, const sr_error_info_t **error_in
 }
 
 API int
+sr_session_dup_error(sr_session_ctx_t *src_session, sr_session_ctx_t *trg_session)
+{
+    sr_error_info_t *err_info = NULL;
+    const void *err_data;
+    int ret;
+
+    SR_CHECK_ARG_APIRET(!src_session || !trg_session, NULL, err_info);
+
+    if (!src_session->err_info) {
+        /* no error info to duplicate */
+        return sr_api_ret(trg_session, NULL);
+    }
+
+    /* message */
+    ret = sr_session_set_error_message(trg_session, src_session->err_info->err[0].message);
+    if (ret) {
+        return ret;
+    }
+
+    /* format */
+    ret = sr_session_set_error_format(trg_session, src_session->err_info->err[0].error_format);
+    if (ret) {
+        return ret;
+    }
+
+    /* data */
+    free(trg_session->ev_error.data);
+    trg_session->ev_error.data = NULL;
+    err_data = src_session->err_info->err[0].error_data;
+    if (err_data) {
+        trg_session->ev_error.data = malloc(sr_ev_data_size(err_data));
+        SR_CHECK_MEM_GOTO(!trg_session->ev_error.data, err_info, cleanup);
+        memcpy(trg_session->ev_error.data, err_data, sr_ev_data_size(err_data));
+    }
+
+cleanup:
+    return sr_api_ret(trg_session, err_info);
+}
+
+API int
 sr_session_set_error_message(sr_session_ctx_t *session, const char *format, ...)
 {
     sr_error_info_t *err_info = NULL;

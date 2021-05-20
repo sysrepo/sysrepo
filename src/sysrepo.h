@@ -325,10 +325,19 @@ int sr_session_get_orig_data(sr_session_ctx_t *session, uint32_t idx, uint32_t *
 int sr_session_get_error(sr_session_ctx_t *session, const sr_error_info_t **error_info);
 
 /**
+ * @brief Copy the first error (if any) from a session to a callback session.
+ *
+ * @param[in] src_session Session (not [DS](@ref sr_datastore_t)-specific) to read the error from.
+ * @param[in] trg_session Implicit session provided in a callback.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_session_dup_error(sr_session_ctx_t *src_session, sr_session_ctx_t *trg_session);
+
+/**
  * @brief Set an error message for a failed callback communicated back to the originator.
  * Does not print the message.
  *
- * @note Intended for change, RPC/action, or operational callbacks to be used
+ * @note Intended for diff-check, change, RPC/action, or operational callbacks to be used
  * on the provided session.
  *
  * @param[in] session Implicit session provided in a callback.
