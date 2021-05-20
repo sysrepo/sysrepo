@@ -1321,7 +1321,7 @@ sr_shmmain_check_data_files(sr_main_shm_t *main_shm)
             cur_group = group;
         }
         if (perm == cur_perm) {
-            cur_perm = 0;
+            cur_perm = (mode_t)-1;
         } else {
             cur_perm = perm;
         }
@@ -1370,7 +1370,7 @@ sr_shmmain_check_data_files(sr_main_shm_t *main_shm)
             cur_group = group;
         }
         if (perm == cur_perm) {
-            cur_perm = 0;
+            cur_perm = (mode_t)-1;
         } else {
             cur_perm = perm;
         }
