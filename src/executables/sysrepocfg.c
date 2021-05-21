@@ -90,6 +90,7 @@ help_print(void)
             "                               (\"xml\", \"json\", or \"lyb\") (import, export, edit, rpc, notification, copy-from, new-data op).\n"
             "  -l, --lock                   Lock the specified datastore for the whole operation (edit op).\n"
             "  -n, --not-strict             Silently ignore any unknown data (import, edit, rpc, notification, copy-from op).\n"
+            "  -o, --opaque                 Parse invalid nodes in the edit into opaque nodes (edit op).\n"
             "  -p, --depth <number>         Limit the depth of returned subtrees, 0 so unlimited by default (export op).\n"
             "  -t, --timeout <seconds>      Set the timeout for the operation, otherwise the default one is used.\n"
             "  -w, --wait                   Wait for all the callbacks to be called on a data change including DONE or ABORT.\n"
@@ -217,7 +218,7 @@ enum data_type {
 
 static int
 step_load_data(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format, enum data_type data_type,
-        int not_strict, struct lyd_node **data)
+        int not_strict, int opaq, struct lyd_node **data)
 {
     const struct ly_ctx *ly_ctx;
     struct ly_in *in;
@@ -265,7 +266,7 @@ step_load_data(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format,
         lyrc = lyd_parse_data(ly_ctx, NULL, in, format, parse_flags, 0, data);
         break;
     case DATA_EDIT:
-        parse_flags = LYD_PARSE_NO_STATE | LYD_PARSE_ONLY | LYD_PARSE_OPAQ;
+        parse_flags = LYD_PARSE_NO_STATE | LYD_PARSE_ONLY | (opaq ? LYD_PARSE_OPAQ : 0);
         lyrc = lyd_parse_data(ly_ctx, NULL, in, format, parse_flags, 0, data);
         break;
     case DATA_RPC:
@@ -331,7 +332,7 @@ op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     struct lyd_node *data;
     int r;
 
-    if (step_load_data(sess, file_path, format, DATA_CONFIG, not_strict, &data)) {
+    if (step_load_data(sess, file_path, format, DATA_CONFIG, not_strict, 0, &data)) {
         return EXIT_FAILURE;
     }
 
@@ -397,7 +398,7 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
 
 static int
 op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const char *module_name, LYD_FORMAT format,
-        int lock, int not_strict, int wd_opt, int timeout_s)
+        int lock, int not_strict, int opaq, int wd_opt, int timeout_s)
 {
     char tmp_file[22];
     int r, rc = EXIT_FAILURE;
@@ -405,7 +406,7 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
 
     if (file_path) {
         /* just apply an edit from a file */
-        if (step_load_data(sess, file_path, format, DATA_EDIT, 0, &data)) {
+        if (step_load_data(sess, file_path, format, DATA_EDIT, 0, opaq, &data)) {
             return EXIT_FAILURE;
         }
 
@@ -483,7 +484,7 @@ op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FO
     }
 
     /* load the file */
-    if (step_load_data(sess, file_path, format, DATA_RPC, 0, &input)) {
+    if (step_load_data(sess, file_path, format, DATA_RPC, 0, 0, &input)) {
         return EXIT_FAILURE;
     }
 
@@ -531,7 +532,7 @@ op_notif(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_
     }
 
     /* load the file */
-    if (step_load_data(sess, file_path, format, DATA_NOTIF, 0, &notif)) {
+    if (step_load_data(sess, file_path, format, DATA_NOTIF, 0, 0, &notif)) {
         return EXIT_FAILURE;
     }
 
@@ -555,7 +556,7 @@ op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds,
 
     if (file_path) {
         /* load the file */
-        if (step_load_data(sess, file_path, format, DATA_CONFIG, not_strict, &data)) {
+        if (step_load_data(sess, file_path, format, DATA_CONFIG, not_strict, 0, &data)) {
             return EXIT_FAILURE;
         }
 
@@ -626,7 +627,7 @@ main(int argc, char **argv)
     LYD_FORMAT format = LYD_UNKNOWN;
     const char *module_name = NULL, *editor = NULL, *file_path = NULL, *xpath = NULL, *op_str;
     char *ptr;
-    int r, rc = EXIT_FAILURE, opt, operation = 0, lock = 0, not_strict = 0, timeout = 0, wd_opt = 0;
+    int r, rc = EXIT_FAILURE, opt, operation = 0, lock = 0, not_strict = 0, opaq = 0, timeout = 0, wd_opt = 0;
     uint32_t max_depth = 0;
     struct option options[] = {
         {"help",            no_argument,       NULL, 'h'},
@@ -644,6 +645,7 @@ main(int argc, char **argv)
         {"format",          required_argument, NULL, 'f'},
         {"lock",            no_argument,       NULL, 'l'},
         {"not-strict",      no_argument,       NULL, 'n'},
+        {"opaque",          no_argument,       NULL, 'o'},
         {"depth",           required_argument, NULL, 'p'},
         {"timeout",         required_argument, NULL, 't'},
         {"defaults",        required_argument, NULL, 'e'},
@@ -658,7 +660,7 @@ main(int argc, char **argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:W:d:m:x:f:lnp:t:e:v:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:W:d:m:x:f:lnop:t:e:v:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -796,6 +798,9 @@ main(int argc, char **argv)
         case 'n':
             not_strict = 1;
             break;
+        case 'o':
+            opaq = 1;
+            break;
         case 'p':
             max_depth = strtoul(optarg, &ptr, 10);
             if (ptr[0]) {
@@ -903,7 +908,7 @@ main(int argc, char **argv)
         rc = op_export(sess, file_path, module_name, xpath, format, max_depth, wd_opt, timeout);
         break;
     case 'E':
-        rc = op_edit(sess, file_path, editor, module_name, format, lock, not_strict, wd_opt, timeout);
+        rc = op_edit(sess, file_path, editor, module_name, format, lock, not_strict, opaq, wd_opt, timeout);
         break;
     case 'R':
         rc = op_rpc(sess, file_path, editor, format, wd_opt, timeout);
