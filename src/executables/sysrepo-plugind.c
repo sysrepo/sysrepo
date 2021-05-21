@@ -19,10 +19,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define _POSIX_C_SOURCE 200809L /* sigaction */
-#define _DEFAULT_SOURCE /* struct dirent.d_type */
-#define _GNU_SOURCE /* asprintf */
-#define _XOPEN_SOURCE 500 /* strdup */
+
+#define _GNU_SOURCE
+#include <sys/cdefs.h>
 
 #include <dirent.h>
 #include <dlfcn.h>

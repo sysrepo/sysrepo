@@ -19,8 +19,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #define _GNU_SOURCE
-#define _XOPEN_SOURCE 500 /* strdup */
+#include <sys/cdefs.h>
 
 #include <assert.h>
 #include <getopt.h>

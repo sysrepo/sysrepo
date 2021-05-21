@@ -19,8 +19,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define _XOPEN_SOURCE 500 /* strdup */
-#define _GNU_SOURCE /* asprintf */
+
+#define _GNU_SOURCE
+#include <sys/cdefs.h>
 
 #include "common.h"
 

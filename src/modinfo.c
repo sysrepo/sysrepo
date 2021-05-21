@@ -19,6 +19,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+#define _GNU_SOURCE
+#include <sys/cdefs.h>
+
 #include "modinfo.h"
 
 #include <assert.h>
@@ -28,6 +32,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <sys/mman.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <libyang/libyang.h>
