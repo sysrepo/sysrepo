@@ -5083,7 +5083,7 @@ sr_xpath_next_predicate(const char *xpath, const char **pred, int *len, int *has
         *len = ptr - (xpath + 1);
     }
     if (has_predicate) {
-        *has_predicate = (ptr[0] && (ptr[0] + 1 == '[')) ? 1 : 0;
+        *has_predicate = (ptr[0] && (ptr[1] == '[')) ? 1 : 0;
     }
 
     return ptr + 1;
