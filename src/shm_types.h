@@ -24,6 +24,7 @@
 #define _SHM_TYPES_H
 
 #include <sys/types.h>
+#include <time.h>
 
 #include "sysrepo_types.h"
 #include "common_types.h"

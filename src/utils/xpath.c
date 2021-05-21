@@ -19,6 +19,9 @@
  * limitations under the License.
  */
 
+#define _GNU_SOURCE
+#include <sys/cdefs.h>
+
 #include "xpath.h"
 
 #include <stdlib.h>
