@@ -158,12 +158,7 @@ struct sr_session_ctx_s {
         pthread_t tid;              /**< Thread ID of the thread. */
         sr_rwlock_t lock;           /**< Lock for accessing thread_running and the notification buffer
                                          (READ-lock is not used). */
-        struct sr_sess_notif_buf_node {
-            char *notif_lyb;        /**< Buffered notification to be stored in LYB format. */
-            struct timespec notif_ts;   /**< Buffered notification timestamp. */
-            const struct lys_module *notif_mod; /**< Buffered notification modules. */
-            struct sr_sess_notif_buf_node *next;    /**< Next stored notification buffer node. */
-        } *first;                   /**< First stored notification buffer node. */
+        struct sr_sess_notif_buf_node *first;   /**< First stored notification buffer node. */
         struct sr_sess_notif_buf_node *last;    /**< Last stored notification buffer node. */
     } notif_buf;                    /**< Notification buffering attributes. */
 };

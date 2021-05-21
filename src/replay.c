@@ -44,6 +44,18 @@
 #include "sysrepo.h"
 
 /**
+ * @brief Session buffered notification linked-list node structure.
+ *
+ * Defined here to avoid problems with timespec.
+ */
+struct sr_sess_notif_buf_node {
+    char *notif_lyb;                        /**< Buffered notification to be stored in LYB format. */
+    struct timespec notif_ts;               /**< Buffered notification timestamp. */
+    const struct lys_module *notif_mod;     /**< Buffered notification module. */
+    struct sr_sess_notif_buf_node *next;    /**< Next stored notification buffer node. */
+};
+
+/**
  * @brief Wrapper for writev().
  *
  * @param[in] fd File desriptor.
