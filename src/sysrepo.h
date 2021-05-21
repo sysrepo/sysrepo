@@ -218,18 +218,29 @@ int sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, cons
 int sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_session_ctx_t **session);
 
 /**
- * @brief Stop current session and releases resources tied to the session.
+ * @brief Stop the session and releases resources tied to it.
  *
  * Also releases any locks held and frees subscriptions created (only) by this session.
  *
  * @note Session can no longer be used even on error. Subscriptions, even
- * if they no longer handle any events are **never** freed and should be manually
- * freed using ::sr_unsubscribe.
+ * if they no longer handle any events are **never** freed and should be freed
+ * manually using ::sr_unsubscribe.
  *
- * @param[in] session Session context acquired with ::sr_session_start call.
+ * @param[in] session Session to use.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_session_stop(sr_session_ctx_t *session);
+
+/**
+ * @brief Unsubscribe all subscriptions created by this session.
+ *
+ * @note Subscriptions, even if they no longer handle any events are **never** freed
+ * and should be freed manually using ::sr_unsubscribe.
+ *
+ * @param[in] session Session to use.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_session_unsubscribe(sr_session_ctx_t *session);
 
 /**
  * @brief Use notification buffering for the session.

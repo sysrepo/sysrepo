@@ -660,14 +660,28 @@ sr_session_stop(sr_session_ctx_t *session)
     }
 
     /* stop all subscriptions of this session */
-    while (session->subscription_count) {
-        tmp_err = sr_subscr_session_del(session->subscriptions[0], session, SR_LOCK_NONE);
-        sr_errinfo_merge(&err_info, tmp_err);
-    }
+    sr_session_unsubscribe(session);
 
     /* free the session itself */
     tmp_err = _sr_session_stop(session);
     sr_errinfo_merge(&err_info, tmp_err);
+
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_session_unsubscribe(sr_session_ctx_t *session)
+{
+    sr_error_info_t *err_info = NULL, *tmp_err;
+
+    if (!session) {
+        return sr_api_ret(NULL, NULL);
+    }
+
+    while (session->subscription_count) {
+        tmp_err = sr_subscr_session_del(session->subscriptions[0], session, SR_LOCK_NONE);
+        sr_errinfo_merge(&err_info, tmp_err);
+    }
 
     return sr_api_ret(NULL, err_info);
 }
