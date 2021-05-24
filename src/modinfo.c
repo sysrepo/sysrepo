@@ -2487,7 +2487,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL, *tmp_err_info = NULL;
     struct sr_mod_info_mod_s *mod;
-    struct lyd_node *mod_data, *diff = NULL;
+    struct lyd_node *mod_data, *enab_mod_data = NULL, *diff = NULL;
     uint32_t i;
     int change, create_flags;
 
@@ -2560,19 +2560,25 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                     }
 
                     if (diff) {
-                        /* add any missing NP containers so that stored diff can be properly applied */
-                        if ((err_info = sr_lyd_create_sibling_np_cont_r(&mod_data, NULL, mod->ly_mod, NULL))) {
+                        /* get the enabled running module data */
+                        if ((err_info = sr_module_oper_data_dup_enabled(mod_info->conn, mod_data, mod, 0, &enab_mod_data))) {
                             goto cleanup;
                         }
-                        if ((err_info = sr_diff_mod_update(&diff, mod->ly_mod, mod_data))) {
+
+                        /* update stored diff */
+                        if ((err_info = sr_diff_mod_update(&diff, mod->ly_mod, enab_mod_data))) {
                             goto cleanup;
                         }
+
+                        /* store updated diff */
                         if ((err_info = sr_module_file_data_set(mod->ly_mod->name, SR_DS_OPERATIONAL, diff, 0,
                                 SR_FILE_PERM))) {
                             goto cleanup;
                         }
                         lyd_free_withsiblings(diff);
                         diff = NULL;
+                        lyd_free_withsiblings(enab_mod_data);
+                        enab_mod_data = NULL;
                     }
                 }
             }
@@ -2584,6 +2590,7 @@ cleanup:
         sr_errinfo_merge(&err_info, tmp_err_info);
     }
     lyd_free_withsiblings(diff);
+    lyd_free_withsiblings(enab_mod_data);
     return err_info;
 
 }
