@@ -13,6 +13,7 @@ include(CheckLibraryExists)
 include(CheckIncludeFile)
 include(UseCompat)
 include(SourceFormat)
+include(Doc)
 if(POLICY CMP0075)
     cmake_policy(SET CMP0075 NEW)
 endif()
@@ -64,7 +65,20 @@ set(LIBYANG_DEP_SOVERSION 1.10.29)
 set(LIBYANG_DEP_SOVERSION_MAJOR 1)
 
 # options
-if((CMAKE_BUILD_TYPE_LOWER STREQUAL debug) OR (CMAKE_BUILD_TYPE_LOWER STREQUAL package))
+
+# binding options
+option(GEN_LANGUAGE_BINDINGS "Enable library bindings for different languages." OFF)
+
+option(GEN_CPP_BINDINGS "Enable C++ bindings." ON)
+option(BUILD_CPP_EXAMPLES "Enable C++ example application compilation." ON)
+
+option(GEN_PYTHON_BINDINGS "Enable Python bindings." ON)
+option(ENABLE_PYTHON_TESTS "Enable Python tests." ON)
+
+if(CMAKE_BUILD_TYPE_LOWER STREQUAL doconly)
+    sysrepo_doc()
+    return()
+elseif((CMAKE_BUILD_TYPE_LOWER STREQUAL debug) OR (CMAKE_BUILD_TYPE_LOWER STREQUAL package))
     option(ENABLE_TESTS "Build tests" ON)
     option(ENABLE_VALGRIND_TESTS "Build tests with valgrind" ON)
 else()
@@ -103,15 +117,6 @@ if(ENABLE_COVERAGE)
 endif()
 
 option(INSTALL_SYSCTL_CONF "Install sysctl conf file to allow shared access to SHM files." OFF)
-
-# binding options
-option(GEN_LANGUAGE_BINDINGS "Enable library bindings for different languages." OFF)
-
-option(GEN_CPP_BINDINGS "Enable C++ bindings." ON)
-option(BUILD_CPP_EXAMPLES "Enable C++ example application compilation." ON)
-
-option(GEN_PYTHON_BINDINGS "Enable Python bindings." ON)
-option(ENABLE_PYTHON_TESTS "Enable Python tests." ON)
 
 # compilation flags
 set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_COVERAGE} -Wall -Wextra -Wpedantic -std=c99")
@@ -319,25 +324,7 @@ endif()
 add_subdirectory(packages)
 
 # doxygen documentation
-find_package(Doxygen)
-if(DOXYGEN_FOUND)
-    find_program(DOT_PATH dot PATH_SUFFIXES graphviz2.38/bin graphviz/bin)
-    if(DOT_PATH)
-        set(HAVE_DOT "YES")
-    else()
-        set(HAVE_DOT "NO")
-        message(AUTHOR_WARNING "Doxygen: to generate UML diagrams please install graphviz")
-    endif()
-
-    if(GEN_LANGUAGE_BINDINGS AND GEN_CPP_BINDINGS)
-        set(CPP_HEADERS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/bindings/cpp/src)
-    endif()
-
-    add_custom_target(doc
-            COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_BINARY_DIR}/Doxyfile
-            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-    configure_file(Doxyfile.in Doxyfile)
-endif()
+sysrepo_doc()
 
 # phony target for clearing sysrepo SHM
 add_custom_target(shm_clean
