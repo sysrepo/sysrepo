@@ -25,8 +25,8 @@
 
 #include <libyang/libyang.h>
 
-#include "sysrepo_types.h"
 #include "shm_types.h"
+#include "sysrepo_types.h"
 
 #define MOD_INFO_DEP        0x0001 /* dependency module, its data cannot be changed, but are required for validation */
 #define MOD_INFO_INV_DEP    0x0002 /* inverse dependency module, its data cannot be changed, but will be validated */
@@ -140,8 +140,7 @@ void sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info);
  * @param[out] cb_error_info Callback error info in case an operational subscriber of required data failed.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *
-sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig_name, const void *orig_data,
+sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig_name, const void *orig_data,
         const char *request_xpath, uint32_t timeout_ms, sr_get_oper_options_t opts, sr_error_info_t **cb_error_info);
 
 #define SR_MI_MOD_DEPS          0x01    /**< add modules not as MOD_INFO_REQ but as MOD_INFO_DEP */

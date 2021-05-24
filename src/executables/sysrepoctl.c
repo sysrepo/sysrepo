@@ -256,7 +256,7 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
                 }
 
                 cur_item->features = realloc(cur_item->features, strlen(cur_item->features) + (!real_state ? 0 : 1) + 1 +
-                        + strlen(str) + 1);
+                        +strlen(str) + 1);
                 if (cur_item->features[0]) {
                     strcat(cur_item->features, " ");
                 }

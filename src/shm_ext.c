@@ -28,9 +28,9 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>

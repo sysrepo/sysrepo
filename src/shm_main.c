@@ -743,8 +743,8 @@ sr_shmmain_add_module_deps(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr
     old_shm_size = shm_main->size;
 
     /* enlarge and possibly remap main SHM */
-    if ((err_info = sr_shm_remap(shm_main, shm_main->size + paths_len + SR_SHM_SIZE(shm_mod->dep_count * sizeof(sr_dep_t))
-            + SR_SHM_SIZE(shm_mod->inv_dep_count * sizeof(off_t))))) {
+    if ((err_info = sr_shm_remap(shm_main, shm_main->size + paths_len + SR_SHM_SIZE(shm_mod->dep_count * sizeof(sr_dep_t)) +
+            SR_SHM_SIZE(shm_mod->inv_dep_count * sizeof(off_t))))) {
         return err_info;
     }
     shm_mod = SR_SHM_MOD_IDX(shm_main->addr, shm_mod_idx);
@@ -846,8 +846,8 @@ sr_shmmain_add_module_rpcs(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr
     old_shm_size = shm_main->size;
 
     /* enlarge and possibly remap main SHM */
-    if ((err_info = sr_shm_remap(shm_main, shm_main->size + paths_len + SR_SHM_SIZE(shm_mod->rpc_count * sizeof(sr_rpc_t))
-            + in_out_deps_len))) {
+    if ((err_info = sr_shm_remap(shm_main, shm_main->size + paths_len + SR_SHM_SIZE(shm_mod->rpc_count * sizeof(sr_rpc_t)) +
+            in_out_deps_len))) {
         return err_info;
     }
     shm_mod = SR_SHM_MOD_IDX(shm_main->addr, shm_mod_idx);
@@ -980,8 +980,8 @@ sr_shmmain_add_module_notifs(const struct lyd_node *sr_mod, size_t shm_mod_idx, 
     old_shm_size = shm_main->size;
 
     /* enlarge and possibly remap main SHM */
-    if ((err_info = sr_shm_remap(shm_main, shm_main->size + paths_len + SR_SHM_SIZE(shm_mod->notif_count * sizeof(sr_notif_t))
-            + deps_len))) {
+    if ((err_info = sr_shm_remap(shm_main, shm_main->size + paths_len + SR_SHM_SIZE(shm_mod->notif_count * sizeof(sr_notif_t)) +
+            deps_len))) {
         return err_info;
     }
     shm_mod = SR_SHM_MOD_IDX(shm_main->addr, shm_mod_idx);

@@ -28,9 +28,9 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
-#include <inttypes.h>
 #include <sys/mman.h>
 #include <sys/select.h>
 #include <sys/stat.h>

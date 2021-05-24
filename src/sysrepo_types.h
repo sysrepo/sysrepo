@@ -384,7 +384,7 @@ typedef enum {
      * subscription callback, keep them. Then the returned data are merged into the existing data. Accepted
      * only for operational subscriptions.
      */
-    SR_SUBSCR_OPER_MERGE = 64,
+    SR_SUBSCR_OPER_MERGE = 64
 
 } sr_subscr_flag_t;
 

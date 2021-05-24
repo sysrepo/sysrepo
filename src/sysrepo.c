@@ -1491,8 +1491,8 @@ sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *o
         /* set permissions of this module */
         err_info = _sr_set_module_access(module_name, shm_mod, owner, group, perm);
     } else {
-       /* go through all the modules */
-       for (i = 0; i < main_shm->mod_count; ++i) {
+        /* go through all the modules */
+        for (i = 0; i < main_shm->mod_count; ++i) {
             shm_mod = SR_SHM_MOD_IDX(main_shm, i);
             module_name = ((char *)main_shm) + shm_mod->name;
 
@@ -2774,7 +2774,7 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, uint32_t sid)
             sr_errinfo_new(&err_info, SR_ERR_LOCKED, "Module \"%s\" is already locked by this session %" PRIu32 ".",
                     mod->ly_mod->name, sid);
             goto error;
-        } else if (!shm_lock->ds_lock_sid  && !lock) {
+        } else if (!shm_lock->ds_lock_sid && !lock) {
             sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Module \"%s\" was not locked by this session %" PRIu32 ".",
                     mod->ly_mod->name, sid);
             goto error;
@@ -3900,8 +3900,8 @@ cleanup:
         free(sr_val);
     } else {
         *sr_val_p = sr_val;
-     }
-     return err_info;
+    }
+    return err_info;
 }
 
 API int
@@ -4046,13 +4046,13 @@ sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_ch
     case SR_OP_MODIFIED:
         /* "orig-value" metadata contains the previous value */
         for (meta = (*node)->meta;
-             meta && (strcmp(meta->annotation->module->name, "yang") || strcmp(meta->name, "orig-value"));
-             meta = meta->next);
+                meta && (strcmp(meta->annotation->module->name, "yang") || strcmp(meta->name, "orig-value"));
+                meta = meta->next) {}
 
         /* "orig-default" holds the previous default flag value */
         for (meta2 = (*node)->meta;
-             meta2 && (strcmp(meta2->annotation->module->name, "yang") || strcmp(meta2->name, "orig-default"));
-             meta2 = meta2->next);
+                meta2 && (strcmp(meta2->annotation->module->name, "yang") || strcmp(meta2->name, "orig-default"));
+                meta2 = meta2->next) {}
 
         if (!meta || !meta2) {
             SR_ERRINFO_INT(&err_info);
@@ -4081,8 +4081,8 @@ sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_ch
 
         /* attribute contains the value (predicates) of the preceding instance in the order */
         for (meta = (*node)->meta;
-             meta && (strcmp(meta->annotation->module->name, "yang") || strcmp(meta->name, meta_name));
-             meta = meta->next);
+                meta && (strcmp(meta->annotation->module->name, "yang") || strcmp(meta->name, meta_name));
+                meta = meta->next) {}
         if (!meta) {
             SR_ERRINFO_INT(&err_info);
             return sr_api_ret(session, err_info);
@@ -4524,6 +4524,7 @@ static LY_ERR
 sr_event_notif_lysc_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_continue)
 {
     int *found = (int *)data;
+
     (void)dfs_continue;
 
     if (node->nodetype == LYS_NOTIF) {

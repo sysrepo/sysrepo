@@ -133,8 +133,8 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
 
         LY_LIST_FOR(edit_node->meta, meta) {
             val_str = lyd_get_meta_value(meta);
-            if (!strcmp(meta->name, "operation") && (!strcmp(meta->annotation->module->name, SR_YANG_MOD)
-                    || !strcmp(meta->annotation->module->name, "ietf-netconf"))) {
+            if (!strcmp(meta->name, "operation") && (!strcmp(meta->annotation->module->name, SR_YANG_MOD) ||
+                    !strcmp(meta->annotation->module->name, "ietf-netconf"))) {
                 *op = sr_edit_str2op(val_str);
             } else if (user_order_list && !strcmp(meta->name, "insert") && !strcmp(meta->annotation->module->name, "yang")) {
                 if (!strcmp(val_str, "first")) {
@@ -159,8 +159,8 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
                 /* try to create a metadata instance and use that */
                 uint32_t prev_lo = ly_log_options(0);
                 if (!lyd_new_meta2(LYD_CTX(edit_node), NULL, 0, attr, &meta)) {
-                    if (!strcmp(meta->annotation->module->name, SR_YANG_MOD)
-                            || !strcmp(meta->annotation->module->name, "ietf-netconf")) {
+                    if (!strcmp(meta->annotation->module->name, SR_YANG_MOD) ||
+                            !strcmp(meta->annotation->module->name, "ietf-netconf")) {
                         *op = sr_edit_str2op(lyd_get_meta_value(meta));
                     }
                     lyd_free_meta_single(meta);
@@ -292,7 +292,7 @@ sr_edit_update_cid(struct lyd_node *edit_node, sr_cid_t cid, int keep_cur_child)
 
         if (cur_cid != cid) {
             /* add meta of the new connection */
-            sprintf(cid_str, "%"PRIu32, cid);
+            sprintf(cid_str, "%" PRIu32, cid);
             if (lyd_new_meta(LYD_CTX(edit_node), edit_node, NULL, SR_YANG_MOD ":cid", cid_str, 0, NULL)) {
                 sr_errinfo_new_ly(&err_info, LYD_CTX(edit_node));
                 return err_info;
@@ -305,7 +305,7 @@ sr_edit_update_cid(struct lyd_node *edit_node, sr_cid_t cid, int keep_cur_child)
         }
 
         /* keep meta of the current connection for children */
-        sprintf(cid_str, "%"PRIu32, child_cid);
+        sprintf(cid_str, "%" PRIu32, child_cid);
 
         LY_LIST_FOR(lyd_child_no_keys(edit_node), child) {
             sr_edit_find_cid(child, NULL, &meta_own);
@@ -1373,9 +1373,9 @@ sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper
         if (edit->schema) {
             LY_LIST_FOR(edit->meta, meta) {
                 if (!strcmp(meta->name, "operation")) {
-                    if (!strcmp(meta->annotation->module->name, SR_YANG_MOD)
-                            || !strcmp(meta->annotation->module->name, "ietf-netconf")
-                            || !strcmp(meta->annotation->module->name, "yang")) {
+                    if (!strcmp(meta->annotation->module->name, SR_YANG_MOD) ||
+                            !strcmp(meta->annotation->module->name, "ietf-netconf") ||
+                            !strcmp(meta->annotation->module->name, "yang")) {
                         return sr_edit_str2op(lyd_get_meta_value(meta));
                     }
                 }
@@ -1386,8 +1386,8 @@ sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper
                     /* try to create a metadata instance and use that */
                     uint32_t prev_lo = ly_log_options(0);
                     if (!lyd_new_meta2(LYD_CTX(edit), NULL, 0, attr, &meta)) {
-                        if (!strcmp(meta->annotation->module->name, SR_YANG_MOD)
-                                || !strcmp(meta->annotation->module->name, "ietf-netconf")) {
+                        if (!strcmp(meta->annotation->module->name, SR_YANG_MOD) ||
+                                !strcmp(meta->annotation->module->name, "ietf-netconf")) {
                             return sr_edit_str2op(lyd_get_meta_value(meta));
                         }
                         lyd_free_meta_single(meta);
@@ -1419,10 +1419,10 @@ sr_edit_del_meta_attr(struct lyd_node *edit, const char *name)
     if (edit->schema) {
         LY_LIST_FOR(edit->meta, meta) {
             if (!strcmp(meta->name, name)) {
-                if (!strcmp(meta->annotation->module->name, SR_YANG_MOD)
-                        || !strcmp(meta->annotation->module->name, "ietf-netconf")
-                        || !strcmp(meta->annotation->module->name, "yang")
-                        || !strcmp(meta->annotation->module->name, "ietf-origin")) {
+                if (!strcmp(meta->annotation->module->name, SR_YANG_MOD) ||
+                        !strcmp(meta->annotation->module->name, "ietf-netconf") ||
+                        !strcmp(meta->annotation->module->name, "yang") ||
+                        !strcmp(meta->annotation->module->name, "ietf-origin")) {
                     lyd_free_meta_single(meta);
                     return;
                 }
@@ -1433,19 +1433,19 @@ sr_edit_del_meta_attr(struct lyd_node *edit, const char *name)
             if (!strcmp(attr->name.name, name)) {
                 switch (attr->format) {
                 case LY_VALUE_JSON:
-                    if (!strcmp(attr->name.module_name, SR_YANG_MOD)
-                            || !strcmp(attr->name.module_name, "ietf-netconf")
-                            || !strcmp(attr->name.module_name, "yang")
-                            || !strcmp(attr->name.module_name, "ietf-origin")) {
+                    if (!strcmp(attr->name.module_name, SR_YANG_MOD) ||
+                            !strcmp(attr->name.module_name, "ietf-netconf") ||
+                            !strcmp(attr->name.module_name, "yang") ||
+                            !strcmp(attr->name.module_name, "ietf-origin")) {
                         lyd_free_attr_single(LYD_CTX(edit), attr);
                         return;
                     }
                     break;
                 case LY_VALUE_XML:
-                    if (!strcmp(attr->name.module_ns, "http://www.sysrepo.org/yang/sysrepo")
-                            || !strcmp(attr->name.module_ns, "urn:ietf:params:xml:ns:netconf:base:1.0")
-                            || !strcmp(attr->name.module_ns, "urn:ietf:params:xml:ns:yang:1")
-                            || !strcmp(attr->name.module_ns, "urn:ietf:params:xml:ns:yang:ietf-origin")) {
+                    if (!strcmp(attr->name.module_ns, "http://www.sysrepo.org/yang/sysrepo") ||
+                            !strcmp(attr->name.module_ns, "urn:ietf:params:xml:ns:netconf:base:1.0") ||
+                            !strcmp(attr->name.module_ns, "urn:ietf:params:xml:ns:yang:1") ||
+                            !strcmp(attr->name.module_ns, "urn:ietf:params:xml:ns:yang:ietf-origin")) {
                         lyd_free_attr_single(LYD_CTX(edit), attr);
                         return;
                     }
@@ -1603,8 +1603,8 @@ sr_edit_diff_add(struct lyd_node *node, const char *meta_val, const char *prev_m
         goto error;
     }
 
-    if ((node_dup->schema->nodetype == LYS_LEAFLIST) && ((struct lysc_node_leaflist *)node_dup->schema)->dflts
-            && (op == EDIT_CREATE)) {
+    if ((node_dup->schema->nodetype == LYS_LEAFLIST) && ((struct lysc_node_leaflist *)node_dup->schema)->dflts &&
+            (op == EDIT_CREATE)) {
         /* default leaf-list with the same value may have been removed, so we need to merge these 2 diffs */
         if (lyd_diff_merge_tree(diff_root, diff_parent, node_dup, NULL, NULL, 0)) {
             sr_errinfo_new_ly(&err_info, LYD_CTX(node));
@@ -1794,8 +1794,8 @@ sr_edit_apply_none(struct lyd_node *match_node, const struct lyd_node *edit_node
         if ((err_info = sr_edit_diff_add(match_node, NULL, NULL, EDIT_NONE, 0, diff_parent, diff_root, diff_node))) {
             return err_info;
         }
-    } else if ((match_node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST))
-            && ((match_node->flags & LYD_DEFAULT) != (edit_node->flags & LYD_DEFAULT))) {
+    } else if ((match_node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) &&
+            ((match_node->flags & LYD_DEFAULT) != (edit_node->flags & LYD_DEFAULT))) {
         prev_dflt = match_node->flags & LYD_DEFAULT;
 
         /* update dflt flag itself */
@@ -2854,7 +2854,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
             goto error;
         }
         if (((*position == SR_MOVE_BEFORE) || (*position == SR_MOVE_AFTER)) && lyd_new_meta(session->conn->ly_ctx, node,
-                NULL, node->schema->nodetype == LYS_LIST ? "yang:key" : "yang:value", meta_val, 0, NULL)) {
+                NULL, (node->schema->nodetype == LYS_LIST) ? "yang:key" : "yang:value", meta_val, 0, NULL)) {
             sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
             goto error;
         }
@@ -2924,8 +2924,8 @@ sr_diff_set_getnext(struct ly_set *set, uint32_t *idx, struct lyd_node **node, s
             return err_info;
         }
 
-        if (((*node)->schema->flags & LYS_KEY) && lysc_is_userordered((*node)->parent->schema)
-                && (lyd_get_meta_value(meta)[0] == 'r')) {
+        if (((*node)->schema->flags & LYS_KEY) && lysc_is_userordered((*node)->parent->schema) &&
+                (lyd_get_meta_value(meta)[0] == 'r')) {
             /* skip keys of list move operations */
             ++(*idx);
             continue;

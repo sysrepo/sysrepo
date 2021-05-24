@@ -49,8 +49,8 @@
 #include "edit_diff.h"
 #include "log.h"
 #include "modinfo.h"
-#include "sysrepo.h"
 #include "shm.h"
+#include "sysrepo.h"
 
 sr_error_info_t *
 sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess, const char *mod_name,
@@ -3724,7 +3724,7 @@ sr_conn_is_alive(sr_cid_t cid)
     sr_error_info_t *err_info;
 
     if ((err_info = sr_shmmain_conn_check(cid, &alive, NULL))) {
-        SR_LOG_WRN("Failed to check connection %"PRIu32" aliveness.", cid);
+        SR_LOG_WRN("Failed to check connection %" PRIu32 " aliveness.", cid);
         sr_errinfo_free(&err_info);
         /* if check fails, assume the connection is alive */
         alive = 1;

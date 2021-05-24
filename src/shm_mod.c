@@ -304,6 +304,7 @@ sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data)
     struct sr_shmmod_recover_cb_s *cb_data = data;
     char *path = NULL, *bck_path = NULL;
     struct lyd_node *mod_data = NULL;
+
     (void)cid;
 
     if (mode != SR_LOCK_WRITE) {
@@ -506,15 +507,15 @@ sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradeable, uint32
 
     if (upgradeable) {
         /* read-upgr-lock main DS */
-        if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds, MOD_INFO_RLOCK | MOD_INFO_RLOCK_UPGR
-                | MOD_INFO_WLOCK, MOD_INFO_REQ, SR_LOCK_READ_UPGR, MOD_INFO_RLOCK_UPGR, sid))) {
+        if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds, MOD_INFO_RLOCK | MOD_INFO_RLOCK_UPGR |
+                MOD_INFO_WLOCK, MOD_INFO_REQ, SR_LOCK_READ_UPGR, MOD_INFO_RLOCK_UPGR, sid))) {
             return err_info;
         }
     }
 
     /* read-lock main DS */
-    if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds, MOD_INFO_RLOCK | MOD_INFO_RLOCK_UPGR
-            | MOD_INFO_WLOCK, 0, SR_LOCK_READ, MOD_INFO_RLOCK, sid))) {
+    if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds, MOD_INFO_RLOCK | MOD_INFO_RLOCK_UPGR |
+            MOD_INFO_WLOCK, 0, SR_LOCK_READ, MOD_INFO_RLOCK, sid))) {
         return err_info;
     }
 
@@ -535,8 +536,8 @@ sr_shmmod_modinfo_wrlock(struct sr_mod_info_s *mod_info, uint32_t sid)
     sr_error_info_t *err_info = NULL;
 
     /* write-lock main DS */
-    if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds, MOD_INFO_RLOCK | MOD_INFO_RLOCK_UPGR
-            | MOD_INFO_WLOCK, 0, SR_LOCK_WRITE, MOD_INFO_WLOCK, sid))) {
+    if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds, MOD_INFO_RLOCK | MOD_INFO_RLOCK_UPGR |
+            MOD_INFO_WLOCK, 0, SR_LOCK_WRITE, MOD_INFO_WLOCK, sid))) {
         return err_info;
     }
 

@@ -29,12 +29,12 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "common.h"
@@ -45,18 +45,18 @@
 
 #include "../modules/ietf_datastores_yang.h"
 #include "../modules/sysrepo_yang.h"
-#if SR_YANGLIB_REVISION == 2019-01-04
+#if SR_YANGLIB_REVISION == 2019 - 01 - 04
 # include "../modules/ietf_yang_library@2019_01_04_yang.h"
-#elif SR_YANGLIB_REVISION == 2016-06-21
+#elif SR_YANGLIB_REVISION == 2016 - 06 - 21
 # include "../modules/ietf_yang_library@2016_06_21_yang.h"
 #else
 # error "Unknown yang-library revision!"
 #endif
 
 #include "../modules/ietf_netconf_acm_yang.h"
-#include "../modules/ietf_netconf_yang.h"
-#include "../modules/ietf_netconf_with_defaults_yang.h"
 #include "../modules/ietf_netconf_notifications_yang.h"
+#include "../modules/ietf_netconf_with_defaults_yang.h"
+#include "../modules/ietf_netconf_yang.h"
 #include "../modules/ietf_origin_yang.h"
 #include "../modules/sysrepo_monitoring_yang.h"
 #include "../modules/sysrepo_plugind_yang.h"
@@ -1549,7 +1549,6 @@ sr_lydmods_sched_finalize_module_remove(struct lyd_node *sr_mod, const struct ly
     return NULL;
 }
 
-
 /**
  * @brief Finalize applying scheduled module update.
  *
@@ -1584,7 +1583,6 @@ sr_lydmods_sched_finalize_module_update(struct lyd_node *sr_mod, const struct ly
     SR_LOG_INF("Module \"%s\" was updated to revision %s.", ly_mod->name, ly_mod->revision);
     return NULL;
 }
-
 
 /**
  * @brief Finalize applying scheduled module feature changes.
@@ -1678,8 +1676,8 @@ sr_lydmods_sched_finalize_module_install(struct lyd_node *sr_mod, const struct l
         assert(ly_mod);
 
         LY_ARRAY_FOR(ly_mod->parsed->imports, u) {
-            if (ly_mod->parsed->imports[u].module->implemented
-                    && !strcmp(ly_mod->parsed->imports[u].module->name, SR_LY_CHILD_VALUE(sr_mod))) {
+            if (ly_mod->parsed->imports[u].module->implemented &&
+                    !strcmp(ly_mod->parsed->imports[u].module->name, SR_LY_CHILD_VALUE(sr_mod))) {
                 /* we will install this module as a dependency of a module installed later */
                 SR_LOG_INF("Module \"%s\" will be installed as \"%s\" module dependency.",
                         SR_LY_CHILD_VALUE(sr_mod), ly_mod->name);
@@ -2089,10 +2087,10 @@ sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *ch
                         }
                         /* sr_mod children were freed, restart the iteration */
                         next2 = lyd_child(sr_mod)->next;
-                    } else if (!strcmp(node->schema->name, "deps")
-                            || !strcmp(node->schema->name, "inverse-deps")
-                            || !strcmp(node->schema->name, "rpc")
-                            || !strcmp(node->schema->name, "notification")) {
+                    } else if (!strcmp(node->schema->name, "deps") ||
+                            !strcmp(node->schema->name, "inverse-deps") ||
+                            !strcmp(node->schema->name, "rpc") ||
+                            !strcmp(node->schema->name, "notification")) {
                         /* remove all stored dependencies, RPCs, and notifications of all the modules */
                         lyd_free_tree(node);
                     }

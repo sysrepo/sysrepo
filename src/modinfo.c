@@ -107,7 +107,7 @@ sr_modinfo_next_mod(struct sr_mod_info_mod_s *last, struct sr_mod_info_s *mod_in
 
 next_mod:
         /* skip all edit nodes from this module */
-        for (; node && (lyd_owner_module(node) == last->ly_mod); node = node->next) {}
+        for ( ; node && (lyd_owner_module(node) == last->ly_mod); node = node->next) {}
     }
 
     if (node) {
@@ -1143,6 +1143,7 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
     sr_cid_t cid;
     uint32_t i;
     int ret;
+
 #define PATH_LEN 128
     char path[PATH_LEN];
     struct ly_ctx *ly_ctx;
@@ -1200,6 +1201,7 @@ sr_modinfo_module_srmon_locks(sr_rwlock_t *rwlock, const char *list_name, struct
     sr_cid_t cid;
     uint32_t i;
     int ret;
+
 #define CID_STR_LEN 64
     char cid_str[CID_STR_LEN];
     struct lyd_node *list;
@@ -1270,6 +1272,7 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
     sr_mod_notif_sub_t *notif_sub;
     struct sr_mod_lock_s *shm_lock;
     uint16_t i;
+
 #define BUF_LEN 128
     char buf[BUF_LEN], *str = NULL;
     const struct ly_ctx *ly_ctx;
@@ -1289,7 +1292,7 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
         }
 
         /* data-lock */
-        snprintf(buf, BUF_LEN, "data-lock[cid='%%"PRIu32"'][datastore='%s']/mode", sr_ds2ident(ds));
+        snprintf(buf, BUF_LEN, "data-lock[cid='%%" PRIu32 "'][datastore='%s']/mode", sr_ds2ident(ds));
         if ((err_info = sr_modinfo_module_srmon_locks_ds(&shm_lock->lock, conn->cid, buf, sr_mod))) {
             goto mod_unlock;
         }
@@ -1325,7 +1328,7 @@ mod_unlock:
 
     /* change-sub-lock */
     for (ds = 0; ds < SR_DS_COUNT; ++ds) {
-        snprintf(buf, BUF_LEN, "change-sub-lock[cid='%%"PRIu32"'][datastore='%s']/mode", sr_ds2ident(ds));
+        snprintf(buf, BUF_LEN, "change-sub-lock[cid='%%" PRIu32 "'][datastore='%s']/mode", sr_ds2ident(ds));
         if ((err_info = sr_modinfo_module_srmon_locks_ds(&shm_mod->change_sub[ds].lock, 0, buf, sr_mod))) {
             return err_info;
         }
@@ -1434,7 +1437,7 @@ sr_modinfo_module_srmon_rpc(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, struct lyd_n
         SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "priority", buf, 0, NULL), ly_ctx, err_info);
 
         /* cid */
-        sprintf(buf, "%"PRIu32, rpc_sub[i].cid);
+        sprintf(buf, "%" PRIu32, rpc_sub[i].cid);
         SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info);
     }
 
@@ -1472,11 +1475,11 @@ sr_modinfo_module_srmon_connections(struct lyd_node *sr_state)
 
     for (i = 0; i < conn_count; ++i) {
         /* connection with cid */
-        sprintf(buf, "%"PRIu32, cids[i]);
+        sprintf(buf, "%" PRIu32, cids[i]);
         SR_CHECK_LY_RET(lyd_new_list(sr_state, NULL, "connection", 0, &sr_conn, buf), ly_ctx, err_info);
 
         /* pid */
-        sprintf(buf, "%"PRIu32, pids[i]);
+        sprintf(buf, "%" PRIu32, pids[i]);
         SR_CHECK_LY_RET(lyd_new_term(sr_conn, NULL, "pid", buf, 0, NULL), ly_ctx, err_info);
     }
 
@@ -1745,10 +1748,10 @@ sr_modinfo_add_mod(const struct lys_module *ly_mod, uint32_t mod_type, int mod_r
         return NULL;
     }
 
-     if (prev_mod_type < MOD_INFO_REQ) {
-         /* add all inverse dependencies (modules dependening on this module) */
-         shm_inv_deps = (off_t *)(mod_info->conn->main_shm.addr + shm_mod->inv_deps);
-         for (i = 0; i < shm_mod->inv_dep_count; ++i) {
+    if (prev_mod_type < MOD_INFO_REQ) {
+        /* add all inverse dependencies (modules dependening on this module) */
+        shm_inv_deps = (off_t *)(mod_info->conn->main_shm.addr + shm_mod->inv_deps);
+        for (i = 0; i < shm_mod->inv_dep_count; ++i) {
             /* find ly module */
             ly_mod = ly_ctx_get_module_implemented(ly_mod->ctx, mod_info->conn->main_shm.addr + shm_inv_deps[i]);
             SR_CHECK_INT_RET(!ly_mod, err_info);
@@ -2157,7 +2160,7 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
             /* apply any currently handled changes (diff) or additional performed ones (edit) to get
              * the session-specific data tree */
             if (lyd_diff_apply_module(&mod_info->data, diff, mod->ly_mod,
-                    session->ds == SR_DS_OPERATIONAL ? sr_lyd_diff_apply_cb : NULL, NULL)) {
+                    (session->ds == SR_DS_OPERATIONAL) ? sr_lyd_diff_apply_cb : NULL, NULL)) {
                 sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
                 goto cleanup;
             }

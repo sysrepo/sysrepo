@@ -26,8 +26,8 @@
 #include <sys/types.h>
 #include <time.h>
 
-#include "sysrepo_types.h"
 #include "common_types.h"
+#include "sysrepo_types.h"
 
 /**
  * @brief Main SHM dependency type.
@@ -156,7 +156,7 @@ typedef enum {
     SR_OPER_SUB_NONE = 0,         /**< Invalid type. */
     SR_OPER_SUB_STATE,            /**< Providing state data. */
     SR_OPER_SUB_CONFIG,           /**< Providing configuration data. */
-    SR_OPER_SUB_MIXED,            /**< Providing both state and configuration data. */
+    SR_OPER_SUB_MIXED             /**< Providing both state and configuration data. */
 } sr_mod_oper_sub_type_t;
 
 /**
