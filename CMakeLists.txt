@@ -19,11 +19,20 @@ endif()
 # osx specific
 set(CMAKE_MACOSX_RPATH TRUE)
 
-# set default build type if not specified by user
+# set default build type if not specified by user and normalize it
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
 endif()
-string(TOLOWER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_LOWER)
+string(TOUPPER "${CMAKE_BUILD_TYPE}" BUILD_TYPE_UPPER)
+if ("${BUILD_TYPE_UPPER}" STREQUAL "RELEASE")
+  set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build Type" FORCE)
+elseif ("${BUILD_TYPE_UPPER}" STREQUAL "DEBUG")
+  set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Build Type" FORCE)
+elseif ("${BUILD_TYPE_UPPER}" STREQUAL "RELWITHDEBINFO")
+  set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build Type" FORCE)
+elseif ("${BUILD_TYPE_UPPER}" STREQUAL "RELWITHDEBUG")
+  set(CMAKE_BUILD_TYPE "RelWithDebug" CACHE STRING "Build Type" FORCE)
+endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 
@@ -63,10 +72,7 @@ set(LIBYANG_DEP_SOVERSION 2.1.0)
 set(LIBYANG_DEP_SOVERSION_MAJOR 2)
 
 # options
-if(CMAKE_BUILD_TYPE_LOWER STREQUAL doconly)
-    sysrepo_doc()
-    return()
-elseif((CMAKE_BUILD_TYPE_LOWER STREQUAL debug) OR (CMAKE_BUILD_TYPE_LOWER STREQUAL package))
+if(("${BUILD_TYPE_UPPER}" STREQUAL "DEBUG") OR ("${BUILD_TYPE_UPPER}" STREQUAL "RELWITHDEBINFO"))
     option(ENABLE_TESTS "Build tests" ON)
     option(ENABLE_VALGRIND_TESTS "Build tests with valgrind" ON)
 else()
@@ -134,7 +140,7 @@ endif()
 
 # paths
 if(NOT REPO_PATH)
-    if(CMAKE_BUILD_TYPE_LOWER STREQUAL debug)
+    if("${BUILD_TYPE_UPPER}" STREQUAL "DEBUG")
         set(REPO_PATH "${CMAKE_BINARY_DIR}/repository")
     else()
         set(REPO_PATH "/etc/sysrepo")
@@ -194,9 +200,6 @@ set (SYSREPOCFG_SRC
 set (SYSREPOPLUGIND_SRC
     src/executables/sysrepo-plugind.c)
 
-# use compat
-use_compat()
-
 # source files to be covered by the 'format' target
 set(format_sources
     compat/*
@@ -207,7 +210,8 @@ set(format_sources
     src/executables/*
     src/utils/*)
 
-source_format(${format_sources})
+# use compat
+use_compat()
 
 # sysrepo
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
@@ -290,12 +294,27 @@ endif()
 # tests
 if(ENABLE_TESTS)
     find_package(CMocka 1.0.0)
+endif()
+
+if ("${BUILD_TYPE_UPPER}" STREQUAL "DEBUG")
+    # enable before adding tests to let them detect that format checking is available - one of the tests is format checking
+    source_format_enable()
+endif()
+
+# source files to be covered by the 'format' target and a test with 'format-check' target
+source_format(${format_sources})
+
+if(ENABLE_VALGRIND_TESTS)
+    set(ENABLE_TESTS ON)
+endif()
+
+if(ENABLE_TESTS)
     if(CMOCKA_FOUND)
         enable_testing()
         add_subdirectory(tests)
     else()
-        message(STATUS "Disabling tests because of missing CMocka.")
-        set(ENABLE_TESTS NO)
+        message(STATUS "Disabling tests because of missing CMocka")
+        set(ENABLE_TESTS OFF)
     endif()
 endif()
 

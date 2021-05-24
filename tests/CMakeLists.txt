@@ -7,6 +7,11 @@ get_filename_component(TESTS_DIR "${CMAKE_SOURCE_DIR}/tests" REALPATH)
 include_directories(SYSTEM ${CMOCKA_INCLUDE_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
+# format
+if (${SOURCE_FORMAT_ENABLED})
+    add_test(NAME format WORKING_DIRECTORY ${CMAKE_BINARY_DIR} COMMAND make format-check)
+endif()
+
 # check for pthread_barrier existence
 check_function_exists(pthread_barrier_init SR_HAVE_PTHREAD_BARRIER)
 if(SR_HAVE_PTHREAD_BARRIER)
