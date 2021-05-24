@@ -68,7 +68,7 @@ sr_error_info_t *
 sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds, struct ly_set *mod_set)
 {
     sr_error_info_t *err_info = NULL;
-    char *module_name;
+    char *module_name, *yang_xpath;
     const struct lys_module *ly_mod;
     const struct lys_node *ctx_node;
     struct ly_set *set = NULL;
@@ -97,7 +97,15 @@ sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datas
         return err_info;
     }
 
-    set = lys_xpath_atomize(ctx_node, LYXP_NODE_ELEM, xpath, 0);
+    /* transform data path to schema path */
+    yang_xpath = ly_path_data2schema((struct ly_ctx *)ly_ctx, xpath);
+    if (!yang_xpath) {
+        sr_errinfo_new_ly(&err_info, (struct ly_ctx *)ly_ctx);
+        return err_info;
+    }
+
+    set = lys_xpath_atomize(ctx_node, LYXP_NODE_ELEM, yang_xpath, 0);
+    free(yang_xpath);
     if (!set) {
         sr_errinfo_new_ly(&err_info, (struct ly_ctx *)ly_ctx);
         return err_info;
