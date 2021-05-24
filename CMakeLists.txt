@@ -11,6 +11,7 @@ include(CheckSymbolExists)
 include(CheckLibraryExists)
 include(UseCompat)
 include(SourceFormat)
+include(Doc)
 if(POLICY CMP0075)
     cmake_policy(SET CMP0075 NEW)
 endif()
@@ -62,7 +63,10 @@ set(LIBYANG_DEP_SOVERSION 2.1.0)
 set(LIBYANG_DEP_SOVERSION_MAJOR 2)
 
 # options
-if((CMAKE_BUILD_TYPE_LOWER STREQUAL debug) OR (CMAKE_BUILD_TYPE_LOWER STREQUAL package))
+if(CMAKE_BUILD_TYPE_LOWER STREQUAL doconly)
+    sysrepo_doc()
+    return()
+elseif((CMAKE_BUILD_TYPE_LOWER STREQUAL debug) OR (CMAKE_BUILD_TYPE_LOWER STREQUAL package))
     option(ENABLE_TESTS "Build tests" ON)
     option(ENABLE_VALGRIND_TESTS "Build tests with valgrind" ON)
 else()
@@ -301,21 +305,7 @@ if(ENABLE_EXAMPLES)
 endif()
 
 # doxygen documentation
-find_package(Doxygen)
-if(DOXYGEN_FOUND)
-    find_program(DOT_PATH dot PATH_SUFFIXES graphviz2.38/bin graphviz/bin)
-    if(DOT_PATH)
-        set(HAVE_DOT "YES")
-    else()
-        set(HAVE_DOT "NO")
-        message(AUTHOR_WARNING "Doxygen: to generate UML diagrams please install graphviz")
-    endif()
-
-    add_custom_target(doc
-            COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_BINARY_DIR}/Doxyfile
-            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-    configure_file(Doxyfile.in Doxyfile)
-endif()
+sysrepo_doc()
 
 # phony target for clearing sysrepo SHM
 add_custom_target(shm_clean
