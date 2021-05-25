@@ -663,7 +663,7 @@ sr_shmext_change_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t
     evpipe_num = shm_sub[del_idx].evpipe_num;
 
     /* remove the subscription */
-    if ((err_info = sr_shmext_change_sub_free(conn, shm_mod, ds, del_idx))) {
+    if ((tmp_err = sr_shmext_change_sub_free(conn, shm_mod, ds, del_idx))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
@@ -923,7 +923,7 @@ sr_shmext_oper_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx
     evpipe_num = shm_sub[del_idx].evpipe_num;
 
     /* remove the subscription */
-    if ((err_info = sr_shmext_oper_sub_free(conn, shm_mod, del_idx))) {
+    if ((tmp_err = sr_shmext_oper_sub_free(conn, shm_mod, del_idx))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
@@ -1397,7 +1397,7 @@ sr_shmext_rpc_sub_stop(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, uint32_t del_idx,
     evpipe_num = shm_sub[del_idx].evpipe_num;
 
     /* remove the subscription */
-    if ((err_info = sr_shmext_rpc_sub_free(conn, shm_rpc, del_idx))) {
+    if ((tmp_err = sr_shmext_rpc_sub_free(conn, shm_rpc, del_idx))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
