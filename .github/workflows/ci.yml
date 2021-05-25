@@ -10,7 +10,7 @@ on:
 jobs:
   build:
     name: ${{ matrix.config.name }}
-    runs-on: ${{ matrix.config.os }}
+    runs-on: ${{ matrix.config.os }} # mac-OS does not implement robust mutexes so it is not supported
     strategy:
       fail-fast: false
       matrix:
@@ -52,15 +52,6 @@ jobs:
             packages: "libcmocka-dev valgrind"
           }
           - {
-            name: "Release, macOS 10.15, clang",
-            os: "macos-10.15",
-            build-type: "Release",
-            cc: "clang",
-            options: "-DENABLE_TESTS=ON",
-            packager: "brew",
-            packages: "cmocka"
-          }
-          - {
             name: "ASAN and UBSAN",
             os: "ubuntu-18.04",
             build-type: "Debug",
@@ -91,8 +82,8 @@ jobs:
         run: |
           ${{ matrix.config.packager }} update
           ${{ matrix.config.packager }} install ${{ matrix.config.packages }}
-          BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
-          git clone -b $BRANCH https://github.com/CESNET/libyang.git
+          GIT_BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
+          git clone -b $GIT_BRANCH https://github.com/CESNET/libyang.git
           cd libyang
           mkdir build
           cd build
@@ -128,6 +119,14 @@ jobs:
         run: |
           sudo apt-get install abi-dumper abi-compliance-checker
           sudo snap install core universal-ctags
+          GIT_BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
+          git clone -b $GIT_BRANCH https://github.com/CESNET/libyang.git
+          cd libyang
+          mkdir build
+          cd build
+          CC=${{ matrix.config.cc }} cmake -DCMAKE_BUILD_TYPE=${{ matrix.config.build-type }} -DENABLE_BUILD_TESTS=OFF ..
+          make -j2
+          sudo make install
 
       - name: Configure
         shell: bash
@@ -151,6 +150,14 @@ jobs:
         shell: bash
         run: |
           sudo apt-get install libcmocka-dev lcov
+          GIT_BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
+          git clone -b $GIT_BRANCH https://github.com/CESNET/libyang.git
+          cd libyang
+          mkdir build
+          cd build
+          CC=${{ matrix.config.cc }} cmake -DCMAKE_BUILD_TYPE=${{ matrix.config.build-type }} -DENABLE_BUILD_TESTS=OFF ..
+          make -j2
+          sudo make install
 
       - name: Configure
         shell: bash
