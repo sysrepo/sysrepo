@@ -208,21 +208,24 @@ set (SYSREPOCFG_SRC
 set (SYSREPOPLUGIND_SRC
     src/executables/sysrepo-plugind.c)
 
-# files to generate doxygen from
-set(doxy_files
-    doc/
+set(LIB_HEADERS
     src/sysrepo.h
     src/sysrepo_types.h
     src/utils/values.h
-    src/utils/xpath.h
+    src/utils/xpath.h)
+
+# files to generate doxygen from
+set(DOXY_FILES
+    doc/
+    ${LIB_HEADERS}
     ${PROJECT_BINARY_DIR}/version.h)
 
 # project (doxygen) logo
-set(project_logo
+set(PROJECT_LOGO
     doc/logo.png)
 
 # source files to be covered by the 'format' target
-set(format_sources
+set(FORMAT_SOURCES
     compat/*.c
     compat/*.h*
     examples/*.c
@@ -233,7 +236,7 @@ set(format_sources
     src/utils/*)
 
 if("${BUILD_TYPE_UPPER}" STREQUAL "DOCONLY")
-    gen_doc("${doxy_files}" ${SYSREPO_VERSION} ${SYSREPO_DESC} ${project_logo})
+    gen_doc("${DOXY_FILES}" ${SYSREPO_VERSION} ${SYSREPO_DESC} ${PROJECT_LOGO})
     return()
 endif()
 
@@ -304,10 +307,9 @@ configure_file("${PROJECT_SOURCE_DIR}/sysrepo.pc.in" "${PROJECT_BINARY_DIR}/sysr
 
 # installation
 install(TARGETS sysrepo DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES ${PROJECT_SOURCE_DIR}/src/sysrepo.h ${PROJECT_SOURCE_DIR}/src/sysrepo_types.h
+install(FILES ${LIB_HEADERS} ${PROJECT_SOURCE_DIR}/src/sysrepo.h ${PROJECT_SOURCE_DIR}/src/sysrepo_types.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(FILES ${PROJECT_BINARY_DIR}/version.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sysrepo)
-install(FILES ${PROJECT_SOURCE_DIR}/src/utils/values.h ${PROJECT_SOURCE_DIR}/src/utils/xpath.h
+install(FILES ${PROJECT_BINARY_DIR}/version.h ${PROJECT_SOURCE_DIR}/src/utils/values.h ${PROJECT_SOURCE_DIR}/src/utils/xpath.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sysrepo)
 install(TARGETS sysrepoctl sysrepocfg sysrepo-plugind DESTINATION ${CMAKE_INSTALL_BINDIR})
 
@@ -328,7 +330,7 @@ if ("${BUILD_TYPE_UPPER}" STREQUAL "DEBUG")
 endif()
 
 # source files to be covered by the 'format' target and a test with 'format-check' target
-source_format(${format_sources})
+source_format(${FORMAT_SOURCES})
 
 if(ENABLE_VALGRIND_TESTS)
     set(ENABLE_TESTS ON)
@@ -350,11 +352,11 @@ if(ENABLE_EXAMPLES)
 endif()
 
 # generate doxygen documentation
-gen_doc("${doxy_files}" ${SYSREPO_VERSION} ${SYSREPO_DESC} ${project_logo})
+gen_doc("${DOXY_FILES}" ${SYSREPO_VERSION} ${SYSREPO_DESC} ${PROJECT_LOGO})
 
 # generate API/ABI report
 if ("${BUILD_TYPE_UPPER}" STREQUAL "ABICHECK")
-    lib_abi_check(sysrepo ${SYSREPO_SOVERSION_FULL} a1b064b902ee4eaf2cacfe33213dacfd3eab7342)
+    lib_abi_check(sysrepo "${LIB_HEADERS}" ${SYSREPO_SOVERSION_FULL} f1e4bbf581fc8f8c7daf1cdf31b80c6e682200cf)
 endif()
 
 # phony target for clearing sysrepo SHM
