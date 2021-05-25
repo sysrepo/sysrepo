@@ -30,6 +30,7 @@
 #include <unistd.h>
 
 #include "common.h"
+#include "compat.h"
 #include "log.h"
 
 /** get the larger item */
