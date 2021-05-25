@@ -11,6 +11,15 @@ jobs:
   build:
     name: ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }}
+    run: |
+      BRANCH=echo ${{ github.ref }} | cut -d'/' -f 3
+      git clone -b $BRANCH https://github.com/CESNET/libyang.git
+      cd libyang
+      mkdir build
+      cd build
+      CC=${{ matrix.config.cc }} cmake -DCMAKE_BUILD_TYPE=${{ matrix.config.build-type }} -DENABLE_BUILD_TESTS=OFF ..
+      make -j2
+      sudo make install
     strategy:
       fail-fast: false
       matrix:
@@ -20,7 +29,7 @@ jobs:
             os: "ubuntu-18.04",
             build-type: "Release",
             cc: "gcc",
-            options: "-ENABLE_TESTS=ON",
+            options: "-DENABLE_TESTS=ON",
             packager: "sudo apt-get",
             packages: "libcmocka-dev"
           }
@@ -29,7 +38,7 @@ jobs:
             os: "ubuntu-18.04",
             build-type: "Release",
             cc: "clang",
-            options: "-ENABLE_TESTS=ON",
+            options: "-DENABLE_TESTS=ON",
             packager: "sudo apt-get",
             packages: "libcmocka-dev"
           }
@@ -56,7 +65,7 @@ jobs:
             os: "macos-10.15",
             build-type: "Release",
             cc: "clang",
-            options: "-ENABLE_TESTS=ON",
+            options: "-DENABLE_TESTS=ON",
             packager: "brew",
             packages: "cmocka"
           }
@@ -65,7 +74,7 @@ jobs:
             os: "ubuntu-18.04",
             build-type: "Debug",
             cc: "clang",
-            options: "-DCMAKE_C_FLAGS=-fsanitize=address,undefined -ENABLE_TESTS=ON -DENABLE_VALGRIND_TESTS=OFF",
+            options: "-DCMAKE_C_FLAGS=-fsanitize=address,undefined -DENABLE_TESTS=ON -DENABLE_VALGRIND_TESTS=OFF",
             packager: "sudo apt-get",
             packages: "libcmocka-dev"
           }
