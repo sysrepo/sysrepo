@@ -11,15 +11,6 @@ jobs:
   build:
     name: ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }}
-    run: |
-      BRANCH=echo ${{ github.ref }} | cut -d'/' -f 3
-      git clone -b $BRANCH https://github.com/CESNET/libyang.git
-      cd libyang
-      mkdir build
-      cd build
-      CC=${{ matrix.config.cc }} cmake -DCMAKE_BUILD_TYPE=${{ matrix.config.build-type }} -DENABLE_BUILD_TESTS=OFF ..
-      make -j2
-      sudo make install
     strategy:
       fail-fast: false
       matrix:
@@ -100,6 +91,14 @@ jobs:
         run: |
           ${{ matrix.config.packager }} update
           ${{ matrix.config.packager }} install ${{ matrix.config.packages }}
+          BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
+          git clone -b $BRANCH https://github.com/CESNET/libyang.git
+          cd libyang
+          mkdir build
+          cd build
+          CC=${{ matrix.config.cc }} cmake -DCMAKE_BUILD_TYPE=${{ matrix.config.build-type }} -DENABLE_BUILD_TESTS=OFF ..
+          make -j2
+          sudo make install
 
       - name: Configure
         shell: bash
