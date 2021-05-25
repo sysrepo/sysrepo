@@ -11,7 +11,7 @@ include(CheckSymbolExists)
 include(CheckLibraryExists)
 include(UseCompat)
 include(SourceFormat)
-include(Doc)
+include(GenDoc)
 if(POLICY CMP0075)
     cmake_policy(SET CMP0075 NEW)
 endif()
@@ -70,6 +70,9 @@ set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_SOVERSION})
 set(LIBYANG_DEP_VERSION 2.0.3)
 set(LIBYANG_DEP_SOVERSION 2.1.0)
 set(LIBYANG_DEP_SOVERSION_MAJOR 2)
+
+# generate only version header, it is needed for docs
+configure_file("${PROJECT_SOURCE_DIR}/src/version.h.in" "${PROJECT_BINARY_DIR}/version.h" ESCAPE_QUOTES @ONLY)
 
 # options
 if(("${BUILD_TYPE_UPPER}" STREQUAL "DEBUG") OR ("${BUILD_TYPE_UPPER}" STREQUAL "RELWITHDEBINFO"))
@@ -200,15 +203,34 @@ set (SYSREPOCFG_SRC
 set (SYSREPOPLUGIND_SRC
     src/executables/sysrepo-plugind.c)
 
+# files to generate doxygen from
+set(doxy_files
+    doc/
+    src/sysrepo.h
+    src/sysrepo_types.h
+    src/utils/values.h
+    src/utils/xpath.h
+    ${PROJECT_BINARY_DIR}/version.h)
+
+# project (doxygen) logo
+set(project_logo
+    doc/logo.png)
+
 # source files to be covered by the 'format' target
 set(format_sources
-    compat/*
+    compat/*.c
+    compat/*.h*
     examples/*.c
     examples/plugin/*.c
     src/*.c
     src/*.h
     src/executables/*
     src/utils/*)
+
+if("${BUILD_TYPE_UPPER}" STREQUAL "DOCONLY")
+    gen_doc("${doxy_files}" ${SYSREPO_VERSION} ${SYSREPO_DESC} ${project_logo})
+    return()
+endif()
 
 # use compat
 use_compat()
@@ -272,7 +294,6 @@ unset(CMAKE_REQUIRED_DEFINITIONS)
 
 # generate files
 configure_file("${PROJECT_SOURCE_DIR}/src/common.h.in" "${PROJECT_BINARY_DIR}/common.h" ESCAPE_QUOTES @ONLY)
-configure_file("${PROJECT_SOURCE_DIR}/src/version.h.in" "${PROJECT_BINARY_DIR}/version.h" ESCAPE_QUOTES @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/bin_common.h.in" "${PROJECT_BINARY_DIR}/bin_common.h" ESCAPE_QUOTES @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/sysrepo.pc.in" "${PROJECT_BINARY_DIR}/sysrepo.pc" @ONLY)
 
@@ -323,8 +344,13 @@ if(ENABLE_EXAMPLES)
     add_subdirectory(examples)
 endif()
 
-# doxygen documentation
-sysrepo_doc()
+# generate doxygen documentation
+gen_doc("${doxy_files}" ${SYSREPO_VERSION} ${SYSREPO_DESC} ${project_logo})
+
+# generate API/ABI report
+if ("${BUILD_TYPE_UPPER}" STREQUAL "ABICHECK")
+    lib_abi_check(sysrepo ${SYSREPO_SOVERSION_FULL} 8ad68574d657a5d0ba34a644286a5bd037bf3888)
+endif()
 
 # phony target for clearing sysrepo SHM
 add_custom_target(shm_clean

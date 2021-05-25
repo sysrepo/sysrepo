@@ -7,6 +7,10 @@ get_filename_component(TESTS_DIR "${CMAKE_SOURCE_DIR}/tests" REALPATH)
 include_directories(SYSTEM ${CMOCKA_INCLUDE_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
+# headers test for including compat.h
+add_test(NAME headers
+    COMMAND ${CMAKE_SOURCE_DIR}/compat/check_includes.sh ${CMAKE_SOURCE_DIR}/src/ ${CMAKE_SOURCE_DIR}/src/executables/ ${CMAKE_SOURCE_DIR}/src/utils/)
+
 # format
 if (${SOURCE_FORMAT_ENABLED})
     add_test(NAME format WORKING_DIRECTORY ${CMAKE_BINARY_DIR} COMMAND make format-check)
