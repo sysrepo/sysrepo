@@ -356,7 +356,7 @@ gen_doc("${DOXY_FILES}" ${SYSREPO_VERSION} ${SYSREPO_DESC} ${PROJECT_LOGO})
 
 # generate API/ABI report
 if ("${BUILD_TYPE_UPPER}" STREQUAL "ABICHECK")
-    lib_abi_check(sysrepo "${LIB_HEADERS}" ${SYSREPO_SOVERSION_FULL} f1e4bbf581fc8f8c7daf1cdf31b80c6e682200cf)
+    lib_abi_check(sysrepo "${LIB_HEADERS}" ${SYSREPO_SOVERSION_FULL} c1022a19895cdc6f4f8510fb36c04dcf04dbbe21)
 endif()
 
 # phony target for clearing sysrepo SHM
