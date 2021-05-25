@@ -2912,7 +2912,7 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
     struct sr_mod_info_s mod_info;
     struct ly_set mod_set = {0};
     const struct lys_module *ly_mod = NULL;
-    struct sr_mod_lock_s *shm_lock;
+    struct sr_mod_lock_s *shm_lock = NULL;
     uint32_t i, sid;
 
     SR_CHECK_ARG_APIRET(!conn || !SR_IS_CONVENTIONAL_DS(datastore) || !is_locked, NULL, err_info);

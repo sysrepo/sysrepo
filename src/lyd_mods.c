@@ -1026,7 +1026,7 @@ sr_lydmods_ctx_load_module(const struct lyd_node *sr_mod, struct ly_ctx *ly_ctx,
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *node;
-    const struct lys_module *ly_mod;
+    const struct lys_module *ly_mod = NULL;
     struct ly_set *feat_set = NULL;
     const char *mod_name, *revision, **features = NULL;
 

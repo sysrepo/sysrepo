@@ -224,7 +224,7 @@ step_load_data(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format,
     struct ly_in *in;
     char *ptr;
     int parse_flags;
-    LY_ERR lyrc;
+    LY_ERR lyrc = 0;
 
     ly_ctx = sr_get_context(sr_session_get_connection(sess));
 

@@ -112,7 +112,7 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
     struct lyd_meta *meta;
     struct lyd_attr *attr;
     enum insert_val ins = INSERT_DEFAULT;
-    const char *meta_name, *meta_anchor = NULL, *val_str;
+    const char *meta_name = NULL, *meta_anchor = NULL, *val_str;
     int user_order_list = 0;
 
     *op = parent_op;
@@ -339,7 +339,7 @@ sr_edit_copy_meta(const struct lyd_node *src_node, struct lyd_node *trg_node, in
     sr_error_info_t *err_info = NULL;
     const struct lys_module *yang_mod;
     enum insert_val insert;
-    const char *userord_anchor, *anchor_meta_name = NULL, *insert_str, *orig_insert = NULL, *orig_anchor = NULL;
+    const char *userord_anchor, *anchor_meta_name = NULL, *insert_str = NULL, *orig_insert = NULL, *orig_anchor = NULL;
     struct lyd_meta *meta;
 
     *meta_changed = 0;
@@ -2693,7 +2693,7 @@ sr_edit_add_update_op(struct lyd_node *node, const char *def_operation)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sibling, *parent;
-    enum edit_op op, def_op;
+    enum edit_op op = 0, def_op;
     int own_oper, next_iter_oper, is_sup;
 
     next_iter_oper = 0;

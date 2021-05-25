@@ -454,7 +454,7 @@ sr_shmsub_notify_write_event(sr_sub_shm_t *sub_shm, uint32_t request_id, sr_sub_
         const char *event_desc)
 {
     sr_error_info_t *err_info = NULL;
-    char *shm_data_ptr;
+    char *shm_data_ptr = NULL;
     const uint32_t empty_data[] = {0};
     uint32_t orig_size = 0;
 
@@ -530,7 +530,7 @@ sr_shmsub_multi_notify_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t r
         sr_shm_t *shm_data_sub, struct timespec *notif_ts, const char *data, uint32_t data_len, const char *event_desc)
 {
     sr_error_info_t *err_info = NULL;
-    char *shm_data_ptr;
+    char *shm_data_ptr = NULL;
     const uint32_t empty_data[] = {0};
     uint32_t orig_size = 0;
 
@@ -1328,7 +1328,7 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
     sr_multi_sub_shm_t *multi_sub_shm;
     struct lyd_node *abort_diff;
     struct sr_mod_info_mod_s *mod = NULL;
-    uint32_t cur_priority, err_priority, subscriber_count, err_subscriber_count, diff_lyb_len, *aux = NULL;
+    uint32_t cur_priority, err_priority = 0, subscriber_count, err_subscriber_count = 0, diff_lyb_len, *aux = NULL;
     char *diff_lyb = NULL;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER, shm_data_sub = SR_SHM_INITIALIZER;
     int last_subscr = 0;
@@ -3099,7 +3099,7 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
     struct lyd_node *input = NULL, *input_op, *output = NULL;
     struct ly_in *in = NULL;
     sr_error_t err_code = SR_ERR_OK, ret;
-    struct opsub_rpcsub_s *rpc_sub;
+    struct opsub_rpcsub_s *rpc_sub = NULL;
     sr_multi_sub_shm_t *multi_sub_shm;
     sr_shm_t shm_data_sub = SR_SHM_INITIALIZER;
     sr_session_ctx_t *ev_sess = NULL;

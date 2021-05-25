@@ -112,8 +112,8 @@ sr_api_ret(sr_session_ctx_t *session, sr_error_info_t *err_info)
 void
 sr_log_msg(int plugin, sr_log_level_t ll, const char *msg)
 {
-    int priority;
-    const char *severity;
+    int priority = 0;
+    const char *severity = NULL;
 
     switch (ll) {
     case SR_LL_ERR:
