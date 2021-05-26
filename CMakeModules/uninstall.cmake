@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.0.2)
-
 set(MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/install_manifest.txt")
 
 if(NOT EXISTS ${MANIFEST})
@@ -12,10 +10,10 @@ foreach(file ${files})
         message(STATUS "Removing: ${file}")
 
         execute_process(COMMAND rm -f ${file}
-            RESULT_VARIABLE result
-            OUTPUT_QUIET
-            ERROR_VARIABLE stderr
-            ERROR_STRIP_TRAILING_WHITESPACE
+                RESULT_VARIABLE result
+                OUTPUT_QUIET
+                ERROR_VARIABLE stderr
+                ERROR_STRIP_TRAILING_WHITESPACE
         )
 
         if(NOT ${result} EQUAL 0)
@@ -24,4 +22,4 @@ foreach(file ${files})
     else()
         message(STATUS "Does-not-exist: ${file}")
     endif()
-endforeach(file)
+endforeach()

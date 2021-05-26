@@ -291,12 +291,12 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
                 strcat(cur_item->submodules, str);
             }
 
-            /* add all import modules of submodules as well */
+            /* add all import modules of submodules */
             LY_ARRAY_FOR(ly_mod->parsed->includes, u) {
                 ly_submod = ly_mod->parsed->includes[u].submodule;
                 LY_ARRAY_FOR(ly_submod->imports, v) {
                     srctl_list_collect_import(ly_submod->imports[v].module, list, list_count);
-                }
+                 }
             }
 
             /* add all import modules as well */

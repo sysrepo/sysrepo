@@ -1,6 +1,6 @@
-module feature-deps2 {
-    namespace "urn:feature:deps2";
-    prefix fd2;
-
-    feature featx;
-}
+amodule feature-deps2 {
+  namespace "urn:feature:deps2";
+  prefix fd2;
+a
+  feature featx;
+}a
