@@ -225,12 +225,20 @@ sr_error_info_t *sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *m
 sr_error_info_t *sr_modinfo_data_store(struct sr_mod_info_s *mod_info);
 
 /**
- * @brief Reset (unlick SHM files) all candidate data for mod info.
+ * @brief Reset (unlock SHM files) all candidate data for mod info.
  *
  * @param[in] mod_info Mod info to use.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_candidate_reset(struct sr_mod_info_s *mod_info);
+
+/**
+ * @brief Check whether there are any modified modules in mod info.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @return Whether there are any changed modules or not.
+ */
+int sr_modinfo_is_changed(struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Free mod info.

@@ -2247,6 +2247,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     struct lyd_node *update_edit = NULL, *old_diff = NULL, *new_diff = NULL;
     sr_session_ctx_t *ev_sess = NULL;
     struct ly_set mod_set = {0};
+    sr_lock_mode_t change_sub_lock = SR_LOCK_NONE;
     int ret;
     uint32_t sid = 0;
     char *orig_name = NULL;
@@ -2263,7 +2264,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
 
     if (!mod_info->diff) {
         SR_LOG_INF("No datastore changes to apply.");
-        goto cleanup;
+        goto store;
     }
 
     /* call connection diff callback */
@@ -2324,7 +2325,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     if (!mod_info->diff) {
         /* diff can disappear after validation */
         SR_LOG_INF("No datastore changes to apply.");
-        goto cleanup;
+        goto store;
     }
 
     /* check write perm (we must wait until after validation, some additional modules can be modified) */
@@ -2336,16 +2337,17 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     if ((err_info = sr_modinfo_changesub_rdlock(mod_info))) {
         goto cleanup;
     }
+    change_sub_lock = SR_LOCK_READ;
 
     /* publish current diff in an "update" event for the subscribers to update it */
     if ((err_info = sr_shmsub_change_notify_update(mod_info, orig_name, orig_data, timeout_ms,
             &update_edit, cb_err_info))) {
-        goto cleanup_unlock;
+        goto cleanup;
     }
     if (*cb_err_info) {
         /* "update" event failed, just clear the sub SHM and finish */
         err_info = sr_shmsub_change_notify_clear(mod_info);
-        goto cleanup_unlock;
+        goto cleanup;
     }
 
     /* create new diff if we have an update edit */
@@ -2356,13 +2358,14 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
 
         /* get new diff using the updated edit */
         if ((err_info = sr_modinfo_edit_apply(mod_info, update_edit, 1))) {
-            goto cleanup_unlock;
+            goto cleanup;
         }
 
         /* unlock so that we can lock after additonal modules were marked as changed */
 
         /* CHANGE SUB READ UNLOCK */
         sr_modinfo_changesub_rdunlock(mod_info);
+        change_sub_lock = SR_LOCK_NONE;
 
         /* validate updated data trees and finish new diff */
         switch (mod_info->ds) {
@@ -2397,6 +2400,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
         if ((err_info = sr_modinfo_changesub_rdlock(mod_info))) {
             goto cleanup;
         }
+        change_sub_lock = SR_LOCK_READ;
 
         /* put the old diff back */
         new_diff = mod_info->diff;
@@ -2405,57 +2409,65 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
 
         /* merge diffs into one */
         if ((err_info = sr_modinfo_diff_merge(mod_info, new_diff))) {
-            goto cleanup_unlock;
+            goto cleanup;
         }
     }
 
     if (!mod_info->diff) {
         SR_LOG_INF("No datastore changes to apply.");
-        goto cleanup_unlock;
+        goto store;
     }
 
     /* publish final diff in a "change" event for any subscribers and wait for them */
     if ((err_info = sr_shmsub_change_notify_change(mod_info, orig_name, orig_data, timeout_ms, cb_err_info))) {
-        goto cleanup_unlock;
+        goto cleanup;
     }
     if (*cb_err_info) {
         /* "change" event failed, publish "abort" event and finish */
         err_info = sr_shmsub_change_notify_change_abort(mod_info, orig_name, orig_data, timeout_ms);
-        goto cleanup_unlock;
+        goto cleanup;
+    }
+
+store:
+    if (!mod_info->diff && !sr_modinfo_is_changed(mod_info)) {
+        /* there is no diff and no changed modules, nothing to store */
+        goto cleanup;
     }
 
     /* MODULES WRITE LOCK (upgrade) */
     if ((err_info = sr_shmmod_modinfo_rdlock_upgrade(mod_info, sid))) {
-        goto cleanup_unlock;
+        goto cleanup;
     }
 
     /* store updated datastore */
     if ((err_info = sr_modinfo_data_store(mod_info))) {
-        goto cleanup_unlock;
+        goto cleanup;
     }
 
     /* MODULES READ LOCK (downgrade) */
     if ((err_info = sr_shmmod_modinfo_wrlock_downgrade(mod_info, sid))) {
-        goto cleanup_unlock;
+        goto cleanup;
     }
 
     /* publish "done" event, all changes were applied */
     if ((err_info = sr_shmsub_change_notify_change_done(mod_info, orig_name, orig_data, timeout_ms))) {
-        goto cleanup_unlock;
+        goto cleanup;
     }
 
     /* generate netconf-config-change notification */
     if (session && (err_info = sr_modinfo_generate_config_change_notif(mod_info, session))) {
-        goto cleanup_unlock;
+        goto cleanup;
     }
 
     /* success */
 
-cleanup_unlock:
-    /* CHANGE SUB READ UNLOCK */
-    sr_modinfo_changesub_rdunlock(mod_info);
-
 cleanup:
+    if (change_sub_lock) {
+        assert(change_sub_lock == SR_LOCK_READ);
+
+        /* CHANGE SUB READ UNLOCK */
+        sr_modinfo_changesub_rdunlock(mod_info);
+    }
     sr_session_stop(ev_sess);
     ly_set_erase(&mod_set, NULL);
     lyd_free_all(update_edit);

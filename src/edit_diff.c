@@ -256,10 +256,11 @@ sr_edit_find_cid(struct lyd_node *edit, sr_cid_t *cid, int *meta_own)
  * @param[in] edit_node Edit node to examine.
  * @param[in] cid CID of the edit merge source (new owner of these oper edit nodes).
  * @param[in] keep_cur_child Whether to keep current meta for direct children.
+ * @param[in] changed Optional flag that the CID was changed.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_update_cid(struct lyd_node *edit_node, sr_cid_t cid, int keep_cur_child)
+sr_edit_update_cid(struct lyd_node *edit_node, sr_cid_t cid, int keep_cur_child, int *changed)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *child;
@@ -268,6 +269,9 @@ sr_edit_update_cid(struct lyd_node *edit_node, sr_cid_t cid, int keep_cur_child)
     sr_cid_t cur_cid, child_cid;
 
     assert(cid);
+    if (changed) {
+        *changed = 0;
+    }
 
     /* learn current CID */
     sr_edit_find_cid(edit_node, &cur_cid, &meta_own);
@@ -290,6 +294,10 @@ sr_edit_update_cid(struct lyd_node *edit_node, sr_cid_t cid, int keep_cur_child)
             if (lyd_new_meta(LYD_CTX(edit_node), edit_node, NULL, SR_YANG_MOD ":cid", cid_str, 0, NULL)) {
                 sr_errinfo_new_ly(&err_info, LYD_CTX(edit_node));
                 return err_info;
+            }
+
+            if (changed) {
+                *changed = 1;
             }
         }
 
@@ -855,11 +863,14 @@ sr_lyd_merge_cb(struct lyd_node *trg_node, const struct lyd_node *src_node, void
     char *origin = NULL, *cur_origin = NULL;
     struct lyd_node *child;
     enum edit_op src_op, trg_op;
-    int trg_op_own, meta_changed = 0;
+    int trg_op_own, meta_changed = 0, cid_changed;
 
     /* update CID of the new node */
-    if ((err_info = sr_edit_update_cid(trg_node, arg->cid, src_node ? 1 : 0))) {
+    if ((err_info = sr_edit_update_cid(trg_node, arg->cid, src_node ? 1 : 0, &cid_changed))) {
         goto cleanup;
+    }
+    if (cid_changed) {
+        arg->changed = 1;
     }
 
     /* learn target operation */

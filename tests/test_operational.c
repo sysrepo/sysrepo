@@ -2281,6 +2281,103 @@ test_conn_owner2(void **state)
 }
 
 /* TEST */
+static void
+test_conn_owner_same_data(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* create another connection and session */
+    ret = sr_connect(0, &conn);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_start(conn, SR_DS_OPERATIONAL, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some operational data */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/oper-status",
+            "up", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/speed",
+            "1024", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the data */
+    ret = sr_get_data(sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+
+    lyd_free_all(data);
+
+    str2 =
+    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
+        "<interface>"
+            "<name>eth1</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<oper-status>up</oper-status>"
+            "<speed>1024</speed>"
+        "</interface>"
+    "</interfaces-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* set same oper data owned by another connection */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/oper-status",
+            "up", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/speed",
+            "1024", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* disconnect, no operational data should actually be removed */
+    sr_disconnect(conn);
+
+    /* read the data */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+
+    lyd_free_all(data);
+
+    str2 =
+    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
+        "<interface>"
+            "<name>eth1</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<oper-status>up</oper-status>"
+            "<speed>1024</speed>"
+        "</interface>"
+    "</interfaces-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+}
+
+/* TEST */
 static int
 stored_state_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data)
@@ -4101,6 +4198,7 @@ main(void)
         cmocka_unit_test_teardown(test_config_only, clear_up),
         cmocka_unit_test_teardown(test_conn_owner1, clear_up),
         cmocka_unit_test_teardown(test_conn_owner2, clear_up),
+        cmocka_unit_test_teardown(test_conn_owner_same_data, clear_up),
         cmocka_unit_test_teardown(test_stored_state, clear_up),
         cmocka_unit_test_teardown(test_stored_state_list, clear_up),
         cmocka_unit_test_teardown(test_stored_config, clear_up),

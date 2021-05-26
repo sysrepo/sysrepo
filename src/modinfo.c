@@ -2444,6 +2444,23 @@ sr_modinfo_candidate_reset(struct sr_mod_info_s *mod_info)
     return NULL;
 }
 
+int
+sr_modinfo_is_changed(struct sr_mod_info_s *mod_info)
+{
+    struct sr_mod_info_mod_s *mod;
+    uint32_t i;
+
+    for (i = 0; i < mod_info->mod_count; ++i) {
+        mod = &mod_info->mods[i];
+        if (mod->state & MOD_INFO_CHANGED) {
+            /* changed module */
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 void
 sr_modinfo_free(struct sr_mod_info_s *mod_info)
 {
