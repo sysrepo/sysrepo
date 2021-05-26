@@ -208,6 +208,7 @@ set (SYSREPOCFG_SRC
 set (SYSREPOPLUGIND_SRC
     src/executables/sysrepo-plugind.c)
 
+# public headers
 set(LIB_HEADERS
     src/sysrepo.h
     src/sysrepo_types.h

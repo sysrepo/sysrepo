@@ -119,12 +119,13 @@ jobs:
         run: |
           sudo apt-get install abi-dumper abi-compliance-checker
           sudo snap install core universal-ctags
+
           GIT_BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
           git clone -b $GIT_BRANCH https://github.com/CESNET/libyang.git
           cd libyang
           mkdir build
           cd build
-          CC=${{ matrix.config.cc }} cmake -DCMAKE_BUILD_TYPE=${{ matrix.config.build-type }} -DENABLE_BUILD_TESTS=OFF ..
+          CC=gcc cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_BUILD_TESTS=OFF ..
           make -j2
           sudo make install
 
@@ -150,12 +151,13 @@ jobs:
         shell: bash
         run: |
           sudo apt-get install libcmocka-dev lcov
+
           GIT_BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
           git clone -b $GIT_BRANCH https://github.com/CESNET/libyang.git
           cd libyang
           mkdir build
           cd build
-          CC=${{ matrix.config.cc }} cmake -DCMAKE_BUILD_TYPE=${{ matrix.config.build-type }} -DENABLE_BUILD_TESTS=OFF ..
+          CC=gcc cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_BUILD_TESTS=OFF ..
           make -j2
           sudo make install
 
