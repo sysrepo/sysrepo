@@ -1,6 +1,7 @@
 # Sysrepo
 
-[![GitHub license](https://img.shields.io/badge/license-Apache%20license%202.0-blue.svg)](https://github.com/sysrepo/sysrepo/blob/master/LICENSE)
+[![BSD license](https://img.shields.io/badge/License-BSD-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
+[![Build](https://github.com/sysrepo/sysrepo/workflows/sysrepo%20CI/badge.svg)](https://github.com/sysrepo/sysrepo/actions?query=workflow%3A%22sysrepo+CI%22)
 
 Sysrepo is a [YANG](http://tools.ietf.org/html/rfc7950)-based configuration and operational state data store for Unix/Linux applications.
 
