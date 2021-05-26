@@ -319,11 +319,6 @@ if(INSTALL_SYSCTL_CONF)
     install(FILES "${PROJECT_SOURCE_DIR}/66-sysrepo-disable-fs-protected_regular.conf" DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/sysctl.d/")
 endif()
 
-# tests
-if(ENABLE_TESTS)
-    find_package(CMocka 1.0.0)
-endif()
-
 if ("${BUILD_TYPE_UPPER}" STREQUAL "DEBUG")
     # enable before adding tests to let them detect that format checking is available - one of the tests is format checking
     source_format_enable()
@@ -331,6 +326,11 @@ endif()
 
 # source files to be covered by the 'format' target and a test with 'format-check' target
 source_format(${FORMAT_SOURCES})
+
+# tests
+if(ENABLE_TESTS)
+    find_package(CMocka 1.0.0)
+endif()
 
 if(ENABLE_VALGRIND_TESTS)
     set(ENABLE_TESTS ON)
