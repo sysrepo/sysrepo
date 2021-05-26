@@ -5108,7 +5108,7 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
     sr_error_info_t *err_info = NULL, *tmp_err;
     sr_conn_ctx_t *conn;
     const struct lys_module *ly_mod;
-    sr_mod_oper_sub_type_t sub_type;
+    sr_mod_oper_sub_type_t sub_type = 0;
     uint32_t sub_id;
     sr_subscr_options_t sub_opts;
     sr_mod_t *shm_mod;

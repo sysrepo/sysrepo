@@ -13,7 +13,6 @@
  *
  *     https://opensource.org/licenses/BSD-3-Clause
  */
- */
 
 #define _GNU_SOURCE
 #include <sys/cdefs.h>
