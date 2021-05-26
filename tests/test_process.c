@@ -16,15 +16,15 @@
 
 #define _POSIX_C_SOURCE 199309L
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
 
-#include "tests/config.h"
 #include "sysrepo.h"
+#include "tests/config.h"
 
 #define sr_assert(cond) if (!(cond)) { fprintf(stderr, "\"%s\" not true\n", #cond); sr_assert_line(); abort(); }
 
@@ -633,4 +633,3 @@ main(void)
     run_tests(tests, sizeof tests / sizeof *tests);
     return 0;
 }
-

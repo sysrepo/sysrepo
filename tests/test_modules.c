@@ -16,20 +16,20 @@
 
 #define _GNU_SOURCE
 
-#include <unistd.h>
+#include <ctype.h>
+#include <grp.h>
+#include <pwd.h>
 #include <setjmp.h>
-#include <string.h>
 #include <stdarg.h>
 #include <stdlib.h>
-#include <ctype.h>
-#include <pwd.h>
-#include <grp.h>
+#include <string.h>
+#include <unistd.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
 
-#include "tests/config.h"
 #include "sysrepo.h"
+#include "tests/config.h"
 
 struct state {
     sr_conn_ctx_t *conn;
@@ -1424,6 +1424,7 @@ test_get_module_info(void **state)
 
     /* filter module test */
     struct ly_set *set;
+
     assert_int_equal(LY_SUCCESS, lyd_find_xpath(data, "/sysrepo:sysrepo-modules/*[name='test']", &set));
     assert_int_equal(set->count, 1);
     sr_mod = set->objs[0];

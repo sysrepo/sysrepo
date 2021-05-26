@@ -16,17 +16,17 @@
 
 #define _GNU_SOURCE
 
-#include <string.h>
-#include <unistd.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
 
-#include "tests/config.h"
 #include "sysrepo.h"
+#include "tests/config.h"
 
 struct state {
     sr_conn_ctx_t *conn;
@@ -1119,7 +1119,7 @@ test_edit_forbid_node_types(void **state)
     int ret;
 
     /* set some data needed for validation */
-    ret=sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, NULL, SR_EDIT_STRICT);
+    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);

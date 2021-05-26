@@ -16,21 +16,21 @@
 
 #define _GNU_SOURCE
 
+#include <poll.h>
+#include <pthread.h>
+#include <setjmp.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <pthread.h>
-#include <stdlib.h>
-#include <setjmp.h>
-#include <string.h>
-#include <stdarg.h>
-#include <poll.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
 
 #include "common.h"
-#include "tests/config.h"
 #include "sysrepo.h"
+#include "tests/config.h"
 
 struct state {
     sr_conn_ctx_t *conn;
@@ -1885,7 +1885,7 @@ test_change_fail2_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
 {
     int ret;
     sr_change_oper_t op;
-    sr_change_iter_t* iter = NULL;
+    sr_change_iter_t *iter = NULL;
     sr_val_t *old_value = NULL;
     sr_val_t *new_value = NULL;
 
@@ -1908,7 +1908,6 @@ test_change_fail2_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
             break;
         }
     }
-
 
     sr_free_change_iter(iter);
     return ret;
@@ -6303,7 +6302,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_change_unlocked, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_timeout, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_done_timeout, setup_f, teardown_f),
-        //cmocka_unit_test_setup_teardown(test_change_order, setup_f, teardown_f),
+        // cmocka_unit_test_setup_teardown(test_change_order, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_userord, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_enabled, setup_f, teardown_f),
     };

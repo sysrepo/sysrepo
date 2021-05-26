@@ -16,21 +16,21 @@
 
 #define _GNU_SOURCE
 
+#include <pthread.h>
+#include <setjmp.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <pthread.h>
-#include <stdlib.h>
-#include <setjmp.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdarg.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
 
 #include "common.h"
-#include "tests/config.h"
 #include "sysrepo.h"
+#include "tests/config.h"
 #include "utils/values.h"
 
 struct state {
@@ -1340,8 +1340,9 @@ test_input_parameters(void **state)
     /* data tree must be created with the session connection libyang context */
     struct ly_ctx *ctx;
     const struct lys_module *mod;
-    assert_int_equal(LY_SUCCESS, ly_ctx_new(TESTS_DIR"/files/", 0, &ctx));
-    assert_int_equal(LY_SUCCESS, lys_parse_path(ctx, TESTS_DIR"/files/simple.yang", LYS_IN_YANG, &mod));
+
+    assert_int_equal(LY_SUCCESS, ly_ctx_new(TESTS_DIR "/files/", 0, &ctx));
+    assert_int_equal(LY_SUCCESS, lys_parse_path(ctx, TESTS_DIR "/files/simple.yang", LYS_IN_YANG, &mod));
     assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, ctx, "/simple:ac1", NULL, 0, 0, 0, NULL, &input_op));
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);

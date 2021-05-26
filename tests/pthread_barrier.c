@@ -14,15 +14,15 @@
  *     https://opensource.org/licenses/BSD-3-Clause
  */
 
-#include <pthread.h>
 #include <errno.h>
+#include <pthread.h>
 
 #include "pthread_barrier.h"
 
 int
-pthread_barrier_init(pthread_barrier_t *restrict barrier,
-             const void *restrict attr,
-             unsigned count)
+pthread_barrier_init(pthread_barrier_t * restrict barrier,
+        const void * restrict attr,
+        unsigned count)
 {
     (void)attr;
 

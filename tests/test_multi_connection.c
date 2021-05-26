@@ -16,17 +16,17 @@
 
 #define _GNU_SOURCE
 
-#include <string.h>
-#include <unistd.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
 
-#include "tests/config.h"
 #include "sysrepo.h"
+#include "tests/config.h"
 
 struct state {
     sr_conn_ctx_t *conn1;
@@ -154,7 +154,7 @@ test_create1(void **state)
     struct state *st = (struct state *)*state;
     struct lyd_node *subtree;
     char *str;
-    //const char *str2;
+    // const char *str2;
     int ret;
 
     /* Create via two connections, retrieve by a third */
@@ -180,6 +180,7 @@ test_create1(void **state)
     lyd_free_tree(subtree);
 
     const char *ptr = strstr(str, "ethS1");
+
     assert_non_null(ptr);
     ptr = strstr(str, "ethS2");
     assert_non_null(ptr);

@@ -16,17 +16,17 @@
 
 #define _GNU_SOURCE
 
+#include <setjmp.h>
+#include <stdarg.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <setjmp.h>
-#include <stdlib.h>
-#include <stdarg.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
 
-#include "tests/config.h"
 #include "sysrepo.h"
+#include "tests/config.h"
 
 struct state {
     sr_conn_ctx_t *conn;

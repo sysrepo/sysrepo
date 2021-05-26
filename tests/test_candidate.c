@@ -16,17 +16,17 @@
 
 #define _GNU_SOURCE
 
-#include <string.h>
-#include <unistd.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
 
-#include "tests/config.h"
 #include "sysrepo.h"
+#include "tests/config.h"
 
 struct state {
     sr_conn_ctx_t *conn;
@@ -315,8 +315,8 @@ test_when(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* the same change but with replace config */
-    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(sr_get_context(st->conn), str2, LYD_XML, LYD_PARSE_NO_STATE
-            | LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &data));
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(sr_get_context(st->conn), str2, LYD_XML, LYD_PARSE_NO_STATE |
+            LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &data));
     ret = sr_replace_config(st->sess, "when1", data, 0);
     assert_int_equal(ret, SR_ERR_OK);
 

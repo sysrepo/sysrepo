@@ -16,19 +16,19 @@
 
 #define _GNU_SOURCE
 
+#include <pthread.h>
+#include <setjmp.h>
+#include <stdarg.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <setjmp.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <pthread.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
 
 #include "common.h"
-#include "tests/config.h"
 #include "sysrepo.h"
+#include "tests/config.h"
 
 struct state {
     sr_conn_ctx_t *conn;
@@ -271,7 +271,7 @@ test_yang_lib(void **state)
     ret = sr_get_data(st->sess, "/ietf-yang-library:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-#if SR_YANGLIB_REVISION == 2019-01-04
+#if SR_YANGLIB_REVISION == 2019 - 01 - 04
     assert_non_null(data);
     assert_string_equal(data->schema->name, "yang-library");
     assert_string_equal(lyd_child(data)->schema->name, "module-set");
@@ -295,7 +295,7 @@ test_yang_lib(void **state)
     lyd_free_all(data);
 
     /* subscribe as dummy state data provider, they should get deleted */
-#if SR_YANGLIB_REVISION == 2019-01-04
+#if SR_YANGLIB_REVISION == 2019 - 01 - 04
     ret = sr_oper_get_items_subscribe(st->sess, "ietf-yang-library", "/ietf-yang-library:yang-library", yang_lib_oper_cb,
             NULL, 0, &subscr);
 #else
@@ -308,7 +308,7 @@ test_yang_lib(void **state)
     ret = sr_get_data(st->sess, "/ietf-yang-library:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-#if SR_YANGLIB_REVISION == 2019-01-04
+#if SR_YANGLIB_REVISION == 2019 - 01 - 04
     assert_non_null(data);
     assert_string_equal(data->schema->name, "modules-state");
     assert_false(data->flags & LYD_DEFAULT);

@@ -75,7 +75,7 @@ timeval_subtract (struct timeval *result, struct timeval *x, struct timeval *y)
 }
 
 typedef struct test_s{
-    void ( *function)(void **, int, int *);
+    void (*function)(void **, int, int *);
     char *op_name;
     int op_count;
     void (*setup)(void **);
@@ -126,9 +126,9 @@ measure(void (*func)(void **, int, int *), const char *name, int op_count, void 
 
     timeval_subtract(&diff, &tv2, &tv1);
 
-    seconds = diff.tv_sec + 0.000001*diff.tv_usec;
+    seconds = diff.tv_sec + 0.000001 * diff.tv_usec;
     printf("%-32s| %10.0f | %10d | %13d | %10.0f | %10.2f\n",
-            name, items ? ((double) op_count)/ seconds : 0, items, op_count, items ? ((double) op_count * items)/ seconds : 0, seconds);
+            name, items ? ((double) op_count) / seconds : 0, items, op_count, items ? ((double) op_count * items) / seconds : 0, seconds);
 }
 
 void
@@ -146,7 +146,7 @@ sysrepo_setup(void **state)
     rc = sr_connect(SR_CONN_CACHE_RUNNING, &conn);
     assert_int_equal(rc, SR_ERR_OK);
 
-    *state = (void*)conn;
+    *state = (void *)conn;
 
 }
 
@@ -154,6 +154,7 @@ void
 sysrepo_teardown(void **state)
 {
     sr_conn_ctx_t *conn = *state;
+
     assert_non_null(conn);
 
     /* disconnect from sysrepo */
@@ -164,8 +165,10 @@ void
 libyang_setup(void **state)
 {
     struct ly_ctx *ctx;
+
     ly_ctx_new(TEST_SCHEMA_SEARCH_DIR, 0, &ctx);
     const struct lys_module *module = ly_ctx_load_module(ctx, "example-module", NULL, NULL);
+
     assert_non_null(module);
     *state = (void *) ctx;
 }
@@ -174,6 +177,7 @@ void
 libyang_teardown(void **state)
 {
     struct ly_ctx *ctx = *state;
+
     ly_ctx_destroy(ctx);
 }
 
@@ -182,8 +186,7 @@ typedef struct dp_setup_s {
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *session;
     size_t if_count;
-}dp_setup_t;
-
+} dp_setup_t;
 
 int
 data_provide_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *path,
@@ -221,6 +224,7 @@ data_provide_setup(void **state)
 {
 
     dp_setup_t *dp_setup = calloc(1, sizeof(*dp_setup));
+
     assert_non_null(dp_setup);
     int rc = SR_ERR_OK;
 
@@ -259,6 +263,7 @@ static void
 perf_data_provide_test(void **state, int op_num, int *items)
 {
     dp_setup_t *dp_setup = *state;
+
     assert_non_null(dp_setup);
 
     sr_val_t *value = NULL;
@@ -268,7 +273,7 @@ perf_data_provide_test(void **state, int op_num, int *items)
     dp_setup->if_count = instance_cnt;
 
     /* perform get call*/
-    for (int i = 0; i < op_num; i++){
+    for (int i = 0; i < op_num; i++) {
         val_cnt = 0;
         value = NULL;
 
@@ -286,6 +291,7 @@ static void
 perf_get_item_test(void **state, int op_num, int *items)
 {
     sr_conn_ctx_t *conn = *state;
+
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
@@ -297,7 +303,7 @@ perf_get_item_test(void **state, int op_num, int *items)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a get-item request */
-    for (int i = 0; i<op_num; i++){
+    for (int i = 0; i < op_num; i++) {
 
         /* existing leaf */
         rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", 0, &value);
@@ -317,6 +323,7 @@ static void
 perf_get_item_first_test(void **state, int op_num, int *items)
 {
     sr_conn_ctx_t *conn = *state;
+
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
@@ -328,7 +335,7 @@ perf_get_item_first_test(void **state, int op_num, int *items)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a get-item request */
-    for (int i = 0; i<op_num; i++){
+    for (int i = 0; i < op_num; i++) {
 
         /* existing first node in data tree */
         rc = sr_get_item(session, "/example-module:container", 0, &value);
@@ -337,7 +344,7 @@ perf_get_item_first_test(void **state, int op_num, int *items)
             assert_non_null(value);
             assert_int_equal(SR_CONTAINER_T, value->type);
             sr_free_val(value);
-        } else{
+        } else {
             *items = 0;
         }
     }
@@ -351,19 +358,18 @@ static void
 perf_get_item_with_data_load_test(void **state, int op_num, int *items)
 {
     sr_conn_ctx_t *conn = *state;
+
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
     sr_val_t *value = NULL;
     int rc = 0;
 
-
     /* perform session_start, get-item, session-stop requests */
-    for (int i = 0; i<op_num; i++){
+    for (int i = 0; i < op_num; i++) {
         /* start a session */
         rc = sr_session_start(conn, SR_DS_RUNNING, &session);
         assert_int_equal(rc, SR_ERR_OK);
-
 
         /* existing leaf */
         rc = sr_get_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", 0, &value);
@@ -377,7 +383,6 @@ perf_get_item_with_data_load_test(void **state, int op_num, int *items)
         assert_int_equal(rc, SR_ERR_OK);
     }
 
-
     *items = 1;
 }
 
@@ -385,6 +390,7 @@ static void
 perf_get_items_test(void **state, int op_num, int *items)
 {
     sr_conn_ctx_t *conn = *state;
+
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
@@ -397,7 +403,7 @@ perf_get_items_test(void **state, int op_num, int *items)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a get-items request */
-    for (int i = 0; i<op_num; i++){
+    for (int i = 0; i < op_num; i++) {
         /* existing leaf */
         rc = sr_get_items(session, "/example-module:container/list/leaf", 0, 0, &values, &count);
         assert_int_equal(SR_ERR_OK, rc);
@@ -414,6 +420,7 @@ static void
 perf_get_items_iter_test(void **state, int op_num, int *items)
 {
     sr_conn_ctx_t *conn = *state;
+
     assert_non_null(conn);
     (void)op_num;
 
@@ -440,6 +447,7 @@ static void
 perf_get_ietf_intefaces_test(void **state, int op_num, int *items)
 {
     sr_conn_ctx_t *conn = *state;
+
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
@@ -452,7 +460,8 @@ perf_get_ietf_intefaces_test(void **state, int op_num, int *items)
 
     /* perform a get-items_iter request */
     size_t count = 0;
-    for (int i = 0; i<op_num; i++){
+
+    for (int i = 0; i < op_num; i++) {
         count = 0;
         /* existing leaf */
         rc = sr_get_data(session, "/ietf-interfaces:interfaces/*", 0, 0, 0, &data);
@@ -471,6 +480,7 @@ static void
 perf_get_subtree_test(void **state, int op_num, int *items)
 {
     sr_conn_ctx_t *conn = *state;
+
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
@@ -482,7 +492,7 @@ perf_get_subtree_test(void **state, int op_num, int *items)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a get-item request */
-    for (int i = 0; i<op_num; i++){
+    for (int i = 0; i < op_num; i++) {
         /* existing leaf */
         rc = sr_get_subtree(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", 0, &tree);
         assert_int_equal(rc, SR_ERR_OK);
@@ -501,6 +511,7 @@ static void
 perf_get_subtree_with_data_load_test(void **state, int op_num, int *items)
 {
     sr_conn_ctx_t *conn = *state;
+
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
@@ -508,7 +519,7 @@ perf_get_subtree_with_data_load_test(void **state, int op_num, int *items)
     int rc = 0;
 
     /* perform session_start, get-item, session-stop requests */
-    for (int i = 0; i<op_num; i++){
+    for (int i = 0; i < op_num; i++) {
         /* start a session */
         rc = sr_session_start(conn, SR_DS_RUNNING, &session);
         assert_int_equal(rc, SR_ERR_OK);
@@ -532,6 +543,7 @@ static void
 perf_get_subtrees_test(void **state, int op_num, int *items)
 {
     sr_conn_ctx_t *conn = *state;
+
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
@@ -544,7 +556,7 @@ perf_get_subtrees_test(void **state, int op_num, int *items)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a get-subtrees request */
-    for (int i = 0; i<op_num; i++){
+    for (int i = 0; i < op_num; i++) {
         count = 0;
         /* existing leaf */
         rc = sr_get_data(session, "/example-module:container/list/leaf", 0, 0, 0, &trees);
@@ -565,6 +577,7 @@ static void
 perf_get_ietf_intefaces_tree_test(void **state, int op_num, int *items)
 {
     sr_conn_ctx_t *conn = *state;
+
     assert_non_null(conn);
 
     sr_session_ctx_t *session = NULL;
@@ -577,7 +590,7 @@ perf_get_ietf_intefaces_tree_test(void **state, int op_num, int *items)
     assert_int_equal(rc, SR_ERR_OK);
 
     /* perform a get-subtrees request */
-    for (int i = 0; i<op_num; i++){
+    for (int i = 0; i < op_num; i++) {
         rc = sr_get_data(session, "/ietf-interfaces:interfaces/.", 0, 0, 0, &trees);
         assert_int_equal(rc, SR_ERR_OK);
         if (0 == i) {
@@ -596,39 +609,40 @@ static void
 perf_set_delete_test(void **state, int op_num, int *items)
 {
     sr_conn_ctx_t *conn = *state;
+
     assert_non_null(conn);
     (void)op_num;
-//     sr_session_ctx_t *session = NULL;
-//     char xpath[PATH_MAX] = { 0, };
-//     int rc = 0;
+// sr_session_ctx_t *session = NULL;
+// char xpath[PATH_MAX] = { 0, };
+// int rc = 0;
 //
-//     /* start a session */
-//     rc = sr_session_start(conn, SR_DS_RUNNING, &session);
-//     assert_int_equal(rc, SR_ERR_OK);
+///* start a session */
+// rc = sr_session_start(conn, SR_DS_RUNNING, &session);
+// assert_int_equal(rc, SR_ERR_OK);
 //
-//     /* perform edit, commit request */
-//     sr_val_t value = {0,};
-//     for (size_t i = 0; i < op_num; i++) {
+///* perform edit, commit request */
+// sr_val_t value = {0,};
+// for (size_t i = 0; i < op_num; i++) {
 //
-//         /* set a list instance */
-//         sprintf(xpath, "/example-module:container/list[key1='set_del'][key2='set_1']/leaf");
-//         value.type = SR_STRING_T;
-//         value.data.string_val = strdup("Leaf");
-//         assert_non_null(value.data.string_val);
-//         rc = sr_set_item(session, xpath, &value, SR_EDIT_DEFAULT);
-//         assert_int_equal(rc, SR_ERR_OK);
+///* set a list instance */
+// sprintf(xpath, "/example-module:container/list[key1='set_del'][key2='set_1']/leaf");
+// value.type = SR_STRING_T;
+// value.data.string_val = strdup("Leaf");
+// assert_non_null(value.data.string_val);
+// rc = sr_set_item(session, xpath, &value, SR_EDIT_DEFAULT);
+// assert_int_equal(rc, SR_ERR_OK);
 //
-//         /* delete a list instance */
-//         sprintf(xpath, "/example-module:container/list[key1='set_del'][key2='set_1']");
-//         rc = sr_delete_item(session, xpath, SR_EDIT_DEFAULT);
-//         assert_int_equal(rc, SR_ERR_OK);
-//     }
+///* delete a list instance */
+// sprintf(xpath, "/example-module:container/list[key1='set_del'][key2='set_1']");
+// rc = sr_delete_item(session, xpath, SR_EDIT_DEFAULT);
+// assert_int_equal(rc, SR_ERR_OK);
+// }
 //
-//     /* stop the session */
-//     rc = sr_session_stop(session);
-//     assert_int_equal(rc, SR_ERR_OK);
+///* stop the session */
+// rc = sr_session_stop(session);
+// assert_int_equal(rc, SR_ERR_OK);
 //
-//     *items = 1 /* list instances */ * 3 /* leaves */ * 2 /* set + delete */ ;
+// *items = 1 /* list instances */ * 3 /* leaves */ * 2 /* set + delete */ ;
     *items = 0;
 }
 
@@ -636,43 +650,44 @@ static void
 perf_set_delete_100_test(void **state, int op_num, int *items)
 {
     sr_conn_ctx_t *conn = *state;
+
     assert_non_null(conn);
     (void)op_num;
-//     sr_session_ctx_t *session = NULL;
-//     char xpath[PATH_MAX] = { 0, };
-//     int rc = 0;
+// sr_session_ctx_t *session = NULL;
+// char xpath[PATH_MAX] = { 0, };
+// int rc = 0;
 //
-//     /* start a session */
-//     rc = sr_session_start(conn, SR_DS_RUNNING, &session);
-//     assert_int_equal(rc, SR_ERR_OK);
+///* start a session */
+// rc = sr_session_start(conn, SR_DS_RUNNING, &session);
+// assert_int_equal(rc, SR_ERR_OK);
 //
-//     /* perform edit, commit request */
-//     sr_val_t value = {0,};
-//     for (size_t i = 0; i < op_num; i++) {
+///* perform edit, commit request */
+// sr_val_t value = {0,};
+// for (size_t i = 0; i < op_num; i++) {
 //
-//         /* set 100 list instances */
-//         for (size_t j = 0; j <= 100; j++) {
-//             sprintf(xpath, "/example-module:container/list[key1='set_del'][key2='set_%zu']/leaf", j);
-//             value.type = SR_STRING_T;
-//             value.data.string_val = strdup("Leaf");
-//             assert_non_null(value.data.string_val);
-//             rc = sr_set_item(session, xpath, &value, SR_EDIT_DEFAULT);
-//             assert_int_equal(rc, SR_ERR_OK);
-//         }
+///* set 100 list instances */
+// for (size_t j = 0; j <= 100; j++) {
+// sprintf(xpath, "/example-module:container/list[key1='set_del'][key2='set_%zu']/leaf", j);
+// value.type = SR_STRING_T;
+// value.data.string_val = strdup("Leaf");
+// assert_non_null(value.data.string_val);
+// rc = sr_set_item(session, xpath, &value, SR_EDIT_DEFAULT);
+// assert_int_equal(rc, SR_ERR_OK);
+// }
 //
-//         /* delete 100 list instances */
-//         for (size_t j = 0; j <= 100; j++) {
-//             sprintf(xpath, "/example-module:container/list[key1='set_del'][key2='set_%zu']", j);
-//             rc = sr_delete_item(session, xpath, SR_EDIT_DEFAULT);
-//             assert_int_equal(rc, SR_ERR_OK);
-//         }
-//     }
+///* delete 100 list instances */
+// for (size_t j = 0; j <= 100; j++) {
+// sprintf(xpath, "/example-module:container/list[key1='set_del'][key2='set_%zu']", j);
+// rc = sr_delete_item(session, xpath, SR_EDIT_DEFAULT);
+// assert_int_equal(rc, SR_ERR_OK);
+// }
+// }
 //
-//     /* stop the session */
-//     rc = sr_session_stop(session);
-//     assert_int_equal(rc, SR_ERR_OK);
+///* stop the session */
+// rc = sr_session_stop(session);
+// assert_int_equal(rc, SR_ERR_OK);
 //
-//     *items = 100 /* list instances */ * 3 /* leaves */ * 2 /* set + delete */ ;
+// *items = 100 /* list instances */ * 3 /* leaves */ * 2 /* set + delete */ ;
     *items = 0;
 }
 
@@ -680,6 +695,7 @@ static void
 perf_commit_test(void **state, int op_num, int *items)
 {
     sr_conn_ctx_t *conn = *state;
+
     assert_non_null(conn);
     sr_session_ctx_t *session = NULL;
     int rc = 0;
@@ -690,11 +706,12 @@ perf_commit_test(void **state, int op_num, int *items)
 
     /* perform edit, commit request */
     bool even = true;
-    for (int i = 0; i<op_num; i++){
+
+    for (int i = 0; i < op_num; i++) {
         if (even) {
             rc = sr_delete_item(session, "/example-module:container/list[key1='key1'][key2='key2']/leaf", SR_EDIT_DEFAULT);
         } else {
-            sr_val_t value = {0,};
+            sr_val_t value = {0, };
             value.type = SR_STRING_T;
             value.data.string_val = strdup("Leaf");
             assert_non_null(value.data.string_val);
@@ -761,10 +778,11 @@ static void
 perf_rpc_test(void **state, int op_num, int *items)
 {
     sr_conn_ctx_t *conn = *state;
+
     assert_non_null(conn);
     sr_session_ctx_t *session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
-    sr_val_t input = { 0, };
+    sr_val_t input = {0, };
     sr_val_t *output = NULL;
     size_t output_cnt = 0;
     int rc = 0;
@@ -823,10 +841,11 @@ static void
 perf_ev_notification_test(void **state, int op_num, int *items, bool ephemeral)
 {
     sr_conn_ctx_t *conn = *state;
+
     assert_non_null(conn);
     sr_session_ctx_t *session = NULL;
     sr_subscription_ctx_t *subscription = NULL;
-    sr_val_t values[4] = { { 0, }, };
+    sr_val_t values[4] = {{0, }, };
     int rc = 0;
 
     if (ephemeral) {
@@ -904,7 +923,7 @@ perf_libyang_get_node(void **state, int op_num, int *items)
             LYD_PARSE_ONLY | LYD_PARSE_NO_STATE | LYD_PARSE_STRICT, 0, &root));
 
     /* perform a lyd_get_node op */
-    for (int i = 0; i < op_num; i++){
+    for (int i = 0; i < op_num; i++) {
 
         /* existing leaf */
         assert_int_equal(LY_SUCCESS, lyd_find_xpath(root, "/example-module:container/list[key1='key1'][key2='key2']/leaf",
@@ -929,7 +948,7 @@ perf_libyang_get_all_list(void **state, int op_num, int *items)
             LYD_PARSE_ONLY | LYD_PARSE_NO_STATE | LYD_PARSE_STRICT, 0, &root));
 
     /* perform a lyd_get_node op */
-    for (int i = 0; i<op_num; i++){
+    for (int i = 0; i < op_num; i++) {
 
         /* existing leaf */
         assert_int_equal(LY_SUCCESS, lyd_find_xpath(root, "/example-module:container/list/leaf", &set));
@@ -947,7 +966,7 @@ test_perf(test_t *ts, int test_count, const char *title, int selection)
     print_measure_header(title);
     for (int i = 0; i < test_count; i++) {
         test_t *t = &ts[i];
-        if (-1 == selection || i == selection){
+        if ((-1 == selection) || (i == selection)) {
             measure(t->function, t->op_name, t->op_count, t->setup, t->teardown);
         }
     }
@@ -962,6 +981,7 @@ createDataTreeExampleModule(sr_session_ctx_t *sess)
     ctx = sr_get_context(sr_session_get_connection(sess));
 
     const struct lys_module *module = ly_ctx_get_module_implemented(ctx, "example-module");
+
     assert_non_null(module);
 
 #define XPATH "/example-module:container/list[key1='key1'][key2='key2']/leaf"
@@ -980,14 +1000,14 @@ createDataTreeLargeExampleModule(sr_session_ctx_t *sess, int list_count)
     ctx = sr_get_context(sr_session_get_connection(sess));
 
     const struct lys_module *module = ly_ctx_get_module_implemented(ctx, "example-module");
+
     assert_non_null(module);
 
 #define MAX_XP_LEN 100
     const char *template = "/example-module:container/list[key1='k1%d'][key2='k2%d']/leaf";
-    char xpath[MAX_XP_LEN] = {0,};
+    char xpath[MAX_XP_LEN] = {0, };
 
-
-    for (int i = 0; i < list_count; i++){
+    for (int i = 0; i < list_count; i++) {
         snprintf(xpath, MAX_XP_LEN, template, i, i);
         assert_int_equal(LY_SUCCESS, lyd_new_path(root, ctx, xpath, "Leaf value", 0, &node));
         if (NULL == root) {
@@ -1015,7 +1035,7 @@ createDataTreeLargeIETFinterfacesModule(sr_session_ctx_t *sess, size_t if_count)
     const char *template_enabled = "/ietf-interfaces:interfaces/interface[name='eth%d']/enabled";
     const char *template_ipv4_enabled = "/ietf-interfaces:interfaces/interface[name='eth%d']/ietf-ip:ipv4/ietf-ip:enabled";
     const char *template_ipv4_mtu = "/ietf-interfaces:interfaces/interface[name='eth%d']/ietf-ip:ipv4/ietf-ip:mtu";
-    char xpath[MAX_IF_LEN] = {0,};
+    char xpath[MAX_IF_LEN] = {0, };
 
     const struct lys_module *module_interfaces = ly_ctx_get_module_implemented(ctx, "ietf-interfaces");
     assert_non_null(module_interfaces);
@@ -1025,8 +1045,8 @@ createDataTreeLargeIETFinterfacesModule(sr_session_ctx_t *sess, size_t if_count)
     assert_non_null(module);
     struct lyd_node *node = NULL;
 
-    for (size_t i = 1; i < (if_count+1); i++) {
-        snprintf(xpath, MAX_IF_LEN, template_prefix_len, i, (i/244 +1), i % 244);
+    for (size_t i = 1; i < (if_count + 1); i++) {
+        snprintf(xpath, MAX_IF_LEN, template_prefix_len, i, (i / 244 + 1), i % 244);
         assert_int_equal(LY_SUCCESS, lyd_new_path(root, ctx, xpath, "24", 0, &node));
         if (NULL == root) {
             root = node;
@@ -1076,7 +1096,7 @@ main(int argc, char **argv)
         {perf_libyang_get_all_list, "Libyang get all list", OP_COUNT, libyang_setup, libyang_teardown},
     };
 
-    size_t test_count = sizeof(tests)/sizeof(*tests);
+    size_t test_count = sizeof(tests) / sizeof(*tests);
     sr_conn_ctx_t *conn = NULL;
     sr_session_ctx_t *sess;
     int rc, ret = -1, selection = -1;
@@ -1133,10 +1153,9 @@ main(int argc, char **argv)
     instance_cnt = 20;
     test_perf(tests, test_count, "Data file with 20 list instances", selection);
 
-
     /* decrease the number of performed operation on larger file */
-    for (size_t i = 0; i < test_count; i++){
-        if (OP_COUNT_COMMIT != tests[i].op_count){
+    for (size_t i = 0; i < test_count; i++) {
+        if (OP_COUNT_COMMIT != tests[i].op_count) {
             tests[i].op_count = OP_COUNT_LOW;
         }
     }

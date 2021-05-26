@@ -16,23 +16,23 @@
 
 #define _GNU_SOURCE
 
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
-#include <unistd.h>
 #include <pthread.h>
-#include <stdlib.h>
 #include <setjmp.h>
-#include <string.h>
 #include <stdarg.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
 
 #include "common.h"
-#include "tests/config.h"
 #include "sysrepo.h"
+#include "tests/config.h"
 
 const time_t start_ts = 1550233816;
 
@@ -146,6 +146,7 @@ static int
 clear_ops_notif(void **state)
 {
     char *cmd, *path;
+
     (void)state;
 
     test_path_notif_dir(&path);
@@ -315,9 +316,11 @@ test_input_parameters(void **state)
 
     /* data tree must be created with the session connection libyang context */
     struct ly_ctx *ctx;
-    assert_int_equal(LY_SUCCESS, ly_ctx_new(TESTS_DIR"/files/", 0, &ctx));
+
+    assert_int_equal(LY_SUCCESS, ly_ctx_new(TESTS_DIR "/files/", 0, &ctx));
     const struct lys_module *mod;
-    assert_int_equal(LY_SUCCESS, lys_parse_path(ctx, TESTS_DIR"/files/simple.yang", LYS_IN_YANG, &mod));
+
+    assert_int_equal(LY_SUCCESS, lys_parse_path(ctx, TESTS_DIR "/files/simple.yang", LYS_IN_YANG, &mod));
     assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, ctx, "/simple:ac1", NULL, 0, 0, 0, NULL, &input));
     ret = sr_event_notif_send_tree(st->sess, input, 0, 0);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
@@ -746,7 +749,7 @@ test_replay_interval(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for the replay, complete, and stop notifications */
-    for (; i < 9; ++i) {
+    for ( ; i < 9; ++i) {
         pthread_barrier_wait(&st->barrier);
     }
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), i);
@@ -757,7 +760,7 @@ test_replay_interval(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for the replay, complete, and stop notifications */
-    for (; i < 13; ++i) {
+    for ( ; i < 13; ++i) {
         pthread_barrier_wait(&st->barrier);
     }
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), i);
@@ -768,7 +771,7 @@ test_replay_interval(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for the replay, complete, and stop notifications */
-    for (; i < 20; ++i) {
+    for ( ; i < 20; ++i) {
         pthread_barrier_wait(&st->barrier);
     }
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), i);
@@ -1357,7 +1360,7 @@ test_dup_inst(void **state)
 
     /* send filtered-out notif */
     assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, sr_get_context(st->conn), "/ops:notif4/l", "b", 0, &notif));
-     assert_int_equal(SR_ERR_OK, sr_event_notif_send_tree(st->sess, notif, 0, 0));
+    assert_int_equal(SR_ERR_OK, sr_event_notif_send_tree(st->sess, notif, 0, 0));
     lyd_free_tree(notif);
 
     /* process the notification (filter it out) */
