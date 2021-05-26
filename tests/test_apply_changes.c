@@ -2175,6 +2175,7 @@ test_change_fail_priority_cb(sr_session_ctx_t *session, uint32_t sub_id, const c
         ret = SR_ERR_OK;
         break;
     default:
+        ret = SR_ERR_INTERNAL;
         fail();
     }
 
