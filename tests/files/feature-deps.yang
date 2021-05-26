@@ -1,20 +1,20 @@
- module feature-deps {
+module feature-deps {
   namespace "urn:feature:deps";
   prefix fd;
-a
+
   import feature-deps2 {
     prefix fd2;
   }
-a
+
   feature feat1 {
     if-feature feat2;
   }
-a
+
   feature feat2 {
     if-feature feat3;
   }
-a
+
   feature feat3 {
     if-feature fd2:featx;
   }
-}a
+}

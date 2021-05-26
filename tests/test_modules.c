@@ -1450,73 +1450,73 @@ test_get_module_info(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
-    static void
-    test_feature_dependencies_across_modules(void **state)
-    {
-        struct state *st = (struct state *)*state;
-        int ret;
-        uint32_t conn_count;
+static void
+test_feature_dependencies_across_modules(void **state)
+{
+    struct state *st = (struct state *)*state;
+    int ret;
+    uint32_t conn_count;
 
-        /* install modules */
-        ret = sr_install_module(st->conn, TESTS_DIR "/files/feature-deps.yang", TESTS_DIR "/files", NULL);
-        assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_install_module(st->conn, TESTS_DIR "/files/feature-deps2.yang", TESTS_DIR "/files", NULL);
-        assert_int_equal(ret, SR_ERR_OK);
+    /* install modules */
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/feature-deps.yang", TESTS_DIR "/files", NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_install_module(st->conn, TESTS_DIR "/files/feature-deps2.yang", TESTS_DIR "/files", NULL);
+    assert_int_equal(ret, SR_ERR_OK);
 
-        /* apply scheduled changes */
-        sr_disconnect(st->conn);
-        st->conn = NULL;
-        ret = sr_connection_count(&conn_count);
-        assert_int_equal(ret, SR_ERR_OK);
-        assert_int_equal(conn_count, 0);
-        ret = sr_connect(SR_CONN_ERR_ON_SCHED_FAIL, &st->conn);
-        assert_int_equal(ret, SR_ERR_OK);
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(SR_CONN_ERR_ON_SCHED_FAIL, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
 
-        /* enable independent feature */
-        ret = sr_enable_module_feature(st->conn, "feature-deps2", "featx");
-        assert_int_equal(ret, SR_ERR_OK);
+    /* enable independent feature */
+    ret = sr_enable_module_feature(st->conn, "feature-deps2", "featx");
+    assert_int_equal(ret, SR_ERR_OK);
 
-        /* apply scheduled changes */
-        sr_disconnect(st->conn);
-        st->conn = NULL;
-        ret = sr_connection_count(&conn_count);
-        assert_int_equal(ret, SR_ERR_OK);
-        assert_int_equal(conn_count, 0);
-        ret = sr_connect(SR_CONN_ERR_ON_SCHED_FAIL, &st->conn);
-        assert_int_equal(ret, SR_ERR_OK);
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(SR_CONN_ERR_ON_SCHED_FAIL, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
 
-        /* enable dependent features */
-        ret = sr_enable_module_feature(st->conn, "feature-deps", "feat1");
-        assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_enable_module_feature(st->conn, "feature-deps", "feat2");
-        assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_enable_module_feature(st->conn, "feature-deps", "feat3");
-        assert_int_equal(ret, SR_ERR_OK);
+    /* enable dependent features */
+    ret = sr_enable_module_feature(st->conn, "feature-deps", "feat1");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_enable_module_feature(st->conn, "feature-deps", "feat2");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_enable_module_feature(st->conn, "feature-deps", "feat3");
+    assert_int_equal(ret, SR_ERR_OK);
 
-        /* apply scheduled changes */
-        sr_disconnect(st->conn);
-        st->conn = NULL;
-        ret = sr_connection_count(&conn_count);
-        assert_int_equal(ret, SR_ERR_OK);
-        assert_int_equal(conn_count, 0);
-        ret = sr_connect(SR_CONN_ERR_ON_SCHED_FAIL, &st->conn);
-        assert_int_equal(ret, SR_ERR_OK);
+    /* apply scheduled changes */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(SR_CONN_ERR_ON_SCHED_FAIL, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
 
-        /* check if modules can be loaded again */
-        sr_disconnect(st->conn);
-        st->conn = NULL;
-        ret = sr_connection_count(&conn_count);
-        assert_int_equal(ret, SR_ERR_OK);
-        assert_int_equal(conn_count, 0);
-        ret = sr_connect(0, &st->conn);
-        assert_int_equal(ret, SR_ERR_OK);
+    /* check if modules can be loaded again */
+    sr_disconnect(st->conn);
+    st->conn = NULL;
+    ret = sr_connection_count(&conn_count);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(conn_count, 0);
+    ret = sr_connect(0, &st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
 
-        ret = sr_remove_module(st->conn, "feature-deps");
-        assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_remove_module(st->conn, "feature-deps2");
-        assert_int_equal(ret, SR_ERR_OK);
-    }
-a
+    ret = sr_remove_module(st->conn, "feature-deps");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "feature-deps2");
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 static void
 test_update_data_deviation(void **state)
 {
@@ -1663,7 +1663,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_set_module_access, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_get_module_access, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_get_module_info, setup_f, teardown_f),
-          cmocka_unit_test_setup_teardown(test_feature_dependencies_across_modules, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_feature_dependencies_across_modules, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_update_data_deviation, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_update_data_no_write_perm, setup_f, teardown_f),
     };
