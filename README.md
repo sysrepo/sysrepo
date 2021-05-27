@@ -198,6 +198,13 @@ everal *sysrepo* instances can effectively be run simultanously on one machine.
 
 See [examples](examples) directory, which contains an example for basic API functions.
 
+## Bindings
+
+There are no bindings for other languages directly in this project but they are
+available separately.
+
+* [Python](https://github.com/sysrepo/sysrepo-python/)
+
 ## Tests
 
 libyang includes several tests built with [cmocka](https://cmocka.org/). The tests
