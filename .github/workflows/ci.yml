@@ -84,7 +84,13 @@ jobs:
         run: |
           ${{ matrix.config.packager }} update
           ${{ matrix.config.packager }} install ${{ matrix.config.packages }}
-          GIT_BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
+
+          if ${{ github.event_name == 'push' }}
+            then GIT_BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
+          else
+            GIT_BRANCH=${{ github.base_ref }}
+          fi
+
           git clone -b $GIT_BRANCH https://github.com/CESNET/libyang.git
           cd libyang
           mkdir build
@@ -122,7 +128,12 @@ jobs:
           sudo apt-get install abi-dumper abi-compliance-checker
           sudo snap install core universal-ctags
 
-          GIT_BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
+          if ${{ github.event_name == 'push' }}
+            then GIT_BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
+          else
+            GIT_BRANCH=${{ github.base_ref }}
+          fi
+
           git clone -b $GIT_BRANCH https://github.com/CESNET/libyang.git
           cd libyang
           mkdir build
@@ -154,7 +165,12 @@ jobs:
         run: |
           sudo apt-get install libcmocka-dev lcov
 
-          GIT_BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
+          if ${{ github.event_name == 'push' }}
+            then GIT_BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
+          else
+            GIT_BRANCH=${{ github.base_ref }}
+          fi
+
           git clone -b $GIT_BRANCH https://github.com/CESNET/libyang.git
           cd libyang
           mkdir build
