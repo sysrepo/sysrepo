@@ -8,6 +8,11 @@ Applications can use sysrepo to store their configuration modeled by provided YA
 
 Sysrepo can be easily integrated with management agents such as [NETCONF](https://tools.ietf.org/html/rfc6241) or [RESTCONF](https://tools.ietf.org/html/rfc8040) servers, using the same client library API that applications use to access their configuration. As of now, sysrepo is integrated with the [Netopeer 2 NETCONF server](https://github.com/CESNET/Netopeer2). This means that applications that use sysrepo to store their configuration can automatically benefit from the ability to being controlled via NETCONF.
 
+## Deprecation Notice
+
+sysrepo version 1 is deprecated and while still being supported, no new features or complex bugfixes
+will be implemented. It is recommended to switch to using version 2 (SO version 6).
+
 ## Branches
 
 The project uses 2 main branches `master` and `devel`. Other branches should not be cloned. In `master` there are files of the
