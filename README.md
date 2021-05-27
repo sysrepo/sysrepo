@@ -87,15 +87,6 @@ $ make
 # make install
 ```
 
-### Documentation
-
-The library documentation is available online ([docs](https://netopeer.liberouter.org/doc/sysrepo/)),
-or can be generated locally from the source code using Doxygen tool:
-```
-$ make doc
-$ google-chrome ../doc/html/index.html
-```
-
 ### Plugin development documentation
 
 Another markdown document aimed at plugin developers is available in [plugin_dev_doc.md](./plugin_dev_doc.md).
