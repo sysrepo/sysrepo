@@ -29,6 +29,7 @@ jobs:
     name: ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }} # mac-OS does not implement robust mutexes so it is not supported
     needs: git-branch
+    if: matrix.config.branches != 'devel-only' || needs.git-branch.outputs.branch-name == 'devel'
     strategy:
       fail-fast: false
       matrix:
@@ -36,78 +37,105 @@ jobs:
           - {
             name: "Release, Ubuntu 18.04, gcc",
             os: "ubuntu-18.04",
+            branches: "all",
             build-type: "Release",
             dep-build-type: "Release",
             cc: "gcc",
             options: "-DENABLE_TESTS=ON",
             packages: "libcmocka-dev",
             snaps: "",
+            make-prepend: "",
             make-target: ""
           }
           - {
             name: "Release, Ubuntu 18.04, clang",
             os: "ubuntu-18.04",
+            branches: "all",
             build-type: "Release",
             dep-build-type: "Release",
             cc: "clang",
             options: "-DENABLE_TESTS=ON",
             packages: "libcmocka-dev",
             snaps: "",
+            make-prepend: "",
             make-target: ""
           }
           - {
             name: "Debug, Ubuntu 18.04, gcc",
             os: "ubuntu-18.04",
+            branches: "all",
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "gcc",
             options: "",
             packages: "libcmocka-dev valgrind",
             snaps: "",
+            make-prepend: "",
             make-target: ""
           }
           - {
             name: "Debug, Ubuntu 18.04, clang",
             os: "ubuntu-18.04",
+            branches: "all",
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "clang",
             options: "",
             packages: "libcmocka-dev valgrind",
             snaps: "",
+            make-prepend: "",
             make-target: ""
           }
           - {
             name: "ASAN and UBSAN",
             os: "ubuntu-18.04",
+            branches: "all",
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "clang",
             options: "-DCMAKE_C_FLAGS=-fsanitize=address,undefined -DENABLE_TESTS=ON -DENABLE_VALGRIND_TESTS=OFF",
             packages: "libcmocka-dev",
             snaps: "",
+            make-prepend: "",
             make-target: ""
           }
           - {
             name: "ABI Check",
             os: "ubuntu-latest",
+            branches: "all",
             build-type: "ABICheck",
             dep-build-type: "Debug",
             cc: "gcc",
             options: "",
             packages: "libcmocka-dev abi-dumper abi-compliance-checker",
             snaps: "core universal-ctags",
+            make-prepend: "",
             make-target: "abi-check"
           }
           - {
-            name: "Coverage",
+            name: "Coverity",
             os: "ubuntu-latest",
+            branches: "devel-only",
+            build-type: "Debug",
+            dep-build-type: "Debug",
+            cc: "clang",
+            options: "",
+            packages: "",
+            snaps: "",
+            make-prepend: "cov-build --dir cov-int",
+            make-target: ""
+          }
+          - {
+            name: "Codecov",
+            os: "ubuntu-latest",
+            branches: "all",
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "gcc",
             options: "-DENABLE_COVERAGE=ON",
             packages: "libcmocka-dev lcov",
             snaps: "",
+            make-prepend: "",
             make-target: ""
           }
 
@@ -118,7 +146,9 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install ${{ matrix.config.packages }}
+          if ${{ matrix.config.packages != '' }}
+            then sudo apt-get install ${{ matrix.config.packages }}
+          fi
           if ${{ matrix.config.snaps != '' }}
             then sudo snap install ${{ matrix.config.snaps }}
           fi
@@ -134,7 +164,24 @@ jobs:
           CC=${{ matrix.config.cc }} cmake ..
           make
           sudo make install
-        if: ${{ matrix.config.name == 'Debug, Ubuntu 18.04, gcc' }}
+        if: matrix.config.name == 'Debug, Ubuntu 18.04, gcc'
+
+      - name: Deps-coverity
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          wget -q https://scan.coverity.com/download/linux64 --post-data "token=$TOKEN&project=CESNET%2Flibyang" -O coverity-tools.tar.gz
+          mkdir coverity-tools
+          tar xzf coverity-tools.tar.gz --strip 1 -C coverity-tools
+        env:
+          TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
+        if: matrix.config.name == 'Coverity'
+
+      - name: Deps-coverity-fix-permissions
+        run: |
+          chmod go-w $HOME
+          sudo chmod -R go-w /usr/share
+        if: matrix.config.name == 'Coverity'
 
       - name: Deps-libyang
         shell: bash
@@ -158,15 +205,34 @@ jobs:
       - name: Build
         shell: bash
         working-directory: ${{ github.workspace }}/build
-        run: LC_ALL=C.UTF-8 PATH=/snap/bin:$PATH make ${{ matrix.config.make-target }}
+        run: |
+          export LC_ALL=C.UTF-8
+          export PATH=/snap/bin:${{ github.workspace }}/coverity-tools/bin:$PATH
+          ${{ matrix.config.make-prepend }} make ${{ matrix.config.make-target }}
 
       - name: Test
         shell: bash
         working-directory: ${{ github.workspace }}/build
         run: ctest --output-on-failure
 
+      - name: Upload to Coverity.com
+        shell: bash
+        working-directory: ${{ github.workspace }}/build
+        run: |
+          tar czvf sysrepo.tgz cov-int
+          curl \
+            --form token=$TOKEN \
+            --form email=mvasko@cesnet.cz \
+            --form file=@sysrepo.tgz \
+            --form version="`./sysrepoctl -V | head -n1 | cut -d' ' -f 11 | cut -b 2-`" \
+            --form description="sysrepo datastore" \
+            https://scan.coverity.com/builds?project=sysrepo%2Fsysrepo
+        env:
+          TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
+        if: matrix.config.name == 'Coverity'
+
       - name: Upload to Codecov.io
         shell: bash
         working-directory: ${{ github.workspace }}/build
         run: bash <(curl -s https://codecov.io/bash)
-        if: ${{ matrix.config.name == 'Coverage' }}
+        if: matrix.config.name == 'Codecov'

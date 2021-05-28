@@ -1,11 +1,12 @@
 comment:
   layout: header, changes, diff
-  
+
 coverage:
   precision: 2
   round: nearest
-  
+
   ignore:
+  - compat/.*
   - tests/.*
   - examples/.*
 

@@ -4,6 +4,8 @@
 [![Website](https://img.shields.io/website?down_color=lightgrey&down_message=offline&up_color=blue&up_message=online&url=https%3A%2F%2Fwww.sysrepo.org%2F)](https://www.sysrepo.org/)
 [![Build](https://github.com/sysrepo/sysrepo/workflows/sysrepo%20CI/badge.svg)](https://github.com/sysrepo/sysrepo/actions?query=workflow%3A%22sysrepo+CI%22)
 [![Docs](https://img.shields.io/badge/docs-link-blue)](https://netopeer.liberouter.org/doc/sysrepo/)
+[![Coverity](https://scan.coverity.com/projects/7479/badge.svg)](https://scan.coverity.com/projects/sysrepo-sysrepo)
+[![Codecov](https://codecov.io/gh/sysrepo/sysrepo/branch/master/graph/badge.svg?token=tsZ6WOOMNz)](https://codecov.io/gh/sysrepo/sysrepo)
 
 Sysrepo is a [YANG](http://tools.ietf.org/html/rfc7950)-based configuration and operational state data store for Unix/Linux applications.
 
