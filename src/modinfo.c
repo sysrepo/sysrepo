@@ -2368,7 +2368,7 @@ cleanup:
 sr_error_info_t *
 sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
 {
-    sr_error_info_t *err_info = NULL, *tmp_err_info = NULL;
+    sr_error_info_t *err_info = NULL, *tmp_err;
     struct sr_mod_info_mod_s *mod;
     struct lyd_node *mod_data;
     uint32_t i;
@@ -2401,12 +2401,12 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
 
                 if (mod_info->conn->opts & SR_CONN_CACHE_RUNNING) {
                     /* we are caching so update cache with these data */
-                    tmp_err_info = sr_modcache_module_running_update(&mod_info->conn->mod_cache, mod, mod_data, 0,
+                    tmp_err = sr_modcache_module_running_update(&mod_info->conn->mod_cache, mod, mod_data, 0,
                             mod_info->conn->cid);
-                    if (tmp_err_info) {
+                    if (tmp_err) {
                         /* always store all changed modules, if possible */
-                        sr_errinfo_merge(&err_info, tmp_err_info);
-                        tmp_err_info = NULL;
+                        sr_errinfo_merge(&err_info, tmp_err);
+                        tmp_err = NULL;
                     }
                 }
             }
@@ -2417,9 +2417,6 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
     }
 
 cleanup:
-    if (tmp_err_info) {
-        sr_errinfo_merge(&err_info, tmp_err_info);
-    }
     return err_info;
 
 }
