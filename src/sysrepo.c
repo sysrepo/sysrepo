@@ -2147,7 +2147,7 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
                     break;
                 }
             }
-            if (!ly_mod) {
+            if (!node) {
                 /* nothing to validate */
                 goto cleanup;
             }
