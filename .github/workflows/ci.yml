@@ -119,7 +119,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install ${{ matrix.config.packages }}
-          sudo snap install ${{ matrix.config.snaps }}
+          if ${{ matrix.config.snaps != '' }}
+            then sudo snap install ${{ matrix.config.snaps }}
+          fi
 
       - name: Deps-uncrustify
         shell: bash
