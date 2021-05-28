@@ -3307,7 +3307,7 @@ sr_rwlock_reader_add(sr_rwlock_t *rwlock, sr_cid_t cid)
     }
 
     /* find first free item */
-    for (i = 0; rwlock->readers[i] && (i < SR_RWLOCK_READ_LIMIT); ++i) {}
+    for (i = 0; (i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i]; ++i) {}
     if (i == SR_RWLOCK_READ_LIMIT) {
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Concurrent reader limit %d reached!", SR_RWLOCK_READ_LIMIT);
         sr_errinfo_free(&err_info);
@@ -3358,7 +3358,7 @@ sr_rwlock_reader_del(sr_rwlock_t *rwlock, sr_cid_t cid)
     }
 
     /* find a CID match */
-    for (i = 0; rwlock->readers[i] && (rwlock->readers[i] != cid) && (i < SR_RWLOCK_READ_LIMIT); ++i) {}
+    for (i = 0; (i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i] && (rwlock->readers[i] != cid); ++i) {}
     if ((i == SR_RWLOCK_READ_LIMIT) || (rwlock->readers[i] != cid)) {
         /* CID not found */
         SR_ERRINFO_INT(&err_info);
@@ -3392,7 +3392,7 @@ sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_lock_recover_cb cb, 
     sr_cid_t cid;
 
     /* readers */
-    while (rwlock->readers[i] && (i < SR_RWLOCK_READ_LIMIT)) {
+    while ((i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i]) {
         if (!sr_conn_is_alive(rwlock->readers[i])) {
             /* remove the dead reader */
             cid = rwlock->readers[i];
