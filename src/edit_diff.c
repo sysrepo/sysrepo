@@ -2574,6 +2574,7 @@ sr_edit_add_check_same_node_op(sr_session_ctx_t *session, const char *xpath, con
     char *uniq_xpath;
     enum edit_op cur_op;
     struct ly_set *set;
+    LY_ERR lr;
 
     if (lyrc == LY_EEXIST) {
         /* build an expression identifying a single node */
@@ -2590,9 +2591,9 @@ sr_edit_add_check_same_node_op(sr_session_ctx_t *session, const char *xpath, con
         }
 
         /* find the node */
-        lyd_find_xpath(session->dt[session->ds].edit, uniq_xpath, &set);
+        lr = lyd_find_xpath(session->dt[session->ds].edit, uniq_xpath, &set);
         free(uniq_xpath);
-        if (!set || (set->count > 1)) {
+        if (lr || (set->count > 1)) {
             SR_ERRINFO_INT(&err_info);
         } else if (set->count == 1) {
             cur_op = sr_edit_diff_find_oper(set->dnodes[0], 1, NULL);
