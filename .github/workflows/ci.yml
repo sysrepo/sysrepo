@@ -9,6 +9,9 @@ on:
       - master
       - devel
 
+env:
+  COVERITY_PROJECT: sysrepo%2Fsysrepo
+
 jobs:
   git-branch:
     name: Get git branch
@@ -169,7 +172,7 @@ jobs:
         shell: bash
         working-directory: ${{ github.workspace }}
         run: |
-          wget -q https://scan.coverity.com/download/linux64 --post-data "token=$TOKEN&project=CESNET%2Flibyang" -O coverity-tools.tar.gz
+          wget -q https://scan.coverity.com/download/linux64 --post-data "token=$TOKEN&project=$COVERITY_PROJECT" -O coverity-tools.tar.gz
           mkdir coverity-tools
           tar xzf coverity-tools.tar.gz --strip 1 -C coverity-tools
         env:
@@ -225,7 +228,7 @@ jobs:
             --form file=@sysrepo.tgz \
             --form version="`./sysrepoctl -V | head -n1 | cut -d' ' -f 11 | cut -b 2-`" \
             --form description="sysrepo datastore" \
-            https://scan.coverity.com/builds?project=sysrepo%2Fsysrepo
+            https://scan.coverity.com/builds?project=$COVERITY_PROJECT
         env:
           TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
         if: ${{ matrix.config.name == 'Coverity' && needs.git-branch.outputs.branch-name == 'devel' }}
