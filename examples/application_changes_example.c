@@ -144,10 +144,13 @@ print_current_config(sr_session_ctx_t *session, const char *module_name)
     sr_val_t *values = NULL;
     size_t count = 0;
     int rc = SR_ERR_OK;
-    char xpath[128];
+    char *xpath;
 
-    sprintf(xpath, "/%s:*//.", module_name);
+    if (asprintf(&xpath, "/%s:*//.", module_name) == -1) {
+        return SR_ERR_NO_MEMORY;
+    }
     rc = sr_get_items(session, xpath, 0, 0, &values, &count);
+    free(xpath);
     if (rc != SR_ERR_OK) {
         return rc;
     }
