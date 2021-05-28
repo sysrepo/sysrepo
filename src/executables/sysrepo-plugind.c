@@ -215,6 +215,7 @@ sr_mkpath(const char *path, mode_t mode)
         if (mkdir(dup, mode) == -1) {
             if (errno != EEXIST) {
                 *p = '/';
+                free(dup);
                 return -1;
             }
         }
