@@ -363,9 +363,12 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
 
     /* get subtrees */
     if (module_name) {
-        asprintf(&str, "/%s:*", module_name);
-        r = sr_get_data(sess, str, max_depth, timeout_s * 1000, 0, &data);
-        free(str);
+        if (asprintf(&str, "/%s:*", module_name) == -1) {
+            r = SR_ERR_NO_MEMORY;
+        } else {
+            r = sr_get_data(sess, str, max_depth, timeout_s * 1000, 0, &data);
+            free(str);
+        }
     } else if (xpath) {
         r = sr_get_data(sess, xpath, max_depth, timeout_s * 1000, 0, &data);
     } else {
