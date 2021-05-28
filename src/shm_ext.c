@@ -1136,7 +1136,7 @@ sr_shmext_notif_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_id
     evpipe_num = shm_sub[del_idx].evpipe_num;
 
     /* remove the subscription */
-    if ((err_info = sr_shmext_notif_sub_free(conn, shm_mod, del_idx))) {
+    if ((tmp_err = sr_shmext_notif_sub_free(conn, shm_mod, del_idx))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
@@ -1145,7 +1145,7 @@ sr_shmext_notif_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_id
         sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 1, __func__);
 
         /* NOTIF SUB READ LOCK DOWNGRADE */
-        if ((err_info = sr_rwrelock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
+        if ((tmp_err = sr_rwrelock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
                 NULL, NULL))) {
             sr_errinfo_merge(&err_info, tmp_err);
         }
