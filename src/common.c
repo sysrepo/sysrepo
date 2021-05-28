@@ -2342,7 +2342,7 @@ sr_chmodown(const char *path, const char *owner, const char *group, mode_t perm)
 
     /* apply permission changes, if any */
     if (((int)perm != -1) && (chmod(path, perm) == -1)) {
-        if ((errno == EACCES) || (errno = EPERM)) {
+        if ((errno == EACCES) || (errno == EPERM)) {
             err_code = SR_ERR_UNAUTHORIZED;
         } else {
             err_code = SR_ERR_INTERNAL;
@@ -3834,7 +3834,7 @@ sr_path_set_group(const char *path)
 
     /* set correct GID */
     if (chown(path, -1, sr_gid) == -1) {
-        if ((errno == EACCES) || (errno = EPERM)) {
+        if ((errno == EACCES) || (errno == EPERM)) {
             err_code = SR_ERR_UNAUTHORIZED;
         } else {
             err_code = SR_ERR_INTERNAL;
