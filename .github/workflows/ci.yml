@@ -19,9 +19,9 @@ jobs:
       - id: get-git-branch
         run: |
           if ${{ github.event_name == 'push' }}
-            then GIT_BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
+            then export GIT_BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
           else
-            GIT_BRANCH=${{ github.base_ref }}
+            export GIT_BRANCH=${{ github.base_ref }}
           fi
           echo "::set-output name=branch-name::$GIT_BRANCH"
 
