@@ -15,15 +15,15 @@ jobs:
     runs-on: ubuntu-18.04
     outputs:
       name: ${{ steps.get-git-branch.outputs.branch-name }}
-      steps:
-        - id: get-git-branch
-          run: |
-            if ${{ github.event_name == 'push' }}
-              then GIT_BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
-            else
-              GIT_BRANCH=${{ github.base_ref }}
-            fi
-            echo "::set-output name=branch-name::$GIT_BRANCH"
+    steps:
+      - id: get-git-branch
+        run: |
+          if ${{ github.event_name == 'push' }}
+            then GIT_BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
+          else
+            GIT_BRANCH=${{ github.base_ref }}
+          fi
+          echo "::set-output name=branch-name::$GIT_BRANCH"
 
   build:
     name: ${{ matrix.config.name }}
