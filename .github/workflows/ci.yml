@@ -14,7 +14,7 @@ jobs:
     name: Get git branch
     runs-on: ubuntu-18.04
     outputs:
-      name: ${{ steps.get-git-branch.outputs.branch-name }}
+      branch-name: ${{ steps.get-git-branch.outputs.branch-name }}
     steps:
       - id: get-git-branch
         run: |
