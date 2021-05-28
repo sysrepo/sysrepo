@@ -39,7 +39,6 @@ jobs:
           - {
             name: "Release, Ubuntu 18.04, gcc",
             os: "ubuntu-18.04",
-            branches: "all",
             build-type: "Release",
             dep-build-type: "Release",
             cc: "gcc",
@@ -52,7 +51,6 @@ jobs:
           - {
             name: "Release, Ubuntu 18.04, clang",
             os: "ubuntu-18.04",
-            branches: "all",
             build-type: "Release",
             dep-build-type: "Release",
             cc: "clang",
@@ -65,7 +63,6 @@ jobs:
           - {
             name: "Debug, Ubuntu 18.04, gcc",
             os: "ubuntu-18.04",
-            branches: "all",
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "gcc",
@@ -78,7 +75,6 @@ jobs:
           - {
             name: "Debug, Ubuntu 18.04, clang",
             os: "ubuntu-18.04",
-            branches: "all",
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "clang",
@@ -91,7 +87,6 @@ jobs:
           - {
             name: "ASAN and UBSAN",
             os: "ubuntu-18.04",
-            branches: "all",
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "clang",
@@ -104,7 +99,6 @@ jobs:
           - {
             name: "ABI Check",
             os: "ubuntu-latest",
-            branches: "all",
             build-type: "ABICheck",
             dep-build-type: "Debug",
             cc: "gcc",
@@ -117,7 +111,6 @@ jobs:
           - {
             name: "Coverity",
             os: "ubuntu-latest",
-            branches: "devel-only",
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "clang",
@@ -130,7 +123,6 @@ jobs:
           - {
             name: "Codecov",
             os: "ubuntu-latest",
-            branches: "all",
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "gcc",
@@ -231,10 +223,10 @@ jobs:
             https://scan.coverity.com/builds?project=$COVERITY_PROJECT
         env:
           TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
-        if: ${{ matrix.config.name == 'Coverity' && needs.git-branch.outputs.branch-name == 'devel' }}
+        if: ${{ matrix.config.name == 'Coverity' && github.event_name == 'push' && needs.git-branch.outputs.branch-name == 'devel' }}
 
       - name: Upload to Codecov.io
         shell: bash
         working-directory: ${{ github.workspace }}/build
         run: bash <(curl -s https://codecov.io/bash)
-        if: ${{ matrix.config.name == 'Codecov' }}
+        if: ${{ matrix.config.name == 'Codecov' && github.event_name == 'push' }}
