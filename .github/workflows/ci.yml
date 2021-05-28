@@ -29,7 +29,6 @@ jobs:
     name: ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }} # mac-OS does not implement robust mutexes so it is not supported
     needs: git-branch
-    if: ${{ matrix.config.branches != 'devel-only' || needs.git-branch.outputs.branch-name == 'devel' }}
     strategy:
       fail-fast: false
       matrix:
@@ -229,7 +228,7 @@ jobs:
             https://scan.coverity.com/builds?project=sysrepo%2Fsysrepo
         env:
           TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
-        if: ${{ matrix.config.name == 'Coverity' }}
+        if: ${{ matrix.config.name == 'Coverity' && needs.git-branch.outputs.branch-name == 'devel' }}
 
       - name: Upload to Codecov.io
         shell: bash
