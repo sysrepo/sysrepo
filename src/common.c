@@ -2331,7 +2331,7 @@ sr_chmodown(const char *path, const char *owner, const char *group, mode_t perm)
 
     /* apply owner changes, if any */
     if (chown(path, uid, gid) == -1) {
-        if ((errno == EACCES) || (errno = EPERM)) {
+        if ((errno == EACCES) || (errno == EPERM)) {
             err_code = SR_ERR_UNAUTHORIZED;
         } else {
             err_code = SR_ERR_INTERNAL;
