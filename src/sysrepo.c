@@ -3780,9 +3780,11 @@ _sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, int dup, sr_c
             goto error;
         }
     } else {
-        ly_set_new(&(*iter)->set);
+        if (ly_set_new(&(*iter)->set)) {
+            SR_ERRINFO_MEM(&err_info);
+            goto error;
+        }
     }
-    SR_CHECK_MEM_GOTO(!(*iter)->set, err_info, error);
     (*iter)->idx = 0;
 
     return sr_api_ret(session, NULL);
