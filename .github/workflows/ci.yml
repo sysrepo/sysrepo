@@ -10,9 +10,24 @@ on:
       - devel
 
 jobs:
+  git-branch:
+  runs-on: ubuntu-18.04
+  outputs:
+    name: ${{ steps.get-git-branch.outputs.branch-name }}
+    steps:
+      - id: get-git-branch
+        run: |
+          if ${{ github.event_name == 'push' }}
+            then GIT_BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
+          else
+            GIT_BRANCH=${{ github.base_ref }}
+          fi
+          echo "::set-output name=branch-name::$GIT_BRANCH"
+
   build:
     name: ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }} # mac-OS does not implement robust mutexes so it is not supported
+    needs: git-branch
     strategy:
       fail-fast: false
       matrix:
@@ -21,52 +36,91 @@ jobs:
             name: "Release, Ubuntu 18.04, gcc",
             os: "ubuntu-18.04",
             build-type: "Release",
+            dep-build-type: "Release",
             cc: "gcc",
             options: "-DENABLE_TESTS=ON",
-            packager: "sudo apt-get",
-            packages: "libcmocka-dev"
+            packages: "libcmocka-dev",
+            snaps: "",
+            make-target: ""
           }
           - {
             name: "Release, Ubuntu 18.04, clang",
             os: "ubuntu-18.04",
             build-type: "Release",
+            dep-build-type: "Release",
             cc: "clang",
             options: "-DENABLE_TESTS=ON",
-            packager: "sudo apt-get",
-            packages: "libcmocka-dev"
+            packages: "libcmocka-dev",
+            snaps: "",
+            make-target: ""
           }
           - {
             name: "Debug, Ubuntu 18.04, gcc",
             os: "ubuntu-18.04",
             build-type: "Debug",
+            dep-build-type: "Debug",
             cc: "gcc",
             options: "",
-            packager: "sudo apt-get",
-            packages: "libcmocka-dev valgrind"
+            packages: "libcmocka-dev valgrind",
+            snaps: "",
+            make-target: ""
           }
           - {
             name: "Debug, Ubuntu 18.04, clang",
             os: "ubuntu-18.04",
             build-type: "Debug",
+            dep-build-type: "Debug",
             cc: "clang",
             options: "",
-            packager: "sudo apt-get",
-            packages: "libcmocka-dev valgrind"
+            packages: "libcmocka-dev valgrind",
+            snaps: "",
+            make-target: ""
           }
           - {
             name: "ASAN and UBSAN",
             os: "ubuntu-18.04",
             build-type: "Debug",
+            dep-build-type: "Debug",
             cc: "clang",
             options: "-DCMAKE_C_FLAGS=-fsanitize=address,undefined -DENABLE_TESTS=ON -DENABLE_VALGRIND_TESTS=OFF",
-            packager: "sudo apt-get",
-            packages: "libcmocka-dev"
+            packages: "libcmocka-dev",
+            snaps: "",
+            make-target: ""
+          }
+          - {
+            name: "ABI Check",
+            os: "ubuntu-latest",
+            build-type: "ABICheck",
+            dep-build-type: "Debug",
+            cc: "gcc",
+            options: "",
+            packages: "libcmocka-dev abi-dumper abi-compliance-checker",
+            snaps: "core universal-ctags",
+            make-target: "abi-check"
+          }
+          - {
+            name: "Coverage",
+            os: "ubuntu-latest",
+            build-type: "Debug",
+            dep-build-type: "Debug",
+            cc: "gcc",
+            options: "-DENABLE_COVERAGE=ON",
+            packages: "libcmocka-dev lcov",
+            snaps: "",
+            make-target: ""
           }
 
     steps:
       - uses: actions/checkout@v2
 
-      - name: Uncrustify
+      - name: Deps-packages
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install ${{ matrix.config.packages }}
+          sudo snap install ${{ matrix.config.snaps }}
+
+      - name: Deps-uncrustify
         shell: bash
         working-directory: ${{ github.workspace }}
         run: |
@@ -79,23 +133,14 @@ jobs:
           sudo make install
         if: ${{ matrix.config.name == 'Debug, Ubuntu 18.04, gcc' }}
 
-      - name: Dependencies
+      - name: Deps-libyang
         shell: bash
         run: |
-          ${{ matrix.config.packager }} update
-          ${{ matrix.config.packager }} install ${{ matrix.config.packages }}
-
-          if ${{ github.event_name == 'push' }}
-            then GIT_BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
-          else
-            GIT_BRANCH=${{ github.base_ref }}
-          fi
-
-          git clone -b $GIT_BRANCH https://github.com/CESNET/libyang.git
+          git clone -b ${{needs.git-branch.outputs.branch-name}} https://github.com/CESNET/libyang.git
           cd libyang
           mkdir build
           cd build
-          CC=${{ matrix.config.cc }} cmake -DCMAKE_BUILD_TYPE=${{ matrix.config.build-type }} -DENABLE_BUILD_TESTS=OFF ..
+          CC=${{ matrix.config.cc }} cmake -DCMAKE_BUILD_TYPE=${{ matrix.config.dep-build-type }} -DENABLE_BUILD_TESTS=OFF ..
           make -j2
           sudo make install
 
@@ -110,87 +155,7 @@ jobs:
       - name: Build
         shell: bash
         working-directory: ${{ github.workspace }}/build
-        run: make
-
-      - name: Test
-        shell: bash
-        working-directory: ${{ github.workspace }}/build
-        run: ctest --output-on-failure
-
-  abi:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Dependencies
-        shell: bash
-        run: |
-          sudo apt-get install abi-dumper abi-compliance-checker
-          sudo snap install core universal-ctags
-
-          if ${{ github.event_name == 'push' }}
-            then GIT_BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
-          else
-            GIT_BRANCH=${{ github.base_ref }}
-          fi
-
-          git clone -b $GIT_BRANCH https://github.com/CESNET/libyang.git
-          cd libyang
-          mkdir build
-          cd build
-          CC=gcc cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_BUILD_TESTS=OFF ..
-          make -j2
-          sudo make install
-
-      - name: Configure
-        shell: bash
-        working-directory: ${{ github.workspace }}
-        run: |
-          mkdir build
-          cd build
-          CC=gcc cmake -DCMAKE_BUILD_TYPE=ABICheck ..
-
-      - name: Build
-        shell: bash
-        working-directory: ${{ github.workspace }}/build
-        run: LC_ALL=C.UTF-8 PATH=/snap/bin:$PATH make abi-check
-
-  coverage:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Dependencies
-        shell: bash
-        run: |
-          sudo apt-get install libcmocka-dev lcov
-
-          if ${{ github.event_name == 'push' }}
-            then GIT_BRANCH=`echo ${{ github.ref }} | cut -d'/' -f 3`
-          else
-            GIT_BRANCH=${{ github.base_ref }}
-          fi
-
-          git clone -b $GIT_BRANCH https://github.com/CESNET/libyang.git
-          cd libyang
-          mkdir build
-          cd build
-          CC=gcc cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_BUILD_TESTS=OFF ..
-          make -j2
-          sudo make install
-
-      - name: Configure
-        shell: bash
-        working-directory: ${{ github.workspace }}
-        run: |
-          mkdir build
-          cd build
-          CC=gcc cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON ..
-
-      - name: Build
-        shell: bash
-        working-directory: ${{ github.workspace }}/build
-        run: make
+        run: LC_ALL=C.UTF-8 PATH=/snap/bin:$PATH make ${{ matrix.config.make-target }}
 
       - name: Test
         shell: bash
@@ -201,3 +166,4 @@ jobs:
         shell: bash
         working-directory: ${{ github.workspace }}/build
         run: bash <(curl -s https://codecov.io/bash)
+        if: ${{ matrix.config.name == 'Coverage' }}
