@@ -22,6 +22,7 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -197,6 +198,43 @@ sr_shmext_print_cmp(const void *ptr1, const void *ptr2)
     return 0;
 }
 
+/**
+ * @brief Add new item for ext SHM print.
+ *
+ * @param[in,out] items Items array.
+ * @param[in,out] item_count Count of @p items.
+ * @param[in] start Start offset of the new item.
+ * @param[in] size Size of the new item.
+ * @param[in] name_format Name format string of the new item.
+ * @param[in] ... Parameters of @p name_format.
+ * @return SR_ERR value.
+ */
+static int
+sr_shmext_print_add_item(struct shm_item **items, size_t *item_count, off_t start, size_t size,
+        const char *name_format, ...)
+{
+    va_list ap;
+    int rc;
+
+    *items = sr_realloc(*items, (*item_count + 1) * sizeof **items);
+    if (!*items) {
+        return SR_ERR_NO_MEMORY;
+    }
+
+    (*items)[*item_count].start = start;
+    (*items)[*item_count].size = size;
+
+    va_start(ap, name_format);
+    rc = vasprintf(&((*items)[*item_count].name), name_format, ap);
+    va_end(ap);
+    if (rc == -1) {
+        return SR_ERR_NO_MEMORY;
+    }
+
+    ++(*item_count);
+    return SR_ERR_OK;
+}
+
 void
 sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext)
 {
@@ -206,8 +244,8 @@ sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext)
     sr_mod_oper_sub_t *oper_subs;
     sr_rpc_t *shm_rpc;
     sr_mod_rpc_sub_t *rpc_subs;
-    struct shm_item *items;
-    size_t idx, i, j, item_count, printed;
+    struct shm_item *items = NULL;
+    size_t idx, i, j, item_count = 0, printed;
     sr_datastore_t ds;
     int msg_len = 0;
     char *msg;
@@ -220,20 +258,16 @@ sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext)
     }
 
     /* the structure itself */
-    item_count = 0;
-    items = malloc(sizeof *items);
-    items[item_count].start = 0;
-    items[item_count].size = SR_SHM_SIZE(sizeof(sr_ext_shm_t));
-    asprintf(&(items[item_count].name), "ext structure");
-    ++item_count;
+    if (sr_shmext_print_add_item(&items, &item_count, 0, SR_SHM_SIZE(sizeof(sr_ext_shm_t)), "ext structure")) {
+        goto error;
+    }
 
     /* add all memory holes */
     for (hole = sr_ext_hole_next(NULL, ext_shm); hole; hole = sr_ext_hole_next(hole, ext_shm)) {
-        items = sr_realloc(items, (item_count + 1) * sizeof *items);
-        items[item_count].start = ((char *)hole) - shm_ext->addr;
-        items[item_count].size = hole->size;
-        asprintf(&(items[item_count].name), "memory hole (size %" PRIu32 ")", hole->size);
-        ++item_count;
+        if (sr_shmext_print_add_item(&items, &item_count, ((char *)hole) - shm_ext->addr, hole->size,
+                "memory hole (size %" PRIu32 ")", hole->size)) {
+            goto error;
+        }
     }
 
     for (idx = 0; idx < main_shm->mod_count; ++idx) {
@@ -242,23 +276,23 @@ sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext)
         for (ds = 0; ds < SR_DS_COUNT; ++ds) {
             if (shm_mod->change_sub[ds].sub_count) {
                 /* add change subscriptions */
-                items = sr_realloc(items, (item_count + 1) * sizeof *items);
-                items[item_count].start = shm_mod->change_sub[ds].subs;
-                items[item_count].size = SR_SHM_SIZE(shm_mod->change_sub[ds].sub_count * sizeof *change_subs);
-                asprintf(&(items[item_count].name), "%s change subs (%" PRIu32 ", mod \"%s\")", sr_ds2str(ds),
-                        shm_mod->change_sub[ds].sub_count, ((char *)main_shm) + shm_mod->name);
-                ++item_count;
+                if (sr_shmext_print_add_item(&items, &item_count, shm_mod->change_sub[ds].subs,
+                        SR_SHM_SIZE(shm_mod->change_sub[ds].sub_count * sizeof *change_subs),
+                        "%s change subs (%" PRIu32 ", mod \"%s\")", sr_ds2str(ds), shm_mod->change_sub[ds].sub_count,
+                        ((char *)main_shm) + shm_mod->name)) {
+                    goto error;
+                }
 
                 /* add xpaths */
                 change_subs = (sr_mod_change_sub_t *)(shm_ext->addr + shm_mod->change_sub[ds].subs);
                 for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
                     if (change_subs[i].xpath) {
-                        items = sr_realloc(items, (item_count + 1) * sizeof *items);
-                        items[item_count].start = change_subs[i].xpath;
-                        items[item_count].size = sr_strshmlen(shm_ext->addr + change_subs[i].xpath);
-                        asprintf(&(items[item_count].name), "%s change sub xpath (\"%s\", mod \"%s\")", sr_ds2str(ds),
-                                shm_ext->addr + change_subs[i].xpath, ((char *)main_shm) + shm_mod->name);
-                        ++item_count;
+                        if (sr_shmext_print_add_item(&items, &item_count, change_subs[i].xpath,
+                                sr_strshmlen(shm_ext->addr + change_subs[i].xpath),
+                                "%s change sub xpath (\"%s\", mod \"%s\")", sr_ds2str(ds),
+                                shm_ext->addr + change_subs[i].xpath, ((char *)main_shm) + shm_mod->name)) {
+                            goto error;
+                        }
                     }
                 }
             }
@@ -266,22 +300,20 @@ sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext)
 
         if (shm_mod->oper_sub_count) {
             /* add oper subscriptions */
-            items = sr_realloc(items, (item_count + 1) * sizeof *items);
-            items[item_count].start = shm_mod->oper_subs;
-            items[item_count].size = SR_SHM_SIZE(shm_mod->oper_sub_count * sizeof *oper_subs);
-            asprintf(&(items[item_count].name), "oper subs (%" PRIu32 ", mod \"%s\")", shm_mod->oper_sub_count,
-                    ((char *)main_shm) + shm_mod->name);
-            ++item_count;
+            if (sr_shmext_print_add_item(&items, &item_count, shm_mod->oper_subs,
+                    SR_SHM_SIZE(shm_mod->oper_sub_count * sizeof *oper_subs), "oper subs (%" PRIu32 ", mod \"%s\")",
+                    shm_mod->oper_sub_count, ((char *)main_shm) + shm_mod->name)) {
+                goto error;
+            }
 
             /* add xpaths */
             oper_subs = (sr_mod_oper_sub_t *)(shm_ext->addr + shm_mod->oper_subs);
             for (i = 0; i < shm_mod->oper_sub_count; ++i) {
-                items = sr_realloc(items, (item_count + 1) * sizeof *items);
-                items[item_count].start = oper_subs[i].xpath;
-                items[item_count].size = sr_strshmlen(shm_ext->addr + oper_subs[i].xpath);
-                asprintf(&(items[item_count].name), "oper sub xpath (\"%s\", mod \"%s\")",
-                        shm_ext->addr + oper_subs[i].xpath, ((char *)main_shm) + shm_mod->name);
-                ++item_count;
+                if (sr_shmext_print_add_item(&items, &item_count, oper_subs[i].xpath,
+                        sr_strshmlen(shm_ext->addr + oper_subs[i].xpath), "oper sub xpath (\"%s\", mod \"%s\")",
+                        shm_ext->addr + oper_subs[i].xpath, ((char *)main_shm) + shm_mod->name)) {
+                    goto error;
+                }
             }
         }
 
@@ -289,34 +321,31 @@ sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext)
         for (i = 0; i < shm_mod->rpc_count; ++i) {
             if (shm_rpc[i].sub_count) {
                 /* add RPC subscriptions */
-                items = sr_realloc(items, (item_count + 1) * sizeof *items);
-                items[item_count].start = shm_rpc[i].subs;
-                items[item_count].size = SR_SHM_SIZE(shm_rpc[i].sub_count * sizeof *rpc_subs);
-                asprintf(&(items[item_count].name), "rpc subs (%" PRIu32 ", path \"%s\")", shm_rpc[i].sub_count,
-                        ((char *)main_shm) + shm_rpc[i].path);
-                ++item_count;
+                if (sr_shmext_print_add_item(&items, &item_count, shm_rpc[i].subs,
+                        SR_SHM_SIZE(shm_rpc[i].sub_count * sizeof *rpc_subs), "rpc subs (%" PRIu32 ", path \"%s\")",
+                        shm_rpc[i].sub_count, ((char *)main_shm) + shm_rpc[i].path)) {
+                    goto error;
+                }
 
                 rpc_subs = (sr_mod_rpc_sub_t *)(shm_ext->addr + shm_rpc[i].subs);
                 for (j = 0; j < shm_rpc[i].sub_count; ++j) {
                     /* add RPC subscription XPath */
-                    items = sr_realloc(items, (item_count + 1) * sizeof *items);
-                    items[item_count].start = rpc_subs[j].xpath;
-                    items[item_count].size = sr_strshmlen(shm_ext->addr + rpc_subs[j].xpath);
-                    asprintf(&(items[item_count].name), "rpc sub xpath (\"%s\", path \"%s\")",
-                            shm_ext->addr + rpc_subs[j].xpath, ((char *)main_shm) + shm_rpc[i].path);
-                    ++item_count;
+                    if (sr_shmext_print_add_item(&items, &item_count, rpc_subs[j].xpath,
+                            sr_strshmlen(shm_ext->addr + rpc_subs[j].xpath), "rpc sub xpath (\"%s\", path \"%s\")",
+                            shm_ext->addr + rpc_subs[j].xpath, ((char *)main_shm) + shm_rpc[i].path)) {
+                        goto error;
+                    }
                 }
             }
         }
 
         if (shm_mod->notif_sub_count) {
             /* add notif subscriptions */
-            items = sr_realloc(items, (item_count + 1) * sizeof *items);
-            items[item_count].start = shm_mod->notif_subs;
-            items[item_count].size = SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof(sr_mod_notif_sub_t));
-            asprintf(&(items[item_count].name), "notif subs (%" PRIu32 ", mod \"%s\")", shm_mod->notif_sub_count,
-                    ((char *)main_shm) + shm_mod->name);
-            ++item_count;
+            if (sr_shmext_print_add_item(&items, &item_count, shm_mod->notif_subs,
+                    SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof(sr_mod_notif_sub_t)),
+                    "notif subs (%" PRIu32 ", mod \"%s\")", shm_mod->notif_sub_count, ((char *)main_shm) + shm_mod->name)) {
+                goto error;
+            }
         }
     }
 
@@ -360,6 +389,13 @@ sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext)
 
     /* check that no item exists after the mapped segment */
     assert((unsigned)cur_off == shm_ext->size);
+    return;
+
+error:
+    for (i = 0; i < item_count; ++i) {
+        free(items[i].name);
+    }
+    free(items);
 }
 
 sr_error_info_t *
