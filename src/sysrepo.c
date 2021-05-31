@@ -1064,7 +1064,7 @@ sr_parse_module(struct ly_ctx *ly_ctx, const char *schema_path, LYS_INFORMAT for
 
     /* parse the module */
     if (ly_in_new_filepath(schema_path, 0, &in)) {
-        SR_ERRINFO_MEM(&err_info);
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to parse \"%s\".", schema_path);
         goto cleanup;
     }
     lys_parse(ly_ctx, in, format, features, &ly_mod);
