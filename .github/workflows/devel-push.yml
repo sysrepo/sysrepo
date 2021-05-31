@@ -2,12 +2,10 @@ name: sysrepo CI
 on:
   push:
     branches:
-      - master
       - devel
-  pull_request:
-    branches:
-      - master
-      - devel
+
+env:
+  COVERITY_PROJECT: sysrepo%2Fsysrepo
 
 jobs:
   git-branch:
@@ -34,76 +32,16 @@ jobs:
       matrix:
         config:
           - {
-            name: "Release, Ubuntu 18.04, gcc",
-            os: "ubuntu-18.04",
-            build-type: "Release",
-            dep-build-type: "Release",
-            cc: "gcc",
-            options: "-DENABLE_TESTS=ON",
-            packages: "libcmocka-dev",
-            snaps: "",
-            make-prepend: "",
-            make-target: ""
-          }
-          - {
-            name: "Release, Ubuntu 18.04, clang",
-            os: "ubuntu-18.04",
-            build-type: "Release",
-            dep-build-type: "Release",
-            cc: "clang",
-            options: "-DENABLE_TESTS=ON",
-            packages: "libcmocka-dev",
-            snaps: "",
-            make-prepend: "",
-            make-target: ""
-          }
-          - {
-            name: "Debug, Ubuntu 18.04, gcc",
-            os: "ubuntu-18.04",
-            build-type: "Debug",
-            dep-build-type: "Debug",
-            cc: "gcc",
-            options: "",
-            packages: "libcmocka-dev valgrind",
-            snaps: "",
-            make-prepend: "",
-            make-target: ""
-          }
-          - {
-            name: "Debug, Ubuntu 18.04, clang",
-            os: "ubuntu-18.04",
-            build-type: "Debug",
-            dep-build-type: "Debug",
-            cc: "clang",
-            options: "",
-            packages: "libcmocka-dev valgrind",
-            snaps: "",
-            make-prepend: "",
-            make-target: ""
-          }
-          - {
-            name: "ASAN and UBSAN",
-            os: "ubuntu-18.04",
-            build-type: "Debug",
-            dep-build-type: "Debug",
-            cc: "clang",
-            options: "-DCMAKE_C_FLAGS=-fsanitize=address,undefined -DENABLE_TESTS=ON -DENABLE_VALGRIND_TESTS=OFF",
-            packages: "libcmocka-dev",
-            snaps: "",
-            make-prepend: "",
-            make-target: ""
-          }
-          - {
-            name: "ABI Check",
+            name: "Coverity",
             os: "ubuntu-latest",
-            build-type: "ABICheck",
+            build-type: "Debug",
             dep-build-type: "Debug",
-            cc: "gcc",
+            cc: "clang",
             options: "",
-            packages: "libcmocka-dev abi-dumper abi-compliance-checker",
-            snaps: "core universal-ctags",
-            make-prepend: "",
-            make-target: "abi-check"
+            packages: "",
+            snaps: "",
+            make-prepend: "cov-build --dir cov-int",
+            make-target: ""
           }
 
     steps:
@@ -120,18 +58,16 @@ jobs:
             then sudo snap install ${{ matrix.config.snaps }}
           fi
 
-      - name: Deps-uncrustify
+      - name: Deps-coverity
         shell: bash
         working-directory: ${{ github.workspace }}
         run: |
-          git clone --branch uncrustify-0.71.0 https://github.com/uncrustify/uncrustify
-          cd uncrustify
-          mkdir build
-          cd build
-          CC=${{ matrix.config.cc }} cmake ..
-          make
-          sudo make install
-        if: ${{ matrix.config.name == 'Debug, Ubuntu 18.04, gcc' }}
+          wget -q https://scan.coverity.com/download/linux64 --post-data "token=$TOKEN&project=$COVERITY_PROJECT" -O coverity-tools.tar.gz
+          mkdir coverity-tools
+          tar xzf coverity-tools.tar.gz --strip 1 -C coverity-tools
+        env:
+          TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
+        if: ${{ matrix.config.name == 'Coverity' }}
 
       - name: Deps-libyang
         shell: bash
@@ -164,3 +100,19 @@ jobs:
         shell: bash
         working-directory: ${{ github.workspace }}/build
         run: ctest --output-on-failure
+
+      - name: Upload to Coverity.com
+        shell: bash
+        working-directory: ${{ github.workspace }}/build
+        run: |
+          tar czvf sysrepo.tgz cov-int
+          curl \
+            --form token=$TOKEN \
+            --form email=mvasko@cesnet.cz \
+            --form file=@sysrepo.tgz \
+            --form version="`./sysrepoctl -V | head -n1 | cut -d' ' -f 11 | cut -b 2-`" \
+            --form description="sysrepo datastore" \
+            https://scan.coverity.com/builds?project=$COVERITY_PROJECT
+        env:
+          TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
+        if: ${{ matrix.config.name == 'Coverity' }}
