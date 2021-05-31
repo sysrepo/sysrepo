@@ -1,4 +1,4 @@
-name: sysrepo CI
+name: sysrepo devel push
 on:
   push:
     branches:
