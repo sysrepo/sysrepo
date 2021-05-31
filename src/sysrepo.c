@@ -1672,6 +1672,10 @@ cleanup:
     ly_set_free(set, NULL);
     ly_set_erase(&mod_set, NULL);
     sr_modinfo_free(&mod_info);
+    if (err_info) {
+        free(*value);
+        *value = NULL;
+    }
     return sr_api_ret(session, err_info);
 }
 
