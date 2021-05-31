@@ -1,0 +1,18 @@
+extraction:
+  cpp:
+    prepare:
+      packages: libpcre2-dev
+    after_prepare:
+    - git clone -b devel https://github.com/CESNET/libyang.git
+    - cd libyang; mkdir build; cd build
+    - cmake -DCMAKE_INSTALL_PREFIX=$LGTM_SRC/usr -DENABLE_BUILD_TESTS=OFF ..
+    - make -j2
+    - make install
+    configure:
+      command:
+      - mkdir build; cd build
+      - cmake -DCMAKE_INCLUDE_PATH=$LGTM_SRC/usr/include -DCMAKE_LIBRARY_PATH=$LGTM_SRC/usr/lib ..
+    index:
+      build_command:
+      - cd build
+      - make -j2
