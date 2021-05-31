@@ -220,8 +220,6 @@ sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *msg_
     va_list vargs;
     int idx;
 
-    assert(msg_format);
-
     if ((err_code == SR_ERR_NO_MEMORY) && !msg_format) {
         /* there is no dynamic memory, use the static error structure */
         sr_errinfo_free(err_info);
