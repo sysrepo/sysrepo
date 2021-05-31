@@ -1,7 +1,7 @@
 /**
- * @file oper_data_example.c
+ * @file oper_data_pull_example.c
  * @author Michal Vasko <mvasko@cesnet.cz>
- * @brief example of an application providing some operational data
+ * @brief example of an application providing some operational data by a callback
  *
  * @copyright
  * Copyright (c) 2019 CESNET, z.s.p.o.
