@@ -603,7 +603,7 @@ main(int argc, char **argv)
                 error_print(0, "Invalid parameter -%c for the operation", opt);
                 goto cleanup;
             }
-            if ((int)perms != -1) {
+            if (perms != (mode_t)(-1)) {
                 error_print(0, "Permissions already specified");
                 goto cleanup;
             }
@@ -693,7 +693,7 @@ main(int argc, char **argv)
         /* change */
 
         /* change owner, group, and/or permissions */
-        if (owner || group || ((int)perms != -1)) {
+        if (owner || group || (perms != (mode_t)(-1))) {
             if (!strcmp(module_name, ":ALL")) {
                 /* all the modules */
                 module_name = NULL;
@@ -789,7 +789,7 @@ main(int argc, char **argv)
     }
 
     /* change permissions for a newly installed/updated module */
-    if (((operation == 'i') || (operation == 'U')) && (owner || group || ((int)perms != -1))) {
+    if (((operation == 'i') || (operation == 'U')) && (owner || group || (perms != (mode_t)(-1)))) {
         if ((r = sr_set_module_access(conn, inst_module_name, owner, group, perms)) != SR_ERR_OK) {
             error_print(r, "Failed to change module \"%s\" access", inst_module_name);
             goto cleanup;

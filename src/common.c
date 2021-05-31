@@ -2309,7 +2309,7 @@ sr_chmodown(const char *path, const char *owner, const char *group, mode_t perm)
 
     assert(path);
 
-    if ((int)perm != -1) {
+    if (perm != (mode_t)(-1)) {
         if (perm > 00777) {
             sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid permissions 0%.3o.", perm);
             return err_info;
@@ -2341,7 +2341,7 @@ sr_chmodown(const char *path, const char *owner, const char *group, mode_t perm)
     }
 
     /* apply permission changes, if any */
-    if (((int)perm != -1) && (chmod(path, perm) == -1)) {
+    if ((perm != (mode_t)(-1)) && (chmod(path, perm) == -1)) {
         if ((errno == EACCES) || (errno == EPERM)) {
             err_code = SR_ERR_UNAUTHORIZED;
         } else {
