@@ -43,6 +43,17 @@ jobs:
             make-prepend: "cov-build --dir cov-int",
             make-target: ""
           }
+          - {
+            name: "Codecov",
+            os: "ubuntu-latest",
+            build-type: "Debug",
+            cc: "gcc",
+            options: "-DENABLE_COVERAGE=ON",
+            packages: "libcmocka-dev lcov",
+            snaps: "",
+            make-prepend: "",
+            make-target: ""
+          }
 
     steps:
       - uses: actions/checkout@v2
@@ -116,3 +127,9 @@ jobs:
         env:
           TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
         if: ${{ matrix.config.name == 'Coverity' }}
+
+      - name: Upload to Codecov.io
+        shell: bash
+        working-directory: ${{ github.workspace }}/build
+        run: bash <(curl -s https://codecov.io/bash)
+        if: ${{ matrix.config.name == 'Codecov' }}
