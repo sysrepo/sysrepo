@@ -5395,7 +5395,7 @@ cleanup:
 sr_error_info_t *
 sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
 {
-    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
+    sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
     struct sr_mod_info_s mod_info;
     struct ly_set mod_set = {0};
@@ -5425,13 +5425,7 @@ sr_module_update_oper_diff(sr_conn_ctx_t *conn, const char *mod_name)
     }
 
     /* now just load all the data */
-    if ((err_info = sr_modinfo_data_load(&mod_info, 1, sid, NULL, 0, SR_OPER_NO_STORED | SR_OPER_NO_SUBS, &cb_err_info))) {
-        goto cleanup;
-    }
-    if (cb_err_info) {
-        /* return callback error if some was generated */
-        cb_err_info->err_code = SR_ERR_CALLBACK_FAILED;
-        sr_errinfo_merge(&err_info, cb_err_info);
+    if ((err_info = sr_modinfo_data_load(&mod_info, 1, sid, NULL, 0, SR_OPER_NO_STORED | SR_OPER_NO_SUBS))) {
         goto cleanup;
     }
 
