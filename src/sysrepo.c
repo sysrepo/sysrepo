@@ -2001,16 +2001,14 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     const struct lysc_node *snode;
     int ly_log_opts;
 
-    SR_CHECK_ARG_APIRET(!session || !path, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !SR_IS_CONVENTIONAL_DS(session->ds) || !path, session, err_info);
 
     /* turn off logging */
     ly_log_opts = ly_log_options(0);
     if ((path[strlen(path) - 1] != ']') && (snode = lys_find_path(session->conn->ly_ctx, NULL, path, 0)) &&
             (snode->nodetype & (LYS_LEAFLIST | LYS_LIST)) && !strcmp((path + strlen(path)) - strlen(snode->name), snode->name)) {
-        SR_CHECK_ARG_APIRET(!SR_IS_CONVENTIONAL_DS(session->ds), session, err_info);
         operation = "purge";
     } else if (opts & SR_EDIT_STRICT) {
-        SR_CHECK_ARG_APIRET(!SR_IS_CONVENTIONAL_DS(session->ds), session, err_info);
         operation = "delete";
     } else {
         operation = "remove";
@@ -2020,6 +2018,19 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     /* add the operation into edit */
     err_info = sr_edit_add(session, path, NULL, operation, opts & SR_EDIT_STRICT ? "none" : "ether", NULL, NULL, NULL,
             NULL, opts & SR_EDIT_ISOLATE);
+
+    return sr_api_ret(session, err_info);
+}
+
+API int
+sr_oper_delete_item(sr_session_ctx_t *session, const char *path, const char *value, const sr_edit_options_t opts)
+{
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(!session || SR_IS_CONVENTIONAL_DS(session->ds) || !path, session, err_info);
+
+    /* add the operation into edit */
+    err_info = sr_edit_add(session, path, value, "remove", "ether", NULL, NULL, NULL, NULL, opts & SR_EDIT_ISOLATE);
 
     return sr_api_ret(session, err_info);
 }

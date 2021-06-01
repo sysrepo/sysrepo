@@ -750,11 +750,11 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
         const sr_edit_options_t opts);
 
 /**
- * @brief Prepare to selete the nodes matching the specified xpath. These changes are applied only
+ * @brief Prepare to delete the nodes matching the specified xpath. These changes are applied only
  * after calling ::sr_apply_changes. The accepted values are the same as for ::sr_set_item_str.
  *
- * If ::SR_EDIT_STRICT flag is set the specified node must must exist in the datastore. Not supported for
- * ::SR_DS_OPERATIONAL.
+ * Cannot be used for ::SR_DS_OPERATIONAL. Use ::sr_oper_delete_item() instead.
+ * If ::SR_EDIT_STRICT flag is set the specified node must must exist in the datastore.
  * If the @p path includes the list keys/leaf-list value, the specified instance is deleted.
  * If the @p path of list/leaf-list does not include keys/value, all instances are deleted.
  *
@@ -764,6 +764,20 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
  * @return Error code (::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if the whole edit was discarded).
  */
 int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts);
+
+/**
+ * @brief Prepare to delete the nodes matching the specified xpath. These changes are applied only
+ * after calling ::sr_apply_changes. The accepted values are the same as for ::sr_set_item_str.
+ *
+ * Can be used only for ::SR_DS_OPERATIONAL. Use ::sr_delete_item() for other datastores.
+ *
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
+ * @param[in] path [Path](@ref paths) identifier of the data element to be deleted.
+ * @param[in] value String representation of the value deleted.
+ * @param[in] opts Options overriding default behavior of this call. ::SR_EDIT_STRICT is not supported.
+ * @return Error code (::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if the whole edit was discarded).
+ */
+int sr_oper_delete_item(sr_session_ctx_t *session, const char *path, const char *value, const sr_edit_options_t opts);
 
 /**
  * @brief Prepare to move/create the instance of an user-ordered list or leaf-list to the specified position.
