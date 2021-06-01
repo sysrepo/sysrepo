@@ -126,7 +126,7 @@ jobs:
         shell: bash
         run: |
           LAST_COMMIT=`git rev-parse HEAD`
-          curl -X POST 'https://lgtm.com/api/v1.0/analyses/g/sysrepo/sysrepo?commit=$LAST_COMMIT' \
+          curl -X POST 'https://lgtm.com/api/v1.0/analyses/1506383265983?commit=$LAST_COMMIT' \
           -H 'Accept: application/json' \
           -H 'Authorization: Bearer $TOKEN'
         env:
