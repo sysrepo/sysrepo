@@ -116,18 +116,3 @@ jobs:
         env:
           TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
         if: ${{ matrix.config.name == 'Coverity' }}
-
-  LGTM:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Upload to LGTM.com
-        shell: bash
-        run: |
-          LAST_COMMIT=`git rev-parse HEAD`
-          curl -X POST 'https://lgtm.com/api/v1.0/analyses/1506383265983?commit=$LAST_COMMIT' \
-          -H 'Accept: application/json' \
-          -H 'Authorization: Bearer $TOKEN'
-        env:
-          TOKEN: ${{ secrets.LGTM_SCAN_TOKEN }}
