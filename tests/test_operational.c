@@ -2925,6 +2925,8 @@ test_stored_config(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/description",
             "oper-description", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_oper_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", "false", 0);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -2944,7 +2946,6 @@ test_stored_config(void **state)
             "<name>eth1</name>"
             "<description or:origin=\"or:unknown\">oper-description</description>"
             "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<enabled>false</enabled>"
         "</interface>"
     "</interfaces>";
 
