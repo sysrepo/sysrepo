@@ -1021,47 +1021,63 @@ sr_diff_is_redundant(struct lyd_node *diff)
     /* get node operation */
     op = sr_edit_find_oper(diff, 1, NULL);
 
-    if ((op == EDIT_REPLACE) && sr_ly_is_userord(diff)) {
-        /* check for redundant move */
-        for (attr = diff->attr; attr; attr = attr->next) {
-            if (diff->schema->nodetype == LYS_LIST) {
-                if (!strcmp(attr->name, "orig-key") && !strcmp(attr->annotation->module->name, SR_YANG_MOD)) {
-                    orig_val_attr = attr;
-                } else if (!strcmp(attr->name, "key") && !strcmp(attr->annotation->module->name, "yang")) {
-                    val_attr = attr;
+    if (op == EDIT_REPLACE) {
+        if (sr_ly_is_userord(diff)) {
+            /* check for redundant move */
+            for (attr = diff->attr; attr; attr = attr->next) {
+                if (diff->schema->nodetype == LYS_LIST) {
+                    if (!strcmp(attr->name, "orig-key") && !strcmp(attr->annotation->module->name, SR_YANG_MOD)) {
+                        orig_val_attr = attr;
+                    } else if (!strcmp(attr->name, "key") && !strcmp(attr->annotation->module->name, "yang")) {
+                        val_attr = attr;
+                    }
+                } else {
+                    if (!strcmp(attr->name, "orig-value") && !strcmp(attr->annotation->module->name, SR_YANG_MOD)) {
+                        orig_val_attr = attr;
+                    } else if (!strcmp(attr->name, "value") && !strcmp(attr->annotation->module->name, "yang")) {
+                        val_attr = attr;
+                    }
                 }
-            } else {
+            }
+            assert(orig_val_attr && val_attr);
+            /* in the dictionary */
+            if (orig_val_attr->value_str == val_attr->value_str) {
+                /* there is actually no move */
+                lyd_free_attr(lyd_node_module(diff)->ctx, diff, orig_val_attr, 0);
+                lyd_free_attr(lyd_node_module(diff)->ctx, diff, val_attr, 0);
+                if (child) {
+                    /* change operation to NONE, we have siblings */
+                    sr_edit_del_attr(diff, "operation");
+                    if ((err_info = sr_edit_set_oper(diff, "none"))) {
+                        /* it was printed at least */
+                        sr_errinfo_free(&err_info);
+                    }
+                    return 0;
+                }
+
+                /* redundant node, BUT !!
+                * In diff the move operation is always converted to be INSERT_AFTER, which is fine
+                * because the data that this is applied on do not change for the diff lifetime.
+                * However, when we are merging 2 diffs, this conversion is actually lossy because
+                * if the data change, the move operation can also change its meaning. In this specific
+                * case the move operation will be lost. But it can be considered a feature, it is not supported.
+                */
+                return 1;
+            }
+        } else if (diff->schema->nodetype == LYS_LEAF) {
+            /* check for no value change */
+            for (attr = diff->attr; attr; attr = attr->next) {
                 if (!strcmp(attr->name, "orig-value") && !strcmp(attr->annotation->module->name, SR_YANG_MOD)) {
                     orig_val_attr = attr;
-                } else if (!strcmp(attr->name, "value") && !strcmp(attr->annotation->module->name, "yang")) {
-                    val_attr = attr;
+                    break;
                 }
             }
-        }
-        assert(orig_val_attr && val_attr);
-        /* in the dictionary */
-        if (orig_val_attr->value_str == val_attr->value_str) {
-            /* there is actually no move */
-            lyd_free_attr(lyd_node_module(diff)->ctx, diff, orig_val_attr, 0);
-            lyd_free_attr(lyd_node_module(diff)->ctx, diff, val_attr, 0);
-            if (child) {
-                /* change operation to NONE, we have siblings */
-                sr_edit_del_attr(diff, "operation");
-                if ((err_info = sr_edit_set_oper(diff, "none"))) {
-                    /* it was printed at least */
-                    sr_errinfo_free(&err_info);
-                }
-                return 0;
+            assert(orig_val_attr);
+            /* in the dictionary */
+            if (orig_val_attr->value_str == sr_ly_leaf_value_str(diff)) {
+                /* there is actually no change */
+                return 1;
             }
-
-            /* redundant node, BUT !!
-             * In diff the move operation is always converted to be INSERT_AFTER, which is fine
-             * because the data that this is applied on do not change for the diff lifetime.
-             * However, when we are merging 2 diffs, this conversion is actually lossy because
-             * if the data change, the move operation can also change its meaning. In this specific
-             * case the move operation will be lost. But it can be considered a feature, it is not supported.
-             */
-            return 1;
         }
     } else if ((op == EDIT_NONE) && (diff->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST))) {
         for (attr = diff->attr; attr; attr = attr->next) {
