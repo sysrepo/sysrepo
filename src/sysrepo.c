@@ -397,8 +397,8 @@ sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const ch
     }
 
     /* add modules, lock, and get data */
-    if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_WRITE, SR_MI_PERM_WRITE, 0, NULL, NULL, NULL,
-            0, 0))) {
+    if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_READ,
+            SR_MI_LOCK_UPGRADEABLE | SR_MI_PERM_WRITE, 0, NULL, NULL, NULL, 0, 0))) {
         goto cleanup;
     }
 
