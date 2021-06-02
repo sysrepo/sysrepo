@@ -2023,7 +2023,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
 }
 
 API int
-sr_oper_delete_item(sr_session_ctx_t *session, const char *path, const char *value, const sr_edit_options_t opts)
+sr_oper_delete_item_str(sr_session_ctx_t *session, const char *path, const char *value, const sr_edit_options_t opts)
 {
     sr_error_info_t *err_info = NULL;
 
