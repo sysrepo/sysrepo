@@ -114,14 +114,16 @@ next_mod:
             }
         }
 
-        assert(mod);
-
-        /* mark this mod as returned if not already */
-        if ((*aux)[i]) {
-            /* continue search */
+        if (!mod) {
+            /* possible only for unknown opaque nodes, free the auxiliary array */
+            free(*aux);
+            *aux = NULL;
+        } else if ((*aux)[i]) {
+            /* already returned, continue search */
             last = mod;
             goto next_mod;
         } else {
+            /* mark this mod as returned */
             (*aux)[i] = 1;
         }
     } else {
