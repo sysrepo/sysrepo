@@ -89,61 +89,6 @@ set(CMAKE_C_FLAGS_DEBUG     "-g -O0")
 set(CMAKE_C_FLAGS_ABICHECK  "-g -Og")
 
 #
-# sources
-#
-set(LIB_SRC
-    src/sysrepo.c
-    src/common.c
-    src/log.c
-    src/replay.c
-    src/modinfo.c
-    src/edit_diff.c
-    src/lyd_mods.c
-    src/shm_main.c
-    src/shm_ext.c
-    src/shm_mod.c
-    src/shm_sub.c
-    src/utils/values.c
-    src/utils/xpath.c)
-
-set (SYSREPOCTL_SRC
-    src/executables/sysrepoctl.c)
-
-set (SYSREPOCFG_SRC
-    src/executables/sysrepocfg.c)
-
-set (SYSREPOPLUGIND_SRC
-    src/executables/sysrepo-plugind.c)
-
-# public headers
-set(LIB_HEADERS
-    src/sysrepo.h
-    src/sysrepo_types.h
-    src/utils/values.h
-    src/utils/xpath.h)
-
-# files to generate doxygen from
-set(DOXY_FILES
-    doc/
-    ${LIB_HEADERS}
-    ${PROJECT_BINARY_DIR}/version.h)
-
-# project (doxygen) logo
-set(PROJECT_LOGO
-    doc/logo.png)
-
-# source files to be covered by the 'format' target
-set(FORMAT_SOURCES
-    compat/*.c
-    compat/*.h*
-    examples/*.c
-    examples/plugin/*.c
-    src/*.c
-    src/*.h
-    src/executables/*
-    src/utils/*)
-
-#
 # options
 #
 if(("${BUILD_TYPE_UPPER}" STREQUAL "DEBUG") OR ("${BUILD_TYPE_UPPER}" STREQUAL "RELWITHDEBINFO"))
@@ -215,37 +160,86 @@ endif()
 message(STATUS "SRPD plugins path:  ${PLUGINS_PATH}")
 
 #
+# sources
+#
+set(LIB_SRC
+    src/sysrepo.c
+    src/common.c
+    src/log.c
+    src/replay.c
+    src/modinfo.c
+    src/edit_diff.c
+    src/lyd_mods.c
+    src/shm_main.c
+    src/shm_ext.c
+    src/shm_mod.c
+    src/shm_sub.c
+    src/utils/values.c
+    src/utils/xpath.c)
+
+set (SYSREPOCTL_SRC
+    src/executables/sysrepoctl.c)
+
+set (SYSREPOCFG_SRC
+    src/executables/sysrepocfg.c)
+
+set (SYSREPOPLUGIND_SRC
+    src/executables/sysrepo-plugind.c)
+
+# public headers
+set(LIB_HEADERS
+    src/sysrepo.h
+    src/sysrepo_types.h
+    src/utils/values.h
+    src/utils/xpath.h)
+
+# files to generate doxygen from
+set(DOXY_FILES
+    doc/
+    ${LIB_HEADERS}
+    ${PROJECT_BINARY_DIR}/version.h)
+
+# project (doxygen) logo
+set(PROJECT_LOGO
+    doc/logo.png)
+
+# source files to be covered by the 'format' target
+set(FORMAT_SOURCES
+    compat/*.c
+    compat/*.h*
+    examples/*.c
+    examples/plugin/*.c
+    src/*.c
+    src/*.h
+    src/executables/*
+    src/utils/*)
+
+#
 # checks
 #
-if(ENABLE_VALGRIND_TESTS AND ENABLE_STATIC)
-    message(WARNING "Can't run C valgrind tests on a static build")
-    set(ENABLE_VALGRIND_TESTS OFF)
-endif()
-
 if(ENABLE_VALGRIND_TESTS)
     find_program(VALGRIND_FOUND valgrind)
     if(NOT VALGRIND_FOUND)
         message(WARNING "valgrind executable not found! Disabling memory leaks tests.")
         set(ENABLE_VALGRIND_TESTS OFF)
     else()
-        set(ENABLE_BUILD_TESTS ON)
+        set(ENABLE_TESTS ON)
     endif()
 endif()
 
-if(ENABLE_BUILD_TESTS)
+if(ENABLE_TESTS)
     find_package(CMocka 1.0.0)
     if(NOT CMOCKA_FOUND)
         message(STATUS "Disabling tests because of missing CMocka")
-        set(ENABLE_BUILD_TESTS OFF)
+        set(ENABLE_TESTS OFF)
     endif()
-endif(ENABLE_BUILD_TESTS)
+endif()
 
 if(ENABLE_COVERAGE)
-    gen_coverage_enable(${ENABLE_BUILD_TESTS})
+    gen_coverage_enable(${ENABLE_TESTS})
 endif()
 
 if ("${BUILD_TYPE_UPPER}" STREQUAL "DEBUG")
-    # enable before adding tests to let them detect that format checking is available - one of the tests is format checking
     source_format_enable()
 endif()
 
