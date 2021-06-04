@@ -13,6 +13,7 @@ include(UseCompat)
 include(ABICheck)
 include(SourceFormat)
 include(GenDoc)
+include(GenCoverage)
 if(POLICY CMP0075)
     cmake_policy(SET CMP0075 NEW)
 endif()
@@ -79,7 +80,72 @@ set(LIBYANG_DEP_SOVERSION_MAJOR 2)
 # generate only version header, it is needed for docs
 configure_file("${PROJECT_SOURCE_DIR}/src/version.h.in" "${PROJECT_BINARY_DIR}/version.h" ESCAPE_QUOTES @ONLY)
 
+#
+# compilation flags
+#
+set(CMAKE_C_FLAGS           "${CMAKE_C_FLAGS} -Wall -Wextra -Wpedantic -std=c99")
+set(CMAKE_C_FLAGS_RELEASE   "-DNDEBUG -O2")
+set(CMAKE_C_FLAGS_DEBUG     "-g -O0")
+set(CMAKE_C_FLAGS_ABICHECK  "-g -Og")
+
+#
+# sources
+#
+set(LIB_SRC
+    src/sysrepo.c
+    src/common.c
+    src/log.c
+    src/replay.c
+    src/modinfo.c
+    src/edit_diff.c
+    src/lyd_mods.c
+    src/shm_main.c
+    src/shm_ext.c
+    src/shm_mod.c
+    src/shm_sub.c
+    src/utils/values.c
+    src/utils/xpath.c)
+
+set (SYSREPOCTL_SRC
+    src/executables/sysrepoctl.c)
+
+set (SYSREPOCFG_SRC
+    src/executables/sysrepocfg.c)
+
+set (SYSREPOPLUGIND_SRC
+    src/executables/sysrepo-plugind.c)
+
+# public headers
+set(LIB_HEADERS
+    src/sysrepo.h
+    src/sysrepo_types.h
+    src/utils/values.h
+    src/utils/xpath.h)
+
+# files to generate doxygen from
+set(DOXY_FILES
+    doc/
+    ${LIB_HEADERS}
+    ${PROJECT_BINARY_DIR}/version.h)
+
+# project (doxygen) logo
+set(PROJECT_LOGO
+    doc/logo.png)
+
+# source files to be covered by the 'format' target
+set(FORMAT_SOURCES
+    compat/*.c
+    compat/*.h*
+    examples/*.c
+    examples/plugin/*.c
+    src/*.c
+    src/*.h
+    src/executables/*
+    src/utils/*)
+
+#
 # options
+#
 if(("${BUILD_TYPE_UPPER}" STREQUAL "DEBUG") OR ("${BUILD_TYPE_UPPER}" STREQUAL "RELWITHDEBINFO"))
     option(ENABLE_TESTS "Build tests" ON)
     option(ENABLE_VALGRIND_TESTS "Build tests with valgrind" ON)
@@ -89,42 +155,7 @@ else()
 endif()
 option(ENABLE_EXAMPLES "Build examples." ON)
 option(ENABLE_COVERAGE "Build code coverage report from tests" OFF)
-
-if(ENABLE_COVERAGE)
-    find_program(PATH_GCOV NAMES gcov)
-    if(NOT PATH_GCOV)
-        message(WARNING "'gcov' executable not found! Disabling building code coverage report.")
-        set(ENABLE_COVERAGE OFF)
-    endif()
-
-    find_program(PATH_LCOV NAMES lcov)
-    if(NOT PATH_LCOV)
-        message(WARNING "'lcov' executable not found! Disabling building code coverage report.")
-        set(ENABLE_COVERAGE OFF)
-    endif()
-
-    find_program(PATH_GENHTML NAMES genhtml)
-    if(NOT PATH_GENHTML)
-        message(WARNING "'genhtml' executable not found! Disabling building code coverage report.")
-        set(ENABLE_COVERAGE OFF)
-    endif()
-
-    if(NOT CMAKE_COMPILER_IS_GNUCC)
-        message(WARNING "Compiler is not gcc! Coverage may break the tests!")
-    endif()
-
-    if(ENABLE_COVERAGE)
-        set(CMAKE_C_FLAGS_COVERAGE "${CMAKE_C_FLAGS} --coverage -fprofile-arcs -ftest-coverage")
-    endif()
-endif()
-
 option(INSTALL_SYSCTL_CONF "Install sysctl conf file to allow shared access to SHM files." OFF)
-
-# compilation flags
-set(CMAKE_C_FLAGS           "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_COVERAGE} -Wall -Wextra -Wpedantic -std=c99")
-set(CMAKE_C_FLAGS_RELEASE   "-DNDEBUG -O2")
-set(CMAKE_C_FLAGS_DEBUG     "-g -O0")
-set(CMAKE_C_FLAGS_ABICHECK  "-g -Og")
 
 # ietf-yang-library revision
 set(YANGLIB_REVISION "2019-01-04" CACHE STRING
@@ -183,63 +214,49 @@ if(NOT PLUGINS_PATH)
 endif()
 message(STATUS "SRPD plugins path:  ${PLUGINS_PATH}")
 
-# objects
-set(LIB_SRC
-    src/sysrepo.c
-    src/common.c
-    src/log.c
-    src/replay.c
-    src/modinfo.c
-    src/edit_diff.c
-    src/lyd_mods.c
-    src/shm_main.c
-    src/shm_ext.c
-    src/shm_mod.c
-    src/shm_sub.c
-    src/utils/values.c
-    src/utils/xpath.c)
+#
+# checks
+#
+if(ENABLE_VALGRIND_TESTS AND ENABLE_STATIC)
+    message(WARNING "Can't run C valgrind tests on a static build")
+    set(ENABLE_VALGRIND_TESTS OFF)
+endif()
 
-set (SYSREPOCTL_SRC
-    src/executables/sysrepoctl.c)
+if(ENABLE_VALGRIND_TESTS)
+    find_program(VALGRIND_FOUND valgrind)
+    if(NOT VALGRIND_FOUND)
+        message(WARNING "valgrind executable not found! Disabling memory leaks tests.")
+        set(ENABLE_VALGRIND_TESTS OFF)
+    else()
+        set(ENABLE_BUILD_TESTS ON)
+    endif()
+endif()
 
-set (SYSREPOCFG_SRC
-    src/executables/sysrepocfg.c)
+if(ENABLE_BUILD_TESTS)
+    find_package(CMocka 1.0.0)
+    if(NOT CMOCKA_FOUND)
+        message(STATUS "Disabling tests because of missing CMocka")
+        set(ENABLE_BUILD_TESTS OFF)
+    endif()
+endif(ENABLE_BUILD_TESTS)
 
-set (SYSREPOPLUGIND_SRC
-    src/executables/sysrepo-plugind.c)
+if(ENABLE_COVERAGE)
+    gen_coverage_enable(${ENABLE_BUILD_TESTS})
+endif()
 
-# public headers
-set(LIB_HEADERS
-    src/sysrepo.h
-    src/sysrepo_types.h
-    src/utils/values.h
-    src/utils/xpath.h)
-
-# files to generate doxygen from
-set(DOXY_FILES
-    doc/
-    ${LIB_HEADERS}
-    ${PROJECT_BINARY_DIR}/version.h)
-
-# project (doxygen) logo
-set(PROJECT_LOGO
-    doc/logo.png)
-
-# source files to be covered by the 'format' target
-set(FORMAT_SOURCES
-    compat/*.c
-    compat/*.h*
-    examples/*.c
-    examples/plugin/*.c
-    src/*.c
-    src/*.h
-    src/executables/*
-    src/utils/*)
+if ("${BUILD_TYPE_UPPER}" STREQUAL "DEBUG")
+    # enable before adding tests to let them detect that format checking is available - one of the tests is format checking
+    source_format_enable()
+endif()
 
 if("${BUILD_TYPE_UPPER}" STREQUAL "DOCONLY")
     gen_doc("${DOXY_FILES}" ${SYSREPO_VERSION} ${SYSREPO_DESC} ${PROJECT_LOGO})
     return()
 endif()
+
+#
+# targets
+#
 
 # use compat
 use_compat()
@@ -320,32 +337,14 @@ if(INSTALL_SYSCTL_CONF)
     install(FILES "${PROJECT_SOURCE_DIR}/66-sysrepo-disable-fs-protected_regular.conf" DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/sysctl.d/")
 endif()
 
-if ("${BUILD_TYPE_UPPER}" STREQUAL "DEBUG")
-    # enable before adding tests to let them detect that format checking is available - one of the tests is format checking
-    source_format_enable()
-endif()
-
-# source files to be covered by the 'format' target and a test with 'format-check' target
-source_format(${FORMAT_SOURCES})
-
 # tests
 if(ENABLE_TESTS)
-    find_package(CMocka 1.0.0)
+    enable_testing()
+    add_subdirectory(tests)
 endif()
 
-if(ENABLE_VALGRIND_TESTS)
-    set(ENABLE_TESTS ON)
-endif()
-
-if(ENABLE_TESTS)
-    if(CMOCKA_FOUND)
-        enable_testing()
-        add_subdirectory(tests)
-    else()
-        message(STATUS "Disabling tests because of missing CMocka")
-        set(ENABLE_TESTS OFF)
-    endif()
-endif()
+# create coverage target for generating coverage reports
+gen_coverage("test_.*" "test_.*_valgrind")
 
 # examples
 if(ENABLE_EXAMPLES)
@@ -359,6 +358,9 @@ gen_doc("${DOXY_FILES}" ${SYSREPO_VERSION} ${SYSREPO_DESC} ${PROJECT_LOGO})
 if ("${BUILD_TYPE_UPPER}" STREQUAL "ABICHECK")
     lib_abi_check(sysrepo "${LIB_HEADERS}" ${SYSREPO_SOVERSION_FULL} c1022a19895cdc6f4f8510fb36c04dcf04dbbe21)
 endif()
+
+# source files to be covered by the 'format' target and a test with 'format-check' target
+source_format(${FORMAT_SOURCES})
 
 # phony target for clearing sysrepo SHM
 add_custom_target(shm_clean

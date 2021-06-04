@@ -60,63 +60,13 @@ add_executable(${SR_PERF} ${SR_PERF}.c)
 target_link_libraries(${SR_PERF} ${CMOCKA_LIBRARIES} sysrepo)
 
 # valgrind tests
-find_program(VALGRIND_FOUND valgrind)
 if(ENABLE_VALGRIND_TESTS)
-    if(VALGRIND_FOUND)
-        foreach(test_name IN LISTS tests)
-            add_test(NAME ${test_name}_valgrind COMMAND valgrind --leak-check=full --show-leak-kinds=all --error-exitcode=1 ${CMAKE_BINARY_DIR}/tests/${test_name})
-            set_property(TEST ${test_name}_valgrind APPEND PROPERTY ENVIRONMENT
-                "TZ=CET+02:00"
-                "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"
-                "SYSREPO_SHM_PREFIX=_tests_sr_${test_name}"
-            )
-        endforeach(test_name)
-    else(VALGRIND_FOUND)
-        message(WARNING "valgrind executable not found! Disabling memory leak tests.")
-    endif(VALGRIND_FOUND)
-endif()
-
-if(ENABLE_COVERAGE)
-    # Destination
-    set(COVERAGE_DIR        "${CMAKE_BINARY_DIR}/tests/code_coverage/")
-    set(COVERAGE_FILE_RAW   "${CMAKE_BINARY_DIR}/tests/coverage_raw.info")
-    set(COVERAGE_FILE_CLEAN "${CMAKE_BINARY_DIR}/tests/coverage_clean.info")
-
-    # Add coverage target
-    add_custom_target(coverage
-        COMMENT "Generating code coverage..."
-        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
-        # Cleanup code counters
-        COMMAND "${PATH_LCOV}" --directory . --zerocounters --quiet
-
-        # Run tests
-        COMMAND "${CMAKE_CTEST_COMMAND}" --quiet
-
-        # Capture the counters
-        COMMAND "${PATH_LCOV}"
-            --directory .
-            --rc lcov_branch_coverage=1
-            --rc 'lcov_excl_line=assert'
-            --capture --quiet
-            --output-file "${COVERAGE_FILE_RAW}"
-        # Remove coverage of tests, system headers, etc.
-        COMMAND "${PATH_LCOV}"
-            --remove "${COVERAGE_FILE_RAW}" '${CMAKE_SOURCE_DIR}/tests/*'
-            --rc lcov_branch_coverage=1
-            --quiet --output-file "${COVERAGE_FILE_CLEAN}"
-        # Generate HTML report
-        COMMAND "${PATH_GENHTML}"
-            --branch-coverage --function-coverage --quiet --title "sysrepo"
-            --legend --show-details --output-directory "${COVERAGE_DIR}"
-            "${COVERAGE_FILE_CLEAN}"
-        # Delete the counters
-        COMMAND "${CMAKE_COMMAND}" -E remove
-            ${COVERAGE_FILE_RAW} ${COVERAGE_FILE_CLEAN}
+    foreach(test_name IN LISTS tests)
+        add_test(NAME ${test_name}_valgrind COMMAND valgrind --leak-check=full --show-leak-kinds=all --error-exitcode=1 ${CMAKE_BINARY_DIR}/tests/${test_name})
+        set_property(TEST ${test_name}_valgrind APPEND PROPERTY ENVIRONMENT
+            "TZ=CET+02:00"
+            "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"
+            "SYSREPO_SHM_PREFIX=_tests_sr_${test_name}"
         )
-
-    add_custom_command(TARGET coverage POST_BUILD
-        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/tests"
-        COMMENT "To see the code coverage report, open ${COVERAGE_DIR}index.html"
-        COMMAND ;
-        )
+    endforeach(test_name)
 endif()
