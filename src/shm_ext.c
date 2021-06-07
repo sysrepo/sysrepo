@@ -405,7 +405,7 @@ sr_shmext_change_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t 
     sr_error_info_t *err_info = NULL;
     off_t xpath_off;
     sr_mod_change_sub_t *shm_sub;
-    uint16_t i;
+    uint32_t i;
 
     assert((has_lock == SR_LOCK_NONE) || (has_lock == SR_LOCK_WRITE));
 
@@ -499,7 +499,7 @@ sr_shmext_change_sub_modify(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_change_sub_t *shm_sub;
-    uint16_t i;
+    uint32_t i;
     int cur_size, new_size;
 
     /* CHANGE SUB WRITE LOCK */
@@ -605,7 +605,7 @@ sr_shmext_change_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t 
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_change_sub_t *shm_sub;
-    uint16_t i;
+    uint32_t i;
 
     assert((has_lock == SR_LOCK_NONE) || (has_lock == SR_LOCK_WRITE));
 
@@ -742,7 +742,7 @@ sr_shmext_oper_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, 
     off_t xpath_off;
     sr_mod_oper_sub_t *shm_sub;
     size_t new_len, cur_len;
-    uint16_t i;
+    uint32_t i;
 
     assert(xpath && sub_type);
 
@@ -871,7 +871,7 @@ sr_shmext_oper_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_oper_sub_t *shm_sub;
-    uint16_t i;
+    uint32_t i;
 
     /* OPER SUB WRITE LOCK */
     if ((err_info = sr_rwlock(&shm_mod->oper_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL,
@@ -1091,7 +1091,7 @@ sr_shmext_notif_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_notif_sub_t *shm_sub;
-    uint16_t i;
+    uint32_t i;
 
     /* NOTIF SUB WRITE LOCK */
     if ((err_info = sr_rwlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL,
@@ -1346,7 +1346,7 @@ sr_shmext_rpc_sub_del(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, uint32_t sub_id)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_rpc_sub_t *shm_sub;
-    uint16_t i;
+    uint32_t i;
 
     /* RPC SUB WRITE LOCK */
     if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL, NULL))) {

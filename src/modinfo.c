@@ -643,7 +643,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
     sr_mod_oper_sub_t *shm_sub;
     const char *sub_xpath;
     char *parent_xpath = NULL;
-    uint16_t i, j;
+    uint32_t i, j;
     struct ly_set *set = NULL;
     struct lyd_node *edit = NULL, *oper_data;
 
@@ -802,7 +802,7 @@ sr_module_oper_data_dup_enabled(sr_conn_ctx_t *conn, const struct lyd_node *data
     sr_error_info_t *err_info = NULL;
     sr_mod_change_sub_t *shm_changesubs;
     struct lyd_node *root, *elem;
-    uint16_t i, xp_i;
+    uint32_t i, xp_i;
     int data_duplicated = 0;
     char **xpaths;
     const char *origin;
@@ -1271,7 +1271,7 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
     sr_mod_oper_sub_t *oper_sub;
     sr_mod_notif_sub_t *notif_sub;
     struct sr_mod_lock_s *shm_lock;
-    uint16_t i;
+    uint32_t i;
 
 #define BUF_LEN 128
     char buf[BUF_LEN], *str = NULL;
@@ -1409,7 +1409,7 @@ sr_modinfo_module_srmon_rpc(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, struct lyd_n
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_rpc, *sr_sub;
     sr_mod_rpc_sub_t *rpc_sub;
-    uint16_t i;
+    uint32_t i;
     char buf[22];
     const struct ly_ctx *ly_ctx;
 
@@ -1678,7 +1678,7 @@ sr_modinfo_add_mod(const struct lys_module *ly_mod, uint32_t mod_type, int mod_r
     sr_mod_t *shm_mod;
     sr_dep_t *shm_deps;
     off_t *shm_inv_deps;
-    uint16_t i, cur_i;
+    uint32_t i, cur_i;
     int prev_mod_type = 0;
 
     assert((mod_type == MOD_INFO_REQ) || (mod_type == MOD_INFO_DEP) || (mod_type == MOD_INFO_INV_DEP));

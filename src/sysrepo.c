@@ -5065,7 +5065,7 @@ sr_oper_sub_get_type(const struct ly_ctx *ly_ctx, const char *path, sr_mod_oper_
     sr_error_info_t *err_info = NULL;
     struct lysc_node *elem;
     struct ly_set *set = NULL;
-    uint16_t i;
+    uint32_t i;
 
     if (lys_find_xpath(ly_ctx, NULL, path, 0, &set)) {
         sr_errinfo_new_ly(&err_info, ly_ctx);
