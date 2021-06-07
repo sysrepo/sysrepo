@@ -4054,7 +4054,7 @@ sr_msleep(uint32_t msec)
 
     do {
         ret = nanosleep(&ts, &ts);
-    } while ((ret == -1) && (errno = EINTR));
+    } while ((ret == -1) && (errno == EINTR));
 
     if (ret == -1) {
         SR_ERRINFO_SYSERRNO(&err_info, "nanosleep");
