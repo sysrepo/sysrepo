@@ -1475,15 +1475,14 @@ sr_shmext_recover_sub_all(sr_conn_ctx_t *conn)
     sr_datastore_t ds;
     sr_mod_t *shm_mod;
     sr_rpc_t *shm_rpc;
-    uint32_t i, j;
+    uint32_t i, j, count;
 
     /* go through all the modules, RPCs and recover their subscriptions */
     for (i = 0; i < SR_CONN_MAIN_SHM(conn)->mod_count; ++i) {
         shm_mod = SR_SHM_MOD_IDX(conn->main_shm.addr, i);
         for (ds = 0; ds < SR_DS_COUNT; ++ds) {
-            while (shm_mod->change_sub[ds].sub_count) {
-                if ((err_info = sr_shmext_change_sub_stop(conn, shm_mod, ds, shm_mod->change_sub[ds].sub_count - 1, 1,
-                        SR_LOCK_NONE, 1))) {
+            for (count = shm_mod->change_sub[ds].sub_count; count; --count) {
+                if ((err_info = sr_shmext_change_sub_stop(conn, shm_mod, ds, count - 1, 1, SR_LOCK_NONE, 1))) {
                     sr_errinfo_free(&err_info);
                 }
             }
@@ -1491,21 +1490,21 @@ sr_shmext_recover_sub_all(sr_conn_ctx_t *conn)
 
         shm_rpc = (sr_rpc_t *)(conn->main_shm.addr + shm_mod->rpcs);
         for (j = 0; j < shm_mod->rpc_count; ++j) {
-            while (shm_rpc[j].sub_count) {
-                if ((err_info = sr_shmext_rpc_sub_stop(conn, &shm_rpc[j], shm_rpc[j].sub_count - 1, 1, SR_LOCK_NONE, 1))) {
+            for (count = shm_rpc[j].sub_count; count; --count) {
+                if ((err_info = sr_shmext_rpc_sub_stop(conn, &shm_rpc[j], count - 1, 1, SR_LOCK_NONE, 1))) {
                     sr_errinfo_free(&err_info);
                 }
             }
         }
 
-        while (shm_mod->oper_sub_count) {
-            if ((err_info = sr_shmext_oper_sub_stop(conn, shm_mod, shm_mod->oper_sub_count - 1, 1, SR_LOCK_NONE, 1))) {
+        for (count = shm_mod->oper_sub_count; count; --count) {
+            if ((err_info = sr_shmext_oper_sub_stop(conn, shm_mod, count - 1, 1, SR_LOCK_NONE, 1))) {
                 sr_errinfo_free(&err_info);
             }
         }
 
-        while (shm_mod->notif_sub_count) {
-            if ((err_info = sr_shmext_notif_sub_stop(conn, shm_mod, shm_mod->notif_sub_count - 1, 1, SR_LOCK_NONE, 1))) {
+        for (count = shm_mod->notif_sub_count; count; --count) {
+            if ((err_info = sr_shmext_notif_sub_stop(conn, shm_mod, count - 1, 1, SR_LOCK_NONE, 1))) {
                 sr_errinfo_free(&err_info);
             }
         }
