@@ -355,8 +355,8 @@ sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext)
     /* print it */
     printed = 0;
     for (i = 0; i < item_count; ++i) {
-        printed += sr_sprintf(&msg, &msg_len, printed, "%06ld-%06ld [%6lu]: %s\n",
-                items[i].start, items[i].start + items[i].size, items[i].size, items[i].name);
+        printed += sr_sprintf(&msg, &msg_len, printed, "%06jd-%06jd [%6zu]: %s\n",
+                (intmax_t)items[i].start, (intmax_t)(items[i].start + items[i].size), items[i].size, items[i].name);
 
         free(items[i].name);
     }
