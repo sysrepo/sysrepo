@@ -1403,7 +1403,7 @@ _sr_set_module_access(const char *module_name, sr_mod_t *shm_mod, const char *ow
     time_t from_ts, to_ts;
     char *path = NULL;
 
-    assert(module_name && shm_mod && (owner || group || ((int)perm != -1)));
+    assert(module_name && shm_mod && (owner || group || (perm != (mode_t)(-1))));
 
     /* get startup file path */
     if ((err_info = sr_path_startup_file(module_name, &path))) {
@@ -1471,7 +1471,7 @@ sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *o
     uint32_t i;
     sr_main_shm_t *main_shm;
 
-    SR_CHECK_ARG_APIRET(!conn || (!owner && !group && ((int)perm == -1)), NULL, err_info);
+    SR_CHECK_ARG_APIRET(!conn || (!owner && !group && (perm == (mode_t)(-1))), NULL, err_info);
     main_shm = SR_CONN_MAIN_SHM(conn);
 
     if (module_name) {
