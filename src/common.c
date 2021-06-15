@@ -1831,7 +1831,7 @@ sr_create_module_imps_incs_r(const struct lys_module *ly_mod, const struct lysp_
     }
 
     /* store all includes */
-    includes = (lysp_submod ? lysp_submod->includes : ly_mod->parsed->includes);
+    includes = ly_mod->parsed->includes;
     LY_ARRAY_FOR(includes, u) {
         if ((err_info = sr_store_module_file(ly_mod, includes[u].submodule))) {
             return err_info;
