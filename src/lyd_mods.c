@@ -821,13 +821,12 @@ sr_ly_nacm_module_imp_clb(const char *mod_name, const char *mod_rev, const char 
  * are installed into sysrepo. Sysrepo internal modules ietf-netconf, ietf-netconf-with-defaults,
  * and ietf-netconf-notifications are also installed.
  *
- * @param[in,out] ly_ctx Context to initialize according to the default created sr_mods.
- * @param[in] sr_mods_ctx Context to parse @p sr_mods_p in.
+ * @param[in,out] ly_ctx Context for parsing @p sr_mods_p and is initialize according to the default created sr_mods.
  * @param[out] sr_mods_p Created default sysrepo module data.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_create(struct ly_ctx *ly_ctx, const struct ly_ctx *sr_mods_ctx, struct lyd_node **sr_mods_p)
+sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
@@ -844,7 +843,7 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, const struct ly_ctx *sr_mods_ctx, struc
     } \
     SR_LOG_INF("Sysrepo internal%s module \"%s\" was installed.", dep ? " dependency" : "", ly_mod->name)
 
-    ly_mod = ly_ctx_get_module_implemented(sr_mods_ctx, SR_YANG_MOD);
+    ly_mod = ly_ctx_get_module_implemented(ly_ctx, SR_YANG_MOD);
     SR_CHECK_INT_RET(!ly_mod, err_info);
 
     /* create empty container */
@@ -1024,9 +1023,6 @@ sr_lydmods_ctx_load_module(const struct lyd_node *sr_mod, struct ly_ctx *ly_ctx,
     const struct lys_module *ly_mod = NULL;
     struct ly_set *feat_set = NULL;
     const char *mod_name, *revision, **features = NULL;
-
-    /* if ly_ctx is recompiled, sr_mod becomes invalid */
-    assert(LYD_CTX(sr_mod) != ly_ctx);
 
     /* learn about the module */
     mod_name = NULL;
@@ -2000,10 +1996,8 @@ cleanup:
 
 /**
  * @brief Apply all scheduled changes in sysrepo module data.
- * Note that @p sr_mods cannot be parsed with @p new_ctx because the context may be recompiled
- * and the links to schema broken.
  *
- * @param[in,out] sr_mods Sysrepo modules data tree.
+ * @param[in,out] sr_mods Sysrepo modules data tree, is updated after scheduled changes are applied.
  * @param[in,out] new_ctx Initalized context with no SR modules loaded. On return all SR modules are loaded
  * with all the changes (if any) applied.
  * @param[out] change Whether sysrepo module data were changed.
@@ -2021,7 +2015,6 @@ sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *ch
     char buf[11];
 
     assert(sr_mods && new_ctx && change);
-    assert(LYD_CTX(sr_mods) != new_ctx);
 
     SR_LOG_INF("Applying scheduled changes.");
     *change = 0;
@@ -2144,7 +2137,6 @@ sr_lydmods_conn_ctx_update(sr_main_shm_t *main_shm, struct ly_ctx **ly_ctx, int 
     int chng, exists, fail, ctx_updated = 0;
     uint32_t conn_count;
     struct lyd_node *sr_mods = NULL;
-    struct ly_ctx *sr_mods_ctx = NULL;
 
     chng = 0;
 
@@ -2153,25 +2145,20 @@ sr_lydmods_conn_ctx_update(sr_main_shm_t *main_shm, struct ly_ctx **ly_ctx, int 
         return err_info;
     }
 
-    /* create temporary context for sr_mods */
-    if ((err_info = sr_shmmain_ly_ctx_init(&sr_mods_ctx))) {
-        goto cleanup;
-    }
-
     /* check whether any internal module data exist */
     if ((err_info = sr_lydmods_exists(&exists))) {
         goto cleanup;
     }
     if (!exists) {
-        /* create new persistent module data file and fill a context accordingly */
-        if ((err_info = sr_lydmods_create(*ly_ctx, sr_mods_ctx, &sr_mods))) {
+        /* create new persistent module data file and fill the context accordingly */
+        if ((err_info = sr_lydmods_create(*ly_ctx, &sr_mods))) {
             goto cleanup;
         }
         ctx_updated = 1;
         chng = 1;
     } else {
         /* parse sysrepo module data */
-        if ((err_info = sr_lydmods_parse(sr_mods_ctx, &sr_mods))) {
+        if ((err_info = sr_lydmods_parse(*ly_ctx, &sr_mods))) {
             goto cleanup;
         }
         if (apply_sched) {
@@ -2189,9 +2176,15 @@ sr_lydmods_conn_ctx_update(sr_main_shm_t *main_shm, struct ly_ctx **ly_ctx, int 
                         goto cleanup;
                     }
 
-                    /* the context is not valid anymore, we have to create it from scratch in the connection */
+                    /* the context is not valid anymore, we have to create it from scratch in the connection
+                     * and reparse sr_mods */
+                    lyd_free_all(sr_mods);
+                    sr_mods = NULL;
                     ly_ctx_destroy(*ly_ctx);
                     if ((err_info = sr_shmmain_ly_ctx_init(ly_ctx))) {
+                        goto cleanup;
+                    }
+                    if ((err_info = sr_lydmods_parse(*ly_ctx, &sr_mods))) {
                         goto cleanup;
                     }
                 } else {
@@ -2227,7 +2220,6 @@ cleanup:
     sr_munlock(&main_shm->lydmods_lock);
 
     lyd_free_all(sr_mods);
-    ly_ctx_destroy(sr_mods_ctx);
     return err_info;
 }
 
@@ -2421,15 +2413,9 @@ sr_lydmods_deferred_add_module_data(sr_main_shm_t *main_shm, struct ly_ctx *ly_c
     struct lyd_node *node, *sr_mods = NULL, *mod_data = NULL;
     char *path = NULL, *data_json = NULL;
     const struct lys_module *ly_mod;
-    struct ly_ctx *sr_mods_ctx = NULL;
     LY_ERR lyrc;
 
     assert((data && !data_path) || (!data && data_path));
-
-    /* create temporary context for sr_mods */
-    if ((err_info = sr_shmmain_ly_ctx_init(&sr_mods_ctx))) {
-        return err_info;
-    }
 
     /* LYDMODS LOCK */
     if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, ly_ctx, __func__))) {
@@ -2437,7 +2423,7 @@ sr_lydmods_deferred_add_module_data(sr_main_shm_t *main_shm, struct ly_ctx *ly_c
     }
 
     /* parse sysrepo module data */
-    if ((err_info = sr_lydmods_parse(sr_mods_ctx, &sr_mods))) {
+    if ((err_info = sr_lydmods_parse(ly_ctx, &sr_mods))) {
         goto cleanup;
     }
 
@@ -2516,7 +2502,6 @@ cleanup:
     ly_set_free(set, NULL);
     lyd_free_all(sr_mods);
     lyd_free_all(mod_data);
-    ly_ctx_destroy(sr_mods_ctx);
     return err_info;
 }
 
