@@ -400,6 +400,7 @@ sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     struct sr_shmmod_recover_cb_s cb_data;
+    int ds_locked = 0;
 
     /* fill recovery callback information */
     cb_data.ly_mod = ly_mod;
@@ -407,20 +408,32 @@ sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod
 
     if (relock) {
         /* RELOCK */
-        err_info = sr_rwrelock(&shm_lock->lock, timeout_ms, mode, cid, __func__, sr_shmmod_recover_cb, &cb_data);
+        err_info = sr_rwrelock(&shm_lock->data_lock, timeout_ms, mode, cid, __func__, sr_shmmod_recover_cb, &cb_data);
     } else {
         /* LOCK */
-        err_info = sr_rwlock(&shm_lock->lock, timeout_ms, mode, cid, __func__, sr_shmmod_recover_cb, &cb_data);
+        err_info = sr_rwlock(&shm_lock->data_lock, timeout_ms, mode, cid, __func__, sr_shmmod_recover_cb, &cb_data);
     }
     if (err_info) {
         return err_info;
     }
 
     if ((mode == SR_LOCK_READ_UPGR) || (mode == SR_LOCK_WRITE)) {
+        /* DS LOCK */
+        if ((err_info = sr_mlock(&shm_lock->ds_lock, SR_DS_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+            goto revert_lock;
+        }
+
         /* DS lock cannot be held for these lock modes */
         if (shm_lock->ds_lock_sid && (shm_lock->ds_lock_sid != sid)) {
             sr_errinfo_new(&err_info, SR_ERR_LOCKED, "Module \"%s\" is DS-locked by session %" PRIu32 ".",
                     ly_mod->name, shm_lock->ds_lock_sid);
+            ds_locked = 1;
+        }
+
+        /* DS UNLOCK */
+        sr_munlock(&shm_lock->ds_lock);
+
+        if (ds_locked) {
             goto revert_lock;
         }
     }
@@ -432,17 +445,17 @@ revert_lock:
         /* RELOCK */
         if ((mode == SR_LOCK_READ) || (mode == SR_LOCK_READ_UPGR)) {
             /* is downgraded, upgrade */
-            tmp_err = sr_rwrelock(&shm_lock->lock, timeout_ms, SR_LOCK_WRITE, cid, __func__, NULL, NULL);
+            tmp_err = sr_rwrelock(&shm_lock->data_lock, timeout_ms, SR_LOCK_WRITE, cid, __func__, NULL, NULL);
         } else {
             /* is upgraded, downgrade */
-            tmp_err = sr_rwrelock(&shm_lock->lock, timeout_ms, SR_LOCK_READ_UPGR, cid, __func__, NULL, NULL);
+            tmp_err = sr_rwrelock(&shm_lock->data_lock, timeout_ms, SR_LOCK_READ_UPGR, cid, __func__, NULL, NULL);
         }
         if (tmp_err) {
             sr_errinfo_merge(&err_info, tmp_err);
         }
     } else {
         /* UNLOCK */
-        sr_rwunlock(&shm_lock->lock, timeout_ms, mode, cid, __func__);
+        sr_rwunlock(&shm_lock->data_lock, timeout_ms, mode, cid, __func__);
     }
     return err_info;
 }
@@ -629,7 +642,7 @@ sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info)
             }
 
             /* MOD UNLOCK */
-            sr_rwunlock(&shm_lock->lock, SR_MOD_LOCK_TIMEOUT, mode, mod_info->conn->cid, __func__);
+            sr_rwunlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT, mode, mod_info->conn->cid, __func__);
         }
 
         if (mod->state & MOD_INFO_RLOCK2) {
@@ -637,7 +650,7 @@ sr_shmmod_modinfo_unlock(struct sr_mod_info_s *mod_info)
             shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds2];
 
             /* MOD READ UNLOCK */
-            sr_rwunlock(&shm_lock->lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, mod_info->conn->cid, __func__);
+            sr_rwunlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, mod_info->conn->cid, __func__);
         }
 
         /* clear all flags */
@@ -653,7 +666,8 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid)
     const struct lys_module *ly_mod;
     struct sr_mod_lock_s *shm_lock;
     sr_datastore_t ds;
-    uint32_t i, lock_sid;
+    int ds_locked;
+    uint32_t i;
 
     for (i = 0; i < SR_CONN_MAIN_SHM(conn)->mod_count; ++i) {
         shm_mod = SR_SHM_MOD_IDX(conn->main_shm.addr, i);
@@ -661,44 +675,40 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid)
         for (ds = 0; ds < SR_DS_COUNT; ++ds) {
             shm_lock = &shm_mod->data_lock_info[ds];
 
-            /* MOD READ LOCK */
-            if ((err_info = sr_shmmod_lock(ly_mod, ds, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, sid, 0))) {
+            /* DS LOCK */
+            if ((err_info = sr_mlock(&shm_lock->ds_lock, SR_DS_LOCK_TIMEOUT, __func__, NULL, NULL))) {
                 sr_errinfo_free(&err_info);
                 continue;
             }
 
-            lock_sid = shm_lock->ds_lock_sid;
-
-            /* MOD READ UNLOCK */
-            sr_rwunlock(&shm_lock->lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
-
-            if (lock_sid != sid) {
-                /* no DS lock held */
-                continue;
-            }
-
-            /* MOD WRITE LOCK */
-            if ((err_info = sr_shmmod_lock(ly_mod, ds, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, sid, 0))) {
-                sr_errinfo_free(&err_info);
-                continue;
-            }
-
-            /* it could have been unlocked in the meantime */
+            ds_locked = 0;
             if (shm_lock->ds_lock_sid == sid) {
-                if (ds == SR_DS_CANDIDATE) {
-                    /* reset candidate */
-                    if ((err_info = sr_remove_candidate_file(ly_mod->name))) {
-                        sr_errinfo_free(&err_info);
-                    }
-                }
+                /* DS lock held */
+                ds_locked = 1;
 
-                /* DS unlock */
+                /* clear DS lock information */
                 shm_lock->ds_lock_sid = 0;
                 memset(&shm_lock->ds_lock_ts, 0, sizeof shm_lock->ds_lock_ts);
             }
 
-            /* MOD WRITE UNLOCK */
-            sr_rwunlock(&shm_lock->lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+            /* DS UNLOCK */
+            sr_munlock(&shm_lock->ds_lock);
+
+            if (ds_locked && (ds == SR_DS_CANDIDATE)) {
+                /* MOD WRITE LOCK */
+                if ((err_info = sr_shmmod_lock(ly_mod, ds, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+                        sid, 0))) {
+                    sr_errinfo_free(&err_info);
+                } else {
+                    /* reset candidate */
+                    if ((err_info = sr_remove_candidate_file(ly_mod->name))) {
+                        sr_errinfo_free(&err_info);
+                    }
+
+                    /* MOD WRITE UNLOCK */
+                    sr_rwunlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+                }
+            }
         }
     }
 }

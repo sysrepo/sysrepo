@@ -137,6 +137,9 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** timeout for locking (data of) a module; maximum time a module write lock is expected to be held (ms) */
 #define SR_MOD_LOCK_TIMEOUT 5000
 
+/** timeout for locking DS lock mutex of a module; is held only when accessing the DS lock information (ms) */
+#define SR_DS_LOCK_TIMEOUT 100
+
 /** timeout for locking SHM module/RPC subscriptions; maxmum time full event processing may take (ms) */
 #define SR_SHMEXT_SUB_LOCK_TIMEOUT 15000
 

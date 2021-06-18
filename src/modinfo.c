@@ -1287,37 +1287,47 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
         shm_lock = &shm_mod->data_lock_info[ds];
 
         /* MOD READ LOCK */
-        if ((err_info = sr_rwlock(&shm_lock->lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__, NULL, NULL))) {
+        if ((err_info = sr_rwlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__, NULL,
+                NULL))) {
             return err_info;
         }
 
         /* data-lock */
         snprintf(buf, BUF_LEN, "data-lock[cid='%%" PRIu32 "'][datastore='%s']/mode", sr_ds2ident(ds));
-        if ((err_info = sr_modinfo_module_srmon_locks_ds(&shm_lock->lock, conn->cid, buf, sr_mod))) {
-            goto mod_unlock;
-        }
+        err_info = sr_modinfo_module_srmon_locks_ds(&shm_lock->data_lock, conn->cid, buf, sr_mod);
 
-        if (!shm_lock->ds_lock_sid) {
-            goto mod_unlock;
-        }
-
-        /* ds-lock (list instance with datastore) */
-        SR_CHECK_LY_GOTO(lyd_new_list(sr_mod, NULL, "ds-lock", 0, &sr_ds_lock, sr_ds2ident(ds)), ly_ctx, err_info, mod_unlock);
-
-        /* sid */
-        sprintf(buf, "%" PRIu32, shm_lock->ds_lock_sid);
-        SR_CHECK_LY_GOTO(lyd_new_term(sr_ds_lock, NULL, "sid", buf, 0, NULL), ly_ctx, err_info, mod_unlock);
-
-        /* timestamp */
-        if (ly_time_ts2str(&shm_lock->ds_lock_ts, &str)) {
-            SR_ERRINFO_MEM(&err_info);
-            goto mod_unlock;
-        }
-        SR_CHECK_LY_GOTO(lyd_new_term(sr_ds_lock, NULL, "timestamp", str, 0, NULL), ly_ctx, err_info, mod_unlock);
-
-mod_unlock:
         /* MOD READ UNLOCK */
-        sr_rwunlock(&shm_lock->lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+        sr_rwunlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+        if (err_info) {
+            return err_info;
+        }
+
+        /* DS LOCK */
+        if ((err_info = sr_mlock(&shm_lock->ds_lock, SR_DS_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+            return err_info;
+        }
+
+        if (shm_lock->ds_lock_sid) {
+            /* ds-lock (list instance with datastore) */
+            SR_CHECK_LY_GOTO(lyd_new_list(sr_mod, NULL, "ds-lock", 0, &sr_ds_lock, sr_ds2ident(ds)), ly_ctx, err_info,
+                    ds_unlock);
+
+            /* sid */
+            sprintf(buf, "%" PRIu32, shm_lock->ds_lock_sid);
+            SR_CHECK_LY_GOTO(lyd_new_term(sr_ds_lock, NULL, "sid", buf, 0, NULL), ly_ctx, err_info, ds_unlock);
+
+            /* timestamp */
+            if (ly_time_ts2str(&shm_lock->ds_lock_ts, &str)) {
+                SR_ERRINFO_MEM(&err_info);
+                goto ds_unlock;
+            }
+            SR_CHECK_LY_GOTO(lyd_new_term(sr_ds_lock, NULL, "timestamp", str, 0, NULL), ly_ctx, err_info, ds_unlock);
+        }
+
+ds_unlock:
+        /* DS UNLOCK */
+        sr_munlock(&shm_lock->ds_lock);
 
         free(str);
         str = NULL;

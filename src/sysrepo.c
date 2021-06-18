@@ -2776,10 +2776,10 @@ cleanup:
 static sr_error_info_t *
 sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, uint32_t sid)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *tmp_err;
     uint32_t i, j;
     char *path;
-    int r;
+    int r, ds_lock = 0;
     struct sr_mod_info_mod_s *mod;
     struct sr_mod_lock_s *shm_lock;
 
@@ -2788,6 +2788,12 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, uint32_t sid)
         shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds];
 
         assert(mod->state & MOD_INFO_REQ);
+
+        /* DS LOCK */
+        if ((err_info = sr_mlock(&shm_lock->ds_lock, SR_DS_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+            goto error;
+        }
+        ds_lock = 1;
 
         /* it was successfully WRITE-locked, check that DS lock state is as expected */
         if (shm_lock->ds_lock_sid && lock) {
@@ -2826,23 +2832,40 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, int lock, uint32_t sid)
             shm_lock->ds_lock_sid = 0;
             memset(&shm_lock->ds_lock_ts, 0, sizeof shm_lock->ds_lock_ts);
         }
+
+        /* DS UNLOCK */
+        sr_munlock(&shm_lock->ds_lock);
+        ds_lock = 0;
     }
 
     return NULL;
 
 error:
+    if (ds_lock) {
+        /* DS UNLOCK */
+        sr_munlock(&shm_lock->ds_lock);
+    }
+
     /* reverse any DS lock state changes */
     for (j = 0; j < i; ++j) {
         shm_lock = &mod_info->mods[j].shm_mod->data_lock_info[mod_info->ds];
 
         assert(((shm_lock->ds_lock_sid == sid) && lock) || (!shm_lock->ds_lock_sid && !lock));
 
-        if (lock) {
-            shm_lock->ds_lock_sid = 0;
-            memset(&shm_lock->ds_lock_ts, 0, sizeof shm_lock->ds_lock_ts);
+        /* DS LOCK */
+        if ((tmp_err = sr_mlock(&shm_lock->ds_lock, SR_DS_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+            sr_errinfo_free(&tmp_err);
         } else {
-            shm_lock->ds_lock_sid = sid;
-            sr_time_get(&shm_lock->ds_lock_ts, 0);
+            if (lock) {
+                shm_lock->ds_lock_sid = 0;
+                memset(&shm_lock->ds_lock_ts, 0, sizeof shm_lock->ds_lock_ts);
+            } else {
+                shm_lock->ds_lock_sid = sid;
+                sr_time_get(&shm_lock->ds_lock_ts, 0);
+            }
+
+            /* DS UNLOCK */
+            sr_munlock(&shm_lock->ds_lock);
         }
     }
 
@@ -2878,7 +2901,7 @@ _sr_un_lock(sr_session_ctx_t *session, const char *module_name, int lock)
         }
     }
 
-    /* collect all required modules and lock */
+    /* collect all required modules and lock to wait until other sessions finish working with the data */
     if (ly_mod) {
         ly_set_add(&mod_set, (void *)ly_mod, 0, NULL);
     } else {
@@ -2935,6 +2958,8 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
     const struct lys_module *ly_mod = NULL;
     struct sr_mod_lock_s *shm_lock = NULL;
     uint32_t i, sid;
+    struct timespec ts;
+    int ds_locked;
 
     SR_CHECK_ARG_APIRET(!conn || !SR_IS_CONVENTIONAL_DS(datastore) || !is_locked, NULL, err_info);
 
@@ -2963,41 +2988,53 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
     } else {
         sr_ly_set_add_all_modules_with_data(&mod_set, conn->ly_ctx, 0);
     }
-    if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_READ,
+    if ((err_info = sr_modinfo_add_modules(&mod_info, &mod_set, 0, SR_LOCK_NONE,
             SR_MI_DATA_NO | SR_MI_PERM_READ | SR_MI_PERM_STRICT, 0, NULL, NULL, NULL, 0, 0))) {
         goto cleanup;
     }
 
     /* check DS-lock of the module(s) */
+    ds_locked = 1;
     sid = 0;
-    for (i = 0; i < mod_info.mod_count; ++i) {
+    for (i = 0; (i < mod_info.mod_count) && ds_locked; ++i) {
         shm_lock = &mod_info.mods[i].shm_mod->data_lock_info[mod_info.ds];
+
+        /* DS LOCK */
+        if ((err_info = sr_mlock(&shm_lock->ds_lock, SR_DS_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+            goto cleanup;
+        }
 
         if (!shm_lock->ds_lock_sid) {
             /* there is at least one module that is not DS-locked */
-            break;
+            ds_locked = 0;
         }
 
-        if (!sid) {
-            /* remember the first DS lock owner */
-            sid = shm_lock->ds_lock_sid;
-        } else if (sid != shm_lock->ds_lock_sid) {
-            /* more DS module lock owners, not a full DS lock */
-            break;
+        if (!ds_locked) {
+            if (!sid) {
+                /* remember the first DS lock information, if full DS lock held, it will be equal for all the modules */
+                sid = shm_lock->ds_lock_sid;
+                ts = shm_lock->ds_lock_ts;
+            } else if (sid != shm_lock->ds_lock_sid) {
+                /* more DS module lock owners, not a full DS lock */
+                ds_locked = 0;
+            }
         }
+
+        /* DS UNLOCK */
+        sr_munlock(&shm_lock->ds_lock);
     }
 
-    if (i < mod_info.mod_count) {
+    if (!ds_locked) {
         /* not full DS lock */
         *is_locked = 0;
     } else if (mod_info.mod_count) {
         /* the module or all modules is DS locked by a single SR session */
         *is_locked = 1;
         if (id) {
-            *id = shm_lock->ds_lock_sid;
+            *id = sid;
         }
         if (timestamp) {
-            *timestamp = shm_lock->ds_lock_ts;
+            *timestamp = ts;
         }
     }
 
