@@ -32,7 +32,7 @@
 #include "common.h"
 
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
-#define SR_SHM_VER 6                        /**< Main and ext SHM version of their expected content structures. */
+#define SR_SHM_VER 7                        /**< Main and ext SHM version of their expected content structures. */
 
 /**
  * Main SHM organization
@@ -92,7 +92,9 @@ typedef struct sr_notif_s {
  */
 struct sr_mod_s {
     struct sr_mod_lock_s {
-        sr_rwlock_t lock;       /**< Process-shared lock for accessing module instance data and DS lock information. */
+        sr_rwlock_t data_lock;  /**< Process-shared lock for accessing module instance data. */
+
+        pthread_mutex_t ds_lock;    /**< Process-shared lock for accessing DS lock information. */
         uint32_t ds_lock_sid;   /**< SID of the module data datastore lock (NETCONF lock), the data can be modified only
                                      by this session. If 0, the DS lock is not held. */
         time_t ds_lock_ts;      /**< Timestamp of the datastore lock. */

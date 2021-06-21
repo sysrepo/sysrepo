@@ -1307,40 +1307,48 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
         shm_lock = &shm_mod->data_lock_info[ds];
 
         /* MOD READ LOCK */
-        if ((err_info = sr_rwlock(&shm_lock->lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__, NULL, NULL))) {
+        if ((err_info = sr_rwlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__, NULL, NULL))) {
             return err_info;
         }
 
         /* data-lock */
         snprintf(path, PATH_LEN, "data-lock[cid='%%"PRIu32"'][datastore='%s']/mode", sr_ds2ident(ds));
-        if ((err_info = sr_modinfo_module_srmon_locks_ds(&shm_lock->lock, conn->cid, path, sr_mod))) {
-            goto mod_unlock;
-        }
+        err_info = sr_modinfo_module_srmon_locks_ds(&shm_lock->data_lock, conn->cid, path, sr_mod);
 
-        if (!shm_lock->ds_lock_sid) {
-            goto mod_unlock;
-        }
-
-        /* ds-lock */
-        sr_ds_lock = lyd_new(sr_mod, NULL, "ds-lock");
-        SR_CHECK_LY_GOTO(!sr_ds_lock, ly_ctx, err_info, mod_unlock);
-
-        /* datastore */
-        SR_CHECK_LY_GOTO(!lyd_new_leaf(sr_ds_lock, NULL, "datastore", sr_ds2ident(ds)), ly_ctx, err_info, mod_unlock);
-
-        /* sid */
-        sprintf(buf, "%"PRIu32, shm_lock->ds_lock_sid);
-        SR_CHECK_LY_GOTO(!lyd_new_leaf(sr_ds_lock, NULL, "sid", buf), ly_ctx, err_info, mod_unlock);
-
-        /* timestamp */
-        if ((err_info = sr_time2datetime(shm_lock->ds_lock_ts, NULL, buf, NULL))) {
-            goto mod_unlock;
-        }
-        SR_CHECK_LY_GOTO(!lyd_new_leaf(sr_ds_lock, NULL, "timestamp", buf), ly_ctx, err_info, mod_unlock);
-
-mod_unlock:
         /* MOD READ UNLOCK */
-        sr_rwunlock(&shm_lock->lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+        sr_rwunlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+        if (err_info) {
+            return err_info;
+        }
+
+        /* DS LOCK */
+        if ((err_info = sr_mlock(&shm_lock->ds_lock, SR_DS_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+            return err_info;
+        }
+
+        if (shm_lock->ds_lock_sid) {
+            /* ds-lock */
+            sr_ds_lock = lyd_new(sr_mod, NULL, "ds-lock");
+            SR_CHECK_LY_GOTO(!sr_ds_lock, ly_ctx, err_info, ds_unlock);
+
+            /* datastore */
+            SR_CHECK_LY_GOTO(!lyd_new_leaf(sr_ds_lock, NULL, "datastore", sr_ds2ident(ds)), ly_ctx, err_info, ds_unlock);
+
+            /* sid */
+            sprintf(buf, "%"PRIu32, shm_lock->ds_lock_sid);
+            SR_CHECK_LY_GOTO(!lyd_new_leaf(sr_ds_lock, NULL, "sid", buf), ly_ctx, err_info, ds_unlock);
+
+            /* timestamp */
+            if ((err_info = sr_time2datetime(shm_lock->ds_lock_ts, NULL, buf, NULL))) {
+                goto ds_unlock;
+            }
+            SR_CHECK_LY_GOTO(!lyd_new_leaf(sr_ds_lock, NULL, "timestamp", buf), ly_ctx, err_info, ds_unlock);
+        }
+
+ds_unlock:
+        /* DS UNLOCK */
+        sr_munlock(&shm_lock->ds_lock);
 
         if (err_info) {
             return err_info;
