@@ -541,8 +541,8 @@ sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradeable, uint32
 
     if (upgradeable) {
         /* read-upgr-lock main DS */
-        if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds, MOD_INFO_RLOCK | MOD_INFO_RLOCK_UPGR
-                | MOD_INFO_WLOCK, MOD_INFO_REQ, SR_LOCK_READ_UPGR, MOD_INFO_RLOCK_UPGR, sid))) {
+        if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds, MOD_INFO_RLOCK | MOD_INFO_RLOCK_UPGR |
+                MOD_INFO_WLOCK, 0, SR_LOCK_READ_UPGR, MOD_INFO_RLOCK_UPGR, sid))) {
             return err_info;
         }
     }
@@ -598,8 +598,9 @@ sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, uint32_t sid)
         mod = &mod_info->mods[i];
         shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds];
 
-        /* upgrade only read-upgr-locked modules */
-        if (mod->state & MOD_INFO_RLOCK_UPGR) {
+        /* upgrade only required read-upgr-locked modules and leave others read-upgr-locked to prevent their locking causing potential dead-lock */
+        if ((mod->state & (MOD_INFO_RLOCK_UPGR | MOD_INFO_REQ)) ==
+                (MOD_INFO_RLOCK_UPGR | MOD_INFO_REQ)) {
             /* MOD WRITE UPGRADE */
             if ((err_info = sr_shmmod_lock(mod->ly_mod, mod_info->ds, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE,
                     mod_info->conn->cid, sid, 1))) {
