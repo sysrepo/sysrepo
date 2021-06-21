@@ -121,7 +121,7 @@ error_ly_print(const struct ly_ctx *ctx)
     struct ly_err_item *e;
 
     for (e = ly_err_first(ctx); e; e = e->next) {
-        error_print(0, "libyang: %s", e->msg);
+        fprintf(stderr, "libyang error: %s\n", e->msg);
     }
 
     ly_err_clean((struct ly_ctx *)ctx, NULL);
