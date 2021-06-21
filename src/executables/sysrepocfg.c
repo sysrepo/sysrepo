@@ -260,7 +260,7 @@ step_load_data(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format,
         lyrc = lyd_parse_data(ly_ctx, NULL, in, format, parse_flags, 0, data);
         break;
     case DATA_EDIT:
-        parse_flags = LYD_PARSE_NO_STATE | LYD_PARSE_ONLY | (opaq ? LYD_PARSE_OPAQ : 0);
+        parse_flags = LYD_PARSE_NO_STATE | LYD_PARSE_ONLY | (opaq ? LYD_PARSE_OPAQ : (not_strict ? 0 : LYD_PARSE_STRICT));
         lyrc = lyd_parse_data(ly_ctx, NULL, in, format, parse_flags, 0, data);
         break;
     case DATA_RPC:
@@ -403,7 +403,12 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
 
     if (file_path) {
         /* just apply an edit from a file */
-        if (step_load_data(sess, file_path, format, DATA_EDIT, 0, opaq, &data)) {
+        if (step_load_data(sess, file_path, format, DATA_EDIT, not_strict, opaq, &data)) {
+            return EXIT_FAILURE;
+        }
+
+        if (!data) {
+            error_print(0, "No parsed data");
             return EXIT_FAILURE;
         }
 
