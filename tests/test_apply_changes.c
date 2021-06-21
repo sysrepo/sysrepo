@@ -6280,6 +6280,116 @@ test_change_enabled(void **state)
     pthread_join(tid[1], NULL);
 }
 
+#define APPLY_ITERATIONS 100
+
+static void *
+apply_when1_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    for (int i = 0; i < APPLY_ITERATIONS; i++) {
+        ret = sr_set_item_str(sess, "/when1:l1", "val", NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* perform 1st change */
+        ret = sr_apply_changes(sess, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* perform 2nd change */
+        ret = sr_delete_item(sess, "/when1:l1", 0);
+        assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_apply_changes(sess, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+apply_when2_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set value for when2:ll when condition */
+    ret = sr_set_item_str(sess, "/when1:l2", "val", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    for (int i = 0; i < APPLY_ITERATIONS; i++) {
+        ret = sr_set_item_str(sess, "/when2:ll", "val", NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* perform 1st change */
+        ret = sr_apply_changes(sess, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* perform 2nd change */
+        ret = sr_delete_item(sess, "/when2:ll", 0);
+        assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_apply_changes(sess, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static int
+module_yield_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
+{
+    (void)session;
+    (void)sub_id;
+    (void)module_name;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+    (void)private_data;
+
+    /* yield to make any race conditions more evident */
+    pthread_yield();
+    return SR_ERR_OK;
+}
+
+static void
+test_mult_update(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr;
+    sr_session_ctx_t *sess;
+    pthread_t tid[2];
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "when1", "/when1:l1", module_yield_cb, st, 0, SR_SUBSCR_DEFAULT, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "when2", "/when2:cont", module_yield_cb, st, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    pthread_create(&tid[0], NULL, apply_when1_thread, *state);
+    pthread_create(&tid[1], NULL, apply_when2_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+
+    sr_unsubscribe(subscr);
+    sr_session_stop(sess);
+}
+
 /* MAIN */
 int
 main(void)
@@ -6306,6 +6416,7 @@ main(void)
         // cmocka_unit_test_setup_teardown(test_change_order, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_userord, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_enabled, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_mult_update, setup_f, teardown_f),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
