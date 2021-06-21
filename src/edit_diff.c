@@ -1353,9 +1353,16 @@ sr_diff_set_oper(struct lyd_node *diff, const char *op)
 {
     sr_error_info_t *err_info = NULL;
 
-    if (lyd_new_meta(LYD_CTX(diff), diff, NULL, "yang:operation", op, 0, NULL)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(diff));
-        return err_info;
+    if (diff->schema) {
+        if (lyd_new_meta(LYD_CTX(diff), diff, NULL, "yang:operation", op, 0, NULL)) {
+            sr_errinfo_new_ly(&err_info, LYD_CTX(diff));
+            return err_info;
+        }
+    } else {
+        if (lyd_new_attr2(diff, "urn:ietf:params:xml:ns:yang:1", "operation", op, NULL)) {
+            sr_errinfo_new_ly(&err_info, LYD_CTX(diff));
+            return err_info;
+        }
     }
 
     return NULL;
@@ -1791,7 +1798,7 @@ sr_edit_apply_none(struct lyd_node *match_node, const struct lyd_node *edit_node
     assert(edit_node || match_node);
 
     if (!match_node) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" does not exist.", edit_node->schema->name);
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" does not exist.", LYD_NAME(edit_node));
         return err_info;
     }
 
@@ -2132,6 +2139,11 @@ sr_edit_apply_create(struct lyd_node **first_node, struct lyd_node *parent_node,
         struct lyd_node **diff_node, enum edit_op *next_op, int *change)
 {
     sr_error_info_t *err_info = NULL;
+
+    if (!edit_node->schema) {
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Opaque (invalid) node \"%s\" cannot be created.", LYD_NAME(edit_node));
+        return err_info;
+    }
 
     if (*match_node) {
         if (lysc_is_np_cont(edit_node->schema)) {
