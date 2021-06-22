@@ -861,7 +861,7 @@ sr_lyd_merge_cb(struct lyd_node *trg_node, const struct lyd_node *src_node, void
     sr_error_info_t *err_info = NULL;
     struct sr_lyd_merge_cb_data *arg = cb_data;
     char *origin = NULL, *cur_origin = NULL;
-    struct lyd_node *child;
+    struct lyd_node *next, *child;
     enum edit_op src_op, trg_op;
     int trg_op_own, meta_changed = 0, cid_changed;
 
@@ -920,7 +920,9 @@ sr_lyd_merge_cb(struct lyd_node *trg_node, const struct lyd_node *src_node, void
 
         if ((src_op != EDIT_MERGE) || (trg_op == EDIT_REMOVE)) {
             /* free target children */
-            lyd_free_siblings(lyd_child_no_keys(trg_node));
+            LY_LIST_FOR_SAFE(lyd_child_no_keys(trg_node), next, child) {
+                lyd_free_tree(child);
+            }
         }
     }
 

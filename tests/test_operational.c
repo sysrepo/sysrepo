@@ -3176,6 +3176,37 @@ test_stored_top_list(void **state)
 
 /* TEST */
 static void
+test_stored_change_revert(void **state)
+{
+    struct state *st = (struct state *)*state;
+    struct lyd_node *data;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create a list instance */
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/test-case[name='a']/a", "vala", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* remove the list instance */
+    ret = sr_oper_delete_item_str(st->sess, "/mixed-config:test-state/test-case[name='a']", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* remove all stored data */
+    ret = sr_discard_oper_changes(st->conn, st->sess, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+/* TEST */
+static void
 test_stored_np_cont1(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -4204,6 +4235,7 @@ main(void)
         cmocka_unit_test_teardown(test_stored_state_list, clear_up),
         cmocka_unit_test_teardown(test_stored_config, clear_up),
         cmocka_unit_test_teardown(test_stored_top_list, clear_up),
+        cmocka_unit_test_teardown(test_stored_change_revert, clear_up),
         cmocka_unit_test_teardown(test_stored_np_cont1, clear_up),
         cmocka_unit_test_teardown(test_stored_np_cont2, clear_up),
         cmocka_unit_test_teardown(test_stored_edit_merge_leaf, clear_up),
