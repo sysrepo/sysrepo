@@ -2134,7 +2134,7 @@ sr_lydmods_conn_ctx_update(sr_main_shm_t *main_shm, struct ly_ctx **ly_ctx, int 
         int *changed)
 {
     sr_error_info_t *err_info = NULL;
-    int chng, exists, fail, ctx_updated = 0;
+    int chng, exists = 0, fail, ctx_updated = 0;
     uint32_t conn_count;
     struct lyd_node *sr_mods = NULL;
 

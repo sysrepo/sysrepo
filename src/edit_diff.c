@@ -2784,7 +2784,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *node = NULL, *p, *parent = NULL;
-    const char *meta_val, *def_origin;
+    const char *meta_val = NULL, *def_origin;
     enum edit_op op;
     int opts, own_oper;
     LY_ERR lyrc;
