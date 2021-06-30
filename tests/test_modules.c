@@ -111,7 +111,7 @@ test_install_module(void **state)
     uint32_t conn_count;
 
     /* install test-module */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/test-module.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/test-module.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -132,7 +132,7 @@ test_install_module(void **state)
     assert_int_equal(ret, SR_ERR_EXISTS);
 
     /* install main-mod */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/main-mod.yang", TESTS_DIR "/files", en_feats);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/main-mod.yang", TESTS_SRC_DIR "/files", en_feats);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -163,13 +163,13 @@ test_data_deps(void **state)
     int ret;
     uint32_t conn_count;
 
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/test.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/ietf-interfaces.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/iana-if-type.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/refs.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/refs.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -244,9 +244,9 @@ test_op_deps(void **state)
     uint32_t conn_count;
     int ret;
 
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/ops-ref.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/ops.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -403,7 +403,7 @@ test_inv_deps(void **state)
     uint32_t conn_count;
     int ret;
 
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/ietf-routing.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/ietf-routing.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -463,9 +463,9 @@ test_remove_module(void **state)
     uint32_t conn_count;
 
     /* install modules with one depending on the other */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/ietf-interfaces.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/ietf-ip.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/ietf-ip.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -505,9 +505,9 @@ test_remove_dep_module(void **state)
     uint32_t conn_count;
 
     /* install modules with one depending on the other */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/ops-ref.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/ops.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -558,9 +558,9 @@ test_remove_imp_module(void **state)
     uint32_t conn_count;
 
     /* install modules with one importing the other */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/simple.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/simple.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/simple-imp.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/simple-imp.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -606,7 +606,7 @@ test_update_module(void **state)
     uint32_t conn_count;
 
     /* install rev */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/rev.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/rev.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -625,9 +625,9 @@ test_update_module(void **state)
     );
 
     /* schedule an update */
-    ret = sr_update_module(st->conn, TESTS_DIR "/files/rev@1970-01-01.yang", NULL);
+    ret = sr_update_module(st->conn, TESTS_SRC_DIR "/files/rev@1970-01-01.yang", NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_update_module(st->conn, TESTS_DIR "/files/rev@1970-01-01.yang", NULL);
+    ret = sr_update_module(st->conn, TESTS_SRC_DIR "/files/rev@1970-01-01.yang", NULL);
     assert_int_equal(ret, SR_ERR_EXISTS);
 
     /* cancel the update */
@@ -635,7 +635,7 @@ test_update_module(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* reschedule */
-    ret = sr_update_module(st->conn, TESTS_DIR "/files/rev@1970-01-01.yang", NULL);
+    ret = sr_update_module(st->conn, TESTS_SRC_DIR "/files/rev@1970-01-01.yang", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* close connection so that changes are applied */
@@ -687,7 +687,7 @@ test_change_feature(void **state)
     uint32_t conn_count;
 
     /* install features with feat1 (will also install test) */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/features.yang", TESTS_DIR "/files", en_feats);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/features.yang", TESTS_SRC_DIR "/files", en_feats);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -820,13 +820,13 @@ test_replay_support(void **state)
     int ret;
     uint32_t conn_count;
 
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/test.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/ietf-interfaces.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/iana-if-type.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/simple.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/simple.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -948,7 +948,7 @@ test_foreign_aug(void **state)
     /*
      * install modules together
      */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/aug.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/aug.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -996,9 +996,9 @@ test_foreign_aug(void **state)
     /*
      * install modules one-by-one
      */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/aug-trg.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/aug-trg.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/aug.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/aug.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -1044,7 +1044,7 @@ test_empty_invalid(void **state)
     uint32_t conn_count;
 
     /* install the module */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/mandatory.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/mandatory.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -1057,7 +1057,7 @@ test_empty_invalid(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* no startup data set so it should fail and remain scheduled */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/mandatory.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/mandatory.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_EXISTS);
 
     /* set startup data */
@@ -1131,11 +1131,11 @@ test_startup_data_foreign_identityref(void **state)
     uint32_t conn_count;
 
     /* install module with types */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/t-types.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/t-types.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* install module with top-level default data */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/defaults.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/defaults.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -1148,7 +1148,7 @@ test_startup_data_foreign_identityref(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* install t1 */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/t1.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/t1.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* scheduled changes not applied */
@@ -1167,7 +1167,7 @@ test_startup_data_foreign_identityref(void **state)
     );
 
     /* install t2 */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/t2.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/t2.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* scheduled changes not applied */
@@ -1275,7 +1275,7 @@ test_set_module_access(void **state)
     int ret;
 
     /* install module test */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/test.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -1347,7 +1347,7 @@ test_get_module_access(void **state)
     mode_t perm;
 
     /* install module test */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/test.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -1407,7 +1407,7 @@ test_get_module_info(void **state)
     char *str, *str2;
     int ret;
 
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/test.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -1454,9 +1454,9 @@ test_feature_dependencies_across_modules(void **state)
     uint32_t conn_count;
 
     /* install modules */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/feature-deps.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/feature-deps.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/feature-deps2.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/feature-deps2.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -1521,7 +1521,7 @@ test_update_data_deviation(void **state)
     int ret;
 
     /* install first module */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/test-cont.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/test-cont.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -1534,7 +1534,7 @@ test_update_data_deviation(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* install second module */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/test-cont-dev.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/test-cont-dev.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -1547,7 +1547,7 @@ test_update_data_deviation(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* install third module */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/defaults.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/defaults.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -1599,7 +1599,7 @@ test_update_data_no_write_perm(void **state)
     group = grp->gr_name;
 
     /* install module with default values */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/defaults.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/defaults.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */
@@ -1616,7 +1616,7 @@ test_update_data_no_write_perm(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* install some module to change context */
-    ret = sr_install_module(st->conn, TESTS_DIR "/files/test-cont.yang", TESTS_DIR "/files", NULL);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/test-cont.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* apply scheduled changes */

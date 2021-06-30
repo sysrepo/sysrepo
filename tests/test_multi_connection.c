@@ -56,13 +56,13 @@ setup_f(void **state)
         return 1;
     }
 
-    if (sr_install_module(st->conn1, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_module(st->conn1, TESTS_SRC_DIR "/files/test.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn1, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_module(st->conn1, TESTS_SRC_DIR "/files/ietf-interfaces.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn1, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_module(st->conn1, TESTS_SRC_DIR "/files/iana-if-type.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
     sr_disconnect(st->conn1);

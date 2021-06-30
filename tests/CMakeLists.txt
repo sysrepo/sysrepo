@@ -1,20 +1,17 @@
 # correct RPATH usage on OS X
 set(CMAKE_MACOSX_RPATH TRUE)
 
-# set TESTS_DIR to realpath
-get_filename_component(TESTS_DIR "${CMAKE_SOURCE_DIR}/tests" REALPATH)
+# set paths to realpath
+get_filename_component(TESTS_SRC_DIR "${CMAKE_SOURCE_DIR}/tests" REALPATH)
+get_filename_component(TESTS_REPO_DIR "${CMAKE_BINARY_DIR}" REALPATH)
 
 include_directories(SYSTEM ${CMOCKA_INCLUDE_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(${PROJECT_BINARY_DIR}/tests)
 
 # headers test for including compat.h
 add_test(NAME headers
     COMMAND ${CMAKE_SOURCE_DIR}/compat/check_includes.sh ${CMAKE_SOURCE_DIR}/src/ ${CMAKE_SOURCE_DIR}/src/executables/ ${CMAKE_SOURCE_DIR}/src/utils/)
-
-# format
-if (${SOURCE_FORMAT_ENABLED})
-    add_test(NAME format WORKING_DIRECTORY ${CMAKE_BINARY_DIR} COMMAND make format-check)
-endif()
 
 # check for pthread_barrier existence
 check_function_exists(pthread_barrier_init SR_HAVE_PTHREAD_BARRIER)
@@ -27,37 +24,42 @@ endif()
 # generate config
 configure_file("${PROJECT_SOURCE_DIR}/tests/config.h.in" "${PROJECT_BINARY_DIR}/tests/config.h" ESCAPE_QUOTES @ONLY)
 
-# lists of all the tests
-set(tests test_modules test_validation test_edit test_candidate test_operational test_lock test_apply_changes
-    test_copy_config test_rpc_action test_notif test_get test_process test_multi_connection)
+if(ENABLE_TESTS)
+    # format
+    if (${SOURCE_FORMAT_ENABLED})
+        add_test(NAME format WORKING_DIRECTORY ${CMAKE_BINARY_DIR} COMMAND make format-check)
+    endif()
 
-foreach(test_name IN LISTS tests)
-    add_executable(${test_name} ${test_sources} ${test_name}.c)
-endforeach(test_name)
+    # lists of all the tests
+    set(tests test_modules test_validation test_edit test_candidate test_operational test_lock test_apply_changes
+        test_copy_config test_rpc_action test_notif test_get test_process test_multi_connection)
 
-# set common attributes of all tests
-foreach(test_name IN LISTS tests)
-    target_link_libraries(${test_name} ${CMOCKA_LIBRARIES} sysrepo)
-    add_test(NAME ${test_name} COMMAND $<TARGET_FILE:${test_name}>)
-    set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
-        "MALLOC_CHECK_=3"
-        "TZ=CET+02:00"
-        "CMOCKA_TEST_ABORT=1"
-        "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"
-        "SYSREPO_SHM_PREFIX=_tests_sr_${test_name}"
-    )
-endforeach(test_name)
+    foreach(test_name IN LISTS tests)
+        add_executable(${test_name} ${test_sources} ${test_name}.c)
+    endforeach()
 
-# phony target for clearing all sysrepo test data
-add_custom_target(test_clean
-    COMMAND rm -rf ${PROJECT_BINARY_DIR}/test_repositories
-    COMMAND rm -rf /dev/shm/_tests_sr_*
-)
+    # set common attributes of all tests
+    foreach(test_name IN LISTS tests)
+        target_link_libraries(${test_name} ${CMOCKA_LIBRARIES} sysrepo)
+        add_test(NAME ${test_name} COMMAND $<TARGET_FILE:${test_name}>)
+        set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
+            "MALLOC_CHECK_=3"
+            "TZ=CET+02:00"
+            "CMOCKA_TEST_ABORT=1"
+            "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"
+            "SYSREPO_SHM_PREFIX=_tests_sr_${test_name}"
+        )
+    endforeach()
+endif()
 
-# measure_performance benchmark binary
-set(SR_PERF measure_performance)
-add_executable(${SR_PERF} ${SR_PERF}.c)
-target_link_libraries(${SR_PERF} ${CMOCKA_LIBRARIES} sysrepo)
+# sr_perf benchmark binary
+if(ENABLE_PERF_TESTS)
+    add_executable(sr_perf ${CMAKE_CURRENT_SOURCE_DIR}/perf.c)
+    target_link_libraries(sr_perf sysrepo)
+
+    add_test(NAME sr_perf_1000 COMMAND sr_perf 1000 10)
+    add_test(NAME sr_perf_100000 COMMAND sr_perf 100000 3)
+endif()
 
 # valgrind tests
 if(ENABLE_VALGRIND_TESTS)
@@ -68,5 +70,11 @@ if(ENABLE_VALGRIND_TESTS)
             "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"
             "SYSREPO_SHM_PREFIX=_tests_sr_${test_name}"
         )
-    endforeach(test_name)
+    endforeach()
 endif()
+
+# phony target for clearing all sysrepo test data
+add_custom_target(test_clean
+    COMMAND rm -rf ${PROJECT_BINARY_DIR}/test_repositories
+    COMMAND rm -rf /dev/shm/_tests_sr_*
+)

@@ -16,7 +16,9 @@
 #ifndef SRTEST_CONFIG_H_
 #define SRTEST_CONFIG_H_
 
-#define TESTS_DIR "@TESTS_DIR@"
+#define TESTS_SRC_DIR "@TESTS_SRC_DIR@"
+
+#define TESTS_REPO_DIR "@TESTS_REPO_DIR@"
 
 /** implemented ietf-yang-library revision (copied from common.h) */
 #define SR_YANGLIB_REVISION @YANGLIB_REVISION@
@@ -25,5 +27,10 @@
 #ifndef SR_HAVE_PTHREAD_BARRIER
 # include "pthread_barrier.h"
 #endif
+
+/**
+ * @brief Macro for support of callgrind header and macros.
+ */
+#cmakedefine SR_HAVE_CALLGRIND
 
 #endif /* SRTEST_CONFIG_H_ */

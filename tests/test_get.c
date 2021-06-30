@@ -54,13 +54,13 @@ setup(void **state, int cached)
         return 1;
     }
 
-    if (sr_install_module(st->conn, TESTS_DIR "/files/simple.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/simple.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/simple-aug.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/simple-aug.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/defaults.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/defaults.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
     sr_disconnect(st->conn);

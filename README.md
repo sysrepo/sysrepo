@@ -232,3 +232,17 @@ Tests can be run by the make's `test` target:
 ```
 $ make test
 ```
+
+### Perf
+
+There is a performance measurement tool included that prints information about
+the time required to execute common use-cases of working with large YANG instance data.
+
+To enable this test, use:
+```
+$ cmake -DENABLE_PERF_TESTS=ON ..
+```
+and to run the test with seeing its output:
+```
+ctest -V -R sr_perf
+```

@@ -218,12 +218,15 @@ set(FORMAT_SOURCES
 # checks
 #
 if(ENABLE_VALGRIND_TESTS)
-    find_program(VALGRIND_FOUND valgrind)
-    if(NOT VALGRIND_FOUND)
-        message(WARNING "valgrind executable not found! Disabling memory leaks tests.")
+    if(NOT ENABLE_TESTS)
+        message(WARNING "Tests are disabled! Disabling memory leak tests.")
         set(ENABLE_VALGRIND_TESTS OFF)
     else()
-        set(ENABLE_TESTS ON)
+        find_program(VALGRIND_FOUND valgrind)
+        if(NOT VALGRIND_FOUND)
+            message(WARNING "valgrind executable not found! Disabling memory leaks tests.")
+            set(ENABLE_VALGRIND_TESTS OFF)
+        endif()
     endif()
 endif()
 
@@ -232,6 +235,24 @@ if(ENABLE_TESTS)
     if(NOT CMOCKA_FOUND)
         message(STATUS "Disabling tests because of missing CMocka")
         set(ENABLE_TESTS OFF)
+    endif()
+endif()
+
+if(ENABLE_PERF_TESTS)
+    find_path(CALLGRIND_INCLUDE_DIR
+        NAMES
+        valgrind/callgrind.h
+        PATHS
+        /usr/include
+        /usr/local/include
+        /opt/local/include
+        /sw/include
+        ${CMAKE_INCLUDE_PATH}
+        ${CMAKE_INSTALL_PREFIX}/include)
+    if(CALLGRIND_INCLUDE_DIR)
+        set(SR_HAVE_CALLGRIND 1)
+    else()
+        message(STATUS "Disabling callgrind macros in performance tests because of missing headers")
     endif()
 endif()
 
@@ -332,7 +353,7 @@ if(INSTALL_SYSCTL_CONF)
 endif()
 
 # tests
-if(ENABLE_TESTS)
+if(ENABLE_TESTS OR ENABLE_PERF_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()

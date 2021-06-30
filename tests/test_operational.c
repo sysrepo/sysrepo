@@ -57,50 +57,50 @@ setup(void **state)
         return 1;
     }
 
-    if (sr_install_module(st->conn, TESTS_DIR "/files/test.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/test.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/ietf-interfaces.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/ietf-interfaces.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/iana-if-type.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/iana-if-type.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/ietf-if-aug.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/ietf-if-aug.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/ietf-interface-protection.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/ietf-interface-protection.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/ietf-microwave-radio-link.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/ietf-microwave-radio-link.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/mixed-config.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/mixed-config.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/act.yang", TESTS_DIR "/files", act_feats) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/act.yang", TESTS_SRC_DIR "/files", act_feats) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/act2.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/act2.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/act3.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/act3.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/defaults.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/defaults.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/ops-ref.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/ops-ref.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/ops.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/ops.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/czechlight-roadm-device@2019-09-30.yang", TESTS_DIR "/files",
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/czechlight-roadm-device@2019-09-30.yang", TESTS_SRC_DIR "/files",
             rd_feats) != SR_ERR_OK) {
         return 1;
     }
-    if (sr_install_module(st->conn, TESTS_DIR "/files/oper-group-test.yang", TESTS_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/oper-group-test.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
     sr_disconnect(st->conn);
