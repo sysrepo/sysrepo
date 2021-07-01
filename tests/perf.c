@@ -502,7 +502,7 @@ test_edit_item_create(struct test_state *state, struct timespec *ts_start, struc
         return r;
     }
 
-    if ((r = sr_apply_changes(state->sess, 0))) {
+    if ((r = sr_apply_changes(state->sess, state->count * 100))) {
         return r;
     }
 
@@ -513,7 +513,7 @@ test_edit_item_create(struct test_state *state, struct timespec *ts_start, struc
     if ((r = sr_delete_item(state->sess, "/perf:cont/lst", 0))) {
         return r;
     }
-    if ((r = sr_apply_changes(state->sess, 0))) {
+    if ((r = sr_apply_changes(state->sess, state->count * 100))) {
         return r;
     }
 
@@ -537,7 +537,7 @@ test_edit_batch_create(struct test_state *state, struct timespec *ts_start, stru
         }
     }
 
-    if ((r = sr_apply_changes(state->sess, 0))) {
+    if ((r = sr_apply_changes(state->sess, state->count * 100))) {
         return r;
     }
 
@@ -546,7 +546,7 @@ test_edit_batch_create(struct test_state *state, struct timespec *ts_start, stru
     if ((r = sr_delete_item(state->sess, "/perf:cont/lst", 0))) {
         return r;
     }
-    if ((r = sr_apply_changes(state->sess, 0))) {
+    if ((r = sr_apply_changes(state->sess, state->count * 100))) {
         return r;
     }
 
