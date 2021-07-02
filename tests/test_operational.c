@@ -3179,9 +3179,6 @@ static void
 test_stored_change_revert(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *data;
-    char *str1;
-    const char *str2;
     int ret;
 
     /* switch to operational DS */
