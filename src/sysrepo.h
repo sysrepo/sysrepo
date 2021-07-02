@@ -717,7 +717,7 @@ void sr_free_values(sr_val_t *values, size_t count);
  * the node must not exist (otherwise an error is returned). Neither option is allowed
  * for ::SR_DS_OPERATIONAL.
  *
- * To create a list use xpath with key values included and pass NULL as value argument.
+ * To create a list use @p path with key values included in predicates, @p value will be ignored.
  *
  * Setting of a leaf-list value appends the value at the end of the leaf-list.
  * A value of leaf-list can be specified either by predicate in xpath or by value argument.
