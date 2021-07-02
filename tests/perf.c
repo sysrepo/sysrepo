@@ -166,7 +166,7 @@ exec_test(setup_cb setup, test_cb test, const char *name, uint32_t count, uint32
     while (printed + 2 < name_fixed_len) {
         printed += sprintf(str + printed, ".");
     }
-    if (printed < name_fixed_len) {
+    if (printed + 1 < name_fixed_len) {
         printed += sprintf(str + printed, " ");
     }
     sprintf(str + printed, "|");
