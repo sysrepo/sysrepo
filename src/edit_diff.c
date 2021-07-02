@@ -1992,41 +1992,70 @@ sr_diff_merge_replace(struct lyd_node *diff_match, enum edit_op cur_op, int val_
         }
         break;
     case EDIT_NONE:
-        /* it is moved now */
-        assert(sr_ly_is_userord(diff_match) && (diff_match->schema->nodetype == LYS_LIST));
-
-        /* change the operation */
-        sr_edit_del_attr(diff_match, "operation");
-        if ((err_info = sr_edit_set_oper(diff_match, "replace"))) {
-            return err_info;
-        }
-
-        /* copy the attributes */
-        for (attr = src_node->attr; attr; attr = attr->next) {
-            if (!strcmp(attr->name, "orig-key") && !strcmp(attr->annotation->module->name, SR_YANG_MOD)) {
-                break;
-            }
-        }
-        assert(attr);
-        if (attr->value_str[0]) {
-            /* the problem here is that the anchor node cannot be a node from this stored oper diff */
-            if ((err_info = sr_edit_find_userord_predicate(lyd_first_sibling(diff_match), diff_match, attr->value_str,
-                    &diff_sibling))) {
+        if (diff_match->schema->nodetype == LYS_LEAF) {
+            /* leaf with changed default flag, now with changed value as well (so cannot be default) */
+            assert(!src_node->dflt);
+            if (val_equal) {
+                /* replaced with the exact same value, impossible */
+                SR_ERRINFO_INT(&err_info);
                 return err_info;
             }
-            if (diff_sibling) {
-                /* use anchor node of the node that was already in this stored oper diff instead */
-                for (attr = diff_sibling->attr; attr; attr = attr->next) {
-                    if (!strcmp(attr->name, "key") && !strcmp(attr->annotation->module->name, "yang")) {
-                        break;
+
+            /* change the operation */
+            sr_edit_del_attr(diff_match, "operation");
+            if ((err_info = sr_edit_set_oper(diff_match, "replace"))) {
+                return err_info;
+            }
+
+            /* store original value */
+            if (!lyd_insert_attr(diff_match, NULL, SR_YANG_MOD ":orig-value", sr_ly_leaf_value_str(diff_match))) {
+                sr_errinfo_new_ly(&err_info, lyd_node_module(diff_match)->ctx);
+                return err_info;
+            }
+
+            /* modify the node value */
+            ret = lyd_change_leaf((struct lyd_node_leaf_list *)diff_match, sr_ly_leaf_value_str(src_node));
+            if (ret != 0) {
+                SR_ERRINFO_INT(&err_info);
+                return err_info;
+            }
+        } else {
+            /* userord list, it is moved now */
+            assert(sr_ly_is_userord(diff_match) && (diff_match->schema->nodetype == LYS_LIST));
+
+            /* change the operation */
+            sr_edit_del_attr(diff_match, "operation");
+            if ((err_info = sr_edit_set_oper(diff_match, "replace"))) {
+                return err_info;
+            }
+
+            /* copy the attributes */
+            for (attr = src_node->attr; attr; attr = attr->next) {
+                if (!strcmp(attr->name, "orig-key") && !strcmp(attr->annotation->module->name, SR_YANG_MOD)) {
+                    break;
+                }
+            }
+            assert(attr);
+            if (attr->value_str[0]) {
+                /* the problem here is that the anchor node cannot be a node from this stored oper diff */
+                if ((err_info = sr_edit_find_userord_predicate(lyd_first_sibling(diff_match), diff_match, attr->value_str,
+                        &diff_sibling))) {
+                    return err_info;
+                }
+                if (diff_sibling) {
+                    /* use anchor node of the node that was already in this stored oper diff instead */
+                    for (attr = diff_sibling->attr; attr; attr = attr->next) {
+                        if (!strcmp(attr->name, "key") && !strcmp(attr->annotation->module->name, "yang")) {
+                            break;
+                        }
                     }
                 }
             }
-        }
-        if (!lyd_insert_attr(diff_match, NULL, "yang:key", key_or_value) ||
-                !lyd_insert_attr(diff_match, NULL, SR_YANG_MOD ":orig-key", attr->value_str)) {
-            sr_errinfo_new_ly(&err_info, lyd_node_module(diff_match)->ctx);
-            return err_info;
+            if (!lyd_insert_attr(diff_match, NULL, "yang:key", key_or_value) ||
+                    !lyd_insert_attr(diff_match, NULL, SR_YANG_MOD ":orig-key", attr->value_str)) {
+                sr_errinfo_new_ly(&err_info, lyd_node_module(diff_match)->ctx);
+                return err_info;
+            }
         }
         break;
     default:

@@ -2681,9 +2681,6 @@ test_stored_config(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/description",
             "config-description", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled",
-            "false", NULL, SR_EDIT_STRICT);
-    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -2699,6 +2696,8 @@ test_stored_config(void **state)
     /* overwrite running data by some operational config data */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/description",
             "oper-description", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", "true", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2719,16 +2718,18 @@ test_stored_config(void **state)
             "<name>eth1</name>"
             "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
             "<description or:origin=\"unknown\">oper-description</description>"
-            "<enabled>false</enabled>"
+            "<enabled or:origin=\"unknown\">true</enabled>"
         "</interface>"
     "</interfaces>";
 
     assert_string_equal(str1, str2);
     free(str1);
 
-    /* set the description back to original value */
+    /* set the description back to original value and replace enabled */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/description",
             "config-description", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", "false", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2749,7 +2750,7 @@ test_stored_config(void **state)
             "<name>eth1</name>"
             "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
             "<description>config-description</description>"
-            "<enabled>false</enabled>"
+            "<enabled or:origin=\"unknown\">false</enabled>"
         "</interface>"
     "</interfaces>";
 
