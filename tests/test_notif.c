@@ -318,7 +318,7 @@ test_input_parameters(void **state)
     struct ly_ctx *ctx;
 
     assert_int_equal(LY_SUCCESS, ly_ctx_new(TESTS_SRC_DIR "/files/", 0, &ctx));
-    const struct lys_module *mod;
+    struct lys_module *mod;
 
     assert_int_equal(LY_SUCCESS, lys_parse_path(ctx, TESTS_SRC_DIR "/files/simple.yang", LYS_IN_YANG, &mod));
     assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, ctx, "/simple:ac1", NULL, 0, 0, 0, NULL, &input));

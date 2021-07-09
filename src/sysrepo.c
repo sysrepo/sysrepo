@@ -1036,12 +1036,12 @@ sr_get_module_name_format(const char *schema_path, char **module_name, LYS_INFOR
  * @param[in] search_dirs Optional search dirs, in format <dir>[:<dir>]*.
  * @return err_info, NULL on success.
  */
-static const struct lys_module *
+static struct lys_module *
 sr_parse_module(struct ly_ctx *ly_ctx, const char *schema_path, LYS_INFORMAT format, const char **features,
         const char *search_dirs)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod = NULL;
+    struct lys_module *ly_mod = NULL;
     char *sdirs_str = NULL, *ptr, *ptr2 = NULL;
     size_t sdir_count = 0;
     struct ly_in *in = NULL;

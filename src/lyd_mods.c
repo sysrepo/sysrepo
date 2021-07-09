@@ -829,7 +829,7 @@ static sr_error_info_t *
 sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
+    struct lys_module *ly_mod;
     struct lyd_node *sr_mods = NULL;
     uint32_t i;
 
@@ -1794,7 +1794,7 @@ cleanup:
 
 static sr_error_info_t *
 sr_lys_parse_mem(struct ly_ctx *ly_ctx, const char *path, const struct ly_set *feat_set,
-        const struct lys_module **ly_mod, int *fail)
+        struct lys_module **ly_mod, int *fail)
 {
     sr_error_info_t *err_info = NULL;
     const char **features;
@@ -1836,7 +1836,7 @@ sr_lydmods_sched_check_removed_modules(const struct lyd_node *sr_mods, const str
     struct lyd_node *node;
     struct ly_set *set = NULL;
     const char *mod_name, *revision;
-    const struct lys_module *ly_mod;
+    struct lys_module *ly_mod;
     uint32_t i;
 
     assert(sr_mods);
@@ -1895,7 +1895,7 @@ static sr_error_info_t *
 sr_lydmods_sched_ctx_update_modules(const struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *change)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
+    struct lys_module *ly_mod;
     struct ly_set *set = NULL, *feat_set = NULL;
     uint32_t i;
 
@@ -1949,7 +1949,7 @@ static sr_error_info_t *
 sr_lydmods_sched_ctx_install_modules(const struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *change, int *fail)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
+    struct lys_module *ly_mod;
     struct ly_set *set = NULL, *feat_set = NULL;
     uint32_t i;
 
@@ -2361,11 +2361,11 @@ cleanup:
  */
 static sr_error_info_t *
 sr_lydmods_ctx_load_installed_module_all(const struct lyd_node *sr_mods, struct ly_ctx *ly_ctx, const char *module_name,
-        const struct lys_module **ly_mod)
+        struct lys_module **ly_mod)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL;
-    const struct lys_module *lmod;
+    struct lys_module *lmod;
     uint32_t i;
 
     *ly_mod = NULL;
@@ -2412,7 +2412,7 @@ sr_lydmods_deferred_add_module_data(sr_main_shm_t *main_shm, struct ly_ctx *ly_c
     struct ly_set *set = NULL;
     struct lyd_node *node, *sr_mods = NULL, *mod_data = NULL;
     char *path = NULL, *data_json = NULL;
-    const struct lys_module *ly_mod;
+    struct lys_module *ly_mod;
     LY_ERR lyrc;
 
     assert((data && !data_path) || (!data && data_path));
