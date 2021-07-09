@@ -897,12 +897,6 @@ sr_subs_session_del(sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock, sr_sub
         }
     }
 
-    /* remove ourselves from session subscriptions (needs SUBS lock to avoid removing it twice in case of reaching
-     * a notification stop time) */
-    if ((err_info = sr_ptr_del(&sess->ptr_lock, (void ***)&sess->subscriptions, &sess->subscription_count, subs))) {
-        goto cleanup_subs_unlock;
-    }
-
     /* change subscriptions */
     i = 0;
     while (i < subs->change_sub_count) {
@@ -1033,6 +1027,12 @@ sr_subs_session_del(sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock, sr_sub
         if (!del) {
             ++i;
         }
+    }
+
+    /* remove ourselves from session subscriptions (needs SUBS lock to avoid removing it twice in case of reaching
+     * a notification stop time) */
+    if ((err_info = sr_ptr_del(&sess->ptr_lock, (void ***)&sess->subscriptions, &sess->subscription_count, subs))) {
+        goto cleanup_subs_unlock;
     }
 
 cleanup_subs_unlock:

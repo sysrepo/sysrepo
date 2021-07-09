@@ -275,8 +275,11 @@ sr_disconnect(sr_conn_ctx_t *conn)
     /* stop all subscriptions */
     for (i = 0; i < conn->session_count; ++i) {
         while (conn->sessions[i]->subscription_count && conn->sessions[i]->subscriptions[0]) {
-            tmp_err = _sr_unsubscribe(conn->sessions[i]->subscriptions[0]);
-            sr_errinfo_merge(&err_info, tmp_err);
+            /* return error */
+            if ((tmp_err = _sr_unsubscribe(conn->sessions[i]->subscriptions[0]))) {
+                sr_errinfo_merge(&err_info, tmp_err);
+                return sr_api_ret(NULL, err_info);
+            }
         }
     }
 
@@ -510,7 +513,7 @@ _sr_session_stop(sr_session_ctx_t *session)
 API int
 sr_session_stop(sr_session_ctx_t *session)
 {
-    sr_error_info_t *err_info = NULL, *tmp_err;
+    sr_error_info_t *err_info = NULL;
 
     if (!session) {
         return sr_api_ret(NULL, NULL);
@@ -518,14 +521,13 @@ sr_session_stop(sr_session_ctx_t *session)
 
     /* stop all subscriptions of this session */
     while (session->subscription_count) {
-        tmp_err = sr_subs_session_del(session, SR_LOCK_NONE, session->subscriptions[0]);
-        sr_errinfo_merge(&err_info, tmp_err);
+        if ((err_info = sr_subs_session_del(session, SR_LOCK_NONE, session->subscriptions[0]))) {
+            return sr_api_ret(NULL, err_info);
+        }
     }
 
     /* free the session itself */
-    tmp_err = _sr_session_stop(session);
-    sr_errinfo_merge(&err_info, tmp_err);
-
+    err_info = _sr_session_stop(session);
     return sr_api_ret(NULL, err_info);
 }
 
@@ -2822,9 +2824,8 @@ _sr_unsubscribe(sr_subscription_ctx_t *subscription)
     assert(subscription);
 
     /* delete all subscriptions (also removes this subscription from all the sessions) */
-    if ((tmp_err = sr_subs_del_all(subscription))) {
-        /* continue */
-        sr_errinfo_merge(&err_info, tmp_err);
+    if ((err_info = sr_subs_del_all(subscription))) {
+        return err_info;
     }
 
     /* no new events can be generated at this point */
@@ -2834,9 +2835,9 @@ _sr_unsubscribe(sr_subscription_ctx_t *subscription)
         ATOMIC_STORE_RELAXED(subscription->thread_running, 0);
 
         /* generate a new event for the thread to wake up */
-        err_info = sr_shmsub_notify_evpipe(subscription->evpipe_num);
-
-        if (!err_info) {
+        if ((tmp_err = sr_shmsub_notify_evpipe(subscription->evpipe_num))) {
+            sr_errinfo_merge(&err_info, tmp_err);
+        } else {
             /* join the thread */
             ret = pthread_join(subscription->tid, NULL);
             if (ret) {

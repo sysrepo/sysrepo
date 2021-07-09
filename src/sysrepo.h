@@ -240,7 +240,7 @@ int sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn);
  * Cleans up and frees connection context allocated by ::sr_connect. All sessions and subscriptions
  * started within the connection will be automatically stopped and cleaned up too.
  *
- * @note Connection and all its associated sessions and subscriptions can no longer be used even on error.
+ * @note On error the function should be retried and must eventually succeed.
  *
  * @param[in] conn Connection acquired with ::sr_connect call.
  * @return Error code (::SR_ERR_OK on success).
@@ -306,9 +306,9 @@ int sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_ses
  *
  * Also releases any locks held and frees subscriptions created (only) by this session.
  *
- * @note Session can no longer be used even on error. Subscriptions, even
- * if they no longer handle any events are **never** freed and should be manually
- * freed using ::sr_unsubscribe.
+ * @note On error the function should be retried and must eventually succeed.
+ * Subscriptions, even if they no longer handle any events are **never** freed
+ * and should be manually freed using ::sr_unsubscribe.
  *
  * @param[in] session Session context acquired with ::sr_session_start call.
  * @return Error code (::SR_ERR_OK on success).
@@ -1253,7 +1253,7 @@ int sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *ses
  * In case that the same subscription context was used to subscribe for
  * multiple subscriptions, unsubscribes from all of them.
  *
- * @note Subscription will no longer work even on error.
+ * @note On error the function should be retried and must eventually succeed.
  *
  * @param[in] subscription Subscription context acquired by any of sr_*_subscribe calls.
  * @return Error code (::SR_ERR_OK on success).
