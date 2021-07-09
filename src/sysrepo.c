@@ -271,8 +271,9 @@ cleanup:
 API int
 sr_disconnect(sr_conn_ctx_t *conn)
 {
-    sr_error_info_t *err_info = NULL, *tmp_err;
+    sr_error_info_t *err_info = NULL;
     uint32_t i;
+    int rc;
 
     if (!conn) {
         return sr_api_ret(NULL, NULL);
@@ -280,35 +281,41 @@ sr_disconnect(sr_conn_ctx_t *conn)
 
     /* stop all session notification buffer threads, they use read lock so they need conn state in SHM */
     for (i = 0; i < conn->session_count; ++i) {
-        tmp_err = sr_session_notif_buf_stop(conn->sessions[i]);
-        sr_errinfo_merge(&err_info, tmp_err);
+        if ((err_info = sr_session_notif_buf_stop(conn->sessions[i]))) {
+            return sr_api_ret(NULL, err_info);
+        }
     }
 
     /* stop all subscriptions */
     for (i = 0; i < conn->session_count; ++i) {
         while (conn->sessions[i]->subscription_count && conn->sessions[i]->subscriptions[0]) {
-            tmp_err = _sr_unsubscribe(conn->sessions[i]->subscriptions[0]);
-            sr_errinfo_merge(&err_info, tmp_err);
+            if ((err_info = _sr_unsubscribe(conn->sessions[i]->subscriptions[0]))) {
+                return sr_api_ret(NULL, err_info);
+            }
         }
     }
 
     /* stop all the sessions */
     while (conn->session_count) {
-        tmp_err = _sr_session_stop(conn->sessions[0]);
-        sr_errinfo_merge(&err_info, tmp_err);
+        if ((err_info = _sr_session_stop(conn->sessions[0]))) {
+            return sr_api_ret(NULL, err_info);
+        }
     }
 
-    /* free any stored operational data (API function, ignore error) */
-    sr_discard_oper_changes(conn, NULL, NULL, 0);
+    /* free any stored operational data (API function) */
+    if ((rc = sr_discard_oper_changes(conn, NULL, NULL, 0))) {
+        return rc;
+    }
 
     /* stop tracking this connection */
-    tmp_err = sr_shmmain_conn_list_del(conn->cid);
-    sr_errinfo_merge(&err_info, tmp_err);
+    if ((err_info = sr_shmmain_conn_list_del(conn->cid))) {
+        return sr_api_ret(NULL, err_info);
+    }
 
     /* free attributes */
     sr_conn_free(conn);
 
-    return sr_api_ret(NULL, err_info);
+    return sr_api_ret(NULL, NULL);
 }
 
 API int
@@ -570,16 +577,18 @@ sr_session_notif_buf_stop(sr_session_ctx_t *session)
     /* signal the thread to terminate */
     ATOMIC_STORE_RELAXED(session->notif_buf.thread_running, 0);
 
-    /* wake up the thread */
     sr_time_get(&timeout_ts, SR_NOTIF_BUF_LOCK_TIMEOUT);
 
     /* MUTEX LOCK */
     ret = pthread_mutex_timedlock(&session->notif_buf.lock.mutex, &timeout_ts);
     if (ret) {
         SR_ERRINFO_LOCK(&err_info, __func__, ret);
+        /* restore */
+        ATOMIC_STORE_RELAXED(session->notif_buf.thread_running, 1);
         return err_info;
     }
 
+    /* wake up the thread */
     pthread_cond_broadcast(&session->notif_buf.lock.cond);
 
     /* MUTEX UNLOCK */
@@ -613,15 +622,17 @@ _sr_session_stop(sr_session_ctx_t *session)
     /* subscriptions need to be freed before, with a WRITE lock */
     assert(!session->subscription_count && !session->subscriptions);
 
+    /* stop notification buffering thread */
+    if ((err_info = sr_session_notif_buf_stop(session))) {
+        return err_info;
+    }
+
     /* remove ourselves from conn sessions */
     tmp_err = sr_ptr_del(&session->conn->ptr_lock, (void ***)&session->conn->sessions, &session->conn->session_count, session);
     sr_errinfo_merge(&err_info, tmp_err);
 
     /* release any held locks */
     sr_shmmod_release_locks(session->conn, session->sid);
-
-    /* stop notification buffering thread */
-    sr_session_notif_buf_stop(session);
 
     /* free attributes */
     free(session->user);
@@ -647,37 +658,42 @@ _sr_session_stop(sr_session_ctx_t *session)
 API int
 sr_session_stop(sr_session_ctx_t *session)
 {
-    sr_error_info_t *err_info = NULL, *tmp_err;
+    sr_error_info_t *err_info = NULL;
+    int rc;
 
     if (!session) {
         return sr_api_ret(NULL, NULL);
     }
 
     /* stop all subscriptions of this session */
-    sr_session_unsubscribe(session);
+    if ((rc = sr_session_unsubscribe(session))) {
+        return rc;
+    }
 
     /* free the session itself */
-    tmp_err = _sr_session_stop(session);
-    sr_errinfo_merge(&err_info, tmp_err);
+    if ((err_info = _sr_session_stop(session))) {
+        return sr_api_ret(NULL, err_info);
+    }
 
-    return sr_api_ret(NULL, err_info);
+    return sr_api_ret(NULL, NULL);
 }
 
 API int
 sr_session_unsubscribe(sr_session_ctx_t *session)
 {
-    sr_error_info_t *err_info = NULL, *tmp_err;
+    sr_error_info_t *err_info = NULL;
 
     if (!session) {
         return sr_api_ret(NULL, NULL);
     }
 
     while (session->subscription_count) {
-        tmp_err = sr_subscr_session_del(session->subscriptions[0], session, SR_LOCK_NONE);
-        sr_errinfo_merge(&err_info, tmp_err);
+        if ((err_info = sr_subscr_session_del(session->subscriptions[0], session, SR_LOCK_NONE))) {
+            return sr_api_ret(NULL, err_info);
+        }
     }
 
-    return sr_api_ret(NULL, err_info);
+    return sr_api_ret(NULL, NULL);
 }
 
 API int
@@ -3344,9 +3360,8 @@ _sr_unsubscribe(sr_subscription_ctx_t *subscription)
     assert(subscription);
 
     /* delete a specific subscription or delete all subscriptions which also removes this subscription from all the sessions */
-    if ((tmp_err = sr_subscr_del(subscription, 0, SR_LOCK_NONE))) {
-        /* continue */
-        sr_errinfo_merge(&err_info, tmp_err);
+    if ((err_info = sr_subscr_del(subscription, 0, SR_LOCK_NONE))) {
+        return err_info;
     }
 
     /* no new events can be generated at this point */
@@ -3356,9 +3371,9 @@ _sr_unsubscribe(sr_subscription_ctx_t *subscription)
         ATOMIC_STORE_RELAXED(subscription->thread_running, 0);
 
         /* generate a new event for the thread to wake up */
-        err_info = sr_shmsub_notify_evpipe(subscription->evpipe_num);
-
-        if (!err_info) {
+        if ((tmp_err = sr_shmsub_notify_evpipe(subscription->evpipe_num))) {
+            sr_errinfo_merge(&err_info, tmp_err);
+        } else {
             /* join the thread */
             ret = pthread_join(subscription->tid, NULL);
             if (ret) {

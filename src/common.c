@@ -941,8 +941,9 @@ sr_subscr_session_count(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, s
  * @param[in] change_subs Change subscription in ext SHM.
  * @param[in] idx Index of the subscription in @p change_subs to remove.
  * @param[in] has_subs_lock What kind of SUBS lock is held.
+ * @return err_info, NULL on success.
  */
-static void
+static sr_error_info_t *
 sr_change_sub_del(sr_subscription_ctx_t *subscr, struct modsub_change_s *change_subs, uint32_t idx,
         sr_lock_mode_t has_subs_lock)
 {
@@ -956,18 +957,19 @@ sr_change_sub_del(sr_subscription_ctx_t *subscr, struct modsub_change_s *change_
     shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subscr->conn), change_subs->module_name);
     if (!shm_mod) {
         SR_ERRINFO_INT(&err_info);
-        sr_errinfo_free(&err_info);
-        return;
+        return err_info;
     }
 
     /* properly remove the subscription from ext SHM */
     if ((err_info = sr_shmext_change_sub_del(subscr->conn, shm_mod, SR_LOCK_NONE, change_subs->ds,
             change_subs->subs[idx].sub_id))) {
-        sr_errinfo_free(&err_info);
+        return err_info;
     }
 
     /* remove the subscription from the subscription structure */
     sr_subscr_change_sub_del(subscr, change_subs->subs[idx].sub_id, has_subs_lock);
+
+    return NULL;
 }
 
 /**
@@ -978,8 +980,9 @@ sr_change_sub_del(sr_subscription_ctx_t *subscr, struct modsub_change_s *change_
  * @param[in] oper_subs Oper subscription in ext SHM.
  * @param[in] idx Index of the subscription in @p oper_subs to remove.
  * @param[in] has_subs_lock What kind of SUBS lock is held.
+ * @return err_info, NULL on success.
  */
-static void
+static sr_error_info_t *
 sr_oper_sub_del(sr_subscription_ctx_t *subscr, struct modsub_oper_s *oper_subs, uint32_t idx, sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
@@ -992,17 +995,18 @@ sr_oper_sub_del(sr_subscription_ctx_t *subscr, struct modsub_oper_s *oper_subs, 
     shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subscr->conn), oper_subs->module_name);
     if (!shm_mod) {
         SR_ERRINFO_INT(&err_info);
-        sr_errinfo_free(&err_info);
-        return;
+        return err_info;
     }
 
     /* properly remove the subscription from ext SHM */
     if ((err_info = sr_shmext_oper_sub_del(subscr->conn, shm_mod, oper_subs->subs[idx].sub_id))) {
-        sr_errinfo_free(&err_info);
+        return err_info;
     }
 
     /* remove the subscription from the subscription structure */
     sr_subscr_oper_sub_del(subscr, oper_subs->subs[idx].sub_id, has_subs_lock);
+
+    return NULL;
 }
 
 /**
@@ -1013,8 +1017,9 @@ sr_oper_sub_del(sr_subscription_ctx_t *subscr, struct modsub_oper_s *oper_subs, 
  * @param[in] rpc_subs RPC/action subscription in ext SHM.
  * @param[in] idx Index of the subscription in @p rpc_subs to remove.
  * @param[in] has_subs_lock What kind of SUBS lock is held.
+ * @return err_info, NULL on success.
  */
-static void
+static sr_error_info_t *
 sr_rpc_sub_del(sr_subscription_ctx_t *subscr, struct opsub_rpc_s *rpc_subs, uint32_t idx, sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
@@ -1027,17 +1032,18 @@ sr_rpc_sub_del(sr_subscription_ctx_t *subscr, struct opsub_rpc_s *rpc_subs, uint
     shm_rpc = sr_shmmain_find_rpc(SR_CONN_MAIN_SHM(subscr->conn), rpc_subs->path);
     if (!shm_rpc) {
         SR_ERRINFO_INT(&err_info);
-        sr_errinfo_free(&err_info);
-        return;
+        return err_info;
     }
 
     /* properly remove the subscription from the main SHM */
     if ((err_info = sr_shmext_rpc_sub_del(subscr->conn, shm_rpc, rpc_subs->subs[idx].sub_id))) {
-        sr_errinfo_free(&err_info);
+        return err_info;
     }
 
     /* remove the subscription from the subscription structure */
     sr_subscr_rpc_sub_del(subscr, rpc_subs->subs[idx].sub_id, has_subs_lock);
+
+    return NULL;
 }
 
 /**
@@ -1048,8 +1054,9 @@ sr_rpc_sub_del(sr_subscription_ctx_t *subscr, struct opsub_rpc_s *rpc_subs, uint
  * @param[in] notif_subs Notif subscription in ext SHM.
  * @param[in] idx Index of the subscription in @p notif_subs to remove.
  * @param[in] has_subs_lock What kind of SUBS lock is held.
+ * @return err_info, NULL on success.
  */
-static void
+static sr_error_info_t *
 sr_notif_sub_del(sr_subscription_ctx_t *subscr, struct modsub_notif_s *notif_subs, uint32_t idx,
         sr_lock_mode_t has_subs_lock)
 {
@@ -1063,17 +1070,18 @@ sr_notif_sub_del(sr_subscription_ctx_t *subscr, struct modsub_notif_s *notif_sub
     shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subscr->conn), notif_subs->module_name);
     if (!shm_mod) {
         SR_ERRINFO_INT(&err_info);
-        sr_errinfo_free(&err_info);
-        return;
+        return err_info;
     }
 
     /* properly remove the subscription from ext SHM */
     if ((err_info = sr_shmext_notif_sub_del(subscr->conn, shm_mod, notif_subs->subs[idx].sub_id))) {
-        sr_errinfo_free(&err_info);
+        return err_info;
     }
 
     /* remove the subscription from the subscription structure */
     sr_subscr_notif_sub_del(subscr, notif_subs->subs[idx].sub_id, has_subs_lock);
+
+    return NULL;
 }
 
 sr_error_info_t *
@@ -1097,12 +1105,6 @@ sr_subscr_session_del(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, sr_
         }
     }
 
-    /* remove ourselves from session subscriptions (needs SUBS lock to avoid removing it twice in case of reaching
-     * a notification stop time) */
-    if ((err_info = sr_ptr_del(&sess->ptr_lock, (void ***)&sess->subscriptions, &sess->subscription_count, subscr))) {
-        goto cleanup_subs_unlock;
-    }
-
     /* change subscriptions */
     i = 0;
     while (i < subscr->change_sub_count) {
@@ -1112,7 +1114,9 @@ sr_subscr_session_del(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, sr_
         for (j = 0; j < change_subs->sub_count; ++j) {
             if (change_subs->subs[j].sess == sess) {
                 /* remove */
-                sr_change_sub_del(subscr, change_subs, j, SR_LOCK_READ_UPGR);
+                if ((err_info = sr_change_sub_del(subscr, change_subs, j, SR_LOCK_READ_UPGR))) {
+                    goto cleanup_subs_unlock;
+                }
                 del = 1;
                 break;
             }
@@ -1133,7 +1137,9 @@ sr_subscr_session_del(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, sr_
         for (j = 0; j < oper_subs->sub_count; ++j) {
             if (oper_subs->subs[j].sess == sess) {
                 /* remove */
-                sr_oper_sub_del(subscr, oper_subs, j, SR_LOCK_READ_UPGR);
+                if ((err_info = sr_oper_sub_del(subscr, oper_subs, j, SR_LOCK_READ_UPGR))) {
+                    goto cleanup_subs_unlock;
+                }
                 del = 1;
                 break;
             }
@@ -1154,7 +1160,9 @@ sr_subscr_session_del(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, sr_
         for (j = 0; j < notif_subs->sub_count; ++j) {
             if (notif_subs->subs[j].sess == sess) {
                 /* remove */
-                sr_notif_sub_del(subscr, notif_subs, j, SR_LOCK_READ_UPGR);
+                if ((err_info = sr_notif_sub_del(subscr, notif_subs, j, SR_LOCK_READ_UPGR))) {
+                    goto cleanup_subs_unlock;
+                }
                 del = 1;
                 break;
             }
@@ -1175,7 +1183,9 @@ sr_subscr_session_del(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, sr_
         for (j = 0; j < rpc_subs->sub_count; ++j) {
             if (rpc_subs->subs[j].sess == sess) {
                 /* remove */
-                sr_rpc_sub_del(subscr, rpc_subs, j, SR_LOCK_READ_UPGR);
+                if ((err_info = sr_rpc_sub_del(subscr, rpc_subs, j, SR_LOCK_READ_UPGR))) {
+                    goto cleanup_subs_unlock;
+                }
                 del = 1;
                 break;
             }
@@ -1185,6 +1195,12 @@ sr_subscr_session_del(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, sr_
         if (!del) {
             ++i;
         }
+    }
+
+    /* remove ourselves from session subscriptions (needs SUBS lock to avoid removing it twice in case of reaching
+     * a notification stop time) */
+    if ((err_info = sr_ptr_del(&sess->ptr_lock, (void ***)&sess->subscriptions, &sess->subscription_count, subscr))) {
+        goto cleanup_subs_unlock;
     }
 
 cleanup_subs_unlock:
@@ -1199,7 +1215,7 @@ cleanup_subs_unlock:
 sr_error_info_t *
 sr_subscr_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock)
 {
-    sr_error_info_t *err_info = NULL, *tmp_err;
+    sr_error_info_t *err_info = NULL;
     uint32_t i, j;
     sr_session_ctx_t *del_sub_sess = NULL;
     struct modsub_change_s *change_subs;
@@ -1227,8 +1243,10 @@ subs_del:
                 if (change_subs->subs[j].sub_id == sub_id) {
                     /* found it */
                     del_sub_sess = change_subs->subs[j].sess;
-                    sr_change_sub_del(subscr, change_subs, j, SR_LOCK_READ_UPGR);
-                    goto cleanup;
+                    if ((err_info = sr_change_sub_del(subscr, change_subs, j, SR_LOCK_READ_UPGR))) {
+                        goto cleanup;
+                    }
+                    goto finish;
                 } else {
                     continue;
                 }
@@ -1251,8 +1269,10 @@ subs_del:
                 if (oper_subs->subs[j].sub_id == sub_id) {
                     /* found it */
                     del_sub_sess = oper_subs->subs[j].sess;
-                    sr_oper_sub_del(subscr, oper_subs, j, SR_LOCK_READ_UPGR);
-                    goto cleanup;
+                    if ((err_info = sr_oper_sub_del(subscr, oper_subs, j, SR_LOCK_READ_UPGR))) {
+                        goto cleanup;
+                    }
+                    goto finish;
                 } else {
                     continue;
                 }
@@ -1275,8 +1295,10 @@ subs_del:
                 if (notif_subs->subs[j].sub_id == sub_id) {
                     /* found it */
                     del_sub_sess = notif_subs->subs[j].sess;
-                    sr_notif_sub_del(subscr, notif_subs, j, SR_LOCK_READ_UPGR);
-                    goto cleanup;
+                    if ((err_info = sr_notif_sub_del(subscr, notif_subs, j, SR_LOCK_READ_UPGR))) {
+                        goto cleanup;
+                    }
+                    goto finish;
                 } else {
                     continue;
                 }
@@ -1299,8 +1321,10 @@ subs_del:
                 if (rpc_subs->subs[j].sub_id == sub_id) {
                     /* found it */
                     del_sub_sess = rpc_subs->subs[j].sess;
-                    sr_rpc_sub_del(subscr, rpc_subs, j, SR_LOCK_READ_UPGR);
-                    goto cleanup;
+                    if ((err_info = sr_rpc_sub_del(subscr, rpc_subs, j, SR_LOCK_READ_UPGR))) {
+                        goto cleanup;
+                    }
+                    goto finish;
                 } else {
                     continue;
                 }
@@ -1314,14 +1338,14 @@ subs_del:
         }
     }
 
-cleanup:
+finish:
     if (sub_id) {
         if (del_sub_sess) {
             /* remove the subscription from the session if the only subscription */
             if (!sr_subscr_session_count(subscr, del_sub_sess, SR_LOCK_READ_UPGR)) {
-                if ((tmp_err = sr_ptr_del(&del_sub_sess->ptr_lock, (void ***)&del_sub_sess->subscriptions,
+                if ((err_info = sr_ptr_del(&del_sub_sess->ptr_lock, (void ***)&del_sub_sess->subscriptions,
                         &del_sub_sess->subscription_count, subscr))) {
-                    sr_errinfo_merge(&err_info, tmp_err);
+                    goto cleanup;
                 }
             }
         } else {
@@ -1329,6 +1353,7 @@ cleanup:
         }
     }
 
+cleanup:
     if (has_subs_lock == SR_LOCK_NONE) {
         /* SUBS READ UPGR UNLOCK */
         sr_rwunlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, subscr->conn->cid, __func__);

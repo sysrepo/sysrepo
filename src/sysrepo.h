@@ -134,7 +134,7 @@ int sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn);
  * Cleans up and frees connection context allocated by ::sr_connect. All sessions and subscriptions
  * started within the connection will be automatically stopped and cleaned up too.
  *
- * @note Connection and all its associated sessions and subscriptions can no longer be used even on error.
+ * @note On error the function should be retried and must eventually succeed.
  *
  * @param[in] conn Connection acquired with ::sr_connect call.
  * @return Error code (::SR_ERR_OK on success).
@@ -216,9 +216,9 @@ int sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_ses
  *
  * Also releases any locks held and frees subscriptions created (only) by this session.
  *
- * @note Session can no longer be used even on error. Subscriptions, even
- * if they no longer handle any events are **never** freed and should be freed
- * manually using ::sr_unsubscribe.
+ * @note On error the function should be retried and must eventually succeed.
+ * Subscriptions, even if they no longer handle any events are **never** freed and
+ * should be freed manually using ::sr_unsubscribe.
  *
  * @param[in] session Session to use.
  * @return Error code (::SR_ERR_OK on success).
@@ -1042,8 +1042,7 @@ int sr_subscription_resume(sr_subscription_ctx_t *subscription, uint32_t sub_id)
  * until ::sr_unsubscribe() is called, even if there are no actual subscriptions left in it. This
  * is useful for preventing dead locks if using the subscription in a custom event loop.
  *
- * @note Even on error, all the possible tasks are still performed and the subscripton(s)
- * are unsubscribed.
+ * @note On error the function should be retried and must eventually succeed.
  *
  * @param[in] subscription Subscription context to use.
  * @param[in] sub_id Subscription ID of the subscription to unsubscribe, 0 for all the subscriptions.
@@ -1054,8 +1053,7 @@ int sr_unsubscribe_sub(sr_subscription_ctx_t *subscription, uint32_t sub_id);
 /**
  * @brief Unsubscribe all the subscriptions in a subscription structure and free it.
  *
- * @note Even on error, all the possible tasks are still performed and the subscripton(s)
- * are unsubscribed and freed. So it cannot be used anymore after calling this function.
+ * @note On error the function should be retried and must eventually succeed.
  *
  * @param[in] subscription Subscription context to use.
  * @return Error code (::SR_ERR_OK on success).
