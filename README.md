@@ -79,6 +79,9 @@ other users.
 * doxygen (for generating documentation)
 * cmocka >= 1.0.0 (for tests only, see [Tests](#Tests))
 * valgrind (for enhanced testing)
+* gcov (for code coverage)
+* lcov (for code coverage)
+* genhtml (for code coverage)
 
 ## Building
 
@@ -156,20 +159,13 @@ $ cmake -D CMAKE_BUILD_TYPE:String="Release" ..
 
 #### Code Coverage
 
-To generate statistical information about code coverage by tests, set
-`ENABLE_COVERAGE` option to `ON`:
+Based on the tests run, it is possible to generate code coverage report. But
+it must be enabled and these commands are needed to generate the report:
 ```
-$ cmake -D ENABLE_COVERAGE="ON" ..
-```
-and then the make's `coverage` target should be available to geenrate statistics:
-```
+$ cmake -DENABLE_COVERAGE=ON ..
+$ make
 $ make coverage
 ```
-
-Note that `gcc` compiler is required for this option and additional tools are required:
-* gcov
-* lcov
-* genhtml
 
 ## Usage
 
@@ -186,7 +182,7 @@ following linker parameters:
 ```
 
 Note, that it may be necessary to call `ldconfig(8)` after library installation and if the
-library was installed into a non-standard path, the path to libyang must be specified to the
+library was installed into a non-standard path, the path to it must be specified to the
 linker. To help with setting all the compiler's options, there is `sysrepo.pc` file for
 `pkg-config(1)` available in the source tree. The file is installed with the library.
 
@@ -209,7 +205,7 @@ available separately.
 
 ## Tests
 
-libyang includes several tests built with [cmocka](https://cmocka.org/). The tests
+There are several tests included and built with [cmocka](https://cmocka.org/). The tests
 can be found in `tests` subdirectory and they are designed for checking library
 functionality after code changes.
 
