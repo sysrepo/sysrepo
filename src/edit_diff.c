@@ -2064,6 +2064,7 @@ sr_edit_apply_replace(struct lyd_node *match_node, int val_equal, const struct l
             lyrc = lyd_change_term(match_node, lyd_get_value(edit_node));
             if (lyrc && (lyrc != LY_EEXIST)) {
                 free(prev_val);
+                sr_errinfo_new_ly(&err_info, LYD_CTX(match_node));
                 return err_info;
             }
 
