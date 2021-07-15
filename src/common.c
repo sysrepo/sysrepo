@@ -4627,34 +4627,42 @@ sr_lyd_dup_module_np_cont(const struct lyd_node *data, const struct lys_module *
 }
 
 sr_error_info_t *
-sr_lyd_dup_module_data(const struct lyd_node *data, const struct lys_module *ly_mod, int add_state_np_conts,
+sr_lyd_get_module_data(struct lyd_node **data, const struct lys_module *ly_mod, int add_state_np_conts, int dup,
         struct lyd_node **new_data)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *dup;
-    const struct lyd_node *node;
+    struct lyd_node *node, *next, *subtree;
 
     assert(ly_mod && new_data);
 
-    LY_LIST_FOR(data, node) {
+    LY_LIST_FOR_SAFE(*data, next, node) {
         if (lyd_owner_module(node) == ly_mod) {
-            /* duplicate node */
-            if (lyd_dup_single(node, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &dup)) {
-                sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-                return err_info;
+            if (dup) {
+                /* duplicate subtree */
+                if (lyd_dup_single(node, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &subtree)) {
+                    sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+                    return err_info;
+                }
+            } else {
+                /* unlink subtree */
+                if (*data == node) {
+                    *data = (*data)->next;
+                }
+                lyd_unlink_tree(node);
+                subtree = node;
             }
 
             if (add_state_np_conts) {
                 /* add any nested state NP containers */
-                if (lyd_new_implicit_tree(dup, LYD_IMPLICIT_NO_CONFIG | LYD_IMPLICIT_NO_DEFAULTS, NULL)) {
+                if (lyd_new_implicit_tree(subtree, LYD_IMPLICIT_NO_CONFIG | LYD_IMPLICIT_NO_DEFAULTS, NULL)) {
                     sr_errinfo_new_ly(&err_info, ly_mod->ctx);
                     return err_info;
                 }
             }
 
             /* connect it to any other data */
-            if (lyd_merge_tree(new_data, dup, LYD_MERGE_DESTRUCT)) {
-                lyd_free_tree(dup);
+            if (lyd_merge_tree(new_data, subtree, LYD_MERGE_DESTRUCT)) {
+                lyd_free_tree(subtree);
                 sr_errinfo_new_ly(&err_info, ly_mod->ctx);
                 return err_info;
             }
@@ -4665,11 +4673,10 @@ sr_lyd_dup_module_data(const struct lyd_node *data, const struct lys_module *ly_
 }
 
 sr_error_info_t *
-sr_lyd_dup_enabled_xpath(const struct lyd_node *data, char **xpaths, uint16_t xp_count, struct lyd_node **new_data)
+sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_count, int dup, struct lyd_node **new_data)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *root;
-    const struct lyd_node *src;
+    struct lyd_node *root, *src, *parent;
     struct ly_set *cur_set, *set = NULL;
     size_t i;
     LY_ERR lyrc;
@@ -4681,8 +4688,8 @@ sr_lyd_dup_enabled_xpath(const struct lyd_node *data, char **xpaths, uint16_t xp
 
     /* get only the selected subtrees in a set */
     for (i = 0; i < xp_count; ++i) {
-        if (lyd_find_xpath(data, xpaths[i], &cur_set)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(data));
+        if (lyd_find_xpath(*data, xpaths[i], &cur_set)) {
+            sr_errinfo_new_ly(&err_info, LYD_CTX(*data));
             goto cleanup;
         }
 
@@ -4690,41 +4697,83 @@ sr_lyd_dup_enabled_xpath(const struct lyd_node *data, char **xpaths, uint16_t xp
         if (set) {
             lyrc = ly_set_merge(set, cur_set, 0, NULL);
             ly_set_free(cur_set, NULL);
-            SR_CHECK_LY_GOTO(lyrc, LYD_CTX(data), err_info, cleanup);
+            SR_CHECK_LY_GOTO(lyrc, LYD_CTX(*data), err_info, cleanup);
         } else {
             set = cur_set;
         }
     }
 
     for (i = 0; i < set->count; ++i) {
-        /* duplicate filtered subtree */
+        /* get filtered subtree */
         src = set->dnodes[i];
-        if (lyd_dup_single(src, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS, &root)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(data));
-            goto cleanup;
-        }
-
-        /* go top-level and copy any config NP containers along the way */
-        while (root->parent) {
-            root = lyd_parent(root);
-            if ((err_info = sr_lyd_copy_config_np_cont_r(NULL, root, src, lyd_owner_module(set->dnodes[i])))) {
+        if (dup) {
+            /* duplicate the subtree with parents */
+            if (lyd_dup_single(src, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS, &root)) {
+                sr_errinfo_new_ly(&err_info, LYD_CTX(*data));
                 goto cleanup;
             }
 
-            /* src should be a sibling, not parent (so move it afterwards) */
-            src = lyd_parent(src);
+            /* set root to the first parent */
+            root = lyd_parent(root);
+        } else {
+            /* duplicate only the parents */
+            parent = NULL;
+            if (src->parent) {
+                if (lyd_dup_single(lyd_parent(src), NULL, LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS, &parent)) {
+                    sr_errinfo_new_ly(&err_info, LYD_CTX(*data));
+                    goto cleanup;
+                }
+            }
+
+            /* set root to the first parent */
+            root = parent;
+        }
+
+        /* go top-level and copy any config NP containers along the way */
+        if (root) {
+            while (1) {
+                if ((err_info = sr_lyd_copy_config_np_cont_r(NULL, root, src, lyd_owner_module(set->dnodes[i])))) {
+                    goto cleanup;
+                }
+
+                if (!root->parent) {
+                    /* leave with root pointing to the top-level node */
+                    break;
+                }
+                root = lyd_parent(root);
+
+                /* src should be a sibling, not parent (so move it afterwards) */
+                src = lyd_parent(src);
+            }
+        }
+
+        if (!dup) {
+            /* we can unlink the subtree now */
+            if (*data == src) {
+                /* unlinking data, move it */
+                *data = (*data)->next;
+            }
+
+            lyd_unlink_tree(src);
+            if (!root) {
+                /* top-level subtree */
+                root = src;
+            } else if (lyd_insert_child(parent, src)) {
+                sr_errinfo_new_ly(&err_info, LYD_CTX(*data));
+                goto cleanup;
+            }
         }
 
         /* add any state NP containers */
         if (lyd_new_implicit_tree(root, LYD_IMPLICIT_NO_DEFAULTS, NULL)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(data));
+            sr_errinfo_new_ly(&err_info, LYD_CTX(*data));
             goto cleanup;
         }
 
         /* merge into the final result */
         if (lyd_merge_tree(new_data, root, LYD_MERGE_DESTRUCT)) {
             lyd_free_all(root);
-            sr_errinfo_new_ly(&err_info, LYD_CTX(data));
+            sr_errinfo_new_ly(&err_info, LYD_CTX(*data));
             goto cleanup;
         }
     }

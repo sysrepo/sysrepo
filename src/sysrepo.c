@@ -3456,11 +3456,11 @@ sr_module_change_subscribe_enable(sr_session_ctx_t *session, struct sr_mod_info_
     /* select only the subscribed-to subtree */
     if (mod_info->data) {
         if (xpath) {
-            if ((err_info = sr_lyd_dup_enabled_xpath(mod_info->data, (char **)&xpath, 1, &enabled_data))) {
+            if ((err_info = sr_lyd_get_enabled_xpath(&mod_info->data, (char **)&xpath, 1, 1, &enabled_data))) {
                 goto cleanup;
             }
         } else {
-            if ((err_info = sr_lyd_dup_module_data(mod_info->data, ly_mod, 0, &enabled_data))) {
+            if ((err_info = sr_lyd_get_module_data(&mod_info->data, ly_mod, 0, 1, &enabled_data))) {
                 goto cleanup;
             }
         }

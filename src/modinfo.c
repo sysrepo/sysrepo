@@ -786,36 +786,37 @@ cleanup_opersub_unlock:
 }
 
 /**
- * @brief Duplicate operational (enabled) data from configuration data tree.
+ * @brief Get operational (enabled) data from configuration data tree.
  *
  * @param[in] conn Connection to use.
- * @param[in] data Configuration data.
+ * @param[in,out] data Configuration data, are unlinked from if @p dup is 0.
  * @param[in] mod Mod info module to process.
  * @param[in] opts Get oper data options.
+ * @param[in] dup Whether to duplicate data or only unlink.
  * @param[out] enabled_mod_data Enabled operational data of the module.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_module_oper_data_dup_enabled(sr_conn_ctx_t *conn, const struct lyd_node *data, struct sr_mod_info_mod_s *mod,
-        sr_get_oper_options_t opts, struct lyd_node **enabled_mod_data)
+sr_module_oper_data_get_enabled(sr_conn_ctx_t *conn, struct lyd_node **data, struct sr_mod_info_mod_s *mod,
+        sr_get_oper_options_t opts, int dup, struct lyd_node **enabled_mod_data)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_change_sub_t *shm_changesubs;
     struct lyd_node *root, *elem;
     uint32_t i, xp_i;
-    int data_duplicated = 0;
+    int data_ready = 0;
     char **xpaths;
     const char *origin;
 
     /* start with NP containers, which cannot effectively be disabled */
     *enabled_mod_data = NULL;
-    if ((err_info = sr_lyd_dup_module_np_cont(data, mod->ly_mod, 1, enabled_mod_data))) {
+    if ((err_info = sr_lyd_dup_module_np_cont(*data, mod->ly_mod, 1, enabled_mod_data))) {
         return err_info;
     }
 
-    if (!data) {
-        /* no enabled data to duplicate */
-        data_duplicated = 1;
+    if (!*data) {
+        /* no enabled data */
+        data_ready = 1;
     }
 
     /* CHANGE SUB READ LOCK */
@@ -829,22 +830,22 @@ sr_module_oper_data_dup_enabled(sr_conn_ctx_t *conn, const struct lyd_node *data
         goto error_sub_unlock;
     }
 
-    if (!data_duplicated) {
+    if (!data_ready) {
         /* try to find a subscription for the whole module */
         shm_changesubs = (sr_mod_change_sub_t *)(conn->ext_shm.addr + mod->shm_mod->change_sub[SR_DS_RUNNING].subs);
         for (i = 0; i < mod->shm_mod->change_sub[SR_DS_RUNNING].sub_count; ++i) {
             if (!shm_changesubs[i].xpath && !(shm_changesubs[i].opts & SR_SUBSCR_PASSIVE)) {
                 /* the whole module is enabled */
-                if ((err_info = sr_lyd_dup_module_data(data, mod->ly_mod, 1, enabled_mod_data))) {
+                if ((err_info = sr_lyd_get_module_data(data, mod->ly_mod, 1, dup, enabled_mod_data))) {
                     goto error_ext_sub_unlock;
                 }
-                data_duplicated = 1;
+                data_ready = 1;
                 break;
             }
         }
     }
 
-    if (!data_duplicated) {
+    if (!data_ready) {
         /* collect all enabled subtress in the form of xpaths */
         xpaths = NULL;
         for (i = 0, xp_i = 0; i < mod->shm_mod->change_sub[SR_DS_RUNNING].sub_count; ++i) {
@@ -857,8 +858,8 @@ sr_module_oper_data_dup_enabled(sr_conn_ctx_t *conn, const struct lyd_node *data
             }
         }
 
-        /* duplicate only enabled subtrees */
-        err_info = sr_lyd_dup_enabled_xpath(data, xpaths, xp_i, enabled_mod_data);
+        /* get only enabled subtrees */
+        err_info = sr_lyd_get_enabled_xpath(data, xpaths, xp_i, dup, enabled_mod_data);
         free(xpaths);
         if (err_info) {
             goto error_ext_sub_unlock;
@@ -1605,10 +1606,10 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
 
             if (mod_info->ds == SR_DS_OPERATIONAL) {
                 /* copy only enabled module data */
-                err_info = sr_module_oper_data_dup_enabled(conn, mod_cache->data, mod, opts, &mod_data);
+                err_info = sr_module_oper_data_get_enabled(conn, &mod_cache->data, mod, opts, 1, &mod_data);
             } else {
                 /* copy all module data */
-                err_info = sr_lyd_dup_module_data(mod_cache->data, mod->ly_mod, 0, &mod_data);
+                err_info = sr_lyd_get_module_data(&mod_cache->data, mod->ly_mod, 0, 1, &mod_data);
             }
 
             /* CACHE READ UNLOCK */
@@ -1630,7 +1631,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
 
             if (mod_info->ds == SR_DS_OPERATIONAL) {
                 /* keep only enabled module data */
-                if ((err_info = sr_module_oper_data_dup_enabled(conn, mod_info->data, mod, opts, &mod_data))) {
+                if ((err_info = sr_module_oper_data_get_enabled(conn, &mod_info->data, mod, opts, 0, &mod_data))) {
                     return err_info;
                 }
                 lyd_free_siblings(sr_module_data_unlink(&mod_info->data, mod->ly_mod));
