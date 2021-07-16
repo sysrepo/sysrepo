@@ -3274,23 +3274,21 @@ static int
 sr_shmsub_notif_listen_filter_is_valid(const struct lyd_node *notif, const char *xpath)
 {
     sr_error_info_t *err_info = NULL;
-    struct ly_set *set;
+    ly_bool result;
 
     if (!xpath) {
         return 1;
     }
 
-    if (lyd_find_xpath(notif, xpath, &set)) {
+    if (lyd_eval_xpath(notif, xpath, &result)) {
         SR_ERRINFO_INT(&err_info);
         sr_errinfo_free(&err_info);
         return 0;
-    } else if (set->count) {
+    } else if (result) {
         /* valid subscription */
-        ly_set_free(set, NULL);
         return 1;
     }
 
-    ly_set_free(set, NULL);
     return 0;
 }
 
