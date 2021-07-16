@@ -2421,7 +2421,9 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
             }
 
             /* connect them back */
-            lyd_insert_sibling(mod_info->data, mod_data, &mod_info->data);
+            if (mod_data) {
+                lyd_insert_sibling(mod_info->data, mod_data, &mod_info->data);
+            }
         }
     }
 
