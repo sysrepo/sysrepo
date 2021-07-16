@@ -5266,7 +5266,7 @@ retry_open:
     }
 
     /* load the data */
-    if (lyd_parse_data_fd(ly_mod->ctx, fd, LYD_LYB, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &mod_data)) {
+    if (lyd_parse_data_fd(ly_mod->ctx, fd, LYD_LYB, LYD_PARSE_ONLY | LYD_PARSE_STRICT | LYD_PARSE_ORDERED, 0, &mod_data)) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         goto error;
     }
