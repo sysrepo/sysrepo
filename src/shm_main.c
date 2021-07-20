@@ -462,12 +462,21 @@ sr_shmmain_ly_ctx_init(struct ly_ctx **ly_ctx)
     /* load just the internal module */
     if (lys_parse_mem(*ly_ctx, sysrepo_yang, LYS_IN_YANG, NULL)) {
         sr_errinfo_new_ly(&err_info, *ly_ctx);
-        ly_ctx_destroy(*ly_ctx);
-        *ly_ctx = NULL;
-        return err_info;
+        goto cleanup;
     }
 
-    return NULL;
+    /* compile */
+    if (ly_ctx_compile(*ly_ctx)) {
+        sr_errinfo_new_ly(&err_info, *ly_ctx);
+        goto cleanup;
+    }
+
+cleanup:
+    if (err_info) {
+        ly_ctx_destroy(*ly_ctx);
+        *ly_ctx = NULL;
+    }
+    return err_info;
 }
 
 sr_error_info_t *

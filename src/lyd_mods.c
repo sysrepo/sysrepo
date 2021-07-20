@@ -889,6 +889,12 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     /* install ietf-origin */
     SR_INSTALL_INT_MOD(ly_ctx, ietf_origin_yang, 0);
 
+    /* compile all */
+    if (ly_ctx_compile(ly_ctx)) {
+        sr_errinfo_new_ly(&err_info, ly_ctx);
+        goto error;
+    }
+
     *sr_mods_p = sr_mods;
     return NULL;
 
@@ -1106,6 +1112,12 @@ sr_lydmods_ctx_load_modules(const struct lyd_node *sr_mods, struct ly_ctx *ly_ct
         if ((err_info = sr_lydmods_ctx_load_module(sr_mod, ly_ctx, sched_features, NULL, change))) {
             return err_info;
         }
+    }
+
+    /* compile */
+    if (ly_ctx_compile(ly_ctx)) {
+        sr_errinfo_new_ly(&err_info, ly_ctx);
+        return err_info;
     }
 
     return NULL;
@@ -1797,12 +1809,12 @@ sr_lys_parse_mem(struct ly_ctx *ly_ctx, const char *path, const struct ly_set *f
         struct lys_module **ly_mod, int *fail)
 {
     sr_error_info_t *err_info = NULL;
-    const char **features;
-    struct ly_in *in;
+    const char **features = NULL;
+    struct ly_in *in = NULL;
 
     /* create the features array */
     if ((err_info = sr_lydmods_features_array(feat_set, &features))) {
-        return err_info;
+        goto cleanup;
     }
 
     /* load the new module */
@@ -1813,9 +1825,20 @@ sr_lys_parse_mem(struct ly_ctx *ly_ctx, const char *path, const struct ly_set *f
         } else {
             sr_errinfo_new_ly(&err_info, ly_ctx);
         }
+        goto cleanup;
     }
 
-    /* cleanup */
+    /* compile */
+    if (ly_ctx_compile(ly_ctx)) {
+        if (fail) {
+            *fail = 1;
+        } else {
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+        }
+        goto cleanup;
+    }
+
+cleanup:
     free(features);
     ly_in_free(in, 0);
     return err_info;
@@ -2390,6 +2413,12 @@ sr_lydmods_ctx_load_installed_module_all(const struct lyd_node *sr_mods, struct 
             /* the required module was found */
             *ly_mod = lmod;
         }
+    }
+
+    /* compile */
+    if (ly_ctx_compile(ly_ctx)) {
+        sr_errinfo_new_ly(&err_info, ly_ctx);
+        goto cleanup;
     }
 
     if (!*ly_mod) {

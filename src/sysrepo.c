@@ -1083,7 +1083,16 @@ sr_parse_module(struct ly_ctx *ly_ctx, const char *schema_path, LYS_INFORMAT for
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to parse \"%s\".", schema_path);
         goto cleanup;
     }
-    lys_parse(ly_ctx, in, format, features, &ly_mod);
+    if (lys_parse(ly_ctx, in, format, features, &ly_mod)) {
+        sr_errinfo_new_ly(&err_info, ly_ctx);
+        goto cleanup;
+    }
+
+    /* compile */
+    if (ly_ctx_compile(ly_ctx)) {
+        sr_errinfo_new_ly(&err_info, ly_ctx);
+        goto cleanup;
+    }
 
 cleanup:
     /* remove added search dirs */

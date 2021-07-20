@@ -1544,7 +1544,8 @@ sr_ly_ctx_new(struct ly_ctx **ly_ctx)
     if ((err_info = sr_path_yang_dir(&yang_dir))) {
         goto cleanup;
     }
-    lyrc = ly_ctx_new(yang_dir, LY_CTX_NO_YANGLIBRARY | LY_CTX_DISABLE_SEARCHDIR_CWD | LY_CTX_REF_IMPLEMENTED, ly_ctx);
+    lyrc = ly_ctx_new(yang_dir, LY_CTX_NO_YANGLIBRARY | LY_CTX_DISABLE_SEARCHDIR_CWD | LY_CTX_REF_IMPLEMENTED |
+            LY_CTX_EXPLICIT_COMPILE, ly_ctx);
     free(yang_dir);
 
     if (lyrc) {
