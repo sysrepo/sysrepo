@@ -1504,11 +1504,8 @@ static sr_error_info_t *
 sr_lydmods_sched_finalize_module_remove(struct lyd_node *sr_mod, const struct ly_ctx *new_ctx, int update)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
     const char *mod_name, *mod_rev;
     struct lyd_node *child;
-    uint32_t idx;
-    LY_ARRAY_COUNT_TYPE u;
 
     child = lyd_child(sr_mod);
     assert(!strcmp(child->schema->name, "name"));
@@ -1525,19 +1522,8 @@ sr_lydmods_sched_finalize_module_remove(struct lyd_node *sr_mod, const struct ly
     }
 
     /* check whether it is imported by other modules */
-    idx = ly_ctx_internal_modules_count(new_ctx);
-    while ((ly_mod = ly_ctx_get_module_iter(new_ctx, &idx))) {
-        LY_ARRAY_FOR(ly_mod->parsed->imports, u) {
-            if (!strcmp(ly_mod->parsed->imports[u].module->name, mod_name)) {
-                break;
-            }
-        }
-        if (ly_mod->parsed->imports && (u < LY_ARRAY_COUNT(ly_mod->parsed->imports))) {
-            break;
-        }
-    }
-    if (!ly_mod) {
-        /* no module imports the removed one, remove the YANG as well */
+    if (!ly_ctx_get_module(new_ctx, mod_name, mod_rev)) {
+        /* not in the context, can be removed */
         if ((err_info = sr_remove_module_file(mod_name, mod_rev))) {
             return err_info;
         }
