@@ -2667,7 +2667,7 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
 
     SR_CHECK_ARG_APIRET(!session || !SR_IS_CONVENTIONAL_DS(session->ds), session, err_info);
 
-    if (src_config && (session->conn->ly_ctx != src_config->schema->module->ctx)) {
+    if (src_config && (session->conn->ly_ctx != LYD_CTX(src_config))) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Data trees must be created using the session connection libyang context.");
         return sr_api_ret(session, err_info);
     }
@@ -2677,7 +2677,7 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
     }
 
     /* find first sibling */
-    for ( ; src_config && src_config->prev->next; src_config = src_config->prev) {}
+    src_config = lyd_first_sibling(src_config);
 
     if (module_name) {
         /* try to find this module */
