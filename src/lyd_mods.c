@@ -1517,6 +1517,8 @@ sr_lydmods_sched_finalize_module_remove(struct lyd_node *sr_mod, const struct ly
     sr_error_info_t *err_info = NULL;
     const char *mod_name, *mod_rev;
     struct lyd_node *child;
+    struct ly_ctx *tmp_ctx = NULL;
+    const struct lys_module *ly_mod;
 
     child = lyd_child(sr_mod);
     assert(!strcmp(child->schema->name, "name"));
@@ -1529,14 +1531,20 @@ sr_lydmods_sched_finalize_module_remove(struct lyd_node *sr_mod, const struct ly
 
     /* remove data files */
     if (!update && (err_info = sr_remove_data_files(mod_name))) {
-        return err_info;
+        goto cleanup;
     }
 
-    /* check whether it is imported by other modules */
-    if (!ly_ctx_get_module(new_ctx, mod_name, mod_rev)) {
-        /* not in the context, can be removed */
-        if ((err_info = sr_remove_module_file(mod_name, mod_rev))) {
-            return err_info;
+    /* create temporary context */
+    if ((err_info = sr_ly_ctx_new(&tmp_ctx))) {
+        goto cleanup;
+    }
+
+    /* load (parse only) the module, it may have already been removed as part of removing files for another removed module */
+    ly_mod = ly_ctx_load_module(tmp_ctx, mod_name, mod_rev, NULL);
+    if (ly_mod) {
+        /* recursively remove all redundant module files */
+        if ((err_info = sr_remove_module_file_r(ly_mod, new_ctx))) {
+            goto cleanup;
         }
     }
 
@@ -1546,7 +1554,10 @@ sr_lydmods_sched_finalize_module_remove(struct lyd_node *sr_mod, const struct ly
 
     /* remove module list instance */
     lyd_free_tree(sr_mod);
-    return NULL;
+
+cleanup:
+    ly_ctx_destroy(tmp_ctx);
+    return err_info;
 }
 
 /**

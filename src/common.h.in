@@ -488,13 +488,13 @@ sr_error_info_t *sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *p
 sr_error_info_t *sr_ly_ctx_new(struct ly_ctx **ly_ctx);
 
 /**
- * @brief Remove module YANG file.
+ * @brief Remove all unused module YANG file(s) and all of its includes/imports recursively.
  *
- * @param[in] name Module name.
- * @param[in] revision Module revision, NULL if none.
+ * @param[in] ly_mod Module whose files to remove.
+ * @param[in] new_ctx New context without @p ly_mod.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_remove_module_file(const char *name, const char *revision);
+sr_error_info_t *sr_remove_module_file_r(const struct lys_module *ly_mod, const struct ly_ctx *new_ctx);
 
 /**
  * @brief Create (print) YANG module file and all of its submodules.

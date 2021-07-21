@@ -1618,12 +1618,20 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_remove_module_file(const char *name, const char *revision)
+sr_remove_module_file_r(const struct lys_module *ly_mod, const struct ly_ctx *new_ctx)
 {
     sr_error_info_t *err_info = NULL;
     char *path;
+    const struct lysp_module *pmod;
+    LY_ARRAY_COUNT_TYPE u;
 
-    if ((err_info = sr_path_yang_file(name, revision, &path))) {
+    if (sr_module_is_internal(ly_mod) || ly_ctx_get_module(new_ctx, ly_mod->name, ly_mod->revision)) {
+        /* internal or still in the context, cannot be removed */
+        return NULL;
+    }
+
+    /* remove main module file */
+    if ((err_info = sr_path_yang_file(ly_mod->name, ly_mod->revision, &path))) {
         return err_info;
     }
 
@@ -1632,10 +1640,32 @@ sr_remove_module_file(const char *name, const char *revision)
     } else {
         SR_LOG_INF("File \"%s\" was removed.", strrchr(path, '/') + 1);
     }
-
-    /* we are not able to remove submodule files, unfortunately */
-
     free(path);
+
+    pmod = ly_mod->parsed;
+
+    /* remove all submodule files */
+    LY_ARRAY_FOR(pmod->includes, u) {
+        if ((err_info = sr_path_yang_file(pmod->includes[u].submodule->name, pmod->includes[u].submodule->revs[0].date,
+                &path))) {
+            return err_info;
+        }
+
+        if (unlink(path) == -1) {
+            SR_LOG_WRN("Failed to remove \"%s\" (%s).", path, strerror(errno));
+        } else {
+            SR_LOG_INF("File \"%s\" was removed.", strrchr(path, '/') + 1);
+        }
+        free(path);
+    }
+
+    /* remove all (unused) imports recursively */
+    LY_ARRAY_FOR(pmod->imports, u) {
+        if ((err_info = sr_remove_module_file_r(pmod->imports[u].module, new_ctx))) {
+            return err_info;
+        }
+    }
+
     return NULL;
 }
 
