@@ -831,15 +831,17 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     sr_error_info_t *err_info = NULL;
     struct lys_module *ly_mod;
     struct lyd_node *sr_mods = NULL;
+    struct ly_set mod_set = {0};
     uint32_t i;
 
-#define SR_INSTALL_INT_MOD(ctx, yang_mod, dep) \
+#define SR_INSTALL_INT_MOD(ctx, yang_mod, dep, mod_set) \
     if (lys_parse_mem(ctx, yang_mod, LYS_IN_YANG, &ly_mod)) { \
         sr_errinfo_new_ly(&err_info, ctx); \
-        goto error; \
+        goto cleanup; \
     } \
-    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0))) { \
-        goto error; \
+    if (ly_set_add(&mod_set, ly_mod, 1, NULL)) { \
+        sr_errinfo_new_ly(&err_info, ctx); \
+        goto cleanup; \
     } \
     SR_LOG_INF("Sysrepo internal%s module \"%s\" was installed.", dep ? " dependency" : "", ly_mod->name)
 
@@ -858,48 +860,57 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
         /* module must be implemented */
         if (ly_mod->implemented) {
             if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0))) {
-                goto error;
+                goto cleanup;
             }
             SR_LOG_INF("Libyang internal module \"%s\" was installed.", ly_mod->name);
         }
     }
 
     /* install ietf-datastores and ietf-yang-library */
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_datastores_yang, 1);
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_yang_library_yang, 0);
+    SR_INSTALL_INT_MOD(ly_ctx, ietf_datastores_yang, 1, mod_set);
+    SR_INSTALL_INT_MOD(ly_ctx, ietf_yang_library_yang, 0, mod_set);
 
     /* install sysrepo-monitoring */
-    SR_INSTALL_INT_MOD(ly_ctx, sysrepo_monitoring_yang, 0);
+    SR_INSTALL_INT_MOD(ly_ctx, sysrepo_monitoring_yang, 0, mod_set);
 
     /* install sysrepo-plugind */
-    SR_INSTALL_INT_MOD(ly_ctx, sysrepo_plugind_yang, 0);
+    SR_INSTALL_INT_MOD(ly_ctx, sysrepo_plugind_yang, 0, mod_set);
 
     /* make sure ietf-netconf-acm is found as an import */
     ly_ctx_set_module_imp_clb(ly_ctx, sr_ly_nacm_module_imp_clb, NULL);
 
     /* install ietf-netconf (implemented dependency) and ietf-netconf-with-defaults */
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_yang, 1);
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_with_defaults_yang, 0);
+    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_yang, 1, mod_set);
+    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_with_defaults_yang, 0, mod_set);
 
     ly_ctx_set_module_imp_clb(ly_ctx, NULL, NULL);
 
     /* install ietf-netconf-notifications */
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_notifications_yang, 0);
+    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_notifications_yang, 0, mod_set);
 
     /* install ietf-origin */
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_origin_yang, 0);
+    SR_INSTALL_INT_MOD(ly_ctx, ietf_origin_yang, 0, mod_set);
 
     /* compile all */
     if (ly_ctx_compile(ly_ctx)) {
         sr_errinfo_new_ly(&err_info, ly_ctx);
-        goto error;
+        goto cleanup;
     }
 
-    *sr_mods_p = sr_mods;
-    return NULL;
+    /* finish installing the modules in sysrepo */
+    for (i = 0; i < mod_set.count; ++i) {
+        if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, mod_set.objs[i], 0))) {
+            goto cleanup;
+        }
+    }
 
-error:
-    lyd_free_all(sr_mods);
+cleanup:
+    ly_set_erase(&mod_set, NULL);
+    if (err_info) {
+        lyd_free_all(sr_mods);
+    } else {
+        *sr_mods_p = sr_mods;
+    }
     return err_info;
 
 #undef SR_INSTALL_INT_MOD
