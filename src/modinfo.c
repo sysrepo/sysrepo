@@ -254,11 +254,15 @@ sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data)
                 lyd_insert_sibling(mod_info->diff, diff, &mod_info->diff);
 
                 /* update data */
-                lyd_insert_sibling(mod_info->data, src_mod_data, &mod_info->data);
+                if (src_mod_data) {
+                    lyd_insert_sibling(mod_info->data, src_mod_data, &mod_info->data);
+                }
                 lyd_free_all(dst_mod_data);
             } else {
                 /* keep old data (for validation) */
-                lyd_insert_sibling(mod_info->data, dst_mod_data, &mod_info->data);
+                if (dst_mod_data) {
+                    lyd_insert_sibling(mod_info->data, dst_mod_data, &mod_info->data);
+                }
                 lyd_free_all(src_mod_data);
             }
         }
