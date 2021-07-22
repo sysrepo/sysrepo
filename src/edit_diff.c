@@ -1146,13 +1146,14 @@ sr_edit_find_match(const struct lyd_node *first_node, const struct lyd_node *edi
  * @param[in] insert Optional insert place of the operation.
  * @param[in] userord_anchor Optional user-ordered list anchor of relative (leaf-)list instance of the operation.
  * @param[in] dflt_ll_skip Whether to skip found default leaf-list instance.
+ * @param[in] del_val_check Whether to check even values when deleting.
  * @param[out] match_p Matching node.
  * @param[out] val_equal_p Whether even the value matches.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node, enum edit_op op, enum insert_val insert,
-        const char *userord_anchor, int dflt_ll_skip, struct lyd_node **match_p, int *val_equal_p)
+        const char *userord_anchor, int dflt_ll_skip, int del_val_check, struct lyd_node **match_p, int *val_equal_p)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *anchor_node;
@@ -1184,7 +1185,7 @@ sr_edit_find(const struct lyd_node *first_node, const struct lyd_node *edit_node
             case LYS_LEAF:
             case LYS_ANYXML:
             case LYS_ANYDATA:
-                if ((op == EDIT_REMOVE) || (op == EDIT_DELETE) || (op == EDIT_PURGE)) {
+                if ((!del_val_check && ((op == EDIT_REMOVE) || (op == EDIT_DELETE))) || (op == EDIT_PURGE)) {
                     /* we do not care about the value in this case */
                     val_equal = 1;
                 } else if (lyd_compare_single(match, edit_node, 0) == LY_ENOT) {
@@ -1838,6 +1839,7 @@ sr_edit_apply_none(struct lyd_node *match_node, const struct lyd_node *edit_node
  * @param[in,out] first_node First sibling of the data tree.
  * @param[in] parent_node Parent of the first sibling.
  * @param[in,out] match_node Matching data tree node, may be updated for auto-remove.
+ * @param[in] val_equal Whether even values of the nodes match.
  * @param[in] diff_parent Current sysrepo diff parent.
  * @param[in,out] diff_root Sysrepo diff root node.
  * @param[out] diff_node Created diff node.
@@ -1848,8 +1850,8 @@ sr_edit_apply_none(struct lyd_node *match_node, const struct lyd_node *edit_node
  */
 static sr_error_info_t *
 sr_edit_apply_remove(struct lyd_node **first_node, struct lyd_node *parent_node, struct lyd_node **match_node,
-        struct lyd_node *diff_parent, struct lyd_node **diff_root, struct lyd_node **diff_node, enum edit_op *next_op,
-        int *flags_r, int *change)
+        int val_equal, struct lyd_node *diff_parent, struct lyd_node **diff_root, struct lyd_node **diff_node,
+        enum edit_op *next_op, int *flags_r, int *change)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *parent;
@@ -1859,7 +1861,7 @@ sr_edit_apply_remove(struct lyd_node **first_node, struct lyd_node *parent_node,
     /* just use the value because it is only in an assert */
     (void)parent_node;
 
-    if (*match_node) {
+    if (*match_node && val_equal) {
         if (lysc_is_userordered((*match_node)->schema)) {
             /* get original (current) previous instance to be stored in diff */
             sibling_before = sr_edit_find_previous_instance(*match_node);
@@ -1892,13 +1894,17 @@ sr_edit_apply_remove(struct lyd_node **first_node, struct lyd_node *parent_node,
             /* continue normally with the edit */
             *next_op = EDIT_CONTINUE;
         }
+
+        if (change) {
+            *change = 1;
+        }
     } else {
+        /* match is not valid, value does not match */
+        *match_node = NULL;
+
         /* there is nothing to remove, just check operations in the rest of this edit subtree */
         *flags_r |= EDIT_APPLY_CHECK_OP_R;
         *next_op = EDIT_CONTINUE;
-    }
-    if (change) {
-        *change = 1;
     }
 
 cleanup:
@@ -2238,17 +2244,22 @@ sr_edit_apply_merge(struct lyd_node *match_node, int val_equal, enum edit_op *ne
  * @brief Apply edit delete operation.
  *
  * @param[in] match_node Matching data tree node.
+ * @param[in] val_equal Whether even values of the nodes match.
  * @param[in] edit_node Current edit node.
  * @param[out] next_op Next operation to be performed with these nodes.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_apply_delete(struct lyd_node *match_node, const struct lyd_node *edit_node, enum edit_op *next_op)
+sr_edit_apply_delete(struct lyd_node *match_node, int val_equal, const struct lyd_node *edit_node, enum edit_op *next_op)
 {
     sr_error_info_t *err_info = NULL;
 
     if (!match_node) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" to be deleted does not exist.", edit_node->schema->name);
+        return err_info;
+    } else if (!val_equal) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" with the specific value to be deleted does not exist.",
+                edit_node->schema->name);
         return err_info;
     }
 
@@ -2266,13 +2277,15 @@ sr_edit_apply_delete(struct lyd_node *match_node, const struct lyd_node *edit_no
  * @param[in] parent_op Parent operation.
  * @param[in] diff_parent Current sysrepo diff parent.
  * @param[in,out] diff_root Sysrepo diff root node.
+ * @param[in] oper_edit Whether we are applying stored operational edit.
  * @param[in] flags Flags modifying the behavior.
  * @param[out] change Set if there are some data changes.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_edit_apply_r(struct lyd_node **first_node, struct lyd_node *parent_node, const struct lyd_node *edit_node,
-        enum edit_op parent_op, struct lyd_node *diff_parent, struct lyd_node **diff_root, int flags, int *change)
+        enum edit_op parent_op, struct lyd_node *diff_parent, struct lyd_node **diff_root, int oper_edit, int flags,
+        int *change)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *match = NULL, *child, *next, *edit_match, *diff_node = NULL;
@@ -2297,7 +2310,7 @@ reapply:
         /* we have no data */
         match = NULL;
     } else {
-        if ((err_info = sr_edit_find(*first_node, edit_node, op, insert, key_or_value, 1, &match, &val_equal))) {
+        if ((err_info = sr_edit_find(*first_node, edit_node, op, insert, key_or_value, 1, oper_edit, &match, &val_equal))) {
             return err_info;
         }
     }
@@ -2339,7 +2352,7 @@ reapply:
             }
             break;
         case EDIT_DELETE:
-            if ((err_info = sr_edit_apply_delete(match, edit_node, &next_op))) {
+            if ((err_info = sr_edit_apply_delete(match, val_equal, edit_node, &next_op))) {
                 goto op_error;
             }
             break;
@@ -2348,8 +2361,8 @@ reapply:
             prev_op = next_op;
         /* fallthrough */
         case EDIT_REMOVE:
-            if ((err_info = sr_edit_apply_remove(first_node, parent_node, &match, diff_parent, diff_root, &diff_node,
-                    &next_op, &flags, change))) {
+            if ((err_info = sr_edit_apply_remove(first_node, parent_node, &match, val_equal, diff_parent, diff_root,
+                    &diff_node, &next_op, &flags, change))) {
                 goto op_error;
             }
             break;
@@ -2419,11 +2432,12 @@ reapply:
                 continue;
             }
 
-            if ((err_info = sr_edit_find(lyd_child_no_keys(edit_node), child, EDIT_DELETE, 0, NULL, 0, &edit_match, NULL))) {
+            if ((err_info = sr_edit_find(lyd_child_no_keys(edit_node), child, EDIT_DELETE, 0, NULL, 0, oper_edit,
+                    &edit_match, NULL))) {
                 return err_info;
             }
             if (!edit_match && (err_info = sr_edit_apply_r(&((struct lyd_node_inner *)match)->child, match, child,
-                    EDIT_DELETE, diff_parent, diff_root, flags, change))) {
+                    EDIT_DELETE, diff_parent, diff_root, oper_edit, flags, change))) {
                 return err_info;
             }
         }
@@ -2433,10 +2447,10 @@ reapply:
     LY_LIST_FOR(lyd_child_no_keys(edit_node), child) {
         if (flags & EDIT_APPLY_CHECK_OP_R) {
             /* we do not operate with any datastore data or diff anymore */
-            err_info = sr_edit_apply_r(NULL, NULL, child, op, NULL, NULL, flags, change);
+            err_info = sr_edit_apply_r(NULL, NULL, child, op, NULL, NULL, oper_edit, flags, change);
         } else {
             err_info = sr_edit_apply_r(&((struct lyd_node_inner *)match)->child, match, child, op, diff_parent,
-                    diff_root, flags, change);
+                    diff_root, oper_edit, flags, change);
         }
         if (err_info) {
             return err_info;
@@ -2462,7 +2476,7 @@ op_error:
 }
 
 sr_error_info_t *
-sr_edit_mod_apply(const struct lyd_node *edit, const struct lys_module *ly_mod, struct lyd_node **data,
+sr_edit_mod_apply(const struct lyd_node *edit, const struct lys_module *ly_mod, int oper_edit, struct lyd_node **data,
         struct lyd_node **diff, int *change)
 {
     sr_error_info_t *err_info = NULL;
@@ -2480,7 +2494,8 @@ sr_edit_mod_apply(const struct lyd_node *edit, const struct lys_module *ly_mod, 
         }
 
         /* apply relevant nodes from the edit datatree */
-        if ((err_info = sr_edit_apply_r(data, NULL, root, EDIT_CONTINUE, NULL, diff ? &mod_diff : NULL, 0, change))) {
+        if ((err_info = sr_edit_apply_r(data, NULL, root, EDIT_CONTINUE, NULL, diff ? &mod_diff : NULL, oper_edit, 0,
+                change))) {
             goto cleanup;
         }
 
