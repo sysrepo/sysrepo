@@ -761,9 +761,8 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     if (!ATOMIC_LOAD_RELAXED(shm_mod->replay_supp)) {
-        /* nothing to do */
         SR_LOG_WRN("Module \"%s\" does not support notification replay.", mod_name);
-        goto cleanup;
+        goto replay_complete;
     }
 
     /* create event session */
@@ -844,6 +843,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
         }
     }
 
+replay_complete:
     /* replay last notification if the subscription continues */
     sr_time_get(&notif_ts, 0);
     if ((!stop_time || (stop_time >= notif_ts.tv_sec)) && (err_info = sr_notif_call_callback(ev_sess, cb, tree_cb,
