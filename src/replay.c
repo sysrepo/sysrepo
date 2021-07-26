@@ -844,10 +844,10 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     }
 
 replay_complete:
-    /* replay last notification if the subscription continues */
+    /* replay is completed */
     sr_time_get(&notif_ts, 0);
-    if ((!stop_time || (stop_time >= notif_ts.tv_sec)) && (err_info = sr_notif_call_callback(ev_sess, cb, tree_cb,
-            private_data, SR_EV_NOTIF_REPLAY_COMPLETE, sub_id, NULL, &notif_ts))) {
+    if ((err_info = sr_notif_call_callback(ev_sess, cb, tree_cb, private_data, SR_EV_NOTIF_REPLAY_COMPLETE, sub_id,
+            NULL, &notif_ts))) {
         goto cleanup;
     }
 
