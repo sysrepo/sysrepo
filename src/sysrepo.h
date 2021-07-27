@@ -816,7 +816,8 @@ int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_posi
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] edit Edit content, similar semantics to
- * [NETCONF \<edit-config\>](https://tools.ietf.org/html/rfc6241#section-7.2) content.
+ * [NETCONF \<edit-config\>](https://tools.ietf.org/html/rfc6241#section-7.2) content. Uses @p edit and all of its
+ * following siblings.
  * @param[in] default_operation Default operation for nodes without operation on themselves or any parent.
  * Possible values are `merge`, `replace`, or `none` (see [NETCONF RFC](https://tools.ietf.org/html/rfc6241#page-39)).
  * @return Error code (::SR_ERR_OK on success).
