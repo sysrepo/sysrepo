@@ -379,7 +379,14 @@ typedef enum {
      * subscription callback, keep them. Then the returned data are merged into the existing data. Accepted
      * only for operational subscriptions.
      */
-    SR_SUBSCR_OPER_MERGE = 64
+    SR_SUBSCR_OPER_MERGE = 64,
+
+    /**
+     * @brief Suspend the default handler thread before adding the subscription if it is running. In case of the
+     * first subscription, start the handler thread suspended. Meaning any events will not be handled until
+     * ::sr_subscription_thread_resume() is called.
+     */
+    SR_SUBSCR_THREAD_SUSPEND = 128
 
 } sr_subscr_flag_t;
 

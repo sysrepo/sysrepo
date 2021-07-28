@@ -3354,6 +3354,87 @@ sr_unsubscribe_sub(sr_subscription_ctx_t *subscription, uint32_t sub_id)
 }
 
 /**
+ * @brief Suspend the default handler thread of a subscription.
+ *
+ * @param[in] subscription Subscription structure.
+ * @return 0 on success.
+ * @return 1 if the thread was already suspended.
+ * @return 2 if there is no thread running.
+ */
+static int
+_sr_subscription_thread_suspend(sr_subscription_ctx_t *subscription)
+{
+    ATOMIC_T exp;
+    int result;
+
+    ATOMIC_STORE_RELAXED(exp, 1);
+
+    /* expect 1 and set to 2 */
+    ATOMIC_COMPARE_EXCHANGE_RELAXED(subscription->thread_running, exp, 2, result);
+    if (!result) {
+        if (ATOMIC_LOAD_RELAXED(exp) == 0) {
+            return 2;
+        } else {
+            return 1;
+        }
+    }
+
+    /* let the thread continue normally, no point in notifying it */
+
+    return 0;
+}
+
+API int
+sr_subscription_thread_suspend(sr_subscription_ctx_t *subscription)
+{
+    sr_error_info_t *err_info = NULL;
+    int ret;
+
+    SR_CHECK_ARG_APIRET(!subscription, NULL, err_info);
+
+    ret = _sr_subscription_thread_suspend(subscription);
+    if (ret == 2) {
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Subscription has no handler thread.");
+        return sr_api_ret(NULL, err_info);
+    } else if (ret == 1) {
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Subscription handler thread is already suspended.");
+        return sr_api_ret(NULL, err_info);
+    }
+
+    return sr_api_ret(NULL, NULL);
+}
+
+API int
+sr_subscription_thread_resume(sr_subscription_ctx_t *subscription)
+{
+    sr_error_info_t *err_info = NULL;
+    ATOMIC_T exp;
+    int result;
+
+    SR_CHECK_ARG_APIRET(!subscription, NULL, err_info);
+
+    ATOMIC_STORE_RELAXED(exp, 2);
+
+    /* expect 2 and set to 1 */
+    ATOMIC_COMPARE_EXCHANGE_RELAXED(subscription->thread_running, exp, 1, result);
+    if (!result) {
+        if (ATOMIC_LOAD_RELAXED(exp) == 0) {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Subscription has no handler thread.");
+        } else {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Subscription handler thread was not suspended.");
+        }
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* generate a new event for the thread to wake up */
+    if ((err_info = sr_shmsub_notify_evpipe(subscription->evpipe_num))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    return sr_api_ret(NULL, NULL);
+}
+
+/**
  * @brief Unlocked unsubscribe (free) of all the subscriptions in a subscription structure.
  *
  * @param[in] subscription Subscription to unsubscribe and free.
@@ -3580,7 +3661,11 @@ sr_subscr_new(sr_conn_ctx_t *conn, sr_subscr_options_t opts, sr_subscription_ctx
 
     if (!(opts & SR_SUBSCR_NO_THREAD)) {
         /* set thread_running to non-zero so that thread does not immediately quit */
-        ATOMIC_STORE_RELAXED((*subs_p)->thread_running, 1);
+        if (opts & SR_SUBSCR_THREAD_SUSPEND) {
+            ATOMIC_STORE_RELAXED((*subs_p)->thread_running, 2);
+        } else {
+            ATOMIC_STORE_RELAXED((*subs_p)->thread_running, 1);
+        }
 
         /* start the listen thread */
         ret = pthread_create(&(*subs_p)->tid, NULL, sr_shmsub_listen_thread, *subs_p);
@@ -3676,6 +3761,9 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         if ((err_info = sr_subscr_new(conn, opts, subscription))) {
             goto cleanup;
         }
+    } else if (opts & SR_SUBSCR_THREAD_SUSPEND) {
+        /* suspend the running thread */
+        _sr_subscription_thread_suspend(*subscription);
     }
 
     /* add module subscription into ext SHM */
@@ -4264,6 +4352,9 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
         if ((err_info = sr_subscr_new(conn, opts, subscription))) {
             goto error1;
         }
+    } else if (opts & SR_SUBSCR_THREAD_SUSPEND) {
+        /* suspend the running thread */
+        _sr_subscription_thread_suspend(*subscription);
     }
 
     /* get new sub ID */
@@ -4704,6 +4795,9 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
         if ((err_info = sr_subscr_new(conn, opts, subscription))) {
             return sr_api_ret(session, err_info);
         }
+    } else if (opts & SR_SUBSCR_THREAD_SUSPEND) {
+        /* suspend the running thread */
+        _sr_subscription_thread_suspend(*subscription);
     }
 
     /* get new sub ID */
@@ -5231,6 +5325,9 @@ sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, 
         if ((err_info = sr_subscr_new(conn, opts, subscription))) {
             return sr_api_ret(session, err_info);
         }
+    } else if (opts & SR_SUBSCR_THREAD_SUSPEND) {
+        /* suspend the running thread */
+        _sr_subscription_thread_suspend(*subscription);
     }
 
     /* get new sub ID */

@@ -1052,6 +1052,23 @@ int sr_subscription_resume(sr_subscription_ctx_t *subscription, uint32_t sub_id)
 int sr_unsubscribe_sub(sr_subscription_ctx_t *subscription, uint32_t sub_id);
 
 /**
+ * @brief Suspend the default handler thread of a subscription structure.
+ * Meaning it will stop handling any events on the subscription until it is resumed.
+ *
+ * @param[in] subscription Subscription context with a handler thread.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_subscription_thread_suspend(sr_subscription_ctx_t *subscription);
+
+/**
+ * @brief Resume the default handler thread of a subscription structure that was suspended previously.
+ *
+ * @param[in] subscription Subscription context with a handler thread.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_subscription_thread_resume(sr_subscription_ctx_t *subscription);
+
+/**
  * @brief Unsubscribe all the subscriptions in a subscription structure and free it.
  *
  * @note On error the function should be retried and must eventually succeed.

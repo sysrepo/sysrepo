@@ -3569,6 +3569,11 @@ sr_shmsub_listen_thread(void *arg)
     goto wait_for_event;
 
     while (ATOMIC_LOAD_RELAXED(subscr->thread_running)) {
+        if (ATOMIC_LOAD_RELAXED(subscr->thread_running) == 2) {
+            /* thread is suspended, do not process events */
+            goto wait_for_event;
+        }
+
         /* process the new event (or subscription stop time has elapsed) */
         ret = sr_process_events(subscr, NULL, &stop_time_in);
         if (ret == SR_ERR_TIME_OUT) {
