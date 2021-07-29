@@ -22,6 +22,11 @@ module sysrepo-monitoring {
     description
         "Sysrepo YANG datastore monitoring state information.";
 
+    revision "2021-07-29" {
+        description
+            "Subscription suspended state information added.";
+    }
+
     revision "2021-01-15" {
         description
             "Connection pid and new lock type added, lock information completely changed.";
@@ -218,6 +223,13 @@ module sysrepo-monitoring {
                         description
                             "CID of the connection that this subscription belongs to.";
                     }
+
+                    leaf suspended {
+                        type boolean;
+                        mandatory true;
+                        description
+                            "Whether the subscription is in the suspended state.";
+                    }
                 }
 
                 list operational-sub {
@@ -237,12 +249,30 @@ module sysrepo-monitoring {
                         description
                             "CID of the connection that this subscription belongs to.";
                     }
+
+                    leaf suspended {
+                        type boolean;
+                        description
+                            "Whether the subscription is in the suspended state.";
+                    }
                 }
 
-                leaf-list notification-sub {
-                    type conn-ref;
+                list notification-sub {
                     description
-                        "CID of the connection that this subscription belongs to.";
+                        "Event notification subscription.";
+
+                    leaf cid {
+                        type conn-ref;
+                        description
+                            "CID of the connection that this subscription belongs to.";
+                    }
+
+                    leaf suspended {
+                        type boolean;
+                        mandatory true;
+                        description
+                            "Whether the subscription is in the suspended state.";
+                    }
                 }
             }
         }
@@ -285,6 +315,13 @@ module sysrepo-monitoring {
                     mandatory true;
                     description
                         "CID of the connection that this subscription belongs to.";
+                }
+
+                leaf suspended {
+                    type boolean;
+                    mandatory true;
+                    description
+                        "Whether the subscription is in the suspended state.";
                 }
             }
         }

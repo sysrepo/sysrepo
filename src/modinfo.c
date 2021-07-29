@@ -1386,6 +1386,10 @@ ds_unlock:
             /* cid */
             sprintf(buf, "%" PRIu32, change_sub[i].cid);
             SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info);
+
+            /* suspended */
+            sprintf(buf, "%s", ATOMIC_LOAD_RELAXED(change_sub[i].suspended) ? "true" : "false");
+            SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info);
         }
     }
 
@@ -1398,13 +1402,24 @@ ds_unlock:
         /* cid */
         sprintf(buf, "%" PRIu32, oper_sub[i].cid);
         SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info);
+
+        /* suspended */
+        sprintf(buf, "%s", ATOMIC_LOAD_RELAXED(oper_sub[i].suspended) ? "true" : "false");
+        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info);
     }
 
     notif_sub = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
     for (i = 0; i < shm_mod->notif_sub_count; ++i) {
-        /* notification-sub with cid */
+        /* notification-sub */
+        SR_CHECK_LY_RET(lyd_new_list(sr_subs, NULL, "notification-sub", 0, &sr_sub), ly_ctx, err_info);
+
+        /* cid */
         sprintf(buf, "%" PRIu32, notif_sub[i].cid);
-        SR_CHECK_LY_RET(lyd_new_term(sr_subs, NULL, "notification-sub", buf, 0, NULL), ly_ctx, err_info);
+        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info);
+
+        /* suspended */
+        sprintf(buf, "%s", ATOMIC_LOAD_RELAXED(notif_sub[i].suspended) ? "true" : "false");
+        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info);
     }
 
     return NULL;
@@ -1454,6 +1469,10 @@ sr_modinfo_module_srmon_rpc(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, struct lyd_n
         /* cid */
         sprintf(buf, "%" PRIu32, rpc_sub[i].cid);
         SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info);
+
+        /* suspended */
+        sprintf(buf, "%s", ATOMIC_LOAD_RELAXED(rpc_sub[i].suspended) ? "true" : "false");
+        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info);
     }
 
     if (!lyd_child(sr_rpc)->next) {
