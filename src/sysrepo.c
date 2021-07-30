@@ -1050,14 +1050,14 @@ sr_get_module_name_format(const char *schema_path, char **module_name, LYS_INFOR
  * @param[in] format Module format.
  * @param[in] features Features to enable.
  * @param[in] search_dirs Optional search dirs, in format <dir>[:<dir>]*.
+ * @param[out] ly_mod Parsed libyang module.
  * @return err_info, NULL on success.
  */
-static struct lys_module *
+static sr_error_info_t *
 sr_parse_module(struct ly_ctx *ly_ctx, const char *schema_path, LYS_INFORMAT format, const char **features,
-        const char *search_dirs)
+        const char *search_dirs, const struct lys_module **ly_mod)
 {
     sr_error_info_t *err_info = NULL;
-    struct lys_module *ly_mod = NULL;
     char *sdirs_str = NULL, *ptr, *ptr2 = NULL;
     size_t sdir_count = 0;
     struct ly_in *in = NULL;
@@ -1083,7 +1083,7 @@ sr_parse_module(struct ly_ctx *ly_ctx, const char *schema_path, LYS_INFORMAT for
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to parse \"%s\".", schema_path);
         goto cleanup;
     }
-    if (lys_parse(ly_ctx, in, format, features, &ly_mod)) {
+    if (lys_parse(ly_ctx, in, format, features, (struct lys_module **)ly_mod)) {
         sr_errinfo_new_ly(&err_info, ly_ctx);
         goto cleanup;
     }
@@ -1100,8 +1100,10 @@ cleanup:
 
     ly_in_free(in, 0);
     free(sdirs_str);
-    sr_errinfo_free(&err_info);
-    return ly_mod;
+    if (err_info) {
+        *ly_mod = NULL;
+    }
+    return err_info;
 }
 
 API int
@@ -1139,9 +1141,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
     ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, mod_name);
     if (ly_mod) {
         /* it is currently in the context, try to parse it again to check revisions */
-        ly_mod = sr_parse_module(tmp_ly_ctx, schema_path, format, features, search_dirs);
-        if (!ly_mod) {
-            sr_errinfo_new_ly_first(&err_info, tmp_ly_ctx);
+        if ((err_info = sr_parse_module(tmp_ly_ctx, schema_path, format, features, search_dirs, &ly_mod))) {
             sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Module \"%s\" is already in sysrepo.", mod_name);
             goto cleanup;
         }
@@ -1157,8 +1157,7 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
     }
 
     /* parse the module with the features */
-    if (!(ly_mod = sr_parse_module(tmp_ly_ctx, schema_path, format, features, search_dirs))) {
-        sr_errinfo_new_ly(&err_info, tmp_ly_ctx);
+    if ((err_info = sr_parse_module(tmp_ly_ctx, schema_path, format, features, search_dirs, &ly_mod))) {
         goto cleanup;
     }
 
@@ -1304,8 +1303,7 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
     }
 
     /* try to parse the update module */
-    if (!(upd_ly_mod = sr_parse_module(tmp_ly_ctx, schema_path, format, NULL, search_dirs))) {
-        sr_errinfo_new_ly(&err_info, tmp_ly_ctx);
+    if ((err_info = sr_parse_module(tmp_ly_ctx, schema_path, format, NULL, search_dirs, &upd_ly_mod))) {
         goto cleanup;
     }
 
