@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <libyang/libyang.h>
 
@@ -166,6 +167,13 @@ const struct ly_ctx *sr_get_context(sr_conn_ctx_t *conn);
  * @return Content ID.
  */
 uint32_t sr_get_content_id(sr_conn_ctx_t *conn);
+
+/**
+ * @brief Get the sysrepo SUPERUSER UID.
+ *
+ * @return Sysrepo SU UID.
+ */
+uid_t sr_get_su_uid(void);
 
 /**
  * @brief Set callback for checking every diff before it is applied on the datastore.

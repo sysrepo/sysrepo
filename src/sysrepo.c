@@ -360,6 +360,12 @@ sr_get_content_id(sr_conn_ctx_t *conn)
     return content_id;
 }
 
+API uid_t
+sr_get_su_uid(void)
+{
+    return SR_SU_UID;
+}
+
 API int
 sr_set_diff_check_callback(sr_conn_ctx_t *conn, sr_diff_check_cb callback)
 {
