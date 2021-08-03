@@ -455,7 +455,7 @@ const char *sr_get_repo_path(void);
  * @param[in] conn Connection to use.
  * @param[in] schema_path Path to the new schema. Can have either YANG or YIN extension/format.
  * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
- * @param[in] features Array of enabled features ended with NULL.
+ * @param[in] features Optional array of enabled features ended with NULL.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs, const char **features);
