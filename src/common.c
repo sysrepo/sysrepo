@@ -4713,7 +4713,7 @@ sr_lyd_get_module_data(struct lyd_node **data, const struct lys_module *ly_mod, 
             }
 
             /* connect it to any other data */
-            if (lyd_merge_tree(new_data, subtree, LYD_MERGE_DESTRUCT)) {
+            if (lyd_merge_tree(new_data, subtree, LYD_MERGE_DESTRUCT | LYD_MERGE_WITH_FLAGS)) {
                 lyd_free_tree(subtree);
                 sr_errinfo_new_ly(&err_info, ly_mod->ctx);
                 return err_info;
