@@ -561,6 +561,11 @@ notif_replay_simple_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_n
         assert_null(notif);
         break;
     case 2:
+        assert_int_equal(notif_type, SR_EV_NOTIF_REALTIME);
+        assert_non_null(notif);
+        assert_string_equal(notif->schema->name, "notif4");
+        break;
+    case 3:
         assert_int_equal(notif_type, SR_EV_NOTIF_TERMINATED);
         assert_null(notif);
         break;
@@ -612,11 +617,20 @@ test_replay_simple(void **state)
             SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* wait for the replay, complete, and stop notifications */
+    /* create another notification */
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, sr_get_context(st->conn), "/ops:notif4/l", "val", 0, &notif));
+
+    /* send the notification, delivered realtime */
+    ret = sr_event_notif_send_tree(st->sess, notif, 0, 0);
+    lyd_free_all(notif);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for the replay notif, complete, realtime notif, and stop notifications */
     pthread_barrier_wait(&st->barrier);
     pthread_barrier_wait(&st->barrier);
     pthread_barrier_wait(&st->barrier);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
+    pthread_barrier_wait(&st->barrier);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
     sr_unsubscribe(subscr);
 }

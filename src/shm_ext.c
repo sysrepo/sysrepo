@@ -995,7 +995,8 @@ sr_shmext_oper_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx
 }
 
 sr_error_info_t *
-sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num, int suspended)
+sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num,
+        struct timespec *listen_since)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_notif_sub_t *shm_sub;
@@ -1005,6 +1006,9 @@ sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
             NULL, NULL))) {
         return err_info;
     }
+
+    /* if a notification is sent now, once it gets the lock, this subscription will already be listening */
+    sr_time_get(listen_since, 0);
 
     /* EXT WRITE LOCK */
     if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_WRITE, 1, __func__))) {
@@ -1023,7 +1027,7 @@ sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
     /* fill new subscription */
     shm_sub->sub_id = sub_id;
     shm_sub->evpipe_num = evpipe_num;
-    ATOMIC_STORE_RELAXED(shm_sub->suspended, suspended);
+    ATOMIC_STORE_RELAXED(shm_sub->suspended, 0);
     shm_sub->cid = conn->cid;
 
     SR_LOG_DBG("#SHM after (adding notif sub)");

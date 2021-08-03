@@ -66,13 +66,15 @@ void *sr_notif_buf_thread(void *arg);
  * @param[in] xpath Optional selected notifications.
  * @param[in] start_time Earliest notification of interest.
  * @param[in] stop_time Latest notification of interest.
+ * @param[in] listen_since Timestamp of the subscription listening for notifications. There must be no notification
+ * replayed with a later timestamp because it will be received as realtime notification.
  * @param[in] callback Notification callback to call.
  * @param[in] tree_callback Notification tree callback to call.
  * @param[in] private_data Notification callback private data.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, const char *xpath,
-        time_t start_time, time_t stop_time, sr_event_notif_cb callback, sr_event_notif_tree_cb tree_callback,
-        void *private_data);
+        time_t start_time, time_t stop_time, struct timespec *listen_since, sr_event_notif_cb callback,
+        sr_event_notif_tree_cb tree_callback, void *private_data);
 
 #endif

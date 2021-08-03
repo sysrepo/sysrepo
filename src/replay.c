@@ -745,12 +745,13 @@ sr_replay_skip_notif(int notif_fd)
 
 sr_error_info_t *
 sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, const char *xpath, time_t start_time,
-        time_t stop_time, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data)
+        time_t stop_time, struct timespec *listen_since, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb,
+        void *private_data)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
     time_t file_from_ts, file_to_ts;
-    struct timespec notif_ts;
+    struct timespec notif_ts, stop_ts;
     struct ly_set *set = NULL;
     struct lyd_node *notif = NULL, *notif_op;
     sr_session_ctx_t *ev_sess = NULL;
@@ -765,6 +766,14 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
         goto replay_complete;
     }
 
+    /* get the stop timestamp - only notifications with smaller timestamp can be replayed */
+    if (stop_time && (stop_time <= listen_since->tv_sec)) {
+        stop_ts.tv_sec = stop_time;
+        stop_ts.tv_nsec = 1;
+    } else {
+        stop_ts = *listen_since;
+    }
+
     /* create event session */
     if ((err_info = _sr_session_start(conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, NULL, &ev_sess))) {
         goto cleanup;
@@ -776,7 +785,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     }
 
     /* is this a valid notification file? */
-    while (file_from_ts && file_to_ts && (!stop_time || (file_from_ts <= stop_time))) {
+    while (file_from_ts && file_to_ts && (file_from_ts <= stop_ts.tv_sec)) {
         /* open the file */
         if ((err_info = sr_replay_open_file(mod_name, file_from_ts, file_to_ts, O_RDONLY, &fd))) {
             goto cleanup;
@@ -796,8 +805,8 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
             }
         } while (notif_ts.tv_sec < start_time);
 
-        /* replay notifications until stop_time is reached */
-        while (notif_ts.tv_sec && (!stop_time || (notif_ts.tv_sec <= stop_time))) {
+        /* replay notifications until stop_ts is reached */
+        while (notif_ts.tv_sec && (sr_time_cmp(&notif_ts, &stop_ts) < 0)) {
 
             /* parse notification */
             lyd_free_all(notif);
@@ -833,7 +842,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
         }
 
         /* no more notifications should be replayed */
-        if (stop_time && (notif_ts.tv_sec > stop_time)) {
+        if (sr_time_cmp(&notif_ts, &stop_ts) > -1) {
             break;
         }
 

@@ -4734,6 +4734,7 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
     sr_error_info_t *err_info = NULL, *tmp_err;
     struct ly_set *set;
     time_t cur_ts = time(NULL);
+    struct timespec listen_since;
     const struct lys_module *ly_mod;
     sr_conn_ctx_t *conn;
     uint32_t i, sub_id;
@@ -4815,15 +4816,21 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
     shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), ly_mod->name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, error1);
 
-    /* add notification subscription into main SHM, suspended if replay was requested */
-    if ((err_info = sr_shmext_notif_sub_add(conn, shm_mod, sub_id, (*subscription)->evpipe_num, start_time ? 1 : 0))) {
+    /* add notification subscription into main SHM and create separate specific SHM segment */
+    if ((err_info = sr_shmext_notif_sub_add(conn, shm_mod, sub_id, (*subscription)->evpipe_num, &listen_since))) {
         goto error1;
     }
 
-    /* add subscription into structure and create separate specific SHM segment */
-    if ((err_info = sr_subscr_notif_sub_add(*subscription, sub_id, session, ly_mod->name, xpath, start_time, stop_time,
-            callback, tree_callback, private_data, 0))) {
+    /* add subscription into structure */
+    if ((err_info = sr_subscr_notif_sub_add(*subscription, sub_id, session, ly_mod->name, xpath, &listen_since,
+            start_time, stop_time, callback, tree_callback, private_data, 0))) {
         goto error2;
+    }
+
+    /* add the subscription into session */
+    if ((err_info = sr_ptr_add(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
+            *subscription))) {
+        goto error3;
     }
 
     if (start_time || stop_time) {
@@ -4831,12 +4838,6 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
         if ((err_info = sr_shmsub_notify_evpipe((*subscription)->evpipe_num))) {
             goto error3;
         }
-    }
-
-    /* add the subscription into session */
-    if ((err_info = sr_ptr_add(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
-            *subscription))) {
-        goto error3;
     }
 
     return sr_api_ret(session, NULL);

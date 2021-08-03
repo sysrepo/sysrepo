@@ -382,11 +382,11 @@ sr_error_info_t *sr_shmext_oper_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod,
  * @param[in] shm_mod SHM module.
  * @param[in] sub_id Unique sub ID.
  * @param[in] evpipe_num Subscription event pipe number.
- * @param[in] suspended Whether the notification should be created suspended or not.
+ * @param[out] listen_since Timestamp of the moment the subscription is listening for notifications.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num,
-        int suspended);
+        struct timespec *listen_since);
 
 /**
  * @brief Remove main SHM module notification subscription and unlink sub SHM if the last subscription was removed.

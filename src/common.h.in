@@ -302,6 +302,7 @@ void sr_subscr_oper_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_l
  * @param[in] sess Subscription session.
  * @param[in] mod_name Subscription module name.
  * @param[in] xpath Subscription XPath.
+ * @param[in] listen_since Timestamp of the subscription starting to listen.
  * @param[in] start_time Subscription start time.
  * @param[in] stop_time Subscription stop time.
  * @param[in] notif_cb Subscription value callback.
@@ -311,8 +312,8 @@ void sr_subscr_oper_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_l
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_subscr_notif_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess,
-        const char *mod_name, const char *xpath, time_t start_time, time_t stop_time, sr_event_notif_cb notif_cb,
-        sr_event_notif_tree_cb notif_tree_cb, void *private_data, sr_lock_mode_t has_subs_lock);
+        const char *mod_name, const char *xpath, struct timespec *listen_since, time_t start_time, time_t stop_time,
+        sr_event_notif_cb notif_cb, sr_event_notif_tree_cb notif_tree_cb, void *private_data, sr_lock_mode_t has_subs_lock);
 
 /**
  * @brief Delete a notification subscription from a subscription structure.
@@ -732,6 +733,17 @@ int sr_file_exists(const char *path);
  * @param[in] add_ms Number os milliseconds added.
  */
 void sr_time_get(struct timespec *ts, uint32_t add_ms);
+
+/**
+ * @brief Compare 2 timespec structures.
+ *
+ * @param[in] ts1 First timespec.
+ * @param[in] ts2 Second timespec.
+ * @return 0, if the @p ts1 and @p ts2 are equal;
+ * @return a negative value if @p ts1 is sooner (smaller) than @p ts2;
+ * @return a positive value if @p ts1 is later (larger) than @p ts2.
+ */
+int sr_time_cmp(const struct timespec *ts1, const struct timespec *ts2);
 
 /**
  * @brief Remap and possibly resize a SHM. Needs WRITE lock for resizing,

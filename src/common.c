@@ -400,7 +400,7 @@ cleanup:
 
 sr_error_info_t *
 sr_subscr_notif_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess, const char *mod_name,
-        const char *xpath, time_t start_time, time_t stop_time, sr_event_notif_cb notif_cb,
+        const char *xpath, struct timespec *listen_since, time_t start_time, time_t stop_time, sr_event_notif_cb notif_cb,
         sr_event_notif_tree_cb notif_tree_cb, void *private_data, sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
@@ -469,6 +469,7 @@ sr_subscr_notif_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sessi
         SR_CHECK_MEM_GOTO(!mem[3], err_info, error_unlock);
         notif_sub->subs[notif_sub->sub_count].xpath = mem[3];
     }
+    notif_sub->subs[notif_sub->sub_count].listen_since = *listen_since;
     notif_sub->subs[notif_sub->sub_count].start_time = start_time;
     notif_sub->subs[notif_sub->sub_count].stop_time = stop_time;
     notif_sub->subs[notif_sub->sub_count].cb = notif_cb;
@@ -2551,6 +2552,26 @@ sr_time_get(struct timespec *ts, uint32_t add_ms)
     }
     ts->tv_nsec += (add_ms % 1000) * 1000000;
     ts->tv_sec += add_ms / 1000;
+}
+
+int
+sr_time_cmp(const struct timespec *ts1, const struct timespec *ts2)
+{
+    /* seconds diff */
+    if (ts1->tv_sec > ts2->tv_sec) {
+        return 1;
+    } else if (ts1->tv_sec < ts2->tv_sec) {
+        return -1;
+    }
+
+    /* nanoseconds diff */
+    if (ts1->tv_nsec > ts2->tv_nsec) {
+        return 1;
+    } else if (ts1->tv_nsec < ts2->tv_nsec) {
+        return -1;
+    }
+
+    return 0;
 }
 
 sr_error_info_t *
