@@ -5245,12 +5245,16 @@ sr_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t sub_
     }
 
     /* if the stop time is the same, there is nothing to modify */
-    if (sr_time_cmp(stop_time, &notif_sub->stop_time) == 0) {
+    if (stop_time && (sr_time_cmp(stop_time, &notif_sub->stop_time) == 0)) {
         goto cleanup_unlock;
     }
 
     /* update stop time */
-    notif_sub->stop_time = *stop_time;
+    if (stop_time) {
+        notif_sub->stop_time = *stop_time;
+    } else {
+        memset(&notif_sub->stop_time, 0, sizeof notif_sub->stop_time);
+    }
 
     /* create event session */
     if ((err_info = _sr_session_start(subscription->conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, NULL, &ev_sess))) {
