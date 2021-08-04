@@ -3406,9 +3406,9 @@ cleanup:
 }
 
 void
-sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif_subs, time_t *stop_time_in)
+sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif_subs, struct timespec *stop_time_in)
 {
-    time_t cur_time, next_stop_time;
+    struct timespec cur_time, next_stop_time = {0}, cur_stop_time_in;
     struct modsub_notifsub_s *notif_sub;
     uint32_t i;
 
@@ -3416,29 +3416,30 @@ sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif_subs
         return;
     }
 
-    next_stop_time = 0;
-
     for (i = 0; i < notif_subs->sub_count; ++i) {
         notif_sub = &notif_subs->subs[i];
-        if (notif_sub->stop_time) {
+        if (notif_sub->stop_time.tv_sec) {
             /* remember nearest stop_time */
-            if (!next_stop_time || (notif_sub->stop_time < next_stop_time)) {
+            if (!next_stop_time.tv_sec || (sr_time_cmp(&notif_sub->stop_time, &next_stop_time) < 0)) {
                 next_stop_time = notif_sub->stop_time;
             }
         }
     }
 
-    if (!next_stop_time) {
+    if (!next_stop_time.tv_sec) {
         return;
     }
 
-    cur_time = time(NULL);
-    if (cur_time > next_stop_time) {
+    sr_time_get(&cur_time, 0);
+    if (sr_time_cmp(&cur_time, &next_stop_time) > -1) {
         /* stop time has already elapsed while we were processing some other events, handle this as soon as possible */
-        *stop_time_in = 1;
-    } else if (!*stop_time_in || ((next_stop_time - cur_time) + 1 < *stop_time_in)) {
-        /* no previous stop time or this one is nearer */
-        *stop_time_in = (next_stop_time - cur_time) + 1;
+        stop_time_in->tv_nsec = 1;
+    } else {
+        cur_stop_time_in = sr_time_sub(&next_stop_time, &cur_time);
+        if ((!stop_time_in->tv_sec && !stop_time_in->tv_nsec) || (sr_time_cmp(stop_time_in, &cur_stop_time_in) > 0)) {
+            /* no previous stop time or this one is nearer */
+            *stop_time_in = cur_stop_time_in;
+        }
     }
 }
 
@@ -3448,6 +3449,7 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lo
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     struct modsub_notifsub_s *notif_sub;
+    struct timespec cur_ts;
     uint32_t i;
     sr_lock_mode_t lock_mode = has_subs_lock;
 
@@ -3457,10 +3459,11 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lo
 
     *mod_finished = 0;
 
+    sr_time_get(&cur_ts, 0);
     i = 0;
     while (i < notif_subs->sub_count) {
         notif_sub = &notif_subs->subs[i];
-        if (notif_sub->stop_time && (notif_sub->stop_time < time(NULL))) {
+        if (notif_sub->stop_time.tv_sec && (sr_time_cmp(&notif_sub->stop_time, &cur_ts) < 1)) {
             if (lock_mode != SR_LOCK_READ_UPGR) {
                 /* SUBS READ UNLOCK */
                 sr_rwunlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscr->conn->cid, __func__);
@@ -3533,10 +3536,10 @@ sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subsc
 
     for (i = 0; i < notif_subs->sub_count; ++i) {
         notif_sub = &notif_subs->subs[i];
-        if (notif_sub->start_time && !notif_sub->replayed) {
+        if (notif_sub->start_time.tv_sec && !notif_sub->replayed) {
             /* we need to perform the requested replay */
             if ((err_info = sr_replay_notify(subscr->conn, notif_subs->module_name, notif_sub->sub_id, notif_sub->xpath,
-                    notif_sub->start_time, notif_sub->stop_time, &notif_sub->listen_since, notif_sub->cb,
+                    &notif_sub->start_time, &notif_sub->stop_time, &notif_sub->listen_since, notif_sub->cb,
                     notif_sub->tree_cb, notif_sub->private_data))) {
                 return err_info;
             }

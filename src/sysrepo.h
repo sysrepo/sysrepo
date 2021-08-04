@@ -1000,9 +1000,15 @@ int sr_get_event_pipe(sr_subscription_ctx_t *subscription, int *event_pipe);
  *
  * @param[in] subscription Subscription without a listening thread with some new events.
  * @param[in] session Optional session for storing errors.
- * @param[out] stop_time_in Optional seconds until the nearest notification subscription stop time is elapsed
- * and this function should be called. If there are no subscriptions with stop time in future, it is set to 0.
+ * @param[out] stop_time_in Optional time until the nearest notification subscription stop time is elapsed
+ * and this function should be called. If there are no subscriptions with stop time in future, it is zeroed.
  * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_subscription_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session,
+        struct timespec *stop_time_in);
+
+/**
+ * @brief Deprecated, use ::sr_subscription_process_events() instead.
  */
 int sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session, time_t *stop_time_in);
 
@@ -1345,9 +1351,9 @@ int sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t
  * @note An existing context may be passed in case that ::SR_SUBSCR_CTX_REUSE option is specified.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath, time_t start_time,
-        time_t stop_time, sr_event_notif_cb callback, void *private_data, sr_subscr_options_t opts,
-        sr_subscription_ctx_t **subscription);
+int sr_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
+        const struct timespec *start_time, const struct timespec *stop_time, sr_event_notif_cb callback,
+        void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Subscribes for the delivery of a notification(s). Data are represented as _libyang_ subtrees.
@@ -1366,6 +1372,20 @@ int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name,
  * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
  * @note An existing context may be passed in case that ::SR_SUBSCR_CTX_REUSE option is specified.
  * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name, const char *xpath,
+        const struct timespec *start_time, const struct timespec *stop_time, sr_event_notif_tree_cb callback,
+        void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+
+/**
+ * @brief Deprecated, use ::sr_notif_subscribe() instead.
+ */
+int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath, time_t start_time,
+        time_t stop_time, sr_event_notif_cb callback, void *private_data, sr_subscr_options_t opts,
+        sr_subscription_ctx_t **subscription);
+
+/**
+ * @brief Deprecated, use ::sr_notif_subscribe_tree() instead.
  */
 int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name, const char *xpath,
         time_t start_time, time_t stop_time, sr_event_notif_tree_cb callback, void *private_data,
@@ -1425,6 +1445,12 @@ int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, 
  * @param[out] filtered_out Optional number of filtered-out notifications of the subscription.
  * @return Error code (::SR_ERR_OK on success).
  */
+int sr_notif_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char **module_name,
+        const char **xpath, struct timespec *start_time, struct timespec *stop_time, uint32_t *filtered_out);
+
+/**
+ * @brief Deprecated, use ::sr_notif_sub_get_info() instead.
+ */
 int sr_event_notif_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char **module_name,
         const char **xpath, time_t *start_time, time_t *stop_time, uint32_t *filtered_out);
 
@@ -1445,8 +1471,13 @@ int sr_event_notif_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_
  *
  * @param[in] subscription Subscription structure to use.
  * @param[in] sub_id Subscription ID of the specific subscription to modify.
- * @param[in] stop_time New stop time of the subscription.
+ * @param[in] stop_time New stop time of the subscription, may be NULL for none.
  * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t sub_id, const struct timespec *stop_time);
+
+/**
+ * @brief Deprecated, use ::sr_notif_sub_modify_stop_time() instead.
  */
 int sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t sub_id, time_t stop_time);
 

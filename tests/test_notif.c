@@ -566,6 +566,10 @@ notif_replay_simple_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_n
         assert_string_equal(notif->schema->name, "notif4");
         break;
     case 3:
+        assert_int_equal(notif_type, SR_EV_NOTIF_MODIFIED);
+        assert_null(notif);
+        break;
+    case 4:
         assert_int_equal(notif_type, SR_EV_NOTIF_TERMINATED);
         assert_null(notif);
         break;
@@ -575,7 +579,9 @@ notif_replay_simple_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_n
 
     /* signal that we were called */
     ATOMIC_INC_RELAXED(st->cb_called);
-    pthread_barrier_wait(&st->barrier);
+    if (notif_type != SR_EV_NOTIF_MODIFIED) {
+        pthread_barrier_wait(&st->barrier);
+    }
 }
 
 static void
@@ -584,8 +590,9 @@ test_replay_simple(void **state)
     struct state *st = (struct state *)*state;
     sr_subscription_ctx_t *subscr;
     struct lyd_node *notif;
-    time_t cur_ts;
+    struct timespec start, stop;
     int ret;
+    uint32_t sub_id;
 
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
@@ -605,7 +612,7 @@ test_replay_simple(void **state)
     assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, sr_get_context(st->conn), "/ops:notif3/list2[k='k']", NULL, 0, &notif));
 
     /* remember current time */
-    cur_ts = time(NULL);
+    clock_gettime(CLOCK_REALTIME, &start);
 
     /* send the notification, it should be stored for replay */
     ret = sr_event_notif_send_tree(st->sess, notif, 0, 0);
@@ -613,9 +620,10 @@ test_replay_simple(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* now subscribe and expect the notification replayed */
-    ret = sr_event_notif_subscribe_tree(st->sess, "ops", NULL, cur_ts, time(NULL) + 1, notif_replay_simple_cb, st,
+    ret = sr_notif_subscribe_tree(st->sess, "ops", NULL, &start, NULL, notif_replay_simple_cb, st,
             SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
+    sub_id = sr_subscription_get_last_sub_id(subscr);
 
     /* create another notification */
     assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, sr_get_context(st->conn), "/ops:notif4/l", "val", 0, &notif));
@@ -625,12 +633,19 @@ test_replay_simple(void **state)
     lyd_free_all(notif);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* wait for the replay notif, complete, realtime notif, and stop notifications */
+    /* wait for the replay notif, complete, realtime notif */
     pthread_barrier_wait(&st->barrier);
     pthread_barrier_wait(&st->barrier);
     pthread_barrier_wait(&st->barrier);
+
+    /* make the subscription reach its stop time */
+    clock_gettime(CLOCK_REALTIME, &stop);
+    ret = sr_notif_sub_modify_stop_time(subscr, sub_id, &stop);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for stop */
     pthread_barrier_wait(&st->barrier);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 5);
 
     sr_unsubscribe(subscr);
 }
@@ -770,13 +785,18 @@ test_replay_interval(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_subscription_ctx_t *subscr;
+    struct timespec start = {0}, stop = {0};
     int ret, i = 0;
 
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
+    /* stop excludes the notifications and second granularity is not enough */
+    stop.tv_nsec = 999999999;
+
     /* subscribe to the first replay interval */
-    ret = sr_event_notif_subscribe_tree(st->sess, "ops", NULL, start_ts + 2, start_ts + 13, notif_replay_interval_cb, st,
-            0, &subscr);
+    start.tv_sec = start_ts + 2;
+    stop.tv_sec = start_ts + 13;
+    ret = sr_notif_subscribe_tree(st->sess, "ops", NULL, &start, &stop, notif_replay_interval_cb, st, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for the replay, complete, and stop notifications */
@@ -786,7 +806,9 @@ test_replay_interval(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), i);
 
     /* subscribe to the second replay interval */
-    ret = sr_event_notif_subscribe_tree(st->sess, "ops", NULL, start_ts - 20, start_ts + 4, notif_replay_interval_cb, st,
+    start.tv_sec = start_ts - 20;
+    stop.tv_sec = start_ts + 4;
+    ret = sr_notif_subscribe_tree(st->sess, "ops", NULL, &start, &stop, notif_replay_interval_cb, st,
             SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -797,7 +819,9 @@ test_replay_interval(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), i);
 
     /* subscribe to the third replay interval */
-    ret = sr_event_notif_subscribe_tree(st->sess, "ops", NULL, start_ts + 9, start_ts + 40, notif_replay_interval_cb, st,
+    start.tv_sec = start_ts + 9;
+    stop.tv_sec = start_ts + 40;
+    ret = sr_notif_subscribe_tree(st->sess, "ops", NULL, &start, &stop, notif_replay_interval_cb, st,
             SR_SUBSCR_CTX_REUSE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 

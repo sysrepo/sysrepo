@@ -3085,7 +3085,7 @@ sr_get_event_pipe(sr_subscription_ctx_t *subscription, int *event_pipe)
 }
 
 API int
-sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session, time_t *stop_time_in)
+sr_subscription_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session, struct timespec *stop_time_in)
 {
     sr_error_info_t *err_info = NULL;
     int ret, mod_finished;
@@ -3096,7 +3096,7 @@ sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session
     SR_CHECK_ARG_APIRET(!subscription, session, err_info);
 
     if (stop_time_in) {
-        *stop_time_in = 0;
+        memset(stop_time_in, 0, sizeof *stop_time_in);
     }
 
     /* get only READ lock to allow event processing even during unsubscribe */
@@ -3175,6 +3175,24 @@ cleanup_unlock:
     sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
 
     return sr_api_ret(session, err_info);
+}
+
+API int
+sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session, time_t *stop_time_in)
+{
+    int rc;
+    struct timespec stop_time_ts = {0};
+
+    if (stop_time_in) {
+        stop_time_ts.tv_sec = *stop_time_in;
+    }
+
+    rc = sr_subscription_process_events(subscription, session, &stop_time_ts);
+
+    if (stop_time_in) {
+        *stop_time_in = stop_time_ts.tv_sec + (stop_time_ts.tv_nsec ? 1 : 0);
+    }
+    return rc;
 }
 
 API uint32_t
@@ -4727,14 +4745,13 @@ sr_event_notif_lysc_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_cont
  * @return err_code (SR_ERR_OK on success).
  */
 static int
-_sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char *xpath, time_t start_time,
-        time_t stop_time, sr_event_notif_cb callback, sr_event_notif_tree_cb tree_callback, void *private_data,
-        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
+_sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char *xpath, const struct timespec *start_time,
+        const struct timespec *stop_time, sr_event_notif_cb callback, sr_event_notif_tree_cb tree_callback,
+        void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     struct ly_set *set;
-    time_t cur_ts = time(NULL);
-    struct timespec listen_since;
+    struct timespec listen_since, cur_ts;
     const struct lys_module *ly_mod;
     sr_conn_ctx_t *conn;
     uint32_t i, sub_id;
@@ -4742,8 +4759,12 @@ _sr_event_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const
     LY_ERR lyrc;
     int found;
 
-    SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !mod_name || (start_time && (start_time > cur_ts)) ||
-            (stop_time && ((start_time && (stop_time < start_time)) || (!start_time && (stop_time < cur_ts)))) ||
+    sr_time_get(&cur_ts, 0);
+
+    SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !mod_name ||
+            (start_time && (sr_time_cmp(start_time, &cur_ts) > 0)) ||
+            (stop_time && ((start_time && (sr_time_cmp(stop_time, start_time) < 0)) ||
+            (!start_time && (sr_time_cmp(stop_time, &cur_ts) < 0)))) ||
             (!callback && !tree_callback) || !subscription, session, err_info);
 
     /* is the module name valid? */
@@ -4860,12 +4881,35 @@ error1:
 }
 
 API int
+sr_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath, const struct timespec *start_time,
+        const struct timespec *stop_time, sr_event_notif_cb callback, void *private_data, sr_subscr_options_t opts,
+        sr_subscription_ctx_t **subscription)
+{
+    return _sr_notif_subscribe(session, module_name, xpath, start_time, stop_time, callback, NULL, private_data, opts,
+            subscription);
+}
+
+API int
+sr_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name, const char *xpath,
+        const struct timespec *start_time, const struct timespec *stop_time, sr_event_notif_tree_cb callback,
+        void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
+{
+    return _sr_notif_subscribe(session, module_name, xpath, start_time, stop_time, NULL, callback, private_data, opts,
+            subscription);
+}
+
+API int
 sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath, time_t start_time,
         time_t stop_time, sr_event_notif_cb callback, void *private_data, sr_subscr_options_t opts,
         sr_subscription_ctx_t **subscription)
 {
-    return _sr_event_notif_subscribe(session, module_name, xpath, start_time, stop_time, callback, NULL, private_data,
-            opts, subscription);
+    struct timespec start_ts = {0}, stop_ts = {0};
+
+    start_ts.tv_sec = start_time;
+    stop_ts.tv_sec = stop_time;
+
+    return _sr_notif_subscribe(session, module_name, xpath, start_time ? &start_ts : NULL, stop_time ? &stop_ts : NULL,
+            callback, NULL, private_data, opts, subscription);
 }
 
 API int
@@ -4873,8 +4917,13 @@ sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name
         time_t stop_time, sr_event_notif_tree_cb callback, void *private_data, sr_subscr_options_t opts,
         sr_subscription_ctx_t **subscription)
 {
-    return _sr_event_notif_subscribe(session, module_name, xpath, start_time, stop_time, NULL, callback, private_data,
-            opts, subscription);
+    struct timespec start_ts = {0}, stop_ts = {0};
+
+    start_ts.tv_sec = start_time;
+    stop_ts.tv_sec = stop_time;
+
+    return _sr_notif_subscribe(session, module_name, xpath, start_time ? &start_ts : NULL, stop_time ? &stop_ts : NULL,
+            NULL, callback, private_data, opts, subscription);
 }
 
 API int
@@ -5048,8 +5097,8 @@ cleanup:
 }
 
 API int
-sr_event_notif_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char **module_name,
-        const char **xpath, time_t *start_time, time_t *stop_time, uint32_t *filtered_out)
+sr_notif_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char **module_name,
+        const char **xpath, struct timespec *start_time, struct timespec *stop_time, uint32_t *filtered_out)
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_notifsub_s *notif_sub;
@@ -5088,6 +5137,24 @@ cleanup_unlock:
     sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
 
     return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_event_notif_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char **module_name,
+        const char **xpath, time_t *start_time, time_t *stop_time, uint32_t *filtered_out)
+{
+    int rc;
+    struct timespec start_ts, stop_ts;
+
+    rc = sr_notif_sub_get_info(subscription, sub_id, module_name, xpath, &start_ts, &stop_ts, filtered_out);
+
+    if (start_time) {
+        *start_time = start_ts.tv_sec;
+    }
+    if (stop_time) {
+        *stop_time = stop_ts.tv_sec;
+    }
+    return rc;
 }
 
 API int
@@ -5149,7 +5216,7 @@ cleanup_unlock:
 }
 
 API int
-sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t sub_id, time_t stop_time)
+sr_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t sub_id, const struct timespec *stop_time)
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_notifsub_s *notif_sub;
@@ -5172,18 +5239,18 @@ sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_
     }
 
     /* check stop time validity */
-    if (stop_time && !notif_sub->start_time && (stop_time < notif_sub->start_time)) {
+    if (stop_time && !notif_sub->start_time.tv_sec && (sr_time_cmp(stop_time, &notif_sub->start_time) < 0)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Stop time cannot be earlier than start time.");
         goto cleanup_unlock;
     }
 
     /* if the stop time is the same, there is nothing to modify */
-    if (stop_time == notif_sub->stop_time) {
+    if (sr_time_cmp(stop_time, &notif_sub->stop_time) == 0) {
         goto cleanup_unlock;
     }
 
     /* update stop time */
-    notif_sub->stop_time = stop_time;
+    notif_sub->stop_time = *stop_time;
 
     /* create event session */
     if ((err_info = _sr_session_start(subscription->conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, NULL, &ev_sess))) {
@@ -5203,6 +5270,16 @@ cleanup_unlock:
 
     sr_session_stop(ev_sess);
     return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t sub_id, time_t stop_time)
+{
+    struct timespec stop_ts = {0};
+
+    stop_ts.tv_sec = stop_time;
+
+    return sr_notif_sub_modify_stop_time(subscription, sub_id, stop_time ? &stop_ts : NULL);
 }
 
 /**

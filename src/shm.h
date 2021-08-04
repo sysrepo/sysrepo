@@ -887,7 +887,7 @@ sr_error_info_t *sr_shmsub_notif_listen_process_module_events(struct modsub_noti
  * @param[in] notif_subs Module notification subscriptions.
  * @param[in,out] stop_time_in Nearest stop time of a subscription, if none, left unmodified.
  */
-void sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif_subs, time_t *stop_time_in);
+void sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif_subs, struct timespec *stop_time_in);
 
 /**
  * @brief Check notification subscriptions stop time and finish the subscription if it has elapsed.

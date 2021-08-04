@@ -744,9 +744,9 @@ sr_replay_skip_notif(int notif_fd)
 }
 
 sr_error_info_t *
-sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, const char *xpath, time_t start_time,
-        time_t stop_time, struct timespec *listen_since, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb,
-        void *private_data)
+sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, const char *xpath,
+        const struct timespec *start_time, const struct timespec *stop_time, struct timespec *listen_since,
+        sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
@@ -767,9 +767,8 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     }
 
     /* get the stop timestamp - only notifications with smaller timestamp can be replayed */
-    if (stop_time && (stop_time <= listen_since->tv_sec)) {
-        stop_ts.tv_sec = stop_time;
-        stop_ts.tv_nsec = 1;
+    if (stop_time->tv_sec && (sr_time_cmp(stop_time, listen_since) < 1)) {
+        stop_ts = *stop_time;
     } else {
         stop_ts = *listen_since;
     }
@@ -780,7 +779,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     }
 
     /* find first file */
-    if ((err_info = sr_replay_find_file(mod_name, start_time, 0, &file_from_ts, &file_to_ts))) {
+    if ((err_info = sr_replay_find_file(mod_name, start_time->tv_sec, 0, &file_from_ts, &file_to_ts))) {
         goto cleanup;
     }
 
@@ -800,10 +799,10 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
                 sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unexpected notification file EOF.");
                 goto cleanup;
             }
-            if ((notif_ts.tv_sec < start_time) && (err_info = sr_replay_skip_notif(fd))) {
+            if ((sr_time_cmp(&notif_ts, start_time) < 0) && (err_info = sr_replay_skip_notif(fd))) {
                 goto cleanup;
             }
-        } while (notif_ts.tv_sec < start_time);
+        } while (sr_time_cmp(&notif_ts, start_time) < 0);
 
         /* replay notifications until stop_ts is reached */
         while (notif_ts.tv_sec && (sr_time_cmp(&notif_ts, &stop_ts) < 0)) {

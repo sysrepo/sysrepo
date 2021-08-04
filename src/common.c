@@ -400,8 +400,9 @@ cleanup:
 
 sr_error_info_t *
 sr_subscr_notif_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess, const char *mod_name,
-        const char *xpath, struct timespec *listen_since, time_t start_time, time_t stop_time, sr_event_notif_cb notif_cb,
-        sr_event_notif_tree_cb notif_tree_cb, void *private_data, sr_lock_mode_t has_subs_lock)
+        const char *xpath, const struct timespec *listen_since, const struct timespec *start_time,
+        const struct timespec *stop_time, sr_event_notif_cb notif_cb, sr_event_notif_tree_cb notif_tree_cb,
+        void *private_data, sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_notif_s *notif_sub = NULL;
@@ -470,8 +471,12 @@ sr_subscr_notif_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sessi
         notif_sub->subs[notif_sub->sub_count].xpath = mem[3];
     }
     notif_sub->subs[notif_sub->sub_count].listen_since = *listen_since;
-    notif_sub->subs[notif_sub->sub_count].start_time = start_time;
-    notif_sub->subs[notif_sub->sub_count].stop_time = stop_time;
+    if (start_time) {
+        notif_sub->subs[notif_sub->sub_count].start_time = *start_time;
+    }
+    if (stop_time) {
+        notif_sub->subs[notif_sub->sub_count].stop_time = *stop_time;
+    }
     notif_sub->subs[notif_sub->sub_count].cb = notif_cb;
     notif_sub->subs[notif_sub->sub_count].tree_cb = notif_tree_cb;
     notif_sub->subs[notif_sub->sub_count].private_data = private_data;
@@ -2572,6 +2577,30 @@ sr_time_cmp(const struct timespec *ts1, const struct timespec *ts2)
     }
 
     return 0;
+}
+
+struct timespec
+sr_time_sub(const struct timespec *ts1, const struct timespec *ts2)
+{
+    struct timespec result;
+
+    if ((ts1->tv_sec < ts2->tv_sec) || ((ts1->tv_sec == ts2->tv_sec) && (ts1->tv_nsec < ts2->tv_nsec))) {
+        /* negative result */
+        result.tv_sec = 0;
+        result.tv_nsec = -1;
+        return result;
+    }
+
+    result.tv_sec = ts1->tv_sec - ts2->tv_sec;
+    if (ts1->tv_nsec < ts2->tv_nsec) {
+        /* nsec underflow */
+        --result.tv_sec;
+        result.tv_nsec = (ts1->tv_nsec + 1000000000) - ts2->tv_nsec;
+    } else {
+        result.tv_nsec = ts1->tv_nsec - ts2->tv_nsec;
+    }
+
+    return result;
 }
 
 sr_error_info_t *

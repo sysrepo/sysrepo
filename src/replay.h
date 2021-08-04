@@ -74,7 +74,7 @@ void *sr_notif_buf_thread(void *arg);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, const char *xpath,
-        time_t start_time, time_t stop_time, struct timespec *listen_since, sr_event_notif_cb callback,
-        sr_event_notif_tree_cb tree_callback, void *private_data);
+        const struct timespec *start_time, const struct timespec *stop_time, struct timespec *listen_since,
+        sr_event_notif_cb callback, sr_event_notif_tree_cb tree_callback, void *private_data);
 
 #endif
