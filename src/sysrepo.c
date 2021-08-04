@@ -5264,6 +5264,11 @@ sr_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t sub_
         goto cleanup_unlock;
     }
 
+    /* generate a new event for the thread to wake up */
+    if ((err_info = sr_shmsub_notify_evpipe(subscription->evpipe_num))) {
+        goto cleanup_unlock;
+    }
+
 cleanup_unlock:
     /* SUBS WRITE UNLOCK */
     sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscription->conn->cid, __func__);
