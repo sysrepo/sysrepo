@@ -244,7 +244,11 @@ step_load_data(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format,
 
     /* get input */
     if (file_path) {
-        ly_in_new_filepath(file_path, 0, &in);
+        if (ly_in_new_filepath(file_path, 0, &in)) {
+            /* empty file */
+            ptr = strdup("");
+            ly_in_new_memory(ptr, &in);
+        }
     } else {
         /* we need to load the data into memory first */
         if (step_read_file(stdin, &ptr)) {
