@@ -3604,11 +3604,10 @@ _sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t ci
         while (!ret && rwlock->readers[0]) {
             /* COND WAIT */
             ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
-        }
-        if (ret == ETIMEDOUT) {
+
             /* recover the lock again, the owner may have died while processing */
             sr_rwlock_recover(rwlock, func, cb, cb_data);
-            if (!rwlock->readers[0]) {
+            if ((ret == ETIMEDOUT) && !rwlock->readers[0]) {
                 /* recovered */
                 ret = 0;
             }
@@ -3635,11 +3634,10 @@ _sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t ci
             while (!ret && rwlock->upgr) {
                 /* COND WAIT */
                 ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
-            }
-            if (ret == ETIMEDOUT) {
+
                 /* recover the lock again, the owner may have died while processing */
                 sr_rwlock_recover(rwlock, func, cb, cb_data);
-                if (!rwlock->upgr) {
+                if ((ret == ETIMEDOUT) && !rwlock->upgr) {
                     /* recovered */
                     ret = 0;
                 }
@@ -3722,10 +3720,9 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
         while (!ret && rwlock->readers[1]) {
             /* COND WAIT */
             ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
-        }
-        if (ret == ETIMEDOUT) {
+
             sr_rwlock_recover(rwlock, func, cb, cb_data);
-            if (!rwlock->readers[1]) {
+            if ((ret == ETIMEDOUT) && !rwlock->readers[1]) {
                 /* recovered */
                 ret = 0;
             }
