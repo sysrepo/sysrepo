@@ -2255,11 +2255,11 @@ sr_edit_apply_delete(struct lyd_node *match_node, int val_equal, const struct ly
     sr_error_info_t *err_info = NULL;
 
     if (!match_node) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" to be deleted does not exist.", edit_node->schema->name);
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" to be deleted does not exist.", LYD_NAME(edit_node));
         return err_info;
     } else if (!val_equal) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" with the specific value to be deleted does not exist.",
-                edit_node->schema->name);
+                LYD_NAME(edit_node));
         return err_info;
     }
 
@@ -2322,7 +2322,7 @@ reapply:
         case EDIT_REPLACE:
             if (flags & EDIT_APPLY_CHECK_OP_R) {
                 sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
-                        "Node \"%s\" cannot be created because its parent does not exist.", edit_node->schema->name);
+                        "Node \"%s\" cannot be created because its parent does not exist.", LYD_NAME(edit_node));
                 goto op_error;
             }
             if ((err_info = sr_edit_apply_replace(match, val_equal, edit_node, diff_parent, diff_root, &diff_node,
@@ -2333,7 +2333,7 @@ reapply:
         case EDIT_CREATE:
             if (flags & EDIT_APPLY_CHECK_OP_R) {
                 sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
-                        "Node \"%s\" cannot be created because its parent does not exist.", edit_node->schema->name);
+                        "Node \"%s\" cannot be created because its parent does not exist.", LYD_NAME(edit_node));
                 goto op_error;
             }
             if ((err_info = sr_edit_apply_create(first_node, parent_node, &match, val_equal, edit_node, diff_parent,
@@ -2344,7 +2344,7 @@ reapply:
         case EDIT_MERGE:
             if (flags & EDIT_APPLY_CHECK_OP_R) {
                 sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
-                        "Node \"%s\" cannot be created because its parent does not exist.", edit_node->schema->name);
+                        "Node \"%s\" cannot be created because its parent does not exist.", LYD_NAME(edit_node));
                 goto op_error;
             }
             if ((err_info = sr_edit_apply_merge(match, val_equal, &next_op))) {
