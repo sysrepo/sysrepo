@@ -3033,7 +3033,7 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
             ds_locked = 0;
         }
 
-        if (!ds_locked) {
+        if (ds_locked) {
             if (!sid) {
                 /* remember the first DS lock information, if full DS lock held, it will be equal for all the modules */
                 sid = shm_lock->ds_lock_sid;
