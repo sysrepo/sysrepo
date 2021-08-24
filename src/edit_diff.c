@@ -1588,7 +1588,9 @@ sr_edit_diff_add(struct lyd_node **node, const char *meta_val, const char *prev_
         struct lyd_node *diff_parent, struct lyd_node **diff_root, struct lyd_node **diff_node)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *node_dup = NULL;
+    struct lyd_node *node_dup = NULL, *elem;
+    const struct lyd_node *sibling_before;
+    char *sibling_before_val = NULL;
 
     assert((op == EDIT_NONE) || (op == EDIT_CREATE) || (op == EDIT_DELETE) || (op == EDIT_REPLACE));
     assert(!diff_node || !*diff_node);
@@ -1603,20 +1605,47 @@ sr_edit_diff_add(struct lyd_node **node, const char *meta_val, const char *prev_
     }
 
     if (no_dup) {
-        /* unlink node */
+        assert(op == EDIT_DELETE);
+
+        /* unlink subtree */
         lyd_unlink_tree(*node);
         node_dup = *node;
+
+        /* add attributes for all nodes in the subtree */
+        LYD_TREE_DFS_BEGIN(node_dup, elem) {
+            if (elem == node_dup) {
+                /* meta values are relevant for this node only */
+                if ((err_info = sr_diff_add_meta(elem, meta_val, prev_meta_val, op))) {
+                    goto error;
+                }
+            } else if (lysc_is_userordered(elem->schema)) {
+                /* only add information about previous instance for userord lists, nothing else is needed */
+                sibling_before = sr_edit_find_previous_instance(elem);
+                if (sibling_before) {
+                    sibling_before_val = sr_edit_create_userord_predicate(sibling_before);
+                }
+
+                /* add metadata */
+                if ((err_info = sr_diff_add_meta(elem, NULL, sibling_before_val, op))) {
+                    goto error;
+                }
+                free(sibling_before_val);
+                sibling_before_val = NULL;
+            }
+
+            LYD_TREE_DFS_END(node_dup, elem);
+        }
     } else {
         /* duplicate node */
         if (lyd_dup_single(*node, NULL, LYD_DUP_NO_META, &node_dup)) {
             sr_errinfo_new_ly(&err_info, LYD_CTX(*node));
             goto error;
         }
-    }
 
-    /* add specific attributes */
-    if ((err_info = sr_diff_add_meta(node_dup, meta_val, prev_meta_val, op))) {
-        goto error;
+        /* add specific attributes for the node */
+        if ((err_info = sr_diff_add_meta(node_dup, meta_val, prev_meta_val, op))) {
+            goto error;
+        }
     }
 
     if ((node_dup->schema->nodetype == LYS_LEAFLIST) && ((struct lysc_node_leaflist *)node_dup->schema)->dflts &&
@@ -1648,6 +1677,7 @@ error:
     if (!no_dup) {
         lyd_free_tree(node_dup);
     }
+    free(sibling_before_val);
     return err_info;
 }
 
