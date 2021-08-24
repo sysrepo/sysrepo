@@ -1,4 +1,6 @@
-cmake_minimum_required(VERSION 2.8.12)
+if(NOT SYSREPO_VERSION)
+    message(FATAL_ERROR "Please use the root CMakeLists file instead.")
+endif()
 
 # correct RPATH usage on OS X
 set(CMAKE_MACOSX_RPATH TRUE)
