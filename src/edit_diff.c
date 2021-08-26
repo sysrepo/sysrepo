@@ -3024,7 +3024,8 @@ next_iter_r:
             return err_info;
         }
     }
-    if ((op == EDIT_NONE) && !sr_lyd_child(diff_node, 1)) {
+    if (!(diff_node->schema->nodetype & (LYS_LEAF | LYS_ANYXML | LYS_ANYDATA)) && (op == EDIT_NONE) &&
+            !sr_lyd_child(diff_node, 1)) {
         /* none of our children could be applied, this node is redundant */
         match = NULL;
         goto next_iter_r;
