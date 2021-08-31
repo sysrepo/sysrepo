@@ -527,17 +527,17 @@ sr_shmext_change_sub_modify(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore
     sr_shmext_print(SR_CONN_MAIN_SHM(conn), &conn->ext_shm);
 
     /* allocate memory for the new xpath, if any */
-    cur_size = shm_sub->xpath ? strlen(conn->ext_shm.addr + shm_sub->xpath) + 1 : 0;
+    cur_size = shm_sub[i].xpath ? strlen(conn->ext_shm.addr + shm_sub[i].xpath) + 1 : 0;
     new_size = xpath ? strlen(xpath) + 1 : 0;
-    if ((err_info = sr_shmrealloc(&conn->ext_shm, &shm_sub->xpath, 1, cur_size, new_size))) {
+    if ((err_info = sr_shmrealloc(&conn->ext_shm, &shm_sub[i].xpath, 1, cur_size, new_size))) {
         goto cleanup_changesub_ext_unlock;
     }
 
     /* fill new xpath */
     if (xpath) {
-        strcpy(conn->ext_shm.addr + shm_sub->xpath, xpath);
+        strcpy(conn->ext_shm.addr + shm_sub[i].xpath, xpath);
     } else {
-        shm_sub->xpath = 0;
+        shm_sub[i].xpath = 0;
     }
 
     SR_LOG_DBG("#SHM after (modifying change sub)");
