@@ -42,7 +42,6 @@ jobs:
             options: "-DENABLE_TESTS=ON",
             packages: "libcmocka-dev",
             snaps: "",
-            make-prepend: "",
             make-target: ""
           }
           - {
@@ -54,7 +53,6 @@ jobs:
             options: "-DENABLE_TESTS=ON",
             packages: "libcmocka-dev",
             snaps: "",
-            make-prepend: "",
             make-target: ""
           }
           - {
@@ -66,7 +64,6 @@ jobs:
             options: "",
             packages: "libcmocka-dev valgrind",
             snaps: "",
-            make-prepend: "",
             make-target: ""
           }
           - {
@@ -78,7 +75,6 @@ jobs:
             options: "",
             packages: "libcmocka-dev valgrind",
             snaps: "",
-            make-prepend: "",
             make-target: ""
           }
           - {
@@ -90,7 +86,6 @@ jobs:
             options: "-DCMAKE_C_FLAGS=-fsanitize=address,undefined -DENABLE_TESTS=ON -DENABLE_VALGRIND_TESTS=OFF",
             packages: "libcmocka-dev",
             snaps: "",
-            make-prepend: "",
             make-target: ""
           }
           - {
@@ -102,7 +97,6 @@ jobs:
             options: "",
             packages: "libcmocka-dev abi-dumper abi-compliance-checker",
             snaps: "core universal-ctags",
-            make-prepend: "",
             make-target: "abi-check"
           }
 
@@ -158,7 +152,7 @@ jobs:
         run: |
           export LC_ALL=C.UTF-8
           export PATH=/snap/bin:${{ github.workspace }}/coverity-tools/bin:$PATH
-          ${{ matrix.config.make-prepend }} make ${{ matrix.config.make-target }}
+          make ${{ matrix.config.make-target }}
 
       - name: Test
         shell: bash
