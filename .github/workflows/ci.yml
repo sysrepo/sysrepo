@@ -86,7 +86,8 @@ jobs:
             options: "-DCMAKE_C_FLAGS=-fsanitize=address,undefined -DENABLE_TESTS=ON -DENABLE_VALGRIND_TESTS=OFF",
             packages: "libcmocka-dev clang-12",
             snaps: "",
-            make-target: ""
+            make-target: "",
+            ubsan-options: "print_stacktrace=1:halt_on_error=1",
           }
           - {
             name: "ABI Check",
@@ -99,6 +100,8 @@ jobs:
             snaps: "core universal-ctags",
             make-target: "abi-check"
           }
+    env:
+      UBSAN_OPTIONS: ${{ matrix.config.ubsan-options }}
 
     steps:
       - uses: actions/checkout@v2
