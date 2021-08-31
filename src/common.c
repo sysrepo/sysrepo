@@ -1652,7 +1652,8 @@ sr_remove_module_file_r(const struct lys_module *ly_mod, const struct ly_ctx *ne
 
     /* remove all submodule files */
     LY_ARRAY_FOR(pmod->includes, u) {
-        if ((err_info = sr_path_yang_file(pmod->includes[u].submodule->name, pmod->includes[u].submodule->revs[0].date,
+        if ((err_info = sr_path_yang_file(pmod->includes[u].submodule->name,
+					pmod->includes[u].submodule->revs ? pmod->includes[u].submodule->revs[0].date : NULL,
                 &path))) {
             return err_info;
         }
