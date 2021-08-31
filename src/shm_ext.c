@@ -357,8 +357,6 @@ sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext)
     for (i = 0; i < item_count; ++i) {
         printed += sr_sprintf(&msg, &msg_len, printed, "%06jd-%06jd [%6zu]: %s\n",
                 (intmax_t)items[i].start, (intmax_t)(items[i].start + items[i].size), items[i].size, items[i].name);
-
-        free(items[i].name);
     }
 
     /* print all the information about SHM */
@@ -384,6 +382,9 @@ sr_shmext_print(sr_main_shm_t *main_shm, sr_shm_t *shm_ext)
         /* check alignment */
         assert(items[i].size == SR_SHM_SIZE(items[i].size));
         assert((unsigned)items[i].start == SR_SHM_SIZE(items[i].start));
+
+        /* free name */
+        free(items[i].name);
     }
     free(items);
 
