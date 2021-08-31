@@ -90,6 +90,17 @@ jobs:
             ubsan-options: "print_stacktrace=1:halt_on_error=1",
           }
           - {
+            name: "TSAN",
+            os: "ubuntu-20.04",
+            build-type: "Debug",
+            dep-build-type: "Debug",
+            cc: "clang-12",
+            options: "-DCMAKE_C_FLAGS=-fsanitize=thread -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread -DCMAKE_SHARED_LINKER_FLAGS=-fsanitize=thread -DENABLE_TESTS=ON -DENABLE_VALGRIND_TESTS=OFF",
+            packages: "libcmocka-dev clang-12",
+            snaps: "",
+            make-target: ""
+          }
+          - {
             name: "ABI Check",
             os: "ubuntu-latest",
             build-type: "ABICheck",
