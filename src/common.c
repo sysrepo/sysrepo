@@ -2723,6 +2723,11 @@ sr_ext_hole_add(sr_ext_shm_t *ext_shm, uint32_t off, uint32_t size)
     sr_ext_hole_t *next, *prev = NULL, *hole;
     int con_prev = 0, con_next = 0;
 
+    if (!size) {
+        /* nothing to do */
+        return;
+    }
+
     for (next = sr_ext_hole_next(NULL, ext_shm); next; next = sr_ext_hole_next(next, ext_shm)) {
         if ((char *)next - (char *)ext_shm > off) {
             /* found the next hole */
