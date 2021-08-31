@@ -508,8 +508,6 @@ notif_stop_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type
     case 1:
         assert_int_equal(notif_type, SR_EV_NOTIF_TERMINATED);
         assert_null(notif);
-
-        pthread_barrier_wait(&st->barrier);
         break;
     default:
         fail();
@@ -517,6 +515,9 @@ notif_stop_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type
 
     /* signal that we were called */
     ATOMIC_INC_RELAXED(st->cb_called);
+    if (notif_type == SR_EV_NOTIF_TERMINATED) {
+        pthread_barrier_wait(&st->barrier);
+    }
 }
 
 static void
