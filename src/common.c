@@ -3018,6 +3018,9 @@ sr_shmrealloc(sr_shm_t *shm_ext, off_t *dyn_attr_off, int in_ext_shm, size_t cur
         } else {
             sr_shmrealloc_use_hole(ext_shm, con_attr_hole, new_size - cur_size);
         }
+    } else if (new_size < cur_size) {
+        /* size is smaller, empty space (hole) is created */
+        sr_ext_hole_add(ext_shm, *dyn_attr_off + new_size, cur_size - new_size);
     }
 
     /*
