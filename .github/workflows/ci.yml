@@ -79,7 +79,7 @@ jobs:
           }
           - {
             name: "ASAN and UBSAN",
-            os: "ubuntu-18.04",
+            os: "ubuntu-20.04",
             build-type: "Debug",
             dep-build-type: "Debug",
             cc: "clang",
