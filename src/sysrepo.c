@@ -2689,6 +2689,10 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
         if (!ly_mod) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
             goto cleanup;
+        } else if (!strcmp(ly_mod->name, SR_YANG_MOD)) {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"%s\" cannot be modified.",
+                    SR_YANG_MOD);
+            goto cleanup;
         }
     }
 
@@ -2730,6 +2734,10 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
         ly_mod = ly_ctx_get_module_implemented(session->conn->ly_ctx, module_name);
         if (!ly_mod) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
+            goto cleanup;
+        } else if (!strcmp(ly_mod->name, SR_YANG_MOD)) {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"%s\" cannot be modified.",
+                    SR_YANG_MOD);
             goto cleanup;
         }
     }
