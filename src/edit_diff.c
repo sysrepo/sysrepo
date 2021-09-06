@@ -15,7 +15,6 @@
  */
 
 #define _GNU_SOURCE
-#include <sys/cdefs.h>
 
 #include "edit_diff.h"
 
@@ -127,7 +126,7 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
 
         LY_LIST_FOR(edit_node->meta, meta) {
             val_str = lyd_get_meta_value(meta);
-            if (!strcmp(meta->name, "operation") && (!strcmp(meta->annotation->module->name, SR_YANG_MOD) ||
+            if (!strcmp(meta->name, "operation") && (!strcmp(meta->annotation->module->name, "sysrepo") ||
                     !strcmp(meta->annotation->module->name, "ietf-netconf"))) {
                 *op = sr_edit_str2op(val_str);
             } else if (user_order_list && !strcmp(meta->name, "insert") && !strcmp(meta->annotation->module->name, "yang")) {
@@ -153,7 +152,7 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
                 /* try to create a metadata instance and use that */
                 uint32_t prev_lo = ly_log_options(0);
                 if (!lyd_new_meta2(LYD_CTX(edit_node), NULL, 0, attr, &meta)) {
-                    if (!strcmp(meta->annotation->module->name, SR_YANG_MOD) ||
+                    if (!strcmp(meta->annotation->module->name, "sysrepo") ||
                             !strcmp(meta->annotation->module->name, "ietf-netconf")) {
                         *op = sr_edit_str2op(lyd_get_meta_value(meta));
                     }
@@ -208,7 +207,7 @@ sr_edit_find_cid(struct lyd_node *edit, sr_cid_t *cid, int *meta_own)
     for (parent = edit; parent; parent = lyd_parent(parent)) {
         if (parent->schema) {
             /* data node with metadata */
-            cid_meta = lyd_find_meta(parent->meta, NULL, SR_YANG_MOD ":cid");
+            cid_meta = lyd_find_meta(parent->meta, NULL, "sysrepo:cid");
             if (cid_meta) {
                 /* found */
                 if (cid) {
@@ -291,7 +290,7 @@ sr_edit_update_cid(struct lyd_node *edit_node, sr_cid_t cid, int keep_cur_child,
         if (cur_cid != cid) {
             /* add meta of the new connection */
             sprintf(cid_str, "%" PRIu32, cid);
-            if (lyd_new_meta(LYD_CTX(edit_node), edit_node, NULL, SR_YANG_MOD ":cid", cid_str, 0, NULL)) {
+            if (lyd_new_meta(LYD_CTX(edit_node), edit_node, NULL, "sysrepo:cid", cid_str, 0, NULL)) {
                 sr_errinfo_new_ly(&err_info, LYD_CTX(edit_node));
                 return err_info;
             }
@@ -312,7 +311,7 @@ sr_edit_update_cid(struct lyd_node *edit_node, sr_cid_t cid, int keep_cur_child,
         LY_LIST_FOR(lyd_child_no_keys(edit_node), child) {
             sr_edit_find_cid(child, NULL, &meta_own);
             if (!meta_own) {
-                if (lyd_new_meta(LYD_CTX(edit_node), child, NULL, SR_YANG_MOD ":cid", cid_str, 0, NULL)) {
+                if (lyd_new_meta(LYD_CTX(edit_node), child, NULL, "sysrepo:cid", cid_str, 0, NULL)) {
                     sr_errinfo_new_ly(&err_info, LYD_CTX(edit_node));
                     return err_info;
                 }
@@ -380,7 +379,7 @@ sr_edit_copy_meta(const struct lyd_node *src_node, struct lyd_node *trg_node, in
 
     /* copy operation */
     if (src_op == EDIT_ETHER) {
-        if (lyd_new_meta(LYD_CTX(trg_node), trg_node, NULL, SR_YANG_MOD ":operation", sr_edit_op2str(src_op), 0, NULL)) {
+        if (lyd_new_meta(LYD_CTX(trg_node), trg_node, NULL, "sysrepo:operation", sr_edit_op2str(src_op), 0, NULL)) {
             sr_errinfo_new_ly(&err_info, LYD_CTX(trg_node));
             goto cleanup;
         }
@@ -1388,7 +1387,7 @@ sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper
         if (edit->schema) {
             LY_LIST_FOR(edit->meta, meta) {
                 if (!strcmp(meta->name, "operation")) {
-                    if (!strcmp(meta->annotation->module->name, SR_YANG_MOD) ||
+                    if (!strcmp(meta->annotation->module->name, "sysrepo") ||
                             !strcmp(meta->annotation->module->name, "ietf-netconf") ||
                             !strcmp(meta->annotation->module->name, "yang")) {
                         return sr_edit_str2op(lyd_get_meta_value(meta));
@@ -1401,7 +1400,7 @@ sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper
                     /* try to create a metadata instance and use that */
                     uint32_t prev_lo = ly_log_options(0);
                     if (!lyd_new_meta2(LYD_CTX(edit), NULL, 0, attr, &meta)) {
-                        if (!strcmp(meta->annotation->module->name, SR_YANG_MOD) ||
+                        if (!strcmp(meta->annotation->module->name, "sysrepo") ||
                                 !strcmp(meta->annotation->module->name, "ietf-netconf")) {
                             return sr_edit_str2op(lyd_get_meta_value(meta));
                         }
@@ -1434,7 +1433,7 @@ sr_edit_del_meta_attr(struct lyd_node *edit, const char *name)
     if (edit->schema) {
         LY_LIST_FOR(edit->meta, meta) {
             if (!strcmp(meta->name, name)) {
-                if (!strcmp(meta->annotation->module->name, SR_YANG_MOD) ||
+                if (!strcmp(meta->annotation->module->name, "sysrepo") ||
                         !strcmp(meta->annotation->module->name, "ietf-netconf") ||
                         !strcmp(meta->annotation->module->name, "yang") ||
                         !strcmp(meta->annotation->module->name, "ietf-origin")) {
@@ -1448,7 +1447,7 @@ sr_edit_del_meta_attr(struct lyd_node *edit, const char *name)
             if (!strcmp(attr->name.name, name)) {
                 switch (attr->format) {
                 case LY_VALUE_JSON:
-                    if (!strcmp(attr->name.module_name, SR_YANG_MOD) ||
+                    if (!strcmp(attr->name.module_name, "sysrepo") ||
                             !strcmp(attr->name.module_name, "ietf-netconf") ||
                             !strcmp(attr->name.module_name, "yang") ||
                             !strcmp(attr->name.module_name, "ietf-origin")) {
@@ -2685,7 +2684,7 @@ sr_edit_set_oper(struct lyd_node *edit, const char *op)
     sr_error_info_t *err_info = NULL;
 
     if (!strcmp(op, "none") || !strcmp(op, "ether") || !strcmp(op, "purge")) {
-        attr_full_name = SR_YANG_MOD ":operation";
+        attr_full_name = "sysrepo:operation";
     } else {
         attr_full_name = "ietf-netconf:operation";
     }
@@ -3138,7 +3137,7 @@ sr_edit_oper_del_r(struct lyd_node *subtree, sr_cid_t cid, sr_cid_t parent_cid, 
     char cid_str[11];
 
     /* find our CID attribute, if any */
-    meta = lyd_find_meta(subtree->meta, NULL, SR_YANG_MOD ":cid");
+    meta = lyd_find_meta(subtree->meta, NULL, "sysrepo:cid");
     if (meta) {
         cur_cid = meta->value.uint32;
     } else {
@@ -3172,7 +3171,7 @@ sr_edit_oper_del_r(struct lyd_node *subtree, sr_cid_t cid, sr_cid_t parent_cid, 
         if (parent_cid != child_cid) {
             /* update the owner of this node */
             sprintf(cid_str, "%" PRIu32, child_cid);
-            if (lyd_new_meta(NULL, subtree, NULL, SR_YANG_MOD ":cid", cid_str, 0, NULL)) {
+            if (lyd_new_meta(NULL, subtree, NULL, "sysrepo:cid", cid_str, 0, NULL)) {
                 sr_errinfo_new_ly(&err_info, LYD_CTX(subtree));
                 return err_info;
             }

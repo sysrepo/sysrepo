@@ -15,7 +15,6 @@
  */
 
 #define _GNU_SOURCE
-#include <sys/cdefs.h>
 
 #include "lyd_mods.h"
 
@@ -33,8 +32,12 @@
 #include <unistd.h>
 
 #include "common.h"
+#include "common_types.h"
 #include "compat.h"
+#include "config.h"
 #include "log.h"
+#include "plugins_datastore.h"
+#include "plugins_notification.h"
 #include "replay.h"
 #include "shm.h"
 
@@ -61,7 +64,7 @@ sr_lydmods_lock(pthread_mutex_t *lock, const struct ly_ctx *ly_ctx, const char *
 {
     struct sr_shmmod_recover_cb_s cb_data;
 
-    cb_data.ly_mod = ly_ctx_get_module_implemented(ly_ctx, SR_YANG_MOD);
+    cb_data.ly_mod = ly_ctx_get_module_implemented(ly_ctx, "sysrepo");
     cb_data.ds = SR_DS_STARTUP;
 
     /* LOCK */
@@ -73,26 +76,24 @@ sr_lydmods_parse(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mods = NULL;
-    char *path;
+    const struct lys_module *ly_mod;
+    int rc;
 
     assert(ly_ctx && sr_mods_p);
 
-    /* get internal startup file path */
-    if ((err_info = sr_path_startup_file(SR_YANG_MOD, &path))) {
-        goto cleanup;
-    }
+    /* get SR module */
+    ly_mod = ly_ctx_get_module_implemented(ly_ctx, "sysrepo");
+    assert(ly_mod);
 
-    /* load sysrepo data even if the stored data used an older revision of the sysrepo module */
-    if (lyd_parse_data_path(ly_ctx, path, LYD_LYB, LYD_PARSE_LYB_MOD_UPDATE | LYD_PARSE_STRICT | LYD_PARSE_ONLY,
-            0, &sr_mods)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx);
+    /* load the data using the internal LYB plugin */
+    if ((rc = srpds_lyb.load_cb(ly_mod, SR_DS_STARTUP, &sr_mods))) {
+        sr_errinfo_new(&err_info, rc, "Loading \"sysrepo\" data failed.");
         goto cleanup;
     }
 
     /* success */
 
 cleanup:
-    free(path);
     if (err_info) {
         lyd_free_all(sr_mods);
     } else {
@@ -132,39 +133,6 @@ cleanup:
 }
 
 /**
- * @brief Check whether sysrepo module data file exists.
- *
- * @param[out] exists Whether the file exists.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_lydmods_exists(int *exists)
-{
-    sr_error_info_t *err_info = NULL;
-    char *path = NULL;
-
-    /* get internal startup file path */
-    if ((err_info = sr_path_startup_file(SR_YANG_MOD, &path))) {
-        goto cleanup;
-    }
-
-    /* check the existence of the data file */
-    if (access(path, F_OK) == -1) {
-        if (errno != ENOENT) {
-            SR_ERRINFO_SYSERRPATH(&err_info, "access", path);
-            goto cleanup;
-        }
-        *exists = 0;
-    } else {
-        *exists = 1;
-    }
-
-cleanup:
-    free(path);
-    return err_info;
-}
-
-/**
  * @brief Store (print) sysrepo module data.
  *
  * @param[in,out] sr_mods Data to store, are validated so could (in theory) be modified.
@@ -175,10 +143,9 @@ sr_lydmods_print(struct lyd_node **sr_mods)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *sr_ly_mod;
-    char *path;
-    mode_t um;
+    int rc;
 
-    assert(sr_mods && *sr_mods && !strcmp((*sr_mods)->schema->module->name, SR_YANG_MOD));
+    assert(sr_mods && *sr_mods && !strcmp((*sr_mods)->schema->module->name, "sysrepo"));
 
     /* get the module */
     sr_ly_mod = (*sr_mods)->schema->module;
@@ -189,22 +156,13 @@ sr_lydmods_print(struct lyd_node **sr_mods)
         return err_info;
     }
 
-    /* get path */
-    if ((err_info = sr_path_startup_file(SR_YANG_MOD, &path))) {
+    /* store the data using the internal LYB plugin */
+    if ((rc = srpds_lyb.store_cb(sr_ly_mod, SR_DS_STARTUP, *sr_mods))) {
+        sr_errinfo_new(&err_info, rc, "Storing \"sysrepo\" data failed.");
         return err_info;
     }
 
-    /* set umask so that the correct permissions are set in case this file does not exist */
-    um = umask(SR_UMASK);
-
-    /* store the data tree */
-    if (lyd_print_path(path, *sr_mods, LYD_LYB, LYD_PRINT_WITHSIBLINGS)) {
-        sr_errinfo_new_ly(&err_info, sr_ly_mod->ctx);
-    }
-    umask(um);
-    free(path);
-
-    return err_info;
+    return NULL;
 }
 
 struct sr_lydmods_deps_dfs_arg {
@@ -684,16 +642,20 @@ cleanup:
  *
  * @param[in] sr_mods Sysrepo module data.
  * @param[in] ly_mod Module to add.
+ * @param[in] ds_plgs Array of plugins for all datastores of @p ly_mod.
+ * @param[in] ntf_plg Notification datastore plugin of @p ly_mod.
  * @param[out] sr_mod_p Added module.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_add_module(struct lyd_node *sr_mods, const struct lys_module *ly_mod, struct lyd_node **sr_mod_p)
+sr_lydmods_add_module(struct lyd_node *sr_mods, const struct lys_module *ly_mod, const struct srplg_ds_s *ds_plgs[],
+        const struct srplg_ntf_s *ntf_plg, struct lyd_node **sr_mod_p)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *sr_mod;
+    struct lyd_node *sr_mod, *sr_plugin;
     struct lysp_feature *f = NULL;
-    uint32_t i = 0;
+    uint32_t i;
+    sr_datastore_t ds;
 
     if (lyd_new_list(sr_mods, NULL, "module", 0, &sr_mod, ly_mod->name)) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
@@ -705,6 +667,7 @@ sr_lydmods_add_module(struct lyd_node *sr_mods, const struct lys_module *ly_mod,
     }
 
     /* enable all the features */
+    i = 0;
     while ((f = lysp_feature_next(f, ly_mod->parsed, &i))) {
         if (f->flags & LYS_FENABLED) {
             if (lyd_new_term(sr_mod, NULL, "enabled-feature", f->name, 0, NULL)) {
@@ -712,6 +675,26 @@ sr_lydmods_add_module(struct lyd_node *sr_mods, const struct lys_module *ly_mod,
                 return err_info;
             }
         }
+    }
+
+    /* set datastore plugin names */
+    for (ds = 0; ds < SR_DS_COUNT; ++ds) {
+        if (lyd_new_list(sr_mod, NULL, "plugin", 0, &sr_plugin, sr_ds2str(ds))) {
+            sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+            return err_info;
+        }
+        if (lyd_new_term(sr_plugin, NULL, "name", ds_plgs[ds]->name, 0, NULL)) {
+            sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+            return err_info;
+        }
+    }
+    if (lyd_new_list(sr_mod, NULL, "plugin", 0, &sr_plugin, "notification")) {
+        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+        return err_info;
+    }
+    if (lyd_new_term(sr_plugin, NULL, "name", ntf_plg->name, 0, NULL)) {
+        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+        return err_info;
     }
 
     if (sr_mod_p) {
@@ -726,12 +709,16 @@ sr_lydmods_add_module(struct lyd_node *sr_mods, const struct lys_module *ly_mod,
  *
  * @param[in] sr_mods Internal sysrepo data.
  * @param[in] ly_mod Module with implemented imports to add.
+ * @param[in] ds_plgs Array of plugins for all datastores of @p ly_mod.
+ * @param[in] ntf_plg Notification datastore plugin of @p ly_mod.
+ * @param[in] update Whether this function is called from module update or module installation.
  * @param[in] log_first If set to 0, nothing will be logged on success. Set to 2 to log installing module
  * and its dependencies.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_module *ly_mod, int log_first)
+sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_module *ly_mod,
+        const struct srplg_ds_s *ds_plgs[], const struct srplg_ntf_s *ntf_plg, int update, int log_first)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mod;
@@ -739,6 +726,9 @@ sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_mod
     struct ly_set *set = NULL;
     char *xpath = NULL;
     LY_ARRAY_COUNT_TYPE i, j;
+    sr_datastore_t ds;
+    int rc;
+    const struct srplg_ds_s *imp_plgs[SR_DS_COUNT] = {&srpds_lyb, &srpds_lyb, &srpds_lyb, &srpds_lyb};
 
     if ((err_info = sr_store_module_files(ly_mod))) {
         goto cleanup;
@@ -754,13 +744,21 @@ sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_mod
             sr_errinfo_new_ly(&err_info, LYD_CTX(sr_mods));
             goto cleanup;
         } else if (!set->count) {
-            /* install the module and create its startup data file */
-            if ((err_info = sr_lydmods_add_module(sr_mods, ly_mod, &sr_mod))) {
+            /* install the module */
+            if ((err_info = sr_lydmods_add_module(sr_mods, ly_mod, ds_plgs, ntf_plg, &sr_mod))) {
                 goto cleanup;
             }
-            if ((err_info = sr_create_startup_file(ly_mod))) {
-                goto cleanup;
+
+            if (!update) {
+                /* init module for all DS plugins */
+                for (ds = 0; ds < SR_DS_COUNT; ++ds) {
+                    if ((rc = ds_plgs[ds]->init_cb(ly_mod, ds))) {
+                        SR_ERRINFO_DSPLUGIN(&err_info, rc, "init", ds_plgs[ds]->name, ly_mod->name);
+                        goto cleanup;
+                    }
+                }
             }
+
             if (log_first == 2) {
                 SR_LOG_INF("Module \"%s\" was installed.", ly_mod->name);
 
@@ -774,7 +772,8 @@ sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_mod
 
     /* all newly implemented modules will be added also from imports and includes, recursively */
     LY_ARRAY_FOR(ly_mod->parsed->imports, i) {
-        if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod->parsed->imports[i].module, log_first))) {
+        if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod->parsed->imports[i].module, imp_plgs,
+                &srpntf_lyb, 0, log_first))) {
             goto cleanup;
         }
     }
@@ -782,7 +781,8 @@ sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_mod
     LY_ARRAY_FOR(ly_mod->parsed->includes, i) {
         lysp_submod = ly_mod->parsed->includes[i].submodule;
         LY_ARRAY_FOR(lysp_submod->imports, j) {
-            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, lysp_submod->imports[j].module, log_first))) {
+            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, lysp_submod->imports[j].module, imp_plgs,
+                    &srpntf_lyb, 0, log_first))) {
                 goto cleanup;
             }
         }
@@ -831,8 +831,10 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     sr_error_info_t *err_info = NULL;
     struct lys_module *ly_mod;
     struct lyd_node *sr_mods = NULL;
+    const struct srplg_ds_s *imp_plgs[SR_DS_COUNT] = {&srpds_lyb, &srpds_lyb, &srpds_lyb, &srpds_lyb};
     struct ly_set mod_set = {0};
     uint32_t i;
+    int rc;
 
 #define SR_INSTALL_INT_MOD(ctx, yang_mod, dep, mod_set) \
     if (lys_parse_mem(ctx, yang_mod, LYS_IN_YANG, &ly_mod)) { \
@@ -845,8 +847,14 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     } \
     SR_LOG_INF("Sysrepo internal%s module \"%s\" was installed.", dep ? " dependency" : "", ly_mod->name)
 
-    ly_mod = ly_ctx_get_module_implemented(ly_ctx, SR_YANG_MOD);
+    ly_mod = ly_ctx_get_module_implemented(ly_ctx, "sysrepo");
     SR_CHECK_INT_RET(!ly_mod, err_info);
+
+    /* init sysrepo data */
+    if ((rc = srpds_lyb.init_cb(ly_mod, SR_DS_STARTUP))) {
+        SR_ERRINFO_DSPLUGIN(&err_info, rc, "init", srpds_lyb.name, ly_mod->name);
+        return err_info;
+    }
 
     /* create empty container */
     SR_CHECK_INT_RET(lyd_new_inner(NULL, ly_mod, "sysrepo-modules", 0, &sr_mods), err_info);
@@ -859,7 +867,7 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     while ((i < ly_ctx_internal_modules_count(ly_ctx)) && (ly_mod = ly_ctx_get_module_iter(ly_ctx, &i))) {
         /* module must be implemented */
         if (ly_mod->implemented) {
-            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0))) {
+            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, imp_plgs, &srpntf_lyb, 0, 0))) {
                 goto cleanup;
             }
             SR_LOG_INF("Libyang internal module \"%s\" was installed.", ly_mod->name);
@@ -899,7 +907,7 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
 
     /* finish installing the modules in sysrepo */
     for (i = 0; i < mod_set.count; ++i) {
-        if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, mod_set.objs[i], 0))) {
+        if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, mod_set.objs[i], imp_plgs, &srpntf_lyb, 0, 0))) {
             goto cleanup;
         }
     }
@@ -1143,13 +1151,14 @@ sr_lydmods_ctx_load_modules(const struct lyd_node *sr_mods, struct ly_ctx *ly_ct
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_append_startup_and_running_data(const struct ly_ctx *ctx, struct lyd_node **start_data, struct lyd_node **run_data)
+sr_append_startup_and_running_data(sr_conn_ctx_t *conn, const struct ly_ctx *ctx, struct lyd_node **start_data,
+        struct lyd_node **run_data)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
+    sr_mod_t *shm_mod;
+    struct srplg_ds_s *ds_plg;
     uint32_t idx = 0;
-    int exists;
-    char *path;
 
     while ((ly_mod = ly_ctx_get_module_iter(ctx, &idx))) {
         if (!ly_mod->implemented) {
@@ -1157,23 +1166,28 @@ sr_append_startup_and_running_data(const struct ly_ctx *ctx, struct lyd_node **s
             continue;
         }
 
+        /* get SHM mod */
+        shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), ly_mod->name);
+        SR_CHECK_INT_RET(!shm_mod, err_info);
+
+        /* find startup plugin */
+        if ((err_info = sr_ds_plugin_find(conn->main_shm.addr + shm_mod->plugins[SR_DS_STARTUP], conn, &ds_plg))) {
+            return err_info;
+        }
+
         /* append startup data */
-        if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_STARTUP, start_data))) {
-            break;
+        if ((err_info = sr_module_file_data_append(ly_mod, ds_plg, SR_DS_STARTUP, start_data))) {
+            return err_info;
         }
 
-        /* check that running data file exists */
-        if ((err_info = sr_path_ds_shm(ly_mod->name, SR_DS_RUNNING, &path))) {
-            break;
+        /* find running plugin */
+        if ((err_info = sr_ds_plugin_find(conn->main_shm.addr + shm_mod->plugins[SR_DS_RUNNING], conn, &ds_plg))) {
+            return err_info;
         }
-        exists = sr_file_exists(path);
-        free(path);
 
-        if (exists) {
-            /* append running data */
-            if ((err_info = sr_module_file_data_append(ly_mod, SR_DS_RUNNING, run_data))) {
-                break;
-            }
+        /* append running data */
+        if ((err_info = sr_module_file_data_append(ly_mod, ds_plg, SR_DS_RUNNING, run_data))) {
+            return err_info;
         }
     }
 
@@ -1181,83 +1195,35 @@ sr_append_startup_and_running_data(const struct ly_ctx *ctx, struct lyd_node **s
 }
 
 /**
- * @brief Iterate over modules from @p old_ctx and find those that have the same name as in @p new_ctx.
- *
- * @param[in] old_ctx Iterated context.
- * @param[in] new_ctx Context to compare.
- * @param[out] intersection_set Set that will contain modules that are in both @p old_ctx and @p new_ctx.
- * @param[out] old_ctx_complement_set Set that will contain modules which were not found in @p new_ctx.
- */
-static void
-sr_get_same_modules_by_name(const struct ly_ctx *old_ctx, const struct ly_ctx *new_ctx,
-        struct ly_set *intersection_set, struct ly_set *old_ctx_complement_set)
-{
-    const struct lys_module *old_ly_mod, *new_ly_mod;
-    uint32_t idx = 0;
-
-    assert(intersection_set && old_ctx_complement_set);
-
-    while ((old_ly_mod = ly_ctx_get_module_iter(old_ctx, &idx))) {
-        if (!old_ly_mod->implemented) {
-            /* we need data of only implemented modules */
-            continue;
-        }
-
-        new_ly_mod = ly_ctx_get_module_implemented(new_ctx, old_ly_mod->name);
-        if (new_ly_mod) {
-            /* remember this module from the new context */
-            ly_set_add(intersection_set, (void *)new_ly_mod, 1, NULL);
-        } else {
-            /* module was removed, remember it as well */
-            ly_set_add(old_ctx_complement_set, (void *)old_ly_mod, 1, NULL);
-        }
-    }
-}
-
-/**
  * @brief Update data parsed with old context to be parsed with a new context.
  *
  * @param[in] sr_mods Sysrepo module data.
  * @param[in] old_ctx Old context.
- * @param[in] old_start_data Startup data tree from @p old_ctx.
- * @param[in] old_run_data Running data tree from @p old_ctx.
+ * @param[in] old_data Startup data tree from @p old_ctx.
  * @param[in] new_ctx New context.
- * @param[out] new_start_data Startup data tree from @p new_ctx.
- * @param[out] new_run_data Running data tree from @p new_ctx.
- * @param[out] mod_set Set of modules that are in either @p new_start_data or @p new_run_data.
+ * @param[out] new_data Startup data tree from @p new_ctx.
  * @param[out] fail Whether any data failed to be parsed.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_update_data(const struct lyd_node *sr_mods,
-        const struct ly_ctx *old_ctx, const struct lyd_node *old_start_data, const struct lyd_node *old_run_data,
-        const struct ly_ctx *new_ctx, struct lyd_node **new_start_data, struct lyd_node **new_run_data,
-        struct ly_set *mod_set, int *fail)
+sr_update_data(const struct lyd_node *sr_mods, const struct ly_ctx *old_ctx, const struct lyd_node *old_data,
+        const struct ly_ctx *new_ctx, struct lyd_node **new_data, int *fail)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *mod_data;
     struct ly_set *startup_set = NULL;
-    char *start_data_json = NULL, *run_data_json = NULL;
+    char *data_json = NULL;
     uint32_t idx;
 
     /* print the data of all the modules into JSON */
-    if (lyd_print_mem(&start_data_json, old_start_data, LYD_JSON, LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS)) {
-        sr_errinfo_new_ly(&err_info, old_ctx);
-        return err_info;
-    }
-    if (lyd_print_mem(&run_data_json, old_run_data, LYD_JSON, LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS)) {
+    if (lyd_print_mem(&data_json, old_data, LYD_JSON, LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS)) {
         sr_errinfo_new_ly(&err_info, old_ctx);
         return err_info;
     }
 
     /* try to load it into the new updated context skipping any unknown nodes */
-    if (lyd_parse_data_mem(new_ctx, start_data_json, LYD_JSON, LYD_PARSE_NO_STATE | LYD_PARSE_ONLY, 0, new_start_data)) {
+    if (lyd_parse_data_mem(new_ctx, data_json, LYD_JSON, LYD_PARSE_NO_STATE | LYD_PARSE_ONLY, 0, new_data)) {
         /* it failed, some of the scheduled changes are not compatible with the stored data, abort them all */
-        sr_log_wrn_ly(new_ctx);
-        *fail = 1;
-        goto cleanup;
-    }
-    if (lyd_parse_data_mem(new_ctx, run_data_json, LYD_JSON, LYD_PARSE_NO_STATE | LYD_PARSE_ONLY, 0, new_run_data)) {
         sr_log_wrn_ly(new_ctx);
         *fail = 1;
         goto cleanup;
@@ -1275,22 +1241,10 @@ sr_update_data(const struct lyd_node *sr_mods,
             continue;
         }
 
-        /* remember this module */
-        ly_set_add(mod_set, (void *)lyd_owner_module(mod_data), 1, NULL);
-
-        /* link to the new startup/running data */
-        if (!(*new_start_data)) {
-            if (lyd_dup_siblings(mod_data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, new_start_data)) {
-                SR_ERRINFO_MEM(&(err_info));
-                break;
-            }
-        } else if (lyd_merge_siblings(new_start_data, mod_data, 0)) {
-            sr_errinfo_new_ly(&err_info, new_ctx);
-            break;
-        }
-        if (!(*new_run_data)) {
-            *new_run_data = mod_data;
-        } else if (lyd_merge_siblings(new_run_data, mod_data, LYD_MERGE_DESTRUCT)) {
+        /* link to the new data */
+        if (!(*new_data)) {
+            *new_data = mod_data;
+        } else if (lyd_merge_siblings(new_data, mod_data, LYD_MERGE_DESTRUCT)) {
             sr_errinfo_new_ly(&err_info, new_ctx);
             break;
         }
@@ -1298,137 +1252,7 @@ sr_update_data(const struct lyd_node *sr_mods,
 
 cleanup:
     ly_set_free(startup_set, NULL);
-    free(start_data_json);
-    free(run_data_json);
-    return err_info;
-}
-
-/**
- * @brief Learn whether any module in a set augments/deviates a specific module.
- *
- * @param[in] old_base_mod Module that can be augmented/deviated.
- * @param[in] old_mod_set Set with modules possibly augmenting/deviating @p old_base_mod.
- * @return Whether any module in @p old_mod_set was augmenting/deviating @p old_base_mod.
- */
-static int
-sr_contains_dev_aug_module(const struct lys_module *old_base_mod, const struct ly_set *old_mod_set)
-{
-    const struct lys_module *old_mod;
-    uint32_t i;
-    LY_ARRAY_COUNT_TYPE u;
-
-    for (i = 0; i < old_mod_set->count; ++i) {
-        old_mod = old_mod_set->objs[i];
-
-        /* deviates */
-        LY_ARRAY_FOR(old_base_mod->deviated_by, u) {
-            if (old_base_mod->deviated_by[u] == old_mod) {
-                return 1;
-            }
-        }
-
-        /* augments */
-        LY_ARRAY_FOR(old_base_mod->augmented_by, u) {
-            if (old_base_mod->augmented_by[u] == old_mod) {
-                return 1;
-            }
-        }
-    }
-
-    return 0;
-}
-
-/**
- * @brief Print data if they differ, are completely new, or their LYB metadata differ (augment/deviation module was removed).
- * Is evaluated for each module data separately.
- *
- * @param[in] mod_set Set of investigated modules.
- * @param[in] del_mod_set Set of modules that are not in a @p new_ctx.
- * @param[in] old_ctx Context before scheduled changes.
- * @param[in,out] old_start_data Startup data tree from @p old_ctx.
- * @param[in,out] old_run_data Running data tree from @p old_ctx.
- * @param[in] new_ctx Context with all scheduled module changes.
- * @param[in,out] new_start_data Startup data tree from @p new_ctx.
- * @param[in,out] new_run_data Running data tree from @p new_ctx.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_print_data_if_differ(const struct ly_set *mod_set, const struct ly_set *del_mod_set,
-        const struct ly_ctx *old_ctx, struct lyd_node **old_start_data, struct lyd_node **old_run_data,
-        const struct ly_ctx *new_ctx, struct lyd_node **new_start_data, struct lyd_node **new_run_data)
-{
-    sr_error_info_t *err_info = NULL;
-    const struct lys_module *new_ly_mod, *old_ly_mod;
-    struct lyd_node *new_mod_data = NULL, *old_mod_data = NULL;
-    uint32_t idx;
-    int store_data;
-    LY_ERR lyrc;
-
-    for (idx = 0; idx < mod_set->count; ++idx) {
-        new_ly_mod = (struct lys_module *)mod_set->objs[idx];
-        old_ly_mod = ly_ctx_get_module_implemented(old_ctx, new_ly_mod->name);
-
-        if (!old_ly_mod) {
-            /* module was added, we always want to store its data */
-            store_data = 1;
-        } else {
-            /* check whether a removed module was not augmenting/deviating this module,
-             * if it was, we must always write the data because their metadata changed */
-            store_data = sr_contains_dev_aug_module(old_ly_mod, del_mod_set);
-        }
-
-        /* startup data */
-        lyd_free_siblings(new_mod_data);
-        lyd_free_siblings(old_mod_data);
-        new_mod_data = sr_module_data_unlink(new_start_data, new_ly_mod);
-        if (old_ly_mod) {
-            old_mod_data = sr_module_data_unlink(old_start_data, old_ly_mod);
-        } else {
-            old_mod_data = NULL;
-        }
-
-        if (!store_data) {
-            lyrc = lyd_compare_siblings(new_mod_data, old_mod_data, LYD_COMPARE_FULL_RECURSION | LYD_COMPARE_DEFAULTS);
-            if (lyrc == LY_ENOT) {
-                store_data = 1;
-            } else if (lyrc) {
-                sr_errinfo_new_ly(&err_info, new_ctx);
-                break;
-            }
-        }
-        if (store_data) {
-            if ((err_info = sr_module_file_data_set(new_ly_mod->name, SR_DS_STARTUP, new_mod_data, O_CREAT, SR_FILE_PERM))) {
-                break;
-            }
-        }
-
-        /* running data */
-        lyd_free_siblings(new_mod_data);
-        lyd_free_siblings(old_mod_data);
-        new_mod_data = sr_module_data_unlink(new_run_data, new_ly_mod);
-        if (old_ly_mod) {
-            old_mod_data = sr_module_data_unlink(old_run_data, old_ly_mod);
-        } else {
-            old_mod_data = NULL;
-        }
-
-        if (!store_data) {
-            lyrc = lyd_compare_siblings(new_mod_data, old_mod_data, LYD_COMPARE_FULL_RECURSION | LYD_COMPARE_DEFAULTS);
-            if (lyrc == LY_ENOT) {
-                store_data = 1;
-            } else if (lyrc) {
-                sr_errinfo_new_ly(&err_info, new_ctx);
-                break;
-            }
-        }
-        if (store_data) {
-            if ((err_info = sr_module_file_data_set(new_ly_mod->name, SR_DS_RUNNING, new_mod_data, O_CREAT, SR_FILE_PERM))) {
-                break;
-            }
-        }
-    }
-    lyd_free_siblings(new_mod_data);
-    lyd_free_siblings(old_mod_data);
+    free(data_json);
     return err_info;
 }
 
@@ -1436,66 +1260,62 @@ sr_print_data_if_differ(const struct ly_set *mod_set, const struct ly_set *del_m
  * @brief Check that persistent (startup) module data can be loaded into updated context.
  * On success print the new updated LYB data.
  *
+ * @param[in] conn Connection to use.
  * @param[in] sr_mods Sysrepo module data.
  * @param[in] new_ctx Context with all scheduled module changes.
+ * @param[out] old_ctx Context without scheduled changes.
+ * @param[out] old_s_data Startup data in @p old_ctx.
+ * @param[out] new_s_data Startup data in @p new_ctx.
+ * @param[out] old_r_data Running data in @p old_ctx.
+ * @param[out] new_r_data Running data in @p new_ctx.
  * @param[out] fail Whether any data failed to be parsed.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_sched_update_data(const struct lyd_node *sr_mods, const struct ly_ctx *new_ctx, int *fail)
+sr_lydmods_sched_update_data(sr_conn_ctx_t *conn, const struct lyd_node *sr_mods, const struct ly_ctx *new_ctx,
+        struct ly_ctx **old_ctx, struct lyd_node **old_s_data, struct lyd_node **new_s_data, struct lyd_node **old_r_data,
+        struct lyd_node **new_r_data, int *fail)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *old_start_data = NULL, *new_start_data = NULL, *old_run_data = NULL, *new_run_data = NULL;
-    struct ly_ctx *old_ctx = NULL;
-    struct ly_set *mod_set = NULL, *del_mod_set = NULL;
 
-    SR_CHECK_MEM_GOTO(ly_set_new(&mod_set), err_info, cleanup);
-    SR_CHECK_MEM_GOTO(ly_set_new(&del_mod_set), err_info, cleanup);
+    *old_ctx = NULL;
+    *old_s_data = NULL;
+    *new_s_data = NULL;
+    *old_r_data = NULL;
+    *new_r_data = NULL;
 
     /* first build context without any scheduled changes */
-    if ((err_info = sr_ly_ctx_new(&old_ctx))) {
+    if ((err_info = sr_ly_ctx_new(old_ctx))) {
         goto cleanup;
     }
-    if ((err_info = sr_lydmods_ctx_load_modules(sr_mods, old_ctx, 1, 1, 0, NULL))) {
+    if ((err_info = sr_lydmods_ctx_load_modules(sr_mods, *old_ctx, 1, 1, 0, NULL))) {
         goto cleanup;
     }
 
     /* parse all the startup/running data using the old context (that must succeed) */
-    if ((err_info = sr_append_startup_and_running_data(old_ctx, &old_start_data, &old_run_data))) {
+    if ((err_info = sr_append_startup_and_running_data(conn, *old_ctx, old_s_data, old_r_data))) {
         goto cleanup;
     }
-    sr_get_same_modules_by_name(old_ctx, new_ctx, mod_set, del_mod_set);
 
-    /* update all the data for the new context */
-    if ((err_info = sr_update_data(sr_mods, old_ctx, old_start_data, old_run_data, new_ctx, &new_start_data,
-            &new_run_data, mod_set, fail))) {
+    /* update startup and running data for the new context */
+    if ((err_info = sr_update_data(sr_mods, *old_ctx, *old_s_data, new_ctx, new_s_data, fail))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_update_data(sr_mods, *old_ctx, *old_r_data, new_ctx, new_r_data, fail))) {
         goto cleanup;
     }
 
     /* fully validate complete startup and running datastore */
-    if (lyd_validate_all(&new_start_data, new_ctx, LYD_VALIDATE_NO_STATE, NULL) ||
-            lyd_validate_all(&new_run_data, new_ctx, LYD_VALIDATE_NO_STATE, NULL)) {
+    if (lyd_validate_all(new_s_data, new_ctx, LYD_VALIDATE_NO_STATE, NULL) ||
+            lyd_validate_all(new_r_data, new_ctx, LYD_VALIDATE_NO_STATE, NULL)) {
         sr_log_wrn_ly(new_ctx);
         *fail = 1;
-        goto cleanup;
-    }
-
-    /* print all modules data with the updated module context if the new data is different from the old one */
-    if ((err_info = sr_print_data_if_differ(mod_set, del_mod_set, old_ctx, &old_start_data, &old_run_data, new_ctx,
-            &new_start_data, &new_run_data))) {
         goto cleanup;
     }
 
     /* success */
 
 cleanup:
-    ly_set_free(mod_set, NULL);
-    ly_set_free(del_mod_set, NULL);
-    lyd_free_siblings(old_start_data);
-    lyd_free_siblings(new_start_data);
-    lyd_free_siblings(old_run_data);
-    lyd_free_siblings(new_run_data);
-    ly_ctx_destroy(old_ctx);
     if (err_info) {
         sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Failed to update data for the new context.");
     }
@@ -1506,19 +1326,25 @@ cleanup:
  * @brief Finalize applying scheduled module removal. Meaning remove its data files
  * and module file in case it is not imported by other modules.
  *
+ * @param[in] conn Connection to use.
  * @param[in] sr_mod Sysrepo module to remove. Will be freed.
+ * @param[in] old_ctx Context without scheduled changes.
  * @param[in] new_ctx Context with the new modules.
  * @param[in] update Whether this function is called from module update or module removal.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_sched_finalize_module_remove(struct lyd_node *sr_mod, const struct ly_ctx *new_ctx, int update)
+sr_lydmods_sched_finalize_module_remove(sr_conn_ctx_t *conn, struct lyd_node *sr_mod, const struct ly_ctx *old_ctx,
+        const struct ly_ctx *new_ctx, int update)
 {
     sr_error_info_t *err_info = NULL;
-    const char *mod_name, *mod_rev;
+    const char *mod_name, *mod_rev, *ds_str;
     struct lyd_node *child;
     struct ly_ctx *tmp_ctx = NULL;
     const struct lys_module *ly_mod;
+    struct srplg_ds_s *ds_plg;
+    struct srplg_ntf_s *ntf_plg;
+    int rc;
 
     child = lyd_child(sr_mod);
     assert(!strcmp(child->schema->name, "name"));
@@ -1529,9 +1355,44 @@ sr_lydmods_sched_finalize_module_remove(struct lyd_node *sr_mod, const struct ly
         mod_rev = NULL;
     }
 
-    /* remove data files */
-    if (!update && (err_info = sr_remove_data_files(mod_name))) {
-        goto cleanup;
+    if (!update) {
+        /* find old module */
+        ly_mod = ly_ctx_get_module_implemented(old_ctx, mod_name);
+        assert(ly_mod);
+
+        LY_LIST_FOR(lyd_child(sr_mod), child) {
+            if (!strcmp(child->schema->name, "plugin")) {
+                ds_str = lyd_get_value(lyd_child(child));
+                if (!strcmp(ds_str, "notification")) {
+                    if (lyd_find_path(sr_mod, "replay-support", 0, NULL)) {
+                        /* replay-support disabled, nothing to destroy */
+                        continue;
+                    }
+
+                    /* find plugin */
+                    if ((err_info = sr_ntf_plugin_find(lyd_get_value(lyd_child(child)->next), conn, &ntf_plg))) {
+                        goto cleanup;
+                    }
+
+                    /* destroy module notifications */
+                    if ((rc = ntf_plg->destroy_cb(ly_mod))) {
+                        SR_ERRINFO_DSPLUGIN(&err_info, rc, "destroy", ntf_plg->name, mod_name);
+                        goto cleanup;
+                    }
+                } else {
+                    /* find plugin */
+                    if ((err_info = sr_ds_plugin_find(lyd_get_value(lyd_child(child)->next), conn, &ds_plg))) {
+                        goto cleanup;
+                    }
+
+                    /* destroy module datastore */
+                    if ((rc = ds_plg->destroy_cb(ly_mod, sr_str2mod_ds(ds_str)))) {
+                        SR_ERRINFO_DSPLUGIN(&err_info, rc, "destroy", ds_plg->name, mod_name);
+                        goto cleanup;
+                    }
+                }
+            }
+        }
     }
 
     /* create temporary context */
@@ -1563,16 +1424,23 @@ cleanup:
 /**
  * @brief Finalize applying scheduled module update.
  *
+ * @param[in] conn Connection to use.
  * @param[in] sr_mod Sysrepo module to update. Will be freed.
+ * @param[in] old_ctx Context without scheduled changes.
  * @param[in] new_ctx Context with the updated module loaded.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_sched_finalize_module_update(struct lyd_node *sr_mod, const struct ly_ctx *new_ctx)
+sr_lydmods_sched_finalize_module_update(sr_conn_ctx_t *conn, struct lyd_node *sr_mod, const struct ly_ctx *old_ctx,
+        const struct ly_ctx *new_ctx)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
-    struct lyd_node *sr_mods;
+    struct lyd_node *sr_mods, *node;
+    const char *ds_str;
+    const struct srplg_ds_s *ds_plgs[SR_DS_COUNT];
+    struct srplg_ds_s *ds_plg;
+    struct srplg_ntf_s *ntf_plg;
 
     sr_mods = lyd_parent(sr_mod);
 
@@ -1581,13 +1449,30 @@ sr_lydmods_sched_finalize_module_update(struct lyd_node *sr_mod, const struct ly
     ly_mod = ly_ctx_get_module_implemented(new_ctx, SR_LY_CHILD_VALUE(sr_mod));
     assert(ly_mod);
 
+    /* get previous DS plugins */
+    LY_LIST_FOR(lyd_child(sr_mod), node) {
+        if (!strcmp(node->schema->name, "plugin")) {
+            ds_str = lyd_get_value(lyd_child(node));
+            if (!strcmp(ds_str, "notification")) {
+                if ((err_info = sr_ntf_plugin_find(lyd_get_value(lyd_child(node)->next), conn, &ntf_plg))) {
+                    return err_info;
+                }
+            } else {
+                if ((err_info = sr_ds_plugin_find(lyd_get_value(lyd_child(node)->next), conn, &ds_plg))) {
+                    return err_info;
+                }
+                ds_plgs[sr_str2mod_ds(ds_str)] = ds_plg;
+            }
+        }
+    }
+
     /* remove module */
-    if ((err_info = sr_lydmods_sched_finalize_module_remove(sr_mod, new_ctx, 1))) {
+    if ((err_info = sr_lydmods_sched_finalize_module_remove(conn, sr_mod, old_ctx, new_ctx, 1))) {
         return err_info;
     }
 
     /* re-add it (only the data files are kept) */
-    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0))) {
+    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, ds_plgs, ntf_plg, 1, 0))) {
         return err_info;
     }
 
@@ -1665,16 +1550,21 @@ sr_lydmods_sched_finalize_module_change_features(struct lyd_node *sr_mod, const 
  * @brief Finalize applying scheduled module installation. That consists of updating
  * sysrepo module data tree and storing updated YANG module files.
  *
+ * @param[in] conn Connection to use.
  * @param[in] sr_mod Sysrepo module to install. Will be freed.
  * @param[in] new_ctx Context with new modules used for printing them.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_sched_finalize_module_install(struct lyd_node *sr_mod, const struct ly_ctx *new_ctx)
+sr_lydmods_sched_finalize_module_install(sr_conn_ctx_t *conn, struct lyd_node *sr_mod, const struct ly_ctx *new_ctx)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
+    const char *ds_str;
     struct lyd_node *sr_mods, *node;
+    const struct srplg_ds_s *ds_plgs[SR_DS_COUNT];
+    struct srplg_ds_s *ds_plg;
+    struct srplg_ntf_s *ntf_plg;
     LY_ARRAY_COUNT_TYPE u;
 
     LY_LIST_FOR(sr_mod->next, node) {
@@ -1698,6 +1588,23 @@ sr_lydmods_sched_finalize_module_install(struct lyd_node *sr_mod, const struct l
         }
     }
 
+    /* get DS plugins */
+    LY_LIST_FOR(lyd_child(sr_mod), node) {
+        if (!strcmp(node->schema->name, "plugin")) {
+            ds_str = lyd_get_value(lyd_child(node));
+            if (!strcmp(ds_str, "notification")) {
+                if ((err_info = sr_ntf_plugin_find(lyd_get_value(lyd_child(node)->next), conn, &ntf_plg))) {
+                    return err_info;
+                }
+            } else {
+                if ((err_info = sr_ds_plugin_find(lyd_get_value(lyd_child(node)->next), conn, &ds_plg))) {
+                    return err_info;
+                }
+                ds_plgs[sr_str2mod_ds(ds_str)] = ds_plg;
+            }
+        }
+    }
+
     sr_mods = lyd_parent(sr_mod);
 
     /*
@@ -1708,7 +1615,7 @@ sr_lydmods_sched_finalize_module_install(struct lyd_node *sr_mod, const struct l
     assert(ly_mod);
     lyd_free_tree(sr_mod);
 
-    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 2))) {
+    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, ds_plgs, ntf_plg, 0, 2))) {
         return err_info;
     }
 
@@ -1873,7 +1780,7 @@ sr_lydmods_sched_check_removed_modules(const struct lyd_node *sr_mods, const str
     assert(sr_mods);
 
     /* find all removed modules */
-    if (lyd_find_xpath(sr_mods, "/" SR_YANG_MOD ":sysrepo-modules/module[removed]", &set)) {
+    if (lyd_find_xpath(sr_mods, "/sysrepo:sysrepo-modules/module[removed]", &set)) {
         sr_errinfo_new_ly(&err_info, LYD_CTX(sr_mods));
         goto cleanup;
     } else if (!set->count) {
@@ -1933,7 +1840,7 @@ sr_lydmods_sched_ctx_update_modules(const struct lyd_node *sr_mods, struct ly_ct
     assert(sr_mods);
 
     /* find updated modules and change internal module data tree */
-    if (lyd_find_xpath(sr_mods, "/" SR_YANG_MOD ":sysrepo-modules/module/updated-yang", &set)) {
+    if (lyd_find_xpath(sr_mods, "/sysrepo:sysrepo-modules/module/updated-yang", &set)) {
         sr_errinfo_new_ly(&err_info, LYD_CTX(sr_mods));
         goto cleanup;
     }
@@ -1986,7 +1893,7 @@ sr_lydmods_sched_ctx_install_modules(const struct lyd_node *sr_mods, struct ly_c
 
     assert(sr_mods);
 
-    if (lyd_find_xpath(sr_mods, "/" SR_YANG_MOD ":sysrepo-modules/installed-module/module-yang", &set)) {
+    if (lyd_find_xpath(sr_mods, "/sysrepo:sysrepo-modules/installed-module/module-yang", &set)) {
         sr_errinfo_new_ly(&err_info, LYD_CTX(sr_mods));
         goto cleanup;
     }
@@ -2026,8 +1933,96 @@ cleanup:
 }
 
 /**
+ * @brief Print data if they differ, are completely new, or their LYB metadata differ (augment/deviation module was removed).
+ * Is evaluated for each module data separately.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] ds Affected datastore.
+ * @param[in] sr_mods Sysrepo module data.
+ * @param[in] old_ctx Context before scheduled changes.
+ * @param[in,out] old_data Data tree from @p old_ctx.
+ * @param[in] new_ctx Context with all scheduled module changes.
+ * @param[in,out] new_data Data tree from @p new_ctx.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_lydmods_store_data_if_differ(sr_conn_ctx_t *conn, sr_datastore_t ds, const struct lyd_node *sr_mods,
+        const struct ly_ctx *old_ctx, struct lyd_node **old_data, const struct ly_ctx *new_ctx,
+        struct lyd_node **new_data)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *new_ly_mod, *old_ly_mod;
+    struct lyd_node *new_mod_data = NULL, *old_mod_data = NULL;
+    struct srplg_ds_s *ds_plg;
+    struct ly_set *set;
+    char *xpath;
+    uint32_t idx = 0;
+    int rc, differ;
+    LY_ERR lyrc;
+
+    while ((new_ly_mod = ly_ctx_get_module_iter(new_ctx, &idx))) {
+        if (!new_ly_mod->implemented || sr_module_is_internal(new_ly_mod)) {
+            continue;
+        }
+
+        old_ly_mod = ly_ctx_get_module_implemented(old_ctx, new_ly_mod->name);
+
+        /* get old and new data of the module */
+        lyd_free_siblings(new_mod_data);
+        lyd_free_siblings(old_mod_data);
+        new_mod_data = sr_module_data_unlink(new_data, new_ly_mod);
+        if (old_ly_mod) {
+            old_mod_data = sr_module_data_unlink(old_data, old_ly_mod);
+        } else {
+            old_mod_data = NULL;
+        }
+
+        /* get plugin name */
+        if (asprintf(&xpath, "module[name='%s']/plugin[datastore='%s']/name", new_ly_mod->name, sr_ds2str(ds)) == -1) {
+            SR_ERRINFO_MEM(&err_info);
+            break;
+        }
+        lyrc = lyd_find_xpath(sr_mods, xpath, &set);
+        free(xpath);
+        if (lyrc) {
+            sr_errinfo_new_ly(&err_info, new_ctx);
+            break;
+        } else if (set->count != 1) {
+            SR_ERRINFO_INT(&err_info);
+            break;
+        }
+
+        /* get plugin */
+        err_info = sr_ds_plugin_find(lyd_get_value(set->dnodes[0]), conn, &ds_plg);
+        ly_set_free(set, NULL);
+        if (err_info) {
+            break;
+        }
+
+        /* check whether the data differs and needs to be stored */
+        if ((rc = ds_plg->update_differ_cb(old_ly_mod, old_mod_data, new_ly_mod, new_mod_data, &differ))) {
+            SR_ERRINFO_DSPLUGIN(&err_info, rc, "update_differ", ds_plg->name, new_ly_mod->name);
+            break;
+        }
+
+        if (differ) {
+            /* store data */
+            if ((rc = ds_plg->store_cb(new_ly_mod, ds, new_mod_data))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", ds_plg->name, new_ly_mod->name);
+                break;
+            }
+        }
+    }
+
+    lyd_free_siblings(new_mod_data);
+    lyd_free_siblings(old_mod_data);
+    return err_info;
+}
+
+/**
  * @brief Apply all scheduled changes in sysrepo module data.
  *
+ * @param[in] conn Connection to use.
  * @param[in,out] sr_mods Sysrepo modules data tree, is updated after scheduled changes are applied.
  * @param[in,out] new_ctx Initalized context with no SR modules loaded. On return all SR modules are loaded
  * with all the changes (if any) applied.
@@ -2037,11 +2032,13 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *change, int *fail)
+sr_lydmods_sched_apply(sr_conn_ctx_t *conn, struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *change, int *fail)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *next, *next2, *sr_mod, *node;
+    struct lyd_node *old_s_data = NULL, *new_s_data = NULL, *old_r_data = NULL, *new_r_data = NULL;
     const struct lys_module *ly_mod;
+    struct ly_ctx *old_ctx = NULL;
     uint32_t content_id;
     char buf[11];
 
@@ -2077,7 +2074,8 @@ sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *ch
         }
 
         /* check that persistent module data can be loaded with updated modules */
-        if ((err_info = sr_lydmods_sched_update_data(sr_mods, new_ctx, fail)) || *fail) {
+        if ((err_info = sr_lydmods_sched_update_data(conn, sr_mods, new_ctx, &old_ctx, &old_s_data, &new_s_data,
+                &old_r_data, &new_r_data, fail)) || *fail) {
             goto cleanup;
         }
 
@@ -2089,13 +2087,13 @@ sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *ch
                 assert(!strcmp(lyd_child(sr_mod)->schema->name, "name"));
                 LY_LIST_FOR_SAFE(lyd_child(sr_mod)->next, next2, node) {
                     if (!strcmp(node->schema->name, "removed")) {
-                        if ((err_info = sr_lydmods_sched_finalize_module_remove(sr_mod, new_ctx, 0))) {
+                        if ((err_info = sr_lydmods_sched_finalize_module_remove(conn, sr_mod, old_ctx, new_ctx, 0))) {
                             goto cleanup;
                         }
                         /* sr_mod was freed */
                         break;
                     } else if (!strcmp(node->schema->name, "updated-yang")) {
-                        if ((err_info = sr_lydmods_sched_finalize_module_update(sr_mod, new_ctx))) {
+                        if ((err_info = sr_lydmods_sched_finalize_module_update(conn, sr_mod, old_ctx, new_ctx))) {
                             goto cleanup;
                         }
                         /* sr_mod was freed */
@@ -2115,7 +2113,7 @@ sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *ch
                     }
                 }
             } else if (!strcmp(sr_mod->schema->name, "installed-module")) {
-                if ((err_info = sr_lydmods_sched_finalize_module_install(sr_mod, new_ctx))) {
+                if ((err_info = sr_lydmods_sched_finalize_module_install(conn, sr_mod, new_ctx))) {
                     goto cleanup;
                 }
             } else {
@@ -2142,6 +2140,16 @@ sr_lydmods_sched_apply(struct lyd_node *sr_mods, struct ly_ctx *new_ctx, int *ch
                 goto cleanup;
             }
         }
+
+        /* store updated data */
+        if ((err_info = sr_lydmods_store_data_if_differ(conn, SR_DS_STARTUP, sr_mods, old_ctx, &old_s_data, new_ctx,
+                &new_s_data))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lydmods_store_data_if_differ(conn, SR_DS_RUNNING, sr_mods, old_ctx, &old_r_data, new_ctx,
+                &new_r_data))) {
+            goto cleanup;
+        }
     }
 
     /* success */
@@ -2157,18 +2165,25 @@ cleanup:
             SR_LOG_INF("No scheduled changes.");
         }
     }
+    lyd_free_siblings(old_s_data);
+    lyd_free_siblings(new_s_data);
+    lyd_free_siblings(old_r_data);
+    lyd_free_siblings(new_r_data);
+    ly_ctx_destroy(old_ctx);
     return err_info;
 }
 
 sr_error_info_t *
-sr_lydmods_conn_ctx_update(sr_main_shm_t *main_shm, struct ly_ctx **ly_ctx, int apply_sched, int err_on_sched_fail,
+sr_lydmods_conn_ctx_update(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx, int apply_sched, int err_on_sched_fail,
         int *changed)
 {
     sr_error_info_t *err_info = NULL;
-    int chng, exists = 0, fail, ctx_updated = 0;
+    int chng, fail, ctx_updated = 0;
+    sr_main_shm_t *main_shm;
     uint32_t conn_count;
     struct lyd_node *sr_mods = NULL;
 
+    main_shm = SR_CONN_MAIN_SHM(conn);
     chng = 0;
 
     /* LYDMODS LOCK */
@@ -2176,11 +2191,12 @@ sr_lydmods_conn_ctx_update(sr_main_shm_t *main_shm, struct ly_ctx **ly_ctx, int 
         return err_info;
     }
 
-    /* check whether any internal module data exist */
-    if ((err_info = sr_lydmods_exists(&exists))) {
+    /* parse sysrepo module data */
+    if ((err_info = sr_lydmods_parse(*ly_ctx, &sr_mods))) {
         goto cleanup;
     }
-    if (!exists) {
+
+    if (!sr_mods) {
         /* create new persistent module data file and fill the context accordingly */
         if ((err_info = sr_lydmods_create(*ly_ctx, &sr_mods))) {
             goto cleanup;
@@ -2188,17 +2204,13 @@ sr_lydmods_conn_ctx_update(sr_main_shm_t *main_shm, struct ly_ctx **ly_ctx, int 
         ctx_updated = 1;
         chng = 1;
     } else {
-        /* parse sysrepo module data */
-        if ((err_info = sr_lydmods_parse(*ly_ctx, &sr_mods))) {
-            goto cleanup;
-        }
         if (apply_sched) {
             /* apply scheduled changes if we can */
             if ((err_info = sr_conn_info(NULL, NULL, &conn_count, NULL, NULL))) {
                 goto cleanup;
             }
             if (!conn_count) {
-                if ((err_info = sr_lydmods_sched_apply(sr_mods, *ly_ctx, &chng, &fail))) {
+                if ((err_info = sr_lydmods_sched_apply(conn, sr_mods, *ly_ctx, &chng, &fail))) {
                     goto cleanup;
                 }
                 if (fail) {
@@ -2256,13 +2268,13 @@ cleanup:
 
 sr_error_info_t *
 sr_lydmods_deferred_add_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, const struct lys_module *ly_mod,
-        const char **features)
+        const char **features, const sr_module_ds_t *module_ds)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *sr_mods = NULL, *inst_mod;
+    struct lyd_node *sr_mods = NULL, *inst_mod, *ds_plugin;
     struct ly_set *set = NULL;
     char *path = NULL, *yang_str = NULL;
-    int i;
+    uint32_t i;
 
     /* LYDMODS LOCK */
     if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, ly_ctx, __func__))) {
@@ -2303,8 +2315,19 @@ sr_lydmods_deferred_add_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, c
         }
     }
 
+    for (i = 0; i < SR_MOD_DS_PLUGIN_COUNT; ++i) {
+        if (lyd_new_list(inst_mod, NULL, "plugin", 0, &ds_plugin, sr_mod_ds2str(i))) {
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+            goto cleanup;
+        }
+        if (lyd_new_term(ds_plugin, NULL, "name", module_ds->plugin_name[i], 0, NULL)) {
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+            goto cleanup;
+        }
+    }
+
     /* print the module into memory */
-    if (lys_print_mem(&yang_str, ly_mod, LYS_OUT_YANG, 0)) {
+    if (lys_print_mem(&yang_str, ly_mod, LYS_OUT_YANG, LYS_PRINT_SHRINK)) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         goto cleanup;
     }
@@ -2858,42 +2881,76 @@ cleanup:
 /**
  * @brief Update replay support of a module.
  *
+ * @param[in] conn Connection to use.
+ * @param[in] ly_mod libyang module.
  * @param[in,out] sr_mod Module to update.
  * @param[in] replay_support Whether replay should be enabled or disabled.
  * @param[in] s_replay Schema node of replay support.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_update_replay_support_module(struct lyd_node *sr_mod, int replay_support, const struct lysc_node *s_replay)
+sr_lydmods_update_replay_support_module(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, struct lyd_node *sr_mod,
+        int replay_support, const struct lysc_node *s_replay)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_replay;
-    char buf[21];
-    time_t from_ts, to_ts;
+    sr_mod_t *shm_mod;
+    struct timespec ts;
+    struct srplg_ntf_s *ntf_plg;
+    int rc;
+    LY_ERR lyrc;
+    char *buf = NULL;
+
+    /* find the module in SHM */
+    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), ly_mod->name);
+    SR_CHECK_INT_RET(!shm_mod, err_info);
+
+    /* find NTF plugin */
+    if ((err_info = sr_ntf_plugin_find(conn->main_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_plg))) {
+        return err_info;
+    }
 
     lyd_find_sibling_val(lyd_child(sr_mod), s_replay, NULL, 0, &sr_replay);
     if (!replay_support && sr_replay) {
+        /* destroy notifications */
+        if ((rc = ntf_plg->destroy_cb(ly_mod))) {
+            SR_ERRINFO_DSPLUGIN(&err_info, rc, "destroy", ntf_plg->name, ly_mod->name);
+            return err_info;
+        }
+
         /* remove replay support */
         lyd_free_tree(sr_replay);
     } else if (replay_support && !sr_replay) {
-        /* find earliest stored notification or use current time */
-        if ((err_info = sr_replay_find_file(lyd_get_value(lyd_child(sr_mod)), 1, 0, &from_ts, &to_ts))) {
+        /* init notifications */
+        if ((rc = ntf_plg->init_cb(ly_mod))) {
+            SR_ERRINFO_DSPLUGIN(&err_info, rc, "init", ntf_plg->name, ly_mod->name);
             return err_info;
         }
-        if (!from_ts) {
-            from_ts = time(NULL);
+
+        /* use earliest stored notification timestamp or use current time */
+        if ((rc = ntf_plg->earliest_get_cb(ly_mod, &ts))) {
+            SR_ERRINFO_DSPLUGIN(&err_info, rc, "earliest_get", ntf_plg->name, ly_mod->name);
+            return err_info;
         }
-        sprintf(buf, "%ld", (long int)from_ts);
+        if (!ts.tv_sec) {
+            sr_time_get(&ts, 0);
+        }
+        if (ly_time_ts2str(&ts, &buf)) {
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+            return err_info;
+        }
 
         /* add replay support */
-        SR_CHECK_LY_RET(lyd_new_term(sr_mod, NULL, "replay-support", buf, 0, NULL), LYD_CTX(sr_mod), err_info);
+        lyrc = lyd_new_term(sr_mod, NULL, "replay-support", buf, 0, NULL);
+        free(buf);
+        SR_CHECK_LY_RET(lyrc, conn->ly_ctx, err_info);
     }
 
     return NULL;
 }
 
 sr_error_info_t *
-sr_lydmods_update_replay_support(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, const char *mod_name, int replay_support)
+sr_lydmods_update_replay_support(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, int replay_support)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mods = NULL, *sr_mod;
@@ -2901,23 +2958,23 @@ sr_lydmods_update_replay_support(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx,
     const struct lysc_node *s_mod, *s_replay;
 
     /* find schema nodes */
-    s_mod = lys_find_path(ly_ctx, NULL, "/sysrepo:sysrepo-modules/module", 0);
+    s_mod = lys_find_path(conn->ly_ctx, NULL, "/sysrepo:sysrepo-modules/module", 0);
     assert(s_mod);
     s_replay = lys_find_path(NULL, s_mod, "replay-support", 0);
     assert(s_replay);
 
     /* LYDMODS LOCK */
-    if ((err_info = sr_lydmods_lock(&main_shm->lydmods_lock, ly_ctx, __func__))) {
+    if ((err_info = sr_lydmods_lock(&SR_CONN_MAIN_SHM(conn)->lydmods_lock, conn->ly_ctx, __func__))) {
         return err_info;
     }
 
     /* parse current module information */
-    if ((err_info = sr_lydmods_parse(ly_ctx, &sr_mods))) {
+    if ((err_info = sr_lydmods_parse(conn->ly_ctx, &sr_mods))) {
         goto cleanup;
     }
 
-    if (mod_name) {
-        if (asprintf(&pred, "[name=\"%s\"]", mod_name) == -1) {
+    if (ly_mod) {
+        if (asprintf(&pred, "[name=\"%s\"]", ly_mod->name) == -1) {
             SR_ERRINFO_MEM(&err_info);
             goto cleanup;
         }
@@ -2927,7 +2984,7 @@ sr_lydmods_update_replay_support(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx,
         assert(sr_mod);
 
         /* set replay support */
-        if ((err_info = sr_lydmods_update_replay_support_module(sr_mod, replay_support, s_replay))) {
+        if ((err_info = sr_lydmods_update_replay_support_module(conn, ly_mod, sr_mod, replay_support, s_replay))) {
             goto cleanup;
         }
     } else {
@@ -2936,8 +2993,12 @@ sr_lydmods_update_replay_support(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx,
                 continue;
             }
 
+            /* find module */
+            ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, lyd_get_value(lyd_child(sr_mod)));
+            assert(ly_mod);
+
             /* set replay support */
-            if ((err_info = sr_lydmods_update_replay_support_module(sr_mod, replay_support, s_replay))) {
+            if ((err_info = sr_lydmods_update_replay_support_module(conn, ly_mod, sr_mod, replay_support, s_replay))) {
                 goto cleanup;
             }
         }
@@ -2952,7 +3013,7 @@ sr_lydmods_update_replay_support(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx,
 
 cleanup:
     /* LYDMODS UNLOCK */
-    sr_munlock(&main_shm->lydmods_lock);
+    sr_munlock(&SR_CONN_MAIN_SHM(conn)->lydmods_lock);
 
     free(pred);
     lyd_free_all(sr_mods);

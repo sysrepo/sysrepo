@@ -15,7 +15,6 @@
  */
 
 #define _GNU_SOURCE
-#include <sys/cdefs.h>
 
 #include "xpath.h"
 
@@ -23,6 +22,7 @@
 #include <string.h>
 
 #include "common.h"
+#include "config.h"
 
 static char *
 sr_get_next_node_internal(char *xpath, sr_xpath_ctx_t *state, int skip_namespace)

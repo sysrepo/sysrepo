@@ -222,7 +222,7 @@ test_no_read_access(void **state)
     }
 
     /* set no permissions for default module */
-    ret = sr_set_module_access(st->conn, "defaults", NULL, NULL, 00200);
+    ret = sr_set_module_ds_access(st->conn, "defaults", SR_DS_RUNNING, NULL, NULL, 00200);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to get its data */
@@ -242,7 +242,7 @@ test_no_read_access(void **state)
     lyd_free_all(data);
 
     /* set permissions back so that it can be removed */
-    ret = sr_set_module_access(st->conn, "defaults", NULL, NULL, 00600);
+    ret = sr_set_module_ds_access(st->conn, "defaults", SR_DS_RUNNING, NULL, NULL, 00600);
     assert_int_equal(ret, SR_ERR_OK);
 }
 

@@ -15,7 +15,6 @@
  */
 
 #define _GNU_SOURCE
-#include <sys/cdefs.h>
 
 #include "shm.h"
 

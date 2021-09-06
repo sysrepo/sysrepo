@@ -25,27 +25,11 @@
 #include "sysrepo_types.h"
 
 struct lysp_submodule;
+struct sr_ds_handle;
 struct sr_mod_info_s;
 struct sr_mod_info_mod_s;
-
-/*
- * If the compiler supports attribute to mark objects as hidden, mark all
- * objects as hidden and export only objects explicitly marked to be part of
- * the public API.
- */
-#define API __attribute__((visibility("default")))
-
-/** support for pthread_mutex_timedlock */
-#cmakedefine SR_HAVE_PTHREAD_MUTEX_TIMEDLOCK
-#ifndef SR_HAVE_PTHREAD_MUTEX_TIMEDLOCK
-int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *abstime);
-#endif
-
-/** use access() if eaccess() is not available (it may adversely affect access control, however) */
-#cmakedefine SR_HAVE_EACCESS
-#ifndef SR_HAVE_EACCESS
-# define eaccess access
-#endif
+struct srplg_ds_s;
+struct srplg_ntf_s;
 
 /** macro for mutex align check */
 #define SR_MUTEX_ALIGN_CHECK(mutex) ((uintptr_t)mutex % sizeof(void *))
@@ -71,47 +55,8 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /* macro for getting ext SHM from a connection */
 #define SR_CONN_EXT_SHM(conn) ((sr_ext_shm_t *)(conn)->ext_shm.addr)
 
-/** name of sysrepo YANG module */
-#define SR_YANG_MOD "sysrepo"
-
-/** UID of the superuser that can execute sensitive functions */
-#define SR_SU_UID @SYSREPO_SUPERUSER_UID@
-
-/** implemented ietf-yang-library revision */
-#define SR_YANGLIB_REVISION @YANGLIB_REVISION@
-
-/** main sysrepo repository path; prefix of all other paths by default */
-#define SR_REPO_PATH "@REPO_PATH@"
-
-/** environment variable overriding the compiled-in value */
-#define SR_REPO_PATH_ENV "SYSREPO_REPOSITORY_PATH"
-
-/** if not set, defaults to "SR_REPO_PATH/data" */
-#define SR_STARTUP_PATH "@STARTUP_DATA_PATH@"
-
-/** if not set, defaults to "SR_REPO_PATH/data/notif" */
-#define SR_NOTIFICATION_PATH "@NOTIFICATION_PATH@"
-
-/** if not set, defaults to "SR_REPO_PATH/yang" */
-#define SR_YANG_PATH "@YANG_MODULE_PATH@"
-
-/** where SHM files are stored */
-#define SR_SHM_DIR "/dev/shm"
-
-/** default prefix for SHM files in /dev/shm */
-#define SR_SHM_PREFIX_DEFAULT "sr"
-
-/** suffix of backed-up LYB files */
-#define SR_FILE_BACKUP_SUFFIX ".bck"
-
-/** environment variable for setting a custom prefix for SHM files */
-#define SR_SHM_PREFIX_ENV "SYSREPO_SHM_PREFIX"
-
 /** all ext SHM item sizes will be aligned to this number; also represents the allocation unit (B) */
 #define SR_SHM_MEM_ALIGN 8
-
-/** notification file will never exceed this size (kB) */
-#define SR_EV_NOTIF_FILE_MAX_SIZE 1024
 
 /** timeout for locking subscription structure lock, should be enough for a single ::sr_process_events() call (ms) */
 #define SR_SUBSCR_LOCK_TIMEOUT 30000
@@ -158,12 +103,6 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** default timeout for notification subscrption callback (ms) */
 #define SR_NOTIF_CB_TIMEOUT 2000
 
-/** group to own all directories/files */
-#define SR_GROUP "@SYSREPO_GROUP@"
-
-/** umask modifying all the permissions below */
-#define SR_UMASK @SYSREPO_UMASK@
-
 /** permissions of main SHM lock file and main SHM itself */
 #define SR_MAIN_SHM_PERM 00666
 
@@ -175,24 +114,6 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 
 /** permissions of all event pipes (only owner read, anyone else write */
 #define SR_EVPIPE_PERM 00622
-
-/** permissions of directories for sysrepo files */
-#define SR_DIR_PERM 00777
-
-/** permissions of used YANG modules */
-#define SR_YANG_PERM 00644
-
-/** default permissions of stored notifications and data files */
-#define SR_FILE_PERM 00600
-
-/** permissions of data files of "sysrepo" internal module, it includes all the metadata */
-#define SR_INTMOD_MAIN_FILE_PERM 00666
-
-/** default permissions of data files of internal modules that have no data or features */
-#define SR_INTMOD_NODATA_FILE_PERM 00444
-
-/** default permission of data files of internal modules with some data or features */
-#define SR_INTMOD_WITHDATA_FILE_PERM 00644
 
 /** initial length of message buffer (B) */
 #define SR_MSG_LEN_START 128
@@ -490,6 +411,60 @@ sr_error_info_t *sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *p
 sr_error_info_t *sr_ly_ctx_new(struct ly_ctx **ly_ctx);
 
 /**
+ * @brief Initialize all dynamic DS handles.
+ *
+ * @param[out] ds_handles Array of DS handles.
+ * @param[out] ds_handle_count Length of @p ds_handles.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count);
+
+/**
+ * @brief Free all dynamic DS plugins.
+ *
+ * @param[in] ds_handles Array of DS plugins.
+ * @param[in] ds_handle_count Length of @p ds_handles.
+ */
+void sr_ds_handle_free(struct sr_ds_handle_s *ds_handles, uint32_t ds_handle_count);
+
+/**
+ * @brief Find DS plugin with a specific name.
+ *
+ * @param[in] ds_plugin_name Datastore plugin name.
+ * @param[in] conn Connection with dynamic DS plugins.
+ * @param[out] ds_plugin Optional found DS plugin.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_ds_plugin_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, struct srplg_ds_s **ds_plugin);
+
+/**
+ * @brief Initialize all dynamic notif handles.
+ *
+ * @param[out] ntf_handles Array of notif handles.
+ * @param[out] ntf_handle_count Length of @p ntf_handles.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32_t *ntf_handle_count);
+
+/**
+ * @brief Free all dynamic notif plugins.
+ *
+ * @param[in] ntf_handles Array of notif plugins.
+ * @param[in] ntf_handle_count Length of @p ntf_handles.
+ */
+void sr_ntf_handle_free(struct sr_ntf_handle_s *ntf_handles, uint32_t ntf_handle_count);
+
+/**
+ * @brief Find notif plugin with a specific name.
+ *
+ * @param[in] ntf_plugin_name Notification plugin name.
+ * @param[in] conn Connection with dynamic notif plugins.
+ * @param[out] ntf_plugin Optional found notif plugin.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, struct srplg_ntf_s **ntf_plugin);
+
+/**
  * @brief Remove all unused module YANG file(s) and all of its includes/imports recursively.
  *
  * @param[in] ly_mod Module whose files to remove.
@@ -507,36 +482,12 @@ sr_error_info_t *sr_remove_module_file_r(const struct lys_module *ly_mod, const 
 sr_error_info_t *sr_store_module_files(const struct lys_module *ly_mod);
 
 /**
- * @brief Unlink candidate file of a module.
- *
- * @param[in] mod_name Module name.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_remove_candidate_file(const char *mod_name);
-
-/**
- * @brief Unlink startup, running, and candidate files of a module.
- *
- * @param[in] mod_name Module name.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_remove_data_files(const char *mod_name);
-
-/**
  * @brief Check whether a module is internal libyang or sysrepo module.
  *
  * @param[in] ly_mod Module to check.
  * @return 0 if not, non-zero if it is.
  */
 int sr_module_is_internal(const struct lys_module *ly_mod);
-
-/**
- * @brief Create startup file for a module.
- *
- * @param[in] ly_mod Module to create startup file for.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_create_startup_file(const struct lys_module *ly_mod);
 
 /**
  * @brief Create all module import and include files, recursively.
@@ -586,16 +537,6 @@ sr_error_info_t *sr_path_sub_shm(const char *mod_name, const char *suffix1, int6
 sr_error_info_t *sr_path_sub_data_shm(const char *mod_name, const char *suffix1, int64_t suffix2, char **path);
 
 /**
- * @brief Get the path to a volatile datastore SHM.
- *
- * @param[in] mod_name Module name.
- * @param[in] ds Target datastore.
- * @param[out] path Created path.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_path_ds_shm(const char *mod_name, sr_datastore_t ds, char **path);
-
-/**
  * @brief Get the path to an event pipe.
  *
  * @param[in] evpipe_num Event pipe number.
@@ -605,48 +546,12 @@ sr_error_info_t *sr_path_ds_shm(const char *mod_name, sr_datastore_t ds, char **
 sr_error_info_t *sr_path_evpipe(uint32_t evpipe_num, char **path);
 
 /**
- * @brief Get the path to startup files directory.
- *
- * @param[out] path Created path.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_path_startup_dir(char **path);
-
-/**
- * @brief Get the path to notification files directory.
- *
- * @param[out] path Created path.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_path_notif_dir(char **path);
-
-/**
  * @brief Get the path to YANG module files directory.
  *
  * @param[out] path Created path.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_path_yang_dir(char **path);
-
-/**
- * @brief Get the path to a module startup file.
- *
- * @param[in] mod_name Module name.
- * @param[out] path Created path.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_path_startup_file(const char *mod_name, char **path);
-
-/**
- * @brief Get the path to a module notification file.
- *
- * @param[in] mod_name Module name.
- * @param[in] from_ts Timestamp of the first stored notification.
- * @param[in] to_ts Timestamp of the last stored notification.
- * @param[out] path Created path.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_path_notif_file(const char *mod_name, time_t from_ts, time_t to_ts, char **path);
 
 /**
  * @brief Get the path to a YANG module file.
@@ -686,46 +591,18 @@ void sr_remove_evpipes(void);
 sr_error_info_t *sr_get_pwd(uid_t *uid, char **user);
 
 /**
- * @brief Change mode (permissions) and/or owner and group of a file.
- *
- * @param[in] path File path.
- * @param[in] owner New owner if not NULL.
- * @param[in] group New group if not NULL.
- * @param[in] perm New permissions if not 0.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_chmodown(const char *path, const char *owner, const char *group, mode_t perm);
-
-/**
  * @brief Check whether the effective user has permissions for a module.
  *
- * @param[in] mod_name Module to check.
+ * @param[in] conn Connection to use.
+ * @param[in] ly_mod Module to check.
+ * @param[in] ds Datastore of the module to check.
  * @param[in] wr Check write access if set, otherwise read.
  * @param[in,out] has_access If set, it will contain the result of the access check.
  * If not set, denied access returns an error.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_perm_check(const char *mod_name, int wr, int *has_access);
-
-/**
- * @brief Get mode (permissions) and/or owner and group of a module.
- *
- * @param[in] mod_name Module name.
- * @param[in] ds Datastore file to check, for general module access permissions, startup should always be used.
- * @param[in,out] owner Module owner if not NULL.
- * @param[in,out] group Module group if not NULL.
- * @param[in,out] perm Module permissions if not NULL;
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_perm_get(const char *mod_name, sr_datastore_t ds, char **owner, char **group, mode_t *perm);
-
-/**
- * @brief Check whether a file exists.
- *
- * @param[in] path Path to the file.
- * @return 0 if file does not exist, non-zero if it exists.
- */
-int sr_file_exists(const char *path);
+sr_error_info_t *sr_perm_check(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore_t ds, int wr,
+        int *has_access);
 
 /**
  * @brief Get current time with an offset.
@@ -1051,16 +928,6 @@ int sr_conn_is_alive(sr_cid_t cid);
 void *sr_realloc(void *ptr, size_t size);
 
 /**
- * @brief Copy file contents to another file.
- *
- * @param[in] to Destination file path.
- * @param[in] from Source file path.
- * @param[in] file_mode Permissions of \p to file, if being created.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_cp_path(const char *to, const char *from, mode_t file_mode);
-
-/**
  * @brief Wrapper for open(2).
  *
  * Additionally sets umask.
@@ -1108,6 +975,22 @@ sr_error_info_t *sr_get_trim_predicates(const char *expr, char **expr2);
  * @return Datastore string name.
  */
 const char *sr_ds2str(sr_datastore_t ds);
+
+/**
+ * @brief Get module datastore from a string name.
+ *
+ * @param[in] str String to transform.
+ * @return Datastore.
+ */
+int sr_str2mod_ds(const char *str);
+
+/**
+ * @brief Get string name of a module datastore.
+ *
+ * @param[in] mod_ds Module datastore to transform.
+ * @return Module datastore string name.
+ */
+const char *sr_mod_ds2str(int mod_ds);
 
 /**
  * @brief Get datastore identity name from ietf-datastores.
@@ -1365,14 +1248,16 @@ void sr_ly_set_add_all_modules_with_data(struct ly_set *mod_set, const struct ly
 struct lyd_node *sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod);
 
 /**
- * @brief Append data loaded from a file/SHM for a specific module. Do not use for operational datastore.
+ * @brief Append stored module data to a data tree.
  *
- * @param[in] ly_mod Module to process.
- * @param[in] ds Datastore.
+ * @param[in] ly_mod libyang module.
+ * @param[in] ds_plg Datastore plugin of @p ly_mod.
+ * @param[in] ds Datastore of the data.
  * @param[in,out] data Data tree to append to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, sr_datastore_t ds, struct lyd_node **data);
+sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, const struct srplg_ds_s *ds_plg,
+        sr_datastore_t ds, struct lyd_node **data);
 
 /**
  * @brief Load operational data (edit) loaded from a SHM for a specific module.
@@ -1382,20 +1267,6 @@ sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, sr_
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_module_file_oper_data_load(struct sr_mod_info_mod_s *mod, struct lyd_node **edit);
-
-/**
- * @brief Set (replace) data in file/SHM for a specific module.
- *
- * @param[in] mod_name Module name.
- * @param[in] ds Target datastore
- * @param[in] mod_data Module data.
- * @param[in] create_flags Additional flags that will be used for opening the file,
- * any of O_CREATE and O_EXCL are expected.
- * @param[in] file_mode Permissions (mode) of the file, must always be correctly set because of the backup.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data,
-        int create_flags, mode_t file_mode);
 
 /**
  * @brief Learn CIDs and PIDs of all the live connections.

@@ -49,6 +49,7 @@ struct sr_mod_info_s {
     struct sr_mod_info_mod_s {
         sr_mod_t *shm_mod;      /**< Module SHM structure. */
         const struct lys_module *ly_mod;    /**< Module libyang structure. */
+        struct srplg_ds_s *ds_plg;          /**< Module DS plugin. */
         uint32_t state;         /**< Module state (flags). */
         uint32_t request_id;    /**< Request ID of the published event. */
     } *mods;                    /**< Relevant modules. */

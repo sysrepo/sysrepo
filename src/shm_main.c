@@ -15,7 +15,6 @@
  */
 
 #define _GNU_SOURCE
-#include <sys/cdefs.h>
 
 #include "shm.h"
 
@@ -37,7 +36,9 @@
 
 #include "common.h"
 #include "compat.h"
+#include "config.h"
 #include "log.h"
+#include "plugins_datastore.h"
 #include "sysrepo.h"
 
 /**
@@ -77,36 +78,6 @@ sr_shmmain_check_dirs(void)
     char *dir_path;
     sr_error_info_t *err_info = NULL;
     int ret;
-
-    /* startup data dir */
-    if ((err_info = sr_path_startup_dir(&dir_path))) {
-        return err_info;
-    }
-    if (((ret = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
-        SR_ERRINFO_SYSERRPATH(&err_info, "access", dir_path);
-        free(dir_path);
-        return err_info;
-    }
-    if (ret && (err_info = sr_mkpath(dir_path, SR_DIR_PERM))) {
-        free(dir_path);
-        return err_info;
-    }
-    free(dir_path);
-
-    /* notif dir */
-    if ((err_info = sr_path_notif_dir(&dir_path))) {
-        return err_info;
-    }
-    if (((ret = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
-        SR_ERRINFO_SYSERRPATH(&err_info, "access", dir_path);
-        free(dir_path);
-        return err_info;
-    }
-    if (ret && (err_info = sr_mkpath(dir_path, SR_DIR_PERM))) {
-        free(dir_path);
-        return err_info;
-    }
-    free(dir_path);
 
     /* YANG module dir */
     if ((err_info = sr_path_yang_dir(&dir_path))) {
@@ -480,48 +451,57 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmmain_files_startup2running(sr_main_shm_t *main_shm, int replace)
+sr_shmmain_files_startup2running(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_t *shm_mod = NULL;
-    char *startup_path, *running_path;
-    const char *mod_name;
+    sr_main_shm_t *main_shm;
+    sr_mod_t *shm_mod;
+    const struct lys_module *ly_mod;
+    struct lyd_node *mod_data;
+    struct srplg_ds_s *plg1, *plg2;
+    int rc;
     uint32_t i;
+
+    main_shm = SR_CONN_MAIN_SHM(conn);
 
     for (i = 0; i < main_shm->mod_count; ++i) {
         shm_mod = SR_SHM_MOD_IDX(main_shm, i);
-        mod_name = ((char *)main_shm) + shm_mod->name;
 
-        if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, &running_path))) {
-            goto error;
+        /* find LY module */
+        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, ((char *)main_shm) + shm_mod->name);
+        assert(ly_mod);
+
+        /* find DS plugins */
+        if ((err_info = sr_ds_plugin_find(((char *)main_shm) + shm_mod->plugins[SR_DS_RUNNING], conn, &plg1))) {
+            return err_info;
+        }
+        if ((err_info = sr_ds_plugin_find(((char *)main_shm) + shm_mod->plugins[SR_DS_STARTUP], conn, &plg2))) {
+            return err_info;
         }
 
-        if (!replace && sr_file_exists(running_path)) {
-            /* there are some running data, keep them */
-            free(running_path);
-            continue;
+        if (plg1 == plg2) {
+            /* same plugin, we can use copy callback */
+            rc = plg1->copy_cb(ly_mod, SR_DS_RUNNING, SR_DS_STARTUP);
+        } else {
+            /* load source data */
+            rc = plg2->load_cb(ly_mod, SR_DS_STARTUP, &mod_data);
+
+            if (!rc) {
+                /* write data to target */
+                rc = plg1->store_cb(ly_mod, SR_DS_RUNNING, mod_data);
+                lyd_free_siblings(mod_data);
+            }
         }
 
-        if ((err_info = sr_path_startup_file(mod_name, &startup_path))) {
-            free(running_path);
-            goto error;
-        }
-        err_info = sr_cp_path(running_path, startup_path, SR_FILE_PERM);
-        free(startup_path);
-        free(running_path);
-        if (err_info) {
-            goto error;
+        if (rc) {
+            sr_errinfo_new(&err_info, rc, "Copying module \"%s\" data from <startup> to <running> failed.",
+                    ((char *)main_shm) + shm_mod->name);
+            return err_info;
         }
     }
 
-    if (replace) {
-        SR_LOG_INF("Datastore copied from <startup> to <running>.");
-    }
+    SR_LOG_INF("Datastore copied from <startup> to <running>.");
     return NULL;
-
-error:
-    sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Copying module \"%s\" data from <startup> to <running> failed.", mod_name);
-    return err_info;
 }
 
 /**
@@ -609,8 +589,8 @@ sr_shmmain_fill_module(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr_shm
     off_t *shm_features;
     const char *name;
     char *shm_end;
-    size_t feat_i, feat_names_len, old_shm_size;
-    sr_datastore_t ds;
+    size_t feat_i, ds_plugin_i, feat_names_len, ds_plugin_names_len, old_shm_size;
+    int ds;
 
     shm_mod = SR_SHM_MOD_IDX(shm_main->addr, shm_mod_idx);
 
@@ -643,6 +623,7 @@ sr_shmmain_fill_module(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr_shm
     /* remember name, set fields from sr_mod, and count enabled features */
     name = NULL;
     feat_names_len = 0;
+    ds_plugin_names_len = 0;
     LY_LIST_FOR(lyd_child(sr_mod), sr_child) {
         if (!strcmp(sr_child->schema->name, "name")) {
             /* rememeber name */
@@ -657,6 +638,9 @@ sr_shmmain_fill_module(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr_shm
             /* count features and ther names length */
             ++shm_mod->feat_count;
             feat_names_len += sr_strshmlen(lyd_get_value(sr_child));
+        } else if (!strcmp(sr_child->schema->name, "plugin")) {
+            /* count the length of all datastore plugin names */
+            ds_plugin_names_len += sr_strshmlen(lyd_get_value(lyd_child(sr_child)->next));
         }
     }
     assert(name);
@@ -666,7 +650,7 @@ sr_shmmain_fill_module(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr_shm
 
     /* enlarge and possibly remap main SHM */
     if ((err_info = sr_shm_remap(shm_main, shm_main->size + sr_strshmlen(name) +
-            SR_SHM_SIZE(shm_mod->feat_count * sizeof(off_t)) + feat_names_len))) {
+            SR_SHM_SIZE(shm_mod->feat_count * sizeof(off_t)) + feat_names_len + ds_plugin_names_len))) {
         return err_info;
     }
     shm_mod = SR_SHM_MOD_IDX(shm_main->addr, shm_mod_idx);
@@ -678,18 +662,28 @@ sr_shmmain_fill_module(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr_shm
     /* store feature array */
     shm_mod->features = sr_shmcpy(shm_main->addr, NULL, shm_mod->feat_count * sizeof(off_t), &shm_end);
 
-    /* store feature names */
+    /* store feature and datastore plugin names */
     shm_features = (off_t *)(shm_main->addr + shm_mod->features);
     feat_i = 0;
+    ds_plugin_i = 0;
     LY_LIST_FOR(lyd_child(sr_mod), sr_child) {
         if (!strcmp(sr_child->schema->name, "enabled-feature")) {
             /* copy feature name */
             shm_features[feat_i] = sr_shmstrcpy(shm_main->addr, lyd_get_value(sr_child), &shm_end);
 
             ++feat_i;
+        } else if (!strcmp(sr_child->schema->name, "plugin")) {
+            /* get DS */
+            ds = sr_str2mod_ds(lyd_get_value(lyd_child(sr_child)));
+
+            /* copy DS plugin name */
+            shm_mod->plugins[ds] = sr_shmstrcpy(shm_main->addr, lyd_get_value(lyd_child(sr_child)->next), &shm_end);
+
+            ++ds_plugin_i;
         }
     }
     SR_CHECK_INT_RET(feat_i != shm_mod->feat_count, err_info);
+    SR_CHECK_INT_RET(ds_plugin_i != SR_MOD_DS_PLUGIN_COUNT, err_info);
 
     /* main SHM size must be exactly what we allocated */
     assert(shm_end == shm_main->addr + shm_main->size);
@@ -1281,128 +1275,4 @@ sr_shmmain_update_replay_support(sr_main_shm_t *main_shm, const char *mod_name, 
     }
 
     return NULL;
-}
-
-sr_error_info_t *
-sr_shmmain_check_data_files(sr_main_shm_t *main_shm)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_mod_t *shm_mod;
-    const char *mod_name;
-    char *owner, *cur_owner, *group, *cur_group, *path;
-    mode_t perm, cur_perm;
-    int exists;
-    uint32_t i;
-
-    for (i = 0; i < main_shm->mod_count; ++i) {
-        shm_mod = SR_SHM_MOD_IDX(main_shm, i);
-        mod_name = ((char *)main_shm) + shm_mod->name;
-
-        /* this must succeed for every (sysrepo) user */
-        if ((err_info = sr_perm_get(mod_name, SR_DS_STARTUP, &owner, &group, &perm))) {
-            return err_info;
-        }
-
-        /* keep only read/write bits */
-        perm &= 00666;
-
-        /*
-         * running file, it must exist
-         */
-        if ((err_info = sr_perm_get(mod_name, SR_DS_RUNNING, &cur_owner, &cur_group, &cur_perm))) {
-            goto error;
-        }
-
-        /* learn changes */
-        if (!strcmp(owner, cur_owner)) {
-            free(cur_owner);
-            cur_owner = NULL;
-        } else {
-            free(cur_owner);
-            cur_owner = owner;
-        }
-        if (!strcmp(group, cur_group)) {
-            free(cur_group);
-            cur_group = NULL;
-        } else {
-            free(cur_group);
-            cur_group = group;
-        }
-        if (perm == cur_perm) {
-            cur_perm = (mode_t)-1;
-        } else {
-            cur_perm = perm;
-        }
-
-        if (cur_owner || cur_group || cur_perm) {
-            /* set correct values on the file */
-            if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, &path))) {
-                goto error;
-            }
-            err_info = sr_chmodown(path, cur_owner, cur_group, cur_perm);
-            free(path);
-            if (err_info) {
-                goto error;
-            }
-        }
-
-        /*
-         * operational file, may not exist
-         */
-        if ((err_info = sr_path_ds_shm(mod_name, SR_DS_OPERATIONAL, &path))) {
-            goto error;
-        }
-        exists = sr_file_exists(path);
-        free(path);
-        if (!exists && (err_info = sr_module_file_data_set(mod_name, SR_DS_OPERATIONAL, NULL, O_CREAT | O_EXCL, SR_FILE_PERM))) {
-            goto error;
-        }
-
-        if ((err_info = sr_perm_get(mod_name, SR_DS_OPERATIONAL, &cur_owner, &cur_group, &cur_perm))) {
-            goto error;
-        }
-
-        /* learn changes */
-        if (!strcmp(owner, cur_owner)) {
-            free(cur_owner);
-            cur_owner = NULL;
-        } else {
-            free(cur_owner);
-            cur_owner = owner;
-        }
-        if (!strcmp(group, cur_group)) {
-            free(cur_group);
-            cur_group = NULL;
-        } else {
-            free(cur_group);
-            cur_group = group;
-        }
-        if (perm == cur_perm) {
-            cur_perm = (mode_t)-1;
-        } else {
-            cur_perm = perm;
-        }
-
-        if (cur_owner || cur_group || cur_perm) {
-            /* set correct values on the file */
-            if ((err_info = sr_path_ds_shm(mod_name, SR_DS_OPERATIONAL, &path))) {
-                goto error;
-            }
-            err_info = sr_chmodown(path, cur_owner, cur_group, cur_perm);
-            free(path);
-            if (err_info) {
-                goto error;
-            }
-        }
-
-        free(owner);
-        free(group);
-    }
-
-    return NULL;
-
-error:
-    free(owner);
-    free(group);
-    return err_info;
 }

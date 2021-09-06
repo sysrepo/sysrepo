@@ -23,6 +23,11 @@ module sysrepo {
     description
         "Sysrepo YANG datastore internal attributes and information.";
 
+    revision "2021-09-07" {
+        description
+            "Add module datastore plugins and increased replay-support type precision.";
+    }
+
     revision "2021-03-31" {
         description
             "Add content-id yang-library data identifier.";
@@ -119,6 +124,33 @@ module sysrepo {
             description
                 "List of all the enabled features.";
         }
+
+        list plugin {
+            key "datastore";
+            min-elements 5;
+            max-elements 5;
+            description
+                "Module datastore plugin handling specific datastore data.";
+
+            leaf datastore {
+                type enumeration {
+                    enum "running";
+                    enum "startup";
+                    enum "candidate";
+                    enum "operational";
+                    enum "notification";
+                }
+                description
+                    "Datastore of this plugin.";
+            }
+
+            leaf name {
+                type string;
+                mandatory true;
+                description
+                    "Specific plugin name as present in the plugin structures.";
+            }
+        }
     }
 
     grouping deps-grp {
@@ -165,7 +197,7 @@ module sysrepo {
             uses module-info-grp;
 
             leaf replay-support {
-                type uint64;
+                type yang:date-and-time;
                 description
                     "Present only if the module supports replay. Means the earliest stored notification if any present.
                      Otherwise the time the replay support was switched on.";

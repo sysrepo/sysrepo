@@ -174,6 +174,9 @@ set(LIB_SRC
     src/shm_ext.c
     src/shm_mod.c
     src/shm_sub.c
+    src/plugins/ds_lyb.c
+    src/plugins/ntf_lyb.c
+    src/plugins/common_lyb.c
     src/utils/values.c
     src/utils/xpath.c)
 
@@ -186,7 +189,7 @@ set (SYSREPOCFG_SRC
 set (SYSREPOPLUGIND_SRC
     src/executables/sysrepo-plugind.c)
 
-# public headers
+# public headers to check API/ABI on
 set(LIB_HEADERS
     src/sysrepo.h
     src/sysrepo_types.h
@@ -293,7 +296,7 @@ target_link_libraries(sysrepocfg sysrepo)
 
 # sysrepo-plugind daemon
 add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC} ${compatsrc})
-target_link_libraries(sysrepo-plugind sysrepo ${CMAKE_DL_LIBS})
+target_link_libraries(sysrepo-plugind sysrepo)
 
 # include repository files with highest priority
 include_directories("${PROJECT_SOURCE_DIR}/src")
@@ -311,6 +314,9 @@ find_library(LIBRT_LIBRARIES rt)
 if(LIBRT_LIBRARIES)
     target_link_libraries(sysrepo ${LIBRT_LIBRARIES})
 endif()
+
+# libdl
+target_link_libraries(sysrepo ${CMAKE_DL_LIBS})
 
 # libyang, check version
 find_package(LibYANG ${LIBYANG_DEP_SOVERSION} REQUIRED)
@@ -334,7 +340,7 @@ check_symbol_exists(mkstemps "stdlib.h" SR_HAVE_MKSTEMPS)
 unset(CMAKE_REQUIRED_DEFINITIONS)
 
 # generate files
-configure_file("${PROJECT_SOURCE_DIR}/src/common.h.in" "${PROJECT_BINARY_DIR}/common.h" ESCAPE_QUOTES @ONLY)
+configure_file("${PROJECT_SOURCE_DIR}/src/config.h.in" "${PROJECT_BINARY_DIR}/config.h" ESCAPE_QUOTES @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/bin_common.h.in" "${PROJECT_BINARY_DIR}/bin_common.h" ESCAPE_QUOTES @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/sysrepo.pc.in" "${PROJECT_BINARY_DIR}/sysrepo.pc" @ONLY)
 
@@ -342,7 +348,8 @@ configure_file("${PROJECT_SOURCE_DIR}/sysrepo.pc.in" "${PROJECT_BINARY_DIR}/sysr
 install(TARGETS sysrepo DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(FILES ${PROJECT_SOURCE_DIR}/src/sysrepo.h ${PROJECT_SOURCE_DIR}/src/sysrepo_types.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(FILES ${PROJECT_BINARY_DIR}/version.h ${PROJECT_SOURCE_DIR}/src/utils/values.h ${PROJECT_SOURCE_DIR}/src/utils/xpath.h
+install(FILES ${PROJECT_SOURCE_DIR}/src/plugins_datastore.h ${PROJECT_BINARY_DIR}/version.h
+            ${PROJECT_SOURCE_DIR}/src/utils/values.h ${PROJECT_SOURCE_DIR}/src/utils/xpath.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sysrepo)
 install(TARGETS sysrepoctl sysrepocfg sysrepo-plugind DESTINATION ${CMAKE_INSTALL_BINDIR})
 

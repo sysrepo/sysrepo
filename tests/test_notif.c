@@ -43,7 +43,7 @@ struct state {
     pthread_barrier_t barrier;
 };
 
-#include "common.h"
+#include "config.h"
 /* from src/common.c */
 void
 test_path_notif_dir(char **path)
