@@ -85,6 +85,7 @@ typedef struct {
     off_t name;                 /**< Module name (offset in main SHM). */
     char rev[11];               /**< Module revision. */
     ATOMIC_T replay_supp;       /**< Whether module supports replay. */
+    off_t plugins[SR_MOD_DS_PLUGIN_COUNT];  /**< Module plugin names (offsets in main SHM). */
 
     off_t features;             /**< Array of enabled features (off_t *) (offset in main SHM). */
     uint16_t feat_count;        /**< Number of enabled features. */

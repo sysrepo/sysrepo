@@ -127,6 +127,25 @@ typedef enum {
 #define SR_DS_COUNT 4
 
 /**
+ * @brief Special notification datastore of a module.
+ */
+#define SR_MOD_DS_NOTIF 4
+
+/**
+ * @brief Count of all module datastore plugin types (datastores and notifications).
+ */
+#define SR_MOD_DS_PLUGIN_COUNT 5
+
+/**
+ * @brief Custom datastore implementation config for each datastore and notifications of a module.
+ */
+struct sr_module_ds_s {
+    const char *plugin_name[SR_MOD_DS_PLUGIN_COUNT];    /**< Datastore plugin name. */
+};
+
+typedef struct sr_module_ds_s sr_module_ds_t;
+
+/**
  * @brief A single, detailed error message. Used in sr_error_info_t
  */
 struct sr_error_info_err_s {

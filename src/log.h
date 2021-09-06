@@ -29,6 +29,9 @@
 #define SR_ERRINFO_VALID(err_info) sr_errinfo_new(err_info, SR_ERR_VALIDATION_FAILED, "Validation failed.")
 #define SR_ERRINFO_SYSERRPATH(err_info, func, path) sr_errinfo_new(err_info, SR_ERR_SYS, "%s() on \"%s\" failed (%s).", \
         func, path, strerror(errno))
+#define SR_ERRINFO_DSPLUGIN(err_info, rc, cb_name, plugin_name, mod_name) \
+        sr_errinfo_new(err_info, rc, "Callback \"%s\" of plugin \"%s\" for module \"%s\" failed.", \
+        cb_name, plugin_name, mod_name)
 
 #define SR_LOG_WRN(...) sr_log(SR_LL_WRN, __VA_ARGS__)
 #define SR_LOG_INF(...) sr_log(SR_LL_INF, __VA_ARGS__)

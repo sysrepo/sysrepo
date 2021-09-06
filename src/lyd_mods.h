@@ -56,14 +56,14 @@ sr_error_info_t *sr_lydmods_get_content_id(sr_main_shm_t *main_shm, struct ly_ct
 /**
  * @brief Load stored lydmods data, apply any scheduled changes if possible, and update connection context.
  *
- * @param[in] main_shm Main SHM.
+ * @param[in] conn Connection to use.
  * @param[in,out] ly_ctx libyang context to use, may be destroyed and created anew.
  * @param[in] apply_sched Whether we can attempt to apply scheduled changes.
  * @param[in] err_on_sched_fail Whether to return an error if applying scheduled changes fails.
  * @param[out] changed Whether stored lydmods data were changed (created or scheduled changes applied).
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lydmods_conn_ctx_update(sr_main_shm_t *main_shm, struct ly_ctx **ly_ctx, int apply_sched,
+sr_error_info_t *sr_lydmods_conn_ctx_update(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx, int apply_sched,
         int err_on_sched_fail, int *changed);
 
 /**
@@ -87,10 +87,11 @@ sr_error_info_t *sr_lydmods_ctx_load_modules(const struct lyd_node *sr_mods, str
  * @param[in] ly_ctx Context to use for parsing the data.
  * @param[in] ly_mod Module that is scheduled to be installed.
  * @param[in] features Array of enabled features.
+ * @param[in] module_ds Datastore implementation plugin name for each config datastore.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lydmods_deferred_add_module(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx,
-        const struct lys_module *ly_mod, const char **features);
+        const struct lys_module *ly_mod, const char **features, const sr_module_ds_t *module_ds);
 
 /**
  * @brief Unschedule module installation from sysrepo module data.
@@ -175,13 +176,12 @@ sr_error_info_t *sr_lydmods_deferred_change_feature(sr_main_shm_t *main_shm, str
 /**
  * @brief Update reply support in sysrepo module data.
  *
- * @param[in] main_shm Main SHM.
- * @param[in] ly_ctx Context to use for parsing the data.
- * @param[in] mod_name Module to update. NULL to update all the modules.
+ * @param[in] conn Connection to use.
+ * @param[in] ly_mod Module to update. NULL to update all the modules.
  * @param[in] replay_support Whether replay should be enabled or disabled.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lydmods_update_replay_support(sr_main_shm_t *main_shm, struct ly_ctx *ly_ctx, const char *mod_name,
+sr_error_info_t *sr_lydmods_update_replay_support(sr_conn_ctx_t *conn, const struct lys_module *ly_mod,
         int replay_support);
 
 #endif

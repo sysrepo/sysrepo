@@ -15,7 +15,6 @@
  */
 
 #define _GNU_SOURCE
-#include <sys/cdefs.h>
 
 #include "modinfo.h"
 
@@ -35,6 +34,7 @@
 #include "edit_diff.h"
 #include "log.h"
 #include "lyd_mods.h"
+#include "plugins_datastore.h"
 #include "replay.h"
 #include "shm.h"
 
@@ -56,7 +56,7 @@ sr_modinfo_perm_check(struct sr_mod_info_s *mod_info, int wr, int strict)
         /* check also modules additionally modified by validation */
         if (mod->state & (MOD_INFO_REQ | MOD_INFO_CHANGED)) {
             /* check perm */
-            if ((err_info = sr_perm_check(mod->ly_mod->name, wr, strict ? NULL : &has_access))) {
+            if ((err_info = sr_perm_check(mod_info->conn, mod->ly_mod, mod_info->ds, wr, strict ? NULL : &has_access))) {
                 return err_info;
             }
 
@@ -152,8 +152,8 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
 
     LY_LIST_FOR(edit, node) {
         ly_mod = lyd_owner_module(node);
-        if (ly_mod && !strcmp(ly_mod->name, SR_YANG_MOD)) {
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"%s\" cannot be modified.", SR_YANG_MOD);
+        if (ly_mod && !strcmp(ly_mod->name, "sysrepo")) {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"sysrepo\" cannot be modified.");
             return err_info;
         }
     }
@@ -913,7 +913,7 @@ error_sub_unlock:
 /**
  * @brief Update cached running module data (if required).
  *
- * @param[in] mod_cache Module cache.
+ * @param[in] conn Connection to use.
  * @param[in] mod Mod info module to process.
  * @param[in] upd_mod_data Optional current (updated) module data to store in cache.
  * @param[in] read_locked Whether the cache is READ locked.
@@ -921,14 +921,17 @@ error_sub_unlock:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mod_info_mod_s *mod,
+sr_modcache_module_running_update(sr_conn_ctx_t *conn, struct sr_mod_info_mod_s *mod,
         const struct lyd_node *upd_mod_data, int read_locked, sr_cid_t cid)
 {
     sr_error_info_t *err_info = NULL;
+    struct sr_mod_cache_s *mod_cache;
     struct lyd_node *mod_data;
     sr_lock_mode_t cur_mode = SR_LOCK_NONE;
     uint32_t i;
     void *mem;
+
+    mod_cache = &conn->mod_cache;
 
     if (read_locked) {
         /* CACHE READ UNLOCK */
@@ -993,7 +996,7 @@ sr_modcache_module_running_update(struct sr_mod_cache_s *mod_cache, struct sr_mo
             lyd_insert_sibling(mod_cache->data, mod_data, &mod_cache->data);
         } else {
             /* we need to load current data from persistent storage */
-            if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_RUNNING, &mod_cache->data))) {
+            if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_plg, SR_DS_RUNNING, &mod_cache->data))) {
                 goto cleanup;
             }
         }
@@ -1611,7 +1614,8 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     if (((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds2 == SR_DS_RUNNING)) && (conn->opts & SR_CONN_CACHE_RUNNING)) {
         /* we are caching running data we will use, so in all cases load the module into cache if not yet there */
         mod_cache = &conn->mod_cache;
-        if ((err_info = sr_modcache_module_running_update(mod_cache, mod, NULL, mod_info->data_cached, mod_info->conn->cid))) {
+        if ((err_info = sr_modcache_module_running_update(mod_info->conn, mod, NULL, mod_info->data_cached,
+                mod_info->conn->cid))) {
             return err_info;
         }
     }
@@ -1648,7 +1652,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             /* ...and they are not cached */
 
             /* get current persistent data (ds2 is running when getting operational data) */
-            if ((err_info = sr_module_file_data_append(mod->ly_mod, mod_info->ds2, &mod_info->data))) {
+            if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_plg, mod_info->ds2, &mod_info->data))) {
                 return err_info;
             }
 
@@ -1712,6 +1716,7 @@ sr_modinfo_add_mod(const struct lys_module *ly_mod, uint32_t mod_type, int mod_r
     sr_mod_t *shm_mod;
     sr_dep_t *shm_deps;
     off_t *shm_inv_deps;
+    struct srplg_ds_s *ds_plg;
     uint32_t i, cur_i;
     int prev_mod_type = 0;
 
@@ -1738,6 +1743,12 @@ sr_modinfo_add_mod(const struct lys_module *ly_mod, uint32_t mod_type, int mod_r
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     if (prev_mod_type < MOD_INFO_DEP) {
+        /* find DS plugin */
+        if ((err_info = sr_ds_plugin_find(mod_info->conn->main_shm.addr + shm_mod->plugins[mod_info->ds],
+                mod_info->conn, &ds_plg))) {
+            return err_info;
+        }
+
         /* add it */
         ++mod_info->mod_count;
         mod_info->mods = sr_realloc(mod_info->mods, mod_info->mod_count * sizeof *mod_info->mods);
@@ -1748,6 +1759,7 @@ sr_modinfo_add_mod(const struct lys_module *ly_mod, uint32_t mod_type, int mod_r
         mod_info->mods[cur_i].shm_mod = shm_mod;
         mod_info->mods[cur_i].state = mod_type;
         mod_info->mods[cur_i].ly_mod = ly_mod;
+        mod_info->mods[cur_i].ds_plg = ds_plg;
     }
 
     if (!(mod_req_deps & MOD_INFO_DEP) || (mod_info->mods[cur_i].state < MOD_INFO_INV_DEP)) {
@@ -1854,7 +1866,7 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig
 
         if ((mod_info->ds == SR_DS_OPERATIONAL) && (mod_info->ds2 == SR_DS_OPERATIONAL)) {
             /* special case when we are not working with data but with edit */
-            if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_OPERATIONAL, &mod_info->data))) {
+            if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_plg, SR_DS_OPERATIONAL, &mod_info->data))) {
                 return err_info;
             }
         } else {
@@ -1908,7 +1920,7 @@ sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const struct ly_set *mod_
         /* add all (implemented) modules into mod_info */
         i = 0;
         while ((mod = ly_ctx_get_module_iter(mod_info->conn->ly_ctx, &i))) {
-            if (!mod->implemented || !strcmp(mod->name, SR_YANG_MOD)) {
+            if (!mod->implemented || !strcmp(mod->name, "sysrepo")) {
                 continue;
             }
 
@@ -2404,16 +2416,9 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
     struct sr_mod_info_mod_s *mod;
     struct lyd_node *mod_data;
     uint32_t i;
-    int create_flags;
+    int rc;
 
     assert(!mod_info->data_cached);
-
-    /* candidate file may need to be created */
-    if (mod_info->ds == SR_DS_CANDIDATE) {
-        create_flags = O_CREAT;
-    } else {
-        create_flags = 0;
-    }
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
@@ -2422,8 +2427,8 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
             mod_data = sr_module_data_unlink(&mod_info->data, mod->ly_mod);
 
             /* store the new data */
-            if ((err_info = sr_module_file_data_set(mod->ly_mod->name, mod_info->ds, mod_data, create_flags,
-                    SR_FILE_PERM))) {
+            if ((rc = mod->ds_plg->store_cb(mod->ly_mod, mod_info->ds, mod_data))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", mod->ds_plg->name, mod->ly_mod->name);
                 goto cleanup;
             }
 
@@ -2433,8 +2438,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
 
                 if (mod_info->conn->opts & SR_CONN_CACHE_RUNNING) {
                     /* we are caching so update cache with these data */
-                    tmp_err = sr_modcache_module_running_update(&mod_info->conn->mod_cache, mod, mod_data, 0,
-                            mod_info->conn->cid);
+                    tmp_err = sr_modcache_module_running_update(mod_info->conn, mod, mod_data, 0, mod_info->conn->cid);
                     if (tmp_err) {
                         /* always store all changed modules, if possible */
                         sr_errinfo_merge(&err_info, tmp_err);
@@ -2461,12 +2465,14 @@ sr_modinfo_candidate_reset(struct sr_mod_info_s *mod_info)
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
     uint32_t i;
+    int rc;
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_REQ) {
-            /* just remove the candidate SHM files */
-            if ((err_info = sr_remove_candidate_file(mod->ly_mod->name))) {
+            /* reset candidate */
+            if ((rc = mod->ds_plg->candidate_reset_cb(mod->ly_mod))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_reset", mod->ds_plg->name, mod->ly_mod->name);
                 return err_info;
             }
         }

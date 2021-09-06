@@ -15,13 +15,13 @@
  */
 
 #define _GNU_SOURCE
-#include <sys/cdefs.h>
 
 #include "common.h"
 
 #include <assert.h>
 #include <ctype.h>
 #include <dirent.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
@@ -40,11 +40,28 @@
 #include <unistd.h>
 
 #include "compat.h"
+#include "config.h"
 #include "edit_diff.h"
 #include "log.h"
 #include "modinfo.h"
+#include "plugins_datastore.h"
+#include "plugins_notification.h"
 #include "shm.h"
 #include "sysrepo.h"
+
+/**
+ * @brief Internal DS plugin array.
+ */
+const struct srplg_ds_s *sr_internal_ds_plugins[] = {
+    &srpds_lyb,
+};
+
+/**
+ * @brief Internal notification plugin array.
+ */
+const struct srplg_ntf_s *sr_internal_ntf_plugins[] = {
+    &srpntf_lyb,
+};
 
 sr_error_info_t *
 sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess, const char *mod_name,
@@ -961,10 +978,7 @@ sr_change_sub_del(sr_subscription_ctx_t *subscr, struct modsub_change_s *change_
 
     /* find module */
     shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subscr->conn), change_subs->module_name);
-    if (!shm_mod) {
-        SR_ERRINFO_INT(&err_info);
-        return err_info;
-    }
+    SR_CHECK_INT_RET(!shm_mod, err_info);
 
     /* properly remove the subscription from ext SHM */
     if ((err_info = sr_shmext_change_sub_del(subscr->conn, shm_mod, SR_LOCK_NONE, change_subs->ds,
@@ -999,10 +1013,7 @@ sr_oper_sub_del(sr_subscription_ctx_t *subscr, struct modsub_oper_s *oper_subs, 
 
     /* find module */
     shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subscr->conn), oper_subs->module_name);
-    if (!shm_mod) {
-        SR_ERRINFO_INT(&err_info);
-        return err_info;
-    }
+    SR_CHECK_INT_RET(!shm_mod, err_info);
 
     /* properly remove the subscription from ext SHM */
     if ((err_info = sr_shmext_oper_sub_del(subscr->conn, shm_mod, oper_subs->subs[idx].sub_id))) {
@@ -1036,10 +1047,7 @@ sr_rpc_sub_del(sr_subscription_ctx_t *subscr, struct opsub_rpc_s *rpc_subs, uint
 
     /* find RPC/action */
     shm_rpc = sr_shmmain_find_rpc(SR_CONN_MAIN_SHM(subscr->conn), rpc_subs->path);
-    if (!shm_rpc) {
-        SR_ERRINFO_INT(&err_info);
-        return err_info;
-    }
+    SR_CHECK_INT_RET(!shm_rpc, err_info);
 
     /* properly remove the subscription from the main SHM */
     if ((err_info = sr_shmext_rpc_sub_del(subscr->conn, shm_rpc, rpc_subs->subs[idx].sub_id))) {
@@ -1074,10 +1082,7 @@ sr_notif_sub_del(sr_subscription_ctx_t *subscr, struct modsub_notif_s *notif_sub
 
     /* find module */
     shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subscr->conn), notif_subs->module_name);
-    if (!shm_mod) {
-        SR_ERRINFO_INT(&err_info);
-        return err_info;
-    }
+    SR_CHECK_INT_RET(!shm_mod, err_info);
 
     /* properly remove the subscription from ext SHM */
     if ((err_info = sr_shmext_notif_sub_del(subscr->conn, shm_mod, notif_subs->subs[idx].sub_id))) {
@@ -1567,6 +1572,155 @@ cleanup:
     return err_info;
 }
 
+sr_error_info_t *
+sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
+{
+    sr_error_info_t *err_info = NULL;
+
+    *ds_handles = NULL;
+    *ds_handle_count = 0;
+
+    /* dynamic DS plugins */
+    /* TODO */
+
+    return NULL;
+}
+
+void
+sr_ds_handle_free(struct sr_ds_handle_s *ds_handles, uint32_t ds_handle_count)
+{
+    uint32_t i;
+
+    for (i = 0; i < ds_handle_count; ++i) {
+        dlclose(ds_handles[i].dl_handle);
+    }
+
+    free(ds_handles);
+}
+
+sr_error_info_t *
+sr_ds_plugin_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, struct srplg_ds_s **ds_plugin)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i;
+
+    if (!ds_plugin_name) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Datastore plugin without a name.");
+        return err_info;
+    }
+
+    /* search internal DS plugins */
+    for (i = 0; i < (sizeof sr_internal_ds_plugins / sizeof *sr_internal_ds_plugins); ++i) {
+        if (!strcmp(sr_internal_ds_plugins[i]->name, ds_plugin_name)) {
+            if (ds_plugin) {
+                *ds_plugin = (struct srplg_ds_s *)sr_internal_ds_plugins[i];
+            }
+            return NULL;
+        }
+    }
+
+    /* search dynamic plugins */
+    for (i = 0; i < conn->ds_handle_count; ++i) {
+        if (!strcmp(conn->ds_handles[i].plugin->name, ds_plugin_name)) {
+            if (ds_plugin) {
+                *ds_plugin = conn->ds_handles[i].plugin;
+            }
+            return NULL;
+        }
+    }
+
+    /* not found */
+    sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Datastore plugin \"%s\" not found.", ds_plugin_name);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32_t *ntf_handle_count)
+{
+    sr_error_info_t *err_info = NULL;
+
+    *ntf_handles = NULL;
+    *ntf_handle_count = 0;
+
+    /* dynamic notification plugins */
+    /* TODO */
+
+    return NULL;
+}
+
+void
+sr_ntf_handle_free(struct sr_ntf_handle_s *ntf_handles, uint32_t ntf_handle_count)
+{
+    uint32_t i;
+
+    for (i = 0; i < ntf_handle_count; ++i) {
+        dlclose(ntf_handles[i].dl_handle);
+    }
+
+    free(ntf_handles);
+}
+
+sr_error_info_t *
+sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, struct srplg_ntf_s **ntf_plugin)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i;
+
+    if (!ntf_plugin_name) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Notification plugin without a name.");
+        return err_info;
+    }
+
+    /* search internal notif plugins */
+    for (i = 0; i < (sizeof sr_internal_ntf_plugins / sizeof *sr_internal_ntf_plugins); ++i) {
+        if (!strcmp(sr_internal_ntf_plugins[i]->name, ntf_plugin_name)) {
+            if (ntf_plugin) {
+                *ntf_plugin = (struct srplg_ntf_s *)sr_internal_ntf_plugins[i];
+            }
+            return NULL;
+        }
+    }
+
+    /* search dynamic plugins */
+    for (i = 0; i < conn->ntf_handle_count; ++i) {
+        if (!strcmp(conn->ntf_handles[i].plugin->name, ntf_plugin_name)) {
+            if (ntf_plugin) {
+                *ntf_plugin = conn->ntf_handles[i].plugin;
+            }
+            return NULL;
+        }
+    }
+
+    /* not found */
+    sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Notification plugin \"%s\" not found.", ntf_plugin_name);
+    return err_info;
+}
+
+/**
+ * @brief Check whether a file exists.
+ *
+ * @param[in] path Path to the file.
+ * @return 0 if file does not exist, non-zero if it exists.
+ */
+static int
+sr_file_exists(const char *path)
+{
+    int ret;
+
+    errno = 0;
+    ret = access(path, F_OK);
+    if ((ret == -1) && (errno != ENOENT)) {
+        SR_LOG_WRN("Failed to check existence of the file \"%s\" (%s).", path, strerror(errno));
+        return 0;
+    }
+
+    if (ret) {
+        assert(errno == ENOENT);
+        return 0;
+    }
+    return 1;
+}
+
 /**
  * @brief Store the YANG file of a (sub)module.
  *
@@ -1727,60 +1881,6 @@ sr_store_module_files(const struct lys_module *ly_mod)
     return NULL;
 }
 
-sr_error_info_t *
-sr_remove_candidate_file(const char *mod_name)
-{
-    sr_error_info_t *err_info = NULL;
-    char *path;
-
-    if ((err_info = sr_path_ds_shm(mod_name, SR_DS_CANDIDATE, &path))) {
-        return err_info;
-    }
-    if ((unlink(path) == -1) && (errno != ENOENT)) {
-        SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
-    }
-    free(path);
-
-    return NULL;
-}
-
-sr_error_info_t *
-sr_remove_data_files(const char *mod_name)
-{
-    sr_error_info_t *err_info = NULL;
-    char *path;
-
-    if ((err_info = sr_path_startup_file(mod_name, &path))) {
-        return err_info;
-    }
-    if (unlink(path) == -1) {
-        SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
-    }
-    free(path);
-
-    if ((err_info = sr_path_ds_shm(mod_name, SR_DS_RUNNING, &path))) {
-        return err_info;
-    }
-    if ((unlink(path) == -1) && (errno != ENOENT)) {
-        SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
-    }
-    free(path);
-
-    if ((err_info = sr_path_ds_shm(mod_name, SR_DS_OPERATIONAL, &path))) {
-        return err_info;
-    }
-    if ((unlink(path) == -1) && (errno != ENOENT)) {
-        SR_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
-    }
-    free(path);
-
-    if ((err_info = sr_remove_candidate_file(mod_name))) {
-        return err_info;
-    }
-
-    return NULL;
-}
-
 int
 sr_module_is_internal(const struct lys_module *ly_mod)
 {
@@ -1813,53 +1913,6 @@ sr_module_is_internal(const struct lys_module *ly_mod)
     }
 
     return 0;
-}
-
-sr_error_info_t *
-sr_create_startup_file(const struct lys_module *ly_mod)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *root = NULL;
-    char *path = NULL;
-    mode_t mode;
-
-    /* check whether the files does not exist (valid when the module was just updated) */
-    if ((err_info = sr_path_startup_file(ly_mod->name, &path))) {
-        goto cleanup;
-    }
-    if (sr_file_exists(path)) {
-        goto cleanup;
-    }
-
-    /* get default values */
-    if (lyd_new_implicit_module(&root, ly_mod, LYD_IMPLICIT_NO_STATE, NULL)) {
-        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-        SR_ERRINFO_VALID(&err_info);
-        goto cleanup;
-    }
-
-    if (sr_module_is_internal(ly_mod)) {
-        if (!strcmp(ly_mod->name, "sysrepo-monitoring") || !strcmp(ly_mod->name, "sysrepo-plugind") ||
-                !strcmp(ly_mod->name, "ietf-yang-library") || !strcmp(ly_mod->name, "ietf-netconf-notifications") ||
-                !strcmp(ly_mod->name, "ietf-netconf")) {
-            mode = SR_INTMOD_WITHDATA_FILE_PERM;
-        } else {
-            mode = SR_INTMOD_NODATA_FILE_PERM;
-        }
-    } else {
-        mode = SR_FILE_PERM;
-    }
-
-    /* print them into the startup file */
-    if ((err_info = sr_module_file_data_set(ly_mod->name, SR_DS_STARTUP, root, O_CREAT | O_EXCL, mode))) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to create startup file of \"%s\".", ly_mod->name);
-        goto cleanup;
-    }
-
-cleanup:
-    free(path);
-    lyd_free_all(root);
-    return err_info;
 }
 
 sr_error_info_t *
@@ -1907,6 +1960,12 @@ sr_create_module_imps_incs_r(const struct lys_module *ly_mod, const struct lysp_
     return NULL;
 }
 
+/**
+ * @brief Get global SHM prefix prepended to all SHM files.
+ *
+ * @param[out] prefix SHM prefix to use.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_shm_prefix(const char **prefix)
 {
@@ -2014,29 +2073,6 @@ sr_path_sub_data_shm(const char *mod_name, const char *suffix1, int64_t suffix2,
 }
 
 sr_error_info_t *
-sr_path_ds_shm(const char *mod_name, sr_datastore_t ds, char **path)
-{
-    sr_error_info_t *err_info = NULL;
-    const char *prefix;
-    int ret;
-
-    assert((ds == SR_DS_RUNNING) || (ds == SR_DS_CANDIDATE) || (ds == SR_DS_OPERATIONAL));
-
-    err_info = sr_shm_prefix(&prefix);
-    if (err_info) {
-        return err_info;
-    }
-
-    ret = asprintf(path, "%s/%s_%s.%s", SR_SHM_DIR,
-            prefix, mod_name, sr_ds2str(ds));
-    if (ret == -1) {
-        *path = NULL;
-        SR_ERRINFO_MEM(&err_info);
-    }
-    return err_info;
-}
-
-sr_error_info_t *
 sr_path_evpipe(uint32_t evpipe_num, char **path)
 {
     sr_error_info_t *err_info = NULL;
@@ -2045,44 +2081,6 @@ sr_path_evpipe(uint32_t evpipe_num, char **path)
         SR_ERRINFO_MEM(&err_info);
     }
 
-    return err_info;
-}
-
-sr_error_info_t *
-sr_path_startup_dir(char **path)
-{
-    sr_error_info_t *err_info = NULL;
-
-    if (SR_STARTUP_PATH[0]) {
-        *path = strdup(SR_STARTUP_PATH);
-    } else {
-        if (asprintf(path, "%s/data", sr_get_repo_path()) == -1) {
-            *path = NULL;
-        }
-    }
-
-    if (!*path) {
-        SR_ERRINFO_MEM(&err_info);
-    }
-    return err_info;
-}
-
-sr_error_info_t *
-sr_path_notif_dir(char **path)
-{
-    sr_error_info_t *err_info = NULL;
-
-    if (SR_NOTIFICATION_PATH[0]) {
-        *path = strdup(SR_NOTIFICATION_PATH);
-    } else {
-        if (asprintf(path, "%s/data/notif", sr_get_repo_path()) == -1) {
-            *path = NULL;
-        }
-    }
-
-    if (!*path) {
-        SR_ERRINFO_MEM(&err_info);
-    }
     return err_info;
 }
 
@@ -2100,44 +2098,6 @@ sr_path_yang_dir(char **path)
     }
 
     if (!*path) {
-        SR_ERRINFO_MEM(&err_info);
-    }
-    return err_info;
-}
-
-sr_error_info_t *
-sr_path_startup_file(const char *mod_name, char **path)
-{
-    sr_error_info_t *err_info = NULL;
-    int ret;
-
-    if (SR_STARTUP_PATH[0]) {
-        ret = asprintf(path, "%s/%s.startup", SR_STARTUP_PATH, mod_name);
-    } else {
-        ret = asprintf(path, "%s/data/%s.startup", sr_get_repo_path(), mod_name);
-    }
-
-    if (ret == -1) {
-        *path = NULL;
-        SR_ERRINFO_MEM(&err_info);
-    }
-    return err_info;
-}
-
-sr_error_info_t *
-sr_path_notif_file(const char *mod_name, time_t from_ts, time_t to_ts, char **path)
-{
-    sr_error_info_t *err_info = NULL;
-    int ret;
-
-    if (SR_NOTIFICATION_PATH[0]) {
-        ret = asprintf(path, "%s/%s.notif.%lu-%lu", SR_NOTIFICATION_PATH, mod_name, from_ts, to_ts);
-    } else {
-        ret = asprintf(path, "%s/data/notif/%s.notif.%lu-%lu", sr_get_repo_path(), mod_name, from_ts, to_ts);
-    }
-
-    if (ret == -1) {
-        *path = NULL;
         SR_ERRINFO_MEM(&err_info);
     }
     return err_info;
@@ -2288,251 +2248,39 @@ cleanup:
     return err_info;
 }
 
-/**
- * @brief Get GID from group name or vice versa.
- *
- * @param[in,out] gid GID.
- * @param[in,out] group Group name.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_get_grp(gid_t *gid, char **group)
+sr_error_info_t *
+sr_perm_check(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore_t ds, int wr, int *has_access)
 {
     sr_error_info_t *err_info = NULL;
-    struct group grp, *grp_p;
-    char *buf = NULL;
-    ssize_t buflen = 0;
-    int ret;
+    sr_mod_t *shm_mod;
+    struct srplg_ds_s *plg;
+    int rc, r, w;
 
-    assert(gid && group);
+    /* find the module in SHM */
+    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), ly_mod->name);
+    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
-    do {
-        if (!buflen) {
-            /* learn suitable buffer size */
-            buflen = sysconf(_SC_GETGR_R_SIZE_MAX);
-            if (buflen == -1) {
-                buflen = 2048;
-            }
-        } else {
-            /* enlarge buffer */
-            buflen += 2048;
-        }
-
-        /* allocate some buffer */
-        buf = sr_realloc(buf, buflen);
-        SR_CHECK_MEM_RET(!buf, err_info);
-
-        if (*group) {
-            /* group -> GID */
-            ret = getgrnam_r(*group, &grp, buf, buflen, &grp_p);
-        } else {
-            /* GID -> group */
-            ret = getgrgid_r(*gid, &grp, buf, buflen, &grp_p);
-        }
-    } while (ret && (ret == ERANGE));
-    if (ret) {
-        if (*group) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Retrieving group \"%s\" grp entry failed (%s).",
-                    *group, strerror(ret));
-        } else {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Retrieving GID \"%lu\" grp entry failed (%s).",
-                    (unsigned long int)*gid, strerror(ret));
-        }
-        goto cleanup;
-    } else if (!grp_p) {
-        if (*group) {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Retrieving group \"%s\" grp entry failed (No such group).",
-                    *group);
-        } else {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Retrieving GID \"%lu\" grp entry failed (No such GID).",
-                    (unsigned long int)*gid);
-        }
+    /* find the DS plugin for startup */
+    if ((err_info = sr_ds_plugin_find(conn->main_shm.addr + shm_mod->plugins[ds], conn, &plg))) {
         goto cleanup;
     }
 
-    if (*group) {
-        /* assign GID */
-        *gid = grp.gr_gid;
-    } else {
-        /* assign group */
-        *group = strdup(grp.gr_name);
-        SR_CHECK_MEM_GOTO(!*group, err_info, cleanup);
+    /* check access for the current user */
+    if ((rc = plg->access_check_cb(ly_mod, ds, &r, &w))) {
+        SR_ERRINFO_DSPLUGIN(&err_info, rc, "access_check", plg->name, ly_mod->name);
+        goto cleanup;
     }
 
-    /* success */
+    if (has_access) {
+        *has_access = (wr ? w : r);
+    } else if ((wr && !w) || (!wr && !r)) {
+        sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, "%s permission \"%s\" check failed.", wr ? "Write" : "Read",
+                ly_mod->name);
+        goto cleanup;
+    }
 
 cleanup:
-    free(buf);
     return err_info;
-}
-
-sr_error_info_t *
-sr_chmodown(const char *path, const char *owner, const char *group, mode_t perm)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_error_t err_code;
-    uid_t uid = -1;
-    gid_t gid = -1;
-
-    assert(path);
-
-    if (perm != (mode_t)(-1)) {
-        if (perm > 00777) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid permissions 0%.3o.", perm);
-            return err_info;
-        } else if (perm & 00111) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Setting execute permissions has no effect.");
-            return err_info;
-        }
-    }
-
-    /* we are going to change the owner */
-    if (owner && (err_info = sr_get_pwd(&uid, (char **)&owner))) {
-        return err_info;
-    }
-
-    /* we are going to change the group */
-    if (group && (err_info = sr_get_grp(&gid, (char **)&group))) {
-        return err_info;
-    }
-
-    /* apply owner changes, if any */
-    if (chown(path, uid, gid) == -1) {
-        if ((errno == EACCES) || (errno == EPERM)) {
-            err_code = SR_ERR_UNAUTHORIZED;
-        } else {
-            err_code = SR_ERR_INTERNAL;
-        }
-        sr_errinfo_new(&err_info, err_code, "Changing owner of \"%s\" failed (%s).", path, strerror(errno));
-        return err_info;
-    }
-
-    /* apply permission changes, if any */
-    if ((perm != (mode_t)(-1)) && (chmod(path, perm) == -1)) {
-        if ((errno == EACCES) || (errno == EPERM)) {
-            err_code = SR_ERR_UNAUTHORIZED;
-        } else {
-            err_code = SR_ERR_INTERNAL;
-        }
-        sr_errinfo_new(&err_info, err_code, "Changing permissions (mode) of \"%s\" failed (%s).", path, strerror(errno));
-        return err_info;
-    }
-
-    return NULL;
-}
-
-sr_error_info_t *
-sr_perm_check(const char *mod_name, int wr, int *has_access)
-{
-    sr_error_info_t *err_info = NULL;
-    char *path;
-
-    /* use startup file */
-    if ((err_info = sr_path_startup_file(mod_name, &path))) {
-        return err_info;
-    }
-
-    /* check against effective permissions */
-    if (eaccess(path, (wr ? W_OK : R_OK)) == -1) {
-        if (errno == EACCES) {
-            if (has_access) {
-                *has_access = 0;
-            } else {
-                sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, "%s permission \"%s\" check failed.",
-                        wr ? "Write" : "Read", mod_name);
-            }
-        } else {
-            SR_ERRINFO_SYSERRPATH(&err_info, "eaccess", path);
-        }
-    } else if (has_access) {
-        *has_access = 1;
-    }
-
-    free(path);
-    return err_info;
-}
-
-sr_error_info_t *
-sr_perm_get(const char *mod_name, sr_datastore_t ds, char **owner, char **group, mode_t *perm)
-{
-    sr_error_info_t *err_info = NULL;
-    struct stat st;
-    char *path;
-    int ret;
-
-    if (owner) {
-        *owner = NULL;
-    }
-    if (group) {
-        *group = NULL;
-    }
-
-    if (ds == SR_DS_STARTUP) {
-        if ((err_info = sr_path_startup_file(mod_name, &path))) {
-            return err_info;
-        }
-    } else {
-        if ((err_info = sr_path_ds_shm(mod_name, ds, &path))) {
-            return err_info;
-        }
-    }
-
-    /* stat */
-    ret = stat(path, &st);
-    free(path);
-    if (ret == -1) {
-        if (errno == EACCES) {
-            sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, "Learning \"%s\" permissions failed.", mod_name);
-        } else {
-            SR_ERRINFO_SYSERRNO(&err_info, "stat");
-        }
-        return err_info;
-    }
-
-    /* get owner */
-    if (owner && (err_info = sr_get_pwd(&st.st_uid, owner))) {
-        goto error;
-    }
-
-    /* get group */
-    if (group && (err_info = sr_get_grp(&st.st_gid, group))) {
-        goto error;
-    }
-
-    /* get perms */
-    if (perm) {
-        *perm = st.st_mode & 0007777;
-    }
-
-    return NULL;
-
-error:
-    if (owner) {
-        free(*owner);
-    }
-    if (group) {
-        free(*group);
-    }
-    return err_info;
-}
-
-int
-sr_file_exists(const char *path)
-{
-    int ret;
-
-    errno = 0;
-    ret = access(path, F_OK);
-    if ((ret == -1) && (errno != ENOENT)) {
-        SR_LOG_WRN("Failed to check existence of the file \"%s\" (%s).", path, strerror(errno));
-        return 0;
-    }
-
-    if (ret) {
-        assert(errno == ENOENT);
-        return 0;
-    }
-    return 1;
 }
 
 void
@@ -3852,116 +3600,9 @@ sr_realloc(void *ptr, size_t size)
     return new_mem;
 }
 
-sr_error_info_t *
-sr_cp_path(const char *to, const char *from, mode_t file_mode)
-{
-    sr_error_info_t *err_info = NULL;
-    int fd_to = -1, fd_from = -1;
-    char *out_ptr, buf[4096];
-    ssize_t nread, nwritten;
-
-    /* open "from" file */
-    fd_from = sr_open(from, O_RDONLY, 0);
-    if (fd_from < 0) {
-        SR_ERRINFO_SYSERRPATH(&err_info, "open", from);
-        goto cleanup;
-    }
-
-    /* open "to" */
-    fd_to = sr_open(to, O_WRONLY | O_TRUNC | O_CREAT, file_mode);
-    if (fd_to < 0) {
-        SR_ERRINFO_SYSERRPATH(&err_info, "open", to);
-        goto cleanup;
-    }
-
-    while ((nread = read(fd_from, buf, sizeof buf)) > 0) {
-        out_ptr = buf;
-        do {
-            nwritten = write(fd_to, out_ptr, nread);
-            if (nwritten >= 0) {
-                nread -= nwritten;
-                out_ptr += nwritten;
-            } else if (errno != EINTR) {
-                SR_ERRINFO_SYSERRNO(&err_info, "write");
-                goto cleanup;
-            }
-        } while (nread > 0);
-    }
-    if (nread == -1) {
-        SR_ERRINFO_SYSERRNO(&err_info, "read");
-        goto cleanup;
-    }
-
-    /* success */
-
-cleanup:
-    if (fd_from > -1) {
-        close(fd_from);
-    }
-    if (fd_to > -1) {
-        close(fd_to);
-    }
-    return err_info;
-}
-
-/**
- * @brief Set the correct group owner of a path.
- *
- * @param[in] path Path to use.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_path_set_group(const char *path)
-{
-    sr_error_info_t *err_info = NULL;
-    sr_error_t err_code;
-    struct stat st;
-    const char *sr_group = SR_GROUP;
-    gid_t sr_gid;
-
-    if (!strlen(sr_group)) {
-        /* nothing to do */
-        return NULL;
-    }
-
-    /* get the desired GID */
-    if ((err_info = sr_get_grp(&sr_gid, (char **)&sr_group))) {
-        return err_info;
-    }
-
-    /* stat */
-    if (stat(path, &st) == -1) {
-        if (errno == EACCES) {
-            sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, "Stat of \"%s\" failed.", path);
-        } else {
-            SR_ERRINFO_SYSERRNO(&err_info, "stat");
-        }
-        return err_info;
-    }
-
-    if (st.st_gid == sr_gid) {
-        /* fine, nothing to do */
-        return NULL;
-    }
-
-    /* set correct GID */
-    if (chown(path, -1, sr_gid) == -1) {
-        if ((errno == EACCES) || (errno == EPERM)) {
-            err_code = SR_ERR_UNAUTHORIZED;
-        } else {
-            err_code = SR_ERR_INTERNAL;
-        }
-        sr_errinfo_new(&err_info, err_code, "Changing owner of \"%s\" failed (%s).", path, strerror(errno));
-        return err_info;
-    }
-
-    return NULL;
-}
-
 int
 sr_open(const char *pathname, int flags, mode_t mode)
 {
-    sr_error_info_t *err_info = NULL;
     mode_t um;
     int fd;
 
@@ -3984,14 +3625,6 @@ sr_open(const char *pathname, int flags, mode_t mode)
     if (fd == -1) {
         /* error */
         return fd;
-    }
-
-    /* set GID correctly */
-    if ((err_info = sr_path_set_group(pathname))) {
-        /* errno is kept */
-        sr_errinfo_free(&err_info);
-        close(fd);
-        return -1;
     }
 
     /* success */
@@ -4018,8 +3651,6 @@ sr_mkpath(char *path, mode_t mode)
                 sr_errinfo_new(&err_info, SR_ERR_SYS, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
                 goto cleanup;
             }
-        } else if ((err_info = sr_path_set_group(path))) {
-            goto cleanup;
         }
         *p = '/';
     }
@@ -4030,8 +3661,6 @@ sr_mkpath(char *path, mode_t mode)
             sr_errinfo_new(&err_info, SR_ERR_SYS, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
             goto cleanup;
         }
-    } else if ((err_info = sr_path_set_group(path))) {
-        goto cleanup;
     }
 
 cleanup:
@@ -4131,6 +3760,43 @@ sr_ds2str(sr_datastore_t ds)
         return "candidate";
     case SR_DS_OPERATIONAL:
         return "operational";
+    }
+
+    return NULL;
+}
+
+int
+sr_str2mod_ds(const char *str)
+{
+    if (!strcmp(str, "running")) {
+        return SR_DS_RUNNING;
+    } else if (!strcmp(str, "startup")) {
+        return SR_DS_STARTUP;
+    } else if (!strcmp(str, "candidate")) {
+        return SR_DS_CANDIDATE;
+    } else if (!strcmp(str, "operational")) {
+        return SR_DS_OPERATIONAL;
+    } else if (!strcmp(str, "notification")) {
+        return SR_MOD_DS_NOTIF;
+    }
+
+    return 0;
+}
+
+const char *
+sr_mod_ds2str(int mod_ds)
+{
+    switch (mod_ds) {
+    case SR_DS_RUNNING:
+        return "running";
+    case SR_DS_STARTUP:
+        return "startup";
+    case SR_DS_CANDIDATE:
+        return "candidate";
+    case SR_DS_OPERATIONAL:
+        return "operational";
+    case SR_MOD_DS_NOTIF:
+        return "notification";
     }
 
     return NULL;
@@ -5267,7 +4933,7 @@ sr_ly_set_add_all_modules_with_data(struct ly_set *mod_set, const struct ly_ctx 
     while ((mod = ly_ctx_get_module_iter(ly_ctx, &i))) {
         if (!mod->implemented) {
             continue;
-        } else if (!strcmp(mod->name, SR_YANG_MOD)) {
+        } else if (!strcmp(mod->name, "sysrepo")) {
             /* sysrepo module cannot be locked because it is not in SHM with other modules */
             continue;
         } else if (!strcmp(mod->name, "ietf-netconf")) {
@@ -5314,60 +4980,25 @@ sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod)
 }
 
 sr_error_info_t *
-sr_module_file_data_append(const struct lys_module *ly_mod, sr_datastore_t ds, struct lyd_node **data)
+sr_module_file_data_append(const struct lys_module *ly_mod, const struct srplg_ds_s *ds_plg, sr_datastore_t ds,
+        struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *mod_data = NULL;
-    char *path = NULL;
-    int fd = -1;
+    struct lyd_node *mod_data;
+    int rc;
 
-retry_open:
-    /* prepare correct file path */
-    if (ds == SR_DS_STARTUP) {
-        err_info = sr_path_startup_file(ly_mod->name, &path);
-    } else {
-        err_info = sr_path_ds_shm(ly_mod->name, ds, &path);
-    }
-    if (err_info) {
-        goto error;
+    /* get the data */
+    if ((rc = ds_plg->load_cb(ly_mod, ds, &mod_data))) {
+        SR_ERRINFO_DSPLUGIN(&err_info, rc, "load", ds_plg->name, ly_mod->name);
+        return err_info;
     }
 
-    /* open fd */
-    fd = sr_open(path, O_RDONLY, 0);
-    if (fd == -1) {
-        if ((errno == ENOENT) && (ds == SR_DS_CANDIDATE)) {
-            /* no candidate exists, just use running */
-            ds = SR_DS_RUNNING;
-            free(path);
-            path = NULL;
-            goto retry_open;
-        }
-
-        SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
-        goto error;
-    }
-
-    /* load the data */
-    if (lyd_parse_data_fd(ly_mod->ctx, fd, LYD_LYB, LYD_PARSE_ONLY | LYD_PARSE_STRICT | LYD_PARSE_ORDERED, 0, &mod_data)) {
-        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-        goto error;
-    }
-
+    /* append module data */
     if (mod_data) {
         lyd_insert_sibling(*data, mod_data, data);
     }
 
-    close(fd);
-    free(path);
     return NULL;
-
-error:
-    if (fd > -1) {
-        close(fd);
-    }
-    free(path);
-    lyd_free_all(mod_data);
-    return err_info;
 }
 
 sr_error_info_t *
@@ -5377,11 +5008,13 @@ sr_module_file_oper_data_load(struct sr_mod_info_mod_s *mod, struct lyd_node **e
     struct lyd_node *root, *elem;
     struct lyd_meta *meta;
     sr_cid_t dead_cid = 0;
+    int rc;
 
     assert(!*edit);
 
     /* load the operational data (edit) */
-    if ((err_info = sr_module_file_data_append(mod->ly_mod, SR_DS_OPERATIONAL, edit))) {
+    if ((rc = mod->ds_plg->load_cb(mod->ly_mod, SR_DS_OPERATIONAL, edit))) {
+        SR_ERRINFO_DSPLUGIN(&err_info, rc, "load", mod->ds_plg->name, mod->ly_mod->name);
         return err_info;
     }
 
@@ -5397,7 +5030,7 @@ trim_retry:
     /* find edit belonging to a dead connection, if any */
     LY_LIST_FOR(*edit, root) {
         LYD_TREE_DFS_BEGIN(root, elem) {
-            meta = lyd_find_meta(elem->meta, NULL, SR_YANG_MOD ":cid");
+            meta = lyd_find_meta(elem->meta, NULL, "sysrepo:cid");
             if (meta && !sr_conn_is_alive(meta->value.uint32)) {
                 dead_cid = meta->value.uint32;
 
@@ -5408,74 +5041,6 @@ trim_retry:
         }
     }
 
-    return err_info;
-}
-
-sr_error_info_t *
-sr_module_file_data_set(const char *mod_name, sr_datastore_t ds, struct lyd_node *mod_data, int create_flags,
-        mode_t file_mode)
-{
-    sr_error_info_t *err_info = NULL;
-    char *path = NULL, *bck_path = NULL;
-    int fd = -1, backup = 0;
-
-    assert(file_mode);
-
-    /* learn path */
-    switch (ds) {
-    case SR_DS_STARTUP:
-        err_info = sr_path_startup_file(mod_name, &path);
-        break;
-    case SR_DS_RUNNING:
-    case SR_DS_CANDIDATE:
-    case SR_DS_OPERATIONAL:
-        err_info = sr_path_ds_shm(mod_name, ds, &path);
-        break;
-    }
-    if (err_info) {
-        goto cleanup;
-    }
-
-    if ((ds == SR_DS_STARTUP) && (!(create_flags & O_CREAT) && !(create_flags & O_EXCL))) {
-        /* generate the backup path */
-        if (asprintf(&bck_path, "%s%s", path, SR_FILE_BACKUP_SUFFIX) == -1) {
-            SR_ERRINFO_MEM(&err_info);
-            goto cleanup;
-        }
-
-        /* back up any existing file */
-        if ((err_info = sr_cp_path(bck_path, path, file_mode))) {
-            goto cleanup;
-        }
-
-        backup = 1;
-    }
-
-    /* open the file */
-    if ((fd = sr_open(path, O_WRONLY | create_flags, file_mode)) == -1) {
-        SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
-        goto cleanup;
-    }
-
-    /* print data */
-    if (lyd_print_fd(fd, mod_data, LYD_LYB, LYD_PRINT_WITHSIBLINGS)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(mod_data));
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to store data into \"%s\".", path);
-        goto cleanup;
-    }
-
-    /* delete the backup file */
-    if (backup && (unlink(bck_path) == -1)) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to remove backup \"%s\" (%s).", bck_path, strerror(errno));
-        goto cleanup;
-    }
-
-cleanup:
-    if (fd > -1) {
-        close(fd);
-    }
-    free(path);
-    free(bck_path);
     return err_info;
 }
 

@@ -24,22 +24,6 @@
 #include "sysrepo_types.h"
 
 /**
- * @brief Find specific replay notification file:
- * - from_ts = 0; to_ts = 0 - find latest file
- * - from_ts > 0; to_ts = 0 - find file possibly containing no-earlier-than from_ts (replay start_time)
- * - from_ts > 0; to_ts > 0 - find next file after this one
- *
- * @param[in] mod_name Module name.
- * @param[in] from_ts Earliest stored notification.
- * @param[in] to_ts Latest stored notification.
- * @param[out] file_from_ts Found file earliest notification.
- * @param[out] file_to_ts Found file latest notification.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_replay_find_file(const char *mod_name, time_t from_ts, time_t to_ts, time_t *file_from_ts,
-        time_t *file_to_ts);
-
-/**
  * @brief Store a notification for replay.
  *
  * @param[in] sess Session to use.
@@ -67,7 +51,7 @@ void *sr_notif_buf_thread(void *arg);
  * @param[in] start_time Earliest notification of interest.
  * @param[in] stop_time Latest notification of interest.
  * @param[in] listen_since Timestamp of the subscription listening for notifications. There must be no notification
- * replayed with a later timestamp because it will be received as realtime notification.
+ * replayed with a later timestamp because it will be received as a realtime notification.
  * @param[in] callback Notification callback to call.
  * @param[in] tree_callback Notification tree callback to call.
  * @param[in] private_data Notification callback private data.

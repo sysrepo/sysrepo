@@ -15,7 +15,6 @@
  */
 
 #define _GNU_SOURCE
-#include <sys/cdefs.h>
 
 #include "values.h"
 
@@ -26,6 +25,7 @@
 
 #include "common.h"
 #include "compat.h"
+#include "config.h"
 #include "log.h"
 
 /** get the larger item */

@@ -452,6 +452,8 @@ const char *sr_get_repo_path(void);
 /**
  * @brief Install a new schema (module) into sysrepo. Deferred until there are no connections!
  *
+ * For all datastores the internal DS implementation `LYB file` is used.
+ *
  * @param[in] conn Connection to use.
  * @param[in] schema_path Path to the new schema. Can have either YANG or YIN extension/format.
  * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
@@ -459,6 +461,19 @@ const char *sr_get_repo_path(void);
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs, const char **features);
+
+/**
+ * @brief Install a new schema (module) into sysrepo. Deferred until there are no connections!
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] schema_path Path to the new schema. Can have either YANG or YIN extension/format.
+ * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
+ * @param[in] features Optional array of enabled features ended with NULL.
+ * @param[in] module_ds Datastore implementation plugin name for each config datastore.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_install_module_custom_ds(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs,
+        const char **features, const sr_module_ds_t *module_ds);
 
 /**
  * @brief Set newly installed module startup and running data. It is necessary in case empty data are not valid
@@ -519,32 +534,54 @@ int sr_cancel_update_module(sr_conn_ctx_t *conn, const char *module_name);
 int sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int replay_support);
 
 /**
- * @brief Change module filesystem permissions.
- *
- * Required WRITE access.
+ * @brief Change module permissions.
  *
  * @param[in] conn Connection to use.
  * @param[in] module_name Name of the module to change, NULL for all the modules.
- * @param[in] owner If set, new owner of the module.
- * @param[in] group If set, new group of the module.
- * @param[in] perm If set, new permissions of the module.
+ * @param[in] mod_ds Affected datastore, ::sr_datastore_t value or ::SR_MOD_DS_NOTIF.
+ * @param[in] owner Optional, new owner of the module.
+ * @param[in] group Optional, new group of the module.
+ * @param[in] perm Optional not -1, new permissions of the module.
  * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_set_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds, const char *owner,
+        const char *group, mode_t perm);
+
+/**
+ * @brief Deprecated, use ::sr_set_module_ds_access() instead.
  */
 int sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *owner, const char *group, mode_t perm);
 
 /**
- * @brief Learn about module filesystem permissions.
- *
- * Required READ access.
+ * @brief Learn about module permissions.
  *
  * @param[in] conn Connection to use.
  * @param[in] module_name Name of the module to use.
- * @param[in,out] owner If set, read the owner of the module.
- * @param[in,out] group If set, read the group of the module.
- * @param[in,out] perm If set, read the permissions of the module.
+ * @param[in] mod_ds Affected datastore, ::sr_datastore_t value or ::SR_MOD_DS_NOTIF.
+ * @param[out] owner Optional, read the owner of the module.
+ * @param[out] group Optional, read the group of the module.
+ * @param[out] perm Optional, read the permissions of the module.
  * @return Error code (::SR_ERR_OK on success).
  */
+int sr_get_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds, char **owner, char **group,
+        mode_t *perm);
+
+/**
+ * @brief Deprecated, use ::sr_get_module_ds_access() instead.
+ */
 int sr_get_module_access(sr_conn_ctx_t *conn, const char *module_name, char **owner, char **group, mode_t *perm);
+
+/**
+ * @brief Check whether the current application has read/write access to a module.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_name Name of the module to use.
+ * @param[in] mod_ds Affected datastore, ::sr_datastore_t value or ::SR_MOD_DS_NOTIF.
+ * @param[out] read Optional, set if read access was granted.
+ * @param[out] write Optional, set if write access was granted.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_check_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds, int *read, int *write);
 
 /**
  * @brief Enable a module feature. Deferred until there are no connections!
@@ -1528,14 +1565,14 @@ int sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_na
  */
 
 /**
- * @brief Sysrepo plugin initialization callback name that must exist in every plugin.
+ * @brief sysrepo-plugind plugin initialization callback name that must exist in every plugin.
  *
  * The callback must be of ::srp_init_cb_t type.
  */
 #define SRP_INIT_CB     "sr_plugin_init_cb"
 
 /**
- * @brief Sysrepo plugin cleanup callback name that must exist in every plugin.
+ * @brief sysrepo-plugind plugin cleanup callback name that must exist in every plugin.
  *
  * The callback must be of ::srp_cleanup_cb_t type.
  */
@@ -1544,26 +1581,58 @@ int sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_na
 /**
  * @brief Log a plugin error message with format arguments.
  *
+ * @param[in] plg_name Plugin name to print.
+ * @param[in] ... Format string and arguments.
+ */
+#define SRPLG_LOG_ERR(plg_name, ...) srplg_log(plg_name, SR_LL_ERR, __VA_ARGS__)
+
+/**
+ * @brief Log a plugin warning message with format arguments.
+ *
+ * @param[in] plg_name Plugin name to print.
+ * @param[in] ... Format string and arguments.
+ */
+#define SRPLG_LOG_WRN(plg_name, ...) srplg_log(plg_name, SR_LL_WRN, __VA_ARGS__)
+
+/**
+ * @brief Log a plugin info message with format arguments.
+ *
+ * @param[in] plg_name Plugin name to print.
+ * @param[in] ... Format string and arguments.
+ */
+#define SRPLG_LOG_INF(plg_name, ...) srplg_log(plg_name, SR_LL_INF, __VA_ARGS__)
+
+/**
+ * @brief Log a plugin debug message with format arguments.
+ *
+ * @param[in] plg_name Plugin name to print.
+ * @param[in] ... Format string and arguments.
+ */
+#define SRPLG_LOG_DBG(plg_name, ...) srplg_log(plg_name, SR_LL_DBG, __VA_ARGS__)
+
+/**
+ * @brief Deprecated, use ::SRPLG_LOG_ERR.
+ *
  * @param[in] ... Format string and arguments.
  */
 #define SRP_LOG_ERR(...) srp_log(SR_LL_ERR, __VA_ARGS__)
 
 /**
- * @brief Log a plugin warning message with format arguments.
+ * @brief Deprecated, use ::SRPLG_LOG_WRN.
  *
  * @param[in] ... Format string and arguments.
  */
 #define SRP_LOG_WRN(...) srp_log(SR_LL_WRN, __VA_ARGS__)
 
 /**
- * @brief Log a plugin info message with format arguments.
+ * @brief Deprecated, use ::SRPLG_LOG_INF.
  *
  * @param[in] ... Format string and arguments.
  */
 #define SRP_LOG_INF(...) srp_log(SR_LL_INF, __VA_ARGS__)
 
 /**
- * @brief Log a plugin debug message with format arguments.
+ * @brief Deprecated, use ::SRPLG_LOG_DBG.
  *
  * @param[in] ... Format string and arguments.
  */
@@ -1574,6 +1643,17 @@ int sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_na
 /**
  * @internal
  * @brief Log a plugin message with variable arguments.
+ *
+ * @param[in] plg_name Plugin name that is part of the message.
+ * @param[in] ll Log level (severity).
+ * @param[in] format Message format.
+ * @param[in] ... Format arguments.
+ */
+void srplg_log(const char *plg_name, sr_log_level_t ll, const char *format, ...);
+
+/**
+ * @internal
+ * @brief Deprecated.
  *
  * @param[in] ll Log level (severity).
  * @param[in] format Message format.

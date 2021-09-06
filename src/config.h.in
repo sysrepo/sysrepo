@@ -1,0 +1,102 @@
+/**
+ * @file config.h
+ * @author Michal Vasko <mvasko@cesnet.cz>
+ * @brief configuration header
+ *
+ * @copyright
+ * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ *
+ * This source code is licensed under BSD 3-Clause License (the "License").
+ * You may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://opensource.org/licenses/BSD-3-Clause
+ */
+
+#ifndef _CONFIG_H
+#define _CONFIG_H
+
+#include <pthread.h>
+#include <time.h>
+
+/*
+ * If the compiler supports attribute to mark objects as hidden, mark all
+ * objects as hidden and export only objects explicitly marked to be part of
+ * the public API.
+ */
+#define API __attribute__((visibility("default")))
+
+/** support for pthread_mutex_timedlock */
+#cmakedefine SR_HAVE_PTHREAD_MUTEX_TIMEDLOCK
+#ifndef SR_HAVE_PTHREAD_MUTEX_TIMEDLOCK
+int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *abstime);
+#endif
+
+/** use access() if eaccess() is not available (it may adversely affect access control, however) */
+#cmakedefine SR_HAVE_EACCESS
+#ifndef SR_HAVE_EACCESS
+# define eaccess access
+#endif
+
+/** UID of the superuser that can execute sensitive functions */
+#define SR_SU_UID @SYSREPO_SUPERUSER_UID@
+
+/** implemented ietf-yang-library revision */
+#define SR_YANGLIB_REVISION @YANGLIB_REVISION@
+
+/** main sysrepo repository path; prefix of all other paths by default */
+#define SR_REPO_PATH "@REPO_PATH@"
+
+/** environment variable overriding the compiled-in value */
+#define SR_REPO_PATH_ENV "SYSREPO_REPOSITORY_PATH"
+
+/** if not set, defaults to "SR_REPO_PATH/data" */
+#define SR_STARTUP_PATH "@STARTUP_DATA_PATH@"
+
+/** if not set, defaults to "SR_REPO_PATH/data/notif" */
+#define SR_NOTIFICATION_PATH "@NOTIFICATION_PATH@"
+
+/** if not set, defaults to "SR_REPO_PATH/yang" */
+#define SR_YANG_PATH "@YANG_MODULE_PATH@"
+
+/** where SHM files are stored */
+#define SR_SHM_DIR "/dev/shm"
+
+/** default prefix for SHM files in /dev/shm */
+#define SR_SHM_PREFIX_DEFAULT "sr"
+
+/** suffix of backed-up LYB files */
+#define SR_FILE_BACKUP_SUFFIX ".bck"
+
+/** environment variable for setting a custom prefix for SHM files */
+#define SR_SHM_PREFIX_ENV "SYSREPO_SHM_PREFIX"
+
+/** notification file will never exceed this size (kB) */
+#define SR_EV_NOTIF_FILE_MAX_SIZE 1024
+
+/** group to own all directories/files */
+#define SR_GROUP "@SYSREPO_GROUP@"
+
+/** umask modifying all the permissions below */
+#define SR_UMASK @SYSREPO_UMASK@
+
+/** permissions of directories for sysrepo files */
+#define SR_DIR_PERM 00777
+
+/** permissions of used YANG modules */
+#define SR_YANG_PERM 00644
+
+/** default permissions of stored notifications and data files */
+#define SR_FILE_PERM 00600
+
+/** permissions of data files of "sysrepo" internal module, it includes all the metadata */
+#define SR_INTMOD_MAIN_FILE_PERM 00666
+
+/** default permissions of data files of internal modules that have no data or features */
+#define SR_INTMOD_NODATA_FILE_PERM 00444
+
+/** default permission of data files of internal modules with some data or features */
+#define SR_INTMOD_WITHDATA_FILE_PERM 00644
+
+#endif /* _CONFIG_H */

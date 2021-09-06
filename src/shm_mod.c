@@ -15,7 +15,6 @@
  */
 
 #define _GNU_SOURCE
-#include <sys/cdefs.h>
 
 #include "shm.h"
 
@@ -37,6 +36,7 @@
 #include "compat.h"
 #include "log.h"
 #include "modinfo.h"
+#include "plugins_datastore.h"
 
 sr_error_info_t *
 sr_shmmod_collect_edit(const struct lyd_node *edit, struct ly_set *mod_set)
@@ -50,9 +50,8 @@ sr_shmmod_collect_edit(const struct lyd_node *edit, struct ly_set *mod_set)
     LY_LIST_FOR(edit, root) {
         if (lyd_owner_module(root) == mod) {
             continue;
-        } else if (!strcmp(lyd_owner_module(root)->name, SR_YANG_MOD)) {
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"%s\" cannot be modified.",
-                    SR_YANG_MOD);
+        } else if (!strcmp(lyd_owner_module(root)->name, "sysrepo")) {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"sysrepo\" cannot be modified.");
             return err_info;
         }
 
@@ -97,7 +96,7 @@ sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datas
         }
         ly_mod = snode->module;
 
-        if (!ly_mod->implemented || !strcmp(ly_mod->name, SR_YANG_MOD) || !strcmp(ly_mod->name, "ietf-netconf")) {
+        if (!ly_mod->implemented || !strcmp(ly_mod->name, "sysrepo") || !strcmp(ly_mod->name, "ietf-netconf")) {
             /* skip import-only modules, the internal sysrepo module, and ietf-netconf (as it has no data, only in libyang) */
             continue;
         }
@@ -294,10 +293,7 @@ sr_shmmod_collect_instid_deps_modinfo(const struct sr_mod_info_s *mod_info, stru
 void
 sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data)
 {
-    sr_error_info_t *err_info = NULL;
     struct sr_shmmod_recover_cb_s *cb_data = data;
-    char *path = NULL, *bck_path = NULL;
-    struct lyd_node *mod_data = NULL;
 
     (void)cid;
 
@@ -306,80 +302,8 @@ sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data)
         return;
     }
 
-    /* learn standard path */
-    switch (cb_data->ds) {
-    case SR_DS_STARTUP:
-        err_info = sr_path_startup_file(cb_data->ly_mod->name, &path);
-        break;
-    case SR_DS_RUNNING:
-    case SR_DS_CANDIDATE:
-    case SR_DS_OPERATIONAL:
-        err_info = sr_path_ds_shm(cb_data->ly_mod->name, cb_data->ds, &path);
-        break;
-    }
-    if (err_info) {
-        goto cleanup;
-    }
-
-    /* check whether the file is valid */
-    err_info = sr_module_file_data_append(cb_data->ly_mod, cb_data->ds, &mod_data);
-    if (!err_info) {
-        /* data are valid, nothing to do */
-        goto cleanup;
-    }
-    sr_errinfo_free(&err_info);
-
-    if (cb_data->ds == SR_DS_STARTUP) {
-        /* there must be a backup file for startup data */
-        SR_LOG_WRN("Recovering \"%s\" startup data from a backup.", cb_data->ly_mod->name);
-
-        /* generate the backup path */
-        if (asprintf(&bck_path, "%s%s", path, SR_FILE_BACKUP_SUFFIX) == -1) {
-            SR_ERRINFO_MEM(&err_info);
-            goto cleanup;
-        }
-
-        /* restore the backup data, avoid changing permissions of the target file */
-        if ((err_info = sr_cp_path(path, bck_path, 0))) {
-            SR_ERRINFO_SYSERRNO(&err_info, "rename");
-            goto cleanup;
-        }
-
-        /* remove the backup file */
-        if (unlink(bck_path) == -1) {
-            SR_ERRINFO_SYSERRNO(&err_info, "unlink");
-            goto cleanup;
-        }
-    } else if (cb_data->ds == SR_DS_RUNNING) {
-        /* perform startup->running data file copy */
-        SR_LOG_WRN("Recovering \"%s\" running data from the startup data.", cb_data->ly_mod->name);
-
-        /* generate the startup data file path */
-        if ((err_info = sr_path_startup_file(cb_data->ly_mod->name, &bck_path))) {
-            goto cleanup;
-        }
-
-        /* copy startup data to running */
-        if ((err_info = sr_cp_path(path, bck_path, 0))) {
-            SR_ERRINFO_SYSERRNO(&err_info, "rename");
-            goto cleanup;
-        }
-    } else {
-        /* there is not much to do but remove the corrupted file */
-        SR_LOG_WRN("Recovering \"%s\" %s data by removing the corrupted data file.", cb_data->ly_mod->name,
-                sr_ds2str(cb_data->ds));
-
-        if (unlink(path) == -1) {
-            SR_ERRINFO_SYSERRNO(&err_info, "unlink");
-            goto cleanup;
-        }
-    }
-
-cleanup:
-    free(path);
-    free(bck_path);
-    lyd_free_all(mod_data);
-    sr_errinfo_free(&err_info);
+    /* recovery specific for the plugin */
+    cb_data->ds_plg->recover_cb(cb_data->ly_mod, cb_data->ds);
 }
 
 /**
@@ -392,11 +316,12 @@ cleanup:
  * @param[in] mode Lock mode of the module.
  * @param[in] cid Connection ID.
  * @param[in] sid Sysrepo session ID to store.
+ * @param[in] ds_plg DS plugin.
  * @param[in] relock Whether some lock is already held or not.
  */
 static sr_error_info_t *
 sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod_lock_s *shm_lock, int timeout_ms,
-        sr_lock_mode_t mode, sr_cid_t cid, uint32_t sid, int relock)
+        sr_lock_mode_t mode, sr_cid_t cid, uint32_t sid, struct srplg_ds_s *ds_plg, int relock)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     struct sr_shmmod_recover_cb_s cb_data;
@@ -405,6 +330,7 @@ sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod
     /* fill recovery callback information */
     cb_data.ly_mod = ly_mod;
     cb_data.ds = ds;
+    cb_data.ds_plg = ds_plg;
 
     if (relock) {
         /* RELOCK */
@@ -496,7 +422,8 @@ sr_shmmod_modinfo_lock(struct sr_mod_info_s *mod_info, sr_datastore_t ds, uint32
         }
 
         /* MOD LOCK */
-        if ((err_info = sr_shmmod_lock(mod->ly_mod, ds, shm_lock, SR_MOD_LOCK_TIMEOUT, mode, mod_info->conn->cid, sid, 0))) {
+        if ((err_info = sr_shmmod_lock(mod->ly_mod, ds, shm_lock, SR_MOD_LOCK_TIMEOUT, mode, mod_info->conn->cid, sid,
+                mod->ds_plg, 0))) {
             return err_info;
         }
 
@@ -571,12 +498,12 @@ sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, uint32_t sid)
         mod = &mod_info->mods[i];
         shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds];
 
-        /* upgrade only required read-upgr-locked modules and leave others read-upgr-locked to prevent their locking causing potential dead-lock */
-        if ((mod->state & (MOD_INFO_RLOCK_UPGR | MOD_INFO_REQ)) ==
-                (MOD_INFO_RLOCK_UPGR | MOD_INFO_REQ)) {
+        /* upgrade only required read-upgr-locked modules and leave others read-upgr-locked to prevent their locking
+         * causing potential dead-lock */
+        if ((mod->state & (MOD_INFO_RLOCK_UPGR | MOD_INFO_REQ)) == (MOD_INFO_RLOCK_UPGR | MOD_INFO_REQ)) {
             /* MOD WRITE UPGRADE */
             if ((err_info = sr_shmmod_lock(mod->ly_mod, mod_info->ds, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE,
-                    mod_info->conn->cid, sid, 1))) {
+                    mod_info->conn->cid, sid, mod->ds_plg, 1))) {
                 return err_info;
             }
 
@@ -605,7 +532,7 @@ sr_shmmod_modinfo_wrlock_downgrade(struct sr_mod_info_s *mod_info, uint32_t sid)
         if (mod->state & MOD_INFO_WLOCK) {
             /* MOD READ DOWNGRADE */
             if ((err_info = sr_shmmod_lock(mod->ly_mod, mod_info->ds, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ_UPGR,
-                    mod_info->conn->cid, sid, 1))) {
+                    mod_info->conn->cid, sid, mod->ds_plg, 1))) {
                 return err_info;
             }
 
@@ -666,8 +593,9 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid)
     sr_mod_t *shm_mod;
     const struct lys_module *ly_mod;
     struct sr_mod_lock_s *shm_lock;
+    struct srplg_ds_s *ds_plg;
     sr_datastore_t ds;
-    int ds_locked;
+    int ds_locked, rc;
     uint32_t i;
 
     for (i = 0; i < SR_CONN_MAIN_SHM(conn)->mod_count; ++i) {
@@ -696,13 +624,20 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid)
             sr_munlock(&shm_lock->ds_lock);
 
             if (ds_locked && (ds == SR_DS_CANDIDATE)) {
+                /* find DS plugin */
+                if ((err_info = sr_ds_plugin_find(conn->main_shm.addr + shm_mod->plugins[ds], conn, &ds_plg))) {
+                    sr_errinfo_free(&err_info);
+                    continue;
+                }
+
                 /* MOD WRITE LOCK */
                 if ((err_info = sr_shmmod_lock(ly_mod, ds, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-                        sid, 0))) {
+                        sid, ds_plg, 0))) {
                     sr_errinfo_free(&err_info);
                 } else {
                     /* reset candidate */
-                    if ((err_info = sr_remove_candidate_file(ly_mod->name))) {
+                    if ((rc = ds_plg->candidate_reset_cb(ly_mod))) {
+                        SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_reset", ds_plg->name, ly_mod->name);
                         sr_errinfo_free(&err_info);
                     }
 

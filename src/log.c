@@ -15,7 +15,6 @@
  */
 
 #define _GNU_SOURCE
-#include <sys/cdefs.h>
 
 #include "log.h"
 
@@ -29,6 +28,7 @@
 #include <libyang/libyang.h>
 
 #include "compat.h"
+#include "config.h"
 
 sr_log_level_t stderr_ll = SR_LL_NONE;  /**< stderr log level */
 sr_log_level_t syslog_ll = SR_LL_NONE;  /**< syslog log level */
@@ -133,7 +133,7 @@ sr_log_msg(int plugin, sr_log_level_t ll, const char *msg)
 
     /* stderr logging */
     if (ll <= stderr_ll) {
-        fprintf(stderr, "[%s]:%s %s\n", severity, plugin ? " plugin:" : "", msg);
+        fprintf(stderr, "[%s]%s %s\n", severity, plugin ? " PLG:" : "", msg);
     }
 
     /* syslog logging */
@@ -386,6 +386,29 @@ sr_log(sr_log_level_t ll, const char *format, ...)
     va_end(ap);
 
     sr_log_msg(0, ll, msg);
+    free(msg);
+}
+
+API void
+srplg_log(const char *plg_name, sr_log_level_t ll, const char *format, ...)
+{
+    va_list ap;
+    char *msg;
+    int msg_len = 0, off;
+
+    if (!plg_name) {
+        return;
+    }
+
+    /* store plugin name first */
+    off = msg_len = asprintf(&msg, "%s: ", plg_name);
+    ++msg_len;
+
+    va_start(ap, format);
+    sr_vsprintf(&msg, &msg_len, off, format, ap);
+    va_end(ap);
+
+    sr_log_msg(1, ll, msg);
     free(msg);
 }
 

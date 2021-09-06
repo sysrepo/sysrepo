@@ -102,6 +102,18 @@ struct sr_conn_ctx_s {
     sr_shm_t main_shm;              /**< Main SHM structure. */
     sr_shm_t ext_shm;               /**< External SHM structure (all stored offsets point here). */
 
+    struct sr_ds_handle_s {
+        void *dl_handle;            /**< Handle from dlopen(3) call. */
+        struct srplg_ds_s *plugin;  /**< Datastore plugin. */
+    } *ds_handles;                  /**< Datastore implementation handles. */
+    uint32_t ds_handle_count;       /**< Datastore implementaion handle count. */
+
+    struct sr_ntf_handle_s {
+        void *dl_handle;            /**< Handle from dlopen(3) call. */
+        struct srplg_ntf_s *plugin; /**< Notification plugin. */
+    } *ntf_handles;                 /**< Notification implementation handles. */
+    uint32_t ntf_handle_count;      /**< Notification implementaion handle count. */
+
     struct sr_mod_cache_s {
         sr_rwlock_t lock;           /**< Session-shared lock for accessing the module cache. */
         struct lyd_node *data;      /**< Data of all cached modules, */
@@ -153,9 +165,8 @@ struct sr_session_ctx_s {
         sr_rwlock_t lock;           /**< Lock for accessing thread_running and the notification buffer
                                          (READ-lock is not used). */
         struct sr_sess_notif_buf_node {
-            char *notif_lyb;        /**< Buffered notification to be stored in LYB format. */
+            struct lyd_node *notif;     /**< Buffered notification to be stored. */
             struct timespec notif_ts;   /**< Buffered notification timestamp. */
-            const struct lys_module *notif_mod; /**< Buffered notification modules. */
             struct sr_sess_notif_buf_node *next;    /**< Next stored notification buffer node. */
         } *first;                   /**< First stored notification buffer node. */
         struct sr_sess_notif_buf_node *last;    /**< Last stored notification buffer node. */
@@ -272,5 +283,15 @@ struct sr_change_iter_s {
  * @param[in] data Arbitrary user data.
  */
 typedef void (*sr_lock_recover_cb)(sr_lock_mode_t mode, sr_cid_t cid, void *data);
+
+/**
+ * @brief Internal DS plugin "LYB DS file".
+ */
+extern const struct srplg_ds_s srpds_lyb;
+
+/**
+ * @brief Internal notif plugin "LYB notif".
+ */
+extern const struct srplg_ntf_s srpntf_lyb;
 
 #endif /* _COMMON_TYPES_H */

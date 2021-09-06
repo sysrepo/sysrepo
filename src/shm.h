@@ -23,7 +23,7 @@
 struct sr_mod_info_s;
 
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
-#define SR_SHM_VER 7                        /**< Main and ext SHM version of their expected content structures. */
+#define SR_SHM_VER 8                        /**< Main and ext SHM version of their expected content structures. */
 
 /**
  * Main SHM organization
@@ -165,12 +165,10 @@ sr_error_info_t *sr_shmmain_ly_ctx_init(struct ly_ctx **ly_ctx);
 /**
  * @brief Copy startup files into running files.
  *
- * @param[in] main_shm Main SHM.
- * @param[in] replace Whether replace any existing running data (standard copy-config) or copy data
- * only for modules that do not have any running data.
+ * @param[in] conn Connection to use.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmain_files_startup2running(sr_main_shm_t *main_shm, int replace);
+sr_error_info_t *sr_shmmain_files_startup2running(sr_conn_ctx_t *conn);
 
 /**
  * @brief Remap main SHM and store modules and all their static information (name, deps, ...) in it.
@@ -230,16 +228,6 @@ sr_rpc_t *sr_shmmain_find_rpc(sr_main_shm_t *main_shm, const char *path);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmain_update_replay_support(sr_main_shm_t *main_shm, const char *mod_name, int replay_support);
-
-/**
- * @brief Check data file existence and owner/permissions of all the modules in main SHM.
- * Startup file must always exist, owner/permissions are read from it.
- * For running and operational, create them if they do not exist, then change their owner/permissions.
- *
- * @param[in] main_shm Main SHM.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmain_check_data_files(sr_main_shm_t *main_shm);
 
 /*
  * Ext SHM functions
@@ -596,6 +584,7 @@ sr_error_info_t *sr_shmmod_collect_instid_deps_modinfo(const struct sr_mod_info_
 struct sr_shmmod_recover_cb_s {
     const struct lys_module *ly_mod;
     sr_datastore_t ds;
+    struct srplg_ds_s *ds_plg;
 };
 
 /**
