@@ -129,20 +129,24 @@ typedef enum {
 /**
  * @brief A single, detailed error message. Used in sr_error_info_t
  */
-typedef struct {
+struct sr_error_info_err_s {
     sr_error_t err_code;    /**< Error code. */
     char *message;          /**< Error message. */
     char *error_format;     /**< Error format identifier. */
     void *error_data;       /**< Opaque error data specific for @p error_format. */
-} sr_error_info_err_t;
+};
+
+typedef struct sr_error_info_err_s sr_error_info_err_t;
 
 /**
  * @brief Detailed sysrepo session error information.
  */
-typedef struct {
+struct sr_error_info_s {
     sr_error_info_err_t *err;   /**< Array of all generated errors. */
     uint32_t err_count;         /**< Error count. */
-} sr_error_info_t;
+};
+
+typedef struct sr_error_info_s sr_error_info_t;
 
 /**
  * @brief Callback to be called before applying a diff. Set it using ::sr_set_diff_check_callback.
@@ -197,7 +201,7 @@ typedef enum {
 /**
  * @brief Data of an element (if applicable), properly set according to the type.
  */
-typedef union {
+union sr_data_u {
     char *binary_val;       /**< Base64-encoded binary data ([RFC 7950 sec 9.8](http://tools.ietf.org/html/rfc7950#section-9.8)) */
     char *bits_val;         /**< A set of bits or flags ([RFC 7950 sec 9.7](http://tools.ietf.org/html/rfc7950#section-9.7)) */
     int bool_val;           /**< A boolean value ([RFC 7950 sec 9.5](http://tools.ietf.org/html/rfc7950#section-9.5)) */
@@ -219,12 +223,14 @@ typedef union {
     uint64_t uint64_val;    /**< 64-bit unsigned integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
     char *anyxml_val;       /**< Unknown chunk of XML ([RFC 7950 sec 7.10](https://tools.ietf.org/html/rfc7950#section-7.10)) */
     char *anydata_val;      /**< Unknown set of nodes, encoded in XML ([RFC 7950 sec 7.10](https://tools.ietf.org/html/rfc7950#section-7.10)) */
-} sr_data_t;
+};
+
+typedef union sr_data_u sr_data_t;
 
 /**
  * @brief Structure that contains value of an data element stored in the sysrepo datastore.
  */
-typedef struct {
+struct sr_val_s {
     /** [XPath](@ref paths) (or rather path) identifier of the data element. */
     char *xpath;
 
@@ -244,8 +250,9 @@ typedef struct {
 
     /** Data of an element (if applicable), properly set according to the type. */
     sr_data_t data;
+};
 
-} sr_val_t;
+typedef struct sr_val_s sr_val_t;
 
 /**
  * @brief Flags used to override default data get behaviour on ::SR_DS_OPERATIONAL by ::sr_get_data call.
