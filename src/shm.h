@@ -252,6 +252,7 @@ typedef enum sr_sub_event_e {
 typedef struct sr_sub_shm_s {
     sr_rwlock_t lock;           /**< Process-shared lock for accessing the SHM structure. */
 
+    sr_cid_t orig_cid;          /**< Event originator CID. */
     uint32_t request_id;        /**< Request ID. */
     sr_sub_event_t event;       /**< Event. */
     uint32_t sid;               /**< Originator sysrepo session ID. */
@@ -264,6 +265,7 @@ typedef struct sr_sub_shm_s {
 typedef struct sr_multi_sub_shm_s {
     sr_rwlock_t lock;           /**< Process-shared lock for accessing the SHM structure. */
 
+    sr_cid_t orig_cid;          /**< Event originator CID. */
     uint32_t request_id;        /**< Request ID. */
     sr_sub_event_t event;       /**< Event. */
     uint32_t sid;               /**< Originator sysrepo session ID. */

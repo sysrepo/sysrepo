@@ -2777,14 +2777,7 @@ sr_munlock(pthread_mutex_t *lock)
     }
 }
 
-/**
- * @brief Wrapper for pthread_cond_init().
- *
- * @param[out] cond Condition variable to initialize.
- * @param[in] shared Whether the condition will be shared among processes.
- * @return err_info, NULL on error.
- */
-static sr_error_info_t *
+sr_error_info_t *
 sr_cond_init(pthread_cond_t *cond, int shared)
 {
     sr_error_info_t *err_info = NULL;
