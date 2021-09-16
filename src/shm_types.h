@@ -212,6 +212,7 @@ typedef struct {
 typedef struct {
     sr_rwlock_t lock;           /**< Process-shared lock for accessing the SHM structure. */
 
+    sr_cid_t orig_cid;          /**< Event originator CID. */
     uint32_t request_id;        /**< Request ID. */
     sr_sub_event_t event;       /**< Event. */
 } sr_sub_shm_t;
@@ -222,6 +223,7 @@ typedef struct {
 typedef struct {
     sr_rwlock_t lock;           /**< Process-shared lock for accessing the SHM structure. */
 
+    sr_cid_t orig_cid;          /**< Event originator CID. */
     uint32_t request_id;        /**< Request ID. */
     sr_sub_event_t event;       /**< Event. */
 

@@ -949,6 +949,15 @@ sr_error_info_t *sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *fun
 void sr_munlock(pthread_mutex_t *lock);
 
 /**
+ * @brief Wrapper for pthread_cond_init().
+ *
+ * @param[out] cond Condition variable to initialize.
+ * @param[in] shared Whether the condition will be shared among processes.
+ * @return err_info, NULL on error.
+ */
+sr_error_info_t *sr_cond_init(pthread_cond_t *cond, int shared);
+
+/**
  * @brief Initialize a sysrepo RW lock.
  *
  * @param[in,out] rwlock RW lock to initialize.
