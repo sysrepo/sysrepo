@@ -526,6 +526,19 @@ sr_error_info_t *sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char
         struct ly_set *mod_set);
 
 /**
+ * @brief Collect all modules from a dependency array.
+ *
+ * @param[in] main_shm_addr Main SHM address.
+ * @param[in] ly_ctx libyang context.
+ * @param[in] shm_deps Array of SHM dependencies.
+ * @param[in] shm_dep_count Number of @p shm_deps.
+ * @param[in,out] mod_set Set with all the dependent modules.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_collect_deps(char *main_shm_addr, const struct ly_ctx *ly_ctx, sr_dep_t *shm_deps,
+        uint16_t shm_dep_count, struct ly_set *mod_set);
+
+/**
  * @brief Collect required modules for an RPC/action validation.
  *
  * @param[in] main_shm Main SHM.

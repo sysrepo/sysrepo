@@ -109,13 +109,51 @@ sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datas
 }
 
 sr_error_info_t *
+sr_shmmod_collect_deps(char *main_shm_addr, const struct ly_ctx *ly_ctx, sr_dep_t *shm_deps, uint16_t shm_dep_count,
+        struct ly_set *mod_set)
+{
+    sr_error_info_t *err_info = NULL;
+    uint16_t i, j;
+    const struct lys_module *ly_mod;
+    off_t *mod_names;
+
+    for (i = 0; i < shm_dep_count; ++i) {
+        if (shm_deps[i].type == SR_DEP_INSTID) {
+            /* we will handle those just before validation */
+            continue;
+        }
+
+        if (shm_deps[i].mod_name_count == 1) {
+            /* find ly module */
+            ly_mod = ly_ctx_get_module_implemented(ly_ctx, main_shm_addr + shm_deps[i].mod_name);
+            SR_CHECK_INT_RET(!ly_mod, err_info);
+
+            /* add dependency */
+            ly_set_add(mod_set, (void *)ly_mod, 0, NULL);
+        } else {
+            mod_names = (off_t *)(main_shm_addr + shm_deps[i].mod_name);
+
+            /* add dependencies for all the modules */
+            for (j = 0; j < shm_deps[i].mod_name_count; ++j) {
+                /* find ly module */
+                ly_mod = ly_ctx_get_module_implemented(ly_ctx, main_shm_addr + mod_names[j]);
+                SR_CHECK_INT_RET(!ly_mod, err_info);
+
+                /* add dependency */
+                ly_set_add(mod_set, (void *)ly_mod, 0, NULL);
+            }
+        }
+    }
+
+    return NULL;
+}
+
+sr_error_info_t *
 sr_shmmod_collect_rpc_deps(sr_main_shm_t *main_shm, const struct ly_ctx *ly_ctx, const char *path, int output,
         struct ly_set *mod_set, sr_dep_t **shm_deps, uint16_t *shm_dep_count)
 {
     sr_error_info_t *err_info = NULL;
     sr_rpc_t *shm_rpc;
-    const struct lys_module *ly_mod;
-    uint16_t i;
 
     /* find the RPC in SHM */
     shm_rpc = sr_shmmain_find_rpc(main_shm, path);
@@ -124,18 +162,8 @@ sr_shmmod_collect_rpc_deps(sr_main_shm_t *main_shm, const struct ly_ctx *ly_ctx,
     /* collect dependencies */
     *shm_deps = (sr_dep_t *)(((char *)main_shm) + (output ? shm_rpc->out_deps : shm_rpc->in_deps));
     *shm_dep_count = (output ? shm_rpc->out_dep_count : shm_rpc->in_dep_count);
-    for (i = 0; i < *shm_dep_count; ++i) {
-        if ((*shm_deps)[i].type == SR_DEP_INSTID) {
-            /* we will handle those just before validation */
-            continue;
-        }
-
-        /* find ly module */
-        ly_mod = ly_ctx_get_module_implemented(ly_ctx, ((char *)main_shm) + (*shm_deps)[i].module);
-        SR_CHECK_INT_RET(!ly_mod, err_info);
-
-        /* add dependency */
-        ly_set_add(mod_set, (void *)ly_mod, 0, NULL);
+    if ((err_info = sr_shmmod_collect_deps((char *)main_shm, ly_ctx, *shm_deps, *shm_dep_count, mod_set))) {
+        return err_info;
     }
 
     return NULL;
@@ -148,7 +176,6 @@ sr_shmmod_collect_notif_deps(sr_main_shm_t *main_shm, const struct lys_module *n
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
     sr_notif_t *shm_notif;
-    const struct lys_module *ly_mod;
     uint32_t i;
 
     /* find the module in SHM */
@@ -167,18 +194,8 @@ sr_shmmod_collect_notif_deps(sr_main_shm_t *main_shm, const struct lys_module *n
     /* collect dependencies */
     *shm_deps = (sr_dep_t *)(((char *)main_shm) + shm_notif[i].deps);
     *shm_dep_count = shm_notif[i].dep_count;
-    for (i = 0; i < *shm_dep_count; ++i) {
-        if ((*shm_deps)[i].type == SR_DEP_INSTID) {
-            /* we will handle those just before validation */
-            continue;
-        }
-
-        /* find ly module */
-        ly_mod = ly_ctx_get_module_implemented(notif_mod->ctx, ((char *)main_shm) + (*shm_deps)[i].module);
-        SR_CHECK_INT_RET(!ly_mod, err_info);
-
-        /* add dependency */
-        ly_set_add(mod_set, (void *)ly_mod, 0, NULL);
+    if ((err_info = sr_shmmod_collect_deps((char *)main_shm, notif_mod->ctx, *shm_deps, *shm_dep_count, mod_set))) {
+        return err_info;
     }
 
     return NULL;
@@ -232,9 +249,11 @@ sr_shmmod_collect_instid_deps_data(sr_main_shm_t *main_shm, sr_dep_t *shm_deps, 
                         goto cleanup;
                     }
                 }
-            } else if (shm_deps[i].module) {
+            } else if (shm_deps[i].mod_name) {
+                assert(shm_deps[i].mod_name_count == 1);
+
                 /* assume a default value will be used even though it may not be */
-                ly_mod = ly_ctx_get_module_implemented(ly_ctx, ((char *)main_shm) + shm_deps[i].module);
+                ly_mod = ly_ctx_get_module_implemented(ly_ctx, ((char *)main_shm) + shm_deps[i].mod_name);
                 SR_CHECK_INT_GOTO(!ly_mod, err_info, cleanup);
 
                 if (ly_set_add(mod_set, (void *)ly_mod, 0, NULL)) {

@@ -27,17 +27,20 @@
  * @brief Main SHM dependency type.
  */
 typedef enum {
-    SR_DEP_REF,         /**< Module reference (leafref, when, must). */
-    SR_DEP_INSTID       /**< Instance-identifier. */
+    SR_DEP_LREF,        /**< Leafref. */
+    SR_DEP_INSTID,      /**< Instance-identifier. */
+    SR_DEP_XPATH        /**< XPath (must or when). */
 } sr_dep_type_t;
 
 /**
  * @brief Main SHM module dependency.
  */
 typedef struct {
-    sr_dep_type_t type; /**< Dependency type. */
-    off_t module;       /**< Dependant module name (offset in main SHM). */
-    off_t path;         /**< Path of the node with the dependency (offset in main SHM). */
+    sr_dep_type_t type;         /**< Dependency type. */
+    off_t mod_name;             /**< Dependant module name(s) (offset in main SHM). */
+    uint16_t mod_name_count;    /**< Dependant module name count, if 1 mod_name is offset of a string, if >1 offset of
+                                     array of strings. */
+    off_t path;                 /**< Path of the node with the dependency (offset in main SHM). */
 } sr_dep_t;
 
 /**
