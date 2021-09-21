@@ -11,4 +11,8 @@ module ops-ref {
     leaf l2 {
         type string;
     }
+
+    leaf l3 {
+        type string;
+    }
 }

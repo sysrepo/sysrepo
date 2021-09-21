@@ -1716,6 +1716,7 @@ sr_modinfo_add_mod(const struct lys_module *ly_mod, uint32_t mod_type, int mod_r
     sr_mod_t *shm_mod;
     sr_dep_t *shm_deps;
     off_t *shm_inv_deps;
+    struct ly_set mod_set = {0};
     struct srplg_ds_s *ds_plg;
     uint32_t i, cur_i;
     int prev_mod_type = 0;
@@ -1770,20 +1771,20 @@ sr_modinfo_add_mod(const struct lys_module *ly_mod, uint32_t mod_type, int mod_r
     if (prev_mod_type < MOD_INFO_INV_DEP) {
         /* add all its dependencies, recursively */
         shm_deps = (sr_dep_t *)(mod_info->conn->main_shm.addr + shm_mod->deps);
-        for (i = 0; i < shm_mod->dep_count; ++i) {
-            if (shm_deps[i].type == SR_DEP_INSTID) {
-                /* we will handle those once we have the final data tree */
-                continue;
-            }
+        if ((err_info = sr_shmmod_collect_deps(mod_info->conn->main_shm.addr, ly_mod->ctx, shm_deps, shm_mod->dep_count,
+                &mod_set))) {
+            return err_info;
+        }
 
-            /* find ly module */
-            ly_mod = ly_ctx_get_module_implemented(ly_mod->ctx, mod_info->conn->main_shm.addr + shm_deps[i].module);
-            SR_CHECK_INT_RET(!ly_mod, err_info);
-
+        for (i = 0; i < mod_set.count; ++i) {
             /* add dependency */
-            if ((err_info = sr_modinfo_add_mod(ly_mod, MOD_INFO_DEP, mod_req_deps, mod_info))) {
-                return err_info;
+            if ((err_info = sr_modinfo_add_mod(mod_set.objs[i], MOD_INFO_DEP, mod_req_deps, mod_info))) {
+                break;
             }
+        }
+        ly_set_erase(&mod_set, NULL);
+        if (err_info) {
+            return err_info;
         }
     }
 

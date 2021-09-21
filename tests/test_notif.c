@@ -270,6 +270,21 @@ create_ops_notif(void **state)
     return 0;
 }
 
+static int
+module_change_dummy_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
+{
+    (void)session;
+    (void)sub_id;
+    (void)module_name;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+    (void)private_data;
+
+    return SR_ERR_OK;
+}
+
 /* TEST */
 static void
 notif_dummy_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
@@ -377,17 +392,40 @@ notif_simple_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_ty
 }
 
 static int
-module_change_dummy_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
-        sr_event_t event, uint32_t request_id, void *private_data)
+simple_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
+    struct state *st = (struct state *)private_data;
+    const struct ly_ctx *ly_ctx = sr_get_context(sr_session_get_connection(session));
+
     (void)session;
     (void)sub_id;
-    (void)module_name;
-    (void)xpath;
-    (void)event;
     (void)request_id;
     (void)private_data;
 
+    if (!strcmp(module_name, "ops")) {
+        if (!strcmp(xpath, "/ops:cont/list1")) {
+            assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "list1[k='key']", NULL, 0, NULL));
+        } else if (!strcmp(xpath, "/ops:cont/l12")) {
+            assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "l12", "l12-val", 0, NULL));
+        } else {
+            fail();
+        }
+    } else if (!strcmp(module_name, "ops-ref")) {
+        if (!strcmp(xpath, "/ops-ref:l1")) {
+            assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/ops-ref:l1", "l1-val", 0, parent));
+        } else if (!strcmp(xpath, "/ops-ref:l2")) {
+            assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/ops-ref:l2", "l2-val", 0, parent));
+        } else if (!strcmp(xpath, "/ops-ref:l3")) {
+            assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/ops-ref:l3", "l3-val", 0, parent));
+        } else {
+            fail();
+        }
+    } else {
+        fail();
+    }
+
+    ATOMIC_INC_RELAXED(st->cb_called);
     return SR_ERR_OK;
 }
 
@@ -406,16 +444,6 @@ test_simple(void **state)
     ret = sr_event_notif_subscribe(st->sess, "ops", NULL, 0, 0, notif_simple_cb, st, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* set some data needed for validation */
-    ret = sr_set_item_str(st->sess, "/ops-ref:l1", "l1-val", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ops-ref:l2", "l2-val", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ops:cont/list1[k='key']", NULL, NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
     /*
      * create the first notification
      */
@@ -431,33 +459,43 @@ test_simple(void **state)
     /* try to send the first notif, expect an error */
     ret = sr_event_notif_send(st->sess, "/ops:notif3", input, 2, 0, 1);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 0);
     ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
     assert_string_equal(err_info->err[0].message, "Invalid instance-identifier \"/ops:cont/list1[k='key']/cont2\" value - required instance not found.");
     assert_string_equal(err_info->err[1].message, "Notification validation failed.");
 
-    /* subscribe to the data so they are actually present in operational */
-    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, 0, &subscr2);
+    /* subscribe to required ops oper data and some non-required */
+    ret = sr_oper_get_items_subscribe(st->sess, "ops", "/ops:cont/list1", simple_oper_cb, st, 0, &subscr2);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_oper_get_items_subscribe(st->sess, "ops", "/ops:cont/l12", simple_oper_cb, st, SR_SUBSCR_CTX_REUSE, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to send the first notif again, still fails */
     ret = sr_event_notif_send(st->sess, "/ops:notif3", input, 2, 0, 1);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
     ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
     assert_string_equal(err_info->err[0].message, "Invalid leafref value \"l1-val\" - no existing target instance \"/or:l1\".");
     assert_string_equal(err_info->err[1].message, "Notification validation failed.");
 
-    /* subscribe to the data so they are actually present in operational */
-    ret = sr_module_change_subscribe(st->sess, "ops-ref", NULL, module_change_dummy_cb, NULL, 0, 0, &subscr3);
+    /* subscribe to required ops-ref oper data and some non-required */
+    ret = sr_oper_get_items_subscribe(st->sess, "ops-ref", "/ops-ref:l1", simple_oper_cb, st, 0, &subscr3);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_oper_get_items_subscribe(st->sess, "ops-ref", "/ops-ref:l2", simple_oper_cb, st, SR_SUBSCR_CTX_REUSE,
+            &subscr3);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_oper_get_items_subscribe(st->sess, "ops-ref", "/ops-ref:l3", simple_oper_cb, st, SR_SUBSCR_CTX_REUSE,
+            &subscr3);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to send the first notif for the last time, should succeed */
     ret = sr_event_notif_send(st->sess, "/ops:notif3", input, 2, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 8);
 
     /*
      * create the second notification
@@ -470,6 +508,7 @@ test_simple(void **state)
     /* try to send the second notif, expect an error */
     ret = sr_event_notif_send(st->sess, "/ops:cont/cont3/notif2", input, 1, 0, 1);
     assert_int_equal(ret, SR_ERR_LY);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 8);
     ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
@@ -482,7 +521,7 @@ test_simple(void **state)
     /* try to send the second notif again, should succeed */
     ret = sr_event_notif_send(st->sess, "/ops:cont/cont3/notif2", input, 1, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 14);
 
     sr_unsubscribe(subscr);
     sr_unsubscribe(subscr2);

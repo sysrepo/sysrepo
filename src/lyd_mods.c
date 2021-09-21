@@ -31,6 +31,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <libyang/plugins_types.h>
+
 #include "common.h"
 #include "common_types.h"
 #include "compat.h"
@@ -281,99 +283,167 @@ cleanup:
 }
 
 /**
- * @brief Add a dependency into internal sysrepo data.
+ * @brief Add a leafref dependency into internal sysrepo data.
  *
- * @param[in] sr_deps Internal sysrepo data dependencies to add to.
- * @param[in] dep_type Dependency type.
- * @param[in] mod_name Name of the module with the dependency.
- * @param[in] node Node causing the dependency.
+ * @param[in] target_mod Leafref target module.
+ * @param[in] exp Leafref parsed path.
+ * @param[in] prefixes Resolved prefixes in @p exp.
+ * @param[in,out] sr_deps Internal sysrepo data dependencies to add to.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_moddep_add(struct lyd_node *sr_deps, sr_dep_type_t dep_type, const char *mod_name, const struct lysc_node *node)
+sr_lydmods_moddep_add_lref(const char *target_mod, const struct lyxp_expr *exp, struct lysc_prefix *prefixes,
+        struct lyd_node *sr_deps)
 {
-    const struct lysc_node *data_child;
-    char *data_path = NULL, *expr = NULL;
-    struct lyd_node *sr_instid;
-    struct ly_set *set = NULL;
     sr_error_info_t *err_info = NULL;
-
-    assert(((dep_type == SR_DEP_REF) && mod_name) || ((dep_type == SR_DEP_INSTID) && node));
-
-    if (dep_type == SR_DEP_REF) {
-        if (asprintf(&expr, "module[.='%s']", mod_name) == -1) {
-            SR_ERRINFO_MEM(&err_info);
-            goto cleanup;
-        }
-    } else {
-        /* find the instance node(s) */
-        switch (node->nodetype) {
-        case LYS_LEAF:
-        case LYS_LEAFLIST:
-        case LYS_CONTAINER:
-        case LYS_LIST:
-        case LYS_ANYDATA:
-        case LYS_ANYXML:
-        case LYS_NOTIF:
-            /* data-instantiable nodes, we are fine */
-            break;
-        case LYS_CHOICE:
-        case LYS_CASE:
-            /* not data-instantiable nodes, we need to find all such nodes */
-            assert(dep_type != SR_DEP_INSTID);
-            data_child = NULL;
-            while ((data_child = lys_getnext(data_child, node, NULL, 0))) {
-                if ((err_info = sr_lydmods_moddep_add(sr_deps, dep_type, mod_name, data_child))) {
-                    goto cleanup;
-                }
-            }
-            return NULL;
-        default:
-            SR_ERRINFO_INT(&err_info);
-            goto cleanup;
-        }
-
-        /* create xpath of the node */
-        data_path = lysc_path(node, LYSC_PATH_DATA, NULL, 0);
-        if (!data_path || (asprintf(&expr, "inst-id[xpath='%s']", data_path) == -1)) {
-            SR_ERRINFO_MEM(&err_info);
-            goto cleanup;
-        }
-    }
-
-    /* check that there is not a duplicity */
-    if (lyd_find_xpath(sr_deps, expr, &set)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
-        goto cleanup;
-    } else if (set->count > 1) {
-        SR_ERRINFO_INT(&err_info);
-        goto cleanup;
-    } else if (set->count) {
-        /* already exists */
-        goto cleanup;
-    }
+    struct lyd_node *sr_lref;
+    const struct lysc_node_leaf *leaf_xpath = NULL;
+    struct lyd_value val = {0};
+    struct ly_err_item *err = NULL;
+    const char *path;
 
     /* create new dependency */
-    if (dep_type == SR_DEP_REF) {
-        if (lyd_new_term(sr_deps, NULL, "module", mod_name, 0, NULL)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
-            goto cleanup;
+    if (lyd_new_list(sr_deps, NULL, "lref", 0, &sr_lref)) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
+        goto cleanup;
+    }
+    if (lyd_new_term(sr_lref, NULL, "target-module", target_mod, 0, NULL)) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
+        goto cleanup;
+    }
+
+    /* get leaf of xpath1.0 type */
+    leaf_xpath = (struct lysc_node_leaf *)lys_find_path(LYD_CTX(sr_deps), NULL,
+            "/sysrepo:sysrepo-modules/module/rpc/path", 0);
+    assert(leaf_xpath);
+
+    /* get the path in canonical (JSON) format */
+    path = lyxp_get_expr(exp);
+    if (leaf_xpath->type->plugin->store(LYD_CTX(sr_deps), leaf_xpath->type, path, strlen(path), 0,
+            LY_VALUE_SCHEMA_RESOLVED, prefixes, LYD_HINT_DATA, NULL, &val, NULL, &err)) {
+        if (err) {
+            sr_errinfo_new(&err_info, SR_ERR_LY, "%s", err->msg);
         }
-    } else {
-        if (lyd_new_list(sr_deps, NULL, "inst-id", 0, &sr_instid, data_path)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
-            goto cleanup;
-        }
-        if (mod_name && lyd_new_term(sr_instid, NULL, "default-module", mod_name, 0, NULL)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
-            goto cleanup;
-        }
+        SR_ERRINFO_INT(&err_info);
+        memset(&val, 0, sizeof val);
+        goto cleanup;
+    }
+    path = lyd_value_get_canonical(LYD_CTX(sr_deps), &val);
+
+    if (lyd_new_term_canon(sr_lref, NULL, "target-path", path, 0, NULL)) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
+        goto cleanup;
     }
 
 cleanup:
-    ly_set_free(set, NULL);
-    free(expr);
+    ly_err_free(err);
+    if (leaf_xpath) {
+        leaf_xpath->type->plugin->free(LYD_CTX(sr_deps), &val);
+    }
+    return err_info;
+}
+
+/**
+ * @brief Add an instance-identifier dependency into internal sysrepo data.
+ *
+ * @param[in] node Instance-identifier schema node.
+ * @param[in] default_mod Instance-identifier default value target module, if any.
+ * @param[in,out] sr_deps Internal sysrepo data dependencies to add to.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_lydmods_moddep_add_instid(const struct lysc_node *node, const char *default_mod, struct lyd_node *sr_deps)
+{
+    sr_error_info_t *err_info = NULL;
+    char *data_path = NULL;
+    struct lyd_node *sr_instid;
+
+    /* create path of the node */
+    data_path = lysc_path(node, LYSC_PATH_DATA, NULL, 0);
+    SR_CHECK_MEM_GOTO(!data_path, err_info, cleanup);
+
+    /* create new dependency */
+    if (lyd_new_list(sr_deps, NULL, "inst-id", 0, &sr_instid)) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
+        goto cleanup;
+    }
+    if (lyd_new_term(sr_instid, NULL, "source-path", data_path, 0, NULL)) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
+        goto cleanup;
+    }
+    if (default_mod && lyd_new_term(sr_instid, NULL, "default-target-module", default_mod, 0, NULL)) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
+        goto cleanup;
+    }
+
+cleanup:
     free(data_path);
+    return err_info;
+}
+
+/**
+ * @brief Add an xpath (when or must) dependency into internal sysrepo data.
+ *
+ * @param[in] target_mods XPath expression target modules.
+ * @param[in] exp Parsed XPath.
+ * @param[in] prefixes Resolved prefixes in @p exp.
+ * @param[in,out] sr_deps Internal sysrepo data dependencies to add to.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_lydmods_moddep_add_xpath(const struct ly_set *target_mods, const struct lyxp_expr *exp, struct lysc_prefix *prefixes,
+        struct lyd_node *sr_deps)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *sr_xpath;
+    const struct lysc_node_leaf *leaf_xpath = NULL;
+    struct lyd_value val = {0};
+    struct ly_err_item *err = NULL;
+    const char *path;
+    const struct lys_module *ly_mod;
+    uint32_t i;
+
+    /* create new dependency */
+    if (lyd_new_list(sr_deps, NULL, "xpath", 0, &sr_xpath)) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
+        goto cleanup;
+    }
+    for (i = 0; i < target_mods->count; ++i) {
+        ly_mod = target_mods->objs[i];
+        if (lyd_new_term(sr_xpath, NULL, "target-module", ly_mod->name, 0, NULL)) {
+            sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
+            goto cleanup;
+        }
+    }
+
+    /* get leaf of xpath1.0 type */
+    leaf_xpath = (struct lysc_node_leaf *)lys_find_path(LYD_CTX(sr_deps), NULL,
+            "/sysrepo:sysrepo-modules/module/rpc/path", 0);
+    assert(leaf_xpath);
+
+    /* get the path in canonical (JSON) format */
+    path = lyxp_get_expr(exp);
+    if (leaf_xpath->type->plugin->store(LYD_CTX(sr_deps), leaf_xpath->type, path, strlen(path), 0,
+            LY_VALUE_SCHEMA_RESOLVED, prefixes, LYD_HINT_DATA, NULL, &val, NULL, &err)) {
+        if (err) {
+            sr_errinfo_new(&err_info, SR_ERR_LY, "%s", err->msg);
+        }
+        SR_ERRINFO_INT(&err_info);
+        memset(&val, 0, sizeof val);
+        goto cleanup;
+    }
+    path = lyd_value_get_canonical(LYD_CTX(sr_deps), &val);
+
+    if (lyd_new_term(sr_xpath, NULL, "expression", path, 0, NULL)) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
+        goto cleanup;
+    }
+
+cleanup:
+    ly_err_free(err);
+    if (leaf_xpath) {
+        leaf_xpath->type->plugin->free(LYD_CTX(sr_deps), &val);
+    }
     return err_info;
 }
 
@@ -415,54 +485,40 @@ sr_lydmods_moddep_expr_atom_is_foreign(const struct lysc_node *atom, const struc
 /**
  * @brief Collect dependencies from an XPath expression atoms.
  *
- * @param[in] ctx_node Expression context node.
+ * @param[in] op_node First parent operational node or top-level node.
+ * @param[in] exp Parsed XPath.
+ * @param[in] prefixes Resolved prefixes in @p exp.
  * @param[in] atoms Set of atoms (schema nodes).
- * @param[out] dep_mods Array of dependent modules.
- * @param[out] dep_mod_count Dependent module count.
+ * @param[in,out] sr_deps Internal sysrepo data dependencies to add to.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_moddep_atoms_get_dep_mods(const struct lysc_node *ctx_node, const struct ly_set *atoms,
-        struct lys_module ***dep_mods, size_t *dep_mod_count)
+sr_lydmods_moddep_xpath_atoms(const struct lysc_node *op_node, const struct lyxp_expr *exp, struct lysc_prefix *prefixes,
+        const struct ly_set *atoms, struct lyd_node *sr_deps)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lysc_node *top_node;
     struct lys_module *dep_mod;
-    size_t i, j;
-
-    /* find out if we are in an operation, otherwise simply find top-level node */
-    top_node = ctx_node;
-    while (!(top_node->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF)) && top_node->parent) {
-        top_node = top_node->parent;
-    }
+    struct ly_set target_mods = {0};
+    uint32_t i;
 
     /* find all top-level foreign nodes (augment nodes are not considered foreign now) */
     for (i = 0; i < atoms->count; ++i) {
-        if ((dep_mod = sr_lydmods_moddep_expr_atom_is_foreign(atoms->snodes[i], top_node))) {
-            /* check for duplicities */
-            for (j = 0; j < *dep_mod_count; ++j) {
-                if ((*dep_mods)[j] == dep_mod) {
-                    break;
-                }
-            }
-
-            /* add a new dependency module */
-            if (j == *dep_mod_count) {
-                *dep_mods = sr_realloc(*dep_mods, (*dep_mod_count + 1) * sizeof **dep_mods);
-                if (!*dep_mods) {
-                    *dep_mod_count = 0;
-                    SR_ERRINFO_MEM(&err_info);
-                    return err_info;
-                }
-
-                (*dep_mods)[*dep_mod_count] = dep_mod;
-                ++(*dep_mod_count);
+        if ((dep_mod = sr_lydmods_moddep_expr_atom_is_foreign(atoms->snodes[i], op_node))) {
+            if (ly_set_add(&target_mods, dep_mod, 0, NULL)) {
+                SR_ERRINFO_MEM(&err_info);
+                goto cleanup;
             }
         }
     }
 
-    /* success */
-    return NULL;
+    /* add new dependency */
+    if ((err_info = sr_lydmods_moddep_add_xpath(&target_mods, exp, prefixes, sr_deps))) {
+        goto cleanup;
+    }
+
+cleanup:
+    ly_set_erase(&target_mods, NULL);
+    return err_info;
 }
 
 /**
@@ -470,68 +526,66 @@ sr_lydmods_moddep_atoms_get_dep_mods(const struct lysc_node *ctx_node, const str
  *
  * @param[in] type Type to inspect.
  * @param[in] node Type node.
- * @param[in] sr_deps Internal sysrepo data dependencies to add to.
+ * @param[in] op_node First parent operational node or top-level node.
+ * @param[in,out] sr_deps Internal sysrepo data dependencies to add to.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_moddep_type(const struct lysc_type *type, const struct lysc_node *node, struct lyd_node *sr_deps)
+sr_lydmods_moddep_type(const struct lysc_type *type, const struct lysc_node *node, const struct lysc_node *op_node,
+        struct lyd_node *sr_deps)
 {
     sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod = NULL;
     const struct lysc_type_union *uni;
     const struct lysc_type_leafref *lref;
-    struct ly_set *atoms;
+    struct ly_set *atoms = NULL;
     LY_ARRAY_COUNT_TYPE u;
-    struct lys_module **dep_mods = NULL;
-    size_t dep_mod_count = 0;
+    uint32_t i;
 
     switch (type->basetype) {
     case LY_TYPE_INST:
         if ((node->nodetype == LYS_LEAF) && ((struct lysc_node_leaf *)node)->dflt) {
+            /* get target module of the default value */
             if (lys_find_lypath_atoms(((struct lysc_node_leaf *)node)->dflt->target, &atoms)) {
                 SR_ERRINFO_MEM(&err_info);
-                return err_info;
+                goto cleanup;
             }
-            err_info = sr_lydmods_moddep_atoms_get_dep_mods(node, atoms, &dep_mods, &dep_mod_count);
-            ly_set_free(atoms, NULL);
-            if (err_info) {
-                return err_info;
-            }
-            assert(dep_mod_count < 2);
+            assert(atoms->count);
+            ly_mod = sr_lydmods_moddep_expr_atom_is_foreign(atoms->snodes[0], op_node);
         }
 
-        err_info = sr_lydmods_moddep_add(sr_deps, SR_DEP_INSTID, (dep_mod_count ? dep_mods[0]->name : NULL), node);
-        free(dep_mods);
-        if (err_info) {
-            return err_info;
+        if ((err_info = sr_lydmods_moddep_add_instid(node, (ly_mod ? ly_mod->name : NULL), sr_deps))) {
+            goto cleanup;
         }
         break;
     case LY_TYPE_LEAFREF:
         lref = (struct lysc_type_leafref *)type;
         if (lys_find_expr_atoms(node, node->module, lref->path, lref->prefixes, 0, &atoms)) {
             sr_errinfo_new_ly(&err_info, node->module->ctx);
-            return err_info;
+            goto cleanup;
         }
-        err_info = sr_lydmods_moddep_atoms_get_dep_mods(node, atoms, &dep_mods, &dep_mod_count);
-        ly_set_free(atoms, NULL);
-        if (err_info) {
-            return err_info;
-        }
-        assert(dep_mod_count < 2);
+        assert(atoms->count);
 
-        if (dep_mod_count) {
-            /* a foregin module is referenced */
-            err_info = sr_lydmods_moddep_add(sr_deps, SR_DEP_REF, dep_mods[0]->name, NULL);
-            free(dep_mods);
-            if (err_info) {
-                return err_info;
+        for (i = 0; i < atoms->count; ++i) {
+            ly_mod = sr_lydmods_moddep_expr_atom_is_foreign(atoms->snodes[i], op_node);
+            if (!ly_mod) {
+                continue;
             }
+
+            /* a foregin module is referenced */
+            if ((err_info = sr_lydmods_moddep_add_lref(ly_mod->name, lref->path, lref->prefixes, sr_deps))) {
+                goto cleanup;
+            }
+
+            /* only a single module can be referenced */
+            break;
         }
         break;
     case LY_TYPE_UNION:
         uni = (struct lysc_type_union *)type;
         LY_ARRAY_FOR(uni->types, u) {
-            if ((err_info = sr_lydmods_moddep_type(uni->types[u], node, sr_deps))) {
-                return err_info;
+            if ((err_info = sr_lydmods_moddep_type(uni->types[u], node, op_node, sr_deps))) {
+                goto cleanup;
             }
         }
         break;
@@ -540,7 +594,9 @@ sr_lydmods_moddep_type(const struct lysc_type *type, const struct lysc_node *nod
         break;
     }
 
-    return NULL;
+cleanup:
+    ly_set_free(atoms, NULL);
+    return err_info;
 }
 
 /**
@@ -556,12 +612,11 @@ static LY_ERR
 sr_lydmods_add_all_deps_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_continue)
 {
     sr_error_info_t *err_info = NULL;
-    struct lys_module **dep_mods = NULL;
-    size_t dep_mod_count = 0;
     struct ly_set *atoms;
     struct lysc_type *type = NULL;
     struct lysc_when **when = NULL;
     struct lysc_must *musts = NULL;
+    const struct lysc_node *op_node;
     LY_ARRAY_COUNT_TYPE u;
     int atom_opts;
     struct sr_lydmods_deps_dfs_arg *arg = data;
@@ -592,9 +647,15 @@ sr_lydmods_add_all_deps_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_
         }
     }
 
+    /* find out if we are in an operation, otherwise simply find top-level node */
+    op_node = node;
+    while (!(op_node->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF)) && op_node->parent) {
+        op_node = op_node->parent;
+    }
+
     /* collect the dependencies */
     if (type) {
-        if ((err_info = sr_lydmods_moddep_type(type, node, arg->sr_deps))) {
+        if ((err_info = sr_lydmods_moddep_type(type, node, op_node, arg->sr_deps))) {
             goto cleanup;
         }
     }
@@ -603,7 +664,7 @@ sr_lydmods_add_all_deps_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_
             sr_errinfo_new_ly(&err_info, node->module->ctx);
             goto cleanup;
         }
-        err_info = sr_lydmods_moddep_atoms_get_dep_mods(node, atoms, &dep_mods, &dep_mod_count);
+        err_info = sr_lydmods_moddep_xpath_atoms(op_node, when[u]->cond, when[u]->prefixes, atoms, arg->sr_deps);
         ly_set_free(atoms, NULL);
         if (err_info) {
             goto cleanup;
@@ -614,22 +675,14 @@ sr_lydmods_add_all_deps_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_
             sr_errinfo_new_ly(&err_info, node->module->ctx);
             goto cleanup;
         }
-        err_info = sr_lydmods_moddep_atoms_get_dep_mods(node, atoms, &dep_mods, &dep_mod_count);
+        err_info = sr_lydmods_moddep_xpath_atoms(op_node, musts[u].cond, musts[u].prefixes, atoms, arg->sr_deps);
         ly_set_free(atoms, NULL);
         if (err_info) {
             goto cleanup;
         }
     }
 
-    /* add those collected from when and must */
-    for (u = 0; u < dep_mod_count; ++u) {
-        if ((err_info = sr_lydmods_moddep_add(arg->sr_deps, SR_DEP_REF, dep_mods[u]->name, NULL))) {
-            goto cleanup;
-        }
-    }
-
 cleanup:
-    free(dep_mods);
     if (err_info) {
         arg->err_info = err_info;
         return LY_EOTHER;
@@ -1690,7 +1743,7 @@ sr_lydmods_add_all(struct lyd_node *sr_mod, const struct lys_module *ly_mod)
     }
 
     /* add inverse data deps */
-    SR_CHECK_LY_GOTO(lyd_find_xpath(sr_mod, "deps/module", &set), ly_mod->ctx, err_info, cleanup);
+    SR_CHECK_LY_GOTO(lyd_find_xpath(sr_mod, "deps/*/target-module", &set), ly_mod->ctx, err_info, cleanup);
 
     for (i = 0; i < set->count; ++i) {
         if (asprintf(&xpath, "module[name='%s']", lyd_get_value(set->dnodes[i])) == -1) {

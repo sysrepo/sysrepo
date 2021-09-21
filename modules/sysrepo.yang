@@ -25,7 +25,8 @@ module sysrepo {
 
     revision "2021-09-07" {
         description
-            "Add module datastore plugins and increased replay-support type precision.";
+            "Added module datastore plugins, increased replay-support type precision,
+             and added details to dependencies.";
     }
 
     revision "2021-03-31" {
@@ -154,25 +155,58 @@ module sysrepo {
     }
 
     grouping deps-grp {
-        leaf-list module {
-            type module-ref;
+        list lref {
             description
-                "Module that is being dependent on.";
+                "Dependency of a leafref node.";
+
+            leaf target-module {
+                type module-ref;
+                mandatory true;
+                description
+                    "Foreign module with the leafref target.";
+            }
+
+            leaf target-path {
+                type yang:xpath1.0;
+                mandatory true;
+                description
+                    "Path identifying the leafref target node.";
+            }
         }
 
         list inst-id {
-            key "path";
+            description
+                "Dependency of an instance-identifier node.";
 
-            leaf path {
+            leaf source-path {
                 type yang:xpath1.0;
+                mandatory true;
                 description
-                    "Path identifying the node with the dependency.";
+                    "Path identifying the instance-identifier node.";
             }
 
-            leaf default-module {
+            leaf default-target-module {
                 type module-ref;
                 description
-                    "Module dependency in case the default value is being used.";
+                    "Foreign module with the instance-identifier target of the default value.";
+            }
+        }
+
+        list xpath {
+            description
+                "Dependency of an XPath expression - must or when statement.";
+
+            leaf-list target-module {
+                type module-ref;
+                description
+                    "Foreign modules with the data needed for evaluation of the XPath.";
+            }
+
+            leaf expression {
+                type yang:xpath1.0;
+                mandatory true;
+                description
+                    "XPath expression of the dependency - must or when statement argument.";
             }
         }
     }
