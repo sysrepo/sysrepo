@@ -475,7 +475,7 @@ test_simple(void **state)
     /* try to send the first notif again, still fails */
     ret = sr_event_notif_send(st->sess, "/ops:notif3", input, 2, 0, 1);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
     ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
@@ -495,7 +495,7 @@ test_simple(void **state)
     /* try to send the first notif for the last time, should succeed */
     ret = sr_event_notif_send(st->sess, "/ops:notif3", input, 2, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 8);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
     /*
      * create the second notification
@@ -508,7 +508,7 @@ test_simple(void **state)
     /* try to send the second notif, expect an error */
     ret = sr_event_notif_send(st->sess, "/ops:cont/cont3/notif2", input, 1, 0, 1);
     assert_int_equal(ret, SR_ERR_LY);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 8);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
     ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
@@ -521,7 +521,7 @@ test_simple(void **state)
     /* try to send the second notif again, should succeed */
     ret = sr_event_notif_send(st->sess, "/ops:cont/cont3/notif2", input, 1, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 14);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 7);
 
     sr_unsubscribe(subscr);
     sr_unsubscribe(subscr2);

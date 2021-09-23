@@ -57,6 +57,49 @@ struct sr_mod_info_s {
 };
 
 /**
+ * @brief Mod info add structure, used for storing information about modules to be added into mod info.
+ */
+struct sr_mod_info_add_s {
+    struct sr_mod_info_add_mod_s {
+        const struct lys_module *ly_mod;    /**< libyang module. */
+        const char **xpaths;                /**< XPaths selecting the required data from the module, all data if NULL. */
+        uint32_t xpath_count;               /**< Count of XPaths. */
+    } *mods;                                /**< Array of modules to be added. */
+    uint32_t mod_count;                     /**< Modules count. */
+};
+
+/**
+ * @brief Add a new module and/or XPath into mod_info_add structure.
+ *
+ * If the module is already in @p mod_info_add only an XPath is added to it, if any.
+ *
+ * @param[in] ly_mod Module to be added.
+ * @param[in] xpath Optional XPath selecting the required data of @p ly_mod.
+ * @param[in] no_dup_check Skip duplicate module check and assume it was not yet added.
+ * @param[in,out] mod_info_add Structure to add the module to.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_modinfoadd_add(const struct lys_module *ly_mod, const char *xpath, int no_dup_check,
+        struct sr_mod_info_add_s *mod_info_add);
+
+/**
+ * @brief Erase mod_info_add structure.
+ *
+ * @param[in] mod_info_add Structure to erase.
+ */
+void sr_modinfoadd_erase(struct sr_mod_info_add_s *mod_info_add);
+
+/**
+ * @brief Add all modules defining some data into mod_info_add.
+ *
+ * @param[in] ly_ctx libyang context with all the modules.
+ * @param[in] state_data Whether to add modules with state data only or not.
+ * @param[in,out] mod_info_add Mod_info_add to add to.
+ */
+sr_error_info_t *sr_modinfoadd_add_all_modules_with_data(const struct ly_ctx *ly_ctx, int state_data,
+        struct sr_mod_info_add_s *mod_info_add);
+
+/**
  * @brief Check permissions of all the modules in a mod info.
  *
  * @param[in] mod_info Mod info to use.
@@ -151,7 +194,7 @@ sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache,
  * @brief Add new modules and their dependnecies into mod_info, check their permissions, lock, and load their data.
  *
  * @param[in,out] mod_info Mod info to use.
- * @param[in] mod_set Module set with modules to add to @p mod_info.
+ * @param[in] mod_info_add Mod_info_add to read modules to add to from.
  * @param[in] mod_deps Dependency modules to add for each added module. 0 for adding no dependency modules.
  * @param[in] mod_lock Mode of module lock.
  * @param[in] mi_opts Mod info options modifying the default behavior but some SR_MI_PERM_* must always be used.
@@ -162,8 +205,8 @@ sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache,
  * @param[in] timeout_ms Timeout for operational callbacks.
  * @param[in] get_opts Get operational data options, ignored if getting only ::SR_DS_OPERATIONAL data (edit).
  */
-sr_error_info_t *sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const struct ly_set *mod_set, int mod_deps,
-        sr_lock_mode_t mod_lock, int mi_opts, uint32_t sid, const char *orig_name, const void *orig_data,
+sr_error_info_t *sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const struct sr_mod_info_add_s *mod_info_add,
+        int mod_deps, sr_lock_mode_t mod_lock, int mi_opts, uint32_t sid, const char *orig_name, const void *orig_data,
         const char *request_xpath, uint32_t timeout_ms, sr_get_oper_options_t get_opts);
 
 /**
