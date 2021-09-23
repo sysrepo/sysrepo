@@ -39,6 +39,94 @@
 #include "shm.h"
 
 sr_error_info_t *
+sr_modinfoadd_add(const struct lys_module *ly_mod, const char *xpath, int no_dup_check,
+        struct sr_mod_info_add_s *mod_info_add)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_mod_info_add_mod_s *mod = NULL;
+    uint32_t i;
+    void *mem;
+
+    if (!no_dup_check) {
+        /* try to find the module */
+        for (i = 0; i < mod_info_add->mod_count; ++i) {
+            if (mod_info_add->mods[i].ly_mod == ly_mod) {
+                mod = &mod_info_add->mods[i];
+                break;
+            }
+        }
+    }
+
+    if (!mod) {
+        /* add new mod */
+        mem = realloc(mod_info_add->mods, (mod_info_add->mod_count + 1) * sizeof *mod_info_add->mods);
+        SR_CHECK_MEM_RET(!mem, err_info);
+        mod_info_add->mods = mem;
+
+        mod = &mod_info_add->mods[mod_info_add->mod_count];
+        mod->ly_mod = ly_mod;
+        mod->xpaths = NULL;
+        mod->xpath_count = 0;
+        ++mod_info_add->mod_count;
+    }
+
+    if (xpath) {
+        /* add xpath for mod */
+        mem = realloc(mod->xpaths, (mod->xpath_count + 1) * sizeof *mod->xpaths);
+        SR_CHECK_MEM_RET(!mem, err_info);
+        mod->xpaths = mem;
+
+        mod->xpaths[mod->xpath_count] = xpath;
+        ++mod->xpath_count;
+    }
+
+    return NULL;
+}
+
+void
+sr_modinfoadd_erase(struct sr_mod_info_add_s *mod_info_add)
+{
+    free(mod_info_add->mods);
+    memset(mod_info_add, 0, sizeof *mod_info_add);
+}
+
+sr_error_info_t *
+sr_modinfoadd_add_all_modules_with_data(const struct ly_ctx *ly_ctx, int state_data,
+        struct sr_mod_info_add_s *mod_info_add)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+    const struct lysc_node *root;
+    uint32_t i = 0;
+
+    while ((ly_mod = ly_ctx_get_module_iter(ly_ctx, &i))) {
+        if (!ly_mod->implemented) {
+            continue;
+        } else if (!strcmp(ly_mod->name, "sysrepo")) {
+            /* sysrepo module cannot be locked because it is not in SHM with other modules */
+            continue;
+        } else if (!strcmp(ly_mod->name, "ietf-netconf")) {
+            /* ietf-netconf defines data but only internal that should be ignored */
+            continue;
+        }
+
+        LY_LIST_FOR(ly_mod->compiled->data, root) {
+            if (!(root->nodetype & (LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA | LYS_CHOICE))) {
+                continue;
+            }
+
+            if ((root->flags & LYS_CONFIG_W) || (state_data && (root->flags & LYS_CONFIG_R))) {
+                if ((err_info = sr_modinfoadd_add(ly_mod, NULL, 1, mod_info_add))) {
+                    return err_info;
+                }
+            }
+        }
+    }
+
+    return err_info;
+}
+
+sr_error_info_t *
 sr_modinfo_perm_check(struct sr_mod_info_s *mod_info, int wr, int strict)
 {
     sr_error_info_t *err_info = NULL;
@@ -1714,15 +1802,13 @@ sr_modinfo_add_mod(const struct lys_module *ly_mod, uint32_t mod_type, int mod_r
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
-    sr_dep_t *shm_deps;
     off_t *shm_inv_deps;
-    struct ly_set mod_set = {0};
     struct srplg_ds_s *ds_plg;
     uint32_t i, cur_i;
     int prev_mod_type = 0;
 
     assert((mod_type == MOD_INFO_REQ) || (mod_type == MOD_INFO_DEP) || (mod_type == MOD_INFO_INV_DEP));
-    assert(!mod_req_deps || (mod_req_deps == MOD_INFO_DEP) || (mod_req_deps == (MOD_INFO_DEP | MOD_INFO_INV_DEP)));
+    assert(!mod_req_deps || (mod_req_deps == MOD_INFO_INV_DEP));
 
     /* check that it is not already added */
     for (i = 0; i < mod_info->mod_count; ++i) {
@@ -1761,31 +1847,6 @@ sr_modinfo_add_mod(const struct lys_module *ly_mod, uint32_t mod_type, int mod_r
         mod_info->mods[cur_i].state = mod_type;
         mod_info->mods[cur_i].ly_mod = ly_mod;
         mod_info->mods[cur_i].ds_plg = ds_plg;
-    }
-
-    if (!(mod_req_deps & MOD_INFO_DEP) || (mod_info->mods[cur_i].state < MOD_INFO_INV_DEP)) {
-        /* we do not need recursive dependencies of this module */
-        return NULL;
-    }
-
-    if (prev_mod_type < MOD_INFO_INV_DEP) {
-        /* add all its dependencies, recursively */
-        shm_deps = (sr_dep_t *)(mod_info->conn->main_shm.addr + shm_mod->deps);
-        if ((err_info = sr_shmmod_collect_deps(mod_info->conn->main_shm.addr, ly_mod->ctx, shm_deps, shm_mod->dep_count,
-                &mod_set))) {
-            return err_info;
-        }
-
-        for (i = 0; i < mod_set.count; ++i) {
-            /* add dependency */
-            if ((err_info = sr_modinfo_add_mod(mod_set.objs[i], MOD_INFO_DEP, mod_req_deps, mod_info))) {
-                break;
-            }
-        }
-        ly_set_erase(&mod_set, NULL);
-        if (err_info) {
-            return err_info;
-        }
     }
 
     if (!(mod_req_deps & MOD_INFO_INV_DEP) || (mod_info->mods[cur_i].state < MOD_INFO_REQ)) {
@@ -1884,7 +1945,7 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig
 }
 
 sr_error_info_t *
-sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const struct ly_set *mod_set, int mod_deps,
+sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const struct sr_mod_info_add_s *mod_info_add, int mod_deps,
         sr_lock_mode_t mod_lock, int mi_opts, uint32_t sid, const char *orig_name, const void *orig_data,
         const char *request_xpath, uint32_t timeout_ms, sr_get_oper_options_t get_opts)
 {
@@ -1895,7 +1956,7 @@ sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const struct ly_set *mod_
 
     assert(mi_opts & (SR_MI_PERM_NO | SR_MI_PERM_READ | SR_MI_PERM_WRITE));
 
-    if (!mod_set->count) {
+    if (!mod_info_add->mod_count) {
         /* nothing to add */
         return NULL;
     }
@@ -1907,10 +1968,10 @@ sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const struct ly_set *mod_
     }
 
     prev_mod_count = mod_info->mod_count;
-    if (mod_set->count) {
+    if (mod_info_add->mod_count) {
         /* add all the new modules into mod_info */
-        for (i = 0; i < mod_set->count; ++i) {
-            if ((err_info = sr_modinfo_add_mod(mod_set->objs[i], mod_type, mod_deps, mod_info))) {
+        for (i = 0; i < mod_info_add->mod_count; ++i) {
+            if ((err_info = sr_modinfo_add_mod(mod_info_add->mods[i].ly_mod, mod_type, mod_deps, mod_info))) {
                 return err_info;
             }
         }

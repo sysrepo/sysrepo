@@ -20,6 +20,7 @@
 #include "shm_types.h"
 #include "sysrepo_types.h"
 
+struct sr_mod_info_add_s;
 struct sr_mod_info_s;
 
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
@@ -508,10 +509,10 @@ sr_error_info_t *sr_shmext_rpc_sub_suspended(sr_conn_ctx_t *conn, const char *pa
  * @brief Collect required modules found in an edit.
  *
  * @param[in] edit Edit to be applied.
- * @param[in,out] mod_set Set of modules to add to.
+ * @param[in,out] mod_info_add Mod_info_add to add to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_edit(const struct lyd_node *edit, struct ly_set *mod_set);
+sr_error_info_t *sr_shmmod_collect_edit(const struct lyd_node *edit, struct sr_mod_info_add_s *mod_info_add);
 
 /**
  * @brief Collect required modules for evaluating XPath and getting selected data.
@@ -519,77 +520,62 @@ sr_error_info_t *sr_shmmod_collect_edit(const struct lyd_node *edit, struct ly_s
  * @param[in] ly_ctx libyang context.
  * @param[in] xpath XPath to be evaluated.
  * @param[in] ds Target datastore where the @p xpath will be evaluated.
- * @param[in,out] mod_set Set of modules to add to.
+ * @param[in,out] mod_info_add Mod_info_add to add to.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds,
-        struct ly_set *mod_set);
+        struct sr_mod_info_add_s *mod_info_add);
 
 /**
- * @brief Collect all modules from a dependency array.
- *
- * @param[in] main_shm_addr Main SHM address.
- * @param[in] ly_ctx libyang context.
- * @param[in] shm_deps Array of SHM dependencies.
- * @param[in] shm_dep_count Number of @p shm_deps.
- * @param[in,out] mod_set Set with all the dependent modules.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_shmmod_collect_deps(char *main_shm_addr, const struct ly_ctx *ly_ctx, sr_dep_t *shm_deps,
-        uint16_t shm_dep_count, struct ly_set *mod_set);
-
-/**
- * @brief Collect required modules for an RPC/action validation.
+ * @brief Get SHM dependencies of an RPC/action.
  *
  * @param[in] main_shm Main SHM.
- * @param[in] ly_ctx libyang context.
  * @param[in] path Path identifying the RPC/action.
  * @param[in] output Whether this is the RPC/action output or input.
- * @param[in,out] mod_set Set of modules to add to.
  * @param[out] shm_deps Main SHM dependencies.
  * @param[out] shm_dep_count Dependency count.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_rpc_deps(sr_main_shm_t *main_shm, const struct ly_ctx *ly_ctx, const char *path,
-        int output, struct ly_set *mod_set, sr_dep_t **shm_deps, uint16_t *shm_dep_count);
+sr_error_info_t *sr_shmmod_get_rpc_deps(sr_main_shm_t *main_shm, const char *path, int output, sr_dep_t **shm_deps,
+        uint16_t *shm_dep_count);
 
 /**
- * @brief Collect required modules for a notification validation.
+ * @brief Get SHM dependencies of a notification.
  *
  * @param[in] main_shm Main SHM.
  * @param[in] notif_mod Module of the notification.
  * @param[in] path Path identifying the notification.
- * @param[in,out] mod_set Set of modules to add to.
  * @param[out] shm_deps Main SHM dependencies.
  * @param[out] shm_dep_count Dependency count.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_notif_deps(sr_main_shm_t *main_shm, const struct lys_module *notif_mod, const char *path,
-        struct ly_set *mod_set, sr_dep_t **shm_deps, uint16_t *shm_dep_count);
+sr_error_info_t *sr_shmmod_get_notif_deps(sr_main_shm_t *main_shm, const struct lys_module *notif_mod, const char *path,
+        sr_dep_t **shm_deps, uint16_t *shm_dep_count);
 
 /**
- * @brief Collect required modules of instance-identifiers found in data.
+ * @brief Collect required module dependencies from a SHM dependency array.
  *
  * @param[in] main_shm Main SHM.
- * @param[in] shm_deps SHM dependencies of relevant instance-identifiers.
- * @param[in] shm_dep_count SHM dependency count.
+ * @param[in] shm_deps Array of SHM dependencies.
+ * @param[in] shm_dep_count Number of @p shm_deps.
  * @param[in] ly_ctx libyang context.
  * @param[in] data Data to look for instance-identifiers in.
- * @param[in,out] mod_set Set of modules to add to.
+ * @param[in,out] mod_info_add Mod_info_add to add to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_instid_deps_data(sr_main_shm_t *main_shm, sr_dep_t *shm_deps, uint16_t shm_dep_count,
-        struct ly_ctx *ly_ctx, const struct lyd_node *data, struct ly_set *mod_set);
+sr_error_info_t *sr_shmmod_collect_deps(sr_main_shm_t *main_shm, sr_dep_t *shm_deps, uint16_t shm_dep_count,
+        struct ly_ctx *ly_ctx, const struct lyd_node *data, struct sr_mod_info_add_s *mod_info_add);
 
 /**
- * @brief Collect required modules of instance-identifiers found in
- * (MOD_INFO_REQ & MOD_INFO_CHANGED) | MOD_INFO_INV_DEP modules in mod info. Other modules will not be validated.
+ * @brief Collect required modules of (MOD_INFO_REQ & MOD_INFO_CHANGED) | MOD_INFO_INV_DEP modules in mod info.
+ * Other modules will not be validated.
  *
  * @param[in] mod_info Mod info with the modules and data.
- * @param[in,out] mod_set Set of modules to add to.
+ * @param[in,out] mod_info_add Mod_info_add to add to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_instid_deps_modinfo(const struct sr_mod_info_s *mod_info, struct ly_set *mod_set);
+sr_error_info_t *sr_shmmod_collect_deps_modinfo(const struct sr_mod_info_s *mod_info,
+        struct sr_mod_info_add_s *mod_info_add);
 
 /**
  * @brief Information structure for the SHM module recovery callback.

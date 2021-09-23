@@ -1230,15 +1230,6 @@ sr_error_info_t *sr_ly_find_last_parent(struct lyd_node **parent, int nodetype);
 sr_error_info_t *sr_lyd_print_lyb(const struct lyd_node *data, char **str, uint32_t *len);
 
 /**
- * @brief Add all modules defining some data into a set.
- *
- * @param[in,out] mod_set Set to add modules with data into.
- * @param[in] ly_ctx libyang context with all the modules.
- * @param[in] state_data Whether to add modules with state data only or not.
- */
-void sr_ly_set_add_all_modules_with_data(struct ly_set *mod_set, const struct ly_ctx *ly_ctx, int state_data);
-
-/**
  * @brief Unlink data of a specific module from a data tree.
  *
  * @param[in,out] data Data tree.
