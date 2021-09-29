@@ -403,6 +403,23 @@ simple_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_na
     (void)request_id;
     (void)private_data;
 
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
+    case 0:
+        assert_string_equal(request_xpath, "/ops:cont/list1[k='key']/cont2");
+        break;
+    case 1:
+        assert_string_equal(request_xpath, "/ops:cont/list1[k='key']/cont2");
+        break;
+    case 2:
+        assert_string_equal(request_xpath, "/ops-ref:l1");
+        break;
+    case 4:
+        assert_string_equal(request_xpath, "/ops-ref:l2");
+        break;
+    default:
+        fail();
+    }
+
     if (!strcmp(module_name, "ops")) {
         if (!strcmp(xpath, "/ops:cont/list1")) {
             assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "list1[k='key']", NULL, 0, NULL));
@@ -521,7 +538,7 @@ test_simple(void **state)
     /* try to send the second notif again, should succeed */
     ret = sr_event_notif_send(st->sess, "/ops:cont/cont3/notif2", input, 1, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 7);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 6);
 
     sr_unsubscribe(subscr);
     sr_unsubscribe(subscr2);

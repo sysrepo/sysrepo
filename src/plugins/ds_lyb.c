@@ -38,7 +38,8 @@
 
 #define srpds_name "LYB DS file"  /**< plugin name */
 
-static int srpds_lyb_load(const struct lys_module *mod, sr_datastore_t ds, struct lyd_node **mod_data);
+static int srpds_lyb_load(const struct lys_module *mod, sr_datastore_t ds, const char **xpaths, uint32_t xpath_count,
+        struct lyd_node **mod_data);
 
 static int
 srpds_lyb_store_(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *mod_data, mode_t mode,
@@ -215,7 +216,7 @@ srpds_lyb_recover(const struct lys_module *mod, sr_datastore_t ds)
     }
 
     /* check whether the file is valid */
-    if (!srpds_lyb_load(mod, ds, &mod_data)) {
+    if (!srpds_lyb_load(mod, ds, NULL, 0, &mod_data)) {
         /* data are valid, nothing to do */
         goto cleanup;
     }
@@ -270,7 +271,8 @@ cleanup:
 }
 
 static int
-srpds_lyb_load(const struct lys_module *mod, sr_datastore_t ds, struct lyd_node **mod_data)
+srpds_lyb_load(const struct lys_module *mod, sr_datastore_t ds, const char **UNUSED(xpaths), uint32_t UNUSED(xpath_count),
+        struct lyd_node **mod_data)
 {
     int rc = SR_ERR_OK, fd = -1;
     char *path = NULL;

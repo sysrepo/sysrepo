@@ -1244,11 +1244,13 @@ struct lyd_node *sr_module_data_unlink(struct lyd_node **data, const struct lys_
  * @param[in] ly_mod libyang module.
  * @param[in] ds_plg Datastore plugin of @p ly_mod.
  * @param[in] ds Datastore of the data.
+ * @param[in] xpaths Array of XPaths selecting the required data, NULL for all module data.
+ * @param[in] xpath_count Number of @p xpaths.
  * @param[in,out] data Data tree to append to.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, const struct srplg_ds_s *ds_plg,
-        sr_datastore_t ds, struct lyd_node **data);
+        sr_datastore_t ds, const char **xpaths, uint32_t xpath_count, struct lyd_node **data);
 
 /**
  * @brief Load operational data (edit) loaded from a SHM for a specific module.

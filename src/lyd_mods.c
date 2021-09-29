@@ -88,7 +88,7 @@ sr_lydmods_parse(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     assert(ly_mod);
 
     /* load the data using the internal LYB plugin */
-    if ((rc = srpds_lyb.load_cb(ly_mod, SR_DS_STARTUP, &sr_mods))) {
+    if ((rc = srpds_lyb.load_cb(ly_mod, SR_DS_STARTUP, NULL, 0, &sr_mods))) {
         sr_errinfo_new(&err_info, rc, "Loading \"sysrepo\" data failed.");
         goto cleanup;
     }
@@ -1234,7 +1234,7 @@ sr_append_startup_and_running_data(sr_conn_ctx_t *conn, const struct ly_ctx *ctx
         }
 
         /* append startup data */
-        if ((err_info = sr_module_file_data_append(ly_mod, ds_plg, SR_DS_STARTUP, start_data))) {
+        if ((err_info = sr_module_file_data_append(ly_mod, ds_plg, SR_DS_STARTUP, NULL, 0, start_data))) {
             return err_info;
         }
 
@@ -1244,7 +1244,7 @@ sr_append_startup_and_running_data(sr_conn_ctx_t *conn, const struct ly_ctx *ctx
         }
 
         /* append running data */
-        if ((err_info = sr_module_file_data_append(ly_mod, ds_plg, SR_DS_RUNNING, run_data))) {
+        if ((err_info = sr_module_file_data_append(ly_mod, ds_plg, SR_DS_RUNNING, NULL, 0, run_data))) {
             return err_info;
         }
     }
