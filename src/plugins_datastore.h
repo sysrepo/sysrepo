@@ -78,11 +78,14 @@ typedef void (*srds_recover)(const struct lys_module *mod, sr_datastore_t ds);
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
+ * @param[in] xpaths Array of XPaths selecting the required data, NULL if all the module data are needed.
+ * @param[in] xpath_count Number of @p xpaths.
  * @param[out] mod_data Loaded module data.
  * @return ::SR_ERR_OK on success;
  * @return Sysrepo error value on error.
  */
-typedef int (*srds_load)(const struct lys_module *mod, sr_datastore_t ds, struct lyd_node **mod_data);
+typedef int (*srds_load)(const struct lys_module *mod, sr_datastore_t ds, const char **xpaths, uint32_t xpath_count,
+        struct lyd_node **mod_data);
 
 /**
  * @brief Copy data of a module from source datastore to the target datastore.

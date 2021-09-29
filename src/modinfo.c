@@ -719,7 +719,6 @@ cleanup:
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
  * @param[in] conn Connection to use.
- * @param[in] request_xpath XPath of the data request.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
  * @param[in] opts Get oper data options.
  * @param[in,out] data Operational data tree.
@@ -727,13 +726,14 @@ cleanup:
  */
 static sr_error_info_t *
 sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name, const void *orig_data, sr_conn_ctx_t *conn,
-        const char *request_xpath, uint32_t timeout_ms, sr_get_oper_options_t opts, struct lyd_node **data)
+        uint32_t timeout_ms, sr_get_oper_options_t opts, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_oper_sub_t *shm_sub;
-    const char *sub_xpath;
+    const char *sub_xpath, *request_xpath;
     char *parent_xpath = NULL;
     uint32_t i, j;
+    int required;
     struct ly_set *set = NULL;
     struct lyd_node *edit = NULL, *oper_data;
 
@@ -787,12 +787,36 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
             continue;
         }
 
-        /* useless to retrieve configuration data, state data, or filtered out data */
+        /* useless to retrieve configuration data, state data */
         if (((shm_sub->sub_type == SR_OPER_SUB_CONFIG) && (opts & SR_OPER_NO_CONFIG)) ||
-                ((shm_sub->sub_type == SR_OPER_SUB_STATE) && (opts & SR_OPER_NO_STATE)) ||
-                !sr_xpath_oper_data_required(request_xpath, sub_xpath)) {
+                ((shm_sub->sub_type == SR_OPER_SUB_STATE) && (opts & SR_OPER_NO_STATE))) {
             ++i;
             continue;
+        }
+
+        request_xpath = NULL;
+        if (mod->xpath_count) {
+            /* check whether these data are even required */
+            required = 0;
+            for (j = 0; j < mod->xpath_count; ++j) {
+                if (sr_xpath_oper_data_required(mod->xpaths[j], sub_xpath)) {
+                    required = 1;
+                    if (!request_xpath) {
+                        /* these data are required based on this xpath, provide it for the callbacks for
+                         * possible optimizations */
+                        request_xpath = mod->xpaths[j];
+                    } else {
+                        /* these data are required based on several requested xpaths, do not provide any xpath for
+                         * the callbacks */
+                        request_xpath = NULL;
+                        break;
+                    }
+                }
+            }
+            if (!required) {
+                ++i;
+                continue;
+            }
         }
 
         /* remove any present data */
@@ -1082,7 +1106,7 @@ sr_modcache_module_running_update(sr_conn_ctx_t *conn, struct sr_mod_info_mod_s 
             lyd_insert_sibling(mod_cache->data, mod_data, &mod_cache->data);
         } else {
             /* we need to load current data from persistent storage */
-            if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_plg, SR_DS_RUNNING, &mod_cache->data))) {
+            if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_plg, SR_DS_RUNNING, NULL, 0, &mod_cache->data))) {
                 goto cleanup;
             }
         }
@@ -1681,14 +1705,13 @@ cleanup:
  * @param[in] load_diff Whether to load stored operational diff of the module.
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
- * @param[in] request_xpath XPath of the data request.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
  * @param[in] opts Get oper data options.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_mod_s *mod, const char *orig_name,
-        const void *orig_data, const char *request_xpath, uint32_t timeout_ms, sr_get_oper_options_t opts)
+        const void *orig_data, uint32_t timeout_ms, sr_get_oper_options_t opts)
 {
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn = mod_info->conn;
@@ -1738,7 +1761,8 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             /* ...and they are not cached */
 
             /* get current persistent data (ds2 is running when getting operational data) */
-            if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_plg, mod_info->ds2, &mod_info->data))) {
+            if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_plg, mod_info->ds2, mod->xpaths,
+                    mod->xpath_count, &mod_info->data))) {
                 return err_info;
             }
 
@@ -1768,7 +1792,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             }
 
             /* append any operational data provided by clients */
-            if ((err_info = sr_module_oper_data_update(mod, orig_name, orig_data, conn, request_xpath, timeout_ms, opts,
+            if ((err_info = sr_module_oper_data_update(mod, orig_name, orig_data, conn, timeout_ms, opts,
                     &mod_info->data))) {
                 return err_info;
             }
@@ -1914,7 +1938,7 @@ sr_modinfo_qsort_cmp(const void *ptr1, const void *ptr2)
 
 sr_error_info_t *
 sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig_name, const void *orig_data,
-        const char *request_xpath, uint32_t timeout_ms, sr_get_oper_options_t opts)
+        uint32_t timeout_ms, sr_get_oper_options_t opts)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
@@ -2040,8 +2064,8 @@ sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mod
 
     if (!(mi_opts & SR_MI_DATA_NO)) {
         /* load all modules data */
-        if ((err_info = sr_modinfo_data_load(mod_info, mi_opts & SR_MI_DATA_CACHE, orig_name, orig_data, request_xpath,
-                timeout_ms, get_opts))) {
+        if ((err_info = sr_modinfo_data_load(mod_info, mi_opts & SR_MI_DATA_CACHE, orig_name, orig_data, timeout_ms,
+                get_opts))) {
             return err_info;
         }
     }

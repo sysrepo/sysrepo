@@ -484,7 +484,7 @@ sr_shmmain_files_startup2running(sr_conn_ctx_t *conn)
             rc = plg1->copy_cb(ly_mod, SR_DS_RUNNING, SR_DS_STARTUP);
         } else {
             /* load source data */
-            rc = plg2->load_cb(ly_mod, SR_DS_STARTUP, &mod_data);
+            rc = plg2->load_cb(ly_mod, SR_DS_STARTUP, NULL, 0, &mod_data);
 
             if (!rc) {
                 /* write data to target */

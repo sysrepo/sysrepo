@@ -4951,14 +4951,14 @@ sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod)
 
 sr_error_info_t *
 sr_module_file_data_append(const struct lys_module *ly_mod, const struct srplg_ds_s *ds_plg, sr_datastore_t ds,
-        struct lyd_node **data)
+        const char **xpaths, uint32_t xpath_count, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *mod_data;
     int rc;
 
     /* get the data */
-    if ((rc = ds_plg->load_cb(ly_mod, ds, &mod_data))) {
+    if ((rc = ds_plg->load_cb(ly_mod, ds, xpaths, xpath_count, &mod_data))) {
         SR_ERRINFO_DSPLUGIN(&err_info, rc, "load", ds_plg->name, ly_mod->name);
         return err_info;
     }
@@ -4983,7 +4983,7 @@ sr_module_file_oper_data_load(struct sr_mod_info_mod_s *mod, struct lyd_node **e
     assert(!*edit);
 
     /* load the operational data (edit) */
-    if ((rc = mod->ds_plg->load_cb(mod->ly_mod, SR_DS_OPERATIONAL, edit))) {
+    if ((rc = mod->ds_plg->load_cb(mod->ly_mod, SR_DS_OPERATIONAL, NULL, 0, edit))) {
         SR_ERRINFO_DSPLUGIN(&err_info, rc, "load", mod->ds_plg->name, mod->ly_mod->name);
         return err_info;
     }

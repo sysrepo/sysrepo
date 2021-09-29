@@ -156,13 +156,12 @@ void sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info);
  * @param[in] cache Whether it makes sense to use cached data, if available.
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
- * @param[in] request_id XPath of the data request.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
  * @param[in] opts Get oper data options, ignored if getting only ::SR_DS_OPERATIONAL data (edit).
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig_name, const void *orig_data,
-        const char *request_xpath, uint32_t timeout_ms, sr_get_oper_options_t opts);
+sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig_name,
+        const void *orig_data, uint32_t timeout_ms, sr_get_oper_options_t opts);
 
 #define SR_MI_NEW_DEPS          0x01    /**< new modules are not required (MOD_INFO_REQ) but only dpendencies (MOD_INFO_DEP) */
 #define SR_MI_LOCK_UPGRADEABLE  0x02    /**< only valid for a read lock, make it upgradeable into a write lock */

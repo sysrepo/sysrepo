@@ -4682,8 +4682,11 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     }
 
     if (input != input_op) {
-        /* we need the OP module for checking parent existence */
-        if ((err_info = sr_modinfoadd_add(lyd_owner_module(input), NULL, 0, &mod_info_add))) {
+        /* we need the OP parent to check it exists */
+        parent_path = lyd_path(lyd_parent(input_op), LYD_PATH_STD, NULL, 0);
+        SR_CHECK_MEM_GOTO(!parent_path, err_info, cleanup);
+        /* only reference to parent_path is stored, so it cannot be freed! */
+        if ((err_info = sr_modinfo_add(lyd_owner_module(input), parent_path, 0, &mod_info))) {
             goto cleanup;
         }
         if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_NO,
@@ -4776,6 +4779,7 @@ cleanup:
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
 
+    free(parent_path);
     free(path);
     sr_modinfo_erase(&mod_info);
     if (cb_err_info) {
@@ -5056,7 +5060,7 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint
     sr_mod_t *shm_mod;
     struct timespec notif_ts;
     uint16_t shm_dep_count;
-    char *xpath = NULL;
+    char *path = NULL, *parent_path = NULL;
 
     SR_CHECK_ARG_APIRET(!session || !notif, session, err_info);
     if (session->conn->ly_ctx != notif->schema->module->ctx) {
@@ -5102,8 +5106,11 @@ sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint
     }
 
     if (notif != notif_op) {
-        /* we need the OP module for checking parent existence */
-        if ((err_info = sr_modinfoadd_add(lyd_owner_module(notif), NULL, 0, &mod_info_add))) {
+        /* we need the OP parent to check it exists */
+        parent_path = lyd_path(lyd_parent(notif_op), LYD_PATH_STD, NULL, 0);
+        SR_CHECK_MEM_GOTO(!parent_path, err_info, cleanup);
+        /* only reference to parent_path is stored, so it cannot be freed! */
+        if ((err_info = sr_modinfo_add(lyd_owner_module(notif), parent_path, 0, &mod_info))) {
             goto cleanup;
         }
         if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_NO,
