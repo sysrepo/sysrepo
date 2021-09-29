@@ -83,7 +83,7 @@ configure_file("${PROJECT_SOURCE_DIR}/src/version.h.in" "${PROJECT_BINARY_DIR}/v
 #
 # compilation flags
 #
-set(CMAKE_C_FLAGS           "${CMAKE_C_FLAGS} -Wall -Wextra -Wpedantic -std=c99")
+set(CMAKE_C_FLAGS           "${CMAKE_C_FLAGS} -Wall -Wextra -Wpedantic -std=c11")
 set(CMAKE_C_FLAGS_RELEASE   "-DNDEBUG -O2")
 set(CMAKE_C_FLAGS_DEBUG     "-g -O0")
 set(CMAKE_C_FLAGS_ABICHECK  "-g -Og")
