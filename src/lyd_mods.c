@@ -546,6 +546,11 @@ sr_lydmods_moddep_type(const struct lysc_type *type, const struct lysc_node *nod
 
     switch (type->basetype) {
     case LY_TYPE_INST:
+        if (!((struct lysc_type_instanceid *)type)->require_instance) {
+            /* not needed for validation, ignore */
+            break;
+        }
+
         if ((node->nodetype == LYS_LEAF) && ((struct lysc_node_leaf *)node)->dflt) {
             /* get target module of the default value */
             if (lys_find_lypath_atoms(((struct lysc_node_leaf *)node)->dflt->target, &atoms)) {
@@ -565,6 +570,11 @@ sr_lydmods_moddep_type(const struct lysc_type *type, const struct lysc_node *nod
         break;
     case LY_TYPE_LEAFREF:
         lref = (struct lysc_type_leafref *)type;
+        if (!lref->require_instance) {
+            /* not needed for validation, ignore */
+            break;
+        }
+
         if (lys_find_expr_atoms(node, node->module, lref->path, lref->prefixes, 0, &atoms)) {
             sr_errinfo_new_ly(&err_info, node->module->ctx);
             goto cleanup;
