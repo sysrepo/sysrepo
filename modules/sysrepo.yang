@@ -159,18 +159,18 @@ module sysrepo {
             description
                 "Dependency of a leafref node.";
 
-            leaf target-module {
-                type module-ref;
-                mandatory true;
-                description
-                    "Foreign module with the leafref target.";
-            }
-
             leaf target-path {
                 type yang:xpath1.0;
                 mandatory true;
                 description
                     "Path identifying the leafref target node.";
+            }
+
+            leaf target-module {
+                type module-ref;
+                mandatory true;
+                description
+                    "Foreign target module of the leafref.";
             }
         }
 
@@ -185,10 +185,10 @@ module sysrepo {
                     "Path identifying the instance-identifier node.";
             }
 
-            leaf default-target-module {
-                type module-ref;
+            leaf default-target-path {
+                type yang:xpath1.0;
                 description
-                    "Foreign module with the instance-identifier target of the default value.";
+                    "Default instance-identifier value.";
             }
         }
 
@@ -196,17 +196,17 @@ module sysrepo {
             description
                 "Dependency of an XPath expression - must or when statement.";
 
-            leaf-list target-module {
-                type module-ref;
-                description
-                    "Foreign modules with the data needed for evaluation of the XPath.";
-            }
-
             leaf expression {
                 type yang:xpath1.0;
                 mandatory true;
                 description
                     "XPath expression of the dependency - must or when statement argument.";
+            }
+
+            leaf-list target-module {
+                type module-ref;
+                description
+                    "Foreign modules with the data needed for evaluation of the XPath.";
             }
         }
     }

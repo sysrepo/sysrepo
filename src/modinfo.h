@@ -22,18 +22,19 @@
 #include "shm_types.h"
 #include "sysrepo_types.h"
 
-#define MOD_INFO_DEP        0x0001 /* dependency module, its data cannot be changed, but are required for validation */
-#define MOD_INFO_INV_DEP    0x0002 /* inverse dependency module, its data cannot be changed, but will be validated */
-#define MOD_INFO_REQ        0x0004 /* required module, its data can be changed and it will be validated */
-#define MOD_INFO_TYPE_MASK  0x0007 /* mask for all module types */
+#define MOD_INFO_NEW        0x0001 /* module was added (or an xpath) to mod info and needs to be consolidated */
+#define MOD_INFO_DEP        0x0002 /* dependency module, its data cannot be changed, but are required for validation */
+#define MOD_INFO_INV_DEP    0x0004 /* inverse dependency module, its data cannot be changed, but will be validated */
+#define MOD_INFO_REQ        0x0008 /* required module, its data can be changed and it will be validated */
+#define MOD_INFO_TYPE_MASK  0x000F /* mask for all module types */
 
-#define MOD_INFO_RLOCK      0x0008 /* read-locked module (main DS) */
-#define MOD_INFO_RLOCK_UPGR 0x0010 /* read-upgr-locked module (main DS) */
-#define MOD_INFO_WLOCK      0x0020 /* write-locked module (main DS) */
-#define MOD_INFO_RLOCK2     0x0040 /* read-locked module (secondary DS, it can be only read locked) */
+#define MOD_INFO_RLOCK      0x0010 /* read-locked module (main DS) */
+#define MOD_INFO_RLOCK_UPGR 0x0020 /* read-upgr-locked module (main DS) */
+#define MOD_INFO_WLOCK      0x0040 /* write-locked module (main DS) */
+#define MOD_INFO_RLOCK2     0x0080 /* read-locked module (secondary DS, it can be only read locked) */
 
-#define MOD_INFO_DATA       0x0080 /* module data were loaded */
-#define MOD_INFO_CHANGED    0x0100 /* module data were changed */
+#define MOD_INFO_DATA       0x0100 /* module data were loaded */
+#define MOD_INFO_CHANGED    0x0200 /* module data were changed */
 
 /**
  * @brief Mod info structure, used for keeping all relevant modules for a data operation.
@@ -50,6 +51,8 @@ struct sr_mod_info_s {
         sr_mod_t *shm_mod;      /**< Module SHM structure. */
         const struct lys_module *ly_mod;    /**< Module libyang structure. */
         struct srplg_ds_s *ds_plg;          /**< Module DS plugin. */
+        const char **xpaths;    /**< XPaths selecting the required data from the module, all data if NULL. */
+        uint32_t xpath_count;   /**< Count of XPaths. */
         uint32_t state;         /**< Module state (flags). */
         uint32_t request_id;    /**< Request ID of the published event. */
     } *mods;                    /**< Relevant modules. */
@@ -57,47 +60,28 @@ struct sr_mod_info_s {
 };
 
 /**
- * @brief Mod info add structure, used for storing information about modules to be added into mod info.
- */
-struct sr_mod_info_add_s {
-    struct sr_mod_info_add_mod_s {
-        const struct lys_module *ly_mod;    /**< libyang module. */
-        const char **xpaths;                /**< XPaths selecting the required data from the module, all data if NULL. */
-        uint32_t xpath_count;               /**< Count of XPaths. */
-    } *mods;                                /**< Array of modules to be added. */
-    uint32_t mod_count;                     /**< Modules count. */
-};
-
-/**
- * @brief Add a new module and/or XPath into mod_info_add structure.
+ * @brief Add a new module and/or XPath into mod info.
  *
- * If the module is already in @p mod_info_add only an XPath is added to it, if any.
+ * If the module is already in @p mod_info only an XPath is added to it, if any.
  *
  * @param[in] ly_mod Module to be added.
  * @param[in] xpath Optional XPath selecting the required data of @p ly_mod.
  * @param[in] no_dup_check Skip duplicate module check and assume it was not yet added.
- * @param[in,out] mod_info_add Structure to add the module to.
+ * @param[in,out] mod_info Mod info to add the module to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfoadd_add(const struct lys_module *ly_mod, const char *xpath, int no_dup_check,
-        struct sr_mod_info_add_s *mod_info_add);
-
-/**
- * @brief Erase mod_info_add structure.
- *
- * @param[in] mod_info_add Structure to erase.
- */
-void sr_modinfoadd_erase(struct sr_mod_info_add_s *mod_info_add);
+sr_error_info_t *sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int no_dup_check,
+        struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Add all modules defining some data into mod_info_add.
  *
  * @param[in] ly_ctx libyang context with all the modules.
  * @param[in] state_data Whether to add modules with state data only or not.
- * @param[in,out] mod_info_add Mod_info_add to add to.
+ * @param[in,out] mod_info Mod info to add to.
  */
-sr_error_info_t *sr_modinfoadd_add_all_modules_with_data(const struct ly_ctx *ly_ctx, int state_data,
-        struct sr_mod_info_add_s *mod_info_add);
+sr_error_info_t *sr_modinfo_add_all_modules_with_data(const struct ly_ctx *ly_ctx, int state_data,
+        struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Check permissions of all the modules in a mod info.
@@ -180,7 +164,7 @@ void sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info);
 sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig_name, const void *orig_data,
         const char *request_xpath, uint32_t timeout_ms, sr_get_oper_options_t opts);
 
-#define SR_MI_MOD_DEPS          0x01    /**< add modules not as MOD_INFO_REQ but as MOD_INFO_DEP */
+#define SR_MI_NEW_DEPS          0x01    /**< new modules are not required (MOD_INFO_REQ) but only dpendencies (MOD_INFO_DEP) */
 #define SR_MI_LOCK_UPGRADEABLE  0x02    /**< only valid for a read lock, make it upgradeable into a write lock */
 #define SR_MI_DATA_CACHE        0x04    /**< enable cache when loading module data */
 #define SR_MI_DATA_NO           0x08    /**< do not load module data */
@@ -191,23 +175,21 @@ sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache,
 #define SR_MI_PERM_WRITE        0x80    /**< check write permissions of the MOD_INFO_REQ modules */
 
 /**
- * @brief Add new modules and their dependnecies into mod_info, check their permissions, lock, and load their data.
+ * @brief Consolidate mod info by adding dependencies of the added modules, check the permissions, lock, and load data.
  *
- * @param[in,out] mod_info Mod info to use.
- * @param[in] mod_info_add Mod_info_add to read modules to add to from.
+ * @param[in,out] mod_info Mod info to consolidate.
  * @param[in] mod_deps Dependency modules to add for each added module. 0 for adding no dependency modules.
  * @param[in] mod_lock Mode of module lock.
  * @param[in] mi_opts Mod info options modifying the default behavior but some SR_MI_PERM_* must always be used.
  * @param[in] sid Session ID to store in lock information.
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
- * @param[in] request_xpath Request XPath for operational callbacks.
  * @param[in] timeout_ms Timeout for operational callbacks.
  * @param[in] get_opts Get operational data options, ignored if getting only ::SR_DS_OPERATIONAL data (edit).
  */
-sr_error_info_t *sr_modinfo_add_modules(struct sr_mod_info_s *mod_info, const struct sr_mod_info_add_s *mod_info_add,
-        int mod_deps, sr_lock_mode_t mod_lock, int mi_opts, uint32_t sid, const char *orig_name, const void *orig_data,
-        const char *request_xpath, uint32_t timeout_ms, sr_get_oper_options_t get_opts);
+sr_error_info_t *sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mode_t mod_lock,
+        int mi_opts, uint32_t sid, const char *orig_name, const void *orig_data, uint32_t timeout_ms,
+        sr_get_oper_options_t get_opts);
 
 /**
  * @brief Validate data for modules in mod info.
@@ -284,10 +266,10 @@ sr_error_info_t *sr_modinfo_candidate_reset(struct sr_mod_info_s *mod_info);
 int sr_modinfo_is_changed(struct sr_mod_info_s *mod_info);
 
 /**
- * @brief Free mod info.
+ * @brief Erase mod info.
  *
- * @param[in] mod_info Mod info to free.
+ * @param[in] mod_info Mod info to erase.
  */
-void sr_modinfo_free(struct sr_mod_info_s *mod_info);
+void sr_modinfo_erase(struct sr_mod_info_s *mod_info);
 
 #endif

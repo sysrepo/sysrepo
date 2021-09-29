@@ -623,27 +623,39 @@ sr_shmmain_fill_module(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr_shm
 }
 
 /**
- * @brief Count the SHM len of all the strings in a dependency list instance.
+ * @brief Count the SHM length of all the strings and arrays in a dependency list instance.
  *
  * @param[in] sr_dep Dependency in internal sysrepo data.
- * @param[in,out] str_len Length of the strings in the SHM to add to.
+ * @param[in,out] shm_size Size of SHM to add to.
  */
 static sr_error_info_t *
-sr_shmmain_add_dep_str_size(const struct lyd_node *sr_dep, size_t *str_len)
+sr_shmmain_add_dep_size(const struct lyd_node *sr_dep, size_t *shm_size)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL;
     uint32_t i;
 
     /* get all the strings */
-    if (lyd_find_xpath(sr_dep, "target-path | source-path | expression", &set)) {
+    if (lyd_find_xpath(sr_dep, "target-path | source-path | default-target-path | expression", &set)) {
         sr_errinfo_new_ly(&err_info, LYD_CTX(sr_dep));
         goto cleanup;
     }
 
     /* add their SHM sizes */
     for (i = 0; i < set->count; ++i) {
-        *str_len += sr_strshmlen(lyd_get_value(set->dnodes[i]));
+        *shm_size += sr_strshmlen(lyd_get_value(set->dnodes[i]));
+    }
+
+    /* find all target modules */
+    if (!strcmp(sr_dep->schema->name, "xpath")) {
+        ly_set_free(set, NULL);
+        if (lyd_find_xpath(sr_dep, "target-module", &set)) {
+            sr_errinfo_new_ly(&err_info, LYD_CTX(sr_dep));
+            goto cleanup;
+        }
+
+        /* add all arrays SHM size */
+        *shm_size += SR_SHM_SIZE(set->count * sizeof(off_t));
     }
 
 cleanup:
@@ -679,18 +691,17 @@ sr_shmmain_fill_deps(sr_main_shm_t *main_shm, struct lyd_node *sr_dep_parent, sr
             /* set dep type */
             shm_deps[*dep_i].type = SR_DEP_LREF;
 
+            /* store path */
+            lyd_find_path(sr_dep, "target-path", 0, &node);
+            assert(node);
+            shm_deps[*dep_i].lref.target_path = sr_shmstrcpy((char *)main_shm, lyd_get_value(node), shm_end);
+
             /* copy module name offset */
             lyd_find_path(sr_dep, "target-module", 0, &node);
             assert(node);
             ref_shm_mod = sr_shmmain_find_module(main_shm, lyd_get_value(node));
             SR_CHECK_INT_GOTO(!ref_shm_mod, err_info, cleanup);
-            shm_deps[*dep_i].mod_name = ref_shm_mod->name;
-            shm_deps[*dep_i].mod_name_count = 1;
-
-            /* store path */
-            lyd_find_path(sr_dep, "target-path", 0, &node);
-            assert(node);
-            shm_deps[*dep_i].path = sr_shmstrcpy((char *)main_shm, lyd_get_value(node), shm_end);
+            shm_deps[*dep_i].lref.target_module = ref_shm_mod->name;
 
             ++(*dep_i);
         } else if (!strcmp(sr_dep->schema->name, "inst-id")) {
@@ -700,18 +711,12 @@ sr_shmmain_fill_deps(sr_main_shm_t *main_shm, struct lyd_node *sr_dep_parent, sr
             /* store path */
             lyd_find_path(sr_dep, "source-path", 0, &node);
             assert(node);
-            shm_deps[*dep_i].path = sr_shmstrcpy((char *)main_shm, lyd_get_value(node), shm_end);
+            shm_deps[*dep_i].instid.source_path = sr_shmstrcpy((char *)main_shm, lyd_get_value(node), shm_end);
 
             /* copy module name offset */
-            lyd_find_path(sr_dep, "default-target-module", 0, &node);
+            lyd_find_path(sr_dep, "default-target-path", 0, &node);
             if (node) {
-                ref_shm_mod = sr_shmmain_find_module(main_shm, lyd_get_value(node));
-                SR_CHECK_INT_GOTO(!ref_shm_mod, err_info, cleanup);
-                shm_deps[*dep_i].mod_name = ref_shm_mod->name;
-                shm_deps[*dep_i].mod_name_count = 1;
-            } else {
-                shm_deps[*dep_i].mod_name = 0;
-                shm_deps[*dep_i].mod_name_count = 0;
+                shm_deps[*dep_i].instid.default_target_path = sr_shmstrcpy((char *)main_shm, lyd_get_value(node), shm_end);
             }
 
             ++(*dep_i);
@@ -719,23 +724,23 @@ sr_shmmain_fill_deps(sr_main_shm_t *main_shm, struct lyd_node *sr_dep_parent, sr
             /* set dep type */
             shm_deps[*dep_i].type = SR_DEP_XPATH;
 
+            /* store xpath */
+            lyd_find_path(sr_dep, "expression", 0, &node);
+            assert(node);
+            shm_deps[*dep_i].xpath.expr = sr_shmstrcpy((char *)main_shm, lyd_get_value(node), shm_end);
+
             /* get all target modules */
             if (lyd_find_xpath(sr_dep, "target-module", &tmods)) {
                 sr_errinfo_new_ly(&err_info, LYD_CTX(sr_dep));
                 goto cleanup;
             }
 
-            if (tmods->count == 1) {
-                /* copy module name offset */
-                ref_shm_mod = sr_shmmain_find_module(main_shm, lyd_get_value(tmods->dnodes[0]));
-                SR_CHECK_INT_GOTO(!ref_shm_mod, err_info, cleanup);
-                shm_deps[*dep_i].mod_name = ref_shm_mod->name;
-                shm_deps[*dep_i].mod_name_count = 1;
-            } else if (tmods->count) {
+            if (tmods->count) {
                 /* allocate array of offsets */
-                shm_deps[*dep_i].mod_name = sr_shmcpy((char *)main_shm, NULL, tmods->count * sizeof(off_t), shm_end);
-                shm_deps[*dep_i].mod_name_count = tmods->count;
-                mod_names = (off_t *)(((char *)main_shm) + shm_deps[*dep_i].mod_name);
+                shm_deps[*dep_i].xpath.target_modules = sr_shmcpy((char *)main_shm, NULL,
+                        tmods->count * sizeof(off_t), shm_end);
+                shm_deps[*dep_i].xpath.target_mod_count = tmods->count;
+                mod_names = (off_t *)(((char *)main_shm) + shm_deps[*dep_i].xpath.target_modules);
 
                 /* copy module name offsets */
                 for (i = 0; i < tmods->count; ++i) {
@@ -746,11 +751,6 @@ sr_shmmain_fill_deps(sr_main_shm_t *main_shm, struct lyd_node *sr_dep_parent, sr
             }
             ly_set_free(tmods, NULL);
             tmods = NULL;
-
-            /* store xpath */
-            lyd_find_path(sr_dep, "expression", 0, &node);
-            assert(node);
-            shm_deps[*dep_i].path = sr_shmstrcpy((char *)main_shm, lyd_get_value(node), shm_end);
 
             ++(*dep_i);
         }
@@ -793,7 +793,7 @@ sr_shmmain_add_module_deps(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr
             LY_LIST_FOR(lyd_child(sr_child), sr_dep) {
                 /* another data dependency and additional strings */
                 ++shm_mod->dep_count;
-                sr_shmmain_add_dep_str_size(sr_dep, &paths_len);
+                sr_shmmain_add_dep_size(sr_dep, &paths_len);
             }
         } else if (!strcmp(sr_child->schema->name, "inverse-deps")) {
             /* another inverse data dependency */
@@ -886,7 +886,7 @@ sr_shmmain_add_module_rpcs(const struct lyd_node *sr_mod, size_t shm_mod_idx, sr
                     LY_LIST_FOR(lyd_child(sr_op_dep), sr_dep) {
                         /* another dependency */
                         ++dep_i;
-                        sr_shmmain_add_dep_str_size(sr_dep, &paths_len);
+                        sr_shmmain_add_dep_size(sr_dep, &paths_len);
                     }
 
                     /* all RPC input/output dependencies (must be counted this way to align all the arrays individually) */
@@ -1012,7 +1012,7 @@ sr_shmmain_add_module_notifs(const struct lyd_node *sr_mod, size_t shm_mod_idx, 
                     LY_LIST_FOR(lyd_child(sr_op_dep), sr_dep) {
                         /* another dependency */
                         ++dep_i;
-                        sr_shmmain_add_dep_str_size(sr_dep, &paths_len);
+                        sr_shmmain_add_dep_size(sr_dep, &paths_len);
                     }
 
                     /* all notification dependencies (must be counted this way to align all the arrays individually) */

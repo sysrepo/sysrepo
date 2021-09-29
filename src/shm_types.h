@@ -27,20 +27,31 @@
  * @brief Main SHM dependency type.
  */
 typedef enum {
-    SR_DEP_LREF,        /**< Leafref. */
-    SR_DEP_INSTID,      /**< Instance-identifier. */
-    SR_DEP_XPATH        /**< XPath (must or when). */
+    SR_DEP_LREF,    /**< Leafref. */
+    SR_DEP_INSTID,  /**< Instance-identifier. */
+    SR_DEP_XPATH    /**< XPath (must or when). */
 } sr_dep_type_t;
 
 /**
  * @brief Main SHM module dependency.
  */
 typedef struct {
-    sr_dep_type_t type;         /**< Dependency type. */
-    off_t mod_name;             /**< Dependant module name(s) (offset in main SHM). */
-    uint16_t mod_name_count;    /**< Dependant module name count, if 1 mod_name is offset of a string, if >1 offset of
-                                     array of strings. */
-    off_t path;                 /**< Path of the node with the dependency (offset in main SHM). */
+    sr_dep_type_t type;                 /**< Dependency type. */
+    union {
+        struct {
+            off_t target_path;          /**< Leafref target (offset in main SHM). */
+            off_t target_module;        /**< Leafref target module name (offset in main SHM). */
+        } lref;                         /**< Leafref dependency. */
+        struct {
+            off_t source_path;          /**< Instance-identifier source path (offset in main SHM). */
+            off_t default_target_path;  /**< Instance-identifier default value, if any (offset in main SHM). */
+        } instid;                       /**< Instance-identifier dependency. */
+        struct {
+            off_t expr;                 /**< XPath expression (offset in main SHM). */
+            off_t target_modules;       /**< Dependant module names of XPath, if any (offset in main SHM). */
+            uint16_t target_mod_count;  /**< Dependant module name count. */
+        } xpath;                        /**< XPath (must or when) dependency. */
+    };
 } sr_dep_t;
 
 /**

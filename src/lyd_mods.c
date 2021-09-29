@@ -307,10 +307,6 @@ sr_lydmods_moddep_add_lref(const char *target_mod, const struct lyxp_expr *exp, 
         sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
         goto cleanup;
     }
-    if (lyd_new_term(sr_lref, NULL, "target-module", target_mod, 0, NULL)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
-        goto cleanup;
-    }
 
     /* get leaf of xpath1.0 type */
     leaf_xpath = (struct lysc_node_leaf *)lys_find_path(LYD_CTX(sr_deps), NULL,
@@ -334,6 +330,10 @@ sr_lydmods_moddep_add_lref(const char *target_mod, const struct lyxp_expr *exp, 
         sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
         goto cleanup;
     }
+    if (lyd_new_term(sr_lref, NULL, "target-module", target_mod, 0, NULL)) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
+        goto cleanup;
+    }
 
 cleanup:
     ly_err_free(err);
@@ -347,12 +347,12 @@ cleanup:
  * @brief Add an instance-identifier dependency into internal sysrepo data.
  *
  * @param[in] node Instance-identifier schema node.
- * @param[in] default_mod Instance-identifier default value target module, if any.
+ * @param[in] default_val Instance-identifier default value in canonical (JSON) format, if any.
  * @param[in,out] sr_deps Internal sysrepo data dependencies to add to.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_moddep_add_instid(const struct lysc_node *node, const char *default_mod, struct lyd_node *sr_deps)
+sr_lydmods_moddep_add_instid(const struct lysc_node *node, const char *default_val, struct lyd_node *sr_deps)
 {
     sr_error_info_t *err_info = NULL;
     char *data_path = NULL;
@@ -371,7 +371,7 @@ sr_lydmods_moddep_add_instid(const struct lysc_node *node, const char *default_m
         sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
         goto cleanup;
     }
-    if (default_mod && lyd_new_term(sr_instid, NULL, "default-target-module", default_mod, 0, NULL)) {
+    if (default_val && lyd_new_term(sr_instid, NULL, "default-target-path", default_val, 0, NULL)) {
         sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
         goto cleanup;
     }
@@ -408,13 +408,6 @@ sr_lydmods_moddep_add_xpath(const struct ly_set *target_mods, const struct lyxp_
         sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
         goto cleanup;
     }
-    for (i = 0; i < target_mods->count; ++i) {
-        ly_mod = target_mods->objs[i];
-        if (lyd_new_term(sr_xpath, NULL, "target-module", ly_mod->name, 0, NULL)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
-            goto cleanup;
-        }
-    }
 
     /* get leaf of xpath1.0 type */
     leaf_xpath = (struct lysc_node_leaf *)lys_find_path(LYD_CTX(sr_deps), NULL,
@@ -437,6 +430,14 @@ sr_lydmods_moddep_add_xpath(const struct ly_set *target_mods, const struct lyxp_
     if (lyd_new_term(sr_xpath, NULL, "expression", path, 0, NULL)) {
         sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
         goto cleanup;
+    }
+
+    for (i = 0; i < target_mods->count; ++i) {
+        ly_mod = target_mods->objs[i];
+        if (lyd_new_term(sr_xpath, NULL, "target-module", ly_mod->name, 0, NULL)) {
+            sr_errinfo_new_ly(&err_info, LYD_CTX(sr_deps));
+            goto cleanup;
+        }
     }
 
 cleanup:
@@ -539,6 +540,7 @@ sr_lydmods_moddep_type(const struct lysc_type *type, const struct lysc_node *nod
     const struct lysc_type_union *uni;
     const struct lysc_type_leafref *lref;
     struct ly_set *atoms = NULL;
+    const char *default_val = NULL;
     LY_ARRAY_COUNT_TYPE u;
     uint32_t i;
 
@@ -554,7 +556,10 @@ sr_lydmods_moddep_type(const struct lysc_type *type, const struct lysc_node *nod
             ly_mod = sr_lydmods_moddep_expr_atom_is_foreign(atoms->snodes[0], op_node);
         }
 
-        if ((err_info = sr_lydmods_moddep_add_instid(node, (ly_mod ? ly_mod->name : NULL), sr_deps))) {
+        if (ly_mod) {
+            default_val = lyd_value_get_canonical(node->module->ctx, ((struct lysc_node_leaf *)node)->dflt);
+        }
+        if ((err_info = sr_lydmods_moddep_add_instid(node, default_val, sr_deps))) {
             goto cleanup;
         }
         break;

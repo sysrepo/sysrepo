@@ -509,10 +509,10 @@ sr_error_info_t *sr_shmext_rpc_sub_suspended(sr_conn_ctx_t *conn, const char *pa
  * @brief Collect required modules found in an edit.
  *
  * @param[in] edit Edit to be applied.
- * @param[in,out] mod_info_add Mod_info_add to add to.
+ * @param[in,out] mod_info Mod info to add to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_edit(const struct lyd_node *edit, struct sr_mod_info_add_s *mod_info_add);
+sr_error_info_t *sr_shmmod_collect_edit(const struct lyd_node *edit, struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Collect required modules for evaluating XPath and getting selected data.
@@ -520,11 +520,12 @@ sr_error_info_t *sr_shmmod_collect_edit(const struct lyd_node *edit, struct sr_m
  * @param[in] ly_ctx libyang context.
  * @param[in] xpath XPath to be evaluated.
  * @param[in] ds Target datastore where the @p xpath will be evaluated.
- * @param[in,out] mod_info_add Mod_info_add to add to.
+ * @param[in] store_xpath Whether to store @p xpath as module xpath (filtering required data).
+ * @param[in,out] mod_info Mod info to add to.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds,
-        struct sr_mod_info_add_s *mod_info_add);
+        int store_xpath, struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Get SHM dependencies of an RPC/action.
@@ -560,22 +561,20 @@ sr_error_info_t *sr_shmmod_get_notif_deps(sr_main_shm_t *main_shm, const struct 
  * @param[in] shm_dep_count Number of @p shm_deps.
  * @param[in] ly_ctx libyang context.
  * @param[in] data Data to look for instance-identifiers in.
- * @param[in,out] mod_info_add Mod_info_add to add to.
+ * @param[in,out] mod_info Mod info to add to.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmod_collect_deps(sr_main_shm_t *main_shm, sr_dep_t *shm_deps, uint16_t shm_dep_count,
-        struct ly_ctx *ly_ctx, const struct lyd_node *data, struct sr_mod_info_add_s *mod_info_add);
+        struct ly_ctx *ly_ctx, const struct lyd_node *data, struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Collect required modules of (MOD_INFO_REQ & MOD_INFO_CHANGED) | MOD_INFO_INV_DEP modules in mod info.
  * Other modules will not be validated.
  *
  * @param[in] mod_info Mod info with the modules and data.
- * @param[in,out] mod_info_add Mod_info_add to add to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_collect_deps_modinfo(const struct sr_mod_info_s *mod_info,
-        struct sr_mod_info_add_s *mod_info_add);
+sr_error_info_t *sr_shmmod_collect_deps_modinfo(struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Information structure for the SHM module recovery callback.
