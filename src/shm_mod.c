@@ -39,7 +39,7 @@
 #include "plugins_datastore.h"
 
 sr_error_info_t *
-sr_shmmod_collect_edit(const struct lyd_node *edit, struct sr_mod_info_add_s *mod_info_add)
+sr_shmmod_collect_edit(const struct lyd_node *edit, struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
@@ -59,7 +59,7 @@ sr_shmmod_collect_edit(const struct lyd_node *edit, struct sr_mod_info_add_s *mo
         ly_mod = lyd_owner_module(root);
 
         /* remember the module */
-        if ((err_info = sr_modinfoadd_add(ly_mod, NULL, 0, mod_info_add))) {
+        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, mod_info))) {
             return err_info;
         }
     }
@@ -68,8 +68,8 @@ sr_shmmod_collect_edit(const struct lyd_node *edit, struct sr_mod_info_add_s *mo
 }
 
 sr_error_info_t *
-sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds,
-        struct sr_mod_info_add_s *mod_info_add)
+sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds, int store_xpath,
+        struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
@@ -104,7 +104,7 @@ sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datas
             continue;
         }
 
-        if ((err_info = sr_modinfoadd_add(ly_mod, NULL, 0, mod_info_add))) {
+        if ((err_info = sr_modinfo_add(ly_mod, store_xpath ? xpath : NULL, 0, mod_info))) {
             goto cleanup;
         }
     }
@@ -163,23 +163,25 @@ sr_shmmod_get_notif_deps(sr_main_shm_t *main_shm, const struct lys_module *notif
 /**
  * @brief Collect dependent modules from a leafref dependency.
  *
- * @param[in] mod_name Module name.
+ * @param[in] taregt_path Target leafref path.
+ * @param[in] target_module Target module name.
  * @param[in] ly_ctx libyang context.
- * @param[in,out] mod_info_add Mod_info_add to add to.
+ * @param[in,out] mod_info Mod info to add to.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmmod_collect_deps_lref(const char *mod_name, struct ly_ctx *ly_ctx, struct sr_mod_info_add_s *mod_info_add)
+sr_shmmod_collect_deps_lref(const char *target_path, const char *target_module, struct ly_ctx *ly_ctx,
+        struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
 
     /* find ly module */
-    ly_mod = ly_ctx_get_module_implemented(ly_ctx, mod_name);
+    ly_mod = ly_ctx_get_module_implemented(ly_ctx, target_module);
     SR_CHECK_INT_RET(!ly_mod, err_info);
 
     /* add dependency */
-    if ((err_info = sr_modinfoadd_add(ly_mod, NULL, 0, mod_info_add))) {
+    if ((err_info = sr_modinfo_add(ly_mod, target_path, 0, mod_info))) {
         return err_info;
     }
 
@@ -189,16 +191,16 @@ sr_shmmod_collect_deps_lref(const char *mod_name, struct ly_ctx *ly_ctx, struct 
 /**
  * @brief Collect dependent modules from an instance-identifier dependency.
  *
- * @param[in] mod_name Optional module name of the target module of the default value.
- * @param[in] path Source inst-id path.
+ * @param[in] source_path Source inst-id path.
+ * @param[in] default_target_path Optional inst-id default value.
  * @param[in] ly_ctx libyang context.
  * @param[in] data Instantiated data.
- * @param[in,out] mod_info_add Mod_info_add to add to.
+ * @param[in,out] mod_info Mod info to add to.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmmod_collect_deps_instid(const char *mod_name, const char *path, struct ly_ctx *ly_ctx,
-        const struct lyd_node *data, struct sr_mod_info_add_s *mod_info_add)
+sr_shmmod_collect_deps_instid(const char *source_path, const char *default_target_path, struct ly_ctx *ly_ctx,
+        const struct lyd_node *data, struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
@@ -209,7 +211,7 @@ sr_shmmod_collect_deps_instid(const char *mod_name, const char *path, struct ly_
     LY_ERR lyrc;
 
     if (data) {
-        lyrc = lyd_find_xpath(data, path, &set);
+        lyrc = lyd_find_xpath(data, source_path, &set);
     } else {
         /* no data, just fake empty set */
         lyrc = ly_set_new(&set);
@@ -236,16 +238,18 @@ sr_shmmod_collect_deps_instid(const char *mod_name, const char *path, struct ly_
             SR_CHECK_INT_GOTO(!ly_mod, err_info, cleanup);
 
             /* add module */
-            if ((err_info = sr_modinfoadd_add(ly_mod, NULL, 0, mod_info_add))) {
+            if ((err_info = sr_modinfo_add(ly_mod, val_str, 0, mod_info))) {
                 goto cleanup;
             }
         }
-    } else if (mod_name) {
+    } else if (default_target_path) {
         /* assume a default value will be used even though it may not be */
-        ly_mod = ly_ctx_get_module_implemented(ly_ctx, mod_name);
+        str = sr_get_first_ns(default_target_path);
+        ly_mod = ly_ctx_get_module_implemented(ly_ctx, str);
+        free(str);
         SR_CHECK_INT_GOTO(!ly_mod, err_info, cleanup);
 
-        if ((err_info = sr_modinfoadd_add(ly_mod, NULL, 0, mod_info_add))) {
+        if ((err_info = sr_modinfo_add(ly_mod, default_target_path, 0, mod_info))) {
             goto cleanup;
         }
     }
@@ -258,44 +262,31 @@ cleanup:
 /**
  * @brief Collect dependent modules from an XPath dependency.
  *
+ * @param[in] expr XPath expression itself.
  * @param[in] main_shm_addr Main SHM address.
- * @param[in] mod_name Module name offset.
+ * @param[in] target_modules Module names array.
  * @param[in] mod_name_count Module name count.
  * @param[in] ly_ctx libyang context.
- * @param[in,out] mod_info_add Mod_info_add to add to.
+ * @param[in,out] mod_info Mod info to add to.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmmod_collect_deps_xpath(char *main_shm_addr, off_t mod_name, uint16_t mod_name_count, struct ly_ctx *ly_ctx,
-        struct sr_mod_info_add_s *mod_info_add)
+sr_shmmod_collect_deps_xpath(const char *expr, char *main_shm_addr, off_t *target_modules, uint16_t target_mod_count,
+        struct ly_ctx *ly_ctx, struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
-    off_t *mod_names;
     uint16_t i;
 
-    if (mod_name_count == 1) {
+    /* add dependencies for all the modules */
+    for (i = 0; i < target_mod_count; ++i) {
         /* find ly module */
-        ly_mod = ly_ctx_get_module_implemented(ly_ctx, main_shm_addr + mod_name);
+        ly_mod = ly_ctx_get_module_implemented(ly_ctx, main_shm_addr + target_modules[i]);
         SR_CHECK_INT_RET(!ly_mod, err_info);
 
         /* add dependency */
-        if ((err_info = sr_modinfoadd_add(ly_mod, NULL, 0, mod_info_add))) {
+        if ((err_info = sr_modinfo_add(ly_mod, expr, 0, mod_info))) {
             return err_info;
-        }
-    } else {
-        mod_names = (off_t *)(main_shm_addr + mod_name);
-
-        /* add dependencies for all the modules */
-        for (i = 0; i < mod_name_count; ++i) {
-            /* find ly module */
-            ly_mod = ly_ctx_get_module_implemented(ly_ctx, main_shm_addr + mod_names[i]);
-            SR_CHECK_INT_RET(!ly_mod, err_info);
-
-            /* add dependency */
-            if ((err_info = sr_modinfoadd_add(ly_mod, NULL, 0, mod_info_add))) {
-                return err_info;
-            }
         }
     }
 
@@ -304,32 +295,36 @@ sr_shmmod_collect_deps_xpath(char *main_shm_addr, off_t mod_name, uint16_t mod_n
 
 sr_error_info_t *
 sr_shmmod_collect_deps(sr_main_shm_t *main_shm, sr_dep_t *shm_deps, uint16_t shm_dep_count, struct ly_ctx *ly_ctx,
-        const struct lyd_node *data, struct sr_mod_info_add_s *mod_info_add)
+        const struct lyd_node *data, struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
-    const char *mod_name;
+    const char *str1, *str2;
+    off_t *mod_names;
 
     /* collect all possibly required modules (because of inst-ids) into a set */
     for (i = 0; i < shm_dep_count; ++i) {
         switch (shm_deps[i].type) {
         case SR_DEP_LREF:
-            assert(shm_deps[i].mod_name_count == 1);
-            mod_name = (char *)main_shm + shm_deps[i].mod_name;
-            if ((err_info = sr_shmmod_collect_deps_lref(mod_name, ly_ctx, mod_info_add))) {
+            str1 = (char *)main_shm + shm_deps[i].lref.target_path;
+            str2 = (char *)main_shm + shm_deps[i].lref.target_module;
+            if ((err_info = sr_shmmod_collect_deps_lref(str1, str2, ly_ctx, mod_info))) {
                 goto cleanup;
             }
             break;
         case SR_DEP_INSTID:
-            mod_name = shm_deps[i].mod_name ? (char *)main_shm + shm_deps[i].mod_name : NULL;
-            if ((err_info = sr_shmmod_collect_deps_instid(mod_name, (char *)main_shm + shm_deps[i].path, ly_ctx, data,
-                    mod_info_add))) {
+            str1 = (char *)main_shm + shm_deps[i].instid.source_path;
+            str2 = shm_deps[i].instid.default_target_path ? (char *)main_shm +
+                    shm_deps[i].instid.default_target_path : NULL;
+            if ((err_info = sr_shmmod_collect_deps_instid(str1, str2, ly_ctx, data, mod_info))) {
                 goto cleanup;
             }
             break;
         case SR_DEP_XPATH:
-            if ((err_info = sr_shmmod_collect_deps_xpath((char *)main_shm, shm_deps[i].mod_name,
-                    shm_deps[i].mod_name_count, ly_ctx, mod_info_add))) {
+            str1 = (char *)main_shm + shm_deps[i].xpath.expr;
+            mod_names = (off_t *)((char *)main_shm + shm_deps[i].xpath.target_modules);
+            if ((err_info = sr_shmmod_collect_deps_xpath(str1, (char *)main_shm, mod_names,
+                    shm_deps[i].xpath.target_mod_count, ly_ctx, mod_info))) {
                 goto cleanup;
             }
             break;
@@ -346,7 +341,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmmod_collect_deps_modinfo(const struct sr_mod_info_s *mod_info, struct sr_mod_info_add_s *mod_info_add)
+sr_shmmod_collect_deps_modinfo(struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
@@ -366,7 +361,7 @@ sr_shmmod_collect_deps_modinfo(const struct sr_mod_info_s *mod_info, struct sr_m
             assert(mod->state & MOD_INFO_DATA);
             if ((err_info = sr_shmmod_collect_deps(SR_CONN_MAIN_SHM(mod_info->conn),
                     (sr_dep_t *)(mod_info->conn->main_shm.addr + mod->shm_mod->deps),
-                    mod->shm_mod->dep_count, mod_info->conn->ly_ctx, mod_info->data, mod_info_add))) {
+                    mod->shm_mod->dep_count, mod_info->conn->ly_ctx, mod_info->data, mod_info))) {
                 return err_info;
             }
             break;
