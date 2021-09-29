@@ -18,6 +18,7 @@
 
 #include <poll.h>
 #include <pthread.h>
+#include <sched.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -6359,7 +6360,7 @@ module_yield_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_n
     (void)private_data;
 
     /* yield to make any race conditions more evident */
-    pthread_yield();
+    sched_yield();
     return SR_ERR_OK;
 }
 
