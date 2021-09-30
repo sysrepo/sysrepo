@@ -133,12 +133,11 @@ rpc_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *path, const sr_va
 
     if (!strcmp(path, "/examples:oper")) {
         /* generate some output */
-        *output = malloc(sizeof **output);
+        *output = calloc(1, sizeof **output);
         *output_cnt = 1;
 
         (*output)[0].xpath = strdup("/examples:oper/ret");
         (*output)[0].type = SR_INT64_T;
-        (*output)[0].dflt = 0;
         (*output)[0].data.int64_val = -123456;
     }
 
