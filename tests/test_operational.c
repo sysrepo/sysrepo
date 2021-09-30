@@ -2403,15 +2403,16 @@ stored_state_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *m
     (void)sub_id;
     (void)request_id;
 
-    if (!strcmp(xpath, "/ietf-interfaces:interfaces-state")) {
-        assert_string_equal(module_name, "ietf-interfaces");
+    assert_string_equal(module_name, "ietf-interfaces");
+    assert_string_equal(xpath, "/ietf-interfaces:interfaces-state");
 
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
+    case 0:
+    case 1:
         if (ATOMIC_LOAD_RELAXED(st->cb_called) == 0) {
             assert_int_equal(event, SR_EV_CHANGE);
-        } else if (ATOMIC_LOAD_RELAXED(st->cb_called) == 1) {
-            assert_int_equal(event, SR_EV_DONE);
         } else {
-            fail();
+            assert_int_equal(event, SR_EV_DONE);
         }
 
         /* get changes iter */
@@ -2459,6 +2460,7 @@ stored_state_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *m
         assert_null(old_val);
         assert_non_null(new_val);
         assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type");
+        assert_string_equal(new_val->data.string_val, "iana-if-type:ethernetCsmacd");
 
         sr_free_val(new_val);
 
@@ -2467,7 +2469,38 @@ stored_state_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *m
         assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
         sr_free_change_iter(iter);
-    } else {
+        break;
+    case 2:
+    case 3:
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 2) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/ietf-interfaces:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type");
+        assert_string_equal(new_val->data.string_val, "iana-if-type:softwareLoopback");
+
+        sr_free_val(new_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    default:
         fail();
     }
 
@@ -2520,6 +2553,37 @@ test_stored_state(void **state)
         "<interface>"
             "<name>eth1</name>"
             "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+        "</interface>"
+    "</interfaces-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* change operational data */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
+            "iana-if-type:softwareLoopback", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* callback was called */
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
+
+    /* read the data */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+
+    lyd_free_all(data);
+
+    str2 =
+    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
+        "<interface>"
+            "<name>eth1</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:softwareLoopback</type>"
         "</interface>"
     "</interfaces-state>";
 

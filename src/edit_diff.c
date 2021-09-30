@@ -929,7 +929,7 @@ sr_lyd_merge_cb(struct lyd_node *trg_node, const struct lyd_node *src_node, void
     if ((src_op != trg_op) || meta_changed || lyd_compare_single(src_node, trg_node, LYD_COMPARE_DEFAULTS)) {
         /* change, append to diff */
         arg->changed = 1;
-        if ((err_info = sr_edit_diff_append(trg_node, sr_op_edit2diff(src_op), 0, arg->diff))) {
+        if ((err_info = sr_edit_diff_append(src_node, sr_op_edit2diff(src_op), 0, arg->diff))) {
             goto cleanup;
         }
     }
