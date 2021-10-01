@@ -1576,14 +1576,106 @@ sr_error_info_t *
 sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
 {
     sr_error_info_t *err_info = NULL;
+    DIR *dir = NULL;
+    struct dirent *file;
+    size_t len;
+    const char *plugins_dir;
+    char *path = NULL;
+    void *dlhandle = NULL, *mem;
+    uint32_t *ver;
+    const struct srplg_ds_s *srpds;
 
     *ds_handles = NULL;
     *ds_handle_count = 0;
 
-    /* dynamic DS plugins */
-    /* TODO */
+    /* get plugins dir from environment variable, or use default one */
+    plugins_dir = getenv("SR_PLUGINS_PATH");
+    if (!plugins_dir) {
+        plugins_dir = SR_PLG_PATH;
+    }
 
-    return NULL;
+    /* open directory, if possible */
+    dir = opendir(plugins_dir);
+    if (!dir) {
+        if (errno != ENOENT) {
+            SR_ERRINFO_SYSERRNO(&err_info, "opendir");
+        }
+        goto cleanup;
+    }
+
+    while ((file = readdir(dir))) {
+        /* check the extension */
+        len = strlen(file->d_name);
+        if ((len < SR_PLG_SUFFIX_LEN + 1) || strcmp(&file->d_name[len - SR_PLG_SUFFIX_LEN], SR_PLG_SUFFIX)) {
+            continue;
+        }
+
+        /* construct the filepath */
+        if (asprintf(&path, "%s/%s", SR_PLG_PATH, file->d_name) == -1) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+
+        /* load the plugin */
+        dlhandle = dlopen(path, RTLD_NOW);
+        if (!dlhandle) {
+            SR_LOG_WRN("Loading plugin \"%s\" failed (%s).", path, dlerror());
+            goto next_file;
+        }
+
+        /* check for DS plugin version */
+        ver = dlsym(dlhandle, "srpds_apiver__");
+        if (!ver) {
+            /* not a DS plugin */
+            goto next_file;
+        } else if (*ver != SRPLG_DS_API_VERSION) {
+            SR_LOG_WRN("Obsolete DS plugin \"%s\" in version %" PRIu32 " found (expected %d).", path, *ver,
+                    SRPLG_DS_API_VERSION);
+            goto next_file;
+        }
+
+        /* load struct and check it */
+        srpds = dlsym(dlhandle, "srpds__");
+        if (!srpds) {
+            SR_LOG_WRN("DS plugin \"%s\" missing the callback structure.", path);
+            goto next_file;
+        }
+        if (!srpds->name || !srpds->init_cb || !srpds->destroy_cb || !srpds->store_cb || !srpds->recover_cb ||
+                !srpds->load_cb || !srpds->copy_cb || !srpds->update_differ_cb || !srpds->candidate_modified_cb ||
+                !srpds->candidate_reset_cb || !srpds->access_set_cb || !srpds->access_get_cb || !srpds->access_check_cb) {
+            SR_LOG_WRN("DS plugin \"%s\" with incomplete callback structure.", path);
+            goto next_file;
+        }
+
+        /* store new plugin */
+        mem = realloc(*ds_handles, (*ds_handle_count + 1) * sizeof **ds_handles);
+        SR_CHECK_MEM_GOTO(!mem, err_info, next_file);
+        *ds_handles = mem;
+
+        (*ds_handles)[*ds_handle_count].dl_handle = dlhandle;
+        dlhandle = NULL;
+        (*ds_handles)[*ds_handle_count].plugin = srpds;
+        ++(*ds_handle_count);
+
+        SR_LOG_INF("DS plugin \"%s\" loaded.", srpds->name);
+
+next_file:
+        free(path);
+        path = NULL;
+        if (dlhandle) {
+            dlclose(dlhandle);
+            dlhandle = NULL;
+        }
+        if (err_info) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    if (dir) {
+        closedir(dir);
+    }
+    return err_info;
 }
 
 void
@@ -1623,7 +1715,7 @@ sr_ds_plugin_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, struct srplg_
     for (i = 0; i < conn->ds_handle_count; ++i) {
         if (!strcmp(conn->ds_handles[i].plugin->name, ds_plugin_name)) {
             if (ds_plugin) {
-                *ds_plugin = conn->ds_handles[i].plugin;
+                *ds_plugin = (struct srplg_ds_s *)conn->ds_handles[i].plugin;
             }
             return NULL;
         }
@@ -1638,14 +1730,105 @@ sr_error_info_t *
 sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32_t *ntf_handle_count)
 {
     sr_error_info_t *err_info = NULL;
+    DIR *dir = NULL;
+    struct dirent *file;
+    size_t len;
+    const char *plugins_dir;
+    char *path = NULL;
+    void *dlhandle = NULL, *mem;
+    uint32_t *ver;
+    const struct srplg_ntf_s *srpntf;
 
     *ntf_handles = NULL;
     *ntf_handle_count = 0;
 
-    /* dynamic notification plugins */
-    /* TODO */
+    /* get plugins dir from environment variable, or use default one */
+    plugins_dir = getenv("SR_PLUGINS_PATH");
+    if (!plugins_dir) {
+        plugins_dir = SR_PLG_PATH;
+    }
 
-    return NULL;
+    /* open directory, if possible */
+    dir = opendir(plugins_dir);
+    if (!dir) {
+        if (errno != ENOENT) {
+            SR_ERRINFO_SYSERRNO(&err_info, "opendir");
+        }
+        goto cleanup;
+    }
+
+    while ((file = readdir(dir))) {
+        /* check the extension */
+        len = strlen(file->d_name);
+        if ((len < SR_PLG_SUFFIX_LEN + 1) || strcmp(&file->d_name[len - SR_PLG_SUFFIX_LEN], SR_PLG_SUFFIX)) {
+            continue;
+        }
+
+        /* construct the filepath */
+        if (asprintf(&path, "%s/%s", SR_PLG_PATH, file->d_name) == -1) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+
+        /* load the plugin */
+        dlhandle = dlopen(path, RTLD_NOW);
+        if (!dlhandle) {
+            SR_LOG_WRN("Loading plugin \"%s\" failed (%s).", path, dlerror());
+            goto next_file;
+        }
+
+        /* check for NTF plugin version */
+        ver = dlsym(dlhandle, "srpntf_apiver__");
+        if (!ver) {
+            /* not a NTF plugin */
+            goto next_file;
+        } else if (*ver != SRPLG_NTF_API_VERSION) {
+            SR_LOG_WRN("Obsolete NTF plugin \"%s\" in version %" PRIu32 " found (expected %d).", path, *ver,
+                    SRPLG_NTF_API_VERSION);
+            goto next_file;
+        }
+
+        /* load struct and check it */
+        srpntf = dlsym(dlhandle, "srpntf__");
+        if (!srpntf) {
+            SR_LOG_WRN("NTF plugin \"%s\" missing the callback structure.", path);
+            goto next_file;
+        }
+        if (!srpntf->name || !srpntf->init_cb || !srpntf->destroy_cb || !srpntf->store_cb || !srpntf->replay_next_cb ||
+                !srpntf->earliest_get_cb || !srpntf->access_set_cb || !srpntf->access_get_cb || !srpntf->access_check_cb) {
+            SR_LOG_WRN("NTF plugin \"%s\" with incomplete callback structure.", path);
+            goto next_file;
+        }
+
+        /* store new plugin */
+        mem = realloc(*ntf_handles, (*ntf_handle_count + 1) * sizeof **ntf_handles);
+        SR_CHECK_MEM_GOTO(!mem, err_info, next_file);
+        *ntf_handles = mem;
+
+        (*ntf_handles)[*ntf_handle_count].dl_handle = dlhandle;
+        dlhandle = NULL;
+        (*ntf_handles)[*ntf_handle_count].plugin = srpntf;
+        ++(*ntf_handle_count);
+
+        SR_LOG_INF("NTF plugin \"%s\" loaded.", srpntf->name);
+
+next_file:
+        free(path);
+        path = NULL;
+        if (dlhandle) {
+            dlclose(dlhandle);
+            dlhandle = NULL;
+        }
+        if (err_info) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    if (dir) {
+        closedir(dir);
+    }
+    return err_info;
 }
 
 void
@@ -1685,7 +1868,7 @@ sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, struct srpl
     for (i = 0; i < conn->ntf_handle_count; ++i) {
         if (!strcmp(conn->ntf_handles[i].plugin->name, ntf_plugin_name)) {
             if (ntf_plugin) {
-                *ntf_plugin = conn->ntf_handles[i].plugin;
+                *ntf_plugin = (struct srplg_ntf_s *)conn->ntf_handles[i].plugin;
             }
             return NULL;
         }

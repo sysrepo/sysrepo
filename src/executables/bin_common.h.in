@@ -27,7 +27,7 @@
 #define SRPD_WORK_DIR "/"
 
 /** sysrepo-plugind plugins directory */
-#define SRPD_PLUGINS_PATH "@PLUGINS_PATH@"
+#define SRPD_PLG_PATH "@SRPD_PLUGINS_PATH@"
 
 /** whether mkstemps is found on the system */
 #cmakedefine SR_HAVE_MKSTEMPS

@@ -104,13 +104,13 @@ struct sr_conn_ctx_s {
 
     struct sr_ds_handle_s {
         void *dl_handle;            /**< Handle from dlopen(3) call. */
-        struct srplg_ds_s *plugin;  /**< Datastore plugin. */
+        const struct srplg_ds_s *plugin;    /**< Datastore plugin. */
     } *ds_handles;                  /**< Datastore implementation handles. */
     uint32_t ds_handle_count;       /**< Datastore implementaion handle count. */
 
     struct sr_ntf_handle_s {
         void *dl_handle;            /**< Handle from dlopen(3) call. */
-        struct srplg_ntf_s *plugin; /**< Notification plugin. */
+        const struct srplg_ntf_s *plugin;   /**< Notification plugin. */
     } *ntf_handles;                 /**< Notification implementation handles. */
     uint32_t ntf_handle_count;      /**< Notification implementaion handle count. */
 
