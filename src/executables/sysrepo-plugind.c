@@ -258,7 +258,7 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
     /* get plugins dir from environment variable, or use default one */
     plugins_dir = getenv("SRPD_PLUGINS_PATH");
     if (!plugins_dir) {
-        plugins_dir = SRPD_PLUGINS_PATH;
+        plugins_dir = SRPD_PLG_PATH;
     }
 
     /* create the directory if it does not exist */

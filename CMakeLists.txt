@@ -153,11 +153,18 @@ if(YANG_MODULE_PATH)
 else()
     message(STATUS "YANG module path:   ${REPO_PATH}/yang")
 endif()
-if(NOT PLUGINS_PATH)
-    set(PLUGINS_PATH "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/sysrepo/plugins/" CACHE PATH
+
+if(NOT SR_PLUGINS_PATH)
+    set(SR_PLUGINS_PATH "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/sysrepo/plugins/" CACHE PATH
+        "Sysrepo datastore and/or notification plugins path.")
+endif()
+message(STATUS "SR plugins path:    ${SR_PLUGINS_PATH}")
+
+if(NOT SRPD_PLUGINS_PATH)
+    set(SRPD_PLUGINS_PATH "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/sysrepo-plugind/plugins/" CACHE PATH
         "Sysrepo plugin daemon plugins path.")
 endif()
-message(STATUS "SRPD plugins path:  ${PLUGINS_PATH}")
+message(STATUS "SRPD plugins path:  ${SRPD_PLUGINS_PATH}")
 
 #
 # sources

@@ -107,9 +107,14 @@ Set custom repository path:
 -DREPO_PATH=/opt/sysrepo/my_repository
 ```
 
+Set custom `sysrepo` DS and NTF plugins path:
+```
+-DSR_PLUGINS_PATH=/opt/sysrepo/plugins
+```
+
 Set custom `sysrepo-plugind` plugins path:
 ```
--DPLUGINS_PATH=/opt/sysrepo-plugind/plugins
+-DSRPD_PLUGINS_PATH=/opt/sysrepo-plugind/plugins
 ```
 
 Set global `umask` for all sysrepo file and directory creation:
