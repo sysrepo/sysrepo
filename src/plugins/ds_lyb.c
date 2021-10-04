@@ -190,7 +190,8 @@ srpds_lyb_destroy(const struct lys_module *mod, sr_datastore_t ds)
         return rc;
     }
 
-    if ((unlink(path) == -1) && (errno != ENOENT)) {
+    if ((unlink(path) == -1) && (errno != ENOENT) && ((ds == SR_DS_STARTUP) || (ds == SR_DS_RUNNING))) {
+        /* startup is persistent and must always exist, running should always be created */
         SRP_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
     }
     free(path);
@@ -289,17 +290,20 @@ retry_open:
     /* open fd */
     fd = srlyb_open(path, O_RDONLY, 0);
     if (fd == -1) {
-        if ((errno == ENOENT) && (ds == SR_DS_CANDIDATE)) {
-            /* no candidate exists, just use running */
-            ds = SR_DS_RUNNING;
-            free(path);
-            path = NULL;
-            goto retry_open;
-        }
-
-        if ((errno == ENOENT) && !strcmp(mod->name, "sysrepo")) {
-            /* fine for the internal module */
-            goto cleanup;
+        if (errno == ENOENT) {
+            if (ds == SR_DS_CANDIDATE) {
+                /* no candidate exists, just use running */
+                ds = SR_DS_RUNNING;
+                free(path);
+                path = NULL;
+                goto retry_open;
+            } else if (!strcmp(mod->name, "sysrepo")) {
+                /* fine for the internal module */
+                goto cleanup;
+            } else if (ds == SR_DS_OPERATIONAL) {
+                /* it may not exist */
+                goto cleanup;
+            }
         }
 
         SRPLG_LOG_ERR(srpds_name, "Opening \"%s\" failed (%s).", path, strerror(errno));
@@ -560,6 +564,9 @@ retry:
                 ds = SR_DS_RUNNING;
                 free(path);
                 goto retry;
+            } else if ((ds == SR_DS_OPERATIONAL) && (errno == ENOENT)) {
+                /* non-existing operational is fine */
+                *read = 1;
             } else if (errno == EACCES) {
                 *read = 0;
             } else {
@@ -580,6 +587,9 @@ retry:
                 ds = SR_DS_RUNNING;
                 free(path);
                 goto retry;
+            } else if ((ds == SR_DS_OPERATIONAL) && (errno == ENOENT)) {
+                /* non-existing operational is fine */
+                *write = 1;
             } else if (errno == EACCES) {
                 *write = 0;
             } else {
