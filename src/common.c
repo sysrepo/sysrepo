@@ -4695,14 +4695,19 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
                 *data = (*data)->next;
             }
 
-            /* relink into parent, if any */
-            lyd_unlink_tree(src);
-            if (parent && lyd_insert_child(parent, src)) {
-                sr_errinfo_new_ly(&err_info, ctx);
-                goto cleanup;
-            }
+            if (lysc_is_key(set->dnodes[i]->schema)) {
+                /* keys are duplicated automatically and cannot be inserted */
+                root = parent;
+            } else {
+                /* relink into parent, if any */
+                lyd_unlink_tree(src);
+                if (parent && lyd_insert_child(parent, src)) {
+                    sr_errinfo_new_ly(&err_info, ctx);
+                    goto cleanup;
+                }
 
-            root = src;
+                root = src;
+            }
         }
 
         /* find top-level root */
