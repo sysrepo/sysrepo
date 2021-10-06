@@ -1380,37 +1380,6 @@ cleanup:
 }
 
 API int
-sr_cancel_update_module(sr_conn_ctx_t *conn, const char *module_name)
-{
-    sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
-    char *path = NULL;
-
-    SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
-
-    /* try to find this module */
-    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
-    if (!ly_mod) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
-        goto cleanup;
-    }
-
-    /* check write permission */
-    if ((err_info = sr_perm_check(conn, ly_mod, SR_DS_STARTUP, 1, NULL))) {
-        goto cleanup;
-    }
-
-    /* unschedule module update */
-    if ((err_info = sr_lydmods_unsched_upd_module(SR_CONN_MAIN_SHM(conn), conn->ly_ctx, module_name))) {
-        goto cleanup;
-    }
-
-cleanup:
-    free(path);
-    return sr_api_ret(NULL, err_info);
-}
-
-API int
 sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int replay_support)
 {
     sr_error_info_t *err_info = NULL;
@@ -1604,12 +1573,6 @@ cleanup:
 }
 
 API int
-sr_get_module_access(sr_conn_ctx_t *conn, const char *module_name, char **owner, char **group, mode_t *perm)
-{
-    return sr_get_module_ds_access(conn, module_name, SR_DS_STARTUP, owner, group, perm);
-}
-
-API int
 sr_check_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds, int *read, int *write)
 {
     sr_error_info_t *err_info = NULL;
@@ -1726,26 +1689,6 @@ sr_disable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const ch
     SR_CHECK_ARG_APIRET(!conn || !module_name || !feature_name, NULL, err_info);
 
     err_info = sr_change_module_feature(conn, module_name, feature_name, 0);
-
-    return sr_api_ret(NULL, err_info);
-}
-
-API int
-sr_get_module_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data)
-{
-    sr_error_info_t *err_info;
-
-    SR_CHECK_ARG_APIRET(!conn || !sysrepo_data, NULL, err_info);
-
-    /* LYDMODS LOCK */
-    if ((err_info = sr_lydmods_lock(&SR_CONN_MAIN_SHM(conn)->lydmods_lock, conn->ly_ctx, __func__))) {
-        return sr_api_ret(NULL, err_info);
-    }
-
-    err_info = sr_lydmods_parse(conn->ly_ctx, sysrepo_data);
-
-    /* LYDMODS UNLOCK */
-    sr_munlock(&SR_CONN_MAIN_SHM(conn)->lydmods_lock);
 
     return sr_api_ret(NULL, err_info);
 }
@@ -3279,24 +3222,6 @@ cleanup_unlock:
     sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
 
     return sr_api_ret(session, err_info);
-}
-
-API int
-sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session, time_t *stop_time_in)
-{
-    int rc;
-    struct timespec stop_time_ts = {0};
-
-    if (stop_time_in) {
-        stop_time_ts.tv_sec = *stop_time_in;
-    }
-
-    rc = sr_subscription_process_events(subscription, session, &stop_time_ts);
-
-    if (stop_time_in) {
-        *stop_time_in = stop_time_ts.tv_sec + (stop_time_ts.tv_nsec ? 1 : 0);
-    }
-    return rc;
 }
 
 API uint32_t
@@ -4983,34 +4908,6 @@ sr_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name, cons
 }
 
 API int
-sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath, time_t start_time,
-        time_t stop_time, sr_event_notif_cb callback, void *private_data, sr_subscr_options_t opts,
-        sr_subscription_ctx_t **subscription)
-{
-    struct timespec start_ts = {0}, stop_ts = {0};
-
-    start_ts.tv_sec = start_time;
-    stop_ts.tv_sec = stop_time;
-
-    return _sr_notif_subscribe(session, module_name, xpath, start_time ? &start_ts : NULL, stop_time ? &stop_ts : NULL,
-            callback, NULL, private_data, opts, subscription);
-}
-
-API int
-sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name, const char *xpath, time_t start_time,
-        time_t stop_time, sr_event_notif_tree_cb callback, void *private_data, sr_subscr_options_t opts,
-        sr_subscription_ctx_t **subscription)
-{
-    struct timespec start_ts = {0}, stop_ts = {0};
-
-    start_ts.tv_sec = start_time;
-    stop_ts.tv_sec = stop_time;
-
-    return _sr_notif_subscribe(session, module_name, xpath, start_time ? &start_ts : NULL, stop_time ? &stop_ts : NULL,
-            NULL, callback, private_data, opts, subscription);
-}
-
-API int
 sr_event_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t *values, const size_t values_cnt,
         uint32_t timeout_ms, int wait)
 {
@@ -5219,24 +5116,6 @@ cleanup_unlock:
 }
 
 API int
-sr_event_notif_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char **module_name,
-        const char **xpath, time_t *start_time, time_t *stop_time, uint32_t *filtered_out)
-{
-    int rc;
-    struct timespec start_ts, stop_ts;
-
-    rc = sr_notif_sub_get_info(subscription, sub_id, module_name, xpath, &start_ts, &stop_ts, filtered_out);
-
-    if (start_time) {
-        *start_time = start_ts.tv_sec;
-    }
-    if (stop_time) {
-        *stop_time = stop_ts.tv_sec;
-    }
-    return rc;
-}
-
-API int
 sr_event_notif_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char *xpath)
 {
     sr_error_info_t *err_info = NULL;
@@ -5358,16 +5237,6 @@ cleanup_unlock:
 
     sr_session_stop(ev_sess);
     return sr_api_ret(NULL, err_info);
-}
-
-API int
-sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t sub_id, time_t stop_time)
-{
-    struct timespec stop_ts = {0};
-
-    stop_ts.tv_sec = stop_time;
-
-    return sr_notif_sub_modify_stop_time(subscription, sub_id, stop_time ? &stop_ts : NULL);
 }
 
 /**
