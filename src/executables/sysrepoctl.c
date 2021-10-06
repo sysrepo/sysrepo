@@ -35,7 +35,7 @@
 #define SRCTL_LIST_REVISION "Revision"
 #define SRCTL_LIST_FLAGS "Flags"
 #define SRCTL_LIST_OWNER "Owner"
-#define SRCTL_LIST_PERMS "Permissions"
+#define SRCTL_LIST_PERMS "Startup Perms"
 #define SRCTL_LIST_SUBMODS "Submodules"
 #define SRCTL_LIST_FEATURES "Features"
 
@@ -44,8 +44,6 @@ struct list_item {
     char *revision;
     const char *impl_flag;
     int replay;
-    const char *change_flag;
-    int feat_changes;
     char *owner;
     mode_t perms;
     char *submodules;
@@ -75,36 +73,39 @@ help_print(void)
             "  -V, --version        Print only information about sysrepo version.\n"
             "  -l, --list           List YANG modules in sysrepo.\n"
             "  -i, --install <path> Install the specified schema into sysrepo. Can be in either YANG or YIN format.\n"
-            "  -u, --uninstall <module> [,<module2>,<module3>...]\n"
-            "                       Uninstall the specified module(s) from sysrepo.\n"
+            "  -u, --uninstall <module>\n"
+            "                       Uninstall the specified module from sysrepo.\n"
             "  -c, --change <module>\n"
             "                       Change access rights, features, or replay support of the specified module.\n"
             "                       Use special \":ALL\" module name to change the access rights or replay support\n"
             "                       of all the modules.\n"
             "  -U, --update <path>  Update the specified schema in sysrepo. Can be in either YANG or YIN format.\n"
-            "  -C, --connection-count\n"
-            "                       Print the number of sysrepo connections to STDOUT.\n"
             "\n"
             "Available options:\n"
             "  -s, --search-dirs <dir-path> [:<dir-path>...]\n"
             "                       Directories to search for include/import modules. Directory with already-installed\n"
             "                       modules is always searched. Accepted by install, update op.\n"
             "  -e, --enable-feature <feature-name>\n"
-            "                       Enabled specific feature. Can be specified multiple times Accepted by install,\n"
+            "                       Enabled specific feature. Can be specified multiple times. Accepted by install,\n"
             "                       change op.\n"
             "  -d, --disable-feature <feature-name>\n"
             "                       Disable specific feature. Can be specified multiple times. Accepted by change op.\n"
             "  -r, --replay <state> Change replay support (storing notifications) for this module to on/off or 1/0.\n"
             "                       Accepted by change op.\n"
-            "  -o, --owner <user>   Set filesystem owner of a module. Accepted by change op, with \"apply\" even install,\n"
-            "                       update op.\n"
-            "  -g, --group <group>  Set filesystem group of a module. Accepted by change op, with \"apply\" even install,\n"
-            "                       update op.\n"
+            "  -o, --owner <user>   Set filesystem owner of a module. Accepted by change, install op.\n"
+            "  -g, --group <group>  Set filesystem group of a module. Accepted by change, install op.\n"
             "  -p, --permissions <permissions>\n"
-            "                       Set filesystem permissions of a module (chmod format). Accepted by change op,\n"
-            "                       with \"apply\" even install, update op.\n"
-            "  -a, --apply          Apply schema changes immediately, not only schedule them. Accepted by install,\n"
-            "                       uninstall, change, update op.\n"
+            "                       Set filesystem permissions of a module (chmod format). Accepted by change,\n"
+            "                       install op.\n"
+            "  -D, --datastore <mod-datastore>\n"
+            "                       Apply operation to a module datastore (startup, running, candidate, operational,\n"
+            "                       or notification) or \":ALL\" (default) the datastores. Accepted by change op\n"
+            "                       if permissions are being changed.\n"
+            "  -I, --init-data <path>\n"
+            "                       Initial data in a file with XML or JSON extension to be set for a module,\n"
+            "                       useful when there are mandatory top-level nodes. Accepted by install op.\n"
+            "  -f, --force          Force the specific operation. Accepted by change op if features are being changed\n"
+            "                       and uninstall op.\n"
             "  -v, --verbosity <level>\n"
             "                       Change verbosity to a level (none, error, warning, info, debug) or\n"
             "                       number (0, 1, 2, 3, 4). Accepted by all op.\n"
@@ -132,68 +133,20 @@ error_print(int sr_error, const char *format, ...)
     }
 }
 
-static void
-srctl_list_collect_import(const struct lys_module *ly_mod, struct list_item **list, size_t *list_count)
-{
-    struct list_item *cur_item;
-    LY_ARRAY_COUNT_TYPE u;
-
-    if (ly_mod->implemented) {
-        /* must be added from sysrepo data */
-        return;
-    }
-
-    /* check for duplicates */
-    for (u = 0; u < *list_count; ++u) {
-        if (strcmp((*list)[u].name, ly_mod->name)) {
-            continue;
-        }
-        if (strcmp((*list)[u].revision, ly_mod->revision ? ly_mod->revision : "")) {
-            continue;
-        }
-
-        return;
-    }
-
-    /* new module */
-    *list = realloc(*list, (*list_count + 1) * sizeof **list);
-    cur_item = &(*list)[*list_count];
-    ++(*list_count);
-
-    /* init */
-    memset(cur_item, 0, sizeof *cur_item);
-    cur_item->impl_flag = "i";
-    cur_item->change_flag = "";
-    cur_item->owner = strdup("");
-    cur_item->submodules = strdup("");
-    cur_item->features = strdup("");
-
-    /* fill name and revision */
-    cur_item->name = strdup(ly_mod->name);
-    cur_item->revision = strdup(ly_mod->revision ? ly_mod->revision : "");
-
-    /* recursively */
-    LY_ARRAY_FOR(ly_mod->parsed->imports, u) {
-        srctl_list_collect_import(ly_mod->parsed->imports[u].module, list, list_count);
-    }
-}
-
 static int
-srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct ly_ctx *ly_ctx, struct list_item **list,
-        size_t *list_count)
+srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list_item **list, size_t *list_count)
 {
     struct list_item *cur_item;
-    const struct lys_module *ly_mod = NULL;
-    const struct lysp_submodule *ly_submod;
-    struct lyd_node *module, *child;
+    const struct lys_module *ly_mod;
+    const struct lysp_feature *f;
     char *owner, *group;
     const char *str;
-    int ret = SR_ERR_OK;
-    LY_ERR real_state;
-    LY_ARRAY_COUNT_TYPE u, v;
+    int ret = SR_ERR_OK, enabled;
+    uint32_t idx = 0, idx2;
+    LY_ARRAY_COUNT_TYPE u;
 
-    LY_LIST_FOR(lyd_child(sr_data), module) {
-        if (strcmp(module->schema->name, "module") && strcmp(module->schema->name, "installed-module")) {
+    while ((ly_mod = ly_ctx_get_module_iter(ly_ctx, &idx))) {
+        if (!strcmp(ly_mod->name, "sysrepo")) {
             continue;
         }
 
@@ -205,107 +158,71 @@ srctl_list_collect(sr_conn_ctx_t *conn, struct lyd_node *sr_data, const struct l
         /* init */
         memset(cur_item, 0, sizeof *cur_item);
         cur_item->impl_flag = "";
-        cur_item->change_flag = "";
         cur_item->submodules = strdup("");
         cur_item->features = strdup("");
 
-        /* name and revision must be first */
-        child = lyd_child(module);
-        assert(!strcmp(child->schema->name, "name"));
-        cur_item->name = strdup(lyd_get_value(child));
+        /* name and revision */
+        cur_item->name = strdup(ly_mod->name);
+        cur_item->revision = ly_mod->revision ? strdup(ly_mod->revision) : strdup("");
 
-        child = child->next;
-        if (!strcmp(child->schema->name, "revision")) {
-            cur_item->revision = strdup(lyd_get_value(child));
-        }
-
-        /* get the module */
-        if (!strcmp(module->schema->name, "module")) {
-            if (cur_item->revision) {
-                ly_mod = ly_ctx_get_module(ly_ctx, cur_item->name, cur_item->revision);
-            } else {
-                ly_mod = ly_ctx_get_module_implemented(ly_ctx, cur_item->name);
+        if (ly_mod->implemented) {
+            /* replay-support */
+            ret = sr_get_module_replay_support(conn, ly_mod->name, &enabled);
+            if (ret != SR_ERR_OK) {
+                return ret;
             }
-            if (!ly_mod) {
-                return SR_ERR_INTERNAL;
+            cur_item->replay = enabled;
+        } else {
+            /* replay-support */
+            cur_item->replay = 0;
+        }
+
+        /* enabled features */
+        f = NULL;
+        idx2 = 0;
+        while ((f = lysp_feature_next(f, ly_mod->parsed, &idx2))) {
+            if (!(f->flags & LYS_FENABLED)) {
+                /* disabled, skip */
+                continue;
             }
-        }
 
-        /* set empty revision if no specified */
-        if (!cur_item->revision) {
-            cur_item->revision = strdup("");
-        }
-
-        /* collect information from sysrepo data */
-        LY_LIST_FOR(child, child) {
-            if (!strcmp(child->schema->name, "replay-support")) {
-                cur_item->replay = 1;
-            } else if (!strcmp(child->schema->name, "removed")) {
-                cur_item->change_flag = "R";
-            } else if (!strcmp(child->schema->name, "updated-yang")) {
-                cur_item->change_flag = "U";
-            } else if (!strcmp(child->schema->name, "enabled-feature")) {
-                str = lyd_get_value(child);
-
-                if (ly_mod) {
-                    /* check the real state of the feature */
-                    real_state = lys_feature_value(ly_mod, str);
-                } else {
-                    real_state = LY_SUCCESS;
-                }
-
-                cur_item->features = realloc(cur_item->features, strlen(cur_item->features) + (!real_state ? 0 : 1) + 1 +
-                        +strlen(str) + 1);
-                if (cur_item->features[0]) {
-                    strcat(cur_item->features, " ");
-                }
-                strcat(cur_item->features, str);
-                if (real_state == LY_ENOT) {
-                    strcat(cur_item->features, "!");
-                }
-            } else if (!strcmp(child->schema->name, "changed-feature")) {
-                cur_item->feat_changes = 1;
+            cur_item->features = realloc(cur_item->features, strlen(cur_item->features) + strlen(f->name) + 2);
+            if (cur_item->features[0]) {
+                strcat(cur_item->features, " ");
             }
+            strcat(cur_item->features, f->name);
         }
 
-        if (!strcmp(module->schema->name, "module")) {
+        if (ly_mod->implemented) {
+            /* conformance */
             cur_item->impl_flag = "I";
 
-            /* get owner and permissions */
-            if ((ret = sr_get_module_access(conn, cur_item->name, &owner, &group, &cur_item->perms)) != SR_ERR_OK) {
+            /* owner and permissions */
+            ret = sr_get_module_ds_access(conn, cur_item->name, SR_DS_STARTUP, &owner, &group, &cur_item->perms);
+            if (ret != SR_ERR_OK) {
                 return ret;
             }
             cur_item->owner = malloc(strlen(owner) + 1 + strlen(group) + 1);
             sprintf(cur_item->owner, "%s:%s", owner, group);
             free(owner);
             free(group);
-
-            /* learn submodules */
-            LY_ARRAY_FOR(ly_mod->parsed->includes, u) {
-                str = ly_mod->parsed->includes[u].submodule->name;
-                cur_item->submodules = realloc(cur_item->submodules, strlen(cur_item->submodules) + 1 + strlen(str) + 1);
-                if (u) {
-                    strcat(cur_item->submodules, " ");
-                }
-                strcat(cur_item->submodules, str);
-            }
-
-            /* add all import modules of submodules */
-            LY_ARRAY_FOR(ly_mod->parsed->includes, u) {
-                ly_submod = ly_mod->parsed->includes[u].submodule;
-                LY_ARRAY_FOR(ly_submod->imports, v) {
-                    srctl_list_collect_import(ly_submod->imports[v].module, list, list_count);
-                }
-            }
-
-            /* add all import modules as well */
-            LY_ARRAY_FOR(ly_mod->parsed->imports, u) {
-                srctl_list_collect_import(ly_mod->parsed->imports[u].module, list, list_count);
-            }
         } else {
-            cur_item->change_flag = "N";
+            /* conformance */
+            cur_item->impl_flag = "i";
+
+            /* owner and permissions */
+            cur_item->perms = 0;
             cur_item->owner = strdup("");
-            cur_item->revision = strdup("");
+        }
+
+        /* learn submodules */
+        LY_ARRAY_FOR(ly_mod->parsed->includes, u) {
+            str = ly_mod->parsed->includes[u].submodule->name;
+            cur_item->submodules = realloc(cur_item->submodules, strlen(cur_item->submodules) + 1 + strlen(str) + 1);
+            if (u) {
+                strcat(cur_item->submodules, " ");
+            }
+            strcat(cur_item->submodules, str);
         }
     }
 
@@ -330,22 +247,16 @@ srctl_list(sr_conn_ctx_t *conn)
     int ret;
     const struct ly_ctx *ly_ctx;
     char flags_str[5], perm_str[4];
-    struct lyd_node *data = NULL;
     struct list_item *list = NULL;
     size_t i, line_len, list_count = 0;
     int max_name_len, max_owner_len, max_submod_len, max_feat_len;
     int rev_len, flag_len, perm_len;
 
-    /* get context */
-    ly_ctx = sr_get_context(conn);
-
-    /* get SR module info data */
-    if ((ret = sr_get_module_info(conn, &data)) != SR_ERR_OK) {
-        goto cleanup;
-    }
+    /* acquire context */
+    ly_ctx = sr_acquire_context(conn);
 
     /* collect all modules */
-    if ((ret = srctl_list_collect(conn, data, ly_ctx, &list, &list_count))) {
+    if ((ret = srctl_list_collect(conn, ly_ctx, &list, &list_count))) {
         goto cleanup;
     }
 
@@ -379,9 +290,9 @@ srctl_list(sr_conn_ctx_t *conn)
     printf("Sysrepo repository: %s\n\n", sr_get_repo_path());
 
     /* print header */
-    printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n", max_name_len, "Module Name", rev_len, "Revision",
-            flag_len, "Flags", max_owner_len, "Owner", perm_len, "Permissions", max_submod_len, "Submodules",
-            max_feat_len, "Features");
+    printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n", max_name_len, SRCTL_LIST_NAME, rev_len,
+            SRCTL_LIST_REVISION, flag_len, SRCTL_LIST_FLAGS, max_owner_len, SRCTL_LIST_OWNER, perm_len, SRCTL_LIST_PERMS,
+            max_submod_len, SRCTL_LIST_SUBMODS, max_feat_len, SRCTL_LIST_FEATURES);
 
     /* print ruler */
     line_len = max_name_len + 3 + rev_len + 3 + flag_len + 3 + max_owner_len + 3 + perm_len + 3 + max_submod_len + 3 +
@@ -393,8 +304,7 @@ srctl_list(sr_conn_ctx_t *conn)
 
     /* print modules */
     for (i = 0; i < list_count; ++i) {
-        sprintf(flags_str, "%s%s%s%s", list[i].impl_flag, list[i].replay ? "R" : " ", list[i].change_flag,
-                list[i].feat_changes ? "F" : "");
+        sprintf(flags_str, "%s%s", list[i].impl_flag, list[i].replay ? "R" : " ");
         if (!strcmp(list[i].impl_flag, "I")) {
             sprintf(perm_str, "%03o", list[i].perms);
         } else {
@@ -406,11 +316,10 @@ srctl_list(sr_conn_ctx_t *conn)
     }
 
     /* print flag legend */
-    printf("\nFlags meaning: I - Installed/i - Imported; R - Replay support; N - New/X - Removed/U - Updated; F - Feature changes\n");
-    printf("Features: ! - Means that the feature is effectively disabled because of its false if-feature(s)\n\n");
+    printf("\nFlags meaning: I - Installed/i - Imported; R - Replay support\n\n");
 
 cleanup:
-    lyd_free_all(data);
+    sr_release_context(conn);
     for (i = 0; i < list_count; ++i) {
         free(list[i].name);
         free(list[i].revision);
@@ -422,42 +331,15 @@ cleanup:
     return ret;
 }
 
-/* can be changed by log_cb */
-char *inst_module_name;
-
-static void
-log_cb(sr_log_level_t level, const char *message)
-{
-    const char *end;
-
-    if (level != SR_LL_INF) {
-        return;
-    }
-    if (strncmp(message, "Module \"", 8)) {
-        return;
-    }
-    end = strchr(message + 8, '\"');
-    if (!end) {
-        return;
-    }
-    if (strncmp(end, "\" was installed", 15) && strncmp(end, "\" was updated", 13)) {
-        return;
-    }
-
-    /* store the newly installed/updated module name */
-    free(inst_module_name);
-    inst_module_name = strndup(message + 8, end - (message + 8));
-}
-
 int
 main(int argc, char **argv)
 {
     sr_conn_ctx_t *conn = NULL;
-    const char *file_path = NULL, *search_dirs = NULL, *module_name = NULL, *owner = NULL, *group = NULL;
+    const char *file_path = NULL, *search_dirs = NULL, *module_name = NULL, *data_path = NULL, *owner = NULL, *group = NULL;
     char **features = NULL, **dis_features = NULL, *ptr;
-    mode_t perms = -1;
-    int r, i, rc = EXIT_FAILURE, opt, operation = 0, feat_count = 0, dis_feat_count = 0, replay = -1, apply = 0;
-    uint32_t conn_count;
+    mode_t perms = 0;
+    int r, i, rc = EXIT_FAILURE, opt;
+    int operation = 0, feat_count = 0, dis_feat_count = 0, replay = -1, force = 0, mod_ds = SR_MOD_DS_PLUGIN_COUNT;
     struct option options[] = {
         {"help",            no_argument,       NULL, 'h'},
         {"version",         no_argument,       NULL, 'V'},
@@ -466,7 +348,6 @@ main(int argc, char **argv)
         {"uninstall",       required_argument, NULL, 'u'},
         {"change",          required_argument, NULL, 'c'},
         {"update",          required_argument, NULL, 'U'},
-        {"connection-count", no_argument,       NULL, 'C'},
         {"search-dirs",     required_argument, NULL, 's'},
         {"enable-feature",  required_argument, NULL, 'e'},
         {"disable-feature", required_argument, NULL, 'd'},
@@ -474,7 +355,9 @@ main(int argc, char **argv)
         {"owner",           required_argument, NULL, 'o'},
         {"group",           required_argument, NULL, 'g'},
         {"permissions",     required_argument, NULL, 'p'},
-        {"apply",           no_argument,       NULL, 'a'},
+        {"datastore",       required_argument, NULL, 'D'},
+        {"init-data",       required_argument, NULL, 'I'},
+        {"force",           no_argument,       NULL, 'f'},
         {"verbosity",       required_argument, NULL, 'v'},
         {NULL,              0,                 NULL, 0},
     };
@@ -486,7 +369,7 @@ main(int argc, char **argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVli:u:c:U:Cs:e:d:r:o:g:p:av:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVli:u:c:U:s:e:d:r:o:g:p:D:I:fv:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -536,13 +419,6 @@ main(int argc, char **argv)
             operation = 'U';
             file_path = optarg;
             break;
-        case 'C':
-            if (operation) {
-                error_print(0, "Operation already specified");
-                goto cleanup;
-            }
-            operation = 'C';
-            break;
         case 's':
             if (search_dirs) {
                 error_print(0, "Search dirs already specified");
@@ -582,7 +458,7 @@ main(int argc, char **argv)
             }
             break;
         case 'o':
-            if (operation && (operation != 'c') && (((operation != 'i') && (operation != 'U')) || !apply)) {
+            if (operation && (operation != 'i') && (operation != 'c')) {
                 error_print(0, "Invalid parameter -%c for the operation", opt);
                 goto cleanup;
             }
@@ -593,7 +469,7 @@ main(int argc, char **argv)
             owner = optarg;
             break;
         case 'g':
-            if (operation && (operation != 'c') && (((operation != 'i') && (operation != 'U')) || !apply)) {
+            if (operation && (operation != 'i') && (operation != 'c')) {
                 error_print(0, "Invalid parameter -%c for the operation", opt);
                 goto cleanup;
             }
@@ -604,11 +480,11 @@ main(int argc, char **argv)
             group = optarg;
             break;
         case 'p':
-            if (operation && (operation != 'c') && (((operation != 'i') && (operation != 'U')) || !apply)) {
+            if (operation && (operation != 'i') && (operation != 'c')) {
                 error_print(0, "Invalid parameter -%c for the operation", opt);
                 goto cleanup;
             }
-            if (perms != (mode_t)(-1)) {
+            if (perms) {
                 error_print(0, "Permissions already specified");
                 goto cleanup;
             }
@@ -618,8 +494,35 @@ main(int argc, char **argv)
                 goto cleanup;
             }
             break;
-        case 'a':
-            apply = 1;
+        case 'D':
+            if (operation && (operation != 'c')) {
+                error_print(0, "Invalid parameter -%c for the operation", opt);
+                goto cleanup;
+            }
+            if (!strcmp(optarg, "running")) {
+                mod_ds = SR_DS_RUNNING;
+            } else if (!strcmp(optarg, "startup")) {
+                mod_ds = SR_DS_STARTUP;
+            } else if (!strcmp(optarg, "candidate")) {
+                mod_ds = SR_DS_CANDIDATE;
+            } else if (!strcmp(optarg, "operational")) {
+                mod_ds = SR_DS_OPERATIONAL;
+            } else if (!strcmp(optarg, "notification")) {
+                mod_ds = SR_MOD_DS_NOTIF;
+            } else if (strcmp(optarg, ":ALL")) {
+                error_print(0, "Unknown datastore \"%s\"", optarg);
+                goto cleanup;
+            }
+            break;
+        case 'I':
+            if (operation && (operation != 'i')) {
+                error_print(0, "Invalid parameter -%c for the operation", opt);
+                goto cleanup;
+            }
+            data_path = optarg;
+            break;
+        case 'f':
+            force = 1;
             break;
         case 'v':
             if (!strcmp(optarg, "none")) {
@@ -654,15 +557,10 @@ main(int argc, char **argv)
     /* set logging */
     sr_log_stderr(log_level);
 
-    /* set callback */
-    sr_log_set_cb(log_cb);
-
-    if (operation != 'C') {
-        /* create connection */
-        if ((r = sr_connect(0, &conn)) != SR_ERR_OK) {
-            error_print(r, "Failed to connect");
-            goto cleanup;
-        }
+    /* create connection */
+    if ((r = sr_connect(0, &conn)) != SR_ERR_OK) {
+        error_print(r, "Failed to connect");
+        goto cleanup;
     }
 
     /* perform the operation */
@@ -676,7 +574,8 @@ main(int argc, char **argv)
         break;
     case 'i':
         /* install */
-        if ((r = sr_install_module(conn, file_path, search_dirs, (const char **)features)) != SR_ERR_OK) {
+        if ((r = sr_install_module2(conn, file_path, search_dirs, (const char **)features, NULL, owner, group, perms,
+                data_path, NULL, 0)) != SR_ERR_OK) {
             /* succeed if the module is already installed */
             if (r != SR_ERR_EXISTS) {
                 error_print(r, "Failed to install module \"%s\"", file_path);
@@ -686,24 +585,32 @@ main(int argc, char **argv)
         break;
     case 'u':
         /* uninstall */
-        ptr = (char *)module_name;
-        for (module_name = strtok(ptr, ","); module_name; module_name = strtok(NULL, ",")) {
-            if ((r = sr_remove_module(conn, module_name)) != SR_ERR_OK) {
-                error_print(r, "Failed to uninstall module \"%s\"", module_name);
-                goto cleanup;
-            }
+        if ((r = sr_remove_module(conn, module_name, force)) != SR_ERR_OK) {
+            error_print(r, "Failed to uninstall module \"%s\"", module_name);
+            goto cleanup;
         }
         break;
     case 'c':
         /* change */
 
         /* change owner, group, and/or permissions */
-        if (owner || group || (perms != (mode_t)(-1))) {
+        if (owner || group || perms) {
             if (!strcmp(module_name, ":ALL")) {
                 /* all the modules */
                 module_name = NULL;
             }
-            if ((r = sr_set_module_access(conn, module_name, owner, group, perms)) != SR_ERR_OK) {
+            if (mod_ds == SR_MOD_DS_PLUGIN_COUNT) {
+                for (i = 0; i < SR_MOD_DS_PLUGIN_COUNT; ++i) {
+                    if ((r = sr_set_module_ds_access(conn, module_name, i, owner, group, perms)) != SR_ERR_OK) {
+                        if (module_name) {
+                            error_print(r, "Failed to change module \"%s\" access", module_name);
+                        } else {
+                            error_print(r, "Failed to change modules access");
+                        }
+                        goto cleanup;
+                    }
+                }
+            } else if ((r = sr_set_module_ds_access(conn, module_name, mod_ds, owner, group, perms)) != SR_ERR_OK) {
                 if (module_name) {
                     error_print(r, "Failed to change module \"%s\" access", module_name);
                 } else {
@@ -715,7 +622,7 @@ main(int argc, char **argv)
 
         /* change enabled features */
         for (i = 0; i < feat_count; ++i) {
-            if ((r = sr_enable_module_feature(conn, module_name, features[i])) != SR_ERR_OK) {
+            if ((r = sr_enable_module_feature(conn, module_name, features[i], force)) != SR_ERR_OK) {
                 error_print(r, "Failed to enable feature \"%s\"", features[i]);
                 goto cleanup;
             }
@@ -723,7 +630,7 @@ main(int argc, char **argv)
 
         /* change disabled features */
         for (i = 0; i < dis_feat_count; ++i) {
-            if ((r = sr_disable_module_feature(conn, module_name, dis_features[i])) != SR_ERR_OK) {
+            if ((r = sr_disable_module_feature(conn, module_name, dis_features[i], force)) != SR_ERR_OK) {
                 error_print(r, "Failed to disable feature \"%s\"", dis_features[i]);
                 goto cleanup;
             }
@@ -748,14 +655,6 @@ main(int argc, char **argv)
             goto cleanup;
         }
         break;
-    case 'C':
-        /* connection-count */
-        if ((r = sr_connection_count(&conn_count)) != SR_ERR_OK) {
-            error_print(r, "Failed to get connection count");
-            goto cleanup;
-        }
-        fprintf(stdout, "%" PRIu32 "\n", conn_count);
-        break;
     case 0:
         error_print(0, "No operation specified");
         goto cleanup;
@@ -764,47 +663,9 @@ main(int argc, char **argv)
         goto cleanup;
     }
 
-    /* apply changes */
-    switch (operation) {
-    case 'i':
-    case 'u':
-    case 'c':
-    case 'U':
-        if (apply) {
-            sr_disconnect(conn);
-            conn = NULL;
-            /* get connection count */
-            if ((r = sr_connection_count(&conn_count)) != SR_ERR_OK) {
-                error_print(r, "Failed to get connection count");
-                goto cleanup;
-            }
-            if (conn_count) {
-                error_print(0, "Cannot apply changes because of existing connections");
-                goto cleanup;
-            }
-            if ((r = sr_connect(SR_CONN_ERR_ON_SCHED_FAIL, &conn)) != SR_ERR_OK) {
-                error_print(r, "Failed to apply changes");
-                goto cleanup;
-            }
-        }
-        break;
-    default:
-        /* nothing to do */
-        break;
-    }
-
-    /* change permissions for a newly installed/updated module */
-    if (((operation == 'i') || (operation == 'U')) && (owner || group || (perms != (mode_t)(-1)))) {
-        if ((r = sr_set_module_access(conn, inst_module_name, owner, group, perms)) != SR_ERR_OK) {
-            error_print(r, "Failed to change module \"%s\" access", inst_module_name);
-            goto cleanup;
-        }
-    }
-
     rc = EXIT_SUCCESS;
 
 cleanup:
-    free(inst_module_name);
     sr_disconnect(conn);
     free(features);
     free(dis_features);

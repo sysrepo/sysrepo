@@ -33,6 +33,8 @@ static int
 dp_get_items_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
+    const struct ly_ctx *ly_ctx;
+
     (void)session;
     (void)sub_id;
     (void)request_xpath;
@@ -42,8 +44,10 @@ dp_get_items_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_n
     printf("\n\n ========== DATA FOR \"%s\" \"%s\" REQUESTED =======================\n\n", module_name, xpath);
 
     if (!strcmp(module_name, "examples") && !strcmp(xpath, "/examples:stats")) {
-        lyd_new_path(NULL, sr_get_context(sr_session_get_connection(session)), "/examples:stats/counter", "852", 0, parent);
+        ly_ctx = sr_acquire_context(sr_session_get_connection(session));
+        lyd_new_path(NULL, ly_ctx, "/examples:stats/counter", "852", 0, parent);
         lyd_new_path(*parent, NULL, "/examples:stats/counter2", "1052", 0, NULL);
+        sr_release_context(sr_session_get_connection(session));
     }
 
     return SR_ERR_OK;
@@ -91,7 +95,7 @@ main(int argc, char **argv)
     }
 
     /* subscribe for providing the operational data */
-    rc = sr_oper_get_items_subscribe(session, mod_name, path, dp_get_items_cb, NULL, 0, &subscription);
+    rc = sr_oper_get_subscribe(session, mod_name, path, dp_get_items_cb, NULL, 0, &subscription);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }

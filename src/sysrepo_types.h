@@ -97,12 +97,8 @@ typedef struct sr_session_ctx_s sr_session_ctx_t;
  */
 typedef enum {
     SR_CONN_DEFAULT = 0,            /**< No special behaviour. */
-    SR_CONN_CACHE_RUNNING = 1,      /**< Always cache running datastore data which makes mainly repeated retrieval of data
+    SR_CONN_CACHE_RUNNING = 1       /**< Always cache running datastore data which makes mainly repeated retrieval of data
                                          much faster. Affects all sessions created on this connection. */
-    SR_CONN_NO_SCHED_CHANGES = 2,   /**< Do not parse internal modules data and apply any scheduled changes. Makes
-                                         creating the connection faster but, obviously, scheduled changes are not applied. */
-    SR_CONN_ERR_ON_SCHED_FAIL = 4   /**< If applying any of the scheduled changes fails, do not create a connection
-                                         and return an error. */
 } sr_conn_flag_t;
 
 /**
@@ -185,6 +181,19 @@ typedef int (*sr_diff_check_cb)(sr_session_ctx_t *session, const struct lyd_node
  */
 
 /**
+ * @brief Structure that safely wraps libyang data and prevents unexpected context changes.
+ */
+struct sr_data_s {
+    /** Connection whose context was used for creating @p tree. */
+    const sr_conn_ctx_t *conn;
+
+    /** Arbitrary libyang data, it can be modified */
+    struct lyd_node *tree;
+};
+
+typedef struct sr_data_s sr_data_t;
+
+/**
  * @brief Possible types of a data element stored in the sysrepo datastore.
  */
 typedef enum {
@@ -216,12 +225,12 @@ typedef enum {
     SR_UINT64_T,       /**< 64-bit unsigned integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
     SR_ANYXML_T,       /**< Unknown chunk of XML ([RFC 7950 sec 7.10](https://tools.ietf.org/html/rfc7950#section-7.10)) */
     SR_ANYDATA_T       /**< Unknown set of nodes, encoded in XML ([RFC 7950 sec 7.10](https://tools.ietf.org/html/rfc7950#section-7.10)) */
-} sr_type_t;
+} sr_val_type_t;
 
 /**
  * @brief Data of an element (if applicable), properly set according to the type.
  */
-union sr_data_u {
+union sr_val_data_u {
     char *binary_val;       /**< Base64-encoded binary data ([RFC 7950 sec 9.8](http://tools.ietf.org/html/rfc7950#section-9.8)) */
     char *bits_val;         /**< A set of bits or flags ([RFC 7950 sec 9.7](http://tools.ietf.org/html/rfc7950#section-9.7)) */
     int bool_val;           /**< A boolean value ([RFC 7950 sec 9.5](http://tools.ietf.org/html/rfc7950#section-9.5)) */
@@ -245,7 +254,7 @@ union sr_data_u {
     char *anydata_val;      /**< Unknown set of nodes, encoded in XML ([RFC 7950 sec 7.10](https://tools.ietf.org/html/rfc7950#section-7.10)) */
 };
 
-typedef union sr_data_u sr_data_t;
+typedef union sr_val_data_u sr_val_data_t;
 
 /**
  * @brief Structure that contains value of an data element stored in the sysrepo datastore.
@@ -255,7 +264,7 @@ struct sr_val_s {
     char *xpath;
 
     /** Type of an element. */
-    sr_type_t type;
+    sr_val_type_t type;
 
     /**
      * Flag for node with default value (applicable only for leaves).
@@ -269,7 +278,7 @@ struct sr_val_s {
     char *origin;
 
     /** Data of an element (if applicable), properly set according to the type. */
-    sr_data_t data;
+    sr_val_data_t data;
 };
 
 typedef struct sr_val_s sr_val_t;
@@ -366,7 +375,7 @@ typedef enum {
     /**
      * @brief There will be no thread created for handling this subscription meaning no event will be processed!
      * Use this flag when the application has its own event loop and it will listen for and process events manually
-     * (see ::sr_get_event_pipe and ::sr_process_events).
+     * (see ::sr_get_event_pipe and ::sr_subscription_process_events).
      */
     SR_SUBSCR_NO_THREAD = 2,
 
@@ -584,8 +593,7 @@ typedef enum {
  * @param[in] values Array of all nodes that hold some data in event notification subtree.
  * @param[in] values_cnt Number of items inside the values array.
  * @param[in] timestamp Time when the notification was generated
- * @param[in] private_data Private context opaque to sysrepo,
- * as passed to ::sr_event_notif_subscribe call.
+ * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_notif_subscribe call.
  */
 typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
         const char *xpath, const sr_val_t *values, const size_t values_cnt, struct timespec *timestamp, void *private_data);
@@ -600,7 +608,7 @@ typedef void (*sr_event_notif_cb)(sr_session_ctx_t *session, uint32_t sub_id, co
  * @param[in] notif_type Type of the notification.
  * @param[in] notif Notification data tree. Always points to the __notification__ itself, even for nested ones.
  * @param[in] timestamp Time when the notification was generated
- * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_event_notif_subscribe_tree call.
+ * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_notif_subscribe_tree call.
  */
 typedef void (*sr_event_notif_tree_cb)(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
         const struct lyd_node *notif, struct timespec *timestamp, void *private_data);
@@ -634,7 +642,7 @@ typedef void (*sr_event_notif_tree_cb)(sr_session_ctx_t *session, uint32_t sub_i
  * @param[in,out] parent Pointer to an existing parent of the requested nodes. Is NULL for top-level nodes.
  * Caller is supposed to append the requested nodes to this data subtree and return either the original parent
  * or a top-level node.
- * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_oper_get_items_subscribe call.
+ * @param[in] private_data Private context opaque to sysrepo, as passed to ::sr_oper_get_subscribe call.
  * @return User error code (::SR_ERR_OK on success).
  */
 typedef int (*sr_oper_get_items_cb)(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *path,

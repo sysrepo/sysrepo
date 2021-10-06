@@ -400,7 +400,7 @@ srlyb_chmodown(const char *plg_name, const char *path, const char *owner, const 
 
     assert(path);
 
-    if (perm != (mode_t)(-1)) {
+    if (perm) {
         if (perm > 00777) {
             SRPLG_LOG_ERR(plg_name, "Invalid permissions 0%.3o.", perm);
             return SR_ERR_INVAL_ARG;
@@ -422,23 +422,23 @@ srlyb_chmodown(const char *plg_name, const char *path, const char *owner, const 
 
     /* apply owner changes, if any */
     if (chown(path, uid, gid) == -1) {
+        SRPLG_LOG_ERR(plg_name, "Changing owner of \"%s\" failed (%s).", path, strerror(errno));
         if ((errno == EACCES) || (errno == EPERM)) {
             rc = SR_ERR_UNAUTHORIZED;
         } else {
             rc = SR_ERR_INTERNAL;
         }
-        SRPLG_LOG_ERR(plg_name, "Changing owner of \"%s\" failed (%s).", path, strerror(errno));
         return rc;
     }
 
     /* apply permission changes, if any */
-    if ((perm != (mode_t)(-1)) && (chmod(path, perm) == -1)) {
+    if (perm && (chmod(path, perm) == -1)) {
+        SRPLG_LOG_ERR(plg_name, "Changing permissions (mode) of \"%s\" failed (%s).", path, strerror(errno));
         if ((errno == EACCES) || (errno == EPERM)) {
             rc = SR_ERR_UNAUTHORIZED;
         } else {
             rc = SR_ERR_INTERNAL;
         }
-        SRPLG_LOG_ERR(plg_name, "Changing permissions (mode) of \"%s\" failed (%s).", path, strerror(errno));
         return rc;
     }
 
@@ -446,7 +446,7 @@ srlyb_chmodown(const char *plg_name, const char *path, const char *owner, const 
 }
 
 int
-srlyb_cp_path(const char *plg_name, const char *to, const char *from, mode_t file_mode)
+srlyb_cp_path(const char *plg_name, const char *to, const char *from)
 {
     int rc = SR_ERR_OK, fd_to = -1, fd_from = -1;
     char *out_ptr, buf[4096];
@@ -464,7 +464,7 @@ srlyb_cp_path(const char *plg_name, const char *to, const char *from, mode_t fil
     }
 
     /* open "to" */
-    fd_to = srlyb_open(to, O_WRONLY | O_TRUNC | O_CREAT, file_mode);
+    fd_to = srlyb_open(to, O_WRONLY | O_TRUNC, 0);
     if (fd_to < 0) {
         rc = srlyb_open_error(plg_name, to);
         goto cleanup;

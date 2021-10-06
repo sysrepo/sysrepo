@@ -36,7 +36,9 @@
 #include "lyd_mods.h"
 #include "plugins_datastore.h"
 #include "replay.h"
-#include "shm.h"
+#include "shm_ext.h"
+#include "shm_mod.h"
+#include "shm_sub.h"
 
 sr_error_info_t *
 sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int no_dup_check, struct sr_mod_info_s *mod_info)
@@ -99,7 +101,6 @@ sr_modinfo_add_all_modules_with_data(const struct ly_ctx *ly_ctx, int state_data
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
-    const struct lysc_node *root;
     uint32_t i = 0;
 
     while ((ly_mod = ly_ctx_get_module_iter(ly_ctx, &i))) {
@@ -111,23 +112,130 @@ sr_modinfo_add_all_modules_with_data(const struct ly_ctx *ly_ctx, int state_data
         } else if (!strcmp(ly_mod->name, "ietf-netconf")) {
             /* ietf-netconf defines data but only internal that should be ignored */
             continue;
+        } else if (!sr_module_has_data(ly_mod, state_data)) {
+            /* no data */
+            continue;
         }
 
-        LY_LIST_FOR(ly_mod->compiled->data, root) {
-            if (!(root->nodetype & (LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA | LYS_CHOICE))) {
-                continue;
-            }
-
-            if ((root->flags & LYS_CONFIG_W) || (state_data && (root->flags & LYS_CONFIG_R))) {
-                if ((err_info = sr_modinfo_add(ly_mod, NULL, 1, mod_info))) {
-                    return err_info;
-                }
-                break;
-            }
+        if ((err_info = sr_modinfo_add(ly_mod, NULL, 1, mod_info))) {
+            return err_info;
         }
     }
 
     return err_info;
+}
+
+sr_error_info_t *
+sr_modinfo_collect_edit(const struct lyd_node *edit, struct sr_mod_info_s *mod_info)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+    const struct lyd_node *root;
+
+    /* add all the modules from the edit into our array */
+    ly_mod = NULL;
+    LY_LIST_FOR(edit, root) {
+        if (lyd_owner_module(root) == ly_mod) {
+            continue;
+        } else if (!strcmp(lyd_owner_module(root)->name, "sysrepo")) {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"sysrepo\" cannot be modified.");
+            return err_info;
+        }
+
+        /* remember last mod, good chance it will also be the module of some next data nodes */
+        ly_mod = lyd_owner_module(root);
+
+        /* remember the module */
+        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, mod_info))) {
+            return err_info;
+        }
+    }
+
+    return NULL;
+}
+
+sr_error_info_t *
+sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds, int store_xpath,
+        struct sr_mod_info_s *mod_info)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *prev_ly_mod, *ly_mod;
+    const struct lysc_node *snode;
+    struct ly_set *set = NULL;
+    uint32_t i;
+
+    /* learn what nodes are needed for evaluation */
+    if (lys_find_xpath_atoms(ly_ctx, NULL, xpath, 0, &set)) {
+        sr_errinfo_new_ly(&err_info, (struct ly_ctx *)ly_ctx);
+        goto cleanup;
+    }
+
+    /* add all the modules of the nodes */
+    prev_ly_mod = NULL;
+    for (i = 0; i < set->count; ++i) {
+        snode = set->snodes[i];
+
+        /* skip uninteresting nodes */
+        if ((snode->nodetype & (LYS_RPC | LYS_NOTIF)) || ((snode->flags & LYS_CONFIG_R) && SR_IS_CONVENTIONAL_DS(ds))) {
+            continue;
+        }
+
+        ly_mod = lysc_owner_module(snode);
+        if (ly_mod == prev_ly_mod) {
+            /* skip already-added modules */
+            continue;
+        }
+        prev_ly_mod = ly_mod;
+
+        if (!ly_mod->implemented || !strcmp(ly_mod->name, "sysrepo") || !strcmp(ly_mod->name, "ietf-netconf")) {
+            /* skip import-only modules, the internal sysrepo module, and ietf-netconf (as it has no data, only in libyang) */
+            continue;
+        }
+
+        if ((err_info = sr_modinfo_add(ly_mod, store_xpath ? xpath : NULL, 0, mod_info))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    ly_set_free(set, NULL);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_modinfo_collect_deps(struct sr_mod_info_s *mod_info)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_mod_info_mod_s *mod;
+    uint32_t i;
+
+    for (i = 0; i < mod_info->mod_count; ++i) {
+        mod = &mod_info->mods[i];
+        switch (mod->state & MOD_INFO_TYPE_MASK) {
+        case MOD_INFO_REQ:
+            if (!(mod->state & MOD_INFO_CHANGED)) {
+                /* data were not changed so no reason to validate them */
+                break;
+            }
+        /* fallthrough */
+        case MOD_INFO_INV_DEP:
+            /* this module data will be validated */
+            assert(mod->state & MOD_INFO_DATA);
+            if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(mod_info->conn),
+                    (sr_dep_t *)(mod_info->conn->mod_shm.addr + mod->shm_mod->deps),
+                    mod->shm_mod->dep_count, mod_info->conn->ly_ctx, mod_info->data, mod_info))) {
+                return err_info;
+            }
+            break;
+        case MOD_INFO_DEP:
+            /* this module will not be validated */
+            break;
+        default:
+            SR_CHECK_INT_RET(0, err_info);
+        }
+    }
+
+    return NULL;
 }
 
 sr_error_info_t *
@@ -1340,9 +1448,7 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
     uint32_t content_id;
 
     /* get content-id */
-    if ((err_info = sr_lydmods_get_content_id(SR_CONN_MAIN_SHM(mod_info->conn), mod_info->conn->ly_ctx, &content_id))) {
-        return err_info;
-    }
+    content_id = SR_CONN_MAIN_SHM(mod_info->conn)->content_id;
 
     /* get the data from libyang */
     SR_CHECK_LY_RET(ly_ctx_get_yanglib_data(mod_info->conn->ly_ctx, &mod_data, "%" PRIu32, content_id),
@@ -1419,7 +1525,7 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
     }
 
     for (i = 0; (i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i]; ++i) {
-        if (skip_read_cid == rwlock->readers[i]) {
+        if ((skip_read_cid == rwlock->readers[i]) && (rwlock->read_count[i] == 1)) {
             skip_read_cid = 0;
             continue;
         }
@@ -1532,7 +1638,7 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
     ly_ctx = LYD_CTX(sr_state);
 
     /* module with name */
-    SR_CHECK_LY_RET(lyd_new_list(sr_state, NULL, "module", 0, &sr_mod, conn->main_shm.addr + shm_mod->name), ly_ctx,
+    SR_CHECK_LY_RET(lyd_new_list(sr_state, NULL, "module", 0, &sr_mod, conn->mod_shm.addr + shm_mod->name), ly_ctx,
             err_info);
 
     for (ds = 0; ds < SR_DS_COUNT; ++ds) {
@@ -1693,7 +1799,7 @@ sr_modinfo_module_srmon_rpc(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, struct lyd_n
     ly_ctx = LYD_CTX(sr_state);
 
     /* rpc with path */
-    SR_CHECK_LY_RET(lyd_new_list(sr_state, NULL, "rpc", 0, &sr_rpc, conn->main_shm.addr + shm_rpc->path), ly_ctx, err_info);
+    SR_CHECK_LY_RET(lyd_new_list(sr_state, NULL, "rpc", 0, &sr_rpc, conn->mod_shm.addr + shm_rpc->path), ly_ctx, err_info);
 
     /* sub-lock */
     if ((err_info = sr_modinfo_module_srmon_locks(&shm_rpc->lock, "sub-lock", sr_rpc))) {
@@ -1785,10 +1891,10 @@ sr_modinfo_module_data_load_srmon(struct sr_mod_info_s *mod_info)
     sr_mod_t *shm_mod;
     sr_rpc_t *shm_rpc;
     const struct lys_module *ly_mod;
-    sr_main_shm_t *main_shm;
+    sr_mod_shm_t *mod_shm;
     uint32_t i, j;
 
-    main_shm = SR_CONN_MAIN_SHM(mod_info->conn);
+    mod_shm = SR_CONN_MOD_SHM(mod_info->conn);
     ly_mod = ly_ctx_get_module_implemented(mod_info->conn->ly_ctx, "sysrepo-monitoring");
     assert(ly_mod);
 
@@ -1796,17 +1902,17 @@ sr_modinfo_module_data_load_srmon(struct sr_mod_info_s *mod_info)
     SR_CHECK_LY_GOTO(lyd_new_inner(NULL, ly_mod, "sysrepo-state", 0, &mod_data), mod_info->conn->ly_ctx, err_info, cleanup);
 
     /* modules */
-    for (i = 0; i < main_shm->mod_count; ++i) {
-        shm_mod = SR_SHM_MOD_IDX(main_shm, i);
+    for (i = 0; i < mod_shm->mod_count; ++i) {
+        shm_mod = SR_SHM_MOD_IDX(mod_shm, i);
         if ((err_info = sr_modinfo_module_srmon_module(mod_info->conn, shm_mod, mod_data))) {
             goto cleanup;
         }
     }
 
     /* RPCs */
-    for (i = 0; i < main_shm->mod_count; ++i) {
-        shm_mod = SR_SHM_MOD_IDX(main_shm, i);
-        shm_rpc = (sr_rpc_t *)(mod_info->conn->main_shm.addr + shm_mod->rpcs);
+    for (i = 0; i < mod_shm->mod_count; ++i) {
+        shm_mod = SR_SHM_MOD_IDX(mod_shm, i);
+        shm_rpc = (sr_rpc_t *)(mod_info->conn->mod_shm.addr + shm_mod->rpcs);
         for (j = 0; j < shm_mod->rpc_count; ++j) {
             if ((err_info = sr_modinfo_module_srmon_rpc(mod_info->conn, &shm_rpc[j], mod_data))) {
                 goto cleanup;
@@ -1985,11 +2091,11 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
     }
 
     /* find module in SHM */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(mod_info->conn), ly_mod->name);
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(mod_info->conn), ly_mod->name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     /* find DS plugin */
-    if ((err_info = sr_ds_plugin_find(mod_info->conn->main_shm.addr + shm_mod->plugins[mod_info->ds],
+    if ((err_info = sr_ds_plugin_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[mod_info->ds],
             mod_info->conn, &ds_plg))) {
         return err_info;
     }
@@ -2030,10 +2136,10 @@ sr_modinfo_mod_inv_deps(sr_mod_t *shm_mod, struct sr_mod_info_s *mod_info)
     uint32_t i;
 
     /* add all inverse dependencies (modules dependening on this module) */
-    shm_inv_deps = (off_t *)(mod_info->conn->main_shm.addr + shm_mod->inv_deps);
+    shm_inv_deps = (off_t *)(mod_info->conn->mod_shm.addr + shm_mod->inv_deps);
     for (i = 0; i < shm_mod->inv_dep_count; ++i) {
         /* find ly module */
-        ly_mod = ly_ctx_get_module_implemented(mod_info->conn->ly_ctx, mod_info->conn->main_shm.addr + shm_inv_deps[i]);
+        ly_mod = ly_ctx_get_module_implemented(mod_info->conn->ly_ctx, mod_info->conn->mod_shm.addr + shm_inv_deps[i]);
         SR_CHECK_INT_RET(!ly_mod, err_info);
 
         /* add inverse dependency */
@@ -2523,7 +2629,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     }
 
     /* get this module and check replay support */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(mod_info->conn), "ietf-netconf-notifications");
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(mod_info->conn), "ietf-netconf-notifications");
     SR_CHECK_INT_RET(!shm_mod, err_info);
     if (!ATOMIC_LOAD_RELAXED(shm_mod->replay_supp) && !notif_sub_count) {
         /* nothing to do */

@@ -3,7 +3,7 @@
 .\" groff -man -Tascii sysrepoctl.1
 .\"
 
-.TH SYSREPOCTL 1 "2021-10-07" "sysrepo"
+.TH SYSREPOCTL 1 "2021-10-20" "sysrepo"
 .SH NAME
 sysrepoctl \- sysrepo YANG schema manipulation tool
 .
@@ -32,8 +32,8 @@ List YANG modules in sysrepo.
 .BR "\-i\fR,\fP \-\^\-install \fIPATH\fP"
 Install the specified schema into sysrepo. Can be in either YANG or YIN format.
 .TP
-.BR "\-u\fR,\fP \-\^\-uninstall \fIMODULE\fP [\fR,\fP\fIMODULE\fP\fR,\fP\fIMODULE\fP...]"
-Uninstall the specified module(s) from sysrepo.
+.BR "\-u\fR,\fP \-\^\-uninstall \fIMODULE\fP"
+Uninstall the specified module from sysrepo.
 .TP
 .BR "\-c\fR,\fP \-\^\-change \fIMODULE\fP"
 Change access rights, features, or replay support of the specified module.
@@ -41,9 +41,6 @@ Use special \fI:ALL\fP module name to change the access rights or replay support
 .TP
 .BR "\-U\fR,\fP \-\^\-update \fIPATH\fP"
 Update the specified schema in sysrepo. Can be in either YANG or YIN format.
-.TP
-.BR "\-C\fR,\fP \-\^\-connection\-count"
-Print the number of sysrepo connections to \fISTDOUT\fP.
 .
 .SH OPTIONS
 .TP
@@ -63,19 +60,32 @@ Change replay support (storing notifications) for this module. Accepted by \fBch
  \[bu] \fBoff\fP/\fB0\fP
 .TP
 .BR "\-o\fR,\fP \-\^\-owner \fIUSER\fP"
-Set filesystem owner of a module. Accepted by \fBchange\fP op, with \fB\-\^\-apply\fP even \fBinstall\fP,
-\fBupdate\fP op.
+Set filesystem owner of a module. Accepted by \fBchange\fP, \fBinstall\fP, \fBupdate\fP op.
 .TP
 .BR "\-g\fR,\fP \-\^\-group \fIGROUP\fP"
-Set filesystem group of a module. Accepted by \fBchange\fP op, with \fB\-\^\-apply\fP even \fBinstall\fP, \fBupdate\fP op.
+Set filesystem group of a module. Accepted by \fBchange\fP, \fBinstall\fP, \fBupdate\fP op.
 .TP
 .BR "\-p\fR,\fP \-\^\-permissions \fIPERMISSIONS\fP"
-Set filesystem permissions of a module (chmod format). Accepted by \fBchange\fP op, with \fB\-\^\-apply\fP even
+Set filesystem permissions of a module (chmod format). Accepted by \fBchange\fP,
 \fBinstall\fP, \fBupdate\fP op.
 .TP
-.BR "\-a\fR,\fP \-\^\-apply"
-Apply schema changes immediately, not only schedule them. Accepted by \fBinstall\fP, \fBuninstall\fP, \fBchange\fP,
-\fBupdate\fP op.
+.BR "\-D\fR,\fP \-\^\-datastore \fIMOD-DATASTORE\fP"
+Apply operation to a module datastore. Accepted by \fBchange\fP op if \fIpermissions\fP
+are being changed. \fIMOD-DATASTORE\fP can be:
+ \[bu] \fBstartup\fP
+ \[bu] \fBrunning\fP
+ \[bu] \fBcandidate\fP
+ \[bu] \fBoperational\fP
+ \[bu] \fBnotification\fP
+ \[bu] \fB:ALL\fP (default)
+.TP
+.BR "\-I\fR,\fP \-\^\-init-data \fIPATH\fP"
+Initial data in a file with XML or JSON extension to be set for a module,
+useful when there are mandatory top-level nodes. Accepted by \fBinstall\fP op.
+.TP
+.BR "\-f\fR,\fP \-\^\-force"
+Force the specific operation if possible. Accepted by \fBchange\fP op if \fIfeatures\fP are being changed
+and \fBuninstall\fP op.
 .TP
 .BR "\-v\fR,\fP \-\^\-verbosity \fILEVEL\fP"
 Change verbosity to a level. Accepted by \fBall\fP op. \fILEVEL\fP can be a string or a number:

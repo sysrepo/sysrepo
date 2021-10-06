@@ -159,8 +159,8 @@ Every subscription can then be handled in various ways. It can be fully managed 
 a separate thread that will wait for events on the subscription and process them. But, if your application has a custom
 event loop, for example, it can [retrieve a file descriptor](@ref ::sr_get_event_pipe) of a subscription that can be
 used in `poll(2)` or `select(2)` and use it to check for new events. Then, a handler function should be called that
-will [process all pending events](@ref ::sr_process_events) on the subscription. Alternatively, this handler can also
-be called periodically without any checking for new events.
+will [process all pending events](@ref ::sr_subscription_process_events) on the subscription. Alternatively, this
+handler can also be called periodically without any checking for new events.
 
 # Recovery
 @anchor recovery

@@ -80,14 +80,8 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** default prefix for SHM files in /dev/shm */
 #define SR_SHM_PREFIX_DEFAULT "sr"
 
-/** suffix of backed-up LYB files */
-#define SR_FILE_BACKUP_SUFFIX ".bck"
-
 /** environment variable for setting a custom prefix for SHM files */
 #define SR_SHM_PREFIX_ENV "SYSREPO_SHM_PREFIX"
-
-/** notification file will never exceed this size (kB) */
-#define SR_EV_NOTIF_FILE_MAX_SIZE 1024
 
 /** group to own all directories/files */
 #define SR_GROUP "@SYSREPO_GROUP@"

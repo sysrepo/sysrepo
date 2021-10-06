@@ -43,14 +43,14 @@ struct srplg_ntf_s;
 /** macro for checking session type */
 #define SR_IS_EVENT_SESS(session) (session->ev != SR_SUB_EV_NONE)
 
-/** macro for getting a SHM module on a specific index */
-#define SR_SHM_MOD_IDX(main_shm_addr, idx) ((sr_mod_t *)(((char *)main_shm_addr) + sizeof(sr_main_shm_t) + idx * sizeof(sr_mod_t)))
-
 /* macro for getting aligned SHM size */
 #define SR_SHM_SIZE(size) ((size) + ((~(size) + 1) & (SR_SHM_MEM_ALIGN - 1)))
 
 /* macro for getting main SHM from a connection */
 #define SR_CONN_MAIN_SHM(conn) ((sr_main_shm_t *)(conn)->main_shm.addr)
+
+/* macro for getting mod SHM from a connection */
+#define SR_CONN_MOD_SHM(conn) ((sr_mod_shm_t *)(conn)->mod_shm.addr)
 
 /* macro for getting ext SHM from a connection */
 #define SR_CONN_EXT_SHM(conn) ((sr_ext_shm_t *)(conn)->ext_shm.addr)
@@ -61,8 +61,8 @@ struct srplg_ntf_s;
 /** timeout for locking subscription structure lock, should be enough for a single ::sr_process_events() call (ms) */
 #define SR_SUBSCR_LOCK_TIMEOUT 30000
 
-/** timeout for locking lydmods data for access; should be enough for parsing, applying any scheduled changes, and printing (ms) */
-#define SR_LYDMODS_LOCK_TIMEOUT 5000
+/** timeout for locking context; should be enough for changing it (ms) */
+#define SR_CONTEXT_LOCK_TIMEOUT 10000
 
 /** timeout for locking notification buffer lock, used when adding/removing notifications (ms) */
 #define SR_NOTIF_BUF_LOCK_TIMEOUT 100
@@ -103,8 +103,8 @@ struct srplg_ntf_s;
 /** default timeout for notification subscrption callback (ms) */
 #define SR_NOTIF_CB_TIMEOUT 2000
 
-/** permissions of main SHM lock file and main SHM itself */
-#define SR_MAIN_SHM_PERM 00666
+/** permissions of main SHM lock file and main/mod/ext SHM */
+#define SR_SHM_PERM 00666
 
 /** permissions of connection lock files */
 #define SR_CONN_LOCKFILE_PERM 00666
@@ -132,6 +132,12 @@ struct srplg_ntf_s;
  */
 
 extern char sysrepo_yang[];
+
+extern const struct srplg_ds_s *sr_internal_ds_plugins[];
+
+extern const struct srplg_ntf_s *sr_internal_ntf_plugins[];
+
+extern const sr_module_ds_t sr_default_module_ds;
 
 /** static initializer of the shared memory structure */
 #define SR_SHM_INITIALIZER {.fd = -1, .size = 0, .addr = NULL}
@@ -403,12 +409,12 @@ sr_error_info_t *sr_ptr_add(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *p
 sr_error_info_t *sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *del_ptr);
 
 /**
- * @brief Wrapper for libyang ly_ctx_new().
+ * @brief Create a new libyang context.
  *
  * @param[out] ly_ctx libyang context.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_ly_ctx_new(struct ly_ctx **ly_ctx);
+sr_error_info_t *sr_ly_ctx_init(struct ly_ctx **ly_ctx);
 
 /**
  * @brief Initialize all dynamic DS handles.
@@ -469,17 +475,28 @@ sr_error_info_t *sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *
  *
  * @param[in] ly_mod Module whose files to remove.
  * @param[in] new_ctx New context without @p ly_mod.
+ * @param[in,out] del_set Set of all already deleted modules.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_remove_module_file_r(const struct lys_module *ly_mod, const struct ly_ctx *new_ctx);
+sr_error_info_t *sr_remove_module_yang_r(const struct lys_module *ly_mod, const struct ly_ctx *new_ctx,
+        struct ly_set *del_mod);
 
 /**
- * @brief Create (print) YANG module file and all of its submodules.
+ * @brief Create (print) YANG module file and all of its submodules and imports.
  *
- * @param[in] ly_mod Module to print.
+ * @param[in] ly_mod Module to store.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_store_module_files(const struct lys_module *ly_mod);
+sr_error_info_t *sr_store_module_yang_r(const struct lys_module *ly_mod);
+
+/**
+ * @brief Collect all dependent modules of a module that are making it implemented.
+ *
+ * @param[in] ly_mod Module to process.
+ * @param[in,out] mod_set Set of dependent modules including @p ly_mod.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_collect_module_impl_deps(const struct lys_module *ly_mod, struct ly_set *mod_set);
 
 /**
  * @brief Check whether a module is internal libyang or sysrepo module.
@@ -490,16 +507,33 @@ sr_error_info_t *sr_store_module_files(const struct lys_module *ly_mod);
 int sr_module_is_internal(const struct lys_module *ly_mod);
 
 /**
- * @brief Create all module import and include files, recursively.
+ * @brief Get default file mode for DS files of a module.
  *
- * @param[in] ly_mod libyang module whose imports and includes to create. Overriden by @p lysp_submod.
- * @param[in] lysp_submod Optional libyang parsed submodule whose imports and includes to create.
- * @return err_info, NULL on success.
+ * @param[in] ly_mod Module.
+ * @return Default file mode.
  */
-sr_error_info_t *sr_create_module_imps_incs_r(const struct lys_module *ly_mod, const struct lysp_submodule *lysp_submod);
+mode_t sr_module_default_mode(const struct lys_module *ly_mod);
 
 /**
- * @brief Get the path the main SHM.
+ * @brief Check whether a module defines any instantiable data nodes (ignoring operations).
+ *
+ * @param[in] ly_mod Module to examine.
+ * @param[in] state_data Whether to accept even state data or must be configuration.
+ * @return Whether the module has data or not.
+ */
+int sr_module_has_data(const struct lys_module *ly_mod, int state_data);
+
+/**
+ * @brief Collect all implemented modules importing a specific module into a set.
+ *
+ * @param[in] ly_mod Module that other modules may import.
+ * @param[in,out] mod_set Set of modules importing @p ly_mod.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_module_get_impl_inv_imports(const struct lys_module *ly_mod, struct ly_set *mod_set);
+
+/**
+ * @brief Get the path of the main SHM.
  *
  * @param[out] path Created path. Should be freed by the caller.
  * @return err_info, NULL on success.
@@ -507,7 +541,15 @@ sr_error_info_t *sr_create_module_imps_incs_r(const struct lys_module *ly_mod, c
 sr_error_info_t *sr_path_main_shm(char **path);
 
 /**
- * @brief Get the path the external SHM.
+ * @brief Get the path of the mod SHM.
+ *
+ * @param[out] path Created path. Should be freed by the caller.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_path_mod_shm(char **path);
+
+/**
+ * @brief Get the path of the external SHM.
  *
  * @param[out] path Created path. Should be freed by the caller.
  * @return err_info, NULL on success.
