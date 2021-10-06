@@ -513,17 +513,6 @@ int sr_remove_module(sr_conn_ctx_t *conn, const char *module_name);
 int sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs);
 
 /**
- * @brief Cancel scheduled update of a module.
- *
- * Required WRITE access.
- *
- * @param[in] conn Connection to use.
- * @param[in] module_name Name of the module whose update to cancel.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_cancel_update_module(sr_conn_ctx_t *conn, const char *module_name);
-
-/**
  * @brief Change module replay support.
  *
  * @param[in] conn Connection to use.
@@ -548,11 +537,6 @@ int sr_set_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mo
         const char *group, mode_t perm);
 
 /**
- * @brief Deprecated, use ::sr_set_module_ds_access() instead.
- */
-int sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *owner, const char *group, mode_t perm);
-
-/**
  * @brief Learn about module permissions.
  *
  * @param[in] conn Connection to use.
@@ -565,11 +549,6 @@ int sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const cha
  */
 int sr_get_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds, char **owner, char **group,
         mode_t *perm);
-
-/**
- * @brief Deprecated, use ::sr_get_module_ds_access() instead.
- */
-int sr_get_module_access(sr_conn_ctx_t *conn, const char *module_name, char **owner, char **group, mode_t *perm);
 
 /**
  * @brief Check whether the current application has read/write access to a module.
@@ -613,16 +592,6 @@ int sr_enable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_disable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name);
-
-/**
- * @brief Get internal sysrepo data tree, which holds information about installed modules.
- * These data are from the _sysrepo_ module found in `modules/sysrepo.yang`.
- *
- * @param[in] conn Connection to use.
- * @param[out] sysrepo_data Sysrepo internal data tree.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_get_module_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data);
 
 /** @} schema */
 
@@ -1046,11 +1015,6 @@ int sr_subscription_process_events(sr_subscription_ctx_t *subscription, sr_sessi
         struct timespec *stop_time_in);
 
 /**
- * @brief Deprecated, use ::sr_subscription_process_events() instead.
- */
-int sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session, time_t *stop_time_in);
-
-/**
  * @brief Get the subscription ID of the last created subscription.
  *
  * @param[in] subscription Subscription context to read from.
@@ -1416,20 +1380,6 @@ int sr_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name, 
         void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /**
- * @brief Deprecated, use ::sr_notif_subscribe() instead.
- */
-int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath, time_t start_time,
-        time_t stop_time, sr_event_notif_cb callback, void *private_data, sr_subscr_options_t opts,
-        sr_subscription_ctx_t **subscription);
-
-/**
- * @brief Deprecated, use ::sr_notif_subscribe_tree() instead.
- */
-int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name, const char *xpath,
-        time_t start_time, time_t stop_time, sr_event_notif_tree_cb callback, void *private_data,
-        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
-
-/**
  * @brief Send a notification. Data are represented as ::sr_val_t structures. In case there are
  * particularly many notifications send on a session (100 notif/s or more) and all of them
  * are stored for replay, consider using ::sr_session_notif_buffer().
@@ -1487,12 +1437,6 @@ int sr_notif_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t sub_id, 
         const char **xpath, struct timespec *start_time, struct timespec *stop_time, uint32_t *filtered_out);
 
 /**
- * @brief Deprecated, use ::sr_notif_sub_get_info() instead.
- */
-int sr_event_notif_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char **module_name,
-        const char **xpath, time_t *start_time, time_t *stop_time, uint32_t *filtered_out);
-
-/**
  * @brief Modify an existing notification subscription by changing its XPath filter.
  * Special ::SR_EV_NOTIF_MODIFIED notification is delivered.
  *
@@ -1513,11 +1457,6 @@ int sr_event_notif_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t sub_id, const struct timespec *stop_time);
-
-/**
- * @brief Deprecated, use ::sr_notif_sub_modify_stop_time() instead.
- */
-int sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t sub_id, time_t stop_time);
 
 /** @} notifsubs */
 
@@ -1610,34 +1549,6 @@ int sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_na
  */
 #define SRPLG_LOG_DBG(plg_name, ...) srplg_log(plg_name, SR_LL_DBG, __VA_ARGS__)
 
-/**
- * @brief Deprecated, use ::SRPLG_LOG_ERR.
- *
- * @param[in] ... Format string and arguments.
- */
-#define SRP_LOG_ERR(...) srp_log(SR_LL_ERR, __VA_ARGS__)
-
-/**
- * @brief Deprecated, use ::SRPLG_LOG_WRN.
- *
- * @param[in] ... Format string and arguments.
- */
-#define SRP_LOG_WRN(...) srp_log(SR_LL_WRN, __VA_ARGS__)
-
-/**
- * @brief Deprecated, use ::SRPLG_LOG_INF.
- *
- * @param[in] ... Format string and arguments.
- */
-#define SRP_LOG_INF(...) srp_log(SR_LL_INF, __VA_ARGS__)
-
-/**
- * @brief Deprecated, use ::SRPLG_LOG_DBG.
- *
- * @param[in] ... Format string and arguments.
- */
-#define SRP_LOG_DBG(...) srp_log(SR_LL_DBG, __VA_ARGS__)
-
 /** @} plugin */
 
 /**
@@ -1650,16 +1561,6 @@ int sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_na
  * @param[in] ... Format arguments.
  */
 void srplg_log(const char *plg_name, sr_log_level_t ll, const char *format, ...);
-
-/**
- * @internal
- * @brief Deprecated.
- *
- * @param[in] ll Log level (severity).
- * @param[in] format Message format.
- * @param[in] ... Format arguments.
- */
-void srp_log(sr_log_level_t ll, const char *format, ...);
 
 #ifdef __cplusplus
 }

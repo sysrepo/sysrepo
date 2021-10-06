@@ -412,21 +412,6 @@ srplg_log(const char *plg_name, sr_log_level_t ll, const char *format, ...)
     free(msg);
 }
 
-API void
-srp_log(sr_log_level_t ll, const char *format, ...)
-{
-    va_list ap;
-    char *msg;
-    int msg_len = 0;
-
-    va_start(ap, format);
-    sr_vsprintf(&msg, &msg_len, 0, format, ap);
-    va_end(ap);
-
-    sr_log_msg(1, ll, msg);
-    free(msg);
-}
-
 API const char *
 sr_strerror(int err_code)
 {
