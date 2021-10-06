@@ -43,25 +43,34 @@
 #include "config.h"
 #include "edit_diff.h"
 #include "log.h"
+#include "lyd_mods.h"
 #include "modinfo.h"
 #include "plugins_datastore.h"
 #include "plugins_notification.h"
-#include "shm.h"
+#include "shm_ext.h"
+#include "shm_main.h"
+#include "shm_mod.h"
+#include "shm_sub.h"
 #include "sysrepo.h"
 
 /**
  * @brief Internal DS plugin array.
  */
 const struct srplg_ds_s *sr_internal_ds_plugins[] = {
-    &srpds_lyb,
+    &srpds_lyb,     /**< default */
 };
 
 /**
  * @brief Internal notification plugin array.
  */
 const struct srplg_ntf_s *sr_internal_ntf_plugins[] = {
-    &srpntf_lyb,
+    &srpntf_lyb,    /**< default */
 };
+
+/**
+ * @brief Default module DS plugins.
+ */
+const sr_module_ds_t sr_default_module_ds = {{"LYB DS file", "LYB DS file", "LYB DS file", "LYB DS file", "LYB notif"}};
 
 sr_error_info_t *
 sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess, const char *mod_name,
@@ -977,7 +986,7 @@ sr_change_sub_del(sr_subscription_ctx_t *subscr, struct modsub_change_s *change_
     (void)has_subs_lock;
 
     /* find module */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subscr->conn), change_subs->module_name);
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), change_subs->module_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     /* properly remove the subscription from ext SHM */
@@ -1012,7 +1021,7 @@ sr_oper_sub_del(sr_subscription_ctx_t *subscr, struct modsub_oper_s *oper_subs, 
     (void)has_subs_lock;
 
     /* find module */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subscr->conn), oper_subs->module_name);
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), oper_subs->module_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     /* properly remove the subscription from ext SHM */
@@ -1046,7 +1055,7 @@ sr_rpc_sub_del(sr_subscription_ctx_t *subscr, struct opsub_rpc_s *rpc_subs, uint
     (void)has_subs_lock;
 
     /* find RPC/action */
-    shm_rpc = sr_shmmain_find_rpc(SR_CONN_MAIN_SHM(subscr->conn), rpc_subs->path);
+    shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(subscr->conn), rpc_subs->path);
     SR_CHECK_INT_RET(!shm_rpc, err_info);
 
     /* properly remove the subscription from the main SHM */
@@ -1081,7 +1090,7 @@ sr_notif_sub_del(sr_subscription_ctx_t *subscr, struct modsub_notif_s *notif_sub
     (void)has_subs_lock;
 
     /* find module */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subscr->conn), notif_subs->module_name);
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), notif_subs->module_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     /* properly remove the subscription from ext SHM */
@@ -1381,7 +1390,7 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
     sr_mod_t *shm_mod;
     uint32_t i;
 
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), mod_name);
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), mod_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     *notif_subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
@@ -1546,21 +1555,33 @@ sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *d
 }
 
 sr_error_info_t *
-sr_ly_ctx_new(struct ly_ctx **ly_ctx)
+sr_ly_ctx_init(struct ly_ctx **ly_ctx)
 {
     sr_error_info_t *err_info = NULL;
     char *yang_dir;
     LY_ERR lyrc;
 
+    /* create new context */
     if ((err_info = sr_path_yang_dir(&yang_dir))) {
         goto cleanup;
     }
     lyrc = ly_ctx_new(yang_dir, LY_CTX_NO_YANGLIBRARY | LY_CTX_DISABLE_SEARCHDIR_CWD | LY_CTX_REF_IMPLEMENTED |
             LY_CTX_EXPLICIT_COMPILE, ly_ctx);
     free(yang_dir);
-
     if (lyrc) {
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to create a new libyang context.");
+        goto cleanup;
+    }
+
+    /* load just the internal module */
+    if (lys_parse_mem(*ly_ctx, sysrepo_yang, LYS_IN_YANG, NULL)) {
+        sr_errinfo_new_ly(&err_info, *ly_ctx);
+        goto cleanup;
+    }
+
+    /* compile */
+    if (ly_ctx_compile(*ly_ctx)) {
+        sr_errinfo_new_ly(&err_info, *ly_ctx);
         goto cleanup;
     }
 
@@ -1879,6 +1900,91 @@ sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, struct srpl
     return err_info;
 }
 
+sr_error_info_t *
+sr_remove_module_yang_r(const struct lys_module *ly_mod, const struct ly_ctx *new_ctx, struct ly_set *del_mod)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path;
+    const struct lysp_module *pmod;
+    LY_ARRAY_COUNT_TYPE u;
+
+    if (sr_module_is_internal(ly_mod) || ly_ctx_get_module(new_ctx, ly_mod->name, ly_mod->revision) ||
+            ly_set_contains(del_mod, (void *)ly_mod, NULL)) {
+        /* internal, still in the context, or already removed */
+        return NULL;
+    }
+
+    /* remove main module file */
+    if ((err_info = sr_path_yang_file(ly_mod->name, ly_mod->revision, &path))) {
+        goto cleanup;
+    }
+    if (unlink(path) == -1) {
+        SR_LOG_WRN("Failed to remove \"%s\" (%s).", path, strerror(errno));
+        free(path);
+    } else {
+        SR_LOG_INF("File \"%s\" was removed.", strrchr(path, '/') + 1);
+        free(path);
+
+        if (ly_set_add(del_mod, (void *)ly_mod, 1, NULL)) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+    }
+
+    pmod = ly_mod->parsed;
+
+    /* remove all submodule files */
+    LY_ARRAY_FOR(pmod->includes, u) {
+        if ((err_info = sr_path_yang_file(pmod->includes[u].submodule->name,
+                pmod->includes[u].submodule->revs ? pmod->includes[u].submodule->revs[0].date : NULL, &path))) {
+            goto cleanup;
+        }
+
+        if (unlink(path) == -1) {
+            SR_LOG_WRN("Failed to remove \"%s\" (%s).", path, strerror(errno));
+        } else {
+            SR_LOG_INF("File \"%s\" was removed.", strrchr(path, '/') + 1);
+        }
+        free(path);
+    }
+
+    /* remove all (unused) imports recursively */
+    LY_ARRAY_FOR(pmod->imports, u) {
+        if ((err_info = sr_remove_module_yang_r(pmod->imports[u].module, new_ctx, del_mod))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    return err_info;
+}
+
+/**
+ * @brief Check whether a module is internal libyang module.
+ *
+ * @param[in] ly_mod Module to check.
+ * @return 0 if not, non-zero if it is.
+ */
+static int
+sr_ly_module_is_internal(const struct lys_module *ly_mod)
+{
+    if (!ly_mod->revision) {
+        return 0;
+    }
+
+    if (!strcmp(ly_mod->name, "ietf-yang-metadata") && !strcmp(ly_mod->revision, "2016-08-05")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "yang") && !strcmp(ly_mod->revision, "2021-04-07")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-inet-types") && !strcmp(ly_mod->revision, "2013-07-15")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-yang-types") && !strcmp(ly_mod->revision, "2013-07-15")) {
+        return 1;
+    }
+
+    return 0;
+}
+
 /**
  * @brief Check whether a file exists.
  *
@@ -1912,7 +2018,7 @@ sr_file_exists(const char *path)
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_store_module_file(const struct lys_module *ly_mod, const struct lysp_submodule *lysp_submod)
+sr_store_module_yang(const struct lys_module *ly_mod, const struct lysp_submodule *lysp_submod)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_out *out = NULL;
@@ -1961,85 +2067,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_remove_module_file_r(const struct lys_module *ly_mod, const struct ly_ctx *new_ctx)
-{
-    sr_error_info_t *err_info = NULL;
-    char *path;
-    const struct lysp_module *pmod;
-    LY_ARRAY_COUNT_TYPE u;
-
-    if (sr_module_is_internal(ly_mod) || ly_ctx_get_module(new_ctx, ly_mod->name, ly_mod->revision)) {
-        /* internal or still in the context, cannot be removed */
-        return NULL;
-    }
-
-    /* remove main module file */
-    if ((err_info = sr_path_yang_file(ly_mod->name, ly_mod->revision, &path))) {
-        return err_info;
-    }
-
-    if (unlink(path) == -1) {
-        SR_LOG_WRN("Failed to remove \"%s\" (%s).", path, strerror(errno));
-    } else {
-        SR_LOG_INF("File \"%s\" was removed.", strrchr(path, '/') + 1);
-    }
-    free(path);
-
-    pmod = ly_mod->parsed;
-
-    /* remove all submodule files */
-    LY_ARRAY_FOR(pmod->includes, u) {
-        if ((err_info = sr_path_yang_file(pmod->includes[u].submodule->name,
-                pmod->includes[u].submodule->revs ? pmod->includes[u].submodule->revs[0].date : NULL, &path))) {
-            return err_info;
-        }
-
-        if (unlink(path) == -1) {
-            SR_LOG_WRN("Failed to remove \"%s\" (%s).", path, strerror(errno));
-        } else {
-            SR_LOG_INF("File \"%s\" was removed.", strrchr(path, '/') + 1);
-        }
-        free(path);
-    }
-
-    /* remove all (unused) imports recursively */
-    LY_ARRAY_FOR(pmod->imports, u) {
-        if ((err_info = sr_remove_module_file_r(pmod->imports[u].module, new_ctx))) {
-            return err_info;
-        }
-    }
-
-    return NULL;
-}
-
-/**
- * @brief Check whether a module is internal libyang module.
- *
- * @param[in] ly_mod Module to check.
- * @return 0 if not, non-zero if it is.
- */
-static int
-sr_ly_module_is_internal(const struct lys_module *ly_mod)
-{
-    if (!ly_mod->revision) {
-        return 0;
-    }
-
-    if (!strcmp(ly_mod->name, "ietf-yang-metadata") && !strcmp(ly_mod->revision, "2016-08-05")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "yang") && !strcmp(ly_mod->revision, "2021-04-07")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-inet-types") && !strcmp(ly_mod->revision, "2013-07-15")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-yang-types") && !strcmp(ly_mod->revision, "2013-07-15")) {
-        return 1;
-    }
-
-    return 0;
-}
-
-sr_error_info_t *
-sr_store_module_files(const struct lys_module *ly_mod)
+sr_store_module_yang_r(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
     LY_ARRAY_COUNT_TYPE u;
@@ -2050,18 +2078,131 @@ sr_store_module_files(const struct lys_module *ly_mod)
     }
 
     /* store module file */
-    if ((err_info = sr_store_module_file(ly_mod, NULL))) {
+    if ((err_info = sr_store_module_yang(ly_mod, NULL))) {
         return err_info;
     }
 
     /* store files of all submodules */
     LY_ARRAY_FOR(ly_mod->parsed->includes, u) {
-        if ((err_info = sr_store_module_file(ly_mod, ly_mod->parsed->includes[u].submodule))) {
+        if ((err_info = sr_store_module_yang(ly_mod, ly_mod->parsed->includes[u].submodule))) {
+            return err_info;
+        }
+    }
+
+    /* recursively for all imports */
+    LY_ARRAY_FOR(ly_mod->parsed->imports, u) {
+        if ((err_info = sr_store_module_yang_r(ly_mod->parsed->imports[u].module))) {
             return err_info;
         }
     }
 
     return NULL;
+}
+
+/**
+ * @brief Collect all dependent modules of a module that are making it implemented, recursively.
+ *
+ * @param[in] ly_mod Module to process.
+ * @param[in] sr_mods SR internal module data.
+ * @param[in,out] mod_set Set of dependent modules including @p ly_mod.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_collect_module_impl_deps_r(const struct lys_module *ly_mod, const struct lyd_node *sr_mods, struct ly_set *mod_set)
+{
+    sr_error_info_t *err_info = NULL;
+    LY_ARRAY_COUNT_TYPE u;
+    struct ly_set *set = NULL;
+    const struct lyd_node *node;
+    const struct lys_module *dep_mod;
+    char *path = NULL, *buf;
+    const char *name;
+    uint32_t i;
+
+    if (ly_set_contains(mod_set, (void *)ly_mod, NULL)) {
+        /* already processed */
+        goto cleanup;
+    }
+
+    /* add this module */
+    if (ly_set_add(mod_set, (void *)ly_mod, 1, NULL)) {
+        SR_ERRINFO_MEM(&err_info);
+        goto cleanup;
+    }
+
+    /* go through augments */
+    LY_ARRAY_FOR(ly_mod->augmented_by, u) {
+        if ((err_info = sr_collect_module_impl_deps_r(ly_mod->augmented_by[u], sr_mods, mod_set))) {
+            goto cleanup;
+        }
+    }
+
+    /* go through deviations */
+    LY_ARRAY_FOR(ly_mod->deviated_by, u) {
+        if ((err_info = sr_collect_module_impl_deps_r(ly_mod->deviated_by[u], sr_mods, mod_set))) {
+            goto cleanup;
+        }
+    }
+
+    /* find all dep modules and paths */
+    if (asprintf(&path, "module[name='%s']/deps/target-module | module[name='%s']/deps/target-module/default-target-path",
+            ly_mod->name, ly_mod->name) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        goto cleanup;
+    }
+    if (lyd_find_xpath(sr_mods, path, &set)) {
+        SR_ERRINFO_INT(&err_info);
+        goto cleanup;
+    }
+
+    /* go through all the SR mod deps */
+    for (i = 0; i < set->count; ++i) {
+        node = set->dnodes[i];
+        buf = NULL;
+        if (!strcmp(LYD_NAME(node), "target-module")) {
+            name = lyd_get_value(node);
+        } else {
+            assert(!strcmp(LYD_NAME(node), "default-target-path"));
+            buf = sr_get_first_ns(lyd_get_value(node));
+            name = buf;
+        }
+
+        /* get the module */
+        dep_mod = ly_ctx_get_module_implemented(ly_mod->ctx, name);
+        free(buf);
+        SR_CHECK_INT_GOTO(!dep_mod, err_info, cleanup);
+
+        /* process the dependent module */
+        if ((err_info = sr_collect_module_impl_deps_r(dep_mod, sr_mods, mod_set))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    free(path);
+    ly_set_free(set, NULL);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_collect_module_impl_deps(const struct lys_module *ly_mod, struct ly_set *mod_set)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *sr_mods = NULL;
+
+    /* parse SR mod data for the dependencies */
+    if ((err_info = sr_lydmods_parse(ly_mod->ctx, 0, &sr_mods))) {
+        goto cleanup;
+    }
+
+    /* recursively collect all the modules */
+    if ((err_info = sr_collect_module_impl_deps_r(ly_mod, sr_mods, mod_set))) {
+        goto cleanup;
+    }
+
+cleanup:
+    lyd_free_siblings(sr_mods);
+    return err_info;
 }
 
 int
@@ -2098,49 +2239,87 @@ sr_module_is_internal(const struct lys_module *ly_mod)
     return 0;
 }
 
-sr_error_info_t *
-sr_create_module_imps_incs_r(const struct lys_module *ly_mod, const struct lysp_submodule *lysp_submod)
+mode_t
+sr_module_default_mode(const struct lys_module *ly_mod)
 {
-    sr_error_info_t *err_info = NULL;
-    struct lysp_import *imports;
-    struct lysp_include *includes;
-    LY_ARRAY_COUNT_TYPE u;
+    if (!strcmp(ly_mod->name, "sysrepo")) {
+        return SR_INTMOD_MAIN_FILE_PERM;
+    } else if (sr_module_is_internal(ly_mod)) {
+        if (!strcmp(ly_mod->name, "sysrepo-monitoring") || !strcmp(ly_mod->name, "sysrepo-plugind") ||
+                !strcmp(ly_mod->name, "ietf-yang-library") || !strcmp(ly_mod->name, "ietf-netconf-notifications") ||
+                !strcmp(ly_mod->name, "ietf-netconf")) {
+            return SR_INTMOD_WITHDATA_FILE_PERM;
+        } else {
+            return SR_INTMOD_NODATA_FILE_PERM;
+        }
+    }
 
-    /* store all imports */
-    imports = (lysp_submod ? lysp_submod->imports : ly_mod->parsed->imports);
-    LY_ARRAY_FOR(imports, u) {
-        if (sr_ly_module_is_internal(imports[u].module)) {
-            /* skip */
+    return SR_FILE_PERM;
+}
+
+int
+sr_module_has_data(const struct lys_module *ly_mod, int state_data)
+{
+    const struct lysc_node *root;
+
+    LY_LIST_FOR(ly_mod->compiled->data, root) {
+        if (!(root->nodetype & (LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA | LYS_CHOICE))) {
             continue;
         }
 
-        if ((err_info = sr_store_module_files(imports[u].module))) {
-            return err_info;
-        }
-
-        if ((err_info = sr_create_module_imps_incs_r(imports[u].module, NULL))) {
-            return err_info;
+        if ((root->flags & LYS_CONFIG_W) || (state_data && (root->flags & LYS_CONFIG_R))) {
+            return 1;
         }
     }
 
-    if (lysp_submod) {
-        /* all submodules are in the main module */
-        return NULL;
-    }
+    return 0;
+}
 
-    /* store all includes */
-    includes = ly_mod->parsed->includes;
-    LY_ARRAY_FOR(includes, u) {
-        if ((err_info = sr_store_module_file(ly_mod, includes[u].submodule))) {
-            return err_info;
+sr_error_info_t *
+sr_module_get_impl_inv_imports(const struct lys_module *ly_mod, struct ly_set *mod_set)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *mod;
+    LY_ARRAY_COUNT_TYPE u, v;
+    uint32_t idx = 0;
+    int found;
+
+    while ((mod = ly_ctx_get_module_iter(ly_mod->ctx, &idx))) {
+        if ((mod == ly_mod) || !mod->implemented) {
+            /* skip this module and non-implemented modules */
+            continue;
+        }
+        found = 0;
+
+        /* check imports of the module */
+        LY_ARRAY_FOR(mod->parsed->imports, u) {
+            if (mod->parsed->imports[u].module == ly_mod) {
+                found = 1;
+                break;
+            }
         }
 
-        if ((err_info = sr_create_module_imps_incs_r(ly_mod, includes[u].submodule))) {
-            return err_info;
+        if (!found) {
+            /* check import of all the submodules */
+            LY_ARRAY_FOR(mod->parsed->includes, v) {
+                LY_ARRAY_FOR(mod->parsed->includes[v].submodule->imports, u) {
+                    if (mod->parsed->includes[v].submodule->imports[u].module == ly_mod) {
+                        found = 1;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (found) {
+            if (ly_set_add(mod_set, (void *)mod, 1, NULL)) {
+                SR_ERRINFO_MEM(&err_info);
+                return err_info;
+            }
         }
     }
 
-    return NULL;
+    return err_info;
 }
 
 /**
@@ -2177,6 +2356,25 @@ sr_path_main_shm(char **path)
     }
 
     if (asprintf(path, "%s/%s_main", SR_SHM_DIR, prefix) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        *path = NULL;
+    }
+
+    return err_info;
+}
+
+sr_error_info_t *
+sr_path_mod_shm(char **path)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *prefix;
+
+    err_info = sr_shm_prefix(&prefix);
+    if (err_info) {
+        return err_info;
+    }
+
+    if (asprintf(path, "%s/%s_mod", SR_SHM_DIR, prefix) == -1) {
         SR_ERRINFO_MEM(&err_info);
         *path = NULL;
     }
@@ -2440,11 +2638,11 @@ sr_perm_check(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore
     int rc, r, w;
 
     /* find the module in SHM */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), ly_mod->name);
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* find the DS plugin for startup */
-    if ((err_info = sr_ds_plugin_find(conn->main_shm.addr + shm_mod->plugins[ds], conn, &plg))) {
+    if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &plg))) {
         goto cleanup;
     }
 
@@ -3353,16 +3551,27 @@ sr_rwlock_reader_add(sr_rwlock_t *rwlock, sr_cid_t cid)
         sr_errinfo_free(&err_info);
     }
 
-    /* find first free item */
-    for (i = 0; (i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i]; ++i) {}
+    /* find this connection or first free item */
+    for (i = 0; (i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i] && (rwlock->readers[i] != cid); ++i) {}
     if (i == SR_RWLOCK_READ_LIMIT) {
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Concurrent reader limit %d reached!", SR_RWLOCK_READ_LIMIT);
         sr_errinfo_free(&err_info);
         goto unlock;
     }
 
-    /* assign owner cid */
-    rwlock->readers[i] = cid;
+    if (!rwlock->readers[i]) {
+        /* first connection reader, assign owner cid */
+        rwlock->readers[i] = cid;
+        rwlock->read_count[i] = 1;
+    } else {
+        /* recursive read lock on the connection */
+        if (rwlock->read_count[i] == UINT8_MAX) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Recursive reader limit %" PRIu8 " reached!", UINT8_MAX);
+            sr_errinfo_free(&err_info);
+            goto unlock;
+        }
+        ++rwlock->read_count[i];
+    }
 
 unlock:
     if (!ret) {
@@ -3371,21 +3580,38 @@ unlock:
     }
 }
 
+/**
+ * @brief Remove a reader lock from a rwlock.
+ *
+ * @param[in] rwlock Lock to remove the reader lock from.
+ * @param[in] i Index of the reader.
+ */
 static void
-sr_rwlock_reader_del_(sr_cid_t *readers, uint32_t i)
+sr_rwlock_reader_del_(sr_rwlock_t *rwlock, uint32_t i)
 {
+    /* decrease recursive read lock count */
+    assert(rwlock->read_count[i]);
+    --rwlock->read_count[i];
+
+    if (rwlock->read_count[i]) {
+        /* read lock is still recursively held */
+        return;
+    }
+
     /* move all the following CIDs so that there are no holes */
-    while ((i < (SR_RWLOCK_READ_LIMIT - 1)) && readers[i + 1]) {
-        readers[i] = readers[i + 1];
+    while ((i < (SR_RWLOCK_READ_LIMIT - 1)) && rwlock->readers[i + 1]) {
+        rwlock->readers[i] = rwlock->readers[i + 1];
+        rwlock->read_count[i] = rwlock->read_count[i + 1];
         ++i;
     }
 
     /* remove the last CID */
-    readers[i] = 0;
+    rwlock->readers[i] = 0;
+    rwlock->read_count[i] = 0;
 }
 
 /**
- * @brief Remove a reader CID from a rwlock.
+ * @brief Remove a reader from a rwlock.
  *
  * @param[in] rwlock Lock to remove a reader from.
  * @param[in] cid Owner CID.
@@ -3414,7 +3640,7 @@ sr_rwlock_reader_del(sr_rwlock_t *rwlock, sr_cid_t cid)
     }
 
     /* remove the CID */
-    sr_rwlock_reader_del_(rwlock->readers, i);
+    sr_rwlock_reader_del_(rwlock, i);
 
 unlock:
     if (!ret) {
@@ -3443,7 +3669,7 @@ sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_lock_recover_cb cb, 
         if (!sr_conn_is_alive(rwlock->readers[i])) {
             /* remove the dead reader */
             cid = rwlock->readers[i];
-            sr_rwlock_reader_del_(rwlock->readers, i);
+            sr_rwlock_reader_del_(rwlock, i);
 
             /* recover */
             if (cb) {
@@ -3648,20 +3874,20 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
         /* consistency checks */
         assert(rwlock->upgr == cid);
 
-        if (rwlock->readers[1]) {
+        if (rwlock->readers[1] || (rwlock->read_count[0] > 1)) {
             /* instead of waiting, try to recover the lock immediately */
             sr_rwlock_recover(rwlock, func, cb, cb_data);
         }
 
         /* wait until there are no readers except for this one */
         ret = 0;
-        while (!ret && rwlock->readers[1]) {
+        while (!ret && (rwlock->readers[1] || (rwlock->read_count[0] > 1))) {
             /* COND WAIT */
             ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
         }
         if (ret == ETIMEDOUT) {
             sr_rwlock_recover(rwlock, func, cb, cb_data);
-            if (!rwlock->readers[1]) {
+            if (!rwlock->readers[1] && (rwlock->read_count[0] == 1)) {
                 /* recovered */
                 ret = 0;
             }
@@ -3749,7 +3975,8 @@ sr_rwunlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
 
     /* write-unlock/last read-unlock, last read-unlock with read-upgr lock waiting for an upgrade,
      * or upgradeable read-unlock (there may be another upgr-read-lock waiting) */
-    if (!rwlock->readers[0] || (!rwlock->readers[1] && rwlock->upgr) || (mode == SR_LOCK_READ_UPGR)) {
+    if (!rwlock->readers[0] || (!rwlock->readers[1] && (rwlock->read_count[0] == 1) && rwlock->upgr) ||
+            (mode == SR_LOCK_READ_UPGR)) {
         /* broadcast on condition */
         pthread_cond_broadcast(&rwlock->cond);
     }

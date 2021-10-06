@@ -25,6 +25,18 @@
 
 #include "sysrepo.h"
 
+/** suffix of backed-up LYB files */
+#define SRLYB_FILE_BACKUP_SUFFIX ".bck"
+
+/** permissions of new directories */
+#define SRLYB_DIR_PERM 00777
+
+/** permissions of new notification files */
+#define SRLYB_NOTIF_PERM 00600
+
+/** notification file will never exceed this size (kB) */
+#define SRLYB_NOTIF_FILE_MAX_SIZE 1024
+
 /**
  * @brief Wrapper for writev().
  *
@@ -139,12 +151,11 @@ int srlyb_chmodown(const char *plg_name, const char *path, const char *owner, co
  * @brief Copy file contents to another file.
  *
  * @param[in] plg_name Plugin name.
- * @param[in] to Destination file path.
+ * @param[in] to Destination file path, must exist.
  * @param[in] from Source file path.
- * @param[in] file_mode Permissions of @p to file, if being created.
  * @return SR err value.
  */
-int srlyb_cp_path(const char *plg_name, const char *to, const char *from, mode_t file_mode);
+int srlyb_cp_path(const char *plg_name, const char *to, const char *from);
 
 /**
  * @brief Create all directories in the path, wrapper for mkdir(2).

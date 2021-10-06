@@ -37,16 +37,9 @@ static int
 setup_f(void **state)
 {
     struct state *st;
-    uint32_t conn_count;
 
-    st = malloc(sizeof *st);
-    if (!st) {
-        return 1;
-    }
+    st = calloc(1, sizeof *st);
     *state = st;
-
-    sr_connection_count(&conn_count);
-    assert_int_equal(conn_count, 0);
 
     if (sr_connect(0, &st->conn) != SR_ERR_OK) {
         return 1;
@@ -76,11 +69,6 @@ setup_f(void **state)
     if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/ops.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    sr_disconnect(st->conn);
-
-    if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
-        return 1;
-    }
 
     if (sr_session_start(st->conn, SR_DS_RUNNING, &st->sess) != SR_ERR_OK) {
         return 1;
@@ -94,14 +82,14 @@ teardown_f(void **state)
 {
     struct state *st = (struct state *)*state;
 
-    sr_remove_module(st->conn, "decimal");
-    sr_remove_module(st->conn, "ietf-interfaces");
-    sr_remove_module(st->conn, "iana-if-type");
-    sr_remove_module(st->conn, "test");
-    sr_remove_module(st->conn, "test-module");
-    sr_remove_module(st->conn, "referenced-data");
-    sr_remove_module(st->conn, "ops");
-    sr_remove_module(st->conn, "ops-ref");
+    sr_remove_module(st->conn, "decimal", 0);
+    sr_remove_module(st->conn, "ietf-interfaces", 0);
+    sr_remove_module(st->conn, "iana-if-type", 0);
+    sr_remove_module(st->conn, "test", 0);
+    sr_remove_module(st->conn, "test-module", 0);
+    sr_remove_module(st->conn, "referenced-data", 0);
+    sr_remove_module(st->conn, "ops", 0);
+    sr_remove_module(st->conn, "ops-ref", 0);
 
     sr_disconnect(st->conn);
     free(st);
@@ -188,7 +176,7 @@ static void
 test_delete(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *subtree;
+    sr_data_t *subtree;
     char *str;
     int ret;
 
@@ -223,16 +211,16 @@ test_delete(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_null(str);
-    lyd_free_tree(subtree);
+    sr_release_data(subtree);
 }
 
 static void
 test_create1(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *subtree;
+    sr_data_t *subtree;
     char *str;
     const char *str2;
     int ret;
@@ -249,8 +237,8 @@ test_create1(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
-    lyd_free_tree(subtree);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(subtree);
 
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
@@ -282,7 +270,7 @@ static void
 test_create2(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *subtree;
+    sr_data_t *subtree;
     char *str;
     const char *str2;
     int ret;
@@ -298,8 +286,8 @@ test_create2(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
-    lyd_free_tree(subtree);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(subtree);
 
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
@@ -320,24 +308,24 @@ test_create2(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_null(str);
-    lyd_free_tree(subtree);
+    sr_release_data(subtree);
 }
 
 static void
 test_create_np_cont(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *subtree;
+    sr_data_t *subtree;
     int ret;
 
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_string_equal(subtree->schema->name, "interfaces");
-    assert_true(subtree->flags & LYD_DEFAULT);
-    lyd_free_tree(subtree);
+    assert_string_equal(subtree->tree->schema->name, "interfaces");
+    assert_true(subtree->tree->flags & LYD_DEFAULT);
+    sr_release_data(subtree);
 
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces", NULL, NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
@@ -347,9 +335,9 @@ test_create_np_cont(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_string_equal(subtree->schema->name, "interfaces");
-    assert_true(subtree->flags & LYD_DEFAULT);
-    lyd_free_tree(subtree);
+    assert_string_equal(subtree->tree->schema->name, "interfaces");
+    assert_true(subtree->tree->flags & LYD_DEFAULT);
+    sr_release_data(subtree);
 
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces", NULL, NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
@@ -366,7 +354,7 @@ static void
 test_move(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *data;
+    sr_data_t *data;
     char *str, *str2;
     int ret;
 
@@ -404,7 +392,7 @@ test_move(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* should be in reversed order */
-    lyd_print_mem(&str, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
 
     str2 =
     "<l1 xmlns=\"urn:test\">"
@@ -425,7 +413,7 @@ test_move(void **state)
     assert_string_equal(str, str2);
 
     free(str);
-    lyd_free_all(data);
+    sr_release_data(data);
 
     /* create nested testing data */
     ret = sr_set_item_str(st->sess, "/test:cont/l2[k='key1']/v", "1", NULL, 0);
@@ -459,7 +447,7 @@ test_move(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* should be in reversed order */
-    lyd_print_mem(&str, data, LYD_XML, LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SHRINK);
 
     str2 =
     "<cont xmlns=\"urn:test\">"
@@ -473,14 +461,14 @@ test_move(void **state)
     assert_string_equal(str, str2);
 
     free(str);
-    lyd_free_all(data);
+    sr_release_data(data);
 }
 
 static void
 test_replace(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *subtree;
+    sr_data_t *subtree;
     char *str, *str2;
     int ret;
 
@@ -508,8 +496,8 @@ test_replace(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
-    lyd_free_tree(subtree);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(subtree);
 
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
@@ -527,7 +515,9 @@ static void
 test_replace_userord(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *data, *edit;
+    const struct ly_ctx *ly_ctx;
+    struct lyd_node *edit;
+    sr_data_t *data;
     char *str, *str2;
     int ret;
 
@@ -543,9 +533,11 @@ test_replace_userord(void **state)
         "<k>one</k>"
         "<ll3>3</ll3>"
     "</l3>";
-    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(sr_get_context(st->conn), str2, LYD_XML, LYD_PARSE_ONLY, 0, &edit));
+    ly_ctx = sr_acquire_context(st->conn);
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str2, LYD_XML, LYD_PARSE_ONLY, 0, &edit));
     ret = sr_edit_batch(st->sess, edit, "merge");
     lyd_free_all(edit);
+    sr_release_context(st->conn);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -554,8 +546,8 @@ test_replace_userord(void **state)
     ret = sr_get_data(st->sess, "/test:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
-    lyd_free_all(data);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
 
     str2 =
     "<l3 xmlns=\"urn:test\">"
@@ -571,7 +563,7 @@ static void
 test_isolate(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *subtree;
+    sr_data_t *subtree;
     char *str, *str2;
     int ret;
 
@@ -606,8 +598,8 @@ test_isolate(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
-    lyd_free_tree(subtree);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(subtree);
 
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
@@ -640,8 +632,8 @@ test_isolate(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
-    lyd_free_tree(subtree);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(subtree);
 
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
@@ -659,7 +651,7 @@ static void
 test_purge(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *subtree;
+    sr_data_t *subtree;
     int ret;
 
     /* create some list instances */
@@ -687,8 +679,8 @@ test_purge(void **state)
     /* check datastore contents */
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_true(subtree->flags & LYD_DEFAULT);
-    lyd_free_tree(subtree);
+    assert_true(subtree->tree->flags & LYD_DEFAULT);
+    sr_release_data(subtree);
 
     /* repeat with leaf-list */
     ret = sr_set_item_str(st->sess, "/test:ll1", "12", NULL, SR_EDIT_STRICT);
@@ -714,7 +706,9 @@ static void
 test_top_op(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *data;
+    const struct ly_ctx *ly_ctx;
+    struct lyd_node *edit;
+    sr_data_t *subtree;
     const char *str;
     int ret;
 
@@ -734,28 +728,29 @@ test_top_op(void **state)
 
     /* replace the top-level container with an empty one */
     str = "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" nc:operation=\"replace\" xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\"/>";
-    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(sr_get_context(st->conn), str, LYD_XML,
-            LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &data));
+    ly_ctx = sr_acquire_context(st->conn);
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &edit));
 
-    ret = sr_edit_batch(st->sess, data, "merge");
-    lyd_free_all(data);
+    ret = sr_edit_batch(st->sess, edit, "merge");
+    lyd_free_all(edit);
+    sr_release_context(st->conn);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check datastore contents */
-    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &data);
+    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_true(data->flags & LYD_DEFAULT);
-    lyd_free_all(data);
+    assert_true(subtree->tree->flags & LYD_DEFAULT);
+    sr_release_data(subtree);
 }
 
 static void
 test_union(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *data;
+    sr_data_t *subtree;
     const char *str2;
     char *str;
     int ret;
@@ -773,11 +768,11 @@ test_union(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check datastore contents */
-    ret = sr_get_subtree(st->sess, "/test:cont", 0, &data);
+    ret = sr_get_subtree(st->sess, "/test:cont", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
-    lyd_free_tree(data);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(subtree);
 
     str2 =
     "<cont xmlns=\"urn:test\">"
@@ -793,7 +788,7 @@ test_decimal64(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_val_t val = {.type = SR_DECIMAL64_T};
-    struct lyd_node *data;
+    sr_data_t *subtree;
     int ret;
 
     /* set item_str */
@@ -807,10 +802,10 @@ test_decimal64(void **state)
 
     ret = sr_set_item_str(st->sess, "/decimal:d1", "+00255.50", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/decimal:d1", 0, &data);
+    ret = sr_get_subtree(st->sess, "/decimal:d1", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(lyd_get_value(data), "255.5");
-    lyd_free_tree(data);
+    assert_string_equal(lyd_get_value(subtree->tree), "255.5");
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -819,19 +814,19 @@ test_decimal64(void **state)
 
     ret = sr_set_item_str(st->sess, "/decimal:d-uni-2-18", "9.0000000000000001", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
+    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(lyd_get_value(data), "9.0000000000000001");
-    lyd_free_tree(data);
+    assert_string_equal(lyd_get_value(subtree->tree), "9.0000000000000001");
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_set_item_str(st->sess, "/decimal:d-uni-2-18", "2.01", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
+    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(lyd_get_value(data), "2.01");
-    lyd_free_tree(data);
+    assert_string_equal(lyd_get_value(subtree->tree), "2.01");
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -847,10 +842,10 @@ test_decimal64(void **state)
     val.data.decimal64_val = 255.55;
     ret = sr_set_item(st->sess, "/decimal:d1", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/decimal:d1", 0, &data);
+    ret = sr_get_subtree(st->sess, "/decimal:d1", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(lyd_get_value(data), "255.6");
-    lyd_free_tree(data);
+    assert_string_equal(lyd_get_value(subtree->tree), "255.6");
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -858,10 +853,10 @@ test_decimal64(void **state)
     val.data.decimal64_val = 10.0000000000000001;
     ret = sr_set_item(st->sess, "/decimal:d-uni-2-18", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
+    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(lyd_get_value(data), "10.0");
-    lyd_free_tree(data);
+    assert_string_equal(lyd_get_value(subtree->tree), "10.0");
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -869,10 +864,10 @@ test_decimal64(void **state)
     val.data.decimal64_val = 9.0000000000000001;
     ret = sr_set_item(st->sess, "/decimal:d-uni-2-18", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
+    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(lyd_get_value(data), "9.0");
-    lyd_free_tree(data);
+    assert_string_equal(lyd_get_value(subtree->tree), "9.0");
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -880,10 +875,10 @@ test_decimal64(void **state)
     val.data.decimal64_val = 2.01;
     ret = sr_set_item(st->sess, "/decimal:d-uni-2-18", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &data);
+    ret = sr_get_subtree(st->sess, "/decimal:d-uni-2-18", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(lyd_get_value(data), "2.01");
-    lyd_free_tree(data);
+    assert_string_equal(lyd_get_value(subtree->tree), "2.01");
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 }
@@ -892,7 +887,7 @@ static void
 test_mutiple_types(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *data;
+    sr_data_t *subtree;
     char *str, *str2;
     int ret;
     sr_val_t val = {0};
@@ -902,10 +897,10 @@ test_mutiple_types(void **state)
     val.data.string_val = "string\"\"\'";
     ret = sr_set_item(st->sess, "/test-module:main/string", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/test-module:main/string", 0, &data);
+    ret = sr_get_subtree(st->sess, "/test-module:main/string", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(lyd_get_value(data), "string\"\"\'");
-    lyd_free_tree(data);
+    assert_string_equal(lyd_get_value(subtree->tree), "string\"\"\'");
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -914,10 +909,10 @@ test_mutiple_types(void **state)
     val.data.string_val = "VGhpcyBpcyBleGFtcGxlIG1lc3NhZ2Uu";
     ret = sr_set_item(st->sess, "/test-module:main/raw", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/test-module:main/raw", 0, &data);
+    ret = sr_get_subtree(st->sess, "/test-module:main/raw", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(lyd_get_value(data), "VGhpcyBpcyBleGFtcGxlIG1lc3NhZ2Uu");
-    lyd_free_tree(data);
+    assert_string_equal(lyd_get_value(subtree->tree), "VGhpcyBpcyBleGFtcGxlIG1lc3NhZ2Uu");
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -926,10 +921,10 @@ test_mutiple_types(void **state)
     val.data.string_val = "strict";
     ret = sr_set_item(st->sess, "/test-module:main/options", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/test-module:main/options", 0, &data);
+    ret = sr_get_subtree(st->sess, "/test-module:main/options", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(lyd_get_value(data), "strict");
-    lyd_free_tree(data);
+    assert_string_equal(lyd_get_value(subtree->tree), "strict");
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -938,10 +933,10 @@ test_mutiple_types(void **state)
     val.data.string_val = "yes";
     ret = sr_set_item(st->sess, "/test-module:main/enum", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/test-module:main/enum", 0, &data);
+    ret = sr_get_subtree(st->sess, "/test-module:main/enum", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(lyd_get_value(data), "yes");
-    lyd_free_tree(data);
+    assert_string_equal(lyd_get_value(subtree->tree), "yes");
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -950,10 +945,10 @@ test_mutiple_types(void **state)
     val.data.string_val = "id_1";
     ret = sr_set_item(st->sess, "/test-module:main/id_ref", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/test-module:main/id_ref", 0, &data);
+    ret = sr_get_subtree(st->sess, "/test-module:main/id_ref", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(lyd_get_value(data), "test-module:id_1");
-    lyd_free_tree(data);
+    assert_string_equal(lyd_get_value(subtree->tree), "test-module:id_1");
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -962,9 +957,9 @@ test_mutiple_types(void **state)
     val.data.string_val = "/test-module:main/options";
     ret = sr_set_item(st->sess, "/test-module:main/instance_id", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_data(st->sess, "/test-module:main/instance_id", 0, 0, 0, &data);
+    ret = sr_get_data(st->sess, "/test-module:main/instance_id", 0, 0, 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    lyd_print_mem(&str, data, LYD_XML, LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_SHRINK);
     assert_return_code(asprintf(&str2,
     "<main xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">"
         "<instance_id xmlns:tm=\"urn:ietf:params:xml:ns:yang:test-module\">/tm:main/tm:options</instance_id>"
@@ -972,7 +967,7 @@ test_mutiple_types(void **state)
     assert_string_equal(str, str2);
     free(str);
     free(str2);
-    lyd_free_tree(data);
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -981,10 +976,10 @@ test_mutiple_types(void **state)
     val.data.string_val = "test";
     ret = sr_set_item(st->sess, "/test-module:main/any-data", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/test-module:main/any-data", 0, &data);
+    ret = sr_get_subtree(st->sess, "/test-module:main/any-data", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(((struct lyd_node_any *)data)->value.str, "test");
-    lyd_free_tree(data);
+    assert_string_equal(((struct lyd_node_any *)subtree->tree)->value.str, "test");
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -992,10 +987,10 @@ test_mutiple_types(void **state)
     val.type = SR_LEAF_EMPTY_T;
     ret = sr_set_item(st->sess, "/test-module:main/empty", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/test-module:main/empty", 0, &data);
+    ret = sr_get_subtree(st->sess, "/test-module:main/empty", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(lyd_get_value(data), "");
-    lyd_free_tree(data);
+    assert_string_equal(lyd_get_value(subtree->tree), "");
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1004,10 +999,10 @@ test_mutiple_types(void **state)
     val.data.bool_val = 1;
     ret = sr_set_item(st->sess, "/test-module:main/boolean", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/test-module:main/boolean", 0, &data);
+    ret = sr_get_subtree(st->sess, "/test-module:main/boolean", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(((struct lyd_node_term *)data)->value.boolean, 1);
-    lyd_free_tree(data);
+    assert_int_equal(((struct lyd_node_term *)subtree->tree)->value.boolean, 1);
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1016,10 +1011,10 @@ test_mutiple_types(void **state)
     val.data.uint8_val = UINT8_MAX;
     ret = sr_set_item(st->sess, "/test-module:main/ui8", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/test-module:main/ui8", 0, &data);
+    ret = sr_get_subtree(st->sess, "/test-module:main/ui8", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(((struct lyd_node_term *)data)->value.uint8, UINT8_MAX);
-    lyd_free_tree(data);
+    assert_int_equal(((struct lyd_node_term *)subtree->tree)->value.uint8, UINT8_MAX);
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1028,10 +1023,10 @@ test_mutiple_types(void **state)
     val.data.uint16_val = UINT16_MAX;
     ret = sr_set_item(st->sess, "/test-module:main/ui16", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/test-module:main/ui16", 0, &data);
+    ret = sr_get_subtree(st->sess, "/test-module:main/ui16", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(((struct lyd_node_term *)data)->value.uint16, UINT16_MAX);
-    lyd_free_tree(data);
+    assert_int_equal(((struct lyd_node_term *)subtree->tree)->value.uint16, UINT16_MAX);
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1040,10 +1035,10 @@ test_mutiple_types(void **state)
     val.data.uint32_val = UINT32_MAX;
     ret = sr_set_item(st->sess, "/test-module:main/ui32", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/test-module:main/ui32", 0, &data);
+    ret = sr_get_subtree(st->sess, "/test-module:main/ui32", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(((struct lyd_node_term *)data)->value.uint32, UINT32_MAX);
-    lyd_free_tree(data);
+    assert_int_equal(((struct lyd_node_term *)subtree->tree)->value.uint32, UINT32_MAX);
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1052,10 +1047,10 @@ test_mutiple_types(void **state)
     val.data.uint64_val = UINT64_MAX;
     ret = sr_set_item(st->sess, "/test-module:main/ui64", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/test-module:main/ui64", 0, &data);
+    ret = sr_get_subtree(st->sess, "/test-module:main/ui64", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(((struct lyd_node_term *)data)->value.uint64, UINT64_MAX);
-    lyd_free_tree(data);
+    assert_int_equal(((struct lyd_node_term *)subtree->tree)->value.uint64, UINT64_MAX);
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1064,10 +1059,10 @@ test_mutiple_types(void **state)
     val.data.int8_val = INT8_MAX;
     ret = sr_set_item(st->sess, "/test-module:main/i8", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/test-module:main/i8", 0, &data);
+    ret = sr_get_subtree(st->sess, "/test-module:main/i8", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(((struct lyd_node_term *)data)->value.int8, INT8_MAX);
-    lyd_free_tree(data);
+    assert_int_equal(((struct lyd_node_term *)subtree->tree)->value.int8, INT8_MAX);
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1076,10 +1071,10 @@ test_mutiple_types(void **state)
     val.data.int16_val = INT16_MAX;
     ret = sr_set_item(st->sess, "/test-module:main/i16", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/test-module:main/i16", 0, &data);
+    ret = sr_get_subtree(st->sess, "/test-module:main/i16", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(((struct lyd_node_term *)data)->value.int16, INT16_MAX);
-    lyd_free_tree(data);
+    assert_int_equal(((struct lyd_node_term *)subtree->tree)->value.int16, INT16_MAX);
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1088,10 +1083,10 @@ test_mutiple_types(void **state)
     val.data.int32_val = INT32_MAX;
     ret = sr_set_item(st->sess, "/test-module:main/i32", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/test-module:main/i32", 0, &data);
+    ret = sr_get_subtree(st->sess, "/test-module:main/i32", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(((struct lyd_node_term *)data)->value.int32, INT32_MAX);
-    lyd_free_tree(data);
+    assert_int_equal(((struct lyd_node_term *)subtree->tree)->value.int32, INT32_MAX);
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1100,10 +1095,10 @@ test_mutiple_types(void **state)
     val.data.int64_val = INT64_MAX;
     ret = sr_set_item(st->sess, "/test-module:main/i64", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_subtree(st->sess, "/test-module:main/i64", 0, &data);
+    ret = sr_get_subtree(st->sess, "/test-module:main/i64", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(((struct lyd_node_term *)data)->value.int64, INT64_MAX);
-    lyd_free_tree(data);
+    assert_int_equal(((struct lyd_node_term *)subtree->tree)->value.int64, INT64_MAX);
+    sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 }
@@ -1113,7 +1108,7 @@ static void
 test_edit_forbid_node_types(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *subtree;
+    sr_data_t *subtree;
     char *str;
     const char *str2;
     int ret;
@@ -1154,7 +1149,7 @@ test_edit_forbid_node_types(void **state)
     /* not throw away the whole edit, the successfully created node still exists */
     ret = sr_get_subtree(st->sess, "/ops:cont", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    lyd_print_mem(&str, subtree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
 
     str2 =
     "<cont xmlns=\"urn:ops\">"
@@ -1164,7 +1159,7 @@ test_edit_forbid_node_types(void **state)
     "</cont>";
 
     assert_string_equal(str, str2);
-    lyd_free_tree(subtree);
+    sr_release_data(subtree);
     free(str);
 }
 

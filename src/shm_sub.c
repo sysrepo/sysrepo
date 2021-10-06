@@ -16,7 +16,7 @@
 
 #define _GNU_SOURCE
 
-#include "shm.h"
+#include "shm_sub.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -37,6 +37,7 @@
 #include "log.h"
 #include "modinfo.h"
 #include "replay.h"
+#include "shm_ext.h"
 #include "sysrepo.h"
 
 sr_error_info_t *
@@ -3611,7 +3612,7 @@ sr_shmsub_listen_thread(void *arg)
     sr_subscription_ctx_t *subscr = (sr_subscription_ctx_t *)arg;
     fd_set rfds;
     struct timeval tv;
-    time_t stop_time_in = 0;
+    struct timespec stop_time_in = {0};
     int ret;
 
     /* start event loop */
@@ -3624,7 +3625,7 @@ sr_shmsub_listen_thread(void *arg)
         }
 
         /* process the new event (or subscription stop time has elapsed) */
-        ret = sr_process_events(subscr, NULL, &stop_time_in);
+        ret = sr_subscription_process_events(subscr, NULL, &stop_time_in);
         if (ret == SR_ERR_TIME_OUT) {
             /* continue on time out and try again to actually process the current event because unless
              * another event is generated, our event pipe will not get notified */
@@ -3640,8 +3641,13 @@ sr_shmsub_listen_thread(void *arg)
 
 wait_for_event:
         /* wait an arbitrary long time or until a stop time is elapsed */
-        tv.tv_sec = stop_time_in ? stop_time_in : 10;
-        tv.tv_usec = 0;
+        if (stop_time_in.tv_sec) {
+            tv.tv_sec = stop_time_in.tv_sec;
+            tv.tv_usec = stop_time_in.tv_nsec / 1000;
+        } else {
+            tv.tv_sec = 10;
+            tv.tv_usec = 0;
+        }
 
         FD_ZERO(&rfds);
         FD_SET(subscr->evpipe, &rfds);
@@ -3653,7 +3659,7 @@ wait_for_event:
             SR_ERRINFO_SYSERRNO(&err_info, "select");
             sr_errinfo_free(&err_info);
             goto error;
-        } else if (!stop_time_in && (!ret || ((ret == -1) && (errno == EINTR)))) {
+        } else if (!stop_time_in.tv_sec && (!ret || ((ret == -1) && (errno == EINTR)))) {
             /* timeout/signal received, retry */
             goto wait_for_event;
         }

@@ -30,6 +30,7 @@
 
 struct state {
     sr_conn_ctx_t *conn;
+    const struct ly_ctx *ly_ctx;
     sr_session_ctx_t *sess;
 };
 
@@ -37,16 +38,9 @@ static int
 setup_f(void **state)
 {
     struct state *st;
-    uint32_t conn_count;
 
-    st = malloc(sizeof *st);
-    if (!st) {
-        return 1;
-    }
+    st = calloc(1, sizeof *st);
     *state = st;
-
-    sr_connection_count(&conn_count);
-    assert_int_equal(conn_count, 0);
 
     if (sr_connect(0, &st->conn) != SR_ERR_OK) {
         return 1;
@@ -58,11 +52,8 @@ setup_f(void **state)
     if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/refs.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    sr_disconnect(st->conn);
 
-    if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
-        return 1;
-    }
+    st->ly_ctx = sr_acquire_context(st->conn);
 
     if (sr_session_start(st->conn, SR_DS_RUNNING, &st->sess) != SR_ERR_OK) {
         return 1;
@@ -76,8 +67,12 @@ teardown_f(void **state)
 {
     struct state *st = (struct state *)*state;
 
-    sr_remove_module(st->conn, "test");
-    sr_remove_module(st->conn, "refs");
+    if (st->ly_ctx) {
+        sr_release_context(st->conn);
+    }
+
+    sr_remove_module(st->conn, "refs", 0);
+    sr_remove_module(st->conn, "test", 0);
 
     sr_disconnect(st->conn);
     free(st);
@@ -108,7 +103,7 @@ static void
 test_leafref(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *data;
+    sr_data_t *data;
     int ret;
 
     /* create valid data */
@@ -138,13 +133,13 @@ test_leafref(void **state)
     ret = sr_get_data(st->sess, "/test:* | /refs:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_string_equal(data->schema->name, "lref");
-    assert_string_equal(lyd_get_value(data), "10");
-    assert_string_equal(data->next->schema->name, "test-leaf");
-    assert_string_equal(lyd_get_value(data->next), "10");
-    assert_string_equal(data->next->next->schema->name, "cont");
+    assert_string_equal(data->tree->schema->name, "lref");
+    assert_string_equal(lyd_get_value(data->tree), "10");
+    assert_string_equal(data->tree->next->schema->name, "test-leaf");
+    assert_string_equal(lyd_get_value(data->tree->next), "10");
+    assert_string_equal(data->tree->next->next->schema->name, "cont");
 
-    lyd_free_all(data);
+    sr_release_data(data);
 }
 
 static void
@@ -227,8 +222,8 @@ test_operational(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* parse it with "sysrepo" default values, which are invalid */
-    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(sr_get_context(st->conn), data, LYD_JSON, 0, LYD_VALIDATE_PRESENT, &edit));
-    ret = lyd_new_implicit_all(&edit, sr_get_context(st->conn), 0, NULL);
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(st->ly_ctx, data, LYD_JSON, 0, LYD_VALIDATE_PRESENT, &edit));
+    ret = lyd_new_implicit_all(&edit, st->ly_ctx, 0, NULL);
     assert_int_equal(ret, 0);
 
     ret = sr_edit_batch(st->sess, edit, "merge");
@@ -247,7 +242,7 @@ test_operational(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* parse it properly now */
-    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(sr_get_context(st->conn), data, LYD_JSON, LYD_PARSE_ONLY, 0, &edit));
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(st->ly_ctx, data, LYD_JSON, LYD_PARSE_ONLY, 0, &edit));
 
     ret = sr_edit_batch(st->sess, edit, "merge");
     lyd_free_all(edit);

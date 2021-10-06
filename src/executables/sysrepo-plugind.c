@@ -518,7 +518,7 @@ main(int argc, char **argv)
     for (i = 0; i < plugin_count; ++i) {
         r = plugins[i].init_cb(sess, &plugins[i].private_data);
         if (r != SR_ERR_OK) {
-            SRP_LOG_ERR("Plugin initialization failed (%s).", sr_strerror(r));
+            SRPLG_LOG_ERR("sysrepo-plugind", "Plugin initialization failed (%s).", sr_strerror(r));
             goto cleanup;
         }
     }

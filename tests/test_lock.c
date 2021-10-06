@@ -40,13 +40,9 @@ static int
 setup(void **state)
 {
     struct state *st;
-    uint32_t conn_count;
 
     st = calloc(1, sizeof *st);
     *state = st;
-
-    sr_connection_count(&conn_count);
-    assert_int_equal(conn_count, 0);
 
     if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
         return 1;
@@ -67,11 +63,6 @@ setup(void **state)
     if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/when2.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    sr_disconnect(st->conn);
-
-    if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
-        return 1;
-    }
 
     return 0;
 }
@@ -81,11 +72,11 @@ teardown(void **state)
 {
     struct state *st = (struct state *)*state;
 
-    sr_remove_module(st->conn, "when2");
-    sr_remove_module(st->conn, "when1");
-    sr_remove_module(st->conn, "ietf-interfaces");
-    sr_remove_module(st->conn, "iana-if-type");
-    sr_remove_module(st->conn, "test");
+    sr_remove_module(st->conn, "when2", 0);
+    sr_remove_module(st->conn, "when1", 0);
+    sr_remove_module(st->conn, "ietf-interfaces", 0);
+    sr_remove_module(st->conn, "iana-if-type", 0);
+    sr_remove_module(st->conn, "test", 0);
 
     sr_disconnect(st->conn);
     free(st);
@@ -262,7 +253,7 @@ test_session_stop_unlock(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_session_ctx_t *sess1, *sess2;
-    struct lyd_node *subtree;
+    sr_data_t *subtree;
     int ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess1);
@@ -281,7 +272,7 @@ test_session_stop_unlock(void **state)
     /* read some data while the module is locked */
     ret = sr_get_subtree(sess2, "/test:cont", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    lyd_free_tree(subtree);
+    sr_release_data(subtree);
 
     /* stop session with locks */
     sr_session_stop(sess1);

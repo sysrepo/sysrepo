@@ -175,6 +175,7 @@ set(LIB_SRC
     src/modinfo.c
     src/edit_diff.c
     src/lyd_mods.c
+    src/context_change.c
     src/shm_main.c
     src/shm_ext.c
     src/shm_mod.c

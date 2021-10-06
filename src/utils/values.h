@@ -96,7 +96,7 @@ int sr_val_build_xpath(sr_val_t *value, const char *format, ...);
  * @param [in] type Exact type of the data.
  * @param [in] string_val String value to set.
  */
-int sr_val_set_str_data(sr_val_t *value, sr_type_t type, const char *string_val);
+int sr_val_set_str_data(sr_val_t *value, sr_val_type_t type, const char *string_val);
 
 /**
  * @brief Store data of string type into the Sysrepo value data. The actual data
@@ -106,7 +106,7 @@ int sr_val_set_str_data(sr_val_t *value, sr_type_t type, const char *string_val)
  * @param [in] type Exact type of the data.
  * @param [in] format Format string used to build the data.
  */
-int sr_val_build_str_data(sr_val_t *value, sr_type_t type, const char *format, ...);
+int sr_val_build_str_data(sr_val_t *value, sr_val_type_t type, const char *format, ...);
 
 /**
  * @brief Duplicate value (with or without Sysrepo memory context) into a new

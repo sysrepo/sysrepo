@@ -58,7 +58,7 @@ extern sr_log_cb log_cb;          /**< logging callback */
  * @param[in] err_info Optional error info to set.
  * @return Error code to be returned from an API function based on error info.
  */
-sr_error_t sr_api_ret(sr_session_ctx_t *session, sr_error_info_t *err_info);
+int sr_api_ret(sr_session_ctx_t *session, sr_error_info_t *err_info);
 
 /**
  * @brief Log a message.

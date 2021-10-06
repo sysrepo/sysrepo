@@ -32,7 +32,7 @@ main(int argc, char **argv)
     sr_session_ctx_t *session = NULL;
     int rc = SR_ERR_OK;
     struct lyd_node *notif = NULL;
-    const struct ly_ctx *ctx;
+    const struct ly_ctx *ctx = NULL;
     const char *path, *node_path = NULL, *node_val;
 
     if ((argc < 2) || (argc > 4) || (argc == 3)) {
@@ -55,7 +55,7 @@ main(int argc, char **argv)
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }
-    ctx = sr_get_context(connection);
+    ctx = sr_acquire_context(connection);
 
     /* start session */
     rc = sr_session_start(connection, SR_DS_RUNNING, &session);
@@ -78,13 +78,16 @@ main(int argc, char **argv)
     }
 
     /* send the notification */
-    rc = sr_event_notif_send_tree(session, notif, 0, 0);
+    rc = sr_notif_send_tree(session, notif, 0, 0);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }
 
 cleanup:
     lyd_free_all(notif);
+    if (ctx) {
+        sr_release_context(connection);
+    }
     sr_disconnect(connection);
     return rc ? EXIT_FAILURE : EXIT_SUCCESS;
 }

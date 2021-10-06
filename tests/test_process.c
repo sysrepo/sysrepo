@@ -191,10 +191,10 @@ teardown(void)
 
     sr_assert(sr_connect(0, &conn) == SR_ERR_OK);
 
-    sr_remove_module(conn, "iana-if-type");
-    sr_remove_module(conn, "ietf-interfaces");
-    sr_remove_module(conn, "ops");
-    sr_remove_module(conn, "ops-ref");
+    sr_assert(sr_remove_module(conn, "ietf-interfaces", 0) == SR_ERR_OK);
+    sr_assert(sr_remove_module(conn, "iana-if-type", 0) == SR_ERR_OK);
+    sr_assert(sr_remove_module(conn, "ops", 0) == SR_ERR_OK);
+    sr_assert(sr_remove_module(conn, "ops-ref", 0) == SR_ERR_OK);
 
     sr_disconnect(conn);
 }
@@ -302,7 +302,8 @@ test_rpc_crash1(int rp, int wp)
 {
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sess;
-    struct lyd_node *rpc, *output;
+    struct lyd_node *rpc;
+    sr_data_t *output;
     int ret;
 
     ret = sr_connect(0, &conn);
@@ -314,13 +315,14 @@ test_rpc_crash1(int rp, int wp)
     /* wait for the other process */
     barrier(rp, wp);
 
-    sr_assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, sr_get_context(conn), "/ops:rpc3/l4", "value", 0, &rpc));
+    sr_assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, sr_acquire_context(conn), "/ops:rpc3/l4", "value", 0, &rpc));
 
     /* this should crash the other process */
     ret = sr_rpc_send_tree(sess, rpc, 2000, &output);
     sr_assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
 
     lyd_free_tree(rpc);
+    sr_release_context(conn);
     sr_disconnect(conn);
     return 0;
 }
@@ -341,7 +343,8 @@ rpc_crash_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, co
     (void)private_data;
 
     /* avoid leaks (valgrind probably cannot keep track of leafref attributes because they are shared) */
-    ly_ctx_destroy((struct ly_ctx *)sr_get_context(sr_session_get_connection(session)));
+    ly_ctx_destroy((struct ly_ctx *)sr_acquire_context(sr_session_get_connection(session)));
+    sr_release_context(sr_session_get_connection(session));
 
     /* callback crashes */
     exit(0);
@@ -372,7 +375,7 @@ test_rpc_crash2(int rp, int wp)
 
     /* will block until crash */
     while (1) {
-        sr_process_events(sub, NULL, NULL);
+        sr_subscription_process_events(sub, NULL, NULL);
     }
 
     /* unreachable */
@@ -418,7 +421,8 @@ test_notif_instid1(int rp, int wp)
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *sub;
-    struct lyd_node *notif;
+    struct lyd_node *tree;
+    sr_data_t *notif;
     int ret, i;
 
     ret = sr_connect(0, &conn);
@@ -439,25 +443,26 @@ test_notif_instid1(int rp, int wp)
     sr_assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to the notification */
-    ret = sr_event_notif_subscribe(sess, "ops", "/ops:notif3", 0, 0, notif_instid_cb, NULL, SR_SUBSCR_CTX_REUSE, &sub);
+    ret = sr_notif_subscribe(sess, "ops", "/ops:notif3", 0, 0, notif_instid_cb, NULL, SR_SUBSCR_CTX_REUSE, &sub);
     sr_assert_int_equal(ret, SR_ERR_OK);
 
     /* create the notification */
-    lyd_new_path(NULL, sr_get_context(conn), "/ops:notif3/list2[k='key']/l15",
-            "/ietf-interfaces:interfaces/interface[name='eth0']", 0, &notif);
-    sr_assert(notif);
+    lyd_new_path(NULL, sr_acquire_context(conn), "/ops:notif3/list2[k='key']/l15",
+            "/ietf-interfaces:interfaces/interface[name='eth0']", 0, &tree);
+    sr_assert(tree);
+    ret = sr_acquire_data(conn, tree, &notif);
+    sr_assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for the other process */
     barrier(rp, wp);
 
     /* keep sending notification with instance-identifier */
     for (i = 0; i < 50; ++i) {
-        ret = sr_event_notif_send_tree(sess, notif, 0, 0);
+        ret = sr_notif_send_tree(sess, notif->tree, 0, 0);
         sr_assert_int_equal(ret, SR_ERR_OK);
     }
 
-    lyd_free_tree(notif);
-
+    sr_release_data(notif);
     sr_unsubscribe(sub);
     sr_disconnect(conn);
     return 0;
@@ -505,7 +510,7 @@ static int
 pull_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *path,
         const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
-    const struct ly_ctx *ly_ctx = sr_get_context(sr_session_get_connection(session));
+    const struct ly_ctx *ly_ctx = sr_acquire_context(sr_session_get_connection(session));
     LY_ERR ret;
 
     (void)sub_id;
@@ -525,6 +530,7 @@ pull_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name
             "42", 0, NULL);
     sr_assert_int_equal(ret, LY_SUCCESS);
 
+    sr_release_context(sr_session_get_connection(session));
     return SR_ERR_OK;
 }
 
@@ -543,7 +549,7 @@ test_pull_push_oper1(int rp, int wp)
     sr_assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to providing operational data */
-    ret = sr_oper_get_items_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state/interface/statistics",
+    ret = sr_oper_get_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state/interface/statistics",
             pull_oper_cb, NULL, 0, &sub);
     sr_assert_int_equal(ret, SR_ERR_OK);
 
@@ -572,7 +578,7 @@ test_pull_push_oper2(int rp, int wp)
 {
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sess;
-    struct lyd_node *data;
+    sr_data_t *data;
     int ret, i;
 
     ret = sr_connect(0, &conn);
@@ -588,7 +594,7 @@ test_pull_push_oper2(int rp, int wp)
     for (i = 0; i < 200; ++i) {
         ret = sr_get_data(sess, "/ietf-interfaces:interfaces/interface", 0, 0, 0, &data);
         sr_assert_int_equal(ret, SR_ERR_OK);
-        lyd_free_siblings(data);
+        sr_release_data(data);
     }
 
     sr_disconnect(conn);

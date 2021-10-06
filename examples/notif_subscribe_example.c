@@ -179,7 +179,7 @@ main(int argc, char **argv)
     }
 
     /* subscribe for the notifications */
-    rc = sr_event_notif_subscribe(session, mod_name, xpath, 0, 0, notif_cb, NULL, 0, &subscription);
+    rc = sr_notif_subscribe(session, mod_name, xpath, NULL, NULL, notif_cb, NULL, 0, &subscription);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }

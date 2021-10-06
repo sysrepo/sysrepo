@@ -1,8 +1,12 @@
 module t-types {
-  namespace "http://www.example.net/t-types";
-  prefix tt;
+    namespace "http://www.example.net/t-types";
+    prefix tt;
 
-  identity layer-protocol-name {
+    identity layer-protocol-name {
         description "";
+    }
+
+    identity some-name {
+        base layer-protocol-name;
     }
 }

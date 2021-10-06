@@ -79,7 +79,7 @@ static sr_error_info_t sr_errinfo_mem = {
     .err_count = 1
 };
 
-sr_error_t
+int
 sr_api_ret(sr_session_ctx_t *session, sr_error_info_t *err_info)
 {
     sr_error_t err_code = SR_ERR_OK;
@@ -133,7 +133,7 @@ sr_log_msg(int plugin, sr_log_level_t ll, const char *msg)
 
     /* stderr logging */
     if (ll <= stderr_ll) {
-        fprintf(stderr, "[%s]%s %s\n", severity, plugin ? " PLG:" : "", msg);
+        fprintf(stderr, "[%s] %s\n", severity, msg);
     }
 
     /* syslog logging */
