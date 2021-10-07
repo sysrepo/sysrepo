@@ -77,7 +77,7 @@ other users.
 #### Optional
 
 * doxygen (for generating documentation)
-* cmocka >= 1.0.0 (for tests only, see [Tests](#Tests))
+* cmocka >= 1.0.1 (for tests only, see [Tests](#Tests))
 * valgrind (for enhanced testing)
 * gcov (for code coverage)
 * lcov (for code coverage)
