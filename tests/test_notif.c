@@ -16,6 +16,7 @@
 
 #define _GNU_SOURCE
 
+#include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
 #include <setjmp.h>
@@ -150,9 +151,9 @@ clear_ops_notif(void **state)
     (void)state;
 
     test_path_notif_dir(&path);
-    asprintf(&cmd, "rm -rf %s/ops.notif*", path);
+    assert_return_code(asprintf(&cmd, "rm -rf %s/ops.notif*", path), 0);
     free(path);
-    system(cmd);
+    assert_return_code(system(cmd), errno);
     free(cmd);
 
     return 0;
@@ -172,9 +173,9 @@ store_notif(int fd, const struct ly_ctx *ly_ctx, const char *notif_xpath, off_t 
     lyd_print_mem(&notif_lyb, notif, LYD_LYB, LYD_PRINT_WITHSIBLINGS);
     notif_lyb_len = lyd_lyb_data_length(notif_lyb);
     notif_ts.tv_sec = start_ts + ts_offset;
-    write(fd, &notif_ts, sizeof notif_ts);
-    write(fd, &notif_lyb_len, sizeof notif_lyb_len);
-    write(fd, notif_lyb, notif_lyb_len);
+    assert_int_equal(write(fd, &notif_ts, sizeof notif_ts), sizeof notif_ts);
+    assert_int_equal(write(fd, &notif_lyb_len, sizeof notif_lyb_len), sizeof notif_lyb_len);
+    assert_int_equal(write(fd, notif_lyb, notif_lyb_len), notif_lyb_len);
     lyd_free_all(notif);
     free(notif_lyb);
 
@@ -194,7 +195,7 @@ create_ops_notif(void **state)
     /*
      * create first notif file
      */
-    asprintf(&path, "%s/ops.notif.%lu-%lu", ntf_path, start_ts, start_ts + 2);
+    assert_return_code(asprintf(&path, "%s/ops.notif.%lu-%lu", ntf_path, start_ts, start_ts + 2), 0);
     fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 00600);
     free(path);
     if (fd == -1) {
@@ -217,7 +218,7 @@ create_ops_notif(void **state)
     /*
      * create second notif file
      */
-    asprintf(&path, "%s/ops.notif.%lu-%lu", ntf_path, start_ts + 5, start_ts + 10);
+    assert_return_code(asprintf(&path, "%s/ops.notif.%lu-%lu", ntf_path, start_ts + 5, start_ts + 10), 0);
     fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 00600);
     free(path);
     if (fd == -1) {
@@ -243,7 +244,7 @@ create_ops_notif(void **state)
     /*
      * create third notif file
      */
-    asprintf(&path, "%s/ops.notif.%lu-%lu", ntf_path, start_ts + 12, start_ts + 15);
+    assert_return_code(asprintf(&path, "%s/ops.notif.%lu-%lu", ntf_path, start_ts + 12, start_ts + 15), 0);
     fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 00600);
     free(path);
     if (fd == -1) {

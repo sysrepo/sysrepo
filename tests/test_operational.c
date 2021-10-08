@@ -3802,7 +3802,7 @@ change_cb_stored_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *modu
         /* store some operational data */
         ret = sr_session_start(sr_session_get_connection(session), SR_DS_OPERATIONAL, &sess);
         assert_int_equal(ret, SR_ERR_OK);
-        asprintf(&str, "%s/description", new_val->xpath);
+        assert_return_code(asprintf(&str, "%s/description", new_val->xpath), 0);
         ret = sr_set_item_str(sess, str, "descr1", NULL, 0);
         assert_int_equal(ret, SR_ERR_OK);
         free(str);
@@ -3871,7 +3871,7 @@ change_cb_stored_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *modu
         /* store some other operational data */
         ret = sr_session_start(sr_session_get_connection(session), SR_DS_OPERATIONAL, &sess);
         assert_int_equal(ret, SR_ERR_OK);
-        asprintf(&str, "%s/description", new_val->xpath);
+        assert_return_code(asprintf(&str, "%s/description", new_val->xpath), 0);
         ret = sr_set_item_str(sess, str, "descr2", NULL, 0);
         assert_int_equal(ret, SR_ERR_OK);
         free(str);
