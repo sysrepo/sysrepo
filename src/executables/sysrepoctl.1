@@ -1,0 +1,99 @@
+.\" Manpage for sysrepoctl.
+.\" Process this file with
+.\" groff -man -Tascii sysrepoctl.1
+.\"
+
+.TH SYSREPOCTL 1 "2021-10-07" "sysrepo"
+.SH NAME
+sysrepoctl \- sysrepo YANG schema manipulation tool
+.
+.SH SYNOPSIS
+.B sysrepoctl
+\fIOPERATION\fP
+[\fIOPTIONS\fP]
+.br
+.
+.SH DESCRIPTION
+\fBsysrepoctl\fP is a command-line tool for manipulation of YANG schemas
+in sysrepo. It can list the currently installed schemas and add, remove,
+or modify them.
+.
+.SH OPERATION
+.TP
+.BR "\-h\fR,\fP \-\^\-help"
+Print usage help.
+.TP
+.BR "\-V\fR,\fP \-\^\-version"
+Print only information about sysrepo version.
+.TP
+.BR "\-l\fR,\fP \-\^\-list"
+List YANG modules in sysrepo.
+.TP
+.BR "\-i\fR,\fP \-\^\-install \fIPATH\fP"
+Install the specified schema into sysrepo. Can be in either YANG or YIN format.
+.TP
+.BR "\-u\fR,\fP \-\^\-uninstall \fIMODULE\fP [\fR,\fP\fIMODULE\fP\fR,\fP\fIMODULE\fP...]"
+Uninstall the specified module(s) from sysrepo.
+.TP
+.BR "\-c\fR,\fP \-\^\-change \fIMODULE\fP"
+Change access rights, features, or replay support of the specified module.
+Use special \fI:ALL\fP module name to change the access rights or replay support of all the modules.
+.TP
+.BR "\-U\fR,\fP \-\^\-update \fIPATH\fP"
+Update the specified schema in sysrepo. Can be in either YANG or YIN format.
+.TP
+.BR "\-C\fR,\fP \-\^\-connection\-count"
+Print the number of sysrepo connections to \fISTDOUT\fP.
+.
+.SH OPTIONS
+.TP
+.BR "\-s\fR,\fP \-\^\-search\-dirs \fIDIR-PATH\fP [:\fIDIR-PATH\fI...]"
+Directories to search for include/import modules. Directory with already-installed
+modules is always searched. Accepted by \fBinstall\fP, \fBupdate\fP op.
+.TP
+.BR "\-e\fR,\fP \-\^\-enable\-feature \fIFEATURE\fP"
+Enabled specific feature. Can be specified multiple times Accepted by \fBinstall\fP, \fBchange\fP op.
+.TP
+.BR "\-d\fR,\fP \-\^\-disable\-feature \fIFEATURE\fP"
+Disable specific feature. Can be specified multiple times. Accepted by \fBchange\fP op.
+.TP
+.BR "\-r\fR,\fP \-\^\-replay \fISTATE\fP"
+Change replay support (storing notifications) for this module. Accepted by \fBchange\fP op. \fISTATE\fP can be:
+ \[bu] \fBon\fP/\fB1\fP
+ \[bu] \fBoff\fP/\fB0\fP
+.TP
+.BR "\-o\fR,\fP \-\^\-owner \fIUSER\fP"
+Set filesystem owner of a module. Accepted by \fBchange\fP op, with \fB\-\^\-apply\fP even \fBinstall\fP,
+\fBupdate\fP op.
+.TP
+.BR "\-g\fR,\fP \-\^\-group \fIGROUP\fP"
+Set filesystem group of a module. Accepted by \fBchange\fP op, with \fB\-\^\-apply\fP even \fBinstall\fP, \fBupdate\fP op.
+.TP
+.BR "\-p\fR,\fP \-\^\-permissions \fIPERMISSIONS\fP"
+Set filesystem permissions of a module (chmod format). Accepted by \fBchange\fP op, with \fB\-\^\-apply\fP even
+\fBinstall\fP, \fBupdate\fP op.
+.TP
+.BR "\-a\fR,\fP \-\^\-apply"
+Apply schema changes immediately, not only schedule them. Accepted by \fBinstall\fP, \fBuninstall\fP, \fBchange\fP,
+\fBupdate\fP op.
+.TP
+.BR "\-v\fR,\fP \-\^\-verbosity \fILEVEL\fP"
+Change verbosity to a level. Accepted by \fBall\fP op. \fILEVEL\fP can be a string or a number:
+ \[bu] \fBnone\fP/\fB0\fP
+ \[bu] \fBerror\fP/\fB1\fP (default)
+ \[bu] \fBwarning\fP/\fB2\fP
+ \[bu] \fBinfo\fP/\fB3\fP
+ \[bu] \fBdebug\fP/\fB4\fP
+.
+.SH SEE ALSO
+https://sysrepo.org (sysrepo home page)
+.TP
+https://github.com/sysrepo/sysrepo (sysrepo Git repository)
+.
+.SH AUTHORS
+Michal Vasko <mvasko@cesnet.cz>
+.
+.SH COPYRIGHT
+Copyright \(co 2018-2021 CESNET, a.l.e.
+.TP
+Copyright \(co 2018-2021 Deutsche Telekom AG.
