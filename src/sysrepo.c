@@ -3490,15 +3490,14 @@ sr_unsubscribe_sub(sr_subscription_ctx_t *subscription, uint32_t sub_id)
 static int
 _sr_subscription_thread_suspend(sr_subscription_ctx_t *subscription)
 {
-    ATOMIC_T exp;
+    uint_fast32_t exp;
     int result;
 
-    ATOMIC_STORE_RELAXED(exp, 1);
-
     /* expect 1 and set to 2 */
+    exp = 1;
     ATOMIC_COMPARE_EXCHANGE_RELAXED(subscription->thread_running, exp, 2, result);
     if (!result) {
-        if (ATOMIC_LOAD_RELAXED(exp) == 0) {
+        if (exp == 0) {
             return 2;
         } else {
             return 1;
@@ -3534,17 +3533,16 @@ API int
 sr_subscription_thread_resume(sr_subscription_ctx_t *subscription)
 {
     sr_error_info_t *err_info = NULL;
-    ATOMIC_T exp;
+    uint_fast32_t exp;
     int result;
 
     SR_CHECK_ARG_APIRET(!subscription, NULL, err_info);
 
-    ATOMIC_STORE_RELAXED(exp, 2);
-
     /* expect 2 and set to 1 */
+    exp = 2;
     ATOMIC_COMPARE_EXCHANGE_RELAXED(subscription->thread_running, exp, 1, result);
     if (!result) {
-        if (ATOMIC_LOAD_RELAXED(exp) == 0) {
+        if (exp == 0) {
             sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Subscription has no handler thread.");
         } else {
             sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Subscription handler thread was not suspended.");
