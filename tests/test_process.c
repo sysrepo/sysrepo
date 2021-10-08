@@ -78,8 +78,8 @@ run_tests(struct test *tests, uint32_t test_count)
     const char *child_status, *parent_status;
     size_t i;
 
-    pipe(pipes);
-    pipe(pipes + 2);
+    sr_assert(pipe(pipes) == 0);
+    sr_assert(pipe(pipes + 2) == 0);
 
     printf("[===========] Running %u test(s).\n", test_count);
 
