@@ -290,7 +290,7 @@ sr_shmmain_conn_new_lockfile(sr_cid_t cid, int *lock_fd)
     /* Write the PID into the file for debug. The / helps identify if a
      * file is unexpectedly reused. */
     snprintf(buf, sizeof(buf) - 1, "/%ld\n", (long)getpid());
-    if (write(fd, buf, strlen(buf)) != strlen(buf)) {
+    if (write(fd, buf, strlen(buf)) != (ssize_t)strlen(buf)) {
         SR_ERRINFO_SYSERRNO(&err_info, "write");
         goto cleanup;
     }
