@@ -1,0 +1,5 @@
+sysrepo ({{ version }}-{{ release }}) unstable; urgency=medium
+
+  * new upstream version {{ version }}
+
+ -- Michal Vaško <mvasko@cesnet.cz>  Fri, 08 Oct 2021 09:30:00 +0100
