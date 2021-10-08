@@ -5695,6 +5695,9 @@ test_done_timeout(void **state)
     pthread_join(tid[1], NULL);
 }
 
+#if 0
+/* currently not supported */
+
 /* TEST */
 static int
 module_change_order_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
@@ -5855,6 +5858,7 @@ test_change_order(void **state)
     pthread_join(tid[0], NULL);
     pthread_join(tid[1], NULL);
 }
+#endif
 
 /* TEST */
 static int
