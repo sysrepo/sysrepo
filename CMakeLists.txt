@@ -221,7 +221,8 @@ set(FORMAT_SOURCES
     examples/plugin/*.c
     src/*.c
     src/*.h
-    src/executables/*
+    src/executables/*.c
+    src/executables/*.h*
     src/utils/*)
 
 #
