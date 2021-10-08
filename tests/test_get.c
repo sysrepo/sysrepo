@@ -179,7 +179,7 @@ enable_cached_get_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
     (void)private_data;
 
     /* get current config */
-    asprintf(&xp, "/%s:*//.", module_name);
+    assert_return_code(asprintf(&xp, "/%s:*//.", module_name), 0);
     ret = sr_get_items(session, xp, 0, 0, &values, &count);
     free(xp);
     assert_int_equal(ret, SR_ERR_OK);

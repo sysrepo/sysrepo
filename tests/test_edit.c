@@ -965,10 +965,10 @@ test_mutiple_types(void **state)
     ret = sr_get_data(st->sess, "/test-module:main/instance_id", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     lyd_print_mem(&str, data, LYD_XML, LYD_PRINT_SHRINK);
-    asprintf(&str2,
+    assert_return_code(asprintf(&str2,
     "<main xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">"
         "<instance_id xmlns:tm=\"urn:ietf:params:xml:ns:yang:test-module\">/tm:main/tm:options</instance_id>"
-    "</main>");
+    "</main>"), 0);
     assert_string_equal(str, str2);
     free(str);
     free(str2);
