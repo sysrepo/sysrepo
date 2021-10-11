@@ -24,7 +24,7 @@ Description: YANG-based configuration and operational data store - runtime
  The library is implemented in C and provides an API for other software
  to use for accessing sysrepo datastore.
 
-Package: sysrepo-dev
+Package: libsysrepo-dev
 Depends: libyang2-dev,
          libsysrepo6 (= ${binary:Version}),
          ${misc:Depends}
