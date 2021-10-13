@@ -72,7 +72,7 @@ sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datas
         struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
+    const struct lys_module *prev_ly_mod, *ly_mod;
     const struct lysc_node *snode;
     struct ly_set *set = NULL;
     uint32_t i;
@@ -84,7 +84,7 @@ sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datas
     }
 
     /* add all the modules of the nodes */
-    ly_mod = NULL;
+    prev_ly_mod = NULL;
     for (i = 0; i < set->count; ++i) {
         snode = set->snodes[i];
 
@@ -93,11 +93,12 @@ sr_shmmod_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datas
             continue;
         }
 
-        if (snode->module == ly_mod) {
+        ly_mod = lysc_owner_module(snode);
+        if (ly_mod == prev_ly_mod) {
             /* skip already-added modules */
             continue;
         }
-        ly_mod = snode->module;
+        prev_ly_mod = ly_mod;
 
         if (!ly_mod->implemented || !strcmp(ly_mod->name, "sysrepo") || !strcmp(ly_mod->name, "ietf-netconf")) {
             /* skip import-only modules, the internal sysrepo module, and ietf-netconf (as it has no data, only in libyang) */
