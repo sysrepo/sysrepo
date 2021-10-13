@@ -74,6 +74,13 @@ sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int no_dup_ch
     }
 
     if (xpath) {
+        for (i = 0; i < mod->xpath_count; ++i) {
+            if (!strcmp(mod->xpaths[i], xpath)) {
+                /* xpath has already been added */
+                return NULL;
+            }
+        }
+
         /* add xpath for mod */
         mem = realloc(mod->xpaths, (mod->xpath_count + 1) * sizeof *mod->xpaths);
         SR_CHECK_MEM_RET(!mem, err_info);
