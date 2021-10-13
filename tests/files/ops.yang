@@ -111,6 +111,7 @@ module ops {
         container cont3 {
             notification notif2 {
                 leaf l13 {
+                    when "starts-with(/or:l1, 'l1')";
                     type instance-identifier;
                 }
             }

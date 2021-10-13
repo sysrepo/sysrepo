@@ -355,7 +355,7 @@ test_input_parameters(void **state)
 
 /* TEST */
 static void
-notif_simple_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
+notif_oper_dep_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
         const sr_val_t *values, const size_t values_cnt, struct timespec *timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
@@ -393,7 +393,7 @@ notif_simple_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_ty
 }
 
 static int
-simple_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+oper_dep_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     struct state *st = (struct state *)private_data;
@@ -415,6 +415,9 @@ simple_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_na
         assert_string_equal(request_xpath, "/ops-ref:l1");
         break;
     case 4:
+        assert_string_equal(request_xpath, "starts-with(/ops-ref:l1,'l1')");
+        break;
+    case 5:
         assert_string_equal(request_xpath, "/ops-ref:l2");
         break;
     default:
@@ -448,7 +451,7 @@ simple_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_na
 }
 
 static void
-test_simple(void **state)
+test_oper_dep(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_subscription_ctx_t *subscr, *subscr2, *subscr3;
@@ -459,7 +462,7 @@ test_simple(void **state)
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
     /* subscribe */
-    ret = sr_event_notif_subscribe(st->sess, "ops", NULL, 0, 0, notif_simple_cb, st, 0, &subscr);
+    ret = sr_event_notif_subscribe(st->sess, "ops", NULL, 0, 0, notif_oper_dep_cb, st, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /*
@@ -485,9 +488,9 @@ test_simple(void **state)
     assert_string_equal(err_info->err[1].message, "Notification validation failed.");
 
     /* subscribe to required ops oper data and some non-required */
-    ret = sr_oper_get_items_subscribe(st->sess, "ops", "/ops:cont/list1", simple_oper_cb, st, 0, &subscr2);
+    ret = sr_oper_get_items_subscribe(st->sess, "ops", "/ops:cont/list1", oper_dep_oper_cb, st, 0, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_oper_get_items_subscribe(st->sess, "ops", "/ops:cont/l12", simple_oper_cb, st, SR_SUBSCR_CTX_REUSE, &subscr2);
+    ret = sr_oper_get_items_subscribe(st->sess, "ops", "/ops:cont/l12", oper_dep_oper_cb, st, SR_SUBSCR_CTX_REUSE, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to send the first notif again, still fails */
@@ -501,12 +504,12 @@ test_simple(void **state)
     assert_string_equal(err_info->err[1].message, "Notification validation failed.");
 
     /* subscribe to required ops-ref oper data and some non-required */
-    ret = sr_oper_get_items_subscribe(st->sess, "ops-ref", "/ops-ref:l1", simple_oper_cb, st, 0, &subscr3);
+    ret = sr_oper_get_items_subscribe(st->sess, "ops-ref", "/ops-ref:l1", oper_dep_oper_cb, st, 0, &subscr3);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_oper_get_items_subscribe(st->sess, "ops-ref", "/ops-ref:l2", simple_oper_cb, st, SR_SUBSCR_CTX_REUSE,
+    ret = sr_oper_get_items_subscribe(st->sess, "ops-ref", "/ops-ref:l2", oper_dep_oper_cb, st, SR_SUBSCR_CTX_REUSE,
             &subscr3);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_oper_get_items_subscribe(st->sess, "ops-ref", "/ops-ref:l3", simple_oper_cb, st, SR_SUBSCR_CTX_REUSE,
+    ret = sr_oper_get_items_subscribe(st->sess, "ops-ref", "/ops-ref:l3", oper_dep_oper_cb, st, SR_SUBSCR_CTX_REUSE,
             &subscr3);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -539,7 +542,7 @@ test_simple(void **state)
     /* try to send the second notif again, should succeed */
     ret = sr_event_notif_send(st->sess, "/ops:cont/cont3/notif2", input, 1, 0, 1);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 6);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 7);
 
     sr_unsubscribe(subscr);
     sr_unsubscribe(subscr2);
@@ -1551,7 +1554,7 @@ main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_input_parameters),
-        cmocka_unit_test_teardown(test_simple, clear_ops),
+        cmocka_unit_test_teardown(test_oper_dep, clear_ops),
         cmocka_unit_test_setup(test_stop, clear_ops_notif),
         cmocka_unit_test_setup_teardown(test_replay_simple, clear_ops_notif, clear_ops),
         cmocka_unit_test_setup(test_replay_interval, create_ops_notif),

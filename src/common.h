@@ -1177,6 +1177,15 @@ sr_error_info_t *sr_xpath_trim_last_node(const char *xpath, char **trim_xpath);
 char *sr_xpath_first_node_with_predicates(const char *xpath);
 
 /**
+ * @brief Parse "..", "*", ".", or a YANG identifier.
+ *
+ * @param[in] id Identifier start.
+ * @param[in] allow_special Whether to allow special paths or only YANG identifiers.
+ * @return Pointer to the first non-identifier character.
+ */
+const char *sr_xpath_next_identifier(const char *id, int allow_special);
+
+/**
  * @brief Get pointers to the next node name in an XPath.
  *
  * @param[in] xpath Current position in the XPath (`/` expected at the beginning).

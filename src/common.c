@@ -4881,21 +4881,19 @@ sr_xpath_first_node_with_predicates(const char *xpath)
     return strndup(xpath, ptr - xpath);
 }
 
-/**
- * @brief Parse "..", "*", ".", or a YANG identifier.
- *
- * @param[in] id Identifier start.
- * @return Pointer to the first non-identifier character.
- */
-static const char *
-sr_xpath_next_identifier(const char *id)
+const char *
+sr_xpath_next_identifier(const char *id, int allow_special)
 {
-    if (!strncmp(id, "..", 2)) {
+    if (allow_special && !strncmp(id, "..", 2)) {
         id += 2;
-    } else if ((id[0] == '*') || (id[0] == '.')) {
+    } else if (allow_special && ((id[0] == '*') || (id[0] == '.'))) {
         id += 1;
     } else {
-        /* must be valid name so we can ignore special first character rules */
+        if (!isalpha(id[0]) && (id[0] != '_')) {
+            /* special first character */
+            return id;
+        }
+        ++id;
         while (isalpha(id[0]) || isdigit(id[0]) || (id[0] == '_') || (id[0] == '-') || (id[0] == '.')) {
             ++id;
         }
@@ -4938,7 +4936,7 @@ sr_xpath_next_name(const char *xpath, const char **mod, int *mod_len, const char
     }
 
     /* module/node name */
-    ptr = sr_xpath_next_identifier(xpath);
+    ptr = sr_xpath_next_identifier(xpath, 1);
 
     /* it was actually module name */
     if (ptr[0] == ':') {
@@ -4951,7 +4949,7 @@ sr_xpath_next_name(const char *xpath, const char **mod, int *mod_len, const char
         xpath = ptr + 1;
 
         /* node name */
-        ptr = sr_xpath_next_identifier(xpath);
+        ptr = sr_xpath_next_identifier(xpath, 1);
     }
 
     /* predicate follows node name */
