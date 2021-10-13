@@ -642,7 +642,8 @@ next_path:
  *
  * @param[in] ly_mod libyang module of the data.
  * @param[in] xpath XPath of the provided data.
- * @param[in] request_xpath XPath of the data request.
+ * @param[in] request_xpaths XPaths based on which these data are required, if NULL the complete module data are needed.
+ * @param[in] req_xpath_count Count of @p request_xpaths.
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
  * @param[in] evpipe_num Subscriber event pipe number.
@@ -653,13 +654,15 @@ next_path:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const char *request_xpath, const char *orig_name,
-        const void *orig_data, uint32_t evpipe_num, const struct lyd_node *parent, uint32_t timeout_ms, sr_cid_t cid,
-        struct lyd_node **oper_data)
+sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const char **request_xpaths,
+        uint32_t req_xpath_count, const char *orig_name, const void *orig_data, uint32_t evpipe_num,
+        const struct lyd_node *parent, uint32_t timeout_ms, sr_cid_t cid, struct lyd_node **oper_data)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct lyd_node *parent_dup = NULL, *last_parent;
+    const char *request_xpath;
     char *parent_path = NULL;
+    uint32_t i;
 
     *oper_data = NULL;
 
@@ -673,16 +676,24 @@ sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const
         /* go top-level */
         for (parent_dup = last_parent; parent_dup->parent; parent_dup = lyd_parent(parent_dup)) {}
 
-        if (request_xpath) {
+        if (req_xpath_count) {
             /* check whether the parent would not be filtered out */
             parent_path = lyd_path(last_parent, LYD_PATH_STD, NULL, 0);
             SR_CHECK_MEM_GOTO(!parent_path, err_info, cleanup);
 
-            if (!sr_xpath_oper_data_required(request_xpath, parent_path)) {
+            for (i = 0; i < req_xpath_count; ++i) {
+                if (sr_xpath_oper_data_required(request_xpaths[i], parent_path)) {
+                    break;
+                }
+            }
+            if (i == req_xpath_count) {
                 goto cleanup;
             }
         }
     }
+
+    /* provide request XPath for the client, if possible */
+    request_xpath = (req_xpath_count == 1) ? request_xpaths[0] : NULL;
 
     /* get data from client */
     if ((err_info = sr_shmsub_oper_notify(ly_mod, xpath, request_xpath, parent_dup, orig_name, orig_data, evpipe_num,
@@ -730,10 +741,9 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_oper_sub_t *shm_sub;
-    const char *sub_xpath, *request_xpath;
+    const char *sub_xpath, **request_xpaths = NULL;
     char *parent_xpath = NULL;
-    uint32_t i, j;
-    int required;
+    uint32_t i, j, req_xpath_count = 0;
     struct ly_set *set = NULL;
     struct lyd_node *edit = NULL, *oper_data;
 
@@ -794,26 +804,20 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
             continue;
         }
 
-        request_xpath = NULL;
         if (mod->xpath_count) {
             /* check whether these data are even required */
-            required = 0;
             for (j = 0; j < mod->xpath_count; ++j) {
                 if (sr_xpath_oper_data_required(mod->xpaths[j], sub_xpath)) {
-                    required = 1;
-                    if (!request_xpath) {
-                        /* these data are required based on this xpath, provide it for the callbacks for
-                         * possible optimizations */
-                        request_xpath = mod->xpaths[j];
-                    } else {
-                        /* these data are required based on several requested xpaths, do not provide any xpath for
-                         * the callbacks */
-                        request_xpath = NULL;
-                        break;
-                    }
+                    /* remember all xpaths causing these data to be required */
+                    request_xpaths = sr_realloc(request_xpaths, (req_xpath_count + 1) * sizeof *request_xpaths);
+                    SR_CHECK_MEM_GOTO(!request_xpaths, err_info, cleanup_opersub_ext_unlock);
+                    request_xpaths[req_xpath_count] = mod->xpaths[j];
+                    ++req_xpath_count;
                 }
             }
-            if (!required) {
+
+            if (!req_xpath_count) {
+                /* not required */
                 ++i;
                 continue;
             }
@@ -848,8 +852,8 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
             /* nested data */
             for (j = 0; j < set->count; ++j) {
                 /* get oper data from the client */
-                if ((err_info = sr_xpath_oper_data_get(mod->ly_mod, sub_xpath, request_xpath, orig_name, orig_data,
-                        shm_sub->evpipe_num, set->dnodes[j], timeout_ms, conn->cid, &oper_data))) {
+                if ((err_info = sr_xpath_oper_data_get(mod->ly_mod, sub_xpath, request_xpaths, req_xpath_count,
+                        orig_name, orig_data, shm_sub->evpipe_num, set->dnodes[j], timeout_ms, conn->cid, &oper_data))) {
                     goto cleanup_opersub_ext_unlock;
                 }
 
@@ -869,8 +873,8 @@ next_iter:
             set = NULL;
         } else {
             /* top-level data */
-            if ((err_info = sr_xpath_oper_data_get(mod->ly_mod, sub_xpath, request_xpath, orig_name, orig_data,
-                    shm_sub->evpipe_num, NULL, timeout_ms, conn->cid, &oper_data))) {
+            if ((err_info = sr_xpath_oper_data_get(mod->ly_mod, sub_xpath, request_xpaths, req_xpath_count, orig_name,
+                    orig_data, shm_sub->evpipe_num, NULL, timeout_ms, conn->cid, &oper_data))) {
                 goto cleanup_opersub_ext_unlock;
             }
 
@@ -881,6 +885,9 @@ next_iter:
             }
         }
 
+        free(request_xpaths);
+        request_xpaths = NULL;
+        req_xpath_count = 0;
         ++i;
     }
 
@@ -894,6 +901,7 @@ cleanup_opersub_unlock:
     /* OPER SUB READ UNLOCK */
     sr_rwunlock(&mod->shm_mod->oper_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
+    free(request_xpaths);
     free(parent_xpath);
     ly_set_free(set, NULL);
     return err_info;
