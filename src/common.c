@@ -4632,9 +4632,9 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
 {
     sr_error_info_t *err_info = NULL;
     const struct ly_ctx *ctx = LYD_CTX(*data);
-    struct lyd_node *root, *src, *parent;
+    struct lyd_node *root, *src, *parent, *p;
     struct ly_set *cur_set, *set = NULL;
-    size_t i;
+    uint32_t i, j;
     LY_ERR lyrc;
 
     if (!xp_count) {
@@ -4649,7 +4649,7 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
             goto cleanup;
         }
 
-        /* merge into one set */
+        /* merge into one set, filtering duplicates */
         if (set) {
             lyrc = ly_set_merge(set, cur_set, 0, NULL);
             ly_set_free(cur_set, NULL);
@@ -4675,6 +4675,11 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
                 goto cleanup;
             }
         } else {
+            if (!src) {
+                /* could happen if the parent was already merged with this subtree */
+                continue;
+            }
+
             /* duplicate only the parents */
             parent = NULL;
             if (src->parent) {
@@ -4707,6 +4712,17 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
                 }
 
                 root = src;
+            }
+
+            /* check whether there is not a subtree of this tree in set */
+            for (j = i + 1; j < set->count; ++j) {
+                for (p = lyd_parent(set->dnodes[j]); p; p = lyd_parent(p)) {
+                    if (root == p) {
+                        /* it is, so it will now be merged with its parent and freed node left in set, prevent that */
+                        set->dnodes[j] = NULL;
+                        break;
+                    }
+                }
             }
         }
 

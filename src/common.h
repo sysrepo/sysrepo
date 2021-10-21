@@ -1133,7 +1133,8 @@ sr_error_info_t *sr_lyd_get_module_data(struct lyd_node **data, const struct lys
  * Works well even for XPaths with intersections.
  *
  * @param[in,out] data Data tree to get data from, are unlinked from if @p dup is 0.
- * @param[in] xpaths Array of XPaths that will select the duplicated nodes.
+ * @param[in] xpaths Array of XPaths that will select the duplicated nodes, the may repeat themselves or overlap by
+ * one xpath selecting a subtree of another.
  * @param[in] xp_count XPath count.
  * @param[in] dup Whether to duplicate data or only unlink.
  * @param[in,out] new_data Data with the selected nodes appended.
