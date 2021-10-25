@@ -1476,6 +1476,255 @@ cleanup:
 }
 
 sr_error_info_t *
+sr_subscr_change_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, int *valid)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_set *set = NULL;
+
+    /* parse the xpath on schema */
+    if (lys_find_xpath(ly_ctx, NULL, xpath, 0, &set)) {
+        if (valid) {
+            *valid = 0;
+        } else {
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+        }
+        goto cleanup;
+    }
+
+    /* make sure there are some nodes selected */
+    if (!set->count) {
+        if (valid) {
+            *valid = 0;
+        } else {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "XPath \"%s\" is not selecting any nodes.", xpath);
+        }
+        goto cleanup;
+    }
+
+    /* valid */
+    if (valid) {
+        *valid = 1;
+    }
+
+cleanup:
+    ly_set_free(set, NULL);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_subscr_oper_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, sr_mod_oper_sub_type_t *sub_type, int *valid)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lysc_node *elem;
+    struct ly_set *set = NULL;
+    uint32_t i;
+
+    if (lys_find_xpath(ly_ctx, NULL, xpath, LYS_FIND_NO_MATCH_ERROR, &set)) {
+        if (valid) {
+            *valid = 0;
+        } else {
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+        }
+        goto cleanup;
+    } else if (!set->count) {
+        if (valid) {
+            *valid = 0;
+        } else {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "XPath \"%s\" does not point to any nodes.", xpath);
+        }
+        goto cleanup;
+    }
+
+    if (sub_type) {
+        /* learn subscription type */
+        *sub_type = SR_OPER_SUB_NONE;
+        for (i = 0; i < set->count; ++i) {
+            LYSC_TREE_DFS_BEGIN(set->snodes[i], elem) {
+                switch (elem->nodetype) {
+                case LYS_CONTAINER:
+                case LYS_LEAF:
+                case LYS_LEAFLIST:
+                case LYS_LIST:
+                case LYS_ANYXML:
+                case LYS_ANYDATA:
+                    /* data node - check config */
+                    if ((elem->flags & LYS_CONFIG_MASK) == LYS_CONFIG_R) {
+                        if (*sub_type == SR_OPER_SUB_CONFIG) {
+                            *sub_type = SR_OPER_SUB_MIXED;
+                        } else {
+                            *sub_type = SR_OPER_SUB_STATE;
+                        }
+                    } else {
+                        assert((elem->flags & LYS_CONFIG_MASK) == LYS_CONFIG_W);
+                        if (*sub_type == SR_OPER_SUB_STATE) {
+                            *sub_type = SR_OPER_SUB_MIXED;
+                        } else {
+                            *sub_type = SR_OPER_SUB_CONFIG;
+                        }
+                    }
+                    break;
+                case LYS_CHOICE:
+                case LYS_CASE:
+                    /* go into */
+                    break;
+                default:
+                    /* should not be reachable */
+                    SR_ERRINFO_INT(&err_info);
+                    if (valid) {
+                        sr_errinfo_free(&err_info);
+                        *valid = 0;
+                    }
+                    goto cleanup;
+                }
+
+                if ((*sub_type == SR_OPER_SUB_STATE) || (*sub_type == SR_OPER_SUB_MIXED)) {
+                    /* redundant to look recursively */
+                    break;
+                }
+
+                LYSC_TREE_DFS_END(set->snodes[i], elem);
+            }
+
+            if (*sub_type == SR_OPER_SUB_MIXED) {
+                /* we found both config type nodes, nothing more to look for */
+                break;
+            }
+        }
+    }
+
+    /* valid */
+    if (valid) {
+        *valid = 1;
+    }
+
+cleanup:
+    ly_set_free(set, NULL);
+    return err_info;
+}
+
+/**
+ * @brief libyang callback for full module traversal when searching for a notification.
+ */
+static LY_ERR
+sr_event_notif_lysc_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_continue)
+{
+    int *found = (int *)data;
+
+    (void)dfs_continue;
+
+    if (node->nodetype == LYS_NOTIF) {
+        *found = 1;
+
+        /* just stop the traversal */
+        return LY_EEXIST;
+    }
+
+    return LY_SUCCESS;
+}
+
+sr_error_info_t *
+sr_subscr_notif_xpath_check(const struct lys_module *ly_mod, const char *xpath, int *valid)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_set *set = NULL;
+    int found = 0;
+    uint32_t i;
+
+    if (xpath) {
+        /* find atoms selected by the xpath */
+        if (lys_find_xpath_atoms(ly_mod->ctx, NULL, xpath, LYS_FIND_NO_MATCH_ERROR, &set)) {
+            if (valid) {
+                *valid = 0;
+            } else {
+                sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+            }
+            goto cleanup;
+        }
+
+        /* there must be some notifications selected */
+        for (i = 0; i < set->count; ++i) {
+            if (set->snodes[i]->nodetype == LYS_NOTIF) {
+                found = 1;
+                break;
+            }
+        }
+    } else {
+        lysc_module_dfs_full(ly_mod, sr_event_notif_lysc_dfs_cb, &found);
+    }
+    if (!found) {
+        if (valid) {
+            *valid = 0;
+        } else if (xpath) {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "XPath \"%s\" does not select any notifications.", xpath);
+        } else {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" does not define any notifications.", ly_mod->name);
+        }
+        goto cleanup;
+    }
+
+    /* valid */
+    if (valid) {
+        *valid = 1;
+    }
+
+cleanup:
+    ly_set_free(set, NULL);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_subscr_rpc_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, char **path, int *valid)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lysc_node *op;
+    char *p = NULL;
+
+    if (path) {
+        *path = NULL;
+    }
+
+    /* trim any predicates */
+    if ((err_info = sr_get_trim_predicates(xpath, &p))) {
+        if (valid) {
+            sr_errinfo_free(&err_info);
+            *valid = 0;
+        }
+        goto cleanup;
+    }
+
+    /* find the RPC/action */
+    if (!(op = lys_find_path(ly_ctx, NULL, p, 0))) {
+        if (valid) {
+            *valid = 0;
+        } else {
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+        }
+        goto cleanup;
+    }
+    if (!(op->nodetype & (LYS_RPC | LYS_ACTION))) {
+        if (valid) {
+            *valid = 0;
+        } else {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Path \"%s\" does not identify an RPC nor an action.", p);
+        }
+        goto cleanup;
+    }
+
+    /* valid */
+    if (valid) {
+        *valid = 1;
+    }
+
+cleanup:
+    if (err_info || !path) {
+        free(p);
+    } else {
+        *path = p;
+    }
+    return err_info;
+}
+
+sr_error_info_t *
 sr_ptr_add(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *add_ptr)
 {
     sr_error_info_t *err_info = NULL;

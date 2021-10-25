@@ -1395,7 +1395,7 @@ sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *sea
     }
 
     /* check the new context can be used, optionally with initial module data */
-    if ((err_info = sr_lycc_check_add_module(tmp_ly_ctx, conn->ly_ctx))) {
+    if ((err_info = sr_lycc_check_add_module(conn, tmp_ly_ctx))) {
         goto cleanup;
     }
     if ((err_info = sr_lycc_update_data(conn, tmp_ly_ctx, mod_data, &old_s_data, &new_s_data, &old_r_data, &new_r_data,
@@ -1515,7 +1515,7 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name, int force)
     }
 
     /* check the new context can be used */
-    if ((err_info = sr_lycc_check_del_module(tmp_ly_ctx, &mod_set))) {
+    if ((err_info = sr_lycc_check_del_module(conn, tmp_ly_ctx, &mod_set))) {
         goto cleanup;
     }
     if ((err_info = sr_lycc_update_data(conn, tmp_ly_ctx, NULL, &old_s_data, &new_s_data, &old_r_data, &new_r_data,
@@ -1633,7 +1633,7 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
     }
 
     /* check the new context can be used */
-    if ((err_info = sr_lycc_check_upd_module(upd_ly_mod, ly_mod))) {
+    if ((err_info = sr_lycc_check_upd_module(conn, upd_ly_mod, ly_mod))) {
         goto cleanup;
     }
     if ((err_info = sr_lycc_update_data(conn, tmp_ly_ctx, NULL, &old_s_data, &new_s_data, &old_r_data, &new_r_data,
@@ -2196,6 +2196,9 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     /* check the new context can be used */
+    if ((err_info = sr_lycc_check_chng_feature(conn, tmp_ly_ctx))) {
+        goto cleanup;
+    }
     if ((err_info = sr_lycc_update_data(conn, tmp_ly_ctx, NULL, &old_s_data, &new_s_data, &old_r_data, &new_r_data,
             &old_o_data, &new_o_data))) {
         goto cleanup;
@@ -4571,10 +4574,13 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         return sr_api_ret(session, err_info);
     }
 
-    /* is the module name valid? */
+    /* check module name and xpath */
     ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
+        goto cleanup;
+    }
+    if (xpath && (err_info = sr_subscr_change_xpath_check(conn->ly_ctx, xpath, NULL))) {
         goto cleanup;
     }
 
@@ -4740,6 +4746,11 @@ sr_module_change_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t 
     if (!xpath && !change_sub->xpath) {
         goto cleanup_unlock;
     } else if (xpath && change_sub->xpath && !strcmp(xpath, change_sub->xpath)) {
+        goto cleanup_unlock;
+    }
+
+    /* check xpath */
+    if (xpath && (err_info = sr_subscr_change_xpath_check(subscription->conn->ly_ctx, xpath, NULL))) {
         goto cleanup_unlock;
     }
 
@@ -5158,7 +5169,6 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     char *module_name = NULL, *path = NULL;
-    const struct lysc_node *op;
     const struct lys_module *ly_mod;
     uint32_t sub_id;
     sr_conn_ctx_t *conn;
@@ -5197,16 +5207,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     }
 
     /* is the xpath valid? */
-    if ((err_info = sr_get_trim_predicates(xpath, &path))) {
-        goto cleanup;
-    }
-
-    if (!(op = lys_find_path(conn->ly_ctx, NULL, path, 0))) {
-        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
-        goto cleanup;
-    }
-    if (!(op->nodetype & (LYS_RPC | LYS_ACTION))) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Path \"%s\" does not identify an RPC nor an action.", path);
+    if ((err_info = sr_subscr_rpc_xpath_check(conn->ly_ctx, xpath, &path, NULL))) {
         goto cleanup;
     }
 
@@ -5547,26 +5548,6 @@ cleanup:
 }
 
 /**
- * @brief libyang callback for full module traversal when searching for a notification.
- */
-static LY_ERR
-sr_event_notif_lysc_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_continue)
-{
-    int *found = (int *)data;
-
-    (void)dfs_continue;
-
-    if (node->nodetype == LYS_NOTIF) {
-        *found = 1;
-
-        /* just stop the traversal */
-        return LY_EEXIST;
-    }
-
-    return LY_SUCCESS;
-}
-
-/**
  * @brief Subscribe to a notification.
  *
  * @param[in] session Session subscription.
@@ -5587,14 +5568,11 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
         void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
-    struct ly_set *set;
     struct timespec listen_since, cur_ts;
     const struct lys_module *ly_mod;
     sr_conn_ctx_t *conn;
-    uint32_t i, sub_id;
+    uint32_t sub_id;
     sr_mod_t *shm_mod;
-    LY_ERR lyrc;
-    int found;
 
     sr_time_get(&cur_ts, 0);
 
@@ -5628,32 +5606,7 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
     }
 
     /* is the xpath/module valid? */
-    found = 0;
-    if (xpath) {
-        lyrc = lys_find_xpath_atoms(conn->ly_ctx, NULL, xpath, 0, &set);
-        if (lyrc) {
-            sr_errinfo_new_ly(&err_info, ly_mod->ctx);
-            goto cleanup;
-        }
-
-        /* there must be some notifications selected */
-        for (i = 0; i < set->count; ++i) {
-            if (set->snodes[i]->nodetype == LYS_NOTIF) {
-                found = 1;
-                break;
-            }
-        }
-        ly_set_free(set, NULL);
-    } else {
-        lysc_module_dfs_full(ly_mod, sr_event_notif_lysc_dfs_cb, &found);
-    }
-
-    if (!found) {
-        if (xpath) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "XPath \"%s\" does not select any notifications.", xpath);
-        } else {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" does not define any notifications.", ly_mod->name);
-        }
+    if ((err_info = sr_subscr_notif_xpath_check(ly_mod, xpath, NULL))) {
         goto cleanup;
     }
 
@@ -5679,7 +5632,7 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
     SR_CHECK_INT_GOTO(!shm_mod, err_info, error1);
 
     /* add notification subscription into main SHM and create separate specific SHM segment */
-    if ((err_info = sr_shmext_notif_sub_add(conn, shm_mod, sub_id, (*subscription)->evpipe_num, &listen_since))) {
+    if ((err_info = sr_shmext_notif_sub_add(conn, shm_mod, sub_id, xpath, (*subscription)->evpipe_num, &listen_since))) {
         goto error1;
     }
 
@@ -5960,8 +5913,10 @@ sr_notif_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t sub_id, 
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_notifsub_s *notif_sub;
+    const struct lys_module *ly_mod;
     sr_session_ctx_t *ev_sess = NULL;
     struct timespec cur_time;
+    const char *mod_name;
 
     SR_CHECK_ARG_APIRET(!subscription || !sub_id, NULL, err_info);
 
@@ -5972,7 +5927,7 @@ sr_notif_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t sub_id, 
     }
 
     /* find the subscription in the subscription context */
-    notif_sub = sr_subscr_notif_sub_find(subscription, sub_id, NULL);
+    notif_sub = sr_subscr_notif_sub_find(subscription, sub_id, &mod_name);
     if (!notif_sub) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Notification subscription with ID \"%" PRIu32 "\" not found.", sub_id);
         goto cleanup_unlock;
@@ -5982,6 +5937,15 @@ sr_notif_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t sub_id, 
     if (!xpath && !notif_sub->xpath) {
         goto cleanup_unlock;
     } else if (xpath && notif_sub->xpath && !strcmp(xpath, notif_sub->xpath)) {
+        goto cleanup_unlock;
+    }
+
+    /* find the module */
+    ly_mod = ly_ctx_get_module_implemented(subscription->conn->ly_ctx, mod_name);
+    assert(ly_mod);
+
+    /* check xpath */
+    if ((err_info = sr_subscr_notif_xpath_check(ly_mod, xpath, NULL))) {
         goto cleanup_unlock;
     }
 
@@ -6079,86 +6043,6 @@ cleanup_unlock:
     return sr_api_ret(NULL, err_info);
 }
 
-/**
- * @brief Learn what kinds (config) of nodes are provided by an operational subscription
- * to determine its type.
- *
- * @param[in] ly_ctx libyang context to use.
- * @param[in] path Subscription path.
- * @param[out] sub_type Learned subscription type.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_oper_sub_get_type(const struct ly_ctx *ly_ctx, const char *path, sr_mod_oper_sub_type_t *sub_type)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lysc_node *elem;
-    struct ly_set *set = NULL;
-    uint32_t i;
-
-    if (lys_find_xpath(ly_ctx, NULL, path, 0, &set)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx);
-        goto cleanup;
-    } else if (!set->count) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "XPath \"%s\" does not point to any nodes.", path);
-        goto cleanup;
-    }
-
-    *sub_type = SR_OPER_SUB_NONE;
-    for (i = 0; i < set->count; ++i) {
-        LYSC_TREE_DFS_BEGIN(set->snodes[i], elem) {
-            switch (elem->nodetype) {
-            case LYS_CONTAINER:
-            case LYS_LEAF:
-            case LYS_LEAFLIST:
-            case LYS_LIST:
-            case LYS_ANYXML:
-            case LYS_ANYDATA:
-                /* data node - check config */
-                if ((elem->flags & LYS_CONFIG_MASK) == LYS_CONFIG_R) {
-                    if (*sub_type == SR_OPER_SUB_CONFIG) {
-                        *sub_type = SR_OPER_SUB_MIXED;
-                    } else {
-                        *sub_type = SR_OPER_SUB_STATE;
-                    }
-                } else {
-                    assert((elem->flags & LYS_CONFIG_MASK) == LYS_CONFIG_W);
-                    if (*sub_type == SR_OPER_SUB_STATE) {
-                        *sub_type = SR_OPER_SUB_MIXED;
-                    } else {
-                        *sub_type = SR_OPER_SUB_CONFIG;
-                    }
-                }
-                break;
-            case LYS_CHOICE:
-            case LYS_CASE:
-                /* go into */
-                break;
-            default:
-                /* should not be reachable */
-                SR_ERRINFO_INT(&err_info);
-                goto cleanup;
-            }
-
-            if ((*sub_type == SR_OPER_SUB_STATE) || (*sub_type == SR_OPER_SUB_MIXED)) {
-                /* redundant to look recursively */
-                break;
-            }
-
-            LYSC_TREE_DFS_END(set->snodes[i], elem);
-        }
-
-        if (*sub_type == SR_OPER_SUB_MIXED) {
-            /* we found both config type nodes, nothing more to look for */
-            break;
-        }
-    }
-
-cleanup:
-    ly_set_free(set, NULL);
-    return err_info;
-}
-
 API int
 sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const char *path, sr_oper_get_items_cb callback,
         void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
@@ -6199,8 +6083,8 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
         goto cleanup;
     }
 
-    /* find out what kinds of nodes are provided */
-    if ((err_info = sr_oper_sub_get_type(conn->ly_ctx, path, &sub_type))) {
+    /* check path, find out what kinds of nodes are provided */
+    if ((err_info = sr_subscr_oper_xpath_check(conn->ly_ctx, path, &sub_type, NULL))) {
         goto cleanup;
     }
 

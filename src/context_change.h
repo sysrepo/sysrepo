@@ -51,11 +51,11 @@ void sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock);
 /**
  * @brief Check that a module can be added.
  *
+ * @param[in] conn Connection to use.
  * @param[in] new_ctx New context with the module.
- * @param[in] old_ctx Previous (current) context.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lycc_check_add_module(const struct ly_ctx *new_ctx, const struct ly_ctx *old_ctx);
+sr_error_info_t *sr_lycc_check_add_module(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx);
 
 /**
  * @brief Finish adding a new module(s).
@@ -75,11 +75,12 @@ sr_error_info_t *sr_lycc_add_module(sr_conn_ctx_t *conn, const struct ly_set *mo
 /**
  * @brief Check that modules can be removed.
  *
- * @param[in] ly_ctx New context without the modules.
+ * @param[in] conn Connection to use.
+ * @param[in] new_ctx New context without the modules.
  * @param[in] mod_set Set with all the removed modules.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lycc_check_del_module(const struct ly_ctx *ly_ctx, const struct ly_set *mod_set);
+sr_error_info_t *sr_lycc_check_del_module(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, const struct ly_set *mod_set);
 
 /**
  * @brief Finish removing modules.
@@ -96,11 +97,13 @@ sr_error_info_t *sr_lycc_del_module(sr_conn_ctx_t *conn, const struct ly_ctx *ly
 /**
  * @brief Check that a module can be updated.
  *
+ * @param[in] conn Connection to use.
  * @param[in] upd_mod New updated module.
  * @param[in] old_mod Previous module.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lycc_check_upd_module(const struct lys_module *upd_mod, const struct lys_module *old_mod);
+sr_error_info_t *sr_lycc_check_upd_module(sr_conn_ctx_t *conn, const struct lys_module *upd_mod,
+        const struct lys_module *old_mod);
 
 /**
  * @brief Finish updating a module.
@@ -110,6 +113,15 @@ sr_error_info_t *sr_lycc_check_upd_module(const struct lys_module *upd_mod, cons
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lycc_upd_module(const struct lys_module *upd_mod, const struct lys_module *old_mod);
+
+/**
+ * @brief Check that a feature can be changed.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] new_ctx New context with the feature changed.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lycc_check_chng_feature(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx);
 
 /**
  * @brief Finish changing the replay-support of a module(s).

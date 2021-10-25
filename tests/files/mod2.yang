@@ -1,0 +1,13 @@
+module mod2 {
+    yang-version 1.1;
+    namespace "urn:mod2";
+    prefix m2;
+
+    import mod1 {
+        prefix m1;
+    }
+
+    deviation /m1:cont/m1:l1 {
+        deviate not-supported;
+    }
+}
