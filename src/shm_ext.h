@@ -165,12 +165,13 @@ sr_error_info_t *sr_shmext_oper_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod,
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
  * @param[in] sub_id Unique sub ID.
+ * @param[in] xpath Subscription XPath.
  * @param[in] evpipe_num Subscription event pipe number.
  * @param[out] listen_since Timestamp of the moment the subscription is listening for notifications.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num,
-        struct timespec *listen_since);
+sr_error_info_t *sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, const char *xpath,
+        uint32_t evpipe_num, struct timespec *listen_since);
 
 /**
  * @brief Remove main SHM module notification subscription and unlink sub SHM if the last subscription was removed.
@@ -242,6 +243,15 @@ sr_error_info_t *sr_shmext_rpc_sub_stop(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, 
  * @param[in] conn Connection to use.
  */
 void sr_shmext_recover_sub_all(sr_conn_ctx_t *conn);
+
+/**
+ * @brief Check validity of all the subscriptions in a new updated context.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] new_ctx New updated context.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_check_sub_all(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx);
 
 /**
  * @brief Get or set change subscription suspended state (flag).

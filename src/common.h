@@ -383,6 +383,54 @@ sr_error_info_t *sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_noti
         void *private_data, const sr_ev_notif_type_t notif_type, uint32_t sub_id, const struct lyd_node *notif_op,
         struct timespec *notif_ts);
 
+/**
+ * @brief Check the XPath of a change subscription.
+ *
+ * @param[in] ly_ctx Context to use.
+ * @param[in] xpath XPath to check.
+ * @param[in,out] valid If set, does not log and sets to 0 if invalid, 1 if valid.
+ * If not set, an error is returned if invalid, otherwise NULL.
+ * @return err_info (if @p valid is not set), NULL on success.
+ */
+sr_error_info_t *sr_subscr_change_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, int *valid);
+
+/**
+ * @brief Check the XPath of an oper subscription. Optionally learn what kinds (config) of nodes are provided
+ * by an operational subscription to determine its type.
+ *
+ * @param[in] ly_ctx Context to use.
+ * @param[in] xpath XPath to check.
+ * @param[out] sub_type Optional learned subscription type.
+ * @param[in,out] valid If set, does not log and sets to 0 if invalid, 1 if valid.
+ * If not set, an error is returned if invalid, otherwise NULL.
+ * @return err_info (if @p valid is not set), NULL on success.
+ */
+sr_error_info_t *sr_subscr_oper_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath,
+        sr_mod_oper_sub_type_t *sub_type, int *valid);
+
+/**
+ * @brief Check the XPath of a notif subscription.
+ *
+ * @param[in] ly_mod Module of the subscription.
+ * @param[in] xpath XPath to check, may be NULL.
+ * @param[in,out] valid If set, does not log and sets to 0 if invalid, 1 if valid.
+ * If not set, an error is returned if invalid, otherwise NULL.
+ * @return err_info (if @p valid is not set), NULL on success.
+ */
+sr_error_info_t *sr_subscr_notif_xpath_check(const struct lys_module *ly_mod, const char *xpath, int *valid);
+
+/**
+ * @brief Check the XPath of an RPC subscription.
+ *
+ * @param[in] ly_ctx Context to use.
+ * @param[in] xpath XPath to check.
+ * @param[out] path Optional simple path ot the RPC/action.
+ * @param[in,out] valid If set, does not log and sets to 0 if invalid, 1 if valid.
+ * If not set, an error is returned if invalid, otherwise NULL.
+ * @return err_info (if @p valid is not set), NULL on success.
+ */
+sr_error_info_t *sr_subscr_rpc_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, char **path, int *valid);
+
 /*
  * Utility functions
  */
@@ -1255,7 +1303,7 @@ const char *sr_xpath_next_name(const char *xpath, const char **mod, int *mod_len
 const char *sr_xpath_next_predicate(const char *xpath, const char **pred, int *len, int *has_predicate);
 
 /**
- * @brief Learn length of an XPath withtout any predicates.
+ * @brief Learn length of an XPath without any predicates.
  *
  * @param[in] xpath Full XPath.
  * @return XPath length.

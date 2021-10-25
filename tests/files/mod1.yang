@@ -1,0 +1,39 @@
+module mod1 {
+    yang-version 1.1;
+    namespace "urn:mod1";
+    prefix m1;
+
+    feature f1;
+    feature f2;
+
+    container cont {
+        leaf l1 {
+            type string;
+        }
+
+        leaf l2 {
+            if-feature f1;
+            type string;
+        }
+
+        leaf l3 {
+            if-feature "not f2";
+            type string;
+        }
+
+        action a {
+            input {
+                leaf l4 {
+                    type uint32;
+                }
+            }
+        }
+
+        notification n {
+            leaf l5 {
+                if-feature f1;
+                type int16;
+            }
+        }
+    }
+}

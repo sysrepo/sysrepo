@@ -215,6 +215,7 @@ typedef struct {
  * @brief Ext SHM notification subscription.
  */
 typedef struct {
+    off_t xpath;                /**< XPath of the subscription (offset in ext SHM). */
     uint32_t sub_id;            /**< Unique subscription ID. */
     uint32_t evpipe_num;        /**< Event pipe number. */
     ATOMIC_T suspended;         /**< Whether the subscription is suspended. */

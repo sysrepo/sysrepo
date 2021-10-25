@@ -32,6 +32,7 @@
 #include "log.h"
 #include "plugins_datastore.h"
 #include "plugins_notification.h"
+#include "shm_ext.h"
 #include "shm_mod.h"
 #include "sysrepo_types.h"
 
@@ -169,7 +170,7 @@ sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock)
 }
 
 sr_error_info_t *
-sr_lycc_check_add_module(const struct ly_ctx *new_ctx, const struct ly_ctx *old_ctx)
+sr_lycc_check_add_module(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod, *ly_mod2;
@@ -180,7 +181,7 @@ sr_lycc_check_add_module(const struct ly_ctx *new_ctx, const struct ly_ctx *old_
             continue;
         }
 
-        ly_mod2 = ly_ctx_get_module_implemented(old_ctx, ly_mod->name);
+        ly_mod2 = ly_ctx_get_module_implemented(conn->ly_ctx, ly_mod->name);
         if (!ly_mod2) {
             continue;
         }
@@ -193,6 +194,11 @@ sr_lycc_check_add_module(const struct ly_ctx *new_ctx, const struct ly_ctx *old_
                     ly_mod->revision ? ly_mod->revision : "<none>", ly_mod2->revision ? ly_mod2->revision : "<none>");
             return err_info;
         }
+    }
+
+    /* check subscriptions in the new context */
+    if ((err_info = sr_shmext_check_sub_all(conn, new_ctx))) {
+        return err_info;
     }
 
     return NULL;
@@ -252,7 +258,7 @@ sr_lycc_add_module(sr_conn_ctx_t *conn, const struct ly_set *mod_set, const sr_m
 }
 
 sr_error_info_t *
-sr_lycc_check_del_module(const struct ly_ctx *ly_ctx, const struct ly_set *mod_set)
+sr_lycc_check_del_module(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, const struct ly_set *mod_set)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *del_mod, *ly_mod;
@@ -261,13 +267,18 @@ sr_lycc_check_del_module(const struct ly_ctx *ly_ctx, const struct ly_set *mod_s
     for (i = 0; i < mod_set->count; ++i) {
         del_mod = mod_set->objs[i];
 
-        ly_mod = ly_ctx_get_module(ly_ctx, del_mod->name, del_mod->revision);
+        ly_mod = ly_ctx_get_module(new_ctx, del_mod->name, del_mod->revision);
         if (ly_mod && ly_mod->implemented) {
             /* this module cannot be removed */
             sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Module \"%s\" cannot be removed because "
                     "some other installed module depends on it.", del_mod->name);
             return err_info;
         }
+    }
+
+    /* check subscriptions in the new context */
+    if ((err_info = sr_shmext_check_sub_all(conn, new_ctx))) {
+        return err_info;
     }
 
     return NULL;
@@ -349,7 +360,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_lycc_check_upd_module(const struct lys_module *upd_mod, const struct lys_module *old_mod)
+sr_lycc_check_upd_module(sr_conn_ctx_t *conn, const struct lys_module *upd_mod, const struct lys_module *old_mod)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -370,6 +381,11 @@ sr_lycc_check_upd_module(const struct lys_module *upd_mod, const struct lys_modu
                     upd_mod->name, old_mod->revision);
             return err_info;
         }
+    }
+
+    /* check subscriptions in the new context */
+    if ((err_info = sr_shmext_check_sub_all(conn, upd_mod->ctx))) {
+        return err_info;
     }
 
     return NULL;
@@ -394,6 +410,19 @@ sr_lycc_upd_module(const struct lys_module *upd_mod, const struct lys_module *ol
 cleanup:
     ly_set_erase(&del_set, NULL);
     return err_info;
+}
+
+sr_error_info_t *
+sr_lycc_check_chng_feature(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx)
+{
+    sr_error_info_t *err_info = NULL;
+
+    /* check subscriptions in the new context */
+    if ((err_info = sr_shmext_check_sub_all(conn, new_ctx))) {
+        return err_info;
+    }
+
+    return NULL;
 }
 
 sr_error_info_t *

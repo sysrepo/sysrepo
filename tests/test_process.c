@@ -172,14 +172,16 @@ static void
 setup(void)
 {
     sr_conn_ctx_t *conn;
-    const char *en_feats[] = {"feat1", NULL};
+    const char *ops_ref_feats[] = {"feat1", NULL};
+    const char *mod1_feats[] = {"f1", NULL};
 
     sr_assert(sr_connect(0, &conn) == SR_ERR_OK);
 
-    sr_assert(sr_install_module(conn, TESTS_SRC_DIR "/files/ops-ref.yang", TESTS_SRC_DIR "/files", en_feats) == SR_ERR_OK);
+    sr_assert(sr_install_module(conn, TESTS_SRC_DIR "/files/ops-ref.yang", TESTS_SRC_DIR "/files", ops_ref_feats) == SR_ERR_OK);
     sr_assert(sr_install_module(conn, TESTS_SRC_DIR "/files/ops.yang", TESTS_SRC_DIR "/files", NULL) == SR_ERR_OK);
     sr_assert(sr_install_module(conn, TESTS_SRC_DIR "/files/ietf-interfaces.yang", TESTS_SRC_DIR "/files", NULL) == SR_ERR_OK);
     sr_assert(sr_install_module(conn, TESTS_SRC_DIR "/files/iana-if-type.yang", TESTS_SRC_DIR "/files", NULL) == SR_ERR_OK);
+    sr_assert(sr_install_module(conn, TESTS_SRC_DIR "/files/mod1.yang", TESTS_SRC_DIR "/files", mod1_feats) == SR_ERR_OK);
 
     sr_disconnect(conn);
 }
@@ -191,6 +193,7 @@ teardown(void)
 
     sr_assert(sr_connect(0, &conn) == SR_ERR_OK);
 
+    sr_assert(sr_remove_module(conn, "mod1", 0) == SR_ERR_OK);
     sr_assert(sr_remove_module(conn, "ietf-interfaces", 0) == SR_ERR_OK);
     sr_assert(sr_remove_module(conn, "iana-if-type", 0) == SR_ERR_OK);
     sr_assert(sr_remove_module(conn, "ops", 0) == SR_ERR_OK);
@@ -603,6 +606,121 @@ test_pull_push_oper2(int rp, int wp)
 
 /* TEST */
 static int
+test_context_change(int rp, int wp)
+{
+    sr_conn_ctx_t *conn;
+    int ret;
+
+    ret = sr_connect(0, &conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* sync #1 */
+    barrier(rp, wp);
+
+    /* try to disable f1, succeeds */
+    ret = sr_disable_module_feature(conn, "mod1", "f1", 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* enable f1 back */
+    ret = sr_enable_module_feature(conn, "mod1", "f1", 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* install deviating module */
+    ret = sr_install_module(conn, TESTS_SRC_DIR "/files/mod2.yang", TESTS_SRC_DIR "/files", NULL);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* remove the module */
+    ret = sr_remove_module(conn, "mod2", 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    sr_disconnect(conn);
+    return 0;
+}
+
+static int
+module_change_dummy_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
+{
+    (void)session;
+    (void)sub_id;
+    (void)module_name;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+    (void)private_data;
+
+    return SR_ERR_OK;
+}
+
+static int
+rpc_dummy_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const struct lyd_node *input,
+        sr_event_t event, uint32_t request_id, struct lyd_node *output, void *private_data)
+{
+    (void)session;
+    (void)sub_id;
+    (void)op_path;
+    (void)input;
+    (void)event;
+    (void)request_id;
+    (void)output;
+    (void)private_data;
+
+    return SR_ERR_OK;
+}
+
+static int
+test_context_change_sub(int rp, int wp)
+{
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *sub;
+    sr_data_t *data;
+    const struct ly_ctx *ly_ctx;
+    struct lyd_node *ly_action;
+    char buf[32];
+    int ret, i;
+
+    ret = sr_connect(0, &conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_start(conn, SR_DS_RUNNING, &sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe */
+    ret = sr_module_change_subscribe(sess, "mod1", "/mod1:cont/l3", module_change_dummy_cb, NULL, 0, 0, &sub);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_rpc_subscribe_tree(sess, "/mod1:cont/a", rpc_dummy_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* sync #1 */
+    barrier(rp, wp);
+
+    /* keep triggering the subscriptions */
+    for (i = 0; i < 200; ++i) {
+        /* changes in the data */
+        sprintf(buf, "val%d", i);
+        ret = sr_set_item_str(sess, "/mod1:cont/l3", buf, NULL, 0);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_apply_changes(sess, 0);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+
+        /* action */
+        ly_ctx = sr_acquire_context(conn);
+        sr_assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/mod1:cont/a/l4", "50", 0, &ly_action));
+        ret = sr_rpc_send_tree(sess, ly_action, 0, &data);
+        lyd_free_tree(ly_action);
+        sr_release_context(conn);
+        sr_release_data(data);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    sr_unsubscribe(sub);
+    sr_disconnect(conn);
+    return 0;
+}
+
+/* TEST */
+static int
 test_conn_create(int rp, int wp)
 {
     sr_conn_ctx_t *conn;
@@ -630,6 +748,7 @@ main(void)
         {"rpc crash", test_rpc_crash1, test_rpc_crash2, setup, teardown},
         {"notif instid", test_notif_instid1, test_notif_instid2, setup, teardown},
         {"pull push oper data", test_pull_push_oper1, test_pull_push_oper2, setup, teardown},
+        {"context change", test_context_change, test_context_change_sub, setup, teardown},
         {"conn create", test_conn_create, test_conn_create, setup, teardown},
     };
 

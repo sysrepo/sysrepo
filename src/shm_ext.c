@@ -277,6 +277,7 @@ sr_shmext_print(sr_mod_shm_t *mod_shm, sr_shm_t *shm_ext)
     off_t cur_off;
     sr_mod_change_sub_t *change_subs;
     sr_mod_oper_sub_t *oper_subs;
+    sr_mod_notif_sub_t *notif_subs;
     sr_rpc_t *shm_rpc;
     sr_mod_rpc_sub_t *rpc_subs;
     struct shm_item *items = NULL;
@@ -380,6 +381,18 @@ sr_shmext_print(sr_mod_shm_t *mod_shm, sr_shm_t *shm_ext)
                     SR_SHM_SIZE(shm_mod->notif_sub_count * sizeof(sr_mod_notif_sub_t)),
                     "notif subs (%" PRIu32 ", mod \"%s\")", shm_mod->notif_sub_count, ((char *)mod_shm) + shm_mod->name)) {
                 goto error;
+            }
+
+            /* add xpaths */
+            notif_subs = (sr_mod_notif_sub_t *)(shm_ext->addr + shm_mod->notif_subs);
+            for (i = 0; i < shm_mod->notif_sub_count; ++i) {
+                if (notif_subs[i].xpath) {
+                    if (sr_shmext_print_add_item(&items, &item_count, notif_subs[i].xpath,
+                            sr_strshmlen(shm_ext->addr + notif_subs[i].xpath), "notif sub xpath (\"%s\", mod \"%s\")",
+                            shm_ext->addr + notif_subs[i].xpath, ((char *)mod_shm) + shm_mod->name)) {
+                        goto error;
+                    }
+                }
             }
         }
     }
@@ -604,17 +617,17 @@ static sr_error_info_t *
 sr_shmext_change_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, uint32_t del_idx)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_change_sub_t *shm_sub;
+    sr_mod_change_sub_t *shm_subs;
 
-    shm_sub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs);
+    shm_subs = (sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs);
 
     SR_LOG_DBG("#SHM before (removing change sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
     /* free the subscription and its xpath, if any */
-    sr_shmrealloc_del(&conn->ext_shm, &shm_mod->change_sub[ds].subs, &shm_mod->change_sub[ds].sub_count,
-            sizeof *shm_sub, del_idx, shm_sub[del_idx].xpath ? sr_strshmlen(conn->ext_shm.addr + shm_sub[del_idx].xpath) : 0,
-            shm_sub[del_idx].xpath);
+    sr_shmrealloc_del(&conn->ext_shm, &shm_mod->change_sub[ds].subs, &shm_mod->change_sub[ds].sub_count, sizeof *shm_subs,
+            del_idx, shm_subs[del_idx].xpath ? sr_strshmlen(conn->ext_shm.addr + shm_subs[del_idx].xpath) : 0,
+            shm_subs[del_idx].xpath);
 
     SR_LOG_DBG("#SHM after (removing change sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
@@ -872,19 +885,19 @@ static sr_error_info_t *
 sr_shmext_oper_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_oper_sub_t *shm_sub;
+    sr_mod_oper_sub_t *shm_subs;
 
-    shm_sub = (sr_mod_oper_sub_t *)(conn->ext_shm.addr + shm_mod->oper_subs);
+    shm_subs = (sr_mod_oper_sub_t *)(conn->ext_shm.addr + shm_mod->oper_subs);
 
     /* unlink the sub SHM (first, so that we can use xpath) */
     if ((err_info = sr_shmsub_unlink(conn->mod_shm.addr + shm_mod->name, "oper",
-            sr_str_hash(conn->ext_shm.addr + shm_sub[del_idx].xpath)))) {
+            sr_str_hash(conn->ext_shm.addr + shm_subs[del_idx].xpath)))) {
         goto cleanup;
     }
 
     /* unlink the sub data SHM */
     if ((err_info = sr_shmsub_data_unlink(conn->mod_shm.addr + shm_mod->name, "oper",
-            sr_str_hash(conn->ext_shm.addr + shm_sub[del_idx].xpath)))) {
+            sr_str_hash(conn->ext_shm.addr + shm_subs[del_idx].xpath)))) {
         goto cleanup;
     }
 
@@ -892,8 +905,8 @@ sr_shmext_oper_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
     /* free the subscription */
-    sr_shmrealloc_del(&conn->ext_shm, &shm_mod->oper_subs, &shm_mod->oper_sub_count, sizeof *shm_sub, del_idx,
-            sr_strshmlen(conn->ext_shm.addr + shm_sub[del_idx].xpath), shm_sub[del_idx].xpath);
+    sr_shmrealloc_del(&conn->ext_shm, &shm_mod->oper_subs, &shm_mod->oper_sub_count, sizeof *shm_subs, del_idx,
+            sr_strshmlen(conn->ext_shm.addr + shm_subs[del_idx].xpath), shm_subs[del_idx].xpath);
 
     SR_LOG_DBG("#SHM after (removing oper sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
@@ -1031,10 +1044,11 @@ sr_shmext_oper_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx
 }
 
 sr_error_info_t *
-sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, uint32_t evpipe_num,
+sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, const char *xpath, uint32_t evpipe_num,
         struct timespec *listen_since)
 {
     sr_error_info_t *err_info = NULL;
+    off_t xpath_off;
     sr_mod_notif_sub_t *shm_sub;
 
     /* NOTIF SUB WRITE LOCK */
@@ -1054,13 +1068,19 @@ sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
     SR_LOG_DBG("#SHM before (adding notif sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
-    /* add new item */
+    /* allocate new subscription and its xpath, if any */
     if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_mod->notif_subs, &shm_mod->notif_sub_count, 0,
-            sizeof *shm_sub, -1, (void **)&shm_sub, 0, NULL))) {
+            sizeof *shm_sub, -1, (void **)&shm_sub, xpath ? sr_strshmlen(xpath) : 0, &xpath_off))) {
         goto cleanup_notifsub_ext_unlock;
     }
 
     /* fill new subscription */
+    if (xpath) {
+        strcpy(conn->ext_shm.addr + xpath_off, xpath);
+        shm_sub->xpath = xpath_off;
+    } else {
+        shm_sub->xpath = 0;
+    }
     shm_sub->sub_id = sub_id;
     shm_sub->evpipe_num = evpipe_num;
     ATOMIC_STORE_RELAXED(shm_sub->suspended, 0);
@@ -1099,13 +1119,17 @@ static sr_error_info_t *
 sr_shmext_notif_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx)
 {
     sr_error_info_t *err_info = NULL;
+    sr_mod_notif_sub_t *shm_subs;
+
+    shm_subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
 
     SR_LOG_DBG("#SHM before (removing notif sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
     /* free the subscription */
-    sr_shmrealloc_del(&conn->ext_shm, &shm_mod->notif_subs, &shm_mod->notif_sub_count, sizeof(sr_mod_notif_sub_t),
-            del_idx, 0, 0);
+    sr_shmrealloc_del(&conn->ext_shm, &shm_mod->notif_subs, &shm_mod->notif_sub_count, sizeof *shm_subs,
+            del_idx, shm_subs[del_idx].xpath ? sr_strshmlen(conn->ext_shm.addr + shm_subs[del_idx].xpath) : 0,
+            shm_subs[del_idx].xpath);
 
     SR_LOG_DBG("#SHM after (removing notif sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
@@ -1348,17 +1372,17 @@ static sr_error_info_t *
 sr_shmext_rpc_sub_free(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, uint32_t del_idx)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_rpc_sub_t *shm_sub;
+    sr_mod_rpc_sub_t *shm_subs;
     char *mod_name = NULL;
 
-    shm_sub = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + shm_rpc->subs);
+    shm_subs = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + shm_rpc->subs);
 
     SR_LOG_DBG("#SHM before (removing rpc sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
     /* free the subscription */
-    sr_shmrealloc_del(&conn->ext_shm, &shm_rpc->subs, &shm_rpc->sub_count, sizeof *shm_sub, del_idx,
-            sr_strshmlen(conn->ext_shm.addr + shm_sub[del_idx].xpath), shm_sub[del_idx].xpath);
+    sr_shmrealloc_del(&conn->ext_shm, &shm_rpc->subs, &shm_rpc->sub_count, sizeof *shm_subs, del_idx,
+            sr_strshmlen(conn->ext_shm.addr + shm_subs[del_idx].xpath), shm_subs[del_idx].xpath);
 
     SR_LOG_DBG("#SHM after (removing rpc sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
@@ -1549,6 +1573,302 @@ sr_shmext_recover_sub_all(sr_conn_ctx_t *conn)
             }
         }
     }
+}
+
+/**
+ * @brief Check validity of SHM mod change subscriptions in an updated context.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] ds Datastore.
+ * @param[in] new_ctx New updated context.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_shmext_change_sub_check(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, const struct ly_ctx *new_ctx)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_change_sub_t *subs;
+    uint16_t i;
+    const char *mod_name, *xpath;
+    int valid;
+
+    /* CHANGE SUB READ LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->change_sub[ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+            __func__, NULL, NULL))) {
+        goto cleanup;
+    }
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        goto changesub_unlock;
+    }
+
+    if (shm_mod->change_sub[ds].sub_count) {
+        /* check that module still exists */
+        mod_name = conn->mod_shm.addr + shm_mod->name;
+        if (!ly_ctx_get_module_implemented(new_ctx, mod_name)) {
+            sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Change subscription(s) to module \"%s\" no longer valid.",
+                    mod_name);
+            goto ext_changesub_unlock;
+        }
+    }
+
+    subs = (sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs);
+    for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
+        if (!subs[i].xpath) {
+            continue;
+        }
+
+        /* check subs xpath */
+        xpath = conn->ext_shm.addr + subs[i].xpath;
+        sr_subscr_change_xpath_check(new_ctx, xpath, &valid);
+        if (!valid) {
+            sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Change subscription for \"%s\" no longer valid.", xpath);
+            break;
+        }
+    }
+
+ext_changesub_unlock:
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+changesub_unlock:
+    /* CHANGE SUB READ UNLOCK */
+    sr_rwunlock(&shm_mod->change_sub[ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+cleanup:
+    return err_info;
+}
+
+/**
+ * @brief Check validity of SHM mod oper subscriptions in an updated context.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] new_ctx New updated context.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_shmext_oper_sub_check(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct ly_ctx *new_ctx)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_oper_sub_t *subs;
+    uint16_t i;
+    const char *mod_name, *xpath;
+    int valid;
+
+    /* OPER SUB READ LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->oper_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
+            NULL, NULL))) {
+        goto cleanup;
+    }
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        goto opersub_unlock;
+    }
+
+    if (shm_mod->oper_sub_count) {
+        /* check that module still exists */
+        mod_name = conn->mod_shm.addr + shm_mod->name;
+        if (!ly_ctx_get_module_implemented(new_ctx, mod_name)) {
+            sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Oper subscription(s) to module \"%s\" no longer valid.",
+                    mod_name);
+            goto ext_opersub_unlock;
+        }
+    }
+
+    subs = (sr_mod_oper_sub_t *)(conn->ext_shm.addr + shm_mod->oper_subs);
+    for (i = 0; i < shm_mod->oper_sub_count; ++i) {
+        /* check subs xpath */
+        xpath = conn->ext_shm.addr + subs[i].xpath;
+        sr_subscr_oper_xpath_check(new_ctx, xpath, NULL, &valid);
+        if (!valid) {
+            sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Oper subscription for \"%s\" no longer valid.", xpath);
+            break;
+        }
+    }
+
+ext_opersub_unlock:
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+opersub_unlock:
+    /* OPER SUB READ UNLOCK */
+    sr_rwunlock(&shm_mod->oper_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+cleanup:
+    return err_info;
+}
+
+/**
+ * @brief Check validity of SHM mod notif subscriptions in an updated context.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] new_ctx New updated context.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_shmext_notif_sub_check(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct ly_ctx *new_ctx)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_notif_sub_t *subs;
+    const struct lys_module *ly_mod = NULL;
+    uint16_t i;
+    const char *mod_name, *xpath;
+    int valid;
+
+    /* NOTIF SUB READ LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
+            NULL, NULL))) {
+        goto cleanup;
+    }
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        goto notifsub_unlock;
+    }
+
+    if (shm_mod->notif_sub_count) {
+        /* check that module still exists */
+        mod_name = conn->mod_shm.addr + shm_mod->name;
+        if (!(ly_mod = ly_ctx_get_module_implemented(new_ctx, mod_name))) {
+            sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Notif subscription(s) to module \"%s\" no longer valid.",
+                    mod_name);
+            goto ext_notifsub_unlock;
+        }
+    }
+
+    subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
+    for (i = 0; i < shm_mod->notif_sub_count; ++i) {
+        if (!subs[i].xpath) {
+            continue;
+        }
+
+        /* check subs xpath */
+        xpath = conn->ext_shm.addr + subs[i].xpath;
+        sr_subscr_notif_xpath_check(ly_mod, xpath, &valid);
+        if (!valid) {
+            sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Notif subscription for \"%s\" no longer valid.", xpath);
+            break;
+        }
+    }
+
+ext_notifsub_unlock:
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+notifsub_unlock:
+    /* NOTIF SUB READ UNLOCK */
+    sr_rwunlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+cleanup:
+    return err_info;
+}
+
+/**
+ * @brief Check validity of SHM RPC subscriptions in an updated context.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] mod_name Module name of the RPC.
+ * @param[in] shm_rpc SHM RPC.
+ * @param[in] new_ctx New updated context.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_shmext_rpc_sub_check(sr_conn_ctx_t *conn, const char *mod_name, sr_rpc_t *shm_rpc, const struct ly_ctx *new_ctx)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_rpc_sub_t *subs;
+    uint16_t i;
+    const char *xpath;
+    int valid;
+
+    /* RPC SUB READ LOCK */
+    if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__, NULL, NULL))) {
+        goto cleanup;
+    }
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        goto rpcsub_unlock;
+    }
+
+    if (shm_rpc->sub_count) {
+        /* check that module still exists */
+        if (!ly_ctx_get_module_implemented(new_ctx, mod_name)) {
+            sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "RPC subscription(s) to module \"%s\" no longer valid.",
+                    mod_name);
+            goto ext_rpcsub_unlock;
+        }
+    }
+
+    subs = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + shm_rpc->subs);
+    for (i = 0; i < shm_rpc->sub_count; ++i) {
+        /* check subs xpath */
+        xpath = conn->ext_shm.addr + subs[i].xpath;
+        sr_subscr_rpc_xpath_check(new_ctx, xpath, NULL, &valid);
+        if (!valid) {
+            sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "RPC subscription for \"%s\" no longer valid.", xpath);
+            break;
+        }
+    }
+
+ext_rpcsub_unlock:
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+rpcsub_unlock:
+    /* RPC SUB READ UNLOCK */
+    sr_rwunlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+cleanup:
+    return err_info;
+}
+
+sr_error_info_t *
+sr_shmext_check_sub_all(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_t *smod;
+    sr_rpc_t *srpcs;
+    uint32_t i;
+    uint16_t j;
+    sr_datastore_t ds;
+
+    for (i = 0; i < SR_CONN_MOD_SHM(conn)->mod_count; ++i) {
+        smod = SR_SHM_MOD_IDX(conn->mod_shm.addr, i);
+
+        for (ds = 0; ds < SR_DS_COUNT; ++ds) {
+            /* check mod change subs */
+            if ((err_info = sr_shmext_change_sub_check(conn, smod, ds, new_ctx))) {
+                goto cleanup;
+            }
+        }
+
+        /* check mod oper subs */
+        if ((err_info = sr_shmext_oper_sub_check(conn, smod, new_ctx))) {
+            goto cleanup;
+        }
+
+        /* check mod notif subs */
+        if ((err_info = sr_shmext_notif_sub_check(conn, smod, new_ctx))) {
+            goto cleanup;
+        }
+
+        srpcs = (sr_rpc_t *)(conn->mod_shm.addr + smod->rpcs);
+        for (j = 0; j < smod->rpc_count; ++j) {
+            /* check RPC subs */
+            if ((err_info = sr_shmext_rpc_sub_check(conn, conn->mod_shm.addr + smod->name, &srpcs[j], new_ctx))) {
+                goto cleanup;
+            }
+        }
+    }
+
+cleanup:
+    return err_info;
 }
 
 sr_error_info_t *
