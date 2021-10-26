@@ -201,7 +201,7 @@ sr_shmsub_data_unlink(const char *name, const char *suffix1, int64_t suffix2)
     assert(name && suffix1);
 
     /* get the path */
-    if ((err_info = sr_path_sub_shm(name, suffix1, suffix2, &path))) {
+    if ((err_info = sr_path_sub_data_shm(name, suffix1, suffix2, &path))) {
         goto cleanup;
     }
 
