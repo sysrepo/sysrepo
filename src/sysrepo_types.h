@@ -356,8 +356,8 @@ typedef enum {
     /**
      * @brief Default behavior of the subscription. In case of ::sr_module_change_subscribe call it means that:
      *
-     * - for every new subscription (flag ::SR_SUBSCR_CTX_REUSE not used) a thread is created that listens for
-     *   new events (can be changed with ::SR_SUBSCR_NO_THREAD flag),
+     * - for every new subscription structure a thread is created that listens for new events (can be changed
+     *   with ::SR_SUBSCR_NO_THREAD flag),
      * - the subscriber is the "owner" of the subscribed data tree and it will appear in the operational
      *   datastore while this subscription is alive (if not already, can be changed using ::SR_SUBSCR_PASSIVE flag),
      * - the callback will be called twice, once with ::SR_EV_CHANGE event and once with ::SR_EV_DONE / ::SR_EV_ABORT
@@ -366,32 +366,25 @@ typedef enum {
     SR_SUBSCR_DEFAULT = 0,
 
     /**
-     * @brief This option enables the application to re-use an already existing subscription context previously returned
-     * from any sr_*_subscribe call instead of requesting the creation of a new one. In that case a single
-     * ::sr_unsubscribe call unsubscribes from all subscriptions filed within the context.
-     */
-    SR_SUBSCR_CTX_REUSE = 1,
-
-    /**
      * @brief There will be no thread created for handling this subscription meaning no event will be processed!
      * Use this flag when the application has its own event loop and it will listen for and process events manually
      * (see ::sr_get_event_pipe and ::sr_subscription_process_events).
      */
-    SR_SUBSCR_NO_THREAD = 2,
+    SR_SUBSCR_NO_THREAD = 1,
 
     /**
      * @brief The subscriber is not the "owner" of the subscribed data tree, just a passive watcher for changes.
      * When this option is passed in to ::sr_module_change_subscribe, the subscription will have no effect on
      * the presence of the subtree in the operational datastore.
      */
-    SR_SUBSCR_PASSIVE = 4,
+    SR_SUBSCR_PASSIVE = 2,
 
     /**
      * @brief The subscriber does not support verification of the changes and wants to be notified only after
      * the changes has been applied in the datastore, without the possibility to deny them
      * (it will not receive ::SR_EV_CHANGE nor ::SR_EV_ABORT but only ::SR_EV_DONE events).
      */
-    SR_SUBSCR_DONE_ONLY = 8,
+    SR_SUBSCR_DONE_ONLY = 4,
 
     /**
      * @brief The subscriber wants to be notified about the current configuration at the moment of subscribing.
@@ -400,7 +393,7 @@ typedef enum {
      * even if there are no data so there will not be any changes! Also, this event callback is called as part
      * of the subscribe call (in the same thread) unlike other events.
      */
-    SR_SUBSCR_ENABLED = 16,
+    SR_SUBSCR_ENABLED = 8,
 
     /**
      * @brief The subscriber will be called before any other subscribers for the particular module
@@ -408,21 +401,21 @@ typedef enum {
      * by calling standard set functions (such as ::sr_set_item_str) on the implicit callback session and returning.
      * Note that you cannot subscribe more callbacks with this flag on one module with the same priority.
      */
-    SR_SUBSCR_UPDATE = 32,
+    SR_SUBSCR_UPDATE = 16,
 
     /**
      * @brief Instead of removing any previous existing matching data before getting them from an operational
      * subscription callback, keep them. Then the returned data are merged into the existing data. Accepted
      * only for operational subscriptions.
      */
-    SR_SUBSCR_OPER_MERGE = 64,
+    SR_SUBSCR_OPER_MERGE = 32,
 
     /**
      * @brief Suspend the default handler thread before adding the subscription if it is running. In case of the
      * first subscription, start the handler thread suspended. Meaning any events will not be handled until
      * ::sr_subscription_thread_resume() is called.
      */
-    SR_SUBSCR_THREAD_SUSPEND = 128
+    SR_SUBSCR_THREAD_SUSPEND = 64
 
 } sr_subscr_flag_t;
 

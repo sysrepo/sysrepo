@@ -176,7 +176,7 @@ static void
 test_fail(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     const sr_error_info_t *err_info = NULL;
     struct lyd_node *input;
     sr_data_t *output;
@@ -295,7 +295,7 @@ static void
 test_rpc(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     const sr_error_info_t *err_info = NULL;
     sr_val_t input, *output;
     size_t output_count;
@@ -304,9 +304,9 @@ test_rpc(void **state)
     /* subscribe */
     ret = sr_rpc_subscribe(st->sess, "/ops:rpc1", rpc_rpc_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe(st->sess, "/ops:rpc2", rpc_rpc_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc2", rpc_rpc_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe(st->sess, "/ops:rpc3", rpc_rpc_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc3", rpc_rpc_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation */
@@ -339,7 +339,7 @@ test_rpc(void **state)
     assert_int_equal(output_count, 0);
 
     /* subscribe to the data so they are actually present in operational */
-    ret = sr_module_change_subscribe(st->sess, "ops-ref", NULL, module_change_dummy_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "ops-ref", NULL, module_change_dummy_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to send first RPC again, now should succeed */
@@ -463,7 +463,7 @@ static void
 test_action(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     struct lyd_node *input_op;
     sr_data_t *output_op;
     char *str1;
@@ -473,7 +473,7 @@ test_action(void **state)
     /* subscribe */
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1", rpc_action_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/act2", rpc_action_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/act2", rpc_action_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation and executing the actions */
@@ -485,7 +485,7 @@ test_action(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to the data so they are actually present in operational */
-    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /*
@@ -576,7 +576,7 @@ static void
 test_action_pred(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     struct lyd_node *input_op;
     sr_data_t *output_op;
     int ret;
@@ -589,7 +589,7 @@ test_action_pred(void **state)
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='one' or k='two']/cont2/act1", rpc_action_pred_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='three' or k='four']/cont2/act1", rpc_action_pred_cb, NULL,
-            1, SR_SUBSCR_CTX_REUSE, &subscr);
+            1, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation and executing the actions */
@@ -607,7 +607,7 @@ test_action_pred(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to the data so they are actually present in operational */
-    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /*
@@ -679,7 +679,7 @@ static void
 test_multi(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     struct lyd_node *input_op;
     sr_data_t *output_op;
     int ret;
@@ -688,10 +688,10 @@ test_multi(void **state)
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1", rpc_multi_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='one' or k='two']/cont2/act1", rpc_multi_cb, st,
-            1, SR_SUBSCR_CTX_REUSE, &subscr);
+            1, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='two' or k='three' or k='four']/cont2/act1",
-            rpc_multi_cb, st, 2, SR_SUBSCR_CTX_REUSE, &subscr);
+            rpc_multi_cb, st, 2, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation and executing the actions */
@@ -709,7 +709,7 @@ test_multi(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to the data so they are actually present in operational */
-    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /*
@@ -915,7 +915,7 @@ static void
 test_multi_fail(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     struct lyd_node *input_op;
     sr_data_t *output_op;
     int ret;
@@ -923,9 +923,9 @@ test_multi_fail(void **state)
     /* subscribe */
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:rpc3", rpc_multi_fail0_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe_tree(st->sess, "/ops:rpc3", rpc_multi_fail1_cb, st, 1, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:rpc3", rpc_multi_fail1_cb, st, 1, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe_tree(st->sess, "/ops:rpc3", rpc_multi_fail2_cb, st, 2, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:rpc3", rpc_multi_fail2_cb, st, 2, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /*
@@ -1023,7 +1023,7 @@ static void
 test_action_deps(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     struct lyd_node *input_op;
     sr_data_t *output_op;
     int ret;
@@ -1031,7 +1031,7 @@ test_action_deps(void **state)
     /* subscribe */
     ret = sr_rpc_subscribe_tree(st->sess, "/act:advanced/act3:conditional/conditional_action", action_deps_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe_tree(st->sess, "/act:advanced/act3:conditional_action2", action_deps_cb, st, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe_tree(st->sess, "/act:advanced/act3:conditional_action2", action_deps_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* create the action */
@@ -1124,7 +1124,7 @@ static void
 test_action_change_config(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr1, *subscr2;
+    sr_subscription_ctx_t *subscr1 = NULL, *subscr2 = NULL;
     struct lyd_node *input_op;
     sr_data_t *output_op, *data;
     int ret;
@@ -1233,7 +1233,7 @@ subscribe_rpc_shelve_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     int count, ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
@@ -1307,7 +1307,7 @@ static void
 test_input_parameters(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     struct lyd_node *input_op;
     sr_data_t *output_op;
     int ret;
@@ -1368,7 +1368,7 @@ test_input_parameters(void **state)
     /* equal priority */
     ret = sr_rpc_subscribe(st->sess, "/ops:rpc1", rpc_dummy_cb, NULL, 5, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe(st->sess, "/ops:rpc1", rpc_dummy_cb, NULL, 5, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc1", rpc_dummy_cb, NULL, 5, 0, &subscr);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
     sr_unsubscribe(subscr);
 }
@@ -1378,7 +1378,7 @@ static void
 test_rpc_action_with_no_thread(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr, *subscr2;
+    sr_subscription_ctx_t *subscr = NULL, *subscr2 = NULL;
     struct lyd_node *input_op;
     sr_data_t *output_op;
     sr_val_t input, *output;
@@ -1390,7 +1390,7 @@ test_rpc_action_with_no_thread(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_rpc_subscribe(st->sess, "/ops:rpc2", rpc_rpc_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe(st->sess, "/ops:rpc3", rpc_rpc_cb, NULL, 0, SR_SUBSCR_NO_THREAD | SR_SUBSCR_CTX_REUSE, &subscr2);
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc3", rpc_rpc_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation */
@@ -1409,7 +1409,7 @@ test_rpc_action_with_no_thread(void **state)
 
     /* subscribe to the data so they are actually present in operational */
     ret = sr_module_change_subscribe(st->sess, "ops-ref", NULL, module_change_dummy_cb, NULL, 0,
-            SR_SUBSCR_NO_THREAD | SR_SUBSCR_CTX_REUSE, &subscr2);
+            SR_SUBSCR_NO_THREAD, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to send first RPC, should succeed */
@@ -1430,6 +1430,7 @@ test_rpc_action_with_no_thread(void **state)
 
     sr_unsubscribe(subscr);
     sr_unsubscribe(subscr2);
+    subscr2 = NULL;
 
     /* action subscribe */
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1", rpc_action_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &subscr2);
@@ -1443,7 +1444,7 @@ test_rpc_action_with_no_thread(void **state)
 
     /* subscribe to the data so they are actually present in operational */
     ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0,
-            SR_SUBSCR_NO_THREAD | SR_SUBSCR_CTX_REUSE, &subscr2);
+            SR_SUBSCR_NO_THREAD, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* create first action */
@@ -1508,7 +1509,7 @@ static void
 test_rpc_oper(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     sr_val_t input, *output;
     size_t output_count;
     int ret;
@@ -1518,7 +1519,7 @@ test_rpc_oper(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* oper subscribe, should not be called */
-    ret = sr_oper_get_subscribe(st->sess, "ops", "/ops:cont", oper_rpc_oper_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_oper_get_subscribe(st->sess, "ops", "/ops:cont", oper_rpc_oper_cb, NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* create and send the RPC */

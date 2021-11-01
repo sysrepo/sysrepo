@@ -226,7 +226,7 @@ test_rpc_sub1(int rp, int wp)
 {
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sess;
-    sr_subscription_ctx_t *sub;
+    sr_subscription_ctx_t *sub = NULL;
     int ret, i;
 
     ret = sr_connect(0, &conn);
@@ -240,20 +240,19 @@ test_rpc_sub1(int rp, int wp)
 
     /* subscribe and unsubscribe to RPCs/actions */
     for (i = 0; i < 20; ++i) {
-        sub = NULL;
-
-        ret = sr_rpc_subscribe(sess, "/ops:rpc1", rpc_sub_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
+        ret = sr_rpc_subscribe(sess, "/ops:rpc1", rpc_sub_cb, NULL, 0, 0, &sub);
         sr_assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_rpc_subscribe(sess, "/ops:rpc2", rpc_sub_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
+        ret = sr_rpc_subscribe(sess, "/ops:rpc2", rpc_sub_cb, NULL, 0, 0, &sub);
         sr_assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_rpc_subscribe(sess, "/ops:rpc3", rpc_sub_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
+        ret = sr_rpc_subscribe(sess, "/ops:rpc3", rpc_sub_cb, NULL, 0, 0, &sub);
         sr_assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_rpc_subscribe(sess, "/ops:cont/list1/cont2/act1", rpc_sub_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
+        ret = sr_rpc_subscribe(sess, "/ops:cont/list1/cont2/act1", rpc_sub_cb, NULL, 0, 0, &sub);
         sr_assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_rpc_subscribe(sess, "/ops:cont/list1/act2", rpc_sub_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
+        ret = sr_rpc_subscribe(sess, "/ops:cont/list1/act2", rpc_sub_cb, NULL, 0, 0, &sub);
         sr_assert_int_equal(ret, SR_ERR_OK);
 
         sr_unsubscribe(sub);
+        sub = NULL;
     }
 
     sr_disconnect(conn);
@@ -265,7 +264,7 @@ test_rpc_sub2(int rp, int wp)
 {
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sess;
-    sr_subscription_ctx_t *sub;
+    sr_subscription_ctx_t *sub = NULL;
     int ret, i;
 
     ret = sr_connect(0, &conn);
@@ -279,20 +278,19 @@ test_rpc_sub2(int rp, int wp)
 
     /* subscribe and unsubscribe to RPCs/actions */
     for (i = 0; i < 20; ++i) {
-        sub = NULL;
-
-        ret = sr_rpc_subscribe(sess, "/ops:rpc1", rpc_sub_cb, NULL, 1, SR_SUBSCR_CTX_REUSE, &sub);
+        ret = sr_rpc_subscribe(sess, "/ops:rpc1", rpc_sub_cb, NULL, 1, 0, &sub);
         sr_assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_rpc_subscribe(sess, "/ops:rpc2", rpc_sub_cb, NULL, 1, SR_SUBSCR_CTX_REUSE, &sub);
+        ret = sr_rpc_subscribe(sess, "/ops:rpc2", rpc_sub_cb, NULL, 1, 0, &sub);
         sr_assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_rpc_subscribe(sess, "/ops:rpc3", rpc_sub_cb, NULL, 1, SR_SUBSCR_CTX_REUSE, &sub);
+        ret = sr_rpc_subscribe(sess, "/ops:rpc3", rpc_sub_cb, NULL, 1, 0, &sub);
         sr_assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_rpc_subscribe(sess, "/ops:cont/list1/cont2/act1", rpc_sub_cb, NULL, 1, SR_SUBSCR_CTX_REUSE, &sub);
+        ret = sr_rpc_subscribe(sess, "/ops:cont/list1/cont2/act1", rpc_sub_cb, NULL, 1, 0, &sub);
         sr_assert_int_equal(ret, SR_ERR_OK);
-        ret = sr_rpc_subscribe(sess, "/ops:cont/list1/act2", rpc_sub_cb, NULL, 1, SR_SUBSCR_CTX_REUSE, &sub);
+        ret = sr_rpc_subscribe(sess, "/ops:cont/list1/act2", rpc_sub_cb, NULL, 1, 0, &sub);
         sr_assert_int_equal(ret, SR_ERR_OK);
 
         sr_unsubscribe(sub);
+        sub = NULL;
     }
 
     sr_disconnect(conn);
@@ -360,7 +358,7 @@ test_rpc_crash2(int rp, int wp)
 {
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sess;
-    sr_subscription_ctx_t *sub;
+    sr_subscription_ctx_t *sub = NULL;
     int ret;
 
     ret = sr_connect(0, &conn);
@@ -423,7 +421,7 @@ test_notif_instid1(int rp, int wp)
 {
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sess;
-    sr_subscription_ctx_t *sub;
+    sr_subscription_ctx_t *sub = NULL;
     struct lyd_node *tree;
     sr_data_t *notif;
     int ret, i;
@@ -446,7 +444,7 @@ test_notif_instid1(int rp, int wp)
     sr_assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to the notification */
-    ret = sr_notif_subscribe(sess, "ops", "/ops:notif3", 0, 0, notif_instid_cb, NULL, SR_SUBSCR_CTX_REUSE, &sub);
+    ret = sr_notif_subscribe(sess, "ops", "/ops:notif3", 0, 0, notif_instid_cb, NULL, 0, &sub);
     sr_assert_int_equal(ret, SR_ERR_OK);
 
     /* create the notification */
@@ -542,7 +540,7 @@ test_pull_push_oper1(int rp, int wp)
 {
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sess;
-    sr_subscription_ctx_t *sub;
+    sr_subscription_ctx_t *sub = NULL;
     int ret, i;
 
     ret = sr_connect(0, &conn);
@@ -673,7 +671,7 @@ test_context_change_sub(int rp, int wp)
 {
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sess;
-    sr_subscription_ctx_t *sub;
+    sr_subscription_ctx_t *sub = NULL;
     sr_data_t *data;
     const struct ly_ctx *ly_ctx;
     struct lyd_node *ly_action;
@@ -689,7 +687,7 @@ test_context_change_sub(int rp, int wp)
     /* subscribe */
     ret = sr_module_change_subscribe(sess, "mod1", "/mod1:cont/l3", module_change_dummy_cb, NULL, 0, 0, &sub);
     sr_assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe_tree(sess, "/mod1:cont/a", rpc_dummy_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &sub);
+    ret = sr_rpc_subscribe_tree(sess, "/mod1:cont/a", rpc_dummy_cb, NULL, 0, 0, &sub);
     sr_assert_int_equal(ret, SR_ERR_OK);
 
     /* sync #1 */

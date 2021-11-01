@@ -246,7 +246,7 @@ test_yang_lib(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     int ret;
 
     /* read ietf-yang-library data */
@@ -362,7 +362,7 @@ test_sr_mon(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1, *str2 = malloc(8192);
     int ret;
 
@@ -476,31 +476,31 @@ test_sr_mon(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_module_change_subscribe(st->sess, "mixed-config", NULL, dummy_change_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "mixed-config", NULL, dummy_change_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* make some operational subscriptions */
     ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", dummy_oper_cb,
-            NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+            NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_oper_get_subscribe(st->sess, "act", "/act:basics/subbasics/act2:complex_number/imaginary_part",
-            dummy_oper_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+            dummy_oper_cb, NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* make some notification subscriptions */
-    ret = sr_notif_subscribe(st->sess, "ops", "/ops:notif4", 0, 0, dummy_notif_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_notif_subscribe(st->sess, "ops", "/ops:notif4", 0, 0, dummy_notif_cb, NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_notif_subscribe(st->sess, "ops", "/ops:cont/cont3/notif2[l13='/ops:cont']", 0, 0, dummy_notif_cb,
-            NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+            NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* make some RPC/action subscriptions */
-    ret = sr_rpc_subscribe(st->sess, "/act:capitalize", dummy_rpc_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe(st->sess, "/act:capitalize", dummy_rpc_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_rpc_subscribe(st->sess, "/act:basics/animals/convert[direction='false']", dummy_rpc_cb, NULL, 5,
-            SR_SUBSCR_CTX_REUSE, &subscr);
+            0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe(st->sess, "/act:basics/animals/convert", dummy_rpc_cb, NULL, 4, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe(st->sess, "/act:basics/animals/convert", dummy_rpc_cb, NULL, 4, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* lock modules */
@@ -880,7 +880,7 @@ static void
 test_enabled_partial(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     sr_data_t *data;
     char *str;
     const char *str2;
@@ -945,6 +945,7 @@ test_enabled_partial(void **state)
 
     /* unsusbcribe */
     sr_unsubscribe(subscr);
+    subscr = NULL;
 
     /* subscribe to a not-present interface */
     called = 0;
@@ -1014,7 +1015,7 @@ test_simple(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -1057,7 +1058,7 @@ test_simple(void **state)
 
     /* subscribe as state data provider */
     ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", simple_oper_cb,
-            NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+            NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational again */
@@ -1136,7 +1137,7 @@ test_fail(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     int ret;
 
     /* set some configuration data */
@@ -1200,7 +1201,7 @@ test_config(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -1221,7 +1222,7 @@ test_config(void **state)
 
     /* subscribe as config data provider and listen */
     ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces", config_oper_cb,
-            NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+            NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational */
@@ -1284,7 +1285,7 @@ test_list(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -1302,10 +1303,10 @@ test_list(void **state)
 
     /* subscribe as 2 list instances data provider and listen */
     ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface[name='eth2']",
-            list_oper_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+            list_oper_cb, NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface[name='eth3']",
-            list_oper_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+            list_oper_cb, NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational */
@@ -1393,7 +1394,7 @@ test_nested(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -1411,13 +1412,13 @@ test_nested(void **state)
 
     /* subscribe as state data provider and listen, it should be called only 2x */
     ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state/interface[name='eth4']/phys-address",
-            nested_oper_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+            nested_oper_cb, NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state",
-            nested_oper_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+            nested_oper_cb, NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state/interface[name='eth2']/phys-address",
-            nested_oper_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+            nested_oper_cb, NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational */
@@ -1528,7 +1529,7 @@ test_choice(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -1538,7 +1539,7 @@ test_choice(void **state)
             st, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_oper_get_subscribe(st->sess, "oper-group-test", "/oper-group-test:oper-data-choice", choice_oper_cb,
-            st, SR_SUBSCR_CTX_REUSE, &subscr);
+            st, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
@@ -1689,7 +1690,7 @@ test_invalid(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -1705,7 +1706,7 @@ test_invalid(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as state data provider and listen, it should be called only 2x */
-    ret = sr_oper_get_subscribe(st->sess, "test", "/test:test-leafref", invalid_oper_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_oper_get_subscribe(st->sess, "test", "/test:test-leafref", invalid_oper_cb, NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational */
@@ -1773,7 +1774,7 @@ test_mixed(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -1791,7 +1792,7 @@ test_mixed(void **state)
 
     /* subscribe as config data provider and listen */
     ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:*", mixed_oper_cb,
-            NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+            NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational */
@@ -1856,7 +1857,7 @@ test_xpath_check(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     int ret;
 
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
@@ -1886,7 +1887,7 @@ test_xpath_check(void **state)
 
     /* subscribe as state data provider */
     ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state/interface[name='eth0']",
-            xpath_check_oper_cb, st, SR_SUBSCR_CTX_REUSE, &subscr);
+            xpath_check_oper_cb, st, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read interfaces from operational, callback not called */
@@ -1957,7 +1958,7 @@ test_state_only(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -1996,6 +1997,7 @@ test_state_only(void **state)
     free(str1);
 
     sr_unsubscribe(subscr);
+    subscr = NULL;
 
     /* set some configuration data */
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
@@ -2012,7 +2014,7 @@ test_state_only(void **state)
 
     /* subscribe as nested state data provider and listen */
     ret = sr_oper_get_subscribe(st->sess, "mixed-config", "/mixed-config:test-state/test-case/result", state_only_oper_cb,
-            st, SR_SUBSCR_CTX_REUSE, &subscr);
+            st, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all state-only data */
@@ -2085,7 +2087,7 @@ test_config_only(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -2103,7 +2105,7 @@ test_config_only(void **state)
 
     /* subscribe as config data provider and listen */
     ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:*", mixed_oper_cb,
-            NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+            NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all state-only data */
@@ -2530,7 +2532,7 @@ test_stored_state(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -2855,7 +2857,7 @@ test_stored_state_list(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -2987,7 +2989,7 @@ test_stored_config(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -3150,7 +3152,7 @@ static void
 test_stored_top_list(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     sr_data_t *data;
     char *str1;
     const char *str2;
@@ -3367,7 +3369,7 @@ test_stored_np_cont1(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -3467,7 +3469,7 @@ test_stored_np_cont2(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -3628,7 +3630,7 @@ test_stored_diff_merge_userord(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -3951,7 +3953,7 @@ test_change_cb_stored(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -4067,7 +4069,7 @@ test_nested_default(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -4076,7 +4078,7 @@ test_nested_default(void **state)
     ret = sr_oper_get_subscribe(st->sess, "defaults", "/defaults:l1", nested_default_oper_cb, NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_oper_get_subscribe(st->sess, "defaults", "/defaults:l1/cont1/ll",
-            nested_default_oper_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+            nested_default_oper_cb, NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational */
@@ -4114,7 +4116,7 @@ test_disabled_default(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -4191,7 +4193,7 @@ test_merge_flag(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -4216,7 +4218,7 @@ test_merge_flag(void **state)
 
     /* subscribe as state data provider and listen */
     ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface",
-            merge_flag_oper_cb, NULL, SR_SUBSCR_CTX_REUSE | SR_SUBSCR_OPER_MERGE, &subscr);
+            merge_flag_oper_cb, NULL, SR_SUBSCR_OPER_MERGE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational */
@@ -4285,7 +4287,7 @@ test_state_default_merge(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     char *str1;
     const char *str2;
     int ret;
@@ -4332,7 +4334,7 @@ test_state_default_merge(void **state)
 
     /* subscribe as state data provider and listen */
     ret = sr_oper_get_subscribe(st->sess, "mixed-config", "/mixed-config:test-state/test-case",
-            state_default_merge_oper_cb, NULL, SR_SUBSCR_CTX_REUSE | SR_SUBSCR_OPER_MERGE, &subscr);
+            state_default_merge_oper_cb, NULL, SR_SUBSCR_OPER_MERGE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read all data from operational */

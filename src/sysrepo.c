@@ -4558,11 +4558,6 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !module_name || !callback ||
             ((opts & SR_SUBSCR_PASSIVE) && (opts & SR_SUBSCR_ENABLED)) || !subscription, session, err_info);
 
-    if ((opts & SR_SUBSCR_CTX_REUSE) && !*subscription) {
-        /* invalid option, remove */
-        opts &= ~SR_SUBSCR_CTX_REUSE;
-    }
-
     SR_MODINFO_INIT(mod_info, session->conn, SR_DS_RUNNING, SR_DS_RUNNING);
 
     conn = session->conn;
@@ -4617,7 +4612,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         }
     }
 
-    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
+    if (!*subscription) {
         /* create a new subscription */
         if ((err_info = sr_subscr_new(conn, opts, subscription))) {
             goto cleanup;
@@ -4630,36 +4625,30 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     /* add module subscription into ext SHM */
     if ((err_info = sr_shmext_change_sub_add(conn, shm_mod, chsub_lock_mode, session->ds, sub_id, xpath, priority,
             sub_opts, (*subscription)->evpipe_num))) {
-        goto error1;
+        goto cleanup;
     }
 
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_subscr_change_sub_add(*subscription, sub_id, session, module_name, xpath, callback, private_data,
             priority, sub_opts, 0))) {
-        goto error2;
+        goto error1;
     }
 
     /* add the subscription into session */
     if ((err_info = sr_ptr_add(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
             *subscription))) {
-        goto error3;
+        goto error2;
     }
 
     /* success */
     goto cleanup;
 
-error3:
+error2:
     sr_subscr_change_sub_del(*subscription, sub_id, SR_LOCK_NONE);
 
-error2:
+error1:
     if ((tmp_err = sr_shmext_change_sub_del(conn, shm_mod, chsub_lock_mode, session->ds, sub_id))) {
         sr_errinfo_merge(&err_info, tmp_err);
-    }
-
-error1:
-    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        _sr_unsubscribe(*subscription);
-        *subscription = NULL;
     }
 
 cleanup:
@@ -5177,10 +5166,6 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !xpath || (!callback && !tree_callback) || !subscription,
             session, err_info);
 
-    if ((opts & SR_SUBSCR_CTX_REUSE) && !*subscription) {
-        /* invalid option, remove */
-        opts &= ~SR_SUBSCR_CTX_REUSE;
-    }
     conn = session->conn;
 
     /* CONTEXT LOCK */
@@ -5211,7 +5196,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
         goto cleanup;
     }
 
-    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
+    if (!*subscription) {
         /* create a new subscription */
         if ((err_info = sr_subscr_new(conn, opts, subscription))) {
             goto cleanup;
@@ -5234,35 +5219,29 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
 
     /* add RPC/action subscription into ext SHM */
     if ((err_info = sr_shmext_rpc_sub_add(conn, shm_rpc, sub_id, xpath, priority, 0, (*subscription)->evpipe_num))) {
-        goto error1;
+        goto cleanup;
     }
 
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_subscr_rpc_sub_add(*subscription, sub_id, session, path, xpath, callback, tree_callback,
             private_data, priority, 0))) {
-        goto error2;
+        goto error1;
     }
 
     /* add the subscription into session */
     if ((err_info = sr_ptr_add(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
             *subscription))) {
-        goto error3;
+        goto error2;
     }
 
     goto cleanup;
 
-error3:
+error2:
     sr_subscr_rpc_sub_del(*subscription, sub_id, SR_LOCK_NONE);
 
-error2:
+error1:
     if ((tmp_err = sr_shmext_rpc_sub_del(conn, shm_rpc, sub_id))) {
         sr_errinfo_merge(&err_info, tmp_err);
-    }
-
-error1:
-    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        _sr_unsubscribe(*subscription);
-        *subscription = NULL;
     }
 
 cleanup:
@@ -5600,17 +5579,12 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
         goto cleanup;
     }
 
-    if ((opts & SR_SUBSCR_CTX_REUSE) && !*subscription) {
-        /* invalid option, remove */
-        opts &= ~SR_SUBSCR_CTX_REUSE;
-    }
-
     /* is the xpath/module valid? */
     if ((err_info = sr_subscr_notif_xpath_check(ly_mod, xpath, NULL))) {
         goto cleanup;
     }
 
-    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
+    if (!*subscription) {
         /* create a new subscription */
         if ((err_info = sr_subscr_new(conn, opts, subscription))) {
             goto cleanup;
@@ -5633,42 +5607,36 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
 
     /* add notification subscription into main SHM and create separate specific SHM segment */
     if ((err_info = sr_shmext_notif_sub_add(conn, shm_mod, sub_id, xpath, (*subscription)->evpipe_num, &listen_since))) {
-        goto error1;
+        goto cleanup;
     }
 
     /* add subscription into structure */
     if ((err_info = sr_subscr_notif_sub_add(*subscription, sub_id, session, ly_mod->name, xpath, &listen_since,
             start_time, stop_time, callback, tree_callback, private_data, 0))) {
-        goto error2;
+        goto error1;
     }
 
     /* add the subscription into session */
     if ((err_info = sr_ptr_add(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
             *subscription))) {
-        goto error3;
+        goto error2;
     }
 
     if (start_time || stop_time) {
         /* notify subscription there are already some events (replay needs to be performed) or stop time needs to be checked */
         if ((err_info = sr_shmsub_notify_evpipe((*subscription)->evpipe_num))) {
-            goto error3;
+            goto error2;
         }
     }
 
     goto cleanup;
 
-error3:
+error2:
     sr_subscr_notif_sub_del(*subscription, sub_id, SR_LOCK_NONE);
 
-error2:
+error1:
     if ((tmp_err = sr_shmext_notif_sub_del(conn, shm_mod, sub_id))) {
         sr_errinfo_merge(&err_info, tmp_err);
-    }
-
-error1:
-    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        _sr_unsubscribe(*subscription);
-        *subscription = NULL;
     }
 
 cleanup:
@@ -6058,11 +6026,6 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
     SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !module_name || !path || !callback || !subscription,
             session, err_info);
 
-    if ((opts & SR_SUBSCR_CTX_REUSE) && !*subscription) {
-        /* invalid option, remove */
-        opts &= ~SR_SUBSCR_CTX_REUSE;
-    }
-
     conn = session->conn;
     /* only these options are relevant outside this function and will be stored */
     sub_opts = opts & SR_SUBSCR_OPER_MERGE;
@@ -6088,7 +6051,7 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
         goto cleanup;
     }
 
-    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
+    if (!*subscription) {
         /* create a new subscription */
         if ((err_info = sr_subscr_new(conn, opts, subscription))) {
             goto cleanup;
@@ -6112,34 +6075,28 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
     /* add oper subscription into main SHM */
     if ((err_info = sr_shmext_oper_sub_add(conn, shm_mod, sub_id, path, sub_type, sub_opts,
             (*subscription)->evpipe_num))) {
-        goto error1;
+        goto cleanup;
     }
 
     /* add subscription into structure and create separate specific SHM segment */
     if ((err_info = sr_subscr_oper_sub_add(*subscription, sub_id, session, module_name, path, callback, private_data, 0))) {
-        goto error2;
+        goto error1;
     }
 
     /* add the subscription into session */
     if ((err_info = sr_ptr_add(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
             *subscription))) {
-        goto error3;
+        goto error2;
     }
 
     goto cleanup;
 
-error3:
+error2:
     sr_subscr_oper_sub_del(*subscription, sub_id, SR_LOCK_NONE);
 
-error2:
+error1:
     if ((tmp_err = sr_shmext_oper_sub_del(conn, shm_mod, sub_id))) {
         sr_errinfo_merge(&err_info, tmp_err);
-    }
-
-error1:
-    if (!(opts & SR_SUBSCR_CTX_REUSE)) {
-        _sr_unsubscribe(*subscription);
-        *subscription = NULL;
     }
 
 cleanup:

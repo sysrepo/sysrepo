@@ -185,11 +185,10 @@ test_enable_cached_get(void **state)
     int ret;
 
     /* subscribe to both modules with enabled flag */
-    ret = sr_module_change_subscribe(st->sess, "simple", NULL, enable_cached_get_cb, NULL, 0,
-            SR_SUBSCR_ENABLED | SR_SUBSCR_CTX_REUSE, &sub);
+    ret = sr_module_change_subscribe(st->sess, "simple", NULL, enable_cached_get_cb, NULL, 0, SR_SUBSCR_ENABLED, &sub);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_module_change_subscribe(st->sess, "simple-aug", NULL, enable_cached_get_cb, NULL, 0,
-            SR_SUBSCR_ENABLED | SR_SUBSCR_CTX_REUSE, &sub);
+            SR_SUBSCR_ENABLED, &sub);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* cleanup */
@@ -327,7 +326,7 @@ static void
 test_union(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     sr_data_t *data;
     char *str1;
     const char *str2;
@@ -342,12 +341,11 @@ test_union(void **state)
     /* subscribe to both modules so they are present in operational */
     ret = sr_module_change_subscribe(st->sess, "simple", NULL, dummy_change_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_module_change_subscribe(st->sess, "simple-aug", NULL, dummy_change_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "simple-aug", NULL, dummy_change_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* provide config false data */
-    ret = sr_oper_get_subscribe(st->sess, "simple", "/simple:ac1/simple-aug:bauga2", union_oper_cb, NULL,
-            SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_oper_get_subscribe(st->sess, "simple", "/simple:ac1/simple-aug:bauga2", union_oper_cb, NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);

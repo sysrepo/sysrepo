@@ -256,19 +256,19 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_data)
     }
 
     /* subscribe as state data provider for the oven state data */
-    rc = sr_oper_get_subscribe(session, "oven", "/oven:oven-state", oven_state_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscription);
+    rc = sr_oper_get_subscribe(session, "oven", "/oven:oven-state", oven_state_cb, NULL, 0, &subscription);
     if (rc != SR_ERR_OK) {
         goto error;
     }
 
     /* subscribe for insert-food RPC calls */
-    rc = sr_rpc_subscribe(session, "/oven:insert-food", oven_insert_food_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscription);
+    rc = sr_rpc_subscribe(session, "/oven:insert-food", oven_insert_food_cb, NULL, 0, 0, &subscription);
     if (rc != SR_ERR_OK) {
         goto error;
     }
 
     /* subscribe for remove-food RPC calls */
-    rc = sr_rpc_subscribe(session, "/oven:remove-food", oven_remove_food_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscription);
+    rc = sr_rpc_subscribe(session, "/oven:remove-food", oven_remove_food_cb, NULL, 0, 0, &subscription);
     if (rc != SR_ERR_OK) {
         goto error;
     }

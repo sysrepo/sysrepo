@@ -303,7 +303,7 @@ static void
 test_input_parameters(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     struct lyd_node *input;
     int ret;
 
@@ -314,11 +314,6 @@ test_input_parameters(void **state)
     /* non-existing module in xpath */
     ret = sr_notif_subscribe(st->sess, "no-mod", NULL, 0, 0, notif_dummy_cb, NULL, 0,  &subscr);
     assert_int_equal(ret, SR_ERR_NOT_FOUND);
-
-    /* invalid option(SR_SUBSCR_CTX_REUSE) when subscription NULL */
-    subscr = NULL;
-    ret = sr_notif_subscribe(st->sess, "ops", NULL, 0, 0, notif_dummy_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
 
     /* non-existing notification in module */
     ret = sr_notif_subscribe(st->sess, "test", NULL, 0, 0, notif_dummy_cb, NULL, 0, &subscr);
@@ -451,7 +446,7 @@ static void
 test_oper_dep(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr, *subscr2, *subscr3;
+    sr_subscription_ctx_t *subscr = NULL, *subscr2 = NULL, *subscr3 = NULL;
     const sr_error_info_t *err_info = NULL;
     sr_val_t input[2];
     int ret;
@@ -487,7 +482,7 @@ test_oper_dep(void **state)
     /* subscribe to required ops oper data and some non-required */
     ret = sr_oper_get_subscribe(st->sess, "ops", "/ops:cont/list1", oper_dep_oper_cb, st, 0, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_oper_get_subscribe(st->sess, "ops", "/ops:cont/l12", oper_dep_oper_cb, st, SR_SUBSCR_CTX_REUSE, &subscr2);
+    ret = sr_oper_get_subscribe(st->sess, "ops", "/ops:cont/l12", oper_dep_oper_cb, st, 0, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to send the first notif again, still fails */
@@ -503,11 +498,9 @@ test_oper_dep(void **state)
     /* subscribe to required ops-ref oper data and some non-required */
     ret = sr_oper_get_subscribe(st->sess, "ops-ref", "/ops-ref:l1", oper_dep_oper_cb, st, 0, &subscr3);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_oper_get_subscribe(st->sess, "ops-ref", "/ops-ref:l2", oper_dep_oper_cb, st, SR_SUBSCR_CTX_REUSE,
-            &subscr3);
+    ret = sr_oper_get_subscribe(st->sess, "ops-ref", "/ops-ref:l2", oper_dep_oper_cb, st, 0, &subscr3);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_oper_get_subscribe(st->sess, "ops-ref", "/ops-ref:l3", oper_dep_oper_cb, st, SR_SUBSCR_CTX_REUSE,
-            &subscr3);
+    ret = sr_oper_get_subscribe(st->sess, "ops-ref", "/ops-ref:l3", oper_dep_oper_cb, st, 0, &subscr3);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to send the first notif for the last time, should succeed */
@@ -581,7 +574,7 @@ static void
 test_stop(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     struct timespec start, stop;
     int ret;
 
@@ -651,7 +644,7 @@ static void
 test_replay_simple(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     struct lyd_node *notif;
     struct timespec start, stop;
     int ret;
@@ -683,8 +676,7 @@ test_replay_simple(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* now subscribe and expect the notification replayed */
-    ret = sr_notif_subscribe_tree(st->sess, "ops", NULL, &start, NULL, notif_replay_simple_cb, st,
-            SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_notif_subscribe_tree(st->sess, "ops", NULL, &start, NULL, notif_replay_simple_cb, st, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     sub_id = sr_subscription_get_last_sub_id(subscr);
 
@@ -847,7 +839,7 @@ static void
 test_replay_interval(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     struct timespec start = {0}, stop = {0};
     int ret, i = 0;
 
@@ -871,8 +863,7 @@ test_replay_interval(void **state)
     /* subscribe to the second replay interval */
     start.tv_sec = start_ts - 20;
     stop.tv_sec = start_ts + 4;
-    ret = sr_notif_subscribe_tree(st->sess, "ops", NULL, &start, &stop, notif_replay_interval_cb, st,
-            SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_notif_subscribe_tree(st->sess, "ops", NULL, &start, &stop, notif_replay_interval_cb, st, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for the replay, complete, and stop notifications */
@@ -884,8 +875,7 @@ test_replay_interval(void **state)
     /* subscribe to the third replay interval */
     start.tv_sec = start_ts + 9;
     stop.tv_sec = start_ts + 40;
-    ret = sr_notif_subscribe_tree(st->sess, "ops", NULL, &start, &stop, notif_replay_interval_cb, st,
-            SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_notif_subscribe_tree(st->sess, "ops", NULL, &start, &stop, notif_replay_interval_cb, st, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for the replay, complete, and stop notifications */
@@ -936,7 +926,7 @@ static void
 test_no_replay(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     struct lyd_node *notif;
     struct timespec start;
     int ret;
@@ -961,8 +951,7 @@ test_no_replay(void **state)
 
     /* subscribe and expect no notifications replayed */
     start.tv_sec -= 50;
-    ret = sr_notif_subscribe_tree(st->sess, "ops", NULL, &start, NULL, notif_no_replay_cb, st,
-            SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_notif_subscribe_tree(st->sess, "ops", NULL, &start, NULL, notif_no_replay_cb, st, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* wait for the complete notification */
@@ -1118,7 +1107,7 @@ static void
 test_notif_config_change(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     int ret;
 
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
@@ -1269,7 +1258,7 @@ static void
 test_suspend(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     int ret, suspended;
     uint32_t sub_id;
 
@@ -1359,7 +1348,7 @@ static void
 test_params(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     int ret;
     uint32_t sub_id, filtered_out;
     struct lyd_node *notif;
@@ -1469,7 +1458,7 @@ static void
 test_dup_inst(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     int ret;
     struct lyd_node *notif;
 
@@ -1535,7 +1524,7 @@ static void
 test_wait(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     int i, ret;
 
     ATOMIC_STORE_RELAXED(st->cb_called, 0);

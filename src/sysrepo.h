@@ -1174,8 +1174,7 @@ int sr_unsubscribe(sr_subscription_ctx_t *subscription);
  * @param[in] priority Specifies the order in which the callbacks (**within module**) will be called.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
- * @note An existing context may be passed in case that ::SR_SUBSCR_CTX_REUSE option is specified.
+ * @param[in,out] subscription Subscription context, zeroed for first subscription, freed by ::sr_unsubscribe.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
@@ -1316,8 +1315,7 @@ void sr_free_change_iter(sr_change_iter_t *iter);
  * @param[in] priority Specifies the order in which the callbacks (**within RPC/action**) will be called.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
- * @note An existing context may be passed in case that ::SR_SUBSCR_CTX_REUSE option is specified.
+ * @param[in,out] subscription Subscription context, zeroed for first subscription, freed by ::sr_unsubscribe.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback, void *private_data,
@@ -1335,8 +1333,7 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb cal
  * @param[in] priority Specifies the order in which the callbacks (**within RPC/action**) will be called.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
- * @note An existing context may be passed in case that ::SR_SUBSCR_CTX_REUSE option is specified.
+ * @param[in,out] subscription Subscription context, zeroed for first subscription, freed by ::sr_unsubscribe.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_tree_cb callback,
@@ -1404,8 +1401,7 @@ int sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
- * @note An existing context may be passed in case that ::SR_SUBSCR_CTX_REUSE option is specified.
+ * @param[in,out] subscription Subscription context, zeroed for first subscription, freed by ::sr_unsubscribe.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
@@ -1426,8 +1422,7 @@ int sr_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
- * @note An existing context may be passed in case that ::SR_SUBSCR_CTX_REUSE option is specified.
+ * @param[in,out] subscription Subscription context, zeroed for first subscription, freed by ::sr_unsubscribe.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name, const char *xpath,
@@ -1541,7 +1536,7 @@ int sr_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t 
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ * @param[in,out] subscription Subscription context, zeroed for first subscription, freed by ::sr_unsubscribe.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const char *path,
