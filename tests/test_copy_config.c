@@ -459,7 +459,7 @@ subscribe_empty_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     int count, ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
@@ -793,7 +793,7 @@ subscribe_simple_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     int count, ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
@@ -924,7 +924,7 @@ subscribe_fail_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     int count, ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
@@ -1165,7 +1165,7 @@ subscribe_userord_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     int count, ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
@@ -1521,7 +1521,7 @@ subscribe_replace_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     int count, ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
@@ -1556,7 +1556,7 @@ subscribe_replace_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe */
-    ret = sr_module_change_subscribe(sess, "test", NULL, module_replace_cb, st, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_module_change_subscribe(sess, "test", NULL, module_replace_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* signal that subscriptions were created */
@@ -1787,7 +1787,7 @@ subscribe_replace_dflt_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     int ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
@@ -1978,7 +1978,7 @@ subscribe_replace_case_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     int count, ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
@@ -2151,7 +2151,7 @@ subscribe_replace_when_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     int count, ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
@@ -2160,7 +2160,7 @@ subscribe_replace_when_thread(void *arg)
     /* subscribe */
     ret = sr_module_change_subscribe(sess, "when1", NULL, module_replace_when_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_module_change_subscribe(sess, "when2", NULL, module_replace_when_cb, st, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_module_change_subscribe(sess, "when2", NULL, module_replace_when_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* signal that subscriptions were created */

@@ -173,7 +173,7 @@ subscribe_deviation_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     sr_data_t *data;
     int ret;
     uint32_t sub_id1, sub_id2;
@@ -185,11 +185,10 @@ subscribe_deviation_thread(void *arg)
     ret = sr_module_change_subscribe(sess, "mod1", "/mod1:cont/l1", module_change_st_called_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     sub_id1 = sr_subscription_get_last_sub_id(subscr);
-    ret = sr_oper_get_subscribe(sess, "mod1", "/mod1:cont/l1", oper_deviation_cb, st, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_oper_get_subscribe(sess, "mod1", "/mod1:cont/l1", oper_deviation_cb, st, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     sub_id2 = sr_subscription_get_last_sub_id(subscr);
-    ret = sr_module_change_subscribe(sess, "mod1", "/mod1:cont/l3", module_change_st_called_cb, st, 0, SR_SUBSCR_CTX_REUSE,
-            &subscr);
+    ret = sr_module_change_subscribe(sess, "mod1", "/mod1:cont/l3", module_change_st_called_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* sync #1 */
@@ -355,7 +354,7 @@ subscribe_feature_change_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     sr_data_t *data;
     const struct ly_ctx *ly_ctx;
     struct lyd_node *ly_notif, *ly_action;
@@ -369,13 +368,12 @@ subscribe_feature_change_thread(void *arg)
     ret = sr_module_change_subscribe(sess, "mod1", "/mod1:cont/l2", module_change_st_called_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     sub_id1 = sr_subscription_get_last_sub_id(subscr);
-    ret = sr_module_change_subscribe(sess, "mod1", "/mod1:cont/l3", module_change_st_called_cb, st, 0, SR_SUBSCR_CTX_REUSE,
-            &subscr);
+    ret = sr_module_change_subscribe(sess, "mod1", "/mod1:cont/l3", module_change_st_called_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe_tree(sess, "/mod1:cont/a", rpc_feature_change_cb, st, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe_tree(sess, "/mod1:cont/a", rpc_feature_change_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_notif_subscribe_tree(sess, "mod1", "/mod1:cont/n/l5 = 5", NULL, NULL, notif_feature_change_cb, st,
-            SR_SUBSCR_CTX_REUSE, &subscr);
+            0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     sub_id2 = sr_subscription_get_last_sub_id(subscr);
 
