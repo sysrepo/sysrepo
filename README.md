@@ -23,12 +23,10 @@ This means that when only stable official releases are to be used, either `maste
 If all the latest bugfixes should be applied, `devel` branch is the  one to be used. Note that whenever **a new issue is created**
 and it occurs on the `master` branch, the **first response will likely be** to use `devel` before any further provided support.
 
-## Migration from Sysrepo version 0.7.x or older
+## Compatibility Between Versions
 
-This Sysrepo is a complete rewrite of these older versions. Latest version of the `0.7` version is found in the `legacy` branch.
-We tried to keep the API as similar as possible but there were some smaller or even bigger changes (mostly for the sake
-of efficiency). All these changes should be mentioned in `CHANGES` text file. It is also best to look at least briefly
-at the documentation where you will find information about major design changes (most importantly, no `sysrepod`).
+When upgrading Sysrepo to a newer major SO version, look into the `compatibility` directory for a summary of changes.
+Each directory describes the changes between the specific SO versions. Be aware that they do not match project versions.
 
 ## Provided Features
 
