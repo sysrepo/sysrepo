@@ -62,8 +62,8 @@ rm -rf /etc/sysrepo/
 
 %files
 %license LICENSE
-%{_libdir}/libsysrepo.so.6
-%{_libdir}/libsysrepo.so.6.*
+%{_libdir}/libsysrepo.so.7
+%{_libdir}/libsysrepo.so.7.*
 
 %files tools
 %{_bindir}/sysrepocfg

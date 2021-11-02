@@ -70,9 +70,9 @@ set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_
 # Version of the library
 # Major version is changed with every backward non-compatible API/ABI change, minor version changes
 # with backward compatible change and micro version is connected with any internal change of the library.
-set(SYSREPO_MAJOR_SOVERSION 6)
-set(SYSREPO_MINOR_SOVERSION 4)
-set(SYSREPO_MICRO_SOVERSION 20)
+set(SYSREPO_MAJOR_SOVERSION 7)
+set(SYSREPO_MINOR_SOVERSION 0)
+set(SYSREPO_MICRO_SOVERSION 0)
 set(SYSREPO_SOVERSION_FULL ${SYSREPO_MAJOR_SOVERSION}.${SYSREPO_MINOR_SOVERSION}.${SYSREPO_MICRO_SOVERSION})
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_SOVERSION})
 
@@ -84,7 +84,7 @@ set(LIBYANG_DEP_SOVERSION_MAJOR 2)
 # generate only version header, it is needed for docs
 configure_file("${PROJECT_SOURCE_DIR}/src/version.h.in" "${PROJECT_BINARY_DIR}/version.h" ESCAPE_QUOTES @ONLY)
 
-set(CMAKE_C_FLAGS           "${CMAKE_C_FLAGS} -Wall -Wextra -Wpedantic -std=c11")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wpedantic -std=c11")
 
 #
 # options
