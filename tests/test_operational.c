@@ -1164,7 +1164,7 @@ test_fail(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
-    lyd_free_siblings(data);
+    sr_release_data(data);
 
     sr_unsubscribe(subscr);
 }
