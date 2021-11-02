@@ -1198,9 +1198,11 @@ static int
 fail_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpath, const char *request_xpath,
         uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
+    struct state *st = (struct state *)private_data;
+    int ret = SR_ERR_OK;
+
     (void)session;
     (void)request_id;
-    (void)private_data;
 
     assert_string_equal(request_xpath, "/ietf-interfaces:*");
 
@@ -1209,8 +1211,20 @@ fail_oper_cb(sr_session_ctx_t *session, const char *module_name, const char *xpa
     assert_non_null(parent);
     assert_null(*parent);
 
-    sr_set_error(session, "/no/special/xpath", "Callback failed with an error.");
-    return SR_ERR_UNAUTHORIZED;
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
+    case 0:
+        sr_set_error(session, "/no/special/xpath", "Callback failed with an error.");
+        ret = SR_ERR_UNAUTHORIZED;
+        break;
+    case 1:
+        /* success */
+        break;
+    default:
+        fail();
+    }
+
+    ATOMIC_INC_RELAXED(st->cb_called);
+    return ret;
 }
 
 static void
@@ -1230,15 +1244,22 @@ test_fail(void **state)
 
     /* subscribe as state data provider*/
     ret = sr_oper_get_items_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", fail_oper_cb,
-            NULL, 0, &subscr);
+            st, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* read all data from operational */
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
+    /* read all data from operational, fails */
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
+
+    /* read all data from operational, succeeds */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
+    lyd_free_withsiblings(data);
 
     sr_unsubscribe(subscr);
 }

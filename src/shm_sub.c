@@ -325,7 +325,7 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
  *              ::SR_SUB_EV_SUCCESS - an answer (success/error) is expected but SHM will not be accessed, so
  *                                    success (never error) event is cleared,
  *              ::SR_SUB_EV_ERROR - an answer is expected and SHM will be further accessed so do not clear any events.
- * @param[in] clear_ev_on_timeout Whether to clear the current event if timeout occurs or leave it be.
+ * @param[in] clear_ev_on_err Whether to clear the current event if error/timeout occurs or leave it be.
  * @param[in] timeout_ms Timeout in milliseconds.
  * @param[in] cid Connection ID.
  * @param[in] shm_data_sub Opened sub data SHM.
@@ -333,7 +333,7 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int clear_ev_on_timeout, uint32_t timeout_ms,
+sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int clear_ev_on_err, uint32_t timeout_ms,
         sr_cid_t cid, sr_shm_t *shm_data_sub, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
@@ -375,7 +375,7 @@ sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int 
                 sr_errinfo_new(cb_err_info, SR_ERR_TIME_OUT, NULL, "Callback event \"%s\" with ID %u processing timed out.",
                         sr_ev2str(event), request_id);
                 if ((event == sub_shm->event) && (request_id == sub_shm->request_id)) {
-                    if (clear_ev_on_timeout) {
+                    if (clear_ev_on_err) {
                         sub_shm->event = SR_SUB_EV_NONE;
                     } else if ((expected_ev == SR_SUB_EV_SUCCESS) || (expected_ev == SR_SUB_EV_ERROR)) {
                         sub_shm->event = SR_SUB_EV_ERROR;
@@ -421,11 +421,16 @@ sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int 
             err_xpath = ptr;
 
             sr_errinfo_new(cb_err_info, err_code, err_xpath[0] ? err_xpath : NULL, err_msg[0] ? err_msg : sr_strerror(err_code));
+
+            if (clear_ev_on_err) {
+                /* clear the error */
+                sub_shm->event = SR_SUB_EV_NONE;
+            }
             break;
         default:
             sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Unexpected sub SHM event \"%s\" (expected \"%s\").",
                     sr_ev2str(sub_shm->event), sr_ev2str(expected_ev));
-            break;
+            return err_info;
         }
     } else {
         /* we expect no event */
@@ -436,11 +441,11 @@ sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int 
         default:
             sr_errinfo_new(&err_info, SR_ERR_INTERNAL, NULL, "Unexpected sub SHM event \"%s\" (expected \"%s\").",
                     sr_ev2str(sub_shm->event), sr_ev2str(expected_ev));
-            break;
+            return err_info;
         }
     }
 
-    return err_info;
+    return NULL;
 }
 
 /**
