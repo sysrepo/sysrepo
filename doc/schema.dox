@@ -1,12 +1,10 @@
 /**
 @page schema Schemas
 
-Before it is possible to work with any data, YANG schemas (modules) need to be **installed** into Sysrepo. However,
-such a YANG module change is **not performed immediately**. These changes, which also include removing, updating a module
-or changing its features, are **only scheduled** to be performed and are applied during new Sysrepo connection
-creation **if there are no other connections**. The reason for this mechanism is that the module context cannot change while there
-are some data connected to it (_libyang_ requirement) and they often are even when no Sysrepo function is being executed.
-That is the price for having a context created with all the schemas at all times so there are no temporary ones needed.
+Before it is possible to work with any data, YANG schemas (modules) need to be **installed** into Sysrepo. That is
+a YANG context change among **changing a feature state** or **removing** a module, which is always an expensive
+operation. Note that as long as the context is continuously used either by Sysrepo API function or by an application,
+it cannot be changed and these functions will time out.
 
 Sysrepo allows to **update** installed modules keeping their current data, as mentioned before. The new schema should follow
 [standardized updating rules](https://tools.ietf.org/html/rfc7950#section-11) but Sysrepo only requires for the schema
@@ -16,9 +14,8 @@ checked before the actual update.
 Then, every module **replay** support and **permissions** (more in [access control](@ref access_control)) can be changed.
 This must always be performed separately because these attributes cannot be set during installation and defaults are used.
 
-Lastly, **module information** data can be retrieved from Sysrepo. These include some additional information about each
-module that is specific to Sysrepo. However, most information can be found in data tree returned by _libyang_ call
-`ly_ctx_info()` that should be used on context retrieved from a Sysrepo connection.
+Lastly, to get information about installed modules the Sysrepo connection _libyang_ context should be examined by
+_libyang_ functions including getting a comprehensive information in the form of a data tree returned by _libyang_ call 'ly_ctx_info()`.
 
 @ref schema_api
 

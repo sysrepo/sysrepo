@@ -122,9 +122,9 @@ sr_error_info_t *sr_shmmod_collect_deps(sr_mod_shm_t *mod_shm, sr_dep_t *shm_dep
  * @brief Information structure for the SHM module recovery callback.
  */
 struct sr_shmmod_recover_cb_s {
-    const struct lys_module *ly_mod;
-    sr_datastore_t ds;
-    struct srplg_ds_s *ds_plg;
+    struct ly_ctx **ly_ctx_p;   /**< Pointer to context to get sysrepo module from, may be changed. */
+    sr_datastore_t ds;          /**< Datastore being recovered. */
+    struct srplg_ds_s *ds_plg;  /**< Datastore plugin of the module being recovered. */
 };
 
 /**

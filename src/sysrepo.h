@@ -540,10 +540,13 @@ int sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, i
  *
  * @param[in] conn Connection to use.
  * @param[in] module_name Name of the module to check.
+ * @param[out] first_notif Optional timestamp of the earliest stored notification, zeroed if none are stored. Can
+ * be set even if @p enabled is false when replay was enabled in the past.
  * @param[out] enabled Whether replay support is enabled or disabled.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_get_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int *enabled);
+int sr_get_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, struct timespec *earliest_notif,
+        int *enabled);
 
 /**
  * @brief Change module permissions.

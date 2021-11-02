@@ -167,7 +167,7 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
 
         if (ly_mod->implemented) {
             /* replay-support */
-            ret = sr_get_module_replay_support(conn, ly_mod->name, &enabled);
+            ret = sr_get_module_replay_support(conn, ly_mod->name, NULL, &enabled);
             if (ret != SR_ERR_OK) {
                 return ret;
             }

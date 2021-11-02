@@ -123,7 +123,7 @@ sr_notif_buf_store(sr_session_ctx_t *sess, const struct lyd_node *notif, struct 
         notif_buf->last = node;
     } else {
         /* CONTEXT LOCK */
-        if ((err_info = sr_lycc_lock(sess->conn, SR_LOCK_READ, 0))) {
+        if ((err_info = sr_lycc_lock(sess->conn, SR_LOCK_READ, 0, __func__))) {
             goto error;
         }
 
@@ -287,7 +287,7 @@ sr_notif_buf_thread(void *arg)
             err_info = sr_notif_buf_thread_write_notifs(sess->conn, first);
 
             /* CONTEXT UNLOCK */
-            sr_lycc_unlock(sess->conn, SR_LOCK_READ, 0);
+            sr_lycc_unlock(sess->conn, SR_LOCK_READ, 0, __func__);
 
             if (err_info) {
                 goto cleanup;
@@ -335,7 +335,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     }
 
     /* get the stop timestamp - only notifications with smaller timestamp can be replayed */
-    if (stop_time->tv_sec && (sr_time_cmp(stop_time, listen_since) < 1)) {
+    if (!SR_TS_IS_ZERO(*stop_time) && (sr_time_cmp(stop_time, listen_since) < 1)) {
         stop_ts = *stop_time;
     } else {
         stop_ts = *listen_since;

@@ -127,6 +127,9 @@ struct srplg_ntf_s;
 /** get string value of the first child of a node */
 #define SR_LY_CHILD_VALUE(node) lyd_get_value(lyd_child(node))
 
+/** check that a timespec struct is zeroed */
+#define SR_TS_IS_ZERO(ts) (!(ts).tv_sec && !(ts).tv_nsec)
+
 /*
  * Internal declarations + definitions
  */
