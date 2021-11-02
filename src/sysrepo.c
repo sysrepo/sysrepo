@@ -252,14 +252,14 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     }
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
         goto cleanup_unlock;
     }
 
     /* context was updated */
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
 
     if (created) {
         /* initialize datastores and copy <startup> to <running> */
@@ -367,7 +367,7 @@ sr_acquire_context(sr_conn_ctx_t *conn)
     }
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
         sr_errinfo_free(&err_info);
         return NULL;
     }
@@ -385,7 +385,7 @@ API void
 sr_release_context(sr_conn_ctx_t *conn)
 {
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
 }
 
 API void
@@ -404,7 +404,7 @@ sr_get_content_id(sr_conn_ctx_t *conn)
     }
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
         sr_errinfo_free(&err_info);
         return 0;
     }
@@ -412,7 +412,7 @@ sr_get_content_id(sr_conn_ctx_t *conn)
     /* just so that the content ID is updated */
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
 
     return conn->content_id;
 }
@@ -457,7 +457,7 @@ sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const ch
     SR_MODINFO_INIT(mod_info, conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL);
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
         goto cleanup;
     }
 
@@ -510,7 +510,7 @@ cleanup:
     sr_modinfo_erase(&mod_info);
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
     if (cb_err_info) {
         /* return callback error if some was generated */
         sr_errinfo_merge(&err_info, cb_err_info);
@@ -703,7 +703,7 @@ _sr_session_stop(sr_session_ctx_t *session)
     sr_errinfo_merge(&err_info, tmp_err);
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         return err_info;
     }
 
@@ -711,7 +711,7 @@ _sr_session_stop(sr_session_ctx_t *session)
     sr_shmmod_release_locks(session->conn, session->sid);
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
 
     /* free attributes */
     free(session->user);
@@ -725,12 +725,7 @@ _sr_session_stop(sr_session_ctx_t *session)
     free(session->ev_error.data);
     pthread_mutex_destroy(&session->ptr_lock);
     for (ds = 0; ds < SR_DS_COUNT; ++ds) {
-        if (session->dt[ds].edit) {
-            lyd_free_all(session->dt[ds].edit);
-
-            /* CONTEXT UNLOCK */
-            sr_lycc_unlock(session->conn, SR_LOCK_READ, 0);
-        }
+        sr_release_data(session->dt[ds].edit);
         lyd_free_all(session->dt[ds].diff);
     }
     sr_rwlock_destroy(&session->notif_buf.lock);
@@ -1352,7 +1347,7 @@ sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *sea
     }
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ_UPGR, 1))) {
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ_UPGR, 1, __func__))) {
         goto cleanup;
     }
     ctx_mode = SR_LOCK_READ_UPGR;
@@ -1404,7 +1399,7 @@ sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *sea
     }
 
     /* CONTEXT UPGRADE */
-    if ((err_info = sr_lycc_relock(conn, SR_LOCK_WRITE))) {
+    if ((err_info = sr_lycc_relock(conn, SR_LOCK_WRITE, __func__))) {
         goto cleanup;
     }
     ctx_mode = SR_LOCK_WRITE;
@@ -1448,7 +1443,7 @@ cleanup:
     ly_ctx_destroy(tmp_ly_ctx);
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, ctx_mode, 1);
+    sr_lycc_unlock(conn, ctx_mode, 1, __func__);
 
     ly_set_erase(&mod_set, NULL);
     free(mod_name);
@@ -1470,7 +1465,7 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name, int force)
     SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ_UPGR, 1))) {
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ_UPGR, 1, __func__))) {
         goto cleanup;
     }
     ctx_mode = SR_LOCK_READ_UPGR;
@@ -1524,7 +1519,7 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name, int force)
     }
 
     /* CONTEXT UPGRADE */
-    if ((err_info = sr_lycc_relock(conn, SR_LOCK_WRITE))) {
+    if ((err_info = sr_lycc_relock(conn, SR_LOCK_WRITE, __func__))) {
         goto cleanup;
     }
     ctx_mode = SR_LOCK_WRITE;
@@ -1568,7 +1563,7 @@ cleanup:
     ly_ctx_destroy(tmp_ly_ctx);
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, ctx_mode, 1);
+    sr_lycc_unlock(conn, ctx_mode, 1, __func__);
 
     ly_set_erase(&mod_set, NULL);
     return sr_api_ret(NULL, err_info);
@@ -1596,7 +1591,7 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
     }
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ_UPGR, 1))) {
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ_UPGR, 1, __func__))) {
         goto cleanup;
     }
     ctx_mode = SR_LOCK_READ_UPGR;
@@ -1642,7 +1637,7 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
     }
 
     /* CONTEXT UPGRADE */
-    if ((err_info = sr_lycc_relock(conn, SR_LOCK_WRITE))) {
+    if ((err_info = sr_lycc_relock(conn, SR_LOCK_WRITE, __func__))) {
         goto cleanup;
     }
     ctx_mode = SR_LOCK_WRITE;
@@ -1685,7 +1680,7 @@ cleanup:
     ly_ctx_destroy(tmp_ly_ctx);
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, ctx_mode, 1);
+    sr_lycc_unlock(conn, ctx_mode, 1, __func__);
 
     free(mod_name);
     ly_set_erase(&mod_set, NULL);
@@ -1703,7 +1698,7 @@ sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int e
     SR_CHECK_ARG_APIRET(!conn, NULL, err_info);
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 1))) {
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 1, __func__))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -1735,22 +1730,25 @@ cleanup:
     lyd_free_siblings(sr_mods);
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, SR_LOCK_READ, 1);
+    sr_lycc_unlock(conn, SR_LOCK_READ, 1, __func__);
 
     ly_set_erase(&mod_set, NULL);
     return sr_api_ret(NULL, err_info);
 }
 
 API int
-sr_get_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int *enabled)
+sr_get_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, struct timespec *earliest_notif, int *enabled)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
+    const struct lys_module *ly_mod;
+    struct srplg_ntf_s *ntf_plg;
+    int rc;
 
     SR_CHECK_ARG_APIRET(!conn || !module_name || !enabled, NULL, err_info);
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -1764,9 +1762,26 @@ sr_get_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int *
     /* read replay support */
     *enabled = shm_mod->replay_supp;
 
+    if (earliest_notif) {
+        /* find LY module */
+        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
+        assert(ly_mod);
+
+        /* find NTF plugin */
+        if ((err_info = sr_ntf_plugin_find(conn->mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_plg))) {
+            goto cleanup;
+        }
+
+        /* get earliest notif timestamp */
+        if ((rc = ntf_plg->earliest_get_cb(ly_mod, earliest_notif))) {
+            SR_ERRINFO_DSPLUGIN(&err_info, rc, "earliest_get", ntf_plg->name, ly_mod->name);
+            goto cleanup;
+        }
+    }
+
 cleanup:
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
 
     return sr_api_ret(NULL, err_info);
 }
@@ -1832,7 +1847,7 @@ sr_set_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
     mod_shm = SR_CONN_MOD_SHM(conn);
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -1870,7 +1885,7 @@ sr_set_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
 
 cleanup:
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
 
     return sr_api_ret(NULL, err_info);
 }
@@ -2143,7 +2158,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ_UPGR, 1))) {
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ_UPGR, 1, __func__))) {
         goto cleanup;
     }
     ctx_mode = SR_LOCK_READ_UPGR;
@@ -2205,7 +2220,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     /* CONTEXT UPGRADE */
-    if ((err_info = sr_lycc_relock(conn, SR_LOCK_WRITE))) {
+    if ((err_info = sr_lycc_relock(conn, SR_LOCK_WRITE, __func__))) {
         goto cleanup;
     }
     ctx_mode = SR_LOCK_WRITE;
@@ -2243,7 +2258,7 @@ cleanup:
     ly_ctx_destroy(tmp_ly_ctx);
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, ctx_mode, 1);
+    sr_lycc_unlock(conn, ctx_mode, 1, __func__);
 
     ly_set_erase(&mod_set, NULL);
     return err_info;
@@ -2290,7 +2305,7 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds);
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -2336,7 +2351,7 @@ cleanup:
     sr_modinfo_erase(&mod_info);
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
     if (err_info) {
         free(*value);
         *value = NULL;
@@ -2370,7 +2385,7 @@ cleanup:
         lyd_free_all(tree);
 
         /* CONTEXT UNLOCK */
-        sr_lycc_unlock(conn, SR_LOCK_READ, 0);
+        sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
     }
     return err_info;
 }
@@ -2420,7 +2435,7 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
     SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds);
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -2462,7 +2477,7 @@ cleanup:
     sr_modinfo_erase(&mod_info);
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
     if (err_info) {
         sr_free_values(*values, *value_cnt);
         *values = NULL;
@@ -2487,7 +2502,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
     SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds);
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -2559,7 +2574,7 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
     SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds);
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -2639,7 +2654,7 @@ sr_release_data(sr_data_t *data)
     lyd_free_all(data->tree);
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock((sr_conn_ctx_t *)data->conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock((sr_conn_ctx_t *)data->conn, SR_LOCK_READ, 0, __func__);
 
     free(data);
 }
@@ -2718,14 +2733,14 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
     }
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
     str_val = sr_val_sr2ly_str(session->conn->ly_ctx, value, path, str, 0);
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
 
     /* API function */
     return sr_set_item_str(session, path, str_val, value ? value->origin : NULL, opts);
@@ -2737,7 +2752,6 @@ sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, 
 {
     sr_error_info_t *err_info = NULL;
     char *pref_origin = NULL;
-    sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
 
     SR_CHECK_ARG_APIRET(!session || !path || (!SR_IS_CONVENTIONAL_DS(session->ds) &&
             (opts & (SR_EDIT_STRICT | SR_EDIT_NON_RECURSIVE))), session, err_info);
@@ -2756,10 +2770,14 @@ sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, 
 
     if (!session->dt[session->ds].edit) {
         /* CONTEXT LOCK */
-        if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0))) {
+        if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
             goto cleanup;
         }
-        ctx_mode = SR_LOCK_READ;
+
+        /* prepare edit with context lock */
+        if ((err_info = _sr_acquire_data(session->conn, NULL, &session->dt[session->ds].edit))) {
+            goto cleanup;
+        }
     }
 
     /* add the operation into edit */
@@ -2767,9 +2785,9 @@ sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, 
             opts & SR_EDIT_NON_RECURSIVE ? "none" : "merge", NULL, NULL, NULL, pref_origin, opts & SR_EDIT_ISOLATE);
 
 cleanup:
-    if (ctx_mode && !session->dt[session->ds].edit) {
-        /* CONTEXT UNLOCK */
-        sr_lycc_unlock(session->conn, SR_LOCK_READ, 0);
+    if (session->dt[session->ds].edit && !session->dt[session->ds].edit->tree) {
+        sr_release_data(session->dt[session->ds].edit);
+        session->dt[session->ds].edit = NULL;
     }
     free(pref_origin);
     return sr_api_ret(session, err_info);
@@ -2782,22 +2800,26 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     const char *operation;
     const struct lysc_node *snode;
     int ly_log_opts;
-    sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
 
     SR_CHECK_ARG_APIRET(!session || !SR_IS_CONVENTIONAL_DS(session->ds) || !path, session, err_info);
 
     if (!session->dt[session->ds].edit) {
         /* CONTEXT LOCK */
-        if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0))) {
+        if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
             goto cleanup;
         }
-        ctx_mode = SR_LOCK_READ;
+
+        /* prepare edit with context lock */
+        if ((err_info = _sr_acquire_data(session->conn, NULL, &session->dt[session->ds].edit))) {
+            goto cleanup;
+        }
     }
 
     /* turn off logging */
     ly_log_opts = ly_log_options(0);
     if ((path[strlen(path) - 1] != ']') && (snode = lys_find_path(session->conn->ly_ctx, NULL, path, 0)) &&
-            (snode->nodetype & (LYS_LEAFLIST | LYS_LIST)) && !strcmp((path + strlen(path)) - strlen(snode->name), snode->name)) {
+            (snode->nodetype & (LYS_LEAFLIST | LYS_LIST)) &&
+            !strcmp((path + strlen(path)) - strlen(snode->name), snode->name)) {
         operation = "purge";
     } else if (opts & SR_EDIT_STRICT) {
         operation = "delete";
@@ -2811,9 +2833,9 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
             NULL, opts & SR_EDIT_ISOLATE);
 
 cleanup:
-    if (ctx_mode && !session->dt[session->ds].edit) {
-        /* CONTEXT UNLOCK */
-        sr_lycc_unlock(session->conn, SR_LOCK_READ, 0);
+    if (session->dt[session->ds].edit && !session->dt[session->ds].edit->tree) {
+        sr_release_data(session->dt[session->ds].edit);
+        session->dt[session->ds].edit = NULL;
     }
     return sr_api_ret(session, err_info);
 }
@@ -2822,25 +2844,28 @@ API int
 sr_oper_delete_item_str(sr_session_ctx_t *session, const char *path, const char *value, const sr_edit_options_t opts)
 {
     sr_error_info_t *err_info = NULL;
-    sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
 
     SR_CHECK_ARG_APIRET(!session || SR_IS_CONVENTIONAL_DS(session->ds) || !path, session, err_info);
 
     if (!session->dt[session->ds].edit) {
         /* CONTEXT LOCK */
-        if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0))) {
+        if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
             goto cleanup;
         }
-        ctx_mode = SR_LOCK_READ;
+
+        /* prepare edit with context lock */
+        if ((err_info = _sr_acquire_data(session->conn, NULL, &session->dt[session->ds].edit))) {
+            goto cleanup;
+        }
     }
 
     /* add the operation into edit */
     err_info = sr_edit_add(session, path, value, "remove", "ether", NULL, NULL, NULL, NULL, opts & SR_EDIT_ISOLATE);
 
 cleanup:
-    if (ctx_mode && !session->dt[session->ds].edit) {
-        /* CONTEXT UNLOCK */
-        sr_lycc_unlock(session->conn, SR_LOCK_READ, 0);
+    if (session->dt[session->ds].edit && !session->dt[session->ds].edit->tree) {
+        sr_release_data(session->dt[session->ds].edit);
+        session->dt[session->ds].edit = NULL;
     }
     return sr_api_ret(session, err_info);
 }
@@ -2851,7 +2876,6 @@ sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position
 {
     sr_error_info_t *err_info = NULL;
     char *pref_origin = NULL;
-    sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
 
     SR_CHECK_ARG_APIRET(!session || !path || (!SR_IS_CONVENTIONAL_DS(session->ds) &&
             (opts & (SR_EDIT_STRICT | SR_EDIT_NON_RECURSIVE))), session, err_info);
@@ -2868,10 +2892,14 @@ sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position
 
     if (!session->dt[session->ds].edit) {
         /* CONTEXT LOCK */
-        if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0))) {
+        if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
             goto cleanup;
         }
-        ctx_mode = SR_LOCK_READ;
+
+        /* prepare edit with context lock */
+        if ((err_info = _sr_acquire_data(session->conn, NULL, &session->dt[session->ds].edit))) {
+            goto cleanup;
+        }
     }
 
     /* add the operation into edit */
@@ -2880,9 +2908,9 @@ sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position
             opts & SR_EDIT_ISOLATE);
 
 cleanup:
-    if (ctx_mode && !session->dt[session->ds].edit) {
-        /* CONTEXT UNLOCK */
-        sr_lycc_unlock(session->conn, SR_LOCK_READ, 0);
+    if (session->dt[session->ds].edit && !session->dt[session->ds].edit->tree) {
+        sr_release_data(session->dt[session->ds].edit);
+        session->dt[session->ds].edit = NULL;
     }
     free(pref_origin);
     return sr_api_ret(session, err_info);
@@ -2902,32 +2930,32 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
     if (session->dt[session->ds].edit) {
         /* do not allow merging NETCONF edits into sysrepo ones, it can cause some unexpected results */
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "There are already some session changes.");
-        return sr_api_ret(session, err_info);
+        goto cleanup;
     }
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         goto cleanup;
     }
 
     if (session->conn->ly_ctx != LYD_CTX(edit)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Data trees must be created using the session connection libyang context.");
-        goto cleanup;
+        goto cleanup_unlock;
     }
 
     if (lyd_dup_siblings(edit, NULL, LYD_DUP_RECURSIVE, &dup_edit)) {
         sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
-        goto cleanup;
+        goto cleanup_unlock;
     }
 
     /* add default operation and default origin */
     LY_LIST_FOR(dup_edit, root) {
         if (!sr_edit_diff_find_oper(root, 0, NULL) && (err_info = sr_edit_set_oper(root, default_operation))) {
-            goto cleanup;
+            goto cleanup_unlock;
         }
         if (session->ds == SR_DS_OPERATIONAL) {
             if ((err_info = sr_edit_diff_set_origin(root, SR_OPER_ORIGIN, 0))) {
-                goto cleanup;
+                goto cleanup_unlock;
             }
 
             /* check that no forbidden operations are set */
@@ -2936,7 +2964,7 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
                 if (op && (op != EDIT_MERGE) && (op != EDIT_REMOVE) && (op != EDIT_PURGE) && (op != EDIT_ETHER)) {
                     sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Operation \"%s\" is not allowed for operational "
                             "datastore changes.", sr_edit_op2str(op));
-                    goto cleanup;
+                    goto cleanup_unlock;
                 }
 
                 LYD_TREE_DFS_END(root, elem);
@@ -2944,15 +2972,19 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
         }
     }
 
-    session->dt[session->ds].edit = dup_edit;
+    /* store edit in the session, keep context lock */
+    if ((err_info = _sr_acquire_data(session->conn, dup_edit, &session->dt[session->ds].edit))) {
+        goto cleanup;
+    }
     dup_edit = NULL;
+    goto cleanup;
+
+cleanup_unlock:
+    /* CONTEXT UNLOCK */
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
 
 cleanup:
     lyd_free_siblings(dup_edit);
-    if (!session->dt[session->ds].edit) {
-        /* CONTEXT UNLOCK */
-        sr_lycc_unlock(session->conn, SR_LOCK_READ, 0);
-    }
     return sr_api_ret(session, err_info);
 }
 
@@ -2961,7 +2993,7 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod = NULL;
-    const struct lyd_node *node;
+    const struct lyd_node *node, *edit;
     struct sr_mod_info_s mod_info;
 
     SR_CHECK_ARG_APIRET(!session, session, err_info);
@@ -2973,9 +3005,10 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
     SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds);
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
+    edit = session->dt[session->ds].edit ? session->dt[session->ds].edit->tree : NULL;
 
     if (module_name) {
         /* try to find this module */
@@ -2989,14 +3022,14 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
     switch (session->ds) {
     case SR_DS_STARTUP:
     case SR_DS_RUNNING:
-        if (!session->dt[session->ds].edit) {
+        if (!edit) {
             /* nothing to validate */
             goto cleanup;
         }
 
         if (ly_mod) {
             /* check that there are some changes for this module */
-            LY_LIST_FOR(session->dt[session->ds].edit, node) {
+            LY_LIST_FOR(edit, node) {
                 if (lyd_owner_module(node) == ly_mod) {
                     break;
                 }
@@ -3011,7 +3044,7 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
             }
         } else {
             /* collect all modified modules (other modules must be valid) */
-            if ((err_info = sr_modinfo_collect_edit(session->dt[session->ds].edit, &mod_info))) {
+            if ((err_info = sr_modinfo_collect_edit(edit, &mod_info))) {
                 goto cleanup;
             }
         }
@@ -3039,7 +3072,7 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
     }
 
     /* apply any changes */
-    if ((err_info = sr_modinfo_edit_apply(&mod_info, session->dt[session->ds].edit, 0))) {
+    if ((err_info = sr_modinfo_edit_apply(&mod_info, edit, 0))) {
         goto cleanup;
     }
 
@@ -3078,7 +3111,7 @@ cleanup:
     sr_modinfo_erase(&mod_info);
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
     return sr_api_ret(session, err_info);
 }
 
@@ -3351,7 +3384,7 @@ sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
     }
 
     /* collect all required modules */
-    if ((err_info = sr_modinfo_collect_edit(session->dt[session->ds].edit, &mod_info))) {
+    if ((err_info = sr_modinfo_collect_edit(session->dt[session->ds].edit->tree, &mod_info))) {
         goto cleanup;
     }
 
@@ -3362,7 +3395,7 @@ sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
     }
 
     /* create diff */
-    if ((err_info = sr_modinfo_edit_apply(&mod_info, session->dt[session->ds].edit, 1))) {
+    if ((err_info = sr_modinfo_edit_apply(&mod_info, session->dt[session->ds].edit->tree, 1))) {
         goto cleanup;
     }
 
@@ -3376,11 +3409,8 @@ cleanup:
 
     if (!err_info && !cb_err_info) {
         /* free applied edit */
-        lyd_free_all(session->dt[session->ds].edit);
+        sr_release_data(session->dt[session->ds].edit);
         session->dt[session->ds].edit = NULL;
-
-        /* CONTEXT UNLOCK */
-        sr_lycc_unlock(session->conn, SR_LOCK_READ, 0);
     }
     if (cb_err_info) {
         /* return callback error if some was generated */
@@ -3407,15 +3437,8 @@ sr_discard_changes(sr_session_ctx_t *session)
 
     SR_CHECK_ARG_APIRET(!session, session, err_info);
 
-    if (!session->dt[session->ds].edit) {
-        return sr_api_ret(session, NULL);
-    }
-
-    lyd_free_all(session->dt[session->ds].edit);
+    sr_release_data(session->dt[session->ds].edit);
     session->dt[session->ds].edit = NULL;
-
-    /* CONTEXT UNLOCK */
-    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0);
 
     return sr_api_ret(session, NULL);
 }
@@ -3487,7 +3510,7 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
     SR_CHECK_ARG_APIRET(!session || !SR_IS_CONVENTIONAL_DS(session->ds), session, err_info);
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -3522,7 +3545,7 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
 
 cleanup:
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
 
     lyd_free_all(src_config);
     return sr_api_ret(session, err_info);
@@ -3549,7 +3572,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
     SR_MODINFO_INIT(mod_info, session->conn, src_datastore, src_datastore);
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -3620,7 +3643,7 @@ cleanup:
     sr_modinfo_erase(&mod_info);
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
     return sr_api_ret(session, err_info);
 }
 
@@ -3745,7 +3768,7 @@ _sr_un_lock(sr_session_ctx_t *session, const char *module_name, int lock)
     SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds);
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -3792,7 +3815,7 @@ cleanup:
     sr_modinfo_erase(&mod_info);
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
     return sr_api_ret(session, err_info);
 }
 
@@ -3831,7 +3854,7 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
     SR_MODINFO_INIT(mod_info, conn, datastore, datastore);
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(NULL, err_info);
     }
 
@@ -3911,7 +3934,7 @@ cleanup:
     sr_modinfo_erase(&mod_info);
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
     return sr_api_ret(NULL, err_info);
 }
 
@@ -3961,7 +3984,7 @@ sr_subscription_process_events(sr_subscription_ctx_t *subscription, sr_session_c
     }
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(subscription->conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(subscription->conn, SR_LOCK_READ, 0, __func__))) {
         goto cleanup_unlock;
     }
     ctx_mode = SR_LOCK_READ;
@@ -4020,8 +4043,10 @@ sr_subscription_process_events(sr_subscription_ctx_t *subscription, sr_session_c
     }
 
 cleanup_unlock:
-    /* CONTEXT UNLOCK */
-    sr_lycc_unlock(subscription->conn, ctx_mode, 0);
+    if (ctx_mode) {
+        /* CONTEXT UNLOCK */
+        sr_lycc_unlock(subscription->conn, ctx_mode, 0, __func__);
+    }
 
     /* SUBS READ UNLOCK */
     sr_rwunlock(&subscription->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscription->conn->cid, __func__);
@@ -4565,7 +4590,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     sub_opts = opts & (SR_SUBSCR_DONE_ONLY | SR_SUBSCR_PASSIVE | SR_SUBSCR_UPDATE);
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -4652,7 +4677,7 @@ error1:
     }
 
 cleanup:
-    if (chsub_lock_mode != SR_LOCK_NONE) {
+    if (chsub_lock_mode) {
         /* CHANGE SUB UNLOCK */
         sr_rwunlock(&shm_mod->change_sub[session->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, chsub_lock_mode, conn->cid, __func__);
     }
@@ -4666,7 +4691,7 @@ cleanup:
     sr_modinfo_erase(&mod_info);
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
     return sr_api_ret(session, err_info);
 }
 
@@ -5169,7 +5194,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     conn = session->conn;
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -5246,7 +5271,7 @@ error1:
 
 cleanup:
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
     free(module_name);
     free(path);
     return sr_api_ret(session, err_info);
@@ -5286,7 +5311,7 @@ sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *input, 
     *output_cnt = 0;
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -5335,7 +5360,7 @@ cleanup:
     sr_release_data(output_data);
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
     if (err_info) {
         sr_free_values(*output, *output_cnt);
     }
@@ -5366,7 +5391,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     SR_MODINFO_INIT(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING);
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -5563,7 +5588,7 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
     conn = session->conn;
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -5641,7 +5666,7 @@ error1:
 
 cleanup:
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
     return sr_api_ret(session, err_info);
 }
 
@@ -5676,7 +5701,7 @@ sr_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t *value
     SR_CHECK_ARG_APIRET(!session || !path, session, err_info);
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -5702,7 +5727,7 @@ cleanup:
     lyd_free_all(notif_tree);
 
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
     return ret ? ret : sr_api_ret(session, err_info);
 }
 
@@ -5969,7 +5994,7 @@ sr_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t sub_
     }
 
     /* check stop time validity */
-    if (stop_time && !notif_sub->start_time.tv_sec && (sr_time_cmp(stop_time, &notif_sub->start_time) < 0)) {
+    if (stop_time && SR_TS_IS_ZERO(notif_sub->start_time) && (sr_time_cmp(stop_time, &notif_sub->start_time) < 0)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Stop time cannot be earlier than start time.");
         goto cleanup_unlock;
     }
@@ -6031,7 +6056,7 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
     sub_opts = opts & SR_SUBSCR_OPER_MERGE;
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0))) {
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(session, err_info);
     }
 
@@ -6101,6 +6126,6 @@ error1:
 
 cleanup:
     /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, SR_LOCK_READ, 0);
+    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
     return sr_api_ret(session, err_info);
 }

@@ -1460,7 +1460,7 @@ sr_lydmods_update_replay_support_module(sr_conn_ctx_t *conn, const struct lys_mo
             SR_ERRINFO_DSPLUGIN(&err_info, rc, "earliest_get", ntf_plg->name, ly_mod->name);
             return err_info;
         }
-        if (!ts.tv_sec) {
+        if (SR_TS_IS_ZERO(ts)) {
             sr_time_get(&ts, 0);
         }
         if (ly_time_ts2str(&ts, &buf)) {

@@ -37,30 +37,48 @@
 #include "sysrepo_types.h"
 
 sr_error_info_t *
-sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock)
+sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const char *func)
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
     sr_lock_mode_t remap_mode = SR_LOCK_NONE;
     struct sr_shmmod_recover_cb_s cb_data;
 
-    cb_data.ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, "sysrepo");
+    cb_data.ly_ctx_p = &conn->ly_ctx;
     cb_data.ds = SR_DS_STARTUP;
 
     /* CONTEXT LOCK */
-    if ((err_info = sr_rwlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, __func__,
+    if ((err_info = sr_rwlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func,
             sr_shmmod_recover_cb, &cb_data))) {
         return err_info;
     }
 
+    /* MOD REMAP LOCK */
+    if ((err_info = sr_rwlock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func,
+            NULL, NULL))) {
+        goto cleanup_unlock;
+    }
+    remap_mode = SR_LOCK_READ;
+
     /* check whether the context is current and does not need to be udpated */
     if (main_shm->content_id != conn->content_id) {
+        /* MOD REMAP UNLOCK */
+        sr_rwunlock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func);
+        remap_mode = SR_LOCK_NONE;
+
+        /* MOD REMAP LOCK */
+        if ((err_info = sr_rwlock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, func,
+                NULL, NULL))) {
+            goto cleanup_unlock;
+        }
+        remap_mode = SR_LOCK_WRITE;
+
         if (conn->opts & SR_CONN_CACHE_RUNNING) {
             /* context will be destroyed, free the cache */
 
             /* CACHE WRITE LOCK */
             if ((err_info = sr_rwlock(&conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-                    __func__, NULL, NULL))) {
+                    func, NULL, NULL))) {
                 goto cleanup_unlock;
             }
 
@@ -71,27 +89,13 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock)
             conn->mod_cache.mod_count = 0;
 
             /* CACHE WRITE UNLOCK */
-            sr_rwunlock(&conn->mod_cache.lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+            sr_rwunlock(&conn->mod_cache.lock, 0, SR_LOCK_WRITE, conn->cid, func);
         }
-
-        /* MOD REMAP LOCK */
-        if ((err_info = sr_rwlock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
-                NULL, NULL))) {
-            goto cleanup_unlock;
-        }
-        remap_mode = SR_LOCK_WRITE;
 
         /* remap mod SHM */
         if ((err_info = sr_shm_remap(&conn->mod_shm, 0))) {
             goto cleanup_unlock;
         }
-
-        /* MOD REMAP DOWNGRADE */
-        if ((err_info = sr_rwrelock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
-                NULL, NULL))) {
-            goto cleanup_unlock;
-        }
-        remap_mode = SR_LOCK_READ;
 
         /* context was updated, destroy and initialize it */
         ly_ctx_destroy(conn->ly_ctx);
@@ -104,11 +108,9 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock)
             goto cleanup_unlock;
         }
         conn->content_id = main_shm->content_id;
-    } else {
-        /* we have current context but will be using it */
 
-        /* MOD REMAP LOCK */
-        if ((err_info = sr_rwlock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
+        /* MOD REMAP DOWNGRADE */
+        if ((err_info = sr_rwrelock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func,
                 NULL, NULL))) {
             goto cleanup_unlock;
         }
@@ -116,7 +118,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock)
     }
 
     /* LYDMODS LOCK */
-    if (lydmods_lock && (err_info = sr_mlock(&main_shm->lydmods_lock, SR_CONTEXT_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+    if (lydmods_lock && (err_info = sr_mlock(&main_shm->lydmods_lock, SR_CONTEXT_LOCK_TIMEOUT, func, NULL, NULL))) {
         goto cleanup_unlock;
     }
 
@@ -124,26 +126,26 @@ cleanup_unlock:
     if (err_info) {
         if (remap_mode) {
             /* MOD REMAP UNLOCK */
-            sr_rwunlock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, remap_mode, conn->cid, __func__);
+            sr_rwunlock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, remap_mode, conn->cid, func);
         }
         /* CONTEXT UNLOCK */
-        sr_rwunlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, __func__);
+        sr_rwunlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func);
     }
     return err_info;
 }
 
 sr_error_info_t *
-sr_lycc_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode)
+sr_lycc_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func)
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
     struct sr_shmmod_recover_cb_s cb_data;
 
-    cb_data.ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, "sysrepo");
+    cb_data.ly_ctx_p = &conn->ly_ctx;
     cb_data.ds = SR_DS_STARTUP;
 
     /* RELOCK */
-    if ((err_info = sr_rwrelock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, __func__,
+    if ((err_info = sr_rwrelock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func,
             sr_shmmod_recover_cb, &cb_data))) {
         return err_info;
     }
@@ -153,20 +155,22 @@ sr_lycc_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode)
 }
 
 void
-sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock)
+sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const char *func)
 {
     sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
 
-    /* LYDMODS LOCK */
+    assert(mode);
+
+    /* LYDMODS UNLOCK */
     if (lydmods_lock) {
         sr_munlock(&main_shm->lydmods_lock);
     }
 
     /* MOD REMAP UNLOCK */
-    sr_rwunlock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+    sr_rwunlock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func);
 
-    /* UNLOCK */
-    sr_rwunlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, __func__);
+    /* CONTEXT UNLOCK */
+    sr_rwunlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func);
 }
 
 sr_error_info_t *

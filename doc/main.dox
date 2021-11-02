@@ -193,7 +193,7 @@ outlined below. Note that there is often additional information about what is ex
 parameter.
 
 __XPath__ accepts any expression that _libyang_ does. But _libyang_ uses [JSON](https://tools.ietf.org/html/rfc7951)
-module prefixes instead of XML prefixes of the module namespaces, which means that simply module names have to be used.
+module prefixes instead of XML prefixes of the module namespaces, which simply means that module names have to be used.
 
 __Path__ is similar to _XPath_ defined above with some restrictions. It follows the JSON [instance-identifier](https://tools.ietf.org/html/rfc7951#section-6.11) format meaning modules are strictly inherited from parents unless explicitly specified.
 Additionally, it is possible to use predicates to restrict nodes and wildcards can be used instead of node

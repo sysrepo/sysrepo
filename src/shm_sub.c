@@ -2460,14 +2460,48 @@ sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t
     return 0;
 }
 
+/**
+ * @brief Check edit obtained from the update event.
+ *
+ * @param[in] ev_sess Update event session with the edit.
+ * @param[in] module_name Subscription module name.
+ * @param[out] err_code Error code in case the edit is invalid.
+ */
+static void
+sr_shmsub_change_listen_check_update_edit(sr_session_ctx_t *ev_sess, const char *module_name, sr_error_t *err_code)
+{
+    char *path;
+    struct lyd_node *iter;
+
+    if (!ev_sess->dt[ev_sess->ds].edit) {
+        return;
+    }
+
+    LY_LIST_FOR(ev_sess->dt[ev_sess->ds].edit->tree, iter) {
+        if (strcmp(lyd_owner_module(iter)->name, module_name)) {
+            /* generate an error */
+            path = lyd_path(iter, LYD_PATH_STD, NULL, 0);
+            sr_session_set_error_message(ev_sess, "Updated edit with data from another module \"%s\".",
+                    lyd_owner_module(iter)->name);
+            free(path);
+            sr_log_msg(0, SR_LL_ERR, ev_sess->err_info->err[0].message);
+
+            /* set error code */
+            *err_code = SR_ERR_INVAL_ARG;
+            break;
+        }
+    }
+}
+
 sr_error_info_t *
 sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_subs, sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, data_len = 0, valid_subscr_count;
-    char *data = NULL, *path, *shm_data_ptr;
+    char *data = NULL, *shm_data_ptr;
     int ret = SR_ERR_OK;
-    struct lyd_node *diff, *iter;
+    struct lyd_node *diff;
+    sr_data_t *edit_data;
     sr_error_t err_code = SR_ERR_OK;
     struct modsub_changesub_s *change_sub;
     sr_multi_sub_shm_t *multi_sub_shm;
@@ -2584,37 +2618,25 @@ process_event:
      */
     switch (multi_sub_shm->event) {
     case SR_SUB_EV_UPDATE:
-        if (err_code == SR_ERR_OK) {
+        if (!err_code) {
             /* we may have an updated edit (empty is fine), check it */
-            LY_LIST_FOR(ev_sess->dt[ev_sess->ds].edit, iter) {
-                if (strcmp(lyd_owner_module(iter)->name, change_subs->module_name)) {
-                    /* generate an error */
-                    path = lyd_path(iter, LYD_PATH_STD, NULL, 0);
-                    sr_session_set_error_message(ev_sess, "Updated edit with data from another module \"%s\".",
-                            lyd_owner_module(iter)->name);
-                    free(path);
-                    sr_log_msg(0, SR_LL_ERR, ev_sess->err_info->err[0].message);
-
-                    /* prepare the error */
-                    err_code = SR_ERR_INVAL_ARG;
-                    if ((err_info = sr_shmsub_prepare_error(err_code, ev_sess, &data, &data_len))) {
-                        goto cleanup_rdunlock;
-                    }
-                    break;
+            sr_shmsub_change_listen_check_update_edit(ev_sess, change_subs->module_name, &err_code);
+            if (err_code) {
+                /* prepare the error */
+                if ((err_info = sr_shmsub_prepare_error(err_code, ev_sess, &data, &data_len))) {
+                    goto cleanup_rdunlock;
                 }
-            }
-            if (iter) {
-                break;
-            }
-
-            /* print it into LYB */
-            if ((err_info = sr_lyd_print_lyb(ev_sess->dt[ev_sess->ds].edit, &data, &data_len))) {
-                goto cleanup_rdunlock;
+            } else {
+                /* print edit into LYB */
+                edit_data = ev_sess->dt[ev_sess->ds].edit;
+                if ((err_info = sr_lyd_print_lyb(edit_data ? edit_data->tree : NULL, &data, &data_len))) {
+                    goto cleanup_rdunlock;
+                }
             }
         }
     /* fallthrough */
     case SR_SUB_EV_CHANGE:
-        if (err_code != SR_ERR_OK) {
+        if (err_code) {
             /* prepare error from session to be written to SHM */
             if ((err_info = sr_shmsub_prepare_error(err_code, ev_sess, &data, &data_len))) {
                 goto cleanup_rdunlock;
@@ -3471,15 +3493,15 @@ sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif_subs
 
     for (i = 0; i < notif_subs->sub_count; ++i) {
         notif_sub = &notif_subs->subs[i];
-        if (notif_sub->stop_time.tv_sec) {
+        if (!SR_TS_IS_ZERO(notif_sub->stop_time)) {
             /* remember nearest stop_time */
-            if (!next_stop_time.tv_sec || (sr_time_cmp(&notif_sub->stop_time, &next_stop_time) < 0)) {
+            if (SR_TS_IS_ZERO(next_stop_time) || (sr_time_cmp(&notif_sub->stop_time, &next_stop_time) < 0)) {
                 next_stop_time = notif_sub->stop_time;
             }
         }
     }
 
-    if (!next_stop_time.tv_sec) {
+    if (SR_TS_IS_ZERO(next_stop_time)) {
         return;
     }
 
@@ -3489,7 +3511,7 @@ sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif_subs
         stop_time_in->tv_nsec = 1;
     } else {
         cur_stop_time_in = sr_time_sub(&next_stop_time, &cur_time);
-        if ((!stop_time_in->tv_sec && !stop_time_in->tv_nsec) || (sr_time_cmp(stop_time_in, &cur_stop_time_in) > 0)) {
+        if (SR_TS_IS_ZERO(*stop_time_in) || (sr_time_cmp(stop_time_in, &cur_stop_time_in) > 0)) {
             /* no previous stop time or this one is nearer */
             *stop_time_in = cur_stop_time_in;
         }
@@ -3516,7 +3538,7 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lo
     i = 0;
     while (i < notif_subs->sub_count) {
         notif_sub = &notif_subs->subs[i];
-        if (notif_sub->stop_time.tv_sec && (sr_time_cmp(&notif_sub->stop_time, &cur_ts) < 1)) {
+        if (!SR_TS_IS_ZERO(notif_sub->stop_time) && (sr_time_cmp(&notif_sub->stop_time, &cur_ts) < 1)) {
             if (lock_mode != SR_LOCK_READ_UPGR) {
                 /* SUBS READ UNLOCK */
                 sr_rwunlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscr->conn->cid, __func__);
@@ -3589,7 +3611,7 @@ sr_shmsub_notif_listen_module_replay(struct modsub_notif_s *notif_subs, sr_subsc
 
     for (i = 0; i < notif_subs->sub_count; ++i) {
         notif_sub = &notif_subs->subs[i];
-        if (notif_sub->start_time.tv_sec && !notif_sub->replayed) {
+        if (!SR_TS_IS_ZERO(notif_sub->start_time) && !notif_sub->replayed) {
             /* we need to perform the requested replay */
             if ((err_info = sr_replay_notify(subscr->conn, notif_subs->module_name, notif_sub->sub_id, notif_sub->xpath,
                     &notif_sub->start_time, &notif_sub->stop_time, &notif_sub->listen_since, notif_sub->cb,
@@ -3641,7 +3663,7 @@ sr_shmsub_listen_thread(void *arg)
 
 wait_for_event:
         /* wait an arbitrary long time or until a stop time is elapsed */
-        if (stop_time_in.tv_sec) {
+        if (!SR_TS_IS_ZERO(stop_time_in)) {
             tv.tv_sec = stop_time_in.tv_sec;
             tv.tv_usec = stop_time_in.tv_nsec / 1000;
         } else {
@@ -3659,7 +3681,7 @@ wait_for_event:
             SR_ERRINFO_SYSERRNO(&err_info, "select");
             sr_errinfo_free(&err_info);
             goto error;
-        } else if (!stop_time_in.tv_sec && (!ret || ((ret == -1) && (errno == EINTR)))) {
+        } else if (SR_TS_IS_ZERO(stop_time_in) && (!ret || ((ret == -1) && (errno == EINTR)))) {
             /* timeout/signal received, retry */
             goto wait_for_event;
         }

@@ -101,9 +101,9 @@ struct sr_conn_ctx_s {
 
     int create_lock;                /**< Process-shared file lock for creating main/mod/ext SHM. */
     sr_shm_t main_shm;              /**< Main SHM structure. */
-    sr_rwlock_t mod_remap_lock;         /**< Session-shared lock only for remapping mod SHM. */
+    sr_rwlock_t mod_remap_lock;     /**< Session-shared lock only for remapping mod SHM. */
     sr_shm_t mod_shm;               /**< Mod SHM structure. */
-    sr_rwlock_t ext_remap_lock;         /**< Session-shared lock only for remapping ext SHM. */
+    sr_rwlock_t ext_remap_lock;     /**< Session-shared lock only for remapping ext SHM. */
     sr_shm_t ext_shm;               /**< External SHM structure. */
 
     struct sr_ds_handle_s {
@@ -159,7 +159,7 @@ struct sr_session_ctx_s {
     uint32_t subscription_count;    /**< Subscription count. */
 
     struct {
-        struct lyd_node *edit;      /**< Prepared edit data tree. */
+        sr_data_t *edit;            /**< Prepared edit data tree. */
         struct lyd_node *diff;      /**< Diff data tree, used for module change iterator. */
     } dt[SR_DS_COUNT];              /**< Session-exclusive prepared changes. */
 

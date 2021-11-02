@@ -33,6 +33,7 @@
 #include "common.h"
 #include "compat.h"
 #include "log.h"
+#include "sysrepo.h"
 
 enum insert_val {
     INSERT_DEFAULT = 0,
@@ -2662,7 +2663,7 @@ sr_edit_add_check_same_node_op(sr_session_ctx_t *session, const char *xpath, con
         }
 
         /* find the node */
-        lr = lyd_find_xpath(session->dt[session->ds].edit, uniq_xpath, &set);
+        lr = lyd_find_xpath(session->dt[session->ds].edit->tree, uniq_xpath, &set);
         free(uniq_xpath);
         if (lr || (set->count > 1)) {
             SR_ERRINFO_INT(&err_info);
@@ -2855,8 +2856,8 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     }
 
     /* merge the change into existing edit */
-    lyrc = lyd_new_path2(isolate ? NULL : session->dt[session->ds].edit, session->conn->ly_ctx, xpath, (void *)value,
-            value ? strlen(value) : 0, LYD_ANYDATA_STRING, opts, &parent, &node);
+    lyrc = lyd_new_path2(isolate ? NULL : session->dt[session->ds].edit->tree, session->conn->ly_ctx, xpath,
+            (void *)value, value ? strlen(value) : 0, LYD_ANYDATA_STRING, opts, &parent, &node);
     if (!lyrc && !node) {
         /* NP container existed already (and is always default) */
         lyrc = LY_EEXIST;
@@ -2869,7 +2870,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         /* node with the same operation already exists, silently ignore */
         return NULL;
     }
-    session->dt[session->ds].edit = lyd_first_sibling(session->dt[session->ds].edit);
+    session->dt[session->ds].edit->tree = lyd_first_sibling(session->dt[session->ds].edit->tree);
 
     /* check all the created nodes for forbidden ones */
     if ((err_info = sr_edit_add_check(parent, node))) {
@@ -2878,7 +2879,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
 
     if (isolate) {
         /* connect into one edit */
-        lyd_insert_sibling(session->dt[session->ds].edit, parent, &session->dt[session->ds].edit);
+        lyd_insert_sibling(session->dt[session->ds].edit->tree, parent, &session->dt[session->ds].edit->tree);
     }
 
     /* check arguments */
@@ -2909,11 +2910,11 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
             goto error_safe;
         }
 
-        if (!session->dt[session->ds].edit) {
-            session->dt[session->ds].edit = parent;
+        if (!session->dt[session->ds].edit->tree) {
+            session->dt[session->ds].edit->tree = parent;
         }
     } else {
-        assert(session->dt[session->ds].edit && !isolate);
+        assert(session->dt[session->ds].edit->tree && !isolate);
 
         /* update operations throughout the edit subtree */
         if ((err_info = sr_edit_add_update_op(node, def_operation))) {
@@ -2962,7 +2963,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
 error:
     if (!isolate) {
         /* completely free the current edit because it could have already been modified */
-        lyd_free_all(session->dt[session->ds].edit);
+        sr_release_data(session->dt[session->ds].edit);
         session->dt[session->ds].edit = NULL;
 
         sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Edit was discarded.");
@@ -2971,8 +2972,8 @@ error:
     /* fallthrough */
 error_safe:
     /* free only the created subtree */
-    if (parent && (session->dt[session->ds].edit == parent)) {
-        session->dt[session->ds].edit = parent->next;
+    if (parent && (session->dt[session->ds].edit->tree == parent)) {
+        session->dt[session->ds].edit->tree = parent->next;
     }
     lyd_free_tree(parent);
     return err_info;

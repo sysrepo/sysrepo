@@ -26,18 +26,20 @@
  * @param[in] conn Connection to use.
  * @param[in] mode Requested lock mode.
  * @param[in] lydmods_lock Set if SR internal module data will be modified.
+ * @param[in] func Caller function name.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock);
+sr_error_info_t *sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const char *func);
 
 /**
  * @brief Relock context.
  *
  * @param[in] conn Connection to use.
  * @param[in] mode Requested lock mode.
+ * @param[in] func Caller function name.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lycc_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode);
+sr_error_info_t *sr_lycc_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func);
 
 /**
  * @brief Unlock context after it is no longer accessed.
@@ -45,8 +47,9 @@ sr_error_info_t *sr_lycc_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode);
  * @param[in] conn Connection to use.
  * @param[in] mode Lock mode.
  * @param[in] lydmods_lock Set if SR internal module data were modified.
+ * @param[in] func Caller function name.
  */
-void sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock);
+void sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const char *func);
 
 /**
  * @brief Check that a module can be added.

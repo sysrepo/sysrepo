@@ -1110,6 +1110,7 @@ void
 sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data)
 {
     struct sr_shmmod_recover_cb_s *cb_data = data;
+    const struct lys_module *ly_mod;
 
     (void)cid;
 
@@ -1118,8 +1119,12 @@ sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data)
         return;
     }
 
+    /* get sysrepo module from the context now that it cannot change */
+    ly_mod = ly_ctx_get_module_implemented(*cb_data->ly_ctx_p, "sysrepo");
+    assert(ly_mod);
+
     /* recovery specific for the plugin */
-    cb_data->ds_plg->recover_cb(cb_data->ly_mod, cb_data->ds);
+    cb_data->ds_plg->recover_cb(ly_mod, cb_data->ds);
 }
 
 /**
@@ -1143,8 +1148,8 @@ sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod
     struct sr_shmmod_recover_cb_s cb_data;
     int ds_locked = 0;
 
-    /* fill recovery callback information */
-    cb_data.ly_mod = ly_mod;
+    /* fill recovery callback information, context cannot be changed */
+    cb_data.ly_ctx_p = (struct ly_ctx **)&ly_mod->ctx;
     cb_data.ds = ds;
     cb_data.ds_plg = ds_plg;
 

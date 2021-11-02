@@ -2512,7 +2512,9 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
                 }
             /* fallthrough */
             case SR_SUB_EV_NONE:
-                edit = session->dt[session->ds].edit;
+                if (session->dt[session->ds].edit) {
+                    edit = session->dt[session->ds].edit->tree;
+                }
                 break;
             case SR_SUB_EV_ENABLED:
             case SR_SUB_EV_DONE:
