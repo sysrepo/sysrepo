@@ -2914,6 +2914,7 @@ error:
  * @param[in] request_id Request ID.
  * @param[out] output_op Output tree pointing to the operation node.
  * @param[out] err_code Returned error code if the callback failed.
+ * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ctx_t *ev_sess, const struct lyd_node *input_op,
