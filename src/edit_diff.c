@@ -1303,6 +1303,12 @@ sr_edit_insert(struct lyd_node **first_node, struct lyd_node *parent_node, struc
 
     assert(!(*first_node)->parent || ((*first_node)->parent == (struct lyd_node_inner *)parent_node));
 
+    /* unlink properly first to avoid unwanted behavior (first node equals new_node or new_node is the first sibling) */
+    if (new_node == *first_node) {
+        *first_node = (*first_node)->next;
+    }
+    lyd_unlink_tree(new_node);
+
     /* insert last or first */
     if ((insert == INSERT_DEFAULT) || (insert == INSERT_LAST)) {
         /* default insert is at the last position */
