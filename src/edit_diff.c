@@ -1381,6 +1381,7 @@ sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper
 {
     struct lyd_meta *meta;
     struct lyd_attr *attr;
+    enum edit_op op;
 
     if (!edit) {
         return 0;
@@ -1401,6 +1402,7 @@ sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper
                 }
             }
         } else {
+            op = 0;
             LY_LIST_FOR(((struct lyd_node_opaq *)edit)->attr, attr) {
                 if (!strcmp(attr->name.name, "operation")) {
                     /* try to create a metadata instance and use that */
@@ -1408,11 +1410,15 @@ sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper
                     if (!lyd_new_meta2(LYD_CTX(edit), NULL, 0, attr, &meta)) {
                         if (!strcmp(meta->annotation->module->name, "sysrepo") ||
                                 !strcmp(meta->annotation->module->name, "ietf-netconf")) {
-                            return sr_edit_str2op(lyd_get_meta_value(meta));
+                            op = sr_edit_str2op(lyd_get_meta_value(meta));
                         }
                         lyd_free_meta_single(meta);
                     }
                     ly_log_options(prev_lo);
+
+                    if (op) {
+                        return op;
+                    }
                 }
             }
         }
