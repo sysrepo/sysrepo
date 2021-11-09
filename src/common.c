@@ -3064,7 +3064,7 @@ sr_ev_data_size(const void *data)
     const char *ptr = data;
 
     /* number of data chunks */
-    count = *(uint32_t *)ptr;
+    memcpy(&count, ptr, sizeof count);
 
     ptr += sizeof count;
     for (i = 0; i < count; ++i) {
@@ -3079,7 +3079,7 @@ sr_error_info_t *
 sr_ev_data_push(void **ev_data, uint32_t size, const void *data)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t new_size;
+    uint32_t new_size, count;
     void *mem;
     char *ptr;
 
@@ -3094,17 +3094,19 @@ sr_ev_data_push(void **ev_data, uint32_t size, const void *data)
         return err_info;
     }
     if (!*ev_data) {
-        *(uint32_t *)mem = 0;
+        memset(mem, 0, sizeof count);
     }
 
     *ev_data = mem;
     ptr = ((char *)(*ev_data)) + sr_ev_data_size(*ev_data);
 
     /* new data chunk */
-    ++*((uint32_t *)(*ev_data));
+    memcpy(&count, *ev_data, sizeof count);
+    ++count;
+    memcpy(*ev_data, &count, sizeof count);
 
     /* data chunk size */
-    *(uint32_t *)ptr = size;
+    memcpy(ptr, &size, sizeof size);
 
     /* data chunk */
     memcpy(ptr + sizeof size, data, size);
@@ -3123,7 +3125,7 @@ sr_ev_data_get(const void *ev_data, uint32_t idx, uint32_t *size, void **data)
         return SR_ERR_NOT_FOUND;
     }
 
-    count = *(uint32_t *)ev_data;
+    memcpy(&count, ev_data, sizeof count);
     if (idx >= count) {
         /* out-of-bounds */
         return SR_ERR_NOT_FOUND;
@@ -3132,12 +3134,13 @@ sr_ev_data_get(const void *ev_data, uint32_t idx, uint32_t *size, void **data)
     ptr = ((char *)ev_data) + sizeof count;
     for (i = 0; i < idx; ++i) {
         /* skip data chunk size and the chunk */
-        ptr += sizeof count + *(uint32_t *)ptr;
+        memcpy(&count, ptr, sizeof count);
+        ptr += sizeof count + count;
     }
 
     /* chunk size */
     if (size) {
-        *size = *(uint32_t *)ptr;
+        memcpy(size, ptr, sizeof *size);
     }
     ptr += sizeof count;
 
