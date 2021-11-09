@@ -3060,7 +3060,7 @@ sr_shmrealloc_del(sr_shm_t *shm_ext, off_t *shm_array_off, uint32_t *shm_count, 
 uint32_t
 sr_ev_data_size(const void *data)
 {
-    uint32_t i, count;
+    uint32_t i, count, size;
     const char *ptr = data;
 
     /* number of data chunks */
@@ -3069,7 +3069,8 @@ sr_ev_data_size(const void *data)
     ptr += sizeof count;
     for (i = 0; i < count; ++i) {
         /* chunk size + chunk itself */
-        ptr += sizeof(uint32_t) + *(uint32_t *)ptr;
+        memcpy(&size, ptr, sizeof size);
+        ptr += sizeof size + size;
     }
 
     return ptr - (char *)data;
@@ -3086,7 +3087,7 @@ sr_ev_data_push(void **ev_data, uint32_t size, const void *data)
     if (*ev_data) {
         new_size = sr_ev_data_size(*ev_data) + sizeof size + size;
     } else {
-        new_size = sizeof(uint32_t) + sizeof size + size;
+        new_size = sizeof count + sizeof size + size;
     }
     mem = realloc(*ev_data, new_size);
     if (!mem) {
@@ -3117,7 +3118,7 @@ sr_ev_data_push(void **ev_data, uint32_t size, const void *data)
 sr_error_t
 sr_ev_data_get(const void *ev_data, uint32_t idx, uint32_t *size, void **data)
 {
-    uint32_t count, i;
+    uint32_t count, sz, i;
     char *ptr;
 
     if (!ev_data) {
@@ -3134,15 +3135,15 @@ sr_ev_data_get(const void *ev_data, uint32_t idx, uint32_t *size, void **data)
     ptr = ((char *)ev_data) + sizeof count;
     for (i = 0; i < idx; ++i) {
         /* skip data chunk size and the chunk */
-        memcpy(&count, ptr, sizeof count);
-        ptr += sizeof count + count;
+        memcpy(&sz, ptr, sizeof sz);
+        ptr += sizeof sz + sz;
     }
 
     /* chunk size */
     if (size) {
         memcpy(size, ptr, sizeof *size);
     }
-    ptr += sizeof count;
+    ptr += sizeof *size;
 
     /* chunk data */
     *data = ptr;
