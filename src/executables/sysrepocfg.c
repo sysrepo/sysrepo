@@ -451,7 +451,7 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
     }
 
     /* lock if requested */
-    if (lock && ((r = sr_lock(sess, module_name)) != SR_ERR_OK)) {
+    if (lock && ((r = sr_lock(sess, module_name, 2000)) != SR_ERR_OK)) {
         error_print(r, "Lock failed");
         return EXIT_FAILURE;
     }

@@ -174,7 +174,7 @@ test_basic(void **state)
     free(str);
 
     /* locking not allowed anymore */
-    ret = sr_lock(st->sess, NULL);
+    ret = sr_lock(st->sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_UNSUPPORTED);
 
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
@@ -199,7 +199,7 @@ test_basic(void **state)
     assert_string_equal(str, str2);
     free(str);
 
-    ret = sr_lock(st->sess, NULL);
+    ret = sr_lock(st->sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_unlock(st->sess, NULL);
     assert_int_equal(ret, SR_ERR_OK);
@@ -360,7 +360,7 @@ test_reset_unlock(void **state)
     sr_release_data(data);
 
     /* lock candidate */
-    ret = sr_lock(st->sess, NULL);
+    ret = sr_lock(st->sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* modify candidate */
@@ -432,7 +432,7 @@ test_reset_session_stop(void **state)
     sr_release_data(data);
 
     /* lock candidate */
-    ret = sr_lock(sess2, NULL);
+    ret = sr_lock(sess2, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* modify candidate */

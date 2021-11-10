@@ -504,7 +504,7 @@ test_sr_mon(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* lock modules */
-    ret = sr_lock(st->sess, NULL);
+    ret = sr_lock(st->sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* get new monitoring data */

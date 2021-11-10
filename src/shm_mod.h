@@ -139,18 +139,21 @@ void sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data);
  * @param[in] mod_info Mod info to use.
  * @param[in] upgradeable Whether the lock will be upgraded to WRITE later. Used only for main DS of @p mod_info!
  * @param[in] sid Sysrepo session ID.
+ * @param[in] ds_timeout_ms Timeout in ms for DS-lock in case it is required and locked, if 0 no waiting is performed.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradeable, uint32_t sid);
+sr_error_info_t *sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradeable, uint32_t sid,
+        uint32_t ds_timeout_ms);
 
 /**
  * @brief WRITE lock all modules in mod info. Secondary DS modules, if any, are READ locked.
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] sid Sysrepo session ID.
+ * @param[in] ds_timeout_ms Timeout in ms for DS-lock in case it is required and locked, if 0 no waiting is performed.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_modinfo_wrlock(struct sr_mod_info_s *mod_info, uint32_t sid);
+sr_error_info_t *sr_shmmod_modinfo_wrlock(struct sr_mod_info_s *mod_info, uint32_t sid, uint32_t ds_timeout_ms);
 
 /**
  * @brief Upgrade READ lock on modules in mod info to WRITE lock.
@@ -159,9 +162,10 @@ sr_error_info_t *sr_shmmod_modinfo_wrlock(struct sr_mod_info_s *mod_info, uint32
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] sid Sysrepo session ID.
+ * @param[in] ds_timeout_ms Timeout in ms for DS-lock in case it is required and locked, if 0 no waiting is performed.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, uint32_t sid);
+sr_error_info_t *sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, uint32_t sid, uint32_t ds_timeout_ms);
 
 /**
  * @brief Downgrade WRITE lock on modules in mod info to READ lock.

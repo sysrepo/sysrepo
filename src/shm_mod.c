@@ -1135,23 +1135,28 @@ sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data)
  * @param[in] shm_lock Main SHM module lock.
  * @param[in] timeout_ms Timeout in ms.
  * @param[in] mode Lock mode of the module.
+ * @param[in] ds_timeout_ms Timeout in ms for DS-lock in case it is required and locked, if 0 no waiting is performed.
  * @param[in] cid Connection ID.
  * @param[in] sid Sysrepo session ID to store.
  * @param[in] ds_plg DS plugin.
  * @param[in] relock Whether some lock is already held or not.
  */
 static sr_error_info_t *
-sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod_lock_s *shm_lock, int timeout_ms,
-        sr_lock_mode_t mode, sr_cid_t cid, uint32_t sid, struct srplg_ds_s *ds_plg, int relock)
+sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod_lock_s *shm_lock, uint32_t timeout_ms,
+        sr_lock_mode_t mode, uint32_t ds_timeout_ms, sr_cid_t cid, uint32_t sid, struct srplg_ds_s *ds_plg, int relock)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     struct sr_shmmod_recover_cb_s cb_data;
-    int ds_locked = 0;
+    int ds_locked;
+    uint32_t sleep_ms;
 
     /* fill recovery callback information, context cannot be changed */
     cb_data.ly_ctx_p = (struct ly_ctx **)&ly_mod->ctx;
     cb_data.ds = ds;
     cb_data.ds_plg = ds_plg;
+
+ds_lock_retry:
+    ds_locked = 0;
 
     if (relock) {
         /* RELOCK */
@@ -1161,28 +1166,26 @@ sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod
         err_info = sr_rwlock(&shm_lock->data_lock, timeout_ms, mode, cid, __func__, sr_shmmod_recover_cb, &cb_data);
     }
     if (err_info) {
-        return err_info;
+        goto cleanup;
     }
 
     if ((mode == SR_LOCK_READ_UPGR) || (mode == SR_LOCK_WRITE)) {
         /* DS LOCK */
-        if ((err_info = sr_mlock(&shm_lock->ds_lock, SR_DS_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+        if ((err_info = sr_mlock(&shm_lock->ds_lock, SR_DS_LOCK_MUTEX_TIMEOUT, __func__, NULL, NULL))) {
             goto revert_lock;
         }
 
         /* DS lock cannot be held for these lock modes */
         if (shm_lock->ds_lock_sid && (shm_lock->ds_lock_sid != sid)) {
-            sr_errinfo_new(&err_info, SR_ERR_LOCKED, "Module \"%s\" is DS-locked by session %" PRIu32 ".",
-                    ly_mod->name, shm_lock->ds_lock_sid);
             ds_locked = 1;
         }
 
         /* DS UNLOCK */
         sr_munlock(&shm_lock->ds_lock);
+    }
 
-        if (ds_locked) {
-            goto revert_lock;
-        }
+    if (ds_locked) {
+        goto revert_lock;
     }
 
     return NULL;
@@ -1204,6 +1207,28 @@ revert_lock:
         /* UNLOCK */
         sr_rwunlock(&shm_lock->data_lock, timeout_ms, mode, cid, __func__);
     }
+
+    if (err_info) {
+        /* error */
+        goto cleanup;
+    }
+
+    assert(ds_locked);
+    if (ds_timeout_ms) {
+        /* sleep for the step/whatever is left and retry */
+        sleep_ms = (ds_timeout_ms >= SR_DS_LOCK_TIMEOUT_STEP) ? SR_DS_LOCK_TIMEOUT_STEP : ds_timeout_ms;
+        if ((err_info = sr_msleep(sleep_ms))) {
+            goto cleanup;
+        }
+        ds_timeout_ms -= sleep_ms;
+        goto ds_lock_retry;
+    } else {
+        /* timeout elapsed */
+        sr_errinfo_new(&err_info, SR_ERR_LOCKED, "Module \"%s\" is DS-locked by session %" PRIu32 ".",
+                ly_mod->name, shm_lock->ds_lock_sid);
+    }
+
+cleanup:
     return err_info;
 }
 
@@ -1217,11 +1242,12 @@ revert_lock:
  * @param[in] mode Lock mode.
  * @param[in] lock_bit Bit to set for all locked modules.
  * @param[in] sid Session ID.
+ * @param[in] ds_timeout_ms Timeout in ms for DS-lock in case it is required and locked, if 0 no waiting is performed.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_shmmod_modinfo_lock(struct sr_mod_info_s *mod_info, sr_datastore_t ds, uint32_t skip_state, uint32_t req_bit,
-        sr_lock_mode_t mode, uint32_t lock_bit, uint32_t sid)
+        sr_lock_mode_t mode, uint32_t lock_bit, uint32_t sid, uint32_t ds_timeout_ms)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -1243,8 +1269,8 @@ sr_shmmod_modinfo_lock(struct sr_mod_info_s *mod_info, sr_datastore_t ds, uint32
         }
 
         /* MOD LOCK */
-        if ((err_info = sr_shmmod_lock(mod->ly_mod, ds, shm_lock, SR_MOD_LOCK_TIMEOUT, mode, mod_info->conn->cid, sid,
-                mod->ds_plg, 0))) {
+        if ((err_info = sr_shmmod_lock(mod->ly_mod, ds, shm_lock, SR_MOD_LOCK_TIMEOUT, mode, ds_timeout_ms,
+                mod_info->conn->cid, sid, mod->ds_plg, 0))) {
             return err_info;
         }
 
@@ -1256,28 +1282,28 @@ sr_shmmod_modinfo_lock(struct sr_mod_info_s *mod_info, sr_datastore_t ds, uint32
 }
 
 sr_error_info_t *
-sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradeable, uint32_t sid)
+sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradeable, uint32_t sid, uint32_t ds_timeout_ms)
 {
     sr_error_info_t *err_info = NULL;
 
     if (upgradeable) {
         /* read-upgr-lock main DS */
         if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds, MOD_INFO_RLOCK | MOD_INFO_RLOCK_UPGR |
-                MOD_INFO_WLOCK, 0, SR_LOCK_READ_UPGR, MOD_INFO_RLOCK_UPGR, sid))) {
+                MOD_INFO_WLOCK, 0, SR_LOCK_READ_UPGR, MOD_INFO_RLOCK_UPGR, sid, ds_timeout_ms))) {
             return err_info;
         }
     }
 
     /* read-lock main DS */
     if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds, MOD_INFO_RLOCK | MOD_INFO_RLOCK_UPGR |
-            MOD_INFO_WLOCK, 0, SR_LOCK_READ, MOD_INFO_RLOCK, sid))) {
+            MOD_INFO_WLOCK, 0, SR_LOCK_READ, MOD_INFO_RLOCK, sid, 0))) {
         return err_info;
     }
 
     if (mod_info->ds2 != mod_info->ds) {
         /* read-lock the secondary DS */
         if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds2, MOD_INFO_RLOCK2, 0, SR_LOCK_READ,
-                MOD_INFO_RLOCK2, sid))) {
+                MOD_INFO_RLOCK2, sid, 0))) {
             return err_info;
         }
     }
@@ -1286,20 +1312,20 @@ sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradeable, uint32
 }
 
 sr_error_info_t *
-sr_shmmod_modinfo_wrlock(struct sr_mod_info_s *mod_info, uint32_t sid)
+sr_shmmod_modinfo_wrlock(struct sr_mod_info_s *mod_info, uint32_t sid, uint32_t ds_timeout_ms)
 {
     sr_error_info_t *err_info = NULL;
 
     /* write-lock main DS */
     if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds, MOD_INFO_RLOCK | MOD_INFO_RLOCK_UPGR |
-            MOD_INFO_WLOCK, 0, SR_LOCK_WRITE, MOD_INFO_WLOCK, sid))) {
+            MOD_INFO_WLOCK, 0, SR_LOCK_WRITE, MOD_INFO_WLOCK, sid, ds_timeout_ms))) {
         return err_info;
     }
 
     if (mod_info->ds2 != mod_info->ds) {
         /* read-lock the secondary DS */
         if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds2, MOD_INFO_RLOCK2, 0, SR_LOCK_READ,
-                MOD_INFO_RLOCK2, sid))) {
+                MOD_INFO_RLOCK2, sid, 0))) {
             return err_info;
         }
     }
@@ -1308,7 +1334,7 @@ sr_shmmod_modinfo_wrlock(struct sr_mod_info_s *mod_info, uint32_t sid)
 }
 
 sr_error_info_t *
-sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, uint32_t sid)
+sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, uint32_t sid, uint32_t ds_timeout_ms)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -1324,7 +1350,7 @@ sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, uint32_t sid)
         if ((mod->state & (MOD_INFO_RLOCK_UPGR | MOD_INFO_REQ)) == (MOD_INFO_RLOCK_UPGR | MOD_INFO_REQ)) {
             /* MOD WRITE UPGRADE */
             if ((err_info = sr_shmmod_lock(mod->ly_mod, mod_info->ds, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE,
-                    mod_info->conn->cid, sid, mod->ds_plg, 1))) {
+                    ds_timeout_ms, mod_info->conn->cid, sid, mod->ds_plg, 1))) {
                 return err_info;
             }
 
@@ -1353,7 +1379,7 @@ sr_shmmod_modinfo_wrlock_downgrade(struct sr_mod_info_s *mod_info, uint32_t sid)
         if (mod->state & MOD_INFO_WLOCK) {
             /* MOD READ DOWNGRADE */
             if ((err_info = sr_shmmod_lock(mod->ly_mod, mod_info->ds, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ_UPGR,
-                    mod_info->conn->cid, sid, mod->ds_plg, 1))) {
+                    0, mod_info->conn->cid, sid, mod->ds_plg, 1))) {
                 return err_info;
             }
 
@@ -1426,7 +1452,7 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid)
             shm_lock = &smod->data_lock_info[ds];
 
             /* DS LOCK */
-            if ((err_info = sr_mlock(&shm_lock->ds_lock, SR_DS_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+            if ((err_info = sr_mlock(&shm_lock->ds_lock, SR_DS_LOCK_MUTEX_TIMEOUT, __func__, NULL, NULL))) {
                 sr_errinfo_free(&err_info);
                 continue;
             }
@@ -1452,7 +1478,7 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid)
                 }
 
                 /* MOD WRITE LOCK */
-                if ((err_info = sr_shmmod_lock(ly_mod, ds, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+                if ((err_info = sr_shmmod_lock(ly_mod, ds, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE, 0, conn->cid,
                         sid, ds_plg, 0))) {
                     sr_errinfo_free(&err_info);
                 } else {

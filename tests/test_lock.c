@@ -34,6 +34,7 @@
 
 struct state {
     sr_conn_ctx_t *conn;
+    pthread_barrier_t barrier;
 };
 
 static int
@@ -64,6 +65,8 @@ setup(void **state)
         return 1;
     }
 
+    pthread_barrier_init(&st->barrier, NULL, 2);
+
     return 0;
 }
 
@@ -79,6 +82,7 @@ teardown(void **state)
     sr_remove_module(st->conn, "test", 0);
 
     sr_disconnect(st->conn);
+    pthread_barrier_destroy(&st->barrier);
     free(st);
     return 0;
 }
@@ -95,19 +99,19 @@ test_one_session(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* lock a nonexistent module */
-    ret = sr_lock(sess, "no_mod");
+    ret = sr_lock(sess, "no_mod", 0);
     assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
     /* lock all modules */
-    ret = sr_lock(sess, NULL);
+    ret = sr_lock(sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to lock all modules again */
-    ret = sr_lock(sess, NULL);
+    ret = sr_lock(sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_LOCKED);
 
     /* try to lock already locked module */
-    ret = sr_lock(sess, "test");
+    ret = sr_lock(sess, "test", 0);
     assert_int_equal(ret, SR_ERR_LOCKED);
 
     /* try to unlock a locked module */
@@ -119,7 +123,7 @@ test_one_session(void **state)
     assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
 
     /* try to lock a unlocked module */
-    ret = sr_lock(sess, "test");
+    ret = sr_lock(sess, "test", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* unlock all modules */
@@ -131,11 +135,11 @@ test_one_session(void **state)
     assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
 
     /* lock a module */
-    ret = sr_lock(sess, "test");
+    ret = sr_lock(sess, "test", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* lock another module */
-    ret = sr_lock(sess, "when1");
+    ret = sr_lock(sess, "when1", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to unlock a non-locked module */
@@ -143,7 +147,7 @@ test_one_session(void **state)
     assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
 
     /* try to lock all modules */
-    ret = sr_lock(sess, NULL);
+    ret = sr_lock(sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_LOCKED);
 
     /* try to unlock all modules */
@@ -178,11 +182,11 @@ test_multi_session(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* lock all modules */
-    ret = sr_lock(sess1, NULL);
+    ret = sr_lock(sess1, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try lock/unlock from other session */
-    ret = sr_lock(sess2, NULL);
+    ret = sr_lock(sess2, NULL, 0);
     assert_int_equal(ret, SR_ERR_LOCKED);
     ret = sr_unlock(sess2, NULL);
     assert_int_equal(ret, SR_ERR_LOCKED);
@@ -192,7 +196,7 @@ test_multi_session(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* lock all modules from the other session, leave locked */
-    ret = sr_lock(sess2, NULL);
+    ret = sr_lock(sess2, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /*
@@ -202,11 +206,11 @@ test_multi_session(void **state)
     sr_session_switch_ds(sess2, SR_DS_CANDIDATE);
 
     /* lock all modules */
-    ret = sr_lock(sess1, NULL);
+    ret = sr_lock(sess1, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try lock/unlock from other session */
-    ret = sr_lock(sess2, NULL);
+    ret = sr_lock(sess2, NULL, 0);
     assert_int_equal(ret, SR_ERR_LOCKED);
     ret = sr_unlock(sess2, NULL);
     assert_int_equal(ret, SR_ERR_LOCKED);
@@ -216,7 +220,7 @@ test_multi_session(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* lock all modules from the other session, leave locked */
-    ret = sr_lock(sess2, NULL);
+    ret = sr_lock(sess2, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /*
@@ -226,11 +230,11 @@ test_multi_session(void **state)
     sr_session_switch_ds(sess2, SR_DS_STARTUP);
 
     /* lock all modules */
-    ret = sr_lock(sess1, NULL);
+    ret = sr_lock(sess1, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try lock/unlock from other session */
-    ret = sr_lock(sess2, NULL);
+    ret = sr_lock(sess2, NULL, 0);
     assert_int_equal(ret, SR_ERR_LOCKED);
     ret = sr_unlock(sess2, NULL);
     assert_int_equal(ret, SR_ERR_LOCKED);
@@ -240,7 +244,7 @@ test_multi_session(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* lock all modules from the other session, leave locked */
-    ret = sr_lock(sess2, NULL);
+    ret = sr_lock(sess2, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     sr_session_stop(sess1);
@@ -262,11 +266,11 @@ test_session_stop_unlock(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* lock all modules */
-    ret = sr_lock(sess1, NULL);
+    ret = sr_lock(sess1, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to lock all modules again */
-    ret = sr_lock(sess2, NULL);
+    ret = sr_lock(sess2, NULL, 0);
     assert_int_equal(ret, SR_ERR_LOCKED);
 
     /* read some data while the module is locked */
@@ -278,7 +282,7 @@ test_session_stop_unlock(void **state)
     sr_session_stop(sess1);
 
     /* now lock all modules again */
-    ret = sr_lock(sess2, NULL);
+    ret = sr_lock(sess2, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* unlock all modules normally */
@@ -309,7 +313,7 @@ test_get_lock(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* lock a module */
-    ret = sr_lock(sess, "test");
+    ret = sr_lock(sess, "test", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* get lock for a locked module */
@@ -332,7 +336,7 @@ test_get_lock(void **state)
     assert_int_equal(is_locked, 0);
 
     /* lock all modules */
-    ret = sr_lock(sess, NULL);
+    ret = sr_lock(sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* get lock for all modules */
@@ -352,6 +356,84 @@ test_get_lock(void **state)
     sr_session_stop(sess);
 }
 
+/* TEST */
+static void *
+lock_timeout_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    struct timespec ts;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* lock a module */
+    ret = sr_lock(sess, "test", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* sync #1 */
+    pthread_barrier_wait(&st->barrier);
+
+    /* sync #2 */
+    pthread_barrier_wait(&st->barrier);
+
+    /* sleep a bit */
+    ts.tv_sec = 0;
+    ts.tv_nsec = 20000000;
+    ret = nanosleep(&ts, NULL);
+    assert_int_equal(ret, 0);
+
+    /* unlock the module */
+    ret = sr_unlock(sess, "test");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* cleanup */
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+wait_timeout_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* sync #1 */
+    pthread_barrier_wait(&st->barrier);
+
+    /* locked by another thread */
+    ret = sr_lock(sess, "test", 0);
+    assert_int_equal(ret, SR_ERR_LOCKED);
+
+    /* sync #2 */
+    pthread_barrier_wait(&st->barrier);
+
+    /* wait for unlock */
+    ret = sr_lock(sess, "test", 100);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* cleanup */
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_timeout(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, lock_timeout_thread, *state);
+    pthread_create(&tid[1], NULL, wait_timeout_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
 /* MAIN */
 int
 main(void)
@@ -361,6 +443,7 @@ main(void)
         cmocka_unit_test(test_multi_session),
         cmocka_unit_test(test_session_stop_unlock),
         cmocka_unit_test(test_get_lock),
+        cmocka_unit_test(test_timeout),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

@@ -83,7 +83,10 @@ struct srplg_ntf_s;
 #define SR_MOD_LOCK_TIMEOUT 5000
 
 /** timeout for locking DS lock mutex of a module; is held only when accessing the DS lock information (ms) */
-#define SR_DS_LOCK_TIMEOUT 100
+#define SR_DS_LOCK_MUTEX_TIMEOUT 100
+
+/** timeout step when waiting for a DS lock (ms) */
+#define SR_DS_LOCK_TIMEOUT_STEP 50
 
 /** timeout for locking SHM module/RPC subscriptions; maxmum time full event processing may take (ms) */
 #define SR_SHMEXT_SUB_LOCK_TIMEOUT 15000

@@ -1002,9 +1002,10 @@ int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datast
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] module_name Optional name of the module to be locked.
+ * @param[in] timeout_ms Timeout in milliseconds for waiting for the lock(s). If 0, no waiting is performed.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_lock(sr_session_ctx_t *session, const char *module_name);
+int sr_lock(sr_session_ctx_t *session, const char *module_name, uint32_t timeout_ms);
 
 /**
  * @brief Unlocks the data of the specified module or the whole datastore.
