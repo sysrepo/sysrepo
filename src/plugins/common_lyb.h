@@ -86,13 +86,22 @@ void srplyb_log_err_ly(const char *plg_name, const struct ly_ctx *ly_ctx);
  *
  * Additionally sets umask.
  *
- * @param[in] pathname Path of the file to open.
+ * @param[in] path Path of the file to open.
  * @param[in] flags Flags to use.
  * @param[in] mode Permissions for the file in case it is created.
  * @return Opened file descriptor.
  * @return -1 on error, errno set.
  */
-int srlyb_open(const char *pathname, int flags, mode_t mode);
+int srlyb_open(const char *path, int flags, mode_t mode);
+
+/**
+ * @brief Generate plugin error on failed open.
+ *
+ * @param[in] plg_name Plugin name.
+ * @param[in] path Path of the file to open.
+ * @return SR err value to return.
+ */
+int srlyb_open_error(const char *plg_name, const char *path);
 
 /**
  * @brief Get the UID of a user or vice versa.

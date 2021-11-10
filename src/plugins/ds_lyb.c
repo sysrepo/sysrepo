@@ -72,8 +72,7 @@ srpds_lyb_store_(const struct lys_module *mod, sr_datastore_t ds, const struct l
 
     /* open the file */
     if ((fd = srlyb_open(path, O_WRONLY | O_CREAT, mode)) == -1) {
-        SRPLG_LOG_ERR(srpds_name, "Opening \"%s\" failed (%s).", path, strerror(errno));
-        rc = SR_ERR_SYS;
+        rc = srlyb_open_error(srpds_name, path);
         goto cleanup;
     }
 
@@ -306,8 +305,7 @@ retry_open:
             }
         }
 
-        SRPLG_LOG_ERR(srpds_name, "Opening \"%s\" failed (%s).", path, strerror(errno));
-        rc = SR_ERR_SYS;
+        rc = srlyb_open_error(srpds_name, path);
         goto cleanup;
     }
 

@@ -191,8 +191,7 @@ srpntf_open_file(const char *mod_name, time_t from_ts, time_t to_ts, int flags, 
 
     *notif_fd = srlyb_open(path, flags, perm);
     if (*notif_fd == -1) {
-        SRPLG_LOG_ERR(srpntf_name, "Opening \"%s\" failed (%s).", path, strerror(errno));
-        rc = SR_ERR_SYS;
+        rc = srlyb_open_error(srpntf_name, path);
         goto cleanup;
     }
 

@@ -184,7 +184,7 @@ srplyb_log_err_ly(const char *plg_name, const struct ly_ctx *ly_ctx)
 }
 
 int
-srlyb_open(const char *pathname, int flags, mode_t mode)
+srlyb_open(const char *path, int flags, mode_t mode)
 {
     mode_t um;
     int fd;
@@ -200,7 +200,7 @@ srlyb_open(const char *pathname, int flags, mode_t mode)
     um = umask(SR_UMASK);
 
     /* open the file */
-    fd = open(pathname, flags, mode);
+    fd = open(path, flags, mode);
 
     /* restore umask (should not modify errno) */
     umask(um);
@@ -212,6 +212,29 @@ srlyb_open(const char *pathname, int flags, mode_t mode)
 
     /* success */
     return fd;
+}
+
+int
+srlyb_open_error(const char *plg_name, const char *path)
+{
+    FILE *f;
+    char buf[8] = "";
+
+    SRPLG_LOG_ERR(plg_name, "Opening \"%s\" failed (%s).", path, strerror(errno));
+    if ((errno == EACCES) && !geteuid()) {
+        /* check kernel parameter value of fs.protected_regular */
+        f = fopen("/proc/sys/fs/protected_regular", "r");
+        if (f) {
+            fgets(buf, 8, f);
+            fclose(f);
+        }
+    }
+    if (buf[0] && (atoi(buf) != 0)) {
+        SRPLG_LOG_ERR(plg_name, "Caused by kernel parameter \"fs.protected_regular\", which must be \"0\" "
+                "(currently \"%d\").", atoi(buf));
+    }
+
+    return SR_ERR_SYS;
 }
 
 int
@@ -436,16 +459,14 @@ srlyb_cp_path(const char *plg_name, const char *to, const char *from, mode_t fil
     /* open "from" file */
     fd_from = srlyb_open(from, O_RDONLY, 0);
     if (fd_from < 0) {
-        SRPLG_LOG_ERR(plg_name, "Opening \"%s\" failed (%s).", from, strerror(errno));
-        rc = SR_ERR_SYS;
+        rc = srlyb_open_error(plg_name, from);
         goto cleanup;
     }
 
     /* open "to" */
     fd_to = srlyb_open(to, O_WRONLY | O_TRUNC | O_CREAT, file_mode);
     if (fd_to < 0) {
-        SRPLG_LOG_ERR(plg_name, "Opening \"%s\" failed (%s).", to, strerror(errno));
-        rc = SR_ERR_SYS;
+        rc = srlyb_open_error(plg_name, to);
         goto cleanup;
     }
 
