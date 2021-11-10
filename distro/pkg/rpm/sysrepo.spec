@@ -54,6 +54,11 @@ make
 cd build
 make DESTDIR=%{buildroot} install
 
+%postun
+rm -rf /dev/shm/sr_*
+rm -rf /dev/shm/srsub_*
+rm -rf /etc/sysrepo/
+
 %files
 %license LICENSE
 %{_libdir}/libsysrepo.so.6

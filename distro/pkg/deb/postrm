@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+rm -rf /dev/shm/sr_*
+rm -rf /dev/shm/srsub_*
+rm -rf /etc/sysrepo/
