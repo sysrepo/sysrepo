@@ -215,11 +215,12 @@ sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache,
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
  * @param[in] timeout_ms Timeout for operational callbacks.
+ * @param[in] ds_lock_timeout_ms Timeout in ms for DS-lock in case it is required and locked, if 0 no waiting is performed.
  * @param[in] get_opts Get operational data options, ignored if getting only ::SR_DS_OPERATIONAL data (edit).
  */
 sr_error_info_t *sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mode_t mod_lock,
         int mi_opts, uint32_t sid, const char *orig_name, const void *orig_data, uint32_t timeout_ms,
-        sr_get_oper_options_t get_opts);
+        uint32_t ds_lock_timeout_ms, sr_get_oper_options_t get_opts);
 
 /**
  * @brief Validate data for modules in mod info.

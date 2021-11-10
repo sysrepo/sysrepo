@@ -1662,7 +1662,7 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
         }
 
         /* DS LOCK */
-        if ((err_info = sr_mlock(&shm_lock->ds_lock, SR_DS_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+        if ((err_info = sr_mlock(&shm_lock->ds_lock, SR_DS_LOCK_MUTEX_TIMEOUT, __func__, NULL, NULL))) {
             return err_info;
         }
 
@@ -2229,7 +2229,8 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig
 
 sr_error_info_t *
 sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mode_t mod_lock, int mi_opts, uint32_t sid,
-        const char *orig_name, const void *orig_data, uint32_t timeout_ms, sr_get_oper_options_t get_opts)
+        const char *orig_name, const void *orig_data, uint32_t timeout_ms, uint32_t ds_lock_timeout_ms,
+        sr_get_oper_options_t get_opts)
 {
     sr_error_info_t *err_info = NULL;
     int mod_type, new = 0;
@@ -2291,12 +2292,12 @@ sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mod
     if (mod_lock) {
         if (mod_lock == SR_LOCK_READ) {
             /* MODULES READ LOCK */
-            if ((err_info = sr_shmmod_modinfo_rdlock(mod_info, mi_opts & SR_MI_LOCK_UPGRADEABLE, sid))) {
+            if ((err_info = sr_shmmod_modinfo_rdlock(mod_info, mi_opts & SR_MI_LOCK_UPGRADEABLE, sid, ds_lock_timeout_ms))) {
                 return err_info;
             }
         } else {
             /* MODULES WRITE LOCK */
-            if ((err_info = sr_shmmod_modinfo_wrlock(mod_info, sid))) {
+            if ((err_info = sr_shmmod_modinfo_wrlock(mod_info, sid, ds_lock_timeout_ms))) {
                 return err_info;
             }
         }
