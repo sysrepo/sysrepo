@@ -225,7 +225,7 @@ srlyb_open_error(const char *plg_name, const char *path)
         /* check kernel parameter value of fs.protected_regular */
         f = fopen("/proc/sys/fs/protected_regular", "r");
         if (f) {
-            fgets(buf, 8, f);
+            (void)fgets(buf, sizeof(buf), f);
             fclose(f);
         }
     }
