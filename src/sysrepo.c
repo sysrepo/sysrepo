@@ -942,6 +942,65 @@ sr_get_error_data(sr_error_info_err_t *err, uint32_t idx, uint32_t *size, const 
     return sr_ev_data_get(err->error_data, idx, size, (void **)data);
 }
 
+API int
+sr_session_set_netconf_error(sr_session_ctx_t *session, const sr_netconf_error_type_t error_type,
+        const char *error_tag, const char *error_app_tag, const char *error_path, const char *error_message,
+        const struct lyd_node *error_data)
+{
+    int res = 0;
+    const char *error_type_str = NULL;
+    char *buf = NULL;
+    uint32_t buf_size = 0;
+    sr_error_info_t *err_info = NULL;
+    LY_ERR lyrc;
+
+    switch (error_type) {
+        case SR_NC_ERR_TYPE_TRANSPORT:
+            error_type_str = "transport";
+            break;
+        case SR_NC_ERR_TYPE_RPC:
+            error_type_str = "rpc";
+            break;
+        case SR_NC_ERR_TYPE_PROTOCOL:
+            error_type_str = "protocol";
+            break;
+        case SR_NC_ERR_TYPE_APPLICATION:
+            error_type_str = "application";
+            break;
+        default:
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Unrecognized value of error_type.");
+            return sr_api_ret(session, err_info);
+    }
+
+    if ((res = sr_session_set_error_format(session, "NETCONF/RESTCONF")))
+        goto cleanup;
+    if ((res = sr_session_push_error_data(session, strlen(error_type_str) + 1, error_type_str)))
+        goto cleanup;
+    if ((res = sr_session_push_error_data(session, error_tag ? strlen(error_tag) + 1 : 0, error_tag)))
+        goto cleanup;
+    if ((res = sr_session_push_error_data(session, error_message ? strlen(error_message) + 1 : 0, error_message)))
+        goto cleanup;
+    if ((res = sr_session_push_error_data(session, error_app_tag ? strlen(error_app_tag) + 1 : 0, error_app_tag)))
+        goto cleanup;
+    if ((res = sr_session_push_error_data(session, error_path ? strlen(error_path) + 1 : 0, error_path)))
+        goto cleanup;
+    if (error_data) {
+        /* FIXME: check that it's indeed anydata, etc */
+        lyrc = lyd_print_mem(&buf, error_data, LYD_LYB, 0);
+        if (lyrc) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Cannot process error_data");
+            return sr_api_ret(session, err_info);
+        }
+        /* FIXME: how do I get buf_size from printing out LYB_PRINT? */
+    }
+    if ((res = sr_session_push_error_data(session, buf_size, buf)))
+        goto cleanup;
+
+cleanup:
+    free(buf);
+    return res;
+}
+
 API uint32_t
 sr_session_get_id(sr_session_ctx_t *session)
 {

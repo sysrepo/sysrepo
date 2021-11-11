@@ -383,6 +383,27 @@ int sr_session_set_error_format(sr_session_ctx_t *session, const char *error_for
 int sr_session_push_error_data(sr_session_ctx_t *session, uint32_t size, const void *data);
 
 /**
+ * @brief Set an error message with data that are defined in the NETCONF and RESTCONF standards
+ *
+ * Internally, this uses ::sr_session_set_error_format() and ::sr_session_push_error_data() to create error
+ * info in a manner which is suitable for consumption by NETCONF and RESTCONF servers.
+ *
+ * @param[in] session Implicit session provided in a callback.
+ * @param[in] error_type Defined in RFC 6241, Section 4.3. Typically, applications use ::SR_NC_ERR_TYPE_APPLICATION.
+ * @param[in] error_tag Defined in RFC 6241, Appendix A. Typically, applications use "invalid-value" when indicating
+ * to the caller that a specific operation failed.
+ * @param[in] error_app_tag An application-specific error-tag.
+ * @param[in] error_path The YANG instance identifier associated with the error node.
+ * @param[in] error_message A message describing the error.
+ * @param[in] error_data If not NULL, this must be an `anydata` value which represents a container with zero or more
+ * data nodes representing additional error information. See RFC 8040, Section 8, and RFC 6241, Section 4.3.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_session_set_netconf_error(sr_session_ctx_t *session, const sr_netconf_error_type_t error_type,
+        const char *error_tag, const char *error_app_tag, const char *error_path, const char *error_message,
+        const struct lyd_node *error_data);
+
+/**
  * @brief Get a specific chunk of error data.
  *
  * @param[in] err Error structure to use.

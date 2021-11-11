@@ -168,6 +168,16 @@ struct sr_error_info_s {
 typedef struct sr_error_info_s sr_error_info_t;
 
 /**
+ * @brief Error type as used in the NETCONF and RESTCONF protocols
+ */
+typedef enum {
+    SR_NC_ERR_TYPE_TRANSPORT = 0,
+    SR_NC_ERR_TYPE_RPC = 1,
+    SR_NC_ERR_TYPE_PROTOCOL = 2,
+    SR_NC_ERR_TYPE_APPLICATION = 3
+} sr_netconf_error_type_t;
+
+/**
  * @brief Callback to be called before applying a diff. Set it using ::sr_set_diff_check_callback.
  *
  * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
