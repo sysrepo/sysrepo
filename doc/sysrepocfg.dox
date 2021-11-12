@@ -7,7 +7,7 @@ replacing (_copying-from_ a file or datastore) it. It is also possible to send a
 All operations are executed on a `--datastore` (default `running`, `startup`, or `operational`) or only a particular
 `--module` and handle data in a supported `--format` (default `xml`, `json`, or `lyb`).
 
-## -I, \-\-import[=\<file-path\>]
+## -I, --import[=\<file-path\>]
 
 To import configuration, most often a file is supplied. Its format will be automatically detected based on
 the extension. If not applicable (or the data are read from STDIN), it can be manually determined.
@@ -22,7 +22,7 @@ One can also import startup configuration of a module.
 sysrepocfg --import=~/Documents/data/ietf-interfaces_startup.json --datastore startup --module ietf-interfaces
 ~~~
 
-## -X, \-\-export[=\<file-path\>]
+## -X, --export[=\<file-path\>]
 
 Exported configuration can be printed into a file or simply to STDOUT.
 
@@ -36,13 +36,13 @@ Additionally, only a specific part of the configuration can be retrieved. Either
 sysrepocfg --export=ietf-interfaces_running.lyb --format lyb --module ietf-interfaces
 ~~~
 
-or an XPath selection. Be careful, it is generally needed to enclose the XPath in " to prevent ' from being removed.
+or an XPath selection. Be careful, it is generally needed to enclose the XPath in \" to prevent ' from being removed.
 
 ~~~
 sysrepocfg --export --xpath "/ietf-interfaces:interfaces/interface[name='eth0']"
 ~~~
 
-## -E, \-\-edit[=\<file-path\>/\<editor\>]
+## -E, --edit[=\<file-path\>/\<editor\>]
 
 Data to merge (apply as an edit) can be provided in a file or using an arbitrary text editor. Also, when changing
 `running` data, it is possible `--lock` the datastore.
@@ -55,7 +55,7 @@ sysrepocfg --edit=candidate.xml --datastore candidate
 sysrepocfg --edit=vim --lock
 ~~~
 
-## -R, \-\-rpc[=\<file-path\>/\<editor\>]
+## -R, --rpc[=\<file-path\>/\<editor\>]
 
 It is also possible to send an RPC or action from a file or using an editor. Any output is printed to STDOUT.
 
@@ -63,7 +63,7 @@ It is also possible to send an RPC or action from a file or using an editor. Any
 sysrepocfg --rpc=vim
 ~~~
 
-## -N, \-\-notification[=\<file-path\>/\<editor\>]
+## -N, --notification[=\<file-path\>/\<editor\>]
 
 Sending a notification is performed in a similar way.
 
@@ -71,7 +71,7 @@ Sending a notification is performed in a similar way.
 sysrepocfg --notification=notif.xml
 ~~~
 
-## -C, \-\-copy-from \<file-path\>/\<source-datastore\>
+## -C, --copy-from \<file-path\>/\<source-datastore\>
 
 This operation can be used to replace a module or datastore data with the contents of either a file
 or another datastore.
