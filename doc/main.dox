@@ -15,7 +15,7 @@ a stand-alone daemon that will translate Sysrepo calls to actions specific for t
 This __indirect approach__ is usually simpler to employ for existing applications because then they
 do not need to be changed themselves to utilize Sysrepo datastore at the cost of having an additional
 intermediary process (daemon). If there are several such daemons, they can be written as
-[plugins](@ref sysrepo_plugind) and then all managed by one process.
+[plugins](@ref bins) and then all managed by one process.
 
 ![Sysrepo application approaches](sr_apps.png)
 
