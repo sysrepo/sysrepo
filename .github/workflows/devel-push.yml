@@ -88,7 +88,7 @@ jobs:
           cd libyang
           mkdir build
           cd build
-          CC=${{ matrix.config.cc }} cmake -DCMAKE_BUILD_TYPE=${{ matrix.config.dep-build-type }} -DENABLE_BUILD_TESTS=OFF ..
+          CC=${{ matrix.config.cc }} cmake -DCMAKE_BUILD_TYPE=${{ matrix.config.dep-build-type }} -DENABLE_TESTS=OFF ..
           make -j2
           sudo make install
 
