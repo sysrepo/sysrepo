@@ -996,7 +996,7 @@ sr_session_push_error_data(sr_session_ctx_t *session, uint32_t size, const void 
 }
 
 API int
-sr_get_error_data(sr_error_info_err_t *err, uint32_t idx, uint32_t *size, const void **data)
+sr_get_error_data(const sr_error_info_err_t *err, uint32_t idx, uint32_t *size, const void **data)
 {
     sr_error_info_t *err_info = NULL;
 

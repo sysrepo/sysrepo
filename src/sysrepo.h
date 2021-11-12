@@ -383,6 +383,9 @@ int sr_session_set_error_message(sr_session_ctx_t *session, const char *format, 
  * @brief Set error data format identifier for a failed callback communicated back to the originator.
  * This format name should be used for interpreting the error data set by ::sr_session_push_error_data().
  *
+ * There are some well-known error formats defined and those errors can be written/read using
+ * [helper utility functions](@ref utils_error_format).
+ *
  * @param[in] session Implicit session provided in a callback.
  * @param[in] error_format Arbitrary error format identifier.
  * @return Error code (::SR_ERR_OK on success).
@@ -404,13 +407,16 @@ int sr_session_push_error_data(sr_session_ctx_t *session, uint32_t size, const v
 /**
  * @brief Get a specific chunk of error data.
  *
+ * If the error is a well-known one, it is possible to use [helper utility functions](@ref utils_error_format)
+ * instead of repeatedly calling this function.
+ *
  * @param[in] err Error structure to use.
  * @param[in] idx Index of the error data chunk, starts at 0.
  * @param[out] size Optional size of the error @p data chunk.
  * @param[out] data Pointer to an opaque error data chunk.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_get_error_data(sr_error_info_err_t *err, uint32_t idx, uint32_t *size, const void **data);
+int sr_get_error_data(const sr_error_info_err_t *err, uint32_t idx, uint32_t *size, const void **data);
 
 /**
  * @brief Return the assigned session ID of the sysrepo session.
