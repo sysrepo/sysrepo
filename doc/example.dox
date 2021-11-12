@@ -2,7 +2,7 @@
 @page example Plugin Example
 
 This page includes a guide on how to write a simple YANG module and then get Sysrepo to handle its data either
-as a [plugin](@ref sysrepo_plugind) or a stand-alone daemon. It is best to have at least a [basic understanding](@ref about)
+as a [plugin](@ref bins) or a stand-alone daemon. It is best to have at least a [basic understanding](@ref about)
 of Sysrepo before continuing.
 
 # Simple YANG module
@@ -102,7 +102,7 @@ module oven {
 # Oven Plugin
 @anchor oven_plugin
 
-Here it will be step-by-step explained how to write a proper [plugin](@ref sysrepo_plugind) that will manage the oven.
+Here it will be step-by-step explained how to write a proper [plugin](@ref bins) that will manage the oven.
 All code snippets are taken from the actual implementation.
 
 @ref plugin_api
@@ -285,7 +285,7 @@ above is just basic and detailed descriptions of all these mechanisms can be fou
 [developer guide](@ref dev_guide) page.
 
 Before being concerned with this particular plugin, Sysrepo must be properly built and installed. Having done that,
-you must install first the model, then the plugin. For installing the model, you can use [sysrepoctl](@ref sysrepoctl).
+you must install first the model, then the plugin. For installing the model, you can use [sysrepoctl](@ref bins).
 Then, you must put the shared library `oven.so` into [plugins path](@ref plugins_path).
 
 After that you should be ready to start `sysrepo-plugind`, which should load the plugin. If you enable debug
@@ -299,7 +299,7 @@ described in the YANG model and how would one expect an oven to behave. Here is 
         notif_subscribe_example oven
 
 2.  Prepare food to be inserted into the oven once it reaches a temperature, which will be configured later. The oven
-    is turned off by default. In NETCONF terms, you execute the `insert-food` RPC. You can do that using [sysrepocfg](@ref sysrepocfg)
+    is turned off by default. In NETCONF terms, you execute the `insert-food` RPC. You can do that using [sysrepocfg](@ref bins)
 
         sysrepocfg --rpc=vim
 
@@ -342,7 +342,7 @@ described in the YANG model and how would one expect an oven to behave. Here is 
 # Oven Daemon
 
 If you want your device to have a stand-alone daemon that will run as a separate process not using
-[sysrepo-plugind](@ref sysrepo_plugind) then you do not need to develop a plugin. Having a separate daemon actually has only
+[sysrepo-plugind](@ref bins) then you do not need to develop a plugin. Having a separate daemon actually has only
 a few differences that have been mentioned in the previous sentence.
 
 As for the code itself, no specific functions are required as the code will not be compiled into a shared library but
