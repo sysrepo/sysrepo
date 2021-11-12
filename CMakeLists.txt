@@ -184,7 +184,8 @@ set(LIB_SRC
     src/plugins/ntf_lyb.c
     src/plugins/common_lyb.c
     src/utils/values.c
-    src/utils/xpath.c)
+    src/utils/xpath.c
+    src/utils/error_format.c)
 
 set (SYSREPOCTL_SRC
     src/executables/sysrepoctl.c)
@@ -200,7 +201,8 @@ set(LIB_HEADERS
     src/sysrepo.h
     src/sysrepo_types.h
     src/utils/values.h
-    src/utils/xpath.h)
+    src/utils/xpath.h
+    src/utils/error_format.h)
 
 # files to generate doxygen from
 set(DOXY_FILES
@@ -357,6 +359,7 @@ install(FILES ${PROJECT_SOURCE_DIR}/src/sysrepo.h ${PROJECT_SOURCE_DIR}/src/sysr
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES ${PROJECT_SOURCE_DIR}/src/plugins_datastore.h ${PROJECT_BINARY_DIR}/version.h
             ${PROJECT_SOURCE_DIR}/src/utils/values.h ${PROJECT_SOURCE_DIR}/src/utils/xpath.h
+            ${PROJECT_SOURCE_DIR}/src/utils/error_format.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sysrepo)
 install(TARGETS sysrepoctl sysrepocfg sysrepo-plugind DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES ${PROJECT_SOURCE_DIR}/src/executables/sysrepoctl.1 ${PROJECT_SOURCE_DIR}/src/executables/sysrepocfg.1
