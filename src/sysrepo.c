@@ -5782,8 +5782,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
     /* check write/read perm */
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(session->conn), lyd_owner_module(notif)->name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
-    if ((err_info = sr_perm_check(session->conn, lyd_owner_module(notif), SR_DS_STARTUP,
-            ATOMIC_LOAD_RELAXED(shm_mod->replay_supp), NULL))) {
+    if ((err_info = sr_perm_check(session->conn, lyd_owner_module(notif), SR_DS_STARTUP, shm_mod->replay_supp, NULL))) {
         goto cleanup;
     }
 

@@ -181,7 +181,7 @@ sr_shmmod_fill(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_
             strcpy(smod->rev, lyd_get_value(sr_child));
         } else if (!strcmp(sr_child->schema->name, "replay-support")) {
             /* set replay-support flag */
-            ATOMIC_STORE_RELAXED(smod->replay_supp, 1);
+            smod->replay_supp = 1;
         } else if (!strcmp(sr_child->schema->name, "enabled-feature")) {
             /* count features and ther names length */
             ++smod->feat_count;
