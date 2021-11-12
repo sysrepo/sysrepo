@@ -174,7 +174,7 @@ sr_replay_store(sr_session_ctx_t *sess, const struct lyd_node *notif, struct tim
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(sess->conn), ly_mod->name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    if (!ATOMIC_LOAD_RELAXED(shm_mod->replay_supp)) {
+    if (!shm_mod->replay_supp) {
         /* nothing to do */
         return NULL;
     }
@@ -320,7 +320,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), mod_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
-    if (!ATOMIC_LOAD_RELAXED(shm_mod->replay_supp)) {
+    if (!shm_mod->replay_supp) {
         SR_LOG_WRN("Module \"%s\" does not support notification replay.", mod_name);
         goto replay_complete;
     }
