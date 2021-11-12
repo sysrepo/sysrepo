@@ -2538,7 +2538,7 @@ sr_error_info_t *
 sr_shm_remap(sr_shm_t *shm, size_t new_shm_size)
 {
     sr_error_info_t *err_info = NULL;
-    size_t shm_file_size;
+    size_t shm_file_size = 0;
 
     /* read the new shm size if not set */
     if (!new_shm_size && (err_info = sr_file_get_size(shm->fd, &shm_file_size))) {
