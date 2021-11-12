@@ -44,6 +44,11 @@ at the documentation where you will find information about major design changes 
 * Custom RPC, Event Notifications, YANG 1.1 Actions support
 * Notification store & notification replay
 
+## Packages
+
+Binary RPM or DEB packages of the latest release can be built locally using `apkg`, look into `README` in
+the `distro` directory.
+
 ## Security Notes
 
 Sysrepo does not have any master process that could enforce complex access control. So instead, it relies on and
