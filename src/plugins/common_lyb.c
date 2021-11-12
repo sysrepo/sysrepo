@@ -218,18 +218,18 @@ int
 srlyb_open_error(const char *plg_name, const char *path)
 {
     FILE *f;
-    char buf[8] = "";
+    char buf[8], *ret = NULL;
 
     SRPLG_LOG_ERR(plg_name, "Opening \"%s\" failed (%s).", path, strerror(errno));
     if ((errno == EACCES) && !geteuid()) {
         /* check kernel parameter value of fs.protected_regular */
         f = fopen("/proc/sys/fs/protected_regular", "r");
         if (f) {
-            (void)fgets(buf, sizeof(buf), f);
+            ret = fgets(buf, sizeof(buf), f);
             fclose(f);
         }
     }
-    if (buf[0] && (atoi(buf) != 0)) {
+    if (ret && (atoi(buf) != 0)) {
         SRPLG_LOG_ERR(plg_name, "Caused by kernel parameter \"fs.protected_regular\", which must be \"0\" "
                 "(currently \"%d\").", atoi(buf));
     }
