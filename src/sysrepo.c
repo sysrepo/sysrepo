@@ -3169,7 +3169,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
             /* create cb_err_info */
             if (ev_sess->ev_error.message) {
                 sr_errinfo_new_data(cb_err_info, ret, ev_sess->ev_error.format, ev_sess->ev_error.data,
-                        ev_sess->ev_error.message);
+                        "%s", ev_sess->ev_error.message);
             } else {
                 sr_errinfo_new_data(cb_err_info, ret, ev_sess->ev_error.format, ev_sess->ev_error.data,
                         "Diff check callback failed (%s).", sr_strerror(ret));
@@ -4466,7 +4466,7 @@ sr_module_change_subscribe_enable(sr_session_ctx_t *session, struct sr_mod_info_
             /* callback failed but it is the only one so no "abort" event is necessary */
             if (ev_sess->ev_error.message || ev_sess->ev_error.format) {
                 /* remember callback error info */
-                sr_errinfo_new_data(&err_info, err_code, ev_sess->ev_error.format, ev_sess->ev_error.data,
+                sr_errinfo_new_data(&err_info, err_code, ev_sess->ev_error.format, ev_sess->ev_error.data, "%s",
                         ev_sess->ev_error.message ? ev_sess->ev_error.message : sr_strerror(err_code));
             }
             sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, "Subscribing to \"%s\" changes failed.", ly_mod->name);

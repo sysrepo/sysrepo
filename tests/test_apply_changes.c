@@ -1272,7 +1272,7 @@ module_update_fail_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
         /* update fails */
-        sr_session_set_error_message(session, "Custom user callback error.");
+        sr_session_set_error_message(session, "%s", "Custom user callback error.%s");
         ret = SR_ERR_UNSUPPORTED;
         break;
     default:
@@ -1316,7 +1316,7 @@ apply_update_fail_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
     assert_int_equal(err_info->err[0].err_code, SR_ERR_UNSUPPORTED);
-    assert_string_equal(err_info->err[0].message, "Custom user callback error.");
+    assert_string_equal(err_info->err[0].message, "Custom user callback error.%s");
     assert_null(err_info->err[0].error_format);
     assert_int_equal(err_info->err[1].err_code, SR_ERR_CALLBACK_FAILED);
     assert_string_equal(err_info->err[1].message, "User callback failed.");
