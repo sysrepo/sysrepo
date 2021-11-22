@@ -442,7 +442,7 @@ sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int 
             }
 
             /* create the full error structure */
-            sr_errinfo_new_data(cb_err_info, err_code, err_format, err_data, err_msg);
+            sr_errinfo_new_data(cb_err_info, err_code, err_format, err_data, "%s", err_msg);
 
             if (clear_ev_on_err) {
                 /* clear the error */
