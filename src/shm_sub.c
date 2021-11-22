@@ -2311,7 +2311,7 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
 }
 
 /**
- * @brief Prepeare error that will be written after subscription structure into SHM.
+ * @brief Prepare error that will be written after subscription structure into SHM.
  *
  * @param[in] err_code Error code.
  * @param[in] ev_sess Callback event session with the error.
