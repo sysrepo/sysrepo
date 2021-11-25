@@ -68,6 +68,7 @@ sr_lydmods_lock(pthread_mutex_t *lock, const struct ly_ctx *ly_ctx, const char *
 
     cb_data.ly_mod = ly_ctx_get_module_implemented(ly_ctx, "sysrepo");
     cb_data.ds = SR_DS_STARTUP;
+    cb_data.ds_plg = (struct srplg_ds_s *)&srpds_lyb;
 
     /* LOCK */
     return sr_mlock(lock, SR_LYDMODS_LOCK_TIMEOUT, func, sr_shmmod_recover_cb, &cb_data);
