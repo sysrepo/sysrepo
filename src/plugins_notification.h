@@ -18,6 +18,7 @@
 #define _SYSREPO_PLUGINS_NOTIFICATION_H
 
 #include <stdint.h>
+#include <sys/types.h>
 
 #include <libyang/libyang.h>
 
