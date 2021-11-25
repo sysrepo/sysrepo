@@ -312,7 +312,9 @@ srpntf_find_file(const char *mod_name, time_t from_ts, time_t to_ts, time_t *fil
 cleanup:
     free(dir_path);
     free(prefix);
-    closedir(dir);
+    if (dir) {
+        closedir(dir);
+    }
     return rc;
 }
 
