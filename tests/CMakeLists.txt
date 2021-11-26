@@ -28,6 +28,12 @@ endif()
 # generate config
 configure_file("${PROJECT_SOURCE_DIR}/tests/config.h.in" "${PROJECT_BINARY_DIR}/tests/config.h" ESCAPE_QUOTES @ONLY)
 
+if(${CMAKE_VERSION} VERSION_GREATER "3.7")
+    # tests cleanup fixture
+    add_test(NAME tests_done COMMAND make test_clean)
+    set_tests_properties(tests_done PROPERTIES FIXTURES_CLEANUP tests_cleanup)
+endif()
+
 if(ENABLE_TESTS)
     # format
     if (${SOURCE_FORMAT_ENABLED})
@@ -53,6 +59,9 @@ if(ENABLE_TESTS)
             "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"
             "SYSREPO_SHM_PREFIX=_tests_sr_${test_name}"
         )
+        if(${CMAKE_VERSION} VERSION_GREATER "3.7")
+            set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED tests_cleanup)
+        endif()
     endforeach()
 endif()
 
@@ -69,11 +78,15 @@ endif()
 if(ENABLE_VALGRIND_TESTS)
     foreach(test_name IN LISTS tests)
         add_test(NAME ${test_name}_valgrind COMMAND valgrind --leak-check=full --show-leak-kinds=all --error-exitcode=1 ${CMAKE_BINARY_DIR}/tests/${test_name})
-        set_property(TEST ${test_name}_valgrind APPEND PROPERTY ENVIRONMENT
+        set(test_name "${test_name}_valgrind")
+        set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
             "TZ=CET+02:00"
             "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"
             "SYSREPO_SHM_PREFIX=_tests_sr_${test_name}"
         )
+        if(${CMAKE_VERSION} VERSION_GREATER "3.7")
+            set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED tests_cleanup)
+        endif()
     endforeach()
 endif()
 
