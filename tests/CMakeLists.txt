@@ -28,9 +28,12 @@ endif()
 # generate config
 configure_file("${PROJECT_SOURCE_DIR}/tests/config.h.in" "${PROJECT_BINARY_DIR}/tests/config.h" ESCAPE_QUOTES @ONLY)
 
+set(TEST_CLEAR_STATE_COMMAND rm -rf ${PROJECT_BINARY_DIR}/test_repositories /dev/shm/_tests_sr_*)
 if(${CMAKE_VERSION} VERSION_GREATER "3.7")
     # tests cleanup fixture
-    add_test(NAME tests_done COMMAND make test_clean)
+    add_test(NAME tests_done
+        COMMAND ${TEST_CLEAR_STATE_COMMAND}
+    )
     set_tests_properties(tests_done PROPERTIES FIXTURES_CLEANUP tests_cleanup)
 endif()
 
@@ -92,5 +95,5 @@ endif()
 
 # phony target for clearing all sysrepo test data
 add_custom_target(test_clean
-    COMMAND rm -rf ${PROJECT_BINARY_DIR}/test_repositories /dev/shm/_tests_sr_*
+    COMMAND ${TEST_CLEAR_STATE_COMMAND}
 )
