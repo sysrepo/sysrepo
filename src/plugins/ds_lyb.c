@@ -406,13 +406,13 @@ static int
 srpds_lyb_update_differ(const struct lys_module *old_mod, const struct lyd_node *old_mod_data,
         const struct lys_module *new_mod, const struct lyd_node *new_mod_data, int *differ)
 {
-    const struct lys_module *mod_iter;
+    const struct lys_module *mod_iter, *mod_iter2;
     uint32_t idx = 0;
     LY_ARRAY_COUNT_TYPE u;
     LY_ERR lyrc;
 
     if (old_mod) {
-        /* first check whether any modules augmenting/deviating this module were not removed, in that
+        /* first check whether any modules augmenting/deviating this module were not removed or updated, in that
          * case LYB metadata have changed and the data must be stored whether they differ or not */
         while ((mod_iter = ly_ctx_get_module_iter(old_mod->ctx, &idx))) {
             if (!mod_iter->implemented) {
@@ -420,8 +420,9 @@ srpds_lyb_update_differ(const struct lys_module *old_mod, const struct lyd_node 
                 continue;
             }
 
-            if (ly_ctx_get_module_implemented(new_mod->ctx, mod_iter->name)) {
-                /* module was not removed, irrelevant */
+            mod_iter2 = ly_ctx_get_module_implemented(new_mod->ctx, mod_iter->name);
+            if (mod_iter2 && (mod_iter->revision == mod_iter2->revision)) {
+                /* module was not removed nor updated, irrelevant */
                 continue;
             }
 
