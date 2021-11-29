@@ -92,6 +92,5 @@ endif()
 
 # phony target for clearing all sysrepo test data
 add_custom_target(test_clean
-    COMMAND rm -rf ${PROJECT_BINARY_DIR}/test_repositories
-    COMMAND rm -rf /dev/shm/_tests_sr_*
+    COMMAND rm -rf ${PROJECT_BINARY_DIR}/test_repositories /dev/shm/_tests_sr_*
 )
