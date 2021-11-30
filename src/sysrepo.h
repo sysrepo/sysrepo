@@ -310,7 +310,7 @@ int sr_session_set_orig_name(sr_session_ctx_t *session, const char *orig_name);
  * @brief Get event originator name.
  *
  * @param[in] session Implicit session provided in a callback.
- * @return Originator name if set, NULL otherwise.
+ * @return Originator name if set, empty string "" otherwise.
  */
 const char *sr_session_get_orig_name(sr_session_ctx_t *session);
 
