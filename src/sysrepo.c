@@ -848,7 +848,7 @@ sr_session_get_orig_name(sr_session_ctx_t *session)
         return NULL;
     }
 
-    return session->ev_data.orig_name;
+    return session->ev_data.orig_name ? session->ev_data.orig_name : "";
 }
 
 API int

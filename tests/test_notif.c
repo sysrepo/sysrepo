@@ -1229,12 +1229,12 @@ notif_suspend_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_t
         assert_string_equal(xpath, "/ops:notif4");
         break;
     case 1:
-        assert_null(sr_session_get_orig_name(session));
+        assert_string_equal(sr_session_get_orig_name(session), "");
         assert_int_equal(notif_type, SR_EV_NOTIF_SUSPENDED);
         assert_null(xpath);
         break;
     case 2:
-        assert_null(sr_session_get_orig_name(session));
+        assert_string_equal(sr_session_get_orig_name(session), "");
         assert_int_equal(notif_type, SR_EV_NOTIF_RESUMED);
         assert_null(xpath);
         break;
