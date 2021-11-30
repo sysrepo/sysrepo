@@ -4415,7 +4415,7 @@ sr_module_change_subscribe_enable(sr_session_ctx_t *session, struct sr_mod_info_
         goto cleanup;
     }
     if ((err_info = sr_modinfo_consolidate(mod_info, 0, SR_LOCK_READ, SR_MI_PERM_NO, session->sid, session->orig_name,
-            session->orig_data, 0, 0, 0))) {
+            session->orig_data, 0, 0, SR_OPER_NO_SUBS))) {
         goto cleanup;
     }
 
