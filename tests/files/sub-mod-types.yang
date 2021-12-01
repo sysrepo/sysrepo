@@ -1,0 +1,8 @@
+module sub-mod-types {
+    namespace "urn:sub-mod-types";
+    prefix smt;
+
+    typedef sub-type {
+        type string;
+    }
+}
