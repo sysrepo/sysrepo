@@ -347,12 +347,23 @@ test_union(void **state)
     char *str1;
     const char *str2;
     int ret;
+    sr_val_t *val = NULL;
 
     /* set some configuration data */
     ret = sr_set_item_str(st->sess, "/simple-aug:bc1/bcl1[bcs1='key']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0, 0);
     assert_int_equal(ret, SR_ERR_OK);
+
+    /* get the configuration data */
+    ret = sr_get_item(st->sess, "/simple-aug:bc1/bcl1[bcs1='key']", 0, &val);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_non_null(val);
+    if (val->origin != NULL) {
+        /* this is just to make sure that origin ptr is valid */
+        assert_int_equal(val->origin[0], val->origin[0]);
+    }
+    sr_free_val(val);
 
     /* subscribe to both modules so they are present in operational */
     ret = sr_module_change_subscribe(st->sess, "simple", NULL, dummy_change_cb, NULL, 0, 0, &subscr);

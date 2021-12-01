@@ -1399,7 +1399,7 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* create return value */
-    *value = malloc(sizeof **value);
+    *value = calloc(1, sizeof **value);
     SR_CHECK_MEM_GOTO(!*value, err_info, cleanup);
 
     if ((err_info = sr_val_ly2sr(set->set.d[0], *value))) {
