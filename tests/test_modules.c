@@ -125,7 +125,7 @@ test_install_module(void **state)
     ret = sr_remove_module(st->conn, "test-module", 0);
     assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
-    /* install main-mod */
+    /* install main-mod (includes sub-mod which imports sub-mod-types) */
     ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/main-mod.yang", TESTS_SRC_DIR "/files", en_feats);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -142,7 +142,14 @@ test_install_module(void **state)
     "</module>"
     );
 
+    /* install another module (test) to see if imports in sub-mod were correctly processed */
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/test.yang", TESTS_SRC_DIR "/files", NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
     ret = sr_remove_module(st->conn, "main-mod", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_remove_module(st->conn, "test", 0);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
