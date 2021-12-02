@@ -43,21 +43,22 @@ extern "C" {
  */
 
 /**
- * @brief Set NETCONF callback error.
+ * @brief Set NETCONF callback error. Specifically, sets the error message, error format, and error data encoding
+ * all the NETCONF-specific error information.
  *
  * Meaning of each value corresponds to the definiition of NETCONF
  * [rpc-error](https://tools.ietf.org/html/rfc6241#section-4.3) element and value restrictions of @p error_type
  * and @p error_tag are checked.
  *
  * @param[in] session Implicit session provided in a callback.
- * @param[in] error_type Error type.
- * @param[in] error_tag Error tag.
- * @param[in] error_app_tag Optional error app tag.
- * @param[in] error_path Optional error path.
- * @param[in] error_message Error message.
- * @param[in] error_info_count Optional count of elements in error info.
- * @param[in] ... Optional error info elements. There must be 2x @p error_info_count parameters. They create pairs
- * of element-name and element-value to be set for the error.
+ * @param[in] error_type NETCONF error type.
+ * @param[in] error_tag NETCONF error tag.
+ * @param[in] error_app_tag Optional NETCONF error app tag.
+ * @param[in] error_path Optional NETCONF error path.
+ * @param[in] error_message NETCONF error message.
+ * @param[in] error_info_count Optional count of elements in NETCONF error info.
+ * @param[in] ... Optional NETCONF error info elements. There must be 2x @p error_info_count parameters. They create
+ * pairs of element-name and element-value to be set for the NETCONF error.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_session_set_netconf_error(sr_session_ctx_t *session, const char *error_type, const char *error_tag,
@@ -67,14 +68,14 @@ int sr_session_set_netconf_error(sr_session_ctx_t *session, const char *error_ty
  * @brief Get NETCONF callback error.
  *
  * @param[in] err NETCONF error to read.
- * @param[out] error_type Error type.
- * @param[out] error_tag Error tag.
- * @param[out] error_app_tag Error app tag, set to NULL if none.
- * @param[out] error_path Error path, set to NULL if none.
- * @param[out] error_message Error message.
- * @param[out] error_info_elements Array of error info elements, set to NULL if none.
- * @param[out] error_info_values Array of error info values, set to NULL if none.
- * @param[out] error_info_count Error info count of both @p error_info_elements and @p error_info_values.
+ * @param[out] error_type NETCONF error type.
+ * @param[out] error_tag NETCONF error tag.
+ * @param[out] error_app_tag NETCONF error app tag, set to NULL if none.
+ * @param[out] error_path NETCONF error path, set to NULL if none.
+ * @param[out] error_message NETCONF error message.
+ * @param[out] error_info_elements Array of NETCONF error info elements, set to NULL if none.
+ * @param[out] error_info_values Array of NETCONF error info values, set to NULL if none.
+ * @param[out] error_info_count NETCONF error info count of both @p error_info_elements and @p error_info_values.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_err_get_netconf_error(const sr_error_info_err_t *err, const char **error_type, const char **error_tag,
