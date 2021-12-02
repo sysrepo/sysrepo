@@ -2319,7 +2319,7 @@ sr_error_info_t *
 sr_store_module_yang_r(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
-    LY_ARRAY_COUNT_TYPE u;
+    LY_ARRAY_COUNT_TYPE u, v;
 
     if (sr_ly_module_is_internal(ly_mod)) {
         /* no need to store internal modules */
@@ -2331,14 +2331,21 @@ sr_store_module_yang_r(const struct lys_module *ly_mod)
         return err_info;
     }
 
-    /* store files of all submodules */
+    /* store files of all submodules... */
     LY_ARRAY_FOR(ly_mod->parsed->includes, u) {
         if ((err_info = sr_store_module_yang(ly_mod, ly_mod->parsed->includes[u].submodule))) {
             return err_info;
         }
+
+        /* ...and their imports */
+        LY_ARRAY_FOR(ly_mod->parsed->includes[u].submodule->imports, v) {
+            if ((err_info = sr_store_module_yang_r(ly_mod->parsed->includes[u].submodule->imports[v].module))) {
+                return err_info;
+            }
+        }
     }
 
-    /* recursively for all imports */
+    /* recursively for all main module imports, as well */
     LY_ARRAY_FOR(ly_mod->parsed->imports, u) {
         if ((err_info = sr_store_module_yang_r(ly_mod->parsed->imports[u].module))) {
             return err_info;
