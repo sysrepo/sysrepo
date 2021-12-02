@@ -2958,8 +2958,14 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
                 goto cleanup_unlock;
             }
 
-            /* check that no forbidden operations are set */
+            /* check that no forbidden data/operations are set */
             LYD_TREE_DFS_BEGIN(root, elem) {
+                if (!elem->schema) {
+                    sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Opaque node \"%s\" is not allowed for operational "
+                            "datastore changes.", LYD_NAME(elem));
+                    goto cleanup_unlock;
+                }
+
                 op = sr_edit_diff_find_oper(elem, 0, NULL);
                 if (op && (op != EDIT_MERGE) && (op != EDIT_REMOVE) && (op != EDIT_PURGE) && (op != EDIT_ETHER)) {
                     sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Operation \"%s\" is not allowed for operational "
