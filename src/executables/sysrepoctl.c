@@ -575,7 +575,7 @@ main(int argc, char **argv)
     case 'i':
         /* install */
         if ((r = sr_install_module2(conn, file_path, search_dirs, (const char **)features, NULL, owner, group, perms,
-                data_path, NULL, 0)) != SR_ERR_OK) {
+                NULL, data_path, 0)) != SR_ERR_OK) {
             /* succeed if the module is already installed */
             if (r != SR_ERR_EXISTS) {
                 error_print(r, "Failed to install module \"%s\"", file_path);
