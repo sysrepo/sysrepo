@@ -213,7 +213,8 @@ uid_t sr_get_su_uid(void);
 int sr_set_diff_check_callback(sr_conn_ctx_t *conn, sr_diff_check_cb callback);
 
 /**
- * @brief Discard stored push operational data owned by this connection.
+ * @brief Discard stored push operational data owned by this connection. Is performed directly on the connection,
+ * ::sr_apply_changes() call is not required.
  *
  * Required WRITE access.
  *
