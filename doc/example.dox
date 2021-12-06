@@ -132,14 +132,10 @@ Then, as there are also state data in the oven model, a subscription that marks 
 provider of them is performed. It is called whenever Sysrepo needs the state data subtree, usually when a client
 asks for them.
 
-Worth noting is that the same `subscription` object was used and so the flag #SR_SUBSCR_CTX_REUSE had to be specified.
-~~~{.c}
-    rc = sr_dp_get_items_subscribe(session, "/oven:oven-state", oven_state_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscription);
-~~~
 Lastly, the plugin will also handle any RPC calls, which also need subsciptions.
 ~~~{.c}
-    rc = sr_rpc_subscribe(session, "/oven:insert-food", oven_insert_food_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscription);
-    rc = sr_rpc_subscribe(session, "/oven:remove-food", oven_remove_food_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscription);
+    rc = sr_rpc_subscribe(session, "/oven:insert-food", oven_insert_food_cb, NULL, 0, &subscription);
+    rc = sr_rpc_subscribe(session, "/oven:remove-food", oven_remove_food_cb, NULL, 0, &subscription);
 ~~~
 Sysrepo provides macros for plugins to be able to print messages in a unified manner so it is advised to use them.
 ~~~{.c}
