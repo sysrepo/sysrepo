@@ -210,6 +210,7 @@ There are no bindings for other languages directly in this project but they are
 available separately.
 
 * [Python](https://github.com/sysrepo/sysrepo-python/)
+* [C++](https://github.com/sysrepo/sysrepo-cpp/)
 
 ## Tests
 
