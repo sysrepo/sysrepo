@@ -101,6 +101,10 @@ help_print(void)
             "                       Apply operation to a module datastore (startup, running, candidate, operational,\n"
             "                       or notification) or \":ALL\" (default) the datastores. Accepted by change op\n"
             "                       if permissions are being changed.\n"
+            "  -m, --module-plugin <mod-datastore>:<plugin-name>\n"
+            "                       Set specific module datastore plugin for a module datastore (startup, running,\n"
+            "                       candidate, operational, or notification), can be specified multiple times for\n"
+            "                       different module datastores. Accepted by install op.\n"
             "  -I, --init-data <path>\n"
             "                       Initial data in a file with XML or JSON extension to be set for a module,\n"
             "                       useful when there are mandatory top-level nodes. Accepted by install op.\n"
@@ -338,7 +342,8 @@ main(int argc, char **argv)
     const char *file_path = NULL, *search_dirs = NULL, *module_name = NULL, *data_path = NULL, *owner = NULL, *group = NULL;
     char **features = NULL, **dis_features = NULL, *ptr;
     mode_t perms = 0;
-    int r, i, rc = EXIT_FAILURE, opt;
+    sr_module_ds_t module_ds = {{"LYB DS file", "LYB DS file", "LYB DS file", "LYB DS file", "LYB notif"}};
+    int r, i, rc = EXIT_FAILURE, opt, module_ds_idx;
     int operation = 0, feat_count = 0, dis_feat_count = 0, replay = -1, force = 0, mod_ds = SR_MOD_DS_PLUGIN_COUNT;
     struct option options[] = {
         {"help",            no_argument,       NULL, 'h'},
@@ -356,6 +361,7 @@ main(int argc, char **argv)
         {"group",           required_argument, NULL, 'g'},
         {"permissions",     required_argument, NULL, 'p'},
         {"datastore",       required_argument, NULL, 'D'},
+        {"module-plugin",   required_argument, NULL, 'm'},
         {"init-data",       required_argument, NULL, 'I'},
         {"force",           no_argument,       NULL, 'f'},
         {"verbosity",       required_argument, NULL, 'v'},
@@ -369,7 +375,7 @@ main(int argc, char **argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVli:u:c:U:s:e:d:r:o:g:p:D:I:fv:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVli:u:c:U:s:e:d:r:o:g:p:D:m:I:fv:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -514,6 +520,28 @@ main(int argc, char **argv)
                 goto cleanup;
             }
             break;
+        case 'm':
+            if (!(ptr = strchr(optarg, ':'))) {
+                error_print(0, "Invalid module-plugin parameter \"%s\"", optarg);
+                goto cleanup;
+            }
+            if (!strncmp(optarg, "running", ptr - optarg)) {
+                module_ds_idx = SR_DS_RUNNING;
+            } else if (!strncmp(optarg, "startup", ptr - optarg)) {
+                module_ds_idx = SR_DS_STARTUP;
+            } else if (!strncmp(optarg, "candidate", ptr - optarg)) {
+                module_ds_idx = SR_DS_CANDIDATE;
+            } else if (!strncmp(optarg, "operational", ptr - optarg)) {
+                module_ds_idx = SR_DS_OPERATIONAL;
+            } else if (!strncmp(optarg, "notification", ptr - optarg)) {
+                module_ds_idx = SR_MOD_DS_NOTIF;
+            } else {
+                error_print(0, "Unknown datastore \"%.*s\"", (int)(ptr - optarg), optarg);
+                goto cleanup;
+            }
+
+            module_ds.plugin_name[module_ds_idx] = ptr + 1;
+            break;
         case 'I':
             if (operation && (operation != 'i')) {
                 error_print(0, "Invalid parameter -%c for the operation", opt);
@@ -574,8 +602,8 @@ main(int argc, char **argv)
         break;
     case 'i':
         /* install */
-        if ((r = sr_install_module2(conn, file_path, search_dirs, (const char **)features, NULL, owner, group, perms,
-                NULL, data_path, 0)) != SR_ERR_OK) {
+        if ((r = sr_install_module2(conn, file_path, search_dirs, (const char **)features, &module_ds, owner, group,
+                perms, NULL, data_path, 0)) != SR_ERR_OK) {
             /* succeed if the module is already installed */
             if (r != SR_ERR_EXISTS) {
                 error_print(r, "Failed to install module \"%s\"", file_path);
