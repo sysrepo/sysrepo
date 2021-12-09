@@ -79,6 +79,10 @@ are being changed. \fIMOD-DATASTORE\fP can be:
  \[bu] \fBnotification\fP
  \[bu] \fB:ALL\fP (default)
 .TP
+.BR "\-m\fR,\fP \-\^\-module-plugin \fIMOD-DATASTORE\fP:\fIPLUGIN-NAME\fP"
+Set specific module datastore plugin for a module datastore, can be specified multiple
+times for different module datastores. Accepted by \fBinstall\fP op.
+.TP
 .BR "\-I\fR,\fP \-\^\-init-data \fIPATH\fP"
 Initial data in a file with XML or JSON extension to be set for a module,
 useful when there are mandatory top-level nodes. Accepted by \fBinstall\fP op.
