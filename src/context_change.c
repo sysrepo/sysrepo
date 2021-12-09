@@ -233,7 +233,7 @@ sr_lycc_add_module(sr_conn_ctx_t *conn, const struct ly_set *mod_set, const sr_m
             /* find plugin */
             if (module_ds == &sr_default_module_ds) {
                 ds_plg = (struct srplg_ds_s *)sr_internal_ds_plugins[0];
-            } else if ((err_info = sr_ds_plugin_find((const char *)module_ds[ds].plugin_name, conn, &ds_plg))) {
+            } else if ((err_info = sr_ds_plugin_find(module_ds->plugin_name[ds], conn, &ds_plg))) {
                 return err_info;
             }
 
