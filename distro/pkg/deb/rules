@@ -1,12 +1,31 @@
 #!/usr/bin/make -f
-#export DH_VERBOSE=1
-export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+# -*- makefile -*-
+# Uncomment this to turn on verbose mode.
+# export DH_VERBOSE=1
 
+# Hardening
+DPKG_EXPORT_BUILDFLAGS = 1
 include /usr/share/dpkg/default.mk
 
+# needed for CMake that ignores CPPFLAGS
+CFLAGS+=$(CPPFLAGS)
+CXXFLAGS+=$(CPPFLAGS)
+
+# needed for dh_auto_test
+export SYSREPO_REPOSITORY_PATH=$(CURDIR)
+
+# be strict when comparing symbols in libsysrepo6
+export DPKG_GENSYMBOLS_CHECK_LEVEL=4
+
 %:
-	dh $@
+	dh $@ --buildsystem=cmake
 
 override_dh_auto_configure:
 	dh_auto_configure -- \
 		-DCMAKE_BUILD_TYPE:String="Release"
+
+override_dh_auto_build-indep:
+	dh_auto_build -- doc
+
+override_dh_missing:
+	dh_missing --fail-missing

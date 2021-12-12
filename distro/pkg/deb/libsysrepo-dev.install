@@ -1,5 +1,5 @@
-usr/lib/*/*.so
-usr/lib/*/pkgconfig/sysrepo.pc
-usr/include/*.h
+usr/include/sysrepo.h
 usr/include/sysrepo/*.h
-
+usr/include/sysrepo_*.h
+usr/lib/*/libsysrepo.so
+usr/lib/*/pkgconfig/sysrepo.pc

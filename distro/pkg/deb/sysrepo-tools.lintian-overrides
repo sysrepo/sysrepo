@@ -1,0 +1,2 @@
+sysrepo: no-manual-page usr/bin/sysrepocfg
+sysrepo: no-manual-page usr/bin/sysrepoctl

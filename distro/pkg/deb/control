@@ -1,52 +1,126 @@
 Source: sysrepo
 Section: libs
-Homepage: https://github.com/sysrepo/sysrepo/
-Maintainer: CESNET <mvasko@cesnet.cz>
+Maintainer: Ondřej Surý <ondrej@debian.org>
 Priority: optional
-Standards-Version: 4.5.0
+Standards-Version: 4.5.1.0
 Build-Depends: cmake,
-               debhelper (>= 10),
+               debhelper-compat (= 12),
+               doxygen,
+               graphviz,
                libyang2-dev,
                pkg-config
+Homepage: https://github.com/sysrepo/sysrepo
 Vcs-Browser: https://github.com/sysrepo/sysrepo/tree/master
 Vcs-Git: https://github.com/sysrepo/sysrepo.git
-
-Package: libsysrepo6
-Depends: ${misc:Depends},
-         ${shlibs:Depends}
-Architecture: any
-Description: YANG-based configuration and operational data store - runtime
- Applications can use sysrepo to store their configuration modeled by provided
- YANG model instead of using e.g. flat configuration files. Sysrepo will ensure
- data consistency of the data stored in the datastore and enforce data
- constraints defined by YANG model.
- .
- The library is implemented in C and provides an API for other software
- to use for accessing sysrepo datastore.
-
-Package: libsysrepo-dev
-Depends: libyang2-dev,
-         libsysrepo6 (= ${binary:Version}),
-         ${misc:Depends}
-Section: libdevel
-Architecture: any
-Description: YANG-based configuration and operational data store - development files
- Applications can use sysrepo to store their configuration modeled by provided
- YANG model instead of using e.g. flat configuration files. Sysrepo will ensure
- data consistency of the data stored in the datastore and enforce data
- constraints defined by YANG model.
- .
- This package contains the C headers, a pkgconfig file, and .so entry point
- for sysrepo.
 
 Package: sysrepo-tools
 Depends: libsysrepo6 (= ${binary:Version}),
          ${misc:Depends},
          ${shlibs:Depends}
-Section: devel
+Section: admin
 Architecture: any
-Description: YANG-based configuration and operational data store - executable tools
- This package provides the "sysrepoctl" and "sysrepocfg" tools which can be used
- for manipulation of installed YANG modules and their YANG data, respectively.
- There is also "sysrepo-plugind" that is a simple daemon grouping all installed
- sysrepo plugins in a single process.
+Multi-Arch: foreign
+Description: YANG-based configuration and operational state data store [tools]
+ Applications can use sysrepo to store their configuration modeled by provided
+ YANG model instead of using e.g. flat configuration files. Sysrepo will ensure
+ data consistency of the data stored in the datastore and enforce data
+ constraints defined by YANG model.
+ .
+ Sysrepo can be easily integrated with management agents such as NETCONF or
+ RESTCONF servers, using the same client library API that applications use to
+ access their configuration.
+ .
+ This package contains the tools to work with schemas and configuration.
+
+Package: sysrepo-doc
+Depends: ${misc:Depends}
+Section: doc
+Architecture: all
+Multi-Arch: foreign
+Description: YANG-based configuration and operational state data store [docs]
+ Applications can use sysrepo to store their configuration modeled by provided
+ YANG model instead of using e.g. flat configuration files. Sysrepo will ensure
+ data consistency of the data stored in the datastore and enforce data
+ constraints defined by YANG model.
+ .
+ Sysrepo can be easily integrated with management agents such as NETCONF or
+ RESTCONF servers, using the same client library API that applications use to
+ access their configuration.
+ .
+ This package contains the documentation.
+
+Package: sysrepo-plugind
+Depends: libsysrepo6 (= ${binary:Version}),
+         ${misc:Depends},
+         ${shlibs:Depends}
+Section: admin
+Architecture: any
+Multi-Arch: foreign
+Description: YANG-based configuration and operational state data store [daemon]
+ Applications can use sysrepo to store their configuration modeled by provided
+ YANG model instead of using e.g. flat configuration files. Sysrepo will ensure
+ data consistency of the data stored in the datastore and enforce data
+ constraints defined by YANG model.
+ .
+ Sysrepo can be easily integrated with management agents such as NETCONF or
+ RESTCONF servers, using the same client library API that applications use to
+ access their configuration.
+ .
+ This package contains the daemon for grouping sysrepo plugins.
+
+Package: libsysrepo6
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends},
+         ${shlibs:Depends}
+Section: libs
+Architecture: any
+Multi-Arch: same
+Description: YANG-based configuration and operational state data store [C library]
+ Applications can use sysrepo to store their configuration modeled by provided
+ YANG model instead of using e.g. flat configuration files. Sysrepo will ensure
+ data consistency of the data stored in the datastore and enforce data
+ constraints defined by YANG model.
+ .
+ Sysrepo can be easily integrated with management agents such as NETCONF or
+ RESTCONF servers, using the same client library API that applications use to
+ access their configuration.
+ .
+ This package contains the shared C library.
+
+Package: libsysrepo-dev
+Depends: libsysrepo6 (= ${binary:Version}),
+         libyang2-dev,
+         ${misc:Depends},
+         ${shlibs:Depends}
+Section: libdevel
+Architecture: any
+Multi-Arch: same
+Description: YANG-based configuration and operational state data store [C development]
+ Applications can use sysrepo to store their configuration modeled by provided
+ YANG model instead of using e.g. flat configuration files. Sysrepo will ensure
+ data consistency of the data stored in the datastore and enforce data
+ constraints defined by YANG model.
+ .
+ Sysrepo can be easily integrated with management agents such as NETCONF or
+ RESTCONF servers, using the same client library API that applications use to
+ access their configuration.
+ .
+ This package contains the static C library and headers.
+
+Package: sysrepo
+Depends: sysrepo-tools (>= ${source:Version}),
+         ${misc:Depends}
+Section: oldlibs
+Architecture: all
+Multi-Arch: foreign
+Description: YANG-based configuration and operational state data store [dummy]
+ Applications can use sysrepo to store their configuration modeled by provided
+ YANG model instead of using e.g. flat configuration files. Sysrepo will ensure
+ data consistency of the data stored in the datastore and enforce data
+ constraints defined by YANG model.
+ .
+ Sysrepo can be easily integrated with management agents such as NETCONF or
+ RESTCONF servers, using the same client library API that applications use to
+ access their configuration.
+ .
+ This package is a dummy dependency package and can be safely removed.

@@ -1,0 +1,17 @@
+[Unit]
+Description=YANG-based configuration and operational state data store
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/sysrepo-plugind -d -v 2
+PIDFile=/run/sysrepo-plugind.pid
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=yes
+ProtectHome=yes
+SystemCallArchitectures=native
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
