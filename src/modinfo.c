@@ -2554,7 +2554,7 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
 
     /* filter return data */
     if (mod_info->data) {
-        if (lyd_find_xpath(mod_info->data, xpath, result)) {
+        if (lyd_find_xpath3(NULL, mod_info->data, xpath, NULL, result)) {
             sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
             goto cleanup;
         }
