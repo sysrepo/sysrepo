@@ -19,6 +19,7 @@
 
 #include <inttypes.h>
 #include <stddef.h>
+#include <sys/stat.h>
 
 struct lyd_node;
 struct timespec;
