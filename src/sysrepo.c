@@ -5387,7 +5387,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     uint32_t event_id = 0;
 
     SR_CHECK_ARG_APIRET(!session || !input || !output, session, err_info);
-    if (session->conn->ly_ctx != input->schema->module->ctx) {
+    if (session->conn->ly_ctx != LYD_CTX(input)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Data trees must be created using the session connection libyang context.");
         return sr_api_ret(session, err_info);
     }
@@ -5408,25 +5408,31 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     }
 
     /* check input data tree */
-    switch (input->schema->nodetype) {
-    case LYS_ACTION:
-        for (input_op = input; input->parent; input = lyd_parent(input)) {}
-        break;
-    case LYS_RPC:
-        input_op = input;
-        break;
-    case LYS_CONTAINER:
-    case LYS_LIST:
-        /* find the action */
-        input_op = input;
-        if ((err_info = sr_ly_find_last_parent(&input_op, LYS_ACTION))) {
-            goto cleanup;
-        }
-        if (input_op->schema->nodetype == LYS_ACTION) {
+    input_op = NULL;
+    if (input->schema) {
+        switch (input->schema->nodetype) {
+        case LYS_ACTION:
+            for (input_op = input; input->parent; input = lyd_parent(input)) {}
+            break;
+        case LYS_RPC:
+            input_op = input;
+            break;
+        case LYS_CONTAINER:
+        case LYS_LIST:
+            /* find the action */
+            input_op = input;
+            if ((err_info = sr_ly_find_last_parent(&input_op, LYS_ACTION))) {
+                goto cleanup;
+            }
+            if (input_op->schema->nodetype != LYS_ACTION) {
+                input_op = NULL;
+            }
+            break;
+        default:
             break;
         }
-    /* fallthrough */
-    default:
+    }
+    if (!input_op) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Provided input is not a valid RPC or action invocation.");
         goto cleanup;
     }
@@ -5751,7 +5757,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
     char *path = NULL, *parent_path = NULL;
 
     SR_CHECK_ARG_APIRET(!session || !notif, session, err_info);
-    if (session->conn->ly_ctx != notif->schema->module->ctx) {
+    if (session->conn->ly_ctx != LYD_CTX(notif)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Data trees must be created using the session connection libyang context.");
         return sr_api_ret(session, err_info);
     }
