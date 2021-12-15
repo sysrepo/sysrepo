@@ -521,132 +521,25 @@ sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info)
 }
 
 /**
- * @brief Check whether operational data are required based on a predicate.
+ * @brief Check whether operational dta are required based on single request and subscription atom.
  *
- * @param[in] pred1 First predicate.
- * @param[in] len1 First predicate length.
- * @param[in] pred2 Second predicate.
- * @param[in] len2 Second predicate length.
- * @return 0 if not required, non-zero if required.
+ * @param[in] request_atom Request text atom.
+ * @param[in] sub_atom Subscription text atom.
+ * @return Whether the data are required or not.
  */
 static int
-sr_xpath_oper_data_predicate_required(const char *pred1, int len1, const char *pred2, int len2)
+sr_xpath_oper_data_text_atoms_required(const char *request_atom, const char *sub_atom)
 {
-    char quot1, quot2;
-    const char *val1, *val2;
+    const char *req_ptr, *sub_ptr, *mod1, *name1, *mod2, *name2;
+    int mlen1, mlen2, len1, len2, wildc1, wildc2;
 
-    /* node names */
-    while (len1 && len2) {
-        if (pred1[0] != pred2[0]) {
-            /* different node names */
-            return 1;
-        }
-
-        ++pred1;
-        --len1;
-        ++pred2;
-        --len2;
-
-        if ((pred1[0] == '=') && (pred2[0] == '=')) {
-            break;
-        }
-    }
-    if (!len1 || !len2) {
-        /* not an equality expression */
-        return 1;
-    }
-
-    ++pred1;
-    --len1;
-    ++pred2;
-    --len2;
-
-    /* we expect quotes now */
-    if ((pred1[0] != '\'') && (pred1[0] != '\"')) {
-        return 1;
-    }
-    if ((pred2[0] != '\'') && (pred2[0] != '\"')) {
-        return 1;
-    }
-    quot1 = pred1[0];
-    quot2 = pred2[0];
-
-    ++pred1;
-    --len1;
-    ++pred2;
-    --len2;
-
-    /* values */
-    val1 = pred1;
-    while (len1) {
-        if (pred1[0] == quot1) {
-            break;
-        }
-
-        ++pred1;
-        --len1;
-    }
-
-    val2 = pred2;
-    while (len2) {
-        if (pred2[0] == quot2) {
-            break;
-        }
-
-        ++pred2;
-        --len2;
-    }
-
-    if ((len1 != 1) || (len2 != 1)) {
-        /* the predicate is not finished, leave it */
-        return 1;
-    }
-
-    /* just compare values, we can decide based on that */
-    if (!strncmp(val1, val2, (pred1 - val1 > pred2 - val2) ? pred1 - val1 : pred2 - val2)) {
-        /* values match, we need this data */
-        return 1;
-    }
-
-    /* values do not match, these data would be flitered out */
-    return 0;
-}
-
-/**
- * @brief Check whether operational data are required based on one request simple path.
- *
- * @param[in] request_spath Get request single simple path (no unions).
- * @param[in] sub_xpath Operational subscription XPath.
- * @return 0 if not required, non-zero if required.
- */
-static int
-sr_xpath_oper_data_spath_required(const char *request_spath, const char *sub_xpath)
-{
-    const char *path1, *path2, *mod1, *mod2, *name1, *name2, *pred1, *pred2;
-    int wildc1, wildc2, mlen1, mlen2, len1, len2, dslash1, dslash2, has_pred1, has_pred2;
-
-    path1 = request_spath;
-    path2 = sub_xpath;
+    req_ptr = request_atom;
+    sub_ptr = sub_atom;
 
     do {
-        path1 = sr_xpath_next_name(path1, &mod1, &mlen1, &name1, &len1, &dslash1, &has_pred1);
-        path2 = sr_xpath_next_name(path2, &mod2, &mlen2, &name2, &len2, &dslash2, &has_pred2);
-
-        /* double-slash */
-        if ((dslash1 && !dslash2) || (!dslash1 && dslash2)) {
-            /* only one xpath includes '//', unable to check further */
-            return 1;
-        }
-        if (dslash1 && dslash2) {
-            if ((len1 == 1) && (name1[0] == '.')) {
-                /* always matches all */
-                return 1;
-            }
-            if ((len2 == 1) && (name2[0] == '.')) {
-                /* always matches all */
-                return 1;
-            }
-        }
+        /* parse nodes */
+        req_ptr = sr_xpath_next_qname(req_ptr + 1, &mod1, &mlen1, &name1, &len1);
+        sub_ptr = sr_xpath_next_qname(sub_ptr + 1, &mod2, &mlen2, &name2, &len2);
 
         /* wildcards */
         if ((len1 == 1) && (name1[0] == '*')) {
@@ -672,156 +565,11 @@ sr_xpath_oper_data_spath_required(const char *request_spath, const char *sub_xpa
             return 0;
         }
 
-        while (has_pred1 && has_pred2) {
-            path1 = sr_xpath_next_predicate(path1, &pred1, &len1, &has_pred1);
-            path2 = sr_xpath_next_predicate(path2, &pred2, &len2, &has_pred2);
+        /* parse until the subscription path ends */
+    } while (req_ptr[0] && sub_ptr[0]);
 
-            /* predicate */
-            if (!sr_xpath_oper_data_predicate_required(pred1, len1, pred2, len2)) {
-                /* not required based on the predicate */
-                return 0;
-            }
-        }
-
-        /* skip any leftover predicates */
-        while (has_pred1) {
-            path1 = sr_xpath_next_predicate(path1, NULL, NULL, &has_pred1);
-        }
-        while (has_pred2) {
-            path2 = sr_xpath_next_predicate(path2, NULL, NULL, &has_pred2);
-        }
-    } while ((path1[0] == '/') && (path2[0] == '/'));
-
-    /* whole path matches */
+    /* atom match */
     return 1;
-}
-
-/**
- * @brief Check whether operational data are required based on one request path.
- *
- * @param[in] request_path Get request single path, possibly with unions.
- * @param[in] sub_xpath Operational subscription XPath.
- * @param[out] next Following expression after path in @p request_path, set only if not required.
- * @return 0 if not required, non-zero if required.
- */
-static int
-sr_xpath_oper_data_path_required(const char *request_path, const char *sub_xpath, const char **next)
-{
-    int has_pred;
-
-    goto next_path;
-    do {
-        ++request_path;
-
-        /* skip whitespaces */
-        while (isspace(request_path[0])) {
-            ++request_path;
-        }
-
-next_path:
-        if (request_path[0] != '/') {
-            /* unhandled expression */
-            return 1;
-        }
-
-        /* oper data are required for this path */
-        if (sr_xpath_oper_data_spath_required(request_path, sub_xpath)) {
-            return 1;
-        }
-
-        /* skip this path */
-        do {
-            request_path = sr_xpath_next_name(request_path, NULL, NULL, NULL, NULL, NULL, &has_pred);
-            while (has_pred) {
-                request_path = sr_xpath_next_predicate(request_path, NULL, NULL, &has_pred);
-            }
-        } while (request_path[0] == '/');
-
-        /* skip whitespaces */
-        while (isspace(request_path[0])) {
-            ++request_path;
-        }
-
-        /* only union can be used to specify more paths, no? */
-    } while (request_path[0] == '|');
-
-    *next = request_path;
-    return 0;
-}
-
-/**
- * @brief Check whether operational data are required based on one request function call.
- *
- * @param[in] request_func Get request single function parameters.
- * @param[in] sub_xpath Operational subscription XPath.
- * @param[out] next Following expression after function call in @p request_func, set only if not required.
- * @return 0 if not required, non-zero if required.
- */
-static int
-sr_xpath_oper_data_func_required(const char *request_func, const char *sub_xpath, const char **next)
-{
-    int has_pred;
-
-    assert(request_func[0] == '(');
-
-    do {
-        ++request_func;
-
-        /* skip whitespaces */
-        while (isspace(request_func[0])) {
-            ++request_func;
-        }
-
-        if ((request_func[0] == '\'') || (request_func[0] == '\"')) {
-            /* skip literal */
-            request_func = strchr(request_func + 1, request_func[0]);
-            assert(request_func);
-            ++request_func;
-            goto arg_parsed;
-        } else if (isdigit(request_func[0])) {
-            /* skip number */
-            while (isdigit(request_func[0])) {
-                ++request_func;
-            }
-            goto arg_parsed;
-        } else if (request_func[0] != '/') {
-            /* unhandled expression */
-            return 1;
-        }
-
-        /* oper data are required for this path */
-        if (sr_xpath_oper_data_spath_required(request_func, sub_xpath)) {
-            return 1;
-        }
-
-        /* skip this path */
-        do {
-            request_func = sr_xpath_next_name(request_func, NULL, NULL, NULL, NULL, NULL, &has_pred);
-            while (has_pred) {
-                request_func = sr_xpath_next_predicate(request_func, NULL, NULL, &has_pred);
-            }
-        } while (request_func[0] == '/');
-
-arg_parsed:
-        /* skip whitespaces */
-        while (isspace(request_func[0])) {
-            ++request_func;
-        }
-    } while (request_func[0] == ',');
-
-    if (request_func[0] != ')') {
-        /* unhandled expression */
-        return 1;
-    }
-    ++request_func;
-
-    /* skip whitespaces */
-    while (isspace(request_func[0])) {
-        ++request_func;
-    }
-
-    *next = request_func;
-    return 0;
 }
 
 /**
@@ -829,46 +577,56 @@ arg_parsed:
  *
  * @param[in] request_xpath Get request full XPath.
  * @param[in] sub_xpath Operational subscription XPath.
- * @return 0 if not required, non-zero if required.
+ * @param[out] required Whether the oper data are required or not.
+ * @return err_info, NULL on success.
  */
-static int
-sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath)
+static sr_error_info_t *
+sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath, int *required)
 {
+    sr_error_info_t *err_info = NULL;
+    char **request_atoms = NULL, **sub_atoms = NULL;
+    uint32_t i, j, req_atom_count = 0, sub_atom_count = 0;
+
     assert(sub_xpath);
+
+    *required = 1;
 
     if (!request_xpath) {
         /* we do not know, say it is required */
-        return 1;
+        goto cleanup;
     }
 
-    /* skip whitespaces */
-    while (isspace(request_xpath[0])) {
-        ++request_xpath;
+    /* get text atoms for both xpaths */
+    if ((err_info = sr_xpath_get_text_atoms(request_xpath, &request_atoms, &req_atom_count)) || !req_atom_count) {
+        goto cleanup;
+    }
+    if ((err_info = sr_xpath_get_text_atoms(sub_xpath, &sub_atoms, &sub_atom_count)) || !sub_atom_count) {
+        goto cleanup;
     }
 
-    if (request_xpath[0] == '/') {
-        if (sr_xpath_oper_data_path_required(request_xpath, sub_xpath, &request_xpath)) {
-            /* oper data are required for this path */
-            return 1;
-        }
-    } else {
-        /* try to parse a function */
-        request_xpath = sr_xpath_next_identifier(request_xpath, 0);
-        if (request_xpath[0] == '(') {
-            if (sr_xpath_oper_data_func_required(request_xpath, sub_xpath, &request_xpath)) {
-                /* oper data are required for this function call */
-                return 1;
+    /* check whether any atoms match */
+    for (i = 0; i < req_atom_count; ++i) {
+        for (j = 0; j < sub_atom_count; ++j) {
+            if (sr_xpath_oper_data_text_atoms_required(request_atoms[i], sub_atoms[j])) {
+                /* required */
+                goto cleanup;
             }
         }
     }
 
-    if (request_xpath[0]) {
-        /* unhandled expression */
-        return 1;
-    }
+    /* data from the subscription not required */
+    *required = 0;
 
-    /* oper data not required for any single path, so not at all */
-    return 0;
+cleanup:
+    for (i = 0; i < req_atom_count; ++i) {
+        free(request_atoms[i]);
+    }
+    free(request_atoms);
+    for (i = 0; i < sub_atom_count; ++i) {
+        free(sub_atoms[i]);
+    }
+    free(sub_atoms);
+    return err_info;
 }
 
 /**
@@ -897,6 +655,7 @@ sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const
     const char *request_xpath;
     char *parent_path = NULL;
     uint32_t i;
+    int required;
 
     *oper_data = NULL;
 
@@ -916,7 +675,10 @@ sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const
             SR_CHECK_MEM_GOTO(!parent_path, err_info, cleanup);
 
             for (i = 0; i < req_xpath_count; ++i) {
-                if (sr_xpath_oper_data_required(request_xpaths[i], parent_path)) {
+                if ((err_info = sr_xpath_oper_data_required(request_xpaths[i], parent_path, &required))) {
+                    goto cleanup;
+                }
+                if (required) {
                     break;
                 }
             }
@@ -978,6 +740,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
     const char *sub_xpath, **request_xpaths = NULL;
     char *parent_xpath = NULL;
     uint32_t i, j, req_xpath_count = 0;
+    int required;
     struct ly_set *set = NULL;
     struct lyd_node *edit = NULL, *oper_data;
 
@@ -1041,7 +804,10 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
         if (mod->xpath_count) {
             /* check whether these data are even required */
             for (j = 0; j < mod->xpath_count; ++j) {
-                if (sr_xpath_oper_data_required(mod->xpaths[j], sub_xpath)) {
+                if ((err_info = sr_xpath_oper_data_required(mod->xpaths[j], sub_xpath, &required))) {
+                    goto cleanup_opersub_ext_unlock;
+                }
+                if (required) {
                     /* remember all xpaths causing these data to be required */
                     request_xpaths = sr_realloc(request_xpaths, (req_xpath_count + 1) * sizeof *request_xpaths);
                     SR_CHECK_MEM_GOTO(!request_xpaths, err_info, cleanup_opersub_ext_unlock);

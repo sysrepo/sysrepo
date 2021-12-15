@@ -5384,126 +5384,6 @@ sr_xpath_first_node_with_predicates(const char *xpath)
     return strndup(xpath, ptr - xpath);
 }
 
-const char *
-sr_xpath_next_identifier(const char *id, int allow_special)
-{
-    if (allow_special && !strncmp(id, "..", 2)) {
-        id += 2;
-    } else if (allow_special && ((id[0] == '*') || (id[0] == '.'))) {
-        id += 1;
-    } else {
-        if (!isalpha(id[0]) && (id[0] != '_')) {
-            /* special first character */
-            return id;
-        }
-        ++id;
-        while (isalpha(id[0]) || isdigit(id[0]) || (id[0] == '_') || (id[0] == '-') || (id[0] == '.')) {
-            ++id;
-        }
-    }
-
-    return id;
-}
-
-const char *
-sr_xpath_next_name(const char *xpath, const char **mod, int *mod_len, const char **name, int *len, int *double_slash,
-        int *has_predicate)
-{
-    const char *ptr;
-
-    assert(xpath && (xpath[0] == '/'));
-
-    if (mod) {
-        *mod = NULL;
-    }
-    if (mod_len) {
-        *mod_len = 0;
-    }
-    if (name) {
-        *name = NULL;
-    }
-    if (len) {
-        *len = 0;
-    }
-    if (double_slash) {
-        *double_slash = 0;
-    }
-    *has_predicate = 0;
-
-    ++xpath;
-    if (xpath[0] == '/') {
-        ++xpath;
-        if (double_slash) {
-            *double_slash = 1;
-        }
-    }
-
-    /* module/node name */
-    ptr = sr_xpath_next_identifier(xpath, 1);
-
-    /* it was actually module name */
-    if (ptr[0] == ':') {
-        if (mod) {
-            *mod = xpath;
-        }
-        if (mod_len) {
-            *mod_len = ptr - xpath;
-        }
-        xpath = ptr + 1;
-
-        /* node name */
-        ptr = sr_xpath_next_identifier(xpath, 1);
-    }
-
-    /* predicate follows node name */
-    if (ptr[0] == '[') {
-        *has_predicate = 1;
-    }
-
-    if (name) {
-        *name = xpath;
-    }
-    if (len) {
-        *len = ptr - xpath;
-    }
-
-    return ptr;
-}
-
-const char *
-sr_xpath_next_predicate(const char *xpath, const char **pred, int *len, int *has_predicate)
-{
-    const char *ptr;
-    char quote = 0;
-
-    assert(xpath && (xpath[0] == '['));
-
-    for (ptr = xpath + 1; ptr[0] && (quote || (ptr[0] != ']')); ++ptr) {
-        if (quote && (ptr[0] == quote)) {
-            quote = 0;
-        } else if (!quote && ((ptr[0] == '\'') || (ptr[0] == '\"'))) {
-            quote = ptr[0];
-        }
-    }
-
-    if (quote) {
-        /* invalid xpath */
-        return NULL;
-    }
-
-    if (pred) {
-        *pred = xpath + 1;
-    }
-    if (len) {
-        *len = ptr - (xpath + 1);
-    }
-    if (has_predicate) {
-        *has_predicate = (ptr[0] && (ptr[1] == '[')) ? 1 : 0;
-    }
-
-    return ptr + 1;
-}
-
 size_t
 sr_xpath_len_no_predicates(const char *xpath)
 {
@@ -5541,6 +5421,304 @@ sr_xpath_len_no_predicates(const char *xpath)
         return 0;
     }
     return len;
+}
+
+/**
+ * @brief Parse "..", "*", ".", or a YANG identifier.
+ *
+ * @param[in] id Identifier start.
+ * @param[in] allow_special Whether to allow special paths or only YANG identifiers.
+ * @return Pointer to the first non-identifier character.
+ */
+static const char *
+sr_xpath_next_identifier(const char *id, int allow_special)
+{
+    if (allow_special && !strncmp(id, "..", 2)) {
+        id += 2;
+    } else if (allow_special && ((id[0] == '*') || (id[0] == '.'))) {
+        id += 1;
+    } else {
+        if (!isalpha(id[0]) && (id[0] != '_')) {
+            /* special first character */
+            return id;
+        }
+        ++id;
+        while (isalpha(id[0]) || isdigit(id[0]) || (id[0] == '_') || (id[0] == '-') || (id[0] == '.')) {
+            ++id;
+        }
+    }
+
+    return id;
+}
+
+const char *
+sr_xpath_next_qname(const char *xpath, const char **mod, int *mod_len, const char **name, int *len)
+{
+    const char *ptr;
+
+    assert(xpath);
+
+    if (mod) {
+        *mod = NULL;
+    }
+    if (mod_len) {
+        *mod_len = 0;
+    }
+    if (name) {
+        *name = NULL;
+    }
+    if (len) {
+        *len = 0;
+    }
+
+    /* module/node name */
+    ptr = sr_xpath_next_identifier(xpath, 1);
+
+    /* it was actually module name */
+    if (ptr[0] == ':') {
+        if (mod) {
+            *mod = xpath;
+        }
+        if (mod_len) {
+            *mod_len = ptr - xpath;
+        }
+        xpath = ptr + 1;
+
+        /* node name */
+        ptr = sr_xpath_next_identifier(xpath, 1);
+    }
+
+    if (name) {
+        *name = xpath;
+    }
+    if (len) {
+        *len = ptr - xpath;
+    }
+
+    return ptr;
+}
+
+/**
+ * @brief Add a new atom if not present.
+ *
+ * @param[in,out] atom Atom to add, is spent and set to NULL.
+ * @param[in,out] atoms Array of atoms to add to.
+ * @param[in,out] atom_count Count of @p atoms, is updated.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_xpath_text_atom_add(char **atom, char ***atoms, uint32_t *atom_count)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i;
+    void *mem;
+
+    for (i = 0; i < *atom_count; ++i) {
+        if (!strcmp((*atoms)[i], *atom)) {
+            break;
+        }
+    }
+
+    if (i < *atom_count) {
+        /* atom already stored */
+        free(*atom);
+        *atom = NULL;
+    } else {
+        /* new atom */
+        mem = realloc(*atoms, (i + 1) * sizeof **atoms);
+        SR_CHECK_MEM_RET(!mem, err_info);
+        *atoms = mem;
+
+        (*atoms)[i] = *atom;
+        *atom = NULL;
+        ++(*atom_count);
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief Accepted operators in XPath delimiting expressions.
+ */
+static const char *xpath_ops[] = {"or ", "and ", "=", "!=", "<", ">", "<=", ">=", "+", "-", "*", "div ", "mod ", "|"};
+
+/**
+ * @brief Get text atoms from an XPath expression.
+ *
+ * @param[in] xpath XPath to parse.
+ * @param[in] prev_atom Atom of the previous expression (context node as a text atom).
+ * @param[in] end_chars Array of chars ending this expression, NULL if only terminating zero is expected.
+ * @param[out] atoms Collected text atoms.
+ * @param[out] atom_count Count of @p atoms.
+ * @param[out] xpath_next Pointer to one of @p end_chars if found, @p xpath if some unknown construct was encountered.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_xpath_text_atoms_expr(const char *xpath, const char *prev_atom, const char *end_chars, char ***atoms,
+        uint32_t *atom_count, const char **xpath_next)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i;
+    int parsed = 0, mod_len, name_len, op_len;
+    const char *mod, *name, *next, *next2;
+    char *tmp, *cur_atom = NULL;
+
+    /* skip whitespaces */
+    next = xpath;
+    while (isspace(next[0])) {
+        ++next;
+    }
+
+    if ((next[0] == '\'') || (next[0] == '\"')) {
+        /* literal, skip it */
+        for (next2 = next + 1; next2[0] != next[0]; ++next2) {}
+        next = next2 + 1;
+        parsed = 1;
+        goto cleanup;
+    } else if (isdigit(next[0])) {
+        /* number, skip it */
+        do {
+            ++next;
+        } while (isdigit(next[0]));
+        parsed = 1;
+        goto cleanup;
+    } else if (next[0] == '/') {
+        /* absolute path */
+        ++next;
+        if (!(cur_atom = strdup(""))) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+    } else {
+        /* relative path */
+        if (!(cur_atom = strdup(prev_atom))) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+    }
+
+parse_name:
+    /* parse the name (node, function, ...), there should be some */
+    next2 = sr_xpath_next_qname(next, &mod, &mod_len, &name, &name_len);
+    if (next2 == next) {
+        /* nothing parsed, unknown expr */
+        goto cleanup;
+    }
+    next = next2;
+    assert(name);
+
+    if (next[0] != '(') {
+        /* add the node if not a function */
+        if (asprintf(&tmp, "%s/%.*s%s%.*s", cur_atom, mod_len, mod ? mod : "", mod ? ":" : "", name_len, name) == -1) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+        free(cur_atom);
+        cur_atom = tmp;
+    }
+
+    if (next[0] == '/') {
+        /* parse next path segment */
+        ++next;
+        goto parse_name;
+    } else if (next[0] == '(') {
+        /* function call, get atoms from subexpressions */
+        do {
+            next2 = next + 1;
+            if ((err_info = sr_xpath_text_atoms_expr(next2, cur_atom, ",)", atoms, atom_count, &next))) {
+                goto cleanup;
+            } else if (next2 == next) {
+                /* unknown expr */
+                goto cleanup;
+            }
+        } while (next[0] == ',');
+        ++next;
+    } else if (next[0] == '[') {
+        /* predicate(s), get atoms from it */
+        do {
+            next2 = next + 1;
+            if ((err_info = sr_xpath_text_atoms_expr(next2, cur_atom, "]", atoms, atom_count, &next))) {
+                goto cleanup;
+            } else if (next2 == next) {
+                /* unknown expr */
+                goto cleanup;
+            }
+            ++next;
+        } while (next[0] == '[');
+
+        if (next[0] == '/') {
+            /* path continues, parse next path segment */
+            ++next;
+            goto parse_name;
+        }
+    }
+
+    /* skip whitespaces */
+    while (isspace(next[0])) {
+        ++next;
+    }
+
+    if ((!end_chars && !next[0]) || (end_chars && next[0] && strchr(end_chars, next[0]))) {
+        /* finished with this (sub)expression, add new atom */
+        parsed = 1;
+        if ((err_info = sr_xpath_text_atom_add(&cur_atom, atoms, atom_count))) {
+            goto cleanup;
+        }
+    } else {
+        /* operator after expression */
+        op_len = 0;
+        for (i = 0; i < sizeof xpath_ops / sizeof *xpath_ops; ++i) {
+            if (!strncmp(next, xpath_ops[i], strlen(xpath_ops[i]))) {
+                op_len = strlen(xpath_ops[i]);
+                break;
+            }
+        }
+
+        if (op_len) {
+            /* add new atom */
+            if ((err_info = sr_xpath_text_atom_add(&cur_atom, atoms, atom_count))) {
+                goto cleanup;
+            }
+
+            /* parse the following expression */
+            if ((err_info = sr_xpath_text_atoms_expr(next + op_len, prev_atom, end_chars, atoms, atom_count, &next))) {
+                goto cleanup;
+            }
+            parsed = 1;
+        } /* else unknown expr */
+    } /* else unknown expr */
+
+cleanup:
+    free(cur_atom);
+    *xpath_next = parsed ? next : xpath;
+    return err_info;
+}
+
+sr_error_info_t *
+sr_xpath_get_text_atoms(const char *xpath, char ***atoms, uint32_t *atom_count)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *next;
+    uint32_t i;
+
+    assert(xpath);
+
+    *atoms = NULL;
+    *atom_count = 0;
+
+    /* get atoms for the expression, for relative paths we can use '/' because the context node is root node */
+    err_info = sr_xpath_text_atoms_expr(xpath, "/", NULL, atoms, atom_count, &next);
+
+    if (err_info || (xpath == next)) {
+        /* error or unknown expr */
+        for (i = 0; i < *atom_count; ++i) {
+            free((*atoms)[i]);
+        }
+        free(*atoms);
+        *atoms = NULL;
+        *atom_count = 0;
+    }
+    return err_info;
 }
 
 sr_error_info_t *
