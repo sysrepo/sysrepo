@@ -608,7 +608,7 @@ sr_xpath_oper_data_predicate_required(const char *pred1, int len1, const char *p
         return 1;
     }
 
-    /* values fo not match, these data would be flitered out */
+    /* values do not match, these data would be flitered out */
     return 0;
 }
 
