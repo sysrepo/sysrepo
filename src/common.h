@@ -1274,47 +1274,34 @@ sr_error_info_t *sr_xpath_trim_last_node(const char *xpath, char **trim_xpath);
 char *sr_xpath_first_node_with_predicates(const char *xpath);
 
 /**
- * @brief Parse "..", "*", ".", or a YANG identifier.
- *
- * @param[in] id Identifier start.
- * @param[in] allow_special Whether to allow special paths or only YANG identifiers.
- * @return Pointer to the first non-identifier character.
- */
-const char *sr_xpath_next_identifier(const char *id, int allow_special);
-
-/**
- * @brief Get pointers to the next node name in an XPath.
- *
- * @param[in] xpath Current position in the XPath (`/` expected at the beginning).
- * @param[out] mod Module name, if any.
- * @param[out] mod_len Moduel name length.
- * @param[out] name Node name.
- * @param[out] len Node name length,
- * @param[out] double_slash Whether the node starts with '//'.
- * @param[out] has_predicate Whether a predicate follows.
- * @return Pointer to the next XPath part (node name or predicate).
- */
-const char *sr_xpath_next_name(const char *xpath, const char **mod, int *mod_len, const char **name, int *len,
-        int *double_slash, int *has_predicate);
-
-/**
- * @brief Get pointers to the next predicate in an XPath.
- *
- * @param[in] xpath Current position in the XPath (`[` expected at the beginning).
- * @param[out] pred Predicate content.
- * @param[out] len Predicate content length,
- * @param[out] has_predicate Whether another predicate follows.
- * @return Pointer to the next XPath part (node name or predicate).
- */
-const char *sr_xpath_next_predicate(const char *xpath, const char **pred, int *len, int *has_predicate);
-
-/**
  * @brief Learn length of an XPath without any predicates.
  *
  * @param[in] xpath Full XPath.
  * @return XPath length.
  */
 size_t sr_xpath_len_no_predicates(const char *xpath);
+
+/**
+ * @brief Get pointers to the next node qualified name in an XPath.
+ *
+ * @param[in] xpath Current position in the XPath (`/` expected at the beginning).
+ * @param[out] mod Module name, if any.
+ * @param[out] mod_len Moduel name length.
+ * @param[out] name Node name.
+ * @param[out] len Node name length,
+ * @return Pointer to the next XPath part (node name or predicate).
+ */
+const char *sr_xpath_next_qname(const char *xpath, const char **mod, int *mod_len, const char **name, int *len);
+
+/**
+ * @brief Get all text atoms (simple paths) for an XPath.
+ *
+ * @param[in] xpath XPath to parse.
+ * @param[out] atoms Array of collected text atoms, NULL if unknown XPath expr.
+ * @param[out] atom_count Count of @p atoms, 0 if unknown XPath expr.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_xpath_get_text_atoms(const char *xpath, char ***atoms, uint32_t *atom_count);
 
 /**
  * @brief Find last (most nested) parent (node with possible children) in a data tree.
