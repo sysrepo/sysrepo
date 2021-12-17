@@ -84,6 +84,7 @@ srpds_lyb_store_(const struct lys_module *mod, sr_datastore_t ds, const struct l
             rc = SR_ERR_SYS;
             goto cleanup;
         }
+        backup = 1;
         if (fchown(fd, st.st_uid, st.st_gid) == -1) {
             SRPLG_LOG_ERR(srpds_name, "Changing owner of \"%s\" failed (%s).", bck_path, strerror(errno));
             if ((errno == EACCES) || (errno == EPERM)) {
@@ -102,8 +103,6 @@ srpds_lyb_store_(const struct lys_module *mod, sr_datastore_t ds, const struct l
         if ((rc = srlyb_cp_path(srpds_name, bck_path, path))) {
             goto cleanup;
         }
-
-        backup = 1;
     }
 
     /* open the file */
@@ -127,14 +126,15 @@ srpds_lyb_store_(const struct lys_module *mod, sr_datastore_t ds, const struct l
         goto cleanup;
     }
 
+cleanup:
     /* delete the backup file */
     if (backup && (unlink(bck_path) == -1)) {
         SRPLG_LOG_ERR(srpds_name, "Failed to remove backup \"%s\" (%s).", bck_path, strerror(errno));
-        rc = SR_ERR_SYS;
-        goto cleanup;
+        if (!rc) {
+            rc = SR_ERR_SYS;
+        }
     }
 
-cleanup:
     if (fd > -1) {
         close(fd);
     }
