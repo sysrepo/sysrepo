@@ -6,9 +6,6 @@ module examples {
         leaf l {
             type string;
         }
-        leaf l2 {
-            type string;
-        }
     }
 
     container stats {
