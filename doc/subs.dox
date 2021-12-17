@@ -107,6 +107,11 @@ they can also be used to provide _configuration_ data nodes. In that case they s
 configuration that is actually in-use by the managed device. Much more details and explanations can be found
 in the [NMDA RFC](@ref rfcs).
 
+Note that if a an operational subscription XPath covers _configuration_ data nodes, then the subscription callback
+ _must_ return those _configuration_ data nodes unless the ::SR_SUBSCR_OPER_MERGE subscription option is used
+ in which case the _configuration_ data nodes from the _running_ datastore will be merged with _configuration_
+ data nodes provded by the subscription callback.
+
 When using these [pull operational data](@ref oper_data) subscriptions, the subscription must be **actively handling events**
 whenever **operational datastore data of the module are requested** (so these 2 operations cannot occur in a single thread,
 so they must have individual subscription structures) to **avoid a time out**. Note that operational datastore data are
