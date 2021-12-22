@@ -426,7 +426,7 @@ static int
 test_get_tree(struct test_state *state, struct timespec *ts_start, struct timespec *ts_end)
 {
     int r;
-    struct lyd_node *data;
+    sr_data_t *data;
     char path[64];
 
     sprintf(path, "/perf:cont/lst[k1='%" PRIu32 "' and k2='str%" PRIu32 "']/l", state->count / 2, state->count / 2);
@@ -439,7 +439,7 @@ test_get_tree(struct test_state *state, struct timespec *ts_start, struct timesp
 
     TEST_END(ts_end);
 
-    lyd_free_siblings(data);
+    sr_release_data(data);
 
     return SR_ERR_OK;
 }
@@ -470,7 +470,7 @@ static int
 test_get_tree_hash(struct test_state *state, struct timespec *ts_start, struct timespec *ts_end)
 {
     int r;
-    struct lyd_node *data;
+    sr_data_t *data;
     char path[64];
 
     sprintf(path, "/perf:cont/lst[k1='%" PRIu32 "'][k2='str%" PRIu32 "']/l", state->count / 2, state->count / 2);
@@ -483,7 +483,7 @@ test_get_tree_hash(struct test_state *state, struct timespec *ts_start, struct t
 
     TEST_END(ts_end);
 
-    lyd_free_siblings(data);
+    sr_release_data(data);
 
     return SR_ERR_OK;
 }
@@ -559,7 +559,7 @@ static int
 test_oper_get_tree(struct test_state *state, struct timespec *ts_start, struct timespec *ts_end)
 {
     int r;
-    struct lyd_node *data;
+    sr_data_t *data;
 
     sr_session_switch_ds(state->sess, SR_DS_OPERATIONAL);
 
@@ -571,7 +571,7 @@ test_oper_get_tree(struct test_state *state, struct timespec *ts_start, struct t
 
     TEST_END(ts_end);
 
-    lyd_free_siblings(data);
+    sr_release_data(data);
     sr_session_switch_ds(state->sess, SR_DS_RUNNING);
 
     return SR_ERR_OK;
