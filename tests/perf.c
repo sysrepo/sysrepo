@@ -412,7 +412,7 @@ setup_subscribe_oper(uint32_t count, struct test_state *state)
     if ((r = sr_session_start(state->conn, SR_DS_RUNNING, &state->sess))) {
         return r;
     }
-    if ((r = sr_oper_get_items_subscribe(state->sess, "perf", "/perf:cont", oper_cb, state, 0, &state->sub))) {
+    if ((r = sr_oper_get_subscribe(state->sess, "perf", "/perf:cont", oper_cb, state, 0, &state->sub))) {
         return r;
     }
     state->mod = ly_ctx_get_module_implemented(sr_acquire_context(state->conn), "perf");
