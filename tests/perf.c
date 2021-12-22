@@ -192,6 +192,7 @@ exec_test(setup_cb setup, test_cb test, const char *name, uint32_t count, uint32
     sr_delete_item(state.sess, "/perf:cont", 0);
     sr_apply_changes(state.sess, 0);
     sr_unsubscribe(state.sub);
+    sr_release_context(state.conn);
     sr_disconnect(state.conn);
 
     /* print time */
@@ -312,7 +313,7 @@ setup_running(uint32_t count, struct test_state *state)
     if ((r = sr_session_start(state->conn, SR_DS_RUNNING, &state->sess))) {
         return r;
     }
-    state->mod = ly_ctx_get_module_implemented(sr_get_context(state->conn), "perf");
+    state->mod = ly_ctx_get_module_implemented(sr_acquire_context(state->conn), "perf");
     state->count = count;
 
     /* set running data */
@@ -342,7 +343,7 @@ setup_running_cached(uint32_t count, struct test_state *state)
     if ((r = sr_session_start(state->conn, SR_DS_RUNNING, &state->sess))) {
         return r;
     }
-    state->mod = ly_ctx_get_module_implemented(sr_get_context(state->conn), "perf");
+    state->mod = ly_ctx_get_module_implemented(sr_acquire_context(state->conn), "perf");
     state->count = count;
 
     /* set running data */
@@ -374,7 +375,7 @@ setup_subscribe_change_item(uint32_t count, struct test_state *state)
     if ((r = sr_module_change_subscribe(state->sess, "perf", NULL, change_item_cb, NULL, 0, 0, &state->sub))) {
         return r;
     }
-    state->mod = ly_ctx_get_module_implemented(sr_get_context(state->conn), "perf");
+    state->mod = ly_ctx_get_module_implemented(sr_acquire_context(state->conn), "perf");
     state->count = count;
 
     return SR_ERR_OK;
@@ -394,7 +395,7 @@ setup_subscribe_change_tree(uint32_t count, struct test_state *state)
     if ((r = sr_module_change_subscribe(state->sess, "perf", NULL, change_tree_cb, NULL, 0, 0, &state->sub))) {
         return r;
     }
-    state->mod = ly_ctx_get_module_implemented(sr_get_context(state->conn), "perf");
+    state->mod = ly_ctx_get_module_implemented(sr_acquire_context(state->conn), "perf");
     state->count = count;
 
     return SR_ERR_OK;
@@ -414,7 +415,7 @@ setup_subscribe_oper(uint32_t count, struct test_state *state)
     if ((r = sr_oper_get_items_subscribe(state->sess, "perf", "/perf:cont", oper_cb, state, 0, &state->sub))) {
         return r;
     }
-    state->mod = ly_ctx_get_module_implemented(sr_get_context(state->conn), "perf");
+    state->mod = ly_ctx_get_module_implemented(sr_acquire_context(state->conn), "perf");
     state->count = count;
 
     return SR_ERR_OK;
