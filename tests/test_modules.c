@@ -63,21 +63,18 @@ teardown_f(void **state)
 static void
 cmp_int_data(sr_conn_ctx_t *conn, const char *module_name, const char *expected)
 {
-    const struct ly_ctx *ly_ctx;
     char *str, *ptr, buf[1024];
-    struct lyd_node *data, *sr_mod;
+    sr_data_t *data;
+    struct lyd_node *sr_mod;
     struct ly_set *set;
     LY_ERR ret;
 
-    ly_ctx = sr_acquire_context(conn);
-
-    /* parse internal data */
-    sprintf(buf, "%s/data/sysrepo.startup", sr_get_repo_path());
-    assert_int_equal(LY_SUCCESS, lyd_parse_data_path(ly_ctx, buf, LYD_LYB, LYD_PARSE_ONLY, 0, &data));
+    /* get internal data */
+    assert_int_equal(SR_ERR_OK, sr_get_module_info(conn, &data));
 
     /* filter the module */
     sprintf(buf, "/sysrepo:sysrepo-modules/*[name='%s']", module_name);
-    assert_int_equal(LY_SUCCESS, lyd_find_xpath(data, buf, &set));
+    assert_int_equal(LY_SUCCESS, lyd_find_xpath(data->tree, buf, &set));
     assert_int_equal(set->count, 1);
     sr_mod = set->objs[0];
     ly_set_free(set, NULL);
@@ -91,8 +88,7 @@ cmp_int_data(sr_conn_ctx_t *conn, const char *module_name, const char *expected)
 
     /* check current internal data */
     ret = lyd_print_mem(&str, sr_mod, LYD_XML, LYD_PRINT_SHRINK);
-    lyd_free_all(data);
-    sr_release_context(conn);
+    sr_release_data(data);
     assert_int_equal(ret, LY_SUCCESS);
 
     /* set replay support timestamp to zeroes */

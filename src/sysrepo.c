@@ -2288,6 +2288,67 @@ sr_disable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const ch
     return sr_api_ret(NULL, err_info);
 }
 
+/**
+ * @brief Acquire libyang data tree together with its context lock in a SR data structure.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] tree libyang data tree, ownership is passed to @p data in all cases.
+ * @param[out] data Created SR data.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+_sr_acquire_data(sr_conn_ctx_t *conn, struct lyd_node *tree, sr_data_t **data)
+{
+    sr_error_info_t *err_info = NULL;
+
+    /* allocate structure */
+    *data = calloc(1, sizeof **data);
+    SR_CHECK_MEM_GOTO(!*data, err_info, cleanup);
+
+    /* fill members */
+    (*data)->conn = conn;
+    (*data)->tree = tree;
+
+cleanup:
+    if (err_info) {
+        lyd_free_all(tree);
+
+        /* CONTEXT UNLOCK */
+        sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
+    }
+    return err_info;
+}
+
+API int
+sr_get_module_info(sr_conn_ctx_t *conn, sr_data_t **sysrepo_data)
+{
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(!conn || !sysrepo_data, NULL, err_info);
+
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        return sr_api_ret(NULL, err_info);
+    }
+
+    /* prepare data wrapper */
+    if ((err_info = _sr_acquire_data(conn, NULL, sysrepo_data))) {
+        goto cleanup;
+    }
+
+    /* get internal sysrepo data */
+    if ((err_info = sr_lydmods_parse(conn->ly_ctx, 0, &(*sysrepo_data)->tree))) {
+        goto cleanup;
+    }
+
+cleanup:
+    if (err_info) {
+        sr_release_data(*sysrepo_data);
+        *sysrepo_data = NULL;
+    }
+    return sr_api_ret(NULL, err_info);
+}
+
 API int
 sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr_val_t **value)
 {
@@ -2357,37 +2418,6 @@ cleanup:
         *value = NULL;
     }
     return sr_api_ret(session, err_info);
-}
-
-/**
- * @brief Acquire libyang data tree together with its context lock in a SR data structure.
- *
- * @param[in] conn Connection to use.
- * @param[in] tree libyang data tree, ownership is passed to @p data in all cases.
- * @param[out] data Created SR data.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-_sr_acquire_data(sr_conn_ctx_t *conn, struct lyd_node *tree, sr_data_t **data)
-{
-    sr_error_info_t *err_info = NULL;
-
-    /* allocate structure */
-    *data = calloc(1, sizeof **data);
-    SR_CHECK_MEM_GOTO(!*data, err_info, cleanup);
-
-    /* fill members */
-    (*data)->conn = conn;
-    (*data)->tree = tree;
-
-cleanup:
-    if (err_info) {
-        lyd_free_all(tree);
-
-        /* CONTEXT UNLOCK */
-        sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
-    }
-    return err_info;
 }
 
 API int
