@@ -623,6 +623,17 @@ int sr_enable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const
  */
 int sr_disable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name, int force);
 
+/**
+ * @brief Get internal sysrepo data tree, which holds detailed information about installed modules. It should
+ * not be needed except for some specific use-cases. These data are from the _sysrepo_ module found in
+ * `modules/sysrepo.yang`.
+ *
+ * @param[in] conn Connection to use.
+ * @param[out] sysrepo_data Sysrepo internal data tree.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_get_module_info(sr_conn_ctx_t *conn, sr_data_t **sysrepo_data);
+
 /** @} schema */
 
 ////////////////////////////////////////////////////////////////////////////////
