@@ -1890,12 +1890,12 @@ test_xpath_check(void **state)
             xpath_check_oper_cb, st, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* TODO read interfaces from operational, callback not called */
-    /*ATOMIC_STORE_RELAXED(st->cb_called, 0);
+    /* read interfaces from operational, callback not called */
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     sr_release_data(data);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 0);*/
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 0);
 
     /* read all from operational, callback called */
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
@@ -2060,7 +2060,7 @@ test_state_only(void **state)
     ret = sr_get_data(st->sess, "/mixed-config:test-state/test-case[name='four']", 0, 0,
             SR_OPER_NO_CONFIG | SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    /* TODO assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1); */
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
