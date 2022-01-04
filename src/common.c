@@ -5559,7 +5559,7 @@ sr_xpath_text_atoms_expr(const char *xpath, const char *prev_atom, const char *e
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
-    int parsed = 0, mod_len, name_len, op_len;
+    int parsed = 0, mod_len, name_len, op_len, last_is_node = 0;
     const char *mod, *name, *next, *next2;
     char *tmp, *cur_atom = NULL;
 
@@ -5615,6 +5615,8 @@ parse_name:
         }
         free(cur_atom);
         cur_atom = tmp;
+
+        last_is_node = 1;
     }
 
     if (next[0] == '/') {
@@ -5633,6 +5635,8 @@ parse_name:
             }
         } while (next[0] == ',');
         ++next;
+
+        last_is_node = 0;
     } else if (next[0] == '[') {
         /* predicate(s), get atoms from it */
         do {
@@ -5651,6 +5655,8 @@ parse_name:
             ++next;
             goto parse_name;
         }
+
+        last_is_node = 0;
     }
 
     /* skip whitespaces */
@@ -5675,13 +5681,30 @@ parse_name:
         }
 
         if (op_len) {
+            next2 = next + op_len;
+            if (last_is_node && end_chars && !strcmp(end_chars, "]") && !strcmp(xpath_ops[i], "=")) {
+                /* check for literal and store it in a special atom */
+                while (isspace(next2[0])) {
+                    ++next2;
+                }
+                if ((next2[0] == '\'') || (next2[0] == '\"')) {
+                    if (asprintf(&tmp, "%s[.=%.*s]", cur_atom, (int)(strchr(next2 + 1, next2[0]) - next2) + 1, next2) == -1) {
+                        SR_ERRINFO_MEM(&err_info);
+                        goto cleanup;
+                    }
+                    if ((err_info = sr_xpath_text_atom_add(&tmp, atoms, atom_count))) {
+                        goto cleanup;
+                    }
+                }
+            }
+
             /* add new atom */
             if ((err_info = sr_xpath_text_atom_add(&cur_atom, atoms, atom_count))) {
                 goto cleanup;
             }
 
             /* parse the following expression */
-            if ((err_info = sr_xpath_text_atoms_expr(next + op_len, prev_atom, end_chars, atoms, atom_count, &next))) {
+            if ((err_info = sr_xpath_text_atoms_expr(next2, prev_atom, end_chars, atoms, atom_count, &next))) {
                 goto cleanup;
             }
             parsed = 1;

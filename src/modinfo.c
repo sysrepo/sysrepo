@@ -525,12 +525,14 @@ sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info)
  *
  * @param[in] request_atom Request text atom.
  * @param[in] sub_atom Subscription text atom.
- * @return Whether the data are required or not.
+ * @return 0 data are not required based on the atoms;
+ * @return 1 data are required;
+ * @return 2 data are not required (would be filtered out).
  */
 static int
 sr_xpath_oper_data_text_atoms_required(const char *request_atom, const char *sub_atom)
 {
-    const char *req_ptr, *sub_ptr, *mod1, *name1, *mod2, *name2;
+    const char *req_ptr, *sub_ptr, *mod1, *name1, *val1, *mod2, *name2, *val2;
     int mlen1, mlen2, len1, len2, wildc1, wildc2;
 
     req_ptr = request_atom;
@@ -565,6 +567,18 @@ sr_xpath_oper_data_text_atoms_required(const char *request_atom, const char *sub
             return 0;
         }
 
+        /* value */
+        if ((req_ptr[0] == '[') && (sub_ptr[0] == '[')) {
+            val1 = req_ptr + 4;
+            len1 = strchr(val1, req_ptr[3]) - val1;
+            val2 = sub_ptr + 4;
+            len2 = strchr(val2, sub_ptr[3]) - val2;
+            if ((len1 != len2) || strncmp(val1, val2, len1)) {
+                /* different values, filtered out */
+                return 2;
+            }
+        }
+
         /* parse until the subscription path ends */
     } while (req_ptr[0] && sub_ptr[0]);
 
@@ -586,6 +600,7 @@ sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath, in
     sr_error_info_t *err_info = NULL;
     char **request_atoms = NULL, **sub_atoms = NULL;
     uint32_t i, j, req_atom_count = 0, sub_atom_count = 0;
+    int r;
 
     assert(sub_xpath);
 
@@ -605,17 +620,20 @@ sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath, in
     }
 
     /* check whether any atoms match */
+    *required = 0;
     for (i = 0; i < req_atom_count; ++i) {
         for (j = 0; j < sub_atom_count; ++j) {
-            if (sr_xpath_oper_data_text_atoms_required(request_atoms[i], sub_atoms[j])) {
-                /* required */
+            r = sr_xpath_oper_data_text_atoms_required(request_atoms[i], sub_atoms[j]);
+            if (r == 1) {
+                /* required but need to check all atoms */
+                *required = 1;
+            } else if (r == 2) {
+                /* not required for certain */
+                *required = 0;
                 goto cleanup;
             }
         }
     }
-
-    /* data from the subscription not required */
-    *required = 0;
 
 cleanup:
     for (i = 0; i < req_atom_count; ++i) {
