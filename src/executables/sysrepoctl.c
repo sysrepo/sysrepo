@@ -80,6 +80,7 @@ help_print(void)
             "                       Use special \":ALL\" module name to change the access rights or replay support\n"
             "                       of all the modules.\n"
             "  -U, --update <path>  Update the specified schema in sysrepo. Can be in either YANG or YIN format.\n"
+            "  -L, --plugin-list    List loaded sysrepo plugins.\n"
             "\n"
             "Available options:\n"
             "  -s, --search-dirs <dir-path> [:<dir-path>...]\n"
@@ -248,7 +249,7 @@ srctl_list_cmp(const void *ptr1, const void *ptr2)
 static int
 srctl_list(sr_conn_ctx_t *conn)
 {
-    int ret;
+    int ret = SR_ERR_OK;
     const struct ly_ctx *ly_ctx;
     char flags_str[5], perm_str[4];
     struct list_item *list = NULL;
@@ -335,6 +336,33 @@ cleanup:
     return ret;
 }
 
+static int
+srctl_plugin_list(sr_conn_ctx_t *conn)
+{
+    int ret = SR_ERR_OK;
+    const char **ds_plugins = NULL, **ntf_plugins = NULL;
+    uint32_t i;
+
+    if ((ret = sr_get_plugins(conn, &ds_plugins, &ntf_plugins))) {
+        goto cleanup;
+    }
+
+    printf("Datastore plugins:\n");
+    for (i = 0; ds_plugins[i]; ++i) {
+        printf("\t%s\n", ds_plugins[i]);
+    }
+
+    printf("\nNotification plugins:\n");
+    for (i = 0; ntf_plugins[i]; ++i) {
+        printf("\t%s\n", ntf_plugins[i]);
+    }
+
+cleanup:
+    free(ds_plugins);
+    free(ntf_plugins);
+    return ret;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -353,6 +381,7 @@ main(int argc, char **argv)
         {"uninstall",       required_argument, NULL, 'u'},
         {"change",          required_argument, NULL, 'c'},
         {"update",          required_argument, NULL, 'U'},
+        {"plugin-list",     no_argument,       NULL, 'L'},
         {"search-dirs",     required_argument, NULL, 's'},
         {"enable-feature",  required_argument, NULL, 'e'},
         {"disable-feature", required_argument, NULL, 'd'},
@@ -375,7 +404,7 @@ main(int argc, char **argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVli:u:c:U:s:e:d:r:o:g:p:D:m:I:fv:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVli:u:c:U:Ls:e:d:r:o:g:p:D:m:I:fv:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -424,6 +453,13 @@ main(int argc, char **argv)
             }
             operation = 'U';
             file_path = optarg;
+            break;
+        case 'L':
+            if (operation) {
+                error_print(0, "Operation already specified");
+                goto cleanup;
+            }
+            operation = 'L';
             break;
         case 's':
             if (search_dirs) {
@@ -586,7 +622,7 @@ main(int argc, char **argv)
     sr_log_stderr(log_level);
 
     /* create connection */
-    if ((r = sr_connect(0, &conn)) != SR_ERR_OK) {
+    if ((r = sr_connect(0, &conn))) {
         error_print(r, "Failed to connect");
         goto cleanup;
     }
@@ -595,7 +631,7 @@ main(int argc, char **argv)
     switch (operation) {
     case 'l':
         /* list */
-        if ((r = srctl_list(conn)) != SR_ERR_OK) {
+        if ((r = srctl_list(conn))) {
             error_print(r, "Failed to list modules");
             goto cleanup;
         }
@@ -603,7 +639,7 @@ main(int argc, char **argv)
     case 'i':
         /* install */
         if ((r = sr_install_module2(conn, file_path, search_dirs, (const char **)features, &module_ds, owner, group,
-                perms, NULL, data_path, 0)) != SR_ERR_OK) {
+                perms, NULL, data_path, 0))) {
             /* succeed if the module is already installed */
             if (r != SR_ERR_EXISTS) {
                 error_print(r, "Failed to install module \"%s\"", file_path);
@@ -613,7 +649,7 @@ main(int argc, char **argv)
         break;
     case 'u':
         /* uninstall */
-        if ((r = sr_remove_module(conn, module_name, force)) != SR_ERR_OK) {
+        if ((r = sr_remove_module(conn, module_name, force))) {
             error_print(r, "Failed to uninstall module \"%s\"", module_name);
             goto cleanup;
         }
@@ -629,7 +665,7 @@ main(int argc, char **argv)
             }
             if (mod_ds == SR_MOD_DS_PLUGIN_COUNT) {
                 for (i = 0; i < SR_MOD_DS_PLUGIN_COUNT; ++i) {
-                    if ((r = sr_set_module_ds_access(conn, module_name, i, owner, group, perms)) != SR_ERR_OK) {
+                    if ((r = sr_set_module_ds_access(conn, module_name, i, owner, group, perms))) {
                         if (module_name) {
                             error_print(r, "Failed to change module \"%s\" access", module_name);
                         } else {
@@ -638,7 +674,7 @@ main(int argc, char **argv)
                         goto cleanup;
                     }
                 }
-            } else if ((r = sr_set_module_ds_access(conn, module_name, mod_ds, owner, group, perms)) != SR_ERR_OK) {
+            } else if ((r = sr_set_module_ds_access(conn, module_name, mod_ds, owner, group, perms))) {
                 if (module_name) {
                     error_print(r, "Failed to change module \"%s\" access", module_name);
                 } else {
@@ -650,7 +686,7 @@ main(int argc, char **argv)
 
         /* change enabled features */
         for (i = 0; i < feat_count; ++i) {
-            if ((r = sr_enable_module_feature(conn, module_name, features[i], force)) != SR_ERR_OK) {
+            if ((r = sr_enable_module_feature(conn, module_name, features[i], force))) {
                 error_print(r, "Failed to enable feature \"%s\"", features[i]);
                 goto cleanup;
             }
@@ -658,7 +694,7 @@ main(int argc, char **argv)
 
         /* change disabled features */
         for (i = 0; i < dis_feat_count; ++i) {
-            if ((r = sr_disable_module_feature(conn, module_name, dis_features[i], force)) != SR_ERR_OK) {
+            if ((r = sr_disable_module_feature(conn, module_name, dis_features[i], force))) {
                 error_print(r, "Failed to disable feature \"%s\"", dis_features[i]);
                 goto cleanup;
             }
@@ -678,10 +714,18 @@ main(int argc, char **argv)
         break;
     case 'U':
         /* update */
-        if ((r = sr_update_module(conn, file_path, search_dirs)) != SR_ERR_OK) {
+        if ((r = sr_update_module(conn, file_path, search_dirs))) {
             error_print(r, "Failed to update module \"%s\"", file_path);
             goto cleanup;
         }
+        break;
+    case 'L':
+        /* plugin-list */
+        if ((r = srctl_plugin_list(conn))) {
+            error_print(r, "Failed to list plugins");
+            goto cleanup;
+        }
+
         break;
     case 0:
         error_print(0, "No operation specified");
