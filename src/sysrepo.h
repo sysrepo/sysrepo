@@ -192,6 +192,16 @@ void sr_session_release_context(sr_session_ctx_t *session);
 uint32_t sr_get_content_id(sr_conn_ctx_t *conn);
 
 /**
+ * @brief Get loaded plugins of a connection.
+ *
+ * @param[in] conn Connection to use.
+ * @param[out] ds_plugins Optional pointer to array of datastore plugins ended by NULL.
+ * @param[out] ntf_plugins Optional pointer to array of notification plugins ended by NULL.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_get_plugins(sr_conn_ctx_t *conn, const char ***ds_plugins, const char ***ntf_plugins);
+
+/**
  * @brief Get the sysrepo SUPERUSER UID.
  *
  * @return Sysrepo SU UID.

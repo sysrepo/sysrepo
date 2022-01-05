@@ -488,6 +488,13 @@ sr_error_info_t *sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t 
 void sr_ds_handle_free(struct sr_ds_handle_s *ds_handles, uint32_t ds_handle_count);
 
 /**
+ * @brief Get the count of internal DS plugins.
+ *
+ * @return Count.
+ */
+uint32_t sr_ds_plugin_int_count(void);
+
+/**
  * @brief Find DS plugin with a specific name.
  *
  * @param[in] ds_plugin_name Datastore plugin name.
@@ -513,6 +520,13 @@ sr_error_info_t *sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32
  * @param[in] ntf_handle_count Length of @p ntf_handles.
  */
 void sr_ntf_handle_free(struct sr_ntf_handle_s *ntf_handles, uint32_t ntf_handle_count);
+
+/**
+ * @brief Get the count of internal notif plugins.
+ *
+ * @return Count.
+ */
+uint32_t sr_ntf_plugin_int_count(void);
 
 /**
  * @brief Find notif plugin with a specific name.

@@ -417,6 +417,56 @@ sr_get_content_id(sr_conn_ctx_t *conn)
     return conn->content_id;
 }
 
+API int
+sr_get_plugins(sr_conn_ctx_t *conn, const char ***ds_plugins, const char ***ntf_plugins)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i, idx;
+
+    SR_CHECK_ARG_APIRET(!conn, NULL, err_info);
+
+    if (ds_plugins) {
+        *ds_plugins = malloc((sr_ds_plugin_int_count() + conn->ds_handle_count + 1) * sizeof **ds_plugins);
+        SR_CHECK_MEM_GOTO(!*ds_plugins, err_info, cleanup);
+
+        idx = 0;
+        for (i = 0; i < sr_ds_plugin_int_count(); ++i) {
+            (*ds_plugins)[idx++] = sr_internal_ds_plugins[i]->name;
+        }
+        for (i = 0; i < conn->ds_handle_count; ++i) {
+            (*ds_plugins)[idx++] = conn->ds_handles[i].plugin->name;
+        }
+        (*ds_plugins)[idx] = NULL;
+    }
+
+    if (ntf_plugins) {
+        *ntf_plugins = malloc((sr_ntf_plugin_int_count() + conn->ntf_handle_count + 1) * sizeof **ntf_plugins);
+        SR_CHECK_MEM_GOTO(!*ntf_plugins, err_info, cleanup);
+
+        idx = 0;
+        for (i = 0; i < sr_ntf_plugin_int_count(); ++i) {
+            (*ntf_plugins)[idx++] = sr_internal_ntf_plugins[i]->name;
+        }
+        for (i = 0; i < conn->ntf_handle_count; ++i) {
+            (*ntf_plugins)[idx++] = conn->ntf_handles[i].plugin->name;
+        }
+        (*ntf_plugins)[idx] = NULL;
+    }
+
+cleanup:
+    if (err_info) {
+        if (ds_plugins) {
+            free(*ds_plugins);
+            *ds_plugins = NULL;
+        }
+        if (ntf_plugins) {
+            free(*ntf_plugins);
+            *ntf_plugins = NULL;
+        }
+    }
+    return sr_api_ret(NULL, err_info);
+}
+
 API uid_t
 sr_get_su_uid(void)
 {
