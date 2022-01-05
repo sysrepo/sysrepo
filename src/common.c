@@ -1960,6 +1960,12 @@ sr_ds_handle_free(struct sr_ds_handle_s *ds_handles, uint32_t ds_handle_count)
     free(ds_handles);
 }
 
+uint32_t
+sr_ds_plugin_int_count(void)
+{
+    return sizeof sr_internal_ds_plugins / sizeof *sr_internal_ds_plugins;
+}
+
 sr_error_info_t *
 sr_ds_plugin_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, struct srplg_ds_s **ds_plugin)
 {
@@ -1972,7 +1978,7 @@ sr_ds_plugin_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, struct srplg_
     }
 
     /* search internal DS plugins */
-    for (i = 0; i < (sizeof sr_internal_ds_plugins / sizeof *sr_internal_ds_plugins); ++i) {
+    for (i = 0; i < sr_ds_plugin_int_count(); ++i) {
         if (!strcmp(sr_internal_ds_plugins[i]->name, ds_plugin_name)) {
             if (ds_plugin) {
                 *ds_plugin = (struct srplg_ds_s *)sr_internal_ds_plugins[i];
@@ -2113,6 +2119,12 @@ sr_ntf_handle_free(struct sr_ntf_handle_s *ntf_handles, uint32_t ntf_handle_coun
     free(ntf_handles);
 }
 
+uint32_t
+sr_ntf_plugin_int_count(void)
+{
+    return sizeof sr_internal_ntf_plugins / sizeof *sr_internal_ntf_plugins;
+}
+
 sr_error_info_t *
 sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, struct srplg_ntf_s **ntf_plugin)
 {
@@ -2125,7 +2137,7 @@ sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, struct srpl
     }
 
     /* search internal notif plugins */
-    for (i = 0; i < (sizeof sr_internal_ntf_plugins / sizeof *sr_internal_ntf_plugins); ++i) {
+    for (i = 0; i < sr_ntf_plugin_int_count(); ++i) {
         if (!strcmp(sr_internal_ntf_plugins[i]->name, ntf_plugin_name)) {
             if (ntf_plugin) {
                 *ntf_plugin = (struct srplg_ntf_s *)sr_internal_ntf_plugins[i];
