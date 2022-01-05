@@ -23,6 +23,9 @@
 /** sysrepo soversion */
 #define SR_SOVERSION "@SYSREPO_SOVERSION_FULL@"
 
+/** directory with datastore and/or notification plugins */
+#define SR_PLG_PATH "@SR_PLUGINS_PATH@"
+
 /** sysrepo-plugind working directory. */
 #define SRPD_WORK_DIR "/"
 

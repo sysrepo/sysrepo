@@ -81,6 +81,9 @@ help_print(void)
             "                       of all the modules.\n"
             "  -U, --update <path>  Update the specified schema in sysrepo. Can be in either YANG or YIN format.\n"
             "  -L, --plugin-list    List loaded sysrepo plugins.\n"
+            "  -P, --plugin-install <path>\n"
+            "                       Install a datastore or notification sysrepo plugin. The plugin is simply copied\n"
+            "                       to the designated plugin directory.\n"
             "\n"
             "Available options:\n"
             "  -s, --search-dirs <dir-path> [:<dir-path>...]\n"
@@ -382,6 +385,7 @@ main(int argc, char **argv)
         {"change",          required_argument, NULL, 'c'},
         {"update",          required_argument, NULL, 'U'},
         {"plugin-list",     no_argument,       NULL, 'L'},
+        {"plugin-install",  required_argument, NULL, 'P'},
         {"search-dirs",     required_argument, NULL, 's'},
         {"enable-feature",  required_argument, NULL, 'e'},
         {"disable-feature", required_argument, NULL, 'd'},
@@ -404,7 +408,7 @@ main(int argc, char **argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVli:u:c:U:Ls:e:d:r:o:g:p:D:m:I:fv:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVli:u:c:U:LP:s:e:d:r:o:g:p:D:m:I:fv:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -460,6 +464,14 @@ main(int argc, char **argv)
                 goto cleanup;
             }
             operation = 'L';
+            break;
+        case 'P':
+            if (operation) {
+                error_print(0, "Operation already specified");
+                goto cleanup;
+            }
+            operation = 'P';
+            file_path = optarg;
             break;
         case 's':
             if (search_dirs) {
@@ -621,10 +633,12 @@ main(int argc, char **argv)
     /* set logging */
     sr_log_stderr(log_level);
 
-    /* create connection */
-    if ((r = sr_connect(0, &conn))) {
-        error_print(r, "Failed to connect");
-        goto cleanup;
+    if (operation != 'P') {
+        /* create connection */
+        if ((r = sr_connect(0, &conn))) {
+            error_print(r, "Failed to connect");
+            goto cleanup;
+        }
     }
 
     /* perform the operation */
@@ -725,7 +739,19 @@ main(int argc, char **argv)
             error_print(r, "Failed to list plugins");
             goto cleanup;
         }
-
+        break;
+    case 'P':
+        /* plugin-install */
+        if (asprintf(&ptr, "/bin/cp -- \"%s\" %s", file_path, SR_PLG_PATH) == -1) {
+            error_print(0, "Memory allocation failed");
+            goto cleanup;
+        }
+        r = system(ptr);
+        free(ptr);
+        if (!WIFEXITED(r) || WEXITSTATUS(r)) {
+            error_print(0, "Failed to execute cp(1)");
+            goto cleanup;
+        }
         break;
     case 0:
         error_print(0, "No operation specified");
