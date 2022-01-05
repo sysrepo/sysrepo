@@ -73,8 +73,11 @@ help_print(void)
             "  -v, --verbosity <level>\n"
             "                       Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
             "  -d, --debug          Debug mode - is not daemonized and logs to stderr instead of syslog.\n"
+            "  -P, --plugin-install <path>\n"
+            "                       Install a sysrepo-plugind plugin. The plugin is simply copied\n"
+            "                       to the designated plugin directory.\n"
             "\n"
-            "Environment variable $SRPD_PLUGINS_PATH overwrites the default plugins path.\n"
+            "Environment variable $SRPD_PLUGINS_PATH overwrites the default plugins directory.\n"
             "\n");
 }
 
@@ -242,6 +245,30 @@ length_without_extension(const char *src)
 }
 
 static int
+get_plugins_dir(const char **plugins_dir)
+{
+    /* get plugins dir from environment variable, or use default one */
+    *plugins_dir = getenv("SRPD_PLUGINS_PATH");
+    if (!*plugins_dir) {
+        *plugins_dir = SRPD_PLG_PATH;
+    }
+
+    /* create the directory if it does not exist */
+    if (access(*plugins_dir, F_OK) == -1) {
+        if (errno != ENOENT) {
+            error_print(0, "Checking plugins dir existence failed (%s).", strerror(errno));
+            return -1;
+        }
+        if (sr_mkpath(*plugins_dir, 00777) == -1) {
+            error_print(0, "Creating plugins dir \"%s\" failed (%s).", *plugins_dir, strerror(errno));
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+static int
 load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
 {
     void *mem, *handle;
@@ -255,22 +282,9 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
     *plugins = NULL;
     *plugin_count = 0;
 
-    /* get plugins dir from environment variable, or use default one */
-    plugins_dir = getenv("SRPD_PLUGINS_PATH");
-    if (!plugins_dir) {
-        plugins_dir = SRPD_PLG_PATH;
-    }
-
-    /* create the directory if it does not exist */
-    if (access(plugins_dir, F_OK) == -1) {
-        if (errno != ENOENT) {
-            error_print(0, "Checking plugins dir existence failed (%s).", strerror(errno));
-            return -1;
-        }
-        if (sr_mkpath(plugins_dir, 00777) == -1) {
-            error_print(0, "Creating plugins dir \"%s\" failed (%s).", plugins_dir, strerror(errno));
-            return -1;
-        }
+    /* get plugins directory */
+    if (get_plugins_dir(&plugins_dir)) {
+        return -1;
     }
 
     dir = opendir(plugins_dir);
@@ -434,17 +448,20 @@ main(int argc, char **argv)
     sr_session_ctx_t *sess = NULL;
     sr_log_level_t log_level = SR_LL_ERR;
     int plugin_count = 0, i, r, rc = EXIT_FAILURE, opt, debug = 0;
+    const char *plugins_dir;
+    char *cmd;
     struct option options[] = {
-        {"help",      no_argument,       NULL, 'h'},
-        {"version",   no_argument,       NULL, 'V'},
-        {"verbosity", required_argument, NULL, 'v'},
-        {"debug",     no_argument,       NULL, 'd'},
+        {"help",           no_argument,       NULL, 'h'},
+        {"version",        no_argument,       NULL, 'V'},
+        {"verbosity",      required_argument, NULL, 'v'},
+        {"debug",          no_argument,       NULL, 'd'},
+        {"plugin-install", required_argument, NULL, 'P'},
         {NULL,        0,                 NULL, 0},
     };
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVv:d", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVv:dP:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -476,6 +493,24 @@ main(int argc, char **argv)
         case 'd':
             debug = 1;
             break;
+        case 'P':
+            /* plugin-install */
+            if (get_plugins_dir(&plugins_dir)) {
+                goto cleanup;
+            }
+            if (asprintf(&cmd, "/bin/cp -- \"%s\" %s", optarg, plugins_dir) == -1) {
+                error_print(0, "Memory allocation failed");
+                goto cleanup;
+            }
+            r = system(cmd);
+            free(cmd);
+            if (!WIFEXITED(r) || WEXITSTATUS(r)) {
+                error_print(0, "Failed to execute cp(1)");
+                goto cleanup;
+            }
+
+            rc = EXIT_SUCCESS;
+            goto cleanup;
         default:
             error_print(0, "Invalid option or missing argument: -%c", optopt);
             goto cleanup;
