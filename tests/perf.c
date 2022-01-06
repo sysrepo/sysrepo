@@ -25,6 +25,7 @@
 
 #include "sysrepo.h"
 #include "config.h"
+#include "tests/config.h"
 
 #ifdef SR_HAVE_CALLGRIND
 # include <valgrind/callgrind.h>
@@ -191,6 +192,7 @@ exec_test(setup_cb setup, test_cb test, const char *name, uint32_t count, uint32
     sr_delete_item(state.sess, "/perf:cont", 0);
     sr_apply_changes(state.sess, 0);
     sr_unsubscribe(state.sub);
+    sr_release_context(state.conn);
     sr_disconnect(state.conn);
 
     /* print time */
@@ -311,7 +313,7 @@ setup_running(uint32_t count, struct test_state *state)
     if ((r = sr_session_start(state->conn, SR_DS_RUNNING, &state->sess))) {
         return r;
     }
-    state->mod = ly_ctx_get_module_implemented(sr_get_context(state->conn), "perf");
+    state->mod = ly_ctx_get_module_implemented(sr_acquire_context(state->conn), "perf");
     state->count = count;
 
     /* set running data */
@@ -341,7 +343,7 @@ setup_running_cached(uint32_t count, struct test_state *state)
     if ((r = sr_session_start(state->conn, SR_DS_RUNNING, &state->sess))) {
         return r;
     }
-    state->mod = ly_ctx_get_module_implemented(sr_get_context(state->conn), "perf");
+    state->mod = ly_ctx_get_module_implemented(sr_acquire_context(state->conn), "perf");
     state->count = count;
 
     /* set running data */
@@ -373,7 +375,7 @@ setup_subscribe_change_item(uint32_t count, struct test_state *state)
     if ((r = sr_module_change_subscribe(state->sess, "perf", NULL, change_item_cb, NULL, 0, 0, &state->sub))) {
         return r;
     }
-    state->mod = ly_ctx_get_module_implemented(sr_get_context(state->conn), "perf");
+    state->mod = ly_ctx_get_module_implemented(sr_acquire_context(state->conn), "perf");
     state->count = count;
 
     return SR_ERR_OK;
@@ -393,7 +395,7 @@ setup_subscribe_change_tree(uint32_t count, struct test_state *state)
     if ((r = sr_module_change_subscribe(state->sess, "perf", NULL, change_tree_cb, NULL, 0, 0, &state->sub))) {
         return r;
     }
-    state->mod = ly_ctx_get_module_implemented(sr_get_context(state->conn), "perf");
+    state->mod = ly_ctx_get_module_implemented(sr_acquire_context(state->conn), "perf");
     state->count = count;
 
     return SR_ERR_OK;
@@ -410,10 +412,10 @@ setup_subscribe_oper(uint32_t count, struct test_state *state)
     if ((r = sr_session_start(state->conn, SR_DS_RUNNING, &state->sess))) {
         return r;
     }
-    if ((r = sr_oper_get_items_subscribe(state->sess, "perf", "/perf:cont", oper_cb, state, 0, &state->sub))) {
+    if ((r = sr_oper_get_subscribe(state->sess, "perf", "/perf:cont", oper_cb, state, 0, &state->sub))) {
         return r;
     }
-    state->mod = ly_ctx_get_module_implemented(sr_get_context(state->conn), "perf");
+    state->mod = ly_ctx_get_module_implemented(sr_acquire_context(state->conn), "perf");
     state->count = count;
 
     return SR_ERR_OK;
@@ -424,7 +426,7 @@ static int
 test_get_tree(struct test_state *state, struct timespec *ts_start, struct timespec *ts_end)
 {
     int r;
-    struct lyd_node *data;
+    sr_data_t *data;
     char path[64];
 
     sprintf(path, "/perf:cont/lst[k1='%" PRIu32 "' and k2='str%" PRIu32 "']/l", state->count / 2, state->count / 2);
@@ -437,7 +439,7 @@ test_get_tree(struct test_state *state, struct timespec *ts_start, struct timesp
 
     TEST_END(ts_end);
 
-    lyd_free_siblings(data);
+    sr_release_data(data);
 
     return SR_ERR_OK;
 }
@@ -468,7 +470,7 @@ static int
 test_get_tree_hash(struct test_state *state, struct timespec *ts_start, struct timespec *ts_end)
 {
     int r;
-    struct lyd_node *data;
+    sr_data_t *data;
     char path[64];
 
     sprintf(path, "/perf:cont/lst[k1='%" PRIu32 "'][k2='str%" PRIu32 "']/l", state->count / 2, state->count / 2);
@@ -481,7 +483,7 @@ test_get_tree_hash(struct test_state *state, struct timespec *ts_start, struct t
 
     TEST_END(ts_end);
 
-    lyd_free_siblings(data);
+    sr_release_data(data);
 
     return SR_ERR_OK;
 }
@@ -557,7 +559,7 @@ static int
 test_oper_get_tree(struct test_state *state, struct timespec *ts_start, struct timespec *ts_end)
 {
     int r;
-    struct lyd_node *data;
+    sr_data_t *data;
 
     sr_session_switch_ds(state->sess, SR_DS_OPERATIONAL);
 
@@ -569,7 +571,7 @@ test_oper_get_tree(struct test_state *state, struct timespec *ts_start, struct t
 
     TEST_END(ts_end);
 
-    lyd_free_siblings(data);
+    sr_release_data(data);
     sr_session_switch_ds(state->sess, SR_DS_RUNNING);
 
     return SR_ERR_OK;
