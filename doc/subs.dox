@@ -107,6 +107,12 @@ they can also be used to provide _configuration_ data nodes. In that case they s
 configuration that is actually in-use by the managed device. Much more details and explanations can be found
 in the [NMDA RFC](@ref rfcs).
 
+Any operational subscription is meant to provide all nodes in the subtree it is subscribed for. All the previous nodes
+(copied from _running_ datastore, provided by [push operational data](@ref oper_data), or even by previous operational
+subscription) are replaced by the new ones provided. This behavior can be changed and the previous nodes merged if
+::SR_SUBSCR_OPER_MERGE option is used for the subscription. That can be useful, for example, for a scenario such as
+providing some state data nodes into a subtree with configuration nodes as well, which are desired to be kept.
+
 When using these [pull operational data](@ref oper_data) subscriptions, the subscription must be **actively handling events**
 whenever **operational datastore data of the module are requested** (so these 2 operations cannot occur in a single thread,
 so they must have individual subscription structures) to **avoid a time out**. Note that operational datastore data are
