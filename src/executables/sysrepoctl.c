@@ -742,14 +742,14 @@ main(int argc, char **argv)
         break;
     case 'P':
         /* plugin-install */
-        if (asprintf(&ptr, "/bin/cp -- \"%s\" %s", file_path, SR_PLG_PATH) == -1) {
+        if (asprintf(&ptr, "/bin/mkdir -p \"%s\" && /bin/cp -- \"%s\" %s", SR_PLG_PATH, file_path, SR_PLG_PATH) == -1) {
             error_print(0, "Memory allocation failed");
             goto cleanup;
         }
         r = system(ptr);
         free(ptr);
         if (!WIFEXITED(r) || WEXITSTATUS(r)) {
-            error_print(0, "Failed to execute cp(1)");
+            error_print(0, "Failed to install the plugin");
             goto cleanup;
         }
         break;
