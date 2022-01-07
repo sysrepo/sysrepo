@@ -43,7 +43,7 @@ sr_error_info_t *
 sr_shmmod_open(sr_shm_t *shm, int zero)
 {
     sr_error_info_t *err_info = NULL;
-    char *shm_name = NULL, buf[8], *ret = NULL;;
+    char *shm_name = NULL, buf[8], *ret = NULL;
     FILE *f;
 
     err_info = sr_path_mod_shm(&shm_name);
