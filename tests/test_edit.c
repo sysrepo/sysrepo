@@ -135,6 +135,10 @@ test_edit_item(void **state)
     ret = sr_set_item_str(st->sess, "/test:cont/no", "15", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
 
+    /* key edit */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='val']/name", "val", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
     /* same edits are ignored */
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']", 0);
     assert_int_equal(ret, SR_ERR_OK);

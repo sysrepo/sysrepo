@@ -2346,6 +2346,17 @@ sr_edit_apply_r(struct lyd_node **first_node, struct lyd_node *parent_node, cons
         return err_info;
     }
 
+    if (lysc_is_key(edit_node->schema)) {
+        /* only check that the key is fine */
+        if (op != parent_op) {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
+                    "Key \"%s\" operation \"%s\" differs from its parent list operation \"%s\".",
+                    LYD_NAME(edit_node), sr_edit_op2str(op), sr_edit_op2str(parent_op));
+            goto op_error;
+        }
+        return NULL;
+    }
+
 reapply:
     /* find an equal node in the current data */
     if (flags & EDIT_APPLY_CHECK_OP_R) {
@@ -2485,8 +2496,8 @@ reapply:
         }
     }
 
-    /* apply edit recursively */
-    LY_LIST_FOR(lyd_child_no_keys(edit_node), child) {
+    /* apply edit recursively, keys are being checked */
+    LY_LIST_FOR(lyd_child(edit_node), child) {
         if (flags & EDIT_APPLY_CHECK_OP_R) {
             /* we do not operate with any datastore data or diff anymore */
             err_info = sr_edit_apply_r(NULL, NULL, child, op, NULL, NULL, oper_edit, flags, change);
@@ -2869,6 +2880,9 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         }
         /* node with the same operation already exists, silently ignore */
         return NULL;
+    } else if (lysc_is_key(node->schema)) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Editing list keys is not supported, edit list instances instead.");
+        goto error_safe;
     }
     session->dt[session->ds].edit->tree = lyd_first_sibling(session->dt[session->ds].edit->tree);
 
