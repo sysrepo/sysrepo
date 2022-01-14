@@ -3175,8 +3175,7 @@ test_stored_top_list(void **state)
     ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:channel-plan/channel[name='14.0']/upper-frequency",
             "191425000", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='13.5']/channel",
-            "13.5", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/czechlight-roadm-device:media-channels[channel='13.5']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
