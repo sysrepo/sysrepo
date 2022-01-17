@@ -16,6 +16,7 @@
 
 #define _GNU_SOURCE
 
+#include <pthread.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -35,6 +36,7 @@ struct state {
     sr_session_ctx_t *sess1;
     sr_session_ctx_t *sess2;
     sr_session_ctx_t *sess3;
+    pthread_barrier_t barrier;
 };
 
 static int
@@ -150,11 +152,45 @@ test_create1(void **state)
     free(str);
 }
 
+static void *
+new_conn_thread(void *arg)
+{
+    sr_conn_ctx_t *conn;
+
+    (void)arg;
+
+    assert_int_equal(SR_ERR_OK, sr_connect(0, &conn));
+    sr_disconnect(conn);
+
+    return NULL;
+}
+
+static void
+test_new(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const int thread_count = 10;
+    int i;
+    pthread_t tid[thread_count];
+
+    pthread_barrier_init(&st->barrier, NULL, thread_count);
+
+    for (i = 0; i < thread_count; ++i) {
+        pthread_create(&tid[i], NULL, new_conn_thread, NULL);
+    }
+    for (i = 0; i < thread_count; ++i) {
+        pthread_join(tid[i], NULL);
+    }
+
+    pthread_barrier_destroy(&st->barrier);
+}
+
 int
 main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_teardown(test_create1, clear_interfaces),
+        cmocka_unit_test(test_new),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
