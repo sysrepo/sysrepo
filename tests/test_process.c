@@ -14,6 +14,10 @@
  *     https://opensource.org/licenses/BSD-3-Clause
  */
 
+#define _GNU_SOURCE
+
+#include <pthread.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,6 +33,8 @@
 #define sr_assert_line() printf("[   LINE    ] --- %s:%d: error: Failure!\n", __FILE__, __LINE__)
 
 #define sr_assert_true(cond) if (!(cond)) { fprintf(stderr, "\"%s\" not true\n", #cond); sr_assert_line(); return 1; }
+
+#define sr_assert_true_ret(cond, ret) if (!(cond)) { fprintf(stderr, "\"%s\" not true\n", #cond); sr_assert_line(); return ret; }
 
 #define sr_assert_int_equal(val1, val2) { \
     int ret1, ret2; \
@@ -164,7 +170,7 @@ test_log_cb(sr_log_level_t level, const char *message)
         return;
     }
 
-    fprintf(stderr, "[%ld][%s]: %s\n", (long)getpid(), severity, message);
+    fprintf(stderr, "[%ld.%u][%s]: %s\n", (long)getpid(), (unsigned int)pthread_self(), severity, message);
 }
 
 /* TEST FUNCS */
@@ -402,7 +408,7 @@ notif_instid_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_ty
 }
 
 static int
-notif_instid_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+dummy_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data)
 {
     (void)session;
@@ -440,7 +446,7 @@ test_notif_instid1(int rp, int wp)
     sr_assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to it so it appears in operational */
-    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, notif_instid_change_cb, NULL, 0, 0, &sub);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, dummy_change_cb, NULL, 0, 0, &sub);
     sr_assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to the notification */
@@ -718,23 +724,185 @@ test_context_change_sub(int rp, int wp)
 }
 
 /* TEST */
+static void *
+test_conn_create_thread(void *arg)
+{
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    int r;
+
+    (void)arg;
+
+    /* keep creating and destroying connections */
+    for (int i = 0; i < 5; ++i) {
+        r = sr_connect(0, &conn);
+        sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
+        r = sr_session_start(conn, SR_DS_RUNNING, &sess);
+        sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
+
+        r = sr_session_stop(sess);
+        sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
+        r = sr_disconnect(conn);
+        sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
+    }
+
+    return NULL;
+}
+
 static int
 test_conn_create(int rp, int wp)
 {
-    sr_conn_ctx_t *conn;
-    int ret, i;
+    const int NUM_THREADS = 3;
+    const int NUM_ITERS = 10;
+    void *tret;
+    int i, j, ret = 0;
 
     /* wait for the other process */
     barrier(rp, wp);
 
-    /* keep creating and destroying connections */
-    for (i = 0; i < 10; ++i) {
-        ret = sr_connect(0, &conn);
-        sr_assert_int_equal(ret, SR_ERR_OK);
+    pthread_t tid[NUM_THREADS];
 
-        sr_disconnect(conn);
+    /* keep creating and destroying connections */
+    for (j = 0; !ret && (j < NUM_ITERS); j++) {
+        for (i = 0; i < NUM_THREADS; ++i) {
+            pthread_create(&tid[i], NULL, test_conn_create_thread, NULL);
+        }
+
+        for (i = 0; i < NUM_THREADS; ++i) {
+            pthread_join(tid[i], &tret);
+            if (tret) {
+                ret = 1;
+            }
+        }
     }
 
+    return ret;
+}
+
+/* TEST */
+typedef struct state_s {
+    sr_conn_ctx_t *conn;
+    int tid;
+} state_t;
+
+static void *
+test_apply_thread(void *arg)
+{
+    state_t *state = (state_t *) arg;
+
+    const int NUM_ITERS = 10;
+    sr_session_ctx_t *sess;
+    int r, i, j;
+
+    r = sr_session_start(state->conn, SR_DS_RUNNING, &sess);
+    sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
+
+    char key[128];
+    snprintf(key, sizeof(key), "/ietf-interfaces:interfaces/interface[name='eth%d']/type", state->tid);
+
+    for (i = 0; i < NUM_ITERS; i++) {
+        for (j = 0; j < 4; j++) {
+            r = sr_set_item_str(sess, key, "iana-if-type:ethernetCsmacd", NULL, 0);
+            sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
+            r = sr_apply_changes(sess, 0);
+            sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
+
+            r = sr_set_item_str(sess, key, "iana-if-type:other", NULL, 0);
+            sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
+            r = sr_apply_changes(sess, 0);
+            sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
+        }
+    }
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static int
+test_apply(int rp, int wp)
+{
+    int ret = 0, r, i, j;
+    sr_conn_ctx_t *conn;
+    void *tret;
+    const int NUM_ITERS = 10;
+    const int NUM_THREADS = 1;
+    pthread_t tid[NUM_THREADS];
+    state_t states[NUM_THREADS];
+
+    r = sr_connect(0, &conn);
+    sr_assert_true(r == SR_ERR_OK);
+
+    barrier(rp, wp);
+    for (j = 0; !ret && (j < NUM_ITERS); j++) {
+        for (i = 0; i < NUM_THREADS; ++i) {
+            states[i].tid = i;
+            states[i].conn = conn;
+            pthread_create(&tid[i], NULL, test_apply_thread, &states[i]);
+        }
+
+        for (i = 0; i < NUM_THREADS; ++i) {
+            pthread_join(tid[i], &tret);
+            if (tret) {
+                ret = 1;
+            }
+        }
+    }
+
+    sr_disconnect(conn);
+    return ret;
+}
+
+static void *
+test_sub_thread(void *arg)
+{
+    const int NUM_ITERS = 50;
+    state_t *state = (state_t *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *sub = NULL;
+    int r, i;
+
+    r = sr_session_start(state->conn, SR_DS_RUNNING, &sess);
+    sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
+
+    for (i = 0; i < NUM_ITERS; i++) {
+        r = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, dummy_change_cb, NULL, 0, 0, &sub);
+        sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
+        r = sr_unsubscribe(sub);
+        sub = NULL;
+        sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
+    }
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static int
+test_sub(int rp, int wp)
+{
+    int ret, i, j;
+    sr_conn_ctx_t *conn;
+    const int NUM_ITERS = 15;
+    const int NUM_THREADS = 3;
+    pthread_t tid[NUM_THREADS];
+    state_t states[NUM_THREADS];
+
+    ret = sr_connect(0, &conn);
+    sr_assert_true(ret == SR_ERR_OK);
+
+    barrier(rp, wp);
+    for (j = 0; j < NUM_ITERS; j++) {
+        for (i = 0; i < NUM_THREADS; ++i) {
+            states[i].tid = i;
+            states[i].conn = conn;
+            pthread_create(&tid[i], NULL, test_sub_thread, &states[i]);
+        }
+
+        for (i = 0; i < NUM_THREADS; ++i) {
+            pthread_join(tid[i], NULL);
+        }
+    }
+
+    sr_disconnect(conn);
     return 0;
 }
 
@@ -748,6 +916,7 @@ main(void)
         {"pull push oper data", test_pull_push_oper1, test_pull_push_oper2, setup, teardown},
         {"context change", test_context_change, test_context_change_sub, setup, teardown},
         {"conn create", test_conn_create, test_conn_create, setup, teardown},
+        {"sub apply", test_sub, test_apply, setup, teardown},
     };
 
     sr_log_set_cb(test_log_cb);
