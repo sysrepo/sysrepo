@@ -126,6 +126,10 @@ sr_err_get_netconf_error(const sr_error_info_err_t *err, const char **error_type
         goto cleanup;
     }
 
+    *error_info_elements = NULL;
+    *error_info_values = NULL;
+    *error_info_count = 0;
+
     /* error-type */
     if (sr_get_error_data(err, err_idx++, NULL, (const void **)error_type)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Missing NETCONF \"error-type\".");
@@ -163,9 +167,6 @@ sr_err_get_netconf_error(const sr_error_info_err_t *err, const char **error_type
     }
 
     /* error-info element */
-    *error_info_elements = NULL;
-    *error_info_values = NULL;
-    *error_info_count = 0;
     while (!sr_get_error_data(err, err_idx++, NULL, (const void **)&arg)) {
         /* value */
         if (sr_get_error_data(err, err_idx++, NULL, (const void **)&arg2)) {
