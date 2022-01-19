@@ -734,7 +734,7 @@ test_conn_create_thread(void *arg)
     (void)arg;
 
     /* keep creating and destroying connections */
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < 3; ++i) {
         r = sr_connect(0, &conn);
         sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
         r = sr_session_start(conn, SR_DS_RUNNING, &sess);
@@ -753,7 +753,7 @@ static int
 test_conn_create(int rp, int wp)
 {
     const int NUM_THREADS = 3;
-    const int NUM_ITERS = 10;
+    const int NUM_ITERS = 2;
     void *tret;
     int i, j, ret = 0;
 
@@ -790,9 +790,9 @@ test_apply_thread(void *arg)
 {
     state_t *state = (state_t *) arg;
 
-    const int NUM_ITERS = 10;
+    const int NUM_ITERS = 20;
     sr_session_ctx_t *sess;
-    int r, i, j;
+    int r, i;
 
     r = sr_session_start(state->conn, SR_DS_RUNNING, &sess);
     sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
@@ -801,17 +801,15 @@ test_apply_thread(void *arg)
     snprintf(key, sizeof(key), "/ietf-interfaces:interfaces/interface[name='eth%d']/type", state->tid);
 
     for (i = 0; i < NUM_ITERS; i++) {
-        for (j = 0; j < 4; j++) {
-            r = sr_set_item_str(sess, key, "iana-if-type:ethernetCsmacd", NULL, 0);
-            sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
-            r = sr_apply_changes(sess, 10000);
-            sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
+        r = sr_set_item_str(sess, key, "iana-if-type:ethernetCsmacd", NULL, 0);
+        sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
+        r = sr_apply_changes(sess, 0);
+        sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
 
-            r = sr_set_item_str(sess, key, "iana-if-type:other", NULL, 0);
-            sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
-            r = sr_apply_changes(sess, 10000);
-            sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
-        }
+        r = sr_set_item_str(sess, key, "iana-if-type:other", NULL, 0);
+        sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
+        r = sr_apply_changes(sess, 0);
+        sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
     }
 
     sr_session_stop(sess);
@@ -825,7 +823,7 @@ test_apply(int rp, int wp)
     sr_conn_ctx_t *conn;
     void *tret;
     const int NUM_ITERS = 10;
-    const int NUM_THREADS = 1;
+    const int NUM_THREADS = 2;
     pthread_t tid[NUM_THREADS];
     state_t states[NUM_THREADS];
 
@@ -855,7 +853,7 @@ test_apply(int rp, int wp)
 static void *
 test_sub_thread(void *arg)
 {
-    const int NUM_ITERS = 50;
+    const int NUM_ITERS = 20;
     state_t *state = (state_t *)arg;
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *sub = NULL;
@@ -881,7 +879,7 @@ test_sub(int rp, int wp)
 {
     int ret, i, j;
     sr_conn_ctx_t *conn;
-    const int NUM_ITERS = 15;
+    const int NUM_ITERS = 25;
     const int NUM_THREADS = 3;
     pthread_t tid[NUM_THREADS];
     state_t states[NUM_THREADS];
