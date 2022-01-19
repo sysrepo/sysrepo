@@ -124,7 +124,7 @@ sr_notif_buf_store(sr_session_ctx_t *sess, const struct lyd_node *notif, struct 
     } else {
         /* CONTEXT LOCK */
         if ((err_info = sr_lycc_lock(sess->conn, SR_LOCK_READ, 0, __func__))) {
-            goto error;
+            goto error_unlock;
         }
 
         assert(!notif_buf->first);
@@ -144,6 +144,10 @@ sr_notif_buf_store(sr_session_ctx_t *sess, const struct lyd_node *notif, struct 
     pthread_mutex_unlock(&notif_buf->lock.mutex);
 
     return NULL;
+
+error_unlock:
+    /* MUTEX UNLOCK */
+    pthread_mutex_unlock(&notif_buf->lock.mutex);
 
 error:
     if (node) {
