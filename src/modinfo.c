@@ -1060,7 +1060,7 @@ static sr_error_info_t *
 sr_modcache_module_running_update(sr_conn_ctx_t *conn, struct sr_mod_info_mod_s *mod,
         const struct lyd_node *upd_mod_data, int read_locked, sr_cid_t cid)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *tmp_err;
     struct sr_mod_cache_s *mod_cache;
     struct lyd_node *mod_data;
     sr_lock_mode_t cur_mode = SR_LOCK_NONE;
@@ -1147,9 +1147,9 @@ cleanup:
 
     if (read_locked) {
         /* CACHE READ LOCK */
-        if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, cid, __func__,
+        if ((tmp_err = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, cid, __func__,
                 NULL, NULL))) {
-            return err_info;
+            sr_errinfo_merge(&err_info, tmp_err);
         }
     }
 
