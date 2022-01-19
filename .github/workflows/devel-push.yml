@@ -27,7 +27,7 @@ jobs:
     name: ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }} # mac-OS does not implement robust mutexes so it is not supported
     needs: git-branch
-    if: ${{ github.repository.owner == 'sysrepo' }}
+    if: ${{ github.repository == 'sysrepo/sysrepo' }}
     strategy:
       fail-fast: false
       matrix:
