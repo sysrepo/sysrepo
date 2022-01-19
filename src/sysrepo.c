@@ -4686,6 +4686,9 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup;
+    }  else if (!strcmp(ly_mod->name, "sysrepo")) {
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"sysrepo\" cannot be subscribed to.");
+        goto cleanup;
     }
     if (xpath && (err_info = sr_subscr_change_xpath_check(conn->ly_ctx, xpath, NULL))) {
         goto cleanup;
