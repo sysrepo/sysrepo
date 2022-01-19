@@ -547,7 +547,6 @@ srpds_lyb_access_get(const struct lys_module *mod, sr_datastore_t ds, char **own
 
     /* stat */
     r = stat(path, &st);
-    free(path);
     if (r == -1) {
         if (errno == EACCES) {
             SRPLG_LOG_ERR(srpds_name, "Learning \"%s\" permissions failed.", mod->name);
@@ -556,8 +555,10 @@ srpds_lyb_access_get(const struct lys_module *mod, sr_datastore_t ds, char **own
             SRPLG_LOG_ERR(srpds_name, "Stat of \"%s\" failed (%s).", path, strerror(errno));
             rc = SR_ERR_SYS;
         }
+        free(path);
         return rc;
     }
+    free(path);
 
     /* get owner */
     if (owner && (rc = srlyb_get_pwd(srpds_name, &st.st_uid, owner))) {
