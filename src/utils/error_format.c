@@ -120,21 +120,16 @@ sr_err_get_netconf_error(const sr_error_info_err_t *err, const char **error_type
     const char *arg, *arg2;
     int rc = SR_ERR_OK;
 
-    if (error_info_elements) {
-        *error_info_elements = NULL;
-    }
-    if (error_info_values) {
-        *error_info_values = NULL;
-    }
-    if (error_info_count) {
-        *error_info_count = 0;
-    }
-
     if (!err || strcmp(err->error_format, "NETCONF") || !error_type || !error_tag || !error_app_tag || !error_path ||
             !error_message || !error_info_elements || !error_info_values || !error_info_count) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid arguments for function \"%s\".", __func__);
-        goto cleanup;
+        sr_errinfo_free(&err_info);
+        return SR_ERR_INVAL_ARG;
     }
+
+    *error_info_elements = NULL;
+    *error_info_values = NULL;
+    *error_info_count = 0;
 
     /* error-type */
     if (sr_get_error_data(err, err_idx++, NULL, (const void **)error_type)) {
