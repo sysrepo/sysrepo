@@ -93,7 +93,7 @@ sr_edit_str2op(const char *str)
  *
  * @param[in] edit_node Edit node to inspect.
  * @param[in] parent_op Parent operation.
- * @param[out] op Edit node operation.
+ * @param[out] op Optional edit node operation.
  * @param[out] insert Optional insert place of the operation.
  * @param[out] userord_anchor Optional user-ordered anchor of relative (leaf-)list instance for the operation.
  * @return err_info, NULL on success.
@@ -109,7 +109,9 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
     const char *meta_name = NULL, *meta_anchor = NULL, *val_str;
     int user_order_list = 0;
 
-    *op = parent_op;
+    if (op) {
+        *op = parent_op;
+    }
     if (lysc_is_userordered(edit_node->schema)) {
         user_order_list = 1;
     }
@@ -127,7 +129,7 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
 
         LY_LIST_FOR(edit_node->meta, meta) {
             val_str = lyd_get_meta_value(meta);
-            if (!strcmp(meta->name, "operation") && (!strcmp(meta->annotation->module->name, "sysrepo") ||
+            if (op && !strcmp(meta->name, "operation") && (!strcmp(meta->annotation->module->name, "sysrepo") ||
                     !strcmp(meta->annotation->module->name, "ietf-netconf"))) {
                 *op = sr_edit_str2op(val_str);
             } else if (user_order_list && !strcmp(meta->name, "insert") && !strcmp(meta->annotation->module->name, "yang")) {
@@ -147,7 +149,7 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
                 meta_anchor = val_str;
             }
         }
-    } else {
+    } else if (op) {
         LY_LIST_FOR(((struct lyd_node_opaq *)edit_node)->attr, attr) {
             if (!strcmp(attr->name.name, "operation")) {
                 /* try to create a metadata instance and use that */
@@ -374,7 +376,7 @@ sr_edit_copy_meta(const struct lyd_node *src_node, struct lyd_node *trg_node, in
     }
 
     /* get src_node metadata */
-    if ((err_info = sr_edit_op(src_node, src_op, &src_op, &insert, &userord_anchor))) {
+    if ((err_info = sr_edit_op(src_node, 0, NULL, &insert, &userord_anchor))) {
         goto cleanup;
     }
 
@@ -862,7 +864,7 @@ sr_lyd_merge_cb(struct lyd_node *trg_node, const struct lyd_node *src_node, void
     struct sr_lyd_merge_cb_data *arg = cb_data;
     char *origin = NULL, *cur_origin = NULL;
     struct lyd_node *next, *child;
-    enum edit_op src_op, trg_op;
+    enum edit_op src_op, trg_op, ptrg_op;
     int trg_op_own, meta_changed = 0, cid_changed;
 
     /* update CID of the new node */
@@ -913,6 +915,14 @@ sr_lyd_merge_cb(struct lyd_node *trg_node, const struct lyd_node *src_node, void
     /* fix operation */
     if (((src_op != EDIT_REMOVE) || (trg_op != EDIT_REMOVE)) && ((src_op != EDIT_ETHER) || (trg_op != EDIT_MERGE)) &&
             ((src_op != EDIT_ETHER) || (trg_op != EDIT_ETHER))) {
+        if ((src_op == EDIT_REMOVE) && (trg_op == EDIT_MERGE) && lyd_parent(trg_node)) {
+            ptrg_op = sr_edit_diff_find_oper(lyd_parent(trg_node), 1, NULL);
+            if (ptrg_op == EDIT_MERGE) {
+                /* special case that would result in op remove under merge, make the op ether instead */
+                src_op = EDIT_ETHER;
+            }
+        }
+
         /* copy all metadata */
         if ((err_info = sr_edit_copy_meta(src_node, trg_node, trg_op_own, src_op, &meta_changed))) {
             goto cleanup;
