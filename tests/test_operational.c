@@ -3104,7 +3104,7 @@ test_stored_config(void **state)
             "<name>eth1</name>"
             "<description or:origin=\"or:unknown\">oper-description</description>"
             "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<enabled or:origin=\"or:default\">true</enabled>"
+            "<enabled or:origin=\"or:unknown\">true</enabled>"
         "</interface>"
     "</interfaces>";
 
