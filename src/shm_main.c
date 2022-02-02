@@ -42,15 +42,6 @@
 #include "sysrepo.h"
 
 /**
- * @brief Item holding information about active connections owned by this process.
- */
-typedef struct _conn_list_entry {
-    struct _conn_list_entry *_next;
-    sr_cid_t cid;
-    int lock_fd;
-} sr_conn_list_item;
-
-/**
  * @brief Linked list of all active connections in this process.
  *
  * Each sysrepo connection maintains a POSIX advisory lock on its lockfile. These
@@ -68,9 +59,15 @@ typedef struct _conn_list_entry {
  * terminated process is cleaned up.
  */
 static struct {
-    sr_conn_list_item *head;
-    pthread_mutex_t lock;
-} conn_list = {.head = NULL, .lock = PTHREAD_MUTEX_INITIALIZER};
+    pthread_mutex_t list_lock;          /**< lock for accessing the connection list */
+    struct sr_conn_list_s {
+        struct sr_conn_list_s *_next;   /**< pointer to the next connection in the list */
+        sr_cid_t cid;                   /**< CID of a connection in this process */
+        int lock_fd;                    /**< locked fd of a connection in this process */
+    } *list_head;                       /**< process connection list head */
+
+    pthread_mutex_t create_lock;        /**< lock used for synchronizing new connection creation within the process */
+} conn_proc = {.list_lock = PTHREAD_MUTEX_INITIALIZER, .list_head = NULL, .create_lock = PTHREAD_MUTEX_INITIALIZER};
 
 sr_error_info_t *
 sr_shmmain_check_dirs(void)
@@ -136,12 +133,23 @@ sr_shmmain_createlock(int shm_lock)
 
     assert(shm_lock > -1);
 
+    /* thread sync */
+
+    /* CONN CREATE LOCK */
+    if ((err_info = sr_mlock(&conn_proc.create_lock, -1, __func__, NULL, NULL))) {
+        return err_info;
+    }
+
+    /* process sync */
     memset(&fl, 0, sizeof fl);
     fl.l_type = F_WRLCK;
     do {
         ret = fcntl(shm_lock, F_SETLKW, &fl);
     } while ((ret == -1) && (errno == EINTR));
     if (ret == -1) {
+        /* CONN CREATE UNLOCK */
+        sr_munlock(&conn_proc.create_lock);
+
         SR_ERRINFO_SYSERRNO(&err_info, "fcntl");
         return err_info;
     }
@@ -154,11 +162,17 @@ sr_shmmain_createunlock(int shm_lock)
 {
     struct flock fl;
 
+    /* process sync */
     memset(&fl, 0, sizeof fl);
     fl.l_type = F_UNLCK;
     if (fcntl(shm_lock, F_SETLK, &fl) == -1) {
         assert(0);
     }
+
+    /* thread sync */
+
+    /* CONN CREATE UNLOCK */
+    sr_munlock(&conn_proc.create_lock);
 }
 
 sr_error_info_t *
@@ -168,12 +182,12 @@ sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive, pid_t *pid)
     struct flock fl = {0};
     int fd, rc;
     char *path = NULL;
-    sr_conn_list_item *ptr;
+    struct sr_conn_list_s *ptr;
 
     assert(cid && conn_alive);
 
     /* CONN LIST LOCK */
-    if ((err_info = sr_mlock(&conn_list.lock, SR_CONN_LIST_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+    if ((err_info = sr_mlock(&conn_proc.list_lock, SR_CONN_LIST_LOCK_TIMEOUT, __func__, NULL, NULL))) {
         goto cleanup;
     }
 
@@ -182,8 +196,8 @@ sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive, pid_t *pid)
      * connection owned by this process and return status before we do an
      * open().
      */
-    if (conn_list.head) {
-        for (ptr = conn_list.head; ptr; ptr = ptr->_next) {
+    if (conn_proc.list_head) {
+        for (ptr = conn_proc.list_head; ptr; ptr = ptr->_next) {
             if (cid == ptr->cid) {
                 /* alive connection of this process */
                 *conn_alive = 1;
@@ -192,14 +206,14 @@ sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive, pid_t *pid)
                 }
 
                 /* CONN LIST UNLOCK */
-                sr_munlock(&conn_list.lock);
+                sr_munlock(&conn_proc.list_lock);
                 goto cleanup;
             }
         }
     }
 
     /* CONN LIST UNLOCK */
-    sr_munlock(&conn_list.lock);
+    sr_munlock(&conn_proc.list_lock);
 
     /* open the file to test the lock */
     if ((err_info = sr_path_conn_lockfile(cid, &path))) {
@@ -323,7 +337,7 @@ sr_error_info_t *
 sr_shmmain_conn_list_add(sr_cid_t cid)
 {
     sr_error_info_t *err_info = NULL;
-    sr_conn_list_item *conn_item = NULL;
+    struct sr_conn_list_s *conn_item = NULL;
     int lock_fd = -1;
 
     /* open and lock the connection lockfile */
@@ -341,16 +355,16 @@ sr_shmmain_conn_list_add(sr_cid_t cid)
     conn_item->lock_fd = lock_fd;
 
     /* CONN LIST LOCK */
-    if ((err_info = sr_mlock(&conn_list.lock, SR_CONN_LIST_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+    if ((err_info = sr_mlock(&conn_proc.list_lock, SR_CONN_LIST_LOCK_TIMEOUT, __func__, NULL, NULL))) {
         goto error;
     }
 
     /* insert at the head of the list */
-    conn_item->_next = conn_list.head;
-    conn_list.head = conn_item;
+    conn_item->_next = conn_proc.list_head;
+    conn_proc.list_head = conn_item;
 
     /* CONN LIST UNLOCK */
-    sr_munlock(&conn_list.lock);
+    sr_munlock(&conn_proc.list_lock);
 
     return NULL;
 
@@ -375,20 +389,20 @@ sr_shmmain_conn_list_del(sr_cid_t cid)
 {
     sr_error_info_t *err_info = NULL;
     char *path;
-    sr_conn_list_item *ptr, *prev;
+    struct sr_conn_list_s *ptr, *prev;
 
     /* CONN LIST LOCK */
-    if ((err_info = sr_mlock(&conn_list.lock, SR_CONN_LIST_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+    if ((err_info = sr_mlock(&conn_proc.list_lock, SR_CONN_LIST_LOCK_TIMEOUT, __func__, NULL, NULL))) {
         return err_info;
     }
 
-    ptr = conn_list.head;
+    ptr = conn_proc.list_head;
     prev = NULL;
     while (ptr) {
         if (cid == ptr->cid) {
             /* remove the entry from the list */
             if (!prev) {
-                conn_list.head = ptr->_next;
+                conn_proc.list_head = ptr->_next;
             } else {
                 prev->_next = ptr->_next;
             }
@@ -409,7 +423,7 @@ sr_shmmain_conn_list_del(sr_cid_t cid)
     }
 
     /* CONN LIST UNLOCK */
-    sr_munlock(&conn_list.lock);
+    sr_munlock(&conn_proc.list_lock);
 
     /* remove the lockfile as well */
     if ((err_info = sr_path_conn_lockfile(cid, &path))) {
