@@ -37,7 +37,7 @@ static struct sr_nacm nacm;
 #define EINT_CB sr_session_set_error_message(session, "Internal error (%s:%d)", __FILE__, __LINE__)
 
 /* /ietf-netconf-acm:nacm */
-API int
+int
 sr_nacm_nacm_params_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNUSED(module_name), const char *xpath,
         sr_event_t UNUSED(event), uint32_t UNUSED(request_id), void *UNUSED(private_data))
 {
@@ -120,7 +120,7 @@ sr_nacm_nacm_params_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const
 }
 
 /* /ietf-netconf-acm:nacm/denied-* */
-API int
+int
 sr_nacm_oper_cb(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id), const char *UNUSED(module_name), const char *path,
         const char *UNUSED(request_xpath), uint32_t UNUSED(request_id), struct lyd_node **parent, void *UNUSED(private_data))
 {
@@ -169,7 +169,7 @@ sr_nacm_group_find(const char *group_name)
 }
 
 /* /ietf-netconf-acm:nacm/groups/group */
-API int
+int
 sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNUSED(module_name), const char *xpath,
         sr_event_t UNUSED(event), uint32_t UNUSED(request_id), void *UNUSED(private_data))
 {
@@ -480,7 +480,7 @@ sr_nacm_strarr_sort_del(const char **item, size_t item_size, char ***items, uint
 }
 
 /* /ietf-netconf-acm:nacm/rule-list */
-API int
+int
 sr_nacm_rule_list_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNUSED(module_name), const char *xpath,
         sr_event_t UNUSED(event), uint32_t UNUSED(request_id), void *UNUSED(private_data))
 {
@@ -639,7 +639,7 @@ sr_nacm_rule_list_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
 }
 
 /* /ietf-netconf-acm:nacm/rule-list/rule */
-API int
+int
 sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNUSED(module_name), const char *xpath,
         sr_event_t UNUSED(event), uint32_t UNUSED(request_id), void *UNUSED(private_data))
 {
@@ -870,10 +870,55 @@ sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
     return SR_ERR_OK;
 }
 
-API void
-sr_nacm_init(void)
+#define SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, cb) \
+    rc = sr_module_change_subscribe(session, mod_name, xpath, cb, NULL, 0, \
+            SR_SUBSCR_DONE_ONLY | SR_SUBSCR_ENABLED, sub); \
+    if (rc != SR_ERR_OK) { \
+        sr_errinfo_new(&err_info, rc, "Subscribing for \"%s\" data changes failed.", mod_name); \
+        return err_info; \
+    }
+
+#define SR_OPER_SUBSCR(session, sub, mod_name, xpath, cb) \
+    rc = sr_oper_get_subscribe(session, mod_name, xpath, cb, NULL, 0, sub); \
+    if (rc != SR_ERR_OK) { \
+        sr_errinfo_new(&err_info, rc, "Subscribing for providing \"%s\" state data failed.", mod_name); \
+        return err_info; \
+    }
+
+API sr_error_info_t *
+sr_nacm_init(sr_session_ctx_t *session, sr_subscription_ctx_t **sub)
 {
     pthread_mutex_init(&nacm.lock, NULL);
+
+    sr_error_info_t *err_info = NULL;
+    const char* mod_name;
+    const char* xpath;
+    int rc;
+
+    mod_name = "ietf-netconf-acm";
+    xpath = "/ietf-netconf-acm:nacm";
+    SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, sr_nacm_nacm_params_cb);
+
+    xpath = "/ietf-netconf-acm:nacm/groups/group";
+    SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, sr_nacm_group_cb);
+
+    xpath = "/ietf-netconf-acm:nacm/rule-list";
+    SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, sr_nacm_rule_list_cb);
+
+    xpath = "/ietf-netconf-acm:nacm/rule-list/rule";
+    SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, sr_nacm_rule_cb);
+
+    /* state data */
+    xpath = "/ietf-netconf-acm:nacm/denied-operations";
+    SR_OPER_SUBSCR(session, sub, mod_name, xpath, sr_nacm_oper_cb);
+
+    xpath = "/ietf-netconf-acm:nacm/denied-data-writes";
+    SR_OPER_SUBSCR(session, sub, mod_name, xpath, sr_nacm_oper_cb);
+
+    xpath = "/ietf-netconf-acm:nacm/denied-notifications";
+    SR_OPER_SUBSCR(session, sub, mod_name, xpath, sr_nacm_oper_cb);
+
+    return err_info;
 }
 
 API void

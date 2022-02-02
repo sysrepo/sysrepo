@@ -101,22 +101,7 @@ enum sr_nacm_access {
 
 #define SR_NACM_ACCESS_IS_NODE_PERMIT(x) ((x) > 2)
 
-int sr_nacm_nacm_params_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
-        sr_event_t event, uint32_t request_id, void *private_data);
-
-int sr_nacm_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *path,
-        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data);
-
-int sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
-        sr_event_t event, uint32_t request_id, void *private_data);
-
-int sr_nacm_rule_list_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
-        sr_event_t event, uint32_t request_id, void *private_data);
-
-int sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
-        uint32_t request_id, void *private_data);
-
-void sr_nacm_init(void);
+sr_error_info_t *sr_nacm_init(sr_session_ctx_t *session, sr_subscription_ctx_t **sub);
 void sr_nacm_destroy(void);
 
 /**
