@@ -101,7 +101,7 @@ enum sr_nacm_access {
 
 #define SR_NACM_ACCESS_IS_NODE_PERMIT(x) ((x) > 2)
 
-sr_error_info_t *sr_nacm_init(sr_session_ctx_t *session, sr_subscription_ctx_t **sub);
+sr_error_info_t *sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscription_ctx_t **sub);
 void sr_nacm_destroy(void);
 
 /**

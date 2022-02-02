@@ -870,23 +870,23 @@ sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
     return SR_ERR_OK;
 }
 
-#define SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, cb) \
+#define SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, opts, cb) \
     rc = sr_module_change_subscribe(session, mod_name, xpath, cb, NULL, 0, \
-            SR_SUBSCR_DONE_ONLY | SR_SUBSCR_ENABLED, sub); \
+            SR_SUBSCR_DONE_ONLY | SR_SUBSCR_ENABLED | opts, sub); \
     if (rc != SR_ERR_OK) { \
         sr_errinfo_new(&err_info, rc, "Subscribing for \"%s\" data changes failed.", mod_name); \
         return err_info; \
     }
 
-#define SR_OPER_SUBSCR(session, sub, mod_name, xpath, cb) \
-    rc = sr_oper_get_subscribe(session, mod_name, xpath, cb, NULL, 0, sub); \
+#define SR_OPER_SUBSCR(session, sub, mod_name, xpath, opts, cb) \
+    rc = sr_oper_get_subscribe(session, mod_name, xpath, cb, NULL, opts, sub); \
     if (rc != SR_ERR_OK) { \
         sr_errinfo_new(&err_info, rc, "Subscribing for providing \"%s\" state data failed.", mod_name); \
         return err_info; \
     }
 
 API sr_error_info_t *
-sr_nacm_init(sr_session_ctx_t *session, sr_subscription_ctx_t **sub)
+sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscription_ctx_t **sub)
 {
     pthread_mutex_init(&nacm.lock, NULL);
 
@@ -897,26 +897,26 @@ sr_nacm_init(sr_session_ctx_t *session, sr_subscription_ctx_t **sub)
 
     mod_name = "ietf-netconf-acm";
     xpath = "/ietf-netconf-acm:nacm";
-    SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, sr_nacm_nacm_params_cb);
+    SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_nacm_params_cb);
 
     xpath = "/ietf-netconf-acm:nacm/groups/group";
-    SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, sr_nacm_group_cb);
+    SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_group_cb);
 
     xpath = "/ietf-netconf-acm:nacm/rule-list";
-    SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, sr_nacm_rule_list_cb);
+    SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_rule_list_cb);
 
     xpath = "/ietf-netconf-acm:nacm/rule-list/rule";
-    SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, sr_nacm_rule_cb);
+    SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_rule_cb);
 
     /* state data */
     xpath = "/ietf-netconf-acm:nacm/denied-operations";
-    SR_OPER_SUBSCR(session, sub, mod_name, xpath, sr_nacm_oper_cb);
+    SR_OPER_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_oper_cb);
 
     xpath = "/ietf-netconf-acm:nacm/denied-data-writes";
-    SR_OPER_SUBSCR(session, sub, mod_name, xpath, sr_nacm_oper_cb);
+    SR_OPER_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_oper_cb);
 
     xpath = "/ietf-netconf-acm:nacm/denied-notifications";
-    SR_OPER_SUBSCR(session, sub, mod_name, xpath, sr_nacm_oper_cb);
+    SR_OPER_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_oper_cb);
 
     return err_info;
 }
