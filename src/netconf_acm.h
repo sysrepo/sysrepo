@@ -165,7 +165,6 @@ const struct lyd_node *ncac_check_diff(const struct lyd_node *diff, const char *
  * @param[in] user Name of the user to check.
  * @param[in] set Set of the notification data.
  * @param[out] all_removed Whether or not all nodes have been removed.
- * @return NULL if access allowed, otherwise the denied access data node.
  */
 void ncac_check_yang_push_update_notif(const char *user, struct ly_set *set, int *all_removed);
 
