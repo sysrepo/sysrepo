@@ -52,7 +52,7 @@ sr_nacm_nacm_params_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const
     rc = sr_get_changes_iter(session, xpath2, &iter);
     free(xpath2);
     if (rc != SR_ERR_OK) {
-        ERR("Getting changes iter failed (%s).", sr_strerror(rc));
+        sr_session_set_error_message(session, "Getting changes iter failed (%s).", sr_strerror(rc));
         return rc;
     }
 
@@ -109,7 +109,7 @@ sr_nacm_nacm_params_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const
 
     sr_free_change_iter(iter);
     if (rc != SR_ERR_NOT_FOUND) {
-        ERR("Getting next change failed (%s).", sr_strerror(rc));
+        sr_session_set_error_message(session, "Getting next change failed (%s).", sr_strerror(rc));
         return rc;
     }
 
@@ -187,7 +187,7 @@ sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char 
     rc = sr_get_changes_iter(session, xpath2, &iter);
     free(xpath2);
     if (rc != SR_ERR_OK) {
-        ERR("Getting changes iter failed (%s).", sr_strerror(rc));
+        sr_session_set_error_message(session, "Getting changes iter failed (%s).", sr_strerror(rc));
         return rc;
     }
 
@@ -302,7 +302,7 @@ sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char 
 
     sr_free_change_iter(iter);
     if (rc != SR_ERR_NOT_FOUND) {
-        ERR("Getting next change failed (%s).", sr_strerror(rc));
+        sr_session_set_error_message(session, "Getting next change failed (%s).", sr_strerror(rc));
         return rc;
     }
 
@@ -498,7 +498,7 @@ sr_nacm_rule_list_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
     rc = sr_get_changes_iter(session, xpath2, &iter);
     free(xpath2);
     if (rc != SR_ERR_OK) {
-        ERR("Getting changes iter failed (%s).", sr_strerror(rc));
+        sr_session_set_error_message(session, "Getting changes iter failed (%s).", sr_strerror(rc));
         return rc;
     }
 
@@ -629,7 +629,7 @@ sr_nacm_rule_list_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
 
     sr_free_change_iter(iter);
     if (rc != SR_ERR_NOT_FOUND) {
-        ERR("Getting next change failed (%s).", sr_strerror(rc));
+        sr_session_set_error_message(session, "Getting next change failed (%s).", sr_strerror(rc));
         return rc;
     }
 
@@ -657,7 +657,7 @@ sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
     rc = sr_get_changes_iter(session, xpath2, &iter);
     free(xpath2);
     if (rc != SR_ERR_OK) {
-        ERR("Getting changes iter failed (%s).", sr_strerror(rc));
+        sr_session_set_error_message(session, "Getting changes iter failed (%s).", sr_strerror(rc));
         return rc;
     }
 
@@ -861,7 +861,7 @@ sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
 
     sr_free_change_iter(iter);
     if (rc != SR_ERR_NOT_FOUND) {
-        ERR("Getting next change failed (%s).", sr_strerror(rc));
+        sr_session_set_error_message(session, "Getting next change failed (%s).", sr_strerror(rc));
         return rc;
     }
 
