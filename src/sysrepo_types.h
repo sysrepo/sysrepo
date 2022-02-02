@@ -164,15 +164,6 @@ struct sr_error_info_s {
 
 typedef struct sr_error_info_s sr_error_info_t;
 
-/**
- * @brief Callback to be called before applying a diff. Set it using ::sr_set_diff_check_callback.
- *
- * @param[in] session Implicit session (do not stop) with information about the event originator session IDs.
- * @param[in] diff Diff to be applied.
- * @return Error code (::SR_ERR_OK on success).
- */
-typedef int (*sr_diff_check_cb)(sr_session_ctx_t *session, const struct lyd_node *diff);
-
 /** @} connsess */
 
 /**

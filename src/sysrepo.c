@@ -43,6 +43,7 @@
 #include "log.h"
 #include "lyd_mods.h"
 #include "modinfo.h"
+#include "netconf_acm.h"
 #include "plugins_datastore.h"
 #include "plugins_notification.h"
 #include "replay.h"
@@ -54,7 +55,7 @@
 static sr_error_info_t *sr_session_notif_buf_stop(sr_session_ctx_t *session);
 static sr_error_info_t *_sr_session_stop(sr_session_ctx_t *session);
 static sr_error_info_t *sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
-        uint32_t timeout_ms, sr_error_info_t **cb_err_info);
+        uint32_t timeout_ms, int check_nacm, sr_error_info_t **cb_err_info);
 static sr_error_info_t *_sr_unsubscribe(sr_subscription_ctx_t *subscription);
 
 /**
@@ -474,23 +475,6 @@ sr_get_su_uid(void)
 }
 
 API int
-sr_set_diff_check_callback(sr_conn_ctx_t *conn, sr_diff_check_cb callback)
-{
-    sr_error_info_t *err_info = NULL;
-
-    SR_CHECK_ARG_APIRET(!conn, NULL, err_info);
-
-    if (geteuid() != SR_SU_UID) {
-        /* not the superuser */
-        sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, "Superuser access required.");
-        return sr_api_ret(NULL, err_info);
-    }
-
-    conn->diff_check_cb = callback;
-    return sr_api_ret(NULL, NULL);
-}
-
-API int
 sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
@@ -550,7 +534,7 @@ sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const ch
     }
 
     /* notify all the subscribers and store the changes */
-    err_info = sr_changes_notify_store(&mod_info, session, timeout_ms, &cb_err_info);
+    err_info = sr_changes_notify_store(&mod_info, session, timeout_ms, 0, &cb_err_info);
 
 cleanup:
     /* MODULES UNLOCK */
@@ -3129,16 +3113,18 @@ cleanup:
  */
 static sr_error_info_t *
 sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session, uint32_t timeout_ms,
-        sr_error_info_t **cb_err_info)
+        int check_nacm, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *update_edit = NULL, *old_diff = NULL, *new_diff = NULL;
     sr_session_ctx_t *ev_sess = NULL;
     sr_lock_mode_t change_sub_lock = SR_LOCK_NONE;
-    int ret;
     uint32_t sid = 0;
     char *orig_name = NULL;
     void *orig_data = NULL;
+    const struct lyd_node *node;
+    char *path;
+
 
     *cb_err_info = NULL;
 
@@ -3154,28 +3140,18 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
         goto store;
     }
 
-    /* call connection diff callback */
-    if (mod_info->conn->diff_check_cb) {
-        /* create event session */
-        if ((err_info = _sr_session_start(mod_info->conn, mod_info->ds, SR_SUB_EV_CHANGE, NULL, &ev_sess))) {
+    if (check_nacm) {
+        err_info = sr_nacm_check_diff(session, mod_info->diff, &node);
+        if (err_info) {
             goto cleanup;
         }
 
-        /* set originator data */
-        if ((err_info = sr_session_set_orig(ev_sess, orig_name, orig_data))) {
-            goto cleanup;
-        }
-
-        ret = mod_info->conn->diff_check_cb(ev_sess, mod_info->diff);
-        if (ret) {
-            /* create cb_err_info */
-            if (ev_sess->ev_error.message) {
-                sr_errinfo_new_data(cb_err_info, ret, ev_sess->ev_error.format, ev_sess->ev_error.data,
-                        "%s", ev_sess->ev_error.message);
-            } else {
-                sr_errinfo_new_data(cb_err_info, ret, ev_sess->ev_error.format, ev_sess->ev_error.data,
-                        "Diff check callback failed (%s).", sr_strerror(ret));
-            }
+        if (node) {
+            /* access denied */
+            path = lysc_path(node->schema, LYSC_PATH_LOG, NULL, 0);
+            sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, "Access to the data model \"%s\" is denied because \"%s\" NACM authorization failed.",
+                    node->schema->module->name, path);
+            free(path);
             goto cleanup;
         }
     }
@@ -3359,8 +3335,7 @@ cleanup:
     return err_info;
 }
 
-API int
-sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
+int _sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms, int check_nacm)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -3402,7 +3377,7 @@ sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
     }
 
     /* notify all the subscribers and store the changes */
-    err_info = sr_changes_notify_store(&mod_info, session, timeout_ms, &cb_err_info);
+    err_info = sr_changes_notify_store(&mod_info, session, timeout_ms, check_nacm, &cb_err_info);
 
 cleanup:
     /* MODULES UNLOCK */
@@ -3420,6 +3395,18 @@ cleanup:
         sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, "User callback failed.");
     }
     return sr_api_ret(session, err_info);
+}
+
+API int
+sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
+{
+    return _sr_apply_changes(session, timeout_ms, 0);
+}
+
+API int
+sr_nacm_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
+{
+    return _sr_apply_changes(session, timeout_ms, 1);
 }
 
 API int
@@ -3456,7 +3443,7 @@ sr_discard_changes(sr_session_ctx_t *session)
  */
 static sr_error_info_t *
 _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, struct lyd_node **src_config,
-        uint32_t timeout_ms)
+        uint32_t timeout_ms, int check_nacm)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -3488,7 +3475,7 @@ _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, s
     }
 
     /* notify all the subscribers and store the changes */
-    err_info = sr_changes_notify_store(&mod_info, session, timeout_ms, &cb_err_info);
+    err_info = sr_changes_notify_store(&mod_info, session, timeout_ms, check_nacm, &cb_err_info);
 
 cleanup:
     /* MODULES UNLOCK */
@@ -3503,8 +3490,7 @@ cleanup:
     return err_info;
 }
 
-API int
-sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config, uint32_t timeout_ms)
+int sr_replace_config_impl(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config, uint32_t timeout_ms, int check_nacm)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod = NULL;
@@ -3541,7 +3527,7 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
     }
 
     /* replace the data */
-    if ((err_info = _sr_replace_config(session, ly_mod, &src_config, timeout_ms))) {
+    if ((err_info = _sr_replace_config(session, ly_mod, &src_config, timeout_ms, check_nacm))) {
         goto cleanup;
     }
 
@@ -3554,7 +3540,18 @@ cleanup:
 }
 
 API int
-sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms)
+sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config, uint32_t timeout_ms)
+{
+    return sr_replace_config_impl(session, module_name, src_config, timeout_ms, 0);
+}
+
+API int
+sr_nacm_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config, uint32_t timeout_ms)
+{
+    return sr_replace_config_impl(session, module_name, src_config, timeout_ms, 1);
+}
+
+int _sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms, int check_nacm)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -3623,7 +3620,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
     sr_shmmod_modinfo_unlock(&mod_info);
 
     /* replace the data */
-    if ((err_info = _sr_replace_config(session, ly_mod, &mod_info.data, timeout_ms))) {
+    if ((err_info = _sr_replace_config(session, ly_mod, &mod_info.data, timeout_ms, check_nacm))) {
         goto cleanup;
     }
 
@@ -3647,6 +3644,18 @@ cleanup:
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
     return sr_api_ret(session, err_info);
+}
+
+API int
+sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms)
+{
+    return _sr_copy_config(session, module_name, src_datastore, timeout_ms, 0);
+}
+
+API int
+sr_nacm_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms)
+{
+    return _sr_copy_config(session, module_name, src_datastore, timeout_ms, 1);
 }
 
 /**
