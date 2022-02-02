@@ -903,6 +903,12 @@ sr_nacm_destroy(void)
         free(rule_list);
     }
 
+    nacm.rule_lists = NULL;
+    nacm.groups = NULL;
+    nacm.group_count = 0;
+    nacm.denied_notifications = 0;
+    nacm.denied_operations = 0;
+    nacm.denied_data_writes = 0;
     pthread_mutex_destroy(&nacm.lock);
 }
 
