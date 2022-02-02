@@ -129,9 +129,10 @@ void sr_nacm_destroy(void);
  *
  * @param[in] data Top-level node of the operation.
  * @param[in] user User for the NACM check.
- * @return NULL if access allowed, otherwise the denied access data node.
+ * @param[out] denied_node NULL if access allowed, otherwise the denied access data node.
+ * @return errinfo, NULL on success.
  */
-const struct lyd_node *sr_nacm_check_operation(const struct lyd_node *data, const char *user);
+sr_error_info_t *sr_nacm_check_operation(const struct lyd_node *data, const char *user, const struct lyd_node **denied_node);
 
 /**
  * @brief Filter out any data for which the user does not have R access.
@@ -141,8 +142,9 @@ const struct lyd_node *sr_nacm_check_operation(const struct lyd_node *data, cons
  *
  * @param[in,out] data Data to filter.
  * @param[in] user User for the NACM filtering.
+ * @return errinfo, NULL on success.
  */
-void sr_nacm_check_data_read_filter(struct lyd_node **data, const char *user);
+sr_error_info_t *sr_nacm_check_data_read_filter(struct lyd_node **data, const char *user);
 
 /**
  * @brief Check whether a diff (simplified edit-config tree) can be
@@ -155,9 +157,10 @@ void sr_nacm_check_data_read_filter(struct lyd_node **data, const char *user);
  *
  * @param[in] diff Diff tree to check.
  * @param[in] user User for the NACM check.
- * @return NULL if access allowed, otherwise the denied access data node.
+ * @param[out] denied_node NULL if access allowed, otherwise the denied access data node.
+ * @return errinfo, NULL on success.
  */
-const struct lyd_node *sr_nacm_check_diff(const struct lyd_node *diff, const char *user);
+sr_error_info_t *sr_nacm_check_diff(const struct lyd_node *diff, const char *user, const struct lyd_node **denied_node);
 
 /**
  * @brief Filter out any data in the notification the user does not have R access to
@@ -165,7 +168,8 @@ const struct lyd_node *sr_nacm_check_diff(const struct lyd_node *diff, const cha
  * @param[in] user Name of the user to check.
  * @param[in] set Set of the notification data.
  * @param[out] all_removed Whether or not all nodes have been removed.
+ * @return errinfo, NULL on success.
  */
-void sr_nacm_check_yang_push_update_notif(const char *user, struct ly_set *set, int *all_removed);
+sr_error_info_t *sr_nacm_check_yang_push_update_notif(const char *user, struct ly_set *set, int *all_removed);
 
 #endif /* SR_NETCONF_ACM_H_ */
