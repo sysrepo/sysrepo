@@ -92,7 +92,6 @@ struct sr_conn_ctx_s {
     struct ly_ctx *ly_ctx;          /**< Libyang context, also available to user. */
     uint32_t content_id;            /**< Connection context content id. */
     sr_conn_options_t opts;         /**< Connection options. */
-    sr_diff_check_cb diff_check_cb; /**< Connection user diff check callback. */
 
     pthread_mutex_t ptr_lock;       /**< Session-shared lock for accessing pointers to sessions. */
     sr_session_ctx_t **sessions;    /**< Array of sessions for this connection. */
@@ -138,6 +137,7 @@ struct sr_session_ctx_s {
     sr_datastore_t ds;              /**< Datastore of the session. */
     uint32_t sid;                   /**< Session ID. */
     char *user;                     /**< Session (system) user. */
+    char *nacm_user;                /**< NACM user. */
     sr_error_info_t *err_info;      /**< Session error information. */
 
     char *orig_name;                /**< Originator name used for all events sent on this session. */
