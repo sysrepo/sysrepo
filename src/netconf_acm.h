@@ -14,8 +14,8 @@
  *     https://opensource.org/licenses/BSD-3-Clause
  */
 
-#ifndef NP2SRV_NETCONF_ACM_H_
-#define NP2SRV_NETCONF_ACM_H_
+#ifndef SR_NETCONF_ACM_H_
+#define SR_NETCONF_ACM_H_
 
 #include <pthread.h>
 #include <stdint.h>
@@ -23,27 +23,27 @@
 #include <libyang/libyang.h>
 #include <sysrepo.h>
 
-#define NCAC_OP_CREATE 0x01 /**< NACM operation create */
-#define NCAC_OP_READ   0x02 /**< NACM operation read */
-#define NCAC_OP_UPDATE 0x04 /**< NACM operation update */
-#define NCAC_OP_DELETE 0x08 /**< NACM operation delete */
-#define NCAC_OP_EXEC   0x10 /**< NACM operation exec */
-#define NCAC_OP_ALL    0x1F /**< All NACM operations */
+#define SR_NACM_OP_CREATE 0x01 /**< NACM operation create */
+#define SR_NACM_OP_READ   0x02 /**< NACM operation read */
+#define SR_NACM_OP_UPDATE 0x04 /**< NACM operation update */
+#define SR_NACM_OP_DELETE 0x08 /**< NACM operation delete */
+#define SR_NACM_OP_EXEC   0x10 /**< NACM operation exec */
+#define SR_NACM_OP_ALL    0x1F /**< All NACM operations */
 
 /**
  * @brief Rule target node type.
  */
-typedef enum ncac_target_type {
-    NCAC_TARGET_RPC,    /**< Rule target is an RPC. */
-    NCAC_TARGET_NOTIF,  /**< Rule target is a notification. */
-    NCAC_TARGET_DATA,   /**< Rule target is a data node, action, or a nested notification. */
-    NCAC_TARGET_ANY     /**< Rule target is any node. */
-} NCAC_TARGET_TYPE;
+typedef enum sr_nacm_target_type {
+    SR_NACM_TARGET_RPC,    /**< Rule target is an RPC. */
+    SR_NACM_TARGET_NOTIF,  /**< Rule target is a notification. */
+    SR_NACM_TARGET_DATA,   /**< Rule target is a data node, action, or a nested notification. */
+    SR_NACM_TARGET_ANY     /**< Rule target is any node. */
+} SR_NACM_TARGET_TYPE;
 
 /**
  * @brief Main NACM container structure.
  */
-struct ncac {
+struct sr_nacm {
     char enabled;                   /**< Whether NACM is enabled. */
     char default_read_deny;         /**< Whether default NACM read action is "deny" (otherwise "permit"). */
     char default_write_deny;        /**< Whether default NACM write action is "deny" (otherwise "permit"). */
@@ -57,7 +57,7 @@ struct ncac {
     /**
      * @brief NACM group.
      */
-    struct ncac_group {
+    struct sr_nacm_group {
         char *name;                 /**< Group name. */
         char **users;               /**< Array of users belonging to this group. */
         uint32_t user_count;        /**< Number of users. */
@@ -67,7 +67,7 @@ struct ncac {
     /**
      * @brief NACM rule list.
      */
-    struct ncac_rule_list {
+    struct sr_nacm_rule_list {
         char *name;                 /**< Rule list name. */
         char **groups;              /**< Sorted all groups associated with this rule list. */
         uint32_t group_count;       /**< Number of groups. */
@@ -75,49 +75,49 @@ struct ncac {
         /**
          * @brief NACM rule.
          */
-        struct ncac_rule {
+        struct sr_nacm_rule {
             char *name;             /**< Rule name. */
             char *module_name;      /**< Rule module name. */
             char *target;           /**< Rule target. */
-            NCAC_TARGET_TYPE target_type;   /**< Rule target type. */
+            SR_NACM_TARGET_TYPE target_type;   /**< Rule target type. */
             uint8_t operations;     /**< Rule operations associated with it. */
             char action_deny;       /**< Whether the rule action is "deny" (otherwise "permit"). */
             char *comment;          /**< Rule comment. */
-            struct ncac_rule *next; /**< Pointer to the next rule. */
+            struct sr_nacm_rule *next; /**< Pointer to the next rule. */
         } *rules;                   /**< List of rules in the rule list. */
 
-        struct ncac_rule_list *next;    /**< Pointer to the next rule list. */
+        struct sr_nacm_rule_list *next;    /**< Pointer to the next rule list. */
     } *rule_lists;                  /**< List of all the rule lists. */
 
     pthread_mutex_t lock;           /**< Lock for accessing all the NACM members. */
 };
 
-enum ncac_access {
-    NCAC_ACCESS_DENY = 1,           /**< access to the node is denied */
-    NCAC_ACCESS_PARTIAL_DENY = 2,   /**< access to the node is denied but it is a prefix of a matching rule */
-    NCAC_ACCESS_PARTIAL_PERMIT = 3, /**< access to the node is permitted but any children must still be checked */
-    NCAC_ACCESS_PERMIT = 4          /**< access to the node is permitted with any children */
+enum sr_nacm_access {
+    SR_NACM_ACCESS_DENY = 1,           /**< access to the node is denied */
+    SR_NACM_ACCESS_PARTIAL_DENY = 2,   /**< access to the node is denied but it is a prefix of a matching rule */
+    SR_NACM_ACCESS_PARTIAL_PERMIT = 3, /**< access to the node is permitted but any children must still be checked */
+    SR_NACM_ACCESS_PERMIT = 4          /**< access to the node is permitted with any children */
 };
 
-#define NCAC_ACCESS_IS_NODE_PERMIT(x) ((x) > 2)
+#define SR_NACM_ACCESS_IS_NODE_PERMIT(x) ((x) > 2)
 
-int ncac_nacm_params_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+int sr_nacm_nacm_params_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data);
 
-int ncac_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *path,
+int sr_nacm_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *path,
         const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data);
 
-int ncac_group_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+int sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data);
 
-int ncac_rule_list_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+int sr_nacm_rule_list_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data);
 
-int ncac_rule_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
+int sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data);
 
-void ncac_init(void);
-void ncac_destroy(void);
+void sr_nacm_init(void);
+void sr_nacm_destroy(void);
 
 /**
  * @brief Check whether an operation is allowed for a user.
@@ -131,7 +131,7 @@ void ncac_destroy(void);
  * @param[in] user User for the NACM check.
  * @return NULL if access allowed, otherwise the denied access data node.
  */
-const struct lyd_node *ncac_check_operation(const struct lyd_node *data, const char *user);
+const struct lyd_node *sr_nacm_check_operation(const struct lyd_node *data, const char *user);
 
 /**
  * @brief Filter out any data for which the user does not have R access.
@@ -142,7 +142,7 @@ const struct lyd_node *ncac_check_operation(const struct lyd_node *data, const c
  * @param[in,out] data Data to filter.
  * @param[in] user User for the NACM filtering.
  */
-void ncac_check_data_read_filter(struct lyd_node **data, const char *user);
+void sr_nacm_check_data_read_filter(struct lyd_node **data, const char *user);
 
 /**
  * @brief Check whether a diff (simplified edit-config tree) can be
@@ -157,7 +157,7 @@ void ncac_check_data_read_filter(struct lyd_node **data, const char *user);
  * @param[in] user User for the NACM check.
  * @return NULL if access allowed, otherwise the denied access data node.
  */
-const struct lyd_node *ncac_check_diff(const struct lyd_node *diff, const char *user);
+const struct lyd_node *sr_nacm_check_diff(const struct lyd_node *diff, const char *user);
 
 /**
  * @brief Filter out any data in the notification the user does not have R access to
@@ -166,6 +166,6 @@ const struct lyd_node *ncac_check_diff(const struct lyd_node *diff, const char *
  * @param[in] set Set of the notification data.
  * @param[out] all_removed Whether or not all nodes have been removed.
  */
-void ncac_check_yang_push_update_notif(const char *user, struct ly_set *set, int *all_removed);
+void sr_nacm_check_yang_push_update_notif(const char *user, struct ly_set *set, int *all_removed);
 
-#endif /* NP2SRV_NETCONF_ACM_H_ */
+#endif /* SR_NETCONF_ACM_H_ */
