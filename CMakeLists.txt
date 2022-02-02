@@ -379,6 +379,7 @@ install(FILES ${PROJECT_SOURCE_DIR}/src/sysrepo.h ${PROJECT_SOURCE_DIR}/src/sysr
 install(FILES ${PROJECT_SOURCE_DIR}/src/plugins_datastore.h ${PROJECT_BINARY_DIR}/version.h
             ${PROJECT_SOURCE_DIR}/src/utils/values.h ${PROJECT_SOURCE_DIR}/src/utils/xpath.h
             ${PROJECT_SOURCE_DIR}/src/utils/error_format.h
+            ${PROJECT_SOURCE_DIR}/src/netconf_acm.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sysrepo)
 install(FILES ${PROJECT_BINARY_DIR}/sysrepo.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 
