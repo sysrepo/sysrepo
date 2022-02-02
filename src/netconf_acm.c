@@ -963,10 +963,11 @@ sr_nacm_destroy(void)
  * @param[in] user User to learn about.
  * @param[out] uid User UID, if set.
  * @param[out] gid User GID, if set.
+ * @param[out] found 1 if user found, 0 if user not found
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_nacm_getpwnam(const char *user, uid_t *uid, gid_t *gid)
+sr_nacm_getpwnam(const char *user, uid_t *uid, gid_t *gid, int *found)
 {
     sr_error_info_t *err_info = NULL;
     struct passwd pwd, *pwd_p;
@@ -987,14 +988,17 @@ sr_nacm_getpwnam(const char *user, uid_t *uid, gid_t *gid)
     }
     ret = getpwnam_r(user, &pwd, buf, buflen, &pwd_p);
     if (ret) {
+        /* If we got an error, we don't need to set `found`. */
         sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Getting user \"%s\" pwd entry failed (%s).", user, strerror(ret));
         free(buf);
         return err_info;
     } else if (!pwd_p) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "User \"%s\" not found.", user);
+        *found = 0;
         free(buf);
         return err_info;
     }
+
+    *found = 1;
 
     if (uid) {
         *uid = pwd.pw_uid;
@@ -1012,36 +1016,41 @@ sr_nacm_getpwnam(const char *user, uid_t *uid, gid_t *gid)
  *
  * @param[in] root Root schema node of the data subtree.
  * @param[in] user User, whose access to check.
- * @return non-zero if access allowed, 0 if more checks are required.
+ * @param[out] allowed 1 if access allowed, 0 if more checks are required.
+ * @return errinfo, NULL on success.
  */
-static int
-sr_nacm_allowed_tree(const struct lysc_node *root, const char *user)
+static sr_error_info_t *
+sr_nacm_allowed_tree(const struct lysc_node *root, const char *user, int *allowed)
 {
-    sr_error_info_t *err_info;
+    int user_found;
+    sr_error_info_t *err_info = NULL;
     uid_t user_uid;
 
     /* 1) NACM is off */
     if (!nacm.enabled) {
-        return 1;
+        *allowed = 1;
+        return err_info;
     }
 
     /* 2) recovery session allowed */
-    err_info = sr_nacm_getpwnam(user, &user_uid, NULL);
+    err_info = sr_nacm_getpwnam(user, &user_uid, NULL, &user_found);
     if (err_info) {
-         /* FIXME: What if sr_nacm_getpwnam returned an error? What to do now? */
-        return 0;
+        return err_info;
     }
 
-    if (user_uid == SR_SU_UID) {
-        return 1;
+    if (user_found && user_uid == SR_SU_UID) {
+        *allowed = 1;
+        return err_info;
     }
 
     /* 3) <close-session> and notifications <replayComplete>, <notificationComplete> always allowed */
     if ((root->nodetype == LYS_RPC) && !strcmp(root->name, "close-session") &&
             !strcmp(root->module->name, "ietf-netconf")) {
-        return 1;
+        *allowed = 1;
+        return err_info;
     } else if ((root->nodetype == LYS_NOTIF) && !strcmp(root->module->name, "nc-notifications")) {
-        return 1;
+        *allowed = 1;
+        return err_info;
     }
 
     /* 4) <get>, <get-config>, and <get-data> not checked for execute permission - RFC 8341 section 3.2.4
@@ -1049,10 +1058,12 @@ sr_nacm_allowed_tree(const struct lysc_node *root, const char *user)
     if ((root->nodetype == LYS_RPC) && (((!strcmp(root->name, "get") || !strcmp(root->name, "get-config")) &&
             !strcmp(root->module->name, "ietf-netconf")) || (!strcmp(root->name, "get-data") &&
             !strcmp(root->module->name, "ietf-netconf-nmda")))) {
-        return 1;
+        *allowed = 1;
+        return err_info;
     }
 
-    return 0;
+    *allowed = 0;
+    return err_info;
 }
 
 /**
@@ -1073,6 +1084,7 @@ sr_nacm_collect_groups(const char *user, char ***groups, uint32_t *group_count)
     gid_t *gids = NULL;
     ssize_t buflen;
     uint32_t i, j;
+    int found;
     int gid_count = 0, ret;
 
     *groups = NULL;
@@ -1091,13 +1103,13 @@ sr_nacm_collect_groups(const char *user, char ***groups, uint32_t *group_count)
 
     /* collect system groups */
     if (nacm.enable_external_groups) {
-        err_info = sr_nacm_getpwnam(user, NULL, &user_gid);
+        err_info = sr_nacm_getpwnam(user, NULL, &user_gid, &found);
         if (err_info) {
-            if (err_info->err->err_code == SR_ERR_NOT_FOUND) {
-                /* no user, no more groups */
-                sr_errinfo_free(&err_info);
-                err_info = NULL;
-            }
+            goto cleanup;
+        }
+
+        if (!found) {
+            /* no user, no more groups */
             goto cleanup;
         }
 
@@ -1459,8 +1471,8 @@ sr_nacm_check_operation(const struct lyd_node *data, const char *user, const str
     pthread_mutex_lock(&nacm.lock);
 
     /* check access for the whole data tree first */
-    if (sr_nacm_allowed_tree(data->schema, user)) {
-        allowed = 1;
+    err_info = sr_nacm_allowed_tree(data->schema, user, &allowed);
+    if (err_info || allowed) {
         goto cleanup;
     }
 
@@ -1636,6 +1648,7 @@ sr_nacm_check_data_read_filter(struct lyd_node **data, const char *user)
     char **groups = NULL;
     uint32_t group_count;
     enum sr_nacm_access access;
+    int allowed;
 
     assert(data);
 
@@ -1647,8 +1660,15 @@ sr_nacm_check_data_read_filter(struct lyd_node **data, const char *user)
         goto cleanup;
     }
 
-    if (*data && !sr_nacm_allowed_tree((*data)->schema, user)) {
-        err_info = sr_nacm_check_data_read_filter_r(data, user, groups, group_count, &access);
+    if (*data) {
+        err_info = sr_nacm_allowed_tree((*data)->schema, user, &allowed);
+        if (err_info) {
+            return err_info;
+        }
+
+        if (!allowed) {
+            err_info = sr_nacm_check_data_read_filter_r(data, user, groups, group_count, &access);
+        }
     }
 
 cleanup:
@@ -1750,6 +1770,7 @@ sr_nacm_check_diff(const struct lyd_node *diff, const char *user, const struct l
     sr_error_info_t *err_info = NULL;
     char **groups = NULL;
     uint32_t group_count;
+    int allowed;
 
     /* NACM LOCK */
     pthread_mutex_lock(&nacm.lock);
@@ -1759,7 +1780,12 @@ sr_nacm_check_diff(const struct lyd_node *diff, const char *user, const struct l
     }
 
     /* any node can be used in this case */
-    if (!sr_nacm_allowed_tree(diff->schema, user)) {
+    err_info = sr_nacm_allowed_tree(diff->schema, user, &allowed);
+    if (err_info) {
+        goto cleanup;
+    }
+
+    if (!allowed) {
         err_info = sr_nacm_check_diff_r(diff, user, NULL, groups, group_count, denied_node);
 
         if (err_info) {
