@@ -130,14 +130,14 @@ ncac_oper_cb(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id), const c
     pthread_mutex_lock(&nacm.lock);
 
     if (!strcmp(path, "/ietf-netconf-acm:nacm/denied-operations")) {
-        sprintf(num_str, "%u", nacm.denied_operations);
+        sprintf(num_str, "%" PRIu32, nacm.denied_operations);
         lyrc = lyd_new_path(*parent, NULL, "denied-operations", num_str, 0, NULL);
     } else if (!strcmp(path, "/ietf-netconf-acm:nacm/denied-data-writes")) {
-        sprintf(num_str, "%u", nacm.denied_data_writes);
+        sprintf(num_str, "%" PRIu32, nacm.denied_data_writes);
         lyrc = lyd_new_path(*parent, NULL, "denied-data-writes", num_str, 0, NULL);
     } else {
         assert(!strcmp(path, "/ietf-netconf-acm:nacm/denied-notifications"));
-        sprintf(num_str, "%u", nacm.denied_notifications);
+        sprintf(num_str, "%" PRIu32, nacm.denied_notifications);
         lyrc = lyd_new_path(*parent, NULL, "denied-notifications", num_str, 0, NULL);
     }
 
