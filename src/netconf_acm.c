@@ -918,7 +918,7 @@ sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscriptio
     xpath = "/ietf-netconf-acm:nacm/denied-notifications";
     SR_OPER_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_oper_cb);
 
-    return err_info;
+    return NULL;
 }
 
 API void
@@ -995,7 +995,7 @@ sr_nacm_getpwnam(const char *user, uid_t *uid, gid_t *gid, int *found)
     } else if (!pwd_p) {
         *found = 0;
         free(buf);
-        return err_info;
+        return NULL;
     }
 
     *found = 1;
@@ -1007,7 +1007,7 @@ sr_nacm_getpwnam(const char *user, uid_t *uid, gid_t *gid, int *found)
         *gid = pwd.pw_gid;
     }
     free(buf);
-    return err_info;
+    return NULL;
 }
 
 /**
@@ -1029,7 +1029,7 @@ sr_nacm_allowed_tree(const struct lysc_node *root, const char *user, int *allowe
     /* 1) NACM is off */
     if (!nacm.enabled) {
         *allowed = 1;
-        return err_info;
+        return NULL;
     }
 
     /* 2) recovery session allowed */
@@ -1040,17 +1040,17 @@ sr_nacm_allowed_tree(const struct lysc_node *root, const char *user, int *allowe
 
     if (user_found && user_uid == SR_SU_UID) {
         *allowed = 1;
-        return err_info;
+        return NULL;
     }
 
     /* 3) <close-session> and notifications <replayComplete>, <notificationComplete> always allowed */
     if ((root->nodetype == LYS_RPC) && !strcmp(root->name, "close-session") &&
             !strcmp(root->module->name, "ietf-netconf")) {
         *allowed = 1;
-        return err_info;
+        return NULL;
     } else if ((root->nodetype == LYS_NOTIF) && !strcmp(root->module->name, "nc-notifications")) {
         *allowed = 1;
-        return err_info;
+        return NULL;
     }
 
     /* 4) <get>, <get-config>, and <get-data> not checked for execute permission - RFC 8341 section 3.2.4
@@ -1059,11 +1059,11 @@ sr_nacm_allowed_tree(const struct lysc_node *root, const char *user, int *allowe
             !strcmp(root->module->name, "ietf-netconf")) || (!strcmp(root->name, "get-data") &&
             !strcmp(root->module->name, "ietf-netconf-nmda")))) {
         *allowed = 1;
-        return err_info;
+        return NULL;
     }
 
     *allowed = 0;
-    return err_info;
+    return NULL;
 }
 
 /**
@@ -1157,7 +1157,7 @@ sr_nacm_collect_groups(const char *user, char ***groups, uint32_t *group_count)
 cleanup:
     free(gids);
     free(buf);
-    return err_info;
+    return NULL;
 }
 
 /**
@@ -1454,7 +1454,7 @@ cleanup:
         /* node itself is allowed but a rule denies access to some descendants */
         *access = SR_NACM_ACCESS_PARTIAL_PERMIT;
     }
-    return err_info;
+    return NULL;
 }
 
 API sr_error_info_t *
@@ -1569,7 +1569,7 @@ cleanup:
     /* NACM UNLOCK */
     pthread_mutex_unlock(&nacm.lock);
     *denied_node = op;
-    return err_info;
+    return NULL;
 }
 
 /**
@@ -1638,7 +1638,7 @@ sr_nacm_check_data_read_filter_r(struct lyd_node **first, const char *user, char
         *access = SR_NACM_ACCESS_PERMIT;
     }
 
-    return err_info;
+    return NULL;
 }
 
 API sr_error_info_t *
@@ -1676,7 +1676,7 @@ cleanup:
     pthread_mutex_unlock(&nacm.lock);
     sr_nacm_free_groups(groups, group_count);
 
-    return err_info;
+    return NULL;
 }
 
 /**
@@ -1761,7 +1761,7 @@ sr_nacm_check_diff_r(const struct lyd_node *diff, const char *user, const char *
         }
     }
 
-    return err_info;
+    return NULL;
 }
 
 API sr_error_info_t *
@@ -1801,7 +1801,7 @@ cleanup:
     /* NACM UNLOCK */
     pthread_mutex_unlock(&nacm.lock);
     sr_nacm_free_groups(groups, group_count);
-    return err_info;
+    return NULL;
 }
 
 API sr_error_info_t *
@@ -1853,5 +1853,5 @@ sr_nacm_check_yang_push_update_notif(const char *user, struct ly_set *set, int *
         *all_removed = 0;
     }
 
-    return err_info;
+    return NULL;
 }
