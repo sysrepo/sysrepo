@@ -27,7 +27,7 @@
 #include <libyang/libyang.h>
 #include <sysrepo.h>
 
-#include "common.h"
+#include "config.h"
 #include "compat.h"
 #include "log.h"
 
@@ -970,7 +970,7 @@ sr_nacm_allowed_tree(const struct lysc_node *root, const char *user)
     }
 
     /* 2) recovery session allowed */
-    if (!sr_nacm_getpwnam(user, &user_uid, NULL) && (user_uid == NP2SRV_NACM_RECOVERY_UID)) {
+    if (!sr_nacm_getpwnam(user, &user_uid, NULL) && (user_uid == SR_SU_UID)) {
         return 1;
     }
 
