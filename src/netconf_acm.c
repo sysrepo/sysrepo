@@ -33,6 +33,9 @@
 
 static struct sr_nacm nacm;
 
+#define EMEM_CB sr_session_set_error_message(session, "Memory allocation failed (%s:%d)", __FILE__, __LINE__)
+#define EINT_CB sr_session_set_error_message(session, "Internal error (%s:%d)", __FILE__, __LINE__)
+
 /* /ietf-netconf-acm:nacm */
 int
 sr_nacm_nacm_params_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNUSED(module_name), const char *xpath,
@@ -46,7 +49,7 @@ sr_nacm_nacm_params_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const
     int rc;
 
     if (asprintf(&xpath2, "%s/*", xpath) == -1) {
-        EMEM;
+        EMEM_CB;
         return SR_ERR_NO_MEMORY;
     }
     rc = sr_get_changes_iter(session, xpath2, &iter);
@@ -181,7 +184,7 @@ sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char 
     void *mem;
 
     if (asprintf(&xpath2, "%s//.", xpath) == -1) {
-        EMEM;
+        EMEM_CB;
         return SR_ERR_NO_MEMORY;
     }
     rc = sr_get_changes_iter(session, xpath2, &iter);
@@ -208,7 +211,7 @@ sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char 
                     /* NACM UNLOCK */
                     pthread_mutex_unlock(&nacm.lock);
 
-                    EMEM;
+                    EMEM_CB;
                     return SR_ERR_NO_MEMORY;
                 }
                 nacm.groups = mem;
@@ -245,7 +248,7 @@ sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char 
                 /* NACM UNLOCK */
                 pthread_mutex_unlock(&nacm.lock);
 
-                EINT;
+                EINT_CB;
                 return SR_ERR_INTERNAL;
             }
         } else {
@@ -267,7 +270,7 @@ sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char 
                         /* NACM UNLOCK */
                         pthread_mutex_unlock(&nacm.lock);
 
-                        EMEM;
+                        EMEM_CB;
                         return SR_ERR_NO_MEMORY;
                     }
                     group->users = mem;
@@ -492,7 +495,7 @@ sr_nacm_rule_list_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
     uint32_t i;
 
     if (asprintf(&xpath2, "%s//.", xpath) == -1) {
-        EMEM;
+        EMEM_CB;
         return SR_ERR_NO_MEMORY;
     }
     rc = sr_get_changes_iter(session, xpath2, &iter);
@@ -535,7 +538,7 @@ sr_nacm_rule_list_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
                         /* NACM UNLOCK */
                         pthread_mutex_unlock(&nacm.lock);
 
-                        EMEM;
+                        EMEM_CB;
                         return SR_ERR_NO_MEMORY;
                     }
                     rlist->name = strdup(rlist_name);
@@ -592,7 +595,7 @@ sr_nacm_rule_list_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
                 /* NACM UNLOCK */
                 pthread_mutex_unlock(&nacm.lock);
 
-                EINT;
+                EINT_CB;
                 return SR_ERR_INTERNAL;
             }
         } else {
@@ -651,7 +654,7 @@ sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
     int rc, len;
 
     if (asprintf(&xpath2, "%s//.", xpath) == -1) {
-        EMEM;
+        EMEM_CB;
         return SR_ERR_NO_MEMORY;
     }
     rc = sr_get_changes_iter(session, xpath2, &iter);
@@ -701,7 +704,7 @@ sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
                     /* create new rule */
                     rule = calloc(1, sizeof *rule);
                     if (!rule) {
-                        EMEM;
+                        EMEM_CB;
 
                         /* NACM UNLOCK */
                         pthread_mutex_unlock(&nacm.lock);
@@ -760,7 +763,7 @@ sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
                 /* NACM UNLOCK */
                 pthread_mutex_unlock(&nacm.lock);
 
-                EINT;
+                EINT_CB;
                 return SR_ERR_INTERNAL;
             }
         } else {
