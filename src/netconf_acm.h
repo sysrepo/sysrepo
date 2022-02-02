@@ -101,7 +101,19 @@ enum sr_nacm_access {
 
 #define SR_NACM_ACCESS_IS_NODE_PERMIT(x) ((x) > 2)
 
+/**
+ * @brief Initialize NACM and NACM callbacks.
+ *
+ * @param[in] session Session to use.
+ * @param[in] opts Optionally, SR_SUBSCR_NO_THREAD can be specified. No other flags are allowed.
+ * @param[out] sub Subcription context.
+ * @return errinfo, NULL on success.
+ */
 sr_error_info_t *sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscription_ctx_t **sub);
+
+/**
+ * @brief Deinitialize NACM.
+ */
 void sr_nacm_destroy(void);
 
 /**
