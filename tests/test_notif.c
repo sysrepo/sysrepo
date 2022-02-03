@@ -33,7 +33,7 @@
 
 #include "common.h"
 #include "sysrepo.h"
-#include "tests/config.h"
+#include "test_common.h"
 
 const time_t start_ts = 1550233816;
 
@@ -1564,6 +1564,6 @@ main(void)
     (void)test_oper_dep;
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
-    sr_log_stderr(SR_LL_INF);
+    test_log_init();
     return cmocka_run_group_tests(tests, setup, teardown);
 }

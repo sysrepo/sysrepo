@@ -26,7 +26,7 @@
 #include <unistd.h>
 
 #include "sysrepo.h"
-#include "tests/config.h"
+#include "test_common.h"
 
 #define sr_assert(cond) if (!(cond)) { fprintf(stderr, "\"%s\" not true\n", #cond); sr_assert_line(); abort(); }
 
@@ -144,33 +144,6 @@ run_tests(struct test *tests, uint32_t test_count)
     close(pipes[1]);
     close(pipes[2]);
     close(pipes[3]);
-}
-
-static void
-test_log_cb(sr_log_level_t level, const char *message)
-{
-    const char *severity;
-
-    switch (level) {
-    case SR_LL_ERR:
-        severity = "ERR";
-        break;
-    case SR_LL_WRN:
-        severity = "WRN";
-        break;
-    case SR_LL_INF:
-        severity = "INF";
-        break;
-    case SR_LL_DBG:
-        /*severity = "DBG";
-        break;*/
-        return;
-    case SR_LL_NONE:
-        sr_assert(0);
-        return;
-    }
-
-    fprintf(stderr, "[%ld.%u][%s]: %s\n", (long)getpid(), (unsigned int)pthread_self(), severity, message);
 }
 
 /* TEST FUNCS */
@@ -916,8 +889,7 @@ main(void)
         {"conn create", test_conn_create, test_conn_create, setup, teardown},
         {"sub apply", test_sub, test_apply, setup, teardown},
     };
-
-    sr_log_set_cb(test_log_cb);
+    test_log_init();
     run_tests(tests, sizeof tests / sizeof *tests);
     return 0;
 }
