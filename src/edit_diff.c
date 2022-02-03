@@ -2104,6 +2104,12 @@ sr_edit_apply_replace(struct lyd_node *match_node, int val_equal, const struct l
     char *prev_val;
     uintptr_t prev_dflt;
 
+    if (!edit_node->schema) {
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Opaque (invalid) node \"%s\" cannot replace any node.",
+                LYD_NAME(edit_node));
+        return err_info;
+    }
+
     if (!match_node) {
         *next_op = EDIT_CREATE;
         return NULL;
