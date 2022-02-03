@@ -12,6 +12,7 @@ include(CheckFunctionExists)
 include(CheckLibraryExists)
 include(CheckIncludeFile)
 include(UseCompat)
+include(ABICheck)
 include(SourceFormat)
 include(Doc)
 if(POLICY CMP0075)
@@ -123,6 +124,7 @@ set(CMAKE_C_FLAGS         "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_COVERAGE} -Wall -Wex
 set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG -O2")
 set(CMAKE_C_FLAGS_PACKAGE "-g -O2 -DNDEBUG")
 set(CMAKE_C_FLAGS_DEBUG   "-g -O0")
+set(CMAKE_C_FLAGS_ABICHECK "-g -Og")
 
 # ietf-yang-library revision
 set(YANGLIB_REVISION "2019-01-04" CACHE STRING
@@ -205,6 +207,12 @@ set (SYSREPOCFG_SRC
 
 set (SYSREPOPLUGIND_SRC
     src/executables/sysrepo-plugind.c)
+
+# public headers to check API/ABI on
+set(LIB_HEADERS
+    src/sysrepo.h
+    src/utils/values.h
+    src/utils/xpath.h)
 
 # use compat
 use_compat()
@@ -325,6 +333,11 @@ add_subdirectory(packages)
 
 # doxygen documentation
 sysrepo_doc()
+
+# generate API/ABI report
+if ("${CMAKE_BUILD_TYPE_LOWER}" STREQUAL "abicheck")
+    lib_abi_check(sysrepo "${LIB_HEADERS}" ${SYSREPO_SOVERSION_FULL} beb5c0bc3e40ec49602f915fc3d9b2b0503dd064)
+endif()
 
 # phony target for clearing sysrepo SHM
 add_custom_target(shm_clean
