@@ -92,7 +92,7 @@ sr_shmmain_check_dirs(void)
     free(dir_path);
 
     /* connection lock dir */
-    if ((err_info = sr_path_conn_lockfile(0, &dir_path))) {
+    if ((err_info = sr_path_conn_lockfile(0, 0, &dir_path))) {
         return err_info;
     }
     if ((err_info = sr_mkpath(dir_path, SR_DIR_PERM))) {
@@ -216,7 +216,7 @@ sr_shmmain_conn_check(sr_cid_t cid, int *conn_alive, pid_t *pid)
     sr_munlock(&conn_proc.list_lock);
 
     /* open the file to test the lock */
-    if ((err_info = sr_path_conn_lockfile(cid, &path))) {
+    if ((err_info = sr_path_conn_lockfile(cid, 0, &path))) {
         goto cleanup;
     }
     fd = sr_open(path, O_WRONLY, 0);
@@ -286,22 +286,22 @@ static sr_error_info_t *
 sr_shmmain_conn_new_lockfile(sr_cid_t cid, int *lock_fd)
 {
     sr_error_info_t *err_info = NULL;
-    char *path = NULL;
+    char *new_path = NULL, *path = NULL;
     int fd = -1;
     struct flock fl = {0};
     char buf[64];
 
-    /* open the connection lock file with the correct permissions */
-    if ((err_info = sr_path_conn_lockfile(cid, &path))) {
+    /* open the new connection lock file with the correct permissions */
+    if ((err_info = sr_path_conn_lockfile(cid, 1, &new_path))) {
         return err_info;
     }
-    fd = sr_open(path, O_CREAT | O_RDWR, SR_CONN_LOCKFILE_PERM);
+    fd = sr_open(new_path, O_CREAT | O_RDWR, SR_CONN_LOCKFILE_PERM);
     if (fd == -1) {
-        SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
+        SR_ERRINFO_SYSERRPATH(&err_info, "open", new_path);
         goto cleanup;
     }
 
-    /* Write the PID into the file for debug. The / helps identify if a
+    /* write the PID into the file for debug, the / helps identify if a
      * file is unexpectedly reused. */
     snprintf(buf, sizeof(buf) - 1, "/%ld\n", (long)getpid());
     if (write(fd, buf, strlen(buf)) != (ssize_t)strlen(buf)) {
@@ -321,6 +321,15 @@ sr_shmmain_conn_new_lockfile(sr_cid_t cid, int *lock_fd)
         goto cleanup;
     }
 
+    /* now that the lock is held, we can rename the file and make it visible */
+    if ((err_info = sr_path_conn_lockfile(cid, 0, &path))) {
+        goto cleanup;
+    }
+    if (rename(new_path, path) == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "rename");
+        goto cleanup;
+    }
+
 cleanup:
     if (err_info) {
         if (fd > -1) {
@@ -329,6 +338,7 @@ cleanup:
     } else {
         *lock_fd = fd;
     }
+    free(new_path);
     free(path);
     return err_info;
 }
@@ -373,7 +383,7 @@ error:
         char *path;
         sr_error_info_t *err_info_2 = NULL;
         close(lock_fd);
-        if ((err_info_2 = sr_path_conn_lockfile(cid, &path))) {
+        if ((err_info_2 = sr_path_conn_lockfile(cid, 0, &path))) {
             sr_errinfo_free(&err_info_2);
         } else {
             unlink(path);
@@ -426,7 +436,7 @@ sr_shmmain_conn_list_del(sr_cid_t cid)
     sr_munlock(&conn_proc.list_lock);
 
     /* remove the lockfile as well */
-    if ((err_info = sr_path_conn_lockfile(cid, &path))) {
+    if ((err_info = sr_path_conn_lockfile(cid, 0, &path))) {
         return err_info;
     }
     if (unlink(path)) {
