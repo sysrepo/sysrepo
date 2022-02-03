@@ -258,7 +258,7 @@ sr_edit_find_cid(struct lyd_node *edit, sr_cid_t *cid, int *meta_own)
  * @param[in] edit_node Edit node to examine.
  * @param[in] cid CID of the edit merge source (new owner of these oper edit nodes).
  * @param[in] keep_cur_child Whether to keep current meta for direct children.
- * @param[in] changed Optional flag that the CID was changed.
+ * @param[in] changed Optional flag that some data were changed.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
@@ -286,7 +286,7 @@ sr_edit_update_cid(struct lyd_node *edit_node, sr_cid_t cid, int keep_cur_child,
             /* remove meta from the node */
             sr_edit_del_meta_attr(edit_node, "cid");
 
-            /* effective CID changed */
+            /* effective CID may have changed */
             sr_edit_find_cid(edit_node, &cur_cid, NULL);
         }
 
@@ -298,6 +298,11 @@ sr_edit_update_cid(struct lyd_node *edit_node, sr_cid_t cid, int keep_cur_child,
                 return err_info;
             }
 
+            if (changed) {
+                *changed = 1;
+            }
+        } else if (cur_cid != child_cid) {
+            /* effective CID really did change */
             if (changed) {
                 *changed = 1;
             }
