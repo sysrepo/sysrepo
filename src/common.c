@@ -2681,7 +2681,7 @@ sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path)
 }
 
 sr_error_info_t *
-sr_path_conn_lockfile(sr_cid_t cid, char **path)
+sr_path_conn_lockfile(sr_cid_t cid, int creat, char **path)
 {
     sr_error_info_t *err_info = NULL;
     int ret;
@@ -2689,7 +2689,7 @@ sr_path_conn_lockfile(sr_cid_t cid, char **path)
     if (cid == 0) {
         ret = asprintf(path, "%s/conn", sr_get_repo_path());
     } else {
-        ret = asprintf(path, "%s/conn/conn_%" PRIu32 ".lock", sr_get_repo_path(), cid);
+        ret = asprintf(path, "%s/conn/conn_%" PRIu32 ".lock%s", sr_get_repo_path(), cid, creat ? ".new" : "");
     }
 
     if (ret == -1) {
@@ -5853,7 +5853,7 @@ sr_conn_info(sr_cid_t **cids, pid_t **pids, uint32_t *count, sr_cid_t **dead_cid
     }
 
     /* get the path to the directory with all the lock files */
-    if ((err_info = sr_path_conn_lockfile(0, &path))) {
+    if ((err_info = sr_path_conn_lockfile(0, 0, &path))) {
         return err_info;
     }
 

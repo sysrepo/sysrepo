@@ -680,10 +680,11 @@ sr_error_info_t *sr_path_yang_file(const char *mod_name, const char *mod_rev, ch
  * responsible for freeing memory.
  *
  * @param[in] cid Connection ID for which the lockfile path is constructed.
+ * @param[in] creat Whether to get path to a file that will be created with a temporary name or not.
  * @param[out] path Lockfile directory if cid is 0, path of lockfile otherwise.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_path_conn_lockfile(sr_cid_t cid, char **path);
+sr_error_info_t *sr_path_conn_lockfile(sr_cid_t cid, int creat, char **path);
 
 /**
  * @brief Remove any leftover event pipes after crashed subscriptions.
