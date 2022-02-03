@@ -392,6 +392,151 @@ test_rpc_crash2(int rp, int wp)
 }
 
 /* TEST */
+static int
+test_oper_crash_set1(int rp, int wp)
+{
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    sr_data_t *data;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    ret = sr_connect(0, &conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_start(conn, SR_DS_OPERATIONAL, &sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some operational data */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth0']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth0']/speed",
+            "512", NULL, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/speed",
+            "1024", NULL, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the data */
+    ret = sr_get_data(sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_assert_int_equal(ret, 0);
+
+    sr_release_data(data);
+
+    str2 =
+    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
+        "<interface>"
+            "<name>eth0</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<speed>512</speed>"
+        "</interface>"
+        "<interface>"
+            "<name>eth1</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<speed>1024</speed>"
+        "</interface>"
+    "</interfaces-state>";
+
+    sr_assert_string_equal(str1, str2);
+    free(str1);
+
+    /* wait for the other process */
+    barrier(rp, wp);
+
+    /* avoid leaks (valgrind probably cannot keep track of leafref attributes because they are shared) */
+    ly_ctx_destroy((struct ly_ctx *)sr_acquire_context(sr_session_get_connection(sess)));
+    sr_release_context(sr_session_get_connection(sess));
+
+    /* crash */
+    exit(0);
+
+    /* unreachable */
+    return 1;
+}
+
+static int
+test_oper_crash_set2(int rp, int wp)
+{
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    sr_data_t *data;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* wait for the other process */
+    barrier(rp, wp);
+    sleep(1);
+
+    ret = sr_connect(0, &conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_start(conn, SR_DS_OPERATIONAL, &sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* set the same operational data in two commits */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth0']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth0']/speed",
+            "512", NULL, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* commit the second part */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/speed",
+            "1024", NULL, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the data */
+    ret = sr_get_data(sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_assert_int_equal(ret, 0);
+
+    sr_release_data(data);
+
+    str2 =
+    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
+        "<interface>"
+            "<name>eth0</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<speed>512</speed>"
+        "</interface>"
+        "<interface>"
+            "<name>eth1</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<speed>1024</speed>"
+        "</interface>"
+    "</interfaces-state>";
+
+    sr_assert_string_equal(str1, str2);
+    free(str1);
+
+    sr_disconnect(conn);
+    return 0;
+}
+
+/* TEST */
 static void
 notif_instid_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
         const sr_val_t *values, const size_t values_cnt, struct timespec *timestamp, void *private_data)
@@ -910,6 +1055,7 @@ main(void)
     struct test tests[] = {
         {"rpc sub", test_rpc_sub1, test_rpc_sub2, setup, teardown},
         {"rpc crash", test_rpc_crash1, test_rpc_crash2, setup, teardown},
+        {"oper crash", test_oper_crash_set2, test_oper_crash_set1, setup, teardown},
         {"notif instid", test_notif_instid1, test_notif_instid2, setup, teardown},
         {"pull push oper data", test_pull_push_oper1, test_pull_push_oper2, setup, teardown},
         {"context change", test_context_change, test_context_change_sub, setup, teardown},
