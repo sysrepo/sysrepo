@@ -26,34 +26,36 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "tests/config.h"
 #include "sysrepo.h"
+#include "tests/test_common.h"
 
-#define sr_assert(cond) if (!(cond)) { fprintf(stderr, "\"%s\" not true\n", #cond); sr_assert_line(); abort(); }
+#define sr_assert(cond) if (!(cond)) { TLOG_ERR("\"%s\" not true", #cond); sr_assert_line(); abort(); }
 
-#define sr_assert_line() printf("[   LINE    ] --- %s:%d: error: Failure!\n", __FILE__, __LINE__)
+#define sr_assert_line() TLOG_ERR("[   LINE    ] --- %s:%d: Failure!", __FILE__, __LINE__)
 
-#define sr_assert_true(cond) if (!(cond)) { fprintf(stderr, "\"%s\" not true\n", #cond); sr_assert_line(); return 1; }
+#define sr_assert_true(cond) if (!(cond)) { TLOG_ERR("\"%s\" not true", #cond); sr_assert_line(); return 1; }
+
+#define sr_assert_true_ret(cond, ret) if (!(cond)) { TLOG_ERR("\"%s\" not true", #cond); sr_assert_line(); return ret; }
 
 #define sr_assert_int_equal(val1, val2) { \
     int ret1, ret2; \
     ret1 = val1; ret2 = val2; \
-    if (ret1 != ret2) { fprintf(stderr, "%d != %d\n", ret1, ret2); sr_assert_line(); return 1; } }
+    if (ret1 != ret2) { TLOG_ERR("%d != %d", ret1, ret2); sr_assert_line(); return 1; } }
 
 #define sr_assert_int_nequal(val1, val2) { \
     int ret1, ret2; \
     ret1 = val1; ret2 = val2; \
-    if (ret1 == ret2) { fprintf(stderr, "%d == %d\n", ret1, ret2); sr_assert_line(); return 1; } }
+    if (ret1 == ret2) { TLOG_ERR("%d == %d", ret1, ret2); sr_assert_line(); return 1; } }
 
 #define sr_assert_string_equal(str1, str2) { \
     const char *s1, *s2; \
     s1 = str1; s2 = str2; \
-    if (strcmp(s1, s2)) { fprintf(stderr, "\"%s\"\n!=\n\"%s\"\n", s1, s2); sr_assert_line(); return 1; } }
+    if (strcmp(s1, s2)) { TLOG_ERR("\"%s\"\n!=\n\"%s\"", s1, s2); sr_assert_line(); return 1; } }
 
 #define sr_assert_nstring_equal(str1, str2, n) { \
     const char *s1, *s2; \
     s1 = str1; s2 = str2; \
-    if (strncmp(s1, s2, n)) { fprintf(stderr, "\"%.*s\"\n!=\n\"%.*s\"\n", n, s1, n, s2); sr_assert_line(); return 1; } }
+    if (strncmp(s1, s2, n)) { TLOG_ERR("\"%.*s\"\n!=\n\"%.*s\"", n, s1, n, s2); sr_assert_line(); return 1; } }
 
 typedef int (*test_proc)(int, int);
 typedef void (*test_prep)(void);
@@ -86,14 +88,14 @@ run_tests(struct test *tests, uint32_t test_count)
     pipe(pipes);
     pipe(pipes + 2);
 
-    printf("[===========] Running %u test(s).\n", test_count);
+    TLOG_INF("[===========] Running %u test(s).", test_count);
 
     for (i = 0; i < test_count; ++i) {
         if (tests[i].setup) {
             tests[i].setup();
         }
 
-        printf("[ %3s %2s %2s ] test %s\n", "RUN", "", "", tests[i].name);
+        TLOG_INF("[ %3s %2s %2s ] test %s", "RUN", "", "", tests[i].name);
 
         if (fork()) {
             /* run parent process */
@@ -124,52 +126,25 @@ run_tests(struct test *tests, uint32_t test_count)
             exit(tests[i].p2(pipes[2], pipes[1]));
         }
 
-        printf("[ %3s %2s %2s ] test %s\n", "", parent_status, child_status, tests[i].name);
+        TLOG_INF("[ %3s %2s %2s ] test %s", "", parent_status, child_status, tests[i].name);
 
         if (tests[i].teardown) {
             tests[i].teardown();
         }
 
         if (fail) {
-            printf("Test failed, aborting.\n");
+            TLOG_ERR("Test failed, aborting.");
             abort();
         }
     }
 
-    printf("[===========] %u test(s) run.\n", test_count);
-    printf("[  PASSED   ] %u test(s).\n", test_count);
+    TLOG_INF("[===========] %u test(s) run.", test_count);
+    TLOG_INF("[  PASSED   ] %u test(s).", test_count);
 
     close(pipes[0]);
     close(pipes[1]);
     close(pipes[2]);
     close(pipes[3]);
-}
-
-static void
-test_log_cb(sr_log_level_t level, const char *message)
-{
-    const char *severity;
-
-    switch (level) {
-    case SR_LL_ERR:
-        severity = "ERR";
-        break;
-    case SR_LL_WRN:
-        severity = "WRN";
-        break;
-    case SR_LL_INF:
-        severity = "INF";
-        break;
-    case SR_LL_DBG:
-        /*severity = "DBG";
-        break;*/
-        return;
-    case SR_LL_NONE:
-        sr_assert(0);
-        return;
-    }
-
-    fprintf(stderr, "[%ld][%s]: %s\n", (long)getpid(), severity, message);
 }
 
 /* TEST FUNCS */
@@ -621,8 +596,7 @@ main(void)
         {"pull push oper data", test_pull_push_oper1, test_pull_push_oper2, setup, teardown},
         {"conn create", test_conn_create, test_conn_create, setup, teardown},
     };
-
-    sr_log_set_cb(test_log_cb);
+    test_log_init();
     run_tests(tests, sizeof tests / sizeof *tests);
     return 0;
 }

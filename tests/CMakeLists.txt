@@ -9,16 +9,16 @@ get_filename_component(TESTS_DIR "${CMAKE_SOURCE_DIR}/tests" REALPATH)
 include_directories(SYSTEM ${CMOCKA_INCLUDE_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
+set(test_sources "test_common.c")
+
 # check for pthread_barrier existence
 check_function_exists(pthread_barrier_init SR_HAVE_PTHREAD_BARRIER)
-if(SR_HAVE_PTHREAD_BARRIER)
-    set(test_sources "")
-else()
-    set(test_sources "pthread_barrier.c")
+if(NOT SR_HAVE_PTHREAD_BARRIER)
+    list(APPEND test_sources "pthread_barrier.c")
 endif()
 
 # generate config
-configure_file("${PROJECT_SOURCE_DIR}/tests/config.h.in" "${PROJECT_BINARY_DIR}/tests/config.h" ESCAPE_QUOTES @ONLY)
+configure_file("${PROJECT_SOURCE_DIR}/tests/test_common.h.in" "${PROJECT_BINARY_DIR}/tests/test_common.h" ESCAPE_QUOTES @ONLY)
 
 # lists of all the tests
 set(tests test_modules test_validation test_edit test_candidate test_operational test_lock test_apply_changes
