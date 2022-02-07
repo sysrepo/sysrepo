@@ -1,5 +1,5 @@
 /**
- * @file config.h
+ * @file test_common.h
  * @author Michal Vasko <mvasko@cesnet.cz>
  * @brief test configuration header
  *
@@ -13,8 +13,8 @@
  *
  *     https://opensource.org/licenses/BSD-3-Clause
  */
-#ifndef SRTEST_CONFIG_H_
-#define SRTEST_CONFIG_H_
+#ifndef SRTEST_COMMON_H_
+#define SRTEST_COMMON_H_
 
 #define TESTS_SRC_DIR "@TESTS_SRC_DIR@"
 
@@ -33,4 +33,18 @@
  */
 #cmakedefine SR_HAVE_CALLGRIND
 
-#endif /* SRTEST_CONFIG_H_ */
+/**
+ * Only function that needs to be called from test code
+ * Initializes callback and facilitates logging to stderr
+ * with timestamps and thread-id
+ */
+void test_log_init(void);
+
+/* Test Logging macros */
+#define TLOG_ERR(...) _test_log(SR_LL_ERR, __VA_ARGS__)
+#define TLOG_WRN(...) _test_log(SR_LL_WRN, __VA_ARGS__)
+#define TLOG_INF(...) _test_log(SR_LL_INF, __VA_ARGS__)
+
+void _test_log(sr_log_level_t ll, ...);
+
+#endif /* SRTEST_COMMON_H_ */
