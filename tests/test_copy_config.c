@@ -30,7 +30,7 @@
 
 #include "common.h"
 #include "sysrepo.h"
-#include "tests/common.h"
+#include "tests/test_common.h"
 
 struct state {
     sr_conn_ctx_t *conn;

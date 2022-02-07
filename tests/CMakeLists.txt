@@ -17,7 +17,7 @@ include_directories(${PROJECT_BINARY_DIR}/tests)
 add_test(NAME headers
     COMMAND ${CMAKE_SOURCE_DIR}/compat/check_includes.sh ${CMAKE_SOURCE_DIR}/src/ ${CMAKE_SOURCE_DIR}/src/executables/ ${CMAKE_SOURCE_DIR}/src/utils/)
 
-set(test_sources "common.c")
+set(test_sources "test_common.c")
 
 # check for pthread_barrier existence
 check_function_exists(pthread_barrier_init SR_HAVE_PTHREAD_BARRIER)
@@ -26,7 +26,7 @@ if(NOT SR_HAVE_PTHREAD_BARRIER)
 endif()
 
 # generate config
-configure_file("${PROJECT_SOURCE_DIR}/tests/common.h.in" "${PROJECT_BINARY_DIR}/tests/common.h" ESCAPE_QUOTES @ONLY)
+configure_file("${PROJECT_SOURCE_DIR}/tests/test_common.h.in" "${PROJECT_BINARY_DIR}/tests/test_common.h" ESCAPE_QUOTES @ONLY)
 
 set(TEST_CLEAR_STATE_COMMAND rm -rf ${PROJECT_BINARY_DIR}/test_repositories /dev/shm/_tests_sr_*)
 if(${CMAKE_VERSION} VERSION_GREATER "3.7")

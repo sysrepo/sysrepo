@@ -26,7 +26,7 @@
 #include <unistd.h>
 
 #include "sysrepo.h"
-#include "tests/common.h"
+#include "tests/test_common.h"
 
 #define sr_assert(cond) if (!(cond)) { TLOG_ERR("\"%s\" not true", #cond); sr_assert_line(); abort(); }
 

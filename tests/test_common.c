@@ -1,5 +1,5 @@
 /**
- * @file test_common.h
+ * @file test_common.c
  * @author Irfan
  * @brief common header file for all tests to facilitate uniform logging format
  *
@@ -18,8 +18,9 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <time.h>
+
 #include "sysrepo.h"
-#include "tests/common.h"
+#include "tests/test_common.h"
 
 static void
 _test_log_msg(sr_log_level_t level, const char *message, const char* prefix)
@@ -71,9 +72,9 @@ _test_log(sr_log_level_t ll, ...)
 {
     va_list ap;
     char msg[1024] = "";
-
+    char *fmt = NULL;
     va_start(ap, ll);
-    char *fmt = va_arg(ap, char *);
+    fmt = va_arg(ap, char *);
 
     vsnprintf(msg, sizeof(msg), fmt, ap);
     va_end(ap);
