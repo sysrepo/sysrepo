@@ -16,13 +16,16 @@
 #include <pthread.h>
 #include <assert.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <time.h>
 #include "sysrepo.h"
-#include "test_common.h"
+#include "tests/common.h"
 
-static void _test_log_msg(sr_log_level_t level, const char *message, const char* prefix)
+static void
+_test_log_msg(sr_log_level_t level, const char *message, const char* prefix)
 {
     const char *severity;
+    struct timespec ts;
 
     switch (level) {
     case SR_LL_ERR:
@@ -42,13 +45,13 @@ static void _test_log_msg(sr_log_level_t level, const char *message, const char*
         assert(0);
         return;
     }
-    struct timespec ts;
+
     clock_gettime(CLOCK_REALTIME, &ts);
     ts.tv_sec %= 1000;
     ts.tv_nsec /= 1000;
     fprintf(stderr, "%03ld.%06ld [%ld][%lu][%s] %s: %s\n", ts.tv_sec, ts.tv_nsec,
-                    (long)getpid(), (unsigned long)pthread_self(), severity,
-                    prefix, message);
+            (long)getpid(), (unsigned long)pthread_self(), severity,
+            prefix, message);
 }
 
 static void
@@ -57,10 +60,10 @@ _test_sr_log_cb(sr_log_level_t level, const char *message)
     _test_log_msg(level, message, "");
 }
 
-void test_log_init()
+void
+test_log_init(void)
 {
     sr_log_set_cb(_test_sr_log_cb);
-    TLOG_INF("Initialized sysrepo logging for tests");
 }
 
 void

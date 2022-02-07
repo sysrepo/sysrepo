@@ -26,7 +26,7 @@
 #include <unistd.h>
 
 #include "sysrepo.h"
-#include "test_common.h"
+#include "tests/common.h"
 
 #define sr_assert(cond) if (!(cond)) { TLOG_ERR("\"%s\" not true", #cond); sr_assert_line(); abort(); }
 
@@ -137,8 +137,8 @@ run_tests(struct test *tests, uint32_t test_count)
         }
     }
 
-    TLOG_ERR("[===========] %u test(s) run.\n", test_count);
-    TLOG_ERR("[  PASSED   ] %u test(s).\n", test_count);
+    TLOG_INF("[===========] %u test(s) run.\n", test_count);
+    TLOG_INF("[  PASSED   ] %u test(s).\n", test_count);
 
     close(pipes[0]);
     close(pipes[1]);
