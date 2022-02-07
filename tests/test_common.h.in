@@ -1,5 +1,5 @@
 /**
- * @file common.h
+ * @file test_common.h
  * @author Michal Vasko <mvasko@cesnet.cz>
  * @brief test configuration header
  *

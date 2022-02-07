@@ -94,7 +94,7 @@ run_tests(struct test *tests, uint32_t test_count)
             tests[i].setup();
         }
 
-        TLOG_INF("[ %3s %2s %2s ] test %s\n", "RUN", "", "", tests[i].name);
+        TLOG_INF("[ %3s %2s %2s ] test %s", "RUN", "", "", tests[i].name);
 
         if (fork()) {
             /* run parent process */
@@ -137,8 +137,8 @@ run_tests(struct test *tests, uint32_t test_count)
         }
     }
 
-    TLOG_INF("[===========] %u test(s) run.\n", test_count);
-    TLOG_INF("[  PASSED   ] %u test(s).\n", test_count);
+    TLOG_INF("[===========] %u test(s) run.", test_count);
+    TLOG_INF("[  PASSED   ] %u test(s).", test_count);
 
     close(pipes[0]);
     close(pipes[1]);
