@@ -34,8 +34,8 @@
 #include <libyang/libyang.h>
 
 #include "common.h"
-#include "tests/config.h"
 #include "sysrepo.h"
+#include "tests/test_common.h"
 #include "utils/values.h"
 
 struct state {
@@ -1604,6 +1604,6 @@ main(void)
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
-    sr_log_stderr(SR_LL_INF);
+    test_log_init();
     return cmocka_run_group_tests(tests, setup, teardown);
 }

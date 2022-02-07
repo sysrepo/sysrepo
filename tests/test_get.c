@@ -32,8 +32,8 @@
 #include <cmocka.h>
 #include <libyang/libyang.h>
 
-#include "tests/config.h"
 #include "sysrepo.h"
+#include "tests/test_common.h"
 
 struct state {
     sr_conn_ctx_t *conn;
@@ -478,6 +478,6 @@ main(void)
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
-    sr_log_stderr(SR_LL_INF);
+    test_log_init();
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
