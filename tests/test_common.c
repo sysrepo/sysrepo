@@ -23,7 +23,7 @@
 #include "tests/test_common.h"
 
 static void
-_test_log_msg(sr_log_level_t level, const char *message, const char* prefix)
+_test_log_msg(sr_log_level_t level, const char *message, const char *prefix)
 {
     const char *severity;
     struct timespec ts;
@@ -50,7 +50,7 @@ _test_log_msg(sr_log_level_t level, const char *message, const char* prefix)
     clock_gettime(CLOCK_REALTIME, &ts);
     ts.tv_sec %= 1000;
     ts.tv_nsec /= 1000;
-    fprintf(stderr, "%03ld.%06ld [%ld][%lu][%s] %s: %s\n", ts.tv_sec, ts.tv_nsec,
+    fprintf(stderr, "%03ld.%06ld [%ld][%lu][%s]%s: %s\n", ts.tv_sec, ts.tv_nsec,
             (long)getpid(), (unsigned long)pthread_self(), severity,
             prefix, message);
 }
