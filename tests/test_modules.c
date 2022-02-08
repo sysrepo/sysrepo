@@ -333,7 +333,7 @@ test_op_deps(void **state)
     );
 
     /* enable feature that should enable 2 more operations */
-    ret = sr_enable_module_feature(st->conn, "ops-ref", "feat1", 0);
+    ret = sr_enable_module_feature(st->conn, "ops-ref", "feat1");
     assert_int_equal(ret, SR_ERR_OK);
 
     cmp_int_data(st->conn, "ops",
@@ -647,17 +647,17 @@ test_change_feature(void **state)
     );
 
     /* enable feat2 and feat3 */
-    ret = sr_enable_module_feature(st->conn, "features", "feat2", 0);
+    ret = sr_enable_module_feature(st->conn, "features", "feat2");
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_enable_module_feature(st->conn, "features", "feat3", 0);
+    ret = sr_enable_module_feature(st->conn, "features", "feat3");
     assert_int_equal(ret, SR_ERR_OK);
 
     cmp_int_data(st->conn, "features",
     "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>features</name>"
         "<enabled-feature>feat1</enabled-feature>"
-        "<enabled-feature>feat3</enabled-feature>"
         "<enabled-feature>feat2</enabled-feature>"
+        "<enabled-feature>feat3</enabled-feature>"
         "<plugin><datastore>startup</datastore><name>LYB DS file</name></plugin>"
         "<plugin><datastore>running</datastore><name>LYB DS file</name></plugin>"
         "<plugin><datastore>candidate</datastore><name>LYB DS file</name></plugin>"
@@ -688,11 +688,15 @@ test_change_feature(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* disable all features first checking dependent features */
-    ret = sr_disable_module_feature(st->conn, "features", "feat1", 0);
-    assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
-    ret = sr_disable_module_feature(st->conn, "features", "feat2", 0);
-    assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
-    ret = sr_disable_module_feature(st->conn, "features", "feat1", 1);
+    ret = sr_disable_module_feature(st->conn, "features", "feat1");
+    assert_int_equal(ret, SR_ERR_LY);
+    ret = sr_disable_module_feature(st->conn, "features", "feat2");
+    assert_int_equal(ret, SR_ERR_LY);
+    ret = sr_disable_module_feature(st->conn, "features", "feat3");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_disable_module_feature(st->conn, "features", "feat2");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_disable_module_feature(st->conn, "features", "feat1");
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check that the features were disabled and dependency removed */
@@ -1305,7 +1309,7 @@ test_get_module_access(void **state)
 }
 
 static void
-test_feature_dependencies_across_modules(void **state)
+test_feature_deps(void **state)
 {
     struct state *st = (struct state *)*state;
     int ret;
@@ -1317,30 +1321,30 @@ test_feature_dependencies_across_modules(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* enable independent feature */
-    ret = sr_enable_module_feature(st->conn, "feature-deps2", "featx", 0);
+    ret = sr_enable_module_feature(st->conn, "feature-deps2", "featx");
     assert_int_equal(ret, SR_ERR_OK);
 
     /* fail to enable dependent features */
-    ret = sr_enable_module_feature(st->conn, "feature-deps", "feat1", 0);
-    assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
-    ret = sr_enable_module_feature(st->conn, "feature-deps", "feat2", 0);
-    assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
+    ret = sr_enable_module_feature(st->conn, "feature-deps", "feat1");
+    assert_int_equal(ret, SR_ERR_LY);
+    ret = sr_enable_module_feature(st->conn, "feature-deps", "feat2");
+    assert_int_equal(ret, SR_ERR_LY);
 
     /* enable all features */
-    ret = sr_enable_module_feature(st->conn, "feature-deps", "feat3", 0);
+    ret = sr_enable_module_feature(st->conn, "feature-deps", "feat3");
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_enable_module_feature(st->conn, "feature-deps", "feat2", 0);
+    ret = sr_enable_module_feature(st->conn, "feature-deps", "feat2");
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_enable_module_feature(st->conn, "feature-deps", "feat1", 0);
+    ret = sr_enable_module_feature(st->conn, "feature-deps", "feat1");
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check SR data */
     cmp_int_data(st->conn, "feature-deps",
     "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
         "<name>feature-deps</name>"
-        "<enabled-feature>feat1</enabled-feature>"
-        "<enabled-feature>feat2</enabled-feature>"
         "<enabled-feature>feat3</enabled-feature>"
+        "<enabled-feature>feat2</enabled-feature>"
+        "<enabled-feature>feat1</enabled-feature>"
         "<plugin><datastore>startup</datastore><name>LYB DS file</name></plugin>"
         "<plugin><datastore>running</datastore><name>LYB DS file</name></plugin>"
         "<plugin><datastore>candidate</datastore><name>LYB DS file</name></plugin>"
@@ -1361,11 +1365,17 @@ test_feature_dependencies_across_modules(void **state)
     );
 
     /* fail to disable feature */
-    ret = sr_disable_module_feature(st->conn, "feature-deps2", "featx", 0);
-    assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
+    ret = sr_disable_module_feature(st->conn, "feature-deps2", "featx");
+    assert_int_equal(ret, SR_ERR_LY);
 
     /* disable all features */
-    ret = sr_disable_module_feature(st->conn, "feature-deps2", "featx", 1);
+    ret = sr_disable_module_feature(st->conn, "feature-deps", "feat1");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_disable_module_feature(st->conn, "feature-deps", "feat2");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_disable_module_feature(st->conn, "feature-deps", "feat3");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_disable_module_feature(st->conn, "feature-deps2", "featx");
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check SR data */
@@ -1394,6 +1404,33 @@ test_feature_dependencies_across_modules(void **state)
     ret = sr_remove_module(st->conn, "feature-deps", 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_remove_module(st->conn, "feature-deps2", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+static void
+test_feature_deps2(void **state)
+{
+    struct state *st = (struct state *)*state;
+    int ret;
+
+    /* install modules */
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/issue-if-feature-pck.yang", TESTS_SRC_DIR "/files", NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/issue-if-feature-tm.yang", TESTS_SRC_DIR "/files", NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* enable all features */
+    ret = sr_enable_module_feature(st->conn, "issue-if-feature-tm", "root");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_enable_module_feature(st->conn, "issue-if-feature-pck", "packages");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_enable_module_feature(st->conn, "issue-if-feature-grp", "root-value");
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* cleanup */
+    ret = sr_remove_module(st->conn, "issue-if-feature", 1);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_remove_module(st->conn, "issue-if-feature-tm", 0);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -1485,7 +1522,8 @@ main(void)
         cmocka_unit_test_setup_teardown(test_startup_data_foreign_identityref, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_set_module_access, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_get_module_access, setup_f, teardown_f),
-        cmocka_unit_test_setup_teardown(test_feature_dependencies_across_modules, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_feature_deps, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_feature_deps2, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_update_data_deviation, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_update_data_no_write_perm, setup_f, teardown_f),
     };

@@ -613,11 +613,9 @@ int sr_check_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int 
  * @param[in] conn Connection to use.
  * @param[in] module_name Name of the module to change.
  * @param[in] feature_name Name of the feature to enable.
- * @param[in] force If there are other enabled features depending on this one, disable them. Otherwise
- * return an error in this case.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_enable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name, int force);
+int sr_enable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name);
 
 /**
  * @brief Disable a module feature.
@@ -627,11 +625,9 @@ int sr_enable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const
  * @param[in] conn Connection to use.
  * @param[in] module_name Name of the module to change.
  * @param[in] feature_name Name of the feature to disable.
- * @param[in] force If there are other enabled features depending on this one, disable them. Otherwise
- * return an error in this case.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_disable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name, int force);
+int sr_disable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name);
 
 /**
  * @brief Get internal sysrepo data tree, which holds detailed information about installed modules. It should

@@ -1246,82 +1246,13 @@ cleanup:
     return err_info;
 }
 
-/**
- * @brief Process all dependent feature changes in a set of modules and modify SR internal module data accordingly.
- *
- * @param[in] mod_set Set of old modules with possibly dependent features.
- * @param[in] new_ctx Context with updated modules and their features.
- * @param[in,out] sr_mods SR internal module data, is updated.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_lydmods_change_dep_chng_feature(const struct ly_set *mod_set, const struct ly_ctx *new_ctx, struct lyd_node *sr_mods)
-{
-    sr_error_info_t *err_info = NULL;
-    const struct lys_module *old_mod, *new_mod;
-    struct lysp_feature *f;
-    struct ly_set *set = NULL;
-    char *path = NULL;
-    uint32_t i, j;
-
-    for (i = 0; i < mod_set->count; ++i) {
-        old_mod = mod_set->objs[i];
-        new_mod = NULL;
-
-        f = NULL;
-        j = 0;
-        while ((f = lysp_feature_next(f, old_mod->parsed, &j))) {
-            if (!(f->flags & LYS_FENABLED)) {
-                /* skip disabled features */
-                continue;
-            }
-
-            if (!new_mod) {
-                /* get new module */
-                new_mod = ly_ctx_get_module_implemented(new_ctx, old_mod->name);
-                assert(new_mod);
-            }
-
-            /* check new feature state, skip if enabled in both modules */
-            if (!lys_feature_value(new_mod, f->name)) {
-                continue;
-            }
-
-            /* dependent feature was disabled, adjust SR data */
-            if (asprintf(&path, "module[name='%s']/enabled-feature[.='%s']", old_mod->name, f->name) == -1) {
-                SR_ERRINFO_MEM(&err_info);
-                goto cleanup;
-            }
-            if (lyd_find_xpath(sr_mods, path, &set)) {
-                sr_errinfo_new_ly(&err_info, LYD_CTX(sr_mods));
-                goto cleanup;
-            }
-            SR_CHECK_INT_GOTO(set->count != 1, err_info, cleanup);
-            lyd_free_tree(set->dnodes[0]);
-
-            /* next iter */
-            free(path);
-            path = NULL;
-            ly_set_free(set, NULL);
-            set = NULL;
-        }
-    }
-
-cleanup:
-    free(path);
-    return err_info;
-}
-
 sr_error_info_t *
 sr_lydmods_change_chng_feature(const struct ly_ctx *ly_ctx, const struct lys_module *old_mod,
         const struct lys_module *new_mod, const char *feat_name, int enable, struct lyd_node **sr_mods)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *sr_mod;
-    struct ly_set *set, mod_set = {0};
-    struct lysp_feature *f1 = NULL, *f2 = NULL;
+    struct lyd_node *sr_mod, *node;
     char *path = NULL;
-    uint32_t i, j;
 
     *sr_mods = NULL;
 
@@ -1340,50 +1271,28 @@ sr_lydmods_change_chng_feature(const struct ly_ctx *ly_ctx, const struct lys_mod
         goto cleanup;
     }
 
-    /* find and remove all the enabled features */
-    if (lyd_find_xpath(sr_mod, "enabled-feature", &set)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx);
-        goto cleanup;
-    }
-    for (i = 0; i < set->count; ++i) {
-        lyd_free_tree(set->dnodes[i]);
-    }
-    ly_set_free(set, NULL);
-
-    /* go through all the features and handle dependent feature changes in the module */
-    i = 0;
-    j = 0;
-    while ((f1 = lysp_feature_next(f1, old_mod->parsed, &i))) {
-        f2 = lysp_feature_next(f2, new_mod->parsed, &j);
-        assert(f2 && !strcmp(f1->name, f2->name));
-
-        if (f2->flags & LYS_FENABLED) {
-            /* add enabled feature */
-            if (lyd_new_term(sr_mod, NULL, "enabled-feature", f2->name, 0, NULL)) {
-                sr_errinfo_new_ly(&err_info, ly_ctx);
-                goto cleanup;
-            }
-
-            if (enable && !strcmp(f2->name, feat_name)) {
-                SR_LOG_INF("Module \"%s\" feature \"%s\" enabled.", old_mod->name, f2->name);
-            }
-        } else if (f1->flags & LYS_FENABLED) {
-            if (!enable && !strcmp(f1->name, feat_name)) {
-                SR_LOG_INF("Module \"%s\" feature \"%s\" disabled.", old_mod->name, f1->name);
-            } else {
-                SR_LOG_INF("Module \"%s\" dependent feature \"%s\" disabled.", old_mod->name, f1->name);
-            }
+    if (enable) {
+        /* add enabled feature */
+        if (lyd_new_term(sr_mod, NULL, "enabled-feature", feat_name, 0, NULL)) {
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+            goto cleanup;
         }
-    }
 
-    /* collect all imports of the module */
-    if ((err_info = sr_module_get_impl_inv_imports(old_mod, &mod_set))) {
-        goto cleanup;
-    }
+        SR_LOG_INF("Module \"%s\" feature \"%s\" enabled.", old_mod->name, feat_name);
+    } else {
+        /* find and free the enabled feature */
+        free(path);
+        if (asprintf(&path, "enabled-feature[.='%s']", feat_name) == -1) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+        if (lyd_find_path(sr_mod, path, 0, &node)) {
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+            goto cleanup;
+        }
+        lyd_free_tree(node);
 
-    /* handle dependend feature changes in foreign modules */
-    if ((err_info = sr_lydmods_change_dep_chng_feature(&mod_set, new_mod->ctx, *sr_mods))) {
-        goto cleanup;
+        SR_LOG_INF("Module \"%s\" feature \"%s\" disabled.", old_mod->name, feat_name);
     }
 
     /* delete all dependencies */
@@ -1403,7 +1312,6 @@ sr_lydmods_change_chng_feature(const struct ly_ctx *ly_ctx, const struct lys_mod
 
 cleanup:
     free(path);
-    ly_set_erase(&mod_set, NULL);
     if (err_info) {
         lyd_free_all(*sr_mods);
         *sr_mods = NULL;

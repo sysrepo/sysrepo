@@ -740,11 +740,11 @@ test_context_change(int rp, int wp)
     barrier(rp, wp);
 
     /* try to disable f1, succeeds */
-    ret = sr_disable_module_feature(conn, "mod1", "f1", 0);
+    ret = sr_disable_module_feature(conn, "mod1", "f1");
     sr_assert_int_equal(ret, SR_ERR_OK);
 
     /* enable f1 back */
-    ret = sr_enable_module_feature(conn, "mod1", "f1", 0);
+    ret = sr_enable_module_feature(conn, "mod1", "f1");
     sr_assert_int_equal(ret, SR_ERR_OK);
 
     /* install deviating module */

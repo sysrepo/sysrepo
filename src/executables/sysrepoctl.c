@@ -112,8 +112,7 @@ help_print(void)
             "  -I, --init-data <path>\n"
             "                       Initial data in a file with XML or JSON extension to be set for a module,\n"
             "                       useful when there are mandatory top-level nodes. Accepted by install op.\n"
-            "  -f, --force          Force the specific operation. Accepted by change op if features are being changed\n"
-            "                       and uninstall op.\n"
+            "  -f, --force          Force the specific operation. Accepted by uninstall op.\n"
             "  -v, --verbosity <level>\n"
             "                       Change verbosity to a level (none, error, warning, info, debug) or\n"
             "                       number (0, 1, 2, 3, 4). Accepted by all op.\n"
@@ -700,7 +699,7 @@ main(int argc, char **argv)
 
         /* change enabled features */
         for (i = 0; i < feat_count; ++i) {
-            if ((r = sr_enable_module_feature(conn, module_name, features[i], force))) {
+            if ((r = sr_enable_module_feature(conn, module_name, features[i]))) {
                 error_print(r, "Failed to enable feature \"%s\"", features[i]);
                 goto cleanup;
             }
@@ -708,7 +707,7 @@ main(int argc, char **argv)
 
         /* change disabled features */
         for (i = 0; i < dis_feat_count; ++i) {
-            if ((r = sr_disable_module_feature(conn, module_name, dis_features[i], force))) {
+            if ((r = sr_disable_module_feature(conn, module_name, dis_features[i]))) {
                 error_print(r, "Failed to disable feature \"%s\"", dis_features[i]);
                 goto cleanup;
             }
