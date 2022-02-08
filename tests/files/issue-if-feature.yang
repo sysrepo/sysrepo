@@ -1,0 +1,12 @@
+module issue-if-feature {
+  namespace "urn:issue:if:feature";
+  prefix iif;
+
+  import issue-if-feature-tm {
+    prefix iift;
+  }
+
+  container root {
+    if-feature iift:root;
+  }
+}
