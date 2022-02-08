@@ -1,0 +1,10 @@
+module issue-if-feature-tm {
+  namespace "urn:issue:if:feature:tm";
+  prefix iift;
+
+  feature root;
+
+  typedef value-type {
+    type uint32;
+  }
+}
