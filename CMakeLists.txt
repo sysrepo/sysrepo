@@ -391,7 +391,7 @@ gen_doc("${DOXY_FILES}" ${SYSREPO_VERSION} ${SYSREPO_DESC} ${PROJECT_LOGO})
 
 # generate API/ABI report
 if ("${BUILD_TYPE_UPPER}" STREQUAL "ABICHECK")
-    lib_abi_check(sysrepo "${LIB_HEADERS}" ${SYSREPO_SOVERSION_FULL} b59a69e54157a52838f5a9454ea1b1ced22c2b62)
+    lib_abi_check(sysrepo "${LIB_HEADERS}" ${SYSREPO_SOVERSION_FULL} 45656b72710dae7f9b60925ec5a3c72ae4490244)
 endif()
 
 # source files to be covered by the 'format' target and a test with 'format-check' target
