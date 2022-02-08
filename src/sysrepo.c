@@ -2035,74 +2035,18 @@ cleanup:
 }
 
 /**
- * @brief Check that no dependent features were changed in modules importing a changed module.
- *
- * @param[in] old_mod Module that was changed but in its previous (current) state.
- * @param[in] feature_name Changed feature name, for logging.
- * @param[in] new_ctx Context with the updated modules.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_check_imp_feature_changes(const struct lys_module *old_mod, const char *feature_name, const struct ly_ctx *new_ctx)
-{
-    sr_error_info_t *err_info = NULL;
-    const struct lys_module *mod, *new_mod;
-    struct ly_set mod_set = {0};
-    struct lysp_feature *f;
-    uint32_t i, j;
-
-    /* collect all implemented imports of the module */
-    if ((err_info = sr_module_get_impl_inv_imports(old_mod, &mod_set))) {
-        goto cleanup;
-    }
-
-    for (i = 0; i < mod_set.count; ++i) {
-        mod = mod_set.objs[i];
-        new_mod = NULL;
-
-        f = NULL;
-        j = 0;
-        while ((f = lysp_feature_next(f, mod->parsed, &j))) {
-            if (!(f->flags & LYS_FENABLED)) {
-                /* ignore disabled features */
-                continue;
-            }
-
-            if (!new_mod) {
-                /* get the module from the new context */
-                new_mod = ly_ctx_get_module_implemented(new_ctx, mod->name);
-                assert(new_mod);
-            }
-
-            /* check new feature state */
-            if (lys_feature_value(new_mod, f->name) == LY_ENOT) {
-                sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Enabled feature \"%s:%s\" depends on feature \"%s:%s\".",
-                        mod->name, f->name, old_mod->name, feature_name);
-                goto cleanup;
-            }
-        }
-    }
-
-cleanup:
-    ly_set_erase(&mod_set, NULL);
-    return err_info;
-}
-
-/**
  * @brief Load a module with changed features into context.
  *
  * @param[in,out] ly_ctx Context to load the module to.
  * @param[in] old_mod Previous (current) module.
  * @param[in] feature_name Changed feature.
  * @param[in] enable Whether the feature was enabled or disabled.
- * @param[in] force If there are other enabled features depending on this one, disable them, too. Otherwise
- * return an error.
  * @param[out] new_mod New loaded module.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_load_module(struct ly_ctx *ly_ctx, const struct lys_module *old_mod, const char *feature_name, int enable,
-        int force, const struct lys_module **new_mod)
+        const struct lys_module **new_mod)
 {
     sr_error_info_t *err_info = NULL;
     struct lysp_feature *f = NULL;
@@ -2151,32 +2095,6 @@ sr_load_module(struct ly_ctx *ly_ctx, const struct lys_module *old_mod, const ch
         goto cleanup;
     }
 
-    /* check that the feature is actually changed (redundant when disabling) */
-    if (enable && (lys_feature_value(*new_mod, feature_name) == LY_ENOT)) {
-        sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED,
-                "Failed to enable feature \"%s:%s\" because of its \"if-feature\".", old_mod->name, feature_name);
-        goto cleanup;
-    }
-
-    if (!force) {
-        /* check for dependent features that got disabled in the module (even by enabling a new feature) */
-        if (features) {
-            for (i = 0; features[i]; ++i) {
-                if (lys_feature_value(*new_mod, features[i]) == LY_ENOT) {
-                    sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED,
-                            "Enabled feature \"%s:%s\" depends on feature \"%s:%s\".",
-                            old_mod->name, features[i], old_mod->name, feature_name);
-                    goto cleanup;
-                }
-            }
-        }
-
-        /* check for feature changes even in foreign modules */
-        if ((err_info = sr_check_imp_feature_changes(old_mod, feature_name, ly_ctx))) {
-            goto cleanup;
-        }
-    }
-
 cleanup:
     ly_set_erase(&feat_set, NULL);
     free(features);
@@ -2190,12 +2108,10 @@ cleanup:
  * @param[in] module_name Module to change.
  * @param[in] feature_name Feature to change.
  * @param[in] enable Whether to enable or disable the feature.
- * @param[in] force If there are other enabled features depending on this one, disable them, too. Otherwise
- * return an error.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name, int enable, int force)
+sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name, int enable)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_ctx *tmp_ly_ctx = NULL, *old_ctx = NULL;
@@ -2256,7 +2172,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     /* load the module with changed features */
-    if ((err_info = sr_load_module(tmp_ly_ctx, ly_mod, feature_name, enable, force, &upd_ly_mod))) {
+    if ((err_info = sr_load_module(tmp_ly_ctx, ly_mod, feature_name, enable, &upd_ly_mod))) {
         goto cleanup;
     }
 
@@ -2315,25 +2231,25 @@ cleanup:
 }
 
 API int
-sr_enable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name, int force)
+sr_enable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name)
 {
     sr_error_info_t *err_info;
 
     SR_CHECK_ARG_APIRET(!conn || !module_name || !feature_name, NULL, err_info);
 
-    err_info = sr_change_module_feature(conn, module_name, feature_name, 1, force);
+    err_info = sr_change_module_feature(conn, module_name, feature_name, 1);
 
     return sr_api_ret(NULL, err_info);
 }
 
 API int
-sr_disable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name, int force)
+sr_disable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name)
 {
     sr_error_info_t *err_info;
 
     SR_CHECK_ARG_APIRET(!conn || !module_name || !feature_name, NULL, err_info);
 
-    err_info = sr_change_module_feature(conn, module_name, feature_name, 0, force);
+    err_info = sr_change_module_feature(conn, module_name, feature_name, 0);
 
     return sr_api_ret(NULL, err_info);
 }

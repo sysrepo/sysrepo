@@ -312,11 +312,11 @@ context_change_feature_change_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* try to enable f2, should fail */
-    ret = sr_enable_module_feature(st->conn, "mod1", "f2", 0);
+    ret = sr_enable_module_feature(st->conn, "mod1", "f2");
     assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
 
     /* try to disable f1, should fail */
-    ret = sr_disable_module_feature(st->conn, "mod1", "f1", 0);
+    ret = sr_disable_module_feature(st->conn, "mod1", "f1");
     assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
 
     /* sync #2 */
@@ -326,7 +326,7 @@ context_change_feature_change_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* try to disable f1, should still fail */
-    ret = sr_disable_module_feature(st->conn, "mod1", "f1", 0);
+    ret = sr_disable_module_feature(st->conn, "mod1", "f1");
     assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
 
     /* sync #4 */
@@ -336,14 +336,14 @@ context_change_feature_change_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* try to disable f1, succeeds */
-    ret = sr_disable_module_feature(st->conn, "mod1", "f1", 0);
+    ret = sr_disable_module_feature(st->conn, "mod1", "f1");
     assert_int_equal(ret, SR_ERR_OK);
 
     /* sync #6 */
     pthread_barrier_wait(&st->barrier);
 
     /* enable f1 back */
-    ret = sr_enable_module_feature(st->conn, "mod1", "f1", 0);
+    ret = sr_enable_module_feature(st->conn, "mod1", "f1");
     assert_int_equal(ret, SR_ERR_OK);
 
     return NULL;
