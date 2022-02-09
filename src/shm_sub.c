@@ -73,8 +73,6 @@ sr_shmsub_create(const char *name, const char *suffix1, int64_t suffix2, size_t 
         goto cleanup;
     }
 
-    /* success */
-
 cleanup:
     free(path);
     sr_shm_clear(&shm);
@@ -138,17 +136,40 @@ sr_shmsub_unlink(const char *name, const char *suffix1, int64_t suffix2)
         goto cleanup;
     }
 
-    /* success */
-
 cleanup:
     free(path);
     return err_info;
 }
 
+sr_error_info_t *
+sr_shmsub_data_create(const char *name, const char *suffix1, int64_t suffix2)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path = NULL;
+    sr_shm_t shm = SR_SHM_INITIALIZER;
+
+    assert(name && suffix1);
+
+    /* get the path */
+    if ((err_info = sr_path_sub_data_shm(name, suffix1, suffix2, &path))) {
+        goto cleanup;
+    }
+
+    /* open shared memory */
+    shm.fd = sr_open(path, O_RDWR | O_CREAT | O_EXCL, SR_SUB_SHM_PERM);
+    if (shm.fd == -1) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to create \"%s\" SHM (%s).", path, strerror(errno));
+        goto cleanup;
+    }
+
+cleanup:
+    free(path);
+    sr_shm_clear(&shm);
+    return err_info;
+}
+
 /**
  * @brief Open and map or only remap a subscription data SHM.
- *
- * Note that if sub data SHM is being created with no new_shm_size, it is only opened, not mapped.
  *
  * @param[in] name Subscription name (module name).
  * @param[in] suffix1 First suffix.
@@ -171,8 +192,8 @@ sr_shmsub_data_open_remap(const char *name, const char *suffix1, int64_t suffix2
             goto cleanup;
         }
 
-        /* open shared memory, it may exist already */
-        shm->fd = sr_open(path, O_RDWR | O_CREAT, SR_SUB_SHM_PERM);
+        /* open shared memory */
+        shm->fd = sr_open(path, O_RDWR, SR_SUB_SHM_PERM);
         if (shm->fd == -1) {
             SR_ERRINFO_SYSERRPATH(&err_info, "open", path);
             goto cleanup;
@@ -207,13 +228,9 @@ sr_shmsub_data_unlink(const char *name, const char *suffix1, int64_t suffix2)
 
     /* unlink */
     if (unlink(path) == -1) {
-        if (errno != ENOENT) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to unlink \"%s\" data SHM (%s).", path, strerror(errno));
-            goto cleanup;
-        }
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to unlink \"%s\" data SHM (%s).", path, strerror(errno));
+        goto cleanup;
     }
-
-    /* success */
 
 cleanup:
     free(path);
