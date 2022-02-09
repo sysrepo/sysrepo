@@ -1782,7 +1782,7 @@ sr_nacm_check_diff_r(const struct lyd_node *diff, const char *user, const char *
     return NULL;
 }
 
-API int
+API sr_error_info_t *
 sr_nacm_check_diff(sr_session_ctx_t *session, const struct lyd_node *diff, const struct lyd_node **denied_node)
 {
     sr_error_info_t *err_info = NULL;
@@ -1819,7 +1819,7 @@ cleanup:
     /* NACM UNLOCK */
     pthread_mutex_unlock(&nacm.lock);
     sr_nacm_free_groups(groups, group_count);
-    return sr_api_ret(session, err_info);
+    return err_info;
 }
 
 API int

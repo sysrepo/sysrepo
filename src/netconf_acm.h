@@ -107,7 +107,7 @@ enum sr_nacm_access {
  * @param[in] session Session to use.
  * @param[in] opts Optionally, SR_SUBSCR_NO_THREAD can be specified. No other flags are allowed.
  * @param[out] sub Subcription context.
- * @return errinfo, NULL on success.
+ * @return Error code (SR_ERR_OK on success).
  */
 int sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscription_ctx_t **sub);
 
@@ -163,9 +163,9 @@ int sr_nacm_check_data_read_filter(sr_session_ctx_t *session, struct lyd_node **
  * @param[in] diff Diff tree to check.
  * @param[in] user User for the NACM check.
  * @param[out] denied_node NULL if access allowed, otherwise the denied access data node.
- * @return Error code (SR_ERR_OK on success).
+ * @return errinfo, NULL on success.
  */
-int sr_nacm_check_diff(sr_session_ctx_t *session, const struct lyd_node *diff, const struct lyd_node **denied_node);
+sr_error_info_t *sr_nacm_check_diff(sr_session_ctx_t *session, const struct lyd_node *diff, const struct lyd_node **denied_node);
 
 /**
  * @brief Filter out any data in the notification the user does not have R access to
@@ -176,5 +176,6 @@ int sr_nacm_check_diff(sr_session_ctx_t *session, const struct lyd_node *diff, c
  * @return Error code (SR_ERR_OK on success).
  */
 int sr_nacm_check_yang_push_update_notif(sr_session_ctx_t *session, struct ly_set *set, int *all_removed);
+int sr_nacm_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms);
 
 #endif /* SR_NETCONF_ACM_H_ */

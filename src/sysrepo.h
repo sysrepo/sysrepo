@@ -951,6 +951,14 @@ int sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t tim
  */
 int sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms);
 
+
+/**
+ * @brief Apply changes made in the current session, while checking NACM.
+ *
+ * For more info, check @ref sr_apply_changes.
+ */
+int sr_nacm_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms);
+
 /**
  * @brief Learn whether there are any prepared non-applied changes in the session.
  *
@@ -984,6 +992,22 @@ int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct
         uint32_t timeout_ms);
 
 /**
+ * @brief Replace a datastore with the contents of a data tree. If the module is specified, limit
+ * the operation only to the specified module. If it is not specified, the operation is performed on all modules. Also
+ * checks NACM.
+ *
+ * Required WRITE access.
+ *
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific - target datastore) to use.
+ * @param[in] module_name If specified, limits the replace operation only to this module.
+ * @param[in] src_config Source data to replace the datastore in @p session connection _libyang_ context.
+ * Is ALWAYS spent and cannot be further used by the application!
+ * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_nacm_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config,
+        uint32_t timeout_ms);
+/**
  * @brief Replaces a conventional datastore with the contents of
  * another conventional datastore. If the module is specified, limits
  * the operation only to the specified module. If it is not specified,
@@ -1001,6 +1025,25 @@ int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms);
+
+/**
+ * @brief Replaces a conventional datastore with the contents of
+ * another conventional datastore. If the module is specified, limits
+ * the operation only to the specified module. If it is not specified,
+ * the operation is performed on all modules. Also checks NACM.
+ *
+ * @note Note that copying from _candidate_ to _running_ or vice versa causes
+ * the _candidate_ datastore to revert to original behavior of mirroring _running_ datastore (@ref datastores).
+ *
+ * Required WRITE access.
+ *
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific - target datastore) to use.
+ * @param[in] module_name Optional module name that limits the copy operation only to this module.
+ * @param[in] src_datastore Source datastore.
+ * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_nacm_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms);
 
 /** @} editdata */
 
