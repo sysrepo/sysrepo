@@ -109,12 +109,20 @@ enum sr_nacm_access {
  * @param[out] sub Subcription context.
  * @return errinfo, NULL on success.
  */
-sr_error_info_t *sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscription_ctx_t **sub);
+int sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscription_ctx_t **sub);
 
 /**
  * @brief Deinitialize NACM.
  */
 void sr_nacm_destroy(void);
+
+/**
+ * @brief Set the NACM user for this session.
+ *
+ * @param[in] session Session to use.
+ * @return Error code (SR_ERR_OK on success).
+ */
+int sr_nacm_set_user(sr_session_ctx_t *session, const char *user);
 
 /**
  * @brief Check whether an operation is allowed for a user.
@@ -129,7 +137,7 @@ void sr_nacm_destroy(void);
  * @param[out] denied_node NULL if access allowed, otherwise the denied access data node.
  * @return errinfo, NULL on success.
  */
-sr_error_info_t *sr_nacm_check_operation(const struct lyd_node *data, const char *user, const struct lyd_node **denied_node);
+int sr_nacm_check_operation(sr_session_ctx_t *session, const struct lyd_node *data, const struct lyd_node **denied_node);
 
 /**
  * @brief Filter out any data for which the user does not have R access.
@@ -139,9 +147,9 @@ sr_error_info_t *sr_nacm_check_operation(const struct lyd_node *data, const char
  *
  * @param[in,out] data Data to filter.
  * @param[in] user User for the NACM filtering.
- * @return errinfo, NULL on success.
+ * @return Error code (SR_ERR_OK on success).
  */
-sr_error_info_t *sr_nacm_check_data_read_filter(struct lyd_node **data, const char *user);
+int sr_nacm_check_data_read_filter(sr_session_ctx_t *session, struct lyd_node **data);
 
 /**
  * @brief Check whether a diff (simplified edit-config tree) can be
@@ -155,9 +163,9 @@ sr_error_info_t *sr_nacm_check_data_read_filter(struct lyd_node **data, const ch
  * @param[in] diff Diff tree to check.
  * @param[in] user User for the NACM check.
  * @param[out] denied_node NULL if access allowed, otherwise the denied access data node.
- * @return errinfo, NULL on success.
+ * @return Error code (SR_ERR_OK on success).
  */
-sr_error_info_t *sr_nacm_check_diff(const struct lyd_node *diff, const char *user, const struct lyd_node **denied_node);
+int sr_nacm_check_diff(sr_session_ctx_t *session, const struct lyd_node *diff, const struct lyd_node **denied_node);
 
 /**
  * @brief Filter out any data in the notification the user does not have R access to
@@ -165,8 +173,8 @@ sr_error_info_t *sr_nacm_check_diff(const struct lyd_node *diff, const char *use
  * @param[in] user Name of the user to check.
  * @param[in] set Set of the notification data.
  * @param[out] all_removed Whether or not all nodes have been removed.
- * @return errinfo, NULL on success.
+ * @return Error code (SR_ERR_OK on success).
  */
-sr_error_info_t *sr_nacm_check_yang_push_update_notif(const char *user, struct ly_set *set, int *all_removed);
+int sr_nacm_check_yang_push_update_notif(sr_session_ctx_t *session, struct ly_set *set, int *all_removed);
 
 #endif /* SR_NETCONF_ACM_H_ */

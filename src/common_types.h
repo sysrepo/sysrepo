@@ -138,6 +138,7 @@ struct sr_session_ctx_s {
     sr_datastore_t ds;              /**< Datastore of the session. */
     uint32_t sid;                   /**< Session ID. */
     char *user;                     /**< Session (system) user. */
+    char *nacm_user;                /**< NACM user. */
     sr_error_info_t *err_info;      /**< Session error information. */
 
     char *orig_name;                /**< Originator name used for all events sent on this session. */

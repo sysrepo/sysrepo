@@ -875,17 +875,34 @@ sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
             SR_SUBSCR_DONE_ONLY | SR_SUBSCR_ENABLED | opts, sub); \
     if (rc != SR_ERR_OK) { \
         sr_errinfo_new(&err_info, rc, "Subscribing for \"%s\" data changes failed.", mod_name); \
-        return err_info; \
+        return sr_api_ret(session, err_info); \
     }
 
 #define SR_OPER_SUBSCR(session, sub, mod_name, xpath, opts, cb) \
     rc = sr_oper_get_subscribe(session, mod_name, xpath, cb, NULL, opts, sub); \
     if (rc != SR_ERR_OK) { \
         sr_errinfo_new(&err_info, rc, "Subscribing for providing \"%s\" state data failed.", mod_name); \
-        return err_info; \
+        return sr_api_ret(session, err_info); \
     }
 
-API sr_error_info_t *
+API int
+sr_nacm_set_user(sr_session_ctx_t *session, const char *user)
+{
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(!session || !user, session, err_info);
+
+    /* replace the user */
+    free(session->nacm_user);
+    session->nacm_user = strdup(user);
+    if (!session->nacm_user) {
+        SR_ERRINFO_MEM(&err_info);
+    }
+
+    return sr_api_ret(session, err_info);
+}
+
+API int
 sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscription_ctx_t **sub)
 {
     pthread_mutex_init(&nacm.lock, NULL);
@@ -918,7 +935,7 @@ sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscriptio
     xpath = "/ietf-netconf-acm:nacm/denied-notifications";
     SR_OPER_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_oper_cb);
 
-    return NULL;
+    return sr_api_ret(session, NULL);
 }
 
 API void
@@ -1457,8 +1474,8 @@ cleanup:
     return NULL;
 }
 
-API sr_error_info_t *
-sr_nacm_check_operation(const struct lyd_node *data, const char *user, const struct lyd_node **denied_node)
+API int
+sr_nacm_check_operation(sr_session_ctx_t *session, const struct lyd_node *data, const struct lyd_node **denied_node)
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *op = NULL;
@@ -1471,12 +1488,12 @@ sr_nacm_check_operation(const struct lyd_node *data, const char *user, const str
     pthread_mutex_lock(&nacm.lock);
 
     /* check access for the whole data tree first */
-    err_info = sr_nacm_allowed_tree(data->schema, user, &allowed);
+    err_info = sr_nacm_allowed_tree(data->schema, session->nacm_user, &allowed);
     if (err_info || allowed) {
         goto cleanup;
     }
 
-    if (sr_nacm_collect_groups(user, &groups, &group_count)) {
+    if (sr_nacm_collect_groups(session->nacm_user, &groups, &group_count)) {
         goto cleanup;
     }
 
@@ -1569,7 +1586,7 @@ cleanup:
     /* NACM UNLOCK */
     pthread_mutex_unlock(&nacm.lock);
     *denied_node = op;
-    return NULL;
+    return sr_api_ret(session, err_info);
 }
 
 /**
@@ -1641,8 +1658,8 @@ sr_nacm_check_data_read_filter_r(struct lyd_node **first, const char *user, char
     return NULL;
 }
 
-API sr_error_info_t *
-sr_nacm_check_data_read_filter(struct lyd_node **data, const char *user)
+API int
+sr_nacm_check_data_read_filter(sr_session_ctx_t *session, struct lyd_node **data)
 {
     sr_error_info_t *err_info;
     char **groups = NULL;
@@ -1655,19 +1672,19 @@ sr_nacm_check_data_read_filter(struct lyd_node **data, const char *user)
     /* NACM LOCK */
     pthread_mutex_lock(&nacm.lock);
 
-    err_info = sr_nacm_collect_groups(user, &groups, &group_count);
+    err_info = sr_nacm_collect_groups(session->nacm_user, &groups, &group_count);
     if (err_info) {
         goto cleanup;
     }
 
     if (*data) {
-        err_info = sr_nacm_allowed_tree((*data)->schema, user, &allowed);
+        err_info = sr_nacm_allowed_tree((*data)->schema, session->nacm_user, &allowed);
         if (err_info) {
-            return err_info;
+            goto cleanup;
         }
 
         if (!allowed) {
-            err_info = sr_nacm_check_data_read_filter_r(data, user, groups, group_count, &access);
+            err_info = sr_nacm_check_data_read_filter_r(data, session->nacm_user, groups, group_count, &access);
         }
     }
 
@@ -1676,7 +1693,8 @@ cleanup:
     pthread_mutex_unlock(&nacm.lock);
     sr_nacm_free_groups(groups, group_count);
 
-    return NULL;
+    return sr_api_ret(session, err_info);
+;
 }
 
 /**
@@ -1764,8 +1782,8 @@ sr_nacm_check_diff_r(const struct lyd_node *diff, const char *user, const char *
     return NULL;
 }
 
-API sr_error_info_t *
-sr_nacm_check_diff(const struct lyd_node *diff, const char *user, const struct lyd_node **denied_node)
+API int
+sr_nacm_check_diff(sr_session_ctx_t *session, const struct lyd_node *diff, const struct lyd_node **denied_node)
 {
     sr_error_info_t *err_info = NULL;
     char **groups = NULL;
@@ -1775,18 +1793,18 @@ sr_nacm_check_diff(const struct lyd_node *diff, const char *user, const struct l
     /* NACM LOCK */
     pthread_mutex_lock(&nacm.lock);
 
-    if (sr_nacm_collect_groups(user, &groups, &group_count)) {
+    if (sr_nacm_collect_groups(session->nacm_user, &groups, &group_count)) {
         goto cleanup;
     }
 
     /* any node can be used in this case */
-    err_info = sr_nacm_allowed_tree(diff->schema, user, &allowed);
+    err_info = sr_nacm_allowed_tree(diff->schema, session->nacm_user, &allowed);
     if (err_info) {
         goto cleanup;
     }
 
     if (!allowed) {
-        err_info = sr_nacm_check_diff_r(diff, user, NULL, groups, group_count, denied_node);
+        err_info = sr_nacm_check_diff_r(diff, session->nacm_user, NULL, groups, group_count, denied_node);
 
         if (err_info) {
             goto cleanup;
@@ -1801,11 +1819,11 @@ cleanup:
     /* NACM UNLOCK */
     pthread_mutex_unlock(&nacm.lock);
     sr_nacm_free_groups(groups, group_count);
-    return NULL;
+    return sr_api_ret(session, err_info);
 }
 
-API sr_error_info_t *
-sr_nacm_check_yang_push_update_notif(const char *user, struct ly_set *set, int *all_removed)
+API int
+sr_nacm_check_yang_push_update_notif(sr_session_ctx_t *session, struct ly_set *set, int *all_removed)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node_any *ly_value;
@@ -1813,10 +1831,11 @@ sr_nacm_check_yang_push_update_notif(const char *user, struct ly_set *set, int *
     uint32_t i, group_count, removed = 0;
     char **groups;
     enum sr_nacm_access access;
+    int rc;
 
-    err_info = sr_nacm_collect_groups(user, &groups, &group_count);
+    err_info = sr_nacm_collect_groups(session->nacm_user, &groups, &group_count);
     if (err_info) {
-        return err_info;
+        return sr_api_ret(session, err_info);
     }
 
     for (i = 0; i < set->count; ++i) {
@@ -1824,7 +1843,7 @@ sr_nacm_check_yang_push_update_notif(const char *user, struct ly_set *set, int *
         lyd_find_path(set->dnodes[i], "target", 0, &ly_target);
         err_info = sr_nacm_allowed_node(NULL, lyd_get_value(ly_target), ly_target->priv, SR_NACM_OP_READ, groups, group_count, &access);
         if (err_info) {
-            return err_info;
+            return sr_api_ret(session, err_info);
         }
 
         if (!SR_NACM_ACCESS_IS_NODE_PERMIT(access)) {
@@ -1839,9 +1858,9 @@ sr_nacm_check_yang_push_update_notif(const char *user, struct ly_set *set, int *
 
             /* filter out any nested nodes */
             LY_LIST_FOR_SAFE(lyd_child(ly_value->value.tree), next, iter) {
-                err_info = sr_nacm_check_data_read_filter(&iter, user);
-                if (err_info) {
-                    return err_info;
+                rc = sr_nacm_check_data_read_filter(session, &iter);
+                if (rc) {
+                    return rc;
                 }
             }
         }
@@ -1853,5 +1872,5 @@ sr_nacm_check_yang_push_update_notif(const char *user, struct ly_set *set, int *
         *all_removed = 0;
     }
 
-    return NULL;
+    return sr_api_ret(session, NULL);
 }
