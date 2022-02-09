@@ -209,20 +209,6 @@ int sr_get_plugins(sr_conn_ctx_t *conn, const char ***ds_plugins, const char ***
 uid_t sr_get_su_uid(void);
 
 /**
- * @brief Set callback for checking every diff before it is applied on the datastore.
- * The diff is final (only CRUD operations) but without any implicit changes caused
- * by validation. This callback is primarily meant to allow full NACM
- * (NETCONF Access Control) to be performed by a NETCONF server.
- *
- * Required SUPERUSER access.
- *
- * @param[in] conn Connection, whose all sessions diffs will be passed to this callback.
- * @param[in] callback Callback to call for every diff.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_set_diff_check_callback(sr_conn_ctx_t *conn, sr_diff_check_cb callback);
-
-/**
  * @brief Discard stored push operational data owned by this connection. Is performed directly on the connection,
  * ::sr_apply_changes() call is not required.
  *

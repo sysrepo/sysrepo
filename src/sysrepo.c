@@ -475,23 +475,6 @@ sr_get_su_uid(void)
 }
 
 API int
-sr_set_diff_check_callback(sr_conn_ctx_t *conn, sr_diff_check_cb callback)
-{
-    sr_error_info_t *err_info = NULL;
-
-    SR_CHECK_ARG_APIRET(!conn, NULL, err_info);
-
-    if (geteuid() != SR_SU_UID) {
-        /* not the superuser */
-        sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, "Superuser access required.");
-        return sr_api_ret(NULL, err_info);
-    }
-
-    conn->diff_check_cb = callback;
-    return sr_api_ret(NULL, NULL);
-}
-
-API int
 sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
@@ -3170,32 +3153,6 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
             sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, "Access to the data model \"%s\" is denied because \"%s\" NACM authorization failed.",
                     node->schema->module->name, path);
             free(path);
-            goto cleanup;
-        }
-    }
-
-    /* call connection diff callback */
-    if (mod_info->conn->diff_check_cb) {
-        /* create event session */
-        if ((err_info = _sr_session_start(mod_info->conn, mod_info->ds, SR_SUB_EV_CHANGE, NULL, &ev_sess))) {
-            goto cleanup;
-        }
-
-        /* set originator data */
-        if ((err_info = sr_session_set_orig(ev_sess, orig_name, orig_data))) {
-            goto cleanup;
-        }
-
-        ret = mod_info->conn->diff_check_cb(ev_sess, mod_info->diff);
-        if (ret) {
-            /* create cb_err_info */
-            if (ev_sess->ev_error.message) {
-                sr_errinfo_new_data(cb_err_info, ret, ev_sess->ev_error.format, ev_sess->ev_error.data,
-                        "%s", ev_sess->ev_error.message);
-            } else {
-                sr_errinfo_new_data(cb_err_info, ret, ev_sess->ev_error.format, ev_sess->ev_error.data,
-                        "Diff check callback failed (%s).", sr_strerror(ret));
-            }
             goto cleanup;
         }
     }
