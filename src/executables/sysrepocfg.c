@@ -515,10 +515,10 @@ op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FO
     /* send rpc/action */
     r = sr_rpc_send_tree(sess, input, timeout_s * 1000, &output);
     lyd_free_all(input);
-    sr_release_context(sr_session_get_connection(sess));
     if (r) {
         error_print(r, "Sending RPC/action failed");
-        return EXIT_FAILURE;
+        rc = EXIT_FAILURE;
+        goto release;
     }
 
     /* print output if any */
