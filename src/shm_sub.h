@@ -62,6 +62,16 @@ sr_error_info_t *sr_shmsub_open_map(const char *name, const char *suffix1, int64
 sr_error_info_t *sr_shmsub_unlink(const char *name, const char *suffix1, int64_t suffix2);
 
 /**
+ * @brief Create a subscription data SHM.
+ *
+ * @param[in] name Subscription name (module name).
+ * @param[in] suffix1 First suffix.
+ * @param[in] suffix2 Second suffix, none if set to -1.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_data_create(const char *name, const char *suffix1, int64_t suffix2);
+
+/**
  * @brief Unlink a subscription data SHM.
  *
  * @param[in] name Subscription name (module name).
