@@ -3922,9 +3922,7 @@ _sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t ci
         ret = pthread_mutex_consistent(&rwlock->mutex);
 
         /* recover the lock */
-        assert(rwlock->writer);
         sr_rwlock_recover(rwlock, func, cb, cb_data);
-        assert(!rwlock->writer);
         SR_CHECK_INT_RET(ret, err_info);
     } else if (ret) {
         SR_ERRINFO_LOCK(&err_info, func, ret);
