@@ -1317,10 +1317,13 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
             continue;
         }
 
-        if (!ATOMIC_LOAD_RELAXED((*notif_subs)[i].suspended)) {
-            ++(*notif_sub_count);
+        /* skip suspended subscriptions */
+        if (ATOMIC_LOAD_RELAXED((*notif_subs)[i].suspended)) {
+            ++i;
+            continue;
         }
 
+        ++(*notif_sub_count);
         ++i;
     }
 

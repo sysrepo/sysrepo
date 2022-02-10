@@ -721,6 +721,7 @@ sr_shmsub_change_notify_has_subscription(sr_conn_ctx_t *conn, struct sr_mod_info
 
         /* skip suspended subscriptions */
         if (ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
+            ++i;
             continue;
         }
 
@@ -783,6 +784,7 @@ sr_shmsub_change_notify_next_subscription(sr_conn_ctx_t *conn, struct sr_mod_inf
 
         /* skip suspended subscriptions */
         if (ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
+            ++i;
             continue;
         }
 
@@ -1701,6 +1703,7 @@ sr_shmsub_rpc_notify_has_subscription(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, co
 
         /* skip suspended subscriptions */
         if (ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
+            ++i;
             continue;
         }
 
@@ -1765,6 +1768,7 @@ sr_shmsub_rpc_notify_next_subscription(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, c
 
         /* skip suspended subscriptions */
         if (ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
+            ++i;
             continue;
         }
 
