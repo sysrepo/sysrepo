@@ -1205,7 +1205,13 @@ typedef enum sr_subscr_flag_e {
      * subscription callback, keep them. Then the returned data are merged into the existing data. Accepted
      * only for operational subscriptions.
      */
-    SR_SUBSCR_OPER_MERGE = 128
+    SR_SUBSCR_OPER_MERGE = 128,
+
+    /**
+     * @brief For subscribers that wish to not be informed of changes not matching their xpath filter
+     * this option is used so that filtering happens at the producer, instead of the event handler thread
+     */
+    SR_SUBSCR_PRODUCER_FILTERING = 256,
 
 } sr_subscr_flag_t;
 

@@ -3080,7 +3080,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
 
     conn = session->conn;
     /* only these options are relevant outside this function and will be stored */
-    sub_opts = opts & (SR_SUBSCR_DONE_ONLY | SR_SUBSCR_PASSIVE | SR_SUBSCR_UPDATE);
+    sub_opts = opts & (SR_SUBSCR_DONE_ONLY | SR_SUBSCR_PASSIVE | SR_SUBSCR_UPDATE | SR_SUBSCR_PRODUCER_FILTERING);
 
     /* is the module name valid? */
     ly_mod = ly_ctx_get_module(conn->ly_ctx, module_name, NULL, 1);

@@ -22,7 +22,8 @@ configure_file("${PROJECT_SOURCE_DIR}/tests/test_common.h.in" "${PROJECT_BINARY_
 
 # lists of all the tests
 set(tests test_modules test_validation test_edit test_candidate test_operational test_lock test_apply_changes
-    test_copy_config test_rpc_action test_notif test_get test_process test_multi_connection)
+    test_copy_config test_rpc_action test_notif test_get test_process test_multi_connection
+    test_subscr_filtering)
 
 foreach(test_name IN LISTS tests)
     add_executable(${test_name} ${test_sources} ${test_name}.c)
