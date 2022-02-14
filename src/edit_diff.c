@@ -1948,7 +1948,8 @@ sr_edit_apply_remove(struct lyd_node **first_node, struct lyd_node *parent_node,
             /* we are definitely finished with this subtree now and there is no edit to continue with */
             *next_op = EDIT_FINISH;
         } else {
-            /* continue normally with the edit */
+            /* subtree removed, just check operations in the rest of edit subtree */
+            *flags_r |= EDIT_APPLY_CHECK_OP_R;
             *next_op = EDIT_CONTINUE;
         }
 
@@ -2481,6 +2482,7 @@ reapply:
         /* we have removed one subtree of data from another case/one default leaf-list instance/one purged instance,
          * try this whole edit again */
         prev_op = 0;
+        flags &= ~EDIT_APPLY_CHECK_OP_R;
         diff_node = NULL;
         goto reapply;
     } else if (next_op == EDIT_FINISH) {
