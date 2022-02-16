@@ -32,4 +32,7 @@
 /** whether mkstemps is found on the system */
 #cmakedefine SR_HAVE_MKSTEMPS
 
+/** whether libsystemd is installed, decides general support for systemd */
+#cmakedefine SR_HAVE_SYSTEMD
+
 #endif

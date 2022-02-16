@@ -35,6 +35,10 @@
 #include "compat.h"
 #include "sysrepo.h"
 
+#ifdef SR_HAVE_SYSTEMD
+# include <systemd/sd-daemon.h>
+#endif
+
 /** protected flag for terminating sysrepo-plugind */
 int loop_finish;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
@@ -523,12 +527,22 @@ main(int argc, char **argv)
         }
     }
 
+#ifdef SR_HAVE_SYSTEMD
+    /* notify systemd */
+    sd_notify(0, "READY=1");
+#endif
+
     /* wait for a terminating signal */
     pthread_mutex_lock(&lock);
     while (!loop_finish) {
         pthread_cond_wait(&cond, &lock);
     }
     pthread_mutex_unlock(&lock);
+
+#ifdef SR_HAVE_SYSTEMD
+    /* notify systemd */
+    sd_notify(0, "STOPPING=1");
+#endif
 
     /* cleanup plugins */
     for (i = 0; i < plugin_count; ++i) {

@@ -329,6 +329,23 @@ find_package(LibYANG ${LIBYANG_DEP_SOVERSION} REQUIRED)
 target_link_libraries(sysrepo ${LIBYANG_LIBRARIES})
 include_directories(${LIBYANG_INCLUDE_DIRS})
 
+# pkg-config
+find_package(PkgConfig)
+if(NOT PKG_CONFIG_FOUND AND NOT SYSTEMD_UNIT_DIR)
+    set(SYSTEMD_UNIT_DIR "/usr/lib/systemd/system")
+endif()
+
+# libsystemd
+find_package(LibSystemd)
+if(LIBSYSTEMD_FOUND)
+    set(SR_HAVE_SYSTEMD 1)
+    target_link_libraries(sysrepo-plugind ${LIBSYSTEMD_LIBRARIES})
+    include_directories(${LIBSYSTEMD_INCLUDE_DIRS})
+    message(STATUS "systemd system service unit path: ${SYSTEMD_UNIT_DIR}")
+else()
+    message(WARNING "Disabling sysrepo-plugind systemd support because libsystemd was not found.")
+endif()
+
 # pthread
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 find_package(Threads REQUIRED)
@@ -361,6 +378,9 @@ install(TARGETS sysrepoctl sysrepocfg sysrepo-plugind DESTINATION ${CMAKE_INSTAL
 install(FILES ${PROJECT_SOURCE_DIR}/src/executables/sysrepoctl.1 ${PROJECT_SOURCE_DIR}/src/executables/sysrepocfg.1
         DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
 install(FILES ${PROJECT_SOURCE_DIR}/src/executables/sysrepo-plugind.8 DESTINATION ${CMAKE_INSTALL_MANDIR}/man8)
+if(SR_HAVE_SYSTEMD)
+    install(FILES ${PROJECT_SOURCE_DIR}/systemd/sysrepo-plugind.service DESTINATION ${SYSTEMD_UNIT_DIR})
+endif()
 
 install(FILES "${PROJECT_BINARY_DIR}/sysrepo.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 

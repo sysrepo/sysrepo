@@ -11,6 +11,7 @@ BuildRequires:  gcc
 BuildRequires:  gcc-c++
 BuildRequires:  make
 BuildRequires:  pkgconfig(libyang) >= 2.0.7
+BuildRequires:  systemd
 
 %package devel
 Summary:   Development files for sysrepo
@@ -71,6 +72,7 @@ rm -rf /etc/sysrepo/
 %{_datadir}/man/man1/sysrepocfg.1.gz
 %{_datadir}/man/man1/sysrepoctl.1.gz
 %{_datadir}/man/man8/sysrepo-plugind.8.gz
+%{_unitdir}/sysrepo-plugind.service
 
 %files devel
 %{_libdir}/libsysrepo.so
