@@ -1,14 +1,13 @@
 [Unit]
 Description=Sysrepo plugin daemon
+#After=
 
 [Service]
 Type=notify
-EnvironmentFile=-/etc/sysconfig/ssh
-ExecStartPre=/usr/sbin/sshd-gen-keys-start
-ExecStartPre=/usr/sbin/sshd -t $SSHD_OPTS
-ExecStart=/usr/sbin/sshd -D $SSHD_OPTS
-ExecReload=/bin/kill -HUP $MAINPID
-KillMode=process
-Restart=on-failure
-RestartPreventExitStatus=255
-TasksMax=infinity
+ExecStart=/usr/bin/sysrepo-plugind -v2
+Restart=always
+SystemCallArchitectures=native
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target
