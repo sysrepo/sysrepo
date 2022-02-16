@@ -3,3 +3,4 @@ usr/bin/sysrepocfg
 usr/bin/sysrepo-plugind
 usr/share/man/man1
 usr/share/man/man8
+usr/lib/systemd/system/sysrepo-plugind.service

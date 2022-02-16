@@ -79,6 +79,7 @@ other users.
 
 #### Optional
 
+* pkg-config & libsystemd (to support `sysrepo-plugind` systemd service)
 * doxygen (for generating documentation)
 * cmocka >= 1.0.1 (for tests only, see [Tests](#Tests))
 * valgrind (for enhanced testing)
@@ -128,6 +129,11 @@ Set global `umask` for all sysrepo file and directory creation:
 Set system group to own all sysrepo-related files:
 ```
 -DSYSREPO_GROUP=sysrepo
+```
+
+Set `systemd` system service unit path:
+```
+-DSYSTEMD_UNIT_DIR=/usr/lib/systemd/system
 ```
 
 ### Useful CMake Build Options
