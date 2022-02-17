@@ -186,7 +186,7 @@ step_read_file(FILE *file, char **mem)
 
     do {
         if (mem_used == mem_size) {
-            mem_size >>= 1;
+            mem_size <<= 1;
             *mem = realloc(*mem, mem_size);
         }
 
