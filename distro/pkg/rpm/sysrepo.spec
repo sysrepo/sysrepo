@@ -11,6 +11,7 @@ BuildRequires:  gcc
 BuildRequires:  gcc-c++
 BuildRequires:  make
 BuildRequires:  pkgconfig(libyang) >= 2.0.7
+BuildRequires:  systemd-devel
 BuildRequires:  systemd
 
 %package devel
