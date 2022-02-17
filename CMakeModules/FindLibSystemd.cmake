@@ -67,7 +67,7 @@ else()
     )
 
     if(NOT SYSTEMD_UNIT_DIR)
-        execute_process(COMMAND ${PKG_CONFIG_EXECUTABLE} --variable=systemdsystemunitdir systemd
+        execute_process(COMMAND ${PKG_CONFIG_EXECUTABLE} --define-variable=rootprefix=${CMAKE_INSTALL_PREFIX} --variable=systemdsystemunitdir systemd
                 OUTPUT_VARIABLE SYSTEMD_UNIT_DIR)
         string(REGEX REPLACE "[ \t\n]+" "" SYSTEMD_UNIT_DIR "${SYSTEMD_UNIT_DIR}")
     endif()
