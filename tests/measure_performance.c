@@ -32,7 +32,7 @@
 #include <stdbool.h>
 #include <libyang/libyang.h>
 
-#include "tests/config.h"
+#include "tests/test_common.h"
 #include "sysrepo.h"
 
 /* Constants defining how many times the operation is performed to compute an average ops/sec */
