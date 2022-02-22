@@ -5273,6 +5273,11 @@ sr_xpath_trim_last_node(const char *xpath, char **trim_xpath)
         return NULL;
     }
 
+    if (ptr[-1] == '/') {
+        /* "//", fine */
+        --ptr;
+    }
+
     *trim_xpath = strndup(xpath, ptr - xpath);
     SR_CHECK_MEM_GOTO(!*trim_xpath, err_info, error);
     return NULL;
