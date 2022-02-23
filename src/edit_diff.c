@@ -2106,8 +2106,8 @@ sr_edit_apply_replace(struct lyd_node *match_node, int val_equal, const struct l
     uintptr_t prev_dflt;
 
     if (!edit_node->schema) {
-        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Opaque (invalid) node \"%s\" cannot replace any node.",
-                LYD_NAME(edit_node));
+        lyd_parse_opaq_error(edit_node);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(edit_node));
         return err_info;
     }
 
@@ -2213,7 +2213,8 @@ sr_edit_apply_create(struct lyd_node **first_node, struct lyd_node *parent_node,
     sr_error_info_t *err_info = NULL;
 
     if (!edit_node->schema) {
-        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Opaque (invalid) node \"%s\" cannot be created.", LYD_NAME(edit_node));
+        lyd_parse_opaq_error(edit_node);
+        sr_errinfo_new_ly(&err_info, LYD_CTX(edit_node));
         return err_info;
     }
 
