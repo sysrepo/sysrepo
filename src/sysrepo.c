@@ -3119,7 +3119,6 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     struct lyd_node *update_edit = NULL, *old_diff = NULL, *new_diff = NULL;
     sr_session_ctx_t *ev_sess = NULL;
     sr_lock_mode_t change_sub_lock = SR_LOCK_NONE;
-    int ret;
     uint32_t sid = 0;
     char *orig_name = NULL;
     void *orig_data = NULL;
