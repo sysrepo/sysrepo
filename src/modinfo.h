@@ -261,7 +261,7 @@ sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct l
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session,
-        struct ly_set **result);
+        struct ly_set **result, int *dup);
 
 /**
  * @brief Generate a netconf-config-change notification based on changes in mod info.

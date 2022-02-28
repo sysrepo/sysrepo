@@ -39,6 +39,7 @@
 #include "replay.h"
 #include "shm_ext.h"
 #include "sysrepo.h"
+#include "utils/nacm.h"
 
 sr_error_info_t *
 sr_shmsub_create(const char *name, const char *suffix1, int64_t suffix2, size_t shm_struct_size)
@@ -3430,13 +3431,15 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, request_id;
-    struct lyd_node *notif = NULL, *notif_op;
+    struct lyd_node *orig_notif = NULL, *notif_dup = NULL, *notif, *notif_op;
+    const struct lyd_node *denied_node;
     struct ly_in *in = NULL;
     struct timespec notif_ts;
     char *shm_data_ptr;
     sr_multi_sub_shm_t *multi_sub_shm;
     sr_shm_t shm_data_sub = SR_SHM_INITIALIZER;
     sr_session_ctx_t *ev_sess = NULL;
+    struct modsub_notifsub_s *sub;
 
     multi_sub_shm = (sr_multi_sub_shm_t *)notif_subs->sub_shm.addr;
 
@@ -3469,7 +3472,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
 
     /* parse notification */
     ly_in_new_memory(shm_data_ptr, &in);
-    if (lyd_parse_op(conn->ly_ctx, NULL, in, LYD_LYB, LYD_TYPE_NOTIF_YANG, &notif, NULL)) {
+    if (lyd_parse_op(conn->ly_ctx, NULL, in, LYD_LYB, LYD_TYPE_NOTIF_YANG, &orig_notif, NULL)) {
         sr_errinfo_new_ly(&err_info, conn->ly_ctx);
         SR_ERRINFO_INT(&err_info);
         goto cleanup_rdunlock;
@@ -3481,22 +3484,62 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     /* process event */
     SR_LOG_INF("Processing \"notif\" \"%s\" event with ID %" PRIu32 ".", notif_subs->module_name, request_id);
 
-    /* go to the operation, not the root */
-    notif_op = notif;
-    if ((err_info = sr_ly_find_last_parent(&notif_op, LYS_NOTIF))) {
-        goto cleanup;
-    }
-
-    /* call callbacks if xpath filter matches */
     for (i = 0; i < notif_subs->sub_count; ++i) {
-        if (sr_shmsub_notif_listen_filter_is_valid(notif_op, notif_subs->subs[i].xpath)) {
-            if ((err_info = sr_notif_call_callback(ev_sess, notif_subs->subs[i].cb, notif_subs->subs[i].tree_cb,
-                    notif_subs->subs[i].private_data, SR_EV_NOTIF_REALTIME, notif_subs->subs[i].sub_id, notif_op, &notif_ts))) {
+        sub = &notif_subs->subs[i];
+        denied_node = NULL;
+
+        if (sub->sess->nacm_user && !strcmp(orig_notif->schema->module->name, "ietf-yang-push") &&
+                !strcmp(LYD_NAME(orig_notif), "push-change-update")) {
+            if (i == notif_subs->sub_count) {
+                /* last subscription, we can modify the notification */
+                notif = orig_notif;
+            } else {
+                if (!notif_dup) {
+                    /* create notification duplicate */
+                    if (lyd_dup_single(orig_notif, NULL, LYD_DUP_RECURSIVE, &notif_dup)) {
+                        sr_errinfo_new_ly(&err_info, conn->ly_ctx);
+                        goto cleanup;
+                    }
+                }
+                notif = notif_dup;
+            }
+
+            /* push-change-update notif is filtered specially by NACM */
+            if ((err_info = sr_nacm_check_push_update_notif(sub->sess->nacm_user, notif, &denied_node))) {
+                goto cleanup;
+            }
+        } else {
+            /* use notif directly */
+            notif = orig_notif;
+
+            /* check NACM */
+            if (sub->sess->nacm_user && (err_info = sr_nacm_check_operation(sub->sess->nacm_user, notif, &denied_node))) {
+                goto cleanup;
+            }
+        }
+
+        /* find the notification */
+        notif_op = notif;
+        if ((err_info = sr_ly_find_last_parent(&notif_op, LYS_NOTIF))) {
+            goto cleanup;
+        }
+
+        /* NACM and xpath filter */
+        if (!denied_node && sr_shmsub_notif_listen_filter_is_valid(notif_op, sub->xpath)) {
+            /* call callback */
+            if ((err_info = sr_notif_call_callback(ev_sess, sub->cb, sub->tree_cb, sub->private_data,
+                    SR_EV_NOTIF_REALTIME, sub->sub_id, notif_op, &notif_ts))) {
                 goto cleanup;
             }
         } else {
             /* filtered out */
             ATOMIC_INC_RELAXED(notif_subs->subs[i].filtered_out);
+        }
+
+        if (!denied_node) {
+            /* may have been modified and is useless now */
+            lyd_free_all(notif_dup);
+            notif_dup = NULL;
         }
     }
 
@@ -3533,7 +3576,8 @@ cleanup_rdunlock:
 cleanup:
     ly_in_free(in, 0);
     sr_session_stop(ev_sess);
-    lyd_free_all(notif);
+    lyd_free_all(orig_notif);
+    lyd_free_all(notif_dup);
     sr_shm_clear(&shm_data_sub);
     return err_info;
 }

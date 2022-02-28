@@ -15,6 +15,7 @@
  */
 #define _GNU_SOURCE
 
+#include "nacm.h"
 #include "netconf_acm.h"
 
 #include <assert.h>
@@ -25,10 +26,10 @@
 #include <unistd.h>
 
 #include <libyang/libyang.h>
-#include <sysrepo.h>
 
-#include "config.h"
+#include "../sysrepo.h"
 #include "compat.h"
+#include "config.h"
 #include "log.h"
 
 static struct sr_nacm nacm;
@@ -37,7 +38,7 @@ static struct sr_nacm nacm;
 #define EINT_CB sr_session_set_error_message(session, "Internal error (%s:%d)", __FILE__, __LINE__)
 
 /* /ietf-netconf-acm:nacm */
-int
+static int
 sr_nacm_nacm_params_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNUSED(module_name), const char *xpath,
         sr_event_t UNUSED(event), uint32_t UNUSED(request_id), void *UNUSED(private_data))
 {
@@ -120,7 +121,7 @@ sr_nacm_nacm_params_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const
 }
 
 /* /ietf-netconf-acm:nacm/denied-* */
-int
+static int
 sr_nacm_oper_cb(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id), const char *UNUSED(module_name), const char *path,
         const char *UNUSED(request_xpath), uint32_t UNUSED(request_id), struct lyd_node **parent, void *UNUSED(private_data))
 {
@@ -169,7 +170,7 @@ sr_nacm_group_find(const char *group_name)
 }
 
 /* /ietf-netconf-acm:nacm/groups/group */
-int
+static int
 sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNUSED(module_name), const char *xpath,
         sr_event_t UNUSED(event), uint32_t UNUSED(request_id), void *UNUSED(private_data))
 {
@@ -333,16 +334,6 @@ sr_nacm_remove_rules(struct sr_nacm_rule_list *list)
 }
 
 /**
- * @brief Get pointer to an item on a specific index.
- *
- * @param[in] items Array of items.
- * @param[in] item_size Size of each item.
- * @param[in] idx Index of the item to get.
- * @return Pointer to the item at index.
- */
-#define ITEM_IDX_PTR(items, item_size, idx) (char **)(((uintptr_t)items) + ((idx) * (item_size)))
-
-/**
  * @brief Compare callback for sorting functions like qsort(3) and bsearch(3).
  *
  * @param[in] ptr1 Pointer to the first value.
@@ -422,12 +413,12 @@ sr_nacm_strarr_sort_add(const char **item, size_t item_size, int check_dup, char
     }
 
     /* find the index to add it on */
-    if (*item_count && (strcmp(*ITEM_IDX_PTR(*items, item_size, i), *item) > 0)) {
-        while (i && (strcmp(*ITEM_IDX_PTR(*items, item_size, i - 1), *item) > 0)) {
+    if (*item_count && (strcmp(*SR_ITEM_IDX_PTR(*items, item_size, i), *item) > 0)) {
+        while (i && (strcmp(*SR_ITEM_IDX_PTR(*items, item_size, i - 1), *item) > 0)) {
             --i;
         }
-    } else if (*item_count && (strcmp(*ITEM_IDX_PTR(*items, item_size, i), *item) < 0)) {
-        while ((i < *item_count) && (strcmp(*ITEM_IDX_PTR(*items, item_size, i), *item) < 0)) {
+    } else if (*item_count && (strcmp(*SR_ITEM_IDX_PTR(*items, item_size, i), *item) < 0)) {
+        while ((i < *item_count) && (strcmp(*SR_ITEM_IDX_PTR(*items, item_size, i), *item) < 0)) {
             ++i;
         }
     }
@@ -441,11 +432,11 @@ sr_nacm_strarr_sort_add(const char **item, size_t item_size, int check_dup, char
 
     /* move all following items */
     if (i < *item_count) {
-        memmove(ITEM_IDX_PTR(*items, item_size, i + 1), ITEM_IDX_PTR(*items, item_size, i), (*item_count - i) * item_size);
+        memmove(SR_ITEM_IDX_PTR(*items, item_size, i + 1), SR_ITEM_IDX_PTR(*items, item_size, i), (*item_count - i) * item_size);
     }
 
     /* insert new item */
-    *ITEM_IDX_PTR(*items, item_size, i) = strdup(*item);
+    *SR_ITEM_IDX_PTR(*items, item_size, i) = strdup(*item);
     ++(*item_count);
     return SR_ERR_OK;
 }
@@ -468,10 +459,10 @@ sr_nacm_strarr_sort_del(const char **item, size_t item_size, char ***items, uint
     assert(i > -1);
 
     /* delete it, keep the order */
-    free(*ITEM_IDX_PTR(*items, item_size, i));
+    free(*SR_ITEM_IDX_PTR(*items, item_size, i));
     --(*item_count);
     if ((uint32_t)i < *item_count) {
-        memmove(ITEM_IDX_PTR(*items, item_size, i), ITEM_IDX_PTR(*items, item_size, i + 1), (*item_count - i) * item_size);
+        memmove(SR_ITEM_IDX_PTR(*items, item_size, i), SR_ITEM_IDX_PTR(*items, item_size, i + 1), (*item_count - i) * item_size);
     }
     if (!*item_count) {
         free(*items);
@@ -480,7 +471,7 @@ sr_nacm_strarr_sort_del(const char **item, size_t item_size, char ***items, uint
 }
 
 /* /ietf-netconf-acm:nacm/rule-list */
-int
+static int
 sr_nacm_rule_list_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNUSED(module_name), const char *xpath,
         sr_event_t UNUSED(event), uint32_t UNUSED(request_id), void *UNUSED(private_data))
 {
@@ -639,7 +630,7 @@ sr_nacm_rule_list_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
 }
 
 /* /ietf-netconf-acm:nacm/rule-list/rule */
-int
+static int
 sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNUSED(module_name), const char *xpath,
         sr_event_t UNUSED(event), uint32_t UNUSED(request_id), void *UNUSED(private_data))
 {
@@ -870,6 +861,32 @@ sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
     return SR_ERR_OK;
 }
 
+API int
+sr_nacm_set_user(sr_session_ctx_t *session, const char *user)
+{
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(!session, session, err_info);
+
+    if (!nacm.initialized) {
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "NACM not initialized.");
+        goto cleanup;
+    }
+
+    /* free any previous user */
+    free(session->nacm_user);
+    session->nacm_user = NULL;
+
+    if (user) {
+        /* store new user */
+        session->nacm_user = strdup(user);
+        SR_CHECK_MEM_GOTO(!session->nacm_user, err_info, cleanup);
+    }
+
+cleanup:
+    return sr_api_ret(session, err_info);
+}
+
 #define SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, opts, cb) \
     rc = sr_module_change_subscribe(session, mod_name, xpath, cb, NULL, 0, \
             SR_SUBSCR_DONE_ONLY | SR_SUBSCR_ENABLED | opts, sub); \
@@ -886,32 +903,19 @@ sr_nacm_rule_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
     }
 
 API int
-sr_nacm_set_user(sr_session_ctx_t *session, const char *user)
-{
-    sr_error_info_t *err_info = NULL;
-
-    SR_CHECK_ARG_APIRET(!session || !user, session, err_info);
-
-    /* replace the user */
-    free(session->nacm_user);
-    session->nacm_user = strdup(user);
-    if (!session->nacm_user) {
-        SR_ERRINFO_MEM(&err_info);
-    }
-
-    return sr_api_ret(session, err_info);
-}
-
-API int
 sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscription_ctx_t **sub)
 {
-    pthread_mutex_init(&nacm.lock, NULL);
-
     sr_error_info_t *err_info = NULL;
-    const char* mod_name;
-    const char* xpath;
+    const char *mod_name;
+    const char *xpath;
     int rc;
 
+    SR_CHECK_ARG_APIRET(!session || (opts & ~SR_SUBSCR_NO_THREAD) || !sub, session, err_info);
+
+    /* init structure */
+    pthread_mutex_init(&nacm.lock, NULL);
+
+    /* subscribe to all the relevant data */
     mod_name = "ietf-netconf-acm";
     xpath = "/ietf-netconf-acm:nacm";
     SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_nacm_params_cb);
@@ -935,6 +939,7 @@ sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscriptio
     xpath = "/ietf-netconf-acm:nacm/denied-notifications";
     SR_OPER_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_oper_cb);
 
+    nacm.initialized = 1;
     return sr_api_ret(session, NULL);
 }
 
@@ -972,6 +977,14 @@ sr_nacm_destroy(void)
     nacm.denied_operations = 0;
     nacm.denied_data_writes = 0;
     pthread_mutex_destroy(&nacm.lock);
+
+    nacm.initialized = 0;
+}
+
+API const char *
+sr_nacm_get_recovery_user(void)
+{
+    return SR_NACM_RECOVERY_USER;
 }
 
 /**
@@ -1039,10 +1052,6 @@ sr_nacm_getpwnam(const char *user, uid_t *uid, gid_t *gid, int *found)
 static sr_error_info_t *
 sr_nacm_allowed_tree(const struct lysc_node *root, const char *user, int *allowed)
 {
-    int user_found;
-    sr_error_info_t *err_info = NULL;
-    uid_t user_uid;
-
     /* 1) NACM is off */
     if (!nacm.enabled) {
         *allowed = 1;
@@ -1050,12 +1059,7 @@ sr_nacm_allowed_tree(const struct lysc_node *root, const char *user, int *allowe
     }
 
     /* 2) recovery session allowed */
-    err_info = sr_nacm_getpwnam(user, &user_uid, NULL, &user_found);
-    if (err_info) {
-        return err_info;
-    }
-
-    if (user_found && user_uid == SR_SU_UID) {
+    if (!strcmp(user, SR_NACM_RECOVERY_USER)) {
         *allowed = 1;
         return NULL;
     }
@@ -1120,8 +1124,7 @@ sr_nacm_collect_groups(const char *user, char ***groups, uint32_t *group_count)
 
     /* collect system groups */
     if (nacm.enable_external_groups) {
-        err_info = sr_nacm_getpwnam(user, NULL, &user_gid, &found);
-        if (err_info) {
+        if ((err_info = sr_nacm_getpwnam(user, NULL, &user_gid, &found))) {
             goto cleanup;
         }
 
@@ -1474,8 +1477,8 @@ cleanup:
     return NULL;
 }
 
-API int
-sr_nacm_check_operation(sr_session_ctx_t *session, const struct lyd_node *data, const struct lyd_node **denied_node)
+sr_error_info_t *
+sr_nacm_check_operation(const char *nacm_user, const struct lyd_node *data, const struct lyd_node **denied_node)
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *op = NULL;
@@ -1488,12 +1491,12 @@ sr_nacm_check_operation(sr_session_ctx_t *session, const struct lyd_node *data, 
     pthread_mutex_lock(&nacm.lock);
 
     /* check access for the whole data tree first */
-    err_info = sr_nacm_allowed_tree(data->schema, session->nacm_user, &allowed);
+    err_info = sr_nacm_allowed_tree(data->schema, nacm_user, &allowed);
     if (err_info || allowed) {
         goto cleanup;
     }
 
-    if (sr_nacm_collect_groups(session->nacm_user, &groups, &group_count)) {
+    if ((err_info = sr_nacm_collect_groups(nacm_user, &groups, &group_count))) {
         goto cleanup;
     }
 
@@ -1535,8 +1538,7 @@ sr_nacm_check_operation(sr_session_ctx_t *session, const struct lyd_node *data, 
 
     if (op->schema->nodetype & (LYS_RPC | LYS_ACTION)) {
         /* check X access on the RPC/action */
-        err_info = sr_nacm_allowed_node(op, NULL, NULL, SR_NACM_OP_EXEC, groups, group_count, &access);
-        if (err_info) {
+        if ((err_info = sr_nacm_allowed_node(op, NULL, NULL, SR_NACM_OP_EXEC, groups, group_count, &access))) {
             goto cleanup;
         }
 
@@ -1547,8 +1549,7 @@ sr_nacm_check_operation(sr_session_ctx_t *session, const struct lyd_node *data, 
         assert(op->schema->nodetype == LYS_NOTIF);
 
         /* check R access on the notification */
-        err_info = sr_nacm_allowed_node(op, NULL, NULL, SR_NACM_OP_READ, groups, group_count, &access);
-        if (err_info) {
+        if ((err_info = sr_nacm_allowed_node(op, NULL, NULL, SR_NACM_OP_READ, groups, group_count, &access))) {
             goto cleanup;
         }
 
@@ -1559,8 +1560,7 @@ sr_nacm_check_operation(sr_session_ctx_t *session, const struct lyd_node *data, 
 
     if (op->parent) {
         /* check R access on the parents, the last parent must be enough */
-        err_info = sr_nacm_allowed_node(lyd_parent(op), NULL, NULL, SR_NACM_OP_READ, groups, group_count, &access);
-        if (err_info) {
+        if ((err_info = sr_nacm_allowed_node(lyd_parent(op), NULL, NULL, SR_NACM_OP_READ, groups, group_count, &access))) {
             goto cleanup;
         }
 
@@ -1585,8 +1585,92 @@ cleanup:
 
     /* NACM UNLOCK */
     pthread_mutex_unlock(&nacm.lock);
+
     *denied_node = op;
-    return sr_api_ret(session, err_info);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_nacm_check_push_update_notif(const char *nacm_user, struct lyd_node *notif, const struct lyd_node **denied_node)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_set *set = NULL;
+    struct lyd_node_any *ly_value;
+    struct lyd_node *ly_target, *next, *iter;
+    const struct lysc_node *snode;
+    uint32_t i, group_count = 0, removed = 0;
+    char **groups = NULL;
+    enum sr_nacm_access access;
+
+    assert(!strcmp(LYD_NAME(notif), "push-change-update"));
+
+    /* first check NACM just like for a standard notification */
+    if ((err_info = sr_nacm_check_operation(nacm_user, notif, denied_node)) || *denied_node) {
+        goto cleanup;
+    }
+
+    if ((err_info = sr_nacm_collect_groups(nacm_user, &groups, &group_count))) {
+        goto cleanup;
+    }
+
+    /* collect all edits */
+    if (lyd_find_xpath(notif, "/ietf-yang-push:push-change-update/datastore-changes/yang-patch/edit", &set)) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(notif));
+        goto cleanup;
+    }
+
+    /* NACM filtering of individual edits */
+    for (i = 0; i < set->count; ++i) {
+        /* find the schema node */
+        lyd_find_path(set->dnodes[i], "target", 0, &ly_target);
+        snode = lys_find_path(LYD_CTX(notif), NULL, lyd_get_value(ly_target), 0);
+        if (!snode) {
+            /* probably unknown path format, skip (allow) */
+            set->dnodes[i] = NULL;
+            continue;
+        }
+
+        /* check the change itself */
+        if ((err_info = sr_nacm_allowed_node(NULL, lyd_get_value(ly_target), snode, SR_NACM_OP_READ, groups,
+                group_count, &access))) {
+            goto cleanup;
+        }
+
+        if (!SR_NACM_ACCESS_IS_NODE_PERMIT(access)) {
+            /* not allowed, keep in set */
+            ++removed;
+            continue;
+        }
+
+        if (!lyd_find_path(set->dnodes[i], "value", 0, (struct lyd_node **)&ly_value)) {
+            assert(ly_value->value_type == LYD_ANYDATA_DATATREE);
+
+            /* filter out any nested nodes */
+            LY_LIST_FOR_SAFE(lyd_child(ly_value->value.tree), next, iter) {
+                if ((err_info = sr_nacm_check_data_read_filter(nacm_user, &iter))) {
+                    goto cleanup;
+                }
+            }
+        }
+
+        /* this subtree was fully filtered and updated */
+        set->dnodes[i] = NULL;
+    }
+
+    if (removed == set->count) {
+        /* interpret as if the whole notification was denied without changing it */
+        *denied_node = notif;
+    } else {
+        /* actually remove all the denied subtrees */
+        for (i = 0; i < set->count; ++i) {
+            lyd_free_tree(set->dnodes[i]);
+        }
+    }
+
+cleanup:
+    sr_nacm_free_groups(groups, group_count);
+    ly_set_free(set, NULL);
+    return err_info;
 }
 
 /**
@@ -1597,10 +1681,12 @@ cleanup:
  * @param[in] groups Array of collected groups.
  * @param[in] group_count Number of @p groups.
  * @param[out] access Highest access among descendants (recursively), permit is the highest.
+ * @param[out] denied Optional flag set in case any node was denied instead of freeing it directly.
  * @return errinfo, NULL on success.
  */
 static sr_error_info_t *
-sr_nacm_check_data_read_filter_r(struct lyd_node **first, const char *user, char **groups, uint32_t group_count, enum sr_nacm_access *access)
+sr_nacm_check_data_read_filter_r(struct lyd_node **first, const char *user, char **groups, uint32_t group_count,
+        enum sr_nacm_access *access, int *denied)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *next, *elem;
@@ -1610,17 +1696,19 @@ sr_nacm_check_data_read_filter_r(struct lyd_node **first, const char *user, char
 
     LY_LIST_FOR_SAFE(*first, next, elem) {
         /* check access of the node */
-        err_info = sr_nacm_allowed_node(elem, NULL, NULL, SR_NACM_OP_READ, groups, group_count, &node_access);
-        if (err_info) {
+        if ((err_info = sr_nacm_allowed_node(elem, NULL, NULL, SR_NACM_OP_READ, groups, group_count, &node_access))) {
             return err_info;
         }
 
         if (node_access == SR_NACM_ACCESS_PARTIAL_DENY) {
             /* only partial deny access, we must check children recursively to learn whether this node is allowed or not */
             if (elem->schema->nodetype & LYD_NODE_INNER) {
-                err_info = sr_nacm_check_data_read_filter_r(&((struct lyd_node_inner *)elem)->child, user, groups, group_count, &node_access);
-                if (err_info) {
+                if ((err_info = sr_nacm_check_data_read_filter_r(&((struct lyd_node_inner *)elem)->child, user, groups,
+                        group_count, &node_access, denied))) {
                     return err_info;
+                }
+                if (denied && *denied) {
+                    return NULL;
                 }
             }
 
@@ -1631,9 +1719,12 @@ sr_nacm_check_data_read_filter_r(struct lyd_node **first, const char *user, char
         } else if (node_access == SR_NACM_ACCESS_PARTIAL_PERMIT) {
             /* partial permit, the node will be included in the reply but we must check children as well */
             if (elem->schema->nodetype & LYD_NODE_INNER) {
-                err_info = sr_nacm_check_data_read_filter_r(&((struct lyd_node_inner *)elem)->child, user, groups, group_count, &node_access);
-                if (err_info) {
+                if ((err_info = sr_nacm_check_data_read_filter_r(&((struct lyd_node_inner *)elem)->child, user, groups,
+                        group_count, &node_access, denied))) {
                     return err_info;
+                }
+                if (denied && *denied) {
+                    return NULL;
                 }
             }
             node_access = SR_NACM_ACCESS_PERMIT;
@@ -1641,6 +1732,12 @@ sr_nacm_check_data_read_filter_r(struct lyd_node **first, const char *user, char
 
         /* access denied, free the subtree */
         if (node_access == SR_NACM_ACCESS_DENY) {
+            if (denied) {
+                /* not modifying the data directly */
+                *denied = 1;
+                return NULL;
+            }
+
             /* never free keys */
             if (!lysc_is_key(elem->schema)) {
                 if ((elem == *first) && !(*first)->parent) {
@@ -1658,10 +1755,69 @@ sr_nacm_check_data_read_filter_r(struct lyd_node **first, const char *user, char
     return NULL;
 }
 
-API int
-sr_nacm_check_data_read_filter(sr_session_ctx_t *session, struct lyd_node **data)
+sr_error_info_t *
+sr_nacm_check_data_read_filter_dup(const char *nacm_user, const struct lyd_node *data, struct lyd_node **dup, int *denied)
 {
-    sr_error_info_t *err_info;
+    sr_error_info_t *err_info = NULL;
+    char **groups = NULL;
+    uint32_t group_count;
+    enum sr_nacm_access access;
+    int allowed;
+
+    *dup = NULL;
+    if (denied) {
+        *denied = 0;
+    }
+
+    if (!data) {
+        /* nothing to do */
+        return NULL;
+    }
+
+    /* NACM LOCK */
+    pthread_mutex_lock(&nacm.lock);
+
+    if ((err_info = sr_nacm_collect_groups(nacm_user, &groups, &group_count))) {
+        goto cleanup;
+    }
+
+    if ((err_info = sr_nacm_allowed_tree(data->schema, nacm_user, &allowed))) {
+        goto cleanup;
+    }
+
+    if (!allowed) {
+        /* first check whether any node access is denied */
+        if ((err_info = sr_nacm_check_data_read_filter_r((struct lyd_node **)&data, nacm_user, groups, group_count,
+                &access, denied))) {
+            goto cleanup;
+        }
+    }
+
+    if (*denied) {
+        /* duplicate data tree */
+        if (lyd_dup_siblings(data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS, dup)) {
+            sr_errinfo_new_ly(&err_info, LYD_CTX(data));
+            goto cleanup;
+        }
+
+        /* actually filter out all denied nodes */
+        if ((err_info = sr_nacm_check_data_read_filter_r(dup, nacm_user, groups, group_count, &access, NULL))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    /* NACM UNLOCK */
+    pthread_mutex_unlock(&nacm.lock);
+
+    sr_nacm_free_groups(groups, group_count);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_nacm_check_data_read_filter(const char *nacm_user, struct lyd_node **data)
+{
+    sr_error_info_t *err_info = NULL;
     char **groups = NULL;
     uint32_t group_count;
     enum sr_nacm_access access;
@@ -1669,32 +1825,35 @@ sr_nacm_check_data_read_filter(sr_session_ctx_t *session, struct lyd_node **data
 
     assert(data);
 
+    if (!*data) {
+        /* nothing to do */
+        return NULL;
+    }
+
     /* NACM LOCK */
     pthread_mutex_lock(&nacm.lock);
 
-    err_info = sr_nacm_collect_groups(session->nacm_user, &groups, &group_count);
-    if (err_info) {
+    if ((err_info = sr_nacm_collect_groups(nacm_user, &groups, &group_count))) {
         goto cleanup;
     }
 
-    if (*data) {
-        err_info = sr_nacm_allowed_tree((*data)->schema, session->nacm_user, &allowed);
-        if (err_info) {
-            goto cleanup;
-        }
+    if ((err_info = sr_nacm_allowed_tree((*data)->schema, nacm_user, &allowed))) {
+        goto cleanup;
+    }
 
-        if (!allowed) {
-            err_info = sr_nacm_check_data_read_filter_r(data, session->nacm_user, groups, group_count, &access);
+    if (!allowed) {
+        /* filter out all denied nodes */
+        if ((err_info = sr_nacm_check_data_read_filter_r(data, nacm_user, groups, group_count, &access, NULL))) {
+            goto cleanup;
         }
     }
 
 cleanup:
     /* NACM UNLOCK */
     pthread_mutex_unlock(&nacm.lock);
-    sr_nacm_free_groups(groups, group_count);
 
-    return sr_api_ret(session, err_info);
-;
+    sr_nacm_free_groups(groups, group_count);
+    return err_info;
 }
 
 /**
@@ -1709,7 +1868,8 @@ cleanup:
  * @return errinfo, NULL on success.
  */
 static sr_error_info_t *
-sr_nacm_check_diff_r(const struct lyd_node *diff, const char *user, const char *parent_op, char **groups, uint32_t group_count, const struct lyd_node **denied_node)
+sr_nacm_check_diff_r(const struct lyd_node *diff, const char *user, const char *parent_op, char **groups,
+        uint32_t group_count, const struct lyd_node **denied_node)
 {
     sr_error_info_t *err_info = NULL;
     const char *op;
@@ -1759,8 +1919,7 @@ sr_nacm_check_diff_r(const struct lyd_node *diff, const char *user, const char *
         /* check access for the node, none operation is always allowed, and partial access is relevant only for
          * read operation */
         if (oper) {
-            err_info = sr_nacm_allowed_node(diff, NULL, NULL, oper, groups, group_count, &access);
-            if (err_info) {
+            if ((err_info = sr_nacm_allowed_node(diff, NULL, NULL, oper, groups, group_count, &access))) {
                 return err_info;
             }
 
@@ -1772,8 +1931,7 @@ sr_nacm_check_diff_r(const struct lyd_node *diff, const char *user, const char *
 
         /* go recursively */
         if (lyd_child(diff)) {
-            err_info = sr_nacm_check_diff_r(lyd_child(diff), user, op, groups, group_count, denied_node);
-            if (err_info) {
+            if ((err_info = sr_nacm_check_diff_r(lyd_child(diff), user, op, groups, group_count, denied_node))) {
                 return err_info;
             }
         }
@@ -1782,31 +1940,30 @@ sr_nacm_check_diff_r(const struct lyd_node *diff, const char *user, const char *
     return NULL;
 }
 
-API sr_error_info_t *
-sr_nacm_check_diff(sr_session_ctx_t *session, const struct lyd_node *diff, const struct lyd_node **denied_node)
+sr_error_info_t *
+sr_nacm_check_diff(const char *nacm_user, const struct lyd_node *diff, const struct lyd_node **denied_node)
 {
     sr_error_info_t *err_info = NULL;
     char **groups = NULL;
-    uint32_t group_count;
+    uint32_t group_count = 0;
     int allowed;
+
+    *denied_node = NULL;
 
     /* NACM LOCK */
     pthread_mutex_lock(&nacm.lock);
 
-    if (sr_nacm_collect_groups(session->nacm_user, &groups, &group_count)) {
+    if (sr_nacm_collect_groups(nacm_user, &groups, &group_count)) {
         goto cleanup;
     }
 
     /* any node can be used in this case */
-    err_info = sr_nacm_allowed_tree(diff->schema, session->nacm_user, &allowed);
-    if (err_info) {
+    if ((err_info = sr_nacm_allowed_tree(diff->schema, nacm_user, &allowed))) {
         goto cleanup;
     }
 
     if (!allowed) {
-        err_info = sr_nacm_check_diff_r(diff, session->nacm_user, NULL, groups, group_count, denied_node);
-
-        if (err_info) {
+        if ((err_info = sr_nacm_check_diff_r(diff, nacm_user, NULL, groups, group_count, denied_node))) {
             goto cleanup;
         }
 
@@ -1818,59 +1975,71 @@ sr_nacm_check_diff(sr_session_ctx_t *session, const struct lyd_node *diff, const
 cleanup:
     /* NACM UNLOCK */
     pthread_mutex_unlock(&nacm.lock);
+
     sr_nacm_free_groups(groups, group_count);
     return err_info;
 }
 
-API int
-sr_nacm_check_yang_push_update_notif(sr_session_ctx_t *session, struct ly_set *set, int *all_removed)
+void
+sr_errinfo_new_nacm(sr_error_info_t **err_info, const char *error_type, const char *error_tag, const char *error_app_tag,
+        const struct lyd_node *error_path_node, const char *error_message_fmt, ...)
 {
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node_any *ly_value;
-    struct lyd_node *ly_target, *next, *iter;
-    uint32_t i, group_count, removed = 0;
-    char **groups;
-    enum sr_nacm_access access;
-    int rc;
+    va_list vargs;
+    char *error_message = NULL, *error_path = NULL;
+    void *err_data = NULL;
 
-    err_info = sr_nacm_collect_groups(session->nacm_user, &groups, &group_count);
-    if (err_info) {
-        return sr_api_ret(session, err_info);
+    assert(err_info && !*err_info);
+
+    /* print message */
+    va_start(vargs, error_message_fmt);
+    if (vasprintf(&error_message, error_message_fmt, vargs) == -1) {
+        sr_errinfo_new(err_info, SR_ERR_NO_MEMORY, NULL);
+        goto cleanup;
     }
 
-    for (i = 0; i < set->count; ++i) {
-        /* check the change itself */
-        lyd_find_path(set->dnodes[i], "target", 0, &ly_target);
-        err_info = sr_nacm_allowed_node(NULL, lyd_get_value(ly_target), ly_target->priv, SR_NACM_OP_READ, groups, group_count, &access);
-        if (err_info) {
-            return sr_api_ret(session, err_info);
-        }
-
-        if (!SR_NACM_ACCESS_IS_NODE_PERMIT(access)) {
-            /* not allowed, remove this change */
-            lyd_free_tree(set->dnodes[i]);
-            ++removed;
-            continue;
-        }
-
-        if (!lyd_find_path(set->dnodes[i], "value", 0, (struct lyd_node **)&ly_value)) {
-            assert(ly_value->value_type == LYD_ANYDATA_DATATREE);
-
-            /* filter out any nested nodes */
-            LY_LIST_FOR_SAFE(lyd_child(ly_value->value.tree), next, iter) {
-                rc = sr_nacm_check_data_read_filter(session, &iter);
-                if (rc) {
-                    return rc;
-                }
-            }
-        }
+    /* error-type */
+    if ((*err_info = sr_ev_data_push(&err_data, strlen(error_type) + 1, error_type))) {
+        goto cleanup;
     }
-    sr_nacm_free_groups(groups, group_count);
-    if (removed == set->count) {
-        *all_removed = 1;
+
+    /* error-tag */
+    if ((*err_info = sr_ev_data_push(&err_data, strlen(error_tag) + 1, error_tag))) {
+        goto cleanup;
+    }
+
+    /* error-app-tag */
+    if (!error_app_tag) {
+        error_app_tag = "";
+    }
+    if ((*err_info = sr_ev_data_push(&err_data, strlen(error_app_tag) + 1, error_app_tag))) {
+        goto cleanup;
+    }
+
+    /* error-message */
+    if ((*err_info = sr_ev_data_push(&err_data, strlen(error_message) + 1, error_message))) {
+        goto cleanup;
+    }
+
+    /* error-path */
+    if (!error_path_node) {
+        error_path = strdup("");
     } else {
-        *all_removed = 0;
+        error_path = lyd_path(error_path_node, LYD_PATH_STD, NULL, 0);
+    }
+    if (!error_path) {
+        sr_errinfo_new(err_info, SR_ERR_NO_MEMORY, NULL);
+        goto cleanup;
+    }
+    if ((*err_info = sr_ev_data_push(&err_data, strlen(error_path) + 1, error_path))) {
+        goto cleanup;
     }
 
-    return sr_api_ret(session, NULL);
+    /* create err_info */
+    sr_errinfo_new_data(err_info, SR_ERR_UNAUTHORIZED, "NETCONF", err_data, "NACM access denied.");
+
+cleanup:
+    va_end(vargs);
+    free(error_message);
+    free(error_path);
+    free(err_data);
 }

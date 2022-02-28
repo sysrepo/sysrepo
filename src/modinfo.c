@@ -39,6 +39,7 @@
 #include "shm_ext.h"
 #include "shm_mod.h"
 #include "shm_sub.h"
+#include "utils/nacm.h"
 
 sr_error_info_t *
 sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int no_dup_check, struct sr_mod_info_s *mod_info)
@@ -2269,16 +2270,103 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int 
         goto cleanup;
     }
 
-    /* success */
-
 cleanup:
     free(parent_xpath);
     ly_set_free(set, NULL);
     return err_info;
 }
 
+/**
+ * @brief Apply NACM on the filtered result.
+ *
+ * @param[in] session Session to use.
+ * @param[in,out] result Filtered result set of selected subtrees.
+ * @param[out] dup Set if @p result was changed to duplicated subtrees.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_modinfo_get_filter_nacm(sr_session_ctx_t *session, struct ly_set **result, int *dup)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_set *result_dup = NULL;
+    struct lyd_node *subtree, *node;
+    uint32_t i, j;
+    int denied;
+
+    if (!session->nacm_user || !(*result)->count) {
+        /* nothing to do */
+        return NULL;
+    }
+
+    /* apply NACM on all the subtrees */
+    for (i = 0; i < (*result)->count; ++i) {
+        if ((err_info = sr_nacm_check_data_read_filter_dup(session->nacm_user, (*result)->dnodes[i], &subtree, &denied))) {
+            goto cleanup;
+        }
+
+        if (denied) {
+            /* NACM was applied and some data filtered out so a duplicate subtree was made */
+            if (!result_dup) {
+                /* duplicate all the previous subtrees */
+                if (ly_set_new(&result_dup)) {
+                    SR_ERRINFO_MEM(&err_info);
+                    goto cleanup;
+                }
+                for (j = 0; j < i; ++j) {
+                    if (lyd_dup_single((*result)->dnodes[j], NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS |
+                            LYD_DUP_WITH_FLAGS, &node)) {
+                        sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
+                        goto cleanup;
+                    }
+                    if (ly_set_add(result_dup, node, 1, NULL)) {
+                        SR_ERRINFO_MEM(&err_info);
+                        goto cleanup;
+                    }
+                }
+            }
+
+            /* add the duplicate accessible subtree, if any */
+            if (subtree) {
+                if (ly_set_add(result_dup, subtree, 1, NULL)) {
+                    SR_ERRINFO_MEM(&err_info);
+                    goto cleanup;
+                }
+            }
+        } else if (result_dup) {
+            /* other subtrees were duplicated so duplicate all */
+            if (lyd_dup_single((*result)->dnodes[i], NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS |
+                    LYD_DUP_WITH_FLAGS, &node)) {
+                sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
+                goto cleanup;
+            }
+            if (ly_set_add(result_dup, node, 1, NULL)) {
+                SR_ERRINFO_MEM(&err_info);
+                goto cleanup;
+            }
+        } /* else keep non-dup result for now */
+    }
+
+    if (result_dup) {
+        /* subtrees were duplicated */
+        ly_set_free(*result, NULL);
+        *result = result_dup;
+        result_dup = NULL;
+        *dup = 1;
+    }
+
+cleanup:
+    if (result_dup) {
+        for (i = 0; i < result_dup->count; ++i) {
+            lyd_free_tree(result_dup->dnodes[i]);
+        }
+        ly_set_free(result_dup, NULL);
+    }
+    return err_info;
+}
+
 sr_error_info_t *
-sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session, struct ly_set **result)
+sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session,
+        struct ly_set **result, int *dup)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
@@ -2287,6 +2375,7 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
     int is_oper_ds = (session->ds == SR_DS_OPERATIONAL) ? 1 : 0;
 
     *result = NULL;
+    *dup = 0;
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
@@ -2321,7 +2410,7 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
                 goto cleanup;
             }
 
-            if (mod_info->data_cached && (session->ds == SR_DS_RUNNING) && (edit || diff)) {
+            if (mod_info->data_cached && ((session->ds == SR_DS_RUNNING) && (edit || diff))) {
                 /* data will be changed, we cannot use the cache anymore */
                 lyd_dup_siblings(mod_info->data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &mod_info->data);
                 mod_info->data_cached = 0;
@@ -2343,8 +2432,8 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
         }
     }
 
-    /* filter return data */
     if (mod_info->data) {
+        /* filter return data using the xpath */
         if (lyd_find_xpath3(NULL, mod_info->data, xpath, NULL, result)) {
             sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
             goto cleanup;
@@ -2356,9 +2445,16 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
         }
     }
 
-    /* success */
+    /* apply NACM if needed */
+    if ((err_info = sr_modinfo_get_filter_nacm(session, result, dup))) {
+        goto cleanup;
+    }
 
 cleanup:
+    if (err_info) {
+        ly_set_free(*result, NULL);
+        *result = NULL;
+    }
     return err_info;
 }
 

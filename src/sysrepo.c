@@ -43,7 +43,6 @@
 #include "log.h"
 #include "lyd_mods.h"
 #include "modinfo.h"
-#include "netconf_acm.h"
 #include "plugins_datastore.h"
 #include "plugins_notification.h"
 #include "replay.h"
@@ -51,11 +50,12 @@
 #include "shm_main.h"
 #include "shm_mod.h"
 #include "shm_sub.h"
+#include "utils/nacm.h"
 
 static sr_error_info_t *sr_session_notif_buf_stop(sr_session_ctx_t *session);
 static sr_error_info_t *_sr_session_stop(sr_session_ctx_t *session);
 static sr_error_info_t *sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
-        uint32_t timeout_ms, int check_nacm, sr_error_info_t **cb_err_info);
+        uint32_t timeout_ms, sr_error_info_t **cb_err_info);
 static sr_error_info_t *_sr_unsubscribe(sr_subscription_ctx_t *subscription);
 
 /**
@@ -534,7 +534,7 @@ sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const ch
     }
 
     /* notify all the subscribers and store the changes */
-    err_info = sr_changes_notify_store(&mod_info, session, timeout_ms, 0, &cb_err_info);
+    err_info = sr_changes_notify_store(&mod_info, session, timeout_ms, &cb_err_info);
 
 cleanup:
     /* MODULES UNLOCK */
@@ -749,6 +749,7 @@ _sr_session_stop(sr_session_ctx_t *session)
 
     /* free attributes */
     free(session->user);
+    free(session->nacm_user);
     sr_errinfo_free(&session->err_info);
     free(session->orig_name);
     free(session->orig_data);
@@ -2304,7 +2305,9 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
 {
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL;
+    int dup = 0;
     struct sr_mod_info_s mod_info;
+    uint32_t i;
 
     SR_CHECK_ARG_APIRET(!session || !path || !value, session, err_info);
 
@@ -2332,7 +2335,7 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, &set))) {
+    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, &set, &dup))) {
         goto cleanup;
     }
 
@@ -2352,12 +2355,15 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
         goto cleanup;
     }
 
-    /* success */
-
 cleanup:
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
 
+    if (dup && set) {
+        for (i = 0; i < set->count; ++i) {
+            lyd_free_tree(set->dnodes[i]);
+        }
+    }
     ly_set_free(set, NULL);
     sr_modinfo_erase(&mod_info);
 
@@ -2400,6 +2406,7 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
 {
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL;
+    int dup = 0;
     struct sr_mod_info_s mod_info;
     uint32_t i;
 
@@ -2431,7 +2438,7 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
     }
 
     /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, xpath, session, &set))) {
+    if ((err_info = sr_modinfo_get_filter(&mod_info, xpath, session, &set, &dup))) {
         goto cleanup;
     }
 
@@ -2447,12 +2454,15 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
         ++(*value_cnt);
     }
 
-    /* success */
-
 cleanup:
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
 
+    if (dup && set) {
+        for (i = 0; i < set->count; ++i) {
+            lyd_free_tree(set->dnodes[i]);
+        }
+    }
     ly_set_free(set, NULL);
     sr_modinfo_erase(&mod_info);
 
@@ -2470,8 +2480,10 @@ API int
 sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr_data_t **subtree)
 {
     sr_error_info_t *err_info = NULL;
-    struct sr_mod_info_s mod_info;
     struct ly_set *set = NULL;
+    int dup = 0;
+    struct sr_mod_info_s mod_info;
+    uint32_t i;
 
     SR_CHECK_ARG_APIRET(!session || !path || !subtree, session, err_info);
 
@@ -2503,7 +2515,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
     }
 
     /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, &set))) {
+    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, &set, &dup))) {
         goto cleanup;
     }
 
@@ -2512,10 +2524,16 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
         goto cleanup;
     }
 
+    /* set result */
     if (set->count == 1) {
-        if (lyd_dup_single(set->dnodes[0], NULL, LYD_DUP_RECURSIVE, &(*subtree)->tree)) {
-            sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
-            goto cleanup;
+        if (dup) {
+            (*subtree)->tree = set->dnodes[0];
+            set->dnodes[0] = NULL;
+        } else {
+            if (lyd_dup_single(set->dnodes[0], NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS, &(*subtree)->tree)) {
+                sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
+                goto cleanup;
+            }
         }
     }
 
@@ -2523,8 +2541,13 @@ cleanup:
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
 
-    sr_modinfo_erase(&mod_info);
+    if (dup && set) {
+        for (i = 0; i < set->count; ++i) {
+            lyd_free_tree(set->dnodes[i]);
+        }
+    }
     ly_set_free(set, NULL);
+    sr_modinfo_erase(&mod_info);
 
     if (err_info || !(*subtree)->tree) {
         sr_release_data(*subtree);
@@ -2539,9 +2562,9 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
-    int dup_opts;
+    int dup_opts, dup = 0;
     struct sr_mod_info_s mod_info;
-    struct ly_set *subtrees = NULL;
+    struct ly_set *set = NULL;
     struct lyd_node *node;
 
     SR_CHECK_ARG_APIRET(!session || !xpath || !data || ((session->ds != SR_DS_OPERATIONAL) && opts), session, err_info);
@@ -2575,22 +2598,32 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
     }
 
     /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, xpath, session, &subtrees))) {
+    if ((err_info = sr_modinfo_get_filter(&mod_info, xpath, session, &set, &dup))) {
         goto cleanup;
     }
 
     /* duplicate all returned subtrees with their parents and merge into one data tree */
-    for (i = 0; i < subtrees->count; ++i) {
-        dup_opts = (max_depth ? 0 : LYD_DUP_RECURSIVE) | LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS;
-        if (lyd_dup_single(subtrees->dnodes[i], NULL, dup_opts, &node)) {
-            sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
-            goto cleanup;
-        }
+    for (i = 0; i < set->count; ++i) {
+        if (dup) {
+            /* use subtree */
+            node = set->dnodes[i];
+            set->dnodes[i] = NULL;
 
-        /* duplicate only to the specified depth */
-        if ((err_info = sr_lyd_dup(subtrees->dnodes[i], max_depth ? max_depth - 1 : 0, node))) {
-            lyd_free_all(node);
-            goto cleanup;
+            /* remove nodes exceeding the maximum depth */
+            sr_lyd_trim_depth(node, max_depth);
+        } else {
+            /* duplicate subtree */
+            dup_opts = (max_depth ? 0 : LYD_DUP_RECURSIVE) | LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS;
+            if (lyd_dup_single(set->dnodes[i], NULL, dup_opts, &node)) {
+                sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
+                goto cleanup;
+            }
+
+            /* duplicate only to the specified depth */
+            if ((err_info = sr_lyd_dup(set->dnodes[i], max_depth ? max_depth - 1 : 0, node))) {
+                lyd_free_all(node);
+                goto cleanup;
+            }
         }
 
         /* always find parent */
@@ -2614,8 +2647,13 @@ cleanup:
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
 
+    if (dup && set) {
+        for (i = 0; i < set->count; ++i) {
+            lyd_free_tree(set->dnodes[i]);
+        }
+    }
+    ly_set_free(set, NULL);
     sr_modinfo_erase(&mod_info);
-    ly_set_free(subtrees, NULL);
 
     if (err_info || !(*data)->tree) {
         sr_release_data(*data);
@@ -3113,18 +3151,16 @@ cleanup:
  */
 static sr_error_info_t *
 sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session, uint32_t timeout_ms,
-        int check_nacm, sr_error_info_t **cb_err_info)
+        sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *update_edit = NULL, *old_diff = NULL, *new_diff = NULL;
+    const struct lyd_node *denied_node;
     sr_session_ctx_t *ev_sess = NULL;
     sr_lock_mode_t change_sub_lock = SR_LOCK_NONE;
     uint32_t sid = 0;
     char *orig_name = NULL;
     void *orig_data = NULL;
-    const struct lyd_node *node;
-    char *path;
-
 
     *cb_err_info = NULL;
 
@@ -3140,18 +3176,17 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
         goto store;
     }
 
-    if (check_nacm) {
-        err_info = sr_nacm_check_diff(session, mod_info->diff, &node);
-        if (err_info) {
+    if (session && session->nacm_user) {
+        /* check NACM */
+        if ((err_info = sr_nacm_check_diff(session->nacm_user, mod_info->diff, &denied_node))) {
             goto cleanup;
         }
 
-        if (node) {
+        if (denied_node) {
             /* access denied */
-            path = lysc_path(node->schema, LYSC_PATH_LOG, NULL, 0);
-            sr_errinfo_new(&err_info, SR_ERR_UNAUTHORIZED, "Access to the data model \"%s\" is denied because \"%s\" NACM authorization failed.",
-                    node->schema->module->name, path);
-            free(path);
+            sr_errinfo_new_nacm(&err_info, "protocol", "access-denied", NULL, denied_node,
+                    "Access to the data model \"%s\" is denied because \"%s\" NACM authorization failed.",
+                    denied_node->schema->module->name, session->nacm_user);
             goto cleanup;
         }
     }
@@ -3335,7 +3370,8 @@ cleanup:
     return err_info;
 }
 
-int _sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms, int check_nacm)
+API int
+sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -3377,7 +3413,7 @@ int _sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms, int check_
     }
 
     /* notify all the subscribers and store the changes */
-    err_info = sr_changes_notify_store(&mod_info, session, timeout_ms, check_nacm, &cb_err_info);
+    err_info = sr_changes_notify_store(&mod_info, session, timeout_ms, &cb_err_info);
 
 cleanup:
     /* MODULES UNLOCK */
@@ -3395,18 +3431,6 @@ cleanup:
         sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, "User callback failed.");
     }
     return sr_api_ret(session, err_info);
-}
-
-API int
-sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
-{
-    return _sr_apply_changes(session, timeout_ms, 0);
-}
-
-API int
-sr_nacm_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
-{
-    return _sr_apply_changes(session, timeout_ms, 1);
 }
 
 API int
@@ -3443,7 +3467,7 @@ sr_discard_changes(sr_session_ctx_t *session)
  */
 static sr_error_info_t *
 _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, struct lyd_node **src_config,
-        uint32_t timeout_ms, int check_nacm)
+        uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -3475,7 +3499,7 @@ _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, s
     }
 
     /* notify all the subscribers and store the changes */
-    err_info = sr_changes_notify_store(&mod_info, session, timeout_ms, check_nacm, &cb_err_info);
+    err_info = sr_changes_notify_store(&mod_info, session, timeout_ms, &cb_err_info);
 
 cleanup:
     /* MODULES UNLOCK */
@@ -3490,7 +3514,8 @@ cleanup:
     return err_info;
 }
 
-int sr_replace_config_impl(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config, uint32_t timeout_ms, int check_nacm)
+API int
+sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod = NULL;
@@ -3527,7 +3552,7 @@ int sr_replace_config_impl(sr_session_ctx_t *session, const char *module_name, s
     }
 
     /* replace the data */
-    if ((err_info = _sr_replace_config(session, ly_mod, &src_config, timeout_ms, check_nacm))) {
+    if ((err_info = _sr_replace_config(session, ly_mod, &src_config, timeout_ms))) {
         goto cleanup;
     }
 
@@ -3540,18 +3565,7 @@ cleanup:
 }
 
 API int
-sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config, uint32_t timeout_ms)
-{
-    return sr_replace_config_impl(session, module_name, src_config, timeout_ms, 0);
-}
-
-API int
-sr_nacm_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config, uint32_t timeout_ms)
-{
-    return sr_replace_config_impl(session, module_name, src_config, timeout_ms, 1);
-}
-
-int _sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms, int check_nacm)
+sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_s mod_info;
@@ -3620,7 +3634,7 @@ int _sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datas
     sr_shmmod_modinfo_unlock(&mod_info);
 
     /* replace the data */
-    if ((err_info = _sr_replace_config(session, ly_mod, &mod_info.data, timeout_ms, check_nacm))) {
+    if ((err_info = _sr_replace_config(session, ly_mod, &mod_info.data, timeout_ms))) {
         goto cleanup;
     }
 
@@ -3644,18 +3658,6 @@ cleanup:
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
     return sr_api_ret(session, err_info);
-}
-
-API int
-sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms)
-{
-    return _sr_copy_config(session, module_name, src_datastore, timeout_ms, 0);
-}
-
-API int
-sr_nacm_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms)
-{
-    return _sr_copy_config(session, module_name, src_datastore, timeout_ms, 1);
 }
 
 /**
@@ -5411,6 +5413,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     uint16_t shm_dep_count;
     char *path = NULL, *str, *parent_path = NULL;
     uint32_t event_id = 0;
+    const struct lyd_node *denied_node;
 
     SR_CHECK_ARG_APIRET(!session || !input || !output, session, err_info);
     if (session->conn->ly_ctx != LYD_CTX(input)) {
@@ -5466,6 +5469,20 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     /* check read perm */
     if ((err_info = sr_perm_check(session->conn, lyd_owner_module(input), SR_DS_STARTUP, 0, NULL))) {
         goto cleanup;
+    }
+
+    if (session->nacm_user) {
+        /* check NACM */
+        if ((err_info = sr_nacm_check_operation(session->nacm_user, input, &denied_node))) {
+            goto cleanup;
+        }
+
+        if (denied_node) {
+            /* access denied */
+            sr_errinfo_new_nacm(&err_info, "protocol", "access-denied", NULL, denied_node,
+                    "Executing the operation is denied because \"%s\" NACM authorization failed.", session->nacm_user);
+            goto cleanup;
+        }
     }
 
     /* get operation path (without predicates) */

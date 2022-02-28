@@ -108,17 +108,15 @@ if(NOT ${YANGLIB_REVISION} STREQUAL "2019-01-04" AND NOT ${YANGLIB_REVISION} STR
 endif()
 message(STATUS "ietf-yang-library revision: ${YANGLIB_REVISION}")
 
-# umask
-set(SYSREPO_UMASK "00000" CACHE STRING "Umask used for any files created by sysrepo.")
-
-# global group settings
+# security
+set(SYSREPO_UMASK "000" CACHE STRING "Umask used for any files created by sysrepo.")
 set(SYSREPO_GROUP "" CACHE STRING "System group that will own all sysrepo-related files. If empty, the specific process group will be kept.")
-
-# super user
 set(SYSREPO_SUPERUSER_UID "0" CACHE STRING "UID of the system user that can execute sensitive functions.")
 if(NOT SYSREPO_SUPERUSER_UID MATCHES "^[0-9]+$")
     message(FATAL_ERROR "Invalid superuser UID \"${SYSREPO_SUPERUSER_UID}\"!")
 endif()
+set(NACM_RECOVERY_USER "root" CACHE STRING "NACM recovery session user that has unrestricted access.")
+set(NACM_DATA_PERM "600" CACHE STRING "NACM module ietf-netconf-acm default data permissions.")
 
 # paths
 if(NOT REPO_PATH)
@@ -180,13 +178,13 @@ set(LIB_SRC
     src/shm_ext.c
     src/shm_mod.c
     src/shm_sub.c
-    src/netconf_acm.c
     src/plugins/ds_lyb.c
     src/plugins/ntf_lyb.c
     src/plugins/common_lyb.c
     src/utils/values.c
     src/utils/xpath.c
-    src/utils/error_format.c)
+    src/utils/error_format.c
+    src/utils/nacm.c)
 
 set (SYSREPOCTL_SRC
     src/executables/sysrepoctl.c)
@@ -203,7 +201,8 @@ set(LIB_HEADERS
     src/sysrepo_types.h
     src/utils/values.h
     src/utils/xpath.h
-    src/utils/error_format.h)
+    src/utils/error_format.h
+    src/utils/netconf_acm.h)
 
 # files to generate doxygen from
 set(DOXY_FILES
@@ -378,8 +377,7 @@ install(FILES ${PROJECT_SOURCE_DIR}/src/sysrepo.h ${PROJECT_SOURCE_DIR}/src/sysr
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES ${PROJECT_SOURCE_DIR}/src/plugins_datastore.h ${PROJECT_BINARY_DIR}/version.h
             ${PROJECT_SOURCE_DIR}/src/utils/values.h ${PROJECT_SOURCE_DIR}/src/utils/xpath.h
-            ${PROJECT_SOURCE_DIR}/src/utils/error_format.h
-            ${PROJECT_SOURCE_DIR}/src/netconf_acm.h
+            ${PROJECT_SOURCE_DIR}/src/utils/error_format.h ${PROJECT_SOURCE_DIR}/src/utils/netconf_acm.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sysrepo)
 install(FILES ${PROJECT_BINARY_DIR}/sysrepo.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 

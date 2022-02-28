@@ -937,7 +937,6 @@ int sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t tim
  */
 int sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms);
 
-
 /**
  * @brief Apply changes made in the current session, while checking NACM.
  *
