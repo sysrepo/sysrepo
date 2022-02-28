@@ -343,6 +343,8 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
  *
  * Also remaps @p shm_data_sub on success.
  *
+ * !! On error if err_code is ::SR_ERR_TIME_OUT, the WRITE lock was released!
+ *
  * @param[in] sub_shm Subscription SHM.
  * @param[in] expected_ev Expected event. Can be:
  *              ::SR_SUB_EV_NONE - just wait until the event is processed, SHM will not be accessed,
@@ -391,10 +393,7 @@ sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int 
     if (ret) {
         if ((ret == ETIMEDOUT) && (sub_shm->event && !SR_IS_NOTIFY_EVENT(sub_shm->event))) {
             /* WRITE LOCK, chances are we will get it if we ignore the event */
-            if ((err_info = sr_sub_rwlock_has_mutex(&sub_shm->lock, timeout_ms, SR_LOCK_WRITE, cid, __func__, NULL, NULL))) {
-                /* we still have the mutex but are unable to get the WRITE lock back, risk setting it back */
-                sub_shm->lock.writer = cid;
-            } else {
+            if (!(err_info = sr_sub_rwlock_has_mutex(&sub_shm->lock, timeout_ms, SR_LOCK_WRITE, cid, __func__, NULL, NULL))) {
                 /* event timeout */
                 sr_errinfo_new(cb_err_info, SR_ERR_TIME_OUT, "Callback event \"%s\" with ID %" PRIu32
                         " processing timed out.", sr_ev2str(event), request_id);
@@ -407,8 +406,14 @@ sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int 
                 }
             }
         } else {
-            /* other error, set the WRITE lock back but it may not be safe, depends on the error */
+            /* other error */
             SR_ERRINFO_COND(&err_info, __func__, ret);
+        }
+        if (ret == ETIMEDOUT) {
+            /* UNLOCK mutex as well, on timeout caused by another lock we have lost the WRITE lock */
+            sr_munlock(&sub_shm->lock.mutex);
+        } else {
+            /* set the WRITE lock back */
             sub_shm->lock.writer = cid;
         }
         return err_info;
@@ -1024,7 +1029,11 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, const char *orig_
             /* wait until the event is processed */
             if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_ERROR, 0, timeout_ms, cid,
                     &shm_data_sub, cb_err_info))) {
-                goto cleanup_wrunlock;
+                if (err_info->err[0].err_code == SR_ERR_TIME_OUT) {
+                    goto cleanup;
+                } else {
+                    goto cleanup_wrunlock;
+                }
             }
 
             if (*cb_err_info) {
@@ -1232,7 +1241,11 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
             /* wait until the event is processed */
             if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_SUCCESS, 0, timeout_ms, cid,
                     &shm_data_sub, cb_err_info))) {
-                goto cleanup_wrunlock;
+                if (err_info->err[0].err_code == SR_ERR_TIME_OUT) {
+                    goto cleanup;
+                } else {
+                    goto cleanup_wrunlock;
+                }
             }
 
             if (*cb_err_info) {
@@ -1348,7 +1361,11 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
             /* wait until the event is processed */
             if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_NONE, 1, timeout_ms, cid,
                     &shm_data_sub, &cb_err_info))) {
-                goto cleanup_wrunlock;
+                if (err_info->err[0].err_code == SR_ERR_TIME_OUT) {
+                    goto cleanup;
+                } else {
+                    goto cleanup_wrunlock;
+                }
             }
 
             /* we do not care about an error */
@@ -1500,7 +1517,11 @@ clear_shm:
             /* wait until the event is processed */
             if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_NONE, 1, timeout_ms, cid,
                     &shm_data_sub, &cb_err_info))) {
-                goto cleanup_wrunlock;
+                if (err_info->err[0].err_code == SR_ERR_TIME_OUT) {
+                    goto cleanup;
+                } else {
+                    goto cleanup_wrunlock;
+                }
             }
 
             /* we do not care about an error */
@@ -1601,7 +1622,11 @@ sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const 
 
     /* wait until the event is processed */
     if ((err_info = sr_shmsub_notify_wait_wr(sub_shm, SR_SUB_EV_ERROR, 1, timeout_ms, cid, &shm_data_sub, cb_err_info))) {
-        goto cleanup_wrunlock;
+        if (err_info->err[0].err_code == SR_ERR_TIME_OUT) {
+            goto cleanup;
+        } else {
+            goto cleanup_wrunlock;
+        }
     }
 
     if (*cb_err_info) {
@@ -1891,7 +1916,11 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *op_path
         /* wait until the event is processed */
         if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_ERROR, 0, timeout_ms, conn->cid,
                 &shm_data_sub, cb_err_info))) {
-            goto cleanup_wrunlock;
+            if (err_info->err[0].err_code == SR_ERR_TIME_OUT) {
+                goto cleanup;
+            } else {
+                goto cleanup_wrunlock;
+            }
         }
 
         if (*cb_err_info) {
@@ -2039,7 +2068,11 @@ clear_shm:
         /* wait until the event is processed */
         if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_NONE, 1, timeout_ms, conn->cid,
                 &shm_data_sub, &cb_err_info))) {
-            goto cleanup_wrunlock;
+            if (err_info->err[0].err_code == SR_ERR_TIME_OUT) {
+                goto cleanup;
+            } else {
+                goto cleanup_wrunlock;
+            }
         }
 
         /* we do not care about an error */
@@ -2148,7 +2181,11 @@ sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, struct
         /* wait until the event is processed */
         if ((err_info = sr_shmsub_notify_wait_wr((sr_sub_shm_t *)multi_sub_shm, SR_SUB_EV_NONE, 1, timeout_ms, conn->cid,
                 &shm_data_sub, &cb_err_info))) {
-            goto cleanup_sub_unlock;
+            if (err_info->err[0].err_code == SR_ERR_TIME_OUT) {
+                goto cleanup;
+            } else {
+                goto cleanup_sub_unlock;
+            }
         }
 
         /* we do not care about an error */
