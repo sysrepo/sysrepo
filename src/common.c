@@ -2419,6 +2419,8 @@ sr_module_is_internal(const struct lys_module *ly_mod)
         return 1;
     } else if (!strcmp(ly_mod->name, "sysrepo-plugind")) {
         return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-netconf-acm")) {
+        return 1;
     }
 
     return 0;
@@ -2434,6 +2436,8 @@ sr_module_default_mode(const struct lys_module *ly_mod)
                 !strcmp(ly_mod->name, "ietf-yang-schema-mount") || !strcmp(ly_mod->name, "ietf-yang-library") ||
                 !strcmp(ly_mod->name, "ietf-netconf-notifications") || !strcmp(ly_mod->name, "ietf-netconf")) {
             return SR_INTMOD_WITHDATA_FILE_PERM;
+        } else if (!strcmp(ly_mod->name, "ietf-netconf-acm")) {
+            return SR_INTMOD_NACM_FILE_PERM;
         } else {
             return SR_INTMOD_NODATA_FILE_PERM;
         }
@@ -4920,6 +4924,25 @@ sr_lyd_dup(const struct lyd_node *src_parent, uint32_t depth, struct lyd_node *t
     }
 
     return NULL;
+}
+
+void
+sr_lyd_trim_depth(struct lyd_node *subtree, uint32_t max_depth)
+{
+    struct lyd_node *next, *child;
+
+    if (!max_depth) {
+        /* nothing to trim */
+        return;
+    }
+
+    LY_LIST_FOR_SAFE(lyd_child_no_keys(subtree), next, child) {
+        if (max_depth == 1) {
+            lyd_free_tree(child);
+        } else {
+            sr_lyd_trim_depth(child, max_depth - 1);
+        }
+    }
 }
 
 /**

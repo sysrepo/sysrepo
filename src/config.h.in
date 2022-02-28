@@ -56,6 +56,9 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** UID of the superuser that can execute sensitive functions */
 #define SR_SU_UID @SYSREPO_SUPERUSER_UID@
 
+/** name of the user with unrestricted access bypassing NACM */
+#define SR_NACM_RECOVERY_USER "@NACM_RECOVERY_USER@"
+
 /** implemented ietf-yang-library revision */
 #define SR_YANGLIB_REVISION @YANGLIB_REVISION@
 
@@ -87,7 +90,7 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 #define SR_GROUP "@SYSREPO_GROUP@"
 
 /** umask modifying all the permissions below */
-#define SR_UMASK @SYSREPO_UMASK@
+#define SR_UMASK 00@SYSREPO_UMASK@
 
 /** permissions of directories for sysrepo files */
 #define SR_DIR_PERM 00777
@@ -103,6 +106,9 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 
 /** permissions of data files of "sysrepo" internal module, it includes all the metadata */
 #define SR_INTMOD_MAIN_FILE_PERM 00666
+
+/** permissions of data files of "ietf-netconf-acm" internal NACM module */
+#define SR_INTMOD_NACM_FILE_PERM 00@NACM_DATA_PERM@
 
 /** default permissions of data files of internal modules that have no data or features */
 #define SR_INTMOD_NODATA_FILE_PERM 00444

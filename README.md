@@ -136,6 +136,15 @@ Set `systemd` system service unit path:
 -DSYSTEMD_UNIT_DIR=/usr/lib/systemd/system
 ```
 
+Set [NACM](#NACM) recovery username with unrestricted access:
+```
+-DNACM_RECOVERY_USER=root
+```
+
+Set [NACM](#NACM) configuration data default permissions:
+```
+-DNACM_DATA_PERM=000
+```
 ### Useful CMake Build Options
 
 #### Changing Compiler
@@ -205,6 +214,17 @@ linker. To help with setting all the compiler's options, there is `sysrepo.pc` f
 It is possible to change the repository path by setting `SYSREPO_REPOSITORY_PATH` variable.
 Also, if `SYSREPO_SHM_PREFIX` is defined, it is used for all SHM files created. This way
 everal *sysrepo* instances can effectively be run simultanously on one machine.
+
+## NACM
+
+NETCONF Access Control Module with configuration data in *ietf-netconf-acm* YANG module is implemented
+as part of *sysrepo*. However, its use is completely optional and needs a separate header to be included:
+```C
+#include <sysrepo/netconf_acm.h>
+```
+
+By default, no users other than the recovery user (default `root`) will be allowed to *write* any data but
+should be granted *read* and *execute* permissions unless the access was modified by a NACM extension.
 
 ## Examples
 

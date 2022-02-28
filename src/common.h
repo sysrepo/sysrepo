@@ -1225,6 +1225,14 @@ sr_error_info_t *sr_val_sr2ly(struct ly_ctx *ctx, const char *xpath, const char 
 sr_error_info_t *sr_lyd_dup(const struct lyd_node *src_parent, uint32_t depth, struct lyd_node *trg_parent);
 
 /**
+ * @brief Trim subtree to the specified depth.
+ *
+ * @param[in,out] subtree Data subtree to trim.
+ * @param[in] max_depth Maximum depth, 0 if unlimited.
+ */
+void sr_lyd_trim_depth(struct lyd_node *subtree, uint32_t max_depth);
+
+/**
  * @brief Duplicate only config NP containers of a module from a data tree. Also optionally create state NP containers.
  *
  * @param[in] data Data tree to duplicate from.
