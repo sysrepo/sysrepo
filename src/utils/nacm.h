@@ -1,11 +1,11 @@
 /**
- * @file netconf_acm.h
+ * @file nacm.h
  * @author Michal Vasko <mvasko@cesnet.cz>
- * @brief NACM and ietf-netconf-acm callbacks header
+ * @brief internal NACM header
  *
  * @copyright
- * Copyright (c) 2019 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2017 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2019 - 2022 Deutsche Telekom AG.
+ * Copyright (c) 2017 - 2022 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
  *     https://opensource.org/licenses/BSD-3-Clause
  */
 
-#ifndef SR_NETCONF_ACM_H_
-#define SR_NETCONF_ACM_H_
+#ifndef SR_NACM_H_
+#define SR_NACM_H_
 
 #include <pthread.h>
 #include <stdint.h>
@@ -44,6 +44,7 @@ typedef enum sr_nacm_target_type {
  * @brief Main NACM container structure.
  */
 struct sr_nacm {
+    char initialized;               /**< Whether NACM is initialized. */
     char enabled;                   /**< Whether NACM is enabled. */
     char default_read_deny;         /**< Whether default NACM read action is "deny" (otherwise "permit"). */
     char default_write_deny;        /**< Whether default NACM write action is "deny" (otherwise "permit"). */
@@ -99,30 +100,23 @@ enum sr_nacm_access {
     SR_NACM_ACCESS_PERMIT = 4          /**< access to the node is permitted with any children */
 };
 
+/**
+ * @brief Check whether a node is (partially) permitted.
+ *
+ * @param[in] x Access for the node.
+ * @return Whether it is at least partially permitted or not.
+ */
 #define SR_NACM_ACCESS_IS_NODE_PERMIT(x) ((x) > 2)
 
 /**
- * @brief Initialize NACM and NACM callbacks.
+ * @brief Get pointer to an item in a generic array on a specific index.
  *
- * @param[in] session Session to use.
- * @param[in] opts Optionally, SR_SUBSCR_NO_THREAD can be specified. No other flags are allowed.
- * @param[out] sub Subcription context.
- * @return Error code (SR_ERR_OK on success).
+ * @param[in] items Array of items.
+ * @param[in] item_size Size of each item.
+ * @param[in] idx Index of the item to get.
+ * @return Pointer to the item at index.
  */
-int sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscription_ctx_t **sub);
-
-/**
- * @brief Deinitialize NACM.
- */
-void sr_nacm_destroy(void);
-
-/**
- * @brief Set the NACM user for this session.
- *
- * @param[in] session Session to use.
- * @return Error code (SR_ERR_OK on success).
- */
-int sr_nacm_set_user(sr_session_ctx_t *session, const char *user);
+#define SR_ITEM_IDX_PTR(items, item_size, idx) ((char **)(((uintptr_t)items) + ((idx) * (item_size))))
 
 /**
  * @brief Check whether an operation is allowed for a user.
@@ -132,50 +126,82 @@ int sr_nacm_set_user(sr_session_ctx_t *session, const char *user);
  * Notification must have R access on itself and any parent nodes.
  * Recovery session is allowed by default.
  *
+ * @param[in] nacm_user NACM username to use.
  * @param[in] data Top-level node of the operation.
- * @param[in] user User for the NACM check.
  * @param[out] denied_node NULL if access allowed, otherwise the denied access data node.
- * @return errinfo, NULL on success.
+ * @return err_info, NULL on success.
  */
-int sr_nacm_check_operation(sr_session_ctx_t *session, const struct lyd_node *data, const struct lyd_node **denied_node);
+sr_error_info_t *sr_nacm_check_operation(const char *nacm_user, const struct lyd_node *data,
+        const struct lyd_node **denied_node);
 
 /**
- * @brief Filter out any data for which the user does not have R access.
+ * @brief Check whether the notification is allowed for a user and filter out any edits the user
+ * does not have R access to.
+ *
+ * @param[in] nacm_user NACM username to use.
+ * @param[in,out] notif Top-level node of the notification tree to filter.
+ * @param[out] denied_node NULL if access allowed, otherwise the denied access data node. If set, @p notif was
+ * not modified.
+ * @return Error code (SR_ERR_OK on success).
+ */
+sr_error_info_t *sr_nacm_check_push_update_notif(const char *nacm_user, struct lyd_node *notif,
+        const struct lyd_node **denied_node);
+
+/**
+ * @brief Filter out any data for which the user does not have R access. Duplicate allowed data tree is created.
  *
  * According to https://tools.ietf.org/html/rfc8341#section-3.2.4
- * Recovery session is allowed all nodes by default.
+ * recovery session is allowed to access all nodes.
  *
- * @param[in,out] data Data to filter.
- * @param[in] user User for the NACM filtering.
- * @return Error code (SR_ERR_OK on success).
+ * @param[in] nacm_user NACM username to use.
+ * @param[in] data Data to filter.
+ * @param[out] dup Duplicated @p data tree with only the accessible data. Also, NULL in special case when all data
+ * is accessible.
+ * @param[out] denied Whether any node access was denied. Distinguishes between @p dup being NULL because no @p data
+ * access was granted and when all access was granted.
+ * @return err_info, NULL on success.
  */
-int sr_nacm_check_data_read_filter(sr_session_ctx_t *session, struct lyd_node **data);
+sr_error_info_t *sr_nacm_check_data_read_filter_dup(const char *nacm_user, const struct lyd_node *data,
+        struct lyd_node **dup, int *denied);
 
 /**
- * @brief Check whether a diff (simplified edit-config tree) can be
- * applied by a user.
+ * @brief Filter out any data for which the user does not have R access. Denied nodes are freed.
  *
- * According to https://tools.ietf.org/html/rfc8341#section-3.2.5
- * Check C access for created nodes, D access for deleted nodes,
- * and U access for changed nodes.
- * Recovery session is allowed by default.
+ * According to https://tools.ietf.org/html/rfc8341#section-3.2.4
+ * recovery session is allowed to access all nodes.
  *
+ * @param[in] nacm_user NACM username to use.
+ * @param[in,out] data Data to filter, are directly modified.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_nacm_check_data_read_filter(const char *nacm_user, struct lyd_node **data);
+
+/**
+ * @brief Check whether a diff (simplified edit-config tree) can be applied by a user.
+ *
+ * According to https://tools.ietf.org/html/rfc8341#section-3.2.5 check C access for created nodes,
+ * D access for deleted nodes, and U access for changed nodes.
+ * Recovery session is always allowed any access.
+ *
+ * @param[in] nacm_user NACM username to use.
  * @param[in] diff Diff tree to check.
- * @param[in] user User for the NACM check.
  * @param[out] denied_node NULL if access allowed, otherwise the denied access data node.
- * @return errinfo, NULL on success.
+ * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_nacm_check_diff(sr_session_ctx_t *session, const struct lyd_node *diff, const struct lyd_node **denied_node);
+sr_error_info_t *sr_nacm_check_diff(const char *nacm_user, const struct lyd_node *diff, const struct lyd_node **denied_node);
 
 /**
- * @brief Filter out any data in the notification the user does not have R access to
+ * @brief Create a NETCONF error info structure for a NACM error.
  *
- * @param[in] user Name of the user to check.
- * @param[in] set Set of the notification data.
- * @param[out] all_removed Whether or not all nodes have been removed.
- * @return Error code (SR_ERR_OK on success).
+ * @param[out] err_info Created error info.
+ * @param[in] error_type NETCONF error type.
+ * @param[in] error_tag NETCONF error tag.
+ * @param[in] error_app_tag Optional NETCONF error app tag.
+ * @param[in] error_path_node Optional node, whose path to set as NETCONF error path.
+ * @param[in] error_message_fmt NETCONF error message format.
+ * @param[in] ... NETCONF error messsage format arguments.
  */
-int sr_nacm_check_yang_push_update_notif(sr_session_ctx_t *session, struct ly_set *set, int *all_removed);
-int sr_nacm_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms);
+void sr_errinfo_new_nacm(sr_error_info_t **err_info, const char *error_type, const char *error_tag,
+        const char *error_app_tag, const struct lyd_node *error_path_node, const char *error_message_fmt, ...);
 
-#endif /* SR_NETCONF_ACM_H_ */
+#endif /* SR_NACM_H_ */

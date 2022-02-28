@@ -870,28 +870,6 @@ cleanup:
 }
 
 /**
- * @brief libyang import callback to provide internal non-implemented dependencies.
- */
-static LY_ERR
-sr_ly_nacm_module_imp_clb(const char *mod_name, const char *mod_rev, const char *submod_name, const char *submod_rev,
-        void *user_data, LYS_INFORMAT *format, const char **module_data, ly_module_imp_data_free_clb *free_module_data)
-{
-    (void)mod_rev;
-    (void)submod_name;
-    (void)submod_rev;
-    (void)user_data;
-
-    if (!strcmp(mod_name, "ietf-netconf-acm")) {
-        *format = LYS_IN_YANG;
-        *module_data = ietf_netconf_acm_yang;
-        *free_module_data = NULL;
-        return LY_SUCCESS;
-    }
-
-    return LY_ENOT;
-}
-
-/**
  * @brief Store (print) sysrepo module data.
  *
  * @param[in,out] sr_mods Data to store, are validated so could (in theory) be modified.
@@ -989,14 +967,12 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     /* install sysrepo-plugind */
     SR_INSTALL_INT_MOD(ly_ctx, sysrepo_plugind_yang, 0, &mod_set);
 
-    /* make sure ietf-netconf-acm is found as an import */
-    ly_ctx_set_module_imp_clb(ly_ctx, sr_ly_nacm_module_imp_clb, NULL);
+    /* install ietf-netconf-acm */
+    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_acm_yang, 0, &mod_set);
 
     /* install ietf-netconf (implemented dependency) and ietf-netconf-with-defaults */
     SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_yang, 1, &mod_set);
     SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_with_defaults_yang, 0, &mod_set);
-
-    ly_ctx_set_module_imp_clb(ly_ctx, NULL, NULL);
 
     /* install ietf-netconf-notifications */
     SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_notifications_yang, 0, &mod_set);
