@@ -2196,7 +2196,6 @@ sr_store_module_yang(const struct lys_module *ly_mod, const struct lysp_submodul
     sr_error_info_t *err_info = NULL;
     struct ly_out *out = NULL;
     char *path = NULL;
-    mode_t um;
     LY_ERR lyrc;
 
     if (lysp_submod) {
@@ -2214,9 +2213,6 @@ sr_store_module_yang(const struct lys_module *ly_mod, const struct lysp_submodul
         goto cleanup;
     }
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK | (~SR_YANG_PERM));
-
     /* print the (sub)module file */
     ly_out_new_filepath(path, &out);
     if (lysp_submod) {
@@ -2224,10 +2220,17 @@ sr_store_module_yang(const struct lys_module *ly_mod, const struct lysp_submodul
     } else {
         lyrc = lys_print_module(out, ly_mod, LYS_OUT_YANG, 0, 0);
     }
-
-    umask(um);
     if (lyrc) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+        goto cleanup;
+    }
+
+    /* update permissions */
+    if (chmod(path, SR_YANG_PERM & ~SR_UMASK) == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+
+        /* remove the printed module */
+        unlink(path);
         goto cleanup;
     }
 
@@ -2398,6 +2401,8 @@ sr_module_is_internal(const struct lys_module *ly_mod)
 
     if (!strcmp(ly_mod->name, "ietf-datastores") && !strcmp(ly_mod->revision, "2018-02-14")) {
         return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-yang-schema-mount")) {
+        return 1;
     } else if (!strcmp(ly_mod->name, "ietf-yang-library")) {
         return 1;
     } else if (!strcmp(ly_mod->name, "ietf-netconf")) {
@@ -2426,8 +2431,8 @@ sr_module_default_mode(const struct lys_module *ly_mod)
         return SR_INTMOD_MAIN_FILE_PERM;
     } else if (sr_module_is_internal(ly_mod)) {
         if (!strcmp(ly_mod->name, "sysrepo-monitoring") || !strcmp(ly_mod->name, "sysrepo-plugind") ||
-                !strcmp(ly_mod->name, "ietf-yang-library") || !strcmp(ly_mod->name, "ietf-netconf-notifications") ||
-                !strcmp(ly_mod->name, "ietf-netconf")) {
+                !strcmp(ly_mod->name, "ietf-yang-schema-mount") || !strcmp(ly_mod->name, "ietf-yang-library") ||
+                !strcmp(ly_mod->name, "ietf-netconf-notifications") || !strcmp(ly_mod->name, "ietf-netconf")) {
             return SR_INTMOD_WITHDATA_FILE_PERM;
         } else {
             return SR_INTMOD_NODATA_FILE_PERM;
@@ -4193,10 +4198,11 @@ sr_realloc(void *ptr, size_t size)
 }
 
 int
-sr_open(const char *pathname, int flags, mode_t mode)
+sr_open(const char *path, int flags, mode_t mode)
 {
-    mode_t um;
     int fd;
+
+    assert(!(flags & O_CREAT) || mode);
 
     /* O_NOFOLLOW enforces that files are not symlinks -- all opened
      *   files are created by sysrepo so there cannot be any symlinks.
@@ -4205,21 +4211,23 @@ sr_open(const char *pathname, int flags, mode_t mode)
      */
     flags |= O_NOFOLLOW | O_CLOEXEC;
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK);
+    /* apply umask on mode */
+    mode &= ~SR_UMASK;
 
-    /* open the file */
-    fd = open(pathname, flags, mode);
-
-    /* restore umask (should not modify errno) */
-    umask(um);
-
+    /* open the file, process umask may affect the permissions if creating it */
+    fd = open(path, flags, mode);
     if (fd == -1) {
-        /* error */
-        return fd;
+        return -1;
     }
 
-    /* success */
+    if (flags & O_CREAT) {
+        /* set correct permissions */
+        if (fchmod(fd, mode) == -1) {
+            close(fd);
+            return -1;
+        }
+    }
+
     return fd;
 }
 
@@ -4227,40 +4235,67 @@ sr_error_info_t *
 sr_mkpath(char *path, mode_t mode)
 {
     sr_error_info_t *err_info = NULL;
-    mode_t um;
     char *p = NULL;
+    int r;
 
     assert(path[0] == '/');
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK);
+    /* apply umask on mode */
+    mode &= ~SR_UMASK;
 
     /* create each directory in the path */
     for (p = strchr(path + 1, '/'); p; p = strchr(p + 1, '/')) {
         *p = '\0';
-        if (mkdir(path, mode) == -1) {
-            if (errno != EEXIST) {
-                sr_errinfo_new(&err_info, SR_ERR_SYS, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
-                goto cleanup;
-            }
+        if (((r = mkdir(path, mode)) == -1) && (errno != EEXIST)) {
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
+            goto cleanup;
+        }
+        if (!r && (chmod(path, mode) == -1)) {
+            SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+            goto cleanup;
         }
         *p = '/';
     }
 
     /* create the last directory in the path */
-    if (mkdir(path, mode) == -1) {
-        if (errno != EEXIST) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
-            goto cleanup;
-        }
+    if (((r = mkdir(path, mode)) == -1) && (errno != EEXIST)) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
+        goto cleanup;
+    }
+    if (!r && (chmod(path, mode) == -1)) {
+        SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+        goto cleanup;
     }
 
 cleanup:
     if (p) {
         *p = '/';
     }
-    umask(um);
     return err_info;
+}
+
+sr_error_info_t *
+sr_mkfifo(const char *path, mode_t mode)
+{
+    sr_error_info_t *err_info = NULL;
+
+    /* apply umask on mode */
+    mode &= ~SR_UMASK;
+
+    /* create the event pipe */
+    if (mkfifo(path, mode) == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "mkfifo");
+        return err_info;
+    }
+
+    /* set correct permissions */
+    if (chmod(path, mode) == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+        unlink(path);
+        return err_info;
+    }
+
+    return NULL;
 }
 
 char *

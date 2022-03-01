@@ -1043,13 +1043,13 @@ void *sr_realloc(void *ptr, size_t size);
  *
  * Additionally sets umask.
  *
- * @param[in] pathname Path of the file to open.
+ * @param[in] path Path of the file to open.
  * @param[in] flags Flags to use.
  * @param[in] mode Permissions for the file in case it is created.
  * @return Opened file descriptor.
  * @return -1 on error, errno set.
  */
-int sr_open(const char *pathname, int flags, mode_t mode);
+int sr_open(const char *path, int flags, mode_t mode);
 
 /**
  * @brief Create all directories in the path, wrapper for mkdir(2).
@@ -1061,6 +1061,17 @@ int sr_open(const char *pathname, int flags, mode_t mode);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_mkpath(char *path, mode_t mode);
+
+/**
+ * @brief Wrapper for mkfifo(3).
+ *
+ * Additionally sets umask.
+ *
+ * @param[in] pathname Path of the pipe to create.
+ * @param[in] mode Permissions for the pipe.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_mkfifo(const char *path, mode_t mode);
 
 /**
  * @brief Get first namespace (module name) from an XPath expression.

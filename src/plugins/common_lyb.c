@@ -186,8 +186,9 @@ srplyb_log_err_ly(const char *plg_name, const struct ly_ctx *ly_ctx)
 int
 srlyb_open(const char *path, int flags, mode_t mode)
 {
-    mode_t um;
     int fd;
+
+    assert(!(flags & O_CREAT) || mode);
 
     /* O_NOFOLLOW enforces that files are not symlinks -- all opened
      *   files are created by sysrepo so there cannot be any symlinks.
@@ -196,21 +197,23 @@ srlyb_open(const char *path, int flags, mode_t mode)
      */
     flags |= O_NOFOLLOW | O_CLOEXEC;
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK);
+    /* apply umask on mode */
+    mode &= ~SR_UMASK;
 
-    /* open the file */
+    /* open the file, process umask may affect the permissions if creating it */
     fd = open(path, flags, mode);
-
-    /* restore umask (should not modify errno) */
-    umask(um);
-
     if (fd == -1) {
-        /* error */
-        return fd;
+        return -1;
     }
 
-    /* success */
+    if (flags & O_CREAT) {
+        /* set correct permissions */
+        if (fchmod(fd, mode) == -1) {
+            close(fd);
+            return -1;
+        }
+    }
+
     return fd;
 }
 
@@ -451,10 +454,6 @@ srlyb_cp_path(const char *plg_name, const char *to, const char *from)
     int rc = SR_ERR_OK, fd_to = -1, fd_from = -1;
     char *out_ptr, buf[4096];
     ssize_t nread, nwritten;
-    mode_t um;
-
-    /* set umask so that the correct permissions are set in case this file does not exist */
-    um = umask(SR_UMASK);
 
     /* open "from" file */
     fd_from = srlyb_open(from, O_RDONLY, 0);
@@ -490,8 +489,6 @@ srlyb_cp_path(const char *plg_name, const char *to, const char *from)
         goto cleanup;
     }
 
-    /* success */
-
 cleanup:
     if (fd_from > -1) {
         close(fd_from);
@@ -499,49 +496,52 @@ cleanup:
     if (fd_to > -1) {
         close(fd_to);
     }
-    umask(um);
     return rc;
 }
 
 int
 srlyb_mkpath(const char *plg_name, char *path, mode_t mode)
 {
-    int rc = SR_ERR_OK;
-    mode_t um;
+    int rc = SR_ERR_OK, r;
     char *p = NULL;
 
     assert(path[0] == '/');
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK);
+    /* apply umask on mode */
+    mode &= ~SR_UMASK;
 
     /* create each directory in the path */
     for (p = strchr(path + 1, '/'); p; p = strchr(p + 1, '/')) {
         *p = '\0';
-        if (mkdir(path, mode) == -1) {
-            if (errno != EEXIST) {
-                SRPLG_LOG_ERR(plg_name, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
-                rc = SR_ERR_SYS;
-                goto cleanup;
-            }
+        if (((r = mkdir(path, mode)) == -1) && (errno != EEXIST)) {
+            SRPLG_LOG_ERR(plg_name, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
+            rc = SR_ERR_SYS;
+            goto cleanup;
+        }
+        if (!r && (chmod(path, mode) == -1)) {
+            SRPLG_LOG_ERR(plg_name, "Changing permissions of directory \"%s\" failed (%s).", path, strerror(errno));
+            rc = SR_ERR_SYS;
+            goto cleanup;
         }
         *p = '/';
     }
 
     /* create the last directory in the path */
-    if (mkdir(path, mode) == -1) {
-        if (errno != EEXIST) {
-            SRPLG_LOG_ERR(plg_name, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
-            rc = SR_ERR_SYS;
-            goto cleanup;
-        }
+    if (((r = mkdir(path, mode)) == -1) && (errno != EEXIST)) {
+        SRPLG_LOG_ERR(plg_name, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
+        rc = SR_ERR_SYS;
+        goto cleanup;
+    }
+    if (!r && (chmod(path, mode) == -1)) {
+        SRPLG_LOG_ERR(plg_name, "Changing permissions of directory \"%s\" failed (%s).", path, strerror(errno));
+        rc = SR_ERR_SYS;
+        goto cleanup;
     }
 
 cleanup:
     if (p) {
         *p = '/';
     }
-    umask(um);
     return rc;
 }
 

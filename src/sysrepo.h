@@ -508,7 +508,7 @@ int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *
  * @param[in] module_ds Datastore implementation plugin name for each config datastore, NULL for defaults.
  * @param[in] owner Optional initial owner of the module data, process user by default.
  * @param[in] group Optional initial group of the module data, process group by default.
- * @param[in] perm Optional initial permissions of the module data, otherwise system defaults with `umask(2)` applied.
+ * @param[in] perm Optional initial permissions of the module data, otherwise system defaults are applied.
  * @param[in] data Optional initial data in @p format to set.
  * @param[in] data_path Optional path to a data file in @p format to set.
  * @param[in] format Format of @p data or @p data_path file.

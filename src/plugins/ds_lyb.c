@@ -106,7 +106,7 @@ srpds_lyb_store_(const struct lys_module *mod, sr_datastore_t ds, const struct l
     }
 
     /* open the file */
-    if ((fd = srlyb_open(path, O_WRONLY | O_CREAT, perm)) == -1) {
+    if ((fd = srlyb_open(path, O_WRONLY | (perm ? O_CREAT : 0), perm)) == -1) {
         rc = srlyb_open_error(srpds_name, path);
         goto cleanup;
     }
