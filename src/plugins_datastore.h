@@ -43,7 +43,7 @@ extern "C" {
  * @param[in] ds Specific datastore.
  * @param[in] owner Optional initial owner of the module data, process user by default.
  * @param[in] group Optional initial group of the module data, process group by default.
- * @param[in] perm Initial permissions of the module data, with `umask(2)` applied.
+ * @param[in] perm Initial permissions of the module data.
  * @return ::SR_ERR_OK on success;
  * @return Sysrepo error value on error.
  */
