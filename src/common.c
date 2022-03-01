@@ -1235,7 +1235,6 @@ static sr_error_info_t *
 sr_store_module_file(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
-    mode_t um;
     char *path;
     int r;
 
@@ -1248,15 +1247,19 @@ sr_store_module_file(const struct lys_module *ly_mod)
         goto cleanup;
     }
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK | (~SR_YANG_PERM));
-
     /* print the (sub)module file */
     r = lys_print_path(path, ly_mod, LYS_YANG, NULL, 0, 0);
-
-    umask(um);
     if (r) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+        goto cleanup;
+    }
+
+    /* update permissions */
+    if (chmod(path, SR_YANG_PERM & ~SR_UMASK) == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+
+        /* remove the printed module */
+        unlink(path);
         goto cleanup;
     }
 
@@ -3327,7 +3330,6 @@ int
 sr_open(const char *pathname, int flags, mode_t mode)
 {
     sr_error_info_t *err_info = NULL;
-    mode_t um;
     int fd;
 
     /* O_NOFOLLOW enforces that files are not symlinks -- all opened
@@ -3337,18 +3339,22 @@ sr_open(const char *pathname, int flags, mode_t mode)
      */
     flags |= O_NOFOLLOW | O_CLOEXEC;
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK);
+    /* apply umask on mode */
+    mode &= ~SR_UMASK;
 
     /* open the file */
     fd = open(pathname, flags, mode);
-
-    /* restore umask (should not modify errno) */
-    umask(um);
-
     if (fd == -1) {
         /* error */
         return fd;
+    }
+
+    if (flags & O_CREAT) {
+        /* set correct permissions */
+        if (fchmod(fd, mode) == -1) {
+            close(fd);
+            return -1;
+        }
     }
 
     /* set GID correctly */
@@ -3367,44 +3373,77 @@ sr_error_info_t *
 sr_mkpath(char *path, mode_t mode)
 {
     sr_error_info_t *err_info = NULL;
-    mode_t um;
     char *p = NULL;
+    int r;
 
     assert(path[0] == '/');
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK);
+    /* apply umask on mode */
+    mode &= ~SR_UMASK;
 
     /* create each directory in the path */
     for (p = strchr(path + 1, '/'); p; p = strchr(p + 1, '/')) {
         *p = '\0';
-        if (mkdir(path, mode) == -1) {
-            if (errno != EEXIST) {
-                sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
+        if (((r = mkdir(path, mode)) == -1) && (errno != EEXIST)) {
+            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
+            goto cleanup;
+        }
+        if (!r) {
+            if (chmod(path, mode) == -1) {
+                SR_ERRINFO_SYSERRNO(&err_info, "chmod");
                 goto cleanup;
             }
-        } else if ((err_info = sr_path_set_group(path))) {
-            goto cleanup;
+            if ((err_info = sr_path_set_group(path))) {
+                goto cleanup;
+            }
         }
         *p = '/';
     }
 
     /* create the last directory in the path */
-    if (mkdir(path, mode) == -1) {
-        if (errno != EEXIST) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
+    if (((r = mkdir(path, mode)) == -1) && (errno != EEXIST)) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, NULL, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
+        goto cleanup;
+    }
+    if (!r) {
+        if (chmod(path, mode) == -1) {
+            SR_ERRINFO_SYSERRNO(&err_info, "chmod");
             goto cleanup;
         }
-    } else if ((err_info = sr_path_set_group(path))) {
-        goto cleanup;
+        if ((err_info = sr_path_set_group(path))) {
+            goto cleanup;
+        }
     }
 
 cleanup:
     if (p) {
         *p = '/';
     }
-    umask(um);
     return err_info;
+}
+
+sr_error_info_t *
+sr_mkfifo(const char *path, mode_t mode)
+{
+    sr_error_info_t *err_info = NULL;
+
+    /* apply umask on mode */
+    mode &= ~SR_UMASK;
+
+    /* create the event pipe */
+    if (mkfifo(path, mode) == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "mkfifo");
+        return err_info;
+    }
+
+    /* set correct permissions */
+    if (chmod(path, mode) == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+        unlink(path);
+        return err_info;
+    }
+
+    return NULL;
 }
 
 char *
