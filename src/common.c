@@ -4201,6 +4201,7 @@ int
 sr_open(const char *path, int flags, mode_t mode)
 {
     int fd;
+    struct stat st = {0};
 
     assert(!(flags & O_CREAT) || mode);
 
@@ -4221,8 +4222,16 @@ sr_open(const char *path, int flags, mode_t mode)
     }
 
     if (flags & O_CREAT) {
-        /* set correct permissions */
-        if (fchmod(fd, mode) == -1) {
+        if (!(flags & O_EXCL)) {
+            /* file may have existed, check its permissions */
+            if (fstat(fd, &st)) {
+                close(fd);
+                return -1;
+            }
+        }
+
+        /* set correct permissions if not already */
+        if (((st.st_mode & 00777) != mode) && (fchmod(fd, mode) == -1)) {
             close(fd);
             return -1;
         }
