@@ -2039,6 +2039,8 @@ sr_load_module(struct ly_ctx *ly_ctx, const struct lys_module *old_mod, const ch
     const char **features = NULL;
     uint32_t i;
 
+    *new_mod = NULL;
+
     /* collect enabled features */
     i = 0;
     while ((f = lysp_feature_next(f, old_mod->parsed, &i))) {
