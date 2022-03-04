@@ -444,6 +444,55 @@ apply_plugind_module(int plugin_count, sr_session_ctx_t *sess, struct srpd_plugi
     return rc;
 }
 
+static int
+open_pidfile(const char *pidfile)
+{
+    int pidfd;
+    
+    pidfd = open(pidfile, O_RDWR | O_CREAT, 0640);
+    if (pidfd < 0) {
+        error_print(0, "Unable to open the PID file \"%s\" (%s).", pidfile, strerror(errno));
+        return -1;
+    }
+
+    if (lockf(pidfd, F_TLOCK, 0) < 0) {
+        if ((errno == EACCES) || (errno == EAGAIN)) {
+            error_print(0, "Another instance of the sysrepo-plugind is running.");
+        } else {
+            error_print(0, "Unable to lock the PID file \"%s\" (%s).", pidfile, strerror(errno));
+        }
+        close(pidfd);
+        return -1;
+    }
+
+    return pidfd;
+}
+
+static int
+write_pidfile(int pidfd)
+{
+    char pid[30] = { 0 };
+    int pid_len;
+
+    if (ftruncate(pidfd, 0)) {
+        error_print(0, "Failed to truncate pid file (%s).", strerror(errno));
+        return -1;
+    }
+
+    if (snprintf(pid, sizeof(pid) - 1, "%ld\n", (long) getpid())) {
+        error_print(0, "Failed to allocate memory for pid (%s).", strerror(errno));
+        return -1;
+    }
+
+    pid_len = strlen(pid);
+    if (write(pidfd, pid, pid_len) < pid_len) {
+        error_print(0, "Failed to write PID into pid file (%s).", strerror(errno));
+        return -1;
+    }
+
+    return 0;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -460,12 +509,16 @@ main(int argc, char **argv)
         {"verbosity",      required_argument, NULL, 'v'},
         {"debug",          no_argument,       NULL, 'd'},
         {"plugin-install", required_argument, NULL, 'P'},
-        {NULL,        0,                 NULL, 0},
+        {"pid-file",       required_argument, NULL, 'p'},
+        {NULL,             0,                 NULL, 0},
     };
+
+    int pidfd = -1;
+    const char *pidfile = NULL;
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVv:dP:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVv:dP:p:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -515,6 +568,9 @@ main(int argc, char **argv)
 
             rc = EXIT_SUCCESS;
             goto cleanup;
+        case 'p':
+            pidfile = optarg;
+            break;
         default:
             error_print(0, "Invalid option or missing argument: -%c", optopt);
             goto cleanup;
@@ -524,6 +580,10 @@ main(int argc, char **argv)
     /* check for additional argument */
     if (optind < argc) {
         error_print(0, "Redundant parameters");
+        goto cleanup;
+    }
+
+    if (pidfile && (pidfd = open_pidfile(pidfile)) < 0) {
         goto cleanup;
     }
 
@@ -567,6 +627,11 @@ main(int argc, char **argv)
     sd_notify(0, "READY=1");
 #endif
 
+    /* Now this process is ready, so let's go ahead and update pid file */
+    if (pidfile && write_pidfile(pidfd) < 0) {
+        goto cleanup;
+    }
+
     /* wait for a terminating signal */
     pthread_mutex_lock(&lock);
     while (!loop_finish) {
@@ -588,6 +653,11 @@ main(int argc, char **argv)
     rc = EXIT_SUCCESS;
 
 cleanup:
+    if (pidfd >= 0) {
+        close(pidfd);
+        unlink(pidfile);
+    }
+
     for (i = 0; i < plugin_count; ++i) {
         dlclose(plugins[i].handle);
         free(plugins[i].plugin_name);
