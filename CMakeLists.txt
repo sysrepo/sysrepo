@@ -304,6 +304,10 @@ target_link_libraries(sysrepocfg sysrepo)
 add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC} ${compatsrc})
 target_link_libraries(sysrepo-plugind sysrepo)
 
+if(NOT SRPD_PIDFILE)
+    set(SRPD_PIDFILE "/var/run/sysrepo-plugind.pid")
+endif()
+
 # include repository files with highest priority
 include_directories("${PROJECT_SOURCE_DIR}/src")
 include_directories(${PROJECT_BINARY_DIR})

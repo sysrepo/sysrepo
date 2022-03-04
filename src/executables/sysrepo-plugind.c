@@ -438,17 +438,23 @@ main(int argc, char **argv)
     sr_session_ctx_t *sess = NULL;
     sr_log_level_t log_level = SR_LL_ERR;
     int plugin_count = 0, i, r, rc = EXIT_FAILURE, opt, debug = 0;
+    int pidfd = -1;
+    char pid[8] = { 0 };
+    int pid_len;
+    const char *pidfile = SRPD_PIDFILE;
+    int pidfile_specifid = 0;
     struct option options[] = {
         {"help",      no_argument,       NULL, 'h'},
         {"version",   no_argument,       NULL, 'V'},
         {"verbosity", required_argument, NULL, 'v'},
         {"debug",     no_argument,       NULL, 'd'},
+        {"pid-file",  required_argument, NULL, 'p'},
         {NULL,        0,                 NULL, 0},
     };
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVv:d", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVv:dp:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -479,6 +485,10 @@ main(int argc, char **argv)
             break;
         case 'd':
             debug = 1;
+            break;
+        case 'p':
+            pidfile = strdup(optarg);
+            pidfile_specifid = 1;
             break;
         default:
             error_print(0, "Invalid option or missing argument: -%c", optopt);
@@ -518,6 +528,34 @@ main(int argc, char **argv)
         goto cleanup;
     }
 
+    /* open and lock pid file before plugins are loaded, but don't update it yet 
+     * plugins may fail, and do some initialization that must finish before we are
+     * considered up and running. No need to create a pid file if we're in debug
+     * mode (we're not a daemon)
+     */
+
+    if (debug && pidfile_specifid) {
+        SRP_LOG_WRN("Ignoring pidfile in debug mode.");
+    }
+
+    if (!debug) {
+        /* make sure we are the only instance - lock the PID file and write the PID */
+        pidfd = open(pidfile, O_RDWR | O_CREAT, 0640);
+        if (pidfd < 0) {
+            error_print(0, "Unable to open the PID file \"%s\" (%s).", pidfile, strerror(errno));
+            goto cleanup;
+        }
+
+        if (lockf(pidfd, F_TLOCK, 0) < 0) {
+            if ((errno == EACCES) || (errno == EAGAIN)) {
+                error_print(0, "Another instance of the sysrepo-plugind is running.");
+            } else {
+                error_print(0, "Unable to lock the PID file \"%s\" (%s).", pidfile, strerror(errno));
+            }
+            goto cleanup;
+        }
+    }
+    
     /* init plugins */
     for (i = 0; i < plugin_count; ++i) {
         r = plugins[i].init_cb(sess, &plugins[i].private_data);
@@ -531,6 +569,21 @@ main(int argc, char **argv)
     /* notify systemd */
     sd_notify(0, "READY=1");
 #endif
+
+    /* update pid file (if daemon) */
+    if (!debug) {
+        if (ftruncate(pidfd, 0)) {
+            error_print(0, "Failed to truncate PID file (%s).", strerror(errno));
+            goto cleanup;
+        }
+        pid_len = snprintf(pid, sizeof(pid), "%d\n", getpid());
+        if (write(pidfd, pid, pid_len) < pid_len) {
+            error_print(0, "Failed to write into PID file (%s).", strerror(errno));
+            goto cleanup;
+        }
+        close(pidfd);
+        pidfd = -1;
+    }
 
     /* wait for a terminating signal */
     pthread_mutex_lock(&lock);
@@ -553,6 +606,11 @@ main(int argc, char **argv)
     rc = EXIT_SUCCESS;
 
 cleanup:
+    if (pidfile >= 0) {
+        close(pidfd);
+        unlink(pidfile);
+    }
+
     for (i = 0; i < plugin_count; ++i) {
         dlclose(plugins[i].handle);
         free(plugins[i].plugin_name);
