@@ -25,7 +25,7 @@
 static void
 _test_log_msg(sr_log_level_t level, const char *message, const char *prefix)
 {
-    const char *severity;
+    const char *severity = NULL;
     struct timespec ts;
 
     switch (level) {
