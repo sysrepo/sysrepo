@@ -1765,9 +1765,7 @@ sr_nacm_check_data_read_filter_dup(const char *nacm_user, const struct lyd_node 
     int allowed;
 
     *dup = NULL;
-    if (denied) {
-        *denied = 0;
-    }
+    *denied = 0;
 
     if (!data) {
         /* nothing to do */
