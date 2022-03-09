@@ -154,14 +154,14 @@ sr_error_info_t *sr_nacm_check_push_update_notif(const char *nacm_user, struct l
  * recovery session is allowed to access all nodes.
  *
  * @param[in] nacm_user NACM username to use.
- * @param[in] data Data to filter.
+ * @param[in] tree Data tree (ignoring siblings) to filter.
  * @param[out] dup Duplicated @p data tree with only the accessible data. Also, NULL in special case when all data
  * is accessible.
  * @param[out] denied Whether any node access was denied. Distinguishes between @p dup being NULL because no @p data
  * access was granted and when all access was granted.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_nacm_check_data_read_filter_dup(const char *nacm_user, const struct lyd_node *data,
+sr_error_info_t *sr_nacm_check_data_read_filter_dup(const char *nacm_user, const struct lyd_node *tree,
         struct lyd_node **dup, int *denied);
 
 /**
@@ -171,10 +171,10 @@ sr_error_info_t *sr_nacm_check_data_read_filter_dup(const char *nacm_user, const
  * recovery session is allowed to access all nodes.
  *
  * @param[in] nacm_user NACM username to use.
- * @param[in,out] data Data to filter, are directly modified.
+ * @param[in,out] tree Data tree (ignoring siblings) to filter, is directly modified.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_nacm_check_data_read_filter(const char *nacm_user, struct lyd_node **data);
+sr_error_info_t *sr_nacm_check_data_read_filter(const char *nacm_user, struct lyd_node **tree);
 
 /**
  * @brief Check whether a diff (simplified edit-config tree) can be applied by a user.

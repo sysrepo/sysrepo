@@ -1756,7 +1756,7 @@ sr_nacm_check_data_read_filter_r(struct lyd_node **first, const char *user, char
 }
 
 sr_error_info_t *
-sr_nacm_check_data_read_filter_dup(const char *nacm_user, const struct lyd_node *data, struct lyd_node **dup, int *denied)
+sr_nacm_check_data_read_filter_dup(const char *nacm_user, const struct lyd_node *tree, struct lyd_node **dup, int *denied)
 {
     sr_error_info_t *err_info = NULL;
     char **groups = NULL;
@@ -1767,7 +1767,7 @@ sr_nacm_check_data_read_filter_dup(const char *nacm_user, const struct lyd_node 
     *dup = NULL;
     *denied = 0;
 
-    if (!data) {
+    if (!tree) {
         /* nothing to do */
         return NULL;
     }
@@ -1779,13 +1779,13 @@ sr_nacm_check_data_read_filter_dup(const char *nacm_user, const struct lyd_node 
         goto cleanup;
     }
 
-    if ((err_info = sr_nacm_allowed_tree(data->schema, nacm_user, &allowed))) {
+    if ((err_info = sr_nacm_allowed_tree(tree->schema, nacm_user, &allowed))) {
         goto cleanup;
     }
 
     if (!allowed) {
         /* first check whether any node access is denied */
-        if ((err_info = sr_nacm_check_data_read_filter_r((struct lyd_node **)&data, nacm_user, groups, group_count,
+        if ((err_info = sr_nacm_check_data_read_filter_r((struct lyd_node **)&tree, nacm_user, groups, group_count,
                 &access, denied))) {
             goto cleanup;
         }
@@ -1793,8 +1793,8 @@ sr_nacm_check_data_read_filter_dup(const char *nacm_user, const struct lyd_node 
 
     if (*denied) {
         /* duplicate data tree */
-        if (lyd_dup_siblings(data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS, dup)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(data));
+        if (lyd_dup_single(tree, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS, dup)) {
+            sr_errinfo_new_ly(&err_info, LYD_CTX(tree));
             goto cleanup;
         }
 
@@ -1813,7 +1813,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_nacm_check_data_read_filter(const char *nacm_user, struct lyd_node **data)
+sr_nacm_check_data_read_filter(const char *nacm_user, struct lyd_node **tree)
 {
     sr_error_info_t *err_info = NULL;
     char **groups = NULL;
@@ -1821,9 +1821,9 @@ sr_nacm_check_data_read_filter(const char *nacm_user, struct lyd_node **data)
     enum sr_nacm_access access;
     int allowed;
 
-    assert(data);
+    assert(tree);
 
-    if (!*data) {
+    if (!*tree) {
         /* nothing to do */
         return NULL;
     }
@@ -1835,13 +1835,13 @@ sr_nacm_check_data_read_filter(const char *nacm_user, struct lyd_node **data)
         goto cleanup;
     }
 
-    if ((err_info = sr_nacm_allowed_tree((*data)->schema, nacm_user, &allowed))) {
+    if ((err_info = sr_nacm_allowed_tree((*tree)->schema, nacm_user, &allowed))) {
         goto cleanup;
     }
 
     if (!allowed) {
         /* filter out all denied nodes */
-        if ((err_info = sr_nacm_check_data_read_filter_r(data, nacm_user, groups, group_count, &access, NULL))) {
+        if ((err_info = sr_nacm_check_data_read_filter_r(tree, nacm_user, groups, group_count, &access, NULL))) {
             goto cleanup;
         }
     }
