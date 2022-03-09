@@ -159,7 +159,9 @@ sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const
 {
     sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
 
-    assert(mode);
+    if (mode == SR_LOCK_NONE) {
+        return;
+    }
 
     /* LYDMODS UNLOCK */
     if (lydmods_lock) {
