@@ -3214,7 +3214,7 @@ sr_edit_oper_del_r(struct lyd_node *subtree, sr_cid_t cid, sr_cid_t parent_cid, 
         return NULL;
     }
 
-    if (child_cid) {
+    if (child_cid && (child_cid != cid)) {
         /* this node was "deleted" but there are still some children */
         if (meta) {
             lyd_free_meta_single(meta);
