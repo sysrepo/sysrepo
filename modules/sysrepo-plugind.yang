@@ -2,6 +2,10 @@ module sysrepo-plugind {
     namespace "urn:sysrepo:plugind";
     prefix srpd;
 
+    revision 2022-03-10 {
+        description "Added info about loaded plugins.";
+    }
+
     revision 2020-12-10 {
         description "Initial revision.";
     }
@@ -13,6 +17,15 @@ module sysrepo-plugind {
                 description "The name of the plugin file, which may or may not include the extension.";
                 type string;
                 ordered-by user;
+            }
+        }
+
+        container loaded-plugins {
+            description "Names of all the loaded (initialized) plugins.";
+            config false;
+            leaf-list plugin {
+                description "Name of a loaded plugin.";
+                type string;
             }
         }
     }
