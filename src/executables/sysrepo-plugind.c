@@ -283,6 +283,7 @@ static int
 load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
 {
     void *mem, *handle;
+    struct srpd_plugin_s *plugin;
     DIR *dir;
     struct dirent *ent;
     const char *plugins_dir;
@@ -333,18 +334,20 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
             break;
         }
         *plugins = mem;
+        plugin = &(*plugins)[*plugin_count];
+        memset(plugin, 0, sizeof *plugin);
 
         /* find required functions */
-        *(void **)&(*plugins)[*plugin_count].init_cb = dlsym(handle, SRP_INIT_CB);
-        if (!(*plugins)[*plugin_count].init_cb) {
+        *(void **)&plugin->init_cb = dlsym(handle, SRP_INIT_CB);
+        if (!plugin->init_cb) {
             error_print(0, "Failed to find function \"%s\" in plugin \"%s\".", SRP_INIT_CB, ent->d_name);
             dlclose(handle);
             rc = -1;
             break;
         }
 
-        *(void **)&(*plugins)[*plugin_count].cleanup_cb = dlsym(handle, SRP_CLEANUP_CB);
-        if (!(*plugins)[*plugin_count].cleanup_cb) {
+        *(void **)&plugin->cleanup_cb = dlsym(handle, SRP_CLEANUP_CB);
+        if (!plugin->cleanup_cb) {
             error_print(0, "Failed to find function \"%s\" in plugin \"%s\".", SRP_CLEANUP_CB, ent->d_name);
             dlclose(handle);
             rc = -1;
@@ -352,8 +355,7 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
         }
 
         /* finally store the plugin */
-        (*plugins)[*plugin_count].handle = handle;
-        (*plugins)[*plugin_count].private_data = NULL;
+        plugin->handle = handle;
 
         name_len = length_without_extension(ent->d_name);
         if (name_len == 0) {
@@ -363,8 +365,8 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
             break;
         }
 
-        (*plugins)[*plugin_count].plugin_name = strndup(ent->d_name, name_len);
-        if (!((*plugins)[*plugin_count].plugin_name)) {
+        plugin->plugin_name = strndup(ent->d_name, name_len);
+        if (!plugin->plugin_name) {
             error_print(0, "strndup() failed.");
             dlclose(handle);
             rc = -1;
