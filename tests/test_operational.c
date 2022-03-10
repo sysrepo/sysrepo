@@ -210,7 +210,7 @@ sr_str_del(char *input, const char *open, const char *close)
 
         segment_len = open_idx + strlen(open) - input - idx;
         strncat(resp, &input[idx], segment_len);
-        strncat(resp, close, strlen(close));
+        strcat(resp, close);
         segment_len += strlen(close);
         resp[idx + segment_len] = 0;
         idx = close_idx - input + strlen(close);
