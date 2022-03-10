@@ -438,6 +438,36 @@ sort_plugins(sr_session_ctx_t *sess, struct srpd_plugin_s *plugins, int plugin_c
 }
 
 static int
+publish_loaded_plugins(sr_session_ctx_t *sess, struct srpd_plugin_s *plugins, int plugin_count)
+{
+    int rc = SR_ERR_OK, i;
+
+    /* switch to operational */
+    sr_session_switch_ds(sess, SR_DS_OPERATIONAL);
+
+    for (i = 0; i < plugin_count; ++i) {
+        if (plugins[i].initialized) {
+            /* add a plugin */
+            if ((rc = sr_set_item_str(sess, "/sysrepo-plugind:sysrepo-plugind/loaded-plugins/plugin",
+                    plugins[i].plugin_name, NULL, 0))) {
+                goto cleanup;
+            }
+        }
+    }
+
+    /* apply changes */
+    if ((rc = sr_apply_changes(sess, 0))) {
+        goto cleanup;
+    }
+
+cleanup:
+    /* restore session */
+    sr_discard_changes(sess);
+    sr_session_switch_ds(sess, SR_DS_RUNNING);
+    return rc;
+}
+
+static int
 open_pidfile(const char *pidfile)
 {
     int pidfd;
@@ -620,6 +650,12 @@ main(int argc, char **argv)
             SRPLG_LOG_INF("sysrepo-plugind", "Plugin \"%s\" initialized.", plugins[i].plugin_name);
             plugins[i].initialized = 1;
         }
+    }
+
+    /* set state data */
+    if ((r = publish_loaded_plugins(sess, plugins, plugin_count))) {
+        error_print(r, "Failed to publish loaded plugins.");
+        goto cleanup;
     }
 
 #ifdef SR_HAVE_SYSTEMD
