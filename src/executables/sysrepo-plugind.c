@@ -53,6 +53,7 @@ struct srpd_plugin_s {
     srp_cleanup_cb_t cleanup_cb;
     void *private_data;
     char *plugin_name;
+    int initialized;
 };
 
 static void
@@ -75,11 +76,17 @@ help_print(void)
             "  -h, --help           Prints usage help.\n"
             "  -V, --version        Prints only information about sysrepo version.\n"
             "  -v, --verbosity <level>\n"
-            "                       Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
+            "                       Change verbosity to a level (none, error, warning, info, debug) or\n"
+            "                       number (0, 1, 2, 3, 4).\n"
             "  -d, --debug          Debug mode - is not daemonized and logs to stderr instead of syslog.\n"
             "  -P, --plugin-install <path>\n"
             "                       Install a sysrepo-plugind plugin. The plugin is simply copied\n"
             "                       to the designated plugin directory.\n"
+            "  -p, --pid-file <path>\n"
+            "                       Create a PID file at the specified path with the PID written only once\n"
+            "                       plugin initialization is finished.\n"
+            "  -f, --fatal-plugin-fail\n"
+            "                       If any plugin initialization fails, terminate sysrepo-plugind.\n"
             "\n"
             "Environment variable $SRPD_PLUGINS_PATH overwrites the default plugins directory.\n"
             "\n");
@@ -402,46 +409,30 @@ plugin_names_cmp(const struct srpd_plugin_s *plugin, const char *str2)
 }
 
 static int
-sorting_plugins(int plugin_count, sr_session_ctx_t *sess, struct srpd_plugin_s *plugins)
+sort_plugins(sr_session_ctx_t *sess, struct srpd_plugin_s *plugins, int plugin_count)
 {
     const char *xpath = "/sysrepo-plugind:sysrepo-plugind/plugin-order/plugin";
     sr_val_t *values;
-    size_t value_cnt;
-    int rc;
+    size_t i, value_cnt;
+    int r, j, ordered_part = 0;
 
-    if ((rc = sr_get_items(sess, xpath, 0, SR_OPER_DEFAULT, &values, &value_cnt))) {
-        error_print(0, "The XPath \"%s\" application failed.", xpath);
-        return rc;
+    if ((r = sr_get_items(sess, xpath, 0, 0, &values, &value_cnt))) {
+        error_print(r, "Getting \"%s\" items failed.", xpath);
+        return r;
     }
 
-    int ordered_part = 0;
-
-    for (size_t i = 0; i < value_cnt; ++i) {
-        for (int j = ordered_part; j < plugin_count; ++j) {
+    for (i = 0; i < value_cnt; ++i) {
+        for (j = ordered_part; j < plugin_count; ++j) {
             if (!plugin_names_cmp(&plugins[j], values[i].data.string_val)) {
                 swap(&plugins[ordered_part], &plugins[j]);
                 ++ordered_part;
             }
         }
     }
-    /* If values[i] wasn't found in plugins, it doesn't matter, it'll just be ignored. */
+    /* if values[i] wasn't found in plugins, it doesn't matter, it'll just be ignored. */
 
     sr_free_values(values, value_cnt);
-
-    return 0;
-}
-
-static int
-apply_plugind_module(int plugin_count, sr_session_ctx_t *sess, struct srpd_plugin_s *plugins)
-{
-    int rc = 0;
-
-    if ((rc = sorting_plugins(plugin_count, sess, plugins))) {
-        error_print(0, "Sorting of plugins failed.");
-        return rc;
-    }
-
-    return rc;
+    return SR_ERR_OK;
 }
 
 static int
@@ -500,25 +491,23 @@ main(int argc, char **argv)
     sr_conn_ctx_t *conn = NULL;
     sr_session_ctx_t *sess = NULL;
     sr_log_level_t log_level = SR_LL_ERR;
-    int plugin_count = 0, i, r, rc = EXIT_FAILURE, opt, debug = 0;
-    const char *plugins_dir;
+    int plugin_count = 0, i, r, rc = EXIT_FAILURE, opt, debug = 0, pidfd = -1, fatal_fail = 0;
+    const char *plugins_dir, *pidfile = NULL;
     char *cmd;
     struct option options[] = {
-        {"help",           no_argument,       NULL, 'h'},
-        {"version",        no_argument,       NULL, 'V'},
-        {"verbosity",      required_argument, NULL, 'v'},
-        {"debug",          no_argument,       NULL, 'd'},
-        {"plugin-install", required_argument, NULL, 'P'},
-        {"pid-file",       required_argument, NULL, 'p'},
-        {NULL,             0,                 NULL, 0},
+        {"help",              no_argument,       NULL, 'h'},
+        {"version",           no_argument,       NULL, 'V'},
+        {"verbosity",         required_argument, NULL, 'v'},
+        {"debug",             no_argument,       NULL, 'd'},
+        {"plugin-install",    required_argument, NULL, 'P'},
+        {"pid-file",          required_argument, NULL, 'p'},
+        {"fatal-plugin-fail", no_argument,       NULL, 'f'},
+        {NULL,                0,                 NULL, 0},
     };
-
-    int pidfd = -1;
-    const char *pidfile = NULL;
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVv:dP:p:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVv:dP:p:f", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -571,6 +560,9 @@ main(int argc, char **argv)
         case 'p':
             pidfile = optarg;
             break;
+        case 'f':
+            fatal_fail = 1;
+            break;
         default:
             error_print(0, "Invalid option or missing argument: -%c", optopt);
             goto cleanup;
@@ -607,18 +599,24 @@ main(int argc, char **argv)
         goto cleanup;
     }
 
-    /* apply sysrepo-plugind module if exists */
-    if (apply_plugind_module(plugin_count, sess, plugins)) {
-        error_print(0, "The sysrepo-plugind module application failed.");
+    /* sort plugins based on user-defined order */
+    if ((r = sort_plugins(sess, plugins, plugin_count))) {
+        error_print(r, "Sorting of plugins failed.");
         goto cleanup;
     }
 
     /* init plugins */
     for (i = 0; i < plugin_count; ++i) {
         r = plugins[i].init_cb(sess, &plugins[i].private_data);
-        if (r != SR_ERR_OK) {
-            SRPLG_LOG_ERR("sysrepo-plugind", "Plugin initialization failed (%s).", sr_strerror(r));
-            goto cleanup;
+        if (r) {
+            SRPLG_LOG_ERR("sysrepo-plugind", "Plugin \"%s\" initialization failed (%s).", plugins[i].plugin_name,
+                    sr_strerror(r));
+            if (fatal_fail) {
+                goto cleanup;
+            }
+        } else {
+            SRPLG_LOG_INF("sysrepo-plugind", "Plugin \"%s\" initialized.", plugins[i].plugin_name);
+            plugins[i].initialized = 1;
         }
     }
 
@@ -627,7 +625,7 @@ main(int argc, char **argv)
     sd_notify(0, "READY=1");
 #endif
 
-    /* Now this process is ready, so let's go ahead and update pid file */
+    /* update pid file */
     if (pidfile && (write_pidfile(pidfd) < 0)) {
         goto cleanup;
     }
@@ -646,7 +644,9 @@ main(int argc, char **argv)
 
     /* cleanup plugins */
     for (i = 0; i < plugin_count; ++i) {
-        plugins[i].cleanup_cb(sess, plugins[i].private_data);
+        if (plugins[i].initialized) {
+            plugins[i].cleanup_cb(sess, plugins[i].private_data);
+        }
     }
 
     /* success */
