@@ -26,8 +26,8 @@
 #include <libyang/libyang.h>
 
 #include "sysrepo.h"
-#include "sysrepo/netconf_acm.h"
 #include "tests/test_common.h"
+#include "utils/netconf_acm.h"
 
 struct state {
     sr_conn_ctx_t *conn;
