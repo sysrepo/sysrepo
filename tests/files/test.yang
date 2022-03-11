@@ -84,4 +84,6 @@ module test {
             default 15;
         }
     }
+
+    rpc r1;
 }

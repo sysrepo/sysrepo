@@ -184,6 +184,7 @@ test_data_deps(void **state)
         "<plugin><datastore>operational</datastore><name>LYB DS file</name></plugin>"
         "<plugin><datastore>notification</datastore><name>LYB notif</name></plugin>"
         "<inverse-deps>refs</inverse-deps>"
+        "<rpc><path xmlns:t=\"urn:test\">/t:r1</path></rpc>"
     "</module>"
     );
     cmp_int_data(st->conn, "ietf-interfaces",
@@ -643,6 +644,7 @@ test_change_feature(void **state)
         "<plugin><datastore>operational</datastore><name>LYB DS file</name></plugin>"
         "<plugin><datastore>notification</datastore><name>LYB notif</name></plugin>"
         "<inverse-deps>features</inverse-deps>"
+        "<rpc><path xmlns:t=\"urn:test\">/t:r1</path></rpc>"
     "</module>"
     );
 
@@ -720,6 +722,7 @@ test_change_feature(void **state)
         "<plugin><datastore>candidate</datastore><name>LYB DS file</name></plugin>"
         "<plugin><datastore>operational</datastore><name>LYB DS file</name></plugin>"
         "<plugin><datastore>notification</datastore><name>LYB notif</name></plugin>"
+        "<rpc><path xmlns:t=\"urn:test\">/t:r1</path></rpc>"
     "</module>"
     );
 
@@ -778,6 +781,7 @@ test_replay_support(void **state)
         "<plugin><datastore>candidate</datastore><name>LYB DS file</name></plugin>"
         "<plugin><datastore>operational</datastore><name>LYB DS file</name></plugin>"
         "<plugin><datastore>notification</datastore><name>LYB notif</name></plugin>"
+        "<rpc><path xmlns:t=\"urn:test\">/t:r1</path></rpc>"
     "</module>"
     );
     cmp_int_data(st->conn, "ietf-interfaces",
@@ -828,6 +832,7 @@ test_replay_support(void **state)
         "<plugin><datastore>operational</datastore><name>LYB DS file</name></plugin>"
         "<plugin><datastore>notification</datastore><name>LYB notif</name></plugin>"
         "<replay-support>00000000000000000000000000000000000</replay-support>"
+        "<rpc><path xmlns:t=\"urn:test\">/t:r1</path></rpc>"
     "</module>"
     );
     cmp_int_data(st->conn, "ietf-interfaces",
@@ -878,6 +883,7 @@ test_replay_support(void **state)
         "<plugin><datastore>candidate</datastore><name>LYB DS file</name></plugin>"
         "<plugin><datastore>operational</datastore><name>LYB DS file</name></plugin>"
         "<plugin><datastore>notification</datastore><name>LYB notif</name></plugin>"
+        "<rpc><path xmlns:t=\"urn:test\">/t:r1</path></rpc>"
     "</module>"
     );
     cmp_int_data(st->conn, "ietf-interfaces",

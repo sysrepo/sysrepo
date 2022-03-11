@@ -135,26 +135,13 @@ sr_error_info_t *sr_nacm_check_operation(const char *nacm_user, const struct lyd
         const struct lyd_node **denied_node);
 
 /**
- * @brief Check whether the notification is allowed for a user and filter out any edits the user
- * does not have R access to.
- *
- * @param[in] nacm_user NACM username to use.
- * @param[in,out] notif Top-level node of the notification tree to filter.
- * @param[out] denied_node NULL if access allowed, otherwise the denied access data node. If set, @p notif was
- * not modified.
- * @return Error code (SR_ERR_OK on success).
- */
-sr_error_info_t *sr_nacm_check_push_update_notif(const char *nacm_user, struct lyd_node *notif,
-        const struct lyd_node **denied_node);
-
-/**
  * @brief Filter out any data for which the user does not have R access. Duplicate allowed data tree is created.
  *
  * According to https://tools.ietf.org/html/rfc8341#section-3.2.4
  * recovery session is allowed to access all nodes.
  *
  * @param[in] nacm_user NACM username to use.
- * @param[in] tree Data tree (ignoring siblings) to filter.
+ * @param[in] tree Data tree (ignoring siblings) to filter. If not top-level, all parents are also checked.
  * @param[out] dup Duplicated @p data tree with only the accessible data. Also, NULL in special case when all data
  * is accessible.
  * @param[out] denied Whether any node access was denied. Distinguishes between @p dup being NULL because no @p data
@@ -165,16 +152,17 @@ sr_error_info_t *sr_nacm_check_data_read_filter_dup(const char *nacm_user, const
         struct lyd_node **dup, int *denied);
 
 /**
- * @brief Filter out any data for which the user does not have R access. Denied nodes are freed.
- *
- * According to https://tools.ietf.org/html/rfc8341#section-3.2.4
- * recovery session is allowed to access all nodes.
+ * @brief Check whether the notification is allowed for a user and filter out any edits the user
+ * does not have R access to.
  *
  * @param[in] nacm_user NACM username to use.
- * @param[in,out] tree Data tree (ignoring siblings) to filter, is directly modified.
+ * @param[in,out] notif Top-level node of the notification tree to filter.
+ * @param[out] denied_node NULL if access allowed, otherwise the denied access data node. If set, @p notif was
+ * not modified.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_nacm_check_data_read_filter(const char *nacm_user, struct lyd_node **tree);
+sr_error_info_t *sr_nacm_check_push_update_notif(const char *nacm_user, struct lyd_node *notif,
+        const struct lyd_node **denied_node);
 
 /**
  * @brief Check whether a diff (simplified edit-config tree) can be applied by a user.
