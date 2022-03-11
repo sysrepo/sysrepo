@@ -44,10 +44,9 @@ There is one special event _update_ that is generated only for subscriptions tha
 any of the other ones mentioned before because it allows to further modify the data changes that are being handled.
 Callback with this event can fail and cause the changes to be immediately refused.
 
-Also, a subscription can request _enabled_ event on ::SR_DS_RUNNING datastore and get
-the current configuration at the time of subscribing. This event is normally followed by _done_ event, just like
-_change_ event. However, _enabled_ event is generated even if the current configuration is empty (so there will be no
-changes available in the callback)!
+Also, a subscription can request the _enabled_ event and get the current datastore configuration at the time of
+subscribing. This event is normally followed by _done_ event, just like the _change_ event. However, the _enabled_
+event is generated even if the current configuration is empty (so there will be no changes available in the callback)!
 
 When subscribing to _operational_ datastore changes, only [push](@ref oper_data) changes are acknowledged and callbacks
 called. Pull subscriptions are ignored.
