@@ -337,7 +337,7 @@ sr_edit_update_cid(struct lyd_node *edit_node, sr_cid_t cid, int keep_cur_child,
  * @param[in] src_node Source edit node.
  * @param[in,out] trg_node Target edit node.
  * @param[in] trg_op_own Whether @p trg_node has its own operation metadata.
- * @param[in] src_op Operation of @p src_node.
+ * @param[in] src_op Operation of @p src_node, 0 to not set any.
  * @param[out] meta_changed Whether any of the metadata (except operation) values differ.
  * @return err_info, NULL on success.
  */
@@ -391,7 +391,7 @@ sr_edit_copy_meta(const struct lyd_node *src_node, struct lyd_node *trg_node, in
             sr_errinfo_new_ly(&err_info, LYD_CTX(trg_node));
             goto cleanup;
         }
-    } else {
+    } else if (src_op) {
         if (lyd_new_meta(LYD_CTX(trg_node), trg_node, NULL, "ietf-netconf:operation", sr_edit_op2str(src_op), 0, NULL)) {
             sr_errinfo_new_ly(&err_info, LYD_CTX(trg_node));
             goto cleanup;
@@ -869,8 +869,8 @@ sr_lyd_merge_cb(struct lyd_node *trg_node, const struct lyd_node *src_node, void
     struct sr_lyd_merge_cb_data *arg = cb_data;
     char *origin = NULL, *cur_origin = NULL;
     struct lyd_node *next, *child;
-    enum edit_op src_op, trg_op, ptrg_op;
-    int trg_op_own, meta_changed = 0, cid_changed;
+    enum edit_op src_op, diff_src_op, trg_op, ptrg_op;
+    int trg_op_own, meta_changed = 0, cid_changed, op_own;
 
     /* update CID of the new node */
     if ((err_info = sr_edit_update_cid(trg_node, arg->cid, src_node ? 1 : 0, &cid_changed))) {
@@ -900,19 +900,19 @@ sr_lyd_merge_cb(struct lyd_node *trg_node, const struct lyd_node *src_node, void
     }
 
     /* learn source operation */
-    src_op = sr_edit_diff_find_oper(src_node, 1, NULL);
+    src_op = diff_src_op = sr_edit_diff_find_oper(src_node, 1, NULL);
     if ((src_op != EDIT_MERGE) && (src_op != EDIT_REMOVE) && (src_op != EDIT_ETHER)) {
         SR_ERRINFO_INT(&err_info);
         goto cleanup;
     }
 
     /* src_op trg_op */
-    /* MERGE MERGE - (copy oper), insert meta src -> trg */
-    /* MERGE ETHER - copy oper, insert meta src -> trg */
-    /* MERGE REMOVE - copy oper, insert meta src -> trg; free trg children */
-    /* REMOVE MERGE - copy oper, (insert meta) src -> trg; free trg children */
-    /* REMOVE ETHER - copy oper, (insert meta) src -> trg; free trg children */
-    /* ETHER REMOVE - copy oper, (insert meta) src -> trg; (free trg children) */
+    /* MERGE MERGE - (copy oper), insert meta src -> trg; no diff */
+    /* MERGE ETHER - copy oper, insert meta src -> trg; src diff */
+    /* MERGE REMOVE - copy oper, insert meta src -> trg; src diff; free trg children */
+    /* REMOVE MERGE - copy oper, (insert meta) src -> trg; trg diff; free trg children */
+    /* REMOVE ETHER - copy oper, (insert meta) src -> trg; src diff; free trg children */
+    /* ETHER REMOVE - copy oper, (insert meta) src -> trg; no diff */
     /* REMOVE REMOVE - nothing */
     /* ETHER MERGE - nothing */
     /* ETHER ETHER - nothing */
@@ -929,23 +929,47 @@ sr_lyd_merge_cb(struct lyd_node *trg_node, const struct lyd_node *src_node, void
         }
 
         /* copy all metadata */
-        if ((err_info = sr_edit_copy_meta(src_node, trg_node, trg_op_own, src_op, &meta_changed))) {
-            goto cleanup;
-        }
-
-        if ((src_op != EDIT_MERGE) || (trg_op == EDIT_REMOVE)) {
-            /* free target children */
-            LY_LIST_FOR_SAFE(lyd_child_no_keys(trg_node), next, child) {
-                lyd_free_tree(child);
+        if ((diff_src_op == EDIT_REMOVE) && (trg_op == EDIT_MERGE)) {
+            /* recursively */
+            LYD_TREE_DFS_BEGIN(trg_node, child) {
+                if (child == trg_node) {
+                    if ((err_info = sr_edit_copy_meta(src_node, child, trg_op_own, src_op, &meta_changed))) {
+                        goto cleanup;
+                    }
+                } else {
+                    sr_edit_diff_find_oper(child, 0, &op_own);
+                    if ((err_info = sr_edit_copy_meta(src_node, child, op_own, 0, &meta_changed))) {
+                        goto cleanup;
+                    }
+                }
+                LYD_TREE_DFS_END(trg_node, child);
+            }
+        } else {
+            if ((err_info = sr_edit_copy_meta(src_node, trg_node, trg_op_own, src_op, &meta_changed))) {
+                goto cleanup;
             }
         }
     }
 
-    if ((src_op != trg_op) || meta_changed || lyd_compare_single(src_node, trg_node, LYD_COMPARE_DEFAULTS)) {
+    if ((diff_src_op != trg_op) || meta_changed || lyd_compare_single(src_node, trg_node, LYD_COMPARE_DEFAULTS)) {
         /* change, append to diff */
         arg->changed = 1;
-        if ((err_info = sr_edit_diff_append(src_node, sr_op_edit2diff(src_op), 0, arg->diff))) {
+        if ((diff_src_op == EDIT_REMOVE) && (trg_op == EDIT_MERGE)) {
+            /* add the whole tree-to-merge into the diff, it was removed now */
+            err_info = sr_edit_diff_append(trg_node, sr_op_edit2diff(diff_src_op), 1, arg->diff);
+        } else {
+            err_info = sr_edit_diff_append(src_node, sr_op_edit2diff(diff_src_op), 0, arg->diff);
+        }
+        if (err_info) {
             goto cleanup;
+        }
+    }
+
+    if (((diff_src_op == EDIT_MERGE) && (trg_op == EDIT_REMOVE)) ||
+            ((diff_src_op == EDIT_REMOVE) && ((trg_op == EDIT_MERGE) || (trg_op == EDIT_ETHER)))) {
+        /* free target children */
+        LY_LIST_FOR_SAFE(lyd_child_no_keys(trg_node), next, child) {
+            lyd_free_tree(child);
         }
     }
 
@@ -1395,6 +1419,7 @@ sr_diff_set_oper(struct lyd_node *diff, const char *op)
 enum edit_op
 sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper)
 {
+    const struct lyd_node *parent;
     struct lyd_meta *meta;
     struct lyd_attr *attr;
     enum edit_op op;
@@ -1404,26 +1429,30 @@ sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper
     }
 
     if (own_oper) {
-        *own_oper = 1;
+        *own_oper = 0;
     }
+    parent = edit;
     do {
-        if (edit->schema) {
-            LY_LIST_FOR(edit->meta, meta) {
+        if (parent->schema) {
+            LY_LIST_FOR(parent->meta, meta) {
                 if (!strcmp(meta->name, "operation")) {
                     if (!strcmp(meta->annotation->module->name, "sysrepo") ||
                             !strcmp(meta->annotation->module->name, "ietf-netconf") ||
                             !strcmp(meta->annotation->module->name, "yang")) {
+                        if (own_oper && (edit == parent)) {
+                            *own_oper = 1;
+                        }
                         return sr_edit_str2op(lyd_get_meta_value(meta));
                     }
                 }
             }
         } else {
             op = 0;
-            LY_LIST_FOR(((struct lyd_node_opaq *)edit)->attr, attr) {
+            LY_LIST_FOR(((struct lyd_node_opaq *)parent)->attr, attr) {
                 if (!strcmp(attr->name.name, "operation")) {
                     /* try to create a metadata instance and use that */
                     uint32_t prev_lo = ly_log_options(0);
-                    if (!lyd_new_meta2(LYD_CTX(edit), NULL, 0, attr, &meta)) {
+                    if (!lyd_new_meta2(LYD_CTX(parent), NULL, 0, attr, &meta)) {
                         if (!strcmp(meta->annotation->module->name, "sysrepo") ||
                                 !strcmp(meta->annotation->module->name, "ietf-netconf")) {
                             op = sr_edit_str2op(lyd_get_meta_value(meta));
@@ -1433,6 +1462,9 @@ sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper
                     ly_log_options(prev_lo);
 
                     if (op) {
+                        if (own_oper && (edit == parent)) {
+                            *own_oper = 1;
+                        }
                         return op;
                     }
                 }
@@ -1443,11 +1475,8 @@ sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper
             return 0;
         }
 
-        edit = lyd_parent(edit);
-        if (own_oper) {
-            *own_oper = 0;
-        }
-    } while (edit);
+        parent = lyd_parent(parent);
+    } while (parent);
 
     return 0;
 }
