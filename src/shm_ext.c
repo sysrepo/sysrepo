@@ -1619,7 +1619,7 @@ sr_shmext_change_sub_check(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_change_sub_t *subs;
-    uint16_t i;
+    uint32_t i;
     const char *mod_name, *xpath;
     int valid;
 
@@ -1684,7 +1684,7 @@ sr_shmext_oper_sub_check(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct ly
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_oper_sub_t *subs;
-    uint16_t i;
+    uint32_t i;
     const char *mod_name, *xpath;
     int valid;
 
@@ -1746,7 +1746,7 @@ sr_shmext_notif_sub_check(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct l
     sr_error_info_t *err_info = NULL;
     sr_mod_notif_sub_t *subs;
     const struct lys_module *ly_mod = NULL;
-    uint16_t i;
+    uint32_t i;
     const char *mod_name, *xpath;
     int valid;
 
@@ -1812,7 +1812,7 @@ sr_shmext_rpc_sub_check(sr_conn_ctx_t *conn, const char *mod_name, sr_rpc_t *shm
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_rpc_sub_t *subs;
-    uint16_t i;
+    uint32_t i;
     const char *xpath;
     int valid;
 
