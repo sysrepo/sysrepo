@@ -1,0 +1,43 @@
+module issue-if-feature-pck {
+  namespace "urn:issue:if:feature:pck";
+  prefix iifp;
+
+  import issue-if-feature {
+    prefix iif;
+  }
+  import issue-if-feature-tm {
+    prefix iift;
+  }
+  import issue-if-feature-grp {
+    prefix iifg;
+  }
+
+  feature packages {
+    if-feature iift:root;
+  }
+
+  typedef package-ref {
+    type leafref {
+      path "/iif:root/iifp:packages/iifp:package/iifp:name";
+    }
+  }
+
+  augment "/iif:root" {
+
+    container packages {
+      if-feature packages;
+
+      list package {
+        key name;
+
+        leaf name {
+          type string;
+        }
+
+       leaf-list group {
+         type iifg:group-ref;
+       }
+      }
+    }
+  }
+}

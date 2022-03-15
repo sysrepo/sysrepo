@@ -18,6 +18,7 @@
 #define _SYSREPO_PLUGINS_NOTIFICATION_H
 
 #include <stdint.h>
+#include <sys/types.h>
 
 #include <libyang/libyang.h>
 
@@ -82,6 +83,8 @@ typedef int (*srntf_replay_next)(const struct lys_module *mod, const struct time
 /**
  * @brief Get the timestamp of the earliest stored notification of the module.
  *
+ * Is called even before ::srntf_init().
+ *
  * @param[in] mod Specific module.
  * @param[out] ts Timestamp of the earliest notification, zeroed if there are none.
  * @return ::SR_ERR_OK on success;
@@ -95,7 +98,7 @@ typedef int (*srntf_earliest_get)(const struct lys_module *mod, struct timespec 
  * @param[in] mod Specific module.
  * @param[in] owner Optional, new owner of the module notification data.
  * @param[in] group Optional, new group of the module notification data.
- * @param[in] perm Optional not -1, new permissions of the module notification data.
+ * @param[in] perm Optional not 0, new permissions of the module notification data.
  * @return ::SR_ERR_OK on success;
  * @return Sysrepo error value on error.
  */

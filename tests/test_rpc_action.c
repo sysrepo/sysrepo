@@ -30,11 +30,12 @@
 
 #include "common.h"
 #include "sysrepo.h"
-#include "tests/config.h"
+#include "tests/test_common.h"
 #include "utils/values.h"
 
 struct state {
     sr_conn_ctx_t *conn;
+    const struct ly_ctx *ly_ctx;
     sr_session_ctx_t *sess;
     ATOMIC_T cb_called;
     pthread_barrier_t barrier;
@@ -44,14 +45,11 @@ static int
 setup(void **state)
 {
     struct state *st;
-    uint32_t conn_count, nc_id;
+    uint32_t nc_id;
     const char *ops_ref_feats[] = {"feat1", NULL}, *act_feats[] = {"advanced-testing", NULL};
 
     st = calloc(1, sizeof *st);
     *state = st;
-
-    sr_connection_count(&conn_count);
-    assert_int_equal(conn_count, 0);
 
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
     pthread_barrier_init(&st->barrier, NULL, 2);
@@ -84,11 +82,8 @@ setup(void **state)
     if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/act3.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    sr_disconnect(st->conn);
 
-    if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
-        return 1;
-    }
+    st->ly_ctx = sr_acquire_context(st->conn);
 
     if (sr_session_start(st->conn, SR_DS_RUNNING, &st->sess) != SR_ERR_OK) {
         return 1;
@@ -107,14 +102,18 @@ teardown(void **state)
     struct state *st = (struct state *)*state;
     int ret = 0;
 
-    ret += sr_remove_module(st->conn, "act3");
-    ret += sr_remove_module(st->conn, "act2");
-    ret += sr_remove_module(st->conn, "act");
-    ret += sr_remove_module(st->conn, "ops");
-    ret += sr_remove_module(st->conn, "ops-ref");
-    ret += sr_remove_module(st->conn, "iana-if-type");
-    ret += sr_remove_module(st->conn, "ietf-interfaces");
-    ret += sr_remove_module(st->conn, "test");
+    if (st->ly_ctx) {
+        sr_release_context(st->conn);
+    }
+
+    ret += sr_remove_module(st->conn, "act3", 0);
+    ret += sr_remove_module(st->conn, "act2", 0);
+    ret += sr_remove_module(st->conn, "act", 0);
+    ret += sr_remove_module(st->conn, "ops", 0);
+    ret += sr_remove_module(st->conn, "ops-ref", 0);
+    ret += sr_remove_module(st->conn, "iana-if-type", 0);
+    ret += sr_remove_module(st->conn, "ietf-interfaces", 0);
+    ret += sr_remove_module(st->conn, "test", 0);
 
     sr_disconnect(st->conn);
     pthread_barrier_destroy(&st->barrier);
@@ -177,9 +176,10 @@ static void
 test_fail(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     const sr_error_info_t *err_info = NULL;
-    struct lyd_node *input, *output;
+    struct lyd_node *input;
+    sr_data_t *output;
     int ret;
 
     /* subscribe */
@@ -187,7 +187,7 @@ test_fail(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* send RPC */
-    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, sr_get_context(st->conn), "/ops:rpc1", NULL, 0, &input));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, st->ly_ctx, "/ops:rpc1", NULL, 0, &input));
 
     /* expect an error */
     ret = sr_rpc_send_tree(st->sess, input, 0, &output);
@@ -202,7 +202,7 @@ test_fail(void **state)
     assert_null(output);
 
     /* try to send an action */
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='1']/cont2/act1", NULL,
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, st->ly_ctx, "/ops:cont/list1[k='1']/cont2/act1", NULL,
             0, 0, 0, NULL, &input));
 
     ret = sr_rpc_send_tree(st->sess, input, 0, &output);
@@ -295,7 +295,7 @@ static void
 test_rpc(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     const sr_error_info_t *err_info = NULL;
     sr_val_t input, *output;
     size_t output_count;
@@ -304,9 +304,9 @@ test_rpc(void **state)
     /* subscribe */
     ret = sr_rpc_subscribe(st->sess, "/ops:rpc1", rpc_rpc_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe(st->sess, "/ops:rpc2", rpc_rpc_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc2", rpc_rpc_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe(st->sess, "/ops:rpc3", rpc_rpc_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc3", rpc_rpc_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation */
@@ -339,7 +339,7 @@ test_rpc(void **state)
     assert_int_equal(output_count, 0);
 
     /* subscribe to the data so they are actually present in operational */
-    ret = sr_module_change_subscribe(st->sess, "ops-ref", NULL, module_change_dummy_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "ops-ref", NULL, module_change_dummy_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to send first RPC again, now should succeed */
@@ -463,8 +463,9 @@ static void
 test_action(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
-    struct lyd_node *input_op, *output_op;
+    sr_subscription_ctx_t *subscr = NULL;
+    struct lyd_node *input_op;
+    sr_data_t *output_op;
     char *str1;
     const char *str2;
     int ret;
@@ -472,7 +473,7 @@ test_action(void **state)
     /* subscribe */
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1", rpc_action_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/act2", rpc_action_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/act2", rpc_action_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation and executing the actions */
@@ -484,13 +485,13 @@ test_action(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to the data so they are actually present in operational */
-    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /*
      * create first action
      */
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='key']/cont2/act1",
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, st->ly_ctx, "/ops:cont/list1[k='key']/cont2/act1",
             NULL, 0, 0, 0, NULL, &input_op));
     assert_non_null(input_op);
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l6", "val", 0, NULL));
@@ -503,8 +504,8 @@ test_action(void **state)
 
     /* check output data tree */
     assert_non_null(output_op);
-    ret = lyd_print_mem(&str1, output_op, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
-    lyd_free_all(output_op);
+    ret = lyd_print_mem(&str1, output_op->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(output_op);
     assert_int_equal(ret, 0);
     str2 = "<act1 xmlns=\"urn:ops\"><l9>l12-val</l9></act1>";
     assert_string_equal(str1, str2);
@@ -513,7 +514,7 @@ test_action(void **state)
     /*
      * create second action
      */
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='key']/act2", NULL, 0,
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, st->ly_ctx, "/ops:cont/list1[k='key']/act2", NULL, 0,
             0, 0, NULL, &input_op));
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l10", "e3", 0, NULL));
 
@@ -524,8 +525,8 @@ test_action(void **state)
 
     /* check output data tree */
     assert_non_null(output_op);
-    ret = lyd_print_mem(&str1, output_op, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
-    lyd_free_all(output_op);
+    ret = lyd_print_mem(&str1, output_op->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(output_op);
     assert_int_equal(ret, 0);
     str2 = "<act2 xmlns=\"urn:ops\"><l11>-65536</l11></act2>";
     assert_string_equal(str1, str2);
@@ -575,8 +576,9 @@ static void
 test_action_pred(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
-    struct lyd_node *input_op, *output_op;
+    sr_subscription_ctx_t *subscr = NULL;
+    struct lyd_node *input_op;
+    sr_data_t *output_op;
     int ret;
 
     /* you cannot subscribe to more actions */
@@ -587,7 +589,7 @@ test_action_pred(void **state)
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='one' or k='two']/cont2/act1", rpc_action_pred_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='three' or k='four']/cont2/act1", rpc_action_pred_cb, NULL,
-            1, SR_SUBSCR_CTX_REUSE, &subscr);
+            1, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation and executing the actions */
@@ -605,13 +607,13 @@ test_action_pred(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to the data so they are actually present in operational */
-    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /*
      * create first action
      */
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='zero']/cont2/act1",
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, st->ly_ctx, "/ops:cont/list1[k='zero']/cont2/act1",
             NULL, 0, 0, 0, NULL, &input_op));
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l6", "val", 0, NULL));
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l7", "val", 0, NULL));
@@ -624,7 +626,7 @@ test_action_pred(void **state)
     /*
      * create second action
      */
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='one']/cont2/act1",
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, st->ly_ctx, "/ops:cont/list1[k='one']/cont2/act1",
             NULL, 0, 0, 0, NULL, &input_op));
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l6", "val2", 0, NULL));
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l7", "val2", 0, NULL));
@@ -632,14 +634,14 @@ test_action_pred(void **state)
     /* send action, should be fine */
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_all(input_op);
-    lyd_free_all(output_op);
+    sr_release_data(output_op);
 
     assert_int_equal(ret, SR_ERR_OK);
 
     /*
      * create third action
      */
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='three']/cont2/act1",
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, st->ly_ctx, "/ops:cont/list1[k='three']/cont2/act1",
             NULL, 0, 0, 0, NULL, &input_op));
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l6", "val3", 0, NULL));
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l7", "val3", 0, NULL));
@@ -647,7 +649,7 @@ test_action_pred(void **state)
     /* send action, should be fine */
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_all(input_op);
-    lyd_free_all(output_op);
+    sr_release_data(output_op);
 
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -677,18 +679,19 @@ static void
 test_multi(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
-    struct lyd_node *input_op, *output_op;
+    sr_subscription_ctx_t *subscr = NULL;
+    struct lyd_node *input_op;
+    sr_data_t *output_op;
     int ret;
 
     /* subscribe */
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1", rpc_multi_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='one' or k='two']/cont2/act1", rpc_multi_cb, st,
-            1, SR_SUBSCR_CTX_REUSE, &subscr);
+            1, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1[k='two' or k='three' or k='four']/cont2/act1",
-            rpc_multi_cb, st, 2, SR_SUBSCR_CTX_REUSE, &subscr);
+            rpc_multi_cb, st, 2, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation and executing the actions */
@@ -706,13 +709,13 @@ test_multi(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to the data so they are actually present in operational */
-    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /*
      * create first action
      */
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='zero']/cont2/act1",
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, st->ly_ctx, "/ops:cont/list1[k='zero']/cont2/act1",
             NULL, 0, 0, 0, NULL, &input_op));
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l6", "val", 0, NULL));
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l7", "val", 0, NULL));
@@ -721,7 +724,7 @@ test_multi(void **state)
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_all(input_op);
-    lyd_free_all(output_op);
+    sr_release_data(output_op);
 
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
@@ -729,7 +732,7 @@ test_multi(void **state)
     /*
      * create second action
      */
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='one']/cont2/act1",
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, st->ly_ctx, "/ops:cont/list1[k='one']/cont2/act1",
             NULL, 0, 0, 0, NULL, &input_op));
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l6", "val2", 0, NULL));
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l7", "val2", 0, NULL));
@@ -738,7 +741,7 @@ test_multi(void **state)
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_all(input_op);
-    lyd_free_all(output_op);
+    sr_release_data(output_op);
 
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
@@ -746,7 +749,7 @@ test_multi(void **state)
     /*
      * create third action
      */
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='two']/cont2/act1",
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, st->ly_ctx, "/ops:cont/list1[k='two']/cont2/act1",
             NULL, 0, 0, 0, NULL, &input_op));
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l6", "val3", 0, NULL));
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l7", "val3", 0, NULL));
@@ -755,7 +758,7 @@ test_multi(void **state)
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_all(input_op);
-    lyd_free_all(output_op);
+    sr_release_data(output_op);
 
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
@@ -912,29 +915,30 @@ static void
 test_multi_fail(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
-    struct lyd_node *input_op, *output_op;
+    sr_subscription_ctx_t *subscr = NULL;
+    struct lyd_node *input_op;
+    sr_data_t *output_op;
     int ret;
 
     /* subscribe */
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:rpc3", rpc_multi_fail0_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe_tree(st->sess, "/ops:rpc3", rpc_multi_fail1_cb, st, 1, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:rpc3", rpc_multi_fail1_cb, st, 1, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe_tree(st->sess, "/ops:rpc3", rpc_multi_fail2_cb, st, 2, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ops:rpc3", rpc_multi_fail2_cb, st, 2, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /*
      * create first RPC
      */
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/ops:rpc3", NULL, 0, 0, 0, NULL, &input_op));
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, st->ly_ctx, "/ops:rpc3", NULL, 0, 0, 0, NULL, &input_op));
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l4", "val", 0, NULL));
 
     /* send RPC */
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_all(input_op);
-    lyd_free_all(output_op);
+    sr_release_data(output_op);
 
     /* it should fail with 5 total callback calls */
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
@@ -943,14 +947,14 @@ test_multi_fail(void **state)
     /*
      * create second RPC
      */
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/ops:rpc3", NULL, 0, 0, 0, NULL, &input_op));
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, st->ly_ctx, "/ops:rpc3", NULL, 0, 0, 0, NULL, &input_op));
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l4", "val", 0, NULL));
 
     /* send RPC */
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_all(input_op);
-    lyd_free_all(output_op);
+    sr_release_data(output_op);
 
     /* it should fail with 3 total callback calls */
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
@@ -959,14 +963,14 @@ test_multi_fail(void **state)
     /*
      * create third RPC
      */
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/ops:rpc3", NULL, 0, 0, 0, NULL, &input_op));
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, st->ly_ctx, "/ops:rpc3", NULL, 0, 0, 0, NULL, &input_op));
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l4", "val", 0, NULL));
 
     /* send RPC */
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     lyd_free_all(input_op);
-    lyd_free_all(output_op);
+    sr_release_data(output_op);
 
     /* it should fail with 1 total callback calls */
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
@@ -975,7 +979,7 @@ test_multi_fail(void **state)
     /*
      * create fourth RPC
      */
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/ops:rpc3", NULL, 0, 0, 0, NULL, &input_op));
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, st->ly_ctx, "/ops:rpc3", NULL, 0, 0, 0, NULL, &input_op));
     assert_int_equal(LY_SUCCESS, lyd_new_path(input_op, NULL, "l4", "val", 0, NULL));
 
     /* send RPC */
@@ -988,9 +992,9 @@ test_multi_fail(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
 
     /* check output */
-    assert_string_equal(lyd_child(output_op)->schema->name, "l5");
-    assert_int_equal(((struct lyd_node_term *)lyd_child(output_op))->value.uint16, 0);
-    lyd_free_all(output_op);
+    assert_string_equal(lyd_child(output_op->tree)->schema->name, "l5");
+    assert_int_equal(((struct lyd_node_term *)lyd_child(output_op->tree))->value.uint16, 0);
+    sr_release_data(output_op);
 
     sr_unsubscribe(subscr);
 }
@@ -1019,18 +1023,19 @@ static void
 test_action_deps(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
-    struct lyd_node *input_op, *output_op;
+    sr_subscription_ctx_t *subscr = NULL;
+    struct lyd_node *input_op;
+    sr_data_t *output_op;
     int ret;
 
     /* subscribe */
     ret = sr_rpc_subscribe_tree(st->sess, "/act:advanced/act3:conditional/conditional_action", action_deps_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe_tree(st->sess, "/act:advanced/act3:conditional_action2", action_deps_cb, st, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe_tree(st->sess, "/act:advanced/act3:conditional_action2", action_deps_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* create the action */
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/act:advanced/act3:conditional/"
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, st->ly_ctx, "/act:advanced/act3:conditional/"
             "conditional_action", NULL, 0, 0, 0, NULL, &input_op));
 
     /* send action, its parent does not exist so it should fail */
@@ -1058,19 +1063,19 @@ test_action_deps(void **state)
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     assert_int_equal(ret, SR_ERR_OK);
-    lyd_free_all(output_op);
+    sr_release_data(output_op);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
     lyd_free_all(input_op);
 
     /* create another action */
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/act:advanced/act3:conditional_action2",
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, st->ly_ctx, "/act:advanced/act3:conditional_action2",
             NULL, 0, 0, 0, NULL, &input_op));
 
     /* send the action, should succeed */
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     assert_int_equal(ret, SR_ERR_OK);
-    lyd_free_all(output_op);
+    sr_release_data(output_op);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
     lyd_free_all(input_op);
 
@@ -1119,8 +1124,9 @@ static void
 test_action_change_config(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr1, *subscr2;
-    struct lyd_node *input_op, *output_op, *data;
+    sr_subscription_ctx_t *subscr1 = NULL, *subscr2 = NULL;
+    struct lyd_node *input_op;
+    sr_data_t *output_op, *data;
     int ret;
 
     /* subscribe */
@@ -1136,13 +1142,13 @@ test_action_change_config(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* create the action */
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='val']/cont2/act1",
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, st->ly_ctx, "/ops:cont/list1[k='val']/cont2/act1",
             NULL, 0, 0, 0, NULL, &input_op));
 
     /* send the action */
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
-    lyd_free_all(output_op);
+    sr_release_data(output_op);
 
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1153,12 +1159,12 @@ test_action_change_config(void **state)
     ret = sr_get_data(st->sess, "/ops:cont", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_string_equal(lyd_child(data)->schema->name, "list1");
-    assert_string_equal(lyd_get_value(lyd_child(lyd_child(data))), "val");
-    assert_string_equal(lyd_child(data)->next->schema->name, "list1");
-    assert_string_equal(lyd_get_value(lyd_child(lyd_child(data)->next)), "val2");
-    assert_string_equal(lyd_child(data)->next->next->schema->name, "cont3");
-    lyd_free_all(data);
+    assert_string_equal(lyd_child(data->tree)->schema->name, "list1");
+    assert_string_equal(lyd_get_value(lyd_child(lyd_child(data->tree))), "val");
+    assert_string_equal(lyd_child(data->tree)->next->schema->name, "list1");
+    assert_string_equal(lyd_get_value(lyd_child(lyd_child(data->tree)->next)), "val2");
+    assert_string_equal(lyd_child(data->tree)->next->next->schema->name, "cont3");
+    sr_release_data(data);
 
     sr_unsubscribe(subscr1);
     sr_unsubscribe(subscr2);
@@ -1194,13 +1200,14 @@ static void *
 send_rpc_shelve_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
-    struct lyd_node *input_op, *output_op;
+    struct lyd_node *input_op;
+    sr_data_t *output_op;
     int ret;
 
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
     /* create the RPC */
-    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, sr_get_context(st->conn), "/ops:rpc3/l4", "vall", 0, &input_op));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, st->ly_ctx, "/ops:rpc3/l4", "vall", 0, &input_op));
 
     /* wait for subscription before sending the RPC */
     pthread_barrier_wait(&st->barrier);
@@ -1211,9 +1218,10 @@ send_rpc_shelve_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check output */
-    /* TODO */
+    assert_string_equal(lyd_child(output_op->tree)->schema->name, "l5");
+    assert_string_equal(lyd_get_value(lyd_child(output_op->tree)), "256");
 
-    lyd_free_all(output_op);
+    sr_release_data(output_op);
 
     /* signal that we are done */
     pthread_barrier_wait(&st->barrier);
@@ -1225,7 +1233,7 @@ subscribe_rpc_shelve_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     int count, ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
@@ -1246,7 +1254,7 @@ subscribe_rpc_shelve_thread(void *arg)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /* callback was shelved, process it again */
-    ret = sr_process_events(subscr, NULL, NULL);
+    ret = sr_subscription_process_events(subscr, NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     count = 0;
@@ -1299,8 +1307,9 @@ static void
 test_input_parameters(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
-    struct lyd_node *input_op, *output_op;
+    sr_subscription_ctx_t *subscr = NULL;
+    struct lyd_node *input_op;
+    sr_data_t *output_op;
     int ret;
 
     /* invalid xpath */
@@ -1350,7 +1359,7 @@ test_input_parameters(void **state)
     ly_ctx_destroy(ctx);
 
     /* data tree not a valid RPC or action */
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='key']/cont2", NULL,
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, st->ly_ctx, "/ops:cont/list1[k='key']/cont2", NULL,
             0, 0, 0, NULL, &input_op));
     ret = sr_rpc_send_tree(st->sess, input_op, 0, &output_op);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
@@ -1359,7 +1368,7 @@ test_input_parameters(void **state)
     /* equal priority */
     ret = sr_rpc_subscribe(st->sess, "/ops:rpc1", rpc_dummy_cb, NULL, 5, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe(st->sess, "/ops:rpc1", rpc_dummy_cb, NULL, 5, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc1", rpc_dummy_cb, NULL, 5, 0, &subscr);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
     sr_unsubscribe(subscr);
 }
@@ -1369,8 +1378,9 @@ static void
 test_rpc_action_with_no_thread(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr, *subscr2;
-    struct lyd_node *input_op, *output_op;
+    sr_subscription_ctx_t *subscr = NULL, *subscr2 = NULL;
+    struct lyd_node *input_op;
+    sr_data_t *output_op;
     sr_val_t input, *output;
     size_t output_count;
     int ret;
@@ -1380,7 +1390,7 @@ test_rpc_action_with_no_thread(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_rpc_subscribe(st->sess, "/ops:rpc2", rpc_rpc_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_rpc_subscribe(st->sess, "/ops:rpc3", rpc_rpc_cb, NULL, 0, SR_SUBSCR_NO_THREAD | SR_SUBSCR_CTX_REUSE, &subscr2);
+    ret = sr_rpc_subscribe(st->sess, "/ops:rpc3", rpc_rpc_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some data needed for validation */
@@ -1399,7 +1409,7 @@ test_rpc_action_with_no_thread(void **state)
 
     /* subscribe to the data so they are actually present in operational */
     ret = sr_module_change_subscribe(st->sess, "ops-ref", NULL, module_change_dummy_cb, NULL, 0,
-            SR_SUBSCR_NO_THREAD | SR_SUBSCR_CTX_REUSE, &subscr2);
+            SR_SUBSCR_NO_THREAD, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to send first RPC, should succeed */
@@ -1415,11 +1425,12 @@ test_rpc_action_with_no_thread(void **state)
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
 
     /* process events on rpc subscriptions with the flag is SR_SUBSCR_NO_THREAD */
-    ret = sr_process_events(subscr2, st->sess, 0);
+    ret = sr_subscription_process_events(subscr2, st->sess, NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
     sr_unsubscribe(subscr);
     sr_unsubscribe(subscr2);
+    subscr2 = NULL;
 
     /* action subscribe */
     ret = sr_rpc_subscribe_tree(st->sess, "/ops:cont/list1/cont2/act1", rpc_action_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &subscr2);
@@ -1432,11 +1443,12 @@ test_rpc_action_with_no_thread(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to the data so they are actually present in operational */
-    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0, SR_SUBSCR_NO_THREAD, &subscr2);
+    ret = sr_module_change_subscribe(st->sess, "ops", NULL, module_change_dummy_cb, NULL, 0,
+            SR_SUBSCR_NO_THREAD, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* create first action */
-    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, sr_get_context(st->conn), "/ops:cont/list1[k='key']/cont2/act1",
+    assert_int_equal(LY_SUCCESS, lyd_new_path2(NULL, st->ly_ctx, "/ops:cont/list1[k='key']/cont2/act1",
             NULL, 0, 0, 0, NULL, &input_op));
 
     /* send first action */
@@ -1444,7 +1456,7 @@ test_rpc_action_with_no_thread(void **state)
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
 
     /* process events on action subscriptions when the flag is SR_SUBSCR_NO_THREAD */
-    ret = sr_process_events(subscr2, st->sess, 0);
+    ret = sr_subscription_process_events(subscr2, st->sess, NULL);
     lyd_free_all(input_op);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1497,7 +1509,7 @@ static void
 test_rpc_oper(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
+    sr_subscription_ctx_t *subscr = NULL;
     sr_val_t input, *output;
     size_t output_count;
     int ret;
@@ -1507,7 +1519,7 @@ test_rpc_oper(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* oper subscribe, should not be called */
-    ret = sr_oper_get_items_subscribe(st->sess, "ops", "/ops:cont", oper_rpc_oper_cb, NULL, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_oper_get_subscribe(st->sess, "ops", "/ops:cont", oper_rpc_oper_cb, NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* create and send the RPC */
@@ -1545,6 +1557,6 @@ main(void)
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
-    sr_log_stderr(SR_LL_INF);
+    test_log_init();
     return cmocka_run_group_tests(tests, setup, teardown);
 }

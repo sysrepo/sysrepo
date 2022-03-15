@@ -8,6 +8,10 @@ module test {
         prefix inet;
     }
 
+    import ietf-netconf-acm {
+        prefix nacm;
+    }
+
     leaf test-leaf {
         type uint8;
     }
@@ -83,5 +87,11 @@ module test {
             default 10;
             default 15;
         }
+    }
+
+    rpc r1;
+
+    rpc r2 {
+        nacm:default-deny-all;
     }
 }

@@ -5,7 +5,7 @@ To start working with Sysrepo, a **connection** must be created first. Generally
 only one connection because there should be no reason to create several although it is allowed and Sysrepo will
 work correctly in both cases. Connection stores the main shared memory mapping and a corresponding _libyang_ **context**
 among other things. This context can also be used in the application for learning about Sysrepo schemas or when
-working with data to save some resources but it can never be modified!
+working with data to save some resources but it can never be directly modified!
 
 Then, an arbitrary number of **sessions** can be created. Most importantly, the [threading model](@ref threads)
 needs to be considered. Other than that there are no inherent restrictions in Sysrepo and

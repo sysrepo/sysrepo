@@ -186,8 +186,9 @@ srplyb_log_err_ly(const char *plg_name, const struct ly_ctx *ly_ctx)
 int
 srlyb_open(const char *path, int flags, mode_t mode)
 {
-    mode_t um;
     int fd;
+
+    assert(!(flags & O_CREAT) || mode);
 
     /* O_NOFOLLOW enforces that files are not symlinks -- all opened
      *   files are created by sysrepo so there cannot be any symlinks.
@@ -196,21 +197,23 @@ srlyb_open(const char *path, int flags, mode_t mode)
      */
     flags |= O_NOFOLLOW | O_CLOEXEC;
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK);
+    /* apply umask on mode */
+    mode &= ~SR_UMASK;
 
-    /* open the file */
+    /* open the file, process umask may affect the permissions if creating it */
     fd = open(path, flags, mode);
-
-    /* restore umask (should not modify errno) */
-    umask(um);
-
     if (fd == -1) {
-        /* error */
-        return fd;
+        return -1;
     }
 
-    /* success */
+    if (flags & O_CREAT) {
+        /* set correct permissions */
+        if (fchmod(fd, mode) == -1) {
+            close(fd);
+            return -1;
+        }
+    }
+
     return fd;
 }
 
@@ -218,18 +221,18 @@ int
 srlyb_open_error(const char *plg_name, const char *path)
 {
     FILE *f;
-    char buf[8] = "";
+    char buf[8], *ret = NULL;
 
     SRPLG_LOG_ERR(plg_name, "Opening \"%s\" failed (%s).", path, strerror(errno));
     if ((errno == EACCES) && !geteuid()) {
         /* check kernel parameter value of fs.protected_regular */
         f = fopen("/proc/sys/fs/protected_regular", "r");
         if (f) {
-            fgets(buf, 8, f);
+            ret = fgets(buf, sizeof(buf), f);
             fclose(f);
         }
     }
-    if (buf[0] && (atoi(buf) != 0)) {
+    if (ret && (atoi(buf) != 0)) {
         SRPLG_LOG_ERR(plg_name, "Caused by kernel parameter \"fs.protected_regular\", which must be \"0\" "
                 "(currently \"%d\").", atoi(buf));
     }
@@ -400,7 +403,7 @@ srlyb_chmodown(const char *plg_name, const char *path, const char *owner, const 
 
     assert(path);
 
-    if (perm != (mode_t)(-1)) {
+    if (perm) {
         if (perm > 00777) {
             SRPLG_LOG_ERR(plg_name, "Invalid permissions 0%.3o.", perm);
             return SR_ERR_INVAL_ARG;
@@ -422,23 +425,23 @@ srlyb_chmodown(const char *plg_name, const char *path, const char *owner, const 
 
     /* apply owner changes, if any */
     if (chown(path, uid, gid) == -1) {
+        SRPLG_LOG_ERR(plg_name, "Changing owner of \"%s\" failed (%s).", path, strerror(errno));
         if ((errno == EACCES) || (errno == EPERM)) {
             rc = SR_ERR_UNAUTHORIZED;
         } else {
             rc = SR_ERR_INTERNAL;
         }
-        SRPLG_LOG_ERR(plg_name, "Changing owner of \"%s\" failed (%s).", path, strerror(errno));
         return rc;
     }
 
     /* apply permission changes, if any */
-    if ((perm != (mode_t)(-1)) && (chmod(path, perm) == -1)) {
+    if (perm && (chmod(path, perm) == -1)) {
+        SRPLG_LOG_ERR(plg_name, "Changing permissions (mode) of \"%s\" failed (%s).", path, strerror(errno));
         if ((errno == EACCES) || (errno == EPERM)) {
             rc = SR_ERR_UNAUTHORIZED;
         } else {
             rc = SR_ERR_INTERNAL;
         }
-        SRPLG_LOG_ERR(plg_name, "Changing permissions (mode) of \"%s\" failed (%s).", path, strerror(errno));
         return rc;
     }
 
@@ -446,15 +449,11 @@ srlyb_chmodown(const char *plg_name, const char *path, const char *owner, const 
 }
 
 int
-srlyb_cp_path(const char *plg_name, const char *to, const char *from, mode_t file_mode)
+srlyb_cp_path(const char *plg_name, const char *to, const char *from)
 {
     int rc = SR_ERR_OK, fd_to = -1, fd_from = -1;
     char *out_ptr, buf[4096];
     ssize_t nread, nwritten;
-    mode_t um;
-
-    /* set umask so that the correct permissions are set in case this file does not exist */
-    um = umask(SR_UMASK);
 
     /* open "from" file */
     fd_from = srlyb_open(from, O_RDONLY, 0);
@@ -464,7 +463,7 @@ srlyb_cp_path(const char *plg_name, const char *to, const char *from, mode_t fil
     }
 
     /* open "to" */
-    fd_to = srlyb_open(to, O_WRONLY | O_TRUNC | O_CREAT, file_mode);
+    fd_to = srlyb_open(to, O_WRONLY | O_TRUNC, 0);
     if (fd_to < 0) {
         rc = srlyb_open_error(plg_name, to);
         goto cleanup;
@@ -490,8 +489,6 @@ srlyb_cp_path(const char *plg_name, const char *to, const char *from, mode_t fil
         goto cleanup;
     }
 
-    /* success */
-
 cleanup:
     if (fd_from > -1) {
         close(fd_from);
@@ -499,49 +496,52 @@ cleanup:
     if (fd_to > -1) {
         close(fd_to);
     }
-    umask(um);
     return rc;
 }
 
 int
 srlyb_mkpath(const char *plg_name, char *path, mode_t mode)
 {
-    int rc = SR_ERR_OK;
-    mode_t um;
+    int rc = SR_ERR_OK, r;
     char *p = NULL;
 
     assert(path[0] == '/');
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK);
+    /* apply umask on mode */
+    mode &= ~SR_UMASK;
 
     /* create each directory in the path */
     for (p = strchr(path + 1, '/'); p; p = strchr(p + 1, '/')) {
         *p = '\0';
-        if (mkdir(path, mode) == -1) {
-            if (errno != EEXIST) {
-                SRPLG_LOG_ERR(plg_name, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
-                rc = SR_ERR_SYS;
-                goto cleanup;
-            }
+        if (((r = mkdir(path, mode)) == -1) && (errno != EEXIST)) {
+            SRPLG_LOG_ERR(plg_name, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
+            rc = SR_ERR_SYS;
+            goto cleanup;
+        }
+        if (!r && (chmod(path, mode) == -1)) {
+            SRPLG_LOG_ERR(plg_name, "Changing permissions of directory \"%s\" failed (%s).", path, strerror(errno));
+            rc = SR_ERR_SYS;
+            goto cleanup;
         }
         *p = '/';
     }
 
     /* create the last directory in the path */
-    if (mkdir(path, mode) == -1) {
-        if (errno != EEXIST) {
-            SRPLG_LOG_ERR(plg_name, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
-            rc = SR_ERR_SYS;
-            goto cleanup;
-        }
+    if (((r = mkdir(path, mode)) == -1) && (errno != EEXIST)) {
+        SRPLG_LOG_ERR(plg_name, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
+        rc = SR_ERR_SYS;
+        goto cleanup;
+    }
+    if (!r && (chmod(path, mode) == -1)) {
+        SRPLG_LOG_ERR(plg_name, "Changing permissions of directory \"%s\" failed (%s).", path, strerror(errno));
+        rc = SR_ERR_SYS;
+        goto cleanup;
     }
 
 cleanup:
     if (p) {
         *p = '/';
     }
-    umask(um);
     return rc;
 }
 

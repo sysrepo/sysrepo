@@ -23,6 +23,11 @@ module sysrepo {
     description
         "Sysrepo YANG datastore internal attributes and information.";
 
+    revision "2021-10-08" {
+        description
+            "Removed nodes for scheduling changes.";
+    }
+
     revision "2021-09-07" {
         description
             "Added module datastore plugins, increased replay-support type precision,
@@ -237,52 +242,6 @@ module sysrepo {
                      Otherwise the time the replay support was switched on.";
             }
 
-            choice changed-module {
-                description
-                    "This module is scheduled for a change.";
-                leaf removed {
-                    type empty;
-                    description
-                        "Module was removed.";
-                }
-
-                leaf updated-yang {
-                    type string;
-                    description
-                        "Module was updated with a newer revision. Content is the whole new YANG module.";
-                }
-
-                case feature-changes {
-                    list changed-feature {
-                        key "name";
-                        description
-                            "Module features are scheduled for a change.";
-
-                        leaf name {
-                            type string;
-                            description
-                                "Changed feature name.";
-                        }
-
-                        leaf change {
-                            type enumeration {
-                                enum "enable" {
-                                    description
-                                        "Feature will be enabled.";
-                                }
-                                enum "disable" {
-                                    description
-                                        "Feature will be disabled.";
-                                }
-                            }
-                            mandatory true;
-                            description
-                                "Feature change nature.";
-                        }
-                    }
-                }
-            }
-
             container deps {
                 description
                     "Module data dependencies on other modules.";
@@ -335,27 +294,6 @@ module sysrepo {
                         "Notification dependencies.";
                     uses deps-grp;
                 }
-            }
-        }
-
-        list installed-module {
-            key "name";
-            description
-                "Sysrepo module scheduled to be installed.";
-
-            uses module-info-grp;
-
-            leaf module-yang {
-                type string;
-                mandatory true;
-                description
-                    "Content is the whole new YANG module.";
-            }
-
-            leaf data {
-                type string;
-                description
-                    "Initial startup and running data to be set for the module, in JSON format.";
             }
         }
     }

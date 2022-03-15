@@ -16,6 +16,7 @@
 
 #define _GNU_SOURCE
 
+#include <pthread.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -26,7 +27,7 @@
 #include <libyang/libyang.h>
 
 #include "sysrepo.h"
-#include "tests/config.h"
+#include "tests/test_common.h"
 
 struct state {
     sr_conn_ctx_t *conn1;
@@ -35,37 +36,16 @@ struct state {
     sr_session_ctx_t *sess1;
     sr_session_ctx_t *sess2;
     sr_session_ctx_t *sess3;
+    pthread_barrier_t barrier;
 };
 
 static int
 setup_f(void **state)
 {
     struct state *st;
-    uint32_t conn_count;
 
-    st = malloc(sizeof *st);
-    if (!st) {
-        return 1;
-    }
+    st = calloc(1, sizeof *st);
     *state = st;
-
-    sr_connection_count(&conn_count);
-    assert_int_equal(conn_count, 0);
-
-    if (sr_connect(0, &st->conn1) != SR_ERR_OK) {
-        return 1;
-    }
-
-    if (sr_install_module(st->conn1, TESTS_SRC_DIR "/files/test.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn1, TESTS_SRC_DIR "/files/ietf-interfaces.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn1, TESTS_SRC_DIR "/files/iana-if-type.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    sr_disconnect(st->conn1);
 
     // Connection 1
     if (sr_connect(0, &(st->conn1)) != SR_ERR_OK) {
@@ -91,6 +71,16 @@ setup_f(void **state)
         return 1;
     }
 
+    if (sr_install_module(st->conn1, TESTS_SRC_DIR "/files/test.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
+        return 1;
+    }
+    if (sr_install_module(st->conn1, TESTS_SRC_DIR "/files/ietf-interfaces.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
+        return 1;
+    }
+    if (sr_install_module(st->conn1, TESTS_SRC_DIR "/files/iana-if-type.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
+        return 1;
+    }
+
     return 0;
 }
 
@@ -99,9 +89,9 @@ teardown_f(void **state)
 {
     struct state *st = (struct state *)*state;
 
-    sr_remove_module(st->conn1, "ietf-interfaces");
-    sr_remove_module(st->conn1, "iana-if-type");
-    sr_remove_module(st->conn1, "test");
+    sr_remove_module(st->conn1, "ietf-interfaces", 0);
+    sr_remove_module(st->conn1, "iana-if-type", 0);
+    sr_remove_module(st->conn1, "test", 0);
 
     sr_disconnect(st->conn1);
     sr_disconnect(st->conn2);
@@ -122,39 +112,11 @@ clear_interfaces(void **state)
 }
 
 static void
-test_connection_count(void **state)
-{
-    struct state *st = (struct state *)*state;
-    int ret;
-    uint32_t count = 0;
-
-    ret = sr_connection_count(&count);
-    assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(count, 3);
-
-    sr_disconnect(st->conn2);
-
-    ret = sr_connection_count(&count);
-    assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(count, 2);
-
-    ret = sr_connect(0, &(st->conn2));
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_session_start(st->conn2, SR_DS_RUNNING, &st->sess2);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_connection_count(&count);
-    assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(count, 3);
-}
-
-static void
 test_create1(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *subtree;
+    sr_data_t *subtree;
     char *str;
-    // const char *str2;
     int ret;
 
     /* Create via two connections, retrieve by a third */
@@ -176,8 +138,8 @@ test_create1(void **state)
 
     ret = sr_get_subtree(st->sess3, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    lyd_print_mem(&str, subtree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
-    lyd_free_tree(subtree);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(subtree);
 
     const char *ptr = strstr(str, "ethS1");
 
@@ -190,15 +152,48 @@ test_create1(void **state)
     free(str);
 }
 
+static void *
+new_conn_thread(void *arg)
+{
+    sr_conn_ctx_t *conn;
+
+    (void)arg;
+
+    assert_int_equal(SR_ERR_OK, sr_connect(0, &conn));
+    sr_disconnect(conn);
+
+    return NULL;
+}
+
+static void
+test_new(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const int thread_count = 10;
+    int i;
+    pthread_t tid[thread_count];
+
+    pthread_barrier_init(&st->barrier, NULL, thread_count);
+
+    for (i = 0; i < thread_count; ++i) {
+        pthread_create(&tid[i], NULL, new_conn_thread, NULL);
+    }
+    for (i = 0; i < thread_count; ++i) {
+        pthread_join(tid[i], NULL);
+    }
+
+    pthread_barrier_destroy(&st->barrier);
+}
+
 int
 main(void)
 {
     const struct CMUnitTest tests[] = {
-        cmocka_unit_test(test_connection_count),
         cmocka_unit_test_teardown(test_create1, clear_interfaces),
+        cmocka_unit_test(test_new),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
-    sr_log_stderr(SR_LL_INF);
+    test_log_init();
     return cmocka_run_group_tests(tests, setup_f, teardown_f);
 }

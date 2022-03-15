@@ -60,7 +60,7 @@ typedef struct sr_print_ctx_s {
  * @brief Returns pointer to the string where data of given string type is stored.
  */
 static char **
-sr_val_str_data_ptr(sr_val_t *value, sr_type_t type)
+sr_val_str_data_ptr(sr_val_t *value, sr_val_type_t type)
 {
     switch (type) {
     case SR_BINARY_T:
@@ -224,7 +224,7 @@ sr_val_build_xpath(sr_val_t *value, const char *format, ...)
 }
 
 API int
-sr_val_set_str_data(sr_val_t *value, sr_type_t type, const char *string_val)
+sr_val_set_str_data(sr_val_t *value, sr_val_type_t type, const char *string_val)
 {
     char **str_to_edit = NULL;
 
@@ -238,7 +238,7 @@ sr_val_set_str_data(sr_val_t *value, sr_type_t type, const char *string_val)
 }
 
 static int
-sr_val_build_str_data_va(sr_val_t *value, sr_type_t type, const char *format, va_list args)
+sr_val_build_str_data_va(sr_val_t *value, sr_val_type_t type, const char *format, va_list args)
 {
     char **str_to_edit = NULL;
     int rc = SR_ERR_OK;
@@ -255,7 +255,7 @@ sr_val_build_str_data_va(sr_val_t *value, sr_type_t type, const char *format, va
 }
 
 API int
-sr_val_build_str_data(sr_val_t *value, sr_type_t type, const char *format, ...)
+sr_val_build_str_data(sr_val_t *value, sr_val_type_t type, const char *format, ...)
 {
     va_list arg_list;
     int rc = SR_ERR_OK;

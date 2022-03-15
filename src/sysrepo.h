@@ -116,15 +116,13 @@ void sr_log_set_cb(sr_log_cb log_callback);
  */
 
 /**
- * @brief Connects to the sysrepo datastore. If possible (no other connections exist), also apply
- * any scheduled changes.
+ * @brief Connects to the sysrepo datastore.
  *
  * @note Do not use `fork(2)` after creating a connection. Sysrepo internally stores the connection
  * ID of every connection. Forking will duplicate the connection and ID resulting in a mismatch.
  *
- * @param[in] opts Options overriding default connection handling by this call.
- * @param[out] conn Connection that can be used for subsequent API calls
- * (automatically allocated, it is supposed to be released by the caller using ::sr_disconnect).
+ * @param[in] opts Connection options.
+ * @param[out] conn Created connection.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn);
@@ -137,27 +135,52 @@ int sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn);
  *
  * @note On error the function should be retried and must eventually succeed.
  *
- * @param[in] conn Connection acquired with ::sr_connect call.
+ * @param[in] conn Connection acquired with ::sr_connect call to free.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_disconnect(sr_conn_ctx_t *conn);
 
 /**
- * @brief Learn the current global number of alive connections.
- *
- * @param[out] conn_count Current number of connections.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_connection_count(uint32_t *conn_count);
-
-/**
  * @brief Get the _libyang_ context used by a connection. Can be used in an application for working with data
- * and schemas. Do **NOT** change this context!
+ * and schemas.
+ *
+ * @note This context **must not** be changed. Also, to prevent the context from being destroyed by sysrepo,
+ * it is locked and after no longer needing the context ::sr_release_context() must be called. Otherwise,
+ * API functions changing the context will fail with time out.
  *
  * @param[in] conn Connection to use.
  * @return Const libyang context.
  */
-const struct ly_ctx *sr_get_context(sr_conn_ctx_t *conn);
+const struct ly_ctx *sr_acquire_context(sr_conn_ctx_t *conn);
+
+/**
+ * @brief Get the _libyang_ context used by a connection. Can be used in an application for working with data
+ * and schemas.
+ *
+ * Similar to and interchangeable with ::sr_acquire_context().
+ *
+ * @param[in] session Session whose connection to use.
+ * @return Const libyang context.
+ */
+const struct ly_ctx *sr_session_acquire_context(sr_session_ctx_t *session);
+
+/**
+ * @brief Release _libyang_ context obtained from a session/connection.
+ *
+ * @note Must be called for each ::sr_acquire_context() call.
+ *
+ * @param[in] conn Connection to use.
+ */
+void sr_release_context(sr_conn_ctx_t *conn);
+
+/**
+ * @brief Release _libyang_ context obtained from a session/connection.
+ *
+ * Similar to and interchangeable with ::sr_release_context().
+ *
+ * @param[in] session Session whose connection to use.
+ */
+void sr_session_release_context(sr_session_ctx_t *session);
 
 /**
  * @brief Get content ID of the current YANG module set. It conforms to the requirements for ietf-yang-library
@@ -169,6 +192,16 @@ const struct ly_ctx *sr_get_context(sr_conn_ctx_t *conn);
 uint32_t sr_get_content_id(sr_conn_ctx_t *conn);
 
 /**
+ * @brief Get loaded plugins of a connection.
+ *
+ * @param[in] conn Connection to use.
+ * @param[out] ds_plugins Optional pointer to array of datastore plugins ended by NULL.
+ * @param[out] ntf_plugins Optional pointer to array of notification plugins ended by NULL.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_get_plugins(sr_conn_ctx_t *conn, const char ***ds_plugins, const char ***ntf_plugins);
+
+/**
  * @brief Get the sysrepo SUPERUSER UID.
  *
  * @return Sysrepo SU UID.
@@ -176,21 +209,8 @@ uint32_t sr_get_content_id(sr_conn_ctx_t *conn);
 uid_t sr_get_su_uid(void);
 
 /**
- * @brief Set callback for checking every diff before it is applied on the datastore.
- * The diff is final (only CRUD operations) but without any implicit changes caused
- * by validation. This callback is primarily meant to allow full NACM
- * (NETCONF Access Control) to be performed by a NETCONF server.
- *
- * Required SUPERUSER access.
- *
- * @param[in] conn Connection, whose all sessions diffs will be passed to this callback.
- * @param[in] callback Callback to call for every diff.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_set_diff_check_callback(sr_conn_ctx_t *conn, sr_diff_check_cb callback);
-
-/**
- * @brief Discard stored push operational data owned by this connection.
+ * @brief Discard stored push operational data owned by this connection. Is performed directly on the connection,
+ * ::sr_apply_changes() call is not required.
  *
  * Required WRITE access.
  *
@@ -207,14 +227,10 @@ int sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, cons
 /**
  * @brief Start a new session.
  *
- * @param[in] conn Connection acquired with ::sr_connect call.
- * @param[in] datastore Datastore on which all sysrepo functions within this
- * session will operate. Later on, datastore can be later changed using
- * ::sr_session_switch_ds call. Functionality of some sysrepo calls does not depend on
- * datastore. If your session will contain just calls like these, you can pass
- * any valid value (e.g. ::SR_DS_RUNNING).
- * @param[out] session Session context that can be used for subsequent API
- * calls (automatically allocated, can be released by calling ::sr_session_stop).
+ * @param[in] conn Connection to use.
+ * @param[in] datastore Datastore on which to operate, can be later changed using
+ * ::sr_session_switch_ds().
+ * @param[out] session Created session.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_session_ctx_t **session);
@@ -228,7 +244,7 @@ int sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_ses
  * Subscriptions, even if they no longer handle any events are **never** freed and
  * should be freed manually using ::sr_unsubscribe.
  *
- * @param[in] session Session to use.
+ * @param[in] session Session to free.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_session_stop(sr_session_ctx_t *session);
@@ -291,7 +307,7 @@ int sr_session_set_orig_name(sr_session_ctx_t *session, const char *orig_name);
  * @brief Get event originator name.
  *
  * @param[in] session Implicit session provided in a callback.
- * @return Originator name if set, NULL otherwise.
+ * @return Originator name if set, empty string "" otherwise.
  */
 const char *sr_session_get_orig_name(sr_session_ctx_t *session);
 
@@ -364,6 +380,9 @@ int sr_session_set_error_message(sr_session_ctx_t *session, const char *format, 
  * @brief Set error data format identifier for a failed callback communicated back to the originator.
  * This format name should be used for interpreting the error data set by ::sr_session_push_error_data().
  *
+ * There are some well-known error formats defined and those errors can be written/read using
+ * [helper utility functions](@ref utils_error_format).
+ *
  * @param[in] session Implicit session provided in a callback.
  * @param[in] error_format Arbitrary error format identifier.
  * @return Error code (::SR_ERR_OK on success).
@@ -385,13 +404,16 @@ int sr_session_push_error_data(sr_session_ctx_t *session, uint32_t size, const v
 /**
  * @brief Get a specific chunk of error data.
  *
+ * If the error is a well-known one, it is possible to use [helper utility functions](@ref utils_error_format)
+ * instead of repeatedly calling this function.
+ *
  * @param[in] err Error structure to use.
  * @param[in] idx Index of the error data chunk, starts at 0.
  * @param[out] size Optional size of the error @p data chunk.
  * @param[out] data Pointer to an opaque error data chunk.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_get_error_data(sr_error_info_err_t *err, uint32_t idx, uint32_t *size, const void **data);
+int sr_get_error_data(const sr_error_info_err_t *err, uint32_t idx, uint32_t *size, const void **data);
 
 /**
  * @brief Return the assigned session ID of the sysrepo session.
@@ -450,9 +472,9 @@ sr_conn_ctx_t *sr_session_get_connection(sr_session_ctx_t *session);
 const char *sr_get_repo_path(void);
 
 /**
- * @brief Install a new schema (module) into sysrepo. Deferred until there are no connections!
+ * @brief Install a new schema (module) into sysrepo.
  *
- * For all datastores the internal DS implementation `LYB file` is used.
+ * For all datastores and notifications the default plugins are used.
  *
  * @param[in] conn Connection to use.
  * @param[in] schema_path Path to the new schema. Can have either YANG or YIN extension/format.
@@ -463,45 +485,39 @@ const char *sr_get_repo_path(void);
 int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs, const char **features);
 
 /**
- * @brief Install a new schema (module) into sysrepo. Deferred until there are no connections!
+ * @brief Install a new schema (module) into sysrepo with all the available options.
  *
  * @param[in] conn Connection to use.
  * @param[in] schema_path Path to the new schema. Can have either YANG or YIN extension/format.
  * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
- * @param[in] features Optional array of enabled features ended with NULL.
- * @param[in] module_ds Datastore implementation plugin name for each config datastore.
+ * @param[in] features Optional array of enabled features ended with NULL, all disabled by default.
+ * @param[in] module_ds Datastore implementation plugin name for each config datastore, NULL for defaults.
+ * @param[in] owner Optional initial owner of the module data, process user by default.
+ * @param[in] group Optional initial group of the module data, process group by default.
+ * @param[in] perm Optional initial permissions of the module data, otherwise system defaults are applied.
+ * @param[in] data Optional initial data in @p format to set.
+ * @param[in] data_path Optional path to a data file in @p format to set.
+ * @param[in] format Format of @p data or @p data_path file.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_install_module_custom_ds(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs,
-        const char **features, const sr_module_ds_t *module_ds);
+int sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs, const char **features,
+        const sr_module_ds_t *module_ds, const char *owner, const char *group, mode_t perm, const char *data,
+        const char *data_path, LYD_FORMAT format);
 
 /**
- * @brief Set newly installed module startup and running data. It is necessary in case empty data are not valid
- * for the particular schema (module).
- *
- * @param[in] conn Connection to use.
- * @param[in] module_name Name of the module to set startup data.
- * @param[in] data Data to set. Must be NULL if @p data_path is set.
- * @param[in] data_path Data file with the data to set. Must be NULL if @p data is set.
- * @param[in] format Format of the data/file.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_install_module_data(sr_conn_ctx_t *conn, const char *module_name, const char *data, const char *data_path,
-        LYD_FORMAT format);
-
-/**
- * @brief Remove an installed module from sysrepo. Deferred until there are no connections!
+ * @brief Remove an installed module from sysrepo.
  *
  * Required WRITE access.
  *
  * @param[in] conn Connection to use.
  * @param[in] module_name Name of the module to remove.
+ * @param[in] force If there are other installed modules depending on this one, remove them, too.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_remove_module(sr_conn_ctx_t *conn, const char *module_name);
+int sr_remove_module(sr_conn_ctx_t *conn, const char *module_name, int force);
 
 /**
- * @brief Update an installed schema (module) to a new revision. Deferred until there are no connections!
+ * @brief Update an installed schema (module) to a new revision.
  *
  * Required WRITE access.
  *
@@ -513,25 +529,27 @@ int sr_remove_module(sr_conn_ctx_t *conn, const char *module_name);
 int sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs);
 
 /**
- * @brief Cancel scheduled update of a module.
- *
- * Required WRITE access.
- *
- * @param[in] conn Connection to use.
- * @param[in] module_name Name of the module whose update to cancel.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_cancel_update_module(sr_conn_ctx_t *conn, const char *module_name);
-
-/**
  * @brief Change module replay support.
  *
  * @param[in] conn Connection to use.
  * @param[in] module_name Name of the module to change. NULL to change all the modules.
- * @param[in] replay_support 0 to disabled, non-zero to enable.
+ * @param[in] enable 0 to disable, non-zero to enable.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int replay_support);
+int sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int enable);
+
+/**
+ * @brief Learn replay support of a module.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_name Name of the module to check.
+ * @param[out] earliest_notif Optional timestamp of the earliest stored notification, zeroed if none are stored. Can
+ * be set even if @p enabled is false when replay was enabled in the past.
+ * @param[out] enabled Whether replay support is enabled or disabled.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_get_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, struct timespec *earliest_notif,
+        int *enabled);
 
 /**
  * @brief Change module permissions.
@@ -541,16 +559,11 @@ int sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, i
  * @param[in] mod_ds Affected datastore, ::sr_datastore_t value or ::SR_MOD_DS_NOTIF.
  * @param[in] owner Optional, new owner of the module.
  * @param[in] group Optional, new group of the module.
- * @param[in] perm Optional not -1, new permissions of the module.
+ * @param[in] perm Optional, new permissions of the module.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_set_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds, const char *owner,
         const char *group, mode_t perm);
-
-/**
- * @brief Deprecated, use ::sr_set_module_ds_access() instead.
- */
-int sr_set_module_access(sr_conn_ctx_t *conn, const char *module_name, const char *owner, const char *group, mode_t perm);
 
 /**
  * @brief Learn about module permissions.
@@ -567,11 +580,6 @@ int sr_get_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mo
         mode_t *perm);
 
 /**
- * @brief Deprecated, use ::sr_get_module_ds_access() instead.
- */
-int sr_get_module_access(sr_conn_ctx_t *conn, const char *module_name, char **owner, char **group, mode_t *perm);
-
-/**
  * @brief Check whether the current application has read/write access to a module.
  *
  * @param[in] conn Connection to use.
@@ -584,11 +592,7 @@ int sr_get_module_access(sr_conn_ctx_t *conn, const char *module_name, char **ow
 int sr_check_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds, int *read, int *write);
 
 /**
- * @brief Enable a module feature. Deferred until there are no connections!
- *
- * Note that no recursive if-feature checks are performed meaning the feature may
- * still be effectively disabled in case some of its if-features are disabled.
- * This can be checked using `sysrepoctl -l`.
+ * @brief Enable a module feature.
  *
  * Required WRITE access.
  *
@@ -600,10 +604,7 @@ int sr_check_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int 
 int sr_enable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name);
 
 /**
- * @brief Disable a module feature. Deferred until there are no connections!
- *
- * Note that this may effectively also disable any dependant features.
- * This can be checked using `sysrepoctl -l`.
+ * @brief Disable a module feature.
  *
  * Required WRITE access.
  *
@@ -615,14 +616,15 @@ int sr_enable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const
 int sr_disable_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name);
 
 /**
- * @brief Get internal sysrepo data tree, which holds information about installed modules.
- * These data are from the _sysrepo_ module found in `modules/sysrepo.yang`.
+ * @brief Get internal sysrepo data tree, which holds detailed information about installed modules. It should
+ * not be needed except for some specific use-cases. These data are from the _sysrepo_ module found in
+ * `modules/sysrepo.yang`.
  *
  * @param[in] conn Connection to use.
  * @param[out] sysrepo_data Sysrepo internal data tree.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_get_module_info(sr_conn_ctx_t *conn, struct lyd_node **sysrepo_data);
+int sr_get_module_info(sr_conn_ctx_t *conn, sr_data_t **sysrepo_data);
 
 /** @} schema */
 
@@ -679,6 +681,32 @@ int sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_
         sr_val_t **values, size_t *value_cnt);
 
 /**
+ * @brief Acquire libyang data tree together with its context lock in a SR data structure.
+ *
+ * Before a libyang data tree used in sysrepo can be created, ::sr_acquire_context() must be called
+ * to get the connection context. If the created libyang data tree is then passed to this function,
+ * it will handle the full cleanup of releasing the context and freeing the data.
+ *
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
+ * @param[in] tree libyang data tree, ownership is passed to @p data in all cases.
+ * @param[out] data Created SR data, free with ::sr_release_data().
+ * @return Error code (::SR_ERR_OK on success), even on error @p tree is freed and context released.
+ */
+int sr_session_acquire_data(sr_session_ctx_t *session, struct lyd_node *tree, sr_data_t **data);
+
+/**
+ * @brief Acquire libyang data tree together with its context lock in a SR data structure.
+ *
+ * Similar functionality as ::sr_session_acquire_data().
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] tree libyang data tree, ownership is passed to @p data in all cases.
+ * @param[out] data Created SR data, free with ::sr_release_data().
+ * @return Error code (::SR_ERR_OK on success), even on error @p tree is freed and context released.
+ */
+int sr_acquire_data(sr_conn_ctx_t *conn, struct lyd_node *tree, sr_data_t **data);
+
+/**
  * @brief Retrieve a single subtree whose root node is selected by the provided path.
  * Data are represented as _libyang_ subtrees.
  *
@@ -692,10 +720,10 @@ int sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) selecting the root node of the subtree to be retrieved.
  * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
- * @param[out] subtree Requested subtree, allocated dynamically. NULL if none found.
+ * @param[out] subtree SR data with the requested subtree. NULL if none found.
  * @return Error code (::SR_ERR_OK on success, ::SR_ERR_INVAL_ARG if multiple nodes match the path).
  */
-int sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, struct lyd_node **subtree);
+int sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr_data_t **subtree);
 
 /**
  * @brief Retrieve a tree whose root nodes match the provided XPath.
@@ -718,11 +746,19 @@ int sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout
  * descendant nodes. If a list should be returned, its keys are always returned as well.
  * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
  * @param[in] opts Options overriding default get behaviour.
- * @param[out] data Connected top-level trees with all the requested data, allocated dynamically. NULL if none found.
+ * @param[out] data SR data with connected top-level data trees of all the requested data. NULL if none found.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, uint32_t timeout_ms,
-        const sr_get_oper_options_t opts, struct lyd_node **data);
+        const sr_get_oper_options_t opts, sr_data_t **data);
+
+/**
+ * @brief Release SR data structure, whoch consists of freeing the data tree, releasing the context,
+ * and freeing the structure itself.
+ *
+ * @param[in] data SR data to release and free.
+ */
+void sr_release_data(sr_data_t *data);
 
 /**
  * @brief Free ::sr_val_t structure and all memory allocated within it.
@@ -902,6 +938,13 @@ int sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t tim
 int sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms);
 
 /**
+ * @brief Apply changes made in the current session, while checking NACM.
+ *
+ * For more info, check @ref sr_apply_changes.
+ */
+int sr_nacm_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms);
+
+/**
  * @brief Learn whether there are any prepared non-applied changes in the session.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to check changes in.
@@ -925,13 +968,30 @@ int sr_discard_changes(sr_session_ctx_t *session);
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific - target datastore) to use.
  * @param[in] module_name If specified, limits the replace operation only to this module.
- * @param[in] src_config Source data to replace the datastore. Is ALWAYS spent and cannot be further used by the application!
- * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.ň
+ * @param[in] src_config Source data to replace the datastore in @p session connection _libyang_ context.
+ * Is ALWAYS spent and cannot be further used by the application!
+ * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config,
         uint32_t timeout_ms);
 
+/**
+ * @brief Replace a datastore with the contents of a data tree. If the module is specified, limit
+ * the operation only to the specified module. If it is not specified, the operation is performed on all modules. Also
+ * checks NACM.
+ *
+ * Required WRITE access.
+ *
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific - target datastore) to use.
+ * @param[in] module_name If specified, limits the replace operation only to this module.
+ * @param[in] src_config Source data to replace the datastore in @p session connection _libyang_ context.
+ * Is ALWAYS spent and cannot be further used by the application!
+ * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_nacm_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd_node *src_config,
+        uint32_t timeout_ms);
 /**
  * @brief Replaces a conventional datastore with the contents of
  * another conventional datastore. If the module is specified, limits
@@ -950,6 +1010,25 @@ int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms);
+
+/**
+ * @brief Replaces a conventional datastore with the contents of
+ * another conventional datastore. If the module is specified, limits
+ * the operation only to the specified module. If it is not specified,
+ * the operation is performed on all modules. Also checks NACM.
+ *
+ * @note Note that copying from _candidate_ to _running_ or vice versa causes
+ * the _candidate_ datastore to revert to original behavior of mirroring _running_ datastore (@ref datastores).
+ *
+ * Required WRITE access.
+ *
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific - target datastore) to use.
+ * @param[in] module_name Optional module name that limits the copy operation only to this module.
+ * @param[in] src_datastore Source datastore.
+ * @param[in] timeout_ms Configuration callback timeout in milliseconds. If 0, default is used.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_nacm_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms);
 
 /** @} editdata */
 
@@ -975,9 +1054,10 @@ int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datast
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] module_name Optional name of the module to be locked.
+ * @param[in] timeout_ms Timeout in milliseconds for waiting for the lock(s). If 0, no waiting is performed.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_lock(sr_session_ctx_t *session, const char *module_name);
+int sr_lock(sr_session_ctx_t *session, const char *module_name, uint32_t timeout_ms);
 
 /**
  * @brief Unlocks the data of the specified module or the whole datastore.
@@ -1044,11 +1124,6 @@ int sr_get_event_pipe(sr_subscription_ctx_t *subscription, int *event_pipe);
  */
 int sr_subscription_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session,
         struct timespec *stop_time_in);
-
-/**
- * @brief Deprecated, use ::sr_subscription_process_events() instead.
- */
-int sr_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session, time_t *stop_time_in);
 
 /**
  * @brief Get the subscription ID of the last created subscription.
@@ -1125,7 +1200,7 @@ int sr_subscription_thread_resume(sr_subscription_ctx_t *subscription);
  *
  * @note On error the function should be retried and must eventually succeed.
  *
- * @param[in] subscription Subscription context to use.
+ * @param[in] subscription Subscription context to free.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_unsubscribe(sr_subscription_ctx_t *subscription);
@@ -1155,8 +1230,7 @@ int sr_unsubscribe(sr_subscription_ctx_t *subscription);
  * @param[in] priority Specifies the order in which the callbacks (**within module**) will be called.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
- * @note An existing context may be passed in case that ::SR_SUBSCR_CTX_REUSE option is specified.
+ * @param[in,out] subscription Subscription context, zeroed for first subscription, freed by ::sr_unsubscribe.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
@@ -1297,8 +1371,7 @@ void sr_free_change_iter(sr_change_iter_t *iter);
  * @param[in] priority Specifies the order in which the callbacks (**within RPC/action**) will be called.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
- * @note An existing context may be passed in case that ::SR_SUBSCR_CTX_REUSE option is specified.
+ * @param[in,out] subscription Subscription context, zeroed for first subscription, freed by ::sr_unsubscribe.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callback, void *private_data,
@@ -1316,8 +1389,7 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb cal
  * @param[in] priority Specifies the order in which the callbacks (**within RPC/action**) will be called.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
- * @note An existing context may be passed in case that ::SR_SUBSCR_CTX_REUSE option is specified.
+ * @param[in,out] subscription Subscription context, zeroed for first subscription, freed by ::sr_unsubscribe.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_rpc_subscribe_tree(sr_session_ctx_t *session, const char *xpath, sr_rpc_tree_cb callback,
@@ -1353,12 +1425,12 @@ int sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *inp
  * @note RPC/action must be valid in (is validated against) the [operational datastore](@ref oper_ds) context.
  *
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
- * @param[in] input Input data tree.
+ * @param[in,out] input Input data tree in @p session connection _libyang_ context, is validated.
  * @param[in] timeout_ms RPC/action callback timeout in milliseconds. If 0, default is used.
- * @param[out] output Output data tree. Will be allocated by sysrepo and should be freed by the caller.
+ * @param[out] output SR data with the output data tree.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t timeout_ms, struct lyd_node **output);
+int sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t timeout_ms, sr_data_t **output);
 
 /** @} rpcsubs */
 
@@ -1385,8 +1457,7 @@ int sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
- * @note An existing context may be passed in case that ::SR_SUBSCR_CTX_REUSE option is specified.
+ * @param[in,out] subscription Subscription context, zeroed for first subscription, freed by ::sr_unsubscribe.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath,
@@ -1407,27 +1478,12 @@ int sr_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
- * @note An existing context may be passed in case that ::SR_SUBSCR_CTX_REUSE option is specified.
+ * @param[in,out] subscription Subscription context, zeroed for first subscription, freed by ::sr_unsubscribe.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name, const char *xpath,
         const struct timespec *start_time, const struct timespec *stop_time, sr_event_notif_tree_cb callback,
         void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
-
-/**
- * @brief Deprecated, use ::sr_notif_subscribe() instead.
- */
-int sr_event_notif_subscribe(sr_session_ctx_t *session, const char *module_name, const char *xpath, time_t start_time,
-        time_t stop_time, sr_event_notif_cb callback, void *private_data, sr_subscr_options_t opts,
-        sr_subscription_ctx_t **subscription);
-
-/**
- * @brief Deprecated, use ::sr_notif_subscribe_tree() instead.
- */
-int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_name, const char *xpath,
-        time_t start_time, time_t stop_time, sr_event_notif_tree_cb callback, void *private_data,
-        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /**
  * @brief Send a notification. Data are represented as ::sr_val_t structures. In case there are
@@ -1449,7 +1505,7 @@ int sr_event_notif_subscribe_tree(sr_session_ctx_t *session, const char *module_
  * or just publish the notification without waiting for its processing (asynchronous delivery).
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_event_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t *values, const size_t values_cnt,
+int sr_notif_send(sr_session_ctx_t *session, const char *path, const sr_val_t *values, const size_t values_cnt,
         uint32_t timeout_ms, int wait);
 
 /**
@@ -1462,14 +1518,14 @@ int sr_event_notif_send(sr_session_ctx_t *session, const char *path, const sr_va
  * @note Notification must be valid in (is validated against) the [operational datastore](@ref oper_ds) context.
  *
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
- * @param[in] notif Notification data tree to send.
+ * @param[in,out] notif Notification data tree to send in @p session connection _libyang_ context, is validated.
  * @param[in] timeout_ms Notification callback timeout in milliseconds. If 0, default is used. Relevant only
  * if @p wait is set.
  * @param[in] wait Whether to wait until all (if any) notification callbacks were called (synchronous delivery)
  * or just publish the notification without waiting for its processing (asynchronous delivery).
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_event_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t timeout_ms, int wait);
+int sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t timeout_ms, int wait);
 
 /**
  * @brief Get information about an existing notification subscription.
@@ -1487,12 +1543,6 @@ int sr_notif_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t sub_id, 
         const char **xpath, struct timespec *start_time, struct timespec *stop_time, uint32_t *filtered_out);
 
 /**
- * @brief Deprecated, use ::sr_notif_sub_get_info() instead.
- */
-int sr_event_notif_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char **module_name,
-        const char **xpath, time_t *start_time, time_t *stop_time, uint32_t *filtered_out);
-
-/**
  * @brief Modify an existing notification subscription by changing its XPath filter.
  * Special ::SR_EV_NOTIF_MODIFIED notification is delivered.
  *
@@ -1501,7 +1551,7 @@ int sr_event_notif_sub_get_info(sr_subscription_ctx_t *subscription, uint32_t su
  * @param[in] xpath New XPath filter to use by the subscription.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_event_notif_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char *xpath);
+int sr_notif_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t sub_id, const char *xpath);
 
 /**
  * @brief Modify an existing notification subscription by changing its stop time.
@@ -1513,11 +1563,6 @@ int sr_event_notif_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t sub_id, const struct timespec *stop_time);
-
-/**
- * @brief Deprecated, use ::sr_notif_sub_modify_stop_time() instead.
- */
-int sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t sub_id, time_t stop_time);
 
 /** @} notifsubs */
 
@@ -1547,10 +1592,10 @@ int sr_event_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uin
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
- * @param[in,out] subscription Subscription context that is supposed to be released by ::sr_unsubscribe.
+ * @param[in,out] subscription Subscription context, zeroed for first subscription, freed by ::sr_unsubscribe.
  * @return Error code (::SR_ERR_OK on success).
  */
-int sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_name, const char *path,
+int sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const char *path,
         sr_oper_get_items_cb callback, void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /** @} oper_subs */
@@ -1610,34 +1655,6 @@ int sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_na
  */
 #define SRPLG_LOG_DBG(plg_name, ...) srplg_log(plg_name, SR_LL_DBG, __VA_ARGS__)
 
-/**
- * @brief Deprecated, use ::SRPLG_LOG_ERR.
- *
- * @param[in] ... Format string and arguments.
- */
-#define SRP_LOG_ERR(...) srp_log(SR_LL_ERR, __VA_ARGS__)
-
-/**
- * @brief Deprecated, use ::SRPLG_LOG_WRN.
- *
- * @param[in] ... Format string and arguments.
- */
-#define SRP_LOG_WRN(...) srp_log(SR_LL_WRN, __VA_ARGS__)
-
-/**
- * @brief Deprecated, use ::SRPLG_LOG_INF.
- *
- * @param[in] ... Format string and arguments.
- */
-#define SRP_LOG_INF(...) srp_log(SR_LL_INF, __VA_ARGS__)
-
-/**
- * @brief Deprecated, use ::SRPLG_LOG_DBG.
- *
- * @param[in] ... Format string and arguments.
- */
-#define SRP_LOG_DBG(...) srp_log(SR_LL_DBG, __VA_ARGS__)
-
 /** @} plugin */
 
 /**
@@ -1650,16 +1667,6 @@ int sr_oper_get_items_subscribe(sr_session_ctx_t *session, const char *module_na
  * @param[in] ... Format arguments.
  */
 void srplg_log(const char *plg_name, sr_log_level_t ll, const char *format, ...);
-
-/**
- * @internal
- * @brief Deprecated.
- *
- * @param[in] ll Log level (severity).
- * @param[in] format Message format.
- * @param[in] ... Format arguments.
- */
-void srp_log(sr_log_level_t ll, const char *format, ...);
 
 #ifdef __cplusplus
 }

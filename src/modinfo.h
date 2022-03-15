@@ -74,7 +74,7 @@ sr_error_info_t *sr_modinfo_add(const struct lys_module *ly_mod, const char *xpa
         struct sr_mod_info_s *mod_info);
 
 /**
- * @brief Add all modules defining some data into mod_info_add.
+ * @brief Add all modules defining some data into mod info.
  *
  * @param[in] ly_ctx libyang context with all the modules.
  * @param[in] state_data Whether to add modules with state data only or not.
@@ -82,6 +82,37 @@ sr_error_info_t *sr_modinfo_add(const struct lys_module *ly_mod, const char *xpa
  */
 sr_error_info_t *sr_modinfo_add_all_modules_with_data(const struct ly_ctx *ly_ctx, int state_data,
         struct sr_mod_info_s *mod_info);
+
+/**
+ * @brief Collect required modules found in an edit in mod info.
+ *
+ * @param[in] edit Edit to be applied.
+ * @param[in,out] mod_info Mod info to add to.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_modinfo_collect_edit(const struct lyd_node *edit, struct sr_mod_info_s *mod_info);
+
+/**
+ * @brief Collect required modules for evaluating XPath and getting selected data in mod info.
+ *
+ * @param[in] ly_ctx libyang context.
+ * @param[in] xpath XPath to be evaluated.
+ * @param[in] ds Target datastore where the @p xpath will be evaluated.
+ * @param[in] store_xpath Whether to store @p xpath as module xpath (filtering required data).
+ * @param[in,out] mod_info Mod info to add to.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds,
+        int store_xpath, struct sr_mod_info_s *mod_info);
+
+/**
+ * @brief Collect required modules of (MOD_INFO_REQ & MOD_INFO_CHANGED) | MOD_INFO_INV_DEP modules in mod info.
+ * Other modules will not be validated.
+ *
+ * @param[in,out] mod_info Mod info with the modules and data.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_modinfo_collect_deps(struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Check permissions of all the modules in a mod info.
@@ -184,11 +215,12 @@ sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache,
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
  * @param[in] timeout_ms Timeout for operational callbacks.
+ * @param[in] ds_lock_timeout_ms Timeout in ms for DS-lock in case it is required and locked, if 0 no waiting is performed.
  * @param[in] get_opts Get operational data options, ignored if getting only ::SR_DS_OPERATIONAL data (edit).
  */
 sr_error_info_t *sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mode_t mod_lock,
         int mi_opts, uint32_t sid, const char *orig_name, const void *orig_data, uint32_t timeout_ms,
-        sr_get_oper_options_t get_opts);
+        uint32_t ds_lock_timeout_ms, sr_get_oper_options_t get_opts);
 
 /**
  * @brief Validate data for modules in mod info.
@@ -229,7 +261,7 @@ sr_error_info_t *sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct l
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session,
-        struct ly_set **result);
+        struct ly_set **result, int *dup);
 
 /**
  * @brief Generate a netconf-config-change notification based on changes in mod info.

@@ -34,8 +34,12 @@ Change verbosity to a level. \fILEVEL\fP can be a string or a number:
 .TP
 .BR "\-d\fR,\fP \-\^\-debug"
 Debug mode - is not daemonized and logs to stderr instead of syslog.
+.TP
+.BR "\-P\fR,\fP \-\^\-plugin\-install \fIPATH\fP"
+Install a sysrepo-plugind plugin. The plugin is simply copied
+to the designated plugin directory.
 .LP
-Environment variable $SRPD_PLUGINS_PATH overwrites the default plugins path.
+Environment variable $SRPD_PLUGINS_PATH overwrites the default plugins directory.
 .
 .SH SEE ALSO
 https://sysrepo.org (sysrepo home page)

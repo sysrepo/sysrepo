@@ -46,7 +46,7 @@ typedef enum {
     SR_LOCK_WRITE               /**< Write lock. */
 } sr_lock_mode_t;
 
-/** maximum number of possible system-wide concurrent owners of a read lock */
+/** maximum number of system-wide concurrent connection owners of a read lock */
 #define SR_RWLOCK_READ_LIMIT 10
 
 /**
@@ -58,6 +58,7 @@ typedef struct {
 
     pthread_mutex_t r_mutex;        /**< Mutex for accessing readers, needed because of concurrent reading. */
     sr_cid_t readers[SR_RWLOCK_READ_LIMIT]; /**< CIDs of all READ lock owners (including READ-UPGR), 0s otherwise. */
+    uint8_t read_count[SR_RWLOCK_READ_LIMIT];   /**< Number of recursive read locks of the connection in readers. */
     sr_cid_t upgr;                  /**< CID of the READ-UPGR lock owner if locked, 0 otherwise. */
     sr_cid_t writer;                /**< CID of the WRITE lock owner if locked, 0 otherwise. */
 } sr_rwlock_t;
@@ -89,18 +90,20 @@ typedef enum {
  */
 struct sr_conn_ctx_s {
     struct ly_ctx *ly_ctx;          /**< Libyang context, also available to user. */
+    uint32_t content_id;            /**< Connection context content id. */
     sr_conn_options_t opts;         /**< Connection options. */
-    sr_diff_check_cb diff_check_cb; /**< Connection user diff check callback. */
 
     pthread_mutex_t ptr_lock;       /**< Session-shared lock for accessing pointers to sessions. */
     sr_session_ctx_t **sessions;    /**< Array of sessions for this connection. */
     uint32_t session_count;         /**< Session count. */
     sr_cid_t cid;                   /**< Globally unique connection ID */
 
-    int main_create_lock;           /**< Process-shared file lock for creating main/ext SHM. */
-    sr_rwlock_t ext_remap_lock;     /**< Session-shared lock only for remapping ext SHM. */
+    int create_lock;                /**< Process-shared file lock for creating main/mod/ext SHM. */
     sr_shm_t main_shm;              /**< Main SHM structure. */
-    sr_shm_t ext_shm;               /**< External SHM structure (all stored offsets point here). */
+    sr_rwlock_t mod_remap_lock;     /**< Session-shared lock only for remapping mod SHM. */
+    sr_shm_t mod_shm;               /**< Mod SHM structure. */
+    sr_rwlock_t ext_remap_lock;     /**< Session-shared lock only for remapping ext SHM. */
+    sr_shm_t ext_shm;               /**< External SHM structure. */
 
     struct sr_ds_handle_s {
         void *dl_handle;            /**< Handle from dlopen(3) call. */
@@ -134,6 +137,7 @@ struct sr_session_ctx_s {
     sr_datastore_t ds;              /**< Datastore of the session. */
     uint32_t sid;                   /**< Session ID. */
     char *user;                     /**< Session (system) user. */
+    char *nacm_user;                /**< Optional NACM user. If set, NACM is applied. */
     sr_error_info_t *err_info;      /**< Session error information. */
 
     char *orig_name;                /**< Originator name used for all events sent on this session. */
@@ -155,7 +159,7 @@ struct sr_session_ctx_s {
     uint32_t subscription_count;    /**< Subscription count. */
 
     struct {
-        struct lyd_node *edit;      /**< Prepared edit data tree. */
+        sr_data_t *edit;            /**< Prepared edit data tree. */
         struct lyd_node *diff;      /**< Diff data tree, used for module change iterator. */
     } dt[SR_DS_COUNT];              /**< Session-exclusive prepared changes. */
 

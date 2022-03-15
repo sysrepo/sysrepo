@@ -23,8 +23,26 @@
 #include "common_types.h"
 #include "sysrepo_types.h"
 
+#define SR_SHM_VER 9    /**< Main, mod, and ext SHM version of their expected content structures. */
+#define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
+
 /**
- * @brief Main SHM dependency type.
+ * Main SHM organization
+ *
+ * Except for main, mod, and ext SHM there are individual SHM segments for subscriptions and
+ * running data files.
+ */
+
+/** Whether an event is one to be processed by the listeners (subscribers). */
+#define SR_IS_LISTEN_EVENT(ev) ((ev == SR_SUB_EV_UPDATE) || (ev == SR_SUB_EV_CHANGE) || (ev == SR_SUB_EV_DONE) \
+        || (ev == SR_SUB_EV_ABORT) || (ev == SR_SUB_EV_OPER) || (ev == SR_SUB_EV_RPC) \
+        || (ev == SR_SUB_EV_NOTIF))
+
+/** Whether an event is one to be processed by the originators. */
+#define SR_IS_NOTIFY_EVENT(ev) ((ev == SR_SUB_EV_SUCCESS) || (ev == SR_SUB_EV_ERROR))
+
+/**
+ * @brief Mod SHM dependency type.
  */
 typedef enum {
     SR_DEP_LREF,    /**< Leafref. */
@@ -33,36 +51,36 @@ typedef enum {
 } sr_dep_type_t;
 
 /**
- * @brief Main SHM module dependency.
+ * @brief Mod SHM module dependency.
  */
 typedef struct {
     sr_dep_type_t type;                 /**< Dependency type. */
     union {
         struct {
-            off_t target_path;          /**< Leafref target (offset in main SHM). */
-            off_t target_module;        /**< Leafref target module name (offset in main SHM). */
+            off_t target_path;          /**< Leafref target (offset in mod SHM). */
+            off_t target_module;        /**< Leafref target module name (offset in mod SHM). */
         } lref;                         /**< Leafref dependency. */
         struct {
-            off_t source_path;          /**< Instance-identifier source path (offset in main SHM). */
-            off_t default_target_path;  /**< Instance-identifier default value, if any (offset in main SHM). */
+            off_t source_path;          /**< Instance-identifier source path (offset in mod SHM). */
+            off_t default_target_path;  /**< Instance-identifier default value, if any (offset in mod SHM). */
         } instid;                       /**< Instance-identifier dependency. */
         struct {
-            off_t expr;                 /**< XPath expression (offset in main SHM). */
-            off_t target_modules;       /**< Dependant module names of XPath, if any (offset in main SHM). */
+            off_t expr;                 /**< XPath expression (offset in mod SHM). */
+            off_t target_modules;       /**< Dependant module names of XPath, if any (offset in mod SHM). */
             uint16_t target_mod_count;  /**< Dependant module name count. */
         } xpath;                        /**< XPath (must or when) dependency. */
     };
 } sr_dep_t;
 
 /**
- * @brief Main SHM RPC/action.
+ * @brief Mod SHM RPC/action.
  */
 typedef struct {
-    off_t path;                 /**< Path of the RPC/action (offset in main SHM). */
+    off_t path;                 /**< Path of the RPC/action (offset in mod SHM). */
 
-    off_t in_deps;              /**< Input operation dependencies (offset in main SHM). */
+    off_t in_deps;              /**< Input operation dependencies (offset in mod SHM). */
     uint16_t in_dep_count;      /**< Input dependency count. */
-    off_t out_deps;             /**< Output operation dependencies (offset in main SHM). */
+    off_t out_deps;             /**< Output operation dependencies (offset in mod SHM). */
     uint16_t out_dep_count;     /**< Output dependency count. */
 
     sr_rwlock_t lock;           /**< Process-shared lock for reading or preventing changes (READ) or modifying (WRITE)
@@ -72,17 +90,17 @@ typedef struct {
 } sr_rpc_t;
 
 /**
- * @brief Main SHM notification.
+ * @brief Mod SHM notification.
  */
 typedef struct {
-    off_t path;                 /**< Path of the notification (offset in main SHM). */
+    off_t path;                 /**< Path of the notification (offset in mod SHM). */
 
-    off_t deps;                 /**< Array of dependencies of the notification (offset in main SHM). */
+    off_t deps;                 /**< Array of dependencies of the notification (offset in mod SHM). */
     uint16_t dep_count;         /**< Number of dependencies. */
 } sr_notif_t;
 
 /**
- * @brief Main SHM module.
+ * @brief Mod SHM module.
  */
 typedef struct {
     struct sr_mod_lock_s {
@@ -96,21 +114,21 @@ typedef struct {
     sr_rwlock_t replay_lock;    /**< Process-shared lock for accessing stored notifications for replay. */
     uint32_t ver;               /**< Module data version (non-zero). */
 
-    off_t name;                 /**< Module name (offset in main SHM). */
+    off_t name;                 /**< Module name (offset in mod SHM). */
     char rev[11];               /**< Module revision. */
-    ATOMIC_T replay_supp;       /**< Whether module supports replay. */
-    off_t plugins[SR_MOD_DS_PLUGIN_COUNT];  /**< Module plugin names (offsets in main SHM). */
+    int replay_supp;            /**< Whether module supports replay. */
+    off_t plugins[SR_MOD_DS_PLUGIN_COUNT];  /**< Module plugin names (offsets in mod SHM). */
 
-    off_t features;             /**< Array of enabled features (off_t *) (offset in main SHM). */
+    off_t features;             /**< Array of enabled features (off_t *) (offset in mod SHM). */
     uint16_t feat_count;        /**< Number of enabled features. */
-    off_t rpcs;                 /**< Array of RPCs/actions of the module (offset in main SHM). */
+    off_t rpcs;                 /**< Array of RPCs/actions of the module (offset in mod SHM). */
     uint16_t rpc_count;         /**< Number of RPCs/actions. */
-    off_t notifs;               /**< Array of notifications of the module (offset in main SHM). */
+    off_t notifs;               /**< Array of notifications of the module (offset in mod SHM). */
     uint16_t notif_count;       /**< Number of notifications. */
 
-    off_t deps;                 /**< Array of module data dependencies (offset in main SHM). */
+    off_t deps;                 /**< Array of module data dependencies (offset in mod SHM). */
     uint16_t dep_count;         /**< Number of module data dependencies. */
-    off_t inv_deps;             /**< Array of inverse module data dependencies (off_t *) (offset in main SHM). */
+    off_t inv_deps;             /**< Array of inverse module data dependencies (off_t *) (offset in mod SHM). */
     uint16_t inv_dep_count;     /**< Number of inverse module data dependencies. */
 
     struct {
@@ -132,14 +150,24 @@ typedef struct {
 } sr_mod_t;
 
 /**
- * @brief Main SHM.
+ * @brief Mod SHM structure
+ */
+typedef struct {
+    uint32_t mod_count;         /**< Number of installed modules stored after this structure. */
+} sr_mod_shm_t;
+
+/**
+ * @brief Main SHM structure.
  */
 typedef struct {
     uint32_t shm_ver;           /**< Main and ext SHM version of all expected data stored in them. Is increased with
                                      every change of their structure content (ABI change). */
-    pthread_mutex_t lydmods_lock; /**< Process-shared lock for accessing sysrepo module data. */
     pthread_mutex_t ext_lock;   /**< Process-shared lock for accessing holes and truncating ext SHM. */
-    uint32_t mod_count;         /**< Number of installed modules stored after this structure. */
+
+    sr_rwlock_t context_lock;   /**< Process-shared lock for accessing connection LY context, lydmods data,
+                                     and SHM mod modules. */
+    pthread_mutex_t lydmods_lock;   /**< Process-shared lock for modifying SR internal module data. */
+    uint32_t content_id;        /**< Context content ID of the latest context. */
 
     ATOMIC_T new_sr_cid;        /**< Connection ID for a new connection. */
     ATOMIC_T new_sr_sid;        /**< SID for a new session. */
@@ -187,6 +215,7 @@ typedef struct {
  * @brief Ext SHM notification subscription.
  */
 typedef struct {
+    off_t xpath;                /**< XPath of the subscription (offset in ext SHM). */
     uint32_t sub_id;            /**< Unique subscription ID. */
     uint32_t evpipe_num;        /**< Event pipe number. */
     ATOMIC_T suspended;         /**< Whether the subscription is suspended. */
@@ -220,6 +249,59 @@ typedef struct {
     uint32_t size;
     uint32_t next_hole_off;
 } sr_ext_hole_t;
+
+/*
+ * change data subscription SHM (multi)
+ *
+ * data SHM contents
+ *
+ * FOR SUBSCRIBERS:
+ * event SR_SUB_EV_UPDATE, SR_SUB_EV_CHANGE, SR_SUB_EV_DONE, SR_SUB_EV_ABORT - char *user; char *diff_lyb - diff tree
+ *
+ * FOR ORIGINATOR (when subscriber_count is 0):
+ * event SR_SUB_EV_SUCCESS - char *edit_lyb
+ * event SR_SUB_EV_ERROR - char *error_message; char *error_xpath
+ */
+
+/*
+ * notification subscription SHM (multi)
+ *
+ * data SHM contents
+ *
+ * FOR SUBSCRIBERS
+ * followed by:
+ * event SR_SUB_EV_NOTIF - char *user; time_t notif_timestamp; char *notif_lyb - notification
+ */
+
+/*
+ * operational subscription SHM (generic)
+ *
+ * data SHM contents
+ *
+ * FOR SUBSCRIBER
+ * followed by:
+ * event SR_SUB_EV_OPER - char *user; char *request_xpath; char *parent_lyb - existing data tree parent
+ *
+ * FOR ORIGINATOR
+ * followed by:
+ * event SR_SUB_EV_SUCCESS - char *data_lyb - parent with state data connected
+ * event SR_SUB_EV_ERROR - char *error_message; char *error_xpath
+ */
+
+/*
+ * RPC subscription SHM (generic)
+ *
+ * data SHM contents
+ *
+ * FOR SUBSCRIBER
+ * followed by:
+ * event SR_SUB_EV_RPC - char *user; char *input_lyb - RPC/action with input
+ *
+ * FOR ORIGINATOR
+ * followed by:
+ * event SR_SUB_EV_SUCCESS - char *data_lyb - RPC/action with output
+ * event SR_SUB_EV_ERROR - char *error_message; char *error_xpath
+ */
 
 /**
  * @brief Generic (single-subscriber) subscription SHM structure.

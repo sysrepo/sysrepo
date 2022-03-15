@@ -23,12 +23,10 @@ This means that when only stable official releases are to be used, either `maste
 If all the latest bugfixes should be applied, `devel` branch is the  one to be used. Note that whenever **a new issue is created**
 and it occurs on the `master` branch, the **first response will likely be** to use `devel` before any further provided support.
 
-## Migration from Sysrepo version 0.7.x or older
+## Compatibility Between Versions
 
-This Sysrepo is a complete rewrite of these older versions. Latest version of the `0.7` version is found in the `legacy` branch.
-We tried to keep the API as similar as possible but there were some smaller or even bigger changes (mostly for the sake
-of efficiency). All these changes should be mentioned in `CHANGES` text file. It is also best to look at least briefly
-at the documentation where you will find information about major design changes (most importantly, no `sysrepod`).
+When upgrading Sysrepo to a newer major SO version, look into the `compatibility` directory for a summary of changes.
+Each directory describes the changes between the specific SO versions. Be aware that they do not match project versions.
 
 ## Provided Features
 
@@ -138,6 +136,15 @@ Set `systemd` system service unit path:
 -DSYSTEMD_UNIT_DIR=/usr/lib/systemd/system
 ```
 
+Set [NACM](#NACM) recovery username with unrestricted access:
+```
+-DNACM_RECOVERY_USER=root
+```
+
+Set [NACM](#NACM) configuration data default permissions:
+```
+-DNACM_DATA_PERM=000
+```
 ### Useful CMake Build Options
 
 #### Changing Compiler
@@ -208,6 +215,17 @@ It is possible to change the repository path by setting `SYSREPO_REPOSITORY_PATH
 Also, if `SYSREPO_SHM_PREFIX` is defined, it is used for all SHM files created. This way
 everal *sysrepo* instances can effectively be run simultanously on one machine.
 
+## NACM
+
+NETCONF Access Control Module with configuration data in *ietf-netconf-acm* YANG module is implemented
+as part of *sysrepo*. However, its use is completely optional and needs a separate header to be included:
+```C
+#include <sysrepo/netconf_acm.h>
+```
+
+By default, no users other than the recovery user (default `root`) will be allowed to *write* any data but
+should be granted *read* and *execute* permissions unless the access was modified by a NACM extension.
+
 ## Examples
 
 See [examples](examples) directory, which contains an example for basic API functions.
@@ -218,6 +236,7 @@ There are no bindings for other languages directly in this project but they are
 available separately.
 
 * [Python](https://github.com/sysrepo/sysrepo-python/)
+* [C++](https://github.com/sysrepo/sysrepo-cpp/)
 
 ## Tests
 

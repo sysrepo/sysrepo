@@ -9,7 +9,7 @@ If this is not desired, it is possible to handle events on a subscription withou
 the flag ::SR_SUBSCR_NO_THREAD needs to be used so that the thread is not created. Be careful, if you use it,
 the subscription exists and events can occur but they are not being handled so they can time out, for example, unless
 processed manually. That can be achieved by a function that processes all pending events on a subscription.
-::sr_process_events() can either be called periodically or only when there are actual events. This can be learnt by
+::sr_subscription_process_events() can either be called periodically or only when there are actual events. This can be learnt by
 the [subscription event pipe](@ref ::sr_get_event_pipe) being ready for reading.
 
 To safely destroy a subscription managed by a custom loop, there are specific steps needed. First, ::sr_unsubscribe_sub()
@@ -44,10 +44,9 @@ There is one special event _update_ that is generated only for subscriptions tha
 any of the other ones mentioned before because it allows to further modify the data changes that are being handled.
 Callback with this event can fail and cause the changes to be immediately refused.
 
-Also, a subscription can request _enabled_ event on ::SR_DS_RUNNING datastore and get
-the current configuration at the time of subscribing. This event is normally followed by _done_ event, just like
-_change_ event. However, _enabled_ event is generated even if the current configuration is empty (so there will be no
-changes available in the callback)!
+Also, a subscription can request the _enabled_ event and get the current datastore configuration at the time of
+subscribing. This event is normally followed by _done_ event, just like the _change_ event. However, the _enabled_
+event is generated even if the current configuration is empty (so there will be no changes available in the callback)!
 
 When subscribing to _operational_ datastore changes, only [push](@ref oper_data) changes are acknowledged and callbacks
 called. Pull subscriptions are ignored.
@@ -57,7 +56,7 @@ the event not to be processed and simply skipped (shelved). When all the events 
 next time, this subscription callback with the same event is called again. This special return value can be returned
 several times but be careful for the timeout not to elapse! Typically, this whole mechanism is used only when the events
 are handled by the application, not by a Sysrepo thread (::SR_SUBSCR_NO_THREAD). Otherwise the application does not have
-full control over calling the event processing function ::sr_process_events() (strictly speaking, it can be called
+full control over calling the event processing function ::sr_subscription_process_events() (strictly speaking, it can be called
 directly even if Sysrepo thread is handling this subscription, but there is likely no use-case).
 
 For each of these events, the changes are retrieved using an iterator, which can be created several times
@@ -106,6 +105,12 @@ to read the current state of a device, for example, and then return them as _sta
 they can also be used to provide _configuration_ data nodes. In that case they should return only the
 configuration that is actually in-use by the managed device. Much more details and explanations can be found
 in the [NMDA RFC](@ref rfcs).
+
+Any operational subscription is meant to provide all nodes in the subtree it is subscribed for. All the previous nodes
+(copied from _running_ datastore, provided by [push operational data](@ref oper_data), or even by previous operational
+subscription) are replaced by the new ones provided. This behavior can be changed and the previous nodes merged if
+::SR_SUBSCR_OPER_MERGE option is used for the subscription. That can be useful, for example, for a scenario such as
+providing some state data nodes into a subtree with configuration nodes as well, which are desired to be kept.
 
 When using these [pull operational data](@ref oper_data) subscriptions, the subscription must be **actively handling events**
 whenever **operational datastore data of the module are requested** (so these 2 operations cannot occur in a single thread,

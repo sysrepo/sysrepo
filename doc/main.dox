@@ -15,7 +15,7 @@ a stand-alone daemon that will translate Sysrepo calls to actions specific for t
 This __indirect approach__ is usually simpler to employ for existing applications because then they
 do not need to be changed themselves to utilize Sysrepo datastore at the cost of having an additional
 intermediary process (daemon). If there are several such daemons, they can be written as
-[plugins](@ref sysrepo_plugind) and then all managed by one process.
+[plugins](@ref bins) and then all managed by one process.
 
 ![Sysrepo application approaches](sr_apps.png)
 
@@ -133,9 +133,12 @@ This method is suitable for data that change often such as some counters or stat
 As for the second push method, its main principle is that the state data need to be set only when they change. Otherwise
 they are stored and reused whenever needed without any interaction with the provider client. These data are
 [set normally](@ref edit_data) but they are owned by the client and only _merge_, _remove_, and _ether_ operations
-are supported. As soon as the client [disconnects](@ref conn_sess), the
-data are considered to no longer be in-use and are discarded. This method is suitable for data that do not change
-often or not at all such as network interface state or basic information about the system.
+are supported. Note that these data are stored directly as an edit that is being applied on the base subscribed
+_running_ data as needed. Incompatible edit changes replace one another such as adding a node and then removing the
+same node. To discard some stored push changes, use a specific [function](@ref ::sr_discard_oper_changes). As soon as
+the client [disconnects](@ref conn_sess), the data are considered to no longer be in-use and are discarded. This method
+is suitable for data that do not change often or not at all such as network interface state or basic information about
+the system.
 
 These methods can be combined and provided data can overlap. Later push data overwrite older stored push data and
 pull data always overwrite push data. There is an example `oper_pull_push_example` illustrating providing the same data
@@ -159,8 +162,8 @@ Every subscription can then be handled in various ways. It can be fully managed 
 a separate thread that will wait for events on the subscription and process them. But, if your application has a custom
 event loop, for example, it can [retrieve a file descriptor](@ref ::sr_get_event_pipe) of a subscription that can be
 used in `poll(2)` or `select(2)` and use it to check for new events. Then, a handler function should be called that
-will [process all pending events](@ref ::sr_process_events) on the subscription. Alternatively, this handler can also
-be called periodically without any checking for new events.
+will [process all pending events](@ref ::sr_subscription_process_events) on the subscription. Alternatively, this
+handler can also be called periodically without any checking for new events.
 
 # Recovery
 @anchor recovery
@@ -193,7 +196,7 @@ outlined below. Note that there is often additional information about what is ex
 parameter.
 
 __XPath__ accepts any expression that _libyang_ does. But _libyang_ uses [JSON](https://tools.ietf.org/html/rfc7951)
-module prefixes instead of XML prefixes of the module namespaces, which means that simply module names have to be used.
+module prefixes instead of XML prefixes of the module namespaces, which simply means that module names have to be used.
 
 __Path__ is similar to _XPath_ defined above with some restrictions. It follows the JSON [instance-identifier](https://tools.ietf.org/html/rfc7951#section-6.11) format meaning modules are strictly inherited from parents unless explicitly specified.
 Additionally, it is possible to use predicates to restrict nodes and wildcards can be used instead of node

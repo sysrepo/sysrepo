@@ -28,7 +28,7 @@
 #include <libyang/libyang.h>
 
 #include "sysrepo.h"
-#include "tests/config.h"
+#include "tests/test_common.h"
 
 struct state {
     sr_conn_ctx_t *conn;
@@ -39,18 +39,11 @@ static int
 setup(void **state, int cached)
 {
     struct state *st;
-    uint32_t conn_count;
 
-    st = malloc(sizeof *st);
-    if (!st) {
-        return 1;
-    }
+    st = calloc(1, sizeof *st);
     *state = st;
 
-    sr_connection_count(&conn_count);
-    assert_int_equal(conn_count, 0);
-
-    if (sr_connect(0, &st->conn) != SR_ERR_OK) {
+    if (sr_connect(cached ? SR_CONN_CACHE_RUNNING : 0, &st->conn) != SR_ERR_OK) {
         return 1;
     }
 
@@ -61,11 +54,6 @@ setup(void **state, int cached)
         return 1;
     }
     if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/defaults.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    sr_disconnect(st->conn);
-
-    if (sr_connect(cached ? SR_CONN_CACHE_RUNNING : 0, &(st->conn)) != SR_ERR_OK) {
         return 1;
     }
 
@@ -93,9 +81,9 @@ teardown_f(void **state)
 {
     struct state *st = (struct state *)*state;
 
-    sr_remove_module(st->conn, "simple");
-    sr_remove_module(st->conn, "simple-aug");
-    sr_remove_module(st->conn, "defaults");
+    sr_remove_module(st->conn, "simple-aug", 0);
+    sr_remove_module(st->conn, "simple", 0);
+    sr_remove_module(st->conn, "defaults", 0);
 
     sr_disconnect(st->conn);
     free(st);
@@ -107,7 +95,7 @@ static void
 test_invalid(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *data;
+    sr_data_t *data;
     int ret;
 
     /* invalid xpath */
@@ -120,7 +108,7 @@ static void
 test_cached_datastore(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *data;
+    sr_data_t *data;
     int ret;
 
     /* try to get RUNNING data */
@@ -128,7 +116,7 @@ test_cached_datastore(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_non_null(data);
-    lyd_free_all(data);
+    sr_release_data(data);
 
     /* try to get STARTUP data */
     ret = sr_session_switch_ds(st->sess, SR_DS_STARTUP);
@@ -137,7 +125,7 @@ test_cached_datastore(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_non_null(data);
-    lyd_free_all(data);
+    sr_release_data(data);
 
     /* try to get CANDIDATE data */
     ret = sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
@@ -146,7 +134,7 @@ test_cached_datastore(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_non_null(data);
-    lyd_free_all(data);
+    sr_release_data(data);
 
     /* try to get OPERATIONAL data */
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
@@ -155,7 +143,7 @@ test_cached_datastore(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_non_null(data);
-    lyd_free_all(data);
+    sr_release_data(data);
 
     /* switch DS back */
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
@@ -197,11 +185,10 @@ test_enable_cached_get(void **state)
     int ret;
 
     /* subscribe to both modules with enabled flag */
-    ret = sr_module_change_subscribe(st->sess, "simple", NULL, enable_cached_get_cb, NULL, 0,
-            SR_SUBSCR_ENABLED | SR_SUBSCR_CTX_REUSE, &sub);
+    ret = sr_module_change_subscribe(st->sess, "simple", NULL, enable_cached_get_cb, NULL, 0, SR_SUBSCR_ENABLED, &sub);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_module_change_subscribe(st->sess, "simple-aug", NULL, enable_cached_get_cb, NULL, 0,
-            SR_SUBSCR_ENABLED | SR_SUBSCR_CTX_REUSE, &sub);
+            SR_SUBSCR_ENABLED, &sub);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* cleanup */
@@ -213,7 +200,7 @@ static void
 test_no_read_access(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *data;
+    sr_data_t *data;
     int ret;
 
     if (!geteuid()) {
@@ -238,8 +225,8 @@ test_no_read_access(void **state)
 
     /* only some default values */
     assert_non_null(data);
-    assert_true(data->flags & LYD_DEFAULT);
-    lyd_free_all(data);
+    assert_true(data->tree->flags & LYD_DEFAULT);
+    sr_release_data(data);
 
     /* set permissions back so that it can be removed */
     ret = sr_set_module_ds_access(st->conn, "defaults", SR_DS_RUNNING, NULL, NULL, 00600);
@@ -251,7 +238,7 @@ static void
 test_explicit_default(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *data;
+    sr_data_t *data;
     int ret;
 
     /* get defaults data */
@@ -259,13 +246,13 @@ test_explicit_default(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_non_null(data);
-    assert_string_equal(data->schema->name, "cont");
-    assert_true(data->flags & LYD_DEFAULT);
-    assert_non_null(lyd_child(data));
-    assert_string_equal(lyd_child(data)->next->schema->name, "interval");
-    assert_true(lyd_child(data)->next->flags & LYD_DEFAULT);
+    assert_string_equal(data->tree->schema->name, "cont");
+    assert_true(data->tree->flags & LYD_DEFAULT);
+    assert_non_null(lyd_child(data->tree));
+    assert_string_equal(lyd_child(data->tree)->next->schema->name, "interval");
+    assert_true(lyd_child(data->tree)->next->flags & LYD_DEFAULT);
 
-    lyd_free_all(data);
+    sr_release_data(data);
 
     /* set explicit default value */
     ret = sr_set_item_str(st->sess, "/defaults:cont/interval", "30", NULL, 0);
@@ -278,13 +265,13 @@ test_explicit_default(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_non_null(data);
-    assert_string_equal(data->schema->name, "cont");
-    assert_false(data->flags & LYD_DEFAULT);
-    assert_non_null(lyd_child(data));
-    assert_string_equal(lyd_child(data)->next->schema->name, "interval");
-    assert_false(lyd_child(data)->next->flags & LYD_DEFAULT);
+    assert_string_equal(data->tree->schema->name, "cont");
+    assert_false(data->tree->flags & LYD_DEFAULT);
+    assert_non_null(lyd_child(data->tree));
+    assert_string_equal(lyd_child(data->tree)->next->schema->name, "interval");
+    assert_false(lyd_child(data->tree)->next->flags & LYD_DEFAULT);
 
-    lyd_free_all(data);
+    sr_release_data(data);
 
     /* cleanup */
     sr_delete_item(st->sess, "/defaults:cont", 0);
@@ -311,7 +298,7 @@ static int
 union_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
-    const struct ly_ctx *ctx;
+    const struct ly_ctx *ly_ctx;
     const struct lys_module *mod;
 
     (void)session;
@@ -325,12 +312,13 @@ union_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_nam
     assert_string_equal(xpath, "/simple:ac1/simple-aug:bauga2");
 
     /* get augment module */
-    ctx = sr_get_context(sr_session_get_connection(session));
-    mod = ly_ctx_get_module_implemented(ctx, "simple-aug");
+    ly_ctx = sr_acquire_context(sr_session_get_connection(session));
+    mod = ly_ctx_get_module_implemented(ly_ctx, "simple-aug");
     assert_non_null(mod);
 
     assert_int_equal(SR_ERR_OK, lyd_new_term(*parent, mod, "bauga2", "val", 0, NULL));
 
+    sr_release_context(sr_session_get_connection(session));
     return SR_ERR_OK;
 }
 
@@ -338,8 +326,8 @@ static void
 test_union(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_subscription_ctx_t *subscr;
-    struct lyd_node *data;
+    sr_subscription_ctx_t *subscr = NULL;
+    sr_data_t *data;
     char *str1;
     const char *str2;
     int ret;
@@ -353,12 +341,11 @@ test_union(void **state)
     /* subscribe to both modules so they are present in operational */
     ret = sr_module_change_subscribe(st->sess, "simple", NULL, dummy_change_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_module_change_subscribe(st->sess, "simple-aug", NULL, dummy_change_cb, NULL, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "simple-aug", NULL, dummy_change_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* provide config false data */
-    ret = sr_oper_get_items_subscribe(st->sess, "simple", "/simple:ac1/simple-aug:bauga2", union_oper_cb, NULL,
-            SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_oper_get_subscribe(st->sess, "simple", "/simple:ac1/simple-aug:bauga2", union_oper_cb, NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
@@ -367,9 +354,9 @@ test_union(void **state)
     ret = sr_get_data(st->sess, "/simple:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
-    lyd_free_all(data);
+    sr_release_data(data);
 
     str2 =
     "<ac1 xmlns=\"s\">"
@@ -385,9 +372,9 @@ test_union(void **state)
     ret = sr_get_data(st->sess, "/simple-aug:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
-    lyd_free_all(data);
+    sr_release_data(data);
 
     str2 =
     "<bc1 xmlns=\"sa\">"
@@ -404,9 +391,9 @@ test_union(void **state)
     ret = sr_get_data(st->sess, "/simple-aug:* | /simple:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
-    lyd_free_all(data);
+    sr_release_data(data);
 
     str2 =
     "<ac1 xmlns=\"s\">"
@@ -429,9 +416,9 @@ test_union(void **state)
     ret = sr_get_data(st->sess, "/simple-aug:bc1/bcl1 | /simple:ac1/simple-aug:bauga2", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
-    lyd_free_all(data);
+    sr_release_data(data);
 
     str2 =
     "<ac1 xmlns=\"s\">"
@@ -456,7 +443,7 @@ static void
 test_key(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *data;
+    sr_data_t *data;
     char *str1;
     const char *str2;
     int ret;
@@ -471,9 +458,9 @@ test_key(void **state)
     ret = sr_get_data(st->sess, "/defaults:l1[k='val']/k", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
-    lyd_free_all(data);
+    sr_release_data(data);
 
     str2 =
     "<l1 xmlns=\"urn:defaults\">"
@@ -503,6 +490,6 @@ main(void)
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
-    sr_log_stderr(SR_LL_INF);
+    test_log_init();
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

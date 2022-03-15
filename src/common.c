@@ -43,25 +43,34 @@
 #include "config.h"
 #include "edit_diff.h"
 #include "log.h"
+#include "lyd_mods.h"
 #include "modinfo.h"
 #include "plugins_datastore.h"
 #include "plugins_notification.h"
-#include "shm.h"
+#include "shm_ext.h"
+#include "shm_main.h"
+#include "shm_mod.h"
+#include "shm_sub.h"
 #include "sysrepo.h"
 
 /**
  * @brief Internal DS plugin array.
  */
 const struct srplg_ds_s *sr_internal_ds_plugins[] = {
-    &srpds_lyb,
+    &srpds_lyb,     /**< default */
 };
 
 /**
  * @brief Internal notification plugin array.
  */
 const struct srplg_ntf_s *sr_internal_ntf_plugins[] = {
-    &srpntf_lyb,
+    &srpntf_lyb,    /**< default */
 };
+
+/**
+ * @brief Default module DS plugins.
+ */
+const sr_module_ds_t sr_default_module_ds = {{"LYB DS file", "LYB DS file", "LYB DS file", "LYB DS file", "LYB notif"}};
 
 sr_error_info_t *
 sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess, const char *mod_name,
@@ -75,14 +84,8 @@ sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sess
     int new_sub = 0;
 
     /* just to prevent problems in future changes */
-    assert(has_subs_lock == SR_LOCK_NONE);
+    assert(has_subs_lock == SR_LOCK_WRITE);
     (void)has_subs_lock;
-
-    /* SUBS WRITE LOCK */
-    if ((err_info = sr_rwlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, sess->conn->cid,
-            __func__, NULL, NULL))) {
-        return err_info;
-    }
 
     /* try to find this module subscription SHM mapping, it may already exist */
     for (i = 0; i < subscr->change_sub_count; ++i) {
@@ -93,7 +96,7 @@ sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sess
 
     if (i == subscr->change_sub_count) {
         mem[0] = realloc(subscr->change_subs, (subscr->change_sub_count + 1) * sizeof *subscr->change_subs);
-        SR_CHECK_MEM_GOTO(!mem[0], err_info, error_unlock);
+        SR_CHECK_MEM_GOTO(!mem[0], err_info, error);
         subscr->change_subs = mem[0];
 
         change_sub = &subscr->change_subs[i];
@@ -102,13 +105,13 @@ sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sess
 
         /* set attributes */
         mem[1] = strdup(mod_name);
-        SR_CHECK_MEM_GOTO(!mem[1], err_info, error_unlock);
+        SR_CHECK_MEM_GOTO(!mem[1], err_info, error);
         change_sub->module_name = mem[1];
         change_sub->ds = sess->ds;
 
         /* open shared memory and map it */
         if ((err_info = sr_shmsub_open_map(mod_name, sr_ds2str(sess->ds), -1, &change_sub->sub_shm))) {
-            goto error_unlock;
+            goto error;
         }
 
         /* make the subscription visible only after everything succeeds */
@@ -122,7 +125,7 @@ sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sess
 
     /* add another XPath into module-specific subscriptions */
     mem[2] = realloc(change_sub->subs, (change_sub->sub_count + 1) * sizeof *change_sub->subs);
-    SR_CHECK_MEM_GOTO(!mem[2], err_info, error_unlock);
+    SR_CHECK_MEM_GOTO(!mem[2], err_info, error);
     change_sub->subs = mem[2];
     memset(change_sub->subs + change_sub->sub_count, 0, sizeof *change_sub->subs);
 
@@ -143,15 +146,9 @@ sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sess
     /* new subscription */
     subscr->last_sub_id = sub_id;
 
-    /* SUBS WRITE UNLOCK */
-    sr_rwunlock(&subscr->subs_lock, 0, SR_LOCK_WRITE, sess->conn->cid, __func__);
-
     return NULL;
 
-error_unlock:
-    /* SUBS WRITE UNLOCK */
-    sr_rwunlock(&subscr->subs_lock, 0, SR_LOCK_WRITE, sess->conn->cid, __func__);
-
+error:
     for (i = 0; i < 4; ++i) {
         free(mem[i]);
     }
@@ -171,18 +168,11 @@ sr_subscr_change_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock
     uint32_t i, j;
     struct modsub_change_s *change_sub;
 
-    assert((has_subs_lock == SR_LOCK_READ_UPGR) || (has_subs_lock == SR_LOCK_NONE));
+    assert((has_subs_lock == SR_LOCK_READ_UPGR) || (has_subs_lock == SR_LOCK_WRITE));
 
     if (has_subs_lock == SR_LOCK_READ_UPGR) {
         /* SUBS WRITE LOCK UPGRADE */
         if ((err_info = sr_rwrelock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscr->conn->cid, __func__,
-                NULL, NULL))) {
-            sr_errinfo_free(&err_info);
-            has_subs_lock = SR_LOCK_WRITE;
-        }
-    } else {
-        /* SUBS WRITE LOCK */
-        if ((err_info = sr_rwlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscr->conn->cid, __func__,
                 NULL, NULL))) {
             sr_errinfo_free(&err_info);
             has_subs_lock = SR_LOCK_WRITE;
@@ -236,9 +226,6 @@ cleanup:
                 __func__, NULL, NULL))) {
             sr_errinfo_free(&err_info);
         }
-    } else if (has_subs_lock == SR_LOCK_NONE) {
-        /* SUBS WRITE UNLOCK */
-        sr_rwunlock(&subscr->subs_lock, 0, SR_LOCK_WRITE, subscr->conn->cid, __func__);
     }
 }
 
@@ -255,14 +242,8 @@ sr_subscr_oper_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sessio
     assert(mod_name && xpath);
 
     /* just to prevent problems in future changes */
-    assert(has_subs_lock == SR_LOCK_NONE);
+    assert(has_subs_lock == SR_LOCK_WRITE);
     (void)has_subs_lock;
-
-    /* SUBS WRITE LOCK */
-    if ((err_info = sr_rwlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, sess->conn->cid,
-            __func__, NULL, NULL))) {
-        return err_info;
-    }
 
     /* try to find this module subscription SHM mapping, it may already exist */
     for (i = 0; i < subscr->oper_sub_count; ++i) {
@@ -273,7 +254,7 @@ sr_subscr_oper_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sessio
 
     if (i == subscr->oper_sub_count) {
         mem[0] = realloc(subscr->oper_subs, (subscr->oper_sub_count + 1) * sizeof *subscr->oper_subs);
-        SR_CHECK_MEM_GOTO(!mem[0], err_info, error_unlock);
+        SR_CHECK_MEM_GOTO(!mem[0], err_info, error);
         subscr->oper_subs = mem[0];
 
         oper_sub = &subscr->oper_subs[i];
@@ -281,7 +262,7 @@ sr_subscr_oper_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sessio
 
         /* set attributes */
         mem[1] = strdup(mod_name);
-        SR_CHECK_MEM_GOTO(!mem[1], err_info, error_unlock);
+        SR_CHECK_MEM_GOTO(!mem[1], err_info, error);
         oper_sub->module_name = mem[1];
 
         /* make the subscription visible only after everything succeeds */
@@ -295,7 +276,7 @@ sr_subscr_oper_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sessio
 
     /* add another XPath and create SHM into module-specific subscriptions */
     mem[2] = realloc(oper_sub->subs, (oper_sub->sub_count + 1) * sizeof *oper_sub->subs);
-    SR_CHECK_MEM_GOTO(!mem[2], err_info, error_unlock);
+    SR_CHECK_MEM_GOTO(!mem[2], err_info, error);
     oper_sub->subs = mem[2];
     memset(oper_sub->subs + oper_sub->sub_count, 0, sizeof *oper_sub->subs);
     oper_sub->subs[oper_sub->sub_count].sub_shm.fd = -1;
@@ -303,7 +284,7 @@ sr_subscr_oper_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sessio
     /* set attributes */
     oper_sub->subs[oper_sub->sub_count].sub_id = sub_id;
     mem[3] = strdup(xpath);
-    SR_CHECK_MEM_GOTO(!mem[3], err_info, error_unlock);
+    SR_CHECK_MEM_GOTO(!mem[3], err_info, error);
     oper_sub->subs[oper_sub->sub_count].xpath = mem[3];
     oper_sub->subs[oper_sub->sub_count].cb = oper_cb;
     oper_sub->subs[oper_sub->sub_count].private_data = private_data;
@@ -311,7 +292,7 @@ sr_subscr_oper_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sessio
 
     /* open sub SHM and map it */
     if ((err_info = sr_shmsub_open_map(mod_name, "oper", sr_str_hash(xpath), &oper_sub->subs[oper_sub->sub_count].sub_shm))) {
-        goto error_unlock;
+        goto error;
     }
 
     ++oper_sub->sub_count;
@@ -319,15 +300,9 @@ sr_subscr_oper_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sessio
     /* new subscription */
     subscr->last_sub_id = sub_id;
 
-    /* SUBS WRITE UNLOCK */
-    sr_rwunlock(&subscr->subs_lock, 0, SR_LOCK_WRITE, sess->conn->cid, __func__);
-
     return NULL;
 
-error_unlock:
-    /* SUBS WRITE UNLOCK */
-    sr_rwunlock(&subscr->subs_lock, 0, SR_LOCK_WRITE, sess->conn->cid, __func__);
-
+error:
     for (i = 0; i < 4; ++i) {
         free(mem[i]);
     }
@@ -344,18 +319,11 @@ sr_subscr_oper_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_m
     uint32_t i, j;
     struct modsub_oper_s *oper_sub;
 
-    assert((has_subs_lock == SR_LOCK_READ_UPGR) || (has_subs_lock == SR_LOCK_NONE));
+    assert((has_subs_lock == SR_LOCK_READ_UPGR) || (has_subs_lock == SR_LOCK_WRITE));
 
     if (has_subs_lock == SR_LOCK_READ_UPGR) {
         /* SUBS WRITE LOCK UPGRADE */
         if ((err_info = sr_rwrelock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscr->conn->cid, __func__,
-                NULL, NULL))) {
-            sr_errinfo_free(&err_info);
-            has_subs_lock = SR_LOCK_WRITE;
-        }
-    } else {
-        /* SUBS WRITE LOCK */
-        if ((err_info = sr_rwlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscr->conn->cid, __func__,
                 NULL, NULL))) {
             sr_errinfo_free(&err_info);
             has_subs_lock = SR_LOCK_WRITE;
@@ -409,9 +377,6 @@ cleanup:
                 __func__, NULL, NULL))) {
             sr_errinfo_free(&err_info);
         }
-    } else if (has_subs_lock == SR_LOCK_NONE) {
-        /* SUBS WRITE UNLOCK */
-        sr_rwunlock(&subscr->subs_lock, 0, SR_LOCK_WRITE, subscr->conn->cid, __func__);
     }
 }
 
@@ -430,14 +395,8 @@ sr_subscr_notif_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sessi
     assert(mod_name);
 
     /* just to prevent problems in future changes */
-    assert(has_subs_lock == SR_LOCK_NONE);
+    assert(has_subs_lock == SR_LOCK_WRITE);
     (void)has_subs_lock;
-
-    /* SUBS WRITE LOCK */
-    if ((err_info = sr_rwlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, sess->conn->cid,
-            __func__, NULL, NULL))) {
-        return err_info;
-    }
 
     /* try to find this module subscriptions, they may already exist */
     for (i = 0; i < subscr->notif_sub_count; ++i) {
@@ -448,7 +407,7 @@ sr_subscr_notif_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sessi
 
     if (i == subscr->notif_sub_count) {
         mem[0] = realloc(subscr->notif_subs, (subscr->notif_sub_count + 1) * sizeof *subscr->notif_subs);
-        SR_CHECK_MEM_GOTO(!mem[0], err_info, error_unlock);
+        SR_CHECK_MEM_GOTO(!mem[0], err_info, error);
         subscr->notif_subs = mem[0];
 
         notif_sub = &subscr->notif_subs[i];
@@ -457,12 +416,12 @@ sr_subscr_notif_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sessi
 
         /* set attributes */
         mem[1] = strdup(mod_name);
-        SR_CHECK_MEM_GOTO(!mem[1], err_info, error_unlock);
+        SR_CHECK_MEM_GOTO(!mem[1], err_info, error);
         notif_sub->module_name = mem[1];
 
         /* open specific SHM and map it */
         if ((err_info = sr_shmsub_open_map(mod_name, "notif", -1, &notif_sub->sub_shm))) {
-            goto error_unlock;
+            goto error;
         }
 
         /* make the subscription visible only after everything succeeds */
@@ -476,7 +435,7 @@ sr_subscr_notif_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sessi
 
     /* add another subscription */
     mem[2] = realloc(notif_sub->subs, (notif_sub->sub_count + 1) * sizeof *notif_sub->subs);
-    SR_CHECK_MEM_GOTO(!mem[2], err_info, error_unlock);
+    SR_CHECK_MEM_GOTO(!mem[2], err_info, error);
     notif_sub->subs = mem[2];
     memset(notif_sub->subs + notif_sub->sub_count, 0, sizeof *notif_sub->subs);
 
@@ -484,7 +443,7 @@ sr_subscr_notif_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sessi
     notif_sub->subs[notif_sub->sub_count].sub_id = sub_id;
     if (xpath) {
         mem[3] = strdup(xpath);
-        SR_CHECK_MEM_GOTO(!mem[3], err_info, error_unlock);
+        SR_CHECK_MEM_GOTO(!mem[3], err_info, error);
         notif_sub->subs[notif_sub->sub_count].xpath = mem[3];
     }
     notif_sub->subs[notif_sub->sub_count].listen_since = *listen_since;
@@ -504,15 +463,9 @@ sr_subscr_notif_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sessi
     /* new subscription */
     subscr->last_sub_id = sub_id;
 
-    /* SUBS WRITE UNLOCK */
-    sr_rwunlock(&subscr->subs_lock, 0, SR_LOCK_WRITE, sess->conn->cid, __func__);
-
     return NULL;
 
-error_unlock:
-    /* SUBS WRITE UNLOCK */
-    sr_rwunlock(&subscr->subs_lock, 0, SR_LOCK_WRITE, sess->conn->cid, __func__);
-
+error:
     for (i = 0; i < 4; ++i) {
         free(mem[i]);
     }
@@ -534,20 +487,12 @@ sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_
     sr_lock_mode_t cur_mode = has_subs_lock;
     struct timespec cur_time;
 
-    assert((has_subs_lock == SR_LOCK_WRITE) || (has_subs_lock == SR_LOCK_READ_UPGR) || (has_subs_lock == SR_LOCK_NONE));
+    assert((has_subs_lock == SR_LOCK_WRITE) || (has_subs_lock == SR_LOCK_READ_UPGR));
 
     if (has_subs_lock == SR_LOCK_WRITE) {
         /* SUBS READ UPGR LOCK DOWNGRADE */
         if ((err_info = sr_rwrelock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, subscr->conn->cid,
                 __func__, NULL, NULL))) {
-            sr_errinfo_free(&err_info);
-        } else {
-            cur_mode = SR_LOCK_READ_UPGR;
-        }
-    } else if (has_subs_lock == SR_LOCK_NONE) {
-        /* SUBS READ UPGR LOCK */
-        if ((err_info = sr_rwlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, subscr->conn->cid, __func__,
-                NULL, NULL))) {
             sr_errinfo_free(&err_info);
         } else {
             cur_mode = SR_LOCK_READ_UPGR;
@@ -622,15 +567,10 @@ sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_
 
 cleanup:
     if (cur_mode != has_subs_lock) {
-        if (has_subs_lock == SR_LOCK_NONE) {
-            /* SUBS UNLOCK */
-            sr_rwunlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, cur_mode, subscr->conn->cid, __func__);
-        } else {
-            /* SUBS RELOCK */
-            if ((err_info = sr_rwrelock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, has_subs_lock, subscr->conn->cid,
-                    __func__, NULL, NULL))) {
-                sr_errinfo_free(&err_info);
-            }
+        /* SUBS RELOCK */
+        if ((err_info = sr_rwrelock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, has_subs_lock, subscr->conn->cid,
+                __func__, NULL, NULL))) {
+            sr_errinfo_free(&err_info);
         }
     }
 
@@ -652,14 +592,8 @@ sr_subscr_rpc_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session
     assert(path && xpath && (rpc_cb || rpc_tree_cb) && (!rpc_cb || !rpc_tree_cb));
 
     /* just to prevent problems in future changes */
-    assert(has_subs_lock == SR_LOCK_NONE);
+    assert(has_subs_lock == SR_LOCK_WRITE);
     (void)has_subs_lock;
-
-    /* SUBS WRITE LOCK */
-    if ((err_info = sr_rwlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, sess->conn->cid,
-            __func__, NULL, NULL))) {
-        return err_info;
-    }
 
     /* try to find this RPC/action subscriptions, they may already exist */
     for (i = 0; i < subscr->rpc_sub_count; ++i) {
@@ -670,7 +604,7 @@ sr_subscr_rpc_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session
 
     if (i == subscr->rpc_sub_count) {
         mem[0] = realloc(subscr->rpc_subs, (subscr->rpc_sub_count + 1) * sizeof *subscr->rpc_subs);
-        SR_CHECK_MEM_GOTO(!mem[0], err_info, error_unlock);
+        SR_CHECK_MEM_GOTO(!mem[0], err_info, error);
         subscr->rpc_subs = mem[0];
 
         rpc_sub = &subscr->rpc_subs[i];
@@ -679,7 +613,7 @@ sr_subscr_rpc_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session
 
         /* set attributes */
         mem[1] = strdup(path);
-        SR_CHECK_MEM_GOTO(!mem[1], err_info, error_unlock);
+        SR_CHECK_MEM_GOTO(!mem[1], err_info, error);
         rpc_sub->path = mem[1];
 
         /* get module name */
@@ -689,7 +623,7 @@ sr_subscr_rpc_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session
         err_info = sr_shmsub_open_map(mod_name, "rpc", sr_str_hash(path), &rpc_sub->sub_shm);
         free(mod_name);
         if (err_info) {
-            goto error_unlock;
+            goto error;
         }
 
         /* make the subscription visible only after everything succeeds */
@@ -703,14 +637,14 @@ sr_subscr_rpc_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session
 
     /* add another subscription */
     mem[2] = realloc(rpc_sub->subs, (rpc_sub->sub_count + 1) * sizeof *rpc_sub->subs);
-    SR_CHECK_MEM_GOTO(!mem[2], err_info, error_unlock);
+    SR_CHECK_MEM_GOTO(!mem[2], err_info, error);
     rpc_sub->subs = mem[2];
     memset(rpc_sub->subs + rpc_sub->sub_count, 0, sizeof *rpc_sub->subs);
 
     /* set attributes */
     rpc_sub->subs[rpc_sub->sub_count].sub_id = sub_id;
     mem[3] = strdup(xpath);
-    SR_CHECK_MEM_GOTO(!mem[3], err_info, error_unlock);
+    SR_CHECK_MEM_GOTO(!mem[3], err_info, error);
     rpc_sub->subs[rpc_sub->sub_count].xpath = mem[3];
     rpc_sub->subs[rpc_sub->sub_count].priority = priority;
     rpc_sub->subs[rpc_sub->sub_count].cb = rpc_cb;
@@ -723,15 +657,9 @@ sr_subscr_rpc_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session
     /* new subscription */
     subscr->last_sub_id = sub_id;
 
-    /* SUBS WRITE UNLOCK */
-    sr_rwunlock(&subscr->subs_lock, 0, SR_LOCK_WRITE, sess->conn->cid, __func__);
-
     return NULL;
 
-error_unlock:
-    /* SUBS WRITE UNLOCK */
-    sr_rwunlock(&subscr->subs_lock, 0, SR_LOCK_WRITE, sess->conn->cid, __func__);
-
+error:
     for (i = 0; i < 4; ++i) {
         free(mem[i]);
     }
@@ -755,13 +683,6 @@ sr_subscr_rpc_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mo
         /* SUBS WRITE LOCK UPGRADE */
         if ((err_info = sr_rwrelock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscr->conn->cid,
                 __func__, NULL, NULL))) {
-            sr_errinfo_free(&err_info);
-            has_subs_lock = SR_LOCK_WRITE;
-        }
-    } else {
-        /* SUBS WRITE LOCK */
-        if ((err_info = sr_rwlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscr->conn->cid, __func__,
-                NULL, NULL))) {
             sr_errinfo_free(&err_info);
             has_subs_lock = SR_LOCK_WRITE;
         }
@@ -814,9 +735,6 @@ cleanup:
                 __func__, NULL, NULL))) {
             sr_errinfo_free(&err_info);
         }
-    } else if (has_subs_lock == SR_LOCK_NONE) {
-        /* SUBS WRITE UNLOCK */
-        sr_rwunlock(&subscr->subs_lock, 0, SR_LOCK_WRITE, subscr->conn->cid, __func__);
     }
 }
 
@@ -977,10 +895,10 @@ sr_change_sub_del(sr_subscription_ctx_t *subscr, struct modsub_change_s *change_
     (void)has_subs_lock;
 
     /* find module */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subscr->conn), change_subs->module_name);
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), change_subs->module_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    /* properly remove the subscription from ext SHM */
+    /* properly remove the subscription from ext SHM, with separate specific SHM segment if no longer needed */
     if ((err_info = sr_shmext_change_sub_del(subscr->conn, shm_mod, SR_LOCK_NONE, change_subs->ds,
             change_subs->subs[idx].sub_id))) {
         return err_info;
@@ -1012,10 +930,10 @@ sr_oper_sub_del(sr_subscription_ctx_t *subscr, struct modsub_oper_s *oper_subs, 
     (void)has_subs_lock;
 
     /* find module */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subscr->conn), oper_subs->module_name);
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), oper_subs->module_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    /* properly remove the subscription from ext SHM */
+    /* properly remove the subscription from ext SHM, with separate specific SHM segment if no longer needed */
     if ((err_info = sr_shmext_oper_sub_del(subscr->conn, shm_mod, oper_subs->subs[idx].sub_id))) {
         return err_info;
     }
@@ -1046,10 +964,10 @@ sr_rpc_sub_del(sr_subscription_ctx_t *subscr, struct opsub_rpc_s *rpc_subs, uint
     (void)has_subs_lock;
 
     /* find RPC/action */
-    shm_rpc = sr_shmmain_find_rpc(SR_CONN_MAIN_SHM(subscr->conn), rpc_subs->path);
+    shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(subscr->conn), rpc_subs->path);
     SR_CHECK_INT_RET(!shm_rpc, err_info);
 
-    /* properly remove the subscription from the main SHM */
+    /* properly remove the subscription from the ext SHM, with separate specific SHM segment if no longer needed */
     if ((err_info = sr_shmext_rpc_sub_del(subscr->conn, shm_rpc, rpc_subs->subs[idx].sub_id))) {
         return err_info;
     }
@@ -1081,10 +999,10 @@ sr_notif_sub_del(sr_subscription_ctx_t *subscr, struct modsub_notif_s *notif_sub
     (void)has_subs_lock;
 
     /* find module */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(subscr->conn), notif_subs->module_name);
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), notif_subs->module_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    /* properly remove the subscription from ext SHM */
+    /* properly remove the subscription from ext SHM, with separate specific SHM segment if no longer needed */
     if ((err_info = sr_shmext_notif_sub_del(subscr->conn, shm_mod, notif_subs->subs[idx].sub_id))) {
         return err_info;
     }
@@ -1381,7 +1299,7 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
     sr_mod_t *shm_mod;
     uint32_t i;
 
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), mod_name);
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), mod_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     *notif_subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
@@ -1399,10 +1317,13 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
             continue;
         }
 
-        if (!ATOMIC_LOAD_RELAXED((*notif_subs)[i].suspended)) {
-            ++(*notif_sub_count);
+        /* skip suspended subscriptions */
+        if (ATOMIC_LOAD_RELAXED((*notif_subs)[i].suspended)) {
+            ++i;
+            continue;
         }
 
+        ++(*notif_sub_count);
         ++i;
     }
 
@@ -1463,6 +1384,255 @@ sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_notif_cb cb, sr_event
 cleanup:
     free(notif_xpath);
     sr_free_values(vals, val_count);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_subscr_change_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, int *valid)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_set *set = NULL;
+
+    /* parse the xpath on schema */
+    if (lys_find_xpath(ly_ctx, NULL, xpath, 0, &set)) {
+        if (valid) {
+            *valid = 0;
+        } else {
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+        }
+        goto cleanup;
+    }
+
+    /* make sure there are some nodes selected */
+    if (!set->count) {
+        if (valid) {
+            *valid = 0;
+        } else {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "XPath \"%s\" is not selecting any nodes.", xpath);
+        }
+        goto cleanup;
+    }
+
+    /* valid */
+    if (valid) {
+        *valid = 1;
+    }
+
+cleanup:
+    ly_set_free(set, NULL);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_subscr_oper_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, sr_mod_oper_sub_type_t *sub_type, int *valid)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lysc_node *elem;
+    struct ly_set *set = NULL;
+    uint32_t i;
+
+    if (lys_find_xpath(ly_ctx, NULL, xpath, LYS_FIND_NO_MATCH_ERROR, &set)) {
+        if (valid) {
+            *valid = 0;
+        } else {
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+        }
+        goto cleanup;
+    } else if (!set->count) {
+        if (valid) {
+            *valid = 0;
+        } else {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "XPath \"%s\" does not point to any nodes.", xpath);
+        }
+        goto cleanup;
+    }
+
+    if (sub_type) {
+        /* learn subscription type */
+        *sub_type = SR_OPER_SUB_NONE;
+        for (i = 0; i < set->count; ++i) {
+            LYSC_TREE_DFS_BEGIN(set->snodes[i], elem) {
+                switch (elem->nodetype) {
+                case LYS_CONTAINER:
+                case LYS_LEAF:
+                case LYS_LEAFLIST:
+                case LYS_LIST:
+                case LYS_ANYXML:
+                case LYS_ANYDATA:
+                    /* data node - check config */
+                    if ((elem->flags & LYS_CONFIG_MASK) == LYS_CONFIG_R) {
+                        if (*sub_type == SR_OPER_SUB_CONFIG) {
+                            *sub_type = SR_OPER_SUB_MIXED;
+                        } else {
+                            *sub_type = SR_OPER_SUB_STATE;
+                        }
+                    } else {
+                        assert((elem->flags & LYS_CONFIG_MASK) == LYS_CONFIG_W);
+                        if (*sub_type == SR_OPER_SUB_STATE) {
+                            *sub_type = SR_OPER_SUB_MIXED;
+                        } else {
+                            *sub_type = SR_OPER_SUB_CONFIG;
+                        }
+                    }
+                    break;
+                case LYS_CHOICE:
+                case LYS_CASE:
+                    /* go into */
+                    break;
+                default:
+                    /* should not be reachable */
+                    SR_ERRINFO_INT(&err_info);
+                    if (valid) {
+                        sr_errinfo_free(&err_info);
+                        *valid = 0;
+                    }
+                    goto cleanup;
+                }
+
+                if ((*sub_type == SR_OPER_SUB_STATE) || (*sub_type == SR_OPER_SUB_MIXED)) {
+                    /* redundant to look recursively */
+                    break;
+                }
+
+                LYSC_TREE_DFS_END(set->snodes[i], elem);
+            }
+
+            if (*sub_type == SR_OPER_SUB_MIXED) {
+                /* we found both config type nodes, nothing more to look for */
+                break;
+            }
+        }
+    }
+
+    /* valid */
+    if (valid) {
+        *valid = 1;
+    }
+
+cleanup:
+    ly_set_free(set, NULL);
+    return err_info;
+}
+
+/**
+ * @brief libyang callback for full module traversal when searching for a notification.
+ */
+static LY_ERR
+sr_event_notif_lysc_dfs_cb(struct lysc_node *node, void *data, ly_bool *dfs_continue)
+{
+    int *found = (int *)data;
+
+    (void)dfs_continue;
+
+    if (node->nodetype == LYS_NOTIF) {
+        *found = 1;
+
+        /* just stop the traversal */
+        return LY_EEXIST;
+    }
+
+    return LY_SUCCESS;
+}
+
+sr_error_info_t *
+sr_subscr_notif_xpath_check(const struct lys_module *ly_mod, const char *xpath, int *valid)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_set *set = NULL;
+    int found = 0;
+    uint32_t i;
+
+    if (xpath) {
+        /* find atoms selected by the xpath */
+        if (lys_find_xpath_atoms(ly_mod->ctx, NULL, xpath, LYS_FIND_NO_MATCH_ERROR, &set)) {
+            if (valid) {
+                *valid = 0;
+            } else {
+                sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+            }
+            goto cleanup;
+        }
+
+        /* there must be some notifications selected */
+        for (i = 0; i < set->count; ++i) {
+            if (set->snodes[i]->nodetype == LYS_NOTIF) {
+                found = 1;
+                break;
+            }
+        }
+    } else {
+        lysc_module_dfs_full(ly_mod, sr_event_notif_lysc_dfs_cb, &found);
+    }
+    if (!found) {
+        if (valid) {
+            *valid = 0;
+        } else if (xpath) {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "XPath \"%s\" does not select any notifications.", xpath);
+        } else {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" does not define any notifications.", ly_mod->name);
+        }
+        goto cleanup;
+    }
+
+    /* valid */
+    if (valid) {
+        *valid = 1;
+    }
+
+cleanup:
+    ly_set_free(set, NULL);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_subscr_rpc_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, char **path, int *valid)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lysc_node *op;
+    char *p = NULL;
+
+    if (path) {
+        *path = NULL;
+    }
+
+    /* trim any predicates */
+    if ((err_info = sr_get_trim_predicates(xpath, &p))) {
+        if (valid) {
+            sr_errinfo_free(&err_info);
+            *valid = 0;
+        }
+        goto cleanup;
+    }
+
+    /* find the RPC/action */
+    if (!(op = lys_find_path(ly_ctx, NULL, p, 0))) {
+        if (valid) {
+            *valid = 0;
+        } else {
+            sr_errinfo_new_ly(&err_info, ly_ctx);
+        }
+        goto cleanup;
+    }
+    if (!(op->nodetype & (LYS_RPC | LYS_ACTION))) {
+        if (valid) {
+            *valid = 0;
+        } else {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Path \"%s\" does not identify an RPC nor an action.", p);
+        }
+        goto cleanup;
+    }
+
+    /* valid */
+    if (valid) {
+        *valid = 1;
+    }
+
+cleanup:
+    if (err_info || !path) {
+        free(p);
+    } else {
+        *path = p;
+    }
     return err_info;
 }
 
@@ -1546,21 +1716,33 @@ sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *d
 }
 
 sr_error_info_t *
-sr_ly_ctx_new(struct ly_ctx **ly_ctx)
+sr_ly_ctx_init(struct ly_ctx **ly_ctx)
 {
     sr_error_info_t *err_info = NULL;
     char *yang_dir;
     LY_ERR lyrc;
 
+    /* create new context */
     if ((err_info = sr_path_yang_dir(&yang_dir))) {
         goto cleanup;
     }
     lyrc = ly_ctx_new(yang_dir, LY_CTX_NO_YANGLIBRARY | LY_CTX_DISABLE_SEARCHDIR_CWD | LY_CTX_REF_IMPLEMENTED |
             LY_CTX_EXPLICIT_COMPILE, ly_ctx);
     free(yang_dir);
-
     if (lyrc) {
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to create a new libyang context.");
+        goto cleanup;
+    }
+
+    /* load just the internal module */
+    if (lys_parse_mem(*ly_ctx, sysrepo_yang, LYS_IN_YANG, NULL)) {
+        sr_errinfo_new_ly(&err_info, *ly_ctx);
+        goto cleanup;
+    }
+
+    /* compile */
+    if (ly_ctx_compile(*ly_ctx)) {
+        sr_errinfo_new_ly(&err_info, *ly_ctx);
         goto cleanup;
     }
 
@@ -1690,6 +1872,12 @@ sr_ds_handle_free(struct sr_ds_handle_s *ds_handles, uint32_t ds_handle_count)
     free(ds_handles);
 }
 
+uint32_t
+sr_ds_plugin_int_count(void)
+{
+    return sizeof sr_internal_ds_plugins / sizeof *sr_internal_ds_plugins;
+}
+
 sr_error_info_t *
 sr_ds_plugin_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, struct srplg_ds_s **ds_plugin)
 {
@@ -1702,7 +1890,7 @@ sr_ds_plugin_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, struct srplg_
     }
 
     /* search internal DS plugins */
-    for (i = 0; i < (sizeof sr_internal_ds_plugins / sizeof *sr_internal_ds_plugins); ++i) {
+    for (i = 0; i < sr_ds_plugin_int_count(); ++i) {
         if (!strcmp(sr_internal_ds_plugins[i]->name, ds_plugin_name)) {
             if (ds_plugin) {
                 *ds_plugin = (struct srplg_ds_s *)sr_internal_ds_plugins[i];
@@ -1843,6 +2031,12 @@ sr_ntf_handle_free(struct sr_ntf_handle_s *ntf_handles, uint32_t ntf_handle_coun
     free(ntf_handles);
 }
 
+uint32_t
+sr_ntf_plugin_int_count(void)
+{
+    return sizeof sr_internal_ntf_plugins / sizeof *sr_internal_ntf_plugins;
+}
+
 sr_error_info_t *
 sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, struct srplg_ntf_s **ntf_plugin)
 {
@@ -1855,7 +2049,7 @@ sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, struct srpl
     }
 
     /* search internal notif plugins */
-    for (i = 0; i < (sizeof sr_internal_ntf_plugins / sizeof *sr_internal_ntf_plugins); ++i) {
+    for (i = 0; i < sr_ntf_plugin_int_count(); ++i) {
         if (!strcmp(sr_internal_ntf_plugins[i]->name, ntf_plugin_name)) {
             if (ntf_plugin) {
                 *ntf_plugin = (struct srplg_ntf_s *)sr_internal_ntf_plugins[i];
@@ -1877,6 +2071,91 @@ sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, struct srpl
     /* not found */
     sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Notification plugin \"%s\" not found.", ntf_plugin_name);
     return err_info;
+}
+
+sr_error_info_t *
+sr_remove_module_yang_r(const struct lys_module *ly_mod, const struct ly_ctx *new_ctx, struct ly_set *del_mod)
+{
+    sr_error_info_t *err_info = NULL;
+    char *path;
+    const struct lysp_module *pmod;
+    LY_ARRAY_COUNT_TYPE u;
+
+    if (sr_module_is_internal(ly_mod) || ly_ctx_get_module(new_ctx, ly_mod->name, ly_mod->revision) ||
+            ly_set_contains(del_mod, (void *)ly_mod, NULL)) {
+        /* internal, still in the context, or already removed */
+        return NULL;
+    }
+
+    /* remove main module file */
+    if ((err_info = sr_path_yang_file(ly_mod->name, ly_mod->revision, &path))) {
+        goto cleanup;
+    }
+    if (unlink(path) == -1) {
+        SR_LOG_WRN("Failed to remove \"%s\" (%s).", path, strerror(errno));
+        free(path);
+    } else {
+        SR_LOG_INF("File \"%s\" was removed.", strrchr(path, '/') + 1);
+        free(path);
+
+        if (ly_set_add(del_mod, (void *)ly_mod, 1, NULL)) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+    }
+
+    pmod = ly_mod->parsed;
+
+    /* remove all submodule files */
+    LY_ARRAY_FOR(pmod->includes, u) {
+        if ((err_info = sr_path_yang_file(pmod->includes[u].submodule->name,
+                pmod->includes[u].submodule->revs ? pmod->includes[u].submodule->revs[0].date : NULL, &path))) {
+            goto cleanup;
+        }
+
+        if (unlink(path) == -1) {
+            SR_LOG_WRN("Failed to remove \"%s\" (%s).", path, strerror(errno));
+        } else {
+            SR_LOG_INF("File \"%s\" was removed.", strrchr(path, '/') + 1);
+        }
+        free(path);
+    }
+
+    /* remove all (unused) imports recursively */
+    LY_ARRAY_FOR(pmod->imports, u) {
+        if ((err_info = sr_remove_module_yang_r(pmod->imports[u].module, new_ctx, del_mod))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    return err_info;
+}
+
+/**
+ * @brief Check whether a module is internal libyang module.
+ *
+ * @param[in] ly_mod Module to check.
+ * @return 0 if not, non-zero if it is.
+ */
+static int
+sr_ly_module_is_internal(const struct lys_module *ly_mod)
+{
+    if (!ly_mod->revision) {
+        return 0;
+    }
+
+    if (!strcmp(ly_mod->name, "ietf-yang-metadata") && !strcmp(ly_mod->revision, "2016-08-05")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "yang") && !strcmp(ly_mod->revision, "2021-04-07")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-inet-types") && !strcmp(ly_mod->revision, "2013-07-15")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-yang-types") && !strcmp(ly_mod->revision, "2013-07-15")) {
+        return 1;
+    }
+
+    return 0;
 }
 
 /**
@@ -1912,12 +2191,11 @@ sr_file_exists(const char *path)
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_store_module_file(const struct lys_module *ly_mod, const struct lysp_submodule *lysp_submod)
+sr_store_module_yang(const struct lys_module *ly_mod, const struct lysp_submodule *lysp_submod)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_out *out = NULL;
     char *path = NULL;
-    mode_t um;
     LY_ERR lyrc;
 
     if (lysp_submod) {
@@ -1935,9 +2213,6 @@ sr_store_module_file(const struct lys_module *ly_mod, const struct lysp_submodul
         goto cleanup;
     }
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK | (~SR_YANG_PERM));
-
     /* print the (sub)module file */
     ly_out_new_filepath(path, &out);
     if (lysp_submod) {
@@ -1945,10 +2220,17 @@ sr_store_module_file(const struct lys_module *ly_mod, const struct lysp_submodul
     } else {
         lyrc = lys_print_module(out, ly_mod, LYS_OUT_YANG, 0, 0);
     }
-
-    umask(um);
     if (lyrc) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+        goto cleanup;
+    }
+
+    /* update permissions */
+    if (chmod(path, SR_YANG_PERM & ~SR_UMASK) == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+
+        /* remove the printed module */
+        unlink(path);
         goto cleanup;
     }
 
@@ -1961,50 +2243,38 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_remove_module_file_r(const struct lys_module *ly_mod, const struct ly_ctx *new_ctx)
+sr_store_module_yang_r(const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
-    char *path;
-    const struct lysp_module *pmod;
-    LY_ARRAY_COUNT_TYPE u;
+    LY_ARRAY_COUNT_TYPE u, v;
 
-    if (sr_module_is_internal(ly_mod) || ly_ctx_get_module(new_ctx, ly_mod->name, ly_mod->revision)) {
-        /* internal or still in the context, cannot be removed */
+    if (sr_ly_module_is_internal(ly_mod)) {
+        /* no need to store internal modules */
         return NULL;
     }
 
-    /* remove main module file */
-    if ((err_info = sr_path_yang_file(ly_mod->name, ly_mod->revision, &path))) {
+    /* store module file */
+    if ((err_info = sr_store_module_yang(ly_mod, NULL))) {
         return err_info;
     }
 
-    if (unlink(path) == -1) {
-        SR_LOG_WRN("Failed to remove \"%s\" (%s).", path, strerror(errno));
-    } else {
-        SR_LOG_INF("File \"%s\" was removed.", strrchr(path, '/') + 1);
-    }
-    free(path);
-
-    pmod = ly_mod->parsed;
-
-    /* remove all submodule files */
-    LY_ARRAY_FOR(pmod->includes, u) {
-        if ((err_info = sr_path_yang_file(pmod->includes[u].submodule->name,
-                pmod->includes[u].submodule->revs ? pmod->includes[u].submodule->revs[0].date : NULL, &path))) {
+    /* store files of all submodules... */
+    LY_ARRAY_FOR(ly_mod->parsed->includes, u) {
+        if ((err_info = sr_store_module_yang(ly_mod, ly_mod->parsed->includes[u].submodule))) {
             return err_info;
         }
 
-        if (unlink(path) == -1) {
-            SR_LOG_WRN("Failed to remove \"%s\" (%s).", path, strerror(errno));
-        } else {
-            SR_LOG_INF("File \"%s\" was removed.", strrchr(path, '/') + 1);
+        /* ...and their imports */
+        LY_ARRAY_FOR(ly_mod->parsed->includes[u].submodule->imports, v) {
+            if ((err_info = sr_store_module_yang_r(ly_mod->parsed->includes[u].submodule->imports[v].module))) {
+                return err_info;
+            }
         }
-        free(path);
     }
 
-    /* remove all (unused) imports recursively */
-    LY_ARRAY_FOR(pmod->imports, u) {
-        if ((err_info = sr_remove_module_file_r(pmod->imports[u].module, new_ctx))) {
+    /* recursively for all main module imports, as well */
+    LY_ARRAY_FOR(ly_mod->parsed->imports, u) {
+        if ((err_info = sr_store_module_yang_r(ly_mod->parsed->imports[u].module))) {
             return err_info;
         }
     }
@@ -2013,55 +2283,109 @@ sr_remove_module_file_r(const struct lys_module *ly_mod, const struct ly_ctx *ne
 }
 
 /**
- * @brief Check whether a module is internal libyang module.
+ * @brief Collect all dependent modules of a module that are making it implemented, recursively.
  *
- * @param[in] ly_mod Module to check.
- * @return 0 if not, non-zero if it is.
+ * @param[in] ly_mod Module to process.
+ * @param[in] sr_mods SR internal module data.
+ * @param[in,out] mod_set Set of dependent modules including @p ly_mod.
+ * @return err_info, NULL on success.
  */
-static int
-sr_ly_module_is_internal(const struct lys_module *ly_mod)
-{
-    if (!ly_mod->revision) {
-        return 0;
-    }
-
-    if (!strcmp(ly_mod->name, "ietf-yang-metadata") && !strcmp(ly_mod->revision, "2016-08-05")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "yang") && !strcmp(ly_mod->revision, "2021-04-07")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-inet-types") && !strcmp(ly_mod->revision, "2013-07-15")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-yang-types") && !strcmp(ly_mod->revision, "2013-07-15")) {
-        return 1;
-    }
-
-    return 0;
-}
-
-sr_error_info_t *
-sr_store_module_files(const struct lys_module *ly_mod)
+static sr_error_info_t *
+sr_collect_module_impl_deps_r(const struct lys_module *ly_mod, const struct lyd_node *sr_mods, struct ly_set *mod_set)
 {
     sr_error_info_t *err_info = NULL;
     LY_ARRAY_COUNT_TYPE u;
+    struct ly_set *set = NULL;
+    const struct lyd_node *node;
+    const struct lys_module *dep_mod;
+    char *path = NULL, *buf;
+    const char *name;
+    uint32_t i;
 
-    if (sr_ly_module_is_internal(ly_mod)) {
-        /* no need to store internal modules */
-        return NULL;
+    if (ly_set_contains(mod_set, (void *)ly_mod, NULL)) {
+        /* already processed */
+        goto cleanup;
     }
 
-    /* store module file */
-    if ((err_info = sr_store_module_file(ly_mod, NULL))) {
-        return err_info;
+    /* add this module */
+    if (ly_set_add(mod_set, (void *)ly_mod, 1, NULL)) {
+        SR_ERRINFO_MEM(&err_info);
+        goto cleanup;
     }
 
-    /* store files of all submodules */
-    LY_ARRAY_FOR(ly_mod->parsed->includes, u) {
-        if ((err_info = sr_store_module_file(ly_mod, ly_mod->parsed->includes[u].submodule))) {
-            return err_info;
+    /* go through augments */
+    LY_ARRAY_FOR(ly_mod->augmented_by, u) {
+        if ((err_info = sr_collect_module_impl_deps_r(ly_mod->augmented_by[u], sr_mods, mod_set))) {
+            goto cleanup;
         }
     }
 
-    return NULL;
+    /* go through deviations */
+    LY_ARRAY_FOR(ly_mod->deviated_by, u) {
+        if ((err_info = sr_collect_module_impl_deps_r(ly_mod->deviated_by[u], sr_mods, mod_set))) {
+            goto cleanup;
+        }
+    }
+
+    /* find all dep modules and paths */
+    if (asprintf(&path, "module[name='%s']/deps/target-module | module[name='%s']/deps/target-module/default-target-path",
+            ly_mod->name, ly_mod->name) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        goto cleanup;
+    }
+    if (lyd_find_xpath(sr_mods, path, &set)) {
+        SR_ERRINFO_INT(&err_info);
+        goto cleanup;
+    }
+
+    /* go through all the SR mod deps */
+    for (i = 0; i < set->count; ++i) {
+        node = set->dnodes[i];
+        buf = NULL;
+        if (!strcmp(LYD_NAME(node), "target-module")) {
+            name = lyd_get_value(node);
+        } else {
+            assert(!strcmp(LYD_NAME(node), "default-target-path"));
+            buf = sr_get_first_ns(lyd_get_value(node));
+            name = buf;
+        }
+
+        /* get the module */
+        dep_mod = ly_ctx_get_module_implemented(ly_mod->ctx, name);
+        free(buf);
+        SR_CHECK_INT_GOTO(!dep_mod, err_info, cleanup);
+
+        /* process the dependent module */
+        if ((err_info = sr_collect_module_impl_deps_r(dep_mod, sr_mods, mod_set))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    free(path);
+    ly_set_free(set, NULL);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_collect_module_impl_deps(const struct lys_module *ly_mod, struct ly_set *mod_set)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *sr_mods = NULL;
+
+    /* parse SR mod data for the dependencies */
+    if ((err_info = sr_lydmods_parse(ly_mod->ctx, 0, &sr_mods))) {
+        goto cleanup;
+    }
+
+    /* recursively collect all the modules */
+    if ((err_info = sr_collect_module_impl_deps_r(ly_mod, sr_mods, mod_set))) {
+        goto cleanup;
+    }
+
+cleanup:
+    lyd_free_siblings(sr_mods);
+    return err_info;
 }
 
 int
@@ -2076,6 +2400,8 @@ sr_module_is_internal(const struct lys_module *ly_mod)
     }
 
     if (!strcmp(ly_mod->name, "ietf-datastores") && !strcmp(ly_mod->revision, "2018-02-14")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-yang-schema-mount")) {
         return 1;
     } else if (!strcmp(ly_mod->name, "ietf-yang-library")) {
         return 1;
@@ -2093,54 +2419,96 @@ sr_module_is_internal(const struct lys_module *ly_mod)
         return 1;
     } else if (!strcmp(ly_mod->name, "sysrepo-plugind")) {
         return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-netconf-acm")) {
+        return 1;
+    }
+
+    return 0;
+}
+
+mode_t
+sr_module_default_mode(const struct lys_module *ly_mod)
+{
+    if (!strcmp(ly_mod->name, "sysrepo")) {
+        return SR_INTMOD_MAIN_FILE_PERM;
+    } else if (sr_module_is_internal(ly_mod)) {
+        if (!strcmp(ly_mod->name, "sysrepo-monitoring") || !strcmp(ly_mod->name, "sysrepo-plugind") ||
+                !strcmp(ly_mod->name, "ietf-yang-schema-mount") || !strcmp(ly_mod->name, "ietf-yang-library") ||
+                !strcmp(ly_mod->name, "ietf-netconf-notifications") || !strcmp(ly_mod->name, "ietf-netconf")) {
+            return SR_INTMOD_WITHDATA_FILE_PERM;
+        } else if (!strcmp(ly_mod->name, "ietf-netconf-acm")) {
+            return SR_INTMOD_NACM_FILE_PERM;
+        } else {
+            return SR_INTMOD_NODATA_FILE_PERM;
+        }
+    }
+
+    return SR_FILE_PERM;
+}
+
+int
+sr_module_has_data(const struct lys_module *ly_mod, int state_data)
+{
+    const struct lysc_node *root;
+
+    LY_LIST_FOR(ly_mod->compiled->data, root) {
+        if (!(root->nodetype & (LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA | LYS_CHOICE))) {
+            continue;
+        }
+
+        if ((root->flags & LYS_CONFIG_W) || (state_data && (root->flags & LYS_CONFIG_R))) {
+            return 1;
+        }
     }
 
     return 0;
 }
 
 sr_error_info_t *
-sr_create_module_imps_incs_r(const struct lys_module *ly_mod, const struct lysp_submodule *lysp_submod)
+sr_module_get_impl_inv_imports(const struct lys_module *ly_mod, struct ly_set *mod_set)
 {
     sr_error_info_t *err_info = NULL;
-    struct lysp_import *imports;
-    struct lysp_include *includes;
-    LY_ARRAY_COUNT_TYPE u;
+    const struct lys_module *mod;
+    LY_ARRAY_COUNT_TYPE u, v;
+    uint32_t idx = 0;
+    int found;
 
-    /* store all imports */
-    imports = (lysp_submod ? lysp_submod->imports : ly_mod->parsed->imports);
-    LY_ARRAY_FOR(imports, u) {
-        if (sr_ly_module_is_internal(imports[u].module)) {
-            /* skip */
+    while ((mod = ly_ctx_get_module_iter(ly_mod->ctx, &idx))) {
+        if ((mod == ly_mod) || !mod->implemented) {
+            /* skip this module and non-implemented modules */
             continue;
         }
+        found = 0;
 
-        if ((err_info = sr_store_module_files(imports[u].module))) {
-            return err_info;
+        /* check imports of the module */
+        LY_ARRAY_FOR(mod->parsed->imports, u) {
+            if (mod->parsed->imports[u].module == ly_mod) {
+                found = 1;
+                break;
+            }
         }
 
-        if ((err_info = sr_create_module_imps_incs_r(imports[u].module, NULL))) {
-            return err_info;
+        if (!found) {
+            /* check import of all the submodules */
+            LY_ARRAY_FOR(mod->parsed->includes, v) {
+                LY_ARRAY_FOR(mod->parsed->includes[v].submodule->imports, u) {
+                    if (mod->parsed->includes[v].submodule->imports[u].module == ly_mod) {
+                        found = 1;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (found) {
+            if (ly_set_add(mod_set, (void *)mod, 1, NULL)) {
+                SR_ERRINFO_MEM(&err_info);
+                return err_info;
+            }
         }
     }
 
-    if (lysp_submod) {
-        /* all submodules are in the main module */
-        return NULL;
-    }
-
-    /* store all includes */
-    includes = ly_mod->parsed->includes;
-    LY_ARRAY_FOR(includes, u) {
-        if ((err_info = sr_store_module_file(ly_mod, includes[u].submodule))) {
-            return err_info;
-        }
-
-        if ((err_info = sr_create_module_imps_incs_r(ly_mod, includes[u].submodule))) {
-            return err_info;
-        }
-    }
-
-    return NULL;
+    return err_info;
 }
 
 /**
@@ -2177,6 +2545,25 @@ sr_path_main_shm(char **path)
     }
 
     if (asprintf(path, "%s/%s_main", SR_SHM_DIR, prefix) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        *path = NULL;
+    }
+
+    return err_info;
+}
+
+sr_error_info_t *
+sr_path_mod_shm(char **path)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *prefix;
+
+    err_info = sr_shm_prefix(&prefix);
+    if (err_info) {
+        return err_info;
+    }
+
+    if (asprintf(path, "%s/%s_mod", SR_SHM_DIR, prefix) == -1) {
         SR_ERRINFO_MEM(&err_info);
         *path = NULL;
     }
@@ -2306,7 +2693,7 @@ sr_path_yang_file(const char *mod_name, const char *mod_rev, char **path)
 }
 
 sr_error_info_t *
-sr_path_conn_lockfile(sr_cid_t cid, char **path)
+sr_path_conn_lockfile(sr_cid_t cid, int creat, char **path)
 {
     sr_error_info_t *err_info = NULL;
     int ret;
@@ -2314,7 +2701,7 @@ sr_path_conn_lockfile(sr_cid_t cid, char **path)
     if (cid == 0) {
         ret = asprintf(path, "%s/conn", sr_get_repo_path());
     } else {
-        ret = asprintf(path, "%s/conn/conn_%" PRIu32 ".lock", sr_get_repo_path(), cid);
+        ret = asprintf(path, "%s/conn/conn_%" PRIu32 ".lock%s", sr_get_repo_path(), cid, creat ? ".new" : "");
     }
 
     if (ret == -1) {
@@ -2440,11 +2827,11 @@ sr_perm_check(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore
     int rc, r, w;
 
     /* find the module in SHM */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), ly_mod->name);
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* find the DS plugin for startup */
-    if ((err_info = sr_ds_plugin_find(conn->main_shm.addr + shm_mod->plugins[ds], conn, &plg))) {
+    if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &plg))) {
         goto cleanup;
     }
 
@@ -2538,7 +2925,7 @@ sr_error_info_t *
 sr_shm_remap(sr_shm_t *shm, size_t new_shm_size)
 {
     sr_error_info_t *err_info = NULL;
-    size_t shm_file_size;
+    size_t shm_file_size = 0;
 
     /* read the new shm size if not set */
     if (!new_shm_size && (err_info = sr_file_get_size(shm->fd, &shm_file_size))) {
@@ -3353,16 +3740,27 @@ sr_rwlock_reader_add(sr_rwlock_t *rwlock, sr_cid_t cid)
         sr_errinfo_free(&err_info);
     }
 
-    /* find first free item */
-    for (i = 0; (i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i]; ++i) {}
+    /* find this connection or first free item */
+    for (i = 0; (i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i] && (rwlock->readers[i] != cid); ++i) {}
     if (i == SR_RWLOCK_READ_LIMIT) {
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Concurrent reader limit %d reached!", SR_RWLOCK_READ_LIMIT);
         sr_errinfo_free(&err_info);
         goto unlock;
     }
 
-    /* assign owner cid */
-    rwlock->readers[i] = cid;
+    if (!rwlock->readers[i]) {
+        /* first connection reader, assign owner cid */
+        rwlock->readers[i] = cid;
+        rwlock->read_count[i] = 1;
+    } else {
+        /* recursive read lock on the connection */
+        if (rwlock->read_count[i] == UINT8_MAX) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Recursive reader limit %" PRIu8 " reached!", UINT8_MAX);
+            sr_errinfo_free(&err_info);
+            goto unlock;
+        }
+        ++rwlock->read_count[i];
+    }
 
 unlock:
     if (!ret) {
@@ -3371,21 +3769,38 @@ unlock:
     }
 }
 
+/**
+ * @brief Remove a reader lock from a rwlock.
+ *
+ * @param[in] rwlock Lock to remove the reader lock from.
+ * @param[in] i Index of the reader.
+ */
 static void
-sr_rwlock_reader_del_(sr_cid_t *readers, uint32_t i)
+sr_rwlock_reader_del_(sr_rwlock_t *rwlock, uint32_t i)
 {
+    /* decrease recursive read lock count */
+    assert(rwlock->read_count[i]);
+    --rwlock->read_count[i];
+
+    if (rwlock->read_count[i]) {
+        /* read lock is still recursively held */
+        return;
+    }
+
     /* move all the following CIDs so that there are no holes */
-    while ((i < (SR_RWLOCK_READ_LIMIT - 1)) && readers[i + 1]) {
-        readers[i] = readers[i + 1];
+    while ((i < (SR_RWLOCK_READ_LIMIT - 1)) && rwlock->readers[i + 1]) {
+        rwlock->readers[i] = rwlock->readers[i + 1];
+        rwlock->read_count[i] = rwlock->read_count[i + 1];
         ++i;
     }
 
     /* remove the last CID */
-    readers[i] = 0;
+    rwlock->readers[i] = 0;
+    rwlock->read_count[i] = 0;
 }
 
 /**
- * @brief Remove a reader CID from a rwlock.
+ * @brief Remove a reader from a rwlock.
  *
  * @param[in] rwlock Lock to remove a reader from.
  * @param[in] cid Owner CID.
@@ -3414,7 +3829,7 @@ sr_rwlock_reader_del(sr_rwlock_t *rwlock, sr_cid_t cid)
     }
 
     /* remove the CID */
-    sr_rwlock_reader_del_(rwlock->readers, i);
+    sr_rwlock_reader_del_(rwlock, i);
 
 unlock:
     if (!ret) {
@@ -3443,7 +3858,7 @@ sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_lock_recover_cb cb, 
         if (!sr_conn_is_alive(rwlock->readers[i])) {
             /* remove the dead reader */
             cid = rwlock->readers[i];
-            sr_rwlock_reader_del_(rwlock->readers, i);
+            sr_rwlock_reader_del_(rwlock, i);
 
             /* recover */
             if (cb) {
@@ -3519,9 +3934,7 @@ _sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t ci
         ret = pthread_mutex_consistent(&rwlock->mutex);
 
         /* recover the lock */
-        assert(rwlock->writer);
         sr_rwlock_recover(rwlock, func, cb, cb_data);
-        assert(!rwlock->writer);
         SR_CHECK_INT_RET(ret, err_info);
     } else if (ret) {
         SR_ERRINFO_LOCK(&err_info, func, ret);
@@ -3648,20 +4061,20 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
         /* consistency checks */
         assert(rwlock->upgr == cid);
 
-        if (rwlock->readers[1]) {
+        if (rwlock->readers[1] || (rwlock->read_count[0] > 1)) {
             /* instead of waiting, try to recover the lock immediately */
             sr_rwlock_recover(rwlock, func, cb, cb_data);
         }
 
         /* wait until there are no readers except for this one */
         ret = 0;
-        while (!ret && rwlock->readers[1]) {
+        while (!ret && (rwlock->readers[1] || (rwlock->read_count[0] > 1))) {
             /* COND WAIT */
             ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
         }
         if (ret == ETIMEDOUT) {
             sr_rwlock_recover(rwlock, func, cb, cb_data);
-            if (!rwlock->readers[1]) {
+            if (!rwlock->readers[1] && (rwlock->read_count[0] == 1)) {
                 /* recovered */
                 ret = 0;
             }
@@ -3749,7 +4162,8 @@ sr_rwunlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
 
     /* write-unlock/last read-unlock, last read-unlock with read-upgr lock waiting for an upgrade,
      * or upgradeable read-unlock (there may be another upgr-read-lock waiting) */
-    if (!rwlock->readers[0] || (!rwlock->readers[1] && rwlock->upgr) || (mode == SR_LOCK_READ_UPGR)) {
+    if (!rwlock->readers[0] || (!rwlock->readers[1] && (rwlock->read_count[0] == 1) && rwlock->upgr) ||
+            (mode == SR_LOCK_READ_UPGR)) {
         /* broadcast on condition */
         pthread_cond_broadcast(&rwlock->cond);
     }
@@ -3788,10 +4202,12 @@ sr_realloc(void *ptr, size_t size)
 }
 
 int
-sr_open(const char *pathname, int flags, mode_t mode)
+sr_open(const char *path, int flags, mode_t mode)
 {
-    mode_t um;
     int fd;
+    struct stat st = {0};
+
+    assert(!(flags & O_CREAT) || mode);
 
     /* O_NOFOLLOW enforces that files are not symlinks -- all opened
      *   files are created by sysrepo so there cannot be any symlinks.
@@ -3800,21 +4216,31 @@ sr_open(const char *pathname, int flags, mode_t mode)
      */
     flags |= O_NOFOLLOW | O_CLOEXEC;
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK);
+    /* apply umask on mode */
+    mode &= ~SR_UMASK;
 
-    /* open the file */
-    fd = open(pathname, flags, mode);
-
-    /* restore umask (should not modify errno) */
-    umask(um);
-
+    /* open the file, process umask may affect the permissions if creating it */
+    fd = open(path, flags, mode);
     if (fd == -1) {
-        /* error */
-        return fd;
+        return -1;
     }
 
-    /* success */
+    if (flags & O_CREAT) {
+        if (!(flags & O_EXCL)) {
+            /* file may have existed, check its permissions */
+            if (fstat(fd, &st)) {
+                close(fd);
+                return -1;
+            }
+        }
+
+        /* set correct permissions if not already */
+        if (((st.st_mode & 00777) != mode) && (fchmod(fd, mode) == -1)) {
+            close(fd);
+            return -1;
+        }
+    }
+
     return fd;
 }
 
@@ -3822,40 +4248,67 @@ sr_error_info_t *
 sr_mkpath(char *path, mode_t mode)
 {
     sr_error_info_t *err_info = NULL;
-    mode_t um;
     char *p = NULL;
+    int r;
 
     assert(path[0] == '/');
 
-    /* set umask so that the correct permissions are really set */
-    um = umask(SR_UMASK);
+    /* apply umask on mode */
+    mode &= ~SR_UMASK;
 
     /* create each directory in the path */
     for (p = strchr(path + 1, '/'); p; p = strchr(p + 1, '/')) {
         *p = '\0';
-        if (mkdir(path, mode) == -1) {
-            if (errno != EEXIST) {
-                sr_errinfo_new(&err_info, SR_ERR_SYS, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
-                goto cleanup;
-            }
+        if (((r = mkdir(path, mode)) == -1) && (errno != EEXIST)) {
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
+            goto cleanup;
+        }
+        if (!r && (chmod(path, mode) == -1)) {
+            SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+            goto cleanup;
         }
         *p = '/';
     }
 
     /* create the last directory in the path */
-    if (mkdir(path, mode) == -1) {
-        if (errno != EEXIST) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
-            goto cleanup;
-        }
+    if (((r = mkdir(path, mode)) == -1) && (errno != EEXIST)) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
+        goto cleanup;
+    }
+    if (!r && (chmod(path, mode) == -1)) {
+        SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+        goto cleanup;
     }
 
 cleanup:
     if (p) {
         *p = '/';
     }
-    umask(um);
     return err_info;
+}
+
+sr_error_info_t *
+sr_mkfifo(const char *path, mode_t mode)
+{
+    sr_error_info_t *err_info = NULL;
+
+    /* apply umask on mode */
+    mode &= ~SR_UMASK;
+
+    /* create the event pipe */
+    if (mkfifo(path, mode) == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "mkfifo");
+        return err_info;
+    }
+
+    /* set correct permissions */
+    if (chmod(path, mode) == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+        unlink(path);
+        return err_info;
+    }
+
+    return NULL;
 }
 
 char *
@@ -4473,6 +4926,25 @@ sr_lyd_dup(const struct lyd_node *src_parent, uint32_t depth, struct lyd_node *t
     return NULL;
 }
 
+void
+sr_lyd_trim_depth(struct lyd_node *subtree, uint32_t max_depth)
+{
+    struct lyd_node *next, *child;
+
+    if (!max_depth) {
+        /* nothing to trim */
+        return;
+    }
+
+    LY_LIST_FOR_SAFE(lyd_child_no_keys(subtree), next, child) {
+        if (max_depth == 1) {
+            lyd_free_tree(child);
+        } else {
+            sr_lyd_trim_depth(child, max_depth - 1);
+        }
+    }
+}
+
 /**
  * @brief Copy any existing config NP containers, recursively.
  *
@@ -4868,6 +5340,11 @@ sr_xpath_trim_last_node(const char *xpath, char **trim_xpath)
         return NULL;
     }
 
+    if (ptr[-1] == '/') {
+        /* "//", fine */
+        --ptr;
+    }
+
     *trim_xpath = strndup(xpath, ptr - xpath);
     SR_CHECK_MEM_GOTO(!*trim_xpath, err_info, error);
     return NULL;
@@ -4899,126 +5376,6 @@ sr_xpath_first_node_with_predicates(const char *xpath)
     }
 
     return strndup(xpath, ptr - xpath);
-}
-
-const char *
-sr_xpath_next_identifier(const char *id, int allow_special)
-{
-    if (allow_special && !strncmp(id, "..", 2)) {
-        id += 2;
-    } else if (allow_special && ((id[0] == '*') || (id[0] == '.'))) {
-        id += 1;
-    } else {
-        if (!isalpha(id[0]) && (id[0] != '_')) {
-            /* special first character */
-            return id;
-        }
-        ++id;
-        while (isalpha(id[0]) || isdigit(id[0]) || (id[0] == '_') || (id[0] == '-') || (id[0] == '.')) {
-            ++id;
-        }
-    }
-
-    return id;
-}
-
-const char *
-sr_xpath_next_name(const char *xpath, const char **mod, int *mod_len, const char **name, int *len, int *double_slash,
-        int *has_predicate)
-{
-    const char *ptr;
-
-    assert(xpath && (xpath[0] == '/'));
-
-    if (mod) {
-        *mod = NULL;
-    }
-    if (mod_len) {
-        *mod_len = 0;
-    }
-    if (name) {
-        *name = NULL;
-    }
-    if (len) {
-        *len = 0;
-    }
-    if (double_slash) {
-        *double_slash = 0;
-    }
-    *has_predicate = 0;
-
-    ++xpath;
-    if (xpath[0] == '/') {
-        ++xpath;
-        if (double_slash) {
-            *double_slash = 1;
-        }
-    }
-
-    /* module/node name */
-    ptr = sr_xpath_next_identifier(xpath, 1);
-
-    /* it was actually module name */
-    if (ptr[0] == ':') {
-        if (mod) {
-            *mod = xpath;
-        }
-        if (mod_len) {
-            *mod_len = ptr - xpath;
-        }
-        xpath = ptr + 1;
-
-        /* node name */
-        ptr = sr_xpath_next_identifier(xpath, 1);
-    }
-
-    /* predicate follows node name */
-    if (ptr[0] == '[') {
-        *has_predicate = 1;
-    }
-
-    if (name) {
-        *name = xpath;
-    }
-    if (len) {
-        *len = ptr - xpath;
-    }
-
-    return ptr;
-}
-
-const char *
-sr_xpath_next_predicate(const char *xpath, const char **pred, int *len, int *has_predicate)
-{
-    const char *ptr;
-    char quote = 0;
-
-    assert(xpath && (xpath[0] == '['));
-
-    for (ptr = xpath + 1; ptr[0] && (quote || (ptr[0] != ']')); ++ptr) {
-        if (quote && (ptr[0] == quote)) {
-            quote = 0;
-        } else if (!quote && ((ptr[0] == '\'') || (ptr[0] == '\"'))) {
-            quote = ptr[0];
-        }
-    }
-
-    if (quote) {
-        /* invalid xpath */
-        return NULL;
-    }
-
-    if (pred) {
-        *pred = xpath + 1;
-    }
-    if (len) {
-        *len = ptr - (xpath + 1);
-    }
-    if (has_predicate) {
-        *has_predicate = (ptr[0] && (ptr[1] == '[')) ? 1 : 0;
-    }
-
-    return ptr + 1;
 }
 
 size_t
@@ -5058,6 +5415,327 @@ sr_xpath_len_no_predicates(const char *xpath)
         return 0;
     }
     return len;
+}
+
+/**
+ * @brief Parse "..", "*", ".", or a YANG identifier.
+ *
+ * @param[in] id Identifier start.
+ * @param[in] allow_special Whether to allow special paths or only YANG identifiers.
+ * @return Pointer to the first non-identifier character.
+ */
+static const char *
+sr_xpath_next_identifier(const char *id, int allow_special)
+{
+    if (allow_special && !strncmp(id, "..", 2)) {
+        id += 2;
+    } else if (allow_special && ((id[0] == '*') || (id[0] == '.'))) {
+        id += 1;
+    } else {
+        if (!isalpha(id[0]) && (id[0] != '_')) {
+            /* special first character */
+            return id;
+        }
+        ++id;
+        while (isalpha(id[0]) || isdigit(id[0]) || (id[0] == '_') || (id[0] == '-') || (id[0] == '.')) {
+            ++id;
+        }
+    }
+
+    return id;
+}
+
+const char *
+sr_xpath_next_qname(const char *xpath, const char **mod, int *mod_len, const char **name, int *len)
+{
+    const char *ptr;
+
+    assert(xpath);
+
+    if (mod) {
+        *mod = NULL;
+    }
+    if (mod_len) {
+        *mod_len = 0;
+    }
+    if (name) {
+        *name = NULL;
+    }
+    if (len) {
+        *len = 0;
+    }
+
+    /* module/node name */
+    ptr = sr_xpath_next_identifier(xpath, 1);
+
+    /* it was actually module name */
+    if (ptr[0] == ':') {
+        if (mod) {
+            *mod = xpath;
+        }
+        if (mod_len) {
+            *mod_len = ptr - xpath;
+        }
+        xpath = ptr + 1;
+
+        /* node name */
+        ptr = sr_xpath_next_identifier(xpath, 1);
+    }
+
+    if (name) {
+        *name = xpath;
+    }
+    if (len) {
+        *len = ptr - xpath;
+    }
+
+    return ptr;
+}
+
+/**
+ * @brief Add a new atom if not present.
+ *
+ * @param[in,out] atom Atom to add, is spent and set to NULL.
+ * @param[in,out] atoms Array of atoms to add to.
+ * @param[in,out] atom_count Count of @p atoms, is updated.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_xpath_text_atom_add(char **atom, char ***atoms, uint32_t *atom_count)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i;
+    void *mem;
+
+    for (i = 0; i < *atom_count; ++i) {
+        if (!strcmp((*atoms)[i], *atom)) {
+            break;
+        }
+    }
+
+    if (i < *atom_count) {
+        /* atom already stored */
+        free(*atom);
+        *atom = NULL;
+    } else {
+        /* new atom */
+        mem = realloc(*atoms, (i + 1) * sizeof **atoms);
+        SR_CHECK_MEM_RET(!mem, err_info);
+        *atoms = mem;
+
+        (*atoms)[i] = *atom;
+        *atom = NULL;
+        ++(*atom_count);
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief Accepted operators in XPath delimiting expressions.
+ */
+static const char *xpath_ops[] = {"or ", "and ", "=", "!=", "<", ">", "<=", ">=", "+", "-", "*", "div ", "mod ", "|"};
+
+/**
+ * @brief Get text atoms from an XPath expression.
+ *
+ * @param[in] xpath XPath to parse.
+ * @param[in] prev_atom Atom of the previous expression (context node as a text atom).
+ * @param[in] end_chars Array of chars ending this expression, NULL if only terminating zero is expected.
+ * @param[out] atoms Collected text atoms.
+ * @param[out] atom_count Count of @p atoms.
+ * @param[out] xpath_next Pointer to one of @p end_chars if found, @p xpath if some unknown construct was encountered.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_xpath_text_atoms_expr(const char *xpath, const char *prev_atom, const char *end_chars, char ***atoms,
+        uint32_t *atom_count, const char **xpath_next)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i;
+    int parsed = 0, mod_len, name_len, op_len, last_is_node = 0;
+    const char *mod, *name, *next, *next2;
+    char *tmp, *cur_atom = NULL;
+
+    /* skip whitespaces */
+    next = xpath;
+    while (isspace(next[0])) {
+        ++next;
+    }
+
+    if ((next[0] == '\'') || (next[0] == '\"')) {
+        /* literal, skip it */
+        for (next2 = next + 1; next2[0] != next[0]; ++next2) {}
+        next = next2 + 1;
+        parsed = 1;
+        goto cleanup;
+    } else if (isdigit(next[0])) {
+        /* number, skip it */
+        do {
+            ++next;
+        } while (isdigit(next[0]));
+        parsed = 1;
+        goto cleanup;
+    } else if (next[0] == '/') {
+        /* absolute path */
+        ++next;
+        if (!(cur_atom = strdup(""))) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+    } else {
+        /* relative path */
+        if (!(cur_atom = strdup(prev_atom))) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+    }
+
+parse_name:
+    /* parse the name (node, function, ...), there should be some */
+    next2 = sr_xpath_next_qname(next, &mod, &mod_len, &name, &name_len);
+    if (next2 == next) {
+        /* nothing parsed, unknown expr */
+        goto cleanup;
+    }
+    next = next2;
+    assert(name);
+
+    if (next[0] != '(') {
+        /* add the node if not a function */
+        if (asprintf(&tmp, "%s/%.*s%s%.*s", cur_atom, mod_len, mod ? mod : "", mod ? ":" : "", name_len, name) == -1) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+        free(cur_atom);
+        cur_atom = tmp;
+
+        last_is_node = 1;
+    }
+
+    if (next[0] == '/') {
+        /* parse next path segment */
+        ++next;
+        goto parse_name;
+    } else if (next[0] == '(') {
+        /* function call, get atoms from subexpressions */
+        do {
+            next2 = next + 1;
+            if ((err_info = sr_xpath_text_atoms_expr(next2, cur_atom, ",)", atoms, atom_count, &next))) {
+                goto cleanup;
+            } else if (next2 == next) {
+                /* unknown expr */
+                goto cleanup;
+            }
+        } while (next[0] == ',');
+        ++next;
+
+        last_is_node = 0;
+    } else if (next[0] == '[') {
+        /* predicate(s), get atoms from it */
+        do {
+            next2 = next + 1;
+            if ((err_info = sr_xpath_text_atoms_expr(next2, cur_atom, "]", atoms, atom_count, &next))) {
+                goto cleanup;
+            } else if (next2 == next) {
+                /* unknown expr */
+                goto cleanup;
+            }
+            ++next;
+        } while (next[0] == '[');
+
+        if (next[0] == '/') {
+            /* path continues, parse next path segment */
+            ++next;
+            goto parse_name;
+        }
+
+        last_is_node = 0;
+    }
+
+    /* skip whitespaces */
+    while (isspace(next[0])) {
+        ++next;
+    }
+
+    if ((!end_chars && !next[0]) || (end_chars && next[0] && strchr(end_chars, next[0]))) {
+        /* finished with this (sub)expression, add new atom */
+        parsed = 1;
+        if ((err_info = sr_xpath_text_atom_add(&cur_atom, atoms, atom_count))) {
+            goto cleanup;
+        }
+    } else {
+        /* operator after expression */
+        op_len = 0;
+        for (i = 0; i < sizeof xpath_ops / sizeof *xpath_ops; ++i) {
+            if (!strncmp(next, xpath_ops[i], strlen(xpath_ops[i]))) {
+                op_len = strlen(xpath_ops[i]);
+                break;
+            }
+        }
+
+        if (op_len) {
+            next2 = next + op_len;
+            if (last_is_node && end_chars && !strcmp(end_chars, "]") && !strcmp(xpath_ops[i], "=")) {
+                /* check for literal and store it in a special atom */
+                while (isspace(next2[0])) {
+                    ++next2;
+                }
+                if ((next2[0] == '\'') || (next2[0] == '\"')) {
+                    if (asprintf(&tmp, "%s[.=%.*s]", cur_atom, (int)(strchr(next2 + 1, next2[0]) - next2) + 1, next2) == -1) {
+                        SR_ERRINFO_MEM(&err_info);
+                        goto cleanup;
+                    }
+                    if ((err_info = sr_xpath_text_atom_add(&tmp, atoms, atom_count))) {
+                        goto cleanup;
+                    }
+                }
+            }
+
+            /* add new atom */
+            if ((err_info = sr_xpath_text_atom_add(&cur_atom, atoms, atom_count))) {
+                goto cleanup;
+            }
+
+            /* parse the following expression */
+            if ((err_info = sr_xpath_text_atoms_expr(next2, prev_atom, end_chars, atoms, atom_count, &next))) {
+                goto cleanup;
+            }
+            parsed = 1;
+        } /* else unknown expr */
+    } /* else unknown expr */
+
+cleanup:
+    free(cur_atom);
+    *xpath_next = parsed ? next : xpath;
+    return err_info;
+}
+
+sr_error_info_t *
+sr_xpath_get_text_atoms(const char *xpath, char ***atoms, uint32_t *atom_count)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *next;
+    uint32_t i;
+
+    assert(xpath);
+
+    *atoms = NULL;
+    *atom_count = 0;
+
+    /* get atoms for the expression, for relative paths we can use '/' because the context node is root node */
+    err_info = sr_xpath_text_atoms_expr(xpath, "/", NULL, atoms, atom_count, &next);
+
+    if (err_info || (xpath == next)) {
+        /* error or unknown expr */
+        for (i = 0; i < *atom_count; ++i) {
+            free((*atoms)[i]);
+        }
+        free(*atoms);
+        *atoms = NULL;
+        *atom_count = 0;
+    }
+    return err_info;
 }
 
 sr_error_info_t *
@@ -5248,7 +5926,7 @@ sr_conn_info(sr_cid_t **cids, pid_t **pids, uint32_t *count, sr_cid_t **dead_cid
     }
 
     /* get the path to the directory with all the lock files */
-    if ((err_info = sr_path_conn_lockfile(0, &path))) {
+    if ((err_info = sr_path_conn_lockfile(0, 0, &path))) {
         return err_info;
     }
 

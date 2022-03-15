@@ -53,6 +53,7 @@ struct srpd_plugin_s {
     srp_cleanup_cb_t cleanup_cb;
     void *private_data;
     char *plugin_name;
+    int initialized;
 };
 
 static void
@@ -75,10 +76,19 @@ help_print(void)
             "  -h, --help           Prints usage help.\n"
             "  -V, --version        Prints only information about sysrepo version.\n"
             "  -v, --verbosity <level>\n"
-            "                       Change verbosity to a level (none, error, warning, info, debug) or number (0, 1, 2, 3, 4).\n"
+            "                       Change verbosity to a level (none, error, warning, info, debug) or\n"
+            "                       number (0, 1, 2, 3, 4).\n"
             "  -d, --debug          Debug mode - is not daemonized and logs to stderr instead of syslog.\n"
+            "  -P, --plugin-install <path>\n"
+            "                       Install a sysrepo-plugind plugin. The plugin is simply copied\n"
+            "                       to the designated plugin directory.\n"
+            "  -p, --pid-file <path>\n"
+            "                       Create a PID file at the specified path with the PID written only once\n"
+            "                       plugin initialization is finished.\n"
+            "  -f, --fatal-plugin-fail\n"
+            "                       If any plugin initialization fails, terminate sysrepo-plugind.\n"
             "\n"
-            "Environment variable $SRPD_PLUGINS_PATH overwrites the default plugins path.\n"
+            "Environment variable $SRPD_PLUGINS_PATH overwrites the default plugins directory.\n"
             "\n");
 }
 
@@ -246,9 +256,34 @@ length_without_extension(const char *src)
 }
 
 static int
+get_plugins_dir(const char **plugins_dir)
+{
+    /* get plugins dir from environment variable, or use default one */
+    *plugins_dir = getenv("SRPD_PLUGINS_PATH");
+    if (!*plugins_dir) {
+        *plugins_dir = SRPD_PLG_PATH;
+    }
+
+    /* create the directory if it does not exist */
+    if (access(*plugins_dir, F_OK) == -1) {
+        if (errno != ENOENT) {
+            error_print(0, "Checking plugins dir existence failed (%s).", strerror(errno));
+            return -1;
+        }
+        if (sr_mkpath(*plugins_dir, 00777) == -1) {
+            error_print(0, "Creating plugins dir \"%s\" failed (%s).", *plugins_dir, strerror(errno));
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+static int
 load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
 {
     void *mem, *handle;
+    struct srpd_plugin_s *plugin;
     DIR *dir;
     struct dirent *ent;
     const char *plugins_dir;
@@ -259,22 +294,9 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
     *plugins = NULL;
     *plugin_count = 0;
 
-    /* get plugins dir from environment variable, or use default one */
-    plugins_dir = getenv("SRPD_PLUGINS_PATH");
-    if (!plugins_dir) {
-        plugins_dir = SRPD_PLG_PATH;
-    }
-
-    /* create the directory if it does not exist */
-    if (access(plugins_dir, F_OK) == -1) {
-        if (errno != ENOENT) {
-            error_print(0, "Checking plugins dir existence failed (%s).", strerror(errno));
-            return -1;
-        }
-        if (sr_mkpath(plugins_dir, 00777) == -1) {
-            error_print(0, "Creating plugins dir \"%s\" failed (%s).", plugins_dir, strerror(errno));
-            return -1;
-        }
+    /* get plugins directory */
+    if (get_plugins_dir(&plugins_dir)) {
+        return -1;
     }
 
     dir = opendir(plugins_dir);
@@ -312,18 +334,20 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
             break;
         }
         *plugins = mem;
+        plugin = &(*plugins)[*plugin_count];
+        memset(plugin, 0, sizeof *plugin);
 
         /* find required functions */
-        *(void **)&(*plugins)[*plugin_count].init_cb = dlsym(handle, SRP_INIT_CB);
-        if (!(*plugins)[*plugin_count].init_cb) {
+        *(void **)&plugin->init_cb = dlsym(handle, SRP_INIT_CB);
+        if (!plugin->init_cb) {
             error_print(0, "Failed to find function \"%s\" in plugin \"%s\".", SRP_INIT_CB, ent->d_name);
             dlclose(handle);
             rc = -1;
             break;
         }
 
-        *(void **)&(*plugins)[*plugin_count].cleanup_cb = dlsym(handle, SRP_CLEANUP_CB);
-        if (!(*plugins)[*plugin_count].cleanup_cb) {
+        *(void **)&plugin->cleanup_cb = dlsym(handle, SRP_CLEANUP_CB);
+        if (!plugin->cleanup_cb) {
             error_print(0, "Failed to find function \"%s\" in plugin \"%s\".", SRP_CLEANUP_CB, ent->d_name);
             dlclose(handle);
             rc = -1;
@@ -331,8 +355,7 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
         }
 
         /* finally store the plugin */
-        (*plugins)[*plugin_count].handle = handle;
-        (*plugins)[*plugin_count].private_data = NULL;
+        plugin->handle = handle;
 
         name_len = length_without_extension(ent->d_name);
         if (name_len == 0) {
@@ -342,8 +365,8 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
             break;
         }
 
-        (*plugins)[*plugin_count].plugin_name = strndup(ent->d_name, name_len);
-        if (!((*plugins)[*plugin_count].plugin_name)) {
+        plugin->plugin_name = strndup(ent->d_name, name_len);
+        if (!plugin->plugin_name) {
             error_print(0, "strndup() failed.");
             dlclose(handle);
             rc = -1;
@@ -388,46 +411,109 @@ plugin_names_cmp(const struct srpd_plugin_s *plugin, const char *str2)
 }
 
 static int
-sorting_plugins(int plugin_count, sr_session_ctx_t *sess, struct srpd_plugin_s *plugins)
+sort_plugins(sr_session_ctx_t *sess, struct srpd_plugin_s *plugins, int plugin_count)
 {
     const char *xpath = "/sysrepo-plugind:sysrepo-plugind/plugin-order/plugin";
     sr_val_t *values;
-    size_t value_cnt;
-    int rc;
+    size_t i, value_cnt;
+    int r, j, ordered_part = 0;
 
-    if ((rc = sr_get_items(sess, xpath, 0, SR_OPER_DEFAULT, &values, &value_cnt))) {
-        error_print(0, "The XPath \"%s\" application failed.", xpath);
-        return rc;
+    if ((r = sr_get_items(sess, xpath, 0, 0, &values, &value_cnt))) {
+        error_print(r, "Getting \"%s\" items failed.", xpath);
+        return r;
     }
 
-    int ordered_part = 0;
-
-    for (size_t i = 0; i < value_cnt; ++i) {
-        for (int j = ordered_part; j < plugin_count; ++j) {
+    for (i = 0; i < value_cnt; ++i) {
+        for (j = ordered_part; j < plugin_count; ++j) {
             if (!plugin_names_cmp(&plugins[j], values[i].data.string_val)) {
                 swap(&plugins[ordered_part], &plugins[j]);
                 ++ordered_part;
             }
         }
     }
-    /* If values[i] wasn't found in plugins, it doesn't matter, it'll just be ignored. */
+    /* if values[i] wasn't found in plugins, it doesn't matter, it'll just be ignored. */
 
     sr_free_values(values, value_cnt);
-
-    return 0;
+    return SR_ERR_OK;
 }
 
 static int
-apply_plugind_module(int plugin_count, sr_session_ctx_t *sess, struct srpd_plugin_s *plugins)
+publish_loaded_plugins(sr_session_ctx_t *sess, struct srpd_plugin_s *plugins, int plugin_count)
 {
-    int rc = 0;
+    int rc = SR_ERR_OK, i;
 
-    if ((rc = sorting_plugins(plugin_count, sess, plugins))) {
-        error_print(0, "Sorting of plugins failed.");
-        return rc;
+    /* switch to operational */
+    sr_session_switch_ds(sess, SR_DS_OPERATIONAL);
+
+    for (i = 0; i < plugin_count; ++i) {
+        if (plugins[i].initialized) {
+            /* add a plugin */
+            if ((rc = sr_set_item_str(sess, "/sysrepo-plugind:sysrepo-plugind/loaded-plugins/plugin",
+                    plugins[i].plugin_name, NULL, 0))) {
+                goto cleanup;
+            }
+        }
     }
 
+    /* apply changes */
+    if ((rc = sr_apply_changes(sess, 0))) {
+        goto cleanup;
+    }
+
+cleanup:
+    /* restore session */
+    sr_discard_changes(sess);
+    sr_session_switch_ds(sess, SR_DS_RUNNING);
     return rc;
+}
+
+static int
+open_pidfile(const char *pidfile)
+{
+    int pidfd;
+
+    pidfd = open(pidfile, O_RDWR | O_CREAT, 0640);
+    if (pidfd < 0) {
+        error_print(0, "Unable to open the PID file \"%s\" (%s).", pidfile, strerror(errno));
+        return -1;
+    }
+
+    if (lockf(pidfd, F_TLOCK, 0) < 0) {
+        if ((errno == EACCES) || (errno == EAGAIN)) {
+            error_print(0, "Another instance of the sysrepo-plugind is running.");
+        } else {
+            error_print(0, "Unable to lock the PID file \"%s\" (%s).", pidfile, strerror(errno));
+        }
+        close(pidfd);
+        return -1;
+    }
+
+    return pidfd;
+}
+
+static int
+write_pidfile(int pidfd)
+{
+    char pid[30] = {0};
+    int pid_len;
+
+    if (ftruncate(pidfd, 0)) {
+        error_print(0, "Failed to truncate pid file (%s).", strerror(errno));
+        return -1;
+    }
+
+    if (snprintf(pid, sizeof(pid) - 1, "%ld\n", (long) getpid())) {
+        error_print(0, "Failed to allocate memory for pid (%s).", strerror(errno));
+        return -1;
+    }
+
+    pid_len = strlen(pid);
+    if (write(pidfd, pid, pid_len) < pid_len) {
+        error_print(0, "Failed to write PID into pid file (%s).", strerror(errno));
+        return -1;
+    }
+
+    return 0;
 }
 
 int
@@ -437,18 +523,23 @@ main(int argc, char **argv)
     sr_conn_ctx_t *conn = NULL;
     sr_session_ctx_t *sess = NULL;
     sr_log_level_t log_level = SR_LL_ERR;
-    int plugin_count = 0, i, r, rc = EXIT_FAILURE, opt, debug = 0;
+    int plugin_count = 0, i, r, rc = EXIT_FAILURE, opt, debug = 0, pidfd = -1, fatal_fail = 0;
+    const char *plugins_dir, *pidfile = NULL;
+    char *cmd;
     struct option options[] = {
-        {"help",      no_argument,       NULL, 'h'},
-        {"version",   no_argument,       NULL, 'V'},
-        {"verbosity", required_argument, NULL, 'v'},
-        {"debug",     no_argument,       NULL, 'd'},
-        {NULL,        0,                 NULL, 0},
+        {"help",              no_argument,       NULL, 'h'},
+        {"version",           no_argument,       NULL, 'V'},
+        {"verbosity",         required_argument, NULL, 'v'},
+        {"debug",             no_argument,       NULL, 'd'},
+        {"plugin-install",    required_argument, NULL, 'P'},
+        {"pid-file",          required_argument, NULL, 'p'},
+        {"fatal-plugin-fail", no_argument,       NULL, 'f'},
+        {NULL,                0,                 NULL, 0},
     };
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVv:d", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVv:dP:p:f", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -480,6 +571,30 @@ main(int argc, char **argv)
         case 'd':
             debug = 1;
             break;
+        case 'P':
+            /* plugin-install */
+            if (get_plugins_dir(&plugins_dir)) {
+                goto cleanup;
+            }
+            if (asprintf(&cmd, "/bin/cp -- \"%s\" %s", optarg, plugins_dir) == -1) {
+                error_print(0, "Memory allocation failed");
+                goto cleanup;
+            }
+            r = system(cmd);
+            free(cmd);
+            if (!WIFEXITED(r) || WEXITSTATUS(r)) {
+                error_print(0, "Failed to execute cp(1)");
+                goto cleanup;
+            }
+
+            rc = EXIT_SUCCESS;
+            goto cleanup;
+        case 'p':
+            pidfile = optarg;
+            break;
+        case 'f':
+            fatal_fail = 1;
+            break;
         default:
             error_print(0, "Invalid option or missing argument: -%c", optopt);
             goto cleanup;
@@ -489,6 +604,10 @@ main(int argc, char **argv)
     /* check for additional argument */
     if (optind < argc) {
         error_print(0, "Redundant parameters");
+        goto cleanup;
+    }
+
+    if (pidfile && ((pidfd = open_pidfile(pidfile)) < 0)) {
         goto cleanup;
     }
 
@@ -512,25 +631,42 @@ main(int argc, char **argv)
         goto cleanup;
     }
 
-    /* apply sysrepo-plugind module if exists */
-    if (apply_plugind_module(plugin_count, sess, plugins)) {
-        error_print(0, "The sysrepo-plugind module application failed.");
+    /* sort plugins based on user-defined order */
+    if ((r = sort_plugins(sess, plugins, plugin_count))) {
+        error_print(r, "Sorting of plugins failed.");
         goto cleanup;
     }
 
     /* init plugins */
     for (i = 0; i < plugin_count; ++i) {
         r = plugins[i].init_cb(sess, &plugins[i].private_data);
-        if (r != SR_ERR_OK) {
-            SRP_LOG_ERR("Plugin initialization failed (%s).", sr_strerror(r));
-            goto cleanup;
+        if (r) {
+            SRPLG_LOG_ERR("sysrepo-plugind", "Plugin \"%s\" initialization failed (%s).", plugins[i].plugin_name,
+                    sr_strerror(r));
+            if (fatal_fail) {
+                goto cleanup;
+            }
+        } else {
+            SRPLG_LOG_INF("sysrepo-plugind", "Plugin \"%s\" initialized.", plugins[i].plugin_name);
+            plugins[i].initialized = 1;
         }
+    }
+
+    /* set state data */
+    if ((r = publish_loaded_plugins(sess, plugins, plugin_count))) {
+        error_print(r, "Failed to publish loaded plugins.");
+        goto cleanup;
     }
 
 #ifdef SR_HAVE_SYSTEMD
     /* notify systemd */
     sd_notify(0, "READY=1");
 #endif
+
+    /* update pid file */
+    if (pidfile && (write_pidfile(pidfd) < 0)) {
+        goto cleanup;
+    }
 
     /* wait for a terminating signal */
     pthread_mutex_lock(&lock);
@@ -546,13 +682,20 @@ main(int argc, char **argv)
 
     /* cleanup plugins */
     for (i = 0; i < plugin_count; ++i) {
-        plugins[i].cleanup_cb(sess, plugins[i].private_data);
+        if (plugins[i].initialized) {
+            plugins[i].cleanup_cb(sess, plugins[i].private_data);
+        }
     }
 
     /* success */
     rc = EXIT_SUCCESS;
 
 cleanup:
+    if (pidfd >= 0) {
+        close(pidfd);
+        unlink(pidfile);
+    }
+
     for (i = 0; i < plugin_count; ++i) {
         dlclose(plugins[i].handle);
         free(plugins[i].plugin_name);

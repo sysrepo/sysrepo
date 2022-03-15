@@ -1,21 +1,21 @@
 module t2 {
-  namespace "http://www.example.net/t2";
-  prefix t2;
+    namespace "http://www.example.net/t2";
+    prefix t2;
 
-  import t-types {
-		prefix "tt";
-	}
-  import t1 {
-		prefix "t1";
-	}
+    import t-types {
+        prefix "tt";
+    }
+    import t1 {
+        prefix "t1";
+    }
 
-	identity desc {
+    identity desc {
         base tt:layer-protocol-name;
         description "";
     }
 
-	augment "/t1:haha" {
-        when "t1:layer-protocol-name = tt:desc";
+    augment "/t1:haha" {
+        when "t1:layer-protocol-name = 'tt:desc'";
         container desc-pac {
             leaf ts-detail {
                 type string;

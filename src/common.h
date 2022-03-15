@@ -43,14 +43,14 @@ struct srplg_ntf_s;
 /** macro for checking session type */
 #define SR_IS_EVENT_SESS(session) (session->ev != SR_SUB_EV_NONE)
 
-/** macro for getting a SHM module on a specific index */
-#define SR_SHM_MOD_IDX(main_shm_addr, idx) ((sr_mod_t *)(((char *)main_shm_addr) + sizeof(sr_main_shm_t) + idx * sizeof(sr_mod_t)))
-
 /* macro for getting aligned SHM size */
 #define SR_SHM_SIZE(size) ((size) + ((~(size) + 1) & (SR_SHM_MEM_ALIGN - 1)))
 
 /* macro for getting main SHM from a connection */
 #define SR_CONN_MAIN_SHM(conn) ((sr_main_shm_t *)(conn)->main_shm.addr)
+
+/* macro for getting mod SHM from a connection */
+#define SR_CONN_MOD_SHM(conn) ((sr_mod_shm_t *)(conn)->mod_shm.addr)
 
 /* macro for getting ext SHM from a connection */
 #define SR_CONN_EXT_SHM(conn) ((sr_ext_shm_t *)(conn)->ext_shm.addr)
@@ -61,8 +61,8 @@ struct srplg_ntf_s;
 /** timeout for locking subscription structure lock, should be enough for a single ::sr_process_events() call (ms) */
 #define SR_SUBSCR_LOCK_TIMEOUT 30000
 
-/** timeout for locking lydmods data for access; should be enough for parsing, applying any scheduled changes, and printing (ms) */
-#define SR_LYDMODS_LOCK_TIMEOUT 5000
+/** timeout for locking context; should be enough for changing it (ms) */
+#define SR_CONTEXT_LOCK_TIMEOUT 10000
 
 /** timeout for locking notification buffer lock, used when adding/removing notifications (ms) */
 #define SR_NOTIF_BUF_LOCK_TIMEOUT 100
@@ -83,7 +83,10 @@ struct srplg_ntf_s;
 #define SR_MOD_LOCK_TIMEOUT 5000
 
 /** timeout for locking DS lock mutex of a module; is held only when accessing the DS lock information (ms) */
-#define SR_DS_LOCK_TIMEOUT 100
+#define SR_DS_LOCK_MUTEX_TIMEOUT 100
+
+/** timeout step when waiting for a DS lock (ms) */
+#define SR_DS_LOCK_TIMEOUT_STEP 50
 
 /** timeout for locking SHM module/RPC subscriptions; maxmum time full event processing may take (ms) */
 #define SR_SHMEXT_SUB_LOCK_TIMEOUT 15000
@@ -103,8 +106,8 @@ struct srplg_ntf_s;
 /** default timeout for notification subscrption callback (ms) */
 #define SR_NOTIF_CB_TIMEOUT 2000
 
-/** permissions of main SHM lock file and main SHM itself */
-#define SR_MAIN_SHM_PERM 00666
+/** permissions of main SHM lock file and main/mod/ext SHM */
+#define SR_SHM_PERM 00666
 
 /** permissions of connection lock files */
 #define SR_CONN_LOCKFILE_PERM 00666
@@ -127,11 +130,20 @@ struct srplg_ntf_s;
 /** get string value of the first child of a node */
 #define SR_LY_CHILD_VALUE(node) lyd_get_value(lyd_child(node))
 
+/** check that a timespec struct is zeroed */
+#define SR_TS_IS_ZERO(ts) (!(ts).tv_sec && !(ts).tv_nsec)
+
 /*
  * Internal declarations + definitions
  */
 
 extern char sysrepo_yang[];
+
+extern const struct srplg_ds_s *sr_internal_ds_plugins[];
+
+extern const struct srplg_ntf_s *sr_internal_ntf_plugins[];
+
+extern const sr_module_ds_t sr_default_module_ds;
 
 /** static initializer of the shared memory structure */
 #define SR_SHM_INITIALIZER {.fd = -1, .size = 0, .addr = NULL}
@@ -377,6 +389,54 @@ sr_error_info_t *sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_noti
         void *private_data, const sr_ev_notif_type_t notif_type, uint32_t sub_id, const struct lyd_node *notif_op,
         struct timespec *notif_ts);
 
+/**
+ * @brief Check the XPath of a change subscription.
+ *
+ * @param[in] ly_ctx Context to use.
+ * @param[in] xpath XPath to check.
+ * @param[in,out] valid If set, does not log and sets to 0 if invalid, 1 if valid.
+ * If not set, an error is returned if invalid, otherwise NULL.
+ * @return err_info (if @p valid is not set), NULL on success.
+ */
+sr_error_info_t *sr_subscr_change_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, int *valid);
+
+/**
+ * @brief Check the XPath of an oper subscription. Optionally learn what kinds (config) of nodes are provided
+ * by an operational subscription to determine its type.
+ *
+ * @param[in] ly_ctx Context to use.
+ * @param[in] xpath XPath to check.
+ * @param[out] sub_type Optional learned subscription type.
+ * @param[in,out] valid If set, does not log and sets to 0 if invalid, 1 if valid.
+ * If not set, an error is returned if invalid, otherwise NULL.
+ * @return err_info (if @p valid is not set), NULL on success.
+ */
+sr_error_info_t *sr_subscr_oper_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath,
+        sr_mod_oper_sub_type_t *sub_type, int *valid);
+
+/**
+ * @brief Check the XPath of a notif subscription.
+ *
+ * @param[in] ly_mod Module of the subscription.
+ * @param[in] xpath XPath to check, may be NULL.
+ * @param[in,out] valid If set, does not log and sets to 0 if invalid, 1 if valid.
+ * If not set, an error is returned if invalid, otherwise NULL.
+ * @return err_info (if @p valid is not set), NULL on success.
+ */
+sr_error_info_t *sr_subscr_notif_xpath_check(const struct lys_module *ly_mod, const char *xpath, int *valid);
+
+/**
+ * @brief Check the XPath of an RPC subscription.
+ *
+ * @param[in] ly_ctx Context to use.
+ * @param[in] xpath XPath to check.
+ * @param[out] path Optional simple path ot the RPC/action.
+ * @param[in,out] valid If set, does not log and sets to 0 if invalid, 1 if valid.
+ * If not set, an error is returned if invalid, otherwise NULL.
+ * @return err_info (if @p valid is not set), NULL on success.
+ */
+sr_error_info_t *sr_subscr_rpc_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, char **path, int *valid);
+
 /*
  * Utility functions
  */
@@ -403,12 +463,12 @@ sr_error_info_t *sr_ptr_add(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *p
 sr_error_info_t *sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *del_ptr);
 
 /**
- * @brief Wrapper for libyang ly_ctx_new().
+ * @brief Create a new libyang context.
  *
  * @param[out] ly_ctx libyang context.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_ly_ctx_new(struct ly_ctx **ly_ctx);
+sr_error_info_t *sr_ly_ctx_init(struct ly_ctx **ly_ctx);
 
 /**
  * @brief Initialize all dynamic DS handles.
@@ -426,6 +486,13 @@ sr_error_info_t *sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t 
  * @param[in] ds_handle_count Length of @p ds_handles.
  */
 void sr_ds_handle_free(struct sr_ds_handle_s *ds_handles, uint32_t ds_handle_count);
+
+/**
+ * @brief Get the count of internal DS plugins.
+ *
+ * @return Count.
+ */
+uint32_t sr_ds_plugin_int_count(void);
 
 /**
  * @brief Find DS plugin with a specific name.
@@ -455,6 +522,13 @@ sr_error_info_t *sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32
 void sr_ntf_handle_free(struct sr_ntf_handle_s *ntf_handles, uint32_t ntf_handle_count);
 
 /**
+ * @brief Get the count of internal notif plugins.
+ *
+ * @return Count.
+ */
+uint32_t sr_ntf_plugin_int_count(void);
+
+/**
  * @brief Find notif plugin with a specific name.
  *
  * @param[in] ntf_plugin_name Notification plugin name.
@@ -469,17 +543,28 @@ sr_error_info_t *sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *
  *
  * @param[in] ly_mod Module whose files to remove.
  * @param[in] new_ctx New context without @p ly_mod.
+ * @param[in,out] del_set Set of all already deleted modules.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_remove_module_file_r(const struct lys_module *ly_mod, const struct ly_ctx *new_ctx);
+sr_error_info_t *sr_remove_module_yang_r(const struct lys_module *ly_mod, const struct ly_ctx *new_ctx,
+        struct ly_set *del_mod);
 
 /**
- * @brief Create (print) YANG module file and all of its submodules.
+ * @brief Create (print) YANG module file and all of its submodules and imports.
  *
- * @param[in] ly_mod Module to print.
+ * @param[in] ly_mod Module to store.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_store_module_files(const struct lys_module *ly_mod);
+sr_error_info_t *sr_store_module_yang_r(const struct lys_module *ly_mod);
+
+/**
+ * @brief Collect all dependent modules of a module that are making it implemented.
+ *
+ * @param[in] ly_mod Module to process.
+ * @param[in,out] mod_set Set of dependent modules including @p ly_mod.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_collect_module_impl_deps(const struct lys_module *ly_mod, struct ly_set *mod_set);
 
 /**
  * @brief Check whether a module is internal libyang or sysrepo module.
@@ -490,16 +575,33 @@ sr_error_info_t *sr_store_module_files(const struct lys_module *ly_mod);
 int sr_module_is_internal(const struct lys_module *ly_mod);
 
 /**
- * @brief Create all module import and include files, recursively.
+ * @brief Get default file mode for DS files of a module.
  *
- * @param[in] ly_mod libyang module whose imports and includes to create. Overriden by @p lysp_submod.
- * @param[in] lysp_submod Optional libyang parsed submodule whose imports and includes to create.
- * @return err_info, NULL on success.
+ * @param[in] ly_mod Module.
+ * @return Default file mode.
  */
-sr_error_info_t *sr_create_module_imps_incs_r(const struct lys_module *ly_mod, const struct lysp_submodule *lysp_submod);
+mode_t sr_module_default_mode(const struct lys_module *ly_mod);
 
 /**
- * @brief Get the path the main SHM.
+ * @brief Check whether a module defines any instantiable data nodes (ignoring operations).
+ *
+ * @param[in] ly_mod Module to examine.
+ * @param[in] state_data Whether to accept even state data or must be configuration.
+ * @return Whether the module has data or not.
+ */
+int sr_module_has_data(const struct lys_module *ly_mod, int state_data);
+
+/**
+ * @brief Collect all implemented modules importing a specific module into a set.
+ *
+ * @param[in] ly_mod Module that other modules may import.
+ * @param[in,out] mod_set Set of modules importing @p ly_mod.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_module_get_impl_inv_imports(const struct lys_module *ly_mod, struct ly_set *mod_set);
+
+/**
+ * @brief Get the path of the main SHM.
  *
  * @param[out] path Created path. Should be freed by the caller.
  * @return err_info, NULL on success.
@@ -507,7 +609,15 @@ sr_error_info_t *sr_create_module_imps_incs_r(const struct lys_module *ly_mod, c
 sr_error_info_t *sr_path_main_shm(char **path);
 
 /**
- * @brief Get the path the external SHM.
+ * @brief Get the path of the mod SHM.
+ *
+ * @param[out] path Created path. Should be freed by the caller.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_path_mod_shm(char **path);
+
+/**
+ * @brief Get the path of the external SHM.
  *
  * @param[out] path Created path. Should be freed by the caller.
  * @return err_info, NULL on success.
@@ -570,10 +680,11 @@ sr_error_info_t *sr_path_yang_file(const char *mod_name, const char *mod_rev, ch
  * responsible for freeing memory.
  *
  * @param[in] cid Connection ID for which the lockfile path is constructed.
+ * @param[in] creat Whether to get path to a file that will be created with a temporary name or not.
  * @param[out] path Lockfile directory if cid is 0, path of lockfile otherwise.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_path_conn_lockfile(sr_cid_t cid, char **path);
+sr_error_info_t *sr_path_conn_lockfile(sr_cid_t cid, int creat, char **path);
 
 /**
  * @brief Remove any leftover event pipes after crashed subscriptions.
@@ -932,13 +1043,13 @@ void *sr_realloc(void *ptr, size_t size);
  *
  * Additionally sets umask.
  *
- * @param[in] pathname Path of the file to open.
+ * @param[in] path Path of the file to open.
  * @param[in] flags Flags to use.
  * @param[in] mode Permissions for the file in case it is created.
  * @return Opened file descriptor.
  * @return -1 on error, errno set.
  */
-int sr_open(const char *pathname, int flags, mode_t mode);
+int sr_open(const char *path, int flags, mode_t mode);
 
 /**
  * @brief Create all directories in the path, wrapper for mkdir(2).
@@ -950,6 +1061,17 @@ int sr_open(const char *pathname, int flags, mode_t mode);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_mkpath(char *path, mode_t mode);
+
+/**
+ * @brief Wrapper for mkfifo(3).
+ *
+ * Additionally sets umask.
+ *
+ * @param[in] pathname Path of the pipe to create.
+ * @param[in] mode Permissions for the pipe.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_mkfifo(const char *path, mode_t mode);
 
 /**
  * @brief Get first namespace (module name) from an XPath expression.
@@ -1103,6 +1225,14 @@ sr_error_info_t *sr_val_sr2ly(struct ly_ctx *ctx, const char *xpath, const char 
 sr_error_info_t *sr_lyd_dup(const struct lyd_node *src_parent, uint32_t depth, struct lyd_node *trg_parent);
 
 /**
+ * @brief Trim subtree to the specified depth.
+ *
+ * @param[in,out] subtree Data subtree to trim.
+ * @param[in] max_depth Maximum depth, 0 if unlimited.
+ */
+void sr_lyd_trim_depth(struct lyd_node *subtree, uint32_t max_depth);
+
+/**
  * @brief Duplicate only config NP containers of a module from a data tree. Also optionally create state NP containers.
  *
  * @param[in] data Data tree to duplicate from.
@@ -1178,47 +1308,34 @@ sr_error_info_t *sr_xpath_trim_last_node(const char *xpath, char **trim_xpath);
 char *sr_xpath_first_node_with_predicates(const char *xpath);
 
 /**
- * @brief Parse "..", "*", ".", or a YANG identifier.
+ * @brief Learn length of an XPath without any predicates.
  *
- * @param[in] id Identifier start.
- * @param[in] allow_special Whether to allow special paths or only YANG identifiers.
- * @return Pointer to the first non-identifier character.
+ * @param[in] xpath Full XPath.
+ * @return XPath length.
  */
-const char *sr_xpath_next_identifier(const char *id, int allow_special);
+size_t sr_xpath_len_no_predicates(const char *xpath);
 
 /**
- * @brief Get pointers to the next node name in an XPath.
+ * @brief Get pointers to the next node qualified name in an XPath.
  *
  * @param[in] xpath Current position in the XPath (`/` expected at the beginning).
  * @param[out] mod Module name, if any.
  * @param[out] mod_len Moduel name length.
  * @param[out] name Node name.
  * @param[out] len Node name length,
- * @param[out] double_slash Whether the node starts with '//'.
- * @param[out] has_predicate Whether a predicate follows.
  * @return Pointer to the next XPath part (node name or predicate).
  */
-const char *sr_xpath_next_name(const char *xpath, const char **mod, int *mod_len, const char **name, int *len,
-        int *double_slash, int *has_predicate);
+const char *sr_xpath_next_qname(const char *xpath, const char **mod, int *mod_len, const char **name, int *len);
 
 /**
- * @brief Get pointers to the next predicate in an XPath.
+ * @brief Get all text atoms (simple paths) for an XPath.
  *
- * @param[in] xpath Current position in the XPath (`[` expected at the beginning).
- * @param[out] pred Predicate content.
- * @param[out] len Predicate content length,
- * @param[out] has_predicate Whether another predicate follows.
- * @return Pointer to the next XPath part (node name or predicate).
+ * @param[in] xpath XPath to parse.
+ * @param[out] atoms Array of collected text atoms, NULL if unknown XPath expr.
+ * @param[out] atom_count Count of @p atoms, 0 if unknown XPath expr.
+ * @return err_info, NULL on success.
  */
-const char *sr_xpath_next_predicate(const char *xpath, const char **pred, int *len, int *has_predicate);
-
-/**
- * @brief Learn length of an XPath withtout any predicates.
- *
- * @param[in] xpath Full XPath.
- * @return XPath length.
- */
-size_t sr_xpath_len_no_predicates(const char *xpath);
+sr_error_info_t *sr_xpath_get_text_atoms(const char *xpath, char ***atoms, uint32_t *atom_count);
 
 /**
  * @brief Find last (most nested) parent (node with possible children) in a data tree.

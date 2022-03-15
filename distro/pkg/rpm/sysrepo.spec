@@ -11,6 +11,7 @@ BuildRequires:  gcc
 BuildRequires:  gcc-c++
 BuildRequires:  make
 BuildRequires:  pkgconfig(libyang) >= 2.0.7
+BuildRequires:  systemd-devel
 BuildRequires:  systemd
 
 %package devel
@@ -62,8 +63,8 @@ rm -rf /etc/sysrepo/
 
 %files
 %license LICENSE
-%{_libdir}/libsysrepo.so.6
-%{_libdir}/libsysrepo.so.6.*
+%{_libdir}/libsysrepo.so.7
+%{_libdir}/libsysrepo.so.7.*
 
 %files tools
 %{_bindir}/sysrepocfg

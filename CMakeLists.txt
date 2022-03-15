@@ -63,28 +63,28 @@ endif()
 # minor version changes with added functionality (new tool, functionality of the tool or library, ...) and
 # micro version is changed with a set of small changes or bugfixes anywhere in the project.
 set(SYSREPO_MAJOR_VERSION 2)
-set(SYSREPO_MINOR_VERSION 0)
-set(SYSREPO_MICRO_VERSION 53)
+set(SYSREPO_MINOR_VERSION 1)
+set(SYSREPO_MICRO_VERSION 42)
 set(SYSREPO_VERSION ${SYSREPO_MAJOR_VERSION}.${SYSREPO_MINOR_VERSION}.${SYSREPO_MICRO_VERSION})
 
 # Version of the library
 # Major version is changed with every backward non-compatible API/ABI change, minor version changes
 # with backward compatible change and micro version is connected with any internal change of the library.
-set(SYSREPO_MAJOR_SOVERSION 6)
-set(SYSREPO_MINOR_SOVERSION 4)
-set(SYSREPO_MICRO_SOVERSION 19)
+set(SYSREPO_MAJOR_SOVERSION 7)
+set(SYSREPO_MINOR_SOVERSION 3)
+set(SYSREPO_MICRO_SOVERSION 5)
 set(SYSREPO_SOVERSION_FULL ${SYSREPO_MAJOR_SOVERSION}.${SYSREPO_MINOR_SOVERSION}.${SYSREPO_MICRO_SOVERSION})
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_SOVERSION})
 
 # Version of libyang library that this sysrepo depends on
-set(LIBYANG_DEP_VERSION 2.0.100)
-set(LIBYANG_DEP_SOVERSION 2.10.0)
+set(LIBYANG_DEP_VERSION 2.0.158)
+set(LIBYANG_DEP_SOVERSION 2.18.0)
 set(LIBYANG_DEP_SOVERSION_MAJOR 2)
 
 # generate only version header, it is needed for docs
 configure_file("${PROJECT_SOURCE_DIR}/src/version.h.in" "${PROJECT_BINARY_DIR}/version.h" ESCAPE_QUOTES @ONLY)
 
-set(CMAKE_C_FLAGS           "${CMAKE_C_FLAGS} -Wall -Wextra -Wpedantic -std=c11")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wpedantic -std=c11")
 
 #
 # options
@@ -108,17 +108,15 @@ if(NOT ${YANGLIB_REVISION} STREQUAL "2019-01-04" AND NOT ${YANGLIB_REVISION} STR
 endif()
 message(STATUS "ietf-yang-library revision: ${YANGLIB_REVISION}")
 
-# umask
-set(SYSREPO_UMASK "00000" CACHE STRING "Umask used for any files created by sysrepo.")
-
-# global group settings
+# security
+set(SYSREPO_UMASK "000" CACHE STRING "Umask used for any files created by sysrepo.")
 set(SYSREPO_GROUP "" CACHE STRING "System group that will own all sysrepo-related files. If empty, the specific process group will be kept.")
-
-# super user
 set(SYSREPO_SUPERUSER_UID "0" CACHE STRING "UID of the system user that can execute sensitive functions.")
 if(NOT SYSREPO_SUPERUSER_UID MATCHES "^[0-9]+$")
     message(FATAL_ERROR "Invalid superuser UID \"${SYSREPO_SUPERUSER_UID}\"!")
 endif()
+set(NACM_RECOVERY_USER "root" CACHE STRING "NACM recovery session user that has unrestricted access.")
+set(NACM_DATA_PERM "600" CACHE STRING "NACM module ietf-netconf-acm default data permissions.")
 
 # paths
 if(NOT REPO_PATH)
@@ -175,6 +173,7 @@ set(LIB_SRC
     src/modinfo.c
     src/edit_diff.c
     src/lyd_mods.c
+    src/context_change.c
     src/shm_main.c
     src/shm_ext.c
     src/shm_mod.c
@@ -183,7 +182,9 @@ set(LIB_SRC
     src/plugins/ntf_lyb.c
     src/plugins/common_lyb.c
     src/utils/values.c
-    src/utils/xpath.c)
+    src/utils/xpath.c
+    src/utils/error_format.c
+    src/utils/nacm.c)
 
 set (SYSREPOCTL_SRC
     src/executables/sysrepoctl.c)
@@ -199,7 +200,9 @@ set(LIB_HEADERS
     src/sysrepo.h
     src/sysrepo_types.h
     src/utils/values.h
-    src/utils/xpath.h)
+    src/utils/xpath.h
+    src/utils/error_format.h
+    src/utils/netconf_acm.h)
 
 # files to generate doxygen from
 set(DOXY_FILES
@@ -374,6 +377,7 @@ install(FILES ${PROJECT_SOURCE_DIR}/src/sysrepo.h ${PROJECT_SOURCE_DIR}/src/sysr
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES ${PROJECT_SOURCE_DIR}/src/plugins_datastore.h ${PROJECT_BINARY_DIR}/version.h
             ${PROJECT_SOURCE_DIR}/src/utils/values.h ${PROJECT_SOURCE_DIR}/src/utils/xpath.h
+            ${PROJECT_SOURCE_DIR}/src/utils/error_format.h ${PROJECT_SOURCE_DIR}/src/utils/netconf_acm.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sysrepo)
 install(FILES ${PROJECT_BINARY_DIR}/sysrepo.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 
@@ -408,7 +412,7 @@ gen_doc("${DOXY_FILES}" ${SYSREPO_VERSION} ${SYSREPO_DESC} ${PROJECT_LOGO})
 
 # generate API/ABI report
 if ("${BUILD_TYPE_UPPER}" STREQUAL "ABICHECK")
-    lib_abi_check(sysrepo "${LIB_HEADERS}" ${SYSREPO_SOVERSION_FULL} c1022a19895cdc6f4f8510fb36c04dcf04dbbe21)
+    lib_abi_check(sysrepo "${LIB_HEADERS}" ${SYSREPO_SOVERSION_FULL} e9b54618d637751e91d9244c5ecc45c94a9c1858)
 endif()
 
 # source files to be covered by the 'format' target and a test with 'format-check' target

@@ -18,6 +18,7 @@
 #define _SYSREPO_PLUGINS_DATASTORE_H
 
 #include <stdint.h>
+#include <sys/types.h>
 
 #include <libyang/libyang.h>
 
@@ -30,20 +31,27 @@ extern "C" {
 /**
  * @brief Datastore plugin API version
  */
-#define SRPLG_DS_API_VERSION 1
+#define SRPLG_DS_API_VERSION 2
 
 /**
- * @brief Initialize data of a new module.
+ * @brief Initialize data of a module.
+ *
+ * Initialization is called once for persistent datastores (::SR_DS_STARTUP) and after each reboot
+ * for volatile datastores (::SR_DS_RUNNING, ::SR_DS_CANIDATE, and ::SR_DS_OPERATIONAL).
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
+ * @param[in] owner Optional initial owner of the module data, process user by default.
+ * @param[in] group Optional initial group of the module data, process group by default.
+ * @param[in] perm Initial permissions of the module data.
  * @return ::SR_ERR_OK on success;
  * @return Sysrepo error value on error.
  */
-typedef int (*srds_init)(const struct lys_module *mod, sr_datastore_t ds);
+typedef int (*srds_init)(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group,
+        mode_t perm);
 
 /**
- * @brief Delete data of a removed module.
+ * @brief Destroy data of a removed module.
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
@@ -138,9 +146,9 @@ typedef int (*srds_candidate_reset)(const struct lys_module *mod);
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
- * @param[in] owner Optional, new owner of the module data.
- * @param[in] group Optional, new group of the module data.
- * @param[in] perm Optional not -1, new permissions of the module data.
+ * @param[in] owner Optional new owner of the module data.
+ * @param[in] group Optional new group of the module data.
+ * @param[in] perm Optional new permissions of the module data.
  * @return ::SR_ERR_OK on success;
  * @return Sysrepo error value on error.
  */
@@ -153,9 +161,9 @@ typedef int (*srds_access_set)(const struct lys_module *mod, sr_datastore_t ds, 
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
- * @param[out] owner Optional, owner of the module data.
- * @param[out] group Optional, group of the module data.
- * @param[out] perm Optional, permissions of the module data.
+ * @param[out] owner Optional owner of the module data.
+ * @param[out] group Optional group of the module data.
+ * @param[out] perm Optional permissions of the module data.
  * @return ::SR_ERR_OK on success;
  * @return Sysrepo error value on error.
  */
@@ -200,7 +208,7 @@ struct srplg_ds_s {
  */
 #define SRPLG_DATASTORE \
     uint32_t srpds_apiver__ = SRPLG_DS_API_VERSION; \
-    const struct srplg_ds_s srpds__
+    extern const struct srplg_ds_s srpds__
 
 #ifdef __cplusplus
 }

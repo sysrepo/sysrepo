@@ -33,9 +33,10 @@
 
 #include "compat.h"
 #include "config.h"
+#include "context_change.h"
 #include "log.h"
 #include "plugins_notification.h"
-#include "shm.h"
+#include "shm_mod.h"
 #include "sysrepo.h"
 
 /**
@@ -55,7 +56,7 @@ sr_notif_write(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct lyd_node *no
     int rc;
 
     /* find plugin */
-    if ((err_info = sr_ntf_plugin_find(conn->main_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_plg))) {
+    if ((err_info = sr_ntf_plugin_find(conn->mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_plg))) {
         goto cleanup;
     }
 
@@ -82,15 +83,16 @@ cleanup:
 /**
  * @brief Store the notification into the notification buffer.
  *
- * @param[in] notif_buf Notification buffer.
+ * @param[in] sess Session with the buffer.
  * @param[in] notif Notification data tree.
  * @param[in] notif_ts Notification timestamp.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_notif_buf_store(struct sr_sess_notif_buf *notif_buf, const struct lyd_node *notif, struct timespec notif_ts)
+sr_notif_buf_store(sr_session_ctx_t *sess, const struct lyd_node *notif, struct timespec notif_ts)
 {
     sr_error_info_t *err_info = NULL;
+    struct sr_sess_notif_buf *notif_buf = &sess->notif_buf;
     struct sr_sess_notif_buf_node *node = NULL;
     struct timespec timeout_ts;
     int ret;
@@ -120,6 +122,11 @@ sr_notif_buf_store(struct sr_sess_notif_buf *notif_buf, const struct lyd_node *n
         notif_buf->last->next = node;
         notif_buf->last = node;
     } else {
+        /* CONTEXT LOCK */
+        if ((err_info = sr_lycc_lock(sess->conn, SR_LOCK_READ, 0, __func__))) {
+            goto error_unlock;
+        }
+
         assert(!notif_buf->first);
         notif_buf->first = node;
         notif_buf->last = node;
@@ -137,6 +144,10 @@ sr_notif_buf_store(struct sr_sess_notif_buf *notif_buf, const struct lyd_node *n
     pthread_mutex_unlock(&notif_buf->lock.mutex);
 
     return NULL;
+
+error_unlock:
+    /* MUTEX UNLOCK */
+    pthread_mutex_unlock(&notif_buf->lock.mutex);
 
 error:
     if (node) {
@@ -164,17 +175,17 @@ sr_replay_store(sr_session_ctx_t *sess, const struct lyd_node *notif, struct tim
     SR_CHECK_INT_RET(notif_op->schema->nodetype != LYS_NOTIF, err_info);
 
     /* find SHM mod for replay lock and check if replay is even supported */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(sess->conn), ly_mod->name);
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(sess->conn), ly_mod->name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    if (!ATOMIC_LOAD_RELAXED(shm_mod->replay_supp)) {
+    if (!shm_mod->replay_supp) {
         /* nothing to do */
         return NULL;
     }
 
     if (ATOMIC_LOAD_RELAXED(sess->notif_buf.thread_running)) {
         /* store the notification in the buffer */
-        if ((err_info = sr_notif_buf_store(&sess->notif_buf, notif, notif_ts))) {
+        if ((err_info = sr_notif_buf_store(sess, notif, notif_ts))) {
             return err_info;
         }
         SR_LOG_INF("Notification \"%s\" buffered to be stored for replay.", notif_op->schema->name);
@@ -205,15 +216,16 @@ sr_notif_buf_thread_write_notifs(sr_conn_ctx_t *conn, struct sr_sess_notif_buf_n
 
     while (first) {
         /* find SHM mod */
-        shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), lyd_owner_module(first->notif)->name);
+        shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), lyd_owner_module(first->notif)->name);
         if (!shm_mod) {
             SR_ERRINFO_INT(&err_info);
             return err_info;
         }
 
-        /* store the notification, continue normally on error */
-        err_info = sr_notif_write(conn, shm_mod, first->notif, first->notif_ts);
-        sr_errinfo_free(&err_info);
+        /* store the notification */
+        if ((err_info = sr_notif_write(conn, shm_mod, first->notif, first->notif_ts))) {
+            return err_info;
+        }
 
         /* next iter */
         prev = first;
@@ -234,11 +246,11 @@ sr_notif_buf_thread(void *arg)
     sr_session_ctx_t *sess = (sr_session_ctx_t *)arg;
     struct sr_sess_notif_buf_node *first;
     struct timespec timeout_ts;
-    int ret;
+    int ret, last_check = 0;
 
     sr_time_get(&timeout_ts, SR_NOTIF_BUF_LOCK_TIMEOUT);
 
-    while (ATOMIC_LOAD_RELAXED(sess->notif_buf.thread_running)) {
+    while (!last_check) {
         /* MUTEX LOCK */
         ret = pthread_mutex_timedlock(&sess->notif_buf.lock.mutex, &timeout_ts);
         if (ret) {
@@ -265,32 +277,27 @@ sr_notif_buf_thread(void *arg)
         sess->notif_buf.first = NULL;
         sess->notif_buf.last = NULL;
 
+        if (!ATOMIC_LOAD_RELAXED(sess->notif_buf.thread_running)) {
+            /* we are holding the mutex and thread should no longer be running meaning no more notifications
+             * can be added */
+            last_check = 1;
+        }
+
         /* MUTEX UNLOCK */
         pthread_mutex_unlock(&sess->notif_buf.lock.mutex);
 
-        /* store the notifications */
-        if ((err_info = sr_notif_buf_thread_write_notifs(sess->conn, first))) {
-            goto cleanup;
+        /* store the notifications, if any */
+        if (first) {
+            err_info = sr_notif_buf_thread_write_notifs(sess->conn, first);
+
+            /* CONTEXT UNLOCK */
+            sr_lycc_unlock(sess->conn, SR_LOCK_READ, 0, __func__);
+
+            if (err_info) {
+                goto cleanup;
+            }
         }
     }
-
-    /* MUTEX LOCK */
-    ret = pthread_mutex_timedlock(&sess->notif_buf.lock.mutex, &timeout_ts);
-    if (ret) {
-        SR_ERRINFO_LOCK(&err_info, __func__, ret);
-        goto cleanup;
-    }
-
-    /* remember and clear the buffer of any last notifications */
-    first = sess->notif_buf.first;
-    sess->notif_buf.first = NULL;
-    sess->notif_buf.last = NULL;
-
-    /* MUTEX UNLOCK */
-    pthread_mutex_unlock(&sess->notif_buf.lock.mutex);
-
-    /* store the last notifications, if any */
-    err_info = sr_notif_buf_thread_write_notifs(sess->conn, first);
 
 cleanup:
     sr_errinfo_free(&err_info);
@@ -314,10 +321,10 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     int rc;
 
     /* find SHM mod for replay lock and check if replay is even supported */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(conn), mod_name);
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), mod_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
-    if (!ATOMIC_LOAD_RELAXED(shm_mod->replay_supp)) {
+    if (!shm_mod->replay_supp) {
         SR_LOG_WRN("Module \"%s\" does not support notification replay.", mod_name);
         goto replay_complete;
     }
@@ -327,12 +334,12 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     assert(ly_mod);
 
     /* find plugin */
-    if ((err_info = sr_ntf_plugin_find(conn->main_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_plg))) {
+    if ((err_info = sr_ntf_plugin_find(conn->mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_plg))) {
         goto cleanup;
     }
 
     /* get the stop timestamp - only notifications with smaller timestamp can be replayed */
-    if (stop_time->tv_sec && (sr_time_cmp(stop_time, listen_since) < 1)) {
+    if (!SR_TS_IS_ZERO(*stop_time) && (sr_time_cmp(stop_time, listen_since) < 1)) {
         stop_ts = *stop_time;
     } else {
         stop_ts = *listen_since;

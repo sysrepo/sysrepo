@@ -34,7 +34,6 @@
 
 #include "compat.h"
 #include "common_lyb.h"
-#include "config.h"
 #include "sysrepo.h"
 
 #define srpntf_name "LYB notif" /**< plugin name */
@@ -181,7 +180,7 @@ srpntf_open_file(const char *mod_name, time_t from_ts, time_t to_ts, int flags, 
 {
     int rc = SR_ERR_OK;
     char *path = NULL;
-    mode_t perm = SR_FILE_PERM;
+    mode_t perm = SRLYB_NOTIF_PERM;
 
     *notif_fd = -1;
 
@@ -198,8 +197,6 @@ srpntf_open_file(const char *mod_name, time_t from_ts, time_t to_ts, int flags, 
     if ((flags & O_CREAT) && (flags & O_EXCL)) {
         SRPLG_LOG_INF(srpntf_name, "Replay file \"%s\" created.", strrchr(path, '/') + 1);
     }
-
-    /* success */
 
 cleanup:
     free(path);
@@ -239,8 +236,10 @@ srpntf_find_file(const char *mod_name, time_t from_ts, time_t to_ts, time_t *fil
 
     dir = opendir(dir_path);
     if (!dir) {
-        SRPLG_LOG_ERR(srpntf_name, "Opening directory \"%s\" failed (%s).", dir_path, strerror(errno));
-        rc = SR_ERR_SYS;
+        if (errno != ENOENT) {
+            SRPLG_LOG_ERR(srpntf_name, "Opening directory \"%s\" failed (%s).", dir_path, strerror(errno));
+            rc = SR_ERR_SYS;
+        }
         goto cleanup;
     }
 
@@ -313,7 +312,9 @@ srpntf_find_file(const char *mod_name, time_t from_ts, time_t to_ts, time_t *fil
 cleanup:
     free(dir_path);
     free(prefix);
-    closedir(dir);
+    if (dir) {
+        closedir(dir);
+    }
     return rc;
 }
 
@@ -384,7 +385,7 @@ srpntf_lyb_init(const struct lys_module *mod)
         rc = SR_ERR_SYS;
         goto cleanup;
     }
-    if (r && (rc = srlyb_mkpath(srpntf_name, dir_path, SR_DIR_PERM))) {
+    if (r && (rc = srlyb_mkpath(srpntf_name, dir_path, SRLYB_DIR_PERM))) {
         goto cleanup;
     }
 
@@ -446,7 +447,7 @@ srpntf_lyb_store(const struct lys_module *mod, const struct lyd_node *notif, con
         }
         file_size = st.st_size;
 
-        if (file_size + sizeof *notif_ts + sizeof notif_lyb_len + notif_lyb_len <= SR_EV_NOTIF_FILE_MAX_SIZE * 1024) {
+        if (file_size + sizeof *notif_ts + sizeof notif_lyb_len + notif_lyb_len <= SRLYB_NOTIF_FILE_MAX_SIZE * 1024) {
             /* add the notification into the file if there is still space */
             if ((rc = srpntf_writev_notif(fd, notif_lyb, notif_lyb_len, notif_ts))) {
                 goto cleanup;
@@ -597,6 +598,11 @@ srpntf_lyb_earliest_get(const struct lys_module *mod, struct timespec *ts)
     int rc = SR_ERR_OK, fd = -1;
     time_t file_from, file_to;
 
+    /* create directory in case does not exist */
+    if ((rc = srpntf_lyb_init(mod))) {
+        goto cleanup;
+    }
+
     if ((rc = srpntf_find_file(mod->name, 1, 0, &file_from, &file_to))) {
         goto cleanup;
     }
@@ -635,7 +641,7 @@ srpntf_lyb_access_set(const struct lys_module *mod, const char *owner, const cha
     time_t file_from, file_to;
     char *path = NULL;
 
-    assert(mod && (owner || group || (perm != (mode_t)(-1))));
+    assert(mod && (owner || group || perm));
 
     if ((rc = srpntf_find_file(mod->name, 1, 1, &file_from, &file_to))) {
         return rc;

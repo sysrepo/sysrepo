@@ -29,6 +29,8 @@ static int
 dp_get_items_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
+    const struct ly_ctx *ly_ctx;
+
     (void)session;
     (void)sub_id;
     (void)request_xpath;
@@ -36,8 +38,10 @@ dp_get_items_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_n
     (void)private_data;
 
     if (!strcmp(module_name, "examples") && !strcmp(xpath, "/examples:stats")) {
-        lyd_new_path(NULL, sr_get_context(sr_session_get_connection(session)), "/examples:stats/counter", "852", 0, parent);
+        ly_ctx = sr_acquire_context(sr_session_get_connection(session));
+        lyd_new_path(NULL, ly_ctx, "/examples:stats/counter", "852", 0, parent);
         lyd_new_path(*parent, NULL, "/examples:stats/counter2", "1052", 0, NULL);
+        sr_release_context(sr_session_get_connection(session));
     }
 
     return SR_ERR_OK;
@@ -51,7 +55,7 @@ main(void)
     sr_subscription_ctx_t *subscription = NULL;
     int rc = SR_ERR_OK;
     const char *mod_name, *path;
-    struct lyd_node *data;
+    sr_data_t *data;
 
     path = "/examples:stats";
     mod_name = "examples";
@@ -65,12 +69,6 @@ main(void)
         goto cleanup;
     }
 
-    if (!ly_ctx_get_module_implemented(sr_get_context(connection), mod_name)) {
-        fprintf(stderr, "Module \"%s\" must be installed in sysrepo for this example to work.\n", mod_name);
-        rc = SR_ERR_INVAL_ARG;
-        goto cleanup;
-    }
-
     /* start session in operational datastore */
     rc = sr_session_start(connection, SR_DS_OPERATIONAL, &session);
     if (rc != SR_ERR_OK) {
@@ -81,7 +79,7 @@ main(void)
             path, mod_name);
 
     /* subscribe for providing pull operational data */
-    rc = sr_oper_get_items_subscribe(session, mod_name, path, dp_get_items_cb, NULL, 0, &subscription);
+    rc = sr_oper_get_subscribe(session, mod_name, path, dp_get_items_cb, NULL, 0, &subscription);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }
@@ -94,9 +92,11 @@ main(void)
     }
 
     /* print data */
-    lyd_print_file(stdout, data, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    if (data) {
+        lyd_print_file(stdout, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    }
     printf("\n");
-    lyd_free_all(data);
+    sr_release_data(data);
 
     /* unsubscribe */
     sr_unsubscribe(subscription);
@@ -123,9 +123,11 @@ main(void)
     }
 
     /* print data */
-    lyd_print_file(stdout, data, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    if (data) {
+        lyd_print_file(stdout, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    }
     printf("\n");
-    lyd_free_all(data);
+    sr_release_data(data);
 
 cleanup:
     sr_disconnect(connection);

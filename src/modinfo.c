@@ -36,7 +36,10 @@
 #include "lyd_mods.h"
 #include "plugins_datastore.h"
 #include "replay.h"
-#include "shm.h"
+#include "shm_ext.h"
+#include "shm_mod.h"
+#include "shm_sub.h"
+#include "utils/nacm.h"
 
 sr_error_info_t *
 sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int no_dup_check, struct sr_mod_info_s *mod_info)
@@ -99,7 +102,6 @@ sr_modinfo_add_all_modules_with_data(const struct ly_ctx *ly_ctx, int state_data
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
-    const struct lysc_node *root;
     uint32_t i = 0;
 
     while ((ly_mod = ly_ctx_get_module_iter(ly_ctx, &i))) {
@@ -111,23 +113,130 @@ sr_modinfo_add_all_modules_with_data(const struct ly_ctx *ly_ctx, int state_data
         } else if (!strcmp(ly_mod->name, "ietf-netconf")) {
             /* ietf-netconf defines data but only internal that should be ignored */
             continue;
+        } else if (!sr_module_has_data(ly_mod, state_data)) {
+            /* no data */
+            continue;
         }
 
-        LY_LIST_FOR(ly_mod->compiled->data, root) {
-            if (!(root->nodetype & (LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA | LYS_CHOICE))) {
-                continue;
-            }
-
-            if ((root->flags & LYS_CONFIG_W) || (state_data && (root->flags & LYS_CONFIG_R))) {
-                if ((err_info = sr_modinfo_add(ly_mod, NULL, 1, mod_info))) {
-                    return err_info;
-                }
-                break;
-            }
+        if ((err_info = sr_modinfo_add(ly_mod, NULL, 1, mod_info))) {
+            return err_info;
         }
     }
 
     return err_info;
+}
+
+sr_error_info_t *
+sr_modinfo_collect_edit(const struct lyd_node *edit, struct sr_mod_info_s *mod_info)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+    const struct lyd_node *root;
+
+    /* add all the modules from the edit into our array */
+    ly_mod = NULL;
+    LY_LIST_FOR(edit, root) {
+        if (lyd_owner_module(root) == ly_mod) {
+            continue;
+        } else if (!strcmp(lyd_owner_module(root)->name, "sysrepo")) {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"sysrepo\" cannot be modified.");
+            return err_info;
+        }
+
+        /* remember last mod, good chance it will also be the module of some next data nodes */
+        ly_mod = lyd_owner_module(root);
+
+        /* remember the module */
+        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, mod_info))) {
+            return err_info;
+        }
+    }
+
+    return NULL;
+}
+
+sr_error_info_t *
+sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds, int store_xpath,
+        struct sr_mod_info_s *mod_info)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *prev_ly_mod, *ly_mod;
+    const struct lysc_node *snode;
+    struct ly_set *set = NULL;
+    uint32_t i;
+
+    /* learn what nodes are needed for evaluation */
+    if (lys_find_xpath_atoms(ly_ctx, NULL, xpath, 0, &set)) {
+        sr_errinfo_new_ly(&err_info, (struct ly_ctx *)ly_ctx);
+        goto cleanup;
+    }
+
+    /* add all the modules of the nodes */
+    prev_ly_mod = NULL;
+    for (i = 0; i < set->count; ++i) {
+        snode = set->snodes[i];
+
+        /* skip uninteresting nodes */
+        if ((snode->nodetype & (LYS_RPC | LYS_NOTIF)) || ((snode->flags & LYS_CONFIG_R) && SR_IS_CONVENTIONAL_DS(ds))) {
+            continue;
+        }
+
+        ly_mod = lysc_owner_module(snode);
+        if (ly_mod == prev_ly_mod) {
+            /* skip already-added modules */
+            continue;
+        }
+        prev_ly_mod = ly_mod;
+
+        if (!ly_mod->implemented || !strcmp(ly_mod->name, "sysrepo") || !strcmp(ly_mod->name, "ietf-netconf")) {
+            /* skip import-only modules, the internal sysrepo module, and ietf-netconf (as it has no data, only in libyang) */
+            continue;
+        }
+
+        if ((err_info = sr_modinfo_add(ly_mod, store_xpath ? xpath : NULL, 0, mod_info))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    ly_set_free(set, NULL);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_modinfo_collect_deps(struct sr_mod_info_s *mod_info)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_mod_info_mod_s *mod;
+    uint32_t i;
+
+    for (i = 0; i < mod_info->mod_count; ++i) {
+        mod = &mod_info->mods[i];
+        switch (mod->state & MOD_INFO_TYPE_MASK) {
+        case MOD_INFO_REQ:
+            if (!(mod->state & MOD_INFO_CHANGED)) {
+                /* data were not changed so no reason to validate them */
+                break;
+            }
+        /* fallthrough */
+        case MOD_INFO_INV_DEP:
+            /* this module data will be validated */
+            assert(mod->state & MOD_INFO_DATA);
+            if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(mod_info->conn),
+                    (sr_dep_t *)(mod_info->conn->mod_shm.addr + mod->shm_mod->deps),
+                    mod->shm_mod->dep_count, mod_info->conn->ly_ctx, mod_info->data, mod_info))) {
+                return err_info;
+            }
+            break;
+        case MOD_INFO_DEP:
+            /* this module will not be validated */
+            break;
+        default:
+            SR_CHECK_INT_RET(0, err_info);
+        }
+    }
+
+    return NULL;
 }
 
 sr_error_info_t *
@@ -413,132 +522,27 @@ sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info)
 }
 
 /**
- * @brief Check whether operational data are required based on a predicate.
+ * @brief Check whether operational dta are required based on single request and subscription atom.
  *
- * @param[in] pred1 First predicate.
- * @param[in] len1 First predicate length.
- * @param[in] pred2 Second predicate.
- * @param[in] len2 Second predicate length.
- * @return 0 if not required, non-zero if required.
+ * @param[in] request_atom Request text atom.
+ * @param[in] sub_atom Subscription text atom.
+ * @return 0 data are not required based on the atoms;
+ * @return 1 data are required;
+ * @return 2 data are not required (would be filtered out).
  */
 static int
-sr_xpath_oper_data_predicate_required(const char *pred1, int len1, const char *pred2, int len2)
+sr_xpath_oper_data_text_atoms_required(const char *request_atom, const char *sub_atom)
 {
-    char quot1, quot2;
-    const char *val1, *val2;
+    const char *req_ptr, *sub_ptr, *mod1, *name1, *val1, *mod2, *name2, *val2;
+    int mlen1, mlen2, len1, len2, wildc1, wildc2;
 
-    /* node names */
-    while (len1 && len2) {
-        if (pred1[0] != pred2[0]) {
-            /* different node names */
-            return 1;
-        }
-
-        ++pred1;
-        --len1;
-        ++pred2;
-        --len2;
-
-        if ((pred1[0] == '=') && (pred2[0] == '=')) {
-            break;
-        }
-    }
-    if (!len1 || !len2) {
-        /* not an equality expression */
-        return 1;
-    }
-
-    ++pred1;
-    --len1;
-    ++pred2;
-    --len2;
-
-    /* we expect quotes now */
-    if ((pred1[0] != '\'') && (pred1[0] != '\"')) {
-        return 1;
-    }
-    if ((pred2[0] != '\'') && (pred2[0] != '\"')) {
-        return 1;
-    }
-    quot1 = pred1[0];
-    quot2 = pred2[0];
-
-    ++pred1;
-    --len1;
-    ++pred2;
-    --len2;
-
-    /* values */
-    val1 = pred1;
-    while (len1) {
-        if (pred1[0] == quot1) {
-            break;
-        }
-
-        ++pred1;
-        --len1;
-    }
-
-    val2 = pred2;
-    while (len2) {
-        if (pred2[0] == quot2) {
-            break;
-        }
-
-        ++pred2;
-        --len2;
-    }
-
-    if ((len1 != 1) || (len2 != 1)) {
-        /* the predicate is not finished, leave it */
-        return 1;
-    }
-
-    /* just compare values, we can decide based on that */
-    if (!strncmp(val1, val2, (pred1 - val1 > pred2 - val2) ? pred1 - val1 : pred2 - val2)) {
-        /* values match, we need this data */
-        return 1;
-    }
-
-    /* values fo not match, these data would be flitered out */
-    return 0;
-}
-
-/**
- * @brief Check whether operational data are required based on one request simple path.
- *
- * @param[in] request_spath Get request single simple path (no unions).
- * @param[in] sub_xpath Operational subscription XPath.
- * @return 0 if not required, non-zero if required.
- */
-static int
-sr_xpath_oper_data_spath_required(const char *request_spath, const char *sub_xpath)
-{
-    const char *path1, *path2, *mod1, *mod2, *name1, *name2, *pred1, *pred2;
-    int wildc1, wildc2, mlen1, mlen2, len1, len2, dslash1, dslash2, has_pred1, has_pred2;
-
-    path1 = request_spath;
-    path2 = sub_xpath;
+    req_ptr = request_atom;
+    sub_ptr = sub_atom;
 
     do {
-        path1 = sr_xpath_next_name(path1, &mod1, &mlen1, &name1, &len1, &dslash1, &has_pred1);
-        path2 = sr_xpath_next_name(path2, &mod2, &mlen2, &name2, &len2, &dslash2, &has_pred2);
-
-        /* double-slash */
-        if ((dslash1 && !dslash2) || (!dslash1 && dslash2)) {
-            /* only one xpath includes '//', unable to check further */
-            return 1;
-        }
-        if (dslash1 && dslash2) {
-            if ((len1 == 1) && (name1[0] == '.')) {
-                /* always matches all */
-                return 1;
-            }
-            if ((len2 == 1) && (name2[0] == '.')) {
-                /* always matches all */
-                return 1;
-            }
-        }
+        /* parse nodes */
+        req_ptr = sr_xpath_next_qname(req_ptr + 1, &mod1, &mlen1, &name1, &len1);
+        sub_ptr = sr_xpath_next_qname(sub_ptr + 1, &mod2, &mlen2, &name2, &len2);
 
         /* wildcards */
         if ((len1 == 1) && (name1[0] == '*')) {
@@ -564,156 +568,23 @@ sr_xpath_oper_data_spath_required(const char *request_spath, const char *sub_xpa
             return 0;
         }
 
-        while (has_pred1 && has_pred2) {
-            path1 = sr_xpath_next_predicate(path1, &pred1, &len1, &has_pred1);
-            path2 = sr_xpath_next_predicate(path2, &pred2, &len2, &has_pred2);
-
-            /* predicate */
-            if (!sr_xpath_oper_data_predicate_required(pred1, len1, pred2, len2)) {
-                /* not required based on the predicate */
-                return 0;
+        /* value */
+        if ((req_ptr[0] == '[') && (sub_ptr[0] == '[')) {
+            val1 = req_ptr + 4;
+            len1 = strchr(val1, req_ptr[3]) - val1;
+            val2 = sub_ptr + 4;
+            len2 = strchr(val2, sub_ptr[3]) - val2;
+            if ((len1 != len2) || strncmp(val1, val2, len1)) {
+                /* different values, filtered out */
+                return 2;
             }
         }
 
-        /* skip any leftover predicates */
-        while (has_pred1) {
-            path1 = sr_xpath_next_predicate(path1, NULL, NULL, &has_pred1);
-        }
-        while (has_pred2) {
-            path2 = sr_xpath_next_predicate(path2, NULL, NULL, &has_pred2);
-        }
-    } while ((path1[0] == '/') && (path2[0] == '/'));
+        /* parse until the subscription path ends */
+    } while (req_ptr[0] && sub_ptr[0]);
 
-    /* whole path matches */
+    /* atom match */
     return 1;
-}
-
-/**
- * @brief Check whether operational data are required based on one request path.
- *
- * @param[in] request_path Get request single path, possibly with unions.
- * @param[in] sub_xpath Operational subscription XPath.
- * @param[out] next Following expression after path in @p request_path, set only if not required.
- * @return 0 if not required, non-zero if required.
- */
-static int
-sr_xpath_oper_data_path_required(const char *request_path, const char *sub_xpath, const char **next)
-{
-    int has_pred;
-
-    goto next_path;
-    do {
-        ++request_path;
-
-        /* skip whitespaces */
-        while (isspace(request_path[0])) {
-            ++request_path;
-        }
-
-next_path:
-        if (request_path[0] != '/') {
-            /* unhandled expression */
-            return 1;
-        }
-
-        /* oper data are required for this path */
-        if (sr_xpath_oper_data_spath_required(request_path, sub_xpath)) {
-            return 1;
-        }
-
-        /* skip this path */
-        do {
-            request_path = sr_xpath_next_name(request_path, NULL, NULL, NULL, NULL, NULL, &has_pred);
-            while (has_pred) {
-                request_path = sr_xpath_next_predicate(request_path, NULL, NULL, &has_pred);
-            }
-        } while (request_path[0] == '/');
-
-        /* skip whitespaces */
-        while (isspace(request_path[0])) {
-            ++request_path;
-        }
-
-        /* only union can be used to specify more paths, no? */
-    } while (request_path[0] == '|');
-
-    *next = request_path;
-    return 0;
-}
-
-/**
- * @brief Check whether operational data are required based on one request function call.
- *
- * @param[in] request_func Get request single function parameters.
- * @param[in] sub_xpath Operational subscription XPath.
- * @param[out] next Following expression after function call in @p request_func, set only if not required.
- * @return 0 if not required, non-zero if required.
- */
-static int
-sr_xpath_oper_data_func_required(const char *request_func, const char *sub_xpath, const char **next)
-{
-    int has_pred;
-
-    assert(request_func[0] == '(');
-
-    do {
-        ++request_func;
-
-        /* skip whitespaces */
-        while (isspace(request_func[0])) {
-            ++request_func;
-        }
-
-        if ((request_func[0] == '\'') || (request_func[0] == '\"')) {
-            /* skip literal */
-            request_func = strchr(request_func + 1, request_func[0]);
-            assert(request_func);
-            ++request_func;
-            goto arg_parsed;
-        } else if (isdigit(request_func[0])) {
-            /* skip number */
-            while (isdigit(request_func[0])) {
-                ++request_func;
-            }
-            goto arg_parsed;
-        } else if (request_func[0] != '/') {
-            /* unhandled expression */
-            return 1;
-        }
-
-        /* oper data are required for this path */
-        if (sr_xpath_oper_data_spath_required(request_func, sub_xpath)) {
-            return 1;
-        }
-
-        /* skip this path */
-        do {
-            request_func = sr_xpath_next_name(request_func, NULL, NULL, NULL, NULL, NULL, &has_pred);
-            while (has_pred) {
-                request_func = sr_xpath_next_predicate(request_func, NULL, NULL, &has_pred);
-            }
-        } while (request_func[0] == '/');
-
-arg_parsed:
-        /* skip whitespaces */
-        while (isspace(request_func[0])) {
-            ++request_func;
-        }
-    } while (request_func[0] == ',');
-
-    if (request_func[0] != ')') {
-        /* unhandled expression */
-        return 1;
-    }
-    ++request_func;
-
-    /* skip whitespaces */
-    while (isspace(request_func[0])) {
-        ++request_func;
-    }
-
-    *next = request_func;
-    return 0;
 }
 
 /**
@@ -721,46 +592,60 @@ arg_parsed:
  *
  * @param[in] request_xpath Get request full XPath.
  * @param[in] sub_xpath Operational subscription XPath.
- * @return 0 if not required, non-zero if required.
+ * @param[out] required Whether the oper data are required or not.
+ * @return err_info, NULL on success.
  */
-static int
-sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath)
+static sr_error_info_t *
+sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath, int *required)
 {
+    sr_error_info_t *err_info = NULL;
+    char **request_atoms = NULL, **sub_atoms = NULL;
+    uint32_t i, j, req_atom_count = 0, sub_atom_count = 0;
+    int r;
+
     assert(sub_xpath);
+
+    *required = 1;
 
     if (!request_xpath) {
         /* we do not know, say it is required */
-        return 1;
+        goto cleanup;
     }
 
-    /* skip whitespaces */
-    while (isspace(request_xpath[0])) {
-        ++request_xpath;
+    /* get text atoms for both xpaths */
+    if ((err_info = sr_xpath_get_text_atoms(request_xpath, &request_atoms, &req_atom_count)) || !req_atom_count) {
+        goto cleanup;
+    }
+    if ((err_info = sr_xpath_get_text_atoms(sub_xpath, &sub_atoms, &sub_atom_count)) || !sub_atom_count) {
+        goto cleanup;
     }
 
-    if (request_xpath[0] == '/') {
-        if (sr_xpath_oper_data_path_required(request_xpath, sub_xpath, &request_xpath)) {
-            /* oper data are required for this path */
-            return 1;
-        }
-    } else {
-        /* try to parse a function */
-        request_xpath = sr_xpath_next_identifier(request_xpath, 0);
-        if (request_xpath[0] == '(') {
-            if (sr_xpath_oper_data_func_required(request_xpath, sub_xpath, &request_xpath)) {
-                /* oper data are required for this function call */
-                return 1;
+    /* check whether any atoms match */
+    *required = 0;
+    for (i = 0; i < req_atom_count; ++i) {
+        for (j = 0; j < sub_atom_count; ++j) {
+            r = sr_xpath_oper_data_text_atoms_required(request_atoms[i], sub_atoms[j]);
+            if (r == 1) {
+                /* required but need to check all atoms */
+                *required = 1;
+            } else if (r == 2) {
+                /* not required for certain */
+                *required = 0;
+                goto cleanup;
             }
         }
     }
 
-    if (request_xpath[0]) {
-        /* unhandled expression */
-        return 1;
+cleanup:
+    for (i = 0; i < req_atom_count; ++i) {
+        free(request_atoms[i]);
     }
-
-    /* oper data not required for any single path, so not at all */
-    return 0;
+    free(request_atoms);
+    for (i = 0; i < sub_atom_count; ++i) {
+        free(sub_atoms[i]);
+    }
+    free(sub_atoms);
+    return err_info;
 }
 
 /**
@@ -789,6 +674,7 @@ sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const
     const char *request_xpath;
     char *parent_path = NULL;
     uint32_t i;
+    int required;
 
     *oper_data = NULL;
 
@@ -808,7 +694,10 @@ sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const
             SR_CHECK_MEM_GOTO(!parent_path, err_info, cleanup);
 
             for (i = 0; i < req_xpath_count; ++i) {
-                if (sr_xpath_oper_data_required(request_xpaths[i], parent_path)) {
+                if ((err_info = sr_xpath_oper_data_required(request_xpaths[i], parent_path, &required))) {
+                    goto cleanup;
+                }
+                if (required) {
                     break;
                 }
             }
@@ -870,6 +759,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
     const char *sub_xpath, **request_xpaths = NULL;
     char *parent_xpath = NULL;
     uint32_t i, j, req_xpath_count = 0;
+    int required;
     struct ly_set *set = NULL;
     struct lyd_node *edit = NULL, *oper_data;
 
@@ -933,7 +823,10 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
         if (mod->xpath_count) {
             /* check whether these data are even required */
             for (j = 0; j < mod->xpath_count; ++j) {
-                if (sr_xpath_oper_data_required(mod->xpaths[j], sub_xpath)) {
+                if ((err_info = sr_xpath_oper_data_required(mod->xpaths[j], sub_xpath, &required))) {
+                    goto cleanup_opersub_ext_unlock;
+                }
+                if (required) {
                     /* remember all xpaths causing these data to be required */
                     request_xpaths = sr_realloc(request_xpaths, (req_xpath_count + 1) * sizeof *request_xpaths);
                     SR_CHECK_MEM_GOTO(!request_xpaths, err_info, cleanup_opersub_ext_unlock);
@@ -1168,7 +1061,7 @@ static sr_error_info_t *
 sr_modcache_module_running_update(sr_conn_ctx_t *conn, struct sr_mod_info_mod_s *mod,
         const struct lyd_node *upd_mod_data, int read_locked, sr_cid_t cid)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *tmp_err;
     struct sr_mod_cache_s *mod_cache;
     struct lyd_node *mod_data;
     sr_lock_mode_t cur_mode = SR_LOCK_NONE;
@@ -1255,9 +1148,9 @@ cleanup:
 
     if (read_locked) {
         /* CACHE READ LOCK */
-        if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, cid, __func__,
+        if ((tmp_err = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, cid, __func__,
                 NULL, NULL))) {
-            return err_info;
+            sr_errinfo_merge(&err_info, tmp_err);
         }
     }
 
@@ -1340,9 +1233,7 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
     uint32_t content_id;
 
     /* get content-id */
-    if ((err_info = sr_lydmods_get_content_id(SR_CONN_MAIN_SHM(mod_info->conn), mod_info->conn->ly_ctx, &content_id))) {
-        return err_info;
-    }
+    content_id = SR_CONN_MAIN_SHM(mod_info->conn)->content_id;
 
     /* get the data from libyang */
     SR_CHECK_LY_RET(ly_ctx_get_yanglib_data(mod_info->conn->ly_ctx, &mod_data, "%" PRIu32, content_id),
@@ -1392,7 +1283,7 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
         struct lyd_node *ctx_node)
 {
     sr_error_info_t *err_info = NULL;
-    sr_cid_t cid;
+    sr_cid_t cid, skip_read_upgr_cid = 0;
     uint32_t i;
     int ret;
 
@@ -1409,6 +1300,9 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
     if ((cid = rwlock->upgr)) {
         snprintf(path, PATH_LEN, path_format, cid);
         SR_CHECK_LY_RET(lyd_new_path(ctx_node, NULL, path, "read-upgr", 0, NULL), ly_ctx, err_info);
+
+        /* read-upgr lock also holds a read lock, we need to skip it */
+        skip_read_upgr_cid = cid;
     }
 
     /* READ MUTEX LOCK */
@@ -1419,12 +1313,16 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
     }
 
     for (i = 0; (i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i]; ++i) {
-        if (skip_read_cid == rwlock->readers[i]) {
+        cid = rwlock->readers[i];
+        if ((cid == skip_read_cid) && (rwlock->read_count[i] == 1)) {
             skip_read_cid = 0;
+            continue;
+        } else if ((cid == skip_read_upgr_cid) && (rwlock->read_count[i] == 1)) {
+            skip_read_upgr_cid = 0;
             continue;
         }
 
-        snprintf(path, PATH_LEN, path_format, rwlock->readers[i]);
+        snprintf(path, PATH_LEN, path_format, cid);
         if (lyd_new_path(ctx_node, NULL, path, "read", 0, NULL)) {
             sr_errinfo_new_ly(&err_info, ly_ctx);
             break;
@@ -1532,7 +1430,7 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
     ly_ctx = LYD_CTX(sr_state);
 
     /* module with name */
-    SR_CHECK_LY_RET(lyd_new_list(sr_state, NULL, "module", 0, &sr_mod, conn->main_shm.addr + shm_mod->name), ly_ctx,
+    SR_CHECK_LY_RET(lyd_new_list(sr_state, NULL, "module", 0, &sr_mod, conn->mod_shm.addr + shm_mod->name), ly_ctx,
             err_info);
 
     for (ds = 0; ds < SR_DS_COUNT; ++ds) {
@@ -1556,7 +1454,7 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
         }
 
         /* DS LOCK */
-        if ((err_info = sr_mlock(&shm_lock->ds_lock, SR_DS_LOCK_TIMEOUT, __func__, NULL, NULL))) {
+        if ((err_info = sr_mlock(&shm_lock->ds_lock, SR_DS_LOCK_MUTEX_TIMEOUT, __func__, NULL, NULL))) {
             return err_info;
         }
 
@@ -1693,7 +1591,7 @@ sr_modinfo_module_srmon_rpc(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, struct lyd_n
     ly_ctx = LYD_CTX(sr_state);
 
     /* rpc with path */
-    SR_CHECK_LY_RET(lyd_new_list(sr_state, NULL, "rpc", 0, &sr_rpc, conn->main_shm.addr + shm_rpc->path), ly_ctx, err_info);
+    SR_CHECK_LY_RET(lyd_new_list(sr_state, NULL, "rpc", 0, &sr_rpc, conn->mod_shm.addr + shm_rpc->path), ly_ctx, err_info);
 
     /* sub-lock */
     if ((err_info = sr_modinfo_module_srmon_locks(&shm_rpc->lock, "sub-lock", sr_rpc))) {
@@ -1785,10 +1683,10 @@ sr_modinfo_module_data_load_srmon(struct sr_mod_info_s *mod_info)
     sr_mod_t *shm_mod;
     sr_rpc_t *shm_rpc;
     const struct lys_module *ly_mod;
-    sr_main_shm_t *main_shm;
+    sr_mod_shm_t *mod_shm;
     uint32_t i, j;
 
-    main_shm = SR_CONN_MAIN_SHM(mod_info->conn);
+    mod_shm = SR_CONN_MOD_SHM(mod_info->conn);
     ly_mod = ly_ctx_get_module_implemented(mod_info->conn->ly_ctx, "sysrepo-monitoring");
     assert(ly_mod);
 
@@ -1796,17 +1694,17 @@ sr_modinfo_module_data_load_srmon(struct sr_mod_info_s *mod_info)
     SR_CHECK_LY_GOTO(lyd_new_inner(NULL, ly_mod, "sysrepo-state", 0, &mod_data), mod_info->conn->ly_ctx, err_info, cleanup);
 
     /* modules */
-    for (i = 0; i < main_shm->mod_count; ++i) {
-        shm_mod = SR_SHM_MOD_IDX(main_shm, i);
+    for (i = 0; i < mod_shm->mod_count; ++i) {
+        shm_mod = SR_SHM_MOD_IDX(mod_shm, i);
         if ((err_info = sr_modinfo_module_srmon_module(mod_info->conn, shm_mod, mod_data))) {
             goto cleanup;
         }
     }
 
     /* RPCs */
-    for (i = 0; i < main_shm->mod_count; ++i) {
-        shm_mod = SR_SHM_MOD_IDX(main_shm, i);
-        shm_rpc = (sr_rpc_t *)(mod_info->conn->main_shm.addr + shm_mod->rpcs);
+    for (i = 0; i < mod_shm->mod_count; ++i) {
+        shm_mod = SR_SHM_MOD_IDX(mod_shm, i);
+        shm_rpc = (sr_rpc_t *)(mod_info->conn->mod_shm.addr + shm_mod->rpcs);
         for (j = 0; j < shm_mod->rpc_count; ++j) {
             if ((err_info = sr_modinfo_module_srmon_rpc(mod_info->conn, &shm_rpc[j], mod_data))) {
                 goto cleanup;
@@ -1985,11 +1883,11 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
     }
 
     /* find module in SHM */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(mod_info->conn), ly_mod->name);
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(mod_info->conn), ly_mod->name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     /* find DS plugin */
-    if ((err_info = sr_ds_plugin_find(mod_info->conn->main_shm.addr + shm_mod->plugins[mod_info->ds],
+    if ((err_info = sr_ds_plugin_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[mod_info->ds],
             mod_info->conn, &ds_plg))) {
         return err_info;
     }
@@ -2030,10 +1928,10 @@ sr_modinfo_mod_inv_deps(sr_mod_t *shm_mod, struct sr_mod_info_s *mod_info)
     uint32_t i;
 
     /* add all inverse dependencies (modules dependening on this module) */
-    shm_inv_deps = (off_t *)(mod_info->conn->main_shm.addr + shm_mod->inv_deps);
+    shm_inv_deps = (off_t *)(mod_info->conn->mod_shm.addr + shm_mod->inv_deps);
     for (i = 0; i < shm_mod->inv_dep_count; ++i) {
         /* find ly module */
-        ly_mod = ly_ctx_get_module_implemented(mod_info->conn->ly_ctx, mod_info->conn->main_shm.addr + shm_inv_deps[i]);
+        ly_mod = ly_ctx_get_module_implemented(mod_info->conn->ly_ctx, mod_info->conn->mod_shm.addr + shm_inv_deps[i]);
         SR_CHECK_INT_RET(!ly_mod, err_info);
 
         /* add inverse dependency */
@@ -2123,7 +2021,8 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig
 
 sr_error_info_t *
 sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mode_t mod_lock, int mi_opts, uint32_t sid,
-        const char *orig_name, const void *orig_data, uint32_t timeout_ms, sr_get_oper_options_t get_opts)
+        const char *orig_name, const void *orig_data, uint32_t timeout_ms, uint32_t ds_lock_timeout_ms,
+        sr_get_oper_options_t get_opts)
 {
     sr_error_info_t *err_info = NULL;
     int mod_type, new = 0;
@@ -2185,12 +2084,12 @@ sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mod
     if (mod_lock) {
         if (mod_lock == SR_LOCK_READ) {
             /* MODULES READ LOCK */
-            if ((err_info = sr_shmmod_modinfo_rdlock(mod_info, mi_opts & SR_MI_LOCK_UPGRADEABLE, sid))) {
+            if ((err_info = sr_shmmod_modinfo_rdlock(mod_info, mi_opts & SR_MI_LOCK_UPGRADEABLE, sid, ds_lock_timeout_ms))) {
                 return err_info;
             }
         } else {
             /* MODULES WRITE LOCK */
-            if ((err_info = sr_shmmod_modinfo_wrlock(mod_info, sid))) {
+            if ((err_info = sr_shmmod_modinfo_wrlock(mod_info, sid, ds_lock_timeout_ms))) {
                 return err_info;
             }
         }
@@ -2371,16 +2270,103 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int 
         goto cleanup;
     }
 
-    /* success */
-
 cleanup:
     free(parent_xpath);
     ly_set_free(set, NULL);
     return err_info;
 }
 
+/**
+ * @brief Apply NACM on the filtered result.
+ *
+ * @param[in] session Session to use.
+ * @param[in,out] result Filtered result set of selected subtrees.
+ * @param[out] dup Set if @p result was changed to duplicated subtrees.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_modinfo_get_filter_nacm(sr_session_ctx_t *session, struct ly_set **result, int *dup)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_set *result_dup = NULL;
+    struct lyd_node *subtree, *node;
+    uint32_t i, j;
+    int denied;
+
+    if (!session->nacm_user || !(*result)->count) {
+        /* nothing to do */
+        return NULL;
+    }
+
+    /* apply NACM on all the subtrees */
+    for (i = 0; i < (*result)->count; ++i) {
+        if ((err_info = sr_nacm_check_data_read_filter_dup(session->nacm_user, (*result)->dnodes[i], &subtree, &denied))) {
+            goto cleanup;
+        }
+
+        if (denied) {
+            /* NACM was applied and some data filtered out so a duplicate subtree was made */
+            if (!result_dup) {
+                /* duplicate all the previous subtrees */
+                if (ly_set_new(&result_dup)) {
+                    SR_ERRINFO_MEM(&err_info);
+                    goto cleanup;
+                }
+                for (j = 0; j < i; ++j) {
+                    if (lyd_dup_single((*result)->dnodes[j], NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS |
+                            LYD_DUP_WITH_FLAGS, &node)) {
+                        sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
+                        goto cleanup;
+                    }
+                    if (ly_set_add(result_dup, node, 1, NULL)) {
+                        SR_ERRINFO_MEM(&err_info);
+                        goto cleanup;
+                    }
+                }
+            }
+
+            /* add the duplicate accessible subtree, if any */
+            if (subtree) {
+                if (ly_set_add(result_dup, subtree, 1, NULL)) {
+                    SR_ERRINFO_MEM(&err_info);
+                    goto cleanup;
+                }
+            }
+        } else if (result_dup) {
+            /* other subtrees were duplicated so duplicate all */
+            if (lyd_dup_single((*result)->dnodes[i], NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS |
+                    LYD_DUP_WITH_FLAGS, &node)) {
+                sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
+                goto cleanup;
+            }
+            if (ly_set_add(result_dup, node, 1, NULL)) {
+                SR_ERRINFO_MEM(&err_info);
+                goto cleanup;
+            }
+        } /* else keep non-dup result for now */
+    }
+
+    if (result_dup) {
+        /* subtrees were duplicated */
+        ly_set_free(*result, NULL);
+        *result = result_dup;
+        result_dup = NULL;
+        *dup = 1;
+    }
+
+cleanup:
+    if (result_dup) {
+        for (i = 0; i < result_dup->count; ++i) {
+            lyd_free_tree(result_dup->dnodes[i]);
+        }
+        ly_set_free(result_dup, NULL);
+    }
+    return err_info;
+}
+
 sr_error_info_t *
-sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session, struct ly_set **result)
+sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_session_ctx_t *session,
+        struct ly_set **result, int *dup)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
@@ -2389,6 +2375,7 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
     int is_oper_ds = (session->ds == SR_DS_OPERATIONAL) ? 1 : 0;
 
     *result = NULL;
+    *dup = 0;
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
@@ -2406,7 +2393,9 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
                 }
             /* fallthrough */
             case SR_SUB_EV_NONE:
-                edit = session->dt[session->ds].edit;
+                if (session->dt[session->ds].edit) {
+                    edit = session->dt[session->ds].edit->tree;
+                }
                 break;
             case SR_SUB_EV_ENABLED:
             case SR_SUB_EV_DONE:
@@ -2421,7 +2410,7 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
                 goto cleanup;
             }
 
-            if (mod_info->data_cached && (session->ds == SR_DS_RUNNING) && (edit || diff)) {
+            if (mod_info->data_cached && ((session->ds == SR_DS_RUNNING) && (edit || diff))) {
                 /* data will be changed, we cannot use the cache anymore */
                 lyd_dup_siblings(mod_info->data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &mod_info->data);
                 mod_info->data_cached = 0;
@@ -2443,9 +2432,9 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
         }
     }
 
-    /* filter return data */
     if (mod_info->data) {
-        if (lyd_find_xpath(mod_info->data, xpath, result)) {
+        /* filter return data using the xpath */
+        if (lyd_find_xpath3(NULL, mod_info->data, xpath, NULL, result)) {
             sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
             goto cleanup;
         }
@@ -2456,9 +2445,16 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
         }
     }
 
-    /* success */
+    /* apply NACM if needed */
+    if ((err_info = sr_modinfo_get_filter_nacm(session, result, dup))) {
+        goto cleanup;
+    }
 
 cleanup:
+    if (err_info) {
+        ly_set_free(*result, NULL);
+        *result = NULL;
+    }
     return err_info;
 }
 
@@ -2523,9 +2519,9 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     }
 
     /* get this module and check replay support */
-    shm_mod = sr_shmmain_find_module(SR_CONN_MAIN_SHM(mod_info->conn), "ietf-netconf-notifications");
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(mod_info->conn), "ietf-netconf-notifications");
     SR_CHECK_INT_RET(!shm_mod, err_info);
-    if (!ATOMIC_LOAD_RELAXED(shm_mod->replay_supp) && !notif_sub_count) {
+    if (!shm_mod->replay_supp && !notif_sub_count) {
         /* nothing to do */
         return NULL;
     }

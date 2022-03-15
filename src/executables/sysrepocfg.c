@@ -66,8 +66,6 @@ help_print(void)
             "                               Send a notification in a file or using a text editor.\n"
             "  -C, --copy-from <path>/<source-datastore>\n"
             "                               Perform a copy-config from a file or a datastore.\n"
-            "  -W, --new-data <path>        Set the configuration from a file as the initial one for a new module only scheduled\n"
-            "                               to be installed. Is useful for modules with mandatory top-level nodes.\n"
             "\n"
             "       When both a <path> and <editor>/<source-datastore> can be specified, it is always first checked\n"
             "       that the file exists. If not, then it is interpreted as the other parameter.\n"
@@ -186,7 +184,7 @@ step_read_file(FILE *file, char **mem)
 
     do {
         if (mem_used == mem_size) {
-            mem_size >>= 1;
+            mem_size <<= 1;
             *mem = realloc(*mem, mem_size);
         }
 
@@ -216,16 +214,13 @@ enum data_type {
 };
 
 static int
-step_load_data(sr_session_ctx_t *sess, const char *file_path, LYD_FORMAT format, enum data_type data_type,
+step_load_data(const struct ly_ctx *ly_ctx, const char *file_path, LYD_FORMAT format, enum data_type data_type,
         int not_strict, int opaq, struct lyd_node **data)
 {
-    const struct ly_ctx *ly_ctx;
     struct ly_in *in;
     char *ptr;
     int parse_flags;
     LY_ERR lyrc = 0;
-
-    ly_ctx = sr_get_context(sr_session_get_connection(sess));
 
     /* learn format */
     if (format == LYD_UNKNOWN) {
@@ -332,28 +327,35 @@ static int
 op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name, LYD_FORMAT format, int not_strict,
         int timeout_s)
 {
+    const struct ly_ctx *ly_ctx;
     struct lyd_node *data;
-    int r;
+    int r, rc = EXIT_SUCCESS;
 
-    if (step_load_data(sess, file_path, format, DATA_CONFIG, not_strict, 0, &data)) {
-        return EXIT_FAILURE;
+    ly_ctx = sr_acquire_context(sr_session_get_connection(sess));
+
+    if (step_load_data(ly_ctx, file_path, format, DATA_CONFIG, not_strict, 0, &data)) {
+        rc = EXIT_FAILURE;
+        goto cleanup;
     }
 
     /* replace config (always spends data) */
     r = sr_replace_config(sess, module_name, data, timeout_s * 1000);
     if (r) {
         error_print(r, "Replace config failed");
-        return EXIT_FAILURE;
+        rc = EXIT_FAILURE;
+        goto cleanup;
     }
 
-    return EXIT_SUCCESS;
+cleanup:
+    sr_release_context(sr_session_get_connection(sess));
+    return rc;
 }
 
 static int
 op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name, const char *xpath, LYD_FORMAT format,
         uint32_t max_depth, int wd_opt, int timeout_s)
 {
-    struct lyd_node *data;
+    sr_data_t *data;
     FILE *file = NULL;
     char *str;
     int r;
@@ -392,8 +394,8 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     }
 
     /* print exported data */
-    lyd_print_file(file ? file : stdout, data, format, LYD_PRINT_WITHSIBLINGS | wd_opt);
-    lyd_free_all(data);
+    lyd_print_file(file ? file : stdout, data ? data->tree : NULL, format, LYD_PRINT_WITHSIBLINGS | wd_opt);
+    sr_release_data(data);
 
     /* cleanup */
     if (file) {
@@ -406,23 +408,29 @@ static int
 op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const char *module_name, LYD_FORMAT format,
         int lock, int not_strict, int opaq, int wd_opt, int timeout_s)
 {
+    const struct ly_ctx *ly_ctx;
     char tmp_file[22];
     int r, rc = EXIT_FAILURE;
     struct lyd_node *data;
 
     if (file_path) {
+        ly_ctx = sr_acquire_context(sr_session_get_connection(sess));
+
         /* just apply an edit from a file */
-        if (step_load_data(sess, file_path, format, DATA_EDIT, not_strict, opaq, &data)) {
+        if (step_load_data(ly_ctx, file_path, format, DATA_EDIT, not_strict, opaq, &data)) {
+            sr_release_context(sr_session_get_connection(sess));
             return EXIT_FAILURE;
         }
 
         if (!data) {
             error_print(0, "No parsed data");
+            sr_release_context(sr_session_get_connection(sess));
             return EXIT_FAILURE;
         }
 
         r = sr_edit_batch(sess, data, "merge");
         lyd_free_all(data);
+        sr_release_context(sr_session_get_connection(sess));
         if (r != SR_ERR_OK) {
             error_print(r, "Failed to prepare edit");
             return EXIT_FAILURE;
@@ -443,7 +451,7 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
     }
 
     /* lock if requested */
-    if (lock && ((r = sr_lock(sess, module_name)) != SR_ERR_OK)) {
+    if (lock && ((r = sr_lock(sess, module_name, 2000)) != SR_ERR_OK)) {
         error_print(r, "Lock failed");
         return EXIT_FAILURE;
     }
@@ -476,9 +484,11 @@ cleanup_unlock:
 static int
 op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FORMAT format, int wd_opt, int timeout_s)
 {
+    const struct ly_ctx *ly_ctx;
     char tmp_file[22];
-    int r;
-    struct lyd_node *input, *output, *node;
+    int r, rc = EXIT_SUCCESS;
+    struct lyd_node *input, *node;
+    sr_data_t *output;
 
     if (!file_path) {
         /* create temp file */
@@ -494,9 +504,12 @@ op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FO
         file_path = tmp_file;
     }
 
+    ly_ctx = sr_acquire_context(sr_session_get_connection(sess));
+
     /* load the file */
-    if (step_load_data(sess, file_path, format, DATA_RPC, 0, 0, &input)) {
-        return EXIT_FAILURE;
+    if (step_load_data(ly_ctx, file_path, format, DATA_RPC, 0, 0, &input)) {
+        rc = EXIT_FAILURE;
+        goto release;
     }
 
     /* send rpc/action */
@@ -504,26 +517,30 @@ op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FO
     lyd_free_all(input);
     if (r) {
         error_print(r, "Sending RPC/action failed");
-        return EXIT_FAILURE;
+        rc = EXIT_FAILURE;
+        goto release;
     }
 
     /* print output if any */
-    LY_LIST_FOR(lyd_child(output), node) {
+    LY_LIST_FOR(lyd_child(output->tree), node) {
         if (!(node->flags & LYD_DEFAULT)) {
             break;
         }
     }
     if (node) {
-        lyd_print_file(stdout, output, format, wd_opt);
+        lyd_print_file(stdout, output->tree, format, wd_opt);
     }
-    lyd_free_all(output);
+    sr_release_data(output);
 
-    return EXIT_SUCCESS;
+release:
+    sr_release_context(sr_session_get_connection(sess));
+    return rc;
 }
 
 static int
 op_notif(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FORMAT format)
 {
+    const struct ly_ctx *ly_ctx;
     char tmp_file[22];
     int r;
     struct lyd_node *notif;
@@ -542,14 +559,18 @@ op_notif(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_
         file_path = tmp_file;
     }
 
+    ly_ctx = sr_acquire_context(sr_session_get_connection(sess));
+
     /* load the file */
-    if (step_load_data(sess, file_path, format, DATA_NOTIF, 0, 0, &notif)) {
+    if (step_load_data(ly_ctx, file_path, format, DATA_NOTIF, 0, 0, &notif)) {
+        sr_release_context(sr_session_get_connection(sess));
         return EXIT_FAILURE;
     }
 
     /* send notification */
-    r = sr_event_notif_send_tree(sess, notif, 0, 1);
+    r = sr_notif_send_tree(sess, notif, 0, 1);
     lyd_free_all(notif);
+    sr_release_context(sr_session_get_connection(sess));
     if (r) {
         error_print(r, "Sending notification failed");
         return EXIT_FAILURE;
@@ -562,17 +583,22 @@ static int
 op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds, const char *module_name,
         LYD_FORMAT format, int not_strict, int timeout_s)
 {
+    const struct ly_ctx *ly_ctx;
     int r;
     struct lyd_node *data;
 
     if (file_path) {
+        ly_ctx = sr_acquire_context(sr_session_get_connection(sess));
+
         /* load the file */
-        if (step_load_data(sess, file_path, format, DATA_CONFIG, not_strict, 0, &data)) {
+        if (step_load_data(ly_ctx, file_path, format, DATA_CONFIG, not_strict, 0, &data)) {
+            sr_release_context(sr_session_get_connection(sess));
             return EXIT_FAILURE;
         }
 
         /* replace data */
         r = sr_replace_config(sess, module_name, data, timeout_s * 1000);
+        sr_release_context(sr_session_get_connection(sess));
         if (r) {
             error_print(r, "Replace config failed");
             return EXIT_FAILURE;
@@ -584,21 +610,6 @@ op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds,
             error_print(r, "Copy config failed");
             return EXIT_FAILURE;
         }
-    }
-
-    return EXIT_SUCCESS;
-}
-
-static int
-op_new_data(sr_conn_ctx_t *conn, const char *file_path, const char *module_name, LYD_FORMAT format)
-{
-    int r;
-
-    /* set the initial data */
-    r = sr_install_module_data(conn, module_name, NULL, file_path, format);
-    if (r) {
-        error_print(r, "Install module data failed");
-        return EXIT_FAILURE;
     }
 
     return EXIT_SUCCESS;
@@ -649,7 +660,6 @@ main(int argc, char **argv)
         {"rpc",             optional_argument, NULL, 'R'},
         {"notification",    optional_argument, NULL, 'N'},
         {"copy-from",       required_argument, NULL, 'C'},
-        {"new-data",        required_argument, NULL, 'W'},
         {"datastore",       required_argument, NULL, 'd'},
         {"module",          required_argument, NULL, 'm'},
         {"xpath",           required_argument, NULL, 'x'},
@@ -671,7 +681,7 @@ main(int argc, char **argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:W:d:m:x:f:lnop:t:e:v:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:d:m:x:f:lnop:t:e:v:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -756,14 +766,6 @@ main(int argc, char **argv)
                     goto cleanup;
                 }
             }
-            operation = opt;
-            break;
-        case 'W':
-            if (operation) {
-                error_print(0, "Operation already specified");
-                goto cleanup;
-            }
-            file_path = optarg;
             operation = opt;
             break;
         case 'd':
@@ -929,16 +931,6 @@ main(int argc, char **argv)
         break;
     case 'C':
         rc = op_copy(sess, file_path, source_ds, module_name, format, not_strict, timeout);
-        break;
-    case 'W':
-        if (!module_name) {
-            error_print(0, "Module must be specified when setting its initial data");
-            break;
-        } else if (!format) {
-            error_print(0, "Format of the file must be specified when setting initial data");
-            break;
-        }
-        rc = op_new_data(conn, file_path, module_name, format);
         break;
     case 0:
         error_print(0, "No operation specified");

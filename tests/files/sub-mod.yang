@@ -3,9 +3,13 @@ submodule sub-mod {
         prefix mm;
     }
 
+    import sub-mod-types {
+        prefix smt;
+    }
+
     feature feat;
 
     leaf sub-leaf {
-        type empty;
+        type smt:sub-type;
     }
 }

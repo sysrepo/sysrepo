@@ -26,7 +26,7 @@
 #include <libyang/libyang.h>
 
 #include "sysrepo.h"
-#include "tests/config.h"
+#include "tests/test_common.h"
 
 struct state {
     sr_conn_ctx_t *conn;
@@ -37,16 +37,9 @@ static int
 setup_f(void **state)
 {
     struct state *st;
-    uint32_t conn_count;
 
-    st = malloc(sizeof *st);
-    if (!st) {
-        return 1;
-    }
+    st = calloc(1, sizeof *st);
     *state = st;
-
-    sr_connection_count(&conn_count);
-    assert_int_equal(conn_count, 0);
 
     if (sr_connect(0, &st->conn) != SR_ERR_OK) {
         return 1;
@@ -64,11 +57,6 @@ setup_f(void **state)
     if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/when1.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
-    sr_disconnect(st->conn);
-
-    if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
-        return 1;
-    }
 
     if (sr_session_start(st->conn, SR_DS_RUNNING, &st->sess) != SR_ERR_OK) {
         return 1;
@@ -82,10 +70,10 @@ teardown_f(void **state)
 {
     struct state *st = (struct state *)*state;
 
-    sr_remove_module(st->conn, "when1");
-    sr_remove_module(st->conn, "ietf-interfaces");
-    sr_remove_module(st->conn, "iana-if-type");
-    sr_remove_module(st->conn, "test");
+    sr_remove_module(st->conn, "when1", 0);
+    sr_remove_module(st->conn, "ietf-interfaces", 0);
+    sr_remove_module(st->conn, "iana-if-type", 0);
+    sr_remove_module(st->conn, "test", 0);
 
     sr_disconnect(st->conn);
     free(st);
@@ -108,7 +96,7 @@ static void
 test_basic(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *data;
+    sr_data_t *data;
     char *str;
     const char *str2;
     int ret;
@@ -116,15 +104,15 @@ test_basic(void **state)
     /* empty datastore */
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_true(data->flags & LYD_DEFAULT);
-    lyd_free_all(data);
+    assert_true(data->tree->flags & LYD_DEFAULT);
+    sr_release_data(data);
 
     ret = sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_true(data->flags & LYD_DEFAULT);
-    lyd_free_all(data);
+    assert_true(data->tree->flags & LYD_DEFAULT);
+    sr_release_data(data);
 
     /* modified running */
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
@@ -139,8 +127,8 @@ test_basic(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_false(data->flags & LYD_DEFAULT);
-    lyd_free_all(data);
+    assert_false(data->tree->flags & LYD_DEFAULT);
+    sr_release_data(data);
 
     /* modify candidate */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth32']/type",
@@ -156,8 +144,8 @@ test_basic(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
-    lyd_free_all(data);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
         "<interface>"
@@ -173,8 +161,8 @@ test_basic(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
-    lyd_free_all(data);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
         "<interface>"
@@ -186,7 +174,7 @@ test_basic(void **state)
     free(str);
 
     /* locking not allowed anymore */
-    ret = sr_lock(st->sess, NULL);
+    ret = sr_lock(st->sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_UNSUPPORTED);
 
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
@@ -199,8 +187,8 @@ test_basic(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
-    lyd_free_all(data);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
         "<interface>"
@@ -211,7 +199,7 @@ test_basic(void **state)
     assert_string_equal(str, str2);
     free(str);
 
-    ret = sr_lock(st->sess, NULL);
+    ret = sr_lock(st->sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_unlock(st->sess, NULL);
     assert_int_equal(ret, SR_ERR_OK);
@@ -221,7 +209,7 @@ static void
 test_invalid(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *data;
+    sr_data_t *data;
     char *str;
     const char *str2;
     int ret;
@@ -229,15 +217,15 @@ test_invalid(void **state)
     /* empty datastore */
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_true(data->flags & LYD_DEFAULT);
-    lyd_free_all(data);
+    assert_true(data->tree->flags & LYD_DEFAULT);
+    sr_release_data(data);
 
     ret = sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_true(data->flags & LYD_DEFAULT);
-    lyd_free_all(data);
+    assert_true(data->tree->flags & LYD_DEFAULT);
+    sr_release_data(data);
 
     /* modify candidate */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth32']", NULL, NULL, SR_EDIT_STRICT);
@@ -249,8 +237,8 @@ test_invalid(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
-    lyd_free_all(data);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
         "<interface>"
@@ -269,8 +257,8 @@ test_invalid(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_true(data->flags & LYD_DEFAULT);
-    lyd_free_all(data);
+    assert_true(data->tree->flags & LYD_DEFAULT);
+    sr_release_data(data);
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
 }
@@ -279,7 +267,8 @@ static void
 test_when(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *data;
+    struct lyd_node *tree;
+    sr_data_t *data;
     char *str;
     const char *str2 = "<l3 xmlns=\"urn:when1\">hi</l3>";
     int ret;
@@ -296,8 +285,8 @@ test_when(void **state)
     ret = sr_get_data(st->sess, "/when1:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
-    lyd_free_all(data);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
     assert_string_equal(str, str2);
     free(str);
 
@@ -315,16 +304,17 @@ test_when(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* the same change but with replace config */
-    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(sr_get_context(st->conn), str2, LYD_XML, LYD_PARSE_NO_STATE |
-            LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &data));
-    ret = sr_replace_config(st->sess, "when1", data, 0);
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(sr_acquire_context(st->conn), str2, LYD_XML, LYD_PARSE_NO_STATE |
+            LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &tree));
+    ret = sr_replace_config(st->sess, "when1", tree, 0);
+    sr_release_context(st->conn);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_get_data(st->sess, "/when1:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
-    lyd_free_all(data);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
     assert_string_equal(str, str2);
     free(str);
 
@@ -351,7 +341,7 @@ static void
 test_reset_unlock(void **state)
 {
     struct state *st = (struct state *)*state;
-    struct lyd_node *data;
+    sr_data_t *data;
     char *str;
     const char *str2;
     int ret;
@@ -359,18 +349,18 @@ test_reset_unlock(void **state)
     /* empty datastore */
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_true(data->flags & LYD_DEFAULT);
-    lyd_free_all(data);
+    assert_true(data->tree->flags & LYD_DEFAULT);
+    sr_release_data(data);
 
     ret = sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_true(data->flags & LYD_DEFAULT);
-    lyd_free_all(data);
+    assert_true(data->tree->flags & LYD_DEFAULT);
+    sr_release_data(data);
 
     /* lock candidate */
-    ret = sr_lock(st->sess, NULL);
+    ret = sr_lock(st->sess, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* modify candidate */
@@ -387,8 +377,8 @@ test_reset_unlock(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
-    lyd_free_all(data);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
         "<interface>"
@@ -407,8 +397,8 @@ test_reset_unlock(void **state)
     /* check content */
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_true(data->flags & LYD_DEFAULT);
-    lyd_free_all(data);
+    assert_true(data->tree->flags & LYD_DEFAULT);
+    sr_release_data(data);
 
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
@@ -419,7 +409,7 @@ test_reset_session_stop(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_session_ctx_t *sess2;
-    struct lyd_node *data;
+    sr_data_t *data;
     char *str;
     const char *str2;
     int ret;
@@ -431,18 +421,18 @@ test_reset_session_stop(void **state)
     /* empty datastore */
     ret = sr_get_data(sess2, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_true(data->flags & LYD_DEFAULT);
-    lyd_free_all(data);
+    assert_true(data->tree->flags & LYD_DEFAULT);
+    sr_release_data(data);
 
     ret = sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_true(data->flags & LYD_DEFAULT);
-    lyd_free_all(data);
+    assert_true(data->tree->flags & LYD_DEFAULT);
+    sr_release_data(data);
 
     /* lock candidate */
-    ret = sr_lock(sess2, NULL);
+    ret = sr_lock(sess2, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* modify candidate */
@@ -459,8 +449,8 @@ test_reset_session_stop(void **state)
     ret = sr_get_data(sess2, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
-    lyd_free_all(data);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
     str2 =
     "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
         "<interface>"
@@ -479,8 +469,8 @@ test_reset_session_stop(void **state)
     /* check content */
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_true(data->flags & LYD_DEFAULT);
-    lyd_free_all(data);
+    assert_true(data->tree->flags & LYD_DEFAULT);
+    sr_release_data(data);
 
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
@@ -498,6 +488,6 @@ main(void)
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
-    sr_log_stderr(SR_LL_INF);
+    test_log_init();
     return cmocka_run_group_tests(tests, setup_f, teardown_f);
 }
