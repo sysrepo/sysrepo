@@ -1250,7 +1250,9 @@ sr_install_module_data(const struct lys_module *ly_mod, const char *data, const 
     } else if (data) {
         lyrc = lyd_parse_data_mem(ly_mod->ctx, data, format, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, mod_data);
     }
-    if (lyrc) {
+
+    /* empty data are fine */
+    if (lyrc && (lyrc != LY_EINVAL)) {
         sr_errinfo_new_ly(&err_info, ly_mod->ctx);
         goto cleanup;
     }
