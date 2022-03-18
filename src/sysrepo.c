@@ -5465,7 +5465,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
             break;
         }
     }
-    if (!input_op) {
+    if (!input_op || lyd_parent(input)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Provided input is not a valid RPC or action invocation.");
         goto cleanup;
     }
