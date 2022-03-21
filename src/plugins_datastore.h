@@ -90,6 +90,7 @@ typedef void (*srds_recover)(const struct lys_module *mod, sr_datastore_t ds);
  * @param[in] xpath_count Number of @p xpaths.
  * @param[out] mod_data Loaded module data.
  * @return ::SR_ERR_OK on success;
+ * @return ::SR_ERR_NOT_FOUND if the candidate datastore was not modified and mirrors running, only for @p ds ::SR_DS_CANDIDATE;
  * @return Sysrepo error value on error.
  */
 typedef int (*srds_load)(const struct lys_module *mod, sr_datastore_t ds, const char **xpaths, uint32_t xpath_count,

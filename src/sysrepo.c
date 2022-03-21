@@ -1779,7 +1779,7 @@ sr_get_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, struc
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
     const struct lys_module *ly_mod;
-    struct srplg_ntf_s *ntf_plg;
+    const struct srplg_ntf_s *ntf_plg;
     int rc;
 
     SR_CHECK_ARG_APIRET(!conn || !module_name || !enabled, NULL, err_info);
@@ -1841,8 +1841,8 @@ _sr_set_module_ds_access(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, s
 {
     sr_error_info_t *err_info = NULL;
     int rc;
-    struct srplg_ds_s *ds_plg;
-    struct srplg_ntf_s *ntf_plg;
+    const struct srplg_ds_s *ds_plg;
+    const struct srplg_ntf_s *ntf_plg;
 
     assert(owner || group || perm);
 
@@ -1933,8 +1933,8 @@ sr_get_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
     const struct lys_module *ly_mod;
-    struct srplg_ds_s *ds_plg;
-    struct srplg_ntf_s *ntf_plg;
+    const struct srplg_ds_s *ds_plg;
+    const struct srplg_ntf_s *ntf_plg;
     int rc;
 
     SR_CHECK_ARG_APIRET(!conn || !module_name || (mod_ds >= SR_MOD_DS_PLUGIN_COUNT) || (mod_ds < 0) ||
@@ -1980,8 +1980,8 @@ sr_check_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
     const struct lys_module *ly_mod;
-    struct srplg_ds_s *ds_plg;
-    struct srplg_ntf_s *ntf_plg;
+    const struct srplg_ds_s *ds_plg;
+    const struct srplg_ntf_s *ntf_plg;
     int rc;
 
     SR_CHECK_ARG_APIRET(!conn || !module_name || (mod_ds >= SR_MOD_DS_PLUGIN_COUNT) || (mod_ds < 0) || (!read && !write),
@@ -3705,8 +3705,9 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, uint32_t sid, int lock)
             goto error;
         } else if (lock && (mod_info->ds == SR_DS_CANDIDATE)) {
             /* learn whether candidate was modified */
-            if ((rc = mod->ds_plg->candidate_modified_cb(mod->ly_mod, &modified))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_modified", mod->ds_plg->name, mod->ly_mod->name);
+            if ((rc = mod->ds_plg[SR_DS_CANDIDATE]->candidate_modified_cb(mod->ly_mod, &modified))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_modified", mod->ds_plg[SR_DS_CANDIDATE]->name,
+                        mod->ly_mod->name);
                 goto error;
             }
 

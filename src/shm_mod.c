@@ -1156,7 +1156,7 @@ sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data)
  */
 static sr_error_info_t *
 sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod_lock_s *shm_lock, uint32_t timeout_ms,
-        sr_lock_mode_t mode, uint32_t ds_timeout_ms, sr_cid_t cid, uint32_t sid, struct srplg_ds_s *ds_plg, int relock)
+        sr_lock_mode_t mode, uint32_t ds_timeout_ms, sr_cid_t cid, uint32_t sid, const struct srplg_ds_s *ds_plg, int relock)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     struct sr_shmmod_recover_cb_s cb_data;
@@ -1283,7 +1283,7 @@ sr_shmmod_modinfo_lock(struct sr_mod_info_s *mod_info, sr_datastore_t ds, uint32
 
         /* MOD LOCK */
         if ((err_info = sr_shmmod_lock(mod->ly_mod, ds, shm_lock, SR_MOD_LOCK_TIMEOUT, mode, ds_timeout_ms,
-                mod_info->conn->cid, sid, mod->ds_plg, 0))) {
+                mod_info->conn->cid, sid, mod->ds_plg[ds], 0))) {
             return err_info;
         }
 
@@ -1363,7 +1363,7 @@ sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, uint32_t sid, u
         if ((mod->state & (MOD_INFO_RLOCK_UPGR | MOD_INFO_REQ)) == (MOD_INFO_RLOCK_UPGR | MOD_INFO_REQ)) {
             /* MOD WRITE UPGRADE */
             if ((err_info = sr_shmmod_lock(mod->ly_mod, mod_info->ds, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE,
-                    ds_timeout_ms, mod_info->conn->cid, sid, mod->ds_plg, 1))) {
+                    ds_timeout_ms, mod_info->conn->cid, sid, mod->ds_plg[mod_info->ds], 1))) {
                 return err_info;
             }
 
@@ -1392,7 +1392,7 @@ sr_shmmod_modinfo_wrlock_downgrade(struct sr_mod_info_s *mod_info, uint32_t sid)
         if (mod->state & MOD_INFO_WLOCK) {
             /* MOD READ DOWNGRADE */
             if ((err_info = sr_shmmod_lock(mod->ly_mod, mod_info->ds, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ_UPGR,
-                    0, mod_info->conn->cid, sid, mod->ds_plg, 1))) {
+                    0, mod_info->conn->cid, sid, mod->ds_plg[mod_info->ds], 1))) {
                 return err_info;
             }
 
@@ -1453,7 +1453,7 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid)
     sr_mod_t *smod;
     const struct lys_module *ly_mod;
     struct sr_mod_lock_s *shm_lock;
-    struct srplg_ds_s *ds_plg;
+    const struct srplg_ds_s *ds_plg;
     sr_datastore_t ds;
     int ds_locked, rc;
     uint32_t i;
@@ -1539,7 +1539,7 @@ sr_shmmod_init_ds(sr_conn_ctx_t *conn)
     sr_mod_t *smod;
     const struct lys_module *ly_mod;
     struct lyd_node *mod_data;
-    struct srplg_ds_s *plgs[SR_DS_COUNT];
+    const struct srplg_ds_s *ds_plg[SR_DS_COUNT] = {0};
     sr_datastore_t ds;
     int rc;
     uint32_t i;
@@ -1555,16 +1555,16 @@ sr_shmmod_init_ds(sr_conn_ctx_t *conn)
 
         /* find DS plugins */
         for (ds = SR_DS_STARTUP; ds < SR_DS_COUNT; ++ds) {
-            if ((err_info = sr_ds_plugin_find(((char *)mod_shm) + smod->plugins[ds], conn, &plgs[ds]))) {
+            if ((err_info = sr_ds_plugin_find(((char *)mod_shm) + smod->plugins[ds], conn, &ds_plg[ds]))) {
                 return err_info;
             }
         }
 
         /* init volatile DS */
         for (ds = SR_DS_RUNNING; ds < SR_DS_COUNT; ++ds) {
-            if ((rc = plgs[ds]->init_cb(ly_mod, ds, NULL, strlen(SR_GROUP) ? SR_GROUP : NULL,
+            if ((rc = ds_plg[ds]->init_cb(ly_mod, ds, NULL, strlen(SR_GROUP) ? SR_GROUP : NULL,
                     sr_module_default_mode(ly_mod)))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "init", plgs[ds]->name, ly_mod->name);
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "init", ds_plg[ds]->name, ly_mod->name);
                 return err_info;
             }
         }
@@ -1575,16 +1575,16 @@ sr_shmmod_init_ds(sr_conn_ctx_t *conn)
         }
 
         /* copy startup to running */
-        if (plgs[SR_DS_STARTUP] == plgs[SR_DS_RUNNING]) {
+        if (ds_plg[SR_DS_STARTUP] == ds_plg[SR_DS_RUNNING]) {
             /* same plugin, we can use copy callback */
-            rc = plgs[SR_DS_STARTUP]->copy_cb(ly_mod, SR_DS_RUNNING, SR_DS_STARTUP);
+            rc = ds_plg[SR_DS_STARTUP]->copy_cb(ly_mod, SR_DS_RUNNING, SR_DS_STARTUP);
         } else {
             /* load source data */
-            rc = plgs[SR_DS_STARTUP]->load_cb(ly_mod, SR_DS_STARTUP, NULL, 0, &mod_data);
+            rc = ds_plg[SR_DS_STARTUP]->load_cb(ly_mod, SR_DS_STARTUP, NULL, 0, &mod_data);
 
             if (!rc) {
                 /* write data to target */
-                rc = plgs[SR_DS_RUNNING]->store_cb(ly_mod, SR_DS_RUNNING, mod_data);
+                rc = ds_plg[SR_DS_RUNNING]->store_cb(ly_mod, SR_DS_RUNNING, mod_data);
                 lyd_free_siblings(mod_data);
             }
         }

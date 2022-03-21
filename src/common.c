@@ -1879,7 +1879,7 @@ sr_ds_plugin_int_count(void)
 }
 
 sr_error_info_t *
-sr_ds_plugin_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, struct srplg_ds_s **ds_plugin)
+sr_ds_plugin_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, const struct srplg_ds_s **ds_plugin)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -2038,7 +2038,7 @@ sr_ntf_plugin_int_count(void)
 }
 
 sr_error_info_t *
-sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, struct srplg_ntf_s **ntf_plugin)
+sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, const struct srplg_ntf_s **ntf_plugin)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -2823,7 +2823,7 @@ sr_perm_check(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
-    struct srplg_ds_s *plg;
+    const struct srplg_ds_s *plg;
     int rc, r, w;
 
     /* find the module in SHM */
@@ -5834,7 +5834,7 @@ sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod)
 }
 
 sr_error_info_t *
-sr_module_file_data_append(const struct lys_module *ly_mod, const struct srplg_ds_s *ds_plg, sr_datastore_t ds,
+sr_module_file_data_append(const struct lys_module *ly_mod, const struct srplg_ds_s *ds_plg[], sr_datastore_t ds,
         const char **xpaths, uint32_t xpath_count, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
@@ -5842,8 +5842,14 @@ sr_module_file_data_append(const struct lys_module *ly_mod, const struct srplg_d
     int rc;
 
     /* get the data */
-    if ((rc = ds_plg->load_cb(ly_mod, ds, xpaths, xpath_count, &mod_data))) {
-        SR_ERRINFO_DSPLUGIN(&err_info, rc, "load", ds_plg->name, ly_mod->name);
+    rc = ds_plg[ds]->load_cb(ly_mod, ds, xpaths, xpath_count, &mod_data);
+    if ((rc == SR_ERR_NOT_FOUND) && (ds == SR_DS_CANDIDATE)) {
+        /* not modified, just use running */
+        ds = SR_DS_RUNNING;
+        rc = ds_plg[ds]->load_cb(ly_mod, ds, xpaths, xpath_count, &mod_data);
+    }
+    if (rc) {
+        SR_ERRINFO_DSPLUGIN(&err_info, rc, "load", ds_plg[ds]->name, ly_mod->name);
         return err_info;
     }
 
@@ -5867,8 +5873,8 @@ sr_module_file_oper_data_load(struct sr_mod_info_mod_s *mod, struct lyd_node **e
     assert(!*edit);
 
     /* load the operational data (edit) */
-    if ((rc = mod->ds_plg->load_cb(mod->ly_mod, SR_DS_OPERATIONAL, NULL, 0, edit))) {
-        SR_ERRINFO_DSPLUGIN(&err_info, rc, "load", mod->ds_plg->name, mod->ly_mod->name);
+    if ((rc = mod->ds_plg[SR_DS_OPERATIONAL]->load_cb(mod->ly_mod, SR_DS_OPERATIONAL, NULL, 0, edit))) {
+        SR_ERRINFO_DSPLUGIN(&err_info, rc, "load", mod->ds_plg[SR_DS_OPERATIONAL]->name, mod->ly_mod->name);
         return err_info;
     }
 

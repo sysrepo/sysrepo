@@ -52,7 +52,7 @@ static sr_error_info_t *
 sr_notif_write(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct lyd_node *notif, struct timespec notif_ts)
 {
     sr_error_info_t *err_info = NULL;
-    struct srplg_ntf_s *ntf_plg;
+    const struct srplg_ntf_s *ntf_plg;
     int rc;
 
     /* find plugin */
@@ -310,7 +310,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
         sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data)
 {
     sr_error_info_t *err_info = NULL;
-    struct srplg_ntf_s *ntf_plg;
+    const struct srplg_ntf_s *ntf_plg;
     const struct lys_module *ly_mod;
     sr_mod_t *shm_mod;
     struct timespec notif_ts, stop_ts;

@@ -1855,7 +1855,7 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
-    struct srplg_ds_s *ds_plg;
+    const struct srplg_ds_s *ds_plg[SR_DS_COUNT] = {0};
     struct sr_mod_info_mod_s *mod = NULL;
     uint32_t i;
     int new = 0;
@@ -1888,8 +1888,28 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
 
     /* find DS plugin */
     if ((err_info = sr_ds_plugin_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[mod_info->ds],
-            mod_info->conn, &ds_plg))) {
+            mod_info->conn, &ds_plg[mod_info->ds]))) {
         return err_info;
+    }
+    switch (mod_info->ds) {
+    case SR_DS_STARTUP:
+        /* plugin for this datastore is enough */
+        break;
+    case SR_DS_RUNNING:
+        /* get candidate as well if we need to reset it */
+        if ((err_info = sr_ds_plugin_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[SR_DS_CANDIDATE],
+                mod_info->conn, &ds_plg[SR_DS_CANDIDATE]))) {
+            return err_info;
+        }
+        break;
+    case SR_DS_CANDIDATE:
+    case SR_DS_OPERATIONAL:
+        /* get running plugin as well */
+        if ((err_info = sr_ds_plugin_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[SR_DS_RUNNING],
+                mod_info->conn, &ds_plg[SR_DS_RUNNING]))) {
+            return err_info;
+        }
+        break;
     }
 
     if (!mod) {
@@ -1905,7 +1925,7 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
     /* fill basic attributes */
     mod->shm_mod = shm_mod;
     mod->ly_mod = ly_mod;
-    mod->ds_plg = ds_plg;
+    memcpy(&mod->ds_plg, &ds_plg, sizeof ds_plg);
     mod->state &= ~MOD_INFO_TYPE_MASK;
     mod->state |= mod_type;
 
@@ -2658,8 +2678,8 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
             mod_data = sr_module_data_unlink(&mod_info->data, mod->ly_mod);
 
             /* store the new data */
-            if ((rc = mod->ds_plg->store_cb(mod->ly_mod, mod_info->ds, mod_data))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", mod->ds_plg->name, mod->ly_mod->name);
+            if ((rc = mod->ds_plg[mod_info->ds]->store_cb(mod->ly_mod, mod_info->ds, mod_data))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", mod->ds_plg[mod_info->ds]->name, mod->ly_mod->name);
                 goto cleanup;
             }
 
@@ -2702,8 +2722,8 @@ sr_modinfo_candidate_reset(struct sr_mod_info_s *mod_info)
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_REQ) {
             /* reset candidate */
-            if ((rc = mod->ds_plg->candidate_reset_cb(mod->ly_mod))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_reset", mod->ds_plg->name, mod->ly_mod->name);
+            if ((rc = mod->ds_plg[SR_DS_CANDIDATE]->candidate_reset_cb(mod->ly_mod))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_reset", mod->ds_plg[SR_DS_CANDIDATE]->name, mod->ly_mod->name);
                 return err_info;
             }
         }

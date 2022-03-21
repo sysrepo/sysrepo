@@ -1312,7 +1312,7 @@ sr_lydmods_update_replay_support_module(sr_conn_ctx_t *conn, const struct lys_mo
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_replay, *sr_plg_name;
     struct timespec ts;
-    struct srplg_ntf_s *ntf_plg;
+    const struct srplg_ntf_s *ntf_plg;
     int rc;
     LY_ERR lyrc;
     char *buf = NULL;

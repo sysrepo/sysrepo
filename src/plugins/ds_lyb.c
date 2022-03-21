@@ -323,7 +323,6 @@ srpds_lyb_load(const struct lys_module *mod, sr_datastore_t ds, const char **UNU
 
     *mod_data = NULL;
 
-retry_open:
     /* prepare correct file path */
     if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
@@ -334,11 +333,9 @@ retry_open:
     if (fd == -1) {
         if (errno == ENOENT) {
             if (ds == SR_DS_CANDIDATE) {
-                /* no candidate exists, just use running */
-                ds = SR_DS_RUNNING;
-                free(path);
-                path = NULL;
-                goto retry_open;
+                /* no candidate exists */
+                rc = SR_ERR_NOT_FOUND;
+                goto cleanup;
             } else if (!strcmp(mod->name, "sysrepo")) {
                 /* fine for the internal module */
                 goto cleanup;

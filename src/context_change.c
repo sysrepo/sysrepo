@@ -218,7 +218,7 @@ sr_lycc_add_module(sr_conn_ctx_t *conn, const struct ly_set *mod_set, const sr_m
     const struct lys_module *ly_mod;
     uint32_t i;
     sr_datastore_t ds;
-    struct srplg_ds_s *ds_plg;
+    const struct srplg_ds_s *ds_plg;
     mode_t mod_perm;
     int rc;
 
@@ -302,8 +302,8 @@ sr_lycc_del_module(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const struc
     char *path;
     uint32_t i;
     sr_datastore_t ds;
-    struct srplg_ds_s *ds_plg;
-    struct srplg_ntf_s *ntf_plg;
+    const struct srplg_ds_s *ds_plg;
+    const struct srplg_ntf_s *ntf_plg;
     int rc;
     LY_ERR lyrc;
 
@@ -438,7 +438,7 @@ sr_lycc_set_replay_support(sr_conn_ctx_t *conn, const struct ly_set *mod_set, in
     const struct lys_module *ly_mod;
     char *path;
     struct lyd_node *sr_ntf_name;
-    struct srplg_ntf_s *ntf_plg;
+    const struct srplg_ntf_s *ntf_plg;
     uint32_t i;
     int rc;
     LY_ERR lyrc;
@@ -499,7 +499,8 @@ sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct lyd
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
     sr_mod_t *shm_mod;
-    struct srplg_ds_s *ds_plg;
+    const struct srplg_ds_s *ds_plg[SR_DS_COUNT] = {0};
+    sr_datastore_t ds;
     uint32_t idx = 0;
 
     while ((ly_mod = ly_ctx_get_module_iter(ly_ctx, &idx))) {
@@ -512,33 +513,30 @@ sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct lyd
         shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
         SR_CHECK_INT_RET(!shm_mod, err_info);
 
-        /* find startup plugin */
-        if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[SR_DS_STARTUP], conn, &ds_plg))) {
+        /* find startup plugin and append data */
+        ds = SR_DS_STARTUP;
+        if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_plg[ds]))) {
+            return err_info;
+        }
+        if ((err_info = sr_module_file_data_append(ly_mod, ds_plg, ds, NULL, 0, start_data))) {
             return err_info;
         }
 
-        /* append startup data */
-        if ((err_info = sr_module_file_data_append(ly_mod, ds_plg, SR_DS_STARTUP, NULL, 0, start_data))) {
+        /* find running plugin and append data */
+        ds = SR_DS_RUNNING;
+        if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_plg[ds]))) {
+            return err_info;
+        }
+        if ((err_info = sr_module_file_data_append(ly_mod, ds_plg, ds, NULL, 0, run_data))) {
             return err_info;
         }
 
-        /* find running plugin */
-        if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[SR_DS_RUNNING], conn, &ds_plg))) {
+        /* find operational plugin and append data */
+        ds = SR_DS_OPERATIONAL;
+        if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_plg[ds]))) {
             return err_info;
         }
-
-        /* append running data */
-        if ((err_info = sr_module_file_data_append(ly_mod, ds_plg, SR_DS_RUNNING, NULL, 0, run_data))) {
-            return err_info;
-        }
-
-        /* find operational plugin */
-        if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[SR_DS_OPERATIONAL], conn, &ds_plg))) {
-            return err_info;
-        }
-
-        /* append operational data */
-        if ((err_info = sr_module_file_data_append(ly_mod, ds_plg, SR_DS_OPERATIONAL, NULL, 0, oper_data))) {
+        if ((err_info = sr_module_file_data_append(ly_mod, ds_plg, ds, NULL, 0, oper_data))) {
             return err_info;
         }
     }
@@ -655,7 +653,7 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx
     sr_error_info_t *err_info = NULL;
     const struct lys_module *new_ly_mod, *old_ly_mod;
     struct lyd_node *new_mod_data = NULL, *old_mod_data = NULL;
-    struct srplg_ds_s *ds_plg;
+    const struct srplg_ds_s *ds_plg;
     struct ly_set *set;
     char *xpath;
     uint32_t idx = 0;

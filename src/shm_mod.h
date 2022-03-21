@@ -124,7 +124,7 @@ sr_error_info_t *sr_shmmod_collect_deps(sr_mod_shm_t *mod_shm, sr_dep_t *shm_dep
 struct sr_shmmod_recover_cb_s {
     struct ly_ctx **ly_ctx_p;   /**< Pointer to context to get sysrepo module from, may be changed. */
     sr_datastore_t ds;          /**< Datastore being recovered. */
-    struct srplg_ds_s *ds_plg;  /**< Datastore plugin of the module being recovered. */
+    const struct srplg_ds_s *ds_plg;    /**< Datastore plugin of the module being recovered. */
 };
 
 /**

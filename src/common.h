@@ -502,7 +502,7 @@ uint32_t sr_ds_plugin_int_count(void);
  * @param[out] ds_plugin Optional found DS plugin.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_ds_plugin_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, struct srplg_ds_s **ds_plugin);
+sr_error_info_t *sr_ds_plugin_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, const struct srplg_ds_s **ds_plugin);
 
 /**
  * @brief Initialize all dynamic notif handles.
@@ -536,7 +536,7 @@ uint32_t sr_ntf_plugin_int_count(void);
  * @param[out] ntf_plugin Optional found notif plugin.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, struct srplg_ntf_s **ntf_plugin);
+sr_error_info_t *sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, const struct srplg_ntf_s **ntf_plugin);
 
 /**
  * @brief Remove all unused module YANG file(s) and all of its includes/imports recursively.
@@ -1369,14 +1369,14 @@ struct lyd_node *sr_module_data_unlink(struct lyd_node **data, const struct lys_
  * @brief Append stored module data to a data tree.
  *
  * @param[in] ly_mod libyang module.
- * @param[in] ds_plg Datastore plugin of @p ly_mod.
+ * @param[in] ds_plg Datastore plugins of @p ly_mod.
  * @param[in] ds Datastore of the data.
  * @param[in] xpaths Array of XPaths selecting the required data, NULL for all module data.
  * @param[in] xpath_count Number of @p xpaths.
  * @param[in,out] data Data tree to append to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, const struct srplg_ds_s *ds_plg,
+sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, const struct srplg_ds_s *ds_plg[],
         sr_datastore_t ds, const char **xpaths, uint32_t xpath_count, struct lyd_node **data);
 
 /**
