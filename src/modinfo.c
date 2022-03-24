@@ -522,7 +522,7 @@ sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info)
 }
 
 /**
- * @brief Check whether operational dta are required based on single request and subscription atom.
+ * @brief Check whether operational data are required based on single request and subscription atom.
  *
  * @param[in] request_atom Request text atom.
  * @param[in] sub_atom Subscription text atom.
