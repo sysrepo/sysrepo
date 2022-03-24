@@ -1147,7 +1147,7 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
         struct lyd_node *ctx_node)
 {
     sr_error_info_t *err_info = NULL;
-    sr_cid_t cid;
+    sr_cid_t cid, skip_read_upgr_cid = 0;;
     uint32_t i;
     int ret;
 #define PATH_LEN 128
@@ -1166,6 +1166,9 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
         snprintf(path, PATH_LEN, path_format, cid);
         node = lyd_new_path(ctx_node, NULL, path, "read-upgr", 0, 0);
         SR_CHECK_LY_RET(!node, ly_ctx, err_info);
+
+        /* read-upgr lock also holds a read lock, we need to skip it */
+        skip_read_upgr_cid = cid;
     }
 
     /* READ MUTEX LOCK */
@@ -1176,12 +1179,16 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
     }
 
     for (i = 0; rwlock->readers[i] && (i < SR_RWLOCK_READ_LIMIT); ++i) {
-        if (skip_read_cid == rwlock->readers[i]) {
+        cid = rwlock->readers[i];
+        if (cid == skip_read_cid) {
             skip_read_cid = 0;
+            continue;
+        } else if (cid == skip_read_upgr_cid) {
+            skip_read_upgr_cid = 0;
             continue;
         }
 
-        snprintf(path, PATH_LEN, path_format, rwlock->readers[i]);
+        snprintf(path, PATH_LEN, path_format, cid);
         node = lyd_new_path(ctx_node, NULL, path, "read", 0, 0);
         if (!node) {
             sr_errinfo_new_ly(&err_info, ly_ctx);
