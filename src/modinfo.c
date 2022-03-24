@@ -599,8 +599,8 @@ static sr_error_info_t *
 sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath, int *required)
 {
     sr_error_info_t *err_info = NULL;
-    char **request_atoms = NULL, **sub_atoms = NULL;
-    uint32_t i, j, req_atom_count = 0, sub_atom_count = 0;
+    sr_xp_atoms_t *req_atoms = NULL, *sub_atoms = NULL;
+    uint32_t i, j, k;
     int r;
 
     assert(sub_xpath);
@@ -613,38 +613,43 @@ sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath, in
     }
 
     /* get text atoms for both xpaths */
-    if ((err_info = sr_xpath_get_text_atoms(request_xpath, &request_atoms, &req_atom_count)) || !req_atom_count) {
+    if ((err_info = sr_xpath_get_text_atoms(request_xpath, &req_atoms)) || !req_atoms) {
         goto cleanup;
     }
-    if ((err_info = sr_xpath_get_text_atoms(sub_xpath, &sub_atoms, &sub_atom_count)) || !sub_atom_count) {
+    if ((err_info = sr_xpath_get_text_atoms(sub_xpath, &sub_atoms)) || !sub_atoms) {
         goto cleanup;
     }
+    assert(sub_atoms->union_count == 1);
 
     /* check whether any atoms match */
     *required = 0;
-    for (i = 0; i < req_atom_count; ++i) {
-        for (j = 0; j < sub_atom_count; ++j) {
-            r = sr_xpath_oper_data_text_atoms_required(request_atoms[i], sub_atoms[j]);
-            if (r == 1) {
-                /* required but need to check all atoms */
-                *required = 1;
-            } else if (r == 2) {
-                /* not required for certain */
-                *required = 0;
-                goto cleanup;
+    for (i = 0; i < req_atoms->union_count; ++i) {
+        for (j = 0; j < req_atoms->unions[i].atom_count; ++j) {
+            for (k = 0; k < sub_atoms->unions[0].atom_count; ++k) {
+                r = sr_xpath_oper_data_text_atoms_required(req_atoms->unions[i].atoms[j], sub_atoms->unions[0].atoms[k]);
+                if (r == 1) {
+                    /* required but need to check all atoms */
+                    *required = 1;
+                } else if (r == 2) {
+                    /* not required for the union */
+                    *required = 0;
+                    break;
+                }
             }
+            if (k < sub_atoms->unions[0].atom_count) {
+                break;
+            }
+        }
+
+        if (*required) {
+            /* required for a union */
+            goto cleanup;
         }
     }
 
 cleanup:
-    for (i = 0; i < req_atom_count; ++i) {
-        free(request_atoms[i]);
-    }
-    free(request_atoms);
-    for (i = 0; i < sub_atom_count; ++i) {
-        free(sub_atoms[i]);
-    }
-    free(sub_atoms);
+    sr_xpath_atoms_free(req_atoms);
+    sr_xpath_atoms_free(sub_atoms);
     return err_info;
 }
 

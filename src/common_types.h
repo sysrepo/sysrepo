@@ -81,6 +81,17 @@ typedef enum {
     SR_SUB_EV_NOTIF             /**< New notification event ready. */
 } sr_sub_event_t;
 
+/**
+ * @brief XPath expression atoms.
+ */
+typedef struct {
+    struct {
+        char **atoms;
+        uint32_t atom_count;
+    } *unions;
+    uint32_t union_count;
+} sr_xp_atoms_t;
+
 /*
  * Private definitions of public declarations
  */

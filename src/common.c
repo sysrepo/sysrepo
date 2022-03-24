@@ -5537,14 +5537,16 @@ sr_xpath_text_atom_add(char **atom, char ***atoms, uint32_t *atom_count)
 static const char *xpath_ops[] = {"or ", "and ", "=", "!=", "<", ">", "<=", ">=", "+", "-", "*", "div ", "mod ", "|"};
 
 /**
- * @brief Get text atoms from an XPath expression.
+ * @brief Get text atoms from an XPath expression. If the union operator is found in the main expression (top-level),
+ * stop parsing.
  *
  * @param[in] xpath XPath to parse.
  * @param[in] prev_atom Atom of the previous expression (context node as a text atom).
  * @param[in] end_chars Array of chars ending this expression, NULL if only terminating zero is expected.
  * @param[out] atoms Collected text atoms.
  * @param[out] atom_count Count of @p atoms.
- * @param[out] xpath_next Pointer to one of @p end_chars if found, @p xpath if some unknown construct was encountered.
+ * @param[out] xpath_next Pointer to one of @p end_chars if found (optionall to '|' if @p end_chars is NULL),
+ * @p xpath if some unknown construct was encountered.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
@@ -5697,6 +5699,12 @@ parse_name:
                 goto cleanup;
             }
 
+            if (!end_chars && (next[0] == '|')) {
+                /* main expression divided by union, return */
+                parsed = 1;
+                goto cleanup;
+            }
+
             /* parse the following expression */
             if ((err_info = sr_xpath_text_atoms_expr(next2, prev_atom, end_chars, atoms, atom_count, &next))) {
                 goto cleanup;
@@ -5712,30 +5720,75 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_xpath_get_text_atoms(const char *xpath, char ***atoms, uint32_t *atom_count)
+sr_xpath_get_text_atoms(const char *xpath, sr_xp_atoms_t **xp_atoms)
 {
     sr_error_info_t *err_info = NULL;
     const char *next;
-    uint32_t i;
+    char **atoms;
+    uint32_t i, atom_count;
+    void *mem;
 
     assert(xpath);
 
-    *atoms = NULL;
-    *atom_count = 0;
+    *xp_atoms = NULL;
 
-    /* get atoms for the expression, for relative paths we can use '/' because the context node is root node */
-    err_info = sr_xpath_text_atoms_expr(xpath, "/", NULL, atoms, atom_count, &next);
+    do {
+        /* get atoms for the expression, for relative paths we can use '/' because the context node is root node */
+        atoms = NULL;
+        atom_count = 0;
+        err_info = sr_xpath_text_atoms_expr(xpath, "/", NULL, &atoms, &atom_count, &next);
 
-    if (err_info || (xpath == next)) {
-        /* error or unknown expr */
-        for (i = 0; i < *atom_count; ++i) {
-            free((*atoms)[i]);
+        if (err_info || (xpath == next)) {
+            /* error or unknown expr */
+            for (i = 0; i < atom_count; ++i) {
+                free(atoms[i]);
+            }
+            free(atoms);
+            goto cleanup;
         }
-        free(*atoms);
-        *atoms = NULL;
-        *atom_count = 0;
+
+        /* add new union atoms */
+        if (!*xp_atoms) {
+            *xp_atoms = calloc(1, sizeof **xp_atoms);
+            SR_CHECK_MEM_GOTO(!*xp_atoms, err_info, cleanup);
+        }
+        mem = realloc((*xp_atoms)->unions, ((*xp_atoms)->union_count + 1) * sizeof *(*xp_atoms)->unions);
+        SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
+        (*xp_atoms)->unions = mem;
+
+        (*xp_atoms)->unions[(*xp_atoms)->union_count].atoms = atoms;
+        (*xp_atoms)->unions[(*xp_atoms)->union_count].atom_count = atom_count;
+        ++(*xp_atoms)->union_count;
+
+        /* move to expr after the union */
+        xpath = next + 1;
+    } while (next[0] == '|');
+
+cleanup:
+    if (err_info) {
+        sr_xpath_atoms_free(*xp_atoms);
+        *xp_atoms = NULL;
     }
     return err_info;
+}
+
+void
+sr_xpath_atoms_free(sr_xp_atoms_t *xp_atoms)
+{
+    uint32_t i, j;
+
+    if (!xp_atoms) {
+        return;
+    }
+
+    for (i = 0; i < xp_atoms->union_count; ++i) {
+        for (j = 0; j < xp_atoms->unions[i].atom_count; ++j) {
+            free(xp_atoms->unions[i].atoms[j]);
+        }
+        free(xp_atoms->unions[i].atoms);
+    }
+    free(xp_atoms->unions);
+    free(xp_atoms);
 }
 
 sr_error_info_t *

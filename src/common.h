@@ -1331,11 +1331,17 @@ const char *sr_xpath_next_qname(const char *xpath, const char **mod, int *mod_le
  * @brief Get all text atoms (simple paths) for an XPath.
  *
  * @param[in] xpath XPath to parse.
- * @param[out] atoms Array of collected text atoms, NULL if unknown XPath expr.
- * @param[out] atom_count Count of @p atoms, 0 if unknown XPath expr.
+ * @param[out] xp_atoms Collected text atoms structure, NULL if unknown XPath expr.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_xpath_get_text_atoms(const char *xpath, char ***atoms, uint32_t *atom_count);
+sr_error_info_t *sr_xpath_get_text_atoms(const char *xpath, sr_xp_atoms_t **xp_atoms);
+
+/**
+ * @brief Free text atoms of an XPath.
+ *
+ * @param[in] xp_atoms Atoms structure to free.
+ */
+void sr_xpath_atoms_free(sr_xp_atoms_t *xp_atoms);
 
 /**
  * @brief Find last (most nested) parent (node with possible children) in a data tree.

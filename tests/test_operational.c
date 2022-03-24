@@ -2153,6 +2153,147 @@ test_config_only(void **state)
 }
 
 /* TEST */
+static int
+union_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)request_xpath;
+    (void)request_id;
+
+    assert_string_equal(module_name, "mixed-config");
+    assert_non_null(parent);
+    assert_non_null(*parent);
+
+    if (!strcmp(xpath, "/mixed-config:test-state/test-case/a")) {
+        assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "a", "strval", 0, NULL));
+    } else if (!strcmp(xpath, "/mixed-config:test-state/test-case/result")) {
+        assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "result", "100", 0, NULL));
+    } else {
+        fail();
+    }
+
+    ATOMIC_INC_RELAXED(st->cb_called);
+    return SR_ERR_OK;
+}
+
+static void
+test_union(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_data_t *data;
+    sr_subscription_ctx_t *subscr = NULL;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+
+    /* set some configuration data */
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/test-case[name='one']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/test-case[name='two']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to all configuration data to enable them */
+    ret = sr_module_change_subscribe(st->sess, "mixed-config", "/mixed-config:*", dummy_change_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to list member */
+    ret = sr_oper_get_subscribe(st->sess, "mixed-config", "/mixed-config:test-state/test-case/a", union_oper_cb,
+            st, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_oper_get_subscribe(st->sess, "mixed-config", "/mixed-config:test-state/test-case/result", union_oper_cb,
+            st, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* try to read the data with union xpaths */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read data #1 */
+    ret = sr_get_data(st->sess, "/mixed-config:test-state/test-case[name='one']/a", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+
+    sr_release_data(data);
+
+    str2 =
+    "<test-state xmlns=\"urn:sysrepo:mixed-config\">"
+        "<test-case>"
+            "<name>one</name>"
+            "<a>strval</a>"
+        "</test-case>"
+    "</test-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* read data #2 */
+    ret = sr_get_data(st->sess, "/mixed-config:test-state/test-case[name='one']/a|"
+            "/mixed-config:test-state/test-case[name='one']/result|"
+            "/mixed-config:test-state/test-case[name='two']", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 5);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+
+    sr_release_data(data);
+
+    str2 =
+    "<test-state xmlns=\"urn:sysrepo:mixed-config\">"
+        "<test-case>"
+            "<name>one</name>"
+            "<a>strval</a>"
+            "<result>100</result>"
+        "</test-case>"
+        "<test-case>"
+            "<name>two</name>"
+            "<a>strval</a>"
+            "<result>100</result>"
+        "</test-case>"
+    "</test-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* read data #3 */
+    ret = sr_get_data(st->sess, "/mixed-config:test-state/test-case[name='three']/result|"
+            "/mixed-config:test-state/test-case[name='one']/a|"
+            "/mixed-config:test-state/test-case[name='one']/result", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 7);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+
+    sr_release_data(data);
+
+    str2 =
+    "<test-state xmlns=\"urn:sysrepo:mixed-config\">"
+        "<test-case>"
+            "<name>one</name>"
+            "<a>strval</a>"
+            "<result>100</result>"
+        "</test-case>"
+    "</test-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    sr_unsubscribe(subscr);
+}
+
+/* TEST */
 static void
 test_conn_owner1(void **state)
 {
@@ -4583,6 +4724,7 @@ main(void)
         cmocka_unit_test_teardown(test_xpath_check, clear_up),
         cmocka_unit_test_teardown(test_state_only, clear_up),
         cmocka_unit_test_teardown(test_config_only, clear_up),
+        cmocka_unit_test_teardown(test_union, clear_up),
         cmocka_unit_test_teardown(test_conn_owner1, clear_up),
         cmocka_unit_test_teardown(test_conn_owner2, clear_up),
         cmocka_unit_test_teardown(test_conn_owner_same_data, clear_up),
