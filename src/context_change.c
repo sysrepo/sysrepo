@@ -548,14 +548,15 @@ sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct lyd
  * @brief Update data parsed with old context to be parsed with a new context.
  *
  * @param[in] old_data Old data to update.
+ * @param[in] parse_opts Parse options to use for parsing back @p old_data.
  * @param[in] ly_ctx New context to use.
  * @param[in] append_data Optional data to append.
  * @param[out] new_data Data tree in @p ly_ctx with optional @p append_data.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lycc_update_data_tree(const struct lyd_node *old_data, const struct ly_ctx *ly_ctx, const struct lyd_node *append_data,
-        struct lyd_node **new_data)
+sr_lycc_update_data_tree(const struct lyd_node *old_data, uint32_t parse_opts, const struct ly_ctx *ly_ctx,
+        const struct lyd_node *append_data, struct lyd_node **new_data)
 {
     sr_error_info_t *err_info = NULL;
     char *data_json = NULL;
@@ -569,7 +570,7 @@ sr_lycc_update_data_tree(const struct lyd_node *old_data, const struct ly_ctx *l
     }
 
     /* try to load it into the new updated context skipping any unknown nodes */
-    if (lyd_parse_data_mem(ly_ctx, data_json, LYD_JSON, LYD_PARSE_NO_STATE | LYD_PARSE_ONLY, 0, new_data)) {
+    if (lyd_parse_data_mem(ly_ctx, data_json, LYD_JSON, parse_opts, 0, new_data)) {
         sr_errinfo_new_ly(&err_info, ly_ctx);
         goto cleanup;
     }
@@ -598,6 +599,7 @@ sr_lycc_update_data(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const stru
         struct lyd_node **new_r_data, struct lyd_node **old_o_data, struct lyd_node **new_o_data)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t parse_opts;
 
     *old_s_data = NULL;
     *new_s_data = NULL;
@@ -612,13 +614,15 @@ sr_lycc_update_data(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const stru
     }
 
     /* update data for the new context */
-    if ((err_info = sr_lycc_update_data_tree(*old_s_data, ly_ctx, mod_data, new_s_data))) {
+    parse_opts = LYD_PARSE_NO_STATE | LYD_PARSE_ONLY;
+    if ((err_info = sr_lycc_update_data_tree(*old_s_data, parse_opts, ly_ctx, mod_data, new_s_data))) {
         goto cleanup;
     }
-    if ((err_info = sr_lycc_update_data_tree(*old_r_data, ly_ctx, mod_data, new_r_data))) {
+    if ((err_info = sr_lycc_update_data_tree(*old_r_data, parse_opts, ly_ctx, mod_data, new_r_data))) {
         goto cleanup;
     }
-    if ((err_info = sr_lycc_update_data_tree(*old_o_data, ly_ctx, NULL, new_o_data))) {
+    parse_opts &= ~LYD_PARSE_NO_STATE;
+    if ((err_info = sr_lycc_update_data_tree(*old_o_data, parse_opts, ly_ctx, NULL, new_o_data))) {
         goto cleanup;
     }
 
