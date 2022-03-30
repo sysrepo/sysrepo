@@ -3073,7 +3073,14 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
 
         /* MUTEX LOCK */
         ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_ts);
-        if (ret) {
+        if (ret == EOWNERDEAD) {
+            /* make it consistent */
+            ret = pthread_mutex_consistent(&rwlock->mutex);
+
+            /* recover the lock */
+            sr_rwlock_recover(rwlock, func, cb, cb_data);
+            SR_CHECK_INT_RET(ret, err_info);
+        } else if (ret) {
             SR_ERRINFO_LOCK(&err_info, func, ret);
             return err_info;
         }
@@ -3158,7 +3165,17 @@ sr_rwunlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
 
         /* MUTEX LOCK */
         ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_ts);
-        if (ret) {
+        if (ret == EOWNERDEAD) {
+            /* make it consistent */
+            ret = pthread_mutex_consistent(&rwlock->mutex);
+            if (ret) {
+                SR_ERRINFO_INT(&err_info);
+                sr_errinfo_free(&err_info);
+            }
+
+            /* recover the lock, no CB needed since when we are unlocking, the state is expected to be valid and cleared */
+            sr_rwlock_recover(rwlock, func, NULL, NULL);
+        } else if (ret) {
             SR_ERRINFO_LOCK(&err_info, func, ret);
             sr_errinfo_free(&err_info);
         }
