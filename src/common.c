@@ -1716,7 +1716,7 @@ sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *d
 }
 
 sr_error_info_t *
-sr_ly_ctx_init(struct ly_ctx **ly_ctx)
+sr_ly_ctx_init(ly_ext_data_clb ext_cb, void *ext_cb_data, struct ly_ctx **ly_ctx)
 {
     sr_error_info_t *err_info = NULL;
     char *yang_dir;
@@ -1733,6 +1733,9 @@ sr_ly_ctx_init(struct ly_ctx **ly_ctx)
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to create a new libyang context.");
         goto cleanup;
     }
+
+    /* set the callback */
+    ly_ctx_set_ext_data_clb(*ly_ctx, ext_cb, ext_cb_data);
 
     /* load just the internal module */
     if (lys_parse_mem(*ly_ctx, sysrepo_yang, LYS_IN_YANG, NULL)) {

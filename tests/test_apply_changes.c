@@ -75,6 +75,9 @@ setup(void **state)
     if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/defaults.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/sm.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
+        return 1;
+    }
 
     return 0;
 }
@@ -84,6 +87,7 @@ teardown(void **state)
 {
     struct state *st = (struct state *)*state;
 
+    sr_remove_module(st->conn, "sm", 0);
     sr_remove_module(st->conn, "defaults", 0);
     sr_remove_module(st->conn, "when2", 0);
     sr_remove_module(st->conn, "when1", 0);
@@ -6280,6 +6284,289 @@ test_change_enabled(void **state)
     pthread_join(tid[1], NULL);
 }
 
+/* TEST */
+static LY_ERR
+ly_ext_data_cb(const struct lysc_ext_instance *ext, void *user_data, void **ext_data, ly_bool *ext_data_free)
+{
+    struct state *st = (struct state *)user_data;
+    LY_ERR r;
+    const struct ly_ctx *ly_ctx;
+    struct lyd_node *data = NULL;
+    const char *xml = "<yang-library xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-library\" "
+            "    xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">"
+            "  <module-set>"
+            "    <name>test-set</name>"
+            "    <module>"
+            "      <name>ietf-datastores</name>"
+            "      <revision>2018-02-14</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-datastores</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ietf-yang-library</name>"
+            "      <revision>2019-01-04</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-yang-library</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ietf-yang-schema-mount</name>"
+            "      <revision>2019-01-14</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-yang-schema-mount</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ietf-interfaces</name>"
+            "      <revision>2014-05-08</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-interfaces</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>iana-if-type</name>"
+            "      <revision>2014-05-08</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:iana-if-type</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ietf-netconf</name>"
+            "      <revision>2013-09-29</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:netconf:base:1.0</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ietf-origin</name>"
+            "      <revision>2018-02-14</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-origin</namespace>"
+            "    </module>"
+            "    <import-only-module>"
+            "      <name>ietf-yang-types</name>"
+            "      <revision>2013-07-15</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-yang-types</namespace>"
+            "    </import-only-module>"
+            "    <import-only-module>"
+            "      <name>ietf-netconf-acm</name>"
+            "      <revision>2018-02-14</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-netconf-acm</namespace>"
+            "    </import-only-module>"
+            "  </module-set>"
+            "  <schema>"
+            "    <name>test-schema</name>"
+            "    <module-set>test-set</module-set>"
+            "  </schema>"
+            "  <datastore>"
+            "    <name>ds:running</name>"
+            "    <schema>test-schema</schema>"
+            "  </datastore>"
+            "  <datastore>"
+            "    <name>ds:operational</name>"
+            "    <schema>test-schema</schema>"
+            "  </datastore>"
+            "  <content-id>1</content-id>"
+            "</yang-library>"
+            "<modules-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-library\">"
+            "  <module-set-id>1</module-set-id>"
+            "</modules-state>"
+            "<schema-mounts xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-schema-mount\">"
+            "  <mount-point>"
+            "    <module>sm</module>"
+            "    <label>root</label>"
+            "    <shared-schema/>"
+            "  </mount-point>"
+            "</schema-mounts>";
+
+    (void)ext;
+
+    ly_ctx = sr_acquire_context(st->conn);
+    r = lyd_parse_data_mem(ly_ctx, xml, LYD_XML, LYD_PARSE_STRICT, LYD_VALIDATE_PRESENT, &data);
+    sr_release_context(st->conn);
+    assert_int_equal(r, LY_SUCCESS);
+
+    *ext_data = data;
+    *ext_data_free = 1;
+    return LY_SUCCESS;
+}
+
+static int
+module_change_schema_mount_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    sr_change_oper_t op;
+    sr_change_iter_t *iter;
+    sr_val_t *old_val, *new_val;
+    size_t val_count;
+    int ret;
+
+    (void)sub_id;
+    (void)request_id;
+    (void)xpath;
+
+    assert_string_equal(module_name, "sm");
+
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
+    case 0:
+    case 1:
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 0) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/sm:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/sm:root/ietf-interfaces:interfaces");
+
+        sr_free_val(new_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/sm:root/ietf-interfaces:interfaces/interface[name='bu']");
+
+        sr_free_val(new_val);
+
+        /* 3rd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/sm:root/ietf-interfaces:interfaces/interface[name='bu']/name");
+
+        sr_free_val(new_val);
+
+        /* 4th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/sm:root/ietf-interfaces:interfaces/interface[name='bu']/type");
+
+        sr_free_val(new_val);
+
+        /* 5th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/sm:root/ietf-interfaces:interfaces/interface[name='bu']/enabled");
+
+        sr_free_val(new_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+
+        /* check data */
+        ret = sr_get_items(session, "/sm:root//.", 0, 0, &new_val, &val_count);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(val_count, 6);
+
+        sr_free_values(new_val, val_count);
+        break;
+    default:
+        fail();
+    }
+
+    ATOMIC_INC_RELAXED(st->cb_called);
+    return SR_ERR_OK;
+}
+
+static void *
+apply_change_schema_mount_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    int ret;
+
+    /* set cb and create a session */
+    sr_set_ext_data_cb(st->conn, ly_ext_data_cb, st);
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for subscription */
+    pthread_barrier_wait(&st->barrier);
+
+    /* create some data */
+    ret = sr_set_item_str(sess, "/sm:root/ietf-interfaces:interfaces/interface[name='bu']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+
+    /* signal that we have finished applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    /* wait for unsubscribe */
+    pthread_barrier_wait(&st->barrier);
+
+    /* cleanup */
+    ret = sr_delete_item(sess, "/sm:root", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+subscribe_change_schema_mount_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *subscr = NULL;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe */
+    ret = sr_module_change_subscribe(sess, "sm", NULL, module_change_schema_mount_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal that we have subscribed */
+    pthread_barrier_wait(&st->barrier);
+
+    /* wait for the other thread to finish */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_unsubscribe(subscr);
+
+    /* signal that we have unsubscribed */
+    pthread_barrier_wait(&st->barrier);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_change_schema_mount(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, apply_change_schema_mount_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_change_schema_mount_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
+/* TEST */
 #define APPLY_ITERATIONS 100
 
 static void *
@@ -6416,6 +6703,7 @@ main(void)
         // cmocka_unit_test_setup_teardown(test_change_order, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_userord, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_enabled, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_change_schema_mount, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_mult_update, setup_f, teardown_f),
     };
 

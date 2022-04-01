@@ -99,7 +99,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
 
         /* context was updated, destroy and initialize it */
         ly_ctx_destroy(conn->ly_ctx);
-        if ((err_info = sr_ly_ctx_init(&conn->ly_ctx))) {
+        if ((err_info = sr_ly_ctx_init(conn->ext_cb, conn->ext_cb_data, &conn->ly_ctx))) {
             goto cleanup_unlock;
         }
 

@@ -465,10 +465,12 @@ sr_error_info_t *sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *p
 /**
  * @brief Create a new libyang context.
  *
+ * @param[in] ext_cb LY ext data cb to use.
+ * @param[in] ext_cb_data LY ext data cb data to use.
  * @param[out] ly_ctx libyang context.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_ly_ctx_init(struct ly_ctx **ly_ctx);
+sr_error_info_t *sr_ly_ctx_init(ly_ext_data_clb ext_cb, void *ext_cb_data, struct ly_ctx **ly_ctx);
 
 /**
  * @brief Initialize all dynamic DS handles.

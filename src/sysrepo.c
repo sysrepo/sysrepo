@@ -74,7 +74,7 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     conn = calloc(1, sizeof *conn);
     SR_CHECK_MEM_RET(!conn, err_info);
 
-    if ((err_info = sr_ly_ctx_init(&conn->ly_ctx))) {
+    if ((err_info = sr_ly_ctx_init(NULL, NULL, &conn->ly_ctx))) {
         goto error1;
     }
 
@@ -215,7 +215,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 
     if (created) {
         /* create new temporary context */
-        if ((err_info = sr_ly_ctx_init(&tmp_ly_ctx))) {
+        if ((err_info = sr_ly_ctx_init(NULL, NULL, &tmp_ly_ctx))) {
             goto cleanup_unlock;
         }
 
@@ -416,6 +416,21 @@ sr_get_content_id(sr_conn_ctx_t *conn)
     sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
 
     return conn->content_id;
+}
+
+API void
+sr_set_ext_data_cb(sr_conn_ctx_t *conn, ly_ext_data_clb cb, void *user_data)
+{
+    if (!conn) {
+        return;
+    }
+
+    /* store */
+    conn->ext_cb = cb;
+    conn->ext_cb_data = user_data;
+
+    /* set for the current context */
+    ly_ctx_set_ext_data_clb(conn->ly_ctx, cb, user_data);
 }
 
 API int
@@ -1407,7 +1422,7 @@ sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *sea
     }
 
     /* create new temporary context */
-    if ((err_info = sr_ly_ctx_init(&tmp_ly_ctx))) {
+    if ((err_info = sr_ly_ctx_init(conn->ext_cb, conn->ext_cb_data, &tmp_ly_ctx))) {
         goto cleanup;
     }
 
@@ -1537,7 +1552,7 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name, int force)
     }
 
     /* create new temporary context */
-    if ((err_info = sr_ly_ctx_init(&tmp_ly_ctx))) {
+    if ((err_info = sr_ly_ctx_init(conn->ext_cb, conn->ext_cb_data, &tmp_ly_ctx))) {
         goto cleanup;
     }
 
@@ -1646,7 +1661,7 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
     }
 
     /* create new temporary context */
-    if ((err_info = sr_ly_ctx_init(&tmp_ly_ctx))) {
+    if ((err_info = sr_ly_ctx_init(conn->ext_cb, conn->ext_cb_data, &tmp_ly_ctx))) {
         goto cleanup;
     }
 
@@ -2147,7 +2162,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     /* create new temporary context */
-    if ((err_info = sr_ly_ctx_init(&tmp_ly_ctx))) {
+    if ((err_info = sr_ly_ctx_init(conn->ext_cb, conn->ext_cb_data, &tmp_ly_ctx))) {
         goto cleanup;
     }
 

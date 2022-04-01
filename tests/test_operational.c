@@ -97,6 +97,9 @@ setup(void **state)
     if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/oper-group-test.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/sm.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
+        return 1;
+    }
 
     if (sr_session_start(st->conn, SR_DS_RUNNING, &st->sess) != SR_ERR_OK) {
         return 1;
@@ -119,6 +122,7 @@ teardown(void **state)
 {
     struct state *st = (struct state *)*state;
 
+    sr_remove_module(st->conn, "sm", 0);
     sr_remove_module(st->conn, "oper-group-test", 0);
     sr_remove_module(st->conn, "czechlight-roadm-device", 0);
     sr_remove_module(st->conn, "ops", 0);
@@ -466,6 +470,9 @@ test_sr_mon(void **state)
         "<module>"
             "<name>oper-group-test</name>"
         "</module>"
+        "<module>"
+            "<name>sm</name>"
+        "</module>"
         "<connection>"
             "<cid></cid>"
             "<pid></pid>"
@@ -707,6 +714,14 @@ test_sr_mon(void **state)
         "</module>"
         "<module>"
             "<name>oper-group-test</name>"
+        "</module>"
+        "<module>"
+            "<name>sm</name>"
+            "<ds-lock>"
+                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
+                "<sid></sid>"
+                "<timestamp></timestamp>"
+            "</ds-lock>"
         "</module>"
         "<rpc>"
             "<path xmlns:a=\"urn:act\">/a:basics/a:animals/a:convert</path>"
@@ -4121,6 +4136,152 @@ test_stored_diff_merge_userord(void **state)
 }
 
 /* TEST */
+static LY_ERR
+ly_ext_data_cb(const struct lysc_ext_instance *ext, void *user_data, void **ext_data, ly_bool *ext_data_free)
+{
+    struct state *st = (struct state *)user_data;
+    LY_ERR r;
+    const struct ly_ctx *ly_ctx;
+    struct lyd_node *data = NULL;
+    const char *xml = "<yang-library xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-library\" "
+            "    xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">"
+            "  <module-set>"
+            "    <name>test-set</name>"
+            "    <module>"
+            "      <name>ietf-datastores</name>"
+            "      <revision>2018-02-14</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-datastores</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ietf-yang-library</name>"
+            "      <revision>2019-01-04</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-yang-library</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ietf-yang-schema-mount</name>"
+            "      <revision>2019-01-14</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-yang-schema-mount</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ietf-interfaces</name>"
+            "      <revision>2014-05-08</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-interfaces</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>iana-if-type</name>"
+            "      <revision>2014-05-08</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:iana-if-type</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ietf-netconf</name>"
+            "      <revision>2013-09-29</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:netconf:base:1.0</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ietf-origin</name>"
+            "      <revision>2018-02-14</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-origin</namespace>"
+            "    </module>"
+            "    <import-only-module>"
+            "      <name>ietf-yang-types</name>"
+            "      <revision>2013-07-15</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-yang-types</namespace>"
+            "    </import-only-module>"
+            "    <import-only-module>"
+            "      <name>ietf-netconf-acm</name>"
+            "      <revision>2018-02-14</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-netconf-acm</namespace>"
+            "    </import-only-module>"
+            "  </module-set>"
+            "  <schema>"
+            "    <name>test-schema</name>"
+            "    <module-set>test-set</module-set>"
+            "  </schema>"
+            "  <datastore>"
+            "    <name>ds:running</name>"
+            "    <schema>test-schema</schema>"
+            "  </datastore>"
+            "  <datastore>"
+            "    <name>ds:operational</name>"
+            "    <schema>test-schema</schema>"
+            "  </datastore>"
+            "  <content-id>1</content-id>"
+            "</yang-library>"
+            "<modules-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-library\">"
+            "  <module-set-id>1</module-set-id>"
+            "</modules-state>"
+            "<schema-mounts xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-schema-mount\">"
+            "  <mount-point>"
+            "    <module>sm</module>"
+            "    <label>root</label>"
+            "    <shared-schema/>"
+            "  </mount-point>"
+            "</schema-mounts>";
+
+    (void)ext;
+
+    ly_ctx = sr_acquire_context(st->conn);
+    r = lyd_parse_data_mem(ly_ctx, xml, LYD_XML, LYD_PARSE_STRICT, LYD_VALIDATE_PRESENT, &data);
+    sr_release_context(st->conn);
+    assert_int_equal(r, LY_SUCCESS);
+
+    *ext_data = data;
+    *ext_data_free = 1;
+    return LY_SUCCESS;
+}
+
+static void
+test_stored_schema_mount(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_data_t *data;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* set ext cb */
+    sr_set_ext_data_cb(st->conn, ly_ext_data_cb, st);
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some data */
+    ret = sr_set_item_str(st->sess, "/sm:root/ietf-interfaces:interfaces/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/sm:root/ietf-interfaces:interfaces/interface[name='eth1']/description",
+            "config-description", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the operational data */
+    ret = sr_get_data(st->sess, "/sm:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+
+    sr_release_data(data);
+
+    str2 =
+    "<root xmlns=\"urn:sm\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
+        "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+            "<interface>"
+                "<name>eth1</name>"
+                "<description or:origin=\"or:unknown\">config-description</description>"
+                "<type or:origin=\"or:unknown\" "
+                    "xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "</interface>"
+        "</interfaces>"
+    "</root>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+}
+
+/* TEST */
 static int
 change_cb_stored_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
@@ -4738,6 +4899,7 @@ main(void)
         cmocka_unit_test_teardown(test_stored_np_cont2, clear_up),
         cmocka_unit_test_teardown(test_stored_edit_merge_leaf, clear_up),
         cmocka_unit_test_teardown(test_stored_diff_merge_userord, clear_up),
+        cmocka_unit_test_teardown(test_stored_schema_mount, clear_up),
         cmocka_unit_test_teardown(test_change_cb_stored, clear_up),
         cmocka_unit_test_teardown(test_default_when, clear_up),
         cmocka_unit_test_teardown(test_nested_default, clear_up),

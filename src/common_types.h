@@ -19,6 +19,8 @@
 
 #include <pthread.h>
 
+#include <libyang/libyang.h>
+
 #include "compat.h"
 #include "sysrepo_types.h"
 
@@ -103,6 +105,8 @@ struct sr_conn_ctx_s {
     struct ly_ctx *ly_ctx;          /**< Libyang context, also available to user. */
     uint32_t content_id;            /**< Connection context content id. */
     sr_conn_options_t opts;         /**< Connection options. */
+    ly_ext_data_clb ext_cb;         /**< LY ext data callback for the context. */
+    void *ext_cb_data;              /**< LY ext data callback user data. */
 
     pthread_mutex_t ptr_lock;       /**< Session-shared lock for accessing pointers to sessions. */
     sr_session_ctx_t **sessions;    /**< Array of sessions for this connection. */

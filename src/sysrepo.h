@@ -192,6 +192,16 @@ void sr_session_release_context(sr_session_ctx_t *session);
 uint32_t sr_get_content_id(sr_conn_ctx_t *conn);
 
 /**
+ * @brief Set libyang extension data callback for the connection. Even if the context is recompiled,
+ * the callback will be used.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] cb Libyang ext data callback.
+ * @param[in] user_data User data passed to @p cb.
+ */
+void sr_set_ext_data_cb(sr_conn_ctx_t *conn, ly_ext_data_clb cb, void *user_data);
+
+/**
  * @brief Get loaded plugins of a connection.
  *
  * @param[in] conn Connection to use.

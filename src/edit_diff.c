@@ -29,6 +29,7 @@
 #include <unistd.h>
 
 #include <libyang/libyang.h>
+#include <libyang/plugins_exts.h>
 
 #include "common.h"
 #include "compat.h"
@@ -1334,9 +1335,16 @@ sr_edit_insert(struct lyd_node **first_node, struct lyd_node *parent_node, struc
                     new_node->schema->name);
             return err_info;
         }
-        if (lyd_insert_child(parent_node, new_node)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(parent_node));
-            return err_info;
+        if (new_node->flags & LYD_EXT) {
+            if (lyd_insert_ext(parent_node, new_node)) {
+                sr_errinfo_new_ly(&err_info, LYD_CTX(parent_node));
+                return err_info;
+            }
+        } else {
+            if (lyd_insert_child(parent_node, new_node)) {
+                sr_errinfo_new_ly(&err_info, LYD_CTX(parent_node));
+                return err_info;
+            }
         }
         return NULL;
     }
@@ -1718,7 +1726,11 @@ sr_edit_diff_add(struct lyd_node **node, const char *meta_val, const char *prev_
     } else {
         /* insert node into diff */
         if (diff_parent) {
-            lyd_insert_child(diff_parent, node_dup);
+            if (node_dup->flags & LYD_EXT) {
+                lyd_insert_ext(diff_parent, node_dup);
+            } else {
+                lyd_insert_child(diff_parent, node_dup);
+            }
         } else {
             lyd_insert_sibling(*diff_root, node_dup, diff_root);
         }
