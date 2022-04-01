@@ -3686,7 +3686,7 @@ sr_diff_set_getnext(struct ly_set *set, uint32_t *idx, struct lyd_node **node, s
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_attr *attr;
-    struct lyd_node *parent;
+    struct lyd_node *parent, *key;
 
     while (*idx < set->number) {
         *node = set->set.d[*idx];
@@ -3720,7 +3720,11 @@ sr_diff_set_getnext(struct ly_set *set, uint32_t *idx, struct lyd_node **node, s
 
             /* in case of lists we want to also skip all their keys */
             if ((*node)->schema->nodetype == LYS_LIST) {
-                *idx += ((struct lys_node_list *)(*node)->schema)->keys_size;
+                for (key = set->set.d[*idx];
+                        lys_is_key((struct lys_node_leaf *)key->schema, NULL) && (key->parent == *node);
+                        key = set->set.d[*idx]) {
+                    ++(*idx);
+                }
             }
             continue;
         } else if (attr->value_str[0] == 'c') {
