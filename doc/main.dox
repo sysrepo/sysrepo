@@ -38,7 +38,6 @@ intermediary process (daemon). If there are several such daemons, they can be wr
 - Sysrepo is __only a library__ so there is no stand-alone process
 - all data are always __separated by YANG schemas__ which has many consequences such as allowing concurrent work
   with different schemas
-- __fixed YANG schema set__ that cannot be modified during Sysrepo operation (more in [schemas](@ref schema))
 - __shared memory__ is used for almost all IPC
 - almost __no CPU time wasted__ in the library (no active waiting or periodic checks)
 - fully customizable __event handling__ from periodic checks or using `poll(2)`/`select(2)` to automatic thread
