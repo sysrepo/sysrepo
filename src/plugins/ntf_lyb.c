@@ -405,10 +405,11 @@ srpntf_lyb_destroy(const struct lys_module *mod)
 static int
 srpntf_lyb_store(const struct lys_module *mod, const struct lyd_node *notif, const struct timespec *notif_ts)
 {
-    int rc = SR_ERR_OK, notif_lyb_len, fd = -1;
+    int rc = SR_ERR_OK, fd = -1;
     struct ly_out *out = NULL;
     struct stat st;
     char *notif_lyb = NULL;
+    uint32_t notif_lyb_len;
     time_t from_ts, to_ts;
     size_t file_size;
 
