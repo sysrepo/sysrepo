@@ -961,14 +961,14 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     SR_INSTALL_INT_MOD(ly_ctx, ietf_datastores_yang, 1, &mod_set);
     SR_INSTALL_INT_MOD(ly_ctx, ietf_yang_library_yang, 0, &mod_set);
 
+    /* install ietf-netconf-acm */
+    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_acm_yang, 0, &mod_set);
+
     /* install sysrepo-monitoring */
     SR_INSTALL_INT_MOD(ly_ctx, sysrepo_monitoring_yang, 0, &mod_set);
 
     /* install sysrepo-plugind */
     SR_INSTALL_INT_MOD(ly_ctx, sysrepo_plugind_yang, 0, &mod_set);
-
-    /* install ietf-netconf-acm */
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_acm_yang, 0, &mod_set);
 
     /* install ietf-netconf (implemented dependency) and ietf-netconf-with-defaults */
     SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_yang, 1, &mod_set);

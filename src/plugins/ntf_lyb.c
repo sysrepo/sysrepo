@@ -538,19 +538,23 @@ srpntf_lyb_replay_next(const struct lys_module *mod, const struct timespec *star
         }
 
         /* skip all earlier notifications */
-        do {
+        while (1) {
+            /* read timestamp */
             if ((rc = srpntf_read_ts(st->fd, notif_ts))) {
                 goto cleanup;
             }
-            if (!notif_ts->tv_sec) {
-                SRPLG_LOG_ERR(srpntf_name, "Unexpected notification file EOF.");
-                rc = SR_ERR_INTERNAL;
+
+            if (!notif_ts->tv_sec || (srlyb_time_cmp(notif_ts, start) > -1)) {
+                /* there can be no more notifications in the specific case when the last notif has timestamp
+                 * 100.25 and start time is 100.50, for example, because file is opened only based on seconds */
+                break;
+            }
+
+            /* skip the notification */
+            if ((rc = srpntf_skip_notif(st->fd))) {
                 goto cleanup;
             }
-            if ((srlyb_time_cmp(notif_ts, start) < 0) && (rc = srpntf_skip_notif(st->fd))) {
-                goto cleanup;
-            }
-        } while (srlyb_time_cmp(notif_ts, start) < 0);
+        }
 
         /* replay notifications until stop is reached */
         while (notif_ts->tv_sec && (srlyb_time_cmp(notif_ts, stop) < 0)) {

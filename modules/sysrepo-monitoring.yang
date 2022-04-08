@@ -22,6 +22,11 @@ module sysrepo-monitoring {
     description
         "Sysrepo YANG datastore monitoring state information.";
 
+    revision "2022-04-08" {
+        description
+            "Added NACM statistics.";
+    }
+
     revision "2021-07-29" {
         description
             "Subscription suspended state information added.";
@@ -342,6 +347,30 @@ module sysrepo-monitoring {
                 mandatory true;
                 description
                     "PID of the process that created this connection.";
+            }
+
+            container nacm-stats {
+                description
+                    "Various NACM statistics for this connection.";
+                reference "RFC 8341";
+
+                leaf denied-operations {
+                    type yang:zero-based-counter32;
+                    description
+                        "Connection-specific value of /ietf-netconf-acm:nacm/denied-operations.";
+                }
+
+                leaf denied-data-writes {
+                    type yang:zero-based-counter32;
+                    description
+                        "Connection-specific value of /ietf-netconf-acm:nacm/denied-data-writes.";
+                }
+
+                leaf denied-notifications {
+                    type yang:zero-based-counter32;
+                    description
+                        "Connection-specific value of /ietf-netconf-acm:nacm/denied-notifications.";
+                }
             }
         }
     }

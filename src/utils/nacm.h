@@ -100,6 +100,15 @@ enum sr_nacm_access {
     SR_NACM_ACCESS_PERMIT = 4          /**< access to the node is permitted with any children */
 };
 
+struct sr_nacm_get_data_arg {
+    sr_conn_ctx_t *conn;    /* connection to use */
+    const char *get_path;   /* path for sr_get_data */
+    const char *leaf_name;  /* name of the created leaf */
+    sr_data_t *data;        /* retrieved data */
+    int rc;                 /* return value of sr_get_data */
+    pthread_t tid;          /* TID of sr_get_data thread */
+};
+
 /**
  * @brief Check whether a node is (partially) permitted.
  *

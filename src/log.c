@@ -30,10 +30,10 @@
 #include "compat.h"
 #include "config.h"
 
-sr_log_level_t stderr_ll = SR_LL_NONE;  /**< stderr log level */
-sr_log_level_t syslog_ll = SR_LL_NONE;  /**< syslog log level */
-int syslog_open;                        /**< Whether syslog was opened */
-sr_log_cb log_cb;                       /**< Logging callback */
+sr_log_level_t sr_stderr_ll = SR_LL_NONE;   /**< stderr log level */
+sr_log_level_t sr_syslog_ll = SR_LL_NONE;   /**< syslog log level */
+int syslog_open;                            /**< Whether syslog was opened */
+sr_log_cb sr_lcb;                           /**< Logging callback */
 
 /**
  * @brief String error list.
@@ -132,18 +132,18 @@ sr_log_msg(int plugin, sr_log_level_t ll, const char *msg)
     }
 
     /* stderr logging */
-    if (ll <= stderr_ll) {
+    if (ll <= sr_stderr_ll) {
         fprintf(stderr, "[%s] %s\n", severity, msg);
     }
 
     /* syslog logging */
-    if (ll <= syslog_ll) {
+    if (ll <= sr_syslog_ll) {
         syslog(priority | (plugin ? LOG_DAEMON : 0), "[%s] %s\n", severity, msg);
     }
 
     /* logging callback */
-    if (log_cb) {
-        log_cb(ll, msg);
+    if (sr_lcb) {
+        sr_lcb(ll, msg);
     }
 }
 
@@ -428,13 +428,13 @@ sr_log_stderr(sr_log_level_t log_level)
     /* initializes libyang logging for our purpose */
     ly_log_options(LY_LOSTORE);
 
-    stderr_ll = log_level;
+    sr_stderr_ll = log_level;
 }
 
 API sr_log_level_t
 sr_log_get_stderr(void)
 {
-    return stderr_ll;
+    return sr_stderr_ll;
 }
 
 API void
@@ -443,7 +443,7 @@ sr_log_syslog(const char *app_name, sr_log_level_t log_level)
     /* initializes libyang logging for our purpose */
     ly_log_options(LY_LOSTORE);
 
-    syslog_ll = log_level;
+    sr_syslog_ll = log_level;
 
     if ((log_level > SR_LL_NONE) && !syslog_open) {
         openlog(app_name ? app_name : "sysrepo", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_USER);
@@ -459,11 +459,11 @@ sr_log_syslog(const char *app_name, sr_log_level_t log_level)
 API sr_log_level_t
 sr_log_get_syslog(void)
 {
-    return syslog_ll;
+    return sr_syslog_ll;
 }
 
 API void
 sr_log_set_cb(sr_log_cb log_callback)
 {
-    log_cb = log_callback;
+    sr_lcb = log_callback;
 }

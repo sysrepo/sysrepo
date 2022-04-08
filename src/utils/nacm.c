@@ -20,6 +20,7 @@
 
 #include <assert.h>
 #include <grp.h>
+#include <pthread.h>
 #include <pwd.h>
 #include <stdlib.h>
 #include <string.h>
@@ -120,12 +121,113 @@ sr_nacm_nacm_params_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const
     return SR_ERR_OK;
 }
 
+static void *
+sr_nacm_oper_get_data_thread(void *arg)
+{
+    struct sr_nacm_get_data_arg *get_arg = arg;
+    sr_session_ctx_t *sess = NULL;
+
+    /* start a session */
+    if ((get_arg->rc = sr_session_start(get_arg->conn, SR_DS_OPERATIONAL, &sess))) {
+        goto cleanup;
+    }
+
+    /* get the data */
+    if ((get_arg->rc = sr_get_data(sess, get_arg->get_path, 0, 0, 0, &get_arg->data))) {
+        goto cleanup;
+    }
+
+cleanup:
+    sr_session_stop(sess);
+    return NULL;
+}
+
 /* /ietf-netconf-acm:nacm/denied-* */
 static int
-sr_nacm_oper_cb(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id), const char *UNUSED(module_name), const char *path,
+sr_nacm_oper_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNUSED(module_name), const char *path,
         const char *UNUSED(request_xpath), uint32_t UNUSED(request_id), struct lyd_node **parent, void *UNUSED(private_data))
 {
-    LY_ERR lyrc;
+    int rc = SR_ERR_OK;
+    static struct sr_nacm_get_data_arg get_arg = {0};
+    struct ly_set *set = NULL;
+    struct lyd_node_term *term;
+    uint32_t i, counter = 0;
+    char num_str[11];
+
+    assert(*parent);
+
+    if (!get_arg.tid) {
+        /* prepare thread arg */
+        get_arg.conn = sr_session_get_connection(session);
+        if (!strcmp(path, "/ietf-netconf-acm:nacm/denied-operations")) {
+            get_arg.get_path = "/sysrepo-monitoring:sysrepo-state/connection/nacm-stats/denied-operations";
+            get_arg.leaf_name = "denied-operations";
+        } else if (!strcmp(path, "/ietf-netconf-acm:nacm/denied-data-writes")) {
+            get_arg.get_path = "/sysrepo-monitoring:sysrepo-state/connection/nacm-stats/denied-data-writes";
+            get_arg.leaf_name = "denied-data-writes";
+        } else {
+            assert(!strcmp(path, "/ietf-netconf-acm:nacm/denied-notifications"));
+            get_arg.get_path = "/sysrepo-monitoring:sysrepo-state/connection/nacm-stats/denied-notifications";
+            get_arg.leaf_name = "denied-notifications";
+        }
+
+        /* get data in a separate thread to prevent dead-lock on this subscription */
+        if (pthread_create(&get_arg.tid, NULL, sr_nacm_oper_get_data_thread, &get_arg)) {
+            rc = SR_ERR_SYS;
+            goto cleanup;
+        }
+
+        /* wait for the data, this callback will be called right after the other event on this subscription is
+         * triggered by the thread */
+        return SR_ERR_CALLBACK_SHELVE;
+    }
+
+    /* join the thread */
+    if (pthread_join(get_arg.tid, NULL)) {
+        rc = SR_ERR_SYS;
+        goto cleanup;
+    }
+
+    if (get_arg.rc) {
+        /* thread failed */
+        rc = get_arg.rc;
+        goto cleanup;
+    }
+
+    /* collect all the counters */
+    if (get_arg.data) {
+        if (lyd_find_xpath(get_arg.data->tree, get_arg.get_path, &set)) {
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+        for (i = 0; i < set->count; ++i) {
+            term = (struct lyd_node_term *)set->dnodes[i];
+            counter += term->value.uint32;
+        }
+    }
+
+    /* print */
+    sprintf(num_str, "%" PRIu32, counter);
+    if (lyd_new_path(*parent, NULL, get_arg.leaf_name, num_str, 0, NULL)) {
+        rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+cleanup:
+    sr_release_data(get_arg.data);
+    memset(&get_arg, 0, sizeof get_arg);
+    ly_set_free(set, NULL);
+    return rc;
+}
+
+/* /sysrepo-monitoring:sysrepo-state/connection/nacm-stats */
+static int
+sr_nacm_srmon_oper_cb(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id), const char *UNUSED(module_name),
+        const char *UNUSED(path), const char *UNUSED(request_xpath), uint32_t UNUSED(request_id), struct lyd_node **parent,
+        void *UNUSED(private_data))
+{
+    LY_ERR lyrc = LY_SUCCESS;
+    struct lyd_node *cont;
     char num_str[11];
 
     assert(*parent);
@@ -133,26 +235,33 @@ sr_nacm_oper_cb(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id), cons
     /* NACM LOCK */
     pthread_mutex_lock(&nacm.lock);
 
-    if (!strcmp(path, "/ietf-netconf-acm:nacm/denied-operations")) {
-        sprintf(num_str, "%" PRIu32, nacm.denied_operations);
-        lyrc = lyd_new_path(*parent, NULL, "denied-operations", num_str, 0, NULL);
-    } else if (!strcmp(path, "/ietf-netconf-acm:nacm/denied-data-writes")) {
-        sprintf(num_str, "%" PRIu32, nacm.denied_data_writes);
-        lyrc = lyd_new_path(*parent, NULL, "denied-data-writes", num_str, 0, NULL);
-    } else {
-        assert(!strcmp(path, "/ietf-netconf-acm:nacm/denied-notifications"));
-        sprintf(num_str, "%" PRIu32, nacm.denied_notifications);
-        lyrc = lyd_new_path(*parent, NULL, "denied-notifications", num_str, 0, NULL);
+    if ((lyrc = lyd_new_inner(*parent, NULL, "nacm-stats", 0, &cont))) {
+        goto cleanup_unlock;
     }
 
+    /* denied-operations */
+    sprintf(num_str, "%" PRIu32, nacm.denied_operations);
+    if ((lyrc = lyd_new_path(cont, NULL, "denied-operations", num_str, 0, NULL))) {
+        goto cleanup_unlock;
+    }
+
+    /* denied-data-writes */
+    sprintf(num_str, "%" PRIu32, nacm.denied_data_writes);
+    if ((lyrc = lyd_new_path(cont, NULL, "denied-data-writes", num_str, 0, NULL))) {
+        goto cleanup_unlock;
+    }
+
+    /* denied-notifications */
+    sprintf(num_str, "%" PRIu32, nacm.denied_notifications);
+    if ((lyrc = lyd_new_path(cont, NULL, "denied-notifications", num_str, 0, NULL))) {
+        goto cleanup_unlock;
+    }
+
+cleanup_unlock:
     /* NACM UNLOCK */
     pthread_mutex_unlock(&nacm.lock);
 
-    if (lyrc) {
-        return SR_ERR_INTERNAL;
-    }
-
-    return SR_ERR_OK;
+    return lyrc ? SR_ERR_INTERNAL : SR_ERR_OK;
 }
 
 static struct sr_nacm_group *
@@ -890,24 +999,42 @@ cleanup:
 #define SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, opts, cb) \
     rc = sr_module_change_subscribe(session, mod_name, xpath, cb, NULL, 0, \
             SR_SUBSCR_DONE_ONLY | SR_SUBSCR_ENABLED | opts, sub); \
-    if (rc != SR_ERR_OK) { \
+    if (rc) { \
         sr_errinfo_new(&err_info, rc, "Subscribing for \"%s\" data changes failed.", mod_name); \
-        return sr_api_ret(session, err_info); \
+        goto cleanup; \
     }
 
 #define SR_OPER_SUBSCR(session, sub, mod_name, xpath, opts, cb) \
     rc = sr_oper_get_subscribe(session, mod_name, xpath, cb, NULL, opts, sub); \
-    if (rc != SR_ERR_OK) { \
+    if (rc) { \
         sr_errinfo_new(&err_info, rc, "Subscribing for providing \"%s\" state data failed.", mod_name); \
-        return sr_api_ret(session, err_info); \
+        goto cleanup; \
+    }
+
+#define SR_OPER_SUBSCR_TRY(session, sub, mod_name, xpath, opts, cb) \
+    stderr_ll = sr_stderr_ll; \
+    sr_stderr_ll = SR_LL_NONE; \
+    syslog_ll = sr_syslog_ll; \
+    sr_syslog_ll = SR_LL_NONE; \
+    log_cb = sr_lcb; \
+    sr_lcb = NULL; \
+    rc = sr_oper_get_subscribe(session, mod_name, xpath, cb, NULL, opts, sub); \
+    sr_stderr_ll = stderr_ll; \
+    sr_syslog_ll = syslog_ll; \
+    sr_lcb = log_cb; \
+    if (rc && (rc != SR_ERR_INVAL_ARG)) { \
+        sr_errinfo_new(&err_info, rc, "Subscribing for providing \"%s\" state data failed.", mod_name); \
+        goto cleanup; \
     }
 
 API int
 sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscription_ctx_t **sub)
 {
     sr_error_info_t *err_info = NULL;
-    const char *mod_name;
-    const char *xpath;
+    const char *mod_name, *xpath;
+    char *xpath_d = NULL;
+    sr_log_level_t stderr_ll, syslog_ll;
+    sr_log_cb log_cb;
     int rc;
 
     SR_CHECK_ARG_APIRET(!session || (opts & ~SR_SUBSCR_NO_THREAD) || !sub, session, err_info);
@@ -915,7 +1042,7 @@ sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscriptio
     /* init structure */
     pthread_mutex_init(&nacm.lock, NULL);
 
-    /* subscribe to all the relevant data */
+    /* subscribe to all the relevant config data */
     mod_name = "ietf-netconf-acm";
     xpath = "/ietf-netconf-acm:nacm";
     SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_nacm_params_cb);
@@ -929,18 +1056,32 @@ sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscriptio
     xpath = "/ietf-netconf-acm:nacm/rule-list/rule";
     SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_rule_cb);
 
-    /* state data */
+    /* sr monitoring state data */
+    mod_name = "sysrepo-monitoring";
+    if (asprintf(&xpath_d, "/sysrepo-monitoring:sysrepo-state/connection[cid='%" PRIu32 "']/nacm-stats",
+            session->conn->cid) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        goto cleanup;
+    }
+    xpath = xpath_d;
+    SR_OPER_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_srmon_oper_cb);
+
+    /* aggregated state data, may have already been subscribed */
+    mod_name = "ietf-netconf-acm";
     xpath = "/ietf-netconf-acm:nacm/denied-operations";
-    SR_OPER_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_oper_cb);
+    SR_OPER_SUBSCR_TRY(session, sub, mod_name, xpath, opts, sr_nacm_oper_cb);
 
     xpath = "/ietf-netconf-acm:nacm/denied-data-writes";
-    SR_OPER_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_oper_cb);
+    SR_OPER_SUBSCR_TRY(session, sub, mod_name, xpath, opts, sr_nacm_oper_cb);
 
     xpath = "/ietf-netconf-acm:nacm/denied-notifications";
-    SR_OPER_SUBSCR(session, sub, mod_name, xpath, opts, sr_nacm_oper_cb);
+    SR_OPER_SUBSCR_TRY(session, sub, mod_name, xpath, opts, sr_nacm_oper_cb);
 
     nacm.initialized = 1;
-    return sr_api_ret(session, NULL);
+
+cleanup:
+    free(xpath_d);
+    return sr_api_ret(session, err_info);
 }
 
 API void
