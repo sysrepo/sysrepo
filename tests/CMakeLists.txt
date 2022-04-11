@@ -28,13 +28,18 @@ endif()
 # generate config
 configure_file("${PROJECT_SOURCE_DIR}/tests/test_common.h.in" "${PROJECT_BINARY_DIR}/tests/test_common.h" ESCAPE_QUOTES @ONLY)
 
-set(TEST_CLEAR_STATE_COMMAND rm -rf ${PROJECT_BINARY_DIR}/test_repositories /dev/shm/_tests_sr_*)
+set(TEST_CLEAR_REPOS_CMD rm -rf ${PROJECT_BINARY_DIR}/test_repositories)
+set(TEST_CLEAR_SHM_CMD find /dev/shm/ -name _tests_sr_* -delete)
 if(${CMAKE_VERSION} VERSION_GREATER "3.7")
-    # tests cleanup fixture
-    add_test(NAME tests_done
-        COMMAND ${TEST_CLEAR_STATE_COMMAND}
+    # tests cleanup fixtures
+    add_test(NAME tests_clear_repos
+        COMMAND ${TEST_CLEAR_REPOS_CMD}
     )
-    set_tests_properties(tests_done PROPERTIES FIXTURES_CLEANUP tests_cleanup)
+    set_tests_properties(tests_clear_repos PROPERTIES FIXTURES_CLEANUP tests_cleanup)
+    add_test(NAME tests_clear_shm
+        COMMAND ${TEST_CLEAR_SHM_CMD}
+    )
+    set_tests_properties(tests_clear_shm PROPERTIES FIXTURES_CLEANUP tests_cleanup)
 endif()
 
 if(ENABLE_TESTS)
@@ -93,5 +98,6 @@ endif()
 
 # phony target for clearing all sysrepo test data
 add_custom_target(test_clean
-    COMMAND ${TEST_CLEAR_STATE_COMMAND}
+    COMMAND ${TEST_CLEAR_REPOS_CMD}
+    COMMAND ${TEST_CLEAR_SHM_CMD}
 )
