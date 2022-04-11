@@ -29,7 +29,7 @@ endif()
 configure_file("${PROJECT_SOURCE_DIR}/tests/test_common.h.in" "${PROJECT_BINARY_DIR}/tests/test_common.h" ESCAPE_QUOTES @ONLY)
 
 set(TEST_CLEAR_REPOS_CMD rm -rf ${PROJECT_BINARY_DIR}/test_repositories)
-set(TEST_CLEAR_SHM_CMD find /dev/shm/ -name _tests_sr_* -delete)
+set(TEST_CLEAR_SHM_CMD find /dev/shm/ -readable -name _tests_sr_* -delete)
 if(${CMAKE_VERSION} VERSION_GREATER "3.7")
     # tests cleanup fixtures
     add_test(NAME tests_clear_repos
