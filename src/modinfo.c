@@ -1540,15 +1540,48 @@ sr_modinfo_module_srmon_connections(struct lyd_node *sr_state)
 }
 
 /**
+ * @brief Check whether specific operational data are required for a module.
+ *
+ * @param[in] request_xpath Requested XPath.
+ * @param[out] required Whether the oper data are required or not.
+ * @param[in] sub_xpath_fmt Operational subscription XPath format.
+ * @param[in] ... Format parameters of @p sub_xpath_fmt.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_modinfo_module_data_oper_required(const char *request_xpath, int *required, const char *sub_xpath_fmt, ...)
+{
+    sr_error_info_t *err_info = NULL;
+    va_list ap;
+    char *xpath = NULL;
+
+    /* print sub_xpath */
+    va_start(ap, sub_xpath_fmt);
+    if (vasprintf(&xpath, sub_xpath_fmt, ap) == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        goto cleanup;
+    }
+
+    /* check the xpath */
+    *required = sr_xpath_oper_data_required(request_xpath, xpath);
+
+cleanup:
+    va_end(ap);
+    free(xpath);
+    return err_info;
+}
+
+/**
  * @brief Load module data of the sysrepo-monitoring module. They are actually generated.
  *
  * SHM READ lock is expected to be held.
  *
  * @param[in] mod_info Mod info to use.
+ * @param[in] request_xpath XPath of the data request.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_modinfo_module_data_load_srmon(struct sr_mod_info_s *mod_info)
+sr_modinfo_module_data_load_srmon(struct sr_mod_info_s *mod_info, const char *request_xpath)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *mod_data;
@@ -1557,6 +1590,7 @@ sr_modinfo_module_data_load_srmon(struct sr_mod_info_s *mod_info)
     const struct lys_module *ly_mod;
     sr_main_shm_t *main_shm;
     uint32_t i, j;
+    int req;
 
     main_shm = SR_CONN_MAIN_SHM(mod_info->conn);
     ly_mod = ly_ctx_get_module(mod_info->conn->ly_ctx, "sysrepo-monitoring", NULL, 1);
@@ -1567,26 +1601,50 @@ sr_modinfo_module_data_load_srmon(struct sr_mod_info_s *mod_info)
     SR_CHECK_LY_GOTO(!mod_data, mod_info->conn->ly_ctx, err_info, cleanup);
 
     /* modules */
-    for (i = 0; i < main_shm->mod_count; ++i) {
-        shm_mod = SR_SHM_MOD_IDX(main_shm, i);
-        if ((err_info = sr_modinfo_module_srmon_module(mod_info->conn, shm_mod, mod_data))) {
-            goto cleanup;
-        }
+    if ((err_info = sr_modinfo_module_data_oper_required(request_xpath, &req, "/sysrepo-monitoring:sysrepo-state/module"))) {
+        goto cleanup;
     }
+    if (req) {
+        for (i = 0; i < main_shm->mod_count; ++i) {
+            shm_mod = SR_SHM_MOD_IDX(main_shm, i);
+            if ((err_info = sr_modinfo_module_data_oper_required(request_xpath, &req,
+                    "/sysrepo-monitoring:sysrepo-state/module[name='%s']", mod_info->conn->main_shm.addr + shm_mod->name))) {
+                goto cleanup;
+            }
 
-    /* RPCs */
-    for (i = 0; i < main_shm->mod_count; ++i) {
-        shm_mod = SR_SHM_MOD_IDX(main_shm, i);
-        shm_rpc = (sr_rpc_t *)(mod_info->conn->main_shm.addr + shm_mod->rpcs);
-        for (j = 0; j < shm_mod->rpc_count; ++j) {
-            if ((err_info = sr_modinfo_module_srmon_rpc(mod_info->conn, &shm_rpc[j], mod_data))) {
+            if (req && (err_info = sr_modinfo_module_srmon_module(mod_info->conn, shm_mod, mod_data))) {
                 goto cleanup;
             }
         }
     }
 
+    /* RPCs */
+    if ((err_info = sr_modinfo_module_data_oper_required(request_xpath, &req, "/sysrepo-monitoring:sysrepo-state/rpc"))) {
+        goto cleanup;
+    }
+    if (req) {
+        for (i = 0; i < main_shm->mod_count; ++i) {
+            shm_mod = SR_SHM_MOD_IDX(main_shm, i);
+            shm_rpc = (sr_rpc_t *)(mod_info->conn->main_shm.addr + shm_mod->rpcs);
+            for (j = 0; j < shm_mod->rpc_count; ++j) {
+                if ((err_info = sr_modinfo_module_data_oper_required(request_xpath, &req,
+                        "/sysrepo-monitoring:sysrepo-state/rpc[path='%s']", mod_info->conn->main_shm.addr + shm_rpc[j].path))) {
+                    goto cleanup;
+                }
+
+                if (req && (err_info = sr_modinfo_module_srmon_rpc(mod_info->conn, &shm_rpc[j], mod_data))) {
+                    goto cleanup;
+                }
+            }
+        }
+    }
+
     /* connections */
-    if ((err_info = sr_modinfo_module_srmon_connections(mod_data))) {
+    if ((err_info = sr_modinfo_module_data_oper_required(request_xpath, &req,
+            "/sysrepo-monitoring:sysrepo-state/connection"))) {
+        goto cleanup;
+    }
+    if (req && (err_info = sr_modinfo_module_srmon_connections(mod_data))) {
         goto cleanup;
     }
 
@@ -1698,7 +1756,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
                 }
             } else if (!strcmp(mod->ly_mod->name, "sysrepo-monitoring")) {
                 /* append sysrepo-monitoring state data - internal */
-                if ((err_info = sr_modinfo_module_data_load_srmon(mod_info))) {
+                if ((err_info = sr_modinfo_module_data_load_srmon(mod_info, request_xpath))) {
                     return err_info;
                 }
             }
