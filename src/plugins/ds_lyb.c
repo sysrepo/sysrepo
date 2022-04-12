@@ -39,8 +39,6 @@
 static int srpds_lyb_load(const struct lys_module *mod, sr_datastore_t ds, const char **xpaths, uint32_t xpath_count,
         struct lyd_node **mod_data);
 
-static int srpds_lyb_candidate_modified(const struct lys_module *mod, int *modified);
-
 static int srpds_lyb_access_get(const struct lys_module *mod, sr_datastore_t ds, char **owner, char **group,
         mode_t *perm);
 
@@ -51,7 +49,7 @@ srpds_lyb_store_(const struct lys_module *mod, sr_datastore_t ds, const struct l
     int rc = SR_ERR_OK;
     struct stat st;
     char *path = NULL, *bck_path = NULL;
-    int fd = -1, backup = 0;
+    int fd = -1, backup = 0, creat = 0;
 
     /* get path */
     if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
@@ -105,14 +103,24 @@ srpds_lyb_store_(const struct lys_module *mod, sr_datastore_t ds, const struct l
         }
     }
 
-    /* open the file */
-    if ((fd = srlyb_open(path, O_WRONLY | (perm ? O_CREAT : 0), perm)) == -1) {
+    if (perm) {
+        /* try to create the file */
+        fd = srlyb_open(path, O_WRONLY | O_CREAT | O_EXCL, perm);
+        if (fd > 0) {
+            creat = 1;
+        }
+    }
+    if (fd == -1) {
+        /* open existing file */
+        fd = srlyb_open(path, O_WRONLY, perm);
+    }
+    if (fd == -1) {
         rc = srlyb_open_error(srpds_name, path);
         goto cleanup;
     }
 
-    if (owner || group) {
-        /* change the owner of the file */
+    if (creat && (owner || group)) {
+        /* change the owner of the created file */
         if ((rc = srlyb_chmodown(srpds_name, path, owner, group, 0))) {
             goto cleanup;
         }
@@ -143,41 +151,24 @@ cleanup:
     return rc;
 }
 
+/**
+ * @brief Initialize startup datastore file.
+ *
+ * @param[in] mod Module to initialize.
+ * @param[in] owner Owner of the data, may be NULL.
+ * @param[in] group Group of the data, may be NULL.
+ * @param[in] perm Permissions of the data.
+ * @return SR_ERR value.
+ */
 static int
-srpds_lyb_init(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm)
+srpds_lyb_init_startup(const struct lys_module *mod, const char *owner, const char *group, mode_t perm)
 {
     int rc = SR_ERR_OK;
     struct lyd_node *root = NULL;
     char *path = NULL;
 
-    assert(perm);
-
-    if (ds == SR_DS_CANDIDATE) {
-        /* no need to initialize anything */
-        return rc;
-    } else if ((ds == SR_DS_OPERATIONAL) || (ds == SR_DS_RUNNING)) {
-        /* create empty file */
-        if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
-            goto cleanup;
-        }
-        assert(!srlyb_file_exists(srpds_name, path));
-        if ((rc = srpds_lyb_store_(mod, ds, NULL, owner, group, perm, 0))) {
-            goto cleanup;
-        }
-        goto cleanup;
-    }
-
-    /* startup data dir */
-    if ((rc = srlyb_get_startup_dir(srpds_name, &path))) {
-        return rc;
-    }
-    if (!srlyb_file_exists(srpds_name, path) && (rc = srlyb_mkpath(srpds_name, path, SRLYB_DIR_PERM))) {
-        goto cleanup;
-    }
-
     /* check whether the file does not exist */
-    free(path);
-    if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
+    if ((rc = srlyb_get_path(srpds_name, mod->name, SR_DS_STARTUP, &path))) {
         goto cleanup;
     }
     if (srlyb_file_exists(srpds_name, path)) {
@@ -194,13 +185,62 @@ srpds_lyb_init(const struct lys_module *mod, sr_datastore_t ds, const char *owne
     }
 
     /* print them into the startup file */
-    if ((rc = srpds_lyb_store_(mod, ds, root, owner, group, perm, 0))) {
+    if ((rc = srpds_lyb_store_(mod, SR_DS_STARTUP, root, owner, group, perm, 0))) {
         goto cleanup;
     }
 
 cleanup:
     free(path);
-    lyd_free_all(root);
+    lyd_free_siblings(root);
+    return rc;
+}
+
+static int
+srpds_lyb_init(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm)
+{
+    int rc = SR_ERR_OK, fd = -1;
+    char *path = NULL;
+
+    assert(perm);
+
+    /* startup data dir */
+    if ((rc = srlyb_get_startup_dir(srpds_name, &path))) {
+        return rc;
+    }
+    if (!srlyb_file_exists(srpds_name, path) && (rc = srlyb_mkpath(srpds_name, path, SRLYB_DIR_PERM))) {
+        goto cleanup;
+    }
+
+    if (ds == SR_DS_STARTUP) {
+        /* startup init */
+        rc = srpds_lyb_init_startup(mod, owner, group, perm);
+        goto cleanup;
+    }
+
+    /* get path to the perm file */
+    free(path);
+    if ((rc = srlyb_get_perm_path(srpds_name, mod->name, ds, &path))) {
+        goto cleanup;
+    }
+
+    /* create the file with the correct permissions */
+    if ((fd = srlyb_open(path, O_WRONLY | O_CREAT | O_EXCL, perm)) == -1) {
+        rc = srlyb_open_error(srpds_name, path);
+        goto cleanup;
+    }
+
+    if (owner || group) {
+        /* change the owner/group of the file */
+        if ((rc = srlyb_chmodown(srpds_name, path, owner, group, 0))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    if (fd > -1) {
+        close(fd);
+    }
+    free(path);
     return rc;
 }
 
@@ -208,19 +248,33 @@ static int
 srpds_lyb_destroy(const struct lys_module *mod, sr_datastore_t ds)
 {
     int rc = SR_ERR_OK;
-    char *path;
+    char *path = NULL;
 
+    /* unlink data file */
     if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
-        return rc;
+        goto cleanup;
     }
-
-    if ((unlink(path) == -1) && (errno != ENOENT) &&
-            ((ds == SR_DS_STARTUP) || (ds == SR_DS_RUNNING) || (ds == SR_DS_OPERATIONAL))) {
-        /* startup is persistent and must always exist, running and operational should always be created */
+    if ((unlink(path) == -1) && ((errno != ENOENT) || (ds == SR_DS_STARTUP))) {
+        /* only startup is persistent and must always exist */
         SRPLG_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
     }
-    free(path);
 
+    if (ds == SR_DS_STARTUP) {
+        /* done */
+        goto cleanup;
+    }
+
+    /* unlink perm file */
+    free(path);
+    if ((rc = srlyb_get_perm_path(srpds_name, mod->name, ds, &path))) {
+        goto cleanup;
+    }
+    if (unlink(path) == -1) {
+        SRPLG_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
+    }
+
+cleanup:
+    free(path);
     return rc;
 }
 
@@ -228,23 +282,43 @@ static int
 srpds_lyb_store(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *mod_data)
 {
     mode_t perm = 0;
-    int rc, modified;
+    int rc;
+    char *path = NULL, *owner = NULL, *group = NULL;
 
-    if (ds == SR_DS_CANDIDATE) {
-        /* check whether candidate is modified (the file exists) */
-        if ((rc = srpds_lyb_candidate_modified(mod, &modified))) {
-            return rc;
+    switch (ds) {
+    case SR_DS_STARTUP:
+        /* must exist */
+        break;
+    case SR_DS_RUNNING:
+    case SR_DS_CANDIDATE:
+    case SR_DS_OPERATIONAL:
+        /* get data file path */
+        if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
+            goto cleanup;
         }
 
-        if (!modified) {
-            /* get running permissions to use for the candidate */
-            if ((rc = srpds_lyb_access_get(mod, SR_DS_RUNNING, NULL, NULL, &perm))) {
-                return rc;
-            }
+        if (srlyb_file_exists(srpds_name, path)) {
+            /* file exists */
+            break;
         }
+
+        /* get the correct permissions to set for the new file */
+        if ((rc = srpds_lyb_access_get(mod, ds, &owner, &group, &perm))) {
+            goto cleanup;
+        }
+        break;
     }
 
-    return srpds_lyb_store_(mod, ds, mod_data, NULL, NULL, perm, 1);
+    /* store */
+    if ((rc = srpds_lyb_store_(mod, ds, mod_data, owner, group, perm, 1))) {
+        goto cleanup;
+    }
+
+cleanup:
+    free(path);
+    free(owner);
+    free(group);
+    return rc;
 }
 
 static void
@@ -336,11 +410,8 @@ srpds_lyb_load(const struct lys_module *mod, sr_datastore_t ds, const char **UNU
                 /* no candidate exists */
                 rc = SR_ERR_NOT_FOUND;
                 goto cleanup;
-            } else if (!strcmp(mod->name, "sysrepo")) {
-                /* fine for the internal module */
-                goto cleanup;
-            } else if (ds == SR_DS_OPERATIONAL) {
-                /* it may not exist */
+            } else if ((ds != SR_DS_STARTUP) || !strcmp(mod->name, "sysrepo")) {
+                /* volatile DS data file may not exist */
                 goto cleanup;
             }
         }
@@ -375,12 +446,43 @@ cleanup:
 static int
 srpds_lyb_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datastore_t src_ds)
 {
-    int rc = SR_ERR_OK;
-    char *src_path = NULL, *trg_path = NULL;
+    int rc = SR_ERR_OK, fd = -1;
+    char *src_path = NULL, *trg_path = NULL, *owner = NULL, *group = NULL;
+    mode_t perm = 0;
 
     /* target path */
     if ((rc = srlyb_get_path(srpds_name, mod->name, trg_ds, &trg_path))) {
         goto cleanup;
+    }
+
+    switch (trg_ds) {
+    case SR_DS_STARTUP:
+        /* must exist */
+        break;
+    case SR_DS_RUNNING:
+    case SR_DS_CANDIDATE:
+    case SR_DS_OPERATIONAL:
+        if (srlyb_file_exists(srpds_name, trg_path)) {
+            /* file exists */
+            break;
+        }
+
+        /* get the correct permissions to set for the new file */
+        if ((rc = srpds_lyb_access_get(mod, trg_ds, &owner, &group, &perm))) {
+            goto cleanup;
+        }
+
+        /* create the target file with the correct permissions */
+        if ((fd = srlyb_open(trg_path, O_WRONLY | O_CREAT | O_EXCL, perm)) == -1) {
+            rc = srlyb_open_error(srpds_name, trg_path);
+            goto cleanup;
+        }
+
+        /* change the owner/group of the new file */
+        if ((rc = srlyb_chmodown(srpds_name, trg_path, owner, group, 0))) {
+            goto cleanup;
+        }
+        break;
     }
 
     /* source path */
@@ -394,8 +496,13 @@ srpds_lyb_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datastore
     }
 
 cleanup:
-    free(src_path);
+    if (fd > -1) {
+        close(fd);
+    }
     free(trg_path);
+    free(owner);
+    free(group);
+    free(src_path);
     return rc;
 }
 
@@ -505,14 +612,20 @@ srpds_lyb_access_set(const struct lys_module *mod, sr_datastore_t ds, const char
 
     assert(mod && (owner || group || perm));
 
-    /* get path */
-    if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
-        return rc;
-    }
-
-    if ((ds == SR_DS_CANDIDATE) && !srlyb_file_exists(srpds_name, path)) {
-        /* nothing to do if the file does not exist */
-        goto cleanup;
+    /* get correct path */
+    switch (ds) {
+    case SR_DS_STARTUP:
+        if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
+            goto cleanup;
+        }
+        break;
+    case SR_DS_RUNNING:
+    case SR_DS_CANDIDATE:
+    case SR_DS_OPERATIONAL:
+        if ((rc = srlyb_get_perm_path(srpds_name, mod->name, ds, &path))) {
+            goto cleanup;
+        }
+        break;
     }
 
     /* update file permissions and owner */
@@ -537,9 +650,20 @@ srpds_lyb_access_get(const struct lys_module *mod, sr_datastore_t ds, char **own
         *group = NULL;
     }
 
-    /* path */
-    if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
-        return rc;
+    /* get correct path */
+    switch (ds) {
+    case SR_DS_STARTUP:
+        if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
+            return rc;
+        }
+        break;
+    case SR_DS_RUNNING:
+    case SR_DS_CANDIDATE:
+    case SR_DS_OPERATIONAL:
+        if ((rc = srlyb_get_perm_path(srpds_name, mod->name, ds, &path))) {
+            return rc;
+        }
+        break;
     }
 
     /* stat */
@@ -590,24 +714,26 @@ srpds_lyb_access_check(const struct lys_module *mod, sr_datastore_t ds, int *rea
     int rc = SR_ERR_OK;
     char *path;
 
-retry:
-    /* path */
-    if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
-        return rc;
+    /* get correct path */
+    switch (ds) {
+    case SR_DS_STARTUP:
+        if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
+            goto cleanup;
+        }
+        break;
+    case SR_DS_RUNNING:
+    case SR_DS_CANDIDATE:
+    case SR_DS_OPERATIONAL:
+        if ((rc = srlyb_get_perm_path(srpds_name, mod->name, ds, &path))) {
+            goto cleanup;
+        }
+        break;
     }
 
     /* check read */
     if (read) {
         if (eaccess(path, R_OK) == -1) {
-            if ((ds == SR_DS_CANDIDATE) && (errno == ENOENT)) {
-                /* special case of non-existing candidate */
-                ds = SR_DS_RUNNING;
-                free(path);
-                goto retry;
-            } else if ((ds == SR_DS_OPERATIONAL) && (errno == ENOENT)) {
-                /* non-existing operational is fine */
-                *read = 1;
-            } else if (errno == EACCES) {
+            if (errno == EACCES) {
                 *read = 0;
             } else {
                 SRPLG_LOG_ERR(srpds_name, "Eaccess of \"%s\" failed (%s).", path, strerror(errno));
@@ -622,15 +748,7 @@ retry:
     /* check write */
     if (write) {
         if (eaccess(path, W_OK) == -1) {
-            if ((ds == SR_DS_CANDIDATE) && (errno == ENOENT)) {
-                /* special case of non-existing candidate */
-                ds = SR_DS_RUNNING;
-                free(path);
-                goto retry;
-            } else if ((ds == SR_DS_OPERATIONAL) && (errno == ENOENT)) {
-                /* non-existing operational is fine */
-                *write = 1;
-            } else if (errno == EACCES) {
+            if (errno == EACCES) {
                 *write = 0;
             } else {
                 SRPLG_LOG_ERR(srpds_name, "Eaccess of \"%s\" failed (%s).", path, strerror(errno));

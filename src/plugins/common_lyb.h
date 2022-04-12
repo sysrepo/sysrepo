@@ -201,6 +201,17 @@ int srlyb_get_startup_dir(const char *plg_name, char **path);
 int srlyb_get_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, char **path);
 
 /**
+ * @brief Get path to a datastore permission file of a module.
+ *
+ * @param[in] plg_name Plugin name.
+ * @param[in] mod_name Module name.
+ * @param[in] ds Specific volatile datastore.
+ * @param[out] path Generated file path.
+ * @return SR err value.
+ */
+int srlyb_get_perm_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, char **path);
+
+/**
  * @brief Get the path to notification files directory.
  *
  * @param[in] plg_name Plugin name.

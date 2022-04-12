@@ -618,6 +618,34 @@ srlyb_get_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, ch
 }
 
 int
+srlyb_get_perm_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, char **path)
+{
+    int r = 0;
+
+    switch (ds) {
+    case SR_DS_STARTUP:
+        return SR_ERR_INTERNAL;
+    case SR_DS_RUNNING:
+    case SR_DS_CANDIDATE:
+    case SR_DS_OPERATIONAL:
+        if (SR_STARTUP_PATH[0]) {
+            r = asprintf(path, "%s/%s.%s.perm", SR_STARTUP_PATH, mod_name, srlyb_ds2str(ds));
+        } else {
+            r = asprintf(path, "%s/data/%s.%s.perm", sr_get_repo_path(), mod_name, srlyb_ds2str(ds));
+        }
+        break;
+    }
+
+    if (r == -1) {
+        *path = NULL;
+        SRPLG_LOG_ERR(plg_name, "Memory allocation failed.");
+        return SR_ERR_NO_MEMORY;
+    }
+
+    return SR_ERR_OK;
+}
+
+int
 srlyb_get_notif_dir(const char *plg_name, char **path)
 {
     if (SR_NOTIFICATION_PATH[0]) {
