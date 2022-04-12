@@ -3164,6 +3164,8 @@ sr_diff_ly2sr(struct lyd_difflist *ly_diff, struct lyd_node **diff_p)
     enum edit_op op;
     char *attr_val, *prev_attr_val;
 
+    *diff_p = NULL;
+
     /* just a shortcut to context */
     if (ly_diff->type[0] != LYD_DIFF_END) {
         if (ly_diff->first[0]) {
