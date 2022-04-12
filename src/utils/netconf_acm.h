@@ -34,6 +34,20 @@ extern "C" {
 int sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscription_ctx_t **sub);
 
 /**
+ * @brief Subscribe for providing global NACM stats. These include subscriptions made by ::sr_nacm_init() so
+ * another subscription structure is required.
+ *
+ * There can be only a single provider of these data on a system and in case there already is, this function
+ * returns success but does not modify @p sub.
+ *
+ * @param[in] session Session to use.
+ * @param[in] opts Optionally, ::SR_SUBSCR_NO_THREAD can be specified. No other flags are allowed.
+ * @param[out] sub Subscription context, **must** be different from the one used in ::sr_nacm_init()!
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_nacm_glob_stats_subscribe(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscription_ctx_t **sub);
+
+/**
  * @brief Destroy NACM.
  */
 void sr_nacm_destroy(void);
