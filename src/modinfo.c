@@ -219,11 +219,12 @@ sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data)
                 mod->state |= MOD_INFO_CHANGED;
 
                 /* create a single sysrepo diff */
-                err_info = sr_diff_ly2sr(ly_diff, &diff);
-                if (mod_info->diff) {
-                    sr_ly_link(mod_info->diff, diff);
-                } else {
-                    mod_info->diff = diff;
+                if (!(err_info = sr_diff_ly2sr(ly_diff, &diff))) {
+                    if (mod_info->diff) {
+                        sr_ly_link(mod_info->diff, diff);
+                    } else {
+                        mod_info->diff = diff;
+                    }
                 }
 
                 /* update data */
