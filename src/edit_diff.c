@@ -3094,8 +3094,10 @@ sr_diff_set_getnext(struct ly_set *set, uint32_t *idx, struct lyd_node **node, s
 
             /* in case of lists we want to also skip all their keys */
             if ((*node)->schema->nodetype == LYS_LIST) {
-                for (key = set->dnodes[*idx]; lysc_is_key(key->schema) && (lyd_parent(key) == *node); key = set->dnodes[*idx]) {
+                key = set->dnodes[*idx];
+                while ((*idx < set->count) && lysc_is_key(key->schema) && (lyd_parent(key) == *node)) {
                     ++(*idx);
+                    key = set->dnodes[*idx];
                 }
             }
             continue;
