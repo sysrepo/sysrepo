@@ -895,6 +895,17 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
             continue;
         }
 
+        /* correctly start the loop, with fake last priority 1 higher than the actual highest */
+        if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_UPDATE,
+                cur_priority + 1, &cur_priority, &subscriber_count, NULL))) {
+            goto cleanup;
+        }
+
+        if (!subscriber_count) {
+            /* the subscription(s) was recovered just now so there are not any */
+            continue;
+        }
+
         /* prepare diff to write into SHM */
         if (!diff_lyb && lyd_print_mem(&diff_lyb, mod_info->diff, LYD_LYB, LYP_WITHSIBLINGS)) {
             sr_errinfo_new_ly(&err_info, ly_ctx);
@@ -908,12 +919,6 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
             goto cleanup;
         }
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
-
-        /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_UPDATE,
-                cur_priority + 1, &cur_priority, &subscriber_count, NULL))) {
-            goto cleanup;
-        }
 
         /* SUB WRITE LOCK */
         if ((err_info = sr_shmsub_notify_new_wrlock((sr_sub_shm_t *)multi_sub_shm, mod->ly_mod->name, 0, cid))) {
@@ -1108,6 +1113,17 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
             continue;
         }
 
+        /* correctly start the loop, with fake last priority 1 higher than the actual highest */
+        if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_CHANGE,
+                cur_priority + 1, &cur_priority, &subscriber_count, &opts))) {
+            goto cleanup;
+        }
+
+        if (!subscriber_count) {
+            /* the subscription(s) was recovered just now so there are not any */
+            continue;
+        }
+
         /* prepare the diff to write into subscription SHM */
         if (!diff_lyb) {
             if (lyd_print_mem(&diff_lyb, mod_info->diff, LYD_LYB, LYP_WITHSIBLINGS)) {
@@ -1122,12 +1138,6 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, sr_sid_t sid, uin
             goto cleanup;
         }
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
-
-        /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_CHANGE,
-                cur_priority + 1, &cur_priority, &subscriber_count, &opts))) {
-            goto cleanup;
-        }
 
         /* SUB WRITE LOCK */
         if ((err_info = sr_shmsub_notify_new_wrlock((sr_sub_shm_t *)multi_sub_shm, mod->ly_mod->name, 0, cid))) {
@@ -1226,6 +1236,17 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
             continue;
         }
 
+        /* correctly start the loop, with fake last priority 1 higher than the actual highest */
+        if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_DONE,
+                cur_priority + 1, &cur_priority, &subscriber_count, &opts))) {
+            goto cleanup;
+        }
+
+        if (!subscriber_count) {
+            /* the subscription(s) was recovered just now so there are not any */
+            continue;
+        }
+
         /* prepare the diff to write into subscription SHM */
         if (!diff_lyb) {
             if (lyd_print_mem(&diff_lyb, mod_info->diff, LYD_LYB, LYP_WITHSIBLINGS)) {
@@ -1240,12 +1261,6 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, sr_sid_t sid
             goto cleanup;
         }
         multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
-
-        /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_DONE,
-                cur_priority + 1, &cur_priority, &subscriber_count, &opts))) {
-            goto cleanup;
-        }
 
         /* SUB WRITE LOCK */
         if ((err_info = sr_shmsub_notify_new_wrlock((sr_sub_shm_t *)multi_sub_shm, mod->ly_mod->name, 0, cid))) {
@@ -1380,6 +1395,17 @@ clear_shm:
             continue;
         }
 
+        /* correctly start the loop, with fake last priority 1 higher than the actual highest */
+        if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_ABORT,
+                cur_priority + 1, &cur_priority, &subscriber_count, NULL))) {
+            goto cleanup_wrunlock;
+        }
+
+        if (!subscriber_count) {
+            /* the subscription(s) was recovered just now so there are not any */
+            goto clear_shm;
+        }
+
         assert(mod_info->diff);
 
         /* prepare the diff to write into subscription SHM */
@@ -1398,20 +1424,15 @@ clear_shm:
             diff_lyb_len = lyd_lyb_data_length(diff_lyb);
         }
 
-        /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_ABORT,
-                cur_priority + 1, &cur_priority, &subscriber_count, NULL))) {
-            goto cleanup_wrunlock;
-        }
-        if (last_subscr && (err_priority == cur_priority)) {
-            /* do not notify subscribers that did not process the previous event */
-            subscriber_count -= err_subscriber_count;
-            if (!subscriber_count) {
-                goto clear_shm;
-            }
-        }
-
         do {
+            if (last_subscr && (err_priority == cur_priority)) {
+                /* do not notify subscribers that did not process the previous event */
+                subscriber_count -= err_subscriber_count;
+                if (!subscriber_count) {
+                    goto clear_shm;
+                }
+            }
+
             /* write "abort" event with the same LYB data trees */
             if ((err_info = sr_shmsub_multi_notify_write_event(multi_sub_shm, cid, mod->request_id, cur_priority,
                     SR_SUB_EV_ABORT, &sid, subscriber_count, &shm_data_sub, 0, diff_lyb, diff_lyb_len, mod->ly_mod->name))) {
@@ -1442,14 +1463,6 @@ clear_shm:
             if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds,
                     SR_SUB_EV_ABORT, cur_priority, &cur_priority, &subscriber_count, NULL))) {
                 goto cleanup_wrunlock;
-            }
-
-            if (last_subscr && (err_priority == cur_priority)) {
-                /* do not notify subscribers that did not process the previous event */
-                subscriber_count -= err_subscriber_count;
-                if (!subscriber_count) {
-                    goto clear_shm;
-                }
             }
         } while (subscriber_count);
 
@@ -1753,7 +1766,18 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *op_path
     if (!sr_shmsub_rpc_notify_has_subscription(conn, shm_rpc, input, &cur_priority)) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, op_path, "There are no matching subscribers for RPC/action \"%s\".",
                 op_path);
-        return err_info;
+        goto cleanup;
+    }
+
+    /* correctly start the loop, with fake last priority 1 higher than the actual highest */
+    if ((err_info = sr_shmsub_rpc_notify_next_subscription(conn, shm_rpc, input, cur_priority + 1, &cur_priority,
+            &evpipes, &subscriber_count, &opts))) {
+        goto cleanup;
+    }
+
+    if (!subscriber_count) {
+        /* the subscription(s) was recovered just now so there are not any */
+        goto cleanup;
     }
 
     /* print the input into LYB */
@@ -1768,12 +1792,6 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *op_path
         goto cleanup;
     }
     multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
-
-    /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-    if ((err_info = sr_shmsub_rpc_notify_next_subscription(conn, shm_rpc, input, cur_priority + 1, &cur_priority,
-            &evpipes, &subscriber_count, &opts))) {
-        goto cleanup;
-    }
 
     /* SUB WRITE LOCK */
     if ((err_info = sr_shmsub_notify_new_wrlock((sr_sub_shm_t *)multi_sub_shm, op_path, 0, conn->cid))) {
@@ -1923,16 +1941,16 @@ clear_shm:
                 &evpipes, &subscriber_count, NULL))) {
             goto cleanup_wrunlock;
         }
-        if (err_priority == cur_priority) {
+        if (subscriber_count && (err_priority == cur_priority)) {
             /* do not notify subscribers that did not process the previous event */
             subscriber_count -= err_subscriber_count;
-            if (!subscriber_count) {
-                if (first_iter) {
-                    /* at least clear the SHM in this case */
-                    goto clear_shm;
-                } else {
-                    goto cleanup_wrunlock;
-                }
+        }
+        if (!subscriber_count) {
+            if (first_iter) {
+            /* at least clear the SHM in this case */
+                goto clear_shm;
+            } else {
+                goto cleanup_wrunlock;
             }
         }
         first_iter = 0;
