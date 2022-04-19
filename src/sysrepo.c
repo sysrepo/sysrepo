@@ -4944,7 +4944,10 @@ sr_change_ly2sr(const struct lyd_node *node, const char *value_str, const char *
             sr_errinfo_new_ly(&err_info, LYD_CTX(node));
             goto cleanup;
         }
-        node_dup->parent = node->parent;
+        if (node->parent && lyd_insert_child(lyd_parent(node), node_dup)) {
+            sr_errinfo_new_ly(&err_info, LYD_CTX(node));
+            goto cleanup;
+        }
         node_dup->flags |= node->flags & LYD_DEFAULT;
 
         node_ptr = node_dup;
