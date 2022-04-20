@@ -771,13 +771,22 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
     struct lyd_node *edit = NULL, *oper_data;
 
     if (!(opts & SR_OPER_NO_STORED)) {
-        /* apply stored operational edit */
+        /* get stored operational edit */
         if ((err_info = sr_module_file_oper_data_load(mod, &edit))) {
             return err_info;
         }
+    }
+    if (edit) {
+        /* apply the edit */
         err_info = sr_edit_mod_apply(edit, mod->ly_mod, 1, data, NULL, NULL);
         lyd_free_all(edit);
         if (err_info) {
+            return err_info;
+        }
+
+        /* add any missing NP containers in the data */
+        if (lyd_new_implicit_module(data, mod->ly_mod, LYD_IMPLICIT_NO_DEFAULTS, NULL)) {
+            sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
             return err_info;
         }
     }
