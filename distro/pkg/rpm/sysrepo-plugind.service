@@ -1,0 +1,13 @@
+[Unit]
+Description=Sysrepo plugin daemon
+
+[Service]
+User=sysrepo-plugind
+Type=notify
+ExecStart=/usr/bin/sysrepo-plugind -d -v2
+Restart=always
+SystemCallArchitectures=native
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target
