@@ -992,7 +992,7 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     }
 
     /* finish installing all the modules (default DS plugins, so connection not needed) */
-    if ((err_info = sr_lycc_add_module(NULL, &mod_set, &sr_default_module_ds, NULL, NULL, 0, 1))) {
+    if ((err_info = sr_lycc_add_module(NULL, &mod_set, &sr_default_module_ds, NULL, NULL, 0))) {
         goto cleanup;
     }
 

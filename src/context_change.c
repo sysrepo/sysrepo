@@ -228,7 +228,7 @@ sr_lycc_check_add_module(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx)
 
 sr_error_info_t *
 sr_lycc_add_module(sr_conn_ctx_t *conn, const struct ly_set *mod_set, const sr_module_ds_t *module_ds, const char *owner,
-        const char *group, mode_t perm, int init_start_only)
+        const char *group, mode_t perm)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
@@ -262,11 +262,6 @@ sr_lycc_add_module(sr_conn_ctx_t *conn, const struct ly_set *mod_set, const sr_m
             if ((rc = ds_plg->init_cb(ly_mod, ds, owner, group, mod_perm))) {
                 SR_ERRINFO_DSPLUGIN(&err_info, rc, "init", ds_plg->name, ly_mod->name);
                 return err_info;
-            }
-
-            if (init_start_only) {
-                /* initialize only startup datastore */
-                break;
             }
         }
 

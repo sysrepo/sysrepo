@@ -34,10 +34,9 @@ extern "C" {
 #define SRPLG_DS_API_VERSION 2
 
 /**
- * @brief Initialize data of a module.
+ * @brief Initialize data of a new module.
  *
- * Initialization is called once for persistent datastores (::SR_DS_STARTUP) and after each reboot
- * for volatile datastores (::SR_DS_RUNNING, ::SR_DS_CANIDATE, and ::SR_DS_OPERATIONAL).
+ * Initialization is called once for every new installed module for each datastore.
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.

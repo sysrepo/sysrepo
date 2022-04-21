@@ -263,8 +263,8 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
 
     if (created) {
-        /* initialize datastores and copy <startup> to <running> */
-        if ((err_info = sr_shmmod_init_ds(conn))) {
+        /* copy <startup> to <running> */
+        if ((err_info = sr_shmmod_copy_startup_to_running(conn))) {
             goto cleanup_unlock;
         }
     }
@@ -1467,7 +1467,7 @@ sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *sea
     }
 
     /* finish adding the modules */
-    if ((err_info = sr_lycc_add_module(conn, &mod_set, module_ds, owner, group, perm, 0))) {
+    if ((err_info = sr_lycc_add_module(conn, &mod_set, module_ds, owner, group, perm))) {
         goto cleanup;
     }
 

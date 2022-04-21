@@ -69,11 +69,10 @@ sr_error_info_t *sr_lycc_check_add_module(sr_conn_ctx_t *conn, const struct ly_c
  * @param[in] owner Optional initial owner of the module data.
  * @param[in] group Optional initial group of the module data.
  * @param[in] perm Optional initial permissions of the module data.
- * @param[in] init_start_only Whether to initialize only ::SR_DS_STARTUP or all the datastores.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lycc_add_module(sr_conn_ctx_t *conn, const struct ly_set *mod_set, const sr_module_ds_t *module_ds,
-        const char *owner, const char *group, mode_t perm, int init_start_only);
+        const char *owner, const char *group, mode_t perm);
 
 /**
  * @brief Check that modules can be removed.

@@ -223,15 +223,17 @@ srpds_lyb_init(const struct lys_module *mod, sr_datastore_t ds, const char *owne
         goto cleanup;
     }
 
-    /* create the file with the correct permissions, accept it if it exists */
-    if ((fd = srlyb_open(path, O_RDONLY | O_CREAT, perm)) == -1) {
+    /* create the file with the correct permissions */
+    if ((fd = srlyb_open(path, O_RDONLY | O_CREAT | O_EXCL, perm)) == -1) {
         rc = srlyb_open_error(srpds_name, path);
         goto cleanup;
     }
 
-    /* update the owner/group/permissions of the file */
-    if ((rc = srlyb_chmodown(srpds_name, path, owner, group, perm))) {
-        goto cleanup;
+    /* update the owner/group of the file */
+    if (owner || group) {
+        if ((rc = srlyb_chmodown(srpds_name, path, owner, group, 0))) {
+            goto cleanup;
+        }
     }
 
 cleanup:

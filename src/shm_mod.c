@@ -1532,7 +1532,7 @@ sr_shmmod_update_replay_support(sr_mod_shm_t *mod_shm, const struct ly_set *mod_
 }
 
 sr_error_info_t *
-sr_shmmod_init_ds(sr_conn_ctx_t *conn)
+sr_shmmod_copy_startup_to_running(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_shm_t *mod_shm;
@@ -1553,25 +1553,16 @@ sr_shmmod_init_ds(sr_conn_ctx_t *conn)
         ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, ((char *)mod_shm) + smod->name);
         assert(ly_mod);
 
+        if (!sr_module_has_data(ly_mod, 0)) {
+            /* skip copying for modules without configuration data */
+            continue;
+        }
+
         /* find DS plugins */
         for (ds = SR_DS_STARTUP; ds < SR_DS_COUNT; ++ds) {
             if ((err_info = sr_ds_plugin_find(((char *)mod_shm) + smod->plugins[ds], conn, &ds_plg[ds]))) {
                 return err_info;
             }
-        }
-
-        /* init volatile DS */
-        for (ds = SR_DS_RUNNING; ds < SR_DS_COUNT; ++ds) {
-            if ((rc = ds_plg[ds]->init_cb(ly_mod, ds, NULL, strlen(SR_GROUP) ? SR_GROUP : NULL,
-                    sr_module_default_mode(ly_mod)))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "init", ds_plg[ds]->name, ly_mod->name);
-                return err_info;
-            }
-        }
-
-        if (!sr_module_has_data(ly_mod, 0)) {
-            /* skip copying for modules without configuration data */
-            continue;
         }
 
         /* copy startup to running */
