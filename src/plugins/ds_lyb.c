@@ -4,8 +4,8 @@
  * @brief internal LYB datastore plugin
  *
  * @copyright
- * Copyright (c) 2021 Deutsche Telekom AG.
- * Copyright (c) 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2022 Deutsche Telekom AG.
+ * Copyright (c) 2021 - 2022 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -223,17 +223,15 @@ srpds_lyb_init(const struct lys_module *mod, sr_datastore_t ds, const char *owne
         goto cleanup;
     }
 
-    /* create the file with the correct permissions */
-    if ((fd = srlyb_open(path, O_WRONLY | O_CREAT | O_EXCL, perm)) == -1) {
+    /* create the file with the correct permissions, accept it if it exists */
+    if ((fd = srlyb_open(path, O_RDONLY | O_CREAT, perm)) == -1) {
         rc = srlyb_open_error(srpds_name, path);
         goto cleanup;
     }
 
-    if (owner || group) {
-        /* change the owner/group of the file */
-        if ((rc = srlyb_chmodown(srpds_name, path, owner, group, 0))) {
-            goto cleanup;
-        }
+    /* update the owner/group/permissions of the file */
+    if ((rc = srlyb_chmodown(srpds_name, path, owner, group, perm))) {
+        goto cleanup;
     }
 
 cleanup:
