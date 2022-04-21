@@ -3462,6 +3462,16 @@ sr_has_changes(sr_session_ctx_t *session)
     return 0;
 }
 
+API const struct lyd_node *
+sr_get_changes(sr_session_ctx_t *session)
+{
+    if (!session || !session->dt[session->ds].edit) {
+        return NULL;
+    }
+
+    return session->dt[session->ds].edit->tree;
+}
+
 API int
 sr_discard_changes(sr_session_ctx_t *session)
 {

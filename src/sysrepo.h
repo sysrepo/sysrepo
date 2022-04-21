@@ -963,6 +963,16 @@ int sr_nacm_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms);
 int sr_has_changes(sr_session_ctx_t *session);
 
 /**
+ * @brief Retrieve stored changes (prepared, not yet applied).
+ *
+ * Note: as soon as the changes get applied or discarded, the return value becomes invalid.
+ *
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to retrieve changes from.
+ * @return The stored changes, or NULL, if there are none.
+ */
+const struct lyd_node *sr_get_changes(sr_session_ctx_t *session);
+
+/**
  * @brief Discard prepared changes made in the current session.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to discard changes from.
