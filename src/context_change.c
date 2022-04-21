@@ -39,10 +39,12 @@
 sr_error_info_t *
 sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const char *func)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *tmp_err;
     sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
     sr_lock_mode_t remap_mode = SR_LOCK_NONE;
     struct sr_shmmod_recover_cb_s cb_data;
+    struct ly_ctx *new_ctx = NULL;
+    char *path;
 
     cb_data.ly_ctx_p = &conn->ly_ctx;
     cb_data.ds = SR_DS_STARTUP;
@@ -97,16 +99,29 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
             goto cleanup_unlock;
         }
 
-        /* context was updated, destroy and initialize it */
-        ly_ctx_destroy(conn->ly_ctx);
-        if ((err_info = sr_ly_ctx_init(conn->ext_cb, conn->ext_cb_data, &conn->ly_ctx))) {
+        /* context was updated, create a new one with the current modules */
+        if ((err_info = sr_ly_ctx_init(conn->ext_cb, conn->ext_cb_data, &new_ctx))) {
+            goto cleanup_unlock;
+        }
+        if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), new_ctx, NULL))) {
+            if (!strcmp(err_info->err[err_info->err_count - 1].message, "Loading \"ietf-datastores\" module failed.")) {
+                if (!(tmp_err = sr_path_yang_dir(&path))) {
+                    sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
+                            "YANG modules directory \"%s\" is different than the one used when creating the SHM state. "
+                            "Either change the SHM state files prefix, too, or clear the current SHM state.",
+                            path);
+                    free(path);
+                } else {
+                    sr_errinfo_merge(&err_info, tmp_err);
+                }
+            }
             goto cleanup_unlock;
         }
 
-        /* create it again from SHM modules */
-        if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), conn->ly_ctx, NULL))) {
-            goto cleanup_unlock;
-        }
+        /* use the new context */
+        ly_ctx_destroy(conn->ly_ctx);
+        conn->ly_ctx = new_ctx;
+        new_ctx = NULL;
         conn->content_id = main_shm->content_id;
 
         /* MOD REMAP DOWNGRADE */
@@ -123,6 +138,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
     }
 
 cleanup_unlock:
+    ly_ctx_destroy(new_ctx);
     if (err_info) {
         if (remap_mode) {
             /* MOD REMAP UNLOCK */
