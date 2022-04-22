@@ -2239,6 +2239,58 @@ cleanup:
 }
 
 /**
+ * @brief Get GID of a system group.
+ *
+ * @param[in] group System group.
+ * @param[out] gid Group system GID.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_get_gid(const char *group, gid_t *gid)
+{
+    sr_error_info_t *err_info = NULL;
+    int r;
+    struct group grp, *grp_p;
+    char *buf = NULL, *mem;
+    ssize_t buflen = 0;
+
+    do {
+        if (!buflen) {
+            /* learn suitable buffer size */
+            buflen = sysconf(_SC_GETGR_R_SIZE_MAX);
+            if (buflen == -1) {
+                buflen = 2048;
+            }
+        } else {
+            /* enlarge buffer */
+            buflen += 2048;
+        }
+
+        /* allocate some buffer */
+        mem = realloc(buf, buflen);
+        SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
+        buf = mem;
+
+        /* group -> GID */
+        r = getgrnam_r(group, &grp, buf, buflen, &grp_p);
+    } while (r && (r == ERANGE));
+    if (r) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Retrieving group \"%s\" grp entry failed (%s).", group, strerror(r));
+        goto cleanup;
+    } else if (!grp_p) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Retrieving group \"%s\" grp entry failed (No such group).", group);
+        goto cleanup;
+    }
+
+    /* assign GID */
+    *gid = grp.gr_gid;
+
+cleanup:
+    free(buf);
+    return err_info;
+}
+
+/**
  * @brief Store the YANG file of a (sub)module.
  *
  * @param[in] lysp_mod Parsed module to store.
@@ -2252,6 +2304,7 @@ sr_store_module_yang(const struct lys_module *ly_mod, const struct lysp_submodul
     struct ly_out *out = NULL;
     char *path = NULL;
     LY_ERR lyrc;
+    gid_t gid;
 
     if (lysp_submod) {
         if ((err_info = sr_path_yang_file(lysp_submod->name, lysp_submod->revs ? lysp_submod->revs[0].date : NULL, &path))) {
@@ -2287,6 +2340,20 @@ sr_store_module_yang(const struct lys_module *ly_mod, const struct lysp_submodul
         /* remove the printed module */
         unlink(path);
         goto cleanup;
+    }
+
+    /* update group */
+    if (strlen(SR_GROUP)) {
+        if ((err_info = sr_get_gid(SR_GROUP, &gid))) {
+            goto cleanup;
+        }
+        if (chown(path, -1, gid) == -1) {
+            SR_ERRINFO_SYSERRNO(&err_info, "chown");
+
+            /* remove the printed module */
+            unlink(path);
+            goto cleanup;
+        }
     }
 
     SR_LOG_INF("File \"%s\" was installed.", strrchr(path, '/') + 1);
@@ -4276,8 +4343,10 @@ sr_realloc(void *ptr, size_t size)
 int
 sr_open(const char *path, int flags, mode_t mode)
 {
+    sr_error_info_t *err_info = NULL;
     int fd;
     struct stat st = {0};
+    gid_t gid = -1;
 
     assert(!(flags & O_CREAT) || mode);
 
@@ -4297,19 +4366,34 @@ sr_open(const char *path, int flags, mode_t mode)
         return -1;
     }
 
-    if (flags & O_CREAT) {
-        if (!(flags & O_EXCL)) {
-            /* file may have existed, check its permissions */
-            if (fstat(fd, &st)) {
-                close(fd);
-                return -1;
-            }
+    /* check permissions only if file was not created and group if there is any to set */
+    if ((flags & O_CREAT) && (!(flags & O_EXCL) || strlen(SR_GROUP))) {
+        /* stat the file */
+        if (fstat(fd, &st)) {
+            close(fd);
+            return -1;
         }
 
         /* set correct permissions if not already */
         if (((st.st_mode & 00777) != mode) && (fchmod(fd, mode) == -1)) {
             close(fd);
             return -1;
+        }
+
+        /* set correct group if needed */
+        if (strlen(SR_GROUP)) {
+            /* get GID */
+            if ((err_info = sr_get_gid(SR_GROUP, &gid))) {
+                sr_errinfo_free(&err_info);
+                close(fd);
+                return -1;
+            }
+
+            /* update if needed */
+            if ((st.st_gid != gid) && (fchown(fd, -1, gid) == -1)) {
+                close(fd);
+                return -1;
+            }
         }
     }
 
