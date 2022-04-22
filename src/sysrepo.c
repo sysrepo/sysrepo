@@ -1625,7 +1625,7 @@ API int
 sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs)
 {
     sr_error_info_t *err_info = NULL;
-    struct ly_ctx *tmp_ly_ctx = NULL, *old_ctx = NULL;
+    struct ly_ctx *new_ctx = NULL, *old_ctx = NULL;
     struct ly_set mod_set = {0};
     struct lyd_node *sr_mods = NULL;
     struct lyd_node *old_s_data = NULL, *new_s_data = NULL, *old_r_data = NULL, *new_r_data = NULL, *old_o_data = NULL,
@@ -1660,22 +1660,8 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
         goto cleanup;
     }
 
-    /* create new temporary context */
-    if ((err_info = sr_ly_ctx_init(conn->ext_cb, conn->ext_cb_data, &tmp_ly_ctx))) {
-        goto cleanup;
-    }
-
-    /* use temporary context to load modules without the updated one */
-    if (ly_set_add(&mod_set, (void *)ly_mod, 1, NULL)) {
-        SR_ERRINFO_MEM(&err_info);
-        goto cleanup;
-    }
-    if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), tmp_ly_ctx, &mod_set))) {
-        goto cleanup;
-    }
-
-    /* try to parse the update module */
-    if ((err_info = sr_parse_module(tmp_ly_ctx, schema_path, format, NULL, search_dirs, &upd_ly_mod))) {
+    /* create new context */
+    if ((err_info = sr_lycc_upd_module_new_context(conn, schema_path, format, search_dirs, ly_mod, &new_ctx, &upd_ly_mod))) {
         goto cleanup;
     }
 
@@ -1683,7 +1669,7 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
     if ((err_info = sr_lycc_check_upd_module(conn, upd_ly_mod, ly_mod))) {
         goto cleanup;
     }
-    if ((err_info = sr_lycc_update_data(conn, tmp_ly_ctx, NULL, &old_s_data, &new_s_data, &old_r_data, &new_r_data,
+    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, &old_s_data, &new_s_data, &old_r_data, &new_r_data,
             &old_o_data, &new_o_data))) {
         goto cleanup;
     }
@@ -1710,14 +1696,14 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
     }
 
     /* store new data if they differ */
-    if ((err_info = sr_lycc_store_data_if_differ(conn, tmp_ly_ctx, sr_mods, &old_s_data, &new_s_data, &old_r_data,
+    if ((err_info = sr_lycc_store_data_if_differ(conn, new_ctx, sr_mods, &old_s_data, &new_s_data, &old_r_data,
             &new_r_data, &old_o_data, &new_o_data))) {
         goto cleanup;
     }
 
     /* safely update the context by switching it */
     old_ctx = conn->ly_ctx;
-    sr_conn_update_context(conn, &tmp_ly_ctx, &new_r_data);
+    sr_conn_update_context(conn, &new_ctx, &new_r_data);
 
 cleanup:
     lyd_free_siblings(old_s_data);
@@ -1729,7 +1715,7 @@ cleanup:
     lyd_free_siblings(new_s_data);
     lyd_free_siblings(new_r_data);
     lyd_free_siblings(new_o_data);
-    ly_ctx_destroy(tmp_ly_ctx);
+    ly_ctx_destroy(new_ctx);
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(conn, ctx_mode, 1, __func__);

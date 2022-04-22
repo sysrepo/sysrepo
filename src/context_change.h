@@ -17,8 +17,19 @@
 #ifndef _CONTEXT_CHANGE_H
 #define _CONTEXT_CHANGE_H
 
+#include <libyang/libyang.h>
+
 #include "common_types.h"
 #include "sysrepo_types.h"
+
+/**
+ * @brief Structure with data for LY import callback of context cerated for an updated module.
+ */
+struct sr_ly_upd_mod_imp_data {
+    const char *name;
+    const char *schema_path;
+    LYS_INFORMAT format;
+};
 
 /**
  * @brief Lock context and update it if needed.
@@ -95,6 +106,21 @@ sr_error_info_t *sr_lycc_check_del_module(sr_conn_ctx_t *conn, const struct ly_c
  */
 sr_error_info_t *sr_lycc_del_module(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const struct ly_set *mod_set,
         const struct lyd_node *sr_del_mods);
+
+/**
+ * @brief Create context with an updated module.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] schema_path Update module schema path.
+ * @param[in] format Updated module schema format.
+ * @param[in] search_dirs Optional search dirs, in format <dir>[:<dir>]*.
+ * @param[in] ly_mod Current revision of the module.
+ * @param[out] new_ctx New context with the updated module.
+ * @param[out] upd_ly_mod Updated module.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lycc_upd_module_new_context(sr_conn_ctx_t *conn, const char *schema_path, LYS_INFORMAT format,
+        const char *search_dirs, const struct lys_module *old_mod, struct ly_ctx **new_ctx, const struct lys_module **upd_mod);
 
 /**
  * @brief Check that a module can be updated.

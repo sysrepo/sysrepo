@@ -2186,6 +2186,58 @@ sr_file_exists(const char *path)
     return 1;
 }
 
+sr_error_info_t *
+sr_file_read(const char *path, char **data)
+{
+    sr_error_info_t *err_info = NULL;
+    FILE *f = NULL;
+    size_t offset, r, size;
+
+    *data = NULL;
+
+    /* open the file */
+    f = fopen(path, "r");
+    if (!f) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to open \"%s\" (%s).", path, strerror(errno));
+        goto cleanup;
+    }
+
+    /* learn its size */
+    fseek(f, 0L, SEEK_END);
+    size = ftell(f);
+    rewind(f);
+
+    /* alloc return value */
+    *data = malloc(size + 1);
+    SR_CHECK_MEM_GOTO(!*data, err_info, cleanup);
+
+    /* read the whole file */
+    offset = 0;
+    do {
+        r = fread(*data + offset, 1, size, f);
+        if (!r) {
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to read from \"%s\".", path);
+            goto cleanup;
+        }
+
+        size -= r;
+        offset += r;
+    } while (size);
+
+    /* terminating 0 */
+    (*data)[offset] = '\0';
+
+cleanup:
+    if (f) {
+        fclose(f);
+    }
+    if (err_info) {
+        free(*data);
+        *data = NULL;
+    }
+    return err_info;
+}
+
 /**
  * @brief Store the YANG file of a (sub)module.
  *

@@ -575,11 +575,15 @@ test_update_module(void **state)
     struct state *st = (struct state *)*state;
     int ret;
 
-    /* install rev */
+    /* install old rev */
     ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/rev.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* update */
+    /* install rev-ref implementing rev */
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/rev-ref.yang", TESTS_SRC_DIR "/files", NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* update rev */
     ret = sr_update_module(st->conn, TESTS_SRC_DIR "/files/rev@1970-01-01.yang", NULL);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_update_module(st->conn, TESTS_SRC_DIR "/files/rev@1970-01-01.yang", NULL);
@@ -602,6 +606,8 @@ test_update_module(void **state)
     );
 
     /* cleanup */
+    ret = sr_remove_module(st->conn, "rev-ref", 0);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_remove_module(st->conn, "rev", 0);
     assert_int_equal(ret, SR_ERR_OK);
 }

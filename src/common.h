@@ -552,6 +552,15 @@ sr_error_info_t *sr_remove_module_yang_r(const struct lys_module *ly_mod, const 
         struct ly_set *del_mod);
 
 /**
+ * @brief Read full contents of a file into a buffer.
+ *
+ * @param[in] path Path to the file.
+ * @param[out] data File contents data.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_file_read(const char *path, char **data);
+
+/**
  * @brief Create (print) YANG module file and all of its submodules and imports.
  *
  * @param[in] ly_mod Module to store.

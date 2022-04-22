@@ -376,6 +376,135 @@ cleanup:
     return err_info;
 }
 
+static void
+sr_ly_update_module_imp_data_free_cb(void *module_data, void *UNUSED(user_data))
+{
+    free(module_data);
+}
+
+static LY_ERR
+sr_ly_update_module_imp_cb(const char *mod_name, const char *mod_rev, const char *submod_name, const char *UNUSED(submod_rev),
+        void *user_data, LYS_INFORMAT *format, const char **module_data, ly_module_imp_data_free_clb *free_module_data)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_ly_upd_mod_imp_data *data = user_data;
+
+    if (strcmp(mod_name, data->name) || mod_rev || submod_name) {
+        /* not this module, in specific revision (presumably the old), or a submodule requested */
+        return LY_ENOTFOUND;
+    }
+
+    /* read schema file contents */
+    if ((err_info = sr_file_read(data->schema_path, (char **)module_data))) {
+        sr_errinfo_free(&err_info);
+        return LY_ESYS;
+    }
+
+    *format = data->format;
+    *free_module_data = sr_ly_update_module_imp_data_free_cb;
+    return LY_SUCCESS;
+}
+
+sr_error_info_t *
+sr_lycc_upd_module_new_context(sr_conn_ctx_t *conn, const char *schema_path, LYS_INFORMAT format, const char *search_dirs,
+        const struct lys_module *old_mod, struct ly_ctx **new_ctx, const struct lys_module **upd_mod)
+{
+    sr_error_info_t *err_info = NULL;
+    char *sdirs_str = NULL, *ptr, *ptr2 = NULL;
+    const char **features = NULL;
+    size_t sdir_count = 0, feat_count = 0;
+    struct ly_in *in = NULL;
+    struct ly_set mod_set = {0};
+    struct sr_ly_upd_mod_imp_data imp_cb_data;
+    struct lysp_feature *f = NULL;
+    uint32_t i;
+
+    /* create new context */
+    if ((err_info = sr_ly_ctx_init(conn->ext_cb, conn->ext_cb_data, new_ctx))) {
+        goto cleanup;
+    }
+
+    if (search_dirs) {
+        sdirs_str = strdup(search_dirs);
+        SR_CHECK_MEM_GOTO(!sdirs_str, err_info, cleanup);
+
+        /* add each search dir */
+        for (ptr = strtok_r(sdirs_str, ":", &ptr2); ptr; ptr = strtok_r(NULL, ":", &ptr2)) {
+            if (!ly_ctx_set_searchdir(*new_ctx, ptr)) {
+                /* added (it was not already there) */
+                ++sdir_count;
+            }
+        }
+    }
+
+    /* prepare CB data */
+    imp_cb_data.name = old_mod->name;
+    imp_cb_data.schema_path = schema_path;
+    imp_cb_data.format = format;
+
+    /* set import callback in case a module would try to import this module to be updated, to not load the old revision */
+    ly_ctx_set_module_imp_clb(*new_ctx, sr_ly_update_module_imp_cb, &imp_cb_data);
+
+    /* use context to load modules without the updated one */
+    if (ly_set_add(&mod_set, (void *)old_mod, 1, NULL)) {
+        SR_ERRINFO_MEM(&err_info);
+        goto cleanup;
+    }
+    if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), *new_ctx, &mod_set))) {
+        goto cleanup;
+    }
+
+    /* by default all features are disabled */
+    features = malloc(sizeof *features);
+    SR_CHECK_MEM_GOTO(!features, err_info, cleanup);
+    features[feat_count] = NULL;
+    feat_count = 1;
+
+    /* collect current enabled features */
+    i = 0;
+    while ((f = lysp_feature_next(f, old_mod->parsed, &i))) {
+        if (f->flags & LYS_FENABLED) {
+            features = sr_realloc(features, (feat_count + 1) * sizeof *features);
+            SR_CHECK_MEM_GOTO(!features, err_info, cleanup);
+            features[feat_count - 1] = f->name;
+            features[feat_count] = NULL;
+            ++feat_count;
+        }
+    }
+
+    /* try to parse the updated module, if already an import, at least implement it and set the features */
+    if (ly_in_new_filepath(schema_path, 0, &in)) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to parse \"%s\".", schema_path);
+        goto cleanup;
+    }
+    if (lys_parse(*new_ctx, in, format, features, (struct lys_module **)upd_mod)) {
+        sr_errinfo_new_ly(&err_info, *new_ctx);
+        goto cleanup;
+    }
+
+    /* compile */
+    if (ly_ctx_compile(*new_ctx)) {
+        sr_errinfo_new_ly(&err_info, *new_ctx);
+        goto cleanup;
+    }
+
+cleanup:
+    if (sdir_count) {
+        /* remove added search dirs */
+        ly_ctx_unset_searchdir_last(*new_ctx, sdir_count);
+    }
+
+    free(sdirs_str);
+    free(features);
+    ly_set_erase(&mod_set, NULL);
+    ly_in_free(in, 0);
+    if (err_info) {
+        ly_ctx_destroy(*new_ctx);
+        *new_ctx = NULL;
+    }
+    return err_info;
+}
+
 sr_error_info_t *
 sr_lycc_check_upd_module(sr_conn_ctx_t *conn, const struct lys_module *upd_mod, const struct lys_module *old_mod)
 {
