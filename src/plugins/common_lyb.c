@@ -504,11 +504,18 @@ srlyb_mkpath(const char *plg_name, char *path, mode_t mode)
 {
     int rc = SR_ERR_OK, r;
     char *p = NULL;
+    const char *group = SR_GROUP;
+    gid_t gid;
 
     assert(path[0] == '/');
 
     /* apply umask on mode */
     mode &= ~SR_UMASK;
+
+    /* get GID of the group */
+    if (strlen(SR_GROUP) && (rc = srlyb_get_grp(plg_name, &gid, (char **)&group))) {
+        goto cleanup;
+    }
 
     /* create each directory in the path */
     for (p = strchr(path + 1, '/'); p; p = strchr(p + 1, '/')) {
@@ -518,11 +525,21 @@ srlyb_mkpath(const char *plg_name, char *path, mode_t mode)
             rc = SR_ERR_SYS;
             goto cleanup;
         }
-        if (!r && (chmod(path, mode) == -1)) {
-            SRPLG_LOG_ERR(plg_name, "Changing permissions of directory \"%s\" failed (%s).", path, strerror(errno));
-            rc = SR_ERR_SYS;
-            goto cleanup;
+
+        /* update perms and group */
+        if (!r) {
+            if (chmod(path, mode) == -1) {
+                SRPLG_LOG_ERR(plg_name, "Changing permissions of directory \"%s\" failed (%s).", path, strerror(errno));
+                rc = SR_ERR_SYS;
+                goto cleanup;
+            }
+            if (strlen(SR_GROUP) && (chown(path, -1, gid) == -1)) {
+                SRPLG_LOG_ERR(plg_name, "Changing group of directory \"%s\" failed (%s).", path, strerror(errno));
+                rc = SR_ERR_SYS;
+                goto cleanup;
+            }
         }
+
         *p = '/';
     }
 
@@ -532,10 +549,19 @@ srlyb_mkpath(const char *plg_name, char *path, mode_t mode)
         rc = SR_ERR_SYS;
         goto cleanup;
     }
-    if (!r && (chmod(path, mode) == -1)) {
-        SRPLG_LOG_ERR(plg_name, "Changing permissions of directory \"%s\" failed (%s).", path, strerror(errno));
-        rc = SR_ERR_SYS;
-        goto cleanup;
+
+    /* update perms and group */
+    if (!r) {
+        if (chmod(path, mode) == -1) {
+            SRPLG_LOG_ERR(plg_name, "Changing permissions of directory \"%s\" failed (%s).", path, strerror(errno));
+            rc = SR_ERR_SYS;
+            goto cleanup;
+        }
+        if (strlen(SR_GROUP) && (chown(path, -1, gid) == -1)) {
+            SRPLG_LOG_ERR(plg_name, "Changing group of directory \"%s\" failed (%s).", path, strerror(errno));
+            rc = SR_ERR_SYS;
+            goto cleanup;
+        }
     }
 
 cleanup:

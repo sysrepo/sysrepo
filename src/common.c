@@ -4406,11 +4406,17 @@ sr_mkpath(char *path, mode_t mode)
     sr_error_info_t *err_info = NULL;
     char *p = NULL;
     int r;
+    gid_t gid;
 
     assert(path[0] == '/');
 
     /* apply umask on mode */
     mode &= ~SR_UMASK;
+
+    /* get GID of the group */
+    if (strlen(SR_GROUP) && (err_info = sr_get_gid(SR_GROUP, &gid))) {
+        goto cleanup;
+    }
 
     /* create each directory in the path */
     for (p = strchr(path + 1, '/'); p; p = strchr(p + 1, '/')) {
@@ -4419,9 +4425,17 @@ sr_mkpath(char *path, mode_t mode)
             sr_errinfo_new(&err_info, SR_ERR_SYS, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
             goto cleanup;
         }
-        if (!r && (chmod(path, mode) == -1)) {
-            SR_ERRINFO_SYSERRNO(&err_info, "chmod");
-            goto cleanup;
+
+        /* update perms and group */
+        if (!r) {
+            if (chmod(path, mode) == -1) {
+                SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+                goto cleanup;
+            }
+            if (strlen(SR_GROUP) && (chown(path, -1, gid) == -1)) {
+                SR_ERRINFO_SYSERRNO(&err_info, "chown");
+                goto cleanup;
+            }
         }
         *p = '/';
     }
@@ -4431,9 +4445,17 @@ sr_mkpath(char *path, mode_t mode)
         sr_errinfo_new(&err_info, SR_ERR_SYS, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
         goto cleanup;
     }
-    if (!r && (chmod(path, mode) == -1)) {
-        SR_ERRINFO_SYSERRNO(&err_info, "chmod");
-        goto cleanup;
+
+    /* update perms and group */
+    if (!r) {
+        if (chmod(path, mode) == -1) {
+            SR_ERRINFO_SYSERRNO(&err_info, "chmod");
+            goto cleanup;
+        }
+        if (strlen(SR_GROUP) && (chown(path, -1, gid) == -1)) {
+            SR_ERRINFO_SYSERRNO(&err_info, "chown");
+            goto cleanup;
+        }
     }
 
 cleanup:
