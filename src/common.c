@@ -2554,12 +2554,12 @@ sr_module_default_mode(const struct lys_module *ly_mod)
     if (!strcmp(ly_mod->name, "sysrepo")) {
         return SR_INTMOD_MAIN_FILE_PERM;
     } else if (sr_module_is_internal(ly_mod)) {
-        if (!strcmp(ly_mod->name, "sysrepo-monitoring") || !strcmp(ly_mod->name, "sysrepo-plugind") ||
-                !strcmp(ly_mod->name, "ietf-yang-schema-mount") || !strcmp(ly_mod->name, "ietf-yang-library") ||
-                !strcmp(ly_mod->name, "ietf-netconf-notifications") || !strcmp(ly_mod->name, "ietf-netconf")) {
+        if (!strcmp(ly_mod->name, "sysrepo-plugind") || !strcmp(ly_mod->name, "ietf-yang-schema-mount") ||
+                !strcmp(ly_mod->name, "ietf-yang-library") || !strcmp(ly_mod->name, "ietf-netconf-notifications") ||
+                !strcmp(ly_mod->name, "ietf-netconf")) {
             return SR_INTMOD_WITHDATA_FILE_PERM;
-        } else if (!strcmp(ly_mod->name, "ietf-netconf-acm")) {
-            return SR_INTMOD_NACM_FILE_PERM;
+        } else if (!strcmp(ly_mod->name, "ietf-netconf-acm") || !strcmp(ly_mod->name, "sysrepo-monitoring")) {
+            return SR_INTMOD_NACM_SRMON_FILE_PERM;
         } else {
             return SR_INTMOD_NODATA_FILE_PERM;
         }

@@ -107,8 +107,8 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 /** permissions of data files of "sysrepo" internal module, it includes all the metadata */
 #define SR_INTMOD_MAIN_FILE_PERM 00666
 
-/** permissions of data files of "ietf-netconf-acm" internal NACM module */
-#define SR_INTMOD_NACM_FILE_PERM 00@NACM_DATA_PERM@
+/** permissions of data files of "ietf-netconf-acm" and "sysrepo-monitoring" internal NACM modules */
+#define SR_INTMOD_NACM_SRMON_FILE_PERM 00@NACM_SRMON_DATA_PERM@
 
 /** default permissions of data files of internal modules that have no data or features */
 #define SR_INTMOD_NODATA_FILE_PERM 00444

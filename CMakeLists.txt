@@ -116,7 +116,7 @@ if(NOT SYSREPO_SUPERUSER_UID MATCHES "^[0-9]+$")
     message(FATAL_ERROR "Invalid superuser UID \"${SYSREPO_SUPERUSER_UID}\"!")
 endif()
 set(NACM_RECOVERY_USER "root" CACHE STRING "NACM recovery session user that has unrestricted access.")
-set(NACM_DATA_PERM "600" CACHE STRING "NACM module ietf-netconf-acm default data permissions.")
+set(NACM_SRMON_DATA_PERM "600" CACHE STRING "NACM modules ietf-netconf-acm and sysrepo-monitoring default data permissions.")
 
 # paths
 if(NOT REPO_PATH)

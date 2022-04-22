@@ -141,9 +141,9 @@ Set [NACM](#NACM) recovery username with unrestricted access:
 -DNACM_RECOVERY_USER=root
 ```
 
-Set [NACM](#NACM) configuration data default permissions:
+Set [NACM](#NACM) configuration data and 'sysrepo-monitoring' default permissions:
 ```
--DNACM_DATA_PERM=000
+-DNACM_SRMON_DATA_PERM=000
 ```
 ### Useful CMake Build Options
 
