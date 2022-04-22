@@ -413,7 +413,7 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
         int lock, int not_strict, int opaq, int wd_opt, int timeout_s)
 {
     const struct ly_ctx *ly_ctx;
-    char tmp_file[22];
+    char tmp_file[23];
     int r, rc = EXIT_FAILURE;
     struct lyd_node *data;
 
@@ -489,7 +489,7 @@ static int
 op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FORMAT format, int wd_opt, int timeout_s)
 {
     const struct ly_ctx *ly_ctx;
-    char tmp_file[22];
+    char tmp_file[23];
     int r, rc = EXIT_SUCCESS;
     struct lyd_node *input, *node;
     sr_data_t *output;
@@ -545,7 +545,7 @@ static int
 op_notif(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FORMAT format)
 {
     const struct ly_ctx *ly_ctx;
-    char tmp_file[22];
+    char tmp_file[23];
     int r;
     struct lyd_node *notif;
 
