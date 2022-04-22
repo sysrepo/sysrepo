@@ -279,7 +279,11 @@ sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx)
         } else {
             assert(e->level == LY_LLERR);
             /* store it and print it */
-            sr_errinfo_new(err_info, SR_ERR_LY, e->msg);
+            if (e->path) {
+                sr_errinfo_new(err_info, SR_ERR_LY, "%s (%s)", e->msg, e->path);
+            } else {
+                sr_errinfo_new(err_info, SR_ERR_LY, "%s", e->msg);
+            }
         }
 
         e = e->next;
@@ -303,7 +307,11 @@ sr_errinfo_new_ly_first(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx)
     } else {
         assert(e->level == LY_LLERR);
         /* store it and print it */
-        sr_errinfo_new(err_info, SR_ERR_LY, e->msg);
+        if (e->path) {
+            sr_errinfo_new(err_info, SR_ERR_LY, "%s (%s)", e->msg, e->path);
+        } else {
+            sr_errinfo_new(err_info, SR_ERR_LY, "%s", e->msg);
+        }
     }
 
     ly_err_clean((struct ly_ctx *)ly_ctx, NULL);
