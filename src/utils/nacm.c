@@ -993,7 +993,7 @@ sr_nacm_init(sr_session_ctx_t *session, sr_subscr_options_t opts, sr_subscriptio
     char *xpath_d = NULL;
     int rc;
 
-    SR_CHECK_ARG_APIRET(!session || (opts & ~SR_SUBSCR_NO_THREAD) || !sub, session, err_info);
+    SR_CHECK_ARG_APIRET(nacm.initialized || !session || (opts & ~SR_SUBSCR_NO_THREAD) || !sub, session, err_info);
 
     /* init structure */
     pthread_mutex_init(&nacm.lock, NULL);
