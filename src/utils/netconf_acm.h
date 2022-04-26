@@ -26,7 +26,8 @@ extern "C" {
 /**
  * @brief Initialize NACM and its callbacks.
  *
- * Needs to be called only **once** in each process.
+ * Needs to be called only **once** in each process. Subscriptions created in @p sub need to be unsubscribed separately
+ * and before calling ::sr_nacm_destroy().
  *
  * @param[in] session Session to use.
  * @param[in] opts Optionally, ::SR_SUBSCR_NO_THREAD can be specified. No other flags are allowed.
