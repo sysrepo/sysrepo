@@ -501,7 +501,8 @@ int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *
  * @param[in] schema_path Path to the new schema. Can have either YANG or YIN extension/format.
  * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
  * @param[in] features Optional array of enabled features ended with NULL, all disabled by default.
- * @param[in] module_ds Datastore implementation plugin name for each config datastore, NULL for defaults.
+ * @param[in] module_ds Datastore implementation plugin name for each config datastore, NULL for defaults. Is also
+ * used for any implemented installed dependencies.
  * @param[in] owner Optional initial owner of the module data, process user by default.
  * @param[in] group Optional initial group of the module data, process group by default.
  * @param[in] perm Optional initial permissions of the module data, otherwise system defaults are applied.
