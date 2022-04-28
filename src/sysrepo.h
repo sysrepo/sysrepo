@@ -434,7 +434,7 @@ int sr_get_error_data(const sr_error_info_err_t *err, uint32_t idx, uint32_t *si
 uint32_t sr_session_get_id(sr_session_ctx_t *session);
 
 /**
- * @brief Set the effective user of a session to a different one that the process owner.
+ * @brief Set the effective user of a session to a different one than the process owner.
  *
  * Required SUPERUSER access.
  *
