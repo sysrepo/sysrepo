@@ -617,6 +617,8 @@ srlyb_get_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, ch
     int r = 0, rc;
     const char *prefix;
 
+    *path = NULL;
+
     switch (ds) {
     case SR_DS_STARTUP:
         if (SR_STARTUP_PATH[0]) {
