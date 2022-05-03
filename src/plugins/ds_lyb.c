@@ -457,7 +457,7 @@ srpds_lyb_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uint
     char *path = NULL;
     uint32_t i, j;
     void *mem;
-    int rc;
+    int rc = SR_ERR_OK;
 
     /* find the connection cache */
     for (i = 0; i < data_cache.cache_count; ++i) {
