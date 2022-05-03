@@ -168,7 +168,6 @@ sr_shmmod_fill(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_
     if ((err_info = sr_rwlock_init(&smod->replay_lock, 1))) {
         return err_info;
     }
-    smod->ver = 1;
     for (ds = 0; ds < SR_DS_COUNT; ++ds) {
         if ((err_info = sr_rwlock_init(&smod->change_sub[ds].lock, 1))) {
             return err_info;

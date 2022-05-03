@@ -362,11 +362,16 @@ if(NOT SR_HAVE_EACCESS)
     message(WARNING "Function eaccess() is not supported, using access() instead which may "
         "change results of access control checks!")
 endif()
+check_symbol_exists(inotify_init "sys/inotify.h" SR_HAVE_INOTIFY)
+if(NOT SR_HAVE_INOTIFY)
+    message(STATUS "inotify API is not supported, LYB datastore module data caching will not be supported.")
+endif()
 check_symbol_exists(mkstemps "stdlib.h" SR_HAVE_MKSTEMPS)
 unset(CMAKE_REQUIRED_DEFINITIONS)
 
 # generate files
 configure_file("${PROJECT_SOURCE_DIR}/src/config.h.in" "${PROJECT_BINARY_DIR}/config.h" ESCAPE_QUOTES @ONLY)
+configure_file("${PROJECT_SOURCE_DIR}/src/plugins/common_lyb.h.in" "${PROJECT_BINARY_DIR}/common_lyb.h" ESCAPE_QUOTES @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/sysrepo.pc.in" "${PROJECT_BINARY_DIR}/sysrepo.pc" @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/bin_common.h.in" "${PROJECT_BINARY_DIR}/bin_common.h" ESCAPE_QUOTES @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/sysrepo-plugind.service.in" "${PROJECT_BINARY_DIR}/sysrepo-plugind.service" @ONLY)

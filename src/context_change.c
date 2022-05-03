@@ -75,24 +75,8 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
         }
         remap_mode = SR_LOCK_WRITE;
 
-        if (conn->opts & SR_CONN_CACHE_RUNNING) {
-            /* context will be destroyed, free the cache */
-
-            /* CACHE WRITE LOCK */
-            if ((err_info = sr_rwlock(&conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-                    func, NULL, NULL))) {
-                goto cleanup_unlock;
-            }
-
-            lyd_free_all(conn->mod_cache.data);
-            conn->mod_cache.data = NULL;
-            free(conn->mod_cache.mods);
-            conn->mod_cache.mods = NULL;
-            conn->mod_cache.mod_count = 0;
-
-            /* CACHE WRITE UNLOCK */
-            sr_rwunlock(&conn->mod_cache.lock, 0, SR_LOCK_WRITE, conn->cid, func);
-        }
+        /* context will be destroyed, free the cache */
+        sr_conn_flush_cache(conn);
 
         /* remap mod SHM */
         if ((err_info = sr_shm_remap(&conn->mod_shm, 0))) {

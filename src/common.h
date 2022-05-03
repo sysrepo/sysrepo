@@ -1041,6 +1041,13 @@ void sr_rwunlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_ci
 int sr_conn_is_alive(sr_cid_t cid);
 
 /**
+ * @brief Flush all cached data of a connection in all its DS plugins.
+ *
+ * @param[in] conn Connection to use.
+ */
+void sr_conn_flush_cache(sr_conn_ctx_t *conn);
+
+/**
  * @brief Wrapper to realloc() that frees memory on failure.
  *
  * @param[in] ptr Pointer to the current memory.

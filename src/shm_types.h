@@ -23,7 +23,7 @@
 #include "common_types.h"
 #include "sysrepo_types.h"
 
-#define SR_SHM_VER 9    /**< Main, mod, and ext SHM version of their expected content structures. */
+#define SR_SHM_VER 10   /**< Main, mod, and ext SHM version of their expected content structures. */
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
 
 /**
@@ -112,7 +112,6 @@ typedef struct {
         struct timespec ds_lock_ts; /**< Timestamp of the datastore lock. */
     } data_lock_info[SR_DS_COUNT];  /**< Module data lock information for each datastore. */
     sr_rwlock_t replay_lock;    /**< Process-shared lock for accessing stored notifications for replay. */
-    uint32_t ver;               /**< Module data version (non-zero). */
 
     off_t name;                 /**< Module name (offset in mod SHM). */
     char rev[11];               /**< Module revision. */

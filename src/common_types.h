@@ -34,11 +34,6 @@ typedef struct {
 } sr_shm_t;
 
 /**
- * @brief Connection ID.
- */
-typedef uint32_t sr_cid_t;
-
-/**
  * @brief Lock mode.
  */
 typedef enum {
@@ -131,17 +126,6 @@ struct sr_conn_ctx_s {
         const struct srplg_ntf_s *plugin;   /**< Notification plugin. */
     } *ntf_handles;                 /**< Notification implementation handles. */
     uint32_t ntf_handle_count;      /**< Notification implementaion handle count. */
-
-    struct sr_mod_cache_s {
-        sr_rwlock_t lock;           /**< Session-shared lock for accessing the module cache. */
-        struct lyd_node *data;      /**< Data of all cached modules, */
-
-        struct {
-            const struct lys_module *ly_mod;    /**< Libyang module in the cache. */
-            uint32_t ver;           /**< Version of the module data in the cache, 0 is not valid */
-        } *mods;                    /**< Array of cached modules. */
-        uint32_t mod_count;         /**< Cached modules count. */
-    } mod_cache;                    /**< Module running data cache. */
 };
 
 /**

@@ -1064,116 +1064,6 @@ error_sub_unlock:
 }
 
 /**
- * @brief Update cached running module data (if required).
- *
- * @param[in] conn Connection to use.
- * @param[in] mod Mod info module to process.
- * @param[in] upd_mod_data Optional current (updated) module data to store in cache.
- * @param[in] read_locked Whether the cache is READ locked.
- * @param[in] cid Connection ID.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_modcache_module_running_update(sr_conn_ctx_t *conn, struct sr_mod_info_mod_s *mod,
-        const struct lyd_node *upd_mod_data, int read_locked, sr_cid_t cid)
-{
-    sr_error_info_t *err_info = NULL, *tmp_err;
-    struct sr_mod_cache_s *mod_cache;
-    struct lyd_node *mod_data;
-    sr_lock_mode_t cur_mode = SR_LOCK_NONE;
-    uint32_t i;
-    void *mem;
-
-    mod_cache = &conn->mod_cache;
-
-    if (read_locked) {
-        /* CACHE READ UNLOCK */
-        sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, cid, __func__);
-    }
-
-    /* CACHE READ UPGR LOCK */
-    if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, cid, __func__,
-            NULL, NULL))) {
-        goto cleanup;
-    }
-    cur_mode = SR_LOCK_READ_UPGR;
-
-    /* find the module in the cache */
-    for (i = 0; i < mod_cache->mod_count; ++i) {
-        if (mod->ly_mod == mod_cache->mods[i].ly_mod) {
-            break;
-        }
-    }
-
-    if (i < mod_cache->mod_count) {
-        /* this module data are already in the cache */
-        assert(mod->shm_mod->ver >= mod_cache->mods[i].ver);
-        if (mod->shm_mod->ver > mod_cache->mods[i].ver) {
-            /* CACHE WRITE LOCK UPGRADE */
-            if ((err_info = sr_rwrelock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, cid, __func__,
-                    NULL, NULL))) {
-                goto cleanup;
-            }
-            cur_mode = SR_LOCK_WRITE;
-
-            /* data needs to be updated, remove old data */
-            lyd_free_all(sr_module_data_unlink(&mod_cache->data, mod->ly_mod));
-            mod_cache->mods[i].ver = 0;
-        }
-    } else {
-        /* CACHE WRITE LOCK UPGRADE */
-        if ((err_info = sr_rwrelock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, cid, __func__,
-                NULL, NULL))) {
-            goto cleanup;
-        }
-        cur_mode = SR_LOCK_WRITE;
-
-        /* module is not in cache yet, add an item */
-        mem = realloc(mod_cache->mods, (i + 1) * sizeof *mod_cache->mods);
-        SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
-        mod_cache->mods = mem;
-        ++mod_cache->mod_count;
-
-        mod_cache->mods[i].ly_mod = mod->ly_mod;
-        mod_cache->mods[i].ver = 0;
-    }
-
-    /* append current data */
-    if (!mod_cache->mods[i].ver) {
-        if (upd_mod_data) {
-            /* current data were provided, use them */
-            if (lyd_dup_siblings(upd_mod_data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &mod_data)) {
-                sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
-                goto cleanup;
-            }
-            lyd_insert_sibling(mod_cache->data, mod_data, &mod_cache->data);
-        } else {
-            /* we need to load current data from persistent storage */
-            if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_plg, SR_DS_RUNNING, NULL, 0, &mod_cache->data))) {
-                goto cleanup;
-            }
-        }
-        mod_cache->mods[i].ver = mod->shm_mod->ver;
-    }
-
-cleanup:
-    if (cur_mode != SR_LOCK_NONE) {
-        /* CACHE UNLOCK */
-        sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, cur_mode, cid, __func__);
-    }
-
-    if (read_locked) {
-        /* CACHE READ LOCK */
-        if ((tmp_err = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, cid, __func__,
-                NULL, NULL))) {
-            sr_errinfo_merge(&err_info, tmp_err);
-        }
-    }
-
-    return err_info;
-}
-
-/**
  * @brief Trim all configuration/state nodes/origin from the data based on options.
  *
  * @param[in,out] data Data to trim.
@@ -1830,101 +1720,75 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_mod_s *mod, const char *orig_name,
-        const void *orig_data, uint32_t timeout_ms, sr_get_oper_options_t opts)
+sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_mod_s *mod,
+        const struct lyd_node *cached_data, const char *orig_name, const void *orig_data, uint32_t timeout_ms,
+        sr_get_oper_options_t opts)
 {
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn = mod_info->conn;
-    struct sr_mod_cache_s *mod_cache = NULL;
     struct lyd_node *mod_data = NULL;
 
+    assert(!mod_info->data_cached);
     assert((mod_info->ds != SR_DS_OPERATIONAL) || (mod_info->ds2 != SR_DS_OPERATIONAL));
 
-    if (((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds2 == SR_DS_RUNNING)) && (conn->opts & SR_CONN_CACHE_RUNNING)) {
-        /* we are caching running data we will use, so in all cases load the module into cache if not yet there */
-        mod_cache = &conn->mod_cache;
-        if ((err_info = sr_modcache_module_running_update(mod_info->conn, mod, NULL, mod_info->data_cached,
-                mod_info->conn->cid))) {
+    if (cached_data) {
+        /* there are cached data */
+        if (mod_info->ds == SR_DS_OPERATIONAL) {
+            /* copy only enabled module data */
+            err_info = sr_module_oper_data_get_enabled(conn, (struct lyd_node **)&cached_data, mod, opts, 1, &mod_data);
+        } else {
+            /* copy all module data */
+            err_info = sr_lyd_get_module_data((struct lyd_node **)&cached_data, mod->ly_mod, 0, 1, &mod_data);
+        }
+        if (err_info) {
             return err_info;
         }
-    }
 
-    if (!mod_info->data_cached) {
-        /* we cannot use cached data directly for this operation... */
-        if (mod_cache) {
-            /* ...but they are cached */
+        if (mod_data) {
+            lyd_insert_sibling(mod_info->data, mod_data, &mod_info->data);
+        }
+    } else {
+        /* no cached data */
 
-            /* CACHE READ LOCK */
-            if ((err_info = sr_rwlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
-                    __func__, NULL, NULL))) {
-                return err_info;
-            }
-
-            if (mod_info->ds == SR_DS_OPERATIONAL) {
-                /* copy only enabled module data */
-                err_info = sr_module_oper_data_get_enabled(conn, &mod_cache->data, mod, opts, 1, &mod_data);
-            } else {
-                /* copy all module data */
-                err_info = sr_lyd_get_module_data(&mod_cache->data, mod->ly_mod, 0, 1, &mod_data);
-            }
-
-            /* CACHE READ UNLOCK */
-            sr_rwunlock(&mod_cache->lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
-
-            if (err_info) {
-                return err_info;
-            }
-            if (mod_data) {
-                lyd_insert_sibling(mod_info->data, mod_data, &mod_info->data);
-            }
-        } else {
-            /* ...and they are not cached */
-
-            /* get current persistent data (ds2 is running when getting operational data) */
-            if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_plg, mod_info->ds2, mod->xpaths,
-                    mod->xpath_count, &mod_info->data))) {
-                return err_info;
-            }
-
-            if (mod_info->ds == SR_DS_OPERATIONAL) {
-                /* keep only enabled module data */
-                if ((err_info = sr_module_oper_data_get_enabled(conn, &mod_info->data, mod, opts, 0, &mod_data))) {
-                    return err_info;
-                }
-                lyd_free_siblings(sr_module_data_unlink(&mod_info->data, mod->ly_mod));
-                if (mod_data) {
-                    lyd_insert_sibling(mod_info->data, mod_data, &mod_info->data);
-                }
-            }
+        /* get current persistent data (ds2 is running when getting operational data) */
+        if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_plg, mod_info->ds2, mod->xpaths,
+                mod->xpath_count, &mod_info->data))) {
+            return err_info;
         }
 
         if (mod_info->ds == SR_DS_OPERATIONAL) {
-            if (!strcmp(mod->ly_mod->name, "ietf-yang-library")) {
-                /* append ietf-yang-library state data - internal */
-                if ((err_info = sr_modinfo_module_data_load_yanglib(mod_info, mod))) {
-                    return err_info;
-                }
-            } else if (!strcmp(mod->ly_mod->name, "sysrepo-monitoring")) {
-                /* append sysrepo-monitoring state data - internal */
-                if ((err_info = sr_modinfo_module_data_load_srmon(mod_info, mod))) {
-                    return err_info;
-                }
-            }
-
-            /* append any operational data provided by clients */
-            if ((err_info = sr_module_oper_data_update(mod, orig_name, orig_data, conn, timeout_ms, opts,
-                    &mod_info->data))) {
+            /* keep only enabled module data */
+            if ((err_info = sr_module_oper_data_get_enabled(conn, &mod_info->data, mod, opts, 0, &mod_data))) {
                 return err_info;
             }
-
-            /* trim any data according to options (they could not be trimmed before oper subscriptions) */
-            sr_oper_data_trim_r(&mod_info->data, mod_info->data, opts);
+            lyd_free_siblings(sr_module_data_unlink(&mod_info->data, mod->ly_mod));
+            if (mod_data) {
+                lyd_insert_sibling(mod_info->data, mod_data, &mod_info->data);
+            }
         }
-    } else {
-        /* we can use cached data and hence they must be cached */
-        assert(mod_cache && SR_IS_CONVENTIONAL_DS(mod_info->ds));
+    }
 
-        mod_info->data = mod_cache->data;
+    if (mod_info->ds == SR_DS_OPERATIONAL) {
+        if (!strcmp(mod->ly_mod->name, "ietf-yang-library")) {
+            /* append ietf-yang-library state data - internal */
+            if ((err_info = sr_modinfo_module_data_load_yanglib(mod_info, mod))) {
+                return err_info;
+            }
+        } else if (!strcmp(mod->ly_mod->name, "sysrepo-monitoring")) {
+            /* append sysrepo-monitoring state data - internal */
+            if ((err_info = sr_modinfo_module_data_load_srmon(mod_info, mod))) {
+                return err_info;
+            }
+        }
+
+        /* append any operational data provided by clients */
+        if ((err_info = sr_module_oper_data_update(mod, orig_name, orig_data, conn, timeout_ms, opts,
+                &mod_info->data))) {
+            return err_info;
+        }
+
+        /* trim any data according to options (they could not be trimmed before oper subscriptions) */
+        sr_oper_data_trim_r(&mod_info->data, mod_info->data, opts);
     }
 
     return NULL;
@@ -2081,20 +1945,56 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig
         uint32_t timeout_ms, sr_get_oper_options_t opts)
 {
     sr_error_info_t *err_info = NULL;
+    const struct srplg_ds_s *run_ds_plg;
+    const struct lyd_node *cached_data = NULL;
+    const struct lys_module **ly_mods = NULL;
     struct sr_mod_info_mod_s *mod;
     uint32_t i;
+    int rc;
 
     /* we can use cache only if we are working with the running datastore (as the main datastore) */
-    if (!mod_info->data_cached && cache && (mod_info->conn->opts & SR_CONN_CACHE_RUNNING) &&
-            (mod_info->ds == SR_DS_RUNNING)) {
-        /* CACHE READ LOCK */
-        if ((err_info = sr_rwlock(&mod_info->conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
-                mod_info->conn->cid, __func__, NULL, NULL))) {
-            return err_info;
+    if (!mod_info->data_cached && cache && mod_info->mod_count && (mod_info->conn->opts & SR_CONN_CACHE_RUNNING) &&
+            ((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds2 == SR_DS_RUNNING))) {
+        /* prepare module array */
+        ly_mods = malloc(mod_info->mod_count * sizeof *ly_mods);
+        ly_mods[0] = mod_info->mods[0].ly_mod;
+
+        /* check whether all the modules use the same plugin for running */
+        run_ds_plg = mod_info->mods[0].ds_plg[SR_DS_RUNNING];
+        if (!run_ds_plg->running_load_cached_cb) {
+            /* no callback even defined */
+            run_ds_plg = NULL;
+        } else {
+            for (i = 1; i < mod_info->mod_count; ++i) {
+                mod = &mod_info->mods[i];
+                if (mod->ds_plg[SR_DS_RUNNING] != run_ds_plg) {
+                    /* different plugin */
+                    run_ds_plg = NULL;
+                    break;
+                }
+
+                ly_mods[i] = mod->ly_mod;
+            }
         }
 
-        /* we can cache the data */
-        mod_info->data_cached = 1;
+        if (run_ds_plg) {
+            /* load the data from the cache */
+            if ((rc = run_ds_plg->running_load_cached_cb(mod_info->conn->cid, ly_mods, mod_info->mod_count, &cached_data))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "running_load_cached", run_ds_plg->name, "<unknown>");
+                goto cleanup;
+            }
+
+            if (mod_info->ds == SR_DS_RUNNING) {
+                /* directly use the cached data */
+                mod_info->data_cached = 1;
+                mod_info->data = (struct lyd_node *)cached_data;
+                for (i = 0; i < mod_info->mod_count; ++i) {
+                    mod = &mod_info->mods[i];
+                    mod->state |= MOD_INFO_DATA;
+                }
+                goto cleanup;
+            }
+        }
     }
 
     /* load data for each module */
@@ -2110,12 +2010,12 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig
             assert(!mod->xpath_count);
             if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_plg, SR_DS_OPERATIONAL, NULL, 0,
                     &mod_info->data))) {
-                return err_info;
+                goto cleanup;
             }
         } else {
-            if ((err_info = sr_modinfo_module_data_load(mod_info, mod, orig_name, orig_data, timeout_ms, opts))) {
+            if ((err_info = sr_modinfo_module_data_load(mod_info, mod, cached_data, orig_name, orig_data, timeout_ms, opts))) {
                 /* if cached, we keep both cache lock and flag, so it is fine */
-                return err_info;
+                goto cleanup;
             }
         }
         if (!mod->xpath_count) {
@@ -2124,7 +2024,9 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig
         }
     }
 
-    return NULL;
+cleanup:
+    free(ly_mods);
+    return err_info;
 }
 
 sr_error_info_t *
@@ -2522,10 +2424,6 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
                 /* data will be changed, we cannot use the cache anymore */
                 lyd_dup_siblings(mod_info->data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &mod_info->data);
                 mod_info->data_cached = 0;
-
-                /* CACHE READ UNLOCK */
-                sr_rwunlock(&mod_info->conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
-                        session->conn->cid, __func__);
             }
 
             /* apply any currently handled changes (diff) or additional performed ones (edit) to get
@@ -2751,7 +2649,7 @@ cleanup:
 sr_error_info_t *
 sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
 {
-    sr_error_info_t *err_info = NULL, *tmp_err;
+    sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
     struct lyd_node *mod_data;
     uint32_t i;
@@ -2769,21 +2667,6 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
             if ((rc = mod->ds_plg[mod_info->ds]->store_cb(mod->ly_mod, mod_info->ds, mod_data))) {
                 SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", mod->ds_plg[mod_info->ds]->name, mod->ly_mod->name);
                 goto cleanup;
-            }
-
-            if (mod_info->ds == SR_DS_RUNNING) {
-                /* update module running data version */
-                ++mod->shm_mod->ver;
-
-                if (mod_info->conn->opts & SR_CONN_CACHE_RUNNING) {
-                    /* we are caching so update cache with these data */
-                    tmp_err = sr_modcache_module_running_update(mod_info->conn, mod, mod_data, 0, mod_info->conn->cid);
-                    if (tmp_err) {
-                        /* always store all changed modules, if possible */
-                        sr_errinfo_merge(&err_info, tmp_err);
-                        tmp_err = NULL;
-                    }
-                }
             }
 
             /* connect them back */
@@ -2843,13 +2726,7 @@ sr_modinfo_erase(struct sr_mod_info_s *mod_info)
     uint32_t i;
 
     lyd_free_siblings(mod_info->diff);
-    if (mod_info->data_cached) {
-        mod_info->data_cached = 0;
-
-        /* CACHE READ UNLOCK */
-        sr_rwunlock(&mod_info->conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
-                mod_info->conn->cid, __func__);
-    } else {
+    if (!mod_info->data_cached) {
         lyd_free_siblings(mod_info->data);
     }
 

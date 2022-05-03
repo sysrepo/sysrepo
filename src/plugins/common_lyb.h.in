@@ -25,6 +25,9 @@
 
 #include "sysrepo.h"
 
+/** inotify required for caching */
+#cmakedefine SR_HAVE_INOTIFY
+
 /** suffix of backed-up LYB files */
 #define SRLYB_FILE_BACKUP_SUFFIX ".bck"
 
@@ -36,6 +39,26 @@
 
 /** notification file will never exceed this size (kB) */
 #define SRLYB_NOTIF_FILE_MAX_SIZE 1024
+
+struct srlyb_cache_s {
+    struct srlyb_cache_conn_s {
+        sr_cid_t cid;               /**< connection CID of this cache */
+        struct lyd_node *data;      /**< cached data of all the modules */
+        struct srlyb_cache_mod_s {
+            const struct lys_module *mod;   /**< libyang module */
+            int inot_watch;                 /**< inotify watch for the data file */
+            int current;                    /**< whether the cached data are current */
+        } *mods;                    /**< libyang modules in the cache */
+        uint32_t mod_count;         /**< cached module count */
+        int inot_fd;                /**< inotify fd */
+    } *caches;
+    uint32_t cache_count;
+};
+
+/**
+ * @brief running data cache
+ */
+extern struct srlyb_cache_s data_cache;
 
 /**
  * @brief Wrapper for writev().
@@ -231,5 +254,14 @@ int srlyb_get_notif_dir(const char *plg_name, char **path);
  * @return SR err value.
  */
 int srlyb_get_notif_path(const char *plg_name, const char *mod_name, time_t from_ts, time_t to_ts, char **path);
+
+/**
+ * @brief Unlink data of a specific module from a data tree.
+ *
+ * @param[in,out] data Data tree.
+ * @param[in] ly_mod libyang module of interest.
+ * @return Unlinked data tree.
+ */
+struct lyd_node *srlyb_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod);
 
 #endif /* _COMMON_LYB_H */

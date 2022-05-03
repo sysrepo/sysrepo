@@ -106,15 +106,9 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         goto error7;
     }
 
-    if ((conn->opts & SR_CONN_CACHE_RUNNING) && (err_info = sr_rwlock_init(&conn->mod_cache.lock, 0))) {
-        goto error8;
-    }
-
     *conn_p = conn;
     return NULL;
 
-error8:
-    sr_ntf_handle_free(conn->ntf_handles, conn->ntf_handle_count);
 error7:
     sr_ds_handle_free(conn->ds_handles, conn->ds_handle_count);
 error6:
@@ -140,29 +134,27 @@ error1:
 static void
 sr_conn_free(sr_conn_ctx_t *conn)
 {
-    if (conn) {
-        /* free cache before context */
-        if (conn->opts & SR_CONN_CACHE_RUNNING) {
-            sr_rwlock_destroy(&conn->mod_cache.lock);
-            lyd_free_all(conn->mod_cache.data);
-            free(conn->mod_cache.mods);
-        }
-
-        ly_ctx_destroy(conn->ly_ctx);
-        pthread_mutex_destroy(&conn->ptr_lock);
-        if (conn->create_lock > -1) {
-            close(conn->create_lock);
-        }
-        sr_shm_clear(&conn->main_shm);
-        sr_rwlock_destroy(&conn->mod_remap_lock);
-        sr_shm_clear(&conn->mod_shm);
-        sr_rwlock_destroy(&conn->ext_remap_lock);
-        sr_shm_clear(&conn->ext_shm);
-        sr_ds_handle_free(conn->ds_handles, conn->ds_handle_count);
-        sr_ntf_handle_free(conn->ntf_handles, conn->ntf_handle_count);
-
-        free(conn);
+    if (!conn) {
+        return;
     }
+
+    /* flush cache before context destroy */
+    sr_conn_flush_cache(conn);
+
+    ly_ctx_destroy(conn->ly_ctx);
+    pthread_mutex_destroy(&conn->ptr_lock);
+    if (conn->create_lock > -1) {
+        close(conn->create_lock);
+    }
+    sr_shm_clear(&conn->main_shm);
+    sr_rwlock_destroy(&conn->mod_remap_lock);
+    sr_shm_clear(&conn->mod_shm);
+    sr_rwlock_destroy(&conn->ext_remap_lock);
+    sr_shm_clear(&conn->ext_shm);
+    sr_ds_handle_free(conn->ds_handles, conn->ds_handle_count);
+    sr_ntf_handle_free(conn->ntf_handles, conn->ntf_handle_count);
+
+    free(conn);
 }
 
 API int
@@ -1280,102 +1272,13 @@ cleanup:
     return err_info;
 }
 
-/**
- * @brief Update context of a connection after all the checks succeeded, no context is destroyed.
- *
- * @param[in] conn Connection to use.
- * @param[in,out] new_ctx New context to use, is zeroed.
- * @param[in,out] new_r_data New full running DS data, are always spent.
- */
-static void
-sr_conn_update_context(sr_conn_ctx_t *conn, struct ly_ctx **new_ctx, struct lyd_node **new_r_data)
-{
-    sr_error_info_t *err_info = NULL;
-    int remap_lock = 0, cache_lock = 0;
-    const struct lys_module *ly_mod;
-    sr_mod_shm_t *mod_shm;
-    sr_mod_t *smod;
-    uint32_t mod_idx;
-
-    if (conn->opts & SR_CONN_CACHE_RUNNING) {
-        /* MOD REMAP LOCK */
-        if ((err_info = sr_rwlock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
-                NULL, NULL))) {
-            sr_errinfo_free(&err_info);
-        } else {
-            remap_lock = 1;
-        }
-
-        /* CACHE WRITE LOCK */
-        if ((err_info = sr_rwlock(&conn->mod_cache.lock, SR_MOD_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-                __func__, NULL, NULL))) {
-            /* continue on error, we must free the cache */
-            sr_errinfo_free(&err_info);
-        } else {
-            cache_lock = 1;
-        }
-
-        /* context will be destroyed, free the cache */
-        lyd_free_all(conn->mod_cache.data);
-        conn->mod_cache.data = NULL;
-        free(conn->mod_cache.mods);
-        conn->mod_cache.mods = NULL;
-        conn->mod_cache.mod_count = 0;
-
-        if (remap_lock) {
-            mod_shm = SR_CONN_MOD_SHM(conn);
-
-            /* alloc all cache modules */
-            conn->mod_cache.mods = malloc(mod_shm->mod_count * sizeof *conn->mod_cache.mods);
-            /* MEM err_info is statically allocated */
-            SR_CHECK_MEM_GOTO(!conn->mod_cache.mods, err_info, remap_unlock);
-            conn->mod_cache.mod_count = mod_shm->mod_count;
-
-            /* use the new running data and store them in the cache */
-            conn->mod_cache.data = *new_r_data;
-            for (mod_idx = 0; mod_idx < mod_shm->mod_count; ++mod_idx) {
-                smod = SR_SHM_MOD_IDX(mod_shm, mod_idx);
-
-                /* find LY mod */
-                ly_mod = ly_ctx_get_module_implemented(*new_ctx, conn->mod_shm.addr + smod->name);
-                assert(ly_mod);
-
-                conn->mod_cache.mods[mod_idx].ly_mod = ly_mod;
-                conn->mod_cache.mods[mod_idx].ver = smod->ver;
-            }
-
-remap_unlock:
-            /* MOD REMAP UNLOCK */
-            sr_rwunlock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
-        }
-
-        if (cache_lock) {
-            /* CACHE WRITE UNLOCK */
-            sr_rwunlock(&conn->mod_cache.lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
-        }
-    } else {
-        /* just free the running data, they are not being cached */
-        lyd_free_siblings(*new_r_data);
-    }
-
-    /* increase content ID */
-    conn->content_id = ++SR_CONN_MAIN_SHM(conn)->content_id;
-
-    /* use new context */
-    conn->ly_ctx = *new_ctx;
-
-    /* zero used params */
-    *new_ctx = NULL;
-    *new_r_data = NULL;
-}
-
 API int
 sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs, const char **features,
         const sr_module_ds_t *module_ds, const char *owner, const char *group, mode_t perm, const char *data,
         const char *data_path, LYD_FORMAT format)
 {
     sr_error_info_t *err_info = NULL;
-    struct ly_ctx *tmp_ly_ctx = NULL, *old_ctx = NULL;
+    struct ly_ctx *new_ctx = NULL, *old_ctx = NULL;
     const struct lys_module *ly_mod;
     struct ly_set mod_set = {0};
     LYS_INFORMAT lys_format;
@@ -1422,17 +1325,17 @@ sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *sea
     }
 
     /* create new temporary context */
-    if ((err_info = sr_ly_ctx_init(conn->ext_cb, conn->ext_cb_data, &tmp_ly_ctx))) {
+    if ((err_info = sr_ly_ctx_init(conn->ext_cb, conn->ext_cb_data, &new_ctx))) {
         goto cleanup;
     }
 
     /* use temporary context to load modules */
-    if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), tmp_ly_ctx, NULL))) {
+    if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), new_ctx, NULL))) {
         goto cleanup;
     }
 
     /* parse the module with the features */
-    if ((err_info = sr_parse_module(tmp_ly_ctx, schema_path, lys_format, features, search_dirs, &ly_mod))) {
+    if ((err_info = sr_parse_module(new_ctx, schema_path, lys_format, features, search_dirs, &ly_mod))) {
         goto cleanup;
     }
 
@@ -1442,10 +1345,10 @@ sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *sea
     }
 
     /* check the new context can be used, optionally with initial module data */
-    if ((err_info = sr_lycc_check_add_module(conn, tmp_ly_ctx))) {
+    if ((err_info = sr_lycc_check_add_module(conn, new_ctx))) {
         goto cleanup;
     }
-    if ((err_info = sr_lycc_update_data(conn, tmp_ly_ctx, mod_data, &old_s_data, &new_s_data, &old_r_data, &new_r_data,
+    if ((err_info = sr_lycc_update_data(conn, new_ctx, mod_data, &old_s_data, &new_s_data, &old_r_data, &new_r_data,
             &old_o_data, &new_o_data))) {
         goto cleanup;
     }
@@ -1472,14 +1375,21 @@ sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *sea
     }
 
     /* store new data if they differ */
-    if ((err_info = sr_lycc_store_data_if_differ(conn, tmp_ly_ctx, sr_mods, &old_s_data, &new_s_data, &old_r_data,
+    if ((err_info = sr_lycc_store_data_if_differ(conn, new_ctx, sr_mods, &old_s_data, &new_s_data, &old_r_data,
             &new_r_data, &old_o_data, &new_o_data))) {
         goto cleanup;
     }
 
+    /* flush cache before context destroy */
+    sr_conn_flush_cache(conn);
+
+    /* increase content ID */
+    conn->content_id = ++SR_CONN_MAIN_SHM(conn)->content_id;
+
     /* safely update the context by switching it */
     old_ctx = conn->ly_ctx;
-    sr_conn_update_context(conn, &tmp_ly_ctx, &new_r_data);
+    conn->ly_ctx = new_ctx;
+    new_ctx = NULL;
 
 cleanup:
     lyd_free_siblings(old_s_data);
@@ -1492,7 +1402,7 @@ cleanup:
     lyd_free_siblings(new_r_data);
     lyd_free_siblings(new_o_data);
     lyd_free_siblings(mod_data);
-    ly_ctx_destroy(tmp_ly_ctx);
+    ly_ctx_destroy(new_ctx);
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(conn, ctx_mode, 1, __func__);
@@ -1506,7 +1416,7 @@ API int
 sr_remove_module(sr_conn_ctx_t *conn, const char *module_name, int force)
 {
     sr_error_info_t *err_info = NULL;
-    struct ly_ctx *tmp_ly_ctx = NULL, *old_ctx = NULL;
+    struct ly_ctx *new_ctx = NULL, *old_ctx = NULL;
     struct ly_set mod_set = {0};
     struct lyd_node *sr_mods = NULL, *sr_del_mods = NULL;
     struct lyd_node *old_s_data = NULL, *new_s_data = NULL, *old_r_data = NULL, *new_r_data = NULL, *old_o_data = NULL,
@@ -1552,20 +1462,20 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name, int force)
     }
 
     /* create new temporary context */
-    if ((err_info = sr_ly_ctx_init(conn->ext_cb, conn->ext_cb_data, &tmp_ly_ctx))) {
+    if ((err_info = sr_ly_ctx_init(conn->ext_cb, conn->ext_cb_data, &new_ctx))) {
         goto cleanup;
     }
 
     /* use temporary context to load modules without the removed ones */
-    if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), tmp_ly_ctx, &mod_set))) {
+    if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), new_ctx, &mod_set))) {
         goto cleanup;
     }
 
     /* check the new context can be used */
-    if ((err_info = sr_lycc_check_del_module(conn, tmp_ly_ctx, &mod_set))) {
+    if ((err_info = sr_lycc_check_del_module(conn, new_ctx, &mod_set))) {
         goto cleanup;
     }
-    if ((err_info = sr_lycc_update_data(conn, tmp_ly_ctx, NULL, &old_s_data, &new_s_data, &old_r_data, &new_r_data,
+    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, &old_s_data, &new_s_data, &old_r_data, &new_r_data,
             &old_o_data, &new_o_data))) {
         goto cleanup;
     }
@@ -1577,7 +1487,7 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name, int force)
     ctx_mode = SR_LOCK_WRITE;
 
     /* update lydmods data */
-    if ((err_info = sr_lydmods_change_del_module(conn->ly_ctx, tmp_ly_ctx, &mod_set, &sr_del_mods, &sr_mods))) {
+    if ((err_info = sr_lydmods_change_del_module(conn->ly_ctx, new_ctx, &mod_set, &sr_del_mods, &sr_mods))) {
         goto cleanup;
     }
 
@@ -1587,19 +1497,26 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name, int force)
     }
 
     /* finish removing the module */
-    if ((err_info = sr_lycc_del_module(conn, tmp_ly_ctx, &mod_set, sr_del_mods))) {
+    if ((err_info = sr_lycc_del_module(conn, new_ctx, &mod_set, sr_del_mods))) {
         goto cleanup;
     }
 
     /* store new data if they differ */
-    if ((err_info = sr_lycc_store_data_if_differ(conn, tmp_ly_ctx, sr_mods, &old_s_data, &new_s_data, &old_r_data,
+    if ((err_info = sr_lycc_store_data_if_differ(conn, new_ctx, sr_mods, &old_s_data, &new_s_data, &old_r_data,
             &new_r_data, &old_o_data, &new_o_data))) {
         goto cleanup;
     }
 
+    /* flush cache before context destroy */
+    sr_conn_flush_cache(conn);
+
+    /* increase content ID */
+    conn->content_id = ++SR_CONN_MAIN_SHM(conn)->content_id;
+
     /* safely update the context by switching it */
     old_ctx = conn->ly_ctx;
-    sr_conn_update_context(conn, &tmp_ly_ctx, &new_r_data);
+    conn->ly_ctx = new_ctx;
+    new_ctx = NULL;
 
 cleanup:
     lyd_free_siblings(old_s_data);
@@ -1612,7 +1529,7 @@ cleanup:
     lyd_free_siblings(new_s_data);
     lyd_free_siblings(new_r_data);
     lyd_free_siblings(new_o_data);
-    ly_ctx_destroy(tmp_ly_ctx);
+    ly_ctx_destroy(new_ctx);
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(conn, ctx_mode, 1, __func__);
@@ -1701,9 +1618,16 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
         goto cleanup;
     }
 
+    /* flush cache before context destroy */
+    sr_conn_flush_cache(conn);
+
+    /* increase content ID */
+    conn->content_id = ++SR_CONN_MAIN_SHM(conn)->content_id;
+
     /* safely update the context by switching it */
     old_ctx = conn->ly_ctx;
-    sr_conn_update_context(conn, &new_ctx, &new_r_data);
+    conn->ly_ctx = new_ctx;
+    new_ctx = NULL;
 
 cleanup:
     lyd_free_siblings(old_s_data);
@@ -2104,7 +2028,7 @@ static sr_error_info_t *
 sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const char *feature_name, int enable)
 {
     sr_error_info_t *err_info = NULL;
-    struct ly_ctx *tmp_ly_ctx = NULL, *old_ctx = NULL;
+    struct ly_ctx *new_ctx = NULL, *old_ctx = NULL;
     struct ly_set mod_set = {0};
     struct lyd_node *sr_mods = NULL;
     struct lyd_node *old_s_data = NULL, *new_s_data = NULL, *old_r_data = NULL, *new_r_data = NULL, *old_o_data = NULL,
@@ -2148,7 +2072,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     /* create new temporary context */
-    if ((err_info = sr_ly_ctx_init(conn->ext_cb, conn->ext_cb_data, &tmp_ly_ctx))) {
+    if ((err_info = sr_ly_ctx_init(conn->ext_cb, conn->ext_cb_data, &new_ctx))) {
         goto cleanup;
     }
 
@@ -2157,20 +2081,20 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
         SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }
-    if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), tmp_ly_ctx, &mod_set))) {
+    if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), new_ctx, &mod_set))) {
         goto cleanup;
     }
 
     /* load the module with changed features */
-    if ((err_info = sr_load_module(tmp_ly_ctx, ly_mod, feature_name, enable, &upd_ly_mod))) {
+    if ((err_info = sr_load_module(new_ctx, ly_mod, feature_name, enable, &upd_ly_mod))) {
         goto cleanup;
     }
 
     /* check the new context can be used */
-    if ((err_info = sr_lycc_check_chng_feature(conn, tmp_ly_ctx))) {
+    if ((err_info = sr_lycc_check_chng_feature(conn, new_ctx))) {
         goto cleanup;
     }
-    if ((err_info = sr_lycc_update_data(conn, tmp_ly_ctx, NULL, &old_s_data, &new_s_data, &old_r_data, &new_r_data,
+    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, &old_s_data, &new_s_data, &old_r_data, &new_r_data,
             &old_o_data, &new_o_data))) {
         goto cleanup;
     }
@@ -2192,14 +2116,21 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     /* store new data if they differ */
-    if ((err_info = sr_lycc_store_data_if_differ(conn, tmp_ly_ctx, sr_mods, &old_s_data, &new_s_data, &old_r_data,
+    if ((err_info = sr_lycc_store_data_if_differ(conn, new_ctx, sr_mods, &old_s_data, &new_s_data, &old_r_data,
             &new_r_data, &old_o_data, &new_o_data))) {
         goto cleanup;
     }
 
+    /* flush cache before context destroy */
+    sr_conn_flush_cache(conn);
+
+    /* increase content ID */
+    conn->content_id = ++SR_CONN_MAIN_SHM(conn)->content_id;
+
     /* safely update the context by switching it */
     old_ctx = conn->ly_ctx;
-    sr_conn_update_context(conn, &tmp_ly_ctx, &new_r_data);
+    conn->ly_ctx = new_ctx;
+    new_ctx = NULL;
 
 cleanup:
     lyd_free_siblings(old_s_data);
@@ -2211,7 +2142,7 @@ cleanup:
     lyd_free_siblings(new_s_data);
     lyd_free_siblings(new_r_data);
     lyd_free_siblings(new_o_data);
-    ly_ctx_destroy(tmp_ly_ctx);
+    ly_ctx_destroy(new_ctx);
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(conn, ctx_mode, 1, __func__);

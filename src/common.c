@@ -4327,6 +4327,31 @@ sr_conn_is_alive(sr_cid_t cid)
     return alive;
 }
 
+void
+sr_conn_flush_cache(sr_conn_ctx_t *conn)
+{
+    uint32_t i;
+
+    if (!(conn->opts & SR_CONN_CACHE_RUNNING)) {
+        return;
+    }
+    /* context will be destroyed, free the cache */
+
+    /* internal DS plugins */
+    for (i = 0; i < sr_ds_plugin_int_count(); ++i) {
+        if (sr_internal_ds_plugins[i]->running_flush_cached_cb) {
+            sr_internal_ds_plugins[i]->running_flush_cached_cb(conn->cid);
+        }
+    }
+
+    /* dynamic DS plugins */
+    for (i = 0; i < conn->ds_handle_count; ++i) {
+        if (conn->ds_handles[i].plugin->running_flush_cached_cb) {
+            conn->ds_handles[i].plugin->running_flush_cached_cb(conn->cid);
+        }
+    }
+}
+
 void *
 sr_realloc(void *ptr, size_t size)
 {

@@ -31,7 +31,7 @@ extern "C" {
 /**
  * @brief Datastore plugin API version
  */
-#define SRPLG_DS_API_VERSION 2
+#define SRPLG_DS_API_VERSION 3
 
 /**
  * @brief Initialize data of a new module.
@@ -94,6 +94,28 @@ typedef void (*srds_recover)(const struct lys_module *mod, sr_datastore_t ds);
  */
 typedef int (*srds_load)(const struct lys_module *mod, sr_datastore_t ds, const char **xpaths, uint32_t xpath_count,
         struct lyd_node **mod_data);
+
+/**
+ * @brief Load cached running datastore data of specific modules. Optional callback.
+ *
+ * Data must always be connection-specific because each connection uses its own libyang context.
+ *
+ * @param[in] cid Connection ID of the cache.
+ * @param[in] mods Array of modules.
+ * @param[in] mod_count Number of @p mods.
+ * @param[out] data Cached data of at least all the @p mods.
+ * @return ::SR_ERR_OK on success;
+ * @return Sysrepo error value on error.
+ */
+typedef int (*srds_running_load_cached)(sr_cid_t cid, const struct lys_module **mods, uint32_t mod_count,
+        const struct lyd_node **data);
+
+/**
+ * @brief Flush cached data. Optional callback.
+ *
+ * @param[in] cid Connection ID of the cache.
+ */
+typedef void (*srds_running_flush_cached)(sr_cid_t cid);
 
 /**
  * @brief Copy data of a module from source datastore to the target datastore.
@@ -191,6 +213,8 @@ struct srplg_ds_s {
     srds_store store_cb;            /**< callback for storing module data */
     srds_recover recover_cb;        /**< callback for stored module data recovery */
     srds_load load_cb;              /**< callback for loading stored module data */
+    srds_running_load_cached running_load_cached_cb;    /**< callback for loading cached running module data */
+    srds_running_flush_cached running_flush_cached_cb;  /**< callback for flushin cached running module data */
     srds_copy copy_cb;              /**< callback for copying stored module data from one datastore to another */
     srds_update_differ update_differ_cb;            /**< callback for checking for data difference after an update */
     srds_candidate_modified candidate_modified_cb;  /**< callback for checking whether candidate was modified */

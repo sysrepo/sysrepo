@@ -88,6 +88,11 @@ typedef void (*sr_log_cb)(sr_log_level_t level, const char *message);
 typedef struct sr_conn_ctx_s sr_conn_ctx_t;
 
 /**
+ * @brief Connection ID.
+ */
+typedef uint32_t sr_cid_t;
+
+/**
  * @brief Sysrepo session on a connection.
  */
 typedef struct sr_session_ctx_s sr_session_ctx_t;

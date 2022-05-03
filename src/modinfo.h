@@ -44,7 +44,7 @@ struct sr_mod_info_s {
     sr_datastore_t ds2;         /**< Secondary datastore valid only if differs from the main one. Used only for locking. */
     struct lyd_node *diff;      /**< Diff with previous data. */
     struct lyd_node *data;      /**< Data tree. */
-    int data_cached;            /**< Whether the data are actually in cache (conn cache READ lock is held). */
+    int data_cached;            /**< Whether the data are actually cached. */
     sr_conn_ctx_t *conn;        /**< Associated connection. */
 
     struct sr_mod_info_mod_s {
