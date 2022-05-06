@@ -1201,7 +1201,7 @@ sr_parse_module(struct ly_ctx *ly_ctx, const char *schema_path, LYS_INFORMAT for
 
     /* parse the module */
     if (ly_in_new_filepath(schema_path, 0, &in)) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to parse \"%s\".", schema_path);
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to create input handler for \"%s\".", schema_path);
         goto cleanup;
     }
     if (lys_parse(ly_ctx, in, format, features, (struct lys_module **)ly_mod)) {
