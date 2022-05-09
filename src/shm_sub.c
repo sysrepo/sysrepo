@@ -2128,6 +2128,7 @@ sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, struct
     sr_mod_notif_sub_t *notif_subs;
     char *notif_lyb = NULL;
     uint32_t notif_sub_count, notif_lyb_len, request_id, i;
+    sr_cid_t sub_cid;
     sr_multi_sub_shm_t *multi_sub_shm;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER, shm_data_sub = SR_SHM_INITIALIZER;
 
@@ -2141,7 +2142,7 @@ sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, struct
     }
 
     /* check that there is a subscriber */
-    if ((err_info = sr_notif_find_subscriber(conn, ly_mod->name, &notif_subs, &notif_sub_count))) {
+    if ((err_info = sr_notif_find_subscriber(conn, ly_mod->name, &notif_subs, &notif_sub_count, &sub_cid))) {
         goto cleanup_ext_unlock;
     }
 
@@ -2172,9 +2173,9 @@ sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, struct
         goto cleanup_ext_sub_unlock;
     }
 
-    /* write the notification */
+    /* write the notification, use first subscriber CID - works better than the originator */
     request_id = multi_sub_shm->request_id + 1;
-    if ((err_info = sr_shmsub_multi_notify_write_event(multi_sub_shm, conn->cid, request_id, 0, SR_SUB_EV_NOTIF,
+    if ((err_info = sr_shmsub_multi_notify_write_event(multi_sub_shm, sub_cid, request_id, 0, SR_SUB_EV_NOTIF,
             orig_name, orig_data, notif_sub_count, &shm_data_sub, &notif_ts, notif_lyb, notif_lyb_len, ly_mod->name))) {
         goto cleanup_ext_sub_unlock;
     }

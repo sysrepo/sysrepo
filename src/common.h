@@ -367,10 +367,11 @@ sr_error_info_t *sr_subscr_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, s
  * @param[in] mod_name Module name.
  * @param[out] notif_subs Notification subscriptions.
  * @param[out] notif_sub_count Number of subscribers.
+ * @param[out] sub_cid Optional CID of the first subscriber.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif_sub_t **notif_subs,
-        uint32_t *notif_sub_count);
+        uint32_t *notif_sub_count, sr_cid_t *sub_cid);
 
 /**
  * @brief Call notification callback for a notification.

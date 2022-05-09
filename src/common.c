@@ -1293,10 +1293,11 @@ cleanup:
 
 sr_error_info_t *
 sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif_sub_t **notif_subs,
-        uint32_t *notif_sub_count)
+        uint32_t *notif_sub_count, sr_cid_t *sub_cid)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
+    sr_cid_t cid = 0;
     uint32_t i;
 
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), mod_name);
@@ -1323,10 +1324,16 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
             continue;
         }
 
+        if (!cid) {
+            cid = (*notif_subs)[i].cid;
+        }
         ++(*notif_sub_count);
         ++i;
     }
 
+    if (sub_cid) {
+        *sub_cid = cid;
+    }
     return NULL;
 }
 

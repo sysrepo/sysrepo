@@ -2515,7 +2515,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     }
 
     /* get subscriber count */
-    err_info = sr_notif_find_subscriber(mod_info->conn, "ietf-netconf-notifications", &notif_subs, &notif_sub_count);
+    err_info = sr_notif_find_subscriber(mod_info->conn, "ietf-netconf-notifications", &notif_subs, &notif_sub_count, NULL);
 
     /* EXT READ UNLOCK */
     sr_shmext_conn_remap_unlock(mod_info->conn, SR_LOCK_READ, 0, __func__);
