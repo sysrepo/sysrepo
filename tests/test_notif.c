@@ -476,7 +476,8 @@ test_oper_dep(void **state)
     ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
-    assert_string_equal(err_info->err[0].message, "Invalid instance-identifier \"/ops:cont/list1[k='key']/cont2\" value - required instance not found.");
+    assert_string_equal(err_info->err[0].message, "Invalid instance-identifier \"/ops:cont/list1[k='key']/cont2\" value "
+            "- required instance not found. (Schema location /ops:notif3/list2/l15, data location /ops:notif3/list2[k='k']/l15.)");
     assert_string_equal(err_info->err[1].message, "Notification validation failed.");
 
     /* subscribe to required ops oper data and some non-required */
@@ -492,7 +493,8 @@ test_oper_dep(void **state)
     ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
-    assert_string_equal(err_info->err[0].message, "Invalid leafref value \"l1-val\" - no existing target instance \"/or:l1\".");
+    assert_string_equal(err_info->err[0].message, "Invalid leafref value \"l1-val\" - no existing target instance \"/or:l1\". "
+            "(Schema location /ops:notif3/list2/l14, data location /ops:notif3/list2[k='k']/l14.)");
     assert_string_equal(err_info->err[1].message, "Notification validation failed.");
 
     /* subscribe to required ops-ref oper data and some non-required */
@@ -522,9 +524,9 @@ test_oper_dep(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
     ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(err_info->err_count, 2);
-    assert_string_equal(err_info->err[0].message, "Not found node \"l101\" in path.");
-    assert_string_equal(err_info->err[1].message, "Invalid instance-identifier \"/ops-ref:l101\" value - semantic error.");
+    assert_int_equal(err_info->err_count, 1);
+    assert_string_equal(err_info->err[0].message, "Invalid instance-identifier \"/ops-ref:l101\" value - semantic error. "
+            "(Schema location /ops:cont/cont3/notif2/l13.)");
 
     /* correct the instance-identifier */
     input[0].data.string_val = "/ops-ref:l2";
@@ -1549,7 +1551,7 @@ main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_input_parameters),
-        /* TODO cmocka_unit_test_teardown(test_oper_dep, clear_ops), */
+        cmocka_unit_test_teardown(test_oper_dep, clear_ops),
         cmocka_unit_test_setup(test_stop, clear_ops_notif),
         cmocka_unit_test_setup_teardown(test_replay_simple, clear_ops_notif, clear_ops),
         cmocka_unit_test_setup(test_replay_interval, create_ops_notif),
@@ -1561,7 +1563,6 @@ main(void)
         cmocka_unit_test(test_dup_inst),
         cmocka_unit_test(test_wait),
     };
-    (void)test_oper_dep;
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
     test_log_init();
