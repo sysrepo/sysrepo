@@ -1723,18 +1723,24 @@ sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *d
 }
 
 sr_error_info_t *
-sr_ly_ctx_init(ly_ext_data_clb ext_cb, void *ext_cb_data, struct ly_ctx **ly_ctx)
+sr_ly_ctx_init(sr_conn_options_t opts, ly_ext_data_clb ext_cb, void *ext_cb_data, struct ly_ctx **ly_ctx)
 {
     sr_error_info_t *err_info = NULL;
     char *yang_dir;
+    uint16_t ctx_opts;
     LY_ERR lyrc;
+
+    /* context options */
+    ctx_opts = LY_CTX_NO_YANGLIBRARY | LY_CTX_DISABLE_SEARCHDIR_CWD | LY_CTX_REF_IMPLEMENTED | LY_CTX_EXPLICIT_COMPILE;
+    if (opts & SR_CONN_CTX_SET_PRIV_PARSED) {
+        ctx_opts |= LY_CTX_SET_PRIV_PARSED;
+    }
 
     /* create new context */
     if ((err_info = sr_path_yang_dir(&yang_dir))) {
         goto cleanup;
     }
-    lyrc = ly_ctx_new(yang_dir, LY_CTX_NO_YANGLIBRARY | LY_CTX_DISABLE_SEARCHDIR_CWD | LY_CTX_REF_IMPLEMENTED |
-            LY_CTX_EXPLICIT_COMPILE, ly_ctx);
+    lyrc = ly_ctx_new(yang_dir, ctx_opts, ly_ctx);
     free(yang_dir);
     if (lyrc) {
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to create a new libyang context.");

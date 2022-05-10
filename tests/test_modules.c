@@ -43,7 +43,8 @@ setup_f(void **state)
     st = calloc(1, sizeof *st);
     *state = st;
 
-    if (sr_connect(0, &st->conn) != SR_ERR_OK) {
+    /* just test using the option */
+    if (sr_connect(SR_CONN_CTX_SET_PRIV_PARSED, &st->conn) != SR_ERR_OK) {
         return 1;
     }
 

@@ -102,8 +102,9 @@ typedef struct sr_session_ctx_s sr_session_ctx_t;
  */
 typedef enum {
     SR_CONN_DEFAULT = 0,            /**< No special behaviour. */
-    SR_CONN_CACHE_RUNNING = 1       /**< Always cache running datastore data which makes mainly repeated retrieval of data
+    SR_CONN_CACHE_RUNNING = 1,      /**< Always cache running datastore data which makes mainly repeated retrieval of data
                                          much faster. Affects all sessions created on this connection. */
+    SR_CONN_CTX_SET_PRIV_PARSED = 2 /**< Use LY_CTX_SET_PRIV_PARSED option for the connection libyang context. */
 } sr_conn_flag_t;
 
 /**
