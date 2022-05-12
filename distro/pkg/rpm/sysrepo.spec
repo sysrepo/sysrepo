@@ -71,6 +71,7 @@ install -D -p -m 0644 %{SOURCE2} %{buildroot}%{_sysusersdir}/sysrepo.conf
 install -D -p -m 0644 %{SOURCE3} %{buildroot}%{_sysusersdir}/sysrepo-plugind.conf
 install -D -p -m 0644 %{SOURCE4} %{buildroot}%{_unitdir}/sysrepo-plugind.service
 mkdir -p %{buildroot}%{_libdir}/sysrepo-plugind/plugins
+mkdir -p -m=770 %{buildroot}%{_sysconfdir}/sysrepo
 
 %pre
 %if 0%{?fedora}
@@ -78,10 +79,6 @@ mkdir -p %{buildroot}%{_libdir}/sysrepo-plugind/plugins
 %else
     getent group sysrepo 1>/dev/null || groupadd -r sysrepo
 %endif
-
-%post
-mkdir -p -m=770 /etc/sysrepo
-chown root:sysrepo /etc/sysrepo
 
 %postun
 # sysrepo apps shared memory
@@ -106,7 +103,8 @@ rm -rf /dev/shm/srsub_*
 %license LICENSE
 %doc README.md
 %{_sysusersdir}/sysrepo.conf
-%{_libdir}/libsysrepo.so*
+%{_libdir}/libsysrepo.so.7*
+%attr(0770,root,sysrepo) %{_sysconfdir}/sysrepo
 
 %files devel
 %{_libdir}/libsysrepo.so
