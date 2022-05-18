@@ -453,11 +453,10 @@ srpds_lyb_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uint
     struct srlyb_cache_conn_s *cache = NULL;
     struct srlyb_cache_mod_s *cmod;
     struct inotify_event event;
-    struct lyd_node *mod_data;
     char *path = NULL;
     uint32_t i, j;
     void *mem;
-    int rc = SR_ERR_OK;
+    int rc = SR_ERR_OK, cache_update = 0;
 
     /* find the connection cache */
     for (i = 0; i < data_cache.cache_count; ++i) {
@@ -557,6 +556,45 @@ srpds_lyb_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uint
             }
         }
 
+        if (!cmod->current) {
+            /* module data in the cache need to be updated first */
+            cache_update = 1;
+        }
+    }
+
+cleanup:
+    free(path);
+    if (!rc) {
+        if (cache_update) {
+            /* cache needs to be updated first */
+            rc = SR_ERR_OPERATION_FAILED;
+        } else {
+            *data = cache->data;
+        }
+    }
+    return rc;
+}
+
+static int
+srpds_lyb_running_update_cached(sr_cid_t cid, const struct lys_module **UNUSED(mods), uint32_t UNUSED(mod_count))
+{
+    struct srlyb_cache_conn_s *cache = NULL;
+    struct srlyb_cache_mod_s *cmod;
+    struct lyd_node *mod_data;
+    uint32_t i;
+    int rc = SR_ERR_OK;
+
+    /* find the connection cache */
+    for (i = 0; i < data_cache.cache_count; ++i) {
+        if (data_cache.caches[i].cid == cid) {
+            cache = &data_cache.caches[i];
+            break;
+        }
+    }
+    assert(cache);
+
+    for (i = 0; i < cache->mod_count; ++i) {
+        cmod = &cache->mods[i];
         if (cmod->current) {
             /* module data in the cache are current */
             continue;
@@ -573,12 +611,12 @@ srpds_lyb_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uint
         if (mod_data) {
             lyd_insert_sibling(cache->data, mod_data, &cache->data);
         }
+
+        /* data now current */
+        cmod->current = 1;
     }
 
-    *data = cache->data;
-
 cleanup:
-    free(path);
     return rc;
 }
 
@@ -947,9 +985,11 @@ const struct srplg_ds_s srpds_lyb = {
     .load_cb = srpds_lyb_load,
 #ifdef SR_HAVE_INOTIFY
     .running_load_cached_cb = srpds_lyb_running_load_cached,
+    .running_update_cached_cb = srpds_lyb_running_update_cached,
     .running_flush_cached_cb = srpds_lyb_running_flush_cached,
 #else
     .running_load_cached_cb = NULL,
+    .running_update_cached_cb = NULL,
     .running_flush_cached_cb = NULL,
 #endif
     .copy_cb = srpds_lyb_copy,

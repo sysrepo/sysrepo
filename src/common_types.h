@@ -121,6 +121,8 @@ struct sr_conn_ctx_s {
     } *ds_handles;                  /**< Datastore implementation handles. */
     uint32_t ds_handle_count;       /**< Datastore implementaion handle count. */
 
+    sr_rwlock_t running_cache_lock; /**< Session-shared lock for accessing running data cache. */
+
     struct sr_ntf_handle_s {
         void *dl_handle;            /**< Handle from dlopen(3) call. */
         const struct srplg_ntf_s *plugin;   /**< Notification plugin. */

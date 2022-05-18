@@ -79,6 +79,9 @@ struct srplg_ntf_s;
 /** timeout for locking connection remap lock; maximum time it can be continuously read/written to (ms) */
 #define SR_CONN_REMAP_LOCK_TIMEOUT 10000
 
+/** timeout for write-locking module cache (ms) */
+#define SR_CONN_RUN_CACHE_LOCK_TIMEOUT 1000
+
 /** timeout for locking (data of) a module; maximum time a module write lock is expected to be held (ms) */
 #define SR_MOD_LOCK_TIMEOUT 5000
 
@@ -90,9 +93,6 @@ struct srplg_ntf_s;
 
 /** timeout for locking SHM module/RPC subscriptions; maxmum time full event processing may take (ms) */
 #define SR_SHMEXT_SUB_LOCK_TIMEOUT 15000
-
-/** timeout for locking module cache (ms) */
-#define SR_MOD_CACHE_LOCK_TIMEOUT 10000
 
 /** default timeout for change subscription callback (ms) */
 #define SR_CHANGE_CB_TIMEOUT 5000

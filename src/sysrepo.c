@@ -102,13 +102,18 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     if ((err_info = sr_ds_handle_init(&conn->ds_handles, &conn->ds_handle_count))) {
         goto error6;
     }
-    if ((err_info = sr_ntf_handle_init(&conn->ntf_handles, &conn->ntf_handle_count))) {
+    if ((err_info = sr_rwlock_init(&conn->running_cache_lock, 0))) {
         goto error7;
+    }
+    if ((err_info = sr_ntf_handle_init(&conn->ntf_handles, &conn->ntf_handle_count))) {
+        goto error8;
     }
 
     *conn_p = conn;
     return NULL;
 
+error8:
+    sr_rwlock_destroy(&conn->running_cache_lock);
 error7:
     sr_ds_handle_free(conn->ds_handles, conn->ds_handle_count);
 error6:
@@ -152,6 +157,7 @@ sr_conn_free(sr_conn_ctx_t *conn)
     sr_rwlock_destroy(&conn->ext_remap_lock);
     sr_shm_clear(&conn->ext_shm);
     sr_ds_handle_free(conn->ds_handles, conn->ds_handle_count);
+    sr_rwlock_destroy(&conn->running_cache_lock);
     sr_ntf_handle_free(conn->ntf_handles, conn->ntf_handle_count);
 
     free(conn);
