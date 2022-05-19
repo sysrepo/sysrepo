@@ -818,29 +818,53 @@ srpds_lyb_candidate_reset(const struct lys_module *mod)
 static int
 srpds_lyb_access_set(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm)
 {
-    int rc = SR_ERR_OK;
+    int rc = SR_ERR_OK, file_exists;
     char *path = NULL;
 
     assert(mod && (owner || group || perm));
 
-    /* get correct path */
+    /* get correct path to the datastore file */
+    if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
+        goto cleanup;
+    }
+
     switch (ds) {
     case SR_DS_STARTUP:
-        if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
-            goto cleanup;
-        }
+        /* single file that must exist */
+        file_exists = 1;
         break;
     case SR_DS_RUNNING:
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
-        if ((rc = srlyb_get_perm_path(srpds_name, mod->name, ds, &path))) {
-            goto cleanup;
-        }
+        /* datastore file may not exist */
+        file_exists = srlyb_file_exists(srpds_name, path);
         break;
     }
 
     /* update file permissions and owner */
-    rc = srlyb_chmodown(srpds_name, path, owner, group, perm);
+    if (file_exists && (rc = srlyb_chmodown(srpds_name, path, owner, group, perm))) {
+        goto cleanup;
+    }
+
+    switch (ds) {
+    case SR_DS_STARTUP:
+        /* no permission file */
+        break;
+    case SR_DS_RUNNING:
+    case SR_DS_CANDIDATE:
+    case SR_DS_OPERATIONAL:
+        /* volatile datastore permission file */
+        free(path);
+        if ((rc = srlyb_get_perm_path(srpds_name, mod->name, ds, &path))) {
+            goto cleanup;
+        }
+
+        /* update file permissions and owner */
+        if ((rc = srlyb_chmodown(srpds_name, path, owner, group, perm))) {
+            goto cleanup;
+        }
+        break;
+    }
 
 cleanup:
     free(path);

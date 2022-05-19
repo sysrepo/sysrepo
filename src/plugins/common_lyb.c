@@ -652,6 +652,8 @@ srlyb_get_perm_path(const char *plg_name, const char *mod_name, sr_datastore_t d
 {
     int r = 0;
 
+    *path = NULL;
+
     switch (ds) {
     case SR_DS_STARTUP:
         return SR_ERR_INTERNAL;
