@@ -98,8 +98,9 @@ typedef int (*srds_load)(const struct lys_module *mod, sr_datastore_t ds, const 
 /**
  * @brief Load cached running datastore data of specific modules. Optional callback.
  *
- * For the duration of this callback and while @p data are being used, a READ lock for the connection is being held.
- * Data must always be connection-specific because each connection uses its own libyang context.
+ * For the duration of this callback and while @p data are being used, a READ lock for the connection is being held
+ * meaning it can be called concurrently. Data must always be connection-specific because each connection uses its
+ * own libyang context.
  *
  * @param[in] cid Connection ID of the cache.
  * @param[in] mods Array of modules.

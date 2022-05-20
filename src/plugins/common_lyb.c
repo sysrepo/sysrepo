@@ -4,8 +4,8 @@
  * @brief common routines for LYB plugins
  *
  * @copyright
- * Copyright (c) 2021 Deutsche Telekom AG.
- * Copyright (c) 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2022 Deutsche Telekom AG.
+ * Copyright (c) 2021 - 2022 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
+#include <pthread.h>
 #include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,7 +38,7 @@
 #include "config.h"
 #include "sysrepo.h"
 
-struct srlyb_cache_s data_cache;
+struct srlyb_cache_s data_cache = {.lock = PTHREAD_RWLOCK_INITIALIZER};
 
 int
 srlyb_writev(const char *plg_name, int fd, struct iovec *iov, int iovcnt)

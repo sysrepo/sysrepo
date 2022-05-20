@@ -16,6 +16,7 @@
 
 #define _GNU_SOURCE
 
+#include <pthread.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -148,6 +149,78 @@ test_cached_datastore(void **state)
     /* switch DS back */
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
+}
+
+/* TEST */
+static void *
+cached_thread1(void *arg)
+{
+    sr_conn_ctx_t *conn = arg;
+    sr_session_ctx_t *sess;
+    sr_data_t *data;
+    int ret;
+
+    ret = sr_session_start(conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_data(sess, "/simple:ac1/acl1", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_release_data(data);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+cached_thread2(void *arg)
+{
+    sr_conn_ctx_t *conn = arg;
+    sr_session_ctx_t *sess;
+    sr_data_t *data;
+    int ret;
+
+    ret = sr_session_start(conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_data(sess, "/simple:ac1/acd1", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_release_data(data);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_cached_thread(void **state)
+{
+    const uint32_t loop_count = 3;
+
+    struct state *st = (struct state *)*state;
+    sr_conn_ctx_t *conn;
+    uint32_t i;
+    pthread_t tid[2];
+    int ret;
+
+    /* set some data to read */
+    ret = sr_set_item_str(st->sess, "/simple:ac1/acl1[acs1='key1']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/simple:ac1/acl1[acs1='key2']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    for (i = 0; i < loop_count; ++i) {
+        ret = sr_connect(SR_CONN_CACHE_RUNNING, &conn);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        pthread_create(&tid[0], NULL, cached_thread1, conn);
+        pthread_create(&tid[1], NULL, cached_thread2, conn);
+
+        pthread_join(tid[0], NULL);
+        pthread_join(tid[1], NULL);
+
+        sr_disconnect(conn);
+    }
 }
 
 /* TEST */
@@ -481,6 +554,7 @@ main(void)
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup_teardown(test_invalid, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_cached_datastore, setup_cached_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_cached_thread, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_enable_cached_get, setup_cached_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_no_read_access, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_no_read_access, setup_cached_f, teardown_f),

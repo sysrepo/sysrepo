@@ -21,12 +21,14 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/inotify.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <libyang/libyang.h>
@@ -446,46 +448,35 @@ cleanup:
 
 #ifdef SR_HAVE_INOTIFY
 
+/**
+ * @brief Mark outdated cached data for specific modules.
+ *
+ * @param[in] cache Cache to use.
+ * @param[in] mods Array of modules.
+ * @param[in] mod_count Count of @p mods.
+ * @param[out] cache_update Whether any of the module data needs to be updated.
+ * @return SR_ERR value.
+ */
 static int
-srpds_lyb_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uint32_t mod_count,
-        const struct lyd_node **data)
+srpds_lyb_running_load_cached_mods(struct srlyb_cache_conn_s *cache, const struct lys_module **mods, uint32_t mod_count,
+        int *cache_update)
 {
-    struct srlyb_cache_conn_s *cache = NULL;
     struct srlyb_cache_mod_s *cmod;
     struct inotify_event event;
+    struct timespec ts_timeout;
     char *path = NULL;
     uint32_t i, j;
     void *mem;
-    int rc = SR_ERR_OK, cache_update = 0;
+    int r, rc = SR_ERR_OK;
 
-    /* find the connection cache */
-    for (i = 0; i < data_cache.cache_count; ++i) {
-        if (data_cache.caches[i].cid == cid) {
-            cache = &data_cache.caches[i];
-            break;
-        }
-    }
-    if (!cache) {
-        /* create cache for this connection */
-        mem = realloc(data_cache.caches, (i + 1) * sizeof *data_cache.caches);
-        if (!mem) {
-            SRPLG_LOG_ERR(srpds_name, "Memory allocation failed.");
-            rc = SR_ERR_NO_MEMORY;
-            goto cleanup;
-        }
-        data_cache.caches = mem;
+    /* init timeout to 1s */
+    clock_gettime(CLOCK_REALTIME, &ts_timeout);
+    ++ts_timeout.tv_sec;
 
-        cache = &data_cache.caches[i];
-        memset(cache, 0, sizeof *cache);
-        ++data_cache.cache_count;
-
-        cache->cid = cid;
-        cache->inot_fd = inotify_init1(IN_NONBLOCK);
-        if (cache->inot_fd == -1) {
-            SRPLG_LOG_ERR(srpds_name, "Inotify_init failed (%s).", strerror(errno));
-            rc = SR_ERR_SYS;
-            goto cleanup;
-        }
+    /* MODS LOCK */
+    if ((r = pthread_mutex_timedlock(&cache->lock, &ts_timeout))) {
+        SRPLG_LOG_ERR(srpds_name, "Cache mods lock failed (%s).", strerror(r));
+        return SR_ERR_SYS;
     }
 
     /* check for inotify changes of module data */
@@ -504,7 +495,7 @@ srpds_lyb_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uint
     if (errno != EAGAIN) {
         SRPLG_LOG_ERR(srpds_name, "Inotify read failed (%s).", strerror(errno));
         rc = SR_ERR_SYS;
-        goto cleanup;
+        goto cleanup_unlock;
     }
 
     for (i = 0; i < mod_count; ++i) {
@@ -522,7 +513,7 @@ srpds_lyb_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uint
             if (!mem) {
                 SRPLG_LOG_ERR(srpds_name, "Memory allocation failed.");
                 rc = SR_ERR_NO_MEMORY;
-                goto cleanup;
+                goto cleanup_unlock;
             }
             cache->mods = mem;
 
@@ -539,7 +530,7 @@ srpds_lyb_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uint
             /* prepare correct file path */
             free(path);
             if ((rc = srlyb_get_path(srpds_name, mods[i]->name, SR_DS_RUNNING, &path))) {
-                goto cleanup;
+                goto cleanup_unlock;
             }
 
             /* create a watch for the module data file */
@@ -548,7 +539,7 @@ srpds_lyb_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uint
                 if (errno != ENOENT) {
                     SRPLG_LOG_ERR(srpds_name, "Inotify_add_watch failed (%s).", strerror(errno));
                     rc = SR_ERR_SYS;
-                    goto cleanup;
+                    goto cleanup_unlock;
                 } /* else no data so consider them current */
             } else {
                 /* some data exist */
@@ -558,12 +549,105 @@ srpds_lyb_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uint
 
         if (!cmod->current) {
             /* module data in the cache need to be updated first */
-            cache_update = 1;
+            *cache_update = 1;
         }
     }
 
-cleanup:
+cleanup_unlock:
+    /* MODS UNLOCK */
+    pthread_mutex_unlock(&cache->lock);
+
     free(path);
+    return rc;
+}
+
+static int
+srpds_lyb_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uint32_t mod_count,
+        const struct lyd_node **data)
+{
+    struct srlyb_cache_conn_s *cache = NULL;
+    struct timespec ts_timeout;
+    uint32_t i;
+    void *mem;
+    int r, rc = SR_ERR_OK, cache_update = 0;
+
+    /* init timeout to 1s */
+    clock_gettime(CLOCK_REALTIME, &ts_timeout);
+    ++ts_timeout.tv_sec;
+
+    /* CACHE READ LOCK */
+    if ((r = pthread_rwlock_timedrdlock(&data_cache.lock, &ts_timeout))) {
+        SRPLG_LOG_ERR(srpds_name, "Cache read lock failed (%s).", strerror(r));
+        rc = SR_ERR_SYS;
+        goto cleanup;
+    }
+
+    /* find the connection cache */
+    for (i = 0; i < data_cache.cache_count; ++i) {
+        if (data_cache.caches[i].cid == cid) {
+            cache = &data_cache.caches[i];
+            break;
+        }
+    }
+    if (!cache) {
+        /* CACHE UNLOCK */
+        pthread_rwlock_unlock(&data_cache.lock);
+
+        /* CACHE WRITE LOCK */
+        if ((r = pthread_rwlock_timedwrlock(&data_cache.lock, &ts_timeout))) {
+            SRPLG_LOG_ERR(srpds_name, "Cache read lock failed (%s).", strerror(r));
+            rc = SR_ERR_SYS;
+            goto cleanup;
+        }
+
+        /* create cache for this connection */
+        mem = realloc(data_cache.caches, (i + 1) * sizeof *data_cache.caches);
+        if (!mem) {
+            SRPLG_LOG_ERR(srpds_name, "Memory allocation failed.");
+            rc = SR_ERR_NO_MEMORY;
+            goto cleanup_unlock;
+        }
+        data_cache.caches = mem;
+
+        cache = &data_cache.caches[i];
+        memset(cache, 0, sizeof *cache);
+        ++data_cache.cache_count;
+
+        cache->cid = cid;
+        if ((r = pthread_mutex_init(&cache->lock, NULL))) {
+            SRPLG_LOG_ERR(srpds_name, "Initializing RW lock failed (%s).", strerror(r));
+            rc = SR_ERR_SYS;
+            goto cleanup_unlock;
+        }
+        cache->inot_fd = inotify_init1(IN_NONBLOCK);
+        if (cache->inot_fd == -1) {
+            SRPLG_LOG_ERR(srpds_name, "Inotify_init failed (%s).", strerror(errno));
+            rc = SR_ERR_SYS;
+            goto cleanup_unlock;
+        }
+
+        /* CACHE UNLOCK */
+        pthread_rwlock_unlock(&data_cache.lock);
+
+        /* CACHE READ LOCK */
+        if ((r = pthread_rwlock_timedrdlock(&data_cache.lock, &ts_timeout))) {
+            SRPLG_LOG_ERR(srpds_name, "Cache read lock failed (%s).", strerror(r));
+            rc = SR_ERR_SYS;
+            goto cleanup;
+        }
+
+        /* caches could have been realloc'd */
+        cache = &data_cache.caches[i];
+    }
+
+    /* check module data */
+    rc = srpds_lyb_running_load_cached_mods(cache, mods, mod_count, &cache_update);
+
+cleanup_unlock:
+    /* CACHE UNLOCK */
+    pthread_rwlock_unlock(&data_cache.lock);
+
+cleanup:
     if (!rc) {
         if (cache_update) {
             /* cache needs to be updated first */
@@ -640,6 +724,7 @@ srpds_lyb_running_flush_cached(sr_cid_t cid)
     /* free the connection cache */
     lyd_free_siblings(cache->data);
     free(cache->mods);
+    pthread_mutex_destroy(&cache->lock);
     close(cache->inot_fd);
 
     /* consolidate the cache */
