@@ -70,7 +70,6 @@ Executable tools for sysrepo:
 install -D -p -m 0644 %{SOURCE2} %{buildroot}%{_sysusersdir}/sysrepo.conf
 install -D -p -m 0644 %{SOURCE3} %{buildroot}%{_sysusersdir}/sysrepo-plugind.conf
 install -D -p -m 0644 %{SOURCE4} %{buildroot}%{_unitdir}/sysrepo-plugind.service
-mkdir -p %{buildroot}%{_libdir}/sysrepo-plugind/plugins
 mkdir -p -m=770 %{buildroot}%{_sysconfdir}/sysrepo
 
 %pre
