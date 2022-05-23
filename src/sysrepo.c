@@ -1814,6 +1814,11 @@ sr_set_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
             (!owner && !group && !perm), NULL, err_info);
     mod_shm = SR_CONN_MOD_SHM(conn);
 
+    if (perm & SR_UMASK) {
+        SR_LOG_WRN("Ignoring permission bits %03o forbidden by Sysrepo umask.", SR_UMASK);
+        perm &= ~SR_UMASK;
+    }
+
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
         return sr_api_ret(NULL, err_info);
