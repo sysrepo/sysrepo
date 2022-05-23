@@ -1818,6 +1818,14 @@ sr_set_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
         SR_LOG_WRN("Ignoring permission bits %03o forbidden by Sysrepo umask.", SR_UMASK);
         perm &= ~SR_UMASK;
     }
+    if (group && strlen(SR_GROUP) && strcmp(group, SR_GROUP)) {
+        SR_LOG_WRN("Ignoring group \"%s\" because it differs from the Sysrepo group \"%s\".", group, SR_GROUP);
+        group = NULL;
+    }
+    if (!owner && !group && !perm) {
+        /* nothing left to set */
+        return sr_api_ret(NULL, NULL);
+    }
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
