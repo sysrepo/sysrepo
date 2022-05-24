@@ -282,6 +282,7 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
+    uint32_t request_id;
     int ret;
 
     /* WRITE LOCK */
@@ -293,6 +294,9 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
         /* instead of wating, try to recover the event immediately */
         sr_shmsub_recover(sub_shm);
     }
+
+    /* remember current request_id */
+    request_id = sub_shm->request_id;
 
     assert(sub_shm->lock.writer == cid);
     /* FAKE WRITE UNLOCK */
@@ -320,7 +324,10 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
     }
 
     if (ret) {
-        if ((ret == ETIMEDOUT) && (sub_shm->event && (sub_shm->event != lock_event))) {
+        if ((ret == ETIMEDOUT) && (!sub_shm->event || (sub_shm->event == lock_event)) && (request_id == sub_shm->request_id)) {
+            /* even though the timeout has elapsed, the event was handled so continue normally */
+            goto event_handled;
+        } else if ((ret == ETIMEDOUT) && (sub_shm->event && (sub_shm->event != lock_event))) {
             /* timeout */
             sr_errinfo_new(&err_info, SR_ERR_TIME_OUT,
                     "Waiting for subscription of \"%s\" failed, previous event \"%s\" with ID %" PRIu32 " was not processed.",
@@ -335,6 +342,7 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
         return err_info;
     }
 
+event_handled:
     /* we have write lock and the expected event */
     return NULL;
 }
@@ -392,7 +400,10 @@ sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int 
     /* we are holding the mutex but no lock flags are set */
 
     if (ret) {
-        if ((ret == ETIMEDOUT) && (sub_shm->event && !SR_IS_NOTIFY_EVENT(sub_shm->event))) {
+        if ((ret == ETIMEDOUT) && SR_IS_NOTIFY_EVENT(sub_shm->event) && (request_id == sub_shm->request_id)) {
+            /* even though the timeout has elapsed, the event was handled so continue normally */
+            goto event_handled;
+        } else if ((ret == ETIMEDOUT) && (sub_shm->event && !SR_IS_NOTIFY_EVENT(sub_shm->event))) {
             /* WRITE LOCK, chances are we will get it if we ignore the event */
             if (!(err_info = sr_sub_rwlock_has_mutex(&sub_shm->lock, timeout_ms, SR_LOCK_WRITE, cid, __func__, NULL, NULL))) {
                 /* event timeout */
@@ -420,6 +431,7 @@ sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int 
         return err_info;
     }
 
+event_handled:
     /* FAKE WRITE LOCK */
     sub_shm->lock.writer = cid;
 
