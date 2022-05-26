@@ -753,13 +753,13 @@ cleanup:
  * @param[in] orig_data Event originator data.
  * @param[in] conn Connection to use.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
- * @param[in] opts Get oper data options.
+ * @param[in] get_oper_opts Get oper data options.
  * @param[in,out] data Operational data tree.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name, const void *orig_data, sr_conn_ctx_t *conn,
-        uint32_t timeout_ms, sr_get_oper_options_t opts, struct lyd_node **data)
+        uint32_t timeout_ms, sr_get_oper_flag_t get_oper_opts, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_oper_sub_t *shm_sub;
@@ -770,7 +770,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
     struct ly_set *set = NULL;
     struct lyd_node *edit = NULL, *oper_data;
 
-    if (!(opts & SR_OPER_NO_STORED)) {
+    if (!(get_oper_opts & SR_OPER_NO_STORED)) {
         /* get stored operational edit */
         if ((err_info = sr_module_file_oper_data_load(mod, &edit))) {
             return err_info;
@@ -791,7 +791,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
         }
     }
 
-    if (opts & SR_OPER_NO_SUBS) {
+    if (get_oper_opts & SR_OPER_NO_SUBS) {
         /* do not get data from subscribers */
         return NULL;
     }
@@ -830,8 +830,8 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
         }
 
         /* useless to retrieve configuration data, state data */
-        if (((shm_sub->sub_type == SR_OPER_SUB_CONFIG) && (opts & SR_OPER_NO_CONFIG)) ||
-                ((shm_sub->sub_type == SR_OPER_SUB_STATE) && (opts & SR_OPER_NO_STATE))) {
+        if (((shm_sub->sub_type == SR_OPER_SUB_CONFIG) && (get_oper_opts & SR_OPER_NO_CONFIG)) ||
+                ((shm_sub->sub_type == SR_OPER_SUB_STATE) && (get_oper_opts & SR_OPER_NO_STATE))) {
             ++i;
             continue;
         }
@@ -948,14 +948,14 @@ cleanup_opersub_unlock:
  * @param[in] conn Connection to use.
  * @param[in,out] data Configuration data, are unlinked from if @p dup is 0.
  * @param[in] mod Mod info module to process.
- * @param[in] opts Get oper data options.
+ * @param[in] get_oper_opts Get oper data options.
  * @param[in] dup Whether to duplicate data or only unlink.
  * @param[out] enabled_mod_data Enabled operational data of the module.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_module_oper_data_get_enabled(sr_conn_ctx_t *conn, struct lyd_node **data, struct sr_mod_info_mod_s *mod,
-        sr_get_oper_options_t opts, int dup, struct lyd_node **enabled_mod_data)
+        sr_get_oper_flag_t get_oper_opts, int dup, struct lyd_node **enabled_mod_data)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_change_sub_t *shm_changesubs;
@@ -1029,7 +1029,7 @@ sr_module_oper_data_get_enabled(sr_conn_ctx_t *conn, struct lyd_node **data, str
     /* CHANGE SUB READ UNLOCK */
     sr_rwunlock(&mod->shm_mod->change_sub[SR_DS_RUNNING].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
-    if (opts & SR_OPER_WITH_ORIGIN) {
+    if (get_oper_opts & SR_OPER_WITH_ORIGIN) {
         LY_LIST_FOR(*enabled_mod_data, root) {
             /* add origin of all top-level nodes */
             origin = (root->schema->flags & LYS_CONFIG_W) ? SR_CONFIG_ORIGIN : SR_OPER_ORIGIN;
@@ -1068,15 +1068,15 @@ error_sub_unlock:
  *
  * @param[in,out] data Data to trim.
  * @param[in] sibling First sibling of the current data to trim.
- * @param[in] opts Get oper data options.
+ * @param[in] get_oper_opts Get oper data options.
  */
 static void
-sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_oper_options_t opts)
+sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_oper_flag_t get_oper_opts)
 {
     struct lyd_node *next, *elem;
     struct lyd_meta *meta;
 
-    if (!(opts & (SR_OPER_NO_STATE | SR_OPER_NO_CONFIG)) && (opts & SR_OPER_WITH_ORIGIN)) {
+    if (!(get_oper_opts & (SR_OPER_NO_STATE | SR_OPER_NO_CONFIG)) && (get_oper_opts & SR_OPER_WITH_ORIGIN)) {
         /* nothing to trim */
         return;
     }
@@ -1085,7 +1085,7 @@ sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_ope
         assert((elem->schema->nodetype != LYS_LEAF) || !(elem->schema->flags & LYS_KEY));
         if (elem->schema->flags & LYS_CONFIG_R) {
             /* state subtree */
-            if (opts & SR_OPER_NO_STATE) {
+            if (get_oper_opts & SR_OPER_NO_STATE) {
                 /* free it whole */
                 if (*data == elem) {
                     *data = (*data)->next;
@@ -1094,16 +1094,16 @@ sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_ope
                 continue;
             }
 
-            if (opts & SR_OPER_WITH_ORIGIN) {
+            if (get_oper_opts & SR_OPER_WITH_ORIGIN) {
                 /* no need to go into state children */
                 continue;
             }
         }
 
         /* trim all our children */
-        sr_oper_data_trim_r(data, lyd_child_no_keys(elem), opts);
+        sr_oper_data_trim_r(data, lyd_child_no_keys(elem), get_oper_opts);
 
-        if ((elem->schema->flags & LYS_CONFIG_W) && (opts & SR_OPER_NO_CONFIG) && !lyd_child_no_keys(elem)) {
+        if ((elem->schema->flags & LYS_CONFIG_W) && (get_oper_opts & SR_OPER_NO_CONFIG) && !lyd_child_no_keys(elem)) {
             /* config-only subtree (config node with no children) */
             if (*data == elem) {
                 *data = (*data)->next;
@@ -1112,7 +1112,7 @@ sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_ope
             continue;
         }
 
-        if (!(opts & SR_OPER_WITH_ORIGIN)) {
+        if (!(get_oper_opts & SR_OPER_WITH_ORIGIN)) {
             /* trim origin */
             LY_LIST_FOR(elem->meta, meta) {
                 if (!strcmp(meta->name, "origin") && !strcmp(meta->annotation->module->name, "ietf-origin")) {
@@ -1716,13 +1716,13 @@ cleanup:
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
- * @param[in] opts Get oper data options.
+ * @param[in] get_oper_opts Get oper data options.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_mod_s *mod,
         const struct lyd_node *cached_data, const char *orig_name, const void *orig_data, uint32_t timeout_ms,
-        sr_get_oper_options_t opts)
+        sr_get_oper_flag_t get_oper_opts)
 {
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn = mod_info->conn;
@@ -1735,7 +1735,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
         /* there are cached data */
         if (mod_info->ds == SR_DS_OPERATIONAL) {
             /* copy only enabled module data */
-            err_info = sr_module_oper_data_get_enabled(conn, (struct lyd_node **)&cached_data, mod, opts, 1, &mod_data);
+            err_info = sr_module_oper_data_get_enabled(conn, (struct lyd_node **)&cached_data, mod, get_oper_opts, 1, &mod_data);
         } else {
             /* copy all module data */
             err_info = sr_lyd_get_module_data((struct lyd_node **)&cached_data, mod->ly_mod, 0, 1, &mod_data);
@@ -1758,7 +1758,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
 
         if (mod_info->ds == SR_DS_OPERATIONAL) {
             /* keep only enabled module data */
-            if ((err_info = sr_module_oper_data_get_enabled(conn, &mod_info->data, mod, opts, 0, &mod_data))) {
+            if ((err_info = sr_module_oper_data_get_enabled(conn, &mod_info->data, mod, get_oper_opts, 0, &mod_data))) {
                 return err_info;
             }
             lyd_free_siblings(sr_module_data_unlink(&mod_info->data, mod->ly_mod));
@@ -1782,13 +1782,13 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
         }
 
         /* append any operational data provided by clients */
-        if ((err_info = sr_module_oper_data_update(mod, orig_name, orig_data, conn, timeout_ms, opts,
+        if ((err_info = sr_module_oper_data_update(mod, orig_name, orig_data, conn, timeout_ms, get_oper_opts,
                 &mod_info->data))) {
             return err_info;
         }
 
         /* trim any data according to options (they could not be trimmed before oper subscriptions) */
-        sr_oper_data_trim_r(&mod_info->data, mod_info->data, opts);
+        sr_oper_data_trim_r(&mod_info->data, mod_info->data, get_oper_opts);
     }
 
     return NULL;
@@ -1942,7 +1942,7 @@ sr_modinfo_qsort_cmp(const void *ptr1, const void *ptr2)
 
 sr_error_info_t *
 sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig_name, const void *orig_data,
-        uint32_t timeout_ms, sr_get_oper_options_t opts)
+        uint32_t timeout_ms, sr_get_oper_flag_t get_oper_opts)
 {
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn;
@@ -2052,7 +2052,8 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig
                 goto cleanup;
             }
         } else {
-            if ((err_info = sr_modinfo_module_data_load(mod_info, mod, cached_data, orig_name, orig_data, timeout_ms, opts))) {
+            if ((err_info = sr_modinfo_module_data_load(mod_info, mod, cached_data, orig_name, orig_data, timeout_ms,
+                    get_oper_opts))) {
                 /* if cached, we keep both cache lock and flag, so it is fine */
                 goto cleanup;
             }
@@ -2075,7 +2076,7 @@ cleanup:
 sr_error_info_t *
 sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mode_t mod_lock, int mi_opts, uint32_t sid,
         const char *orig_name, const void *orig_data, uint32_t timeout_ms, uint32_t ds_lock_timeout_ms,
-        sr_get_oper_options_t get_opts)
+        sr_get_oper_flag_t get_oper_opts)
 {
     sr_error_info_t *err_info = NULL;
     int mod_type, new = 0;
@@ -2151,7 +2152,7 @@ sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mod
     if (!(mi_opts & SR_MI_DATA_NO)) {
         /* load all modules data */
         if ((err_info = sr_modinfo_data_load(mod_info, mi_opts & SR_MI_DATA_CACHE, orig_name, orig_data, timeout_ms,
-                get_opts))) {
+                get_oper_opts))) {
             return err_info;
         }
     }

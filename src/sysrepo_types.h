@@ -281,7 +281,7 @@ struct sr_val_s {
 typedef struct sr_val_s sr_val_t;
 
 /**
- * @brief Flags used to override default data get behaviour on ::SR_DS_OPERATIONAL by ::sr_get_data call.
+ * @brief Flags used to override default data get behaviour on ::SR_DS_OPERATIONAL.
  */
 typedef enum {
     SR_OPER_DEFAULT = 0,             /**< No special behaviour. */
@@ -294,11 +294,22 @@ typedef enum {
                                           one inherit the origin from parents. */
 } sr_get_oper_flag_t;
 
+#define SR_OPER_MASK 31              /**< Mask for all get oper data flags. */
+
+/**
+ * @brief Flags used to override default data get behavior.
+ */
+typedef enum {
+    SR_GET_NO_FILTER = 32            /**< Do not apply the filter and return the whole "base" data which the filter
+                                          would normally be applied on. The filter is used only when deciding what data
+                                          to retrieve from subscribers and similar optimization cases. */
+} sr_get_flag_t;
+
 /**
  * @brief Options overriding default get handling by ::sr_get_data call,
- * it is supposed to be bitwise OR-ed value of any ::sr_get_oper_flag_t flags.
+ * it is supposed to be a bitmask ::sr_get_oper_flag_t and ::sr_get_flag_t flags.
  */
-typedef uint32_t sr_get_oper_options_t;
+typedef uint32_t sr_get_options_t;
 
 /** @} getdata */
 
