@@ -903,7 +903,7 @@ srpds_lyb_candidate_reset(const struct lys_module *mod)
 static int
 srpds_lyb_access_set(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm)
 {
-    int rc = SR_ERR_OK, file_exists;
+    int rc = SR_ERR_OK, file_exists = 0;
     char *path = NULL;
 
     assert(mod && (owner || group || perm));
