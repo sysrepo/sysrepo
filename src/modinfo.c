@@ -2468,6 +2468,10 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
                 /* data will be changed, we cannot use the cache anymore */
                 lyd_dup_siblings(mod_info->data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &mod_info->data);
                 mod_info->data_cached = 0;
+
+                /* CACHE READ UNLOCK */
+                sr_rwunlock(&mod_info->conn->running_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
+                        mod_info->conn->cid, __func__);
             }
 
             /* apply any currently handled changes (diff) or additional performed ones (edit) to get
