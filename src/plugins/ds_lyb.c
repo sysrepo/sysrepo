@@ -711,7 +711,19 @@ static void
 srpds_lyb_running_flush_cached(sr_cid_t cid)
 {
     struct srlyb_cache_conn_s *cache = NULL;
+    struct timespec ts_timeout;
     uint32_t i;
+    int r;
+
+    /* init timeout to 1s */
+    clock_gettime(CLOCK_REALTIME, &ts_timeout);
+    ++ts_timeout.tv_sec;
+
+    /* CACHE WRITE LOCK */
+    if ((r = pthread_rwlock_timedwrlock(&data_cache.lock, &ts_timeout))) {
+        SRPLG_LOG_ERR(srpds_name, "Cache write lock failed (%s).", strerror(r));
+        return;
+    }
 
     /* find the connection cache */
     for (i = 0; i < data_cache.cache_count; ++i) {
@@ -721,7 +733,7 @@ srpds_lyb_running_flush_cached(sr_cid_t cid)
         }
     }
     if (!cache) {
-        return;
+        goto cleanup;
     }
 
     /* free the connection cache */
@@ -733,11 +745,16 @@ srpds_lyb_running_flush_cached(sr_cid_t cid)
     /* consolidate the cache */
     --data_cache.cache_count;
     if (i < data_cache.cache_count) {
+        SRPLG_LOG_ERR(srpds_name, "arg1 %p, arg2 %p, arg3 %u", data_cache.caches + i, data_cache.caches + i + 1, (data_cache.cache_count - i) * sizeof *data_cache.caches);
         memmove(data_cache.caches + i, data_cache.caches + i + 1, (data_cache.cache_count - i) * sizeof *data_cache.caches);
     } else if (!data_cache.cache_count) {
         free(data_cache.caches);
         data_cache.caches = NULL;
     }
+
+cleanup:
+    /* CACHE UNLOCK */
+    pthread_rwlock_unlock(&data_cache.lock);
 }
 
 #endif

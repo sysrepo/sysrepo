@@ -129,7 +129,7 @@ typedef int (*srds_running_update_cached)(sr_cid_t cid, const struct lys_module 
 /**
  * @brief Flush cached data. Optional callback.
  *
- * No lock is held as none is needed.
+ * May be called concurrently.
  *
  * @param[in] cid Connection ID of the cache.
  */
