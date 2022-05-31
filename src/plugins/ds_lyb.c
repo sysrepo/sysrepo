@@ -600,6 +600,9 @@ srpds_lyb_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uint
             goto cleanup;
         }
 
+        /* a new cache may have been added in the meantime */
+        i = data_cache.cache_count;
+
         /* create cache for this connection */
         mem = realloc(data_cache.caches, (i + 1) * sizeof *data_cache.caches);
         if (!mem) {
