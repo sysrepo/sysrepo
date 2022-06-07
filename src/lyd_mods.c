@@ -478,41 +478,6 @@ cleanup:
 }
 
 /**
- * @brief Check whether an atom (node) is foreign with respect to the expression.
- *
- * @param[in] atom Node to check.
- * @param[in] top_node Top-level node for the expression.
- * @return Foreign dependency module, NULL if atom is not foreign.
- */
-static struct lys_module *
-sr_lydmods_moddep_expr_atom_is_foreign(const struct lysc_node *atom, const struct lysc_node *top_node)
-{
-    assert(atom && top_node && (!top_node->parent || (top_node->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF))));
-
-    while (atom->parent && (atom != top_node)) {
-        atom = atom->parent;
-    }
-
-    if (atom == top_node) {
-        /* shared parent, local node */
-        return NULL;
-    }
-
-    if (top_node->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF)) {
-        /* outside operation, foreign node */
-        return (struct lys_module *)atom->module;
-    }
-
-    if (atom->module != top_node->module) {
-        /* foreing top-level node module (so cannot be augment), foreign node */
-        return (struct lys_module *)atom->module;
-    }
-
-    /* same top-level modules, local node */
-    return NULL;
-}
-
-/**
  * @brief Collect dependencies from an XPath expression atoms.
  *
  * @param[in] op_node First parent operational node or top-level node.
@@ -533,7 +498,7 @@ sr_lydmods_moddep_xpath_atoms(const struct lysc_node *op_node, const struct lyxp
 
     /* find all top-level foreign nodes (augment nodes are not considered foreign now) */
     for (i = 0; i < atoms->count; ++i) {
-        if ((dep_mod = sr_lydmods_moddep_expr_atom_is_foreign(atoms->snodes[i], op_node))) {
+        if ((dep_mod = sr_ly_atom_is_foreign(atoms->snodes[i], op_node))) {
             if (ly_set_add(&target_mods, dep_mod, 0, NULL)) {
                 SR_ERRINFO_MEM(&err_info);
                 goto cleanup;
@@ -587,7 +552,7 @@ sr_lydmods_moddep_type(const struct lysc_type *type, const struct lysc_node *nod
                 goto cleanup;
             }
             assert(atoms->count);
-            ly_mod = sr_lydmods_moddep_expr_atom_is_foreign(atoms->snodes[0], op_node);
+            ly_mod = sr_ly_atom_is_foreign(atoms->snodes[0], op_node);
         }
 
         if (ly_mod) {
@@ -611,7 +576,7 @@ sr_lydmods_moddep_type(const struct lysc_type *type, const struct lysc_node *nod
         assert(atoms->count);
 
         for (i = 0; i < atoms->count; ++i) {
-            ly_mod = sr_lydmods_moddep_expr_atom_is_foreign(atoms->snodes[i], op_node);
+            ly_mod = sr_ly_atom_is_foreign(atoms->snodes[i], op_node);
             if (!ly_mod) {
                 continue;
             }

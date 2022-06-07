@@ -35,6 +35,7 @@
 
 #define MOD_INFO_DATA       0x0100 /* module data were loaded */
 #define MOD_INFO_CHANGED    0x0200 /* module data were changed */
+#define MOD_INFO_XPATH_DYN  0x0400 /* module XPaths are dynamically allocated and need to be freed */
 
 /**
  * @brief Mod info structure, used for keeping all relevant modules for a data operation.
@@ -66,11 +67,12 @@ struct sr_mod_info_s {
  *
  * @param[in] ly_mod Module to be added.
  * @param[in] xpath Optional XPath selecting the required data of @p ly_mod.
+ * @param[in] dup_xpath Whether to duplicate @p xpath or use it directly.
  * @param[in] no_dup_check Skip duplicate module check and assume it was not yet added.
  * @param[in,out] mod_info Mod info to add the module to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int no_dup_check,
+sr_error_info_t *sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int dup_xpath, int no_dup_check,
         struct sr_mod_info_s *mod_info);
 
 /**
@@ -113,6 +115,18 @@ sr_error_info_t *sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const cha
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_collect_deps(struct sr_mod_info_s *mod_info);
+
+/**
+ * @brief Collect required modules of data siblings directly into mod info.
+ *
+ * @param[in,out] mod_info Mod info to use.
+ * @param[in] path_prefix Prefix to be prepended to all generated schema paths.
+ * @param[in] sibling First schema sibling to consider.
+ * @param[in] data Instantiated data.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_modinfo_siblings_collect_deps(struct sr_mod_info_s *mod_info, const char *path_prefix,
+        const struct lysc_node *sibling, const struct lyd_node *data);
 
 /**
  * @brief Check permissions of all the modules in a mod info.

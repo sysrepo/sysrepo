@@ -88,6 +88,9 @@ setup(void **state)
     if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/ops.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/sm.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
+        return 1;
+    }
 
     st->ly_ctx = sr_acquire_context(st->conn);
 
@@ -117,6 +120,7 @@ teardown(void **state)
         sr_release_context(st->conn);
     }
 
+    ret += sr_remove_module(st->conn, "sm", 0);
     ret += sr_remove_module(st->conn, "ops", 0);
     ret += sr_remove_module(st->conn, "ops-ref", 0);
     ret += sr_remove_module(st->conn, "iana-if-type", 0);
@@ -1545,6 +1549,164 @@ test_wait(void **state)
     sr_unsubscribe(subscr);
 }
 
+/* TEST */
+static LY_ERR
+ly_ext_data_cb(const struct lysc_ext_instance *ext, void *user_data, void **ext_data, ly_bool *ext_data_free)
+{
+    struct state *st = (struct state *)user_data;
+    LY_ERR r;
+    const struct ly_ctx *ly_ctx;
+    struct lyd_node *data = NULL;
+    const char *xml = "<yang-library xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-library\" "
+            "    xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">"
+            "  <module-set>"
+            "    <name>test-set</name>"
+            "    <module>"
+            "      <name>ietf-datastores</name>"
+            "      <revision>2018-02-14</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-datastores</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ietf-yang-library</name>"
+            "      <revision>2019-01-04</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-yang-library</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ietf-yang-schema-mount</name>"
+            "      <revision>2019-01-14</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-yang-schema-mount</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ops</name>"
+            "      <namespace>urn:ops</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ops-ref</name>"
+            "      <namespace>urn:ops-ref</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ietf-netconf</name>"
+            "      <revision>2013-09-29</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:netconf:base:1.0</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ietf-origin</name>"
+            "      <revision>2018-02-14</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-origin</namespace>"
+            "    </module>"
+            "    <import-only-module>"
+            "      <name>ietf-yang-types</name>"
+            "      <revision>2013-07-15</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-yang-types</namespace>"
+            "    </import-only-module>"
+            "    <import-only-module>"
+            "      <name>ietf-netconf-acm</name>"
+            "      <revision>2018-02-14</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-netconf-acm</namespace>"
+            "    </import-only-module>"
+            "  </module-set>"
+            "  <schema>"
+            "    <name>test-schema</name>"
+            "    <module-set>test-set</module-set>"
+            "  </schema>"
+            "  <datastore>"
+            "    <name>ds:running</name>"
+            "    <schema>test-schema</schema>"
+            "  </datastore>"
+            "  <datastore>"
+            "    <name>ds:operational</name>"
+            "    <schema>test-schema</schema>"
+            "  </datastore>"
+            "  <content-id>1</content-id>"
+            "</yang-library>"
+            "<modules-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-library\">"
+            "  <module-set-id>1</module-set-id>"
+            "</modules-state>"
+            "<schema-mounts xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-schema-mount\">"
+            "  <namespace>"
+            "    <prefix>ops</prefix>"
+            "    <uri>urn:ops</uri>"
+            "  </namespace>"
+            "  <mount-point>"
+            "    <module>sm</module>"
+            "    <label>root</label>"
+            "    <shared-schema>"
+            "      <parent-reference>/ops:cont/l12</parent-reference>"
+            "    </shared-schema>"
+            "  </mount-point>"
+            "</schema-mounts>";
+
+    (void)ext;
+
+    ly_ctx = sr_acquire_context(st->conn);
+    r = lyd_parse_data_mem(ly_ctx, xml, LYD_XML, LYD_PARSE_STRICT, LYD_VALIDATE_PRESENT, &data);
+    sr_release_context(st->conn);
+    assert_int_equal(r, LY_SUCCESS);
+
+    *ext_data = data;
+    *ext_data_free = 1;
+    return LY_SUCCESS;
+}
+
+static int
+notif_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)request_xpath;
+    (void)request_id;
+    (void)private_data;
+
+    if (!strcmp(module_name, "sm") && !strcmp(xpath, "/sm:root")) {
+        assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, st->ly_ctx, "/sm:root/ops:cont/cont3", NULL, 0, parent));
+    } else if (!strcmp(module_name, "ops-ref") && !strcmp(xpath, "/ops-ref:l1")) {
+        assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, st->ly_ctx, "/ops-ref:l1", "l1-starting-with", 0, parent));
+    } else if (!strcmp(module_name, "ops") && !strcmp(xpath, "/ops:cont/l12")) {
+        assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ops:cont/l12", "value", 0, NULL));
+    } else {
+        fail();
+    }
+
+    return SR_ERR_OK;
+}
+
+static void
+test_schema_mount(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *sub = NULL;
+    struct lyd_node *notif;
+    int ret;
+
+    /* set schema-mount CB */
+    sr_set_ext_data_cb(st->conn, ly_ext_data_cb, st);
+
+    /* send simple notif4 */
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, st->ly_ctx, "/sm:root/ops:notif4/l", "val", 0, &notif));
+    ret = sr_notif_send_tree(st->sess, notif, 0, 0);
+    lyd_free_all(notif);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe for providing mounted and dependency data */
+    ret = sr_oper_get_subscribe(st->sess, "sm", "/sm:root", notif_oper_cb, st, 0, &sub);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_oper_get_subscribe(st->sess, "ops-ref", "/ops-ref:l1", notif_oper_cb, st, 0, &sub);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_oper_get_subscribe(st->sess, "ops", "/ops:cont/l12", notif_oper_cb, st, 0, &sub);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* send nested notif2 */
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, st->ly_ctx, "/sm:root/ops:cont/cont3/notif2/l13", "/ops:cont/l12", 0, &notif));
+    ret = sr_notif_send_tree(st->sess, notif, 0, 0);
+    lyd_free_all(notif);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_unsubscribe(sub);
+}
+
 /* MAIN */
 int
 main(void)
@@ -1562,6 +1724,7 @@ main(void)
         cmocka_unit_test(test_params),
         cmocka_unit_test(test_dup_inst),
         cmocka_unit_test(test_wait),
+        cmocka_unit_test(test_schema_mount),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

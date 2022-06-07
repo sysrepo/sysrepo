@@ -5181,6 +5181,7 @@ sr_lyd_copy_config_np_cont_r(struct lyd_node **first, struct lyd_node *parent, c
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *src, *src_top;
+    const struct lys_module *mod;
     struct lyd_node *node;
 
     assert(ly_mod);
@@ -5207,9 +5208,14 @@ sr_lyd_copy_config_np_cont_r(struct lyd_node **first, struct lyd_node *parent, c
             continue;
         }
 
-        /* create the NP container */
-        if (lyd_new_inner(parent, src->schema->module, src->schema->name, 0, &node)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(src));
+        /* create the NP container, handle schema-mount */
+        if (parent && (LYD_CTX(parent) != LYD_CTX(src))) {
+            mod = ly_ctx_get_module_implemented(LYD_CTX(parent), src->schema->module->name);
+        } else {
+            mod = src->schema->module;
+        }
+        if (lyd_new_inner(parent, mod, src->schema->name, 0, &node)) {
+            sr_errinfo_new_ly(&err_info, LYD_CTX(src), NULL);
             return err_info;
         }
 
@@ -6010,6 +6016,34 @@ sr_xpath_atoms_free(sr_xp_atoms_t *xp_atoms)
     }
     free(xp_atoms->unions);
     free(xp_atoms);
+}
+
+struct lys_module *
+sr_ly_atom_is_foreign(const struct lysc_node *atom, const struct lysc_node *top_node)
+{
+    assert(atom && top_node && (!top_node->parent || (top_node->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF))));
+
+    while (atom->parent && (atom != top_node)) {
+        atom = atom->parent;
+    }
+
+    if (atom == top_node) {
+        /* shared parent, local node */
+        return NULL;
+    }
+
+    if (top_node->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF)) {
+        /* outside operation, foreign node */
+        return (struct lys_module *)atom->module;
+    }
+
+    if (atom->module != top_node->module) {
+        /* foreing top-level node module (so cannot be augment), foreign node */
+        return (struct lys_module *)atom->module;
+    }
+
+    /* same top-level modules, local node */
+    return NULL;
 }
 
 sr_error_info_t *

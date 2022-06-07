@@ -1364,6 +1364,15 @@ sr_error_info_t *sr_xpath_get_text_atoms(const char *xpath, sr_xp_atoms_t **xp_a
 void sr_xpath_atoms_free(sr_xp_atoms_t *xp_atoms);
 
 /**
+ * @brief Check whether an atom (node) is foreign with respect to the expression.
+ *
+ * @param[in] atom Node to check.
+ * @param[in] top_node Top-level node for the expression.
+ * @return Foreign dependency module, NULL if atom is not foreign.
+ */
+struct lys_module *sr_ly_atom_is_foreign(const struct lysc_node *atom, const struct lysc_node *top_node);
+
+/**
  * @brief Find last (most nested) parent (node with possible children) in a data tree.
  *
  * @param[in,out] parent Any subtree node, will be moved to the last parent.

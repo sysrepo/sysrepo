@@ -3019,7 +3019,7 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
                 goto cleanup;
             }
 
-            if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, &mod_info))) {
+            if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
                 goto cleanup;
             }
         } else {
@@ -3033,7 +3033,7 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
     case SR_DS_OPERATIONAL:
         /* specific module/all modules */
         if (ly_mod) {
-            if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, &mod_info))) {
+            if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
                 goto cleanup;
             }
         } else {
@@ -3444,7 +3444,7 @@ _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, s
 
     /* single module/all modules */
     if (ly_mod) {
-        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
             goto cleanup;
         }
     } else {
@@ -3569,7 +3569,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
 
     /* collect all required modules */
     if (ly_mod) {
-        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
             goto cleanup;
         }
     } else {
@@ -3764,7 +3764,7 @@ _sr_un_lock(sr_session_ctx_t *session, const char *module_name, int lock, uint32
 
     /* collect all required modules and lock to wait until other sessions finish working with the data */
     if (ly_mod) {
-        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
             goto cleanup;
         }
     } else {
@@ -3850,7 +3850,7 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
 
     /* collect all required modules into mod_info */
     if (ly_mod) {
-        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
             goto cleanup;
         }
     } else {
@@ -4409,7 +4409,7 @@ sr_module_change_subscribe_enable(sr_session_ctx_t *session, struct sr_mod_info_
 
     /* create mod_info structure with this module only, do not use cache to allow reading data in the callback
      * (avoid dead-lock) */
-    if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, mod_info))) {
+    if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, mod_info))) {
         goto cleanup;
     }
     if ((err_info = sr_modinfo_consolidate(mod_info, 0, SR_LOCK_READ, SR_MI_PERM_NO, session->sid, session->orig_name,
@@ -5487,7 +5487,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
         parent_path = lyd_path(lyd_parent(input_op), LYD_PATH_STD, NULL, 0);
         SR_CHECK_MEM_GOTO(!parent_path, err_info, cleanup);
         /* only reference to parent_path is stored, so it cannot be freed! */
-        if ((err_info = sr_modinfo_add(lyd_owner_module(input), parent_path, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_add(lyd_owner_module(input), parent_path, 0, 0, &mod_info))) {
             goto cleanup;
         }
         if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_NO,
@@ -5500,8 +5500,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     if ((err_info = sr_shmmod_get_rpc_deps(SR_CONN_MOD_SHM(session->conn), path, 0, &shm_deps, &shm_dep_count))) {
         goto cleanup;
     }
-    if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(session->conn), shm_deps, shm_dep_count,
-            session->conn->ly_ctx, input, &mod_info))) {
+    if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(session->conn), shm_deps, shm_dep_count, input, &mod_info))) {
         goto cleanup;
     }
     if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_CACHE | SR_MI_PERM_NO,
@@ -5555,8 +5554,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     if ((err_info = sr_shmmod_get_rpc_deps(SR_CONN_MOD_SHM(session->conn), path, 1, &shm_deps, &shm_dep_count))) {
         goto cleanup;
     }
-    if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(session->conn), shm_deps, shm_dep_count,
-            session->conn->ly_ctx, input, &mod_info))) {
+    if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(session->conn), shm_deps, shm_dep_count, input, &mod_info))) {
         goto cleanup;
     }
     if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_CACHE | SR_MI_PERM_NO,
@@ -5793,12 +5791,12 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
 {
     sr_error_info_t *err_info = NULL, *tmp_err = NULL;
     struct sr_mod_info_s mod_info;
-    struct lyd_node *notif_op;
+    struct lyd_node *notif_op, *parent;
     sr_dep_t *shm_deps;
     sr_mod_t *shm_mod;
     struct timespec notif_ts;
     uint16_t shm_dep_count;
-    char *path = NULL, *parent_path = NULL;
+    char *parent_path = NULL, *path_prefix = NULL;
 
     SR_CHECK_ARG_APIRET(!session || !notif, session, err_info);
     if (session->conn->ly_ctx != LYD_CTX(notif)) {
@@ -5842,12 +5840,11 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
         goto cleanup;
     }
 
-    if (notif != notif_op) {
+    if (lysc_data_parent(notif_op->schema)) {
         /* we need the OP parent to check it exists */
         parent_path = lyd_path(lyd_parent(notif_op), LYD_PATH_STD, NULL, 0);
         SR_CHECK_MEM_GOTO(!parent_path, err_info, cleanup);
-        /* only reference to parent_path is stored, so it cannot be freed! */
-        if ((err_info = sr_modinfo_add(lyd_owner_module(notif), parent_path, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_add(lyd_owner_module(notif), parent_path, 0, 0, &mod_info))) {
             goto cleanup;
         }
         if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_NO,
@@ -5857,15 +5854,27 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
     }
 
     /* collect all required modules for OP validation */
-    path = lysc_path(notif_op->schema, LYSC_PATH_DATA, NULL, 0);
-    SR_CHECK_MEM_GOTO(!path, err_info, cleanup);
-    if ((err_info = sr_shmmod_get_notif_deps(SR_CONN_MOD_SHM(session->conn), lyd_owner_module(notif), path,
-            &shm_deps, &shm_dep_count))) {
-        goto cleanup;
-    }
-    if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(session->conn), shm_deps, shm_dep_count,
-            session->conn->ly_ctx, notif, &mod_info))) {
-        goto cleanup;
+    if (LYD_CTX(notif) != LYD_CTX(notif_op)) {
+        /* different contexts if these are data of an extension (schema-mount) */
+        for (parent = notif_op; parent && !(parent->flags & LYD_EXT); parent = lyd_parent(parent)) {}
+        SR_CHECK_INT_GOTO(!parent, err_info, cleanup);
+
+        /* get the path to the mounted data */
+        path_prefix = lyd_path(lyd_parent(parent), LYD_PATH_STD, NULL, 0);
+        SR_CHECK_MEM_GOTO(!path_prefix, err_info, cleanup);
+
+        /* collect ad-hoc dependencies */
+        if ((err_info = sr_modinfo_siblings_collect_deps(&mod_info, path_prefix, lysc_node_child(notif_op->schema), notif))) {
+            goto cleanup;
+        }
+    } else {
+        if ((err_info = sr_shmmod_get_notif_deps(SR_CONN_MOD_SHM(session->conn), lyd_owner_module(notif), notif_op,
+                &shm_deps, &shm_dep_count))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(session->conn), shm_deps, shm_dep_count, notif, &mod_info))) {
+            goto cleanup;
+        }
     }
     if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_CACHE | SR_MI_PERM_NO,
             session->sid, session->orig_name, session->orig_data, SR_OPER_CB_TIMEOUT, 0, 0))) {
@@ -5895,8 +5904,6 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
         goto cleanup_notifsub_unlock;
     }
 
-    /* success */
-
 cleanup_notifsub_unlock:
     /* NOTIF SUB READ UNLOCK */
     sr_rwunlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
@@ -5906,7 +5913,7 @@ cleanup:
     sr_shmmod_modinfo_unlock(&mod_info);
 
     free(parent_path);
-    free(path);
+    free(path_prefix);
     sr_modinfo_erase(&mod_info);
     if (tmp_err) {
         sr_errinfo_merge(&err_info, tmp_err);

@@ -96,13 +96,36 @@ sr_error_info_t *sr_shmmod_get_rpc_deps(sr_mod_shm_t *mod_shm, const char *path,
  *
  * @param[in] mod_shm Mod SHM.
  * @param[in] notif_mod Module of the notification.
- * @param[in] path Path identifying the notification.
+ * @param[in] notif_op Notification operation node.
  * @param[out] shm_deps Mod SHM dependencies.
  * @param[out] shm_dep_count Dependency count.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_get_notif_deps(sr_mod_shm_t *mod_shm, const struct lys_module *notif_mod, const char *path,
-        sr_dep_t **shm_deps, uint16_t *shm_dep_count);
+sr_error_info_t *sr_shmmod_get_notif_deps(sr_mod_shm_t *mod_shm, const struct lys_module *notif_mod,
+        const struct lyd_node *notif_op, sr_dep_t **shm_deps, uint16_t *shm_dep_count);
+
+/**
+ * @brief Collect dependent modules from a leafref dependency.
+ *
+ * @param[in] taregt_path Target leafref path.
+ * @param[in] target_module Target module name.
+ * @param[in,out] mod_info Mod info to add to.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_collect_deps_lref(const char *target_path, const char *target_module,
+        struct sr_mod_info_s *mod_info);
+
+/**
+ * @brief Collect dependent modules from an instance-identifier dependency.
+ *
+ * @param[in] source_path Source inst-id path.
+ * @param[in] default_target_path Optional inst-id default value.
+ * @param[in] data Instantiated data.
+ * @param[in,out] mod_info Mod info to add to.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_collect_deps_instid(const char *source_path, const char *default_target_path,
+        const struct lyd_node *data, struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Collect required module dependencies from a SHM dependency array.
@@ -110,13 +133,12 @@ sr_error_info_t *sr_shmmod_get_notif_deps(sr_mod_shm_t *mod_shm, const struct ly
  * @param[in] mod_shm Mod SHM.
  * @param[in] shm_deps Array of SHM dependencies.
  * @param[in] shm_dep_count Number of @p shm_deps.
- * @param[in] ly_ctx libyang context.
  * @param[in] data Data to look for instance-identifiers in.
  * @param[in,out] mod_info Mod info to add to.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmod_collect_deps(sr_mod_shm_t *mod_shm, sr_dep_t *shm_deps, uint16_t shm_dep_count,
-        struct ly_ctx *ly_ctx, const struct lyd_node *data, struct sr_mod_info_s *mod_info);
+        const struct lyd_node *data, struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Information structure for the SHM module recovery callback.
