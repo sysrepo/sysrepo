@@ -1896,7 +1896,7 @@ sr_nacm_check_data_read_filter_dup(const char *nacm_user, const struct lyd_node 
     if (*denied) {
         /* duplicate data tree */
         if (lyd_dup_single(tree, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS, dup)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(tree));
+            sr_errinfo_new_ly(&err_info, LYD_CTX(tree), NULL);
             goto cleanup;
         }
 
@@ -1992,7 +1992,7 @@ sr_nacm_check_push_update_notif(const char *nacm_user, struct lyd_node *notif, c
 
     /* collect all edits */
     if (lyd_find_xpath(notif, "/ietf-yang-push:push-change-update/datastore-changes/yang-patch/edit", &set)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(notif));
+        sr_errinfo_new_ly(&err_info, LYD_CTX(notif), NULL);
         goto cleanup;
     }
 

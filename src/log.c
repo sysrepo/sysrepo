@@ -258,11 +258,21 @@ sr_errinfo_new_data(sr_error_info_t **err_info, sr_error_t err_code, const char 
 }
 
 void
-sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx)
+sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx, const struct lyd_node *data)
 {
     struct ly_err_item *e;
+    const struct lyd_node *node;
 
     e = ly_err_first(ly_ctx);
+    if (!e && data) {
+        LYD_TREE_DFS_BEGIN(data, node) {
+            if (node->flags & LYD_EXT) {
+                e = ly_err_first(LYD_CTX(node));
+                break;
+            }
+            LYD_TREE_DFS_END(data, node);
+        }
+    }
 
     /* this function is called only when an error is expected, but it is still possible there
      * will be none -> libyang problem or simply the error was externally processed, sysrepo is

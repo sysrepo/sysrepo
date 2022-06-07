@@ -1405,7 +1405,7 @@ sr_subscr_change_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, int
         if (valid) {
             *valid = 0;
         } else {
-            sr_errinfo_new_ly(&err_info, ly_ctx);
+            sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
         }
         goto cleanup;
     }
@@ -1442,7 +1442,7 @@ sr_subscr_oper_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, sr_mo
         if (valid) {
             *valid = 0;
         } else {
-            sr_errinfo_new_ly(&err_info, ly_ctx);
+            sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
         }
         goto cleanup;
     } else if (!set->count) {
@@ -1555,7 +1555,7 @@ sr_subscr_notif_xpath_check(const struct lys_module *ly_mod, const char *xpath, 
             if (valid) {
                 *valid = 0;
             } else {
-                sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+                sr_errinfo_new_ly(&err_info, ly_mod->ctx, NULL);
             }
             goto cleanup;
         }
@@ -1616,7 +1616,7 @@ sr_subscr_rpc_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, char *
         if (valid) {
             *valid = 0;
         } else {
-            sr_errinfo_new_ly(&err_info, ly_ctx);
+            sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
         }
         goto cleanup;
     }
@@ -1752,13 +1752,13 @@ sr_ly_ctx_init(sr_conn_options_t opts, ly_ext_data_clb ext_cb, void *ext_cb_data
 
     /* load just the internal module */
     if (lys_parse_mem(*ly_ctx, sysrepo_yang, LYS_IN_YANG, NULL)) {
-        sr_errinfo_new_ly(&err_info, *ly_ctx);
+        sr_errinfo_new_ly(&err_info, *ly_ctx, NULL);
         goto cleanup;
     }
 
     /* compile */
     if (ly_ctx_compile(*ly_ctx)) {
-        sr_errinfo_new_ly(&err_info, *ly_ctx);
+        sr_errinfo_new_ly(&err_info, *ly_ctx, NULL);
         goto cleanup;
     }
 
@@ -2342,7 +2342,7 @@ sr_store_module_yang(const struct lys_module *ly_mod, const struct lysp_submodul
         lyrc = lys_print_module(out, ly_mod, LYS_OUT_YANG, 0, 0);
     }
     if (lyrc) {
-        sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+        sr_errinfo_new_ly(&err_info, ly_mod->ctx, NULL);
         goto cleanup;
     }
 
@@ -4969,7 +4969,7 @@ store_value:
         case LYD_ANYDATA_LYB:
             /* try to convert into a data tree */
             if (lyd_parse_data_mem(LYD_CTX(node), any->value.mem, LYD_LYB, LYD_PARSE_STRICT, 0, &tree)) {
-                sr_errinfo_new_ly(&err_info, LYD_CTX(node));
+                sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL);
                 sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to convert LYB anyxml/anydata into XML.");
                 return err_info;
             }
@@ -5095,7 +5095,7 @@ sr_val_sr2ly(struct ly_ctx *ctx, const char *xpath, const char *val_str, int dfl
     opts = LYD_NEW_PATH_UPDATE | (output ? LYD_NEW_PATH_OUTPUT : 0);
 
     if (lyd_new_path2(*root, ctx, xpath, val_str, val_str ? strlen(val_str) : 0, 0, opts, &parent, &node)) {
-        sr_errinfo_new_ly(&err_info, ctx);
+        sr_errinfo_new_ly(&err_info, ctx, NULL);
         return err_info;
     }
     if (dflt) {
@@ -5123,12 +5123,12 @@ sr_lyd_dup(const struct lyd_node *src_parent, uint32_t depth, struct lyd_node *t
     src_child = lyd_child_no_keys(src_parent);
     while (src_child) {
         if (lyd_dup_single(src_child, NULL, LYD_DUP_WITH_FLAGS, &trg_child)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(src_parent));
+            sr_errinfo_new_ly(&err_info, LYD_CTX(src_parent), NULL);
             return err_info;
         }
 
         if (lyd_insert_child(trg_parent, trg_child)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(src_parent));
+            sr_errinfo_new_ly(&err_info, LYD_CTX(src_parent), NULL);
             SR_ERRINFO_INT(&err_info);
             return NULL;
         }
@@ -5241,7 +5241,7 @@ sr_lyd_dup_module_np_cont(const struct lyd_node *data, const struct lys_module *
     if (add_state_np_conts) {
         /* add any state NP containers */
         if (lyd_new_implicit_module(new_data, ly_mod, LYD_IMPLICIT_NO_CONFIG, NULL)) {
-            sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+            sr_errinfo_new_ly(&err_info, ly_mod->ctx, NULL);
             return err_info;
         }
     }
@@ -5263,7 +5263,7 @@ sr_lyd_get_module_data(struct lyd_node **data, const struct lys_module *ly_mod, 
             if (dup) {
                 /* duplicate subtree */
                 if (lyd_dup_single(node, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &subtree)) {
-                    sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+                    sr_errinfo_new_ly(&err_info, ly_mod->ctx, NULL);
                     return err_info;
                 }
             } else {
@@ -5278,7 +5278,7 @@ sr_lyd_get_module_data(struct lyd_node **data, const struct lys_module *ly_mod, 
             if (add_state_np_conts) {
                 /* add any nested state NP containers */
                 if (lyd_new_implicit_tree(subtree, LYD_IMPLICIT_NO_CONFIG | LYD_IMPLICIT_NO_DEFAULTS, NULL)) {
-                    sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+                    sr_errinfo_new_ly(&err_info, ly_mod->ctx, NULL);
                     return err_info;
                 }
             }
@@ -5286,7 +5286,7 @@ sr_lyd_get_module_data(struct lyd_node **data, const struct lys_module *ly_mod, 
             /* connect it to any other data */
             if (lyd_merge_tree(new_data, subtree, LYD_MERGE_DESTRUCT | LYD_MERGE_WITH_FLAGS)) {
                 lyd_free_tree(subtree);
-                sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+                sr_errinfo_new_ly(&err_info, ly_mod->ctx, NULL);
                 return err_info;
             }
         }
@@ -5337,7 +5337,7 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
     /* get only the selected subtrees in a set */
     for (i = 0; i < xp_count; ++i) {
         if (lyd_find_xpath(*data, xpaths[i], &cur_set)) {
-            sr_errinfo_new_ly(&err_info, ctx);
+            sr_errinfo_new_ly(&err_info, ctx, NULL);
             goto cleanup;
         }
 
@@ -5358,7 +5358,7 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
         if (dup) {
             /* duplicate the subtree with parents */
             if (lyd_dup_single(src, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS, &root)) {
-                sr_errinfo_new_ly(&err_info, ctx);
+                sr_errinfo_new_ly(&err_info, ctx, NULL);
                 goto cleanup;
             }
 
@@ -5376,7 +5376,7 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
             parent = NULL;
             if (src->parent) {
                 if (lyd_dup_single(lyd_parent(src), NULL, LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS, &parent)) {
-                    sr_errinfo_new_ly(&err_info, ctx);
+                    sr_errinfo_new_ly(&err_info, ctx, NULL);
                     goto cleanup;
                 }
             }
@@ -5399,7 +5399,7 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
                 /* relink into parent, if any */
                 lyd_unlink_tree(src);
                 if (parent && lyd_insert_child(parent, src)) {
-                    sr_errinfo_new_ly(&err_info, ctx);
+                    sr_errinfo_new_ly(&err_info, ctx, NULL);
                     goto cleanup;
                 }
 
@@ -5425,14 +5425,14 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
 
         /* add any state NP containers */
         if (lyd_new_implicit_tree(root, LYD_IMPLICIT_NO_DEFAULTS, NULL)) {
-            sr_errinfo_new_ly(&err_info, ctx);
+            sr_errinfo_new_ly(&err_info, ctx, NULL);
             goto cleanup;
         }
 
         /* merge into the final result */
         if (lyd_merge_tree(new_data, root, LYD_MERGE_DESTRUCT)) {
             lyd_free_all(root);
-            sr_errinfo_new_ly(&err_info, ctx);
+            sr_errinfo_new_ly(&err_info, ctx, NULL);
             goto cleanup;
         }
     }
@@ -5458,12 +5458,12 @@ sr_lyd_xpath_complement(struct lyd_node **data, const char *xpath)
     }
 
     if (lyd_find_xpath(*data, xpath, &node_set)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(*data));
+        sr_errinfo_new_ly(&err_info, LYD_CTX(*data), NULL);
         goto cleanup;
     }
 
     if (ly_set_new(&depth_set)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(*data));
+        sr_errinfo_new_ly(&err_info, LYD_CTX(*data), NULL);
         goto cleanup;
     }
 
@@ -5473,7 +5473,7 @@ sr_lyd_xpath_complement(struct lyd_node **data, const char *xpath)
         for (parent = node_set->dnodes[i], depth = 0; parent; parent = lyd_parent(parent), ++depth) {}
 
         if (ly_set_add(depth_set, (void *)((uintptr_t)depth), 1, NULL)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(*data));
+            sr_errinfo_new_ly(&err_info, LYD_CTX(*data), NULL);
             goto cleanup;
         }
 
@@ -6063,7 +6063,7 @@ sr_lyd_print_lyb(const struct lyd_node *data, char **str, uint32_t *len)
     if (lyd_print_all(out, data, LYD_LYB, 0)) {
         ly_out_free(out, NULL, 0);
         if (data) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(data));
+            sr_errinfo_new_ly(&err_info, LYD_CTX(data), NULL);
         } else {
             SR_ERRINFO_INT(&err_info);
         }

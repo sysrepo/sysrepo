@@ -462,13 +462,13 @@ sr_lycc_upd_module_new_context(sr_conn_ctx_t *conn, const char *schema_path, LYS
         goto cleanup;
     }
     if (lys_parse(*new_ctx, in, format, features, (struct lys_module **)upd_mod)) {
-        sr_errinfo_new_ly(&err_info, *new_ctx);
+        sr_errinfo_new_ly(&err_info, *new_ctx, NULL);
         goto cleanup;
     }
 
     /* compile */
     if (ly_ctx_compile(*new_ctx)) {
-        sr_errinfo_new_ly(&err_info, *new_ctx);
+        sr_errinfo_new_ly(&err_info, *new_ctx, NULL);
         goto cleanup;
     }
 
@@ -578,7 +578,7 @@ sr_lycc_set_replay_support(sr_conn_ctx_t *conn, const struct ly_set *mod_set, in
         lyrc = lyd_find_path(sr_mods, path, 0, &sr_ntf_name);
         free(path);
         if (lyrc) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(sr_mods));
+            sr_errinfo_new_ly(&err_info, LYD_CTX(sr_mods), NULL);
             goto cleanup;
         }
 
@@ -689,13 +689,13 @@ sr_lycc_update_data_tree(const struct lyd_node *old_data, uint32_t parse_opts, c
 
     /* print the data of all the modules into JSON */
     if (lyd_print_mem(&data_json, old_data, LYD_JSON, LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(old_data));
+        sr_errinfo_new_ly(&err_info, LYD_CTX(old_data), NULL);
         goto cleanup;
     }
 
     /* try to load it into the new updated context skipping any unknown nodes */
     if (lyd_parse_data_mem(ly_ctx, data_json, LYD_JSON, parse_opts, 0, new_data)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx);
+        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
         goto cleanup;
     }
 
@@ -703,11 +703,11 @@ sr_lycc_update_data_tree(const struct lyd_node *old_data, uint32_t parse_opts, c
         /* link to the new data */
         if (!(*new_data)) {
             if (lyd_dup_siblings(append_data, NULL, LYD_DUP_RECURSIVE, new_data)) {
-                sr_errinfo_new_ly(&err_info, ly_ctx);
+                sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
                 goto cleanup;
             }
         } else if (lyd_merge_siblings(new_data, append_data, 0)) {
-            sr_errinfo_new_ly(&err_info, ly_ctx);
+            sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
             goto cleanup;
         }
     }
@@ -753,7 +753,7 @@ sr_lycc_update_data(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const stru
     /* fully validate complete startup and running datastore */
     if (lyd_validate_all(new_s_data, ly_ctx, LYD_VALIDATE_NO_STATE, NULL) ||
             lyd_validate_all(new_r_data, ly_ctx, LYD_VALIDATE_NO_STATE, NULL)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx);
+        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
         err_info->err[0].err_code = SR_ERR_VALIDATION_FAILED;
         goto cleanup;
     }
@@ -813,7 +813,7 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx
         lyrc = lyd_find_xpath(sr_mods, xpath, &set);
         free(xpath);
         if (lyrc) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(sr_mods));
+            sr_errinfo_new_ly(&err_info, LYD_CTX(sr_mods), NULL);
             break;
         } else if (set->count != 1) {
             SR_ERRINFO_INT(&err_info);

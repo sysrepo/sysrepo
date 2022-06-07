@@ -849,7 +849,7 @@ sr_tree_to_val(const struct lyd_node *data, const char *path, sr_val_t **value)
     *value = NULL;
 
     if (lyd_find_xpath(data, path, &set)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(data));
+        sr_errinfo_new_ly(&err_info, LYD_CTX(data), NULL);
         goto cleanup;
     } else if (!set->count) {
         /* Not building err_info to avoid error logs when no item found */
@@ -887,7 +887,7 @@ sr_tree_to_values(const struct lyd_node *data, const char *xpath, sr_val_t **val
     *value_cnt = 0;
 
     if (lyd_find_xpath(data, xpath, &set)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(data));
+        sr_errinfo_new_ly(&err_info, LYD_CTX(data), NULL);
         goto cleanup;
     } else if (!set->count) {
         /* Not building err_info to avoid error logs when no item found */

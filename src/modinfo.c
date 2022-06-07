@@ -169,7 +169,7 @@ sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_data
 
     /* learn what nodes are needed for evaluation */
     if (lys_find_xpath_atoms(ly_ctx, NULL, xpath, 0, &set)) {
-        sr_errinfo_new_ly(&err_info, (struct ly_ctx *)ly_ctx);
+        sr_errinfo_new_ly(&err_info, (struct ly_ctx *)ly_ctx, NULL);
         goto cleanup;
     }
 
@@ -377,7 +377,7 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
                 if (cb_data.err_info) {
                     err_info = cb_data.err_info;
                 } else {
-                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
                 }
                 goto cleanup;
             }
@@ -417,7 +417,7 @@ sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *new
         if (mod->state & MOD_INFO_REQ) {
             /* merge relevant diff part */
             if (lyd_diff_merge_module(&mod_info->diff, new_diff, mod->ly_mod, NULL, NULL, 0)) {
-                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
                 return err_info;
             }
         }
@@ -444,7 +444,7 @@ sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data)
 
             /* get diff on only this module's data */
             if (lyd_diff_siblings(dst_mod_data, src_mod_data, LYD_DIFF_DEFAULTS, &diff)) {
-                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
                 lyd_free_all(dst_mod_data);
                 lyd_free_all(src_mod_data);
                 return err_info;
@@ -688,7 +688,7 @@ sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const
     if (parent) {
         /* duplicate parent so that it is a stand-alone subtree */
         if (lyd_dup_single(parent, NULL, LYD_DUP_WITH_PARENTS, &last_parent)) {
-            sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+            sr_errinfo_new_ly(&err_info, ly_mod->ctx, NULL);
             return err_info;
         }
 
@@ -733,7 +733,7 @@ sr_xpath_oper_data_get(const struct lys_module *ly_mod, const char *xpath, const
     if (*oper_data) {
         /* add any missing NP containers, redundant to add top-level containers */
         if (lyd_new_implicit_tree(*oper_data, LYD_IMPLICIT_NO_DEFAULTS, NULL)) {
-            sr_errinfo_new_ly(&err_info, ly_mod->ctx);
+            sr_errinfo_new_ly(&err_info, ly_mod->ctx, NULL);
             goto cleanup;
         }
     }
@@ -786,7 +786,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
 
         /* add any missing NP containers in the data */
         if (lyd_new_implicit_module(data, mod->ly_mod, LYD_IMPLICIT_NO_DEFAULTS, NULL)) {
-            sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
+            sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx, NULL);
             return err_info;
         }
     }
@@ -875,7 +875,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
             }
 
             if (lyd_find_xpath(*data, parent_xpath, &set)) {
-                sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
+                sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx, NULL);
                 goto cleanup_opersub_ext_unlock;
             }
 
@@ -895,7 +895,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
                 /* merge into one data tree */
                 if (lyd_merge_siblings(data, oper_data, LYD_MERGE_DESTRUCT)) {
                     lyd_free_all(oper_data);
-                    sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
+                    sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx, NULL);
                     goto cleanup_opersub_ext_unlock;
                 }
             }
@@ -915,7 +915,7 @@ next_iter:
 
             if (lyd_merge_siblings(data, oper_data, LYD_MERGE_DESTRUCT)) {
                 lyd_free_all(oper_data);
-                sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx);
+                sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx, NULL);
                 goto cleanup_opersub_ext_unlock;
             }
         }
@@ -1153,7 +1153,7 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
                 lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:candidate']/schema", "complete", 0, 0) ||
                 lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:startup']/schema", "complete", 0, 0) ||
                 lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:operational']/schema", "complete", 0, 0)) {
-            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
             return err_info;
         }
     } else if (!strcmp(mod->ly_mod->revision, "2016-06-21")) {
@@ -1168,7 +1168,7 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
 
     /* connect to the rest of data */
     if (lyd_merge_siblings(&mod_info->data, mod_data, LYD_MERGE_DESTRUCT)) {
-        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
         return err_info;
     }
 
@@ -1230,7 +1230,7 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
 
         snprintf(path, PATH_LEN, path_format, cid);
         if (lyd_new_path(ctx_node, NULL, path, "read", 0, NULL)) {
-            sr_errinfo_new_ly(&err_info, ly_ctx);
+            sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
             break;
         }
     }
@@ -1697,7 +1697,7 @@ sr_modinfo_module_data_load_srmon(struct sr_mod_info_s *mod_info, struct sr_mod_
 
     /* connect to the rest of data */
     if (lyd_merge_siblings(&mod_info->data, mod_data, LYD_MERGE_DESTRUCT)) {
-        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
         goto cleanup;
     }
     mod_data = NULL;
@@ -2183,7 +2183,7 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, int mod_state, int finish_di
         if (mod->state & mod_state) {
             /* validate this module */
             if (lyd_validate_module(&mod_info->data, mod->ly_mod, val_opts, finish_diff ? &diff : NULL)) {
-                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
                 SR_ERRINFO_VALID(&err_info);
                 goto cleanup;
             }
@@ -2194,7 +2194,7 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, int mod_state, int finish_di
 
                 /* merge the changes made by the validation into our diff */
                 if (lyd_diff_merge_all(&mod_info->diff, diff, 0)) {
-                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
                     goto cleanup;
                 }
 
@@ -2226,7 +2226,7 @@ sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff)
         case MOD_INFO_REQ:
             /* add default values for this module */
             if (lyd_new_implicit_module(&mod_info->data, mod->ly_mod, LYD_IMPLICIT_NO_STATE, finish_diff ? &diff : NULL)) {
-                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
                 SR_ERRINFO_VALID(&err_info);
                 goto cleanup;
             }
@@ -2238,7 +2238,7 @@ sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff)
 
                 /* merge the changes made by the validation into our diff */
                 if (lyd_diff_merge_all(&mod_info->diff, diff, 0)) {
-                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
                     goto cleanup;
                 }
 
@@ -2287,12 +2287,12 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int 
 
             if (mod_info->data) {
                 if (lyd_find_xpath(mod_info->data, parent_xpath, &set)) {
-                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
                     goto cleanup;
                 }
             } else {
                 if (ly_set_new(&set)) {
-                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
                     goto cleanup;
                 }
             }
@@ -2317,7 +2317,7 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int 
     op_type = ((op->schema->nodetype & (LYS_RPC | LYS_ACTION)) ?
             (output ? LYD_TYPE_REPLY_YANG : LYD_TYPE_RPC_YANG) : LYD_TYPE_NOTIF_YANG);
     if (lyd_validate_op(top_op, mod_info->data, op_type, NULL)) {
-        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, top_op);
         sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "%s %svalidation failed.",
                 (op->schema->nodetype == LYS_NOTIF) ? "Notification" : ((op->schema->nodetype == LYS_RPC) ? "RPC" : "Action"),
                 (op->schema->nodetype == LYS_NOTIF) ? "" : (output ? "output " : "input "));
@@ -2369,7 +2369,7 @@ sr_modinfo_get_filter_nacm(sr_session_ctx_t *session, struct ly_set **result, in
                 for (j = 0; j < i; ++j) {
                     if (lyd_dup_single((*result)->dnodes[j], NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS |
                             LYD_DUP_WITH_FLAGS, &node)) {
-                        sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
+                        sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
                         goto cleanup;
                     }
                     if (ly_set_add(result_dup, node, 1, NULL)) {
@@ -2390,7 +2390,7 @@ sr_modinfo_get_filter_nacm(sr_session_ctx_t *session, struct ly_set **result, in
             /* other subtrees were duplicated so duplicate all */
             if (lyd_dup_single((*result)->dnodes[i], NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS |
                     LYD_DUP_WITH_FLAGS, &node)) {
-                sr_errinfo_new_ly(&err_info, session->conn->ly_ctx);
+                sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
                 goto cleanup;
             }
             if (ly_set_add(result_dup, node, 1, NULL)) {
@@ -2477,7 +2477,7 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
             /* apply any currently handled changes (diff) or additional performed ones (edit) to get
              * the session-specific data tree */
             if (lyd_diff_apply_module(&mod_info->data, diff, mod->ly_mod, is_oper_ds ? sr_lyd_diff_apply_cb : NULL, NULL)) {
-                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
                 goto cleanup;
             }
             if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, is_oper_ds, &mod_info->data, NULL, NULL))) {
@@ -2489,12 +2489,12 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
     if (mod_info->data) {
         /* filter return data using the xpath */
         if (lyd_find_xpath3(NULL, mod_info->data, xpath, NULL, result)) {
-            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
             goto cleanup;
         }
     } else {
         if (ly_set_new(result)) {
-            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
             goto cleanup;
         }
     }
@@ -2597,51 +2597,51 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
 
     /* generate notifcation with all the changes */
     if (lyd_new_path(NULL, mod_info->conn->ly_ctx, "/ietf-netconf-notifications:netconf-config-change", NULL, 0, &notif)) {
-        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
         goto cleanup;
     }
 
     /* changed-by (everything was caused by user, we do not know what changes are implicit) */
     if (lyd_new_inner(notif, NULL, "changed-by", 0, &root)) {
-        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
         goto cleanup;
     }
 
     /* changed-by username */
     if (lyd_new_term(root, NULL, "username", session->user, 0, NULL)) {
-        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
         goto cleanup;
     }
 
     /* changed-by NETCONF session-id (unknown) */
     if (lyd_new_term(root, NULL, "session-id", "0", 0, NULL)) {
-        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
         goto cleanup;
     }
 
     /* datastore */
     if (lyd_new_term(notif, NULL, "datastore", sr_ds2str(mod_info->ds), 0, NULL)) {
-        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
         goto cleanup;
     }
 
     while (!(err_info = sr_diff_set_getnext(set, &idx, &elem, &op)) && elem) {
         /* edit (list instance) */
         if (lyd_new_list(notif, NULL, "edit", 0, &root)) {
-            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
             goto cleanup;
         }
 
         /* edit target */
         xpath = lyd_path(elem, LYD_PATH_STD, NULL, 0);
         if (!xpath) {
-            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
             goto cleanup;
         }
         lyrc = lyd_new_term(root, NULL, "target", xpath, 0, NULL);
         free(xpath);
         if (lyrc) {
-            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
             goto cleanup;
         }
 
@@ -2665,7 +2665,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
             goto cleanup;
         }
         if (lyd_new_term(root, NULL, "operation", op_enum, 0, NULL)) {
-            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx);
+            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
             goto cleanup;
         }
     }

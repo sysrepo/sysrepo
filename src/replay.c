@@ -103,7 +103,7 @@ sr_notif_buf_store(sr_session_ctx_t *sess, const struct lyd_node *notif, struct 
     node = malloc(sizeof *node);
     SR_CHECK_MEM_GOTO(!node, err_info, error);
     if (lyd_dup_siblings(notif, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &node->notif)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(notif));
+        sr_errinfo_new_ly(&err_info, LYD_CTX(notif), NULL);
         goto error;
     }
     node->notif_ts = notif_ts;

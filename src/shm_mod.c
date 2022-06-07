@@ -335,7 +335,7 @@ sr_shmmod_fill_deps(sr_mod_shm_t *mod_shm, struct lyd_node *sr_dep_parent, sr_de
 
             /* get all target modules */
             if (lyd_find_xpath(sr_dep, "target-module", &tmods)) {
-                sr_errinfo_new_ly(&err_info, LYD_CTX(sr_dep));
+                sr_errinfo_new_ly(&err_info, LYD_CTX(sr_dep), NULL);
                 goto cleanup;
             }
 
@@ -380,7 +380,7 @@ sr_shmmod_add_dep_size(const struct lyd_node *sr_dep, size_t *shm_size)
 
     /* get all the strings */
     if (lyd_find_xpath(sr_dep, "target-path | source-path | default-target-path | expression", &set)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(sr_dep));
+        sr_errinfo_new_ly(&err_info, LYD_CTX(sr_dep), NULL);
         goto cleanup;
     }
 
@@ -393,7 +393,7 @@ sr_shmmod_add_dep_size(const struct lyd_node *sr_dep, size_t *shm_size)
     if (!strcmp(sr_dep->schema->name, "xpath")) {
         ly_set_free(set, NULL);
         if (lyd_find_xpath(sr_dep, "target-module", &set)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(sr_dep));
+            sr_errinfo_new_ly(&err_info, LYD_CTX(sr_dep), NULL);
             goto cleanup;
         }
 
@@ -880,14 +880,14 @@ sr_shmmod_ctx_load_modules(sr_mod_shm_t *mod_shm, struct ly_ctx *ly_ctx, const s
         ly_mod = ly_ctx_load_module(ly_ctx, mod_name, smod->rev[0] ? smod->rev : NULL, features);
         free(features);
         if (!ly_mod) {
-            sr_errinfo_new_ly(&err_info, ly_ctx);
+            sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
             return err_info;
         }
     }
 
     /* compile */
     if (ly_ctx_compile(ly_ctx)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx);
+        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
         return err_info;
     }
 
@@ -997,7 +997,7 @@ sr_shmmod_collect_deps_instid(const char *source_path, const char *default_targe
         lyrc = ly_set_new(&set);
     }
     if (lyrc) {
-        sr_errinfo_new_ly(&err_info, ly_ctx);
+        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
         goto cleanup;
     }
 
