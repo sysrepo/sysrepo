@@ -4108,6 +4108,11 @@ _sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t ci
         rwlock->writer = cid;
     } else {
         /* read lock */
+        if (rwlock->readers[SR_RWLOCK_READ_LIMIT - 1]) {
+            /* max reader count, probably some crashed, try to recover first */
+            sr_rwlock_recover(rwlock, func, cb, cb_data);
+        }
+
         if (mode == SR_LOCK_READ_UPGR) {
             if (rwlock->upgr) {
                 /* instead of waiting, try to recover the lock immediately */
