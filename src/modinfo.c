@@ -636,7 +636,13 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
 
     LY_LIST_FOR(edit, node) {
         ly_mod = lyd_owner_module(node);
-        if (ly_mod && !strcmp(ly_mod->name, "sysrepo")) {
+        if (!ly_mod && !node->schema) {
+            lyd_parse_opaq_error(node);
+            sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
+            return err_info;
+        }
+
+        if (!strcmp(ly_mod->name, "sysrepo")) {
             sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"sysrepo\" cannot be modified.");
             return err_info;
         }
