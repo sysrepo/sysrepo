@@ -1648,6 +1648,39 @@ ly_ext_data_cb(const struct lysc_ext_instance *ext, void *user_data, void **ext_
     return LY_SUCCESS;
 }
 
+static void
+notif_schema_mount_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_val_t *values, const size_t values_cnt, struct timespec *timestamp, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)values;
+    (void)values_cnt;
+    (void)timestamp;
+
+    if (notif_type == SR_EV_NOTIF_TERMINATED) {
+        /* ignore */
+        return;
+    }
+
+    assert_int_equal(notif_type, SR_EV_NOTIF_REALTIME);
+
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
+    case 0:
+        assert_string_equal(xpath, "/sm:root/ops:notif4");
+        break;
+    case 1:
+        assert_string_equal(xpath, "/sm:root/ops:cont/cont3/notif2");
+        break;
+    default:
+        fail();
+    }
+
+    ATOMIC_INC_RELAXED(st->cb_called);
+}
+
 static int
 notif_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
@@ -1681,8 +1714,14 @@ test_schema_mount(void **state)
     struct lyd_node *notif;
     int ret;
 
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+
     /* set schema-mount CB */
     sr_set_ext_data_cb(st->conn, ly_ext_data_cb, st);
+
+    /* subscribe for the notifications */
+    ret = sr_notif_subscribe(st->sess, "sm", NULL, NULL, NULL, notif_schema_mount_cb, st, 0, &sub);
+    assert_int_equal(ret, SR_ERR_OK);
 
     /* send simple notif4 */
     assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, st->ly_ctx, "/sm:root/ops:notif4/l", "val", 0, &notif));
@@ -1698,11 +1737,13 @@ test_schema_mount(void **state)
     ret = sr_oper_get_subscribe(st->sess, "ops", "/ops:cont/l12", notif_oper_cb, st, 0, &sub);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* send nested notif2 */
+    /* send nested notif2, wait for the callback */
     assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, st->ly_ctx, "/sm:root/ops:cont/cont3/notif2/l13", "/ops:cont/l12", 0, &notif));
-    ret = sr_notif_send_tree(st->sess, notif, 0, 0);
+    ret = sr_notif_send_tree(st->sess, notif, 0, 1);
     lyd_free_all(notif);
     assert_int_equal(ret, SR_ERR_OK);
+
+    assert_int_equal(2, ATOMIC_LOAD_RELAXED(st->cb_called));
 
     sr_unsubscribe(sub);
 }
