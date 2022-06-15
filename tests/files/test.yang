@@ -87,6 +87,14 @@ module test {
             default 10;
             default 15;
         }
+
+        list l4 {
+            ordered-by user;
+            key "k";
+            leaf k {
+                type string;
+            }
+        }
     }
 
     rpc r1;

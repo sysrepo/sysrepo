@@ -6028,6 +6028,136 @@ module_change_userord_cb(sr_session_ctx_t *session, uint32_t sub_id, const char 
 
         sr_free_values(new_val, val_count);
         break;
+    case 2:
+    case 3:
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 2) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/test:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l3[k='k1']");
+
+        sr_free_val(new_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l3[k='k1']/k");
+
+        sr_free_val(new_val);
+
+        /* 3rd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l3[k='k1']/ll3");
+
+        sr_free_val(new_val);
+
+        /* 4th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_non_null(old_val);
+        assert_string_equal(old_val->xpath, "/test:l3[k='k1']/ll3");
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l3[k='k1']/ll3");
+
+        sr_free_val(old_val);
+        sr_free_val(new_val);
+
+        /* 5th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_non_null(old_val);
+        assert_string_equal(old_val->xpath, "/test:l3[k='k1']/ll3");
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l3[k='k1']/ll3");
+
+        sr_free_val(old_val);
+        sr_free_val(new_val);
+
+        /* 6th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l3[k='k1']/l4[k='k1']");
+
+        sr_free_val(new_val);
+
+        /* 7th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l3[k='k1']/l4[k='k1']/k");
+
+        sr_free_val(new_val);
+
+        /* 8th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_non_null(old_val);
+        assert_string_equal(old_val->xpath, "/test:l3[k='k1']/l4[k='k1']");
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l3[k='k1']/l4[k='k2']");
+
+        sr_free_val(old_val);
+        sr_free_val(new_val);
+
+        /* 9th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/test:l3[k='k1']/l4[k='k2']/k");
+
+        sr_free_val(new_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+
+        /* check data */
+        ret = sr_get_items(session, "/test:l3//.", 0, 0, &new_val, &val_count);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(val_count, 9);
+
+        sr_free_values(new_val, val_count);
+        break;
     default:
         fail();
     }
@@ -6061,6 +6191,14 @@ apply_change_userord_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform 1st change */
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* perform 2nd change */
+    ret = sr_set_item_str(sess, "/test:l3[k='k1']/l4[k='k1']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/test:l3[k='k1']/l4[k='k2']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -6098,11 +6236,11 @@ subscribe_change_userord_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     count = 0;
-    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 2) && (count < 1500)) {
+    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 4) && (count < 1500)) {
         usleep(10000);
         ++count;
     }
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
