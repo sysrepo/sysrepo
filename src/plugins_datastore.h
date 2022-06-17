@@ -251,7 +251,7 @@ struct srplg_ds_s {
  */
 #define SRPLG_DATASTORE \
     uint32_t srpds_apiver__ = SRPLG_DS_API_VERSION; \
-    extern const struct srplg_ds_s srpds__
+    const struct srplg_ds_s srpds__
 
 #ifdef __cplusplus
 }
