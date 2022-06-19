@@ -303,7 +303,7 @@ sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char 
                 free(group->users);
 
                 --nacm.group_count;
-                if (i < nacm.group_count) {
+                if (0 < nacm.group_count) {
                     memcpy(group, &nacm.groups[nacm.group_count], sizeof *group);
                 }
                 if (!nacm.group_count) {
