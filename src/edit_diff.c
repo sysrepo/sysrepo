@@ -1848,7 +1848,10 @@ sr_edit_mod_apply(const struct lyd_node *edit, const struct lys_module *ly_mod, 
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *root;
-    struct lyd_node *mod_diff;
+    struct lyd_node *droot, *next, *elem, *mod_diff;
+    struct lyd_node_leaf_list *leaf;
+    struct lys_node_leaf *sleaf;
+    struct ly_set *set;
 
     if (change) {
         *change = 0;
@@ -1876,6 +1879,25 @@ sr_edit_mod_apply(const struct lyd_node *edit, const struct lys_module *ly_mod, 
                     return err_info;
                 }
                 lyd_free_withsiblings(mod_diff);
+            }
+        }
+    }
+
+    if (diff) {
+        LY_TREE_FOR(*diff, droot) {
+            LY_TREE_DFS_BEGIN(droot, next, elem) {
+                if ((elem->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) &&
+                        (((struct lyd_node_leaf_list *)elem)->value_type == LY_TYPE_LEAFREF)) {
+                    leaf = (struct lyd_node_leaf_list *)elem;
+                    sleaf = (struct lys_node_leaf *)elem->schema;
+
+                    /* update leafref pointer */
+                    set = lyd_find_path(elem, sleaf->type.info.lref.path);
+                    assert(set && (set->number == 1));
+                    leaf->value.leafref = set->set.d[0];
+                    ly_set_free(set);
+                }
+                LY_TREE_DFS_END(droot, next, elem);
             }
         }
     }
