@@ -5346,7 +5346,7 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
 {
     sr_error_info_t *err_info = NULL;
     const struct ly_ctx *ctx = LYD_CTX(*data);
-    struct lyd_node *root, *src, *parent, *p;
+    struct lyd_node *root, *src, *parent, *iter;
     struct ly_set *cur_set, *set = NULL;
     uint32_t i, j;
     LY_ERR lyrc;
@@ -5420,9 +5420,19 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
             } else {
                 /* relink into parent, if any */
                 lyd_unlink_tree(src);
-                if (parent && lyd_insert_child(parent, src)) {
-                    sr_errinfo_new_ly(&err_info, ctx, NULL);
-                    goto cleanup;
+                if (parent) {
+                    if (lysc_is_np_cont(src->schema)) {
+                        /* it already exists, remove it first */
+                        if (lyd_find_sibling_first(lyd_child(parent), src, &iter)) {
+                            sr_errinfo_new_ly(&err_info, ctx, NULL);
+                            goto cleanup;
+                        }
+                        lyd_free_tree(iter);
+                    }
+                    if (lyd_insert_child(parent, src)) {
+                        sr_errinfo_new_ly(&err_info, ctx, NULL);
+                        goto cleanup;
+                    }
                 }
 
                 root = src;
@@ -5430,8 +5440,8 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
 
             /* check whether there is not a subtree of this tree in set */
             for (j = i + 1; j < set->count; ++j) {
-                for (p = lyd_parent(set->dnodes[j]); p; p = lyd_parent(p)) {
-                    if (root == p) {
+                for (iter = lyd_parent(set->dnodes[j]); iter; iter = lyd_parent(iter)) {
+                    if (root == iter) {
                         /* it is, so it will now be merged with its parent and freed node left in set, prevent that */
                         set->dnodes[j] = NULL;
                         break;
