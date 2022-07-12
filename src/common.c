@@ -4420,8 +4420,8 @@ sr_open(const char *path, int flags, mode_t mode)
         return -1;
     }
 
-    /* check permissions only if file was not created and group if there is any to set */
-    if ((flags & O_CREAT) && (!(flags & O_EXCL) || strlen(SR_GROUP))) {
+    /* check permissions if the file could have been created */
+    if (flags & O_CREAT) {
         /* stat the file */
         if (fstat(fd, &st)) {
             close(fd);
