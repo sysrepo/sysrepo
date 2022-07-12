@@ -250,10 +250,15 @@ step_load_data(const struct ly_ctx *ly_ctx, const char *file_path, LYD_FORMAT fo
 
     /* get input */
     if (file_path) {
-        if (ly_in_new_filepath(file_path, 0, &in)) {
+        lyrc = ly_in_new_filepath(file_path, 0, &in);
+        if (lyrc == LY_EINVAL) {
             /* empty file */
             ptr = strdup("");
             ly_in_new_memory(ptr, &in);
+        } else if (lyrc) {
+            /* error */
+            error_print(0, "Failed to create input handler from file \"%s\"", file_path);
+            return EXIT_FAILURE;
         }
     } else {
         /* we need to load the data into memory first */
