@@ -223,12 +223,15 @@ cleanup_unlock:
 }
 
 static struct sr_nacm_group *
-sr_nacm_group_find(const char *group_name)
+sr_nacm_group_find(const char *group_name, uint32_t *idx)
 {
     uint32_t i;
 
     for (i = 0; i < nacm.group_count; ++i) {
         if (!strcmp(nacm.groups[i].name, group_name)) {
+            if (idx) {
+                *idx = i;
+            }
             return &nacm.groups[i];
         }
     }
@@ -246,7 +249,7 @@ sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char 
     const struct lyd_node *node;
     const char *group_name, *user_name;
     struct sr_nacm_group *group = NULL;
-    uint32_t i;
+    uint32_t i, j;
     char *xpath2;
     int rc;
     void *mem;
@@ -292,18 +295,19 @@ sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char 
                 break;
             case SR_OP_DELETED:
                 /* find it */
-                group = sr_nacm_group_find(group_name);
+                group = sr_nacm_group_find(group_name, &j);
                 assert(group && nacm.group_count);
 
-                /* delete it */
+                /* delete all group users */
                 free(group->name);
                 for (i = 0; i < group->user_count; ++i) {
                     free(group->users[i]);
                 }
                 free(group->users);
 
+                /* delete the group */
                 --nacm.group_count;
-                if (i < nacm.group_count) {
+                if (j < nacm.group_count) {
                     memcpy(group, &nacm.groups[nacm.group_count], sizeof *group);
                 }
                 if (!nacm.group_count) {
@@ -322,7 +326,7 @@ sr_nacm_group_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char 
         } else {
             /* name must be present */
             assert(!strcmp(node->parent->child->schema->name, "name"));
-            group = sr_nacm_group_find(lyd_get_value(node->parent->child));
+            group = sr_nacm_group_find(lyd_get_value(node->parent->child), NULL);
 
             if (!strcmp(node->schema->name, "user-name")) {
                 if ((op == SR_OP_DELETED) && !group) {
