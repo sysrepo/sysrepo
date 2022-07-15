@@ -3578,7 +3578,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
         }
     }
 
-    if ((src_datastore == SR_DS_RUNNING) && (session->ds == SR_DS_CANDIDATE)) {
+    if ((src_datastore == SR_DS_RUNNING) && (session->ds == SR_DS_CANDIDATE) && !session->nacm_user) {
         /* add modules into mod_info without data */
         if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_WRITE, SR_MI_DATA_NO | SR_MI_PERM_NO, session->sid,
                 session->orig_name, session->orig_data, 0, 0, 0))) {
@@ -3604,7 +3604,8 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
         goto cleanup;
     }
 
-    if ((src_datastore == SR_DS_CANDIDATE) && (session->ds == SR_DS_RUNNING)) {
+    if (((src_datastore == SR_DS_CANDIDATE) && (session->ds == SR_DS_RUNNING)) ||
+            ((src_datastore == SR_DS_RUNNING) && (session->ds == SR_DS_CANDIDATE))) {
         /* MODULES WRITE LOCK */
         if ((err_info = sr_shmmod_modinfo_wrlock(&mod_info, session->sid, 0))) {
             goto cleanup;
