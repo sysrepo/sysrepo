@@ -320,7 +320,7 @@ sr_edit_update_cid(struct lyd_node *edit_node, sr_cid_t cid, int keep_cur_child,
         LY_LIST_FOR(lyd_child_no_keys(edit_node), child) {
             sr_edit_find_cid(child, NULL, &meta_own);
             if (!meta_own) {
-                if (lyd_new_meta(LYD_CTX(edit_node), child, NULL, "sysrepo:cid", cid_str, 0, NULL)) {
+                if (lyd_new_meta(LYD_CTX(child), child, NULL, "sysrepo:cid", cid_str, 0, NULL)) {
                     sr_errinfo_new_ly(&err_info, LYD_CTX(edit_node), NULL);
                     return err_info;
                 }
