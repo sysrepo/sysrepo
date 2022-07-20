@@ -533,7 +533,7 @@ sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const ch
 
     /* collect all required modules */
     if (xpath) {
-        if ((err_info = sr_modinfo_collect_xpath(conn->ly_ctx, xpath, SR_DS_OPERATIONAL, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_collect_xpath(conn->ly_ctx, xpath, SR_DS_OPERATIONAL, 0, 0, &mod_info))) {
             goto cleanup;
         }
     } else {
@@ -2302,7 +2302,7 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* collect all required modules */
-    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, path, session->ds, 1, &mod_info))) {
+    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, path, session->ds, 1, 0, &mod_info))) {
         goto cleanup;
     }
 
@@ -2405,7 +2405,7 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
     }
 
     /* collect all required modules */
-    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, xpath, session->ds, 1, &mod_info))) {
+    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, xpath, session->ds, 1, 0, &mod_info))) {
         goto cleanup;
     }
 
@@ -2482,7 +2482,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
     }
 
     /* collect all required modules */
-    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, path, session->ds, 1, &mod_info))) {
+    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, path, session->ds, 1, 0, &mod_info))) {
         goto cleanup;
     }
 
@@ -2566,7 +2566,7 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
     }
 
     /* collect all required modules */
-    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, xpath, session->ds, 1, &mod_info))) {
+    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, xpath, session->ds, 1, 0, &mod_info))) {
         goto cleanup;
     }
 

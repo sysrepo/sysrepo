@@ -101,11 +101,12 @@ sr_error_info_t *sr_modinfo_collect_edit(const struct lyd_node *edit, struct sr_
  * @param[in] xpath XPath to be evaluated.
  * @param[in] ds Target datastore where the @p xpath will be evaluated.
  * @param[in] store_xpath Whether to store @p xpath as module xpath (filtering required data).
+ * @param[in] dup_xpath Whether to duplicate @p xpath if it is being stored.
  * @param[in,out] mod_info Mod info to add to.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds,
-        int store_xpath, struct sr_mod_info_s *mod_info);
+        int store_xpath, int dup_xpath, struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Collect required modules of (MOD_INFO_REQ & MOD_INFO_CHANGED) | MOD_INFO_INV_DEP modules in mod info.

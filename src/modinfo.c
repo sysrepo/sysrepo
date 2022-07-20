@@ -30,6 +30,7 @@
 #include <unistd.h>
 
 #include <libyang/libyang.h>
+#include <libyang/plugins_exts.h>
 #include <libyang/plugins_types.h>
 
 #include "common.h"
@@ -86,6 +87,15 @@ sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int dup_xpath
                 /* xpath has already been added */
                 return NULL;
             }
+        }
+
+        if (dup_xpath && !(mod->state & MOD_INFO_XPATH_DYN)) {
+            /* duplicate all the current xpaths, they cannot be mixed */
+            for (i = 0; i < mod->xpath_count; ++i) {
+                mod->xpaths[i] = strdup(mod->xpaths[i]);
+                SR_CHECK_MEM_RET(!mod->xpaths[i], err_info);
+            }
+            mod->state |= MOD_INFO_XPATH_DYN;
         }
 
         /* add xpath for mod */
@@ -161,7 +171,7 @@ sr_modinfo_collect_edit(const struct lyd_node *edit, struct sr_mod_info_s *mod_i
 
 sr_error_info_t *
 sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds, int store_xpath,
-        struct sr_mod_info_s *mod_info)
+        int dup_xpath, struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *prev_ly_mod, *ly_mod;
@@ -197,7 +207,7 @@ sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_data
             continue;
         }
 
-        if ((err_info = sr_modinfo_add(ly_mod, store_xpath ? xpath : NULL, 0, 0, mod_info))) {
+        if ((err_info = sr_modinfo_add(ly_mod, store_xpath ? xpath : NULL, dup_xpath, 0, mod_info))) {
             goto cleanup;
         }
     }
