@@ -831,7 +831,11 @@ sr_edit_diff_append(const struct lyd_node *edit, enum edit_op op, int recursive,
 
     /* finally, insert subtree into diff parent */
     if (diff_parent) {
-        lyd_insert_child(diff_parent, diff_subtree);
+        if (diff_subtree->flags & LYD_EXT) {
+            lyd_insert_ext(diff_parent, diff_subtree);
+        } else {
+            lyd_insert_child(diff_parent, diff_subtree);
+        }
     } else {
         lyd_insert_sibling(*diff, diff_subtree, diff);
     }
