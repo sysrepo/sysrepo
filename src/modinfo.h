@@ -118,16 +118,14 @@ sr_error_info_t *sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const cha
 sr_error_info_t *sr_modinfo_collect_deps(struct sr_mod_info_s *mod_info);
 
 /**
- * @brief Collect required modules of data siblings directly into mod info.
+ * @brief Collect required modules and XPath for all mounted data and parent-reference nodes in schema-mount ext data
+ * in mod info.
  *
- * @param[in,out] mod_info Mod info to use.
- * @param[in] path_prefix Prefix to be prepended to all generated schema paths.
- * @param[in] sibling First schema sibling to consider.
- * @param[in] data Instantiated data.
+ * @param[in] mp_node Mount-point schema node.
+ * @param[in,out] mod_info Mod info to add to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_siblings_collect_deps(struct sr_mod_info_s *mod_info, const char *path_prefix,
-        const struct lysc_node *sibling, const struct lyd_node *data);
+sr_error_info_t *sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Check permissions of all the modules in a mod info.

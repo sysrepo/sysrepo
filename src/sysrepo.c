@@ -5819,7 +5819,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
     sr_mod_t *shm_mod;
     struct timespec notif_ts;
     uint16_t shm_dep_count;
-    char *parent_path = NULL, *path_prefix = NULL;
+    char *parent_path = NULL;
 
     SR_CHECK_ARG_APIRET(!session || !notif, session, err_info);
     if (session->conn->ly_ctx != LYD_CTX(notif)) {
@@ -5882,12 +5882,8 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
         for (parent = notif_op; parent && !(parent->flags & LYD_EXT); parent = lyd_parent(parent)) {}
         SR_CHECK_INT_GOTO(!parent, err_info, cleanup);
 
-        /* get the path to the mounted data */
-        path_prefix = lyd_path(lyd_parent(parent), LYD_PATH_STD, NULL, 0);
-        SR_CHECK_MEM_GOTO(!path_prefix, err_info, cleanup);
-
-        /* collect ad-hoc dependencies */
-        if ((err_info = sr_modinfo_siblings_collect_deps(&mod_info, path_prefix, lysc_node_child(notif_op->schema), notif))) {
+        /* collect all mounted data and data mentioned in the parent-references */
+        if ((err_info = sr_modinfo_collect_ext_deps(lyd_parent(parent)->schema, &mod_info))) {
             goto cleanup;
         }
     } else {
@@ -5936,7 +5932,6 @@ cleanup:
     sr_shmmod_modinfo_unlock(&mod_info);
 
     free(parent_path);
-    free(path_prefix);
     sr_modinfo_erase(&mod_info);
     if (tmp_err) {
         sr_errinfo_merge(&err_info, tmp_err);
