@@ -1838,7 +1838,7 @@ sr_set_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
     mod_shm = SR_CONN_MOD_SHM(conn);
 
     if (perm & SR_UMASK) {
-        SR_LOG_WRN("Ignoring permission bits %03o forbidden by Sysrepo umask.", SR_UMASK);
+        SR_LOG_WRN("Ignoring permission bits %03o forbidden by Sysrepo umask.", perm & SR_UMASK);
         perm &= ~SR_UMASK;
     }
     if (group && strlen(SR_GROUP) && strcmp(group, SR_GROUP)) {
