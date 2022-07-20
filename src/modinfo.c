@@ -2491,7 +2491,7 @@ cleanup:
             node = set->dnodes[i];
             lyd_unlink_tree(node);
             if (lyd_insert_ext(op_ext_parent, node)) {
-                sr_errinfo_new_ly(&err_info, LYD_CTX(mod_info->data), NULL);
+                sr_errinfo_new_ly(&err_info, LYD_CTX(op_ext_parent), node);
             }
         }
     }
