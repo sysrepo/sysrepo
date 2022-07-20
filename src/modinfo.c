@@ -2486,7 +2486,7 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int 
     }
 
 cleanup:
-    if (set) {
+    if (set && op_ext_parent) {
         for (i = 0; i < set->count; ++i) {
             node = set->dnodes[i];
             lyd_unlink_tree(node);
