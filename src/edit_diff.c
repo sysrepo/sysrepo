@@ -294,7 +294,7 @@ sr_edit_update_cid(struct lyd_node *edit_node, sr_cid_t cid, int keep_cur_child,
         if (cur_cid != cid) {
             /* add meta of the new connection */
             sprintf(cid_str, "%" PRIu32, cid);
-            if (lyd_new_meta(LYD_CTX(edit_node), edit_node, NULL, "sysrepo:cid", cid_str, 0, NULL)) {
+            if (lyd_new_meta(NULL, edit_node, NULL, "sysrepo:cid", cid_str, 0, NULL)) {
                 sr_errinfo_new_ly(&err_info, LYD_CTX(edit_node), NULL);
                 return err_info;
             }
@@ -320,8 +320,8 @@ sr_edit_update_cid(struct lyd_node *edit_node, sr_cid_t cid, int keep_cur_child,
         LY_LIST_FOR(lyd_child_no_keys(edit_node), child) {
             sr_edit_find_cid(child, NULL, &meta_own);
             if (!meta_own) {
-                if (lyd_new_meta(LYD_CTX(child), child, NULL, "sysrepo:cid", cid_str, 0, NULL)) {
-                    sr_errinfo_new_ly(&err_info, LYD_CTX(edit_node), NULL);
+                if (lyd_new_meta(NULL, child, NULL, "sysrepo:cid", cid_str, 0, NULL)) {
+                    sr_errinfo_new_ly(&err_info, LYD_CTX(child), NULL);
                     return err_info;
                 }
             }
@@ -388,12 +388,12 @@ sr_edit_copy_meta(const struct lyd_node *src_node, struct lyd_node *trg_node, in
 
     /* copy operation */
     if (src_op == EDIT_ETHER) {
-        if (lyd_new_meta(LYD_CTX(trg_node), trg_node, NULL, "sysrepo:operation", sr_edit_op2str(src_op), 0, NULL)) {
+        if (lyd_new_meta(NULL, trg_node, NULL, "sysrepo:operation", sr_edit_op2str(src_op), 0, NULL)) {
             sr_errinfo_new_ly(&err_info, LYD_CTX(trg_node), NULL);
             goto cleanup;
         }
     } else if (src_op) {
-        if (lyd_new_meta(LYD_CTX(trg_node), trg_node, NULL, "ietf-netconf:operation", sr_edit_op2str(src_op), 0, NULL)) {
+        if (lyd_new_meta(NULL, trg_node, NULL, "ietf-netconf:operation", sr_edit_op2str(src_op), 0, NULL)) {
             sr_errinfo_new_ly(&err_info, LYD_CTX(trg_node), NULL);
             goto cleanup;
         }
@@ -417,7 +417,7 @@ sr_edit_copy_meta(const struct lyd_node *src_node, struct lyd_node *trg_node, in
         insert_str = "after";
         break;
     }
-    if (insert_str && lyd_new_meta(LYD_CTX(trg_node), trg_node, yang_mod, "insert", insert_str, 0, NULL)) {
+    if (insert_str && lyd_new_meta(NULL, trg_node, yang_mod, "insert", insert_str, 0, NULL)) {
         sr_errinfo_new_ly(&err_info, LYD_CTX(trg_node), NULL);
         goto cleanup;
     }
@@ -427,7 +427,7 @@ sr_edit_copy_meta(const struct lyd_node *src_node, struct lyd_node *trg_node, in
     }
 
     assert(!userord_anchor || anchor_meta_name);
-    if (userord_anchor && lyd_new_meta(LYD_CTX(trg_node), trg_node, yang_mod, anchor_meta_name, userord_anchor, 0, NULL)) {
+    if (userord_anchor && lyd_new_meta(NULL, trg_node, yang_mod, anchor_meta_name, userord_anchor, 0, NULL)) {
         sr_errinfo_new_ly(&err_info, LYD_CTX(trg_node), NULL);
         goto cleanup;
     }
@@ -497,8 +497,7 @@ sr_diff_add_meta(struct lyd_node *diff_node, const char *meta_val, const char *p
     case EDIT_NONE:
         /* add attributes for the special dflt-only change */
         if (diff_node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) {
-            if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:orig-default", prev_meta_val ? "true" : "false",
-                    0, NULL)) {
+            if (lyd_new_meta(NULL, diff_node, NULL, "yang:orig-default", prev_meta_val ? "true" : "false", 0, NULL)) {
                 goto ly_error;
             }
         }
@@ -509,11 +508,10 @@ sr_diff_add_meta(struct lyd_node *diff_node, const char *meta_val, const char *p
             assert(!prev_meta_val || (diff_node->schema->nodetype == LYS_LEAF));
 
             /* add info about previous value and default state as an attribute */
-            if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:orig-value", meta_val, 0, NULL)) {
+            if (lyd_new_meta(NULL, diff_node, NULL, "yang:orig-value", meta_val, 0, NULL)) {
                 goto ly_error;
             }
-            if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:orig-default", prev_meta_val ? "true" : "false",
-                    0, NULL)) {
+            if (lyd_new_meta(NULL, diff_node, NULL, "yang:orig-default", prev_meta_val ? "true" : "false", 0, NULL)) {
                 goto ly_error;
             }
             break;
@@ -523,15 +521,15 @@ sr_diff_add_meta(struct lyd_node *diff_node, const char *meta_val, const char *p
 
         /* add info about current place for abort */
         if (lysc_is_dup_inst_list(diff_node->schema)) {
-            if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:orig-position", prev_meta_val, 0, NULL)) {
+            if (lyd_new_meta(NULL, diff_node, NULL, "yang:orig-position", prev_meta_val, 0, NULL)) {
                 goto ly_error;
             }
         } else if (diff_node->schema->nodetype == LYS_LIST) {
-            if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:orig-key", prev_meta_val, 0, NULL)) {
+            if (lyd_new_meta(NULL, diff_node, NULL, "yang:orig-key", prev_meta_val, 0, NULL)) {
                 goto ly_error;
             }
         } else {
-            if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:orig-value", prev_meta_val, 0, NULL)) {
+            if (lyd_new_meta(NULL, diff_node, NULL, "yang:orig-value", prev_meta_val, 0, NULL)) {
                 goto ly_error;
             }
         }
@@ -540,15 +538,15 @@ sr_diff_add_meta(struct lyd_node *diff_node, const char *meta_val, const char *p
         if (lysc_is_userordered(diff_node->schema)) {
             /* add info about inserted place as a metadata (meta_val can be NULL, inserted on the first place) */
             if (lysc_is_dup_inst_list(diff_node->schema)) {
-                if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:position", meta_val, 0, NULL)) {
+                if (lyd_new_meta(NULL, diff_node, NULL, "yang:position", meta_val, 0, NULL)) {
                     goto ly_error;
                 }
             } else if (diff_node->schema->nodetype == LYS_LIST) {
-                if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:key", meta_val, 0, NULL)) {
+                if (lyd_new_meta(NULL, diff_node, NULL, "yang:key", meta_val, 0, NULL)) {
                     goto ly_error;
                 }
             } else {
-                if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:value", meta_val, 0, NULL)) {
+                if (lyd_new_meta(NULL, diff_node, NULL, "yang:value", meta_val, 0, NULL)) {
                     goto ly_error;
                 }
             }
@@ -558,15 +556,15 @@ sr_diff_add_meta(struct lyd_node *diff_node, const char *meta_val, const char *p
         if (lysc_is_userordered(diff_node->schema)) {
             /* add info about current place for abort */
             if (lysc_is_dup_inst_list(diff_node->schema)) {
-                if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:orig-position", prev_meta_val, 0, NULL)) {
+                if (lyd_new_meta(NULL, diff_node, NULL, "yang:orig-position", prev_meta_val, 0, NULL)) {
                     goto ly_error;
                 }
             } else if (diff_node->schema->nodetype == LYS_LIST) {
-                if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:orig-key", prev_meta_val, 0, NULL)) {
+                if (lyd_new_meta(NULL, diff_node, NULL, "yang:orig-key", prev_meta_val, 0, NULL)) {
                     goto ly_error;
                 }
             } else {
-                if (lyd_new_meta(LYD_CTX(diff_node), diff_node, NULL, "yang:orig-value", prev_meta_val, 0, NULL)) {
+                if (lyd_new_meta(NULL, diff_node, NULL, "yang:orig-value", prev_meta_val, 0, NULL)) {
                     goto ly_error;
                 }
             }
@@ -665,15 +663,11 @@ static sr_error_info_t *
 sr_meta_edit2diff(struct lyd_node *node, enum edit_op set_op, const struct lyd_node *orig_node)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *yang_mod;
     enum edit_op eop;
     struct lyd_meta *meta;
     const struct lyd_node *sibling_before;
     char *sibling_before_val = NULL;
     int op_own;
-
-    yang_mod = ly_ctx_get_module_implemented(LYD_CTX(node), "yang");
-    SR_CHECK_INT_GOTO(!yang_mod, err_info, cleanup);
 
     /* check if there is an operation */
     eop = sr_edit_diff_find_oper(node, 1, &op_own);
@@ -688,7 +682,7 @@ sr_meta_edit2diff(struct lyd_node *node, enum edit_op set_op, const struct lyd_n
     }
 
     /* remove insert */
-    meta = lyd_find_meta(node->meta, yang_mod, "insert");
+    meta = lyd_find_meta(node->meta, NULL, "yang:insert");
     lyd_free_meta_single(meta);
 
     if (lysc_is_userordered(node->schema)) {
@@ -1414,7 +1408,7 @@ sr_diff_set_oper(struct lyd_node *diff, const char *op)
     sr_error_info_t *err_info = NULL;
 
     if (diff->schema) {
-        if (lyd_new_meta(LYD_CTX(diff), diff, NULL, "yang:operation", op, 0, NULL)) {
+        if (lyd_new_meta(NULL, diff, NULL, "yang:operation", op, 0, NULL)) {
             sr_errinfo_new_ly(&err_info, LYD_CTX(diff), NULL);
             return err_info;
         }
@@ -1624,7 +1618,7 @@ sr_edit_diff_set_origin(struct lyd_node *node, const char *origin, int overwrite
 
     /* set correct origin */
     if (node->schema) {
-        if (lyd_new_meta(LYD_CTX(node), node, NULL, "ietf-origin:origin", origin, 0, NULL)) {
+        if (lyd_new_meta(NULL, node, NULL, "ietf-origin:origin", origin, 0, NULL)) {
             sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL);
             return err_info;
         }
@@ -2106,11 +2100,11 @@ sr_edit_created_subtree_apply_move(struct lyd_node *match_subtree)
             }
 
             if (elem->schema->nodetype == LYS_LIST) {
-                if (lyd_new_meta(LYD_CTX(elem), elem, NULL, "yang:key", sibling_before_val, 0, NULL)) {
+                if (lyd_new_meta(NULL, elem, NULL, "yang:key", sibling_before_val, 0, NULL)) {
                     sr_errinfo_new_ly(&err_info, LYD_CTX(elem), NULL);
                 }
             } else {
-                if (lyd_new_meta(LYD_CTX(elem), elem, NULL, "yang:value", sibling_before_val, 0, NULL)) {
+                if (lyd_new_meta(NULL, elem, NULL, "yang:value", sibling_before_val, 0, NULL)) {
                     sr_errinfo_new_ly(&err_info, LYD_CTX(elem), NULL);
                 }
             }
@@ -2783,7 +2777,7 @@ sr_edit_set_oper(struct lyd_node *edit, const char *op)
     }
 
     if (edit->schema) {
-        if (lyd_new_meta(LYD_CTX(edit), edit, NULL, attr_full_name, op, 0, NULL)) {
+        if (lyd_new_meta(NULL, edit, NULL, attr_full_name, op, 0, NULL)) {
             sr_errinfo_new_ly(&err_info, LYD_CTX(edit), NULL);
             return err_info;
         }
@@ -3010,13 +3004,13 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         goto error;
     }
     if (position) {
-        if (lyd_new_meta(session->conn->ly_ctx, node, NULL, "yang:insert", sr_edit_pos2str(*position), 0, NULL)) {
-            sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
+        if (lyd_new_meta(NULL, node, NULL, "yang:insert", sr_edit_pos2str(*position), 0, NULL)) {
+            sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL);
             goto error;
         }
-        if (((*position == SR_MOVE_BEFORE) || (*position == SR_MOVE_AFTER)) && lyd_new_meta(session->conn->ly_ctx, node,
-                NULL, (node->schema->nodetype == LYS_LIST) ? "yang:key" : "yang:value", meta_val, 0, NULL)) {
-            sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
+        if (((*position == SR_MOVE_BEFORE) || (*position == SR_MOVE_AFTER)) && lyd_new_meta(NULL, node, NULL,
+                (node->schema->nodetype == LYS_LIST) ? "yang:key" : "yang:value", meta_val, 0, NULL)) {
+            sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL);
             goto error;
         }
     }
