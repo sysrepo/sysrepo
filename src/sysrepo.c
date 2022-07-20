@@ -74,7 +74,7 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     conn = calloc(1, sizeof *conn);
     SR_CHECK_MEM_RET(!conn, err_info);
 
-    if ((err_info = sr_ly_ctx_init(opts, NULL, NULL, &conn->ly_ctx))) {
+    if ((err_info = sr_ly_ctx_init(opts, NULL, NULL, NULL, &conn->ly_ctx))) {
         goto error1;
     }
 
@@ -147,6 +147,7 @@ sr_conn_free(sr_conn_ctx_t *conn)
     sr_conn_flush_cache(conn);
 
     ly_ctx_destroy(conn->ly_ctx);
+    free(conn->ext_searchdir);
     pthread_mutex_destroy(&conn->ptr_lock);
     if (conn->create_lock > -1) {
         close(conn->create_lock);
@@ -213,7 +214,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 
     if (created) {
         /* create new temporary context */
-        if ((err_info = sr_ly_ctx_init(0, NULL, NULL, &tmp_ly_ctx))) {
+        if ((err_info = sr_ly_ctx_init(0, NULL, NULL, NULL, &tmp_ly_ctx))) {
             goto cleanup_unlock;
         }
 
@@ -429,6 +430,28 @@ sr_set_ext_data_cb(sr_conn_ctx_t *conn, ly_ext_data_clb cb, void *user_data)
 
     /* set for the current context */
     ly_ctx_set_ext_data_clb(conn->ly_ctx, cb, user_data);
+}
+
+API int
+sr_set_ext_data_searchdir(sr_conn_ctx_t *conn, const char *searchdir)
+{
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(!conn, NULL, err_info);
+
+    /* store */
+    free(conn->ext_searchdir);
+    conn->ext_searchdir = NULL;
+    if (searchdir) {
+        conn->ext_searchdir = strdup(searchdir);
+        SR_CHECK_MEM_GOTO(!conn->ext_searchdir, err_info, cleanup);
+    }
+
+    /* set for the current context */
+    ly_ctx_set_searchdir(conn->ly_ctx, searchdir);
+
+cleanup:
+    return sr_api_ret(NULL, err_info);
 }
 
 API int
@@ -1331,7 +1354,7 @@ sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *sea
     }
 
     /* create new temporary context */
-    if ((err_info = sr_ly_ctx_init(conn->opts, conn->ext_cb, conn->ext_cb_data, &new_ctx))) {
+    if ((err_info = sr_ly_ctx_init(conn->opts, conn->ext_cb, conn->ext_cb_data, conn->ext_searchdir, &new_ctx))) {
         goto cleanup;
     }
 
@@ -1468,7 +1491,7 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name, int force)
     }
 
     /* create new temporary context */
-    if ((err_info = sr_ly_ctx_init(conn->opts, conn->ext_cb, conn->ext_cb_data, &new_ctx))) {
+    if ((err_info = sr_ly_ctx_init(conn->opts, conn->ext_cb, conn->ext_cb_data, conn->ext_searchdir, &new_ctx))) {
         goto cleanup;
     }
 
@@ -2091,7 +2114,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     /* create new temporary context */
-    if ((err_info = sr_ly_ctx_init(conn->opts, conn->ext_cb, conn->ext_cb_data, &new_ctx))) {
+    if ((err_info = sr_ly_ctx_init(conn->opts, conn->ext_cb, conn->ext_cb_data, conn->ext_searchdir, &new_ctx))) {
         goto cleanup;
     }
 

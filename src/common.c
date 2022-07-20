@@ -1734,7 +1734,8 @@ sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *d
 }
 
 sr_error_info_t *
-sr_ly_ctx_init(sr_conn_options_t opts, ly_ext_data_clb ext_cb, void *ext_cb_data, struct ly_ctx **ly_ctx)
+sr_ly_ctx_init(sr_conn_options_t opts, ly_ext_data_clb ext_cb, void *ext_cb_data, const char *ext_searchdir,
+        struct ly_ctx **ly_ctx)
 {
     sr_error_info_t *err_info = NULL;
     char *yang_dir;
@@ -1758,8 +1759,11 @@ sr_ly_ctx_init(sr_conn_options_t opts, ly_ext_data_clb ext_cb, void *ext_cb_data
         goto cleanup;
     }
 
-    /* set the callback */
+    /* set the callback and searchdir */
     ly_ctx_set_ext_data_clb(*ly_ctx, ext_cb, ext_cb_data);
+    if (ext_searchdir) {
+        ly_ctx_set_searchdir(*ly_ctx, ext_searchdir);
+    }
 
     /* load just the internal module */
     if (lys_parse_mem(*ly_ctx, sysrepo_yang, LYS_IN_YANG, NULL)) {

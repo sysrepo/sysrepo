@@ -102,6 +102,7 @@ struct sr_conn_ctx_s {
     sr_conn_options_t opts;         /**< Connection options. */
     ly_ext_data_clb ext_cb;         /**< LY ext data callback for the context. */
     void *ext_cb_data;              /**< LY ext data callback user data. */
+    char *ext_searchdir;            /**< LY ext search dir for YANG modules. */
 
     pthread_mutex_t ptr_lock;       /**< Session-shared lock for accessing pointers to sessions. */
     sr_session_ctx_t **sessions;    /**< Array of sessions for this connection. */
