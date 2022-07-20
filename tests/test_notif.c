@@ -1583,6 +1583,7 @@ ly_ext_data_cb(const struct lysc_ext_instance *ext, void *user_data, void **ext_
             "    <module>"
             "      <name>ops-ref</name>"
             "      <namespace>urn:ops-ref</namespace>"
+            "      <feature>feat1</feature>"
             "    </module>"
             "    <module>"
             "      <name>ietf-netconf</name>"
@@ -1631,7 +1632,7 @@ ly_ext_data_cb(const struct lysc_ext_instance *ext, void *user_data, void **ext_
             "    <module>sm</module>"
             "    <label>root</label>"
             "    <shared-schema>"
-            "      <parent-reference>/ops:cont/l12</parent-reference>"
+            "      <parent-reference>/ops:cont</parent-reference>"
             "    </shared-schema>"
             "  </mount-point>"
             "</schema-mounts>";
@@ -1674,6 +1675,9 @@ notif_schema_mount_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_no
     case 1:
         assert_string_equal(xpath, "/sm:root/ops:cont/cont3/notif2");
         break;
+    case 2:
+        assert_string_equal(xpath, "/sm:root/ops:notif3");
+        break;
     default:
         fail();
     }
@@ -1695,10 +1699,11 @@ notif_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_nam
 
     if (!strcmp(module_name, "sm") && !strcmp(xpath, "/sm:root")) {
         assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, st->ly_ctx, "/sm:root/ops:cont/cont3", NULL, 0, parent));
-    } else if (!strcmp(module_name, "ops-ref") && !strcmp(xpath, "/ops-ref:l1")) {
-        assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, st->ly_ctx, "/ops-ref:l1", "l1-starting-with", 0, parent));
+        assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/sm:root/ops-ref:l1", "l1-starting-with", 0, NULL));
     } else if (!strcmp(module_name, "ops") && !strcmp(xpath, "/ops:cont/l12")) {
         assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ops:cont/l12", "value", 0, NULL));
+    } else if (!strcmp(module_name, "ops") && !strcmp(xpath, "/ops:cont/list1")) {
+        assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ops:cont/list1[k='key']/cont2", NULL, 0, NULL));
     } else {
         fail();
     }
@@ -1716,8 +1721,9 @@ test_schema_mount(void **state)
 
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
-    /* set schema-mount CB */
+    /* set schema-mount CB and searchdir */
     sr_set_ext_data_cb(st->conn, ly_ext_data_cb, st);
+    sr_set_ext_data_searchdir(st->conn, TESTS_SRC_DIR "/files");
 
     /* subscribe for the notifications */
     ret = sr_notif_subscribe(st->sess, "sm", NULL, NULL, NULL, notif_schema_mount_cb, st, 0, &sub);
@@ -1732,9 +1738,9 @@ test_schema_mount(void **state)
     /* subscribe for providing mounted and dependency data */
     ret = sr_oper_get_subscribe(st->sess, "sm", "/sm:root", notif_oper_cb, st, 0, &sub);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_oper_get_subscribe(st->sess, "ops-ref", "/ops-ref:l1", notif_oper_cb, st, 0, &sub);
-    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_oper_get_subscribe(st->sess, "ops", "/ops:cont/l12", notif_oper_cb, st, 0, &sub);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_oper_get_subscribe(st->sess, "ops", "/ops:cont/list1", notif_oper_cb, st, 0, &sub);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* send nested notif2, wait for the callback */
@@ -1743,7 +1749,14 @@ test_schema_mount(void **state)
     lyd_free_all(notif);
     assert_int_equal(ret, SR_ERR_OK);
 
-    assert_int_equal(2, ATOMIC_LOAD_RELAXED(st->cb_called));
+    /* send notif3, wait for the callback */
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, st->ly_ctx, "/sm:root/ops:notif3/list2[k='val']/l14",
+            "l1-starting-with", 0, &notif));
+    ret = sr_notif_send_tree(st->sess, notif, 0, 1);
+    lyd_free_all(notif);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_int_equal(3, ATOMIC_LOAD_RELAXED(st->cb_called));
 
     sr_unsubscribe(sub);
 }
