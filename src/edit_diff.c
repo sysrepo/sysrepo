@@ -918,8 +918,7 @@ sr_edit_diff_add(struct lyd_node *node, const char *attr_val, const char *prev_a
         struct lyd_node *diff_parent, struct lyd_node **diff_root, struct lyd_node **diff_node)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *node_dup = NULL, *next, *elem;
-    int has_leafref = 0;
+    struct lyd_node *node_dup = NULL;
 
     assert((op == EDIT_NONE) || (op == EDIT_CREATE) || (op == EDIT_DELETE) || (op == EDIT_REPLACE));
     assert(!*diff_node);
@@ -935,30 +934,7 @@ sr_edit_diff_add(struct lyd_node *node, const char *attr_val, const char *prev_a
     if (no_dup) {
         /* unlink node */
         lyd_unlink(node);
-
-        /* check for linked leafrefs */
-        LY_TREE_DFS_BEGIN(node, next, elem) {
-            if ((elem->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) &&
-                    (((struct lys_node_leaf *)elem->schema)->type.base == LY_TYPE_LEAFREF) &&
-                    (((struct lyd_node_leaf_list *)elem)->value_type == LY_TYPE_LEAFREF)) {
-                has_leafref = 1;
-                break;
-            }
-            LY_TREE_DFS_END(node, next, elem);
-        }
-
-        if (has_leafref) {
-            /* no easy way to get rid of the link, so just duplicate the data */
-            node_dup = lyd_dup(node, LYD_DUP_OPT_WITH_KEYS | LYD_DUP_OPT_NO_ATTR);
-            if (!node_dup) {
-                sr_errinfo_new_ly(&err_info, lyd_node_module(node)->ctx);
-                goto error;
-            }
-            lyd_free(node);
-        } else {
-            /* use the data directly */
-            node_dup = node;
-        }
+        node_dup = node;
     } else {
         /* duplicate node */
         node_dup = lyd_dup(node, LYD_DUP_OPT_WITH_KEYS | LYD_DUP_OPT_NO_ATTR);
