@@ -62,7 +62,7 @@ sr_session_set_netconf_error(sr_session_ctx_t *session, const char *error_type, 
     }
 
     /* generic error message */
-    sr_session_set_error_message(session, "NETCONF error occurred");
+    sr_session_set_error_message(session, "NETCONF error occurred.");
 
     /* error format */
     sr_session_set_error_format(session, "NETCONF");
