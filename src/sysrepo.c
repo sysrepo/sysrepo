@@ -2641,6 +2641,92 @@ cleanup:
     return sr_api_ret(session, err_info);
 }
 
+API int
+sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr_data_t **node)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_set *set = NULL;
+    int dup = 0;
+    struct sr_mod_info_s mod_info;
+    struct lyd_node *n;
+    uint32_t i;
+
+    SR_CHECK_ARG_APIRET(!session || !path || !node, session, err_info);
+
+    if (!timeout_ms) {
+        timeout_ms = SR_OPER_CB_TIMEOUT;
+    }
+
+    /* for operational, use operational and running datastore */
+    SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds == SR_DS_OPERATIONAL ? SR_DS_RUNNING : session->ds);
+
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    /* prepare data wrapper */
+    if ((err_info = _sr_acquire_data(session->conn, NULL, node))) {
+        goto cleanup;
+    }
+
+    /* collect all required modules */
+    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, path, session->ds, 1, 0, &mod_info))) {
+        goto cleanup;
+    }
+
+    /* add modules into mod_info with deps, locking, and their data */
+    if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_READ,
+            session->sid, session->orig_name, session->orig_data, timeout_ms, 0, 0))) {
+        goto cleanup;
+    }
+
+    /* filter the required data */
+    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, &set, &dup))) {
+        goto cleanup;
+    }
+
+    if (set->count > 1) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "More nodes match \"%s\".", path);
+        goto cleanup;
+    } else if (!set->count) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "No node found for \"%s\".", path);
+        goto cleanup;
+    }
+
+    /* return found node */
+    if (dup) {
+        /* use the node */
+        n = set->dnodes[0];
+        set->dnodes[0] = NULL;
+    } else {
+        /* duplicate the node */
+        if (lyd_dup_single(set->dnodes[0], NULL, LYD_DUP_WITH_FLAGS, &n)) {
+            sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
+            goto cleanup;
+        }
+    }
+    (*node)->tree = n;
+
+cleanup:
+    /* MODULES UNLOCK */
+    sr_shmmod_modinfo_unlock(&mod_info);
+
+    if (dup && set) {
+        for (i = 0; i < set->count; ++i) {
+            lyd_free_tree(set->dnodes[i]);
+        }
+    }
+    ly_set_free(set, NULL);
+    sr_modinfo_erase(&mod_info);
+
+    if (err_info || !(*node)->tree) {
+        sr_release_data(*node);
+        *node = NULL;
+    }
+    return sr_api_ret(session, err_info);
+}
+
 API void
 sr_release_data(sr_data_t *data)
 {

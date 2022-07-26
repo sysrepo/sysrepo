@@ -775,6 +775,24 @@ int sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth
         const sr_get_options_t opts, sr_data_t **data);
 
 /**
+ * @brief Retrieve a single value matching the provided XPath.
+ * Data are represented as a single _libyang_ node.
+ *
+ * Compared to ::sr_get_data() or ::sr_get_subtree() this function returns only the selected node
+ * without any of its parents so it is more efficient.
+ *
+ * Required READ access, but if the access check fails, the module data are simply ignored without an error.
+ *
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
+ * @param[in] path [Path](@ref paths) of the data element to be retrieved.
+ * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
+ * @param[out] node SR data with the found node. NULL if none found.
+ * @return Error code (::SR_ERR_OK on success, ::SR_ERR_INVAL_ARG if multiple nodes match the path,
+ * ::SR_ERR_NOT_FOUND if no nodes match the path).
+ */
+int sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr_data_t **node);
+
+/**
  * @brief Release SR data structure, whoch consists of freeing the data tree, releasing the context,
  * and freeing the structure itself.
  *
