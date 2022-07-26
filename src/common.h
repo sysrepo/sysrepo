@@ -158,8 +158,8 @@ extern const sr_module_ds_t sr_default_module_ds;
 #define SR_SHM_INITIALIZER {.fd = -1, .size = 0, .addr = NULL}
 
 /** initializer of mod_info structure */
-#define SR_MODINFO_INIT(mi, c, d, d2) mi.ds = (d); mi.ds2 = (d2); mi.diff = NULL; mi.data = NULL; \
-        mi.data_cached = 0; mi.conn = (c); mi.mods = NULL; mi.mod_count = 0
+#define SR_MODINFO_INIT(mi, c, d, d2) (mi).ds = (d); (mi).ds2 = (d2); (mi).diff = NULL; (mi).data = NULL; \
+        (mi).data_cached = 0; (mi).conn = (c); (mi).mods = NULL; (mi).mod_count = 0
 
 /**
  * @brief Internal information about a module to be installed.
@@ -325,6 +325,7 @@ void sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_
  * @param[in] sub_id Unique sub ID.
  * @param[in] sess Subscription session.
  * @param[in] path Subscription RPC path.
+ * @param[in] is_ext Whether the RPC is in an extension or not.
  * @param[in] xpath Subscription XPath.
  * @param[in] rpc_cb Subscription value callback.
  * @param[in] rpc_tree_cb Subscription tree callback.
@@ -334,7 +335,7 @@ void sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_subscr_rpc_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess,
-        const char *path, const char *xpath, sr_rpc_cb rpc_cb, sr_rpc_tree_cb rpc_tree_cb, void *private_data,
+        const char *path, int is_ext, const char *xpath, sr_rpc_cb rpc_cb, sr_rpc_tree_cb rpc_tree_cb, void *private_data,
         uint32_t priority, sr_lock_mode_t has_subs_lock);
 
 /**
@@ -503,11 +504,13 @@ sr_error_info_t *sr_subscr_notif_xpath_check(const struct lys_module *ly_mod, co
  * @param[in] ly_ctx Context to use.
  * @param[in] xpath XPath to check.
  * @param[out] path Optional simple path ot the RPC/action.
+ * @param[out] is_ext Optional flag whether the operation is defined in a nested extension.
  * @param[in,out] valid If set, does not log and sets to 0 if invalid, 1 if valid.
  * If not set, an error is returned if invalid, otherwise NULL.
  * @return err_info (if @p valid is not set), NULL on success.
  */
-sr_error_info_t *sr_subscr_rpc_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, char **path, int *valid);
+sr_error_info_t *sr_subscr_rpc_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, char **path, int *is_ext,
+        int *valid);
 
 /*
  * Utility functions

@@ -5548,6 +5548,8 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     uint32_t sub_id;
     sr_conn_ctx_t *conn;
     sr_rpc_t *shm_rpc;
+    sr_mod_t *shm_mod;
+    int is_ext;
 
     SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !xpath || (!callback && !tree_callback) || !subscription,
             session, err_info);
@@ -5578,7 +5580,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     }
 
     /* is the xpath valid? */
-    if ((err_info = sr_subscr_rpc_xpath_check(conn->ly_ctx, xpath, &path, NULL))) {
+    if ((err_info = sr_subscr_rpc_xpath_check(conn->ly_ctx, xpath, &path, &is_ext, NULL))) {
         goto cleanup;
     }
 
@@ -5589,9 +5591,15 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
         ATOMIC_STORE_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id, 1);
     }
 
-    /* find the RPC */
-    shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(conn), path);
-    SR_CHECK_INT_GOTO(!shm_rpc, err_info, cleanup);
+    if (is_ext) {
+        /* find module */
+        shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
+        SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
+    } else {
+        /* find the RPC */
+        shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(conn), path);
+        SR_CHECK_INT_GOTO(!shm_rpc, err_info, cleanup);
+    }
 
     if (!*subscription) {
         /* create a new subscription */
@@ -5610,15 +5618,23 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     }
 
     /* add RPC/action subscription into ext SHM and create separate specific SHM segment */
-    if ((err_info = sr_shmext_rpc_sub_add(conn, shm_rpc, sub_id, xpath, priority, 0, (*subscription)->evpipe_num))) {
-        goto cleanup_unlock;
+    if (is_ext) {
+        if ((err_info = sr_shmext_rpc_sub_add(conn, &shm_mod->rpc_ext_lock, &shm_mod->rpc_ext_subs,
+                &shm_mod->rpc_ext_sub_count, path, sub_id, xpath, priority, 0, (*subscription)->evpipe_num))) {
+            goto cleanup_unlock;
+        }
+    } else {
+        if ((err_info = sr_shmext_rpc_sub_add(conn, &shm_rpc->lock, &shm_rpc->subs, &shm_rpc->sub_count, path, sub_id,
+                xpath, priority, 0, (*subscription)->evpipe_num))) {
+            goto cleanup_unlock;
+        }
     }
 
     /* we are holding SUBS lock so that even if event is generated based on the ext SHM subscription we have just added,
      * the evpipe data cannot be read and the event not processed since it is still missing in the subscr structure */
 
     /* add subscription into structure */
-    if ((err_info = sr_subscr_rpc_sub_add(*subscription, sub_id, session, path, xpath, callback, tree_callback,
+    if ((err_info = sr_subscr_rpc_sub_add(*subscription, sub_id, session, path, is_ext, xpath, callback, tree_callback,
             private_data, priority, SR_LOCK_WRITE))) {
         goto error1;
     }
@@ -5635,8 +5651,15 @@ error2:
     sr_subscr_rpc_sub_del(*subscription, sub_id, SR_LOCK_WRITE);
 
 error1:
-    if ((tmp_err = sr_shmext_rpc_sub_del(conn, shm_rpc, sub_id))) {
-        sr_errinfo_merge(&err_info, tmp_err);
+    if (is_ext) {
+        if ((tmp_err = sr_shmext_rpc_sub_del(conn, &shm_mod->rpc_ext_lock, &shm_mod->rpc_ext_subs,
+                &shm_mod->rpc_ext_sub_count, path, sub_id))) {
+            sr_errinfo_merge(&err_info, tmp_err);
+        }
+    } else {
+        if ((tmp_err = sr_shmext_rpc_sub_del(conn, &shm_rpc->lock, &shm_rpc->subs, &shm_rpc->sub_count, path, sub_id))) {
+            sr_errinfo_merge(&err_info, tmp_err);
+        }
     }
 
 cleanup_unlock:
@@ -5741,17 +5764,248 @@ cleanup:
     return ret ? ret : sr_api_ret(session, err_info);
 }
 
+/**
+ * @brief Validate and notify about an RPC/action.
+ *
+ * @param[in] session Session to use.
+ * @param[in] mod_info Mod info to use.
+ * @param[in] path RPC/action path.
+ * @param[in] input RPC/action input tree.
+ * @param[in] input_op RPC/action input operation.
+ * @param[in] timeout_ms RPC/action callback timeout in milliseconds.
+ * @param[out] output SR data with the output data tree.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+_sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, const char *path, struct lyd_node *input,
+        struct lyd_node *input_op, uint32_t timeout_ms, sr_data_t **output)
+{
+    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
+    sr_rpc_t *shm_rpc;
+    sr_dep_t *shm_deps;
+    uint16_t shm_dep_count;
+    uint32_t event_id = 0;
+
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
+        goto cleanup;
+    }
+
+    /* prepare data wrapper */
+    if ((err_info = _sr_acquire_data(session->conn, NULL, output))) {
+        goto cleanup;
+    }
+
+    /* collect all required modules for input validation */
+    if ((err_info = sr_shmmod_get_rpc_deps(SR_CONN_MOD_SHM(session->conn), path, 0, &shm_deps, &shm_dep_count))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(session->conn), shm_deps, shm_dep_count, input, mod_info))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_modinfo_consolidate(mod_info, 0, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_CACHE | SR_MI_PERM_NO,
+            session->sid, session->orig_name, session->orig_data, SR_OPER_CB_TIMEOUT, 0, 0))) {
+        goto cleanup;
+    }
+
+    /* validate the operation, must be valid only at the time of execution */
+    if ((err_info = sr_modinfo_op_validate(mod_info, input_op, 0))) {
+        goto cleanup;
+    }
+
+    /* MODULES UNLOCK */
+    sr_shmmod_modinfo_unlock(mod_info);
+
+    sr_modinfo_erase(mod_info);
+    SR_MODINFO_INIT(*mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING);
+
+    /* find the RPC */
+    shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(session->conn), path);
+    SR_CHECK_INT_GOTO(!shm_rpc, err_info, cleanup);
+
+    /* RPC SUB READ LOCK */
+    if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__,
+            NULL, NULL))) {
+        goto cleanup;
+    }
+
+    /* publish RPC in an event and wait for a reply from the last subscriber */
+    if ((err_info = sr_shmsub_rpc_notify(session->conn, &shm_rpc->lock, &shm_rpc->subs, &shm_rpc->sub_count, path, input,
+            session->orig_name, session->orig_data, timeout_ms, &event_id, &(*output)->tree, &cb_err_info))) {
+        goto cleanup_rpcsub_unlock;
+    }
+
+    if (cb_err_info) {
+        /* "rpc" event failed, publish "abort" event and finish */
+        err_info = sr_shmsub_rpc_notify_abort(session->conn, &shm_rpc->lock, &shm_rpc->subs, &shm_rpc->sub_count, path,
+                input, session->orig_name, session->orig_data, timeout_ms, event_id);
+        goto cleanup_rpcsub_unlock;
+    }
+
+    /* RPC SUB READ UNLOCK */
+    sr_rwunlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
+
+    /* find operation */
+    if ((err_info = sr_ly_find_last_parent(&(*output)->tree, LYS_RPC | LYS_ACTION))) {
+        goto cleanup;
+    }
+
+    /* collect all required modules for output validation */
+    if ((err_info = sr_shmmod_get_rpc_deps(SR_CONN_MOD_SHM(session->conn), path, 1, &shm_deps, &shm_dep_count))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(session->conn), shm_deps, shm_dep_count, input, mod_info))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_modinfo_consolidate(mod_info, 0, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_CACHE | SR_MI_PERM_NO,
+            session->sid, session->orig_name, session->orig_data, SR_OPER_CB_TIMEOUT, 0, 0))) {
+        goto cleanup;
+    }
+
+    /* validate the output */
+    if ((err_info = sr_modinfo_op_validate(mod_info, (*output)->tree, 1))) {
+        goto cleanup;
+    }
+
+    /* success */
+    goto cleanup;
+
+cleanup_rpcsub_unlock:
+    /* RPC SUB READ UNLOCK */
+    sr_rwunlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
+
+cleanup:
+    if (cb_err_info) {
+        /* return callback error if some was generated */
+        sr_errinfo_merge(&err_info, cb_err_info);
+        sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, "User callback failed.");
+    }
+    if (err_info) {
+        sr_release_data(*output);
+        *output = NULL;
+    }
+    return err_info;
+}
+
+/**
+ * @brief Validate and notify about an extension RPC/action.
+ *
+ * @param[in] session Session to use.
+ * @param[in] ext_parent Extension parent data node.
+ * @param[in] mod_info Mod info to use.
+ * @param[in] path RPC/action path.
+ * @param[in] input RPC/action input tree.
+ * @param[in] input_op RPC/action input operation.
+ * @param[in] timeout_ms RPC/action callback timeout in milliseconds.
+ * @param[out] output SR data with the output data tree.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+_sr_rpc_ext_send_tree(sr_session_ctx_t *session, const struct lyd_node *ext_parent, struct sr_mod_info_s *mod_info,
+        const char *path, struct lyd_node *input, struct lyd_node *input_op, uint32_t timeout_ms, sr_data_t **output)
+{
+    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
+    sr_mod_t *shm_mod;
+    uint32_t event_id = 0;
+
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
+        goto cleanup;
+    }
+
+    /* prepare data wrapper */
+    if ((err_info = _sr_acquire_data(session->conn, NULL, output))) {
+        goto cleanup;
+    }
+
+    /* collect all mounted data and data mentioned in the parent-references */
+    if ((err_info = sr_modinfo_collect_ext_deps(lyd_parent(ext_parent)->schema, mod_info))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_modinfo_consolidate(mod_info, 0, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_CACHE | SR_MI_PERM_NO,
+            session->sid, session->orig_name, session->orig_data, SR_OPER_CB_TIMEOUT, 0, 0))) {
+        goto cleanup;
+    }
+
+    /* validate the operation, must be valid only at the time of execution */
+    if ((err_info = sr_modinfo_op_validate(mod_info, input_op, 0))) {
+        goto cleanup;
+    }
+
+    /* MODULES UNLOCK */
+    sr_shmmod_modinfo_unlock(mod_info);
+
+    /* find the module */
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(session->conn), lyd_owner_module(input)->name);
+    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
+
+    /* RPC SUB READ LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->rpc_ext_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid,
+            __func__, NULL, NULL))) {
+        goto cleanup;
+    }
+
+    /* publish RPC in an event and wait for a reply from the last subscriber */
+    if ((err_info = sr_shmsub_rpc_notify(session->conn, &shm_mod->rpc_ext_lock, &shm_mod->rpc_ext_subs,
+            &shm_mod->rpc_ext_sub_count, path, input, session->orig_name, session->orig_data, timeout_ms, &event_id,
+            &(*output)->tree, &cb_err_info))) {
+        goto cleanup_rpcsub_unlock;
+    }
+
+    if (cb_err_info) {
+        /* "rpc" event failed, publish "abort" event and finish */
+        err_info = sr_shmsub_rpc_notify_abort(session->conn, &shm_mod->rpc_ext_lock, &shm_mod->rpc_ext_subs,
+                &shm_mod->rpc_ext_sub_count, path, input, session->orig_name, session->orig_data, timeout_ms, event_id);
+        goto cleanup_rpcsub_unlock;
+    }
+
+    /* RPC SUB READ UNLOCK */
+    sr_rwunlock(&shm_mod->rpc_ext_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
+
+    /* find operation */
+    if ((err_info = sr_ly_find_last_parent(&(*output)->tree, LYS_RPC | LYS_ACTION))) {
+        goto cleanup;
+    }
+
+    /* use the same mod info, just get READ lock again */
+
+    /* MODULES READ LOCK */
+    if ((err_info = sr_shmmod_modinfo_rdlock(mod_info, 0, session->sid, SR_OPER_CB_TIMEOUT))) {
+        return err_info;
+    }
+
+    /* validate the output */
+    if ((err_info = sr_modinfo_op_validate(mod_info, (*output)->tree, 1))) {
+        goto cleanup;
+    }
+
+    /* success */
+    goto cleanup;
+
+cleanup_rpcsub_unlock:
+    /* RPC SUB READ UNLOCK */
+    sr_rwunlock(&shm_mod->rpc_ext_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
+
+cleanup:
+    if (cb_err_info) {
+        /* return callback error if some was generated */
+        sr_errinfo_merge(&err_info, cb_err_info);
+        sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, "User callback failed.");
+    }
+    if (err_info) {
+        sr_release_data(*output);
+        *output = NULL;
+    }
+    return err_info;
+}
+
 API int
 sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t timeout_ms, sr_data_t **output)
 {
-    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
+    sr_error_info_t *err_info = NULL;
     struct sr_mod_info_s mod_info;
-    sr_rpc_t *shm_rpc;
-    struct lyd_node *input_op;
-    sr_dep_t *shm_deps;
-    uint16_t shm_dep_count;
+    struct lyd_node *input_op, *ext_parent = NULL;
     char *path = NULL, *str, *parent_path = NULL;
-    uint32_t event_id = 0;
     const struct lyd_node *denied_node;
 
     SR_CHECK_ARG_APIRET(!session || !input || !output, session, err_info);
@@ -5765,16 +6019,6 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     }
     SR_MODINFO_INIT(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING);
 
-    /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
-        return sr_api_ret(session, err_info);
-    }
-
-    /* prepare data wrapper */
-    if ((err_info = _sr_acquire_data(session->conn, NULL, output))) {
-        goto cleanup;
-    }
-
     /* check input data tree */
     input_op = NULL;
     if (input->schema) {
@@ -5787,14 +6031,9 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
             break;
         case LYS_CONTAINER:
         case LYS_LIST:
-            /* find the action */
+            /* find the action (RPC in case of schema-mount) */
             input_op = input;
-            if ((err_info = sr_ly_find_last_parent(&input_op, LYS_ACTION))) {
-                goto cleanup;
-            }
-            if (input_op->schema->nodetype != LYS_ACTION) {
-                input_op = NULL;
-            }
+            err_info = sr_ly_find_last_parent(&input_op, LYS_ACTION | LYS_RPC);
             break;
         default:
             break;
@@ -5847,83 +6086,15 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
         }
     }
 
-    /* collect all required module dependencies for input validation */
-    if ((err_info = sr_shmmod_get_rpc_deps(SR_CONN_MOD_SHM(session->conn), path, 0, &shm_deps, &shm_dep_count))) {
-        goto cleanup;
+    if (LYD_CTX(input) != LYD_CTX(input_op)) {
+        /* different contexts if these are data of an extension (schema-mount) */
+        for (ext_parent = input_op; ext_parent && !(ext_parent->flags & LYD_EXT); ext_parent = lyd_parent(ext_parent)) {}
+        SR_CHECK_INT_GOTO(!ext_parent, err_info, cleanup);
+
+        err_info = _sr_rpc_ext_send_tree(session, ext_parent, &mod_info, path, input, input_op, timeout_ms, output);
+    } else {
+        err_info = _sr_rpc_send_tree(session, &mod_info, path, input, input_op, timeout_ms, output);
     }
-    if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(session->conn), shm_deps, shm_dep_count, input, &mod_info))) {
-        goto cleanup;
-    }
-    if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_CACHE | SR_MI_PERM_NO,
-            session->sid, session->orig_name, session->orig_data, SR_OPER_CB_TIMEOUT, 0, 0))) {
-        goto cleanup;
-    }
-
-    /* validate the operation, must be valid only at the time of execution */
-    if ((err_info = sr_modinfo_op_validate(&mod_info, input_op, 0))) {
-        goto cleanup;
-    }
-
-    /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info);
-
-    sr_modinfo_erase(&mod_info);
-    SR_MODINFO_INIT(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING);
-
-    /* find the RPC */
-    shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(session->conn), path);
-    SR_CHECK_INT_GOTO(!shm_rpc, err_info, cleanup);
-
-    /* RPC SUB READ LOCK */
-    if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__,
-            NULL, NULL))) {
-        goto cleanup;
-    }
-
-    /* publish RPC in an event and wait for a reply from the last subscriber */
-    if ((err_info = sr_shmsub_rpc_notify(session->conn, shm_rpc, path, input, session->orig_name, session->orig_data,
-            timeout_ms, &event_id, &(*output)->tree, &cb_err_info))) {
-        goto cleanup_rpcsub_unlock;
-    }
-
-    if (cb_err_info) {
-        /* "rpc" event failed, publish "abort" event and finish */
-        err_info = sr_shmsub_rpc_notify_abort(session->conn, shm_rpc, path, input, session->orig_name, session->orig_data,
-                timeout_ms, event_id);
-        goto cleanup_rpcsub_unlock;
-    }
-
-    /* RPC SUB READ UNLOCK */
-    sr_rwunlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
-
-    /* find operation */
-    if ((err_info = sr_ly_find_last_parent(&(*output)->tree, LYS_RPC | LYS_ACTION))) {
-        goto cleanup;
-    }
-
-    /* collect all required modules for output validation */
-    if ((err_info = sr_shmmod_get_rpc_deps(SR_CONN_MOD_SHM(session->conn), path, 1, &shm_deps, &shm_dep_count))) {
-        goto cleanup;
-    }
-    if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(session->conn), shm_deps, shm_dep_count, input, &mod_info))) {
-        goto cleanup;
-    }
-    if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_CACHE | SR_MI_PERM_NO,
-            session->sid, session->orig_name, session->orig_data, SR_OPER_CB_TIMEOUT, 0, 0))) {
-        goto cleanup;
-    }
-
-    /* validate the output */
-    if ((err_info = sr_modinfo_op_validate(&mod_info, (*output)->tree, 1))) {
-        goto cleanup;
-    }
-
-    /* success */
-    goto cleanup;
-
-cleanup_rpcsub_unlock:
-    /* RPC SUB READ UNLOCK */
-    sr_rwunlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
 
 cleanup:
     /* MODULES UNLOCK */
@@ -5932,15 +6103,6 @@ cleanup:
     free(parent_path);
     free(path);
     sr_modinfo_erase(&mod_info);
-    if (cb_err_info) {
-        /* return callback error if some was generated */
-        sr_errinfo_merge(&err_info, cb_err_info);
-        sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, "User callback failed.");
-    }
-    if (err_info) {
-        sr_release_data(*output);
-        *output = NULL;
-    }
     return sr_api_ret(session, err_info);
 }
 

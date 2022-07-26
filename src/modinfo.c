@@ -2578,7 +2578,7 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int 
         switch (mod->state & MOD_INFO_TYPE_MASK) {
         case MOD_INFO_REQ:
             /* this is the module of the nested operation and we need to check that operation's parent data node exists */
-            assert((mod->ly_mod == lyd_owner_module(top_op)) && op->schema->parent && op->parent);
+            assert((mod->ly_mod == lyd_owner_module(top_op)) && op->parent);
             free(parent_xpath);
             parent_xpath = lyd_path(lyd_parent(op), LYD_PATH_STD, NULL, 0);
             SR_CHECK_MEM_GOTO(!parent_xpath, err_info, cleanup);

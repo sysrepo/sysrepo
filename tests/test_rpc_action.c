@@ -4,8 +4,8 @@
  * @brief test for sending/receiving RPCs/actions
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -55,6 +55,7 @@ setup(void **state)
         TESTS_SRC_DIR "/files/act.yang",
         TESTS_SRC_DIR "/files/act2.yang",
         TESTS_SRC_DIR "/files/act3.yang",
+        TESTS_SRC_DIR "/files/sm.yang",
         NULL
     };
     const char *ops_ref_feats[] = {"feat1", NULL}, *act_feats[] = {"advanced-testing", NULL};
@@ -65,6 +66,7 @@ setup(void **state)
         ops_ref_feats,
         NULL,
         act_feats,
+        NULL,
         NULL,
         NULL
     };
@@ -102,6 +104,7 @@ teardown(void **state)
     struct state *st = (struct state *)*state;
     int ret = 0;
     const char *module_names[] = {
+        "sm",
         "act3",
         "act2",
         "act",
@@ -1542,6 +1545,231 @@ test_rpc_oper(void **state)
     sr_unsubscribe(subscr);
 }
 
+/* TEST */
+static LY_ERR
+ly_ext_data_cb(const struct lysc_ext_instance *ext, void *user_data, void **ext_data, ly_bool *ext_data_free)
+{
+    struct state *st = (struct state *)user_data;
+    LY_ERR r;
+    const struct ly_ctx *ly_ctx;
+    struct lyd_node *data = NULL;
+    const char *xml = "<yang-library xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-library\" "
+            "    xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">"
+            "  <module-set>"
+            "    <name>test-set</name>"
+            "    <module>"
+            "      <name>ietf-datastores</name>"
+            "      <revision>2018-02-14</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-datastores</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ietf-yang-library</name>"
+            "      <revision>2019-01-04</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-yang-library</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ietf-yang-schema-mount</name>"
+            "      <revision>2019-01-14</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-yang-schema-mount</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ops</name>"
+            "      <namespace>urn:ops</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ops-ref</name>"
+            "      <namespace>urn:ops-ref</namespace>"
+            "      <feature>feat1</feature>"
+            "    </module>"
+            "    <module>"
+            "      <name>ietf-netconf</name>"
+            "      <revision>2013-09-29</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:netconf:base:1.0</namespace>"
+            "    </module>"
+            "    <module>"
+            "      <name>ietf-origin</name>"
+            "      <revision>2018-02-14</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-origin</namespace>"
+            "    </module>"
+            "    <import-only-module>"
+            "      <name>ietf-yang-types</name>"
+            "      <revision>2013-07-15</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-yang-types</namespace>"
+            "    </import-only-module>"
+            "    <import-only-module>"
+            "      <name>ietf-netconf-acm</name>"
+            "      <revision>2018-02-14</revision>"
+            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-netconf-acm</namespace>"
+            "    </import-only-module>"
+            "  </module-set>"
+            "  <schema>"
+            "    <name>test-schema</name>"
+            "    <module-set>test-set</module-set>"
+            "  </schema>"
+            "  <datastore>"
+            "    <name>ds:running</name>"
+            "    <schema>test-schema</schema>"
+            "  </datastore>"
+            "  <datastore>"
+            "    <name>ds:operational</name>"
+            "    <schema>test-schema</schema>"
+            "  </datastore>"
+            "  <content-id>1</content-id>"
+            "</yang-library>"
+            "<modules-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-library\">"
+            "  <module-set-id>1</module-set-id>"
+            "</modules-state>"
+            "<schema-mounts xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-schema-mount\">"
+            "  <namespace>"
+            "    <prefix>ops</prefix>"
+            "    <uri>urn:ops</uri>"
+            "  </namespace>"
+            "  <mount-point>"
+            "    <module>sm</module>"
+            "    <label>root</label>"
+            "    <shared-schema>"
+            "      <parent-reference>/ops:cont</parent-reference>"
+            "    </shared-schema>"
+            "  </mount-point>"
+            "</schema-mounts>";
+
+    (void)ext;
+
+    ly_ctx = sr_acquire_context(st->conn);
+    r = lyd_parse_data_mem(ly_ctx, xml, LYD_XML, LYD_PARSE_STRICT, LYD_VALIDATE_PRESENT, &data);
+    sr_release_context(st->conn);
+    assert_int_equal(r, LY_SUCCESS);
+
+    *ext_data = data;
+    *ext_data_free = 1;
+    return LY_SUCCESS;
+}
+
+static int
+rpc_schema_mount_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const struct lyd_node *input,
+        sr_event_t event, uint32_t request_id, struct lyd_node *output, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)input;
+    (void)event;
+    (void)request_id;
+
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
+    case 0:
+        assert_string_equal(op_path, "/sm:root/ops:rpc1");
+        break;
+    case 1:
+        assert_string_equal(op_path, "/sm:root/ops:rpc2");
+        assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "cont/l3", "val2", LYD_NEW_PATH_OUTPUT, NULL));
+        break;
+    case 2:
+        assert_string_equal(op_path, "/sm:root/ops:cont/list1/cont2/act1");
+        assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "l9", "val12", LYD_NEW_PATH_OUTPUT, NULL));
+        break;
+    default:
+        fail();
+    }
+
+    ATOMIC_INC_RELAXED(st->cb_called);
+    return SR_ERR_OK;
+}
+
+static int
+schema_mount_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)request_xpath;
+    (void)request_id;
+    (void)private_data;
+
+    if (!strcmp(module_name, "sm") && !strcmp(xpath, "/sm:root")) {
+        assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, st->ly_ctx, "/sm:root/ops-ref:l1", "val", 0, parent));
+        assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/sm:root/ops-ref:l2", "val2", 0, NULL));
+    } else if (!strcmp(module_name, "ops") && !strcmp(xpath, "/ops:cont/l12")) {
+        assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ops:cont/l12", "val12", 0, NULL));
+    } else if (!strcmp(module_name, "ops") && !strcmp(xpath, "/ops:cont/list1")) {
+        assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ops:cont/list1[k='key']/cont2", NULL, 0, NULL));
+    } else {
+        fail();
+    }
+
+    return SR_ERR_OK;
+}
+
+static void
+test_schema_mount(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *sub = NULL;
+    struct lyd_node *rpc;
+    sr_data_t *output;
+    int ret;
+
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+
+    /* set schema-mount CB and searchdir */
+    sr_set_ext_data_cb(st->conn, ly_ext_data_cb, st);
+    sr_set_ext_data_searchdir(st->conn, TESTS_SRC_DIR "/files");
+
+    /* subscribe for rpc1 */
+    ret = sr_rpc_subscribe_tree(st->sess, "/sm:root/ops:rpc1", rpc_schema_mount_cb, st, 0, 0, &sub);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* send rpc1, validation fails */
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, st->ly_ctx, "/sm:root/ops:rpc1/l1", "val", 0, &rpc));
+    ret = sr_rpc_send_tree(st->sess, rpc, 0, &output);
+    sr_release_data(output);
+    assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
+
+    /* subscribe for providing mounted and dependency data */
+    ret = sr_oper_get_subscribe(st->sess, "sm", "/sm:root", schema_mount_oper_cb, st, 0, &sub);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_oper_get_subscribe(st->sess, "ops", "/ops:cont/l12", schema_mount_oper_cb, st, 0, &sub);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_oper_get_subscribe(st->sess, "ops", "/ops:cont/list1", schema_mount_oper_cb, st, 0, &sub);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* send rpc1, succeeds */
+    ret = sr_rpc_send_tree(st->sess, rpc, 0, &output);
+    lyd_free_all(rpc);
+    sr_release_data(output);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe for rpc2 */
+    ret = sr_rpc_subscribe_tree(st->sess, "/sm:root/ops:rpc2", rpc_schema_mount_cb, st, 0, 0, &sub);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* send rpc2, succeeds */
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, st->ly_ctx, "/sm:root/ops:rpc2", NULL, 0, &rpc));
+    ret = sr_rpc_send_tree(st->sess, rpc, 0, &output);
+    lyd_free_all(rpc);
+    sr_release_data(output);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe for act1 */
+    ret = sr_rpc_subscribe_tree(st->sess, "/sm:root/ops:cont/list1/cont2/act1", rpc_schema_mount_cb, st, 0, 0, &sub);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* send act1, succeeds */
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, st->ly_ctx, "/sm:root/ops:cont/list1[k='key']/cont2/act1/l6", "in-val", 0, &rpc));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(rpc, NULL, "/sm:root/ops:cont/list1[k='key']/cont2/act1/l7", "in-val", 0, NULL));
+    ret = sr_rpc_send_tree(st->sess, rpc, 0, &output);
+    lyd_free_all(rpc);
+    sr_release_data(output);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_int_equal(3, ATOMIC_LOAD_RELAXED(st->cb_called));
+
+    sr_unsubscribe(sub);
+}
+
 /* MAIN */
 int
 main(void)
@@ -1559,6 +1787,7 @@ main(void)
         cmocka_unit_test(test_input_parameters),
         cmocka_unit_test(test_rpc_action_with_no_thread),
         cmocka_unit_test(test_rpc_oper),
+        cmocka_unit_test(test_schema_mount),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

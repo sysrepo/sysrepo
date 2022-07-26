@@ -2121,17 +2121,20 @@ sr_shmsub_rpc_listen_filter_is_valid(const struct lyd_node *input, const char *x
  * @brief Learn whether there is a subscription for an RPC event.
  *
  * @param[in] conn Connection to use.
- * @param[in] shm_rpc SHM RPC structure of the event.
+ * @param[in] sub_lock SHM RPC subs lock.
+ * @param[in,out] subs Offset in ext SHM of RPC subs.
+ * @param[in,out] sub_count Ext SHM RPC sub count.
+ * @param[in] path RPC path.
  * @param[in] input Operation input.
  * @param[out] max_priority_p Highest priority among the valid subscribers.
  * @return 0 if not, non-zero if there is.
  */
 static int
-sr_shmsub_rpc_notify_has_subscription(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const struct lyd_node *input,
-        uint32_t *max_priority_p)
+sr_shmsub_rpc_notify_has_subscription(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, uint32_t *sub_count,
+        const char *path, const struct lyd_node *input, uint32_t *max_priority_p)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_rpc_sub_t *shm_sub;
+    sr_mod_rpc_sub_t *shm_subs;
     uint32_t i;
     int has_sub = 0;
 
@@ -2142,30 +2145,30 @@ sr_shmsub_rpc_notify_has_subscription(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, co
     }
 
     /* try to find a matching subscription */
-    shm_sub = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + shm_rpc->subs);
+    shm_subs = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + *subs);
     *max_priority_p = 0;
     i = 0;
-    while (i < shm_rpc->sub_count) {
+    while (i < *sub_count) {
         /* check subscription aliveness */
-        if (!sr_conn_is_alive(shm_sub[i].cid)) {
+        if (!sr_conn_is_alive(shm_subs[i].cid)) {
             /* recover the subscription */
-            if ((err_info = sr_shmext_rpc_sub_stop(conn, shm_rpc, i, 1, SR_LOCK_READ, 1))) {
+            if ((err_info = sr_shmext_rpc_sub_stop(conn, sub_lock, subs, sub_count, path, i, 1, SR_LOCK_READ, 1))) {
                 sr_errinfo_free(&err_info);
             }
             continue;
         }
 
         /* skip suspended subscriptions */
-        if (ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
+        if (ATOMIC_LOAD_RELAXED(shm_subs[i].suspended)) {
             ++i;
             continue;
         }
 
         /* valid subscription */
-        if (sr_shmsub_rpc_listen_filter_is_valid(input, conn->ext_shm.addr + shm_sub[i].xpath)) {
+        if (sr_shmsub_rpc_listen_filter_is_valid(input, conn->ext_shm.addr + shm_subs[i].xpath)) {
             has_sub = 1;
-            if (shm_sub[i].priority > *max_priority_p) {
-                *max_priority_p = shm_sub[i].priority;
+            if (shm_subs[i].priority > *max_priority_p) {
+                *max_priority_p = shm_subs[i].priority;
             }
         }
 
@@ -2182,7 +2185,10 @@ sr_shmsub_rpc_notify_has_subscription(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, co
  * @brief Learn the priority of the next valid subscriber for an RPC event.
  *
  * @param[in] conn Connection to use.
- * @param[in] shm_rpc SHM RPC structure of the event.
+ * @param[in] sub_lock SHM RPC subs lock.
+ * @param[in,out] subs Offset in ext SHM of RPC subs.
+ * @param[in,out] sub_count Ext SHM RPC sub count.
+ * @param[in] path RPC path.
  * @param[in] input Operation input.
  * @param[in] last_priority Last priorty of a subscriber.
  * @param[out] next_priorty_p Next priorty of a subscriber(s).
@@ -2192,11 +2198,12 @@ sr_shmsub_rpc_notify_has_subscription(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, co
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmsub_rpc_notify_next_subscription(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const struct lyd_node *input,
-        uint32_t last_priority, uint32_t *next_priority_p, uint32_t **evpipes_p, uint32_t *sub_count_p, int *opts_p)
+sr_shmsub_rpc_notify_next_subscription(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, uint32_t *sub_count,
+        const char *path, const struct lyd_node *input, uint32_t last_priority, uint32_t *next_priority_p,
+        uint32_t **evpipes_p, uint32_t *sub_count_p, int *opts_p)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_rpc_sub_t *shm_sub;
+    sr_mod_rpc_sub_t *shm_subs;
     uint32_t i;
     int opts = 0;
 
@@ -2205,57 +2212,56 @@ sr_shmsub_rpc_notify_next_subscription(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, c
         return err_info;
     }
 
-    shm_sub = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + shm_rpc->subs);
-
+    shm_subs = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + *subs);
     *evpipes_p = NULL;
     *sub_count_p = 0;
     i = 0;
-    while (i < shm_rpc->sub_count) {
+    while (i < *sub_count) {
         /* check subscription aliveness */
-        if (!sr_conn_is_alive(shm_sub[i].cid)) {
+        if (!sr_conn_is_alive(shm_subs[i].cid)) {
             /* recover the subscription */
-            if ((err_info = sr_shmext_rpc_sub_stop(conn, shm_rpc, i, 1, SR_LOCK_READ, 1))) {
+            if ((err_info = sr_shmext_rpc_sub_stop(conn, sub_lock, subs, sub_count, path, i, 1, SR_LOCK_READ, 1))) {
                 sr_errinfo_free(&err_info);
             }
             continue;
         }
 
         /* skip suspended subscriptions */
-        if (ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
+        if (ATOMIC_LOAD_RELAXED(shm_subs[i].suspended)) {
             ++i;
             continue;
         }
 
         /* valid subscription */
-        if (sr_shmsub_rpc_listen_filter_is_valid(input, conn->ext_shm.addr + shm_sub[i].xpath) &&
-                (last_priority > shm_sub[i].priority)) {
+        if (sr_shmsub_rpc_listen_filter_is_valid(input, conn->ext_shm.addr + shm_subs[i].xpath) &&
+                (last_priority > shm_subs[i].priority)) {
             /* a subscription that was not notified yet */
             if (*sub_count_p) {
-                if (*next_priority_p < shm_sub[i].priority) {
+                if (*next_priority_p < shm_subs[i].priority) {
                     /* higher priority subscription */
-                    *next_priority_p = shm_sub[i].priority;
+                    *next_priority_p = shm_subs[i].priority;
                     free(*evpipes_p);
                     *evpipes_p = malloc(sizeof **evpipes_p);
                     SR_CHECK_MEM_GOTO(!*evpipes_p, err_info, cleanup);
-                    (*evpipes_p)[0] = shm_sub[i].evpipe_num;
+                    (*evpipes_p)[0] = shm_subs[i].evpipe_num;
                     *sub_count_p = 1;
-                    opts = shm_sub[i].opts;
-                } else if (shm_sub[i].priority == *next_priority_p) {
+                    opts = shm_subs[i].opts;
+                } else if (shm_subs[i].priority == *next_priority_p) {
                     /* same priority subscription */
                     *evpipes_p = sr_realloc(*evpipes_p, (*sub_count_p + 1) * sizeof **evpipes_p);
                     SR_CHECK_MEM_GOTO(!*evpipes_p, err_info, cleanup);
-                    (*evpipes_p)[*sub_count_p] = shm_sub[i].evpipe_num;
+                    (*evpipes_p)[*sub_count_p] = shm_subs[i].evpipe_num;
                     ++(*sub_count_p);
-                    opts |= shm_sub[i].opts;
+                    opts |= shm_subs[i].opts;
                 }
             } else {
                 /* first lower priority subscription than the last processed */
-                *next_priority_p = shm_sub[i].priority;
+                *next_priority_p = shm_subs[i].priority;
                 *evpipes_p = malloc(sizeof **evpipes_p);
                 SR_CHECK_MEM_GOTO(!*evpipes_p, err_info, cleanup);
-                (*evpipes_p)[0] = shm_sub[i].evpipe_num;
+                (*evpipes_p)[0] = shm_subs[i].evpipe_num;
                 *sub_count_p = 1;
-                opts = shm_sub[i].opts;
+                opts = shm_subs[i].opts;
             }
         }
 
@@ -2273,9 +2279,9 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *op_path, const struct lyd_node *input,
-        const char *orig_name, const void *orig_data, uint32_t timeout_ms, uint32_t *request_id, struct lyd_node **output,
-        sr_error_info_t **cb_err_info)
+sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, uint32_t *sub_count, const char *path,
+        const struct lyd_node *input, const char *orig_name, const void *orig_data, uint32_t timeout_ms,
+        uint32_t *request_id, struct lyd_node **output, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
     char *input_lyb = NULL;
@@ -2289,15 +2295,15 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *op_path
     *output = NULL;
 
     /* just find out whether there are any subscriptions and if so, what is the highest priority */
-    if (!sr_shmsub_rpc_notify_has_subscription(conn, shm_rpc, input, &cur_priority)) {
+    if (!sr_shmsub_rpc_notify_has_subscription(conn, sub_lock, subs, sub_count, path, input, &cur_priority)) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "There are no matching subscribers for RPC/action \"%s\".",
-                op_path);
+                path);
         goto cleanup;
     }
 
     /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-    if ((err_info = sr_shmsub_rpc_notify_next_subscription(conn, shm_rpc, input, cur_priority + 1, &cur_priority,
-            &evpipes, &subscriber_count, &opts))) {
+    if ((err_info = sr_shmsub_rpc_notify_next_subscription(conn, sub_lock, subs, sub_count, path, input, cur_priority + 1,
+            &cur_priority, &evpipes, &subscriber_count, &opts))) {
         goto cleanup;
     }
 
@@ -2314,18 +2320,18 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *op_path
     input_lyb_len = lyd_lyb_data_length(input_lyb);
 
     /* open sub SHM and map it */
-    if ((err_info = sr_shmsub_open_map(lyd_owner_module(input)->name, "rpc", sr_str_hash(op_path, 0), &shm_sub))) {
+    if ((err_info = sr_shmsub_open_map(lyd_owner_module(input)->name, "rpc", sr_str_hash(path, 0), &shm_sub))) {
         goto cleanup;
     }
     multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
     /* SUB WRITE LOCK */
-    if ((err_info = sr_shmsub_notify_new_wrlock((sr_sub_shm_t *)multi_sub_shm, op_path, 0, conn->cid))) {
+    if ((err_info = sr_shmsub_notify_new_wrlock((sr_sub_shm_t *)multi_sub_shm, path, 0, conn->cid))) {
         goto cleanup;
     }
 
     /* open sub data SHM */
-    if ((err_info = sr_shmsub_data_open_remap(lyd_owner_module(input)->name, "rpc", sr_str_hash(op_path, 0), &shm_data_sub, 0))) {
+    if ((err_info = sr_shmsub_data_open_remap(lyd_owner_module(input)->name, "rpc", sr_str_hash(path, 0), &shm_data_sub, 0))) {
         goto cleanup_wrunlock;
     }
 
@@ -2336,7 +2342,7 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *op_path
         }
         if ((err_info = sr_shmsub_multi_notify_write_event(multi_sub_shm, conn->cid, *request_id, cur_priority,
                 SR_SUB_EV_RPC, orig_name, orig_data, subscriber_count, &shm_data_sub, NULL, input_lyb, input_lyb_len,
-                op_path))) {
+                path))) {
             goto cleanup_wrunlock;
         }
 
@@ -2385,8 +2391,8 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *op_path
 
         /* find out what is the next priority and how many subscribers have it */
         free(evpipes);
-        if ((err_info = sr_shmsub_rpc_notify_next_subscription(conn, shm_rpc, input, cur_priority, &cur_priority,
-                &evpipes, &subscriber_count, &opts))) {
+        if ((err_info = sr_shmsub_rpc_notify_next_subscription(conn, sub_lock, subs, sub_count, path, input, cur_priority,
+                &cur_priority, &evpipes, &subscriber_count, &opts))) {
             goto cleanup_wrunlock;
         }
     } while (subscriber_count);
@@ -2409,8 +2415,8 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *op_path, const struct lyd_node *input,
-        const char *orig_name, const void *orig_data, uint32_t timeout_ms, uint32_t request_id)
+sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, uint32_t *sub_count, const char *path,
+        const struct lyd_node *input, const char *orig_name, const void *orig_data, uint32_t timeout_ms, uint32_t request_id)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     char *input_lyb = NULL;
@@ -2422,22 +2428,22 @@ sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *o
     assert(request_id);
 
     /* open sub SHM and map it */
-    if ((err_info = sr_shmsub_open_map(lyd_owner_module(input)->name, "rpc", sr_str_hash(op_path, 0), &shm_sub))) {
+    if ((err_info = sr_shmsub_open_map(lyd_owner_module(input)->name, "rpc", sr_str_hash(path, 0), &shm_sub))) {
         goto cleanup;
     }
     multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
     /* SUB WRITE LOCK */
-    if ((err_info = sr_shmsub_notify_new_wrlock((sr_sub_shm_t *)multi_sub_shm, op_path, SR_SUB_EV_ERROR, conn->cid))) {
+    if ((err_info = sr_shmsub_notify_new_wrlock((sr_sub_shm_t *)multi_sub_shm, path, SR_SUB_EV_ERROR, conn->cid))) {
         goto cleanup;
     }
 
     /* open sub data SHM */
-    if ((err_info = sr_shmsub_data_open_remap(lyd_owner_module(input)->name, "rpc", sr_str_hash(op_path, 0), &shm_data_sub, 0))) {
+    if ((err_info = sr_shmsub_data_open_remap(lyd_owner_module(input)->name, "rpc", sr_str_hash(path, 0), &shm_data_sub, 0))) {
         goto cleanup_wrunlock;
     }
 
-    if (!sr_shmsub_rpc_notify_has_subscription(conn, shm_rpc, input, &cur_priority)) {
+    if (!sr_shmsub_rpc_notify_has_subscription(conn, sub_lock, subs, sub_count, path, input, &cur_priority)) {
         /* no subscriptions interested in this event, but we still want to clear the event */
 clear_shm:
         /* clear the SHM */
@@ -2467,8 +2473,8 @@ clear_shm:
     do {
         free(evpipes);
         /* find the next subscription */
-        if ((err_info = sr_shmsub_rpc_notify_next_subscription(conn, shm_rpc, input, cur_priority, &cur_priority,
-                &evpipes, &subscriber_count, NULL))) {
+        if ((err_info = sr_shmsub_rpc_notify_next_subscription(conn, sub_lock, subs, sub_count, path, input, cur_priority,
+                &cur_priority, &evpipes, &subscriber_count, NULL))) {
             goto cleanup_wrunlock;
         }
         if (subscriber_count && (err_priority == cur_priority)) {
@@ -2488,7 +2494,7 @@ clear_shm:
         /* write "abort" event with the same input */
         if ((err_info = sr_shmsub_multi_notify_write_event(multi_sub_shm, conn->cid, request_id, cur_priority,
                 SR_SUB_EV_ABORT, orig_name, orig_data, subscriber_count, &shm_data_sub, NULL, input_lyb, input_lyb_len,
-                op_path))) {
+                path))) {
             goto cleanup_wrunlock;
         }
 
@@ -3923,7 +3929,7 @@ sr_shmsub_rpc_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct opsu
  * @param[in] mode SHM lock mode.
  * @param[in] sub_info Expected event information in the SHM.
  * @param[in] sub Current RPC subscription.
- * @param[in] op_path Subscription RPC path.
+ * @param[in] path Subscription RPC path.
  * @param[in] err_code Error code of the callback.
  * @param[in] ev_sess Implicit callback session to use.
  * @param[in] input_op RPC input structure.
@@ -3934,7 +3940,7 @@ sr_shmsub_rpc_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct opsu
  */
 static int
 sr_shmsub_rpc_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t mode, struct info_sub_s *sub_info,
-        struct opsub_rpcsub_s *sub, const char *op_path, sr_error_t err_code, sr_session_ctx_t *ev_sess,
+        struct opsub_rpcsub_s *sub, const char *path, sr_error_t err_code, sr_session_ctx_t *ev_sess,
         const struct lyd_node *input_op, sr_error_info_t **err_info)
 {
     struct lyd_node *output;
@@ -3961,7 +3967,7 @@ sr_shmsub_rpc_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t mo
             ev_sess->ev = SR_SUB_EV_ABORT;
 
             SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %" PRIu32 " priority %" PRIu32 " (self-generated).",
-                    op_path, sr_ev2str(SR_SUB_EV_ABORT), sub_info->request_id, sub_info->priority);
+                    path, sr_ev2str(SR_SUB_EV_ABORT), sub_info->request_id, sub_info->priority);
 
             /* call callback */
             *err_info = sr_shmsub_rpc_listen_call_callback(sub, ev_sess, input_op, SR_SUB_EV_ABORT,

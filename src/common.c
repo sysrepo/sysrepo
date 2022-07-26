@@ -726,7 +726,7 @@ cleanup:
 
 sr_error_info_t *
 sr_subscr_rpc_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess, const char *path,
-        const char *xpath, sr_rpc_cb rpc_cb, sr_rpc_tree_cb rpc_tree_cb, void *private_data, uint32_t priority,
+        int is_ext, const char *xpath, sr_rpc_cb rpc_cb, sr_rpc_tree_cb rpc_tree_cb, void *private_data, uint32_t priority,
         sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
@@ -762,6 +762,7 @@ sr_subscr_rpc_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session
         mem[1] = strdup(path);
         SR_CHECK_MEM_GOTO(!mem[1], err_info, error);
         rpc_sub->path = mem[1];
+        rpc_sub->is_ext = is_ext;
 
         /* get module name */
         mod_name = sr_get_first_ns(xpath);
@@ -1190,24 +1191,43 @@ static sr_error_info_t *
 sr_rpc_sub_del(sr_subscription_ctx_t *subscr, struct opsub_rpc_s *rpc_sub, uint32_t idx, sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
+    char *mod_name = NULL;
+    sr_mod_t *shm_mod;
     sr_rpc_t *shm_rpc;
 
     assert(has_subs_lock == SR_LOCK_READ_UPGR);
     (void)has_subs_lock;
 
-    /* find RPC/action */
-    shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(subscr->conn), rpc_sub->path);
-    SR_CHECK_INT_RET(!shm_rpc, err_info);
-
     /* properly remove the subscription from the ext SHM, with separate specific SHM segment if no longer needed */
-    if ((err_info = sr_shmext_rpc_sub_del(subscr->conn, shm_rpc, rpc_sub->subs[idx].sub_id))) {
-        return err_info;
+    if (rpc_sub->is_ext) {
+        /* get module name */
+        mod_name = sr_get_first_ns(rpc_sub->path);
+
+        /* find module */
+        shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), mod_name);
+        SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
+
+        if ((err_info = sr_shmext_rpc_sub_del(subscr->conn, &shm_mod->rpc_ext_lock, &shm_mod->rpc_ext_subs,
+                &shm_mod->rpc_ext_sub_count, rpc_sub->path, rpc_sub->subs[idx].sub_id))) {
+            goto cleanup;
+        }
+    } else {
+        /* find RPC/action */
+        shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(subscr->conn), rpc_sub->path);
+        SR_CHECK_INT_GOTO(!shm_rpc, err_info, cleanup);
+
+        if ((err_info = sr_shmext_rpc_sub_del(subscr->conn, &shm_rpc->lock, &shm_rpc->subs, &shm_rpc->sub_count,
+                rpc_sub->path, rpc_sub->subs[idx].sub_id))) {
+            goto cleanup;
+        }
     }
 
     /* remove the subscription from the subscription structure */
     sr_subscr_rpc_sub_del(subscr, rpc_sub->subs[idx].sub_id, has_subs_lock);
 
-    return NULL;
+cleanup:
+    free(mod_name);
+    return err_info;
 }
 
 /**
@@ -1887,7 +1907,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_subscr_rpc_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, char **path, int *valid)
+sr_subscr_rpc_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, char **path, int *is_ext, int *valid)
 {
     sr_error_info_t *err_info = NULL;
     const struct lysc_node *op;
@@ -1922,6 +1942,11 @@ sr_subscr_rpc_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, char *
             sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Path \"%s\" does not identify an RPC nor an action.", p);
         }
         goto cleanup;
+    }
+
+    /* check whether the operation is not in a nested extension */
+    if (is_ext) {
+        *is_ext = (ly_ctx != op->module->ctx);
     }
 
     /* valid */
@@ -6604,6 +6629,7 @@ sr_ly_find_last_parent(struct lyd_node **parent, int nodetype)
             }
             break;
         default:
+            *parent = NULL;
             SR_ERRINFO_INT(&err_info);
             return err_info;
         }

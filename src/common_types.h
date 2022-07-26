@@ -280,6 +280,7 @@ struct sr_subscription_ctx_s {
 
     struct opsub_rpc_s {
         char *path;                 /**< Subscription RPC/action path. */
+        int is_ext;                 /**< Whether the RPC/action is in an extension or not. */
         struct opsub_rpcsub_s {
             uint32_t sub_id;        /**< Unique subscription ID. */
             char *xpath;            /**< Subscription XPath. */

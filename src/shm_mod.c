@@ -121,6 +121,7 @@ sr_shmmod_find_rpc(sr_mod_shm_t *mod_shm, const char *path)
         return NULL;
     }
 
+    /* find the RPC */
     shm_rpc = (sr_rpc_t *)(((char *)mod_shm) + shm_mod->rpcs);
     for (i = 0; i < shm_mod->rpc_count; ++i) {
         if (!strcmp(((char *)mod_shm) + shm_rpc[i].path, path)) {
@@ -128,6 +129,7 @@ sr_shmmod_find_rpc(sr_mod_shm_t *mod_shm, const char *path)
         }
     }
 
+    /* not found */
     return NULL;
 }
 

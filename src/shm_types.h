@@ -4,8 +4,8 @@
  * @brief header for all SHM types
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@
 #include "common_types.h"
 #include "sysrepo_types.h"
 
-#define SR_SHM_VER 12   /**< Main, mod, and ext SHM version of their expected content structures. */
+#define SR_SHM_VER 13   /**< Main, mod, and ext SHM version of their expected content structures. */
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
 
 /**
@@ -152,6 +152,11 @@ typedef struct {
                                      notification subscriptions. */
     off_t notif_subs;           /**< Array of notification subscriptions (offset in ext SHM). */
     uint32_t notif_sub_count;   /**< Number of notification subscriptions. */
+
+    sr_rwlock_t rpc_ext_lock;   /**< Process-shared lock for reading or preventing changes (READ) or modifying (WRITE)
+                                     ext RPC subscriptions. */
+    off_t rpc_ext_subs;         /**< Array of ext RPC subscriptions (offset in ext SHM). */
+    uint32_t rpc_ext_sub_count; /**< Number of ext RPC subscriptions. */
 } sr_mod_t;
 
 /**
