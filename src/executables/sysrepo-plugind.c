@@ -202,9 +202,31 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
     char *path;
     size_t name_len;
     int rc = 0;
+    uint32_t i;
 
     *plugins = NULL;
     *plugin_count = 0;
+
+    /* load internal plugins */
+    for (i = 0; i < (sizeof int_plugins / sizeof *int_plugins); ++i) {
+
+        /* allocate new plugin */
+        mem = realloc(*plugins, (*plugin_count + 1) * sizeof **plugins);
+        if (!mem) {
+            srpd_error_print(0, "realloc() failed (%s).", strerror(errno));
+            rc = -1;
+            break;
+        }
+        *plugins = mem;
+        plugin = &(*plugins)[*plugin_count];
+        memset(plugin, 0, sizeof *plugin);
+
+        plugin->init_cb = int_plugins[i].init_cb;
+        plugin->cleanup_cb = int_plugins[i].cleanup_cb;
+        plugin->plugin_name = strdup(int_plugins[i].plugin_name);
+
+        ++(*plugin_count);
+    }
 
     /* get plugins directory */
     if (srpd_get_plugins_dir(&plugins_dir)) {
@@ -549,7 +571,9 @@ cleanup:
     }
 
     for (i = 0; i < plugin_count; ++i) {
-        dlclose(plugins[i].handle);
+        if (plugins[i].handle) {
+            dlclose(plugins[i].handle);
+        }
         free(plugins[i].plugin_name);
     }
     free(plugins);

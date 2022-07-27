@@ -18,15 +18,21 @@
 
 #include "srpd_common.h"
 
-#include <stdio.h>
-#include <stdarg.h>
-#include <string.h>
 #include <errno.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#include "sysrepo.h"
 #include "bin_common.h"
+#include "srpd_aging.h"
+#include "sysrepo.h"
+
+/**
+ * @brief An array of internal plugins
+ */
+struct srpd_int_plugin_s int_plugins[1] = {{srpd_aging_init_cb, srpd_aging_cleanup_cb, "srpd_aging"}};
 
 void
 srpd_error_print(int sr_error, const char *format, ...)
@@ -87,50 +93,50 @@ srpd_path_len_no_ext(const char *path)
 int
 srpd_exec(const char *cmd, uint32_t num_of_args, ...)
 {
-	pid_t pid;
-	int ret, rc = 0;
-	char **args = NULL;
-	uint32_t i;
-	va_list ap;
-	
-	va_start(ap, num_of_args);
+    pid_t pid;
+    int ret, rc = 0;
+    char **args = NULL;
+    uint32_t i;
+    va_list ap;
 
-	pid = fork();
-	if (pid == 0) {
-		for (i = 0; i < num_of_args; ++i) {
-			args = realloc(args, (i + 2) * sizeof *args);
-			args[i] = va_arg(ap, char *);
-		}
-		args[i] = NULL;
+    va_start(ap, num_of_args);
 
-		if (execv(cmd, args) == -1) {
-			srpd_error_print(0, "Execv failed: (%s).", strerror(errno));
-			exit(1);
-		}
-	} else if (pid == -1) {
-		srpd_error_print(0, "Fork failed: (%s).", strerror(errno));
-		rc = 1;
-		goto cleanup;
-	}
+    pid = fork();
+    if (pid == 0) {
+        for (i = 0; i < num_of_args; ++i) {
+            args = realloc(args, (i + 2) * sizeof *args);
+            args[i] = va_arg(ap, char *);
+        }
+        args[i] = NULL;
 
-	if (waitpid(pid, &ret, 0) == -1) {
-		srpd_error_print(0, "Waitpid failed (%s).", strerror(errno));
-		rc = 1;
-		goto cleanup;
-	}
-	if (!WIFEXITED(ret)) {
-		if (WIFSIGNALED(ret)) {
-			srpd_error_print(0, "Child has been terminated by a signal no: %d.", WTERMSIG(ret));
-		} else {
-			srpd_error_print(0, "Child has not terminated correctly.");
-		}
-		rc = 1;
-		goto cleanup;
-	}
+        if (execv(cmd, args) == -1) {
+            srpd_error_print(0, "Execv failed: (%s).", strerror(errno));
+            exit(1);
+        }
+    } else if (pid == -1) {
+        srpd_error_print(0, "Fork failed: (%s).", strerror(errno));
+        rc = 1;
+        goto cleanup;
+    }
+
+    if (waitpid(pid, &ret, 0) == -1) {
+        srpd_error_print(0, "Waitpid failed (%s).", strerror(errno));
+        rc = 1;
+        goto cleanup;
+    }
+    if (!WIFEXITED(ret)) {
+        if (WIFSIGNALED(ret)) {
+            srpd_error_print(0, "Child has been terminated by a signal no: %d.", WTERMSIG(ret));
+        } else {
+            srpd_error_print(0, "Child has not terminated correctly.");
+        }
+        rc = 1;
+        goto cleanup;
+    }
 
 cleanup:
-	va_end(ap);
-	return rc;
+    va_end(ap);
+    return rc;
 }
 
 int

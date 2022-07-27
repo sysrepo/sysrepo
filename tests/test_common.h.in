@@ -20,6 +20,9 @@
 
 #define TESTS_REPO_DIR "@TESTS_REPO_DIR@"
 
+/* path to all compiled executables */
+#define SR_BINARY_DIR "@PROJECT_BINARY_DIR@"
+
 /** implemented ietf-yang-library revision (copied from common.h) */
 #define SR_YANGLIB_REVISION @YANGLIB_REVISION@
 
