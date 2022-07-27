@@ -357,10 +357,7 @@ write_pidfile(int pidfd)
         return -1;
     }
 
-    if (snprintf(pid, sizeof(pid) - 1, "%ld\n", (long) getpid())) {
-        error_print(0, "Failed to allocate memory for pid (%s).", strerror(errno));
-        return -1;
-    }
+    snprintf(pid, sizeof(pid) - 1, "%ld\n", (long) getpid());
 
     pid_len = strlen(pid);
     if (write(pidfd, pid, pid_len) < pid_len) {
