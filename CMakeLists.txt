@@ -193,6 +193,8 @@ set (SYSREPOCFG_SRC
     src/executables/sysrepocfg.c)
 
 set (SYSREPOPLUGIND_SRC
+    src/executables/srpd_aging.c
+    src/executables/srpd_common.c
     src/executables/sysrepo-plugind.c)
 
 # public headers to check API/ABI on
@@ -368,6 +370,12 @@ if(NOT SR_HAVE_INOTIFY)
 endif()
 check_symbol_exists(mkstemps "stdlib.h" SR_HAVE_MKSTEMPS)
 unset(CMAKE_REQUIRED_DEFINITIONS)
+
+# zip
+find_program(ZIP_BINARY "zip")
+if(NOT ZIP_BINARY)
+    message(FATAL_ERROR "zip binary was not found.")
+endif()
 
 # generate files
 configure_file("${PROJECT_SOURCE_DIR}/src/config.h.in" "${PROJECT_BINARY_DIR}/config.h" ESCAPE_QUOTES @ONLY)

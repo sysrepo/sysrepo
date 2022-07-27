@@ -2,6 +2,10 @@ module sysrepo-plugind {
     namespace "urn:sysrepo:plugind";
     prefix srpd;
 
+    import ietf-yang-types {
+        prefix "yang";
+    }
+
     revision 2022-03-10 {
         description "Added info about loaded plugins.";
     }
@@ -17,6 +21,43 @@ module sysrepo-plugind {
                 description "The name of the plugin file, which may or may not include the extension.";
                 type string;
                 ordered-by user;
+            }
+        }
+
+        container notif-datastore {
+            description "Includes configuration for notification datastore.";
+        
+            container rotation {
+                description "Notification rotation configuration and stats.";
+
+                container enabled {
+                    presence "Rotation is enabled.";
+                    leaf older-than {
+                        description "Archive only notifications before configured time. Units can be in
+                                [s] seconds, [m] minutes, [h] hours, [D] days, [W] weeks, [M] months and [Y] years.";
+                        type string {
+                            pattern '[1-9][0-9]*[smhDWMY]';
+                        }
+                        mandatory true; 
+                    }
+                    leaf archive-dir {
+                        description "Archive into a configured folder.";
+                        type string;
+                        mandatory true;
+                    }
+                    leaf compress {
+                        description "Enable/disable compression of archived notifications with zip,
+                                if disabled then notifications are simply copied to the archive folder.";
+                        type boolean;
+                        default "true";
+                    }
+                }
+
+                leaf archived-files-count {
+                    description "Number of archived files while sysrepo-plugind is running";
+                    config false;
+                    type yang:counter64;
+                }
             }
         }
 

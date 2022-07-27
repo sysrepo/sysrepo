@@ -32,6 +32,9 @@
 /** sysrepo-plugind plugins directory */
 #define SRPD_PLG_PATH "@SRPD_PLUGINS_PATH@"
 
+/** path to zip executable */
+#define SRPD_ZIP_BINARY "@ZIP_BINARY@"
+
 /** whether mkstemps is found on the system */
 #cmakedefine SR_HAVE_MKSTEMPS
 

@@ -44,13 +44,14 @@ endif()
 
 if(ENABLE_TESTS)
     # format
-    if (${SOURCE_FORMAT_ENABLED})
+    if(${SOURCE_FORMAT_ENABLED})
         add_test(NAME format WORKING_DIRECTORY ${CMAKE_BINARY_DIR} COMMAND cmake --build ${CMAKE_BINARY_DIR} --target format-check)
     endif()
 
     # lists of all the tests
     set(tests test_modules test_context_change test_validation test_edit test_candidate test_operational test_lock
-        test_apply_changes test_copy_config test_rpc_action test_notif test_get test_process test_multi_connection test_nacm)
+        test_apply_changes test_copy_config test_rpc_action test_notif test_get test_process test_multi_connection
+        test_nacm test_aging)
 
     foreach(test_name IN LISTS tests)
         add_executable(${test_name} ${test_sources} ${test_name}.c)
@@ -66,6 +67,12 @@ if(ENABLE_TESTS)
             "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"
             "SYSREPO_SHM_PREFIX=_tests_sr_${test_name}"
         )
+
+        # avoid loading installed plugins by sysrepo-plugind
+        if(${test_name} STREQUAL "test_aging")
+            set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
+                "SRPD_PLUGINS_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}/testing")
+        endif()
         if(${CMAKE_VERSION} VERSION_GREATER "3.7")
             set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED tests_cleanup)
         endif()
