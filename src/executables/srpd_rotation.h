@@ -1,7 +1,7 @@
 /**
- * @file srpd_aging.h
+ * @file srpd_rotation.h
  * @author Ondrej Kusnirik <Ondrej.Kusnirik@cesnet.cz>
- * @brief header of aging utility for sysrepo-plugind
+ * @brief header of rotation utility for sysrepo-plugind
  *
  * @copyright
  * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
@@ -17,37 +17,37 @@
 #include <sysrepo.h>
 
 /**
- * @brief Internal struct for archivation purposes.
+ * @brief Internal struct for rotation purposes.
  *
  */
 typedef struct {
     time_t rotation_time;
-    char *archive;
+    char *output_folder;
     int compress;
-    uint64_t archived_notif_count;
+    uint64_t rotated_files_count;
     sr_subscription_ctx_t *subscr;
     pthread_t tid;
     int running;
     int finish;
-} srpd_aging_opts_t;
+} srpd_rotation_opts_t;
 
 /**
- * @brief Internal aging notification plugin ::srp_init_cb_t callback.
+ * @brief Internal rotation notification plugin ::srp_init_cb_t callback.
  *
  */
-int srpd_aging_init_cb(sr_session_ctx_t *session, void **private_data);
+int srpd_rotation_init_cb(sr_session_ctx_t *session, void **private_data);
 
 /**
- * @brief Internal aging notification plugin ::srp_cleanup_cb_t callback.
+ * @brief Internal rotation notification plugin ::srp_cleanup_cb_t callback.
  *
  */
-void srpd_aging_cleanup_cb(sr_session_ctx_t *session, void *private_data);
+void srpd_rotation_cleanup_cb(sr_session_ctx_t *session, void *private_data);
 
 /**
  * @brief Internal operational ::sr_oper_get_items_cb callback.
  *
  */
-int srpd_get_arch_count_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *path,
+int srpd_get_rot_count_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *path,
         const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data);
 
 /**

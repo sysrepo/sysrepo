@@ -73,7 +73,7 @@ int srpd_exec(const char *plugin_name, const char *cmd, uint32_t num_of_args, ..
  * @return 0 on success.
  * @return -1 on failure.
  */
-int srpd_get_plugins_dir(const char **plugins_dir, const char *plugin_name);
+int srpd_get_plugins_dir(const char *plugin_name, const char **plugins_dir);
 
 /**
  * @brief Swaps contents of a and b.

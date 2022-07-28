@@ -1,7 +1,7 @@
 /**
- * @file srpd_aging.c
+ * @file srpd_rotation.c
  * @author Ondrej Kusnirik <Ondrej.Kusnirik@cesnet.cz>
- * @brief aging utility for sysrepo-plugind
+ * @brief rotation utility for sysrepo-plugind
  *
  * @copyright
  * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
@@ -29,28 +29,28 @@
 
 #include "bin_common.h"
 #include "config.h"
-#include "srpd_aging.h"
 #include "srpd_common.h"
+#include "srpd_rotation.h"
 
 int
-srpd_aging_init_cb(sr_session_ctx_t *session, void **private_data)
+srpd_rotation_init_cb(sr_session_ctx_t *session, void **private_data)
 {
     int r = 0;
-    srpd_aging_opts_t *opts;
+    srpd_rotation_opts_t *opts;
 
     opts = calloc(1, sizeof *opts);
 
     /* create notification rotation change subscription */
     if ((r = sr_module_change_subscribe(session, "sysrepo-plugind", "/sysrepo-plugind:sysrepo-plugind/notif-datastore/rotation/enabled",
             srpd_notif_cb, opts, 0, SR_SUBSCR_ENABLED | SR_SUBSCR_DONE_ONLY, &opts->subscr))) {
-        SRPLG_LOG_ERR("srpd_aging", "Failed to subscribe (%s)", r);
+        SRPLG_LOG_ERR("srpd_rotation", "Failed to subscribe (%s)", r);
         goto error;
     }
 
     /* create notification rotation state data change subscription */
-    if ((r = sr_oper_get_subscribe(session, "sysrepo-plugind", "/sysrepo-plugind:sysrepo-plugind/notif-datastore/rotation/archived-files-count",
-            srpd_get_arch_count_cb, opts, 0, &opts->subscr))) {
-        SRPLG_LOG_ERR("srpd_aging", "Failed to subscribe (%s)", r);
+    if ((r = sr_oper_get_subscribe(session, "sysrepo-plugind", "/sysrepo-plugind:sysrepo-plugind/notif-datastore/rotation/rotated-files-count",
+            srpd_get_rot_count_cb, opts, 0, &opts->subscr))) {
+        SRPLG_LOG_ERR("srpd_rotation", "Failed to subscribe (%s)", r);
         goto error;
     }
 
@@ -64,9 +64,9 @@ error:
 }
 
 void
-srpd_aging_cleanup_cb(sr_session_ctx_t *session, void *private_data)
+srpd_rotation_cleanup_cb(sr_session_ctx_t *session, void *private_data)
 {
-    srpd_aging_opts_t *opts = (srpd_aging_opts_t *)private_data;
+    srpd_rotation_opts_t *opts = (srpd_rotation_opts_t *)private_data;
 
     sr_unsubscribe(opts->subscr);
     opts->finish = 1;
@@ -96,13 +96,13 @@ srpd_get_notif_path(void)
 }
 
 int
-srpd_get_arch_count_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *path,
+srpd_get_rot_count_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *path,
         const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     int rc = 0;
     const struct ly_ctx *ctx;
     char value[20];
-    srpd_aging_opts_t *opts = (srpd_aging_opts_t *)private_data;
+    srpd_rotation_opts_t *opts = (srpd_rotation_opts_t *)private_data;
 
     (void) sub_id;
     (void) module_name;
@@ -110,9 +110,9 @@ srpd_get_arch_count_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *m
     (void) request_xpath;
     (void) request_id;
 
-    sprintf(value, "%" PRIu64, opts->archived_notif_count);
+    sprintf(value, "%" PRIu64, opts->rotated_files_count);
     ctx = sr_session_acquire_context(session);
-    if ((rc = lyd_new_path(*parent, ctx, "/sysrepo-plugind:sysrepo-plugind/notif-datastore/rotation/archived-files-count",
+    if ((rc = lyd_new_path(*parent, ctx, "/sysrepo-plugind:sysrepo-plugind/notif-datastore/rotation/rotated-files-count",
             value, 0, NULL)) != LY_SUCCESS) {
         goto cleanup;
     }
@@ -176,22 +176,22 @@ srpd_format_check(const char *file_name, time_t *file_time1, time_t *file_time2)
 }
 
 static void *
-srpd_archive_loop(void *arg)
+srpd_rotation_loop(void *arg)
 {
     int rc = 0;
     DIR *d = NULL;
     struct dirent *dir = NULL;
     time_t current_time, file_time2 = 0;
-    srpd_aging_opts_t *opts = (srpd_aging_opts_t *)arg;
+    srpd_rotation_opts_t *opts = (srpd_rotation_opts_t *)arg;
     char *arg1 = NULL, *arg2 = NULL, *remove_str = NULL, *notif_dir_name = NULL;
 
     notif_dir_name = srpd_get_notif_path();
     if (!notif_dir_name) {
-        SRPLG_LOG_ERR("srpd_aging", "Fatal error: Notif directory is NULL.");
+        SRPLG_LOG_ERR("srpd_rotation", "Fatal error: Notif directory is NULL.");
         goto cleanup;
     }
-    if (srpd_mkpath(opts->archive, 0777) == -1) {
-        SRPLG_LOG_ERR("srpd_aging", "Fatal error: Archive directory could not be created");
+    if (srpd_mkpath(opts->output_folder, 0777) == -1) {
+        SRPLG_LOG_ERR("srpd_rotation", "Fatal error: Archive directory could not be created");
         goto cleanup;
     }
 
@@ -225,18 +225,18 @@ srpd_archive_loop(void *arg)
 
                 /* Build zipping args */
                 if (opts->compress) {
-                    if (asprintf(&arg1, "%s%s.zip", opts->archive, dir->d_name) == -1) {
+                    if (asprintf(&arg1, "%s%s.zip", opts->output_folder, dir->d_name) == -1) {
                         goto cleanup;
                     }
                     if (asprintf(&arg2, "%s%s", notif_dir_name, dir->d_name) == -1) {
                         goto cleanup;
                     }
 
-                    /* Zip a file in archive folder */
-                    if ((rc = srpd_exec("srpd_aging", SRPD_ZIP_BINARY, 3, SRPD_ZIP_BINARY, arg1, arg2))) {
-                        SRPLG_LOG_ERR("srpd_aging", "Zipping a file failed.");
+                    /* Zip a file in output folder */
+                    if ((rc = srpd_exec("srpd_rotation", SRPD_ZIP_BINARY, 3, SRPD_ZIP_BINARY, arg1, arg2))) {
+                        SRPLG_LOG_ERR("srpd_rotation", "Zipping a file failed.");
                     } else {
-                        opts->archived_notif_count++;
+                        opts->rotated_files_count++;
 
                         if (asprintf(&remove_str, "%s%s", notif_dir_name, dir->d_name) == -1) {
                             goto cleanup;
@@ -244,7 +244,7 @@ srpd_archive_loop(void *arg)
 
                         /* Remove a file from notif folder */
                         if (remove(remove_str)) {
-                            SRPLG_LOG_ERR("srpd_aging", "Removing a file failed.");
+                            SRPLG_LOG_ERR("srpd_rotation", "Removing a file failed.");
                         }
                     }
 
@@ -253,15 +253,15 @@ srpd_archive_loop(void *arg)
                     if (asprintf(&arg1, "%s%s", notif_dir_name, dir->d_name) == -1) {
                         goto cleanup;
                     }
-                    if (asprintf(&arg2, "%s%s", opts->archive, dir->d_name) == -1) {
+                    if (asprintf(&arg2, "%s%s", opts->output_folder, dir->d_name) == -1) {
                         goto cleanup;
                     }
 
-                    /* Move a file to archive folder */
+                    /* Move a file to the output folder */
                     if ((rc = rename(arg1, arg2)) == -1) {
-                        SRPLG_LOG_ERR("srpd_aging", "Moving a file failed.");
+                        SRPLG_LOG_ERR("srpd_rotation", "Moving a file failed.");
                     } else {
-                        opts->archived_notif_count++;
+                        opts->rotated_files_count++;
                     }
                 }
 
@@ -284,7 +284,7 @@ cleanup:
     free(arg2);
     free(remove_str);
     free(notif_dir_name);
-    free(opts->archive);
+    free(opts->output_folder);
     closedir(d);
     return NULL;
 }
@@ -296,13 +296,13 @@ cleanup:
  * @return -1 on failure.
  */
 static int
-srpd_join_thread(srpd_aging_opts_t *opts)
+srpd_join_thread(srpd_rotation_opts_t *opts)
 {
     int rc = 0;
 
     opts->running = 0;
     if ((rc = pthread_join(opts->tid, NULL))) {
-        SRPLG_LOG_ERR("srpd_aging", "pthread_join failed (%s).", sr_strerror(rc));
+        SRPLG_LOG_ERR("srpd_rotation", "pthread_join failed (%s).", sr_strerror(rc));
     }
 
     return rc;
@@ -318,7 +318,7 @@ srpd_notif_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_nam
     sr_change_iter_t *iter;
     sr_change_oper_t oper;
     const struct lyd_node *node;
-    srpd_aging_opts_t *opts = (srpd_aging_opts_t *)private_data;
+    srpd_rotation_opts_t *opts = (srpd_rotation_opts_t *)private_data;
 
     (void) sub_id;
     (void) module_name;
@@ -379,8 +379,8 @@ srpd_notif_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_nam
 
             opts->rotation_time = time_value;
 
-        } else if (!strcmp(node->schema->name, "archive-dir")) {
-            opts->archive = strdup(lyd_get_value(node));
+        } else if (!strcmp(node->schema->name, "output-dir")) {
+            opts->output_folder = strdup(lyd_get_value(node));
 
         } else if (!strcmp(node->schema->name, "compress")) {
             if (!strcmp(lyd_get_value(node), "true")) {
@@ -395,10 +395,10 @@ srpd_notif_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_nam
 
     /* check whether a thread should be created */
     if (t_creat) {
-        assert(opts->archive);
+        assert(opts->output_folder);
         opts->running = 1;
-        if ((rc = pthread_create(&(opts->tid), NULL, &srpd_archive_loop, opts))) {
-            SRPLG_LOG_ERR("srpd_aging", "Sysrepo-plugind change config notif callback failed to create thread: %s.",
+        if ((rc = pthread_create(&(opts->tid), NULL, &srpd_rotation_loop, opts))) {
+            SRPLG_LOG_ERR("srpd_rotation", "Sysrepo-plugind change config notif callback failed to create thread: %s.",
                     sr_strerror(rc));
         }
         t_creat = 0;

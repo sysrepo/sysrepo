@@ -51,7 +51,7 @@ if(ENABLE_TESTS)
     # lists of all the tests
     set(tests test_modules test_context_change test_validation test_edit test_candidate test_operational test_lock
         test_apply_changes test_copy_config test_rpc_action test_notif test_get test_process test_multi_connection
-        test_nacm test_aging)
+        test_nacm test_rotation)
 
     foreach(test_name IN LISTS tests)
         add_executable(${test_name} ${test_sources} ${test_name}.c)
@@ -69,7 +69,7 @@ if(ENABLE_TESTS)
         )
 
         # avoid loading installed plugins by sysrepo-plugind
-        if(${test_name} STREQUAL "test_aging")
+        if(${test_name} STREQUAL "test_rotation")
             set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
                 "SRPD_PLUGINS_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}/testing")
         endif()

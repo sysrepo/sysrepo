@@ -1,7 +1,7 @@
 /**
  * @file test_aging.c
  * @author Ondrej Kusnirik <Ondrej.Kusnirik@cesnet.cz>
- * @brief tests for aging utility
+ * @brief tests for rotation utility
  *
  * @copyright
  * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
@@ -137,7 +137,7 @@ create_config(sr_session_ctx_t *sess, char *older_than, char *archive_dir, char 
             older_than, 0, &node)) != LY_SUCCESS) {
         goto cleanup;
     }
-    if ((rc = lyd_new_path(node, ctx, "/sysrepo-plugind:sysrepo-plugind/notif-datastore/rotation/enabled/archive-dir",
+    if ((rc = lyd_new_path(node, ctx, "/sysrepo-plugind:sysrepo-plugind/notif-datastore/rotation/enabled/output-dir",
             archive_dir, 0, NULL)) != LY_SUCCESS) {
         goto cleanup;
     }
@@ -166,7 +166,7 @@ wait_for_archivation(void **state, uint64_t archived_expected)
     sr_session_switch_ds(data->sess, SR_DS_OPERATIONAL);
     time(&start);
     while (time(NULL) < (start + 5)) {
-        if ((sr_get_data(data->sess, "/sysrepo-plugind:sysrepo-plugind/notif-datastore/rotation/archived-files-count",
+        if ((sr_get_data(data->sess, "/sysrepo-plugind:sysrepo-plugind/notif-datastore/rotation/rotated-files-count",
                 0, 0, 0, &sr_data) != SR_ERR_OK)) {
             return EXIT_FAILURE;
         }

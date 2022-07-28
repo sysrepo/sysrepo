@@ -193,7 +193,7 @@ set (SYSREPOCFG_SRC
     src/executables/sysrepocfg.c)
 
 set (SYSREPOPLUGIND_SRC
-    src/executables/srpd_aging.c
+    src/executables/srpd_rotation.c
     src/executables/srpd_common.c
     src/executables/sysrepo-plugind.c)
 

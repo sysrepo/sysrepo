@@ -6,6 +6,10 @@ module sysrepo-plugind {
         prefix "yang";
     }
 
+    revision 2022-07-28 {
+        description "Added configuration of notification rotation.";
+    }
+
     revision 2022-03-10 {
         description "Added info about loaded plugins.";
     }
@@ -28,33 +32,33 @@ module sysrepo-plugind {
             description "Includes configuration for notification datastore.";
         
             container rotation {
-                description "Notification rotation configuration and stats.";
+                description "Notification rotation configuration and statistics.";
 
                 container enabled {
                     presence "Rotation is enabled.";
                     leaf older-than {
-                        description "Archive only notifications before configured time. Units can be in
-                                [s] seconds, [m] minutes, [h] hours, [D] days, [W] weeks, [M] months and [Y] years.";
+                        description "Period that has to elapse for notifications to be rotated. Units can be
+                                [s] seconds, [m] minutes, [h] hours, [D] days, [W] weeks, [M] months, or [Y] years.";
                         type string {
                             pattern '[1-9][0-9]*[smhDWMY]';
                         }
                         mandatory true; 
                     }
-                    leaf archive-dir {
-                        description "Archive into a configured folder.";
+                    leaf output-dir {
+                        description "Contains rotated notifications.";
                         type string;
                         mandatory true;
                     }
                     leaf compress {
-                        description "Enable/disable compression of archived notifications with zip,
-                                if disabled then notifications are simply copied to the archive folder.";
+                        description "Enable/disable compression of rotated notifications with zip,
+                                if disabled then notifications are simply copied to the output folder.";
                         type boolean;
                         default "true";
                     }
                 }
 
-                leaf archived-files-count {
-                    description "Number of archived files while sysrepo-plugind is running";
+                leaf rotated-files-count {
+                    description "Number of rotated files while sysrepo-plugind is running";
                     config false;
                     type yang:counter64;
                 }
