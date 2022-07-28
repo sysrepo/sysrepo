@@ -37,7 +37,7 @@
 #include "test_common.h"
 #include "config.h"
 
-#define MAX_WAIT_MICROSEC 100000
+#define TIMEOUT_STEP_US 100000
 #define NUM_OF_FILES 30
 
 typedef struct {
@@ -177,7 +177,7 @@ wait_for_archivation(void **state, uint64_t archived_expected)
         if (num >= archived_expected) {
             break;
         }
-        usleep(MAX_WAIT_MICROSEC);
+        usleep(TIMEOUT_STEP_US);
     }
     sr_session_switch_ds(data->sess, SR_DS_RUNNING);
     return 0;
@@ -320,7 +320,7 @@ setup(void **state)
         } else if (errno != EACCES) {
             goto cleanup;
         }
-        usleep(MAX_WAIT_MICROSEC);
+        usleep(TIMEOUT_STEP_US);
     }
     if (rc) {
         goto cleanup;

@@ -42,7 +42,7 @@ srpd_rotation_init_cb(sr_session_ctx_t *session, void **private_data)
 
     /* create notification rotation change subscription */
     if ((r = sr_module_change_subscribe(session, "sysrepo-plugind", "/sysrepo-plugind:sysrepo-plugind/notif-datastore/rotation/enabled",
-            srpd_notif_cb, opts, 0, SR_SUBSCR_ENABLED | SR_SUBSCR_DONE_ONLY, &opts->subscr))) {
+            srpd_rotation_change_cb, opts, 0, SR_SUBSCR_ENABLED | SR_SUBSCR_DONE_ONLY, &opts->subscr))) {
         SRPLG_LOG_ERR("srpd_rotation", "Failed to subscribe (%s)", r);
         goto error;
     }
@@ -66,11 +66,16 @@ error:
 void
 srpd_rotation_cleanup_cb(sr_session_ctx_t *session, void *private_data)
 {
+    int rc;
     srpd_rotation_opts_t *opts = (srpd_rotation_opts_t *)private_data;
 
+    (void) session;
+
     sr_unsubscribe(opts->subscr);
-    opts->finish = 1;
-    srpd_notif_cb(session, 0, NULL, NULL, 0, 0, opts);
+    opts->running = 0;
+    if ((rc = pthread_join(opts->tid, NULL))) {
+        SRPLG_LOG_ERR("srpd_rotation", "pthread_join failed (%s).", rc);
+    }
     free(opts);
 }
 
@@ -289,27 +294,8 @@ cleanup:
     return NULL;
 }
 
-/**
- * @brief Attempts to join thread.
- *
- * @return 0 on success.
- * @return -1 on failure.
- */
-static int
-srpd_join_thread(srpd_rotation_opts_t *opts)
-{
-    int rc = 0;
-
-    opts->running = 0;
-    if ((rc = pthread_join(opts->tid, NULL))) {
-        SRPLG_LOG_ERR("srpd_rotation", "pthread_join failed (%s).", sr_strerror(rc));
-    }
-
-    return rc;
-}
-
 int
-srpd_notif_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+srpd_rotation_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data)
 {
     int rc = 0, t_creat = 0;
@@ -326,10 +312,6 @@ srpd_notif_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_nam
     (void) event;
     (void) request_id;
 
-    if (opts->finish) {
-        return srpd_join_thread(opts);
-    }
-
     if ((rc = sr_get_changes_iter(session, "/sysrepo-plugind:sysrepo-plugind/notif-datastore/rotation/enabled//.",
             &iter)) != SR_ERR_OK) {
         goto error;
@@ -341,7 +323,10 @@ srpd_notif_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_nam
             if (oper == SR_OP_CREATED) {
                 t_creat = 1;
             } else if (oper == SR_OP_DELETED) {
-                rc = srpd_join_thread(opts);
+                opts->running = 0;
+                if ((rc = pthread_join(opts->tid, NULL))) {
+                    SRPLG_LOG_ERR("srpd_rotation", "pthread_join failed (%s).", sr_strerror(rc));
+                }
                 /* continue and free iter */
             }
 
