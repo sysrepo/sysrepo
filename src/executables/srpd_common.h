@@ -14,9 +14,9 @@
  *     https://opensource.org/licenses/BSD-3-Clause
  */
 
-#include "sysrepo_types.h"
-
 #include <sys/types.h>
+
+#include "sysrepo_types.h"
 
 extern struct srpd_int_plugin_s {
     srp_init_cb_t init_cb;
@@ -32,15 +32,6 @@ struct srpd_plugin_s {
     char *plugin_name;
     int initialized;
 };
-
-/**
- * @brief Prints error message.
- *
- * @param[in] sr_error Type of error
- * @param[in] format Error message to be printed
- * @param[in] ... Additional parameters for message
- */
-void srpd_error_print(int sr_error, const char *format, ...);
 
 /**
  * @brief Creates path to dir or file.
@@ -65,37 +56,40 @@ size_t srpd_path_len_no_ext(const char *path);
  * First argument of the command has to be the command.
  * See man ::execv(2).
  *
+ * @param[in] plugin_name Name of the plugin.
  * @param[in] cmd Command to be executed.
  * @param[in] num_of_args Number of arguments given to function.
  * @param[in] ... Arguments of the command.
  * @return 0 on success.
- * @return 1 on failure.
+ * @return -1 on failure.
  */
-int srpd_exec(const char *cmd, uint32_t num_of_args, ...);
+int srpd_exec(const char *plugin_name, const char *cmd, uint32_t num_of_args, ...);
 
 /**
  * @brief Retrieves plugin directory.
  *
- * @param[out] plugins_dir Out parameter for plugins directory
+ * @param[out] plugins_dir Out parameter for plugins directory.
+ * @param[in] plugin_name Name of the plugin.
  * @return 0 on success.
  * @return -1 on failure.
  */
-int srpd_get_plugins_dir(const char **plugins_dir);
+int srpd_get_plugins_dir(const char **plugins_dir, const char *plugin_name);
 
 /**
  * @brief Swaps contents of a and b.
  *
- * @param[in] a Parameter to be swapped
- * @param[in] b Parameter to be swapped
+ * @param[in] a Parameter to be swapped.
+ * @param[in] b Parameter to be swapped.
  */
 void srpd_swap(struct srpd_plugin_s *a, struct srpd_plugin_s *b);
 
 /**
  * @brief Sorts plugins.
  *
- * @param[in] sess Session to be used
- * @param[in] plugins Array of plugins to be sorted
- * @param[in] plugin_count Number of plugins within the array
+ * @param[in] sess Session to be used.
+ * @param[in] plugins Array of plugins to be sorted.
+ * @param[in] plugin_count Number of plugins within the array.
+ * @param[in] plugin_name Name of the plugin.
  * @return SR_ERR_OK on success.
  */
-int srpd_sort_plugins(sr_session_ctx_t *sess, struct srpd_plugin_s *plugins, int plugin_count);
+int srpd_sort_plugins(sr_session_ctx_t *sess, struct srpd_plugin_s *plugins, int plugin_count, const char *plugin_name);

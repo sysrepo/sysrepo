@@ -34,23 +34,6 @@
  */
 struct srpd_int_plugin_s int_plugins[1] = {{srpd_aging_init_cb, srpd_aging_cleanup_cb, "srpd_aging"}};
 
-void
-srpd_error_print(int sr_error, const char *format, ...)
-{
-    va_list ap;
-    char msg[2048];
-
-    if (!sr_error) {
-        sprintf(msg, "sysrepo-plugind error: %s\n", format);
-    } else {
-        sprintf(msg, "sysrepo-plugind error: %s (%s)\n", format, sr_strerror(sr_error));
-    }
-
-    va_start(ap, format);
-    vfprintf(stderr, msg, ap);
-    va_end(ap);
-}
-
 /* from src/common.c */
 int
 srpd_mkpath(const char *path, mode_t mode)
@@ -91,7 +74,7 @@ srpd_path_len_no_ext(const char *path)
 }
 
 int
-srpd_exec(const char *cmd, uint32_t num_of_args, ...)
+srpd_exec(const char *plugin_name, const char *cmd, uint32_t num_of_args, ...)
 {
     pid_t pid;
     int ret, rc = 0;
@@ -110,27 +93,27 @@ srpd_exec(const char *cmd, uint32_t num_of_args, ...)
         args[i] = NULL;
 
         if (execv(cmd, args) == -1) {
-            srpd_error_print(0, "Execv failed: (%s).", strerror(errno));
+            SRPLG_LOG_ERR(plugin_name, "Execv failed (%s).", strerror(errno));
             exit(1);
         }
     } else if (pid == -1) {
-        srpd_error_print(0, "Fork failed: (%s).", strerror(errno));
-        rc = 1;
+        SRPLG_LOG_ERR(plugin_name, "Fork failed (%s).", strerror(errno));
+        rc = -1;
         goto cleanup;
     }
 
     if (waitpid(pid, &ret, 0) == -1) {
-        srpd_error_print(0, "Waitpid failed (%s).", strerror(errno));
-        rc = 1;
+        SRPLG_LOG_ERR(plugin_name, "Waitpid failed (%s).", strerror(errno));
+        rc = -1;
         goto cleanup;
     }
     if (!WIFEXITED(ret)) {
         if (WIFSIGNALED(ret)) {
-            srpd_error_print(0, "Child has been terminated by a signal no: %d.", WTERMSIG(ret));
+            SRPLG_LOG_ERR(plugin_name, "Child has been terminated by a signal no: %d.", WTERMSIG(ret));
         } else {
-            srpd_error_print(0, "Child has not terminated correctly.");
+            SRPLG_LOG_ERR(plugin_name, "Child has not terminated correctly.");
         }
-        rc = 1;
+        rc = -1;
         goto cleanup;
     }
 
@@ -140,7 +123,7 @@ cleanup:
 }
 
 int
-srpd_get_plugins_dir(const char **plugins_dir)
+srpd_get_plugins_dir(const char **plugins_dir, const char *plugin_name)
 {
     /* get plugins dir from environment variable, or use default one */
     *plugins_dir = getenv("SRPD_PLUGINS_PATH");
@@ -151,11 +134,11 @@ srpd_get_plugins_dir(const char **plugins_dir)
     /* create the directory if it does not exist */
     if (access(*plugins_dir, F_OK) == -1) {
         if (errno != ENOENT) {
-            srpd_error_print(0, "Checking plugins dir existence failed (%s).", strerror(errno));
+            SRPLG_LOG_ERR(plugin_name, "Checking plugins dir existence failed (%s).", strerror(errno));
             return -1;
         }
         if (srpd_mkpath(*plugins_dir, 00777) == -1) {
-            srpd_error_print(0, "Creating plugins dir \"%s\" failed (%s).", *plugins_dir, strerror(errno));
+            SRPLG_LOG_ERR(plugin_name, "Creating plugins dir \"%s\" failed (%s).", *plugins_dir, strerror(errno));
             return -1;
         }
     }
@@ -194,7 +177,7 @@ srpd_plugin_names_cmp(const struct srpd_plugin_s *plugin, const char *str2)
 }
 
 int
-srpd_sort_plugins(sr_session_ctx_t *sess, struct srpd_plugin_s *plugins, int plugin_count)
+srpd_sort_plugins(sr_session_ctx_t *sess, struct srpd_plugin_s *plugins, int plugin_count, const char *plugin_name)
 {
     const char *xpath = "/sysrepo-plugind:sysrepo-plugind/plugin-order/plugin";
     sr_val_t *values;
@@ -202,7 +185,7 @@ srpd_sort_plugins(sr_session_ctx_t *sess, struct srpd_plugin_s *plugins, int plu
     int r, j, ordered_part = 0;
 
     if ((r = sr_get_items(sess, xpath, 0, 0, &values, &value_cnt))) {
-        srpd_error_print(r, "Getting \"%s\" items failed.", xpath);
+        SRPLG_LOG_ERR(plugin_name, "Getting \"%s\" items failed (%s)", xpath, sr_strerror(r));
         return r;
     }
 
