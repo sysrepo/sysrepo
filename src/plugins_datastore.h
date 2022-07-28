@@ -31,7 +31,7 @@ extern "C" {
 /**
  * @brief Datastore plugin API version
  */
-#define SRPLG_DS_API_VERSION 4
+#define SRPLG_DS_API_VERSION 5
 
 /**
  * @brief Initialize data of a new module.
@@ -222,6 +222,19 @@ typedef int (*srds_access_get)(const struct lys_module *mod, sr_datastore_t ds, 
 typedef int (*srds_access_check)(const struct lys_module *mod, sr_datastore_t ds, int *read, int *write);
 
 /**
+ * @brief Get the time when the datastore data of the module were last modified.
+ *
+ * The function succeedes even if the respective file does not exist. In such case is the @p mtime set to 0.
+ *
+ * @param[in] mod Specific module.
+ * @param[in] ds Specific datastore.
+ * @param[out] mtime Time of last modification, or 0 when it is unknown.
+ * @return ::SR_ERR_OK on success;
+ * @return Sysrepo error value on error.
+ */
+typedef int (*srds_last_modif)(const struct lys_module *mod, sr_datastore_t ds, struct timespec *mtime);
+
+/**
  * @brief Datastore plugin structure
  */
 struct srplg_ds_s {
@@ -241,6 +254,7 @@ struct srplg_ds_s {
     srds_access_set access_set_cb;  /**< callback for setting access rights for module data */
     srds_access_get access_get_cb;  /**< callback for getting access rights for module data */
     srds_access_check access_check_cb;  /**< callback for checking user access to module data */
+    srds_last_modif last_modif_cb;  /**< callback for getting the time of last modification */
 };
 
 /**

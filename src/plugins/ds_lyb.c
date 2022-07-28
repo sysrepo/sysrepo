@@ -1105,6 +1105,34 @@ cleanup:
     return rc;
 }
 
+static int
+srpds_lyb_last_modif(const struct lys_module *mod, sr_datastore_t ds, struct timespec *mtime)
+{
+    int rc = SR_ERR_OK;
+    char *path = NULL;
+    struct stat buf;
+
+    if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
+        goto cleanup;
+    }
+
+    if (stat(path, &buf) == 0) {
+        mtime->tv_sec = buf.st_mtime;
+        mtime->tv_nsec = 0;
+    } else if (errno == ENOENT) {
+        /* the file may not exist */
+        mtime->tv_sec = 0;
+        mtime->tv_nsec = 0;
+    } else {
+        SRPLG_LOG_ERR(srpds_name, "Stat of \"%s\" failed (%s).", path, strerror(errno));
+        rc = SR_ERR_SYS;
+    }
+
+cleanup:
+    free(path);
+    return rc;
+}
+
 const struct srplg_ds_s srpds_lyb = {
     .name = srpds_name,
     .init_cb = srpds_lyb_init,
@@ -1128,4 +1156,5 @@ const struct srplg_ds_s srpds_lyb = {
     .access_set_cb = srpds_lyb_access_set,
     .access_get_cb = srpds_lyb_access_get,
     .access_check_cb = srpds_lyb_access_check,
+    .last_modif_cb = srpds_lyb_last_modif,
 };
