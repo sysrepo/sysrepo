@@ -246,7 +246,7 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
     }
 
     /* get plugins directory */
-    if (srpd_get_plugins_dir(&plugins_dir, "sysrepo-plugind")) {
+    if (srpd_get_plugins_dir("sysrepo-plugind", &plugins_dir)) {
         return -1;
     }
 
@@ -464,7 +464,7 @@ main(int argc, char **argv)
             break;
         case 'P':
             /* plugin-install */
-            if (srpd_get_plugins_dir(&plugins_dir, "sysrepo-plugind")) {
+            if (srpd_get_plugins_dir("sysrepo-plugind", &plugins_dir)) {
                 goto cleanup;
             }
             if (asprintf(&cmd, "/bin/cp -- \"%s\" %s", optarg, plugins_dir) == -1) {

@@ -26,13 +26,13 @@
 #include <sys/wait.h>
 
 #include "bin_common.h"
-#include "srpd_aging.h"
+#include "srpd_rotation.h"
 #include "sysrepo.h"
 
 /**
  * @brief An array of internal plugins
  */
-struct srpd_int_plugin_s int_plugins[1] = {{srpd_aging_init_cb, srpd_aging_cleanup_cb, "srpd_aging"}};
+struct srpd_int_plugin_s int_plugins[1] = {{srpd_rotation_init_cb, srpd_rotation_cleanup_cb, "srpd_rotation"}};
 
 /* from src/common.c */
 int
@@ -123,7 +123,7 @@ cleanup:
 }
 
 int
-srpd_get_plugins_dir(const char **plugins_dir, const char *plugin_name)
+srpd_get_plugins_dir(const char *plugin_name, const char **plugins_dir)
 {
     /* get plugins dir from environment variable, or use default one */
     *plugins_dir = getenv("SRPD_PLUGINS_PATH");
