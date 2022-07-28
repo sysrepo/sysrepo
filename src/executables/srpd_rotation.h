@@ -16,18 +16,20 @@
 
 #include <sysrepo.h>
 
+#include "compat/compat.h"
+
 /**
  * @brief Internal struct for rotation purposes.
  *
  */
 typedef struct {
-    time_t rotation_time;
-    char *output_folder;
-    int compress;
-    uint64_t rotated_files_count;
+    ATOMIC64_T rotation_time;
+    ATOMIC_PTR_T output_folder;
+    ATOMIC_T compress;
+    ATOMIC64_T rotated_files_count;
     sr_subscription_ctx_t *subscr;
     pthread_t tid;
-    int running;
+    ATOMIC_T running;
 } srpd_rotation_opts_t;
 
 /**

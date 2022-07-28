@@ -87,6 +87,10 @@
 
 # define ATOMIC_T atomic_uint_fast32_t
 # define ATOMIC_T_MAX UINT_FAST32_MAX
+# define ATOMIC64_T atomic_uint_fast64_t
+# define ATOMIC64_T_MAX UINT_FAST64_MAX
+
+# define ATOMIC_PTR_T atomic_uintptr_t
 
 # define ATOMIC_STORE_RELAXED(var, x) atomic_store_explicit(&(var), x, memory_order_relaxed)
 # define ATOMIC_LOAD_RELAXED(var) atomic_load_explicit(&(var), memory_order_relaxed)
@@ -96,11 +100,18 @@
 # define ATOMIC_SUB_RELAXED(var, x) atomic_fetch_sub_explicit(&(var), x, memory_order_relaxed)
 # define ATOMIC_COMPARE_EXCHANGE_RELAXED(var, exp, des, result) \
         result = atomic_compare_exchange_strong_explicit(&(var), &(exp), des, memory_order_relaxed, memory_order_relaxed)
+
+# define ATOMIC_PTR_STORE_RELAXED(var, x) atomic_store_explicit(&(var), (uintptr_t)(x), memory_order_relaxed)
+# define ATOMIC_PTR_LOAD_RELAXED(var) ((void *)atomic_load_explicit(&(var), memory_order_relaxed))
 #else
 # include <stdint.h>
 
 # define ATOMIC_T uint32_t
 # define ATOMIC_T_MAX UINT32_MAX
+# define ATOMIC64_T uint64_t
+# define ATOMIC64_T_MAX UINT64_MAX
+
+# define ATOMIC_PTR_T void *
 
 # define ATOMIC_STORE_RELAXED(var, x) ((var) = (x))
 # define ATOMIC_LOAD_RELAXED(var) (var)
@@ -114,6 +125,9 @@
             result = ATOMIC_LOAD_RELAXED(__old) == ATOMIC_LOAD_RELAXED(exp) ? 1 : 0; \
             ATOMIC_STORE_RELAXED(exp, ATOMIC_LOAD_RELAXED(__old)); \
         }
+
+# define ATOMIC_PTR_STORE_RELAXED(var, x) ((var) = (x))
+# define ATOMIC_PTR_LOAD_RELAXED(var) (var)
 #endif
 
 #ifndef HAVE_VDPRINTF
