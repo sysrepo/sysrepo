@@ -28,7 +28,6 @@ typedef struct {
     sr_subscription_ctx_t *subscr;
     pthread_t tid;
     int running;
-    int finish;
 } srpd_rotation_opts_t;
 
 /**
@@ -54,5 +53,5 @@ int srpd_get_rot_count_cb(sr_session_ctx_t *session, uint32_t sub_id, const char
  * @brief Internal module change ::sr_module_change_cb callback.
  *
  */
-int srpd_notif_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+int srpd_rotation_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data);
