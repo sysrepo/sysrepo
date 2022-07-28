@@ -134,6 +134,26 @@ module sysrepo-monitoring {
                     "Module name.";
             }
 
+            list datastore {
+                key "name";
+                description
+                    "Datastore state.";
+
+                leaf name {
+                    type identityref {
+                        base ds:datastore;
+                    }
+                    description
+                        "Datastore name.";
+                }
+
+                leaf last-modified {
+                    type yang:date-and-time;
+                    description
+                        "When the datastore was last modified.";
+                }
+            }
+
             list data-lock {
                 key "cid datastore";
                 description

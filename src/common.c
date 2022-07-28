@@ -1855,7 +1855,8 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
         }
         if (!srpds->name || !srpds->init_cb || !srpds->destroy_cb || !srpds->store_cb || !srpds->recover_cb ||
                 !srpds->load_cb || !srpds->copy_cb || !srpds->update_differ_cb || !srpds->candidate_modified_cb ||
-                !srpds->candidate_reset_cb || !srpds->access_set_cb || !srpds->access_get_cb || !srpds->access_check_cb) {
+                !srpds->candidate_reset_cb || !srpds->access_set_cb || !srpds->access_get_cb || !srpds->access_check_cb ||
+                !srpds->last_modif_cb) {
             SR_LOG_WRN("DS plugin \"%s\" with incomplete callback structure.", path);
             goto next_file;
         }

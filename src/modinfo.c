@@ -1301,6 +1301,43 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
     return NULL;
 }
 
+static sr_error_info_t *
+sr_modinfo_module_srmon_datastore(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, struct lyd_node *sr_state)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+    const struct srplg_ds_s *ds_plg;
+    struct lyd_node *sr_store;
+    struct timespec mtime;
+    char *buf = NULL;
+
+    /* get LY module */
+    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, conn->mod_shm.addr + shm_mod->name);
+    assert(ly_mod);
+
+    if (!sr_module_has_data(ly_mod, 0)) {
+        /* skip modules without configuration data */
+        goto cleanup;
+    }
+
+    if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_plg))) {
+        goto cleanup;
+    }
+
+    if (ds_plg->last_modif_cb(ly_mod, ds, &mtime) == 0 && mtime.tv_sec > 0) {
+        /* datastore with name */
+        SR_CHECK_LY_RET(lyd_new_list(sr_state, NULL, "datastore", 0, &sr_store, sr_ds2ident(ds)), conn->ly_ctx,
+                err_info);
+
+        ly_time_ts2str(&mtime, &buf);
+        SR_CHECK_LY_GOTO(lyd_new_term(sr_store, NULL, "last-modified", buf, 0, NULL), conn->ly_ctx, err_info, cleanup);
+    }
+
+cleanup:
+    free(buf);
+    return err_info;
+}
+
 /**
  * @brief Add held datastore-specific lock nodes to a data tree.
  *
@@ -1464,6 +1501,13 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
     /* module with name */
     SR_CHECK_LY_RET(lyd_new_list(sr_state, NULL, "module", 0, &sr_mod, conn->mod_shm.addr + shm_mod->name), ly_ctx,
             err_info);
+
+    /* last-modified */
+    for (ds = 0; ds < SR_DS_COUNT; ++ds) {
+        if ((err_info = sr_modinfo_module_srmon_datastore(conn, shm_mod, ds, sr_mod))) {
+            return err_info;
+        }
+    }
 
     for (ds = 0; ds < SR_DS_COUNT; ++ds) {
         shm_lock = &shm_mod->data_lock_info[ds];
