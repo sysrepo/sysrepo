@@ -38,6 +38,7 @@
 #include "config.h"
 
 #define TIMEOUT_STEP_US 100000
+#define SRPD_START_TIMEOUT 10
 #define NUM_OF_FILES 30
 
 typedef struct {
@@ -100,7 +101,7 @@ create_file(char *path, char *content)
     fp = fopen(path, "w+");
     chmod(path, 0700);
     if (!fp) {
-        fprintf(stderr, "Creating a file %s failed\n", path);
+        print_error("Creating a file %s failed\n", path);
         return EXIT_FAILURE;
     }
     if (content) {
@@ -115,10 +116,10 @@ remove_file(void **state, char *file_name, int notif_dir)
 {
     test_data_t *data = (test_data_t *) (*state);
     if (asprintf(&data->path_to_file, "%s%s", (notif_dir) ? data->n_path : data->a_path, file_name) == -1) {
-        fprintf(stderr, "Asprintf failed\n");
+        print_error("asprintf failed (%s:%d)", __FILE__, __LINE__);
     }
     if (remove(data->path_to_file)) {
-        fprintf(stderr, "Removing a file %s failed!\n", file_name);
+        print_error("Removing a file %s failed\n", file_name);
     }
     free(data->path_to_file);
     data->path_to_file = NULL;
@@ -165,7 +166,7 @@ wait_for_archivation(void **state, uint64_t archived_expected)
 
     sr_session_switch_ds(data->sess, SR_DS_OPERATIONAL);
     time(&start);
-    while (time(NULL) < (start + 5)) {
+    while (time(NULL) < (start + SRPD_START_TIMEOUT)) {
         if ((sr_get_data(data->sess, "/sysrepo-plugind:sysrepo-plugind/notif-datastore/rotation/rotated-files-count",
                 0, 0, 0, &sr_data) != SR_ERR_OK)) {
             return EXIT_FAILURE;
@@ -188,24 +189,24 @@ find_file(void **state, const char *search, int *found)
 {
     DIR *d;
     struct dirent *dir;
-    test_data_t *data = (test_data_t *) (*state);
+    test_data_t *data = (test_data_t *)(*state);
     char *file_name = NULL;
 
     d = opendir(data->a_path);
     if (!d) {
-        fprintf(stderr, "Failed to open the directory\n");
+        print_error("Failed to open the directory\n");
         return EXIT_FAILURE;
     }
 
     if (asprintf(&file_name, "%s", search) == -1) {
-        fprintf(stderr, "Asprintf failed\n");
+        print_error("asprintf() failed\n");
     }
 
     /* Read whole directory */
     while ((dir = readdir(d))) {
 
         /* Skip current and parent directories */
-        if (dir->d_name[0] == '.') {
+        if (!strcmp(dir->d_name, ".") || !strcmp(dir->d_name, "..")) {
             continue;
         }
 
@@ -235,7 +236,7 @@ teardown(void **state)
             kill(data->pid, SIGINT);
             waitpid(data->pid, &ret, 0);
             if (WIFSIGNALED(ret)) {
-                fprintf(stderr, "Child has been terminated by a signal no: %d\n", WTERMSIG(ret));
+                print_error("Child has been terminated by a signal no: %d\n", WTERMSIG(ret));
             }
         }
 
@@ -255,17 +256,21 @@ setup(void **state)
 {
     int rc = 1;
     time_t start;
-    test_data_t *data = (test_data_t *)calloc(1, sizeof(test_data_t));
+    test_data_t *data;
+    
+    data = calloc(1, sizeof *data);
     if (!data) {
-        fprintf(stderr, "Calloc failed\n");
+        print_error("Calloc failed\n");
         goto cleanup;
     }
 
     /* Retrieve notif path and archive path */
     if ((data->n_path = get_test_path("notif/")) == NULL) {
+        print_error("Could not get test_path\n");
         goto cleanup;
     }
     if ((data->a_path = get_test_path("archiv/")) == NULL) {
+        print_error("Could not get test_path\n");
         goto cleanup;
     }
     data->len_npath = strlen(data->n_path);
@@ -273,13 +278,13 @@ setup(void **state)
 
     /* Create a notif directory if it does not exist */
     if (mkpath(data->n_path, 0777) == -1) {
-        fprintf(stderr, "Failed to create notif directory.\n");
+        print_error("Failed to create notif directory.\n");
         goto cleanup;
     }
 
     /* Store path to pidfile */
     if ((data->pidfile = get_test_path("my_pidfile")) == NULL) {
-        fprintf(stderr, "Failed to get path to pidfile.\n");
+        print_error("Failed to get path to pidfile.\n");
         goto cleanup;
     }
 
@@ -287,42 +292,45 @@ setup(void **state)
     data->pid = fork();
     if (data->pid == 0) {
         if (execl(SR_BINARY_DIR "/sysrepo-plugind", SR_BINARY_DIR "/sysrepo-plugind", "-d", "-p", data->pidfile, NULL)) {
-            fprintf(stderr, "Execl failed\n");
+            print_error("Execl failed\n");
             exit(1);
         }
     } else if (data->pid == -1) {
-        fprintf(stderr, "Forking failed\n");
+        print_error("Forking failed\n");
         goto cleanup;
     }
 
     /* Create connection */
     if ((rc = sr_connect(0, &data->conn)) != SR_ERR_OK) {
-        fprintf(stderr, "Failed to connect\n");
+        print_error("Failed to connect\n");
         goto cleanup;
     }
 
     /* Create session */
     if ((rc = sr_session_start(data->conn, SR_DS_RUNNING, &data->sess)) != SR_ERR_OK) {
-        fprintf(stderr, "Failed to start new session\n");
+        print_error("Failed to start new session\n");
         goto cleanup;
     }
     
     /* Create startup config */
     if ((rc = sr_replace_config(data->sess, "sysrepo-plugind", NULL, 0)) != SR_ERR_OK) {
+        print_error("Failed to replace configuration\n");
         goto cleanup;
     }
 
     time(&start);
-    while (time(NULL) < (start + 5)) {
+    while (time(NULL) < (start + SRPD_START_TIMEOUT)) {
         rc = access(data->pidfile, F_OK);
         if (!rc) {
             break;
-        } else if (errno != EACCES) {
+        } else if ((errno != EACCES) && (errno != ENOENT)) {
+            print_error("Unexpected access error (%s)\n", strerror(errno));
             goto cleanup;
         }
         usleep(TIMEOUT_STEP_US);
     }
     if (rc) {
+        print_error("Timeout elapsed.\n");
         goto cleanup;
     }
     *state = data;
@@ -336,13 +344,13 @@ cleanup:
 static void
 test_aging_dummy(void **state)
 {
-    (void) state;
+    (void)state;
 }
 
 static int
 compress_config(void **state)
 {
-    test_data_t *data = (test_data_t *) (*state);
+    test_data_t *data = (test_data_t *)(*state);
 
     /* Create some config with false compress */
     create_config(data->sess, "3m", data->a_path, "false");
@@ -379,7 +387,7 @@ test_compress(void **state)
 static int
 format_config(void **state)
 {
-    test_data_t *data = (test_data_t *) (*state);
+    test_data_t *data = (test_data_t *)(*state);
 
     /* Create some config */
     create_config(data->sess, "8M", data->a_path, "true");
@@ -495,9 +503,11 @@ test_aging(void **state)
     /* Check whether the files are correct and remove them */
     for (int i = 1; i < NUM_OF_FILES; i += 2) {
         if (asprintf(&file_name, "my_test.notif.%d-%d.zip", i, i + 1) == -1) {
-            fprintf(stderr, "Asprintf failed\n");
+            print_error("asprintf failed (%s:%d)\n", __FILE__, __LINE__);
+            goto cleanup;
         }
         if (find_file(state, file_name, &found)) {
+            print_error("find_file() failed\n");
             goto cleanup;
         }
 
@@ -506,7 +516,7 @@ test_aging(void **state)
             remove_file(state, file_name, 0);
             found = 0;
         } else {
-            fprintf(stderr, "File %s has not been found!\n", file_name);
+            print_error("File %s has not been found!\n", file_name);
             test_result = 0;
         }
         free(file_name);
