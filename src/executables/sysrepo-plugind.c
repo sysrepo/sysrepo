@@ -169,7 +169,7 @@ get_plugins_dir(const char **plugins_dir)
 
     /* create the directory if it does not exist */
     if (access(*plugins_dir, F_OK) == -1) {
-        if ((errno != ENOENT) && (errno != EACCES)) {
+        if (errno != ENOENT) {
             error_print(0, "Checking plugins dir existence failed (%s).", strerror(errno));
             return -1;
         }
