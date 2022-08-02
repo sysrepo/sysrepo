@@ -202,7 +202,7 @@ srpd_rotation_loop(void *arg)
         SRPLG_LOG_ERR("srpd_rotation", "Notif directory is NULL.");
         goto cleanup;
     }
-    if (srpd_mkpath((char *)ATOMIC_PTR_LOAD_RELAXED(opts->output_folder), 0777) == -1) {
+    if (srpd_mkpath((char *)ATOMIC_PTR_LOAD_RELAXED(opts->output_folder), 0777, NULL) == -1) {
         SRPLG_LOG_ERR("srpd_rotation", "Archive directory could not be created");
         goto cleanup;
     }

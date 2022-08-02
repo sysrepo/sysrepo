@@ -36,7 +36,7 @@ struct srpd_int_plugin_s int_plugins[1] = {{srpd_rotation_init_cb, srpd_rotation
 
 /* from src/common.c */
 int
-srpd_mkpath(const char *path, mode_t mode)
+srpd_mkpath(const char *path, mode_t mode, char **err_dir)
 {
     char *p, *dup;
 
@@ -45,21 +45,29 @@ srpd_mkpath(const char *path, mode_t mode)
         *p = '\0';
         if (mkdir(dup, mode) == -1) {
             if (errno != EEXIST) {
-                *p = '/';
-                free(dup);
+                if (err_dir) {
+                    *err_dir = dup;
+                } else {
+                    free(dup);
+                }
                 return -1;
             }
         }
         *p = '/';
     }
-    free(dup);
 
     if (mkdir(path, mode) == -1) {
         if (errno != EEXIST) {
+            if (err_dir) {
+                *err_dir = dup;
+            } else {
+                free(dup);
+            }
             return -1;
         }
     }
 
+    free(dup);
     return 0;
 }
 
