@@ -73,6 +73,7 @@ if(ENABLE_TESTS)
             set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
                 "SRPD_PLUGINS_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}/testing")
         endif()
+
         if(${CMAKE_VERSION} VERSION_GREATER "3.7")
             set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED tests_cleanup)
         endif()
@@ -97,6 +98,13 @@ if(ENABLE_VALGRIND_TESTS)
             "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"
             "SYSREPO_SHM_PREFIX=_tests_sr_${test_name}"
         )
+
+        # avoid loading installed plugins by sysrepo-plugind
+        if(${test_name} STREQUAL "test_rotation_valgrind")
+            set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
+                "SRPD_PLUGINS_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}/testing")
+        endif()
+
         if(${CMAKE_VERSION} VERSION_GREATER "3.7")
             set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED tests_cleanup)
         endif()
