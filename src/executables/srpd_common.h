@@ -66,16 +66,6 @@ size_t srpd_path_len_no_ext(const char *path);
 int srpd_exec(const char *plugin_name, const char *cmd, uint32_t num_of_args, ...);
 
 /**
- * @brief Retrieves plugin directory.
- *
- * @param[out] plugins_dir Out parameter for plugins directory.
- * @param[in] plugin_name Name of the plugin.
- * @return 0 on success.
- * @return -1 on failure.
- */
-int srpd_get_plugins_dir(const char *plugin_name, const char **plugins_dir);
-
-/**
  * @brief Swaps contents of a and b.
  *
  * @param[in] a Parameter to be swapped.

@@ -1,5 +1,5 @@
 /**
- * @file test_aging.c
+ * @file test_rotation.c
  * @author Ondrej Kusnirik <Ondrej.Kusnirik@cesnet.cz>
  * @brief tests for rotation utility
  *
@@ -54,11 +54,11 @@ typedef struct {
 } test_data_t;
 
 static char *
-get_test_path(const char *which)
+get_test_path(const char *append_name)
 {
 	char *path;
 
-	if (asprintf(&path, "%s/data/%s", sr_get_repo_path(), which) == -1) {
+	if (asprintf(&path, "%s/data/%s", sr_get_repo_path(), append_name) == -1) {
 		path = NULL;
 	}
     
@@ -114,7 +114,7 @@ create_file(char *path, char *content)
 static int
 remove_file(void **state, char *file_name, int notif_dir)
 {
-    test_data_t *data = (test_data_t *) (*state);
+    test_data_t *data = (test_data_t *)(*state);
     if (asprintf(&data->path_to_file, "%s%s", (notif_dir) ? data->n_path : data->a_path, file_name) == -1) {
         print_error("asprintf failed (%s:%d)", __FILE__, __LINE__);
     }
@@ -159,7 +159,7 @@ cleanup:
 static int
 wait_for_archivation(void **state, uint64_t archived_expected)
 {
-    test_data_t *data = (test_data_t *) (*state);
+    test_data_t *data = (test_data_t *)(*state);
     sr_data_t *sr_data;
     time_t start;
     uint64_t num = 0;
@@ -227,7 +227,7 @@ static int
 teardown(void **state)
 {
     int ret;
-    test_data_t *data = (test_data_t *) (*state);
+    test_data_t *data = (test_data_t *)(*state);
 
     if (data) {
 
@@ -256,7 +256,7 @@ setup(void **state)
 {
     int rc = 1;
     time_t start;
-    test_data_t *data;
+    test_data_t *data = NULL;
     
     data = calloc(1, sizeof *data);
     if (!data) {
@@ -291,7 +291,7 @@ setup(void **state)
     /* Run archivation loop */
     data->pid = fork();
     if (data->pid == 0) {
-        if (execl(SR_BINARY_DIR "/sysrepo-plugind", SR_BINARY_DIR "/sysrepo-plugind", "-d", "-p", data->pidfile, NULL)) {
+        if (execl(SR_BINARY_DIR "/sysrepo-plugind", SR_BINARY_DIR "/sysrepo-plugind", "-v3", "-d", "-p", data->pidfile, NULL)) {
             print_error("Execl failed\n");
             exit(1);
         }
@@ -469,7 +469,7 @@ test_check_format(void **state)
 static int
 basic_config(void **state)
 {
-    test_data_t *data = (test_data_t *) (*state);
+    test_data_t *data = (test_data_t *)(*state);
 
     /* Create some config */
     create_config(data->sess, "1m", data->a_path, "true");
