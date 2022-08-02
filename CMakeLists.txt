@@ -371,10 +371,10 @@ endif()
 check_symbol_exists(mkstemps "stdlib.h" SR_HAVE_MKSTEMPS)
 unset(CMAKE_REQUIRED_DEFINITIONS)
 
-# zip
-find_program(ZIP_BINARY "zip")
-if(NOT ZIP_BINARY)
-    message(FATAL_ERROR "zip binary was not found.")
+# tar
+find_program(TAR_BINARY "tar")
+if(NOT TAR_BINARY)
+    message(FATAL_ERROR "tar binary was not found.")
 endif()
 
 # generate files
