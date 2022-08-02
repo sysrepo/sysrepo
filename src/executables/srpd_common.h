@@ -38,10 +38,13 @@ struct srpd_plugin_s {
  *
  * @param[in] path Path to be created.
  * @param[in] mode Access mode to the dir or file.
+ * @param[out] err_dir Optional parameter for retrieving the
+ * last dir/file which the mkpath failed to create.
+ * Needs to be freed afterwards.
  * @return 0 on success.
  * @return -1 on failure.
  */
-int srpd_mkpath(const char *path, mode_t mode);
+int srpd_mkpath(const char *path, mode_t mode, char **err_dir);
 
 /**
  * @brief Returns length of path without extensions.

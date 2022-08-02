@@ -532,6 +532,7 @@ main(int argc, char **argv)
 
     /* load plugins */
     if (load_plugins(&plugins, &plugin_count)) {
+        error_print(0, "load_plugins failed");
         goto cleanup;
     }
 
