@@ -235,18 +235,18 @@ srpd_rotation_loop(void *arg)
             if ((current_time >= (time_t)ATOMIC_LOAD_RELAXED(opts->rotation_time)) &&
                     (file_time2 < (current_time - (time_t)ATOMIC_LOAD_RELAXED(opts->rotation_time)))) {
 
-                /* build zipping args */
+                /* build compressing args */
                 if (ATOMIC_LOAD_RELAXED(opts->compress)) {
-                    if (asprintf(&arg1, "%s%s.zip", (char *)ATOMIC_PTR_LOAD_RELAXED(opts->output_folder), dir->d_name) == -1) {
+                    if (asprintf(&arg1, "%s%s.tar.gz", (char *)ATOMIC_PTR_LOAD_RELAXED(opts->output_folder), dir->d_name) == -1) {
                         goto cleanup;
                     }
                     if (asprintf(&arg2, "%s%s", notif_dir_name, dir->d_name) == -1) {
                         goto cleanup;
                     }
 
-                    /* zip a file in output folder */
-                    if ((rc = srpd_exec("srpd_rotation", SRPD_ZIP_BINARY, 3, SRPD_ZIP_BINARY, arg1, arg2))) {
-                        SRPLG_LOG_ERR("srpd_rotation", "Zipping a file failed.");
+                    /* compress a file with tar in output folder */
+                    if ((rc = srpd_exec("srpd_rotation", SRPD_TAR_BINARY, 4, SRPD_TAR_BINARY, "-czvf", arg1, arg2))) {
+                        SRPLG_LOG_ERR("srpd_rotation", "Compressing a file %s failed.", arg2);
                     } else {
                         ATOMIC_INC_RELAXED(opts->rotated_files_count);
 

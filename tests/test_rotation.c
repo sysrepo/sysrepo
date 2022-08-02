@@ -441,29 +441,29 @@ test_check_format(void **state)
 {
     int found = 0;
 
-    if (find_file(state, "three.dots.config.i.zip", &found)) {
+    if (find_file(state, "three.dots.config.i.tar.gz", &found)) {
         assert_true(0);
     }
     assert_int_equal(found, 0);
     remove_file(state, "three.dots.config.i", 1);
 
-    if (find_file(state, "three.notif.config.i.zip", &found)) {
+    if (find_file(state, "three.notif.config.i.tar.gz", &found)) {
         assert_true(0);
     }
     assert_int_equal(found, 0);
     remove_file(state, "three.notif.config.i", 1);
 
-    if (find_file(state, "three.notif.-.i.zip", &found)) {
+    if (find_file(state, "three.notif.-.i.tar.gz", &found)) {
         assert_true(0);
     }
     assert_int_equal(found, 0);
     remove_file(state, "three.notif.-.i", 1);
 
-    if (find_file(state, "three.notif.400-500.zip", &found)) {
+    if (find_file(state, "three.notif.400-500.tar.gz", &found)) {
         assert_true(0);
     }
     assert_int_equal(found, 1);
-    remove_file(state, "three.notif.400-500.zip", 0);
+    remove_file(state, "three.notif.400-500.tar.gz", 0);
 }
 
 static int
@@ -502,7 +502,7 @@ test_aging(void **state)
 
     /* Check whether the files are correct and remove them */
     for (int i = 1; i < NUM_OF_FILES; i += 2) {
-        if (asprintf(&file_name, "my_test.notif.%d-%d.zip", i, i + 1) == -1) {
+        if (asprintf(&file_name, "my_test.notif.%d-%d.tar.gz", i, i + 1) == -1) {
             print_error("asprintf failed (%s:%d)\n", __FILE__, __LINE__);
             goto cleanup;
         }
