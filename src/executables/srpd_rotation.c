@@ -374,9 +374,15 @@ srpd_rotation_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *
         } else if (!strcmp(node->schema->name, "output-dir")) {
             /* safe update of the output_folder (srpd_rotation_loop() reads output_folder!) */
             temp = ATOMIC_PTR_LOAD_RELAXED(opts->output_folder);
-            dir_str = strdup(lyd_get_value(node));
-            if (!dir_str) {
-                SRPLG_LOG_ERR("srpd_rotation", "strdup() failed (%s:%d)", __FILE__, __LINE__);
+
+            /* check whether there is a '/' at the end to further append other strings */
+            if (lyd_get_value(node)[strlen(lyd_get_value(node)) - 1] != '/') {
+                rc = asprintf(&dir_str, "%s/", lyd_get_value(node));
+            } else {
+                rc = asprintf(&dir_str, "%s", lyd_get_value(node));
+            }
+            if (rc == -1) {
+                SRPLG_LOG_ERR("srpd_rotation", "asprintf() failed (%s:%d) (%s)", __FILE__, __LINE__, strerror(errno));
                 goto cleanup;
             }
             ATOMIC_PTR_STORE_RELAXED(opts->output_folder, dir_str);
