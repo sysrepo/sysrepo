@@ -32,7 +32,7 @@
 /** sysrepo-plugind plugins directory */
 #define SRPD_PLG_PATH "@SRPD_PLUGINS_PATH@"
 
-/** path to zip executable */
+/** path to tar executable */
 #define SRPD_TAR_BINARY "@TAR_BINARY@"
 
 /** whether mkstemps is found on the system */

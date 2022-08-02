@@ -444,7 +444,7 @@ main(int argc, char **argv)
     sr_log_level_t log_level = SR_LL_ERR;
     int plugin_count = 0, i, r, rc = EXIT_FAILURE, opt, debug = 0, pidfd = -1, fatal_fail = 0;
     const char *plugins_dir, *pidfile = NULL;
-    char *cmd;
+
     struct option options[] = {
         {"help",              no_argument,       NULL, 'h'},
         {"version",           no_argument,       NULL, 'V'},
@@ -495,13 +495,8 @@ main(int argc, char **argv)
             if (get_plugins_dir(&plugins_dir)) {
                 goto cleanup;
             }
-            if (asprintf(&cmd, "/bin/cp -- \"%s\" %s", optarg, plugins_dir) == -1) {
-                error_print(0, "Memory allocation failed");
-                goto cleanup;
-            }
-            r = system(cmd);
-            free(cmd);
-            if (!WIFEXITED(r) || WEXITSTATUS(r)) {
+            r = srpd_exec("sysrepo-plugind", "/bin/cp", 4, "/bin/cp", "--", optarg, plugins_dir);
+            if (r == -1) {
                 error_print(0, "Failed to execute cp(1)");
                 goto cleanup;
             }
