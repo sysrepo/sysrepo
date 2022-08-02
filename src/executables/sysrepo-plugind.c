@@ -156,6 +156,33 @@ handle_signals(void)
     sigaction(SIGTTOU, &action, NULL);
 }
 
+static int
+get_plugins_dir(const char **plugins_dir)
+{
+    char *err_dir = NULL;
+
+    /* get plugins dir from environment variable, or use default one */
+    *plugins_dir = getenv("SRPD_PLUGINS_PATH");
+    if (!*plugins_dir) {
+        *plugins_dir = SRPD_PLG_PATH;
+    }
+
+    /* create the directory if it does not exist */
+    if (access(*plugins_dir, F_OK) == -1) {
+        if ((errno != ENOENT) && (errno != EACCES)) {
+            error_print(0, "Checking plugins dir existence failed (%s).", strerror(errno));
+            return -1;
+        }
+        if (srpd_mkpath(*plugins_dir, 0777, &err_dir) == -1) {
+            error_print(0, "Creating dir \"%s\" failed (%s).", err_dir, strerror(errno));
+            free(err_dir);
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
 static void
 daemon_init(int debug, sr_log_level_t log_level)
 {
@@ -246,7 +273,8 @@ load_plugins(struct srpd_plugin_s **plugins, int *plugin_count)
     }
 
     /* get plugins directory */
-    if (srpd_get_plugins_dir("sysrepo-plugind", &plugins_dir)) {
+    if (get_plugins_dir(&plugins_dir)) {
+        error_print(0, "srpd_get_plugins_dir failed (%s)", strerror(errno));
         return -1;
     }
 
@@ -464,7 +492,7 @@ main(int argc, char **argv)
             break;
         case 'P':
             /* plugin-install */
-            if (srpd_get_plugins_dir("sysrepo-plugind", &plugins_dir)) {
+            if (get_plugins_dir(&plugins_dir)) {
                 goto cleanup;
             }
             if (asprintf(&cmd, "/bin/cp -- \"%s\" %s", optarg, plugins_dir) == -1) {

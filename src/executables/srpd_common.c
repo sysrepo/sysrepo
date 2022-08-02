@@ -122,30 +122,6 @@ cleanup:
     return rc;
 }
 
-int
-srpd_get_plugins_dir(const char *plugin_name, const char **plugins_dir)
-{
-    /* get plugins dir from environment variable, or use default one */
-    *plugins_dir = getenv("SRPD_PLUGINS_PATH");
-    if (!*plugins_dir) {
-        *plugins_dir = SRPD_PLG_PATH;
-    }
-
-    /* create the directory if it does not exist */
-    if (access(*plugins_dir, F_OK) == -1) {
-        if (errno != ENOENT) {
-            SRPLG_LOG_ERR(plugin_name, "Checking plugins dir existence failed (%s).", strerror(errno));
-            return -1;
-        }
-        if (srpd_mkpath(*plugins_dir, 00777) == -1) {
-            SRPLG_LOG_ERR(plugin_name, "Creating plugins dir \"%s\" failed (%s).", *plugins_dir, strerror(errno));
-            return -1;
-        }
-    }
-
-    return 0;
-}
-
 void
 srpd_swap(struct srpd_plugin_s *a, struct srpd_plugin_s *b)
 {
