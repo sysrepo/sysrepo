@@ -288,6 +288,7 @@ cleanup:
             /* remove any created SHM so it is not considered properly created */
             sr_error_info_t *tmp_err = NULL;
             char *shm_name = NULL;
+
             if ((tmp_err = sr_path_main_shm(&shm_name))) {
                 sr_errinfo_merge(&err_info, tmp_err);
             } else {

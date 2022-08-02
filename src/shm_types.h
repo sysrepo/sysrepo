@@ -55,6 +55,7 @@ typedef enum {
  */
 typedef struct {
     sr_dep_type_t type;                 /**< Dependency type. */
+
     union {
         struct {
             off_t target_path;          /**< Leafref target (offset in mod SHM). */

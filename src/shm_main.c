@@ -382,6 +382,7 @@ error:
     if (lock_fd > -1) {
         char *path;
         sr_error_info_t *err_info_2 = NULL;
+
         close(lock_fd);
         if ((err_info_2 = sr_path_conn_lockfile(cid, 0, &path))) {
             sr_errinfo_free(&err_info_2);

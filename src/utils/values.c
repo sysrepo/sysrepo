@@ -45,9 +45,11 @@ typedef enum sr_print_type_e {
  */
 typedef struct sr_print_ctx_s {
     sr_print_type_t type;
+
     union {
         int fd;
         FILE *stream;
+
         struct {
             char *buf;
             size_t len;

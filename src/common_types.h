@@ -146,6 +146,7 @@ struct sr_session_ctx_s {
     void *orig_data;                /**< Originator data used for all events sent on this session. */
 
     sr_sub_event_t ev;              /**< Event of a callback session. ::SR_SUB_EV_NONE for standard user sessions. */
+
     struct {
         char *orig_name;            /**< Set originator name by the event originator. */
         void *orig_data;            /**< Set originator data by the event originator. */

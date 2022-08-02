@@ -155,6 +155,7 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
             if (!strcmp(attr->name.name, "operation")) {
                 /* try to create a metadata instance and use that */
                 uint32_t prev_lo = ly_log_options(0);
+
                 if (!lyd_new_meta2(LYD_CTX(edit_node), NULL, 0, attr, &meta)) {
                     if (!strcmp(meta->annotation->module->name, "sysrepo") ||
                             !strcmp(meta->annotation->module->name, "ietf-netconf")) {
@@ -1458,6 +1459,7 @@ sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper
                 if (!strcmp(attr->name.name, "operation")) {
                     /* try to create a metadata instance and use that */
                     uint32_t prev_lo = ly_log_options(0);
+
                     if (!lyd_new_meta2(LYD_CTX(parent), NULL, 0, attr, &meta)) {
                         if (!strcmp(meta->annotation->module->name, "sysrepo") ||
                                 !strcmp(meta->annotation->module->name, "ietf-netconf")) {
