@@ -1650,15 +1650,14 @@ ly_ext_data_cb(const struct lysc_ext_instance *ext, void *user_data, void **ext_
 }
 
 static void
-notif_schema_mount_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
-        const sr_val_t *values, const size_t values_cnt, struct timespec *timestamp, void *private_data)
+notif_schema_mount_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
+        const struct lyd_node *notif, struct timespec *timestamp, void *private_data)
 {
     struct state *st = (struct state *)private_data;
+    char *str;
 
     (void)session;
     (void)sub_id;
-    (void)values;
-    (void)values_cnt;
     (void)timestamp;
 
     if (notif_type == SR_EV_NOTIF_TERMINATED) {
@@ -1668,15 +1667,47 @@ notif_schema_mount_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_no
 
     assert_int_equal(notif_type, SR_EV_NOTIF_REALTIME);
 
+    while (notif->parent) {
+        notif = lyd_parent(notif);
+    }
+
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
-        assert_string_equal(xpath, "/sm:root/ops:notif4");
+        lyd_print_mem(&str, notif, LYD_XML, 0);
+        assert_string_equal(str,
+                "<root xmlns=\"urn:sm\">\n"
+                "  <notif4 xmlns=\"urn:ops\">\n"
+                "    <l>val</l>\n"
+                "  </notif4>\n"
+                "</root>\n");
+        free(str);
         break;
     case 1:
-        assert_string_equal(xpath, "/sm:root/ops:cont/cont3/notif2");
+        lyd_print_mem(&str, notif, LYD_XML, 0);
+        assert_string_equal(str,
+                "<root xmlns=\"urn:sm\">\n"
+                "  <cont xmlns=\"urn:ops\">\n"
+                "    <cont3>\n"
+                "      <notif2>\n"
+                "        <l13 xmlns:o=\"urn:ops\">/o:cont/o:l12</l13>\n"
+                "      </notif2>\n"
+                "    </cont3>\n"
+                "  </cont>\n"
+                "</root>\n");
+        free(str);
         break;
     case 2:
-        assert_string_equal(xpath, "/sm:root/ops:notif3");
+        lyd_print_mem(&str, notif, LYD_XML, 0);
+        assert_string_equal(str,
+                "<root xmlns=\"urn:sm\">\n"
+                "  <notif3 xmlns=\"urn:ops\">\n"
+                "    <list2>\n"
+                "      <k>val</k>\n"
+                "      <l14>l1-starting-with</l14>\n"
+                "    </list2>\n"
+                "  </notif3>\n"
+                "</root>\n");
+        free(str);
         break;
     default:
         fail();
@@ -1726,7 +1757,7 @@ test_schema_mount(void **state)
     sr_set_ext_data_searchdir(st->conn, TESTS_SRC_DIR "/files");
 
     /* subscribe for the notifications */
-    ret = sr_notif_subscribe(st->sess, "sm", NULL, NULL, NULL, notif_schema_mount_cb, st, 0, &sub);
+    ret = sr_notif_subscribe_tree(st->sess, "sm", NULL, NULL, NULL, notif_schema_mount_cb, st, 0, &sub);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* send simple notif4 */

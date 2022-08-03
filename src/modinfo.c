@@ -2390,11 +2390,11 @@ sr_error_info_t *
 sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int output)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *top_op, *op_ext_parent = NULL, *node;
+    struct lyd_node *top_op, *op_ext_parent = NULL, *data_ext_parent = NULL, *node;
     struct ly_set *set = NULL;
     struct sr_mod_info_mod_s *mod;
     uint32_t i;
-    char *parent_xpath = NULL, *ext_children_path = NULL;
+    char *parent_xpath = NULL, *ext_parent_path = NULL;
     enum lyd_type op_type;
 
     assert(op->schema->nodetype & (LYS_RPC | LYS_ACTION | LYS_NOTIF));
@@ -2450,16 +2450,14 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int 
     set = NULL;
 
     if (op_ext_parent) {
-        /* generate path to all the parent children, which represent top-level nodes in the mount-jail */
-        ext_children_path = lyd_path(op_ext_parent, LYD_PATH_STD, NULL, 0);
-        SR_CHECK_MEM_GOTO(!ext_children_path, err_info, cleanup);
-        ext_children_path = sr_realloc(ext_children_path, strlen(ext_children_path) + 3);
-        SR_CHECK_MEM_GOTO(!ext_children_path, err_info, cleanup);
-        strcat(ext_children_path, "/*");
+        /* get the ext parent in mod_info data */
+        ext_parent_path = lyd_path(op_ext_parent, LYD_PATH_STD, NULL, 0);
+        SR_CHECK_MEM_GOTO(!ext_parent_path, err_info, cleanup);
+        lyd_find_path(mod_info->data, ext_parent_path, 0, &data_ext_parent);
 
-        /* get all the nodes */
-        if (lyd_find_xpath(mod_info->data, ext_children_path, &set)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(mod_info->data), NULL);
+        /* get all the parent children nodes, which represent top-level nodes in the mount-jail */
+        if (lyd_find_xpath(data_ext_parent, "*", &set)) {
+            sr_errinfo_new_ly(&err_info, LYD_CTX(data_ext_parent), NULL);
             goto cleanup;
         }
 
@@ -2486,18 +2484,18 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int 
     }
 
 cleanup:
-    if (set && op_ext_parent) {
+    if (set && data_ext_parent) {
         for (i = 0; i < set->count; ++i) {
             node = set->dnodes[i];
             lyd_unlink_tree(node);
-            if (lyd_insert_ext(op_ext_parent, node)) {
-                sr_errinfo_new_ly(&err_info, LYD_CTX(op_ext_parent), node);
+            if (lyd_insert_ext(data_ext_parent, node)) {
+                sr_errinfo_new_ly(&err_info, LYD_CTX(data_ext_parent), node);
             }
         }
     }
 
     free(parent_xpath);
-    free(ext_children_path);
+    free(ext_parent_path);
     ly_set_free(set, NULL);
     return err_info;
 }
