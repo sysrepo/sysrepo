@@ -28,6 +28,7 @@
 #include <sysrepo.h>
 
 #include "bin_common.h"
+#include "compat.h"
 #include "config.h"
 #include "srpd_common.h"
 #include "srpd_rotation.h"
