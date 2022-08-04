@@ -216,7 +216,7 @@ void sr_subscr_change_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr
  */
 sr_error_info_t *sr_subscr_oper_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess,
         const char *mod_name, const char *xpath, sr_oper_get_items_cb oper_cb, void *private_data,
-        sr_lock_mode_t has_subs_lock);
+        sr_lock_mode_t has_subs_lock, uint32_t prio);
 
 /**
  * @brief Delete an operational subscription from a subscription structure.
@@ -1310,7 +1310,7 @@ sr_error_info_t *sr_lyd_xpath_complement(struct lyd_node **data, const char *xpa
  * @param[in] str String to hash.
  * @return String hash.
  */
-uint32_t sr_str_hash(const char *str);
+uint32_t sr_str_hash(const char *str, uint32_t priority);
 
 /**
  * @brief Trim last node from an XPath.

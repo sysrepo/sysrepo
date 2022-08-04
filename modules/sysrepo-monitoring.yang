@@ -268,17 +268,22 @@ module sysrepo-monitoring {
                             "Operational data pull subscription XPath.";
                     }
 
-                    leaf cid {
-                        type conn-ref;
-                        mandatory true;
+                    list xpath-sub {
                         description
-                            "CID of the connection that this subscription belongs to.";
-                    }
+                            "Operational subscription for the XPath.";
 
-                    leaf suspended {
-                        type boolean;
-                        description
-                            "Whether the subscription is in the suspended state.";
+                        leaf cid {
+                            type conn-ref;
+                            mandatory true;
+                            description
+                                "CID of the connection that this subscription belongs to.";
+                        }
+
+                        leaf suspended {
+                            type boolean;
+                            description
+                                "Whether the subscription is in the suspended state.";
+                        }
                     }
                 }
 

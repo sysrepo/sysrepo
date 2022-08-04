@@ -198,17 +198,28 @@ typedef enum {
     SR_OPER_SUB_MIXED             /**< Providing both state and configuration data. */
 } sr_mod_oper_sub_type_t;
 
+
 /**
- * @brief Ext SHM module operational subscription.
+ * @brief Ext SHM module operational subscription for given XPath.
+ */
+typedef struct {
+    int opts;                   /**< Subscription options. */
+    uint32_t sub_id;            /**< Unique subscription ID. */
+    uint32_t evpipe_num;        /** Event pipe number. */
+    uint32_t priority;          /**< Priority of the subscription (automatically generated). */
+    ATOMIC_T suspended;         /**< Whether the subscription is suspended. */
+    sr_cid_t cid;               /**< Connection ID. */
+} sr_mod_oper_xpath_sub_t;
+
+/**
+ * @brief Ext SHM module operational set of subscriptions for given XPath.
  */
 typedef struct {
     off_t xpath;                /**< XPath of the subscription (offset in ext SHM). */
     sr_mod_oper_sub_type_t sub_type;  /**< Type of the subscription. */
-    int opts;                   /**< Subscription options. */
-    uint32_t sub_id;            /**< Unique subscription ID. */
-    uint32_t evpipe_num;        /** Event pipe number. */
-    ATOMIC_T suspended;         /**< Whether the subscription is suspended. */
-    sr_cid_t cid;               /**< Connection ID. */
+    
+    off_t xpath_subs;           /**< Subscriptions array of the given XPath (offset in ext SHM) */
+    uint32_t xpath_sub_count;   /**< Number of subscriptions for given XPath */
 } sr_mod_oper_sub_t;
 
 /**

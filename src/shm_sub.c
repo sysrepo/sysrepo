@@ -1597,15 +1597,17 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const char *request_xpath,
-        const struct lyd_node *parent, const char *orig_name, const void *orig_data, uint32_t evpipe_num,
-        uint32_t timeout_ms, sr_cid_t cid, struct lyd_node **data, sr_error_info_t **cb_err_info)
+sr_shmsub_oper_notify(struct sr_mod_info_mod_s *mod, const char *xpath, const char *request_xpath,
+        const struct lyd_node *parent, const char *orig_name, const void *orig_data, sr_mod_oper_sub_t *oper_subs,
+        uint32_t idx1, uint32_t timeout_ms, sr_conn_ctx_t *conn, struct lyd_node **data, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
     char *parent_lyb = NULL;
-    uint32_t parent_lyb_len, request_id;
+    uint32_t parent_lyb_len, request_id, i;
     sr_sub_shm_t *sub_shm;
     sr_shm_t shm_sub = SR_SHM_INITIALIZER, shm_data_sub = SR_SHM_INITIALIZER;
+    sr_mod_oper_xpath_sub_t *xpath_sub;
+    struct lyd_node *oper_data;
 
     if (!request_xpath) {
         request_xpath = "";
@@ -1613,72 +1615,106 @@ sr_shmsub_oper_notify(const struct lys_module *ly_mod, const char *xpath, const 
 
     /* print the parent (or nothing) into LYB */
     if (lyd_print_mem(&parent_lyb, parent, LYD_LYB, 0)) {
-        sr_errinfo_new_ly(&err_info, ly_mod->ctx, NULL);
+        sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx, NULL);
         goto cleanup;
     }
     parent_lyb_len = lyd_lyb_data_length(parent_lyb);
 
-    /* open sub SHM and map it */
-    if ((err_info = sr_shmsub_open_map(ly_mod->name, "oper", sr_str_hash(xpath), &shm_sub))) {
-        goto cleanup;
-    }
-    sub_shm = (sr_sub_shm_t *)shm_sub.addr;
+    for (i = 0; i < oper_subs[idx1].xpath_sub_count; ++i) {
+        xpath_sub = &((sr_mod_oper_xpath_sub_t *)(conn->ext_shm.addr + oper_subs[idx1].xpath_subs))[i];
 
-    /* SUB WRITE LOCK */
-    if ((err_info = sr_shmsub_notify_new_wrlock(sub_shm, ly_mod->name, 0, cid))) {
-        goto cleanup;
-    }
+        /* check subscription aliveness */
+        if (!sr_conn_is_alive(xpath_sub->cid)) {
+            /* recover the subscription */
+            if ((err_info = sr_shmext_oper_sub_stop(conn, mod->shm_mod, idx1, i, 1, SR_LOCK_READ, 1))) {
+                sr_errinfo_free(&err_info);
+            }
+            continue;
+        }
 
-    /* open sub data SHM */
-    if ((err_info = sr_shmsub_data_open_remap(ly_mod->name, "oper", sr_str_hash(xpath), &shm_data_sub, 0))) {
-        goto cleanup_wrunlock;
-    }
+        /* skip suspended subscriptions */
+        if (ATOMIC_LOAD_RELAXED(xpath_sub->suspended)) {
+            continue;
+        }
 
-    /* write the request for state data */
-    request_id = sub_shm->request_id + 1;
-    if ((err_info = sr_shmsub_notify_write_event(sub_shm, cid, request_id, SR_SUB_EV_OPER, orig_name, orig_data,
-            &shm_data_sub, request_xpath, parent_lyb, parent_lyb_len, xpath))) {
-        goto cleanup_wrunlock;
-    }
-
-    /* notify using event pipe */
-    if ((err_info = sr_shmsub_notify_evpipe(evpipe_num))) {
-        goto cleanup_wrunlock;
-    }
-
-    /* wait until the event is processed */
-    if ((err_info = sr_shmsub_notify_wait_wr(sub_shm, SR_SUB_EV_ERROR, 1, timeout_ms, cid, &shm_data_sub, cb_err_info))) {
-        if (err_info->err[0].err_code == SR_ERR_TIME_OUT) {
+        /* open sub SHM and map it */
+        if ((err_info = sr_shmsub_open_map(mod->ly_mod->name, "oper", sr_str_hash(xpath, xpath_sub->priority), &shm_sub))) {
             goto cleanup;
-        } else {
+        }
+        sub_shm = (sr_sub_shm_t *)shm_sub.addr;
+
+        /* SUB WRITE LOCK */
+        if ((err_info = sr_shmsub_notify_new_wrlock(sub_shm, mod->ly_mod->name, 0, conn->cid))) {
+            goto cleanup;
+        }
+
+        /* open sub data SHM */
+        if ((err_info = sr_shmsub_data_open_remap(mod->ly_mod->name, "oper", sr_str_hash(xpath, xpath_sub->priority), &shm_data_sub, 0))) {
             goto cleanup_wrunlock;
         }
+
+        /* write the request for state data */
+        request_id = sub_shm->request_id + 1;
+        if ((err_info = sr_shmsub_notify_write_event(sub_shm, conn->cid, request_id, SR_SUB_EV_OPER, orig_name, orig_data,
+                &shm_data_sub, request_xpath, parent_lyb, parent_lyb_len, xpath))) {
+            goto cleanup_wrunlock;
+        }
+
+        /* notify using event pipe */
+        if ((err_info = sr_shmsub_notify_evpipe(xpath_sub->evpipe_num))) {
+            goto cleanup_wrunlock;
+        }
+
+        /* wait until the event is processed */
+        if ((err_info = sr_shmsub_notify_wait_wr(sub_shm, SR_SUB_EV_ERROR, 1, timeout_ms, conn->cid, &shm_data_sub, cb_err_info))) {
+            if (err_info->err[0].err_code == SR_ERR_TIME_OUT) {
+                goto cleanup;
+            } else {
+                goto cleanup_wrunlock;
+            }
+        }
+
+        if (*cb_err_info) {
+            /* failed callback or timeout */
+            SR_LOG_WRN("Event \"operational\" with ID %" PRIu32 " failed (%s).", request_id,
+                    sr_strerror((*cb_err_info)->err[0].err_code));
+            goto cleanup_wrunlock;
+        } else {
+            SR_LOG_INF("Event \"operational\" with ID %" PRIu32 " succeeded.", request_id);
+        }
+
+        assert(sub_shm->event == SR_SUB_EV_SUCCESS);
+
+        /* parse returned data */
+        if (lyd_parse_data_mem(mod->ly_mod->ctx, shm_data_sub.addr, LYD_LYB, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &oper_data)) {
+            sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx, NULL);
+            sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Failed to parse returned \"operational\" data.");
+            goto cleanup_wrunlock;
+        }
+
+        /* event processed */
+        sub_shm->event = SR_SUB_EV_NONE;
+
+        /* SUB WRITE UNLOCK */
+        sr_rwunlock(&sub_shm->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+
+        /* merge returned data into data tree */
+        if (lyd_merge_siblings(data, oper_data, LYD_MERGE_DESTRUCT | LYD_MERGE_WITH_FLAGS)) {
+            sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx, NULL);
+            goto cleanup;
+        }
+
+        /* next iter */
+        sr_shm_clear(&shm_sub);
+        sr_shm_clear(&shm_data_sub);
     }
 
-    if (*cb_err_info) {
-        /* failed callback or timeout */
-        SR_LOG_WRN("Event \"operational\" with ID %" PRIu32 " failed (%s).", request_id,
-                sr_strerror((*cb_err_info)->err[0].err_code));
-        goto cleanup_wrunlock;
-    } else {
-        SR_LOG_INF("Event \"operational\" with ID %" PRIu32 " succeeded.", request_id);
-    }
-
-    assert(sub_shm->event == SR_SUB_EV_SUCCESS);
-
-    /* parse returned data */
-    if (lyd_parse_data_mem(ly_mod->ctx, shm_data_sub.addr, LYD_LYB, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, data)) {
-        sr_errinfo_new_ly(&err_info, ly_mod->ctx, NULL);
-        sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Failed to parse returned \"operational\" data.");
-        goto cleanup_wrunlock;
-    }
-
-    /* event processed */
-    sub_shm->event = SR_SUB_EV_NONE;
+    /* already unlocked */
+    goto cleanup;
 
 cleanup_wrunlock:
     /* SUB WRITE UNLOCK */
-    sr_rwunlock(&sub_shm->lock, 0, SR_LOCK_WRITE, cid, __func__);
+    sr_rwunlock(&sub_shm->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
 cleanup:
     sr_shm_clear(&shm_sub);
@@ -1911,7 +1947,7 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *op_path
     input_lyb_len = lyd_lyb_data_length(input_lyb);
 
     /* open sub SHM and map it */
-    if ((err_info = sr_shmsub_open_map(lyd_owner_module(input)->name, "rpc", sr_str_hash(op_path), &shm_sub))) {
+    if ((err_info = sr_shmsub_open_map(lyd_owner_module(input)->name, "rpc", sr_str_hash(op_path, 0), &shm_sub))) {
         goto cleanup;
     }
     multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
@@ -1922,7 +1958,7 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *op_path
     }
 
     /* open sub data SHM */
-    if ((err_info = sr_shmsub_data_open_remap(lyd_owner_module(input)->name, "rpc", sr_str_hash(op_path), &shm_data_sub, 0))) {
+    if ((err_info = sr_shmsub_data_open_remap(lyd_owner_module(input)->name, "rpc", sr_str_hash(op_path, 0), &shm_data_sub, 0))) {
         goto cleanup_wrunlock;
     }
 
@@ -2019,7 +2055,7 @@ sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *o
     assert(request_id);
 
     /* open sub SHM and map it */
-    if ((err_info = sr_shmsub_open_map(lyd_owner_module(input)->name, "rpc", sr_str_hash(op_path), &shm_sub))) {
+    if ((err_info = sr_shmsub_open_map(lyd_owner_module(input)->name, "rpc", sr_str_hash(op_path, 0), &shm_sub))) {
         goto cleanup;
     }
     multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
@@ -2030,7 +2066,7 @@ sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, const char *o
     }
 
     /* open sub data SHM */
-    if ((err_info = sr_shmsub_data_open_remap(lyd_owner_module(input)->name, "rpc", sr_str_hash(op_path), &shm_data_sub, 0))) {
+    if ((err_info = sr_shmsub_data_open_remap(lyd_owner_module(input)->name, "rpc", sr_str_hash(op_path, 0), &shm_data_sub, 0))) {
         goto cleanup_wrunlock;
     }
 
@@ -2896,7 +2932,7 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         request_id = sub_shm->request_id;
 
         /* open sub data SHM */
-        if ((err_info = sr_shmsub_data_open_remap(oper_subs->module_name, "oper", sr_str_hash(oper_sub->xpath),
+        if ((err_info = sr_shmsub_data_open_remap(oper_subs->module_name, "oper", sr_str_hash(oper_sub->xpath, oper_sub->priority),
                 &shm_data_sub, 0))) {
             goto error_rdunlock;
         }
@@ -3279,7 +3315,7 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
             if (!ev_sess) {
                 /* open sub data SHM */
                 module_name = sr_get_first_ns(rpc_subs->path);
-                if ((err_info = sr_shmsub_data_open_remap(module_name, "rpc", sr_str_hash(rpc_subs->path), &shm_data_sub, 0))) {
+                if ((err_info = sr_shmsub_data_open_remap(module_name, "rpc", sr_str_hash(rpc_subs->path, 0), &shm_data_sub, 0))) {
                     goto cleanup_rdunlock;
                 }
                 shm_data_ptr = shm_data_sub.addr;
