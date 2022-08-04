@@ -231,7 +231,7 @@ cleanup:
 
 sr_error_info_t *
 sr_subscr_oper_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess, const char *mod_name,
-        const char *xpath, sr_oper_get_items_cb oper_cb, void *private_data, sr_lock_mode_t has_subs_lock)
+        const char *xpath, sr_oper_get_items_cb oper_cb, void *private_data, sr_lock_mode_t has_subs_lock, uint32_t prio)
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_oper_s *oper_sub = NULL;
@@ -286,12 +286,13 @@ sr_subscr_oper_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sessio
     mem[3] = strdup(xpath);
     SR_CHECK_MEM_GOTO(!mem[3], err_info, error);
     oper_sub->subs[oper_sub->sub_count].xpath = mem[3];
+    oper_sub->subs[oper_sub->sub_count].priority = prio;
     oper_sub->subs[oper_sub->sub_count].cb = oper_cb;
     oper_sub->subs[oper_sub->sub_count].private_data = private_data;
     oper_sub->subs[oper_sub->sub_count].sess = sess;
 
     /* open sub SHM and map it */
-    if ((err_info = sr_shmsub_open_map(mod_name, "oper", sr_str_hash(xpath), &oper_sub->subs[oper_sub->sub_count].sub_shm))) {
+    if ((err_info = sr_shmsub_open_map(mod_name, "oper", sr_str_hash(xpath, prio), &oper_sub->subs[oper_sub->sub_count].sub_shm))) {
         goto error;
     }
 
@@ -620,7 +621,7 @@ sr_subscr_rpc_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session
         mod_name = sr_get_first_ns(xpath);
 
         /* open specific SHM and map it */
-        err_info = sr_shmsub_open_map(mod_name, "rpc", sr_str_hash(path), &rpc_sub->sub_shm);
+        err_info = sr_shmsub_open_map(mod_name, "rpc", sr_str_hash(path, 0), &rpc_sub->sub_shm);
         free(mod_name);
         if (err_info) {
             goto error;
@@ -5549,13 +5550,20 @@ cleanup:
  * Spooky hash is faster, but it works only for little endian architectures.
  */
 uint32_t
-sr_str_hash(const char *str)
+sr_str_hash(const char *str, uint32_t priority)
 {
     uint32_t hash, i, len;
+
+    uint8_t *prio = (uint8_t *)&priority;
 
     len = strlen(str);
     for (hash = i = 0; i < len; ++i) {
         hash += str[i];
+        hash += (hash << 10);
+        hash ^= (hash >> 6);
+    }
+    for (i = 0; i < 4; ++i) {
+        hash += prio[i];
         hash += (hash << 10);
         hash ^= (hash >> 6);
     }

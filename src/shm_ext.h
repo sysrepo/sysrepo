@@ -132,7 +132,7 @@ sr_error_info_t *sr_shmext_change_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mo
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmext_oper_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, const char *xpath,
-        sr_mod_oper_sub_type_t sub_type, int sub_opts, uint32_t evpipe_num);
+        sr_mod_oper_sub_type_t sub_type, int sub_opts, uint32_t evpipe_num, uint32_t *prio);
 
 /**
  * @brief Remove main SHM module operational subscription and unlink sub SHM.
@@ -155,7 +155,7 @@ sr_error_info_t *sr_shmext_oper_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, 
  * @param[in] recovery Whether to print subscription recovery warning.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_oper_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx, int del_evpipe,
+sr_error_info_t *sr_shmext_oper_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx1, uint32_t del_idx2, int del_evpipe,
         sr_lock_mode_t has_locks, int recovery);
 
 /**

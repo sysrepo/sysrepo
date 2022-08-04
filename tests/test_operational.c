@@ -748,8 +748,10 @@ test_sr_mon(void **state)
                 "</change-sub>"
                 "<operational-sub>"
                     "<xpath xmlns:if=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">/if:interfaces-state</xpath>"
-                    "<cid></cid>"
-                    "<suspended>false</suspended>"
+                    "<xpath-sub>"
+                        "<cid></cid>"
+                        "<suspended>false</suspended>"
+                    "</xpath-sub>"
                 "</operational-sub>"
             "</subscriptions>"
         "</module>"
@@ -825,8 +827,10 @@ test_sr_mon(void **state)
             "<subscriptions>"
                 "<operational-sub>"
                     "<xpath xmlns:a=\"urn:act\" xmlns:a2=\"urn:act2\">/a:basics/a:subbasics/a2:complex_number/a2:imaginary_part</xpath>"
-                    "<cid></cid>"
-                    "<suspended>false</suspended>"
+                    "<xpath-sub>"
+                        "<cid></cid>"
+                        "<suspended>false</suspended>"
+                    "</xpath-sub>"
                 "</operational-sub>"
             "</subscriptions>"
         "</module>"
@@ -5071,6 +5075,178 @@ test_state_default_merge(void **state)
     sr_unsubscribe(subscr);
 }
 
+/* TEST */
+static int
+same_xpath_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    const struct ly_ctx *ly_ctx;
+
+    (void)sub_id;
+    (void)request_xpath;
+    (void)request_id;
+    (void)private_data;
+
+    ly_ctx = sr_acquire_context(sr_session_get_connection(session));
+
+    assert_string_equal(module_name, "ietf-interfaces");
+    assert_string_equal(xpath, "/ietf-interfaces:interfaces-state");
+    assert_non_null(parent);
+    assert_null(*parent);
+
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/ietf-interfaces:interfaces-state/interface[name='eth5']/type",
+            "iana-if-type:ethernetCsmacd", 0, parent));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
+            "oper-status", "testing", 0, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
+            "statistics/discontinuity-time", "2000-01-01T02:00:00-00:00", 0, NULL));
+    sr_release_context(sr_session_get_connection(session));
+
+    return SR_ERR_OK;
+}
+
+static int
+same_xpath_oper_cb2(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    const struct ly_ctx *ly_ctx;
+
+    (void)sub_id;
+    (void)request_xpath;
+    (void)request_id;
+    (void)private_data;
+
+    ly_ctx = sr_acquire_context(sr_session_get_connection(session));
+
+    assert_string_equal(module_name, "ietf-interfaces");
+    assert_string_equal(xpath, "/ietf-interfaces:interfaces-state");
+    assert_non_null(parent);
+    assert_null(*parent);
+
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/ietf-interfaces:interfaces-state/interface[name='eth5']/type",
+            "iana-if-type:ethernetCsmacd", 0, parent));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
+            "oper-status", "unknown", 0, NULL));
+    sr_release_context(sr_session_get_connection(session));
+
+    return SR_ERR_OK;
+}
+
+static int
+same_xpath_oper_cb3(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    const struct ly_ctx *ly_ctx;
+
+    (void)sub_id;
+    (void)request_xpath;
+    (void)request_id;
+    (void)private_data;
+
+    ly_ctx = sr_acquire_context(sr_session_get_connection(session));
+
+    assert_string_equal(module_name, "ietf-interfaces");
+    assert_string_equal(xpath, "/ietf-interfaces:interfaces-state");
+    assert_non_null(parent);
+    assert_null(*parent);
+
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
+            "statistics/discontinuity-time", "2001-01-01T02:00:00-00:00", 0, parent));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
+            "statistics/in-octets", "1", 0, NULL));
+    sr_release_context(sr_session_get_connection(session));
+
+    return SR_ERR_OK;
+}
+
+static void
+test_same_xpath(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_data_t *data;
+    sr_subscription_ctx_t *subscr = NULL;
+    char *str1;
+    const char *str2, *str3;
+    int ret;
+
+    /* subscribe as state data provider */
+    ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", same_xpath_oper_cb,
+            NULL, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe as state data provider */
+    ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", same_xpath_oper_cb,
+            NULL, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    /* subscribe as state data provider */
+    ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", same_xpath_oper_cb2,
+            NULL, SR_SUBSCR_OPER_MERGE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* try to read them back from operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read all data from operational again */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+
+    sr_release_data(data);
+
+    str2 =
+    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
+        "<interface>"
+            "<name>eth5</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<oper-status>unknown</oper-status>"
+            "<statistics>"
+                "<discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>"
+            "</statistics>"
+        "</interface>"
+    "</interfaces-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* subscribe as state data provider */
+    ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", same_xpath_oper_cb3,
+            NULL, SR_SUBSCR_OPER_MERGE, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read all data from operational again */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+
+    sr_release_data(data);
+
+    str3 =
+    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
+        "<interface>"
+            "<name>eth5</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<oper-status>unknown</oper-status>"
+            "<statistics>"
+                "<discontinuity-time>2001-01-01T02:00:00-00:00</discontinuity-time>"
+                "<in-octets>1</in-octets>"
+            "</statistics>"
+        "</interface>"
+    "</interfaces-state>";
+
+    assert_string_equal(str1, str3);
+    free(str1);
+
+    sr_unsubscribe(subscr);
+}
+
 int
 main(void)
 {
@@ -5110,6 +5286,7 @@ main(void)
         cmocka_unit_test_teardown(test_disabled_default, clear_up),
         cmocka_unit_test_teardown(test_merge_flag, clear_up),
         cmocka_unit_test_teardown(test_state_default_merge, clear_up),
+        cmocka_unit_test_teardown(test_same_xpath, clear_up),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

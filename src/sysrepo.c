@@ -6215,6 +6215,7 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
     uint32_t sub_id;
     sr_subscr_options_t sub_opts;
     sr_mod_t *shm_mod;
+    uint32_t prio;
 
     SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !module_name || !path || !callback || !subscription,
             session, err_info);
@@ -6272,7 +6273,7 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
     }
 
     /* add oper subscription into ext SHM and create separate specific SHM segment */
-    if ((err_info = sr_shmext_oper_sub_add(conn, shm_mod, sub_id, path, sub_type, sub_opts, (*subscription)->evpipe_num))) {
+    if ((err_info = sr_shmext_oper_sub_add(conn, shm_mod, sub_id, path, sub_type, sub_opts, (*subscription)->evpipe_num, &prio))) {
         goto cleanup_unlock;
     }
 
@@ -6281,7 +6282,7 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
 
     /* add subscription into structure */
     if ((err_info = sr_subscr_oper_sub_add(*subscription, sub_id, session, module_name, path, callback, private_data,
-            SR_LOCK_WRITE))) {
+            SR_LOCK_WRITE, prio))) {
         goto error1;
     }
 
