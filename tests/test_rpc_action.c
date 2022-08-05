@@ -331,7 +331,7 @@ test_rpc(void **state)
     ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
-    assert_string_equal(err_info->err[0].message, "Invalid leafref value \"l1-val\" - no existing target instance \"/or:l1\". "
+    assert_string_equal(err_info->err[0].message, "Invalid leafref value \"l1-val\" - no target instance \"/or:l1\" with the same value. "
             "(Schema location \"/ops:rpc1/input/l1\", data location \"/ops:rpc1/l1\".)");
     assert_null(err_info->err[0].error_format);
     assert_string_equal(err_info->err[1].message, "RPC input validation failed.");
