@@ -3073,6 +3073,18 @@ sr_time_sub(const struct timespec *ts1, const struct timespec *ts2)
     return result;
 }
 
+int
+sr_time_sub_ms(const struct timespec *ts1, const struct timespec *ts2)
+{
+    struct timespec result;
+
+    result = sr_time_sub(ts1, ts2);
+    if ((result.tv_sec == 0) && (result.tv_nsec == -1)) {
+        return -1;
+    }
+    return (result.tv_sec * 1000) + (result.tv_nsec / 1000000);
+}
+
 sr_error_info_t *
 sr_shm_remap(sr_shm_t *shm, size_t new_shm_size)
 {
@@ -4072,7 +4084,7 @@ _sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t ci
     struct timespec timeout_ts;
     int ret = 0;
 
-    assert(mode && (timeout_ms > 0) && cid);
+    assert(mode && (timeout_ms >= 0) && cid);
 
     sr_time_get(&timeout_ts, timeout_ms);
 

@@ -23,7 +23,7 @@
 #include "common_types.h"
 #include "sysrepo_types.h"
 
-#define SR_SHM_VER 10   /**< Main, mod, and ext SHM version of their expected content structures. */
+#define SR_SHM_VER 11   /**< Main, mod, and ext SHM version of their expected content structures. */
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
 
 /**
@@ -198,7 +198,6 @@ typedef enum {
     SR_OPER_SUB_MIXED             /**< Providing both state and configuration data. */
 } sr_mod_oper_sub_type_t;
 
-
 /**
  * @brief Ext SHM module operational subscription for given XPath.
  */
@@ -217,7 +216,7 @@ typedef struct {
 typedef struct {
     off_t xpath;                /**< XPath of the subscription (offset in ext SHM). */
     sr_mod_oper_sub_type_t sub_type;  /**< Type of the subscription. */
-    
+
     off_t xpath_subs;           /**< Subscriptions array of the given XPath (offset in ext SHM) */
     uint32_t xpath_sub_count;   /**< Number of subscriptions for given XPath */
 } sr_mod_oper_sub_t;

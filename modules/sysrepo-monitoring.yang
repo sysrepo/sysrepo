@@ -269,6 +269,7 @@ module sysrepo-monitoring {
                     }
 
                     list xpath-sub {
+                        min-elements 1;
                         description
                             "Operational subscription for the XPath.";
 
@@ -281,6 +282,7 @@ module sysrepo-monitoring {
 
                         leaf suspended {
                             type boolean;
+                            mandatory true;
                             description
                                 "Whether the subscription is in the suspended state.";
                         }
