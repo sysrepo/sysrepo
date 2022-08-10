@@ -784,17 +784,18 @@ cleanup:
 /**
  * @brief Get specific operational data from a subscriber.
  *
- * @param[in] ly_mod libyang module of the data.
+ * @param[in] mod Modinfo structure of the data.
  * @param[in] xpath XPath of the provided data.
  * @param[in] request_xpaths XPaths based on which these data are required, if NULL the complete module data are needed.
  * @param[in] req_xpath_count Count of @p request_xpaths.
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
- * @param[in] evpipe_num Subscriber event pipe number.
+ * @param[in] shm_subs Subscription array.
+ * @param[in] idx1 Index of the subscription array from where to read subscriptions with the same XPath.
  * @param[in] parent Data parent required for the subscription, NULL if top-level.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
- * @param[in] cid Connection ID.
- * @param[out] data Data tree with appended operational data.
+ * @param[in] conn Connection.
+ * @param[out] oper_data Data tree with appended operational data.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
@@ -847,6 +848,7 @@ sr_xpath_oper_data_get(struct sr_mod_info_mod_s *mod, const char *xpath, const c
     /* get data from client */
     if ((err_info = sr_shmsub_oper_notify(mod, xpath, request_xpath, parent_dup, orig_name, orig_data, shm_subs,
             idx1, timeout_ms, conn, oper_data, &cb_err_info))) {
+        sr_errinfo_merge(&err_info, cb_err_info);
         goto cleanup;
     }
 
@@ -1609,7 +1611,7 @@ ds_unlock:
         /* operational-sub with xpath */
         SR_CHECK_LY_RET(lyd_new_list(sr_subs, NULL, "operational-sub", 0, &sr_xpath_subs, conn->ext_shm.addr + oper_sub[i].xpath),
                 ly_ctx, err_info);
- 
+
         for (j = 0; j < oper_sub->xpath_sub_count; ++j) {
             xpath_sub = &((sr_mod_oper_xpath_sub_t *)(conn->ext_shm.addr + oper_sub[i].xpath_subs))[j];
 

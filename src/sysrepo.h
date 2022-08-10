@@ -1586,6 +1586,14 @@ int sr_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t 
 /**
  * @brief Register for providing operational data at the given xpath.
  *
+ * Usual behaviour is only ONE subscription for ONE XPath. When subscribing to the same XPath that was used in some
+ * previous subscription, ::SR_SUBSCR_OPER_MERGE flag has to be used. Every subscription has its internal priority
+ * based on the order in which they were subscribed. Priority influences merging the operational data from multiple
+ * subscriptions with the same XPath. Operational data returned by later subscriptions overwrite the same data from any
+ * previous subscriptions. When retrieving data all subscription callbacks with the same XPath are called
+ * simultaneously (to achieve this, @p subscription should be different for each subscription so that there are
+ * separate threads listening for each of the events).
+ *
  * Required WRITE access.
  *
  * @note Be aware of some specific [threading limitations](@ref oper_subs).

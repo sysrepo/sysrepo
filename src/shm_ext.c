@@ -968,7 +968,7 @@ sr_shmext_oper_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx
     /* free the XPath subscription */
     sr_shmrealloc_del(&conn->ext_shm, &shm_subs->xpath_subs, &shm_subs->xpath_sub_count, sizeof *xpath_sub, del_idx2,
             0, 0);
-    
+
     SR_LOG_DBG("#SHM after (removing xpath oper sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 

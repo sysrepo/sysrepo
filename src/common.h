@@ -106,6 +106,9 @@ struct srplg_ntf_s;
 /** default timeout for notification subscrption callback (ms) */
 #define SR_NOTIF_CB_TIMEOUT 2000
 
+/** timeout step for operational subscription loop */
+#define SR_SHMSUB_OPER_EVENT_TIMEOUT_STEP_MS 1
+
 /** permissions of main SHM lock file and main/mod/ext SHM */
 #define SR_SHM_PERM 00666
 
@@ -758,6 +761,17 @@ int sr_time_cmp(const struct timespec *ts1, const struct timespec *ts2);
  * @return 0 seconds and -1 nanoseconds if @p ts1 < @p ts2.
  */
 struct timespec sr_time_sub(const struct timespec *ts1, const struct timespec *ts2);
+
+/**
+ * @brief Subtract a timespec from another
+ * in milliseconds.
+ *
+ * @param[in] ts1 First timespec to be subtracted from.
+ * @param[in] ts2 Second timespec to subtract.
+ * @return Result of @p ts1 - @p ts2.
+ * @return -1 milliseconds if @p ts1 < @p ts2.
+ */
+int sr_time_sub_ms(const struct timespec *ts1, const struct timespec *ts2);
 
 /**
  * @brief Remap and possibly resize a SHM. Needs WRITE lock for resizing,

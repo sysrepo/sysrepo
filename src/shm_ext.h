@@ -129,6 +129,7 @@ sr_error_info_t *sr_shmext_change_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mo
  * @param[in] sub_type Data-provide subscription type.
  * @param[in] sub_opts Subscription options.
  * @param[in] evpipe_num Subscription event pipe number.
+ * @param[out] prio Retrieves subscription priority.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmext_oper_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, const char *xpath,
@@ -149,7 +150,8 @@ sr_error_info_t *sr_shmext_oper_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, 
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module with subscriptions.
- * @param[in] del_idx Index of the subscription to free.
+ * @param[in] del_idx1 Index of the list of subscriptions with the same XPath.
+ * @param[in] del_idx2 Index of the XPath subscription to free.
  * @param[in] del_evpipe Whether to also remove the evpipe.
  * @param[in] has_locks Mode of held CHANGE SUB and EXT locks.
  * @param[in] recovery Whether to print subscription recovery warning.
