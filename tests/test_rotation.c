@@ -56,13 +56,13 @@ typedef struct {
 static char *
 get_test_path(const char *append_name)
 {
-	char *path;
+    char *path;
 
-	if (asprintf(&path, "%s/data/%s", sr_get_repo_path(), append_name) == -1) {
-		path = NULL;
-	}
-    
-	return path;
+    if (asprintf(&path, "%s/data/%s", sr_get_repo_path(), append_name) == -1) {
+        path = NULL;
+    }
+
+    return path;
 }
 
 /* from src/common.c */
@@ -257,7 +257,7 @@ setup(void **state)
     int rc = 1;
     time_t start;
     test_data_t *data = NULL;
-    
+
     data = calloc(1, sizeof *data);
     if (!data) {
         print_error("Calloc failed\n");
@@ -311,7 +311,7 @@ setup(void **state)
         print_error("Failed to start new session\n");
         goto cleanup;
     }
-    
+
     /* Create startup config */
     if ((rc = sr_replace_config(data->sess, "sysrepo-plugind", NULL, 0)) != SR_ERR_OK) {
         print_error("Failed to replace configuration\n");
