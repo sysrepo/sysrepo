@@ -205,7 +205,7 @@ sr_error_info_t *sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_
 void sr_subscr_change_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock);
 
 /**
- * @brief Add an operational subscription into a subscription structure.
+ * @brief Add an operational get subscription into a subscription structure.
  *
  * @param[in,out] subscr Subscription structure.
  * @param[in] sub_id Unique sub ID.
@@ -217,18 +217,18 @@ void sr_subscr_change_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr
  * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_subscr_oper_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess,
+sr_error_info_t *sr_subscr_oper_get_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess,
         const char *mod_name, const char *xpath, sr_oper_get_items_cb oper_cb, void *private_data,
         sr_lock_mode_t has_subs_lock, uint32_t prio);
 
 /**
- * @brief Delete an operational subscription from a subscription structure.
+ * @brief Delete an operational get subscription from a subscription structure.
  *
  * @param[in,out] subscr Subscription structure.
  * @param[in] sub_id Unique sub ID.
  * @param[in] has_subs_lock What kind of SUBS lock is held.
  */
-void sr_subscr_oper_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock);
+void sr_subscr_oper_get_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock);
 
 /**
  * @brief Add a notification subscription into a subscription structure.
@@ -302,14 +302,14 @@ struct modsub_changesub_s *sr_subscr_change_sub_find(const sr_subscription_ctx_t
         const char **module_name, sr_datastore_t *ds);
 
 /**
- * @brief Find a specific operational subscription in a subscription structure.
+ * @brief Find a specific operational get subscription in a subscription structure.
  *
  * @param[in] subscr Subscription structure to use.
  * @param[in] sub_id Subscription ID to find.
  * @param[out] module_name Optional found subscription module name.
  * @return Matching subscription, NULL if not found.
  */
-struct modsub_opersub_s *sr_subscr_oper_sub_find(const sr_subscription_ctx_t *subscr, uint32_t sub_id,
+struct modsub_opergetsub_s *sr_subscr_oper_get_sub_find(const sr_subscription_ctx_t *subscr, uint32_t sub_id,
         const char **module_name);
 
 /**
@@ -416,7 +416,7 @@ sr_error_info_t *sr_subscr_change_xpath_check(const struct ly_ctx *ly_ctx, const
  * @return err_info (if @p valid is not set), NULL on success.
  */
 sr_error_info_t *sr_subscr_oper_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath,
-        sr_mod_oper_sub_type_t *sub_type, int *valid);
+        sr_mod_oper_get_sub_type_t *sub_type, int *valid);
 
 /**
  * @brief Check the XPath of a notif subscription.

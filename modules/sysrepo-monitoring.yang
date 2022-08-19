@@ -198,9 +198,9 @@ module sysrepo-monitoring {
                 uses lock-ds-params;
             }
 
-            list oper-sub-lock {
+            list oper-get-sub-lock {
                 description
-                    "Held module operational subscriptions lock.";
+                    "Held module operational get subscriptions lock.";
 
                 uses lock-params;
             }
@@ -257,21 +257,21 @@ module sysrepo-monitoring {
                     }
                 }
 
-                list operational-sub {
+                list operational-get-sub {
                     key "xpath";
                     description
-                        "Operational subscription.";
+                        "Operational get (pull) subscription.";
 
                     leaf xpath {
                         type yang:xpath1.0;
                         description
-                            "Operational data pull subscription XPath.";
+                            "Operational get subscription XPath.";
                     }
 
                     list xpath-sub {
                         min-elements 1;
                         description
-                            "Operational subscription for the XPath.";
+                            "Operational get subscription for the XPath.";
 
                         leaf cid {
                             type conn-ref;

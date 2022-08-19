@@ -4,8 +4,8 @@
  * @brief sysrepo API routines
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -4090,9 +4090,9 @@ sr_subscription_process_events(sr_subscription_ctx_t *subscription, sr_session_c
         }
     }
 
-    /* operational subscriptions */
-    for (i = 0; i < subscription->oper_sub_count; ++i) {
-        if ((err_info = sr_shmsub_oper_listen_process_module_events(&subscription->oper_subs[i], subscription->conn))) {
+    /* operational get subscriptions */
+    for (i = 0; i < subscription->oper_get_sub_count; ++i) {
+        if ((err_info = sr_shmsub_oper_get_listen_process_module_events(&subscription->oper_get_subs[i], subscription->conn))) {
             goto cleanup_unlock;
         }
     }
@@ -4179,9 +4179,9 @@ sr_subscription_get_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_
         if ((err_info = sr_shmext_change_sub_suspended(subscription->conn, module_name, ds, sub_id, -1, suspended))) {
             goto cleanup_unlock;
         }
-    } else if (sr_subscr_oper_sub_find(subscription, sub_id, &module_name)) {
-        /* oper sub */
-        if ((err_info = sr_shmext_oper_sub_suspended(subscription->conn, module_name, sub_id, -1, suspended))) {
+    } else if (sr_subscr_oper_get_sub_find(subscription, sub_id, &module_name)) {
+        /* oper get sub */
+        if ((err_info = sr_shmext_oper_get_sub_suspended(subscription->conn, module_name, sub_id, -1, suspended))) {
             goto cleanup_unlock;
         }
     } else if (sr_subscr_notif_sub_find(subscription, sub_id, &module_name)) {
@@ -4232,9 +4232,9 @@ _sr_subscription_suspend_change(sr_subscription_ctx_t *subscription, uint32_t su
         if ((err_info = sr_shmext_change_sub_suspended(subscription->conn, module_name, ds, sub_id, suspend, NULL))) {
             goto cleanup;
         }
-    } else if (sr_subscr_oper_sub_find(subscription, sub_id, &module_name)) {
-        /* oper sub */
-        if ((err_info = sr_shmext_oper_sub_suspended(subscription->conn, module_name, sub_id, suspend, NULL))) {
+    } else if (sr_subscr_oper_get_sub_find(subscription, sub_id, &module_name)) {
+        /* oper get sub */
+        if ((err_info = sr_shmext_oper_get_sub_suspended(subscription->conn, module_name, sub_id, suspend, NULL))) {
             goto cleanup;
         }
     } else if ((notif_sub = sr_subscr_notif_sub_find(subscription, sub_id, &module_name))) {
@@ -6214,7 +6214,7 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
     sr_error_info_t *err_info = NULL, *tmp_err;
     sr_conn_ctx_t *conn;
     const struct lys_module *ly_mod;
-    sr_mod_oper_sub_type_t sub_type = 0;
+    sr_mod_oper_get_sub_type_t sub_type = 0;
     uint32_t sub_id;
     sr_subscr_options_t sub_opts;
     sr_mod_t *shm_mod;
@@ -6275,8 +6275,9 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
         goto cleanup;
     }
 
-    /* add oper subscription into ext SHM and create separate specific SHM segment */
-    if ((err_info = sr_shmext_oper_sub_add(conn, shm_mod, sub_id, path, sub_type, sub_opts, (*subscription)->evpipe_num, &prio))) {
+    /* add oper get subscription into ext SHM and create separate specific SHM segment */
+    if ((err_info = sr_shmext_oper_get_sub_add(conn, shm_mod, sub_id, path, sub_type, sub_opts,
+            (*subscription)->evpipe_num, &prio))) {
         goto cleanup_unlock;
     }
 
@@ -6284,7 +6285,7 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
      * the evpipe data cannot be read and the event not processed since it is still missing in the subscr structure */
 
     /* add subscription into structure */
-    if ((err_info = sr_subscr_oper_sub_add(*subscription, sub_id, session, module_name, path, callback, private_data,
+    if ((err_info = sr_subscr_oper_get_sub_add(*subscription, sub_id, session, module_name, path, callback, private_data,
             SR_LOCK_WRITE, prio))) {
         goto error1;
     }
@@ -6298,10 +6299,10 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
     goto cleanup_unlock;
 
 error2:
-    sr_subscr_oper_sub_del(*subscription, sub_id, SR_LOCK_WRITE);
+    sr_subscr_oper_get_sub_del(*subscription, sub_id, SR_LOCK_WRITE);
 
 error1:
-    if ((tmp_err = sr_shmext_oper_sub_del(conn, shm_mod, sub_id))) {
+    if ((tmp_err = sr_shmext_oper_get_sub_del(conn, shm_mod, sub_id))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 

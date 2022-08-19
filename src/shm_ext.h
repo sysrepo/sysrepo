@@ -119,7 +119,7 @@ sr_error_info_t *sr_shmext_change_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mo
         int del_evpipe, sr_lock_mode_t has_locks, int recovery);
 
 /**
- * @brief Add main SHM module operational subscription and create sub SHM.
+ * @brief Add main SHM module operational get subscription and create sub SHM.
  * Ext SHM may be remapped!
  *
  * @param[in] conn Connection to use.
@@ -132,21 +132,21 @@ sr_error_info_t *sr_shmext_change_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mo
  * @param[out] prio Retrieves subscription priority.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_oper_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, const char *xpath,
-        sr_mod_oper_sub_type_t sub_type, int sub_opts, uint32_t evpipe_num, uint32_t *prio);
+sr_error_info_t *sr_shmext_oper_get_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, const char *xpath,
+        sr_mod_oper_get_sub_type_t sub_type, int sub_opts, uint32_t evpipe_num, uint32_t *prio);
 
 /**
- * @brief Remove main SHM module operational subscription and unlink sub SHM.
+ * @brief Remove main SHM module operational get subscription and unlink sub SHM.
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
  * @param[in] sub_id Unique sub ID.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_oper_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id);
+sr_error_info_t *sr_shmext_oper_get_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id);
 
 /**
- * @brief Remove main SHM module operational subscription with param-based cleanup.
+ * @brief Remove main SHM module operational get subscription with param-based cleanup.
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module with subscriptions.
@@ -157,8 +157,8 @@ sr_error_info_t *sr_shmext_oper_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, 
  * @param[in] recovery Whether to print subscription recovery warning.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_oper_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx1, uint32_t del_idx2, int del_evpipe,
-        sr_lock_mode_t has_locks, int recovery);
+sr_error_info_t *sr_shmext_oper_get_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx1, uint32_t del_idx2,
+        int del_evpipe, sr_lock_mode_t has_locks, int recovery);
 
 /**
  * @brief Add main SHM module notification subscription and create sub SHM if the first subscription was added.
@@ -270,7 +270,7 @@ sr_error_info_t *sr_shmext_change_sub_suspended(sr_conn_ctx_t *conn, const char 
         uint32_t sub_id, int set_suspended, int *get_suspended);
 
 /**
- * @brief Get or set operational subscription suspended state (flag).
+ * @brief Get or set operational get subscription suspended state (flag).
  *
  * @param[in] conn Connection to use.
  * @param[in] mod_name Module name.
@@ -279,7 +279,7 @@ sr_error_info_t *sr_shmext_change_sub_suspended(sr_conn_ctx_t *conn, const char 
  * @param[out] get_suspended Current suspended state.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_oper_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id,
+sr_error_info_t *sr_shmext_oper_get_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id,
         int set_suspended, int *get_suspended);
 
 /**

@@ -414,7 +414,7 @@ typedef enum {
     /**
      * @brief Instead of removing any previous existing matching data before getting them from an operational
      * subscription callback, keep them. Then the returned data are merged into the existing data. Accepted
-     * only for operational subscriptions.
+     * only for operational get subscriptions.
      */
     SR_SUBSCR_OPER_MERGE = 32,
 
@@ -423,7 +423,13 @@ typedef enum {
      * first subscription, start the handler thread suspended. Meaning any events will not be handled until
      * ::sr_subscription_thread_resume() is called.
      */
-    SR_SUBSCR_THREAD_SUSPEND = 64
+    SR_SUBSCR_THREAD_SUSPEND = 64,
+
+    /**
+     * @brief Compute diff and report the changes to any operational data module change subscriptions. Accepted
+     * only for operational poll subscriptions.
+     */
+    SR_SUBSCR_OPER_POLL_DIFF = 128
 
 } sr_subscr_flag_t;
 

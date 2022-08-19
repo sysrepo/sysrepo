@@ -138,10 +138,10 @@ typedef struct {
         uint32_t sub_count;     /**< Number of change subscriptions. */
     } change_sub[SR_DS_COUNT];  /**< Change subscriptions for each datastore. */
 
-    sr_rwlock_t oper_lock;      /**< Process-shared lock for reading or preventing changes (READ) or modifying (WRITE)
-                                     operational subscriptions. */
-    off_t oper_subs;            /**< Array of operational subscriptions (offset in ext SHM). */
-    uint32_t oper_sub_count;    /**< Number of operational subscriptions. */
+    sr_rwlock_t oper_get_lock;  /**< Process-shared lock for reading or preventing changes (READ) or modifying (WRITE)
+                                     operational get subscriptions. */
+    off_t oper_get_subs;        /**< Array of operational get subscriptions (offset in ext SHM). */
+    uint32_t oper_get_sub_count; /**< Number of operational get subscriptions. */
 
     sr_rwlock_t notif_lock;     /**< Process-shared lock for reading or preventing changes (READ) or modifying (WRITE)
                                      notification subscriptions. */
@@ -189,37 +189,37 @@ typedef struct {
 } sr_mod_change_sub_t;
 
 /**
- * @brief Ext SHM module operational subscription type.
+ * @brief Ext SHM module operational get subscription type.
  */
 typedef enum {
-    SR_OPER_SUB_NONE = 0,         /**< Invalid type. */
-    SR_OPER_SUB_STATE,            /**< Providing state data. */
-    SR_OPER_SUB_CONFIG,           /**< Providing configuration data. */
-    SR_OPER_SUB_MIXED             /**< Providing both state and configuration data. */
-} sr_mod_oper_sub_type_t;
+    SR_OPER_GET_SUB_NONE = 0,   /**< Invalid type. */
+    SR_OPER_GET_SUB_STATE,      /**< Providing state data. */
+    SR_OPER_GET_SUB_CONFIG,     /**< Providing configuration data. */
+    SR_OPER_GET_SUB_MIXED       /**< Providing both state and configuration data. */
+} sr_mod_oper_get_sub_type_t;
 
 /**
- * @brief Ext SHM module operational subscription for given XPath.
+ * @brief Ext SHM module operational XPath get subscription.
  */
 typedef struct {
     int opts;                   /**< Subscription options. */
     uint32_t sub_id;            /**< Unique subscription ID. */
-    uint32_t evpipe_num;        /** Event pipe number. */
+    uint32_t evpipe_num;        /**< Event pipe number. */
     uint32_t priority;          /**< Priority of the subscription (automatically generated). */
     ATOMIC_T suspended;         /**< Whether the subscription is suspended. */
     sr_cid_t cid;               /**< Connection ID. */
-} sr_mod_oper_xpath_sub_t;
+} sr_mod_oper_get_xpath_sub_t;
 
 /**
- * @brief Ext SHM module operational set of subscriptions for given XPath.
+ * @brief Ext SHM module operational set of get subscriptions for given XPath.
  */
 typedef struct {
     off_t xpath;                /**< XPath of the subscription (offset in ext SHM). */
-    sr_mod_oper_sub_type_t sub_type;  /**< Type of the subscription. */
+    sr_mod_oper_get_sub_type_t sub_type; /**< Type of the subscription. */
 
     off_t xpath_subs;           /**< Subscriptions array of the given XPath (offset in ext SHM) */
     uint32_t xpath_sub_count;   /**< Number of subscriptions for given XPath */
-} sr_mod_oper_sub_t;
+} sr_mod_oper_get_sub_t;
 
 /**
  * @brief Ext SHM notification subscription.

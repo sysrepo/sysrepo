@@ -173,7 +173,7 @@ sr_shmmod_fill(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_
             return err_info;
         }
     }
-    if ((err_info = sr_rwlock_init(&smod->oper_lock, 1))) {
+    if ((err_info = sr_rwlock_init(&smod->oper_get_lock, 1))) {
         return err_info;
     }
     if ((err_info = sr_rwlock_init(&smod->notif_lock, 1))) {
@@ -255,9 +255,9 @@ sr_shmmod_fill(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_
             smod->change_sub[ds].sub_count = old_smod->change_sub[ds].sub_count;
         }
 
-        /* copy oper subscriptions */
-        smod->oper_subs = old_smod->oper_subs;
-        smod->oper_sub_count = old_smod->oper_sub_count;
+        /* copy oper get subscriptions */
+        smod->oper_get_subs = old_smod->oper_get_subs;
+        smod->oper_get_sub_count = old_smod->oper_get_sub_count;
 
         /* copy notif subscriptions */
         smod->notif_subs = old_smod->notif_subs;

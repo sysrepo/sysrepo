@@ -276,7 +276,7 @@ sr_shmext_print(sr_mod_shm_t *mod_shm, sr_shm_t *shm_ext)
     sr_mod_t *shm_mod;
     off_t cur_off;
     sr_mod_change_sub_t *change_subs;
-    sr_mod_oper_sub_t *oper_subs;
+    sr_mod_oper_get_sub_t *oper_get_subs;
     sr_mod_notif_sub_t *notif_subs;
     sr_rpc_t *shm_rpc;
     sr_mod_rpc_sub_t *rpc_subs;
@@ -334,29 +334,29 @@ sr_shmext_print(sr_mod_shm_t *mod_shm, sr_shm_t *shm_ext)
             }
         }
 
-        if (shm_mod->oper_sub_count) {
-            /* add oper subscriptions */
-            if (sr_shmext_print_add_item(&items, &item_count, shm_mod->oper_subs,
-                    SR_SHM_SIZE(shm_mod->oper_sub_count * sizeof *oper_subs), "oper subs (%" PRIu32 ", mod \"%s\")",
-                    shm_mod->oper_sub_count, ((char *)mod_shm) + shm_mod->name)) {
+        if (shm_mod->oper_get_sub_count) {
+            /* add oper get subscriptions */
+            if (sr_shmext_print_add_item(&items, &item_count, shm_mod->oper_get_subs,
+                    SR_SHM_SIZE(shm_mod->oper_get_sub_count * sizeof *oper_get_subs), "oper get subs (%" PRIu32 ", mod \"%s\")",
+                    shm_mod->oper_get_sub_count, ((char *)mod_shm) + shm_mod->name)) {
                 goto error;
             }
 
-            oper_subs = (sr_mod_oper_sub_t *)(shm_ext->addr + shm_mod->oper_subs);
-            for (i = 0; i < shm_mod->oper_sub_count; ++i) {
+            oper_get_subs = (sr_mod_oper_get_sub_t *)(shm_ext->addr + shm_mod->oper_get_subs);
+            for (i = 0; i < shm_mod->oper_get_sub_count; ++i) {
                 /* add xpath */
-                if (sr_shmext_print_add_item(&items, &item_count, oper_subs[i].xpath,
-                        sr_strshmlen(shm_ext->addr + oper_subs[i].xpath), "oper sub xpath (\"%s\", mod \"%s\")",
-                        shm_ext->addr + oper_subs[i].xpath, ((char *)mod_shm) + shm_mod->name)) {
+                if (sr_shmext_print_add_item(&items, &item_count, oper_get_subs[i].xpath,
+                        sr_strshmlen(shm_ext->addr + oper_get_subs[i].xpath), "oper get sub xpath (\"%s\", mod \"%s\")",
+                        shm_ext->addr + oper_get_subs[i].xpath, ((char *)mod_shm) + shm_mod->name)) {
                     goto error;
                 }
 
-                if (oper_subs[i].xpath_sub_count) {
-                    /* add oper XPath subscriptions */
-                    if (sr_shmext_print_add_item(&items, &item_count, oper_subs[i].xpath_subs,
-                            SR_SHM_SIZE(oper_subs[i].xpath_sub_count * sizeof(sr_mod_oper_xpath_sub_t)),
-                            "oper xpath subs (%" PRIu32 ", xpath \"%s\")", oper_subs[i].xpath_sub_count,
-                            shm_ext->addr + oper_subs[i].xpath)) {
+                if (oper_get_subs[i].xpath_sub_count) {
+                    /* add oper get XPath subscriptions */
+                    if (sr_shmext_print_add_item(&items, &item_count, oper_get_subs[i].xpath_subs,
+                            SR_SHM_SIZE(oper_get_subs[i].xpath_sub_count * sizeof(sr_mod_oper_get_xpath_sub_t)),
+                            "oper get xpath subs (%" PRIu32 ", xpath \"%s\")", oper_get_subs[i].xpath_sub_count,
+                            shm_ext->addr + oper_get_subs[i].xpath)) {
                         goto error;
                     }
                 }
@@ -800,34 +800,34 @@ sr_shmext_change_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t
 }
 
 sr_error_info_t *
-sr_shmext_oper_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, const char *xpath,
-        sr_mod_oper_sub_type_t sub_type, int sub_opts, uint32_t evpipe_num, uint32_t *prio)
+sr_shmext_oper_get_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, const char *xpath,
+        sr_mod_oper_get_sub_type_t sub_type, int sub_opts, uint32_t evpipe_num, uint32_t *prio)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     off_t xpath_off;
-    sr_mod_oper_sub_t *shm_sub;
-    sr_mod_oper_xpath_sub_t *xpath_sub;
+    sr_mod_oper_get_sub_t *shm_sub;
+    sr_mod_oper_get_xpath_sub_t *xpath_sub;
     size_t new_len, cur_len;
     uint32_t i, j;
     int xpath_found = 0;
 
     assert(xpath && sub_type);
 
-    /* OPER SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->oper_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
+    /* OPER GET SUB WRITE LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
             NULL, NULL))) {
         return err_info;
     }
 
     /* EXT WRITE LOCK */
     if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_WRITE, 1, __func__))) {
-        goto cleanup_opersub_unlock;
+        goto cleanup_opergetsub_unlock;
     }
 
     /* check that this exact subscription does not exist yet while finding its position */
     new_len = sr_xpath_len_no_predicates(xpath);
-    for (i = 0; i < shm_mod->oper_sub_count; ++i) {
-        shm_sub = &((sr_mod_oper_sub_t *)(conn->ext_shm.addr + shm_mod->oper_subs))[i];
+    for (i = 0; i < shm_mod->oper_get_sub_count; ++i) {
+        shm_sub = &((sr_mod_oper_get_sub_t *)(conn->ext_shm.addr + shm_mod->oper_get_subs))[i];
 
         cur_len = sr_xpath_len_no_predicates(conn->ext_shm.addr + shm_sub->xpath);
         if (cur_len > new_len) {
@@ -839,7 +839,7 @@ sr_shmext_oper_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, 
             if (!(sub_opts & SR_SUBSCR_OPER_MERGE)) {
                 sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Oper subscription for XPath \"%s\" already exists and "
                         "SR_SUBSCR_OPER_MERGE not used.", xpath);
-                goto cleanup_opersub_ext_unlock;
+                goto cleanup_opergetsub_ext_unlock;
             }
             xpath_found = 1;
             break;
@@ -850,30 +850,30 @@ sr_shmext_oper_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, 
     j = 0;
     if (xpath_found) {
         while (j < shm_sub->xpath_sub_count) {
-            xpath_sub = &((sr_mod_oper_xpath_sub_t *)(conn->ext_shm.addr + shm_sub->xpath_subs))[j];
+            xpath_sub = &((sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + shm_sub->xpath_subs))[j];
 
             if (!sr_conn_is_alive(xpath_sub->cid)) {
                 /* subscription is dead, recover it */
-                if ((err_info = sr_shmext_oper_sub_stop(conn, shm_mod, i, j, 1, SR_LOCK_WRITE, 1))) {
-                    goto cleanup_opersub_ext_unlock;
+                if ((err_info = sr_shmext_oper_get_sub_stop(conn, shm_mod, i, j, 1, SR_LOCK_WRITE, 1))) {
+                    goto cleanup_opergetsub_ext_unlock;
                 }
             } else {
                 ++j;
             }
         }
         if (j) {
-            xpath_sub = &((sr_mod_oper_xpath_sub_t *)(conn->ext_shm.addr + shm_sub->xpath_subs))[shm_sub->xpath_sub_count - 1];
+            xpath_sub = &((sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + shm_sub->xpath_subs))[shm_sub->xpath_sub_count - 1];
             *prio = xpath_sub->priority + 1;
         }
 
     } else {
-        SR_LOG_DBG("#SHM before (adding oper sub)");
+        SR_LOG_DBG("#SHM before (adding oper get sub)");
         sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
         /* allocate new subscription and its xpath, if any */
-        if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_mod->oper_subs, &shm_mod->oper_sub_count, 0, sizeof *shm_sub,
-                i, (void **)&shm_sub, sr_strshmlen(xpath), &xpath_off))) {
-            goto cleanup_opersub_ext_unlock;
+        if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_mod->oper_get_subs, &shm_mod->oper_get_sub_count, 0,
+                sizeof *shm_sub, i, (void **)&shm_sub, sr_strshmlen(xpath), &xpath_off))) {
+            goto cleanup_opergetsub_ext_unlock;
         }
 
         /* fill new oper subscription */
@@ -883,17 +883,17 @@ sr_shmext_oper_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, 
         shm_sub->xpath_subs = 0;
         shm_sub->xpath_sub_count = 0;
 
-        SR_LOG_DBG("#SHM after (adding oper sub)");
+        SR_LOG_DBG("#SHM after (adding oper get sub)");
         sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
     }
 
-    SR_LOG_DBG("#SHM before (adding oper xpath sub)");
+    SR_LOG_DBG("#SHM before (adding oper get xpath sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
     /* allocate new XPath subscription, if any */
     if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_sub->xpath_subs, &shm_sub->xpath_sub_count, 1, sizeof *xpath_sub,
             j, (void **)&xpath_sub, 0, NULL))) {
-        goto cleanup_opersub_ext_unlock;
+        goto cleanup_opergetsub_ext_unlock;
     }
 
     /* fill new oper xpath subscription */
@@ -904,13 +904,13 @@ sr_shmext_oper_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, 
     ATOMIC_STORE_RELAXED(xpath_sub->suspended, 0);
     xpath_sub->cid = conn->cid;
 
-    SR_LOG_DBG("#SHM after (adding oper xpath sub)");
+    SR_LOG_DBG("#SHM after (adding oper get xpath sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
     /* create the sub SHM while still holding the locks */
     if ((err_info = sr_shmsub_create(conn->mod_shm.addr + shm_mod->name, "oper", sr_str_hash(xpath, *prio),
             sizeof(sr_sub_shm_t)))) {
-        goto cleanup_opersub_ext_unlock;
+        goto cleanup_opergetsub_ext_unlock;
     }
 
     /* create the data sub SHM */
@@ -918,22 +918,22 @@ sr_shmext_oper_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, 
         if ((tmp_err = sr_shmsub_unlink(conn->mod_shm.addr + shm_mod->name, "oper", sr_str_hash(xpath, *prio)))) {
             sr_errinfo_merge(&err_info, tmp_err);
         }
-        goto cleanup_opersub_ext_unlock;
+        goto cleanup_opergetsub_ext_unlock;
     }
 
-cleanup_opersub_ext_unlock:
+cleanup_opergetsub_ext_unlock:
     /* EXT WRITE UNLOCK */
     sr_shmext_conn_remap_unlock(conn, SR_LOCK_WRITE, 1, __func__);
 
-cleanup_opersub_unlock:
-    /* OPER SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->oper_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+cleanup_opergetsub_unlock:
+    /* OPER GET SUB WRITE UNLOCK */
+    sr_rwunlock(&shm_mod->oper_get_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
     return err_info;
 }
 
 /**
- * @brief Free operational subscription data from ext SHM, remove sub SHM.
+ * @brief Free operational get subscription data from ext SHM, remove sub SHM.
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module with subscriptions.
@@ -941,14 +941,14 @@ cleanup_opersub_unlock:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmext_oper_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx1, uint32_t del_idx2)
+sr_shmext_oper_get_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx1, uint32_t del_idx2)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_oper_sub_t *shm_subs;
-    sr_mod_oper_xpath_sub_t *xpath_sub;
+    sr_mod_oper_get_sub_t *shm_subs;
+    sr_mod_oper_get_xpath_sub_t *xpath_sub;
 
-    shm_subs = &((sr_mod_oper_sub_t *)(conn->ext_shm.addr + shm_mod->oper_subs))[del_idx1];
-    xpath_sub = &((sr_mod_oper_xpath_sub_t *)(conn->ext_shm.addr + shm_subs->xpath_subs))[del_idx2];
+    shm_subs = &((sr_mod_oper_get_sub_t *)(conn->ext_shm.addr + shm_mod->oper_get_subs))[del_idx1];
+    xpath_sub = &((sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + shm_subs->xpath_subs))[del_idx2];
 
     /* unlink the sub SHM (first, so that we can use xpath) */
     if ((err_info = sr_shmsub_unlink(conn->mod_shm.addr + shm_mod->name, "oper",
@@ -962,25 +962,25 @@ sr_shmext_oper_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx
         goto cleanup;
     }
 
-    SR_LOG_DBG("#SHM before (removing xpath oper sub)");
+    SR_LOG_DBG("#SHM before (removing xpath oper get sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
     /* free the XPath subscription */
     sr_shmrealloc_del(&conn->ext_shm, &shm_subs->xpath_subs, &shm_subs->xpath_sub_count, sizeof *xpath_sub, del_idx2,
             0, 0);
 
-    SR_LOG_DBG("#SHM after (removing xpath oper sub)");
+    SR_LOG_DBG("#SHM after (removing xpath oper get sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
     if (!shm_subs->xpath_sub_count) {
-        SR_LOG_DBG("#SHM before (removing oper sub)");
+        SR_LOG_DBG("#SHM before (removing oper get sub)");
         sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
         /* last XPath subscription deleted, free the oper subscription */
-        sr_shmrealloc_del(&conn->ext_shm, &shm_mod->oper_subs, &shm_mod->oper_sub_count, sizeof *shm_subs, del_idx1,
-                sr_strshmlen(conn->ext_shm.addr + shm_subs->xpath), shm_subs->xpath);
+        sr_shmrealloc_del(&conn->ext_shm, &shm_mod->oper_get_subs, &shm_mod->oper_get_sub_count, sizeof *shm_subs,
+                del_idx1, sr_strshmlen(conn->ext_shm.addr + shm_subs->xpath), shm_subs->xpath);
 
-        SR_LOG_DBG("#SHM after (removing oper sub)");
+        SR_LOG_DBG("#SHM after (removing oper get sub)");
         sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
     }
 
@@ -989,30 +989,30 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmext_oper_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id)
+sr_shmext_oper_get_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_oper_sub_t *shm_sub;
-    sr_mod_oper_xpath_sub_t *xpath_sub;
+    sr_mod_oper_get_sub_t *shm_sub;
+    sr_mod_oper_get_xpath_sub_t *xpath_sub;
     uint32_t i, j;
     int found = 0;
 
-    /* OPER SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->oper_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL,
+    /* OPER GET SUB WRITE LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL,
             NULL))) {
         return err_info;
     }
 
     /* EXT READ LOCK */
     if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 1, __func__))) {
-        goto cleanup_opersub_unlock;
+        goto cleanup_opergetsub_unlock;
     }
 
     /* find the subscription */
-    shm_sub = (sr_mod_oper_sub_t *)(conn->ext_shm.addr + shm_mod->oper_subs);
-    for (i = 0; i < shm_mod->oper_sub_count; ++i) {
+    shm_sub = (sr_mod_oper_get_sub_t *)(conn->ext_shm.addr + shm_mod->oper_get_subs);
+    for (i = 0; i < shm_mod->oper_get_sub_count; ++i) {
         for (j = 0; j < shm_sub[i].xpath_sub_count; ++j) {
-            xpath_sub = &((sr_mod_oper_xpath_sub_t *)(conn->ext_shm.addr + shm_sub[i].xpath_subs))[j];
+            xpath_sub = &((sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + shm_sub[i].xpath_subs))[j];
             if (xpath_sub->sub_id == sub_id) {
                 found = 1;
                 break;
@@ -1022,34 +1022,34 @@ sr_shmext_oper_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id)
             break;
         }
     }
-    if (i == shm_mod->oper_sub_count) {
+    if (i == shm_mod->oper_get_sub_count) {
         /* no matching subscription found */
-        goto cleanup_opersub_ext_unlock;
+        goto cleanup_opergetsub_ext_unlock;
     }
 
     /* delete the subscription */
-    if ((err_info = sr_shmext_oper_sub_free(conn, shm_mod, i, j))) {
-        goto cleanup_opersub_ext_unlock;
+    if ((err_info = sr_shmext_oper_get_sub_free(conn, shm_mod, i, j))) {
+        goto cleanup_opergetsub_ext_unlock;
     }
 
-cleanup_opersub_ext_unlock:
+cleanup_opergetsub_ext_unlock:
     /* EXT READ UNLOCK */
     sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 1, __func__);
 
-cleanup_opersub_unlock:
-    /* OPER SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->oper_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+cleanup_opergetsub_unlock:
+    /* OPER GET SUB WRITE UNLOCK */
+    sr_rwunlock(&shm_mod->oper_get_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
     return err_info;
 }
 
 sr_error_info_t *
-sr_shmext_oper_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx1, uint32_t del_idx2, int del_evpipe,
+sr_shmext_oper_get_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx1, uint32_t del_idx2, int del_evpipe,
         sr_lock_mode_t has_locks, int recovery)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
-    sr_mod_oper_sub_t *shm_sub;
-    sr_mod_oper_xpath_sub_t *xpath_sub;
+    sr_mod_oper_get_sub_t *shm_sub;
+    sr_mod_oper_get_xpath_sub_t *xpath_sub;
     char *path;
     uint32_t evpipe_num;
 
@@ -1061,13 +1061,13 @@ sr_shmext_oper_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx
             /* EXT READ UNLOCK */
             sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
-            /* OPER SUB READ UNLOCK */
-            sr_rwunlock(&shm_mod->oper_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+            /* OPER GET SUB READ UNLOCK */
+            sr_rwunlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
         }
 
-        /* OPER SUB WRITE LOCK */
-        if ((tmp_err = sr_rwlock(&shm_mod->oper_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
-                NULL, NULL))) {
+        /* OPER GET SUB WRITE LOCK */
+        if ((tmp_err = sr_rwlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+                __func__, NULL, NULL))) {
             sr_errinfo_merge(&err_info, tmp_err);
         }
 
@@ -1077,16 +1077,16 @@ sr_shmext_oper_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx
         }
     }
 
-    shm_sub = (sr_mod_oper_sub_t *)(conn->ext_shm.addr + shm_mod->oper_subs);
-    xpath_sub = (sr_mod_oper_xpath_sub_t *)(conn->ext_shm.addr + shm_sub[del_idx1].xpath_subs);
+    shm_sub = (sr_mod_oper_get_sub_t *)(conn->ext_shm.addr + shm_mod->oper_get_subs);
+    xpath_sub = (sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + shm_sub[del_idx1].xpath_subs);
     if (recovery) {
-        SR_LOG_WRN("Recovering module \"%s\" operational subscription of CID %" PRIu32 ".",
+        SR_LOG_WRN("Recovering module \"%s\" operational get subscription of CID %" PRIu32 ".",
                 conn->mod_shm.addr + shm_mod->name, xpath_sub[del_idx2].cid);
     }
     evpipe_num = xpath_sub[del_idx2].evpipe_num;
 
     /* remove the subscription */
-    if ((tmp_err = sr_shmext_oper_sub_free(conn, shm_mod, del_idx1, del_idx2))) {
+    if ((tmp_err = sr_shmext_oper_get_sub_free(conn, shm_mod, del_idx1, del_idx2))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
@@ -1095,9 +1095,9 @@ sr_shmext_oper_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx
             /* EXT READ UNLOCK */
             sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 1, __func__);
 
-            /* OPER SUB READ LOCK DOWNGRADE */
-            if ((err_info = sr_rwrelock(&shm_mod->oper_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
-                    NULL, NULL))) {
+            /* OPER GET SUB READ LOCK DOWNGRADE */
+            if ((err_info = sr_rwrelock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+                    __func__, NULL, NULL))) {
                 sr_errinfo_merge(&err_info, tmp_err);
             }
 
@@ -1109,8 +1109,8 @@ sr_shmext_oper_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx
             /* EXT READ UNLOCK */
             sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 1, __func__);
 
-            /* OPER SUB WRITE UNLOCK */
-            sr_rwunlock(&shm_mod->oper_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+            /* OPER GET SUB WRITE UNLOCK */
+            sr_rwunlock(&shm_mod->oper_get_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
         }
     }
 
@@ -1639,7 +1639,7 @@ sr_shmext_recover_sub_all(sr_conn_ctx_t *conn)
     sr_datastore_t ds;
     sr_mod_t *shm_mod;
     sr_rpc_t *shm_rpc;
-    sr_mod_oper_sub_t *shm_sub;
+    sr_mod_oper_get_sub_t *shm_sub;
     uint32_t i, j, count;
 
     /* go through all the modules, RPCs and recover their subscriptions */
@@ -1662,11 +1662,11 @@ sr_shmext_recover_sub_all(sr_conn_ctx_t *conn)
             }
         }
 
-        for (j = 0; j < shm_mod->oper_sub_count; ++j) {
-            shm_sub = &((sr_mod_oper_sub_t *)(conn->ext_shm.addr + shm_mod->oper_subs))[j];
+        for (j = 0; j < shm_mod->oper_get_sub_count; ++j) {
+            shm_sub = &((sr_mod_oper_get_sub_t *)(conn->ext_shm.addr + shm_mod->oper_get_subs))[j];
 
             for (count = shm_sub->xpath_sub_count; count; --count) {
-                if ((err_info = sr_shmext_oper_sub_stop(conn, shm_mod, j, count - 1, 1, SR_LOCK_NONE, 1))) {
+                if ((err_info = sr_shmext_oper_get_sub_stop(conn, shm_mod, j, count - 1, 1, SR_LOCK_NONE, 1))) {
                     sr_errinfo_free(&err_info);
                 }
             }
@@ -1758,14 +1758,14 @@ static sr_error_info_t *
 sr_shmext_oper_sub_check(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct ly_ctx *new_ctx)
 {
     sr_error_info_t *err_info = NULL;
-    sr_mod_oper_sub_t *subs;
+    sr_mod_oper_get_sub_t *subs;
     uint32_t i;
     const char *mod_name, *xpath;
     int valid;
 
-    /* OPER SUB READ LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->oper_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
-            NULL, NULL))) {
+    /* OPER GET SUB READ LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+            __func__, NULL, NULL))) {
         goto cleanup;
     }
 
@@ -1774,7 +1774,7 @@ sr_shmext_oper_sub_check(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct ly
         goto opersub_unlock;
     }
 
-    if (shm_mod->oper_sub_count) {
+    if (shm_mod->oper_get_sub_count) {
         /* check that module still exists */
         mod_name = conn->mod_shm.addr + shm_mod->name;
         if (!ly_ctx_get_module_implemented(new_ctx, mod_name)) {
@@ -1784,8 +1784,8 @@ sr_shmext_oper_sub_check(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct ly
         }
     }
 
-    subs = (sr_mod_oper_sub_t *)(conn->ext_shm.addr + shm_mod->oper_subs);
-    for (i = 0; i < shm_mod->oper_sub_count; ++i) {
+    subs = (sr_mod_oper_get_sub_t *)(conn->ext_shm.addr + shm_mod->oper_get_subs);
+    for (i = 0; i < shm_mod->oper_get_sub_count; ++i) {
         /* check subs xpath */
         xpath = conn->ext_shm.addr + subs[i].xpath;
         sr_subscr_oper_xpath_check(new_ctx, xpath, NULL, &valid);
@@ -1800,8 +1800,8 @@ ext_opersub_unlock:
     sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
 opersub_unlock:
-    /* OPER SUB READ UNLOCK */
-    sr_rwunlock(&shm_mod->oper_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+    /* OPER GET SUB READ UNLOCK */
+    sr_rwunlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
 cleanup:
     return err_info;
@@ -2046,13 +2046,13 @@ cleanup_changesub_unlock:
 }
 
 sr_error_info_t *
-sr_shmext_oper_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, int set_suspended,
+sr_shmext_oper_get_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, int set_suspended,
         int *get_suspended)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
-    sr_mod_oper_sub_t *shm_subs;
-    sr_mod_oper_xpath_sub_t *xpath_subs;
+    sr_mod_oper_get_sub_t *shm_subs;
+    sr_mod_oper_get_xpath_sub_t *xpath_subs;
     uint32_t i, j;
     int found = 0;
 
@@ -2061,8 +2061,8 @@ sr_shmext_oper_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, uint32_t
 
     /* changing suspended technically modifies (adds/removes) subscriptions */
     if (set_suspended > -1) {
-        /* OPER SUB WRITE LOCK */
-        if ((err_info = sr_rwlock(&shm_mod->oper_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+        /* OPER GET SUB WRITE LOCK */
+        if ((err_info = sr_rwlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
                 __func__, NULL, NULL))) {
             return err_info;
         }
@@ -2070,14 +2070,14 @@ sr_shmext_oper_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, uint32_t
 
     /* EXT READ LOCK */
     if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
-        goto cleanup_opersub_unlock;
+        goto cleanup_opergetsub_unlock;
     }
 
     /* find the subscription in ext SHM */
-    shm_subs = (sr_mod_oper_sub_t *)(conn->ext_shm.addr + shm_mod->oper_subs);
-    for (i = 0; i < shm_mod->oper_sub_count; ++i) {
+    shm_subs = (sr_mod_oper_get_sub_t *)(conn->ext_shm.addr + shm_mod->oper_get_subs);
+    for (i = 0; i < shm_mod->oper_get_sub_count; ++i) {
 
-        xpath_subs = (sr_mod_oper_xpath_sub_t *)(conn->ext_shm.addr + shm_subs[i].xpath_subs);
+        xpath_subs = (sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + shm_subs[i].xpath_subs);
         for (j = 0; j < shm_subs->xpath_sub_count; ++j) {
             if (xpath_subs[j].sub_id == sub_id) {
                 found = 1;
@@ -2088,18 +2088,18 @@ sr_shmext_oper_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, uint32_t
             break;
         }
     }
-    SR_CHECK_INT_GOTO(i == shm_mod->oper_sub_count, err_info, cleanup_opersub_ext_unlock);
+    SR_CHECK_INT_GOTO(i == shm_mod->oper_get_sub_count, err_info, cleanup_opergetsub_ext_unlock);
 
     if (set_suspended > -1) {
         /* check whether the flag can be changed */
         if (set_suspended && ATOMIC_LOAD_RELAXED(xpath_subs[j].suspended)) {
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Operational subscription with ID %" PRIu32
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Operational get subscription with ID %" PRIu32
                     " already suspended.", sub_id);
-            goto cleanup_opersub_ext_unlock;
+            goto cleanup_opergetsub_ext_unlock;
         } else if (!set_suspended && !ATOMIC_LOAD_RELAXED(xpath_subs[j].suspended)) {
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Operational subscription with ID %" PRIu32
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Operational get subscription with ID %" PRIu32
                     " not suspended.", sub_id);
-            goto cleanup_opersub_ext_unlock;
+            goto cleanup_opergetsub_ext_unlock;
         }
 
         /* set the flag */
@@ -2111,14 +2111,14 @@ sr_shmext_oper_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, uint32_t
         *get_suspended = ATOMIC_LOAD_RELAXED(xpath_subs[j].suspended);
     }
 
-cleanup_opersub_ext_unlock:
+cleanup_opergetsub_ext_unlock:
     /* EXT READ UNLOCK */
     sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
 
-cleanup_opersub_unlock:
+cleanup_opergetsub_unlock:
     if (set_suspended > -1) {
-        /* OPER SUB WRITE UNLOCK */
-        sr_rwunlock(&shm_mod->oper_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+        /* OPER GET SUB WRITE UNLOCK */
+        sr_rwunlock(&shm_mod->oper_get_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
     }
 
     return err_info;

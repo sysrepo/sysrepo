@@ -230,11 +230,11 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_subscr_oper_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess, const char *mod_name,
+sr_subscr_oper_get_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess, const char *mod_name,
         const char *xpath, sr_oper_get_items_cb oper_cb, void *private_data, sr_lock_mode_t has_subs_lock, uint32_t prio)
 {
     sr_error_info_t *err_info = NULL;
-    struct modsub_oper_s *oper_sub = NULL;
+    struct modsub_operget_s *oper_get_sub = NULL;
     uint32_t i;
     void *mem[4] = {NULL};
     int new_sub = 0;
@@ -246,57 +246,58 @@ sr_subscr_oper_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sessio
     (void)has_subs_lock;
 
     /* try to find this module subscription SHM mapping, it may already exist */
-    for (i = 0; i < subscr->oper_sub_count; ++i) {
-        if (!strcmp(mod_name, subscr->oper_subs[i].module_name)) {
+    for (i = 0; i < subscr->oper_get_sub_count; ++i) {
+        if (!strcmp(mod_name, subscr->oper_get_subs[i].module_name)) {
             break;
         }
     }
 
-    if (i == subscr->oper_sub_count) {
-        mem[0] = realloc(subscr->oper_subs, (subscr->oper_sub_count + 1) * sizeof *subscr->oper_subs);
+    if (i == subscr->oper_get_sub_count) {
+        mem[0] = realloc(subscr->oper_get_subs, (subscr->oper_get_sub_count + 1) * sizeof *subscr->oper_get_subs);
         SR_CHECK_MEM_GOTO(!mem[0], err_info, error);
-        subscr->oper_subs = mem[0];
+        subscr->oper_get_subs = mem[0];
 
-        oper_sub = &subscr->oper_subs[i];
-        memset(oper_sub, 0, sizeof *oper_sub);
+        oper_get_sub = &subscr->oper_get_subs[i];
+        memset(oper_get_sub, 0, sizeof *oper_get_sub);
 
         /* set attributes */
         mem[1] = strdup(mod_name);
         SR_CHECK_MEM_GOTO(!mem[1], err_info, error);
-        oper_sub->module_name = mem[1];
+        oper_get_sub->module_name = mem[1];
 
         /* make the subscription visible only after everything succeeds */
-        ++subscr->oper_sub_count;
+        ++subscr->oper_get_sub_count;
 
         /* for cleanup */
         new_sub = 1;
     } else {
-        oper_sub = &subscr->oper_subs[i];
+        oper_get_sub = &subscr->oper_get_subs[i];
     }
 
     /* add another XPath and create SHM into module-specific subscriptions */
-    mem[2] = realloc(oper_sub->subs, (oper_sub->sub_count + 1) * sizeof *oper_sub->subs);
+    mem[2] = realloc(oper_get_sub->subs, (oper_get_sub->sub_count + 1) * sizeof *oper_get_sub->subs);
     SR_CHECK_MEM_GOTO(!mem[2], err_info, error);
-    oper_sub->subs = mem[2];
-    memset(oper_sub->subs + oper_sub->sub_count, 0, sizeof *oper_sub->subs);
-    oper_sub->subs[oper_sub->sub_count].sub_shm.fd = -1;
+    oper_get_sub->subs = mem[2];
+    memset(oper_get_sub->subs + oper_get_sub->sub_count, 0, sizeof *oper_get_sub->subs);
+    oper_get_sub->subs[oper_get_sub->sub_count].sub_shm.fd = -1;
 
     /* set attributes */
-    oper_sub->subs[oper_sub->sub_count].sub_id = sub_id;
+    oper_get_sub->subs[oper_get_sub->sub_count].sub_id = sub_id;
     mem[3] = strdup(xpath);
     SR_CHECK_MEM_GOTO(!mem[3], err_info, error);
-    oper_sub->subs[oper_sub->sub_count].xpath = mem[3];
-    oper_sub->subs[oper_sub->sub_count].priority = prio;
-    oper_sub->subs[oper_sub->sub_count].cb = oper_cb;
-    oper_sub->subs[oper_sub->sub_count].private_data = private_data;
-    oper_sub->subs[oper_sub->sub_count].sess = sess;
+    oper_get_sub->subs[oper_get_sub->sub_count].xpath = mem[3];
+    oper_get_sub->subs[oper_get_sub->sub_count].priority = prio;
+    oper_get_sub->subs[oper_get_sub->sub_count].cb = oper_cb;
+    oper_get_sub->subs[oper_get_sub->sub_count].private_data = private_data;
+    oper_get_sub->subs[oper_get_sub->sub_count].sess = sess;
 
     /* open sub SHM and map it */
-    if ((err_info = sr_shmsub_open_map(mod_name, "oper", sr_str_hash(xpath, prio), &oper_sub->subs[oper_sub->sub_count].sub_shm))) {
+    if ((err_info = sr_shmsub_open_map(mod_name, "oper", sr_str_hash(xpath, prio),
+            &oper_get_sub->subs[oper_get_sub->sub_count].sub_shm))) {
         goto error;
     }
 
-    ++oper_sub->sub_count;
+    ++oper_get_sub->sub_count;
 
     /* new subscription */
     subscr->last_sub_id = sub_id;
@@ -308,17 +309,17 @@ error:
         free(mem[i]);
     }
     if (new_sub) {
-        --subscr->oper_sub_count;
+        --subscr->oper_get_sub_count;
     }
     return err_info;
 }
 
 void
-sr_subscr_oper_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock)
+sr_subscr_oper_get_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
-    struct modsub_oper_s *oper_sub;
+    struct modsub_operget_s *oper_get_sub;
 
     assert((has_subs_lock == SR_LOCK_READ_UPGR) || (has_subs_lock == SR_LOCK_WRITE));
 
@@ -331,35 +332,35 @@ sr_subscr_oper_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_m
         }
     }
 
-    for (i = 0; i < subscr->oper_sub_count; ++i) {
-        oper_sub = &subscr->oper_subs[i];
+    for (i = 0; i < subscr->oper_get_sub_count; ++i) {
+        oper_get_sub = &subscr->oper_get_subs[i];
 
-        for (j = 0; j < oper_sub->sub_count; ++j) {
-            if (sub_id != oper_sub->subs[j].sub_id) {
+        for (j = 0; j < oper_get_sub->sub_count; ++j) {
+            if (sub_id != oper_get_sub->subs[j].sub_id) {
                 continue;
             }
 
             /* found our subscription, replace it with the last */
-            free(oper_sub->subs[j].xpath);
-            sr_shm_clear(&oper_sub->subs[j].sub_shm);
-            if (j < oper_sub->sub_count - 1) {
-                memcpy(&oper_sub->subs[j], &oper_sub->subs[oper_sub->sub_count - 1], sizeof *oper_sub->subs);
+            free(oper_get_sub->subs[j].xpath);
+            sr_shm_clear(&oper_get_sub->subs[j].sub_shm);
+            if (j < oper_get_sub->sub_count - 1) {
+                memcpy(&oper_get_sub->subs[j], &oper_get_sub->subs[oper_get_sub->sub_count - 1], sizeof *oper_get_sub->subs);
             }
-            --oper_sub->sub_count;
+            --oper_get_sub->sub_count;
 
-            if (!oper_sub->sub_count) {
+            if (!oper_get_sub->sub_count) {
                 /* no other subscriptions for this module, replace it with the last */
-                free(oper_sub->module_name);
-                free(oper_sub->subs);
-                if (i < subscr->oper_sub_count - 1) {
-                    memcpy(oper_sub, &subscr->oper_subs[subscr->oper_sub_count - 1], sizeof *oper_sub);
+                free(oper_get_sub->module_name);
+                free(oper_get_sub->subs);
+                if (i < subscr->oper_get_sub_count - 1) {
+                    memcpy(oper_get_sub, &subscr->oper_get_subs[subscr->oper_get_sub_count - 1], sizeof *oper_get_sub);
                 }
-                --subscr->oper_sub_count;
+                --subscr->oper_get_sub_count;
 
-                if (!subscr->oper_sub_count) {
+                if (!subscr->oper_get_sub_count) {
                     /* no other operational subscriptions */
-                    free(subscr->oper_subs);
-                    subscr->oper_subs = NULL;
+                    free(subscr->oper_get_subs);
+                    subscr->oper_get_subs = NULL;
                 }
             }
 
@@ -762,18 +763,18 @@ sr_subscr_change_sub_find(const sr_subscription_ctx_t *subscr, uint32_t sub_id, 
     return NULL;
 }
 
-struct modsub_opersub_s *
-sr_subscr_oper_sub_find(const sr_subscription_ctx_t *subscr, uint32_t sub_id, const char **module_name)
+struct modsub_opergetsub_s *
+sr_subscr_oper_get_sub_find(const sr_subscription_ctx_t *subscr, uint32_t sub_id, const char **module_name)
 {
     uint32_t i, j;
 
-    for (i = 0; i < subscr->oper_sub_count; ++i) {
-        for (j = 0; j < subscr->oper_subs[i].sub_count; ++j) {
-            if (subscr->oper_subs[i].subs[j].sub_id == sub_id) {
+    for (i = 0; i < subscr->oper_get_sub_count; ++i) {
+        for (j = 0; j < subscr->oper_get_subs[i].sub_count; ++j) {
+            if (subscr->oper_get_subs[i].subs[j].sub_id == sub_id) {
                 if (module_name) {
-                    *module_name = subscr->oper_subs[i].module_name;
+                    *module_name = subscr->oper_get_subs[i].module_name;
                 }
-                return &subscr->oper_subs[i].subs[j];
+                return &subscr->oper_get_subs[i].subs[j];
             }
         }
     }
@@ -824,7 +825,7 @@ sr_subscr_session_count(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, s
 {
     uint32_t count = 0, i, j;
     struct modsub_change_s *change_subs;
-    struct modsub_oper_s *oper_subs;
+    struct modsub_operget_s *oper_get_subs;
     struct modsub_notif_s *notif_sub;
     struct opsub_rpc_s *rpc_sub;
 
@@ -842,11 +843,11 @@ sr_subscr_session_count(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, s
         }
     }
 
-    /* operational subscriptions */
-    for (i = 0; i < subscr->oper_sub_count; ++i) {
-        oper_subs = &subscr->oper_subs[i];
-        for (j = 0; j < oper_subs->sub_count; ++j) {
-            if (oper_subs->subs[j].sess == sess) {
+    /* operational get subscriptions */
+    for (i = 0; i < subscr->oper_get_sub_count; ++i) {
+        oper_get_subs = &subscr->oper_get_subs[i];
+        for (j = 0; j < oper_get_subs->sub_count; ++j) {
+            if (oper_get_subs->subs[j].sess == sess) {
                 ++count;
             }
         }
@@ -880,13 +881,13 @@ sr_subscr_session_count(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, s
  * CHANGE SUB lock should not be held.
  *
  * @param[in,out] subscr Subscription structure to modify.
- * @param[in] change_subs Change subscription in ext SHM.
- * @param[in] idx Index of the subscription in @p change_subs to remove.
+ * @param[in] change_sub Change subscription in ext SHM.
+ * @param[in] idx Index of the subscription in @p change_sub to remove.
  * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_change_sub_del(sr_subscription_ctx_t *subscr, struct modsub_change_s *change_subs, uint32_t idx,
+sr_change_sub_del(sr_subscription_ctx_t *subscr, struct modsub_change_s *change_sub, uint32_t idx,
         sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
@@ -896,33 +897,34 @@ sr_change_sub_del(sr_subscription_ctx_t *subscr, struct modsub_change_s *change_
     (void)has_subs_lock;
 
     /* find module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), change_subs->module_name);
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), change_sub->module_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     /* properly remove the subscription from ext SHM, with separate specific SHM segment if no longer needed */
-    if ((err_info = sr_shmext_change_sub_del(subscr->conn, shm_mod, SR_LOCK_NONE, change_subs->ds,
-            change_subs->subs[idx].sub_id))) {
+    if ((err_info = sr_shmext_change_sub_del(subscr->conn, shm_mod, SR_LOCK_NONE, change_sub->ds,
+            change_sub->subs[idx].sub_id))) {
         return err_info;
     }
 
     /* remove the subscription from the subscription structure */
-    sr_subscr_change_sub_del(subscr, change_subs->subs[idx].sub_id, has_subs_lock);
+    sr_subscr_change_sub_del(subscr, change_sub->subs[idx].sub_id, has_subs_lock);
 
     return NULL;
 }
 
 /**
- * @brief Remove an operational subscription from both subscription structure and ext SHM.
- * OPER SUB lock should not be held.
+ * @brief Remove an operational get subscription from both subscription structure and ext SHM.
+ * OPER GET SUB lock should not be held.
  *
  * @param[in,out] subscr Subscription structure to modify.
- * @param[in] oper_subs Oper subscription in ext SHM.
- * @param[in] idx Index of the subscription in @p oper_subs to remove.
+ * @param[in] oper_get_sub Oper get subscription in ext SHM.
+ * @param[in] idx Index of the subscription in @p oper_get_sub to remove.
  * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_oper_sub_del(sr_subscription_ctx_t *subscr, struct modsub_oper_s *oper_subs, uint32_t idx, sr_lock_mode_t has_subs_lock)
+sr_oper_get_sub_del(sr_subscription_ctx_t *subscr, struct modsub_operget_s *oper_get_sub, uint32_t idx,
+        sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
@@ -931,16 +933,16 @@ sr_oper_sub_del(sr_subscription_ctx_t *subscr, struct modsub_oper_s *oper_subs, 
     (void)has_subs_lock;
 
     /* find module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), oper_subs->module_name);
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), oper_get_sub->module_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     /* properly remove the subscription from ext SHM, with separate specific SHM segment if no longer needed */
-    if ((err_info = sr_shmext_oper_sub_del(subscr->conn, shm_mod, oper_subs->subs[idx].sub_id))) {
+    if ((err_info = sr_shmext_oper_get_sub_del(subscr->conn, shm_mod, oper_get_sub->subs[idx].sub_id))) {
         return err_info;
     }
 
     /* remove the subscription from the subscription structure */
-    sr_subscr_oper_sub_del(subscr, oper_subs->subs[idx].sub_id, has_subs_lock);
+    sr_subscr_oper_get_sub_del(subscr, oper_get_sub->subs[idx].sub_id, has_subs_lock);
 
     return NULL;
 }
@@ -950,13 +952,13 @@ sr_oper_sub_del(sr_subscription_ctx_t *subscr, struct modsub_oper_s *oper_subs, 
  * RPC SUB lock should not be held.
  *
  * @param[in,out] subscr Subscription structure to modify.
- * @param[in] rpc_subs RPC/action subscription in ext SHM.
- * @param[in] idx Index of the subscription in @p rpc_subs to remove.
+ * @param[in] rpc_sub RPC/action subscription in ext SHM.
+ * @param[in] idx Index of the subscription in @p rpc_sub to remove.
  * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_rpc_sub_del(sr_subscription_ctx_t *subscr, struct opsub_rpc_s *rpc_subs, uint32_t idx, sr_lock_mode_t has_subs_lock)
+sr_rpc_sub_del(sr_subscription_ctx_t *subscr, struct opsub_rpc_s *rpc_sub, uint32_t idx, sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
     sr_rpc_t *shm_rpc;
@@ -965,16 +967,16 @@ sr_rpc_sub_del(sr_subscription_ctx_t *subscr, struct opsub_rpc_s *rpc_subs, uint
     (void)has_subs_lock;
 
     /* find RPC/action */
-    shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(subscr->conn), rpc_subs->path);
+    shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(subscr->conn), rpc_sub->path);
     SR_CHECK_INT_RET(!shm_rpc, err_info);
 
     /* properly remove the subscription from the ext SHM, with separate specific SHM segment if no longer needed */
-    if ((err_info = sr_shmext_rpc_sub_del(subscr->conn, shm_rpc, rpc_subs->subs[idx].sub_id))) {
+    if ((err_info = sr_shmext_rpc_sub_del(subscr->conn, shm_rpc, rpc_sub->subs[idx].sub_id))) {
         return err_info;
     }
 
     /* remove the subscription from the subscription structure */
-    sr_subscr_rpc_sub_del(subscr, rpc_subs->subs[idx].sub_id, has_subs_lock);
+    sr_subscr_rpc_sub_del(subscr, rpc_sub->subs[idx].sub_id, has_subs_lock);
 
     return NULL;
 }
@@ -984,13 +986,13 @@ sr_rpc_sub_del(sr_subscription_ctx_t *subscr, struct opsub_rpc_s *rpc_subs, uint
  * NOTIF SUB lock should not be held.
  *
  * @param[in,out] subscr Subscription structure to modify.
- * @param[in] notif_subs Notif subscription in ext SHM.
- * @param[in] idx Index of the subscription in @p notif_subs to remove.
+ * @param[in] notif_sub Notif subscription in ext SHM.
+ * @param[in] idx Index of the subscription in @p notif_sub to remove.
  * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_notif_sub_del(sr_subscription_ctx_t *subscr, struct modsub_notif_s *notif_subs, uint32_t idx,
+sr_notif_sub_del(sr_subscription_ctx_t *subscr, struct modsub_notif_s *notif_sub, uint32_t idx,
         sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
@@ -1000,16 +1002,16 @@ sr_notif_sub_del(sr_subscription_ctx_t *subscr, struct modsub_notif_s *notif_sub
     (void)has_subs_lock;
 
     /* find module */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), notif_subs->module_name);
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), notif_sub->module_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
     /* properly remove the subscription from ext SHM, with separate specific SHM segment if no longer needed */
-    if ((err_info = sr_shmext_notif_sub_del(subscr->conn, shm_mod, notif_subs->subs[idx].sub_id))) {
+    if ((err_info = sr_shmext_notif_sub_del(subscr->conn, shm_mod, notif_sub->subs[idx].sub_id))) {
         return err_info;
     }
 
     /* remove the subscription from the subscription structure */
-    sr_subscr_notif_sub_del(subscr, notif_subs->subs[idx].sub_id, has_subs_lock);
+    sr_subscr_notif_sub_del(subscr, notif_sub->subs[idx].sub_id, has_subs_lock);
 
     return NULL;
 }
@@ -1019,10 +1021,10 @@ sr_subscr_session_del(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, sr_
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
-    struct modsub_change_s *change_subs;
-    struct modsub_oper_s *oper_subs;
-    struct modsub_notif_s *notif_subs;
-    struct opsub_rpc_s *rpc_subs;
+    struct modsub_change_s *change_sub;
+    struct modsub_operget_s *oper_get_sub;
+    struct modsub_notif_s *notif_sub;
+    struct opsub_rpc_s *rpc_sub;
     int del;
 
     assert((has_subs_lock == SR_LOCK_READ_UPGR) || (has_subs_lock == SR_LOCK_NONE));
@@ -1038,13 +1040,13 @@ sr_subscr_session_del(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, sr_
     /* change subscriptions */
     i = 0;
     while (i < subscr->change_sub_count) {
-        change_subs = &subscr->change_subs[i];
+        change_sub = &subscr->change_subs[i];
 
         del = 0;
-        for (j = 0; j < change_subs->sub_count; ++j) {
-            if (change_subs->subs[j].sess == sess) {
+        for (j = 0; j < change_sub->sub_count; ++j) {
+            if (change_sub->subs[j].sess == sess) {
                 /* remove */
-                if ((err_info = sr_change_sub_del(subscr, change_subs, j, SR_LOCK_READ_UPGR))) {
+                if ((err_info = sr_change_sub_del(subscr, change_sub, j, SR_LOCK_READ_UPGR))) {
                     goto cleanup_subs_unlock;
                 }
                 del = 1;
@@ -1058,16 +1060,16 @@ sr_subscr_session_del(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, sr_
         }
     }
 
-    /* operational subscriptions */
+    /* operational get subscriptions */
     i = 0;
-    while (i < subscr->oper_sub_count) {
-        oper_subs = &subscr->oper_subs[i];
+    while (i < subscr->oper_get_sub_count) {
+        oper_get_sub = &subscr->oper_get_subs[i];
 
         del = 0;
-        for (j = 0; j < oper_subs->sub_count; ++j) {
-            if (oper_subs->subs[j].sess == sess) {
+        for (j = 0; j < oper_get_sub->sub_count; ++j) {
+            if (oper_get_sub->subs[j].sess == sess) {
                 /* remove */
-                if ((err_info = sr_oper_sub_del(subscr, oper_subs, j, SR_LOCK_READ_UPGR))) {
+                if ((err_info = sr_oper_get_sub_del(subscr, oper_get_sub, j, SR_LOCK_READ_UPGR))) {
                     goto cleanup_subs_unlock;
                 }
                 del = 1;
@@ -1084,13 +1086,13 @@ sr_subscr_session_del(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, sr_
     /* notification subscriptions */
     i = 0;
     while (i < subscr->notif_sub_count) {
-        notif_subs = &subscr->notif_subs[i];
+        notif_sub = &subscr->notif_subs[i];
 
         del = 0;
-        for (j = 0; j < notif_subs->sub_count; ++j) {
-            if (notif_subs->subs[j].sess == sess) {
+        for (j = 0; j < notif_sub->sub_count; ++j) {
+            if (notif_sub->subs[j].sess == sess) {
                 /* remove */
-                if ((err_info = sr_notif_sub_del(subscr, notif_subs, j, SR_LOCK_READ_UPGR))) {
+                if ((err_info = sr_notif_sub_del(subscr, notif_sub, j, SR_LOCK_READ_UPGR))) {
                     goto cleanup_subs_unlock;
                 }
                 del = 1;
@@ -1107,13 +1109,13 @@ sr_subscr_session_del(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, sr_
     /* RPC/action subscriptions */
     i = 0;
     while (i < subscr->rpc_sub_count) {
-        rpc_subs = &subscr->rpc_subs[i];
+        rpc_sub = &subscr->rpc_subs[i];
 
         del = 0;
-        for (j = 0; j < rpc_subs->sub_count; ++j) {
-            if (rpc_subs->subs[j].sess == sess) {
+        for (j = 0; j < rpc_sub->sub_count; ++j) {
+            if (rpc_sub->subs[j].sess == sess) {
                 /* remove */
-                if ((err_info = sr_rpc_sub_del(subscr, rpc_subs, j, SR_LOCK_READ_UPGR))) {
+                if ((err_info = sr_rpc_sub_del(subscr, rpc_sub, j, SR_LOCK_READ_UPGR))) {
                     goto cleanup_subs_unlock;
                 }
                 del = 1;
@@ -1148,10 +1150,10 @@ sr_subscr_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
     sr_session_ctx_t *del_sub_sess = NULL;
-    struct modsub_change_s *change_subs;
-    struct modsub_oper_s *oper_subs;
-    struct modsub_notif_s *notif_subs;
-    struct opsub_rpc_s *rpc_subs;
+    struct modsub_change_s *change_sub;
+    struct modsub_operget_s *oper_get_sub;
+    struct modsub_notif_s *notif_sub;
+    struct opsub_rpc_s *rpc_sub;
 
     assert((has_subs_lock == SR_LOCK_NONE) || (has_subs_lock == SR_LOCK_READ_UPGR));
 
@@ -1166,14 +1168,14 @@ sr_subscr_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has
 subs_del:
     /* change subscriptions */
     for (i = 0; i < subscr->change_sub_count; ++i) {
-        change_subs = &subscr->change_subs[i];
-        for (j = 0; j < change_subs->sub_count; ++j) {
+        change_sub = &subscr->change_subs[i];
+        for (j = 0; j < change_sub->sub_count; ++j) {
             if (sub_id) {
                 /* removing a specific subscription */
-                if (change_subs->subs[j].sub_id == sub_id) {
+                if (change_sub->subs[j].sub_id == sub_id) {
                     /* found it */
-                    del_sub_sess = change_subs->subs[j].sess;
-                    if ((err_info = sr_change_sub_del(subscr, change_subs, j, SR_LOCK_READ_UPGR))) {
+                    del_sub_sess = change_sub->subs[j].sess;
+                    if ((err_info = sr_change_sub_del(subscr, change_sub, j, SR_LOCK_READ_UPGR))) {
                         goto cleanup;
                     }
                     goto finish;
@@ -1183,23 +1185,23 @@ subs_del:
             }
 
             /* remove all subscriptions in subscr from the session */
-            if ((err_info = sr_subscr_session_del(subscr, change_subs->subs[j].sess, SR_LOCK_READ_UPGR))) {
+            if ((err_info = sr_subscr_session_del(subscr, change_sub->subs[j].sess, SR_LOCK_READ_UPGR))) {
                 goto cleanup;
             }
             goto subs_del;
         }
     }
 
-    /* operational subscriptions */
-    for (i = 0; i < subscr->oper_sub_count; ++i) {
-        oper_subs = &subscr->oper_subs[i];
-        for (j = 0; j < oper_subs->sub_count; ++j) {
+    /* operational get subscriptions */
+    for (i = 0; i < subscr->oper_get_sub_count; ++i) {
+        oper_get_sub = &subscr->oper_get_subs[i];
+        for (j = 0; j < oper_get_sub->sub_count; ++j) {
             if (sub_id) {
                 /* removing a specific subscription */
-                if (oper_subs->subs[j].sub_id == sub_id) {
+                if (oper_get_sub->subs[j].sub_id == sub_id) {
                     /* found it */
-                    del_sub_sess = oper_subs->subs[j].sess;
-                    if ((err_info = sr_oper_sub_del(subscr, oper_subs, j, SR_LOCK_READ_UPGR))) {
+                    del_sub_sess = oper_get_sub->subs[j].sess;
+                    if ((err_info = sr_oper_get_sub_del(subscr, oper_get_sub, j, SR_LOCK_READ_UPGR))) {
                         goto cleanup;
                     }
                     goto finish;
@@ -1209,7 +1211,7 @@ subs_del:
             }
 
             /* remove all subscriptions in subscr from the session */
-            if ((err_info = sr_subscr_session_del(subscr, oper_subs->subs[j].sess, SR_LOCK_READ_UPGR))) {
+            if ((err_info = sr_subscr_session_del(subscr, oper_get_sub->subs[j].sess, SR_LOCK_READ_UPGR))) {
                 goto cleanup;
             }
             goto subs_del;
@@ -1218,14 +1220,14 @@ subs_del:
 
     /* notification subscriptions */
     for (i = 0; i < subscr->notif_sub_count; ++i) {
-        notif_subs = &subscr->notif_subs[i];
-        for (j = 0; j < notif_subs->sub_count; ++j) {
+        notif_sub = &subscr->notif_subs[i];
+        for (j = 0; j < notif_sub->sub_count; ++j) {
             if (sub_id) {
                 /* removing a specific subscription */
-                if (notif_subs->subs[j].sub_id == sub_id) {
+                if (notif_sub->subs[j].sub_id == sub_id) {
                     /* found it */
-                    del_sub_sess = notif_subs->subs[j].sess;
-                    if ((err_info = sr_notif_sub_del(subscr, notif_subs, j, SR_LOCK_READ_UPGR))) {
+                    del_sub_sess = notif_sub->subs[j].sess;
+                    if ((err_info = sr_notif_sub_del(subscr, notif_sub, j, SR_LOCK_READ_UPGR))) {
                         goto cleanup;
                     }
                     goto finish;
@@ -1235,7 +1237,7 @@ subs_del:
             }
 
             /* remove all subscriptions in subscr from the session */
-            if ((err_info = sr_subscr_session_del(subscr, notif_subs->subs[j].sess, SR_LOCK_READ_UPGR))) {
+            if ((err_info = sr_subscr_session_del(subscr, notif_sub->subs[j].sess, SR_LOCK_READ_UPGR))) {
                 goto cleanup;
             }
             goto subs_del;
@@ -1244,14 +1246,14 @@ subs_del:
 
     /* RPC/action subscriptions */
     for (i = 0; i < subscr->rpc_sub_count; ++i) {
-        rpc_subs = &subscr->rpc_subs[i];
-        for (j = 0; j < rpc_subs->sub_count; ++j) {
+        rpc_sub = &subscr->rpc_subs[i];
+        for (j = 0; j < rpc_sub->sub_count; ++j) {
             if (sub_id) {
                 /* removing a specific subscription */
-                if (rpc_subs->subs[j].sub_id == sub_id) {
+                if (rpc_sub->subs[j].sub_id == sub_id) {
                     /* found it */
-                    del_sub_sess = rpc_subs->subs[j].sess;
-                    if ((err_info = sr_rpc_sub_del(subscr, rpc_subs, j, SR_LOCK_READ_UPGR))) {
+                    del_sub_sess = rpc_sub->subs[j].sess;
+                    if ((err_info = sr_rpc_sub_del(subscr, rpc_sub, j, SR_LOCK_READ_UPGR))) {
                         goto cleanup;
                     }
                     goto finish;
@@ -1261,7 +1263,7 @@ subs_del:
             }
 
             /* remove all subscriptions in subscr from the session */
-            if ((err_info = sr_subscr_session_del(subscr, rpc_subs->subs[i].sess, SR_LOCK_READ_UPGR))) {
+            if ((err_info = sr_subscr_session_del(subscr, rpc_sub->subs[i].sess, SR_LOCK_READ_UPGR))) {
                 goto cleanup;
             }
             goto subs_del;
@@ -1432,7 +1434,8 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_subscr_oper_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, sr_mod_oper_sub_type_t *sub_type, int *valid)
+sr_subscr_oper_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, sr_mod_oper_get_sub_type_t *sub_type,
+        int *valid)
 {
     sr_error_info_t *err_info = NULL;
     struct lysc_node *elem;
@@ -1457,7 +1460,7 @@ sr_subscr_oper_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, sr_mo
 
     if (sub_type) {
         /* learn subscription type */
-        *sub_type = SR_OPER_SUB_NONE;
+        *sub_type = SR_OPER_GET_SUB_NONE;
         for (i = 0; i < set->count; ++i) {
             LYSC_TREE_DFS_BEGIN(set->snodes[i], elem) {
                 switch (elem->nodetype) {
@@ -1469,17 +1472,17 @@ sr_subscr_oper_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, sr_mo
                 case LYS_ANYDATA:
                     /* data node - check config */
                     if ((elem->flags & LYS_CONFIG_MASK) == LYS_CONFIG_R) {
-                        if (*sub_type == SR_OPER_SUB_CONFIG) {
-                            *sub_type = SR_OPER_SUB_MIXED;
+                        if (*sub_type == SR_OPER_GET_SUB_CONFIG) {
+                            *sub_type = SR_OPER_GET_SUB_MIXED;
                         } else {
-                            *sub_type = SR_OPER_SUB_STATE;
+                            *sub_type = SR_OPER_GET_SUB_STATE;
                         }
                     } else {
                         assert((elem->flags & LYS_CONFIG_MASK) == LYS_CONFIG_W);
-                        if (*sub_type == SR_OPER_SUB_STATE) {
-                            *sub_type = SR_OPER_SUB_MIXED;
+                        if (*sub_type == SR_OPER_GET_SUB_STATE) {
+                            *sub_type = SR_OPER_GET_SUB_MIXED;
                         } else {
-                            *sub_type = SR_OPER_SUB_CONFIG;
+                            *sub_type = SR_OPER_GET_SUB_CONFIG;
                         }
                     }
                     break;
@@ -1497,7 +1500,7 @@ sr_subscr_oper_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, sr_mo
                     goto cleanup;
                 }
 
-                if ((*sub_type == SR_OPER_SUB_STATE) || (*sub_type == SR_OPER_SUB_MIXED)) {
+                if ((*sub_type == SR_OPER_GET_SUB_STATE) || (*sub_type == SR_OPER_GET_SUB_MIXED)) {
                     /* redundant to look recursively */
                     break;
                 }
@@ -1505,7 +1508,7 @@ sr_subscr_oper_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, sr_mo
                 LYSC_TREE_DFS_END(set->snodes[i], elem);
             }
 
-            if (*sub_type == SR_OPER_SUB_MIXED) {
+            if (*sub_type == SR_OPER_GET_SUB_MIXED) {
                 /* we found both config type nodes, nothing more to look for */
                 break;
             }
@@ -4823,7 +4826,7 @@ sr_ev2str(sr_sub_event_t ev)
     case SR_SUB_EV_ENABLED:
         return "enabled";
     case SR_SUB_EV_OPER:
-        return "operational";
+        return "operational get";
     case SR_SUB_EV_RPC:
         return "rpc";
     case SR_SUB_EV_NOTIF:

@@ -44,8 +44,8 @@
 /**
  * @brief Structure for parallel SHM access for subscriptions with the same XPath.
  */
-struct sr_shmsub_oper_sub_s {
-    sr_mod_oper_xpath_sub_t *xpath_sub;
+struct sr_shmsub_oper_get_sub_s {
+    sr_mod_oper_get_xpath_sub_t *xpath_sub;
     sr_shm_t shm_sub;
     sr_shm_t shm_data_sub;
     sr_sub_shm_t *sub_shm;
@@ -540,8 +540,8 @@ event_handled:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmsub_notify_all_wait_wr(struct sr_shmsub_oper_sub_s *notify_subs, uint32_t notify_count, sr_sub_event_t expected_ev, int clear_ev_on_err, uint32_t timeout_ms,
-        sr_cid_t cid, sr_error_info_t **cb_err_info)
+sr_shmsub_notify_all_wait_wr(struct sr_shmsub_oper_get_sub_s *notify_subs, uint32_t notify_count,
+        sr_sub_event_t expected_ev, int clear_ev_on_err, uint32_t timeout_ms, sr_cid_t cid, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL, *err_temp = NULL;
     struct timespec timeout_ts, cur_ts;
@@ -1796,7 +1796,7 @@ cleanup:
 }
 
 /**
- * @brief Notify about (generate) an operational event when having only one subscription for the XPath.
+ * @brief Notify about (generate) an operational get event when having only one subscription for the XPath.
  *
  * @param[in] ly_mod Module to use.
  * @param[in] xpath Subscription XPath.
@@ -1812,8 +1812,8 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmsub_oper_notify_single(const struct lys_module *ly_mod, const char *xpath, const char *request_xpath,
-        const struct lyd_node *parent, const char *orig_name, const void *orig_data, sr_mod_oper_xpath_sub_t *xpath_sub,
+sr_shmsub_oper_get_notify_single(const struct lys_module *ly_mod, const char *xpath, const char *request_xpath,
+        const struct lyd_node *parent, const char *orig_name, const void *orig_data, sr_mod_oper_get_xpath_sub_t *xpath_sub,
         uint32_t timeout_ms, sr_cid_t cid, struct lyd_node **data, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
@@ -1872,11 +1872,11 @@ sr_shmsub_oper_notify_single(const struct lys_module *ly_mod, const char *xpath,
 
     if (*cb_err_info) {
         /* failed callback or timeout */
-        SR_LOG_WRN("Event \"operational\" with ID %" PRIu32 " failed (%s).", request_id,
+        SR_LOG_WRN("Event \"%s\" with ID %" PRIu32 " failed (%s).", sr_ev2str(SR_SUB_EV_OPER), request_id,
                 sr_strerror((*cb_err_info)->err[0].err_code));
         goto cleanup_wrunlock;
     } else {
-        SR_LOG_INF("Event \"operational\" with ID %" PRIu32 " succeeded.", request_id);
+        SR_LOG_INF("Event \"%s\" with ID %" PRIu32 " succeeded.", sr_ev2str(SR_SUB_EV_OPER), request_id);
     }
 
     assert(sub_shm->event == SR_SUB_EV_SUCCESS);
@@ -1903,7 +1903,7 @@ cleanup:
 }
 
 /**
- * @brief Notify about (generate) an operational event when having more than one subscriptions for the XPath.
+ * @brief Notify about (generate) an operational get event when having more than one subscriptions for the XPath.
  *
  * @param[in] mod Modinfo structure.
  * @param[in] xpath Subscription XPath.
@@ -1920,9 +1920,9 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmsub_oper_notify_many(struct sr_mod_info_mod_s *mod, const char *xpath, const char *request_xpath,
+sr_shmsub_oper_get_notify_many(struct sr_mod_info_mod_s *mod, const char *xpath, const char *request_xpath,
         const struct lyd_node *parent, const char *orig_name, const void *orig_data, uint32_t timeout_ms,
-        sr_conn_ctx_t *conn, struct sr_shmsub_oper_sub_s *notify_subs, uint32_t notify_count,
+        sr_conn_ctx_t *conn, struct sr_shmsub_oper_get_sub_s *notify_subs, uint32_t notify_count,
         struct lyd_node **data, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
@@ -2032,22 +2032,22 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_shmsub_oper_notify(struct sr_mod_info_mod_s *mod, const char *xpath, const char *request_xpath,
-        const struct lyd_node *parent, const char *orig_name, const void *orig_data, sr_mod_oper_sub_t *oper_subs,
+sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, const char *request_xpath,
+        const struct lyd_node *parent, const char *orig_name, const void *orig_data, sr_mod_oper_get_sub_t *oper_get_subs,
         uint32_t idx1, uint32_t timeout_ms, sr_conn_ctx_t *conn, struct lyd_node **data, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, notify_count = 0;
-    struct sr_shmsub_oper_sub_s *notify_subs = NULL;
-    sr_mod_oper_xpath_sub_t *xpath_sub;
+    struct sr_shmsub_oper_get_sub_s *notify_subs = NULL;
+    sr_mod_oper_get_xpath_sub_t *xpath_sub;
 
-    for (i = 0; i < oper_subs[idx1].xpath_sub_count; ++i) {
-        xpath_sub = &((sr_mod_oper_xpath_sub_t *)(conn->ext_shm.addr + oper_subs[idx1].xpath_subs))[i];
+    for (i = 0; i < oper_get_subs[idx1].xpath_sub_count; ++i) {
+        xpath_sub = &((sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + oper_get_subs[idx1].xpath_subs))[i];
 
         /* check subscription aliveness */
         if (!sr_conn_is_alive(xpath_sub->cid)) {
             /* recover the subscription */
-            if ((err_info = sr_shmext_oper_sub_stop(conn, mod->shm_mod, idx1, i, 1, SR_LOCK_READ, 1))) {
+            if ((err_info = sr_shmext_oper_get_sub_stop(conn, mod->shm_mod, idx1, i, 1, SR_LOCK_READ, 1))) {
                 sr_errinfo_free(&err_info);
             }
             continue;
@@ -2069,11 +2069,11 @@ sr_shmsub_oper_notify(struct sr_mod_info_mod_s *mod, const char *xpath, const ch
     }
 
     if (notify_count == 1) {
-        err_info = sr_shmsub_oper_notify_single(mod->ly_mod, xpath, request_xpath, parent, orig_name, orig_data,
+        err_info = sr_shmsub_oper_get_notify_single(mod->ly_mod, xpath, request_xpath, parent, orig_name, orig_data,
                 notify_subs[0].xpath_sub, timeout_ms, conn->cid, data, cb_err_info);
     } else if (notify_count > 1) {
-        err_info = sr_shmsub_oper_notify_many(mod, xpath, request_xpath, parent, orig_name, orig_data, timeout_ms, conn,
-                notify_subs, notify_count, data, cb_err_info);
+        err_info = sr_shmsub_oper_get_notify_many(mod, xpath, request_xpath, parent, orig_name, orig_data, timeout_ms,
+                conn, notify_subs, notify_count, data, cb_err_info);
     }
 
     free(notify_subs);
@@ -3217,7 +3217,7 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, sr_error_t err_code, sr_shm_
 }
 
 /**
- * @brief Relock oper subscription SHM lock after it was locked before so it must be checked that no
+ * @brief Relock oper get subscription SHM lock after it was locked before so it must be checked that no
  * unexpected changes happened in the SHM (such as this processing timed out).
  *
  * @param[in] sub_shm SHM to lock/check.
@@ -3231,7 +3231,7 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, sr_error_t err_code, sr_shm_
  * may be set.
  */
 static int
-sr_shmsub_oper_listen_relock(sr_sub_shm_t *sub_shm, sr_lock_mode_t mode, sr_cid_t cid, uint32_t exp_req_id,
+sr_shmsub_oper_get_listen_relock(sr_sub_shm_t *sub_shm, sr_lock_mode_t mode, sr_cid_t cid, uint32_t exp_req_id,
         sr_error_t err_code, sr_error_info_t **err_info)
 {
     assert(!*err_info);
@@ -3258,21 +3258,21 @@ sr_shmsub_oper_listen_relock(sr_sub_shm_t *sub_shm, sr_lock_mode_t mode, sr_cid_
 }
 
 sr_error_info_t *
-sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_conn_ctx_t *conn)
+sr_shmsub_oper_get_listen_process_module_events(struct modsub_operget_s *oper_get_subs, sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, data_len = 0, request_id;
     char *data = NULL, *request_xpath = NULL, *shm_data_ptr, *origin;
     sr_error_t err_code = SR_ERR_OK;
-    struct modsub_opersub_s *oper_sub;
+    struct modsub_opergetsub_s *oper_get_sub;
     struct lyd_node *parent = NULL, *orig_parent, *node;
     sr_sub_shm_t *sub_shm;
     sr_shm_t shm_data_sub = SR_SHM_INITIALIZER;
     sr_session_ctx_t *ev_sess = NULL;
 
-    for (i = 0; (err_code == SR_ERR_OK) && (i < oper_subs->sub_count); ++i) {
-        oper_sub = &oper_subs->subs[i];
-        sub_shm = (sr_sub_shm_t *)oper_sub->sub_shm.addr;
+    for (i = 0; (err_code == SR_ERR_OK) && (i < oper_get_subs->sub_count); ++i) {
+        oper_get_sub = &oper_get_subs->subs[i];
+        sub_shm = (sr_sub_shm_t *)oper_get_sub->sub_shm.addr;
 
         /* SUB READ LOCK */
         if ((err_info = sr_rwlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
@@ -3281,7 +3281,7 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         }
 
         /* no new event */
-        if ((sub_shm->event != SR_SUB_EV_OPER) || (sub_shm->request_id == oper_sub->request_id)) {
+        if ((sub_shm->event != SR_SUB_EV_OPER) || (sub_shm->request_id == oper_get_sub->request_id)) {
             /* SUB READ UNLOCK */
             sr_rwunlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
             continue;
@@ -3289,8 +3289,8 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         request_id = sub_shm->request_id;
 
         /* open sub data SHM */
-        if ((err_info = sr_shmsub_data_open_remap(oper_subs->module_name, "oper", sr_str_hash(oper_sub->xpath, oper_sub->priority),
-                &shm_data_sub, 0))) {
+        if ((err_info = sr_shmsub_data_open_remap(oper_get_subs->module_name, "oper", sr_str_hash(oper_get_sub->xpath,
+                oper_get_sub->priority), &shm_data_sub, 0))) {
             goto error_rdunlock;
         }
         shm_data_ptr = shm_data_sub.addr;
@@ -3320,12 +3320,12 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         sr_rwunlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
         /* process event */
-        SR_LOG_INF("Processing \"%s\" \"operational\" event with ID %" PRIu32 ".", oper_subs->module_name, request_id);
+        SR_LOG_INF("Processing \"%s\" \"operational get\" event with ID %" PRIu32 ".", oper_get_subs->module_name, request_id);
 
         /* call callback */
         orig_parent = parent;
-        err_code = oper_sub->cb(ev_sess, oper_sub->sub_id, oper_subs->module_name, oper_sub->xpath,
-                request_xpath[0] ? request_xpath : NULL, request_id, &parent, oper_sub->private_data);
+        err_code = oper_get_sub->cb(ev_sess, oper_get_sub->sub_id, oper_get_subs->module_name, oper_get_sub->xpath,
+                request_xpath[0] ? request_xpath : NULL, request_id, &parent, oper_get_sub->private_data);
 
         /* go again to the top-level root for printing */
         if (parent) {
@@ -3346,12 +3346,12 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
 
         if (err_code == SR_ERR_CALLBACK_SHELVE) {
             /* this subscription did not process the event yet, skip it */
-            SR_LOG_INF("Shelved processing of \"operational\" event with ID %" PRIu32 ".", request_id);
+            SR_LOG_INF("Shelved processing of \"operational get\" event with ID %" PRIu32 ".", request_id);
             goto next_iter;
         }
 
         /* remember request ID so that we do not process it again */
-        oper_sub->request_id = request_id;
+        oper_get_sub->request_id = request_id;
 
         /*
          * prepare additional event data written into subscription SHM (after the structure)
@@ -3367,7 +3367,7 @@ sr_shmsub_oper_listen_process_module_events(struct modsub_oper_s *oper_subs, sr_
         }
 
         /* SUB WRITE LOCK */
-        if (sr_shmsub_oper_listen_relock(sub_shm, SR_LOCK_WRITE, conn->cid, request_id, err_code, &err_info)) {
+        if (sr_shmsub_oper_get_listen_relock(sub_shm, SR_LOCK_WRITE, conn->cid, request_id, err_code, &err_info)) {
             /* not necessarily an error */
             goto error;
         }

@@ -214,9 +214,9 @@ struct sr_subscription_ctx_s {
     } *change_subs;                 /**< Change subscriptions for each module. */
     uint32_t change_sub_count;      /**< Change module subscription count. */
 
-    struct modsub_oper_s {
+    struct modsub_operget_s {
         char *module_name;          /**< Module of the subscriptions. */
-        struct modsub_opersub_s {
+        struct modsub_opergetsub_s {
             uint32_t sub_id;        /**< Unique subscription ID. */
             char *xpath;            /**< Subscription XPath. */
             uint32_t priority;      /**< Subscription priority for one XPath */
@@ -228,8 +228,8 @@ struct sr_subscription_ctx_s {
             sr_shm_t sub_shm;       /**< Subscription SHM. */
         } *subs;                    /**< Operational subscriptions for each XPath. */
         uint32_t sub_count;         /**< Operational module XPath subscription count. */
-    } *oper_subs;                   /**< Operational subscriptions for each module. */
-    uint32_t oper_sub_count;        /**< Operational module subscription count. */
+    } *oper_get_subs;               /**< Operational get subscriptions for each module. */
+    uint32_t oper_get_sub_count;    /**< Operational get module subscription count. */
 
     struct modsub_notif_s {
         char *module_name;          /**< Module of the subscriptions. */
