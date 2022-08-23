@@ -23,7 +23,7 @@
 #include "common_types.h"
 #include "sysrepo_types.h"
 
-#define SR_SHM_VER 11   /**< Main, mod, and ext SHM version of their expected content structures. */
+#define SR_SHM_VER 12   /**< Main, mod, and ext SHM version of their expected content structures. */
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
 
 /**
@@ -143,6 +143,11 @@ typedef struct {
     off_t oper_get_subs;        /**< Array of operational get subscriptions (offset in ext SHM). */
     uint32_t oper_get_sub_count; /**< Number of operational get subscriptions. */
 
+    sr_rwlock_t oper_poll_lock; /**< Process-shared lock for reading or preventing changes (READ) or modifying (WRITE)
+                                     operational poll subscriptions. */
+    off_t oper_poll_subs;       /**< Array of operational poll subscriptions (offset in ext SHM). */
+    uint32_t oper_poll_sub_count; /**< Number of operational poll subscriptions. */
+
     sr_rwlock_t notif_lock;     /**< Process-shared lock for reading or preventing changes (READ) or modifying (WRITE)
                                      notification subscriptions. */
     off_t notif_subs;           /**< Array of notification subscriptions (offset in ext SHM). */
@@ -220,6 +225,18 @@ typedef struct {
     off_t xpath_subs;           /**< Subscriptions array of the given XPath (offset in ext SHM) */
     uint32_t xpath_sub_count;   /**< Number of subscriptions for given XPath */
 } sr_mod_oper_get_sub_t;
+
+/**
+ * @brief Ext SHM module operational poll subscription.
+ */
+typedef struct {
+    off_t xpath;                /**< XPath of the subscription (offset in ext SHM). */
+    int opts;                   /**< Subscription options. */
+    uint32_t sub_id;            /**< Unique subscription ID. */
+    uint32_t evpipe_num;        /**< Event pipe number. */
+    ATOMIC_T suspended;         /**< Whether the subscription is suspended. */
+    sr_cid_t cid;               /**< Connection ID. */
+} sr_mod_oper_poll_sub_t;
 
 /**
  * @brief Ext SHM notification subscription.

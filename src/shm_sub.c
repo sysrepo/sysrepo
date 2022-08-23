@@ -4,8 +4,8 @@
  * @brief subscription SHM routines
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -3415,6 +3415,101 @@ error:
     return err_info;
 }
 
+sr_error_info_t *
+sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_poll_subs, sr_conn_ctx_t *conn,
+        struct timespec *wake_up_in)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i, j;
+    sr_data_t *data = NULL;
+    struct sr_oper_poll_cache_s *cache;
+    struct modsub_operpollsub_s *oper_poll_sub;
+    struct timespec invalid_in;
+    sr_session_ctx_t *ev_sess = NULL;
+    sr_get_options_t get_opts;
+
+    for (i = 0; !err_info && (i < oper_poll_subs->sub_count); ++i) {
+        oper_poll_sub = &oper_poll_subs->subs[i];
+
+        /* CONN OPER CACHE READ LOCK */
+        if ((err_info = sr_rwlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+                __func__, NULL, NULL))) {
+            goto cleanup;
+        }
+
+        /* find the oper cache entry */
+        cache = NULL;
+        for (j = 0; j < conn->oper_cache_count; ++j) {
+            if (conn->oper_caches[j].sub_id == oper_poll_sub->sub_id) {
+                cache = &conn->oper_caches[j];
+                break;
+            }
+        }
+        assert(cache);
+
+        /* check data validity */
+        if (sr_conn_oper_cache_is_valid(cache, oper_poll_sub->valid_ms, &invalid_in)) {
+            /* update when to wake up */
+            if (wake_up_in && (sr_time_cmp(&invalid_in, wake_up_in) < 0)) {
+                *wake_up_in = invalid_in;
+            }
+            goto next_iter;
+        }
+
+        /* create a session */
+        if ((err_info = _sr_session_start(conn, SR_DS_OPERATIONAL, SR_SUB_EV_NONE, NULL, &ev_sess))) {
+            goto next_iter;
+        }
+
+        /* get the data, API function */
+        get_opts = SR_OPER_NO_STORED | SR_OPER_NO_CACHED | SR_OPER_WITH_ORIGIN;
+        if (sr_get_data(ev_sess, oper_poll_sub->path, 0, 0, get_opts, &data)) {
+            err_info = ev_sess->err_info;
+            ev_sess->err_info = NULL;
+            goto next_iter;
+        }
+
+        /* CACHE DATA WRITE LOCK */
+        if ((err_info = sr_rwlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+                __func__, NULL, NULL))) {
+            goto cleanup;
+        }
+
+        /* store in cache */
+        lyd_free_siblings(cache->data);
+        cache->data = NULL;
+        if (data) {
+            cache->data = data->tree;
+            data->tree = NULL;
+        }
+
+        /* update timestamp and when to wake up */
+        sr_time_get(&cache->timestamp, 0);
+        invalid_in = sr_time_ts_add(&cache->timestamp, oper_poll_sub->valid_ms);
+        if (wake_up_in && (sr_time_cmp(&invalid_in, wake_up_in) < 0)) {
+            *wake_up_in = invalid_in;
+        }
+
+        /* CACHE DATA UNLOCK */
+        sr_rwunlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+
+        /* finish event */
+        SR_LOG_INF("Successful \"operational poll\" \"%s\" cache update.", oper_poll_sub->path);
+
+next_iter:
+        /* CONN OPER CACHE UNLOCK */
+        sr_rwunlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+        sr_release_data(data);
+        data = NULL;
+        sr_session_stop(ev_sess);
+        ev_sess = NULL;
+    }
+
+cleanup:
+    return err_info;
+}
+
 /**
  * @brief Call RPC/action callback.
  *
@@ -4007,13 +4102,13 @@ cleanup:
 }
 
 void
-sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif_subs, struct timespec *stop_time_in)
+sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif_subs, struct timespec *wake_up_in)
 {
     struct timespec cur_time, next_stop_time = {0}, cur_stop_time_in;
     struct modsub_notifsub_s *notif_sub;
     uint32_t i;
 
-    if (!stop_time_in) {
+    if (!wake_up_in) {
         return;
     }
 
@@ -4034,12 +4129,12 @@ sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif_subs
     sr_time_get(&cur_time, 0);
     if (sr_time_cmp(&cur_time, &next_stop_time) > -1) {
         /* stop time has already elapsed while we were processing some other events, handle this as soon as possible */
-        stop_time_in->tv_nsec = 1;
+        wake_up_in->tv_nsec = 1;
     } else {
         cur_stop_time_in = sr_time_sub(&next_stop_time, &cur_time);
-        if (SR_TS_IS_ZERO(*stop_time_in) || (sr_time_cmp(stop_time_in, &cur_stop_time_in) > 0)) {
+        if (SR_TS_IS_ZERO(*wake_up_in) || (sr_time_cmp(wake_up_in, &cur_stop_time_in) > 0)) {
             /* no previous stop time or this one is nearer */
-            *stop_time_in = cur_stop_time_in;
+            *wake_up_in = cur_stop_time_in;
         }
     }
 }
@@ -4160,7 +4255,7 @@ sr_shmsub_listen_thread(void *arg)
     sr_subscription_ctx_t *subscr = (sr_subscription_ctx_t *)arg;
     fd_set rfds;
     struct timeval tv;
-    struct timespec stop_time_in = {0};
+    struct timespec wake_up_in = {0};
     int ret;
 
     /* start event loop */
@@ -4172,8 +4267,8 @@ sr_shmsub_listen_thread(void *arg)
             goto wait_for_event;
         }
 
-        /* process the new event (or subscription stop time has elapsed) */
-        ret = sr_subscription_process_events(subscr, NULL, &stop_time_in);
+        /* process the new event (or handle a scheduled event) */
+        ret = sr_subscription_process_events(subscr, NULL, &wake_up_in);
         if (ret == SR_ERR_TIME_OUT) {
             /* continue on time out and try again to actually process the current event because unless
              * another event is generated, our event pipe will not get notified */
@@ -4189,9 +4284,9 @@ sr_shmsub_listen_thread(void *arg)
 
 wait_for_event:
         /* wait an arbitrary long time or until a stop time is elapsed */
-        if (!SR_TS_IS_ZERO(stop_time_in)) {
-            tv.tv_sec = stop_time_in.tv_sec;
-            tv.tv_usec = stop_time_in.tv_nsec / 1000;
+        if (!SR_TS_IS_ZERO(wake_up_in)) {
+            tv.tv_sec = wake_up_in.tv_sec;
+            tv.tv_usec = wake_up_in.tv_nsec / 1000;
         } else {
             tv.tv_sec = 10;
             tv.tv_usec = 0;
@@ -4207,7 +4302,7 @@ wait_for_event:
             SR_ERRINFO_SYSERRNO(&err_info, "select");
             sr_errinfo_free(&err_info);
             goto error;
-        } else if (SR_TS_IS_ZERO(stop_time_in) && (!ret || ((ret == -1) && (errno == EINTR)))) {
+        } else if (SR_TS_IS_ZERO(wake_up_in) && (!ret || ((ret == -1) && (errno == EINTR)))) {
             /* timeout/signal received, retry */
             goto wait_for_event;
         }

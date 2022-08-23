@@ -242,6 +242,17 @@ sr_error_info_t *sr_shmsub_oper_get_listen_process_module_events(struct modsub_o
         sr_conn_ctx_t *conn);
 
 /**
+ * @brief Process all module poll operational events, if any.
+ *
+ * @param[in] oper_poll_subs Module poll operational subscriptions.
+ * @param[in] conn Connection to use.
+ * @param[in,out] wake_up_in Nearest cache update of a subscription. If none, left unmodified.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_poll_subs,
+        sr_conn_ctx_t *conn, struct timespec *wake_up_in);
+
+/**
  * @brief Process all RPC/action events for one RPC/action, if any.
  *
  * @param[in] rpc_sub RPC/action subscriptions.
@@ -263,9 +274,9 @@ sr_error_info_t *sr_shmsub_notif_listen_process_module_events(struct modsub_noti
  * @brief Get nearest stop time of a subscription, if any.
  *
  * @param[in] notif_subs Module notification subscriptions.
- * @param[in,out] stop_time_in Nearest stop time of a subscription, if none, left unmodified.
+ * @param[in,out] wake_up_in Nearest stop time of a subscription. If none, left unmodified.
  */
-void sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif_subs, struct timespec *stop_time_in);
+void sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif_subs, struct timespec *wake_up_in);
 
 /**
  * @brief Check notification subscriptions stop time and finish the subscription if it has elapsed.

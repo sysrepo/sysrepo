@@ -4,8 +4,8 @@
  * @brief common routines header
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -79,8 +79,14 @@ struct srplg_ntf_s;
 /** timeout for locking connection remap lock; maximum time it can be continuously read/written to (ms) */
 #define SR_CONN_REMAP_LOCK_TIMEOUT 10000
 
-/** timeout for write-locking module cache (ms) */
+/** timeout for write-locking module running plugin cache (ms) */
 #define SR_CONN_RUN_CACHE_LOCK_TIMEOUT 1000
+
+/** timeout for write-locking connection oper cache (ms) */
+#define SR_CONN_OPER_CACHE_LOCK_TIMEOUT 10
+
+/** timeout for write-locking connection subscription oper cache data (ms) */
+#define SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT 1000
 
 /** timeout for locking (data of) a module; maximum time a module write lock is expected to be held (ms) */
 #define SR_MOD_LOCK_TIMEOUT 5000
@@ -231,6 +237,32 @@ sr_error_info_t *sr_subscr_oper_get_sub_add(sr_subscription_ctx_t *subscr, uint3
 void sr_subscr_oper_get_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock);
 
 /**
+ * @brief Add an operational poll subscription into a subscription structure.
+ *
+ * @param[in,out] subscr Subscription structure.
+ * @param[in] sub_id Unique sub ID.
+ * @param[in] sess Subscription session.
+ * @param[in] mod_name Subscription module name.
+ * @param[in] path Subscription path.
+ * @param[in] valid_ms Cached operational data validity interval in ms.
+ * @param[in] sub_opts Subscription options.
+ * @param[in] has_subs_lock What kind of SUBS lock is held.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_subscr_oper_poll_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess,
+        const char *mod_name, const char *path, uint32_t valid_ms, sr_subscr_options_t sub_opts,
+        sr_lock_mode_t has_subs_lock);
+
+/**
+ * @brief Delete an operational poll subscription from a subscription structure.
+ *
+ * @param[in,out] subscr Subscription structure.
+ * @param[in] sub_id Unique sub ID.
+ * @param[in] has_subs_lock What kind of SUBS lock is held.
+ */
+void sr_subscr_oper_poll_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock);
+
+/**
  * @brief Add a notification subscription into a subscription structure.
  *
  * @param[in,out] subscr Subscription structure.
@@ -310,6 +342,17 @@ struct modsub_changesub_s *sr_subscr_change_sub_find(const sr_subscription_ctx_t
  * @return Matching subscription, NULL if not found.
  */
 struct modsub_opergetsub_s *sr_subscr_oper_get_sub_find(const sr_subscription_ctx_t *subscr, uint32_t sub_id,
+        const char **module_name);
+
+/**
+ * @brief Find a specific operational poll subscription in a subscription structure.
+ *
+ * @param[in] subscr Subscription structure to use.
+ * @param[in] sub_id Subscription ID to find.
+ * @param[out] module_name Optional found subscription module name.
+ * @return Matching subscription, NULL if not found.
+ */
+struct modsub_operpollsub_s *sr_subscr_oper_poll_sub_find(const sr_subscription_ctx_t *subscr, uint32_t sub_id,
         const char **module_name);
 
 /**
@@ -736,10 +779,19 @@ sr_error_info_t *sr_perm_check(sr_conn_ctx_t *conn, const struct lys_module *ly_
 /**
  * @brief Get current time with an offset.
  *
- * @param[out] ts Current time offset by \p add_ms.
- * @param[in] add_ms Number os milliseconds added.
+ * @param[out] ts Current time offset by @p add_ms.
+ * @param[in] add_ms Number of milliseconds to add.
  */
 void sr_time_get(struct timespec *ts, uint32_t add_ms);
+
+/**
+ * @brief Add milliseconds to a timespec.
+ *
+ * @param[in] ts Timespec to add to.
+ * @param[in] add_ms Number of milliseconds to add.
+ * @return Resulting timespec.
+ */
+struct timespec sr_time_ts_add(const struct timespec *ts, uint32_t add_ms);
 
 /**
  * @brief Compare 2 timespec structures.
@@ -1058,11 +1110,47 @@ void sr_rwunlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_ci
 int sr_conn_is_alive(sr_cid_t cid);
 
 /**
- * @brief Flush all cached data of a connection in all its DS plugins.
+ * @brief Flush all cached running data of a connection in all its DS plugins.
  *
  * @param[in] conn Connection to use.
  */
-void sr_conn_flush_cache(sr_conn_ctx_t *conn);
+void sr_conn_running_cache_flush(sr_conn_ctx_t *conn);
+
+/**
+ * @brief Add a new oper cache entry into a connection.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] sub_id Subscription ID of the oper poll subscription.
+ * @param[in] module_name Subscription module name.
+ * @param[in] path Subscription path.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_conn_oper_cache_add(sr_conn_ctx_t *conn, uint32_t sub_id, const char *module_name, const char *path);
+
+/**
+ * @brief Delete an oper cache entry in a connection.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] sub_id Subscription ID to delete.
+ */
+void sr_conn_oper_cache_del(sr_conn_ctx_t *conn, uint32_t sub_id);
+
+/**
+ * @brief Flush all cached oper data of a connection.
+ *
+ * @param[in] conn Connection to use.
+ */
+void sr_conn_oper_cache_flush(sr_conn_ctx_t *conn);
+
+/**
+ * @brief Check whether particular cached data are still valid.
+ *
+ * @param[in] cache Cached data to check.
+ * @param[in] valid_ms Validity period of the data.
+ * @param[out] invalid_in Optional time when the cache will become invalid, set only if valid.
+ * @return Whether the data are valid or not.
+ */
+int sr_conn_oper_cache_is_valid(const struct sr_oper_poll_cache_s *cache, uint32_t valid_ms, struct timespec *invalid_in);
 
 /**
  * @brief Wrapper to realloc() that frees memory on failure.

@@ -4,8 +4,8 @@
  * @brief public API sysrepo header
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -1126,12 +1126,13 @@ int sr_get_event_pipe(sr_subscription_ctx_t *subscription, int *event_pipe);
  *
  * @param[in] subscription Subscription without a listening thread with some new events.
  * @param[in] session Optional session for storing errors.
- * @param[out] stop_time_in Optional time until the nearest notification subscription stop time is elapsed
- * and this function should be called. If there are no subscriptions with stop time in future, it is zeroed.
+ * @param[out] wake_up_in Optional time when a scheduled event occurs and this function should be called again. It can
+ * be the nearest notification subscription stop time or operational poll subscription cache update. If there are no
+ * scheduled events in future, it is zeroed.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_subscription_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session,
-        struct timespec *stop_time_in);
+        struct timespec *wake_up_in);
 
 /**
  * @brief Get the subscription ID of the last created subscription.
@@ -1613,6 +1614,34 @@ int sr_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t 
  */
 int sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const char *path,
         sr_oper_get_items_cb callback, void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
+
+/**
+ * @brief Start periodic retrieval and caching of operational data at the given path.
+ *
+ * The operational data are cached in the connection of @p session. When any session created on this connection
+ * requires data of the cached operational get subscription at @p path, the callback is not called and the cached data
+ * are used instead. Additionally, if @p opts include ::SR_SUBSCR_OPER_POLL_DIFF, any changes detected on cache data
+ * refresh are reported to corresponding subscribers. For an operational get subscription, there can only be a
+ * __single__ operational poll subscription with this flag. The first cache update is performed directly by this
+ * function.
+ *
+ * Required READ access.
+ *
+ * @note Be aware of some specific [threading limitations](@ref oper_subs). Especially note that you cannot have
+ * an operational poll subscription in the same @p subscription structure as the operational get subscription being
+ * cached because a dead-lock would occur on cache update.
+ *
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
+ * @param[in] module_name Name of the affected module.
+ * @param[in] path [Path](@ref paths) matching the operational get subscription(s) to poll.
+ * @param[in] valid_ms Time the retrieved data are stored in cache until being considered invalid.
+ * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
+ * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
+ * @param[in,out] subscription Subscription context, zeroed for first subscription, freed by ::sr_unsubscribe.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, const char *path, uint32_t valid_ms,
+        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription);
 
 /** @} oper_subs */
 

@@ -22,6 +22,11 @@ module sysrepo-monitoring {
     description
         "Sysrepo YANG datastore monitoring state information.";
 
+    revision "2022-08-19" {
+        description
+            "Added state information for operational poll subscriptions.";
+    }
+
     revision "2022-04-08" {
         description
             "Added NACM statistics.";
@@ -205,6 +210,13 @@ module sysrepo-monitoring {
                 uses lock-params;
             }
 
+            list oper-poll-sub-lock {
+                description
+                    "Held module operational poll subscriptions lock.";
+
+                uses lock-params;
+            }
+
             list notif-sub-lock {
                 description
                     "Held module notification subscriptions lock.";
@@ -286,6 +298,31 @@ module sysrepo-monitoring {
                             description
                                 "Whether the subscription is in the suspended state.";
                         }
+                    }
+                }
+
+                list operational-poll-sub {
+                    key "xpath";
+                    description
+                        "Operational poll subscription.";
+
+                    leaf xpath {
+                        type yang:xpath1.0;
+                        description
+                            "Operational poll subscription XPath.";
+                    }
+
+                    leaf cid {
+                        type conn-ref;
+                        description
+                            "CID of the connection that this subscription belongs to.";
+                    }
+
+                    leaf suspended {
+                        type boolean;
+                        mandatory true;
+                        description
+                            "Whether the subscription is in the suspended state.";
                     }
                 }
 

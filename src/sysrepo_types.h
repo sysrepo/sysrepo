@@ -290,11 +290,13 @@ typedef enum {
                                           parents, these are also returned (with keys if lists). */
     SR_OPER_NO_SUBS = 4,             /**< Return only stored operational data (push), do not call subscriber callbacks (pull). */
     SR_OPER_NO_STORED = 8,           /**< Do not merge with stored operational data (push). */
-    SR_OPER_WITH_ORIGIN = 16         /**< Return data with their [origin attributes](@ref datastores). Nodes without
+    SR_OPER_WITH_ORIGIN = 16,        /**< Return data with their [origin attributes](@ref datastores). Nodes without
                                           one inherit the origin from parents. */
+    SR_OPER_NO_CACHED = 32           /**< Do not use cached oper data from operational poll subscriptions even if
+                                          available. */
 } sr_get_oper_flag_t;
 
-#define SR_OPER_MASK 31              /**< Mask for all get oper data flags. */
+#define SR_OPER_MASK 63              /**< Mask for all get oper data flags. */
 
 /**
  * @brief Flags used to override default data get behavior.
@@ -414,7 +416,7 @@ typedef enum {
     /**
      * @brief Instead of removing any previous existing matching data before getting them from an operational
      * subscription callback, keep them. Then the returned data are merged into the existing data. Accepted
-     * only for operational get subscriptions.
+     * only for ::sr_oper_get_subscribe().
      */
     SR_SUBSCR_OPER_MERGE = 32,
 
@@ -426,8 +428,8 @@ typedef enum {
     SR_SUBSCR_THREAD_SUSPEND = 64,
 
     /**
-     * @brief Compute diff and report the changes to any operational data module change subscriptions. Accepted
-     * only for operational poll subscriptions.
+     * @brief On every data retrieval additionally compute diff with the previous data and report the changes to any
+     * operational data module change subscriptions. Accepted only for ::sr_oper_poll_subscribe().
      */
     SR_SUBSCR_OPER_POLL_DIFF = 128
 

@@ -874,6 +874,69 @@ cleanup:
 }
 
 /**
+ * @brief Try to merge operational get cached data of a subscription.
+ *
+ * @param[in] mod Mod info module.
+ * @param[in] sub_xpath Subscription XPath.
+ * @param[in] conn Connection to use.
+ * @param[in,out] data Operational data tree to merge into.
+ * @param[out] merged Whether the cached data were found and merged or not.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_module_oper_data_update_cached(struct sr_mod_info_mod_s *mod, const char *sub_xpath, sr_conn_ctx_t *conn,
+        struct lyd_node **data, int *merged)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_oper_poll_cache_s *cache = NULL;
+    uint32_t i;
+
+    *merged = 0;
+
+    /* CONN OPER CACHE READ LOCK */
+    if ((err_info = sr_rwlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+            __func__, NULL, NULL))) {
+        goto cleanup;
+    }
+
+    /* try to get data from the cache */
+    for (i = 0; i < conn->oper_cache_count; ++i) {
+        if (!strcmp(conn->oper_caches[i].module_name, mod->ly_mod->name) &&
+                !strcmp(conn->oper_caches[i].path, sub_xpath)) {
+            cache = &conn->oper_caches[i];
+            break;
+        }
+    }
+    if (!cache) {
+        goto cleanup_cache_unlock;
+    }
+
+    /* CACHE DATA READ LOCK */
+    if ((err_info = sr_rwlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+            __func__, NULL, NULL))) {
+        goto cleanup_cache_unlock;
+    }
+
+    /* merge cached data */
+    if (lyd_merge_siblings(data, cache->data, 0)) {
+        sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx, NULL);
+        goto cleanup_data_cache_unlock;
+    }
+    *merged = 1;
+
+cleanup_data_cache_unlock:
+    /* CACHE DATA UNLOCK */
+    sr_rwunlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+cleanup_cache_unlock:
+    /* CONN OPER CACHE UNLOCK */
+    sr_rwunlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+cleanup:
+    return err_info;
+}
+
+/**
  * @brief Update (replace or append) operational data for a specific module.
  *
  * @param[in] mod Mod info module to process.
@@ -896,7 +959,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
     const char *sub_xpath, **request_xpaths = NULL;
     char *parent_xpath = NULL;
     uint32_t i, j, req_xpath_count = 0;
-    int required;
+    int required, merged;
     struct ly_set *set = NULL;
     struct lyd_node *edit = NULL, *oper_data;
 
@@ -975,6 +1038,17 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
         /* remove any present data */
         if (!(xpath_subs[0].opts & SR_SUBSCR_OPER_MERGE) && (err_info = sr_lyd_xpath_complement(data, sub_xpath))) {
             goto cleanup_opergetsub_ext_unlock;
+        }
+
+        if (!(get_oper_opts & SR_OPER_NO_CACHED)) {
+            /* try to get data from the cache */
+            if ((err_info = sr_module_oper_data_update_cached(mod, sub_xpath, conn, data, &merged))) {
+                goto cleanup_opergetsub_ext_unlock;
+            }
+            if (merged) {
+                /* we have the data */
+                goto next_iter;
+            }
         }
 
         /* trim the last node to get the parent */
@@ -1474,6 +1548,7 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
     sr_mod_change_sub_t *change_subs;
     sr_mod_oper_get_sub_t *oper_get_subs;
     sr_mod_oper_get_xpath_sub_t *xpath_sub;
+    sr_mod_oper_poll_sub_t *oper_poll_subs;
     sr_mod_notif_sub_t *notif_subs;
     struct sr_mod_lock_s *shm_lock;
     uint32_t i, j;
@@ -1562,6 +1637,11 @@ ds_unlock:
         return err_info;
     }
 
+    /* oper-poll-sub-lock */
+    if ((err_info = sr_modinfo_module_srmon_locks(&shm_mod->oper_poll_lock, "oper-poll-sub-lock", sr_mod))) {
+        return err_info;
+    }
+
     /* notif-sub-lock */
     if ((err_info = sr_modinfo_module_srmon_locks(&shm_mod->notif_lock, "notif-sub-lock", sr_mod))) {
         return err_info;
@@ -1619,6 +1699,21 @@ ds_unlock:
             sprintf(buf, "%s", ATOMIC_LOAD_RELAXED(xpath_sub->suspended) ? "true" : "false");
             SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info);
         }
+    }
+
+    oper_poll_subs = (sr_mod_oper_poll_sub_t *)(conn->ext_shm.addr + shm_mod->oper_poll_subs);
+    for (i = 0; i < shm_mod->oper_poll_sub_count; ++i) {
+        /* operational-poll-sub with xpath */
+        SR_CHECK_LY_RET(lyd_new_list(sr_subs, NULL, "operational-poll-sub", 0, &sr_sub,
+                conn->ext_shm.addr + oper_poll_subs[i].xpath), ly_ctx, err_info);
+
+        /* cid */
+        sprintf(buf, "%" PRIu32, oper_poll_subs[i].cid);
+        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info);
+
+        /* suspended */
+        sprintf(buf, "%s", ATOMIC_LOAD_RELAXED(oper_poll_subs[i].suspended) ? "true" : "false");
+        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info);
     }
 
     notif_subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);

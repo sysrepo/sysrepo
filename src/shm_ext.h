@@ -161,6 +161,45 @@ sr_error_info_t *sr_shmext_oper_get_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_
         int del_evpipe, sr_lock_mode_t has_locks, int recovery);
 
 /**
+ * @brief Add main SHM module operational poll subscription.
+ * Ext SHM may be remapped!
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] sub_id Unique sub ID.
+ * @param[in] path Subscription path.
+ * @param[in] sub_opts Subscription options.
+ * @param[in] evpipe_num Subscription event pipe number.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_oper_poll_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, const char *path,
+        int sub_opts, uint32_t evpipe_num);
+
+/**
+ * @brief Remove main SHM module operational poll subscription.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] sub_id Unique sub ID.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_oper_poll_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id);
+
+/**
+ * @brief Remove main SHM module operational poll subscription with param-based cleanup.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module with subscriptions.
+ * @param[in] del_idx Index of the subscription to free.
+ * @param[in] del_evpipe Whether to also remove the evpipe.
+ * @param[in] has_locks Mode of held CHANGE SUB and EXT locks.
+ * @param[in] recovery Whether to print subscription recovery warning.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_oper_poll_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx,
+        int del_evpipe, sr_lock_mode_t has_locks, int recovery);
+
+/**
  * @brief Add main SHM module notification subscription and create sub SHM if the first subscription was added.
  * Ext SHM may be remapped!
  *
@@ -280,6 +319,19 @@ sr_error_info_t *sr_shmext_change_sub_suspended(sr_conn_ctx_t *conn, const char 
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmext_oper_get_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id,
+        int set_suspended, int *get_suspended);
+
+/**
+ * @brief Get or set operational poll subscription suspended state (flag).
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] mod_name Module name.
+ * @param[in] sub_id Subscription ID.
+ * @param[in] set_suspended Set suspended to this value, leave unmodified if -1.
+ * @param[out] get_suspended Current suspended state.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmext_oper_poll_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id,
         int set_suspended, int *get_suspended);
 
 /**

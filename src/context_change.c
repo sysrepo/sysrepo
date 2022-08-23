@@ -75,8 +75,9 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
         }
         remap_mode = SR_LOCK_WRITE;
 
-        /* context will be destroyed, free the cache */
-        sr_conn_flush_cache(conn);
+        /* context will be destroyed, free the caches */
+        sr_conn_running_cache_flush(conn);
+        sr_conn_oper_cache_flush(conn);
 
         /* remap mod SHM */
         if ((err_info = sr_shm_remap(&conn->mod_shm, 0))) {

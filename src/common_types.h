@@ -129,6 +129,18 @@ struct sr_conn_ctx_s {
         const struct srplg_ntf_s *plugin;   /**< Notification plugin. */
     } *ntf_handles;                 /**< Notification implementation handles. */
     uint32_t ntf_handle_count;      /**< Notification implementaion handle count. */
+
+    struct sr_oper_poll_cache_s {
+        uint32_t sub_id;            /**< Operational poll subscription ID. */
+        char *module_name;          /**< Operational poll subscription module name. */
+        char *path;                 /**< Operational poll/get subscription path. */
+
+        sr_rwlock_t data_lock;      /**< Lock for accessing the data. */
+        struct lyd_node *data;      /**< Cached data of a single operational get subscription. */
+        struct timespec timestamp;  /**< Timestamp of the cached operational data. */
+    } *oper_caches;                 /**< Operational get subscription data caches. */
+    uint32_t oper_cache_count;      /**< Operational get subscription data cache count. */
+    sr_rwlock_t oper_cache_lock;    /**< Operational get subscription data cache lock. */
 };
 
 /**
@@ -230,6 +242,19 @@ struct sr_subscription_ctx_s {
         uint32_t sub_count;         /**< Operational module XPath subscription count. */
     } *oper_get_subs;               /**< Operational get subscriptions for each module. */
     uint32_t oper_get_sub_count;    /**< Operational get module subscription count. */
+
+    struct modsub_operpoll_s {
+        char *module_name;          /**< Module of the subscriptions. */
+        struct modsub_operpollsub_s {
+            uint32_t sub_id;        /**< Unique subscription ID. */
+            char *path;             /**< Subscription path. */
+            uint32_t valid_ms;      /**< Cached operational data validity interval in ms. */
+            sr_subscr_options_t opts;   /**< Subscription options. */
+            sr_session_ctx_t *sess; /**< Subscription session. */
+        } *subs;                    /**< Operational subscriptions for each XPath. */
+        uint32_t sub_count;         /**< Operational module XPath subscription count. */
+    } *oper_poll_subs;              /**< Operational poll subscriptions for each module. */
+    uint32_t oper_poll_sub_count;   /**< Operational poll module subscription count. */
 
     struct modsub_notif_s {
         char *module_name;          /**< Module of the subscriptions. */

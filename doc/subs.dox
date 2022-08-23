@@ -26,7 +26,7 @@ These are the most common kinds of subscriptions. A callback can be set to be ca
 changes occur so that it can appropriately react and adjust the system or whatever it manages accordingly. There can
 be many subscribers for the same data and arbitrary XPath filters can be applied.
 
-Any datastore can be subscribed to (startup, running and operational). The datastore is determined by the current
+Any datastore can be subscribed to (startup, running, and operational). The datastore is determined by the current
 datastore at the time of subscription (that is, the call to ::sr_module_change_subscribe()). Changing the active
 datastore after that does not have an effect on subscriptions that have already been made. For example, it is possible
 to subscribe to running datastore, switch to the startup datastore, subscribe to it, and then switch back to edit the
@@ -48,8 +48,9 @@ Also, a subscription can request the _enabled_ event and get the current datasto
 subscribing. This event is normally followed by _done_ event, just like the _change_ event. However, the _enabled_
 event is generated even if the current configuration is empty (so there will be no changes available in the callback)!
 
-When subscribing to _operational_ datastore changes, only [push](@ref oper_data) changes are acknowledged and callbacks
-called. Pull subscriptions are ignored.
+When subscribing to _operational_ datastore changes, be aware of some specific conditions. Normally, only [push](@ref oper_data)
+changes are acknowledged and callbacks called. Changes in pull subscriptions are reported only if a corresponding
+[operational poll subscription](@ref oper_subs) is created.
 
 On the events _update_ and _change_, the callback can return a special ::SR_ERR_CALLBACK_SHELVE value. This causes
 the event not to be processed and simply skipped (shelved). When all the events on the subscription are processed
@@ -100,24 +101,31 @@ time was reached, _stop_ is received before removing the subscription.
 ## Operational Subscriptions
 @anchor oper_subs
 
-Operational subscriptions allow providing data that are requested by clients. Commonly, these can be used
-to read the current state of a device, for example, and then return them as _state_ data nodes. However,
-they can also be used to provide _configuration_ data nodes. In that case they should return only the
-configuration that is actually in-use by the managed device. Much more details and explanations can be found
-in the [NMDA RFC](@ref rfcs).
+There are 2 types of operational subscriptions that are completely different. Operational **get** subscriptions allow
+providing data that are requested by clients. Commonly, these can be used to read the current state of a device, for
+example, and then return them as _state_ data nodes. However, they can also be used to provide _configuration_ data
+nodes. In that case they should return only the configuration that is actually in-use by the managed device. Much more
+details and explanations can be found in the [NMDA RFC](@ref rfcs).
 
-Any operational subscription is meant to provide all nodes in the subtree it is subscribed for. All the previous nodes
+Any operational get subscription is meant to provide all nodes in the subtree it is subscribed for. All the previous nodes
 (copied from _running_ datastore, provided by [push operational data](@ref oper_data), or even by previous operational
-subscription) are replaced by the new ones provided. This behavior can be changed and the previous nodes merged if
+get subscription) are replaced by the new ones provided. This behavior can be changed and the previous nodes merged if
 ::SR_SUBSCR_OPER_MERGE option is used for the subscription. That can be useful, for example, for a scenario such as
 providing some state data nodes into a subtree with configuration nodes as well, which are desired to be kept.
 
-When using these [pull operational data](@ref oper_data) subscriptions, the subscription must be **actively handling events**
-whenever **operational datastore data of the module are requested** (so these 2 operations cannot occur in a single thread,
-so they must have individual subscription structures) to **avoid a time out**. Note that operational datastore data are
+Operational **poll** subscriptions are special kind of subscriptions that do not call any callback. Instead, they
+periodically request data of an operational get subscription and store them in the connection. Then, whenever these
+data are required by a session on the connection, these cached data are used instead of calling the callback of the
+operational get subscription. In addition to this caching mechanism, on every cache refresh these subscriptions can
+optionally generate a list of changes (diff) that is reported to any [change](@ref change_subs) subscribers on the
+particular data.
+
+When using [pull operational get data](@ref oper_data) subscriptions, the subscription must be **actively handling events**
+whenever **operational datastore data of the module are requested** (so these 2 operations cannot occur in a single thread
+and they must have individual subscription structures) to **avoid a time out**. Note that operational datastore data are
 required not only when requested explicitly using a getter but also when validating operational datastore (all modules
-or the same module), setting push operational data (for the same module), or sending an RPC/action or a notification
-(if the specific module data are required for validation).
+or the same module), setting push operational data (for the same module), sending an RPC/action or a notification
+(if the specific module data are required for validation), or an operational poll subscription refreshing the cache.
 
 Operational callback is not called unless its data are required so keep these rules in mind:
 

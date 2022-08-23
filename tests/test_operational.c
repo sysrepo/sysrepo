@@ -5411,11 +5411,143 @@ test_same_xpath_fail(void **state)
     sr_unsubscribe(subscr3);
     sr_unsubscribe(subscr4);
     sr_unsubscribe(subscr5);
+}
 
-    /* see if EBUSY is thrown */
-    ret = pthread_barrier_destroy(&st->barrier);
-    assert_int_not_equal(ret, EBUSY);
+/* TEST */
+static int
+cache_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    struct state *st = private_data;
+    const struct ly_ctx *ly_ctx;
+
+    (void)sub_id;
+    (void)request_xpath;
+    (void)request_id;
+    (void)private_data;
+
+    ly_ctx = sr_acquire_context(sr_session_get_connection(session));
+
+    assert_string_equal(module_name, "ietf-interfaces");
+    assert_string_equal(xpath, "/ietf-interfaces:interfaces-state");
+    assert_non_null(parent);
+    assert_null(*parent);
+
+    assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/ietf-interfaces:interfaces-state/interface[name='eth5']/type",
+            "iana-if-type:ethernetCsmacd", 0, parent));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
+            "oper-status", "testing", 0, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
+            "statistics/discontinuity-time", "2000-01-01T02:00:00-00:00", 0, NULL));
+    sr_release_context(sr_session_get_connection(session));
+
+    ATOMIC_INC_RELAXED(st->cb_called);
+    return SR_ERR_OK;
+}
+
+static void
+test_cache(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_data_t *data;
+    sr_subscription_ctx_t *subscr1 = NULL, *subscr2 = NULL;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+
+    /* subscribe as state data provider */
+    ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", cache_oper_cb,
+            st, 0, &subscr1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe for oper poll */
+    ret = sr_oper_poll_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", 3000, 0, &subscr2);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the data from operational #1 */
+    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
+
+    sr_release_data(data);
+
+    str2 =
+    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
+        "<interface>"
+            "<name>eth5</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<oper-status>testing</oper-status>"
+            "<statistics>"
+                "<discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>"
+            "</statistics>"
+        "</interface>"
+    "</interfaces-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* read the data from operational #2 */
+    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+
+    sr_release_data(data);
+
+    str2 =
+    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth5</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<oper-status>testing</oper-status>"
+            "<statistics>"
+                "<discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>"
+            "</statistics>"
+        "</interface>"
+    "</interfaces-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* read the data from operational #3 */
+    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+
+    sr_release_data(data);
+
+    str2 =
+    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
+        "<interface>"
+            "<name>eth5</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<oper-status>testing</oper-status>"
+            "<statistics>"
+                "<discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>"
+            "</statistics>"
+        "</interface>"
+    "</interfaces-state>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    sr_unsubscribe(subscr1);
+    sr_unsubscribe(subscr2);
+
+    /* only a single callback call expected, cache used otherwise */
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 }
 
 int
@@ -5460,6 +5592,7 @@ main(void)
         cmocka_unit_test_teardown(test_same_xpath, clear_up),
         cmocka_unit_test_teardown(test_same_xpath_parallel, clear_up),
         cmocka_unit_test_teardown(test_same_xpath_fail, clear_up),
+        cmocka_unit_test_teardown(test_cache, clear_up),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

@@ -108,10 +108,15 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     if ((err_info = sr_ntf_handle_init(&conn->ntf_handles, &conn->ntf_handle_count))) {
         goto error8;
     }
+    if ((err_info = sr_rwlock_init(&conn->oper_cache_lock, 0))) {
+        goto error9;
+    }
 
     *conn_p = conn;
     return NULL;
 
+error9:
+    sr_ntf_handle_free(conn->ntf_handles, conn->ntf_handle_count);
 error8:
     sr_rwlock_destroy(&conn->running_cache_lock);
 error7:
@@ -143,8 +148,10 @@ sr_conn_free(sr_conn_ctx_t *conn)
         return;
     }
 
-    /* flush cache before context destroy */
-    sr_conn_flush_cache(conn);
+    assert(!conn->oper_caches);
+
+    /* flush running cache before context destroy */
+    sr_conn_running_cache_flush(conn);
 
     ly_ctx_destroy(conn->ly_ctx);
     free(conn->ext_searchdir);
@@ -1410,8 +1417,9 @@ sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *sea
         goto cleanup;
     }
 
-    /* flush cache before context destroy */
-    sr_conn_flush_cache(conn);
+    /* flush caches before context destroy */
+    sr_conn_running_cache_flush(conn);
+    sr_conn_oper_cache_flush(conn);
 
     /* increase content ID */
     conn->content_id = ++SR_CONN_MAIN_SHM(conn)->content_id;
@@ -1537,8 +1545,9 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name, int force)
         goto cleanup;
     }
 
-    /* flush cache before context destroy */
-    sr_conn_flush_cache(conn);
+    /* flush caches before context destroy */
+    sr_conn_running_cache_flush(conn);
+    sr_conn_oper_cache_flush(conn);
 
     /* increase content ID */
     conn->content_id = ++SR_CONN_MAIN_SHM(conn)->content_id;
@@ -1648,8 +1657,9 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
         goto cleanup;
     }
 
-    /* flush cache before context destroy */
-    sr_conn_flush_cache(conn);
+    /* flush caches before context destroy */
+    sr_conn_running_cache_flush(conn);
+    sr_conn_oper_cache_flush(conn);
 
     /* increase content ID */
     conn->content_id = ++SR_CONN_MAIN_SHM(conn)->content_id;
@@ -2164,8 +2174,9 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
         goto cleanup;
     }
 
-    /* flush cache before context destroy */
-    sr_conn_flush_cache(conn);
+    /* flush caches before context destroy */
+    sr_conn_running_cache_flush(conn);
+    sr_conn_oper_cache_flush(conn);
 
     /* increase content ID */
     conn->content_id = ++SR_CONN_MAIN_SHM(conn)->content_id;
@@ -4044,7 +4055,7 @@ sr_get_event_pipe(sr_subscription_ctx_t *subscription, int *event_pipe)
 }
 
 API int
-sr_subscription_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session, struct timespec *stop_time_in)
+sr_subscription_process_events(sr_subscription_ctx_t *subscription, sr_session_ctx_t *session, struct timespec *wake_up_in)
 {
     sr_error_info_t *err_info = NULL;
     int ret, mod_finished;
@@ -4055,8 +4066,8 @@ sr_subscription_process_events(sr_subscription_ctx_t *subscription, sr_session_c
     /* session does not have to be set */
     SR_CHECK_ARG_APIRET(!subscription, session, err_info);
 
-    if (stop_time_in) {
-        memset(stop_time_in, 0, sizeof *stop_time_in);
+    if (wake_up_in) {
+        memset(wake_up_in, 0, sizeof *wake_up_in);
     }
 
     /* get only READ lock to allow event processing even during unsubscribe */
@@ -4097,6 +4108,14 @@ sr_subscription_process_events(sr_subscription_ctx_t *subscription, sr_session_c
         }
     }
 
+    /* operational poll subscriptions */
+    for (i = 0; i < subscription->oper_poll_sub_count; ++i) {
+        if ((err_info = sr_shmsub_oper_poll_listen_process_module_events(&subscription->oper_poll_subs[i],
+                subscription->conn, wake_up_in))) {
+            goto cleanup_unlock;
+        }
+    }
+
     /* RPC/action subscriptions */
     for (i = 0; i < subscription->rpc_sub_count; ++i) {
         if ((err_info = sr_shmsub_rpc_listen_process_rpc_events(&subscription->rpc_subs[i], subscription->conn))) {
@@ -4130,7 +4149,7 @@ sr_subscription_process_events(sr_subscription_ctx_t *subscription, sr_session_c
         }
 
         /* find nearest stop time */
-        sr_shmsub_notif_listen_module_get_stop_time_in(&subscription->notif_subs[i], stop_time_in);
+        sr_shmsub_notif_listen_module_get_stop_time_in(&subscription->notif_subs[i], wake_up_in);
 
         /* next iteration */
         ++i;
@@ -4184,6 +4203,11 @@ sr_subscription_get_suspended(sr_subscription_ctx_t *subscription, uint32_t sub_
         if ((err_info = sr_shmext_oper_get_sub_suspended(subscription->conn, module_name, sub_id, -1, suspended))) {
             goto cleanup_unlock;
         }
+    } else if (sr_subscr_oper_poll_sub_find(subscription, sub_id, &module_name)) {
+        /* oper poll sub */
+        if ((err_info = sr_shmext_oper_poll_sub_suspended(subscription->conn, module_name, sub_id, -1, suspended))) {
+            goto cleanup_unlock;
+        }
     } else if (sr_subscr_notif_sub_find(subscription, sub_id, &module_name)) {
         /* notif sub */
         if ((err_info = sr_shmext_notif_sub_suspended(subscription->conn, module_name, sub_id, -1, suspended))) {
@@ -4235,6 +4259,11 @@ _sr_subscription_suspend_change(sr_subscription_ctx_t *subscription, uint32_t su
     } else if (sr_subscr_oper_get_sub_find(subscription, sub_id, &module_name)) {
         /* oper get sub */
         if ((err_info = sr_shmext_oper_get_sub_suspended(subscription->conn, module_name, sub_id, suspend, NULL))) {
+            goto cleanup;
+        }
+    } else if (sr_subscr_oper_poll_sub_find(subscription, sub_id, &module_name)) {
+        /* oper poll sub */
+        if ((err_info = sr_shmext_oper_poll_sub_suspended(subscription->conn, module_name, sub_id, suspend, NULL))) {
             goto cleanup;
         }
     } else if ((notif_sub = sr_subscr_notif_sub_find(subscription, sub_id, &module_name))) {
@@ -6305,6 +6334,134 @@ error1:
     if ((tmp_err = sr_shmext_oper_get_sub_del(conn, shm_mod, sub_id))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
+
+cleanup_unlock:
+    /* SUBS WRITE UNLOCK */
+    sr_rwunlock(&(*subscription)->subs_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+
+cleanup:
+    /* CONTEXT UNLOCK */
+    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
+    return sr_api_ret(session, err_info);
+}
+
+API int
+sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, const char *path, uint32_t valid_ms,
+        sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
+{
+    sr_error_info_t *err_info = NULL, *tmp_err;
+    sr_conn_ctx_t *conn;
+    const struct lys_module *ly_mod;
+    uint32_t sub_id;
+    sr_subscr_options_t sub_opts;
+    sr_mod_t *shm_mod;
+    struct modsub_operpoll_s *oper_poll_subs;
+
+    SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !path || !valid_ms || !subscription, session, err_info);
+
+    conn = session->conn;
+    /* only these options are relevant outside this function and will be stored */
+    sub_opts = opts & SR_SUBSCR_OPER_POLL_DIFF;
+
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
+    if (!ly_mod) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Module \"%s\" was not found in sysrepo.", module_name);
+        goto cleanup;
+    }
+
+    /* check read perm */
+    if ((err_info = sr_perm_check(conn, ly_mod, SR_DS_OPERATIONAL, 0, NULL))) {
+        goto cleanup;
+    }
+
+    /* check the path */
+    if ((err_info = sr_subscr_oper_path_check(conn->ly_ctx, path, NULL, NULL))) {
+        goto cleanup;
+    }
+
+    if (!*subscription) {
+        /* create a new subscription */
+        if ((err_info = sr_subscr_new(conn, opts, subscription))) {
+            goto cleanup;
+        }
+    } else if (opts & SR_SUBSCR_THREAD_SUSPEND) {
+        /* suspend the running thread */
+        _sr_subscription_thread_suspend(*subscription);
+    }
+
+    /* get new sub ID */
+    sub_id = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id);
+    if (sub_id == (uint32_t)(ATOMIC_T_MAX - 1)) {
+        /* the value in the main SHM is actually ATOMIC_T_MAX and calling another INC would cause an overflow */
+        ATOMIC_STORE_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id, 1);
+    }
+
+    /* find module */
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), module_name);
+    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
+
+    /* SUBS WRITE LOCK */
+    if ((err_info = sr_rwlock(&(*subscription)->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+            __func__, NULL, NULL))) {
+        goto cleanup;
+    }
+
+    /* add new cache entry into the connection */
+    if ((err_info = sr_conn_oper_cache_add(conn, sub_id, module_name, path))) {
+        goto cleanup_unlock;
+    }
+
+    /* add oper poll subscription into ext SHM */
+    if ((err_info = sr_shmext_oper_poll_sub_add(conn, shm_mod, sub_id, path, sub_opts, (*subscription)->evpipe_num))) {
+        goto error1;
+    }
+
+    /* add subscription into structure */
+    if ((err_info = sr_subscr_oper_poll_sub_add(*subscription, sub_id, session, module_name, path, valid_ms, sub_opts,
+            SR_LOCK_WRITE))) {
+        goto error2;
+    }
+
+    /* add the subscription into session */
+    if ((err_info = sr_ptr_add(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
+            *subscription))) {
+        goto error3;
+    }
+
+    /* perform the first cache update */
+    oper_poll_subs = &(*subscription)->oper_poll_subs[(*subscription)->oper_poll_sub_count - 1];
+    if ((err_info = sr_shmsub_oper_poll_listen_process_module_events(oper_poll_subs, conn, NULL))) {
+        goto error4;
+    }
+
+    /* make sure the event handler updates its wake up period */
+    if ((err_info = sr_shmsub_notify_evpipe((*subscription)->evpipe_num))) {
+        goto error4;
+    }
+
+    goto cleanup_unlock;
+
+error4:
+    if ((tmp_err = sr_ptr_del(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
+            *subscription))) {
+        sr_errinfo_merge(&err_info, tmp_err);
+    }
+
+error3:
+    sr_subscr_oper_poll_sub_del(*subscription, sub_id, SR_LOCK_WRITE);
+
+error2:
+    if ((tmp_err = sr_shmext_oper_poll_sub_del(conn, shm_mod, sub_id))) {
+        sr_errinfo_merge(&err_info, tmp_err);
+    }
+
+error1:
+    sr_conn_oper_cache_del(conn, sub_id);
 
 cleanup_unlock:
     /* SUBS WRITE UNLOCK */
