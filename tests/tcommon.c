@@ -1,5 +1,5 @@
 /**
- * @file test_common.c
+ * @file tcommon.c
  * @author Irfan
  * @brief common header file for all tests to facilitate uniform logging format
  *
@@ -20,7 +20,7 @@
 #include <time.h>
 
 #include "sysrepo.h"
-#include "tests/test_common.h"
+#include "tests/tcommon.h"
 
 static void
 _test_log_msg(sr_log_level_t level, const char *message, const char *prefix)

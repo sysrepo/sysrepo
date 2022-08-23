@@ -26,7 +26,7 @@
 #include <libyang/libyang.h>
 
 #include "sysrepo.h"
-#include "tests/test_common.h"
+#include "tests/tcommon.h"
 #include "utils/netconf_acm.h"
 
 struct state {

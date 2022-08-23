@@ -30,7 +30,7 @@
 #include <libyang/libyang.h>
 
 #include "sysrepo.h"
-#include "tests/test_common.h"
+#include "tests/tcommon.h"
 
 struct state {
     sr_conn_ctx_t *conn;

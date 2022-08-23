@@ -30,7 +30,7 @@
 
 #include "common.h"
 #include "sysrepo.h"
-#include "tests/test_common.h"
+#include "tests/tcommon.h"
 #include "utils/values.h"
 
 struct state {

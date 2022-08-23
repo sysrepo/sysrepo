@@ -33,7 +33,7 @@
 
 #include "common.h"
 #include "sysrepo.h"
-#include "tests/test_common.h"
+#include "tests/tcommon.h"
 
 const time_t start_ts = 1550233816;
 

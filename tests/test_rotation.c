@@ -34,7 +34,7 @@
 
 #include "sysrepo.h"
 #include "sysrepo_types.h"
-#include "test_common.h"
+#include "tests/tcommon.h"
 #include "config.h"
 
 #define TIMEOUT_STEP_US 100000
