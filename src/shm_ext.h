@@ -125,14 +125,14 @@ sr_error_info_t *sr_shmext_change_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mo
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
  * @param[in] sub_id Unique sub ID.
- * @param[in] xpath Subscription XPath.
+ * @param[in] path Subscription path.
  * @param[in] sub_type Data-provide subscription type.
  * @param[in] sub_opts Subscription options.
  * @param[in] evpipe_num Subscription event pipe number.
  * @param[out] prio Retrieves subscription priority.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_oper_get_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, const char *xpath,
+sr_error_info_t *sr_shmext_oper_get_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, const char *path,
         sr_mod_oper_get_sub_type_t sub_type, int sub_opts, uint32_t evpipe_num, uint32_t *prio);
 
 /**

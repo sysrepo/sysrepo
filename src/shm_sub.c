@@ -3289,7 +3289,7 @@ sr_shmsub_oper_get_listen_process_module_events(struct modsub_operget_s *oper_ge
         request_id = sub_shm->request_id;
 
         /* open sub data SHM */
-        if ((err_info = sr_shmsub_data_open_remap(oper_get_subs->module_name, "oper", sr_str_hash(oper_get_sub->xpath,
+        if ((err_info = sr_shmsub_data_open_remap(oper_get_subs->module_name, "oper", sr_str_hash(oper_get_sub->path,
                 oper_get_sub->priority), &shm_data_sub, 0))) {
             goto error_rdunlock;
         }
@@ -3324,7 +3324,7 @@ sr_shmsub_oper_get_listen_process_module_events(struct modsub_operget_s *oper_ge
 
         /* call callback */
         orig_parent = parent;
-        err_code = oper_get_sub->cb(ev_sess, oper_get_sub->sub_id, oper_get_subs->module_name, oper_get_sub->xpath,
+        err_code = oper_get_sub->cb(ev_sess, oper_get_sub->sub_id, oper_get_subs->module_name, oper_get_sub->path,
                 request_xpath[0] ? request_xpath : NULL, request_id, &parent, oper_get_sub->private_data);
 
         /* go again to the top-level root for printing */

@@ -218,7 +218,7 @@ struct sr_subscription_ctx_s {
         char *module_name;          /**< Module of the subscriptions. */
         struct modsub_opergetsub_s {
             uint32_t sub_id;        /**< Unique subscription ID. */
-            char *xpath;            /**< Subscription XPath. */
+            char *path;             /**< Subscription path. */
             uint32_t priority;      /**< Subscription priority for one XPath */
             sr_oper_get_items_cb cb;    /**< Subscription callback. */
             void *private_data;     /**< Subscription callback private data. */

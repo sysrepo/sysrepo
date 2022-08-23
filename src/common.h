@@ -211,14 +211,14 @@ void sr_subscr_change_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr
  * @param[in] sub_id Unique sub ID.
  * @param[in] sess Subscription session.
  * @param[in] mod_name Subscription module name.
- * @param[in] xpath Subscription XPath.
+ * @param[in] path Subscription path.
  * @param[in] oper_cb Subscription callback.
  * @param[in] private_data Subscription callback private data.
  * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_subscr_oper_get_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess,
-        const char *mod_name, const char *xpath, sr_oper_get_items_cb oper_cb, void *private_data,
+        const char *mod_name, const char *path, sr_oper_get_items_cb oper_cb, void *private_data,
         sr_lock_mode_t has_subs_lock, uint32_t prio);
 
 /**
@@ -405,17 +405,17 @@ sr_error_info_t *sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_noti
 sr_error_info_t *sr_subscr_change_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, int *valid);
 
 /**
- * @brief Check the XPath of an oper subscription. Optionally learn what kinds (config) of nodes are provided
+ * @brief Check the path of an oper subscription. Optionally learn what kinds (config) of nodes are provided
  * by an operational subscription to determine its type.
  *
  * @param[in] ly_ctx Context to use.
- * @param[in] xpath XPath to check.
+ * @param[in] path Path to check.
  * @param[out] sub_type Optional learned subscription type.
  * @param[in,out] valid If set, does not log and sets to 0 if invalid, 1 if valid.
  * If not set, an error is returned if invalid, otherwise NULL.
  * @return err_info (if @p valid is not set), NULL on success.
  */
-sr_error_info_t *sr_subscr_oper_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath,
+sr_error_info_t *sr_subscr_oper_path_check(const struct ly_ctx *ly_ctx, const char *path,
         sr_mod_oper_get_sub_type_t *sub_type, int *valid);
 
 /**
@@ -763,8 +763,7 @@ int sr_time_cmp(const struct timespec *ts1, const struct timespec *ts2);
 struct timespec sr_time_sub(const struct timespec *ts1, const struct timespec *ts2);
 
 /**
- * @brief Subtract a timespec from another
- * in milliseconds.
+ * @brief Subtract a timespec from another in milliseconds.
  *
  * @param[in] ts1 First timespec to be subtracted from.
  * @param[in] ts2 Second timespec to subtract.

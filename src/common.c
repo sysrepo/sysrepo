@@ -231,7 +231,7 @@ cleanup:
 
 sr_error_info_t *
 sr_subscr_oper_get_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess, const char *mod_name,
-        const char *xpath, sr_oper_get_items_cb oper_cb, void *private_data, sr_lock_mode_t has_subs_lock, uint32_t prio)
+        const char *path, sr_oper_get_items_cb oper_cb, void *private_data, sr_lock_mode_t has_subs_lock, uint32_t prio)
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_operget_s *oper_get_sub = NULL;
@@ -239,7 +239,7 @@ sr_subscr_oper_get_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_se
     void *mem[4] = {NULL};
     int new_sub = 0;
 
-    assert(mod_name && xpath);
+    assert(mod_name && path);
 
     /* just to prevent problems in future changes */
     assert(has_subs_lock == SR_LOCK_WRITE);
@@ -283,16 +283,16 @@ sr_subscr_oper_get_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_se
 
     /* set attributes */
     oper_get_sub->subs[oper_get_sub->sub_count].sub_id = sub_id;
-    mem[3] = strdup(xpath);
+    mem[3] = strdup(path);
     SR_CHECK_MEM_GOTO(!mem[3], err_info, error);
-    oper_get_sub->subs[oper_get_sub->sub_count].xpath = mem[3];
+    oper_get_sub->subs[oper_get_sub->sub_count].path = mem[3];
     oper_get_sub->subs[oper_get_sub->sub_count].priority = prio;
     oper_get_sub->subs[oper_get_sub->sub_count].cb = oper_cb;
     oper_get_sub->subs[oper_get_sub->sub_count].private_data = private_data;
     oper_get_sub->subs[oper_get_sub->sub_count].sess = sess;
 
     /* open sub SHM and map it */
-    if ((err_info = sr_shmsub_open_map(mod_name, "oper", sr_str_hash(xpath, prio),
+    if ((err_info = sr_shmsub_open_map(mod_name, "oper", sr_str_hash(path, prio),
             &oper_get_sub->subs[oper_get_sub->sub_count].sub_shm))) {
         goto error;
     }
@@ -341,7 +341,7 @@ sr_subscr_oper_get_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lo
             }
 
             /* found our subscription, replace it with the last */
-            free(oper_get_sub->subs[j].xpath);
+            free(oper_get_sub->subs[j].path);
             sr_shm_clear(&oper_get_sub->subs[j].sub_shm);
             if (j < oper_get_sub->sub_count - 1) {
                 memcpy(&oper_get_sub->subs[j], &oper_get_sub->subs[oper_get_sub->sub_count - 1], sizeof *oper_get_sub->subs);
@@ -824,8 +824,8 @@ int
 sr_subscr_session_count(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock)
 {
     uint32_t count = 0, i, j;
-    struct modsub_change_s *change_subs;
-    struct modsub_operget_s *oper_get_subs;
+    struct modsub_change_s *change_sub;
+    struct modsub_operget_s *oper_get_sub;
     struct modsub_notif_s *notif_sub;
     struct opsub_rpc_s *rpc_sub;
 
@@ -835,9 +835,9 @@ sr_subscr_session_count(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, s
 
     /* change subscriptions */
     for (i = 0; i < subscr->change_sub_count; ++i) {
-        change_subs = &subscr->change_subs[i];
-        for (j = 0; j < change_subs->sub_count; ++j) {
-            if (change_subs->subs[j].sess == sess) {
+        change_sub = &subscr->change_subs[i];
+        for (j = 0; j < change_sub->sub_count; ++j) {
+            if (change_sub->subs[j].sess == sess) {
                 ++count;
             }
         }
@@ -845,9 +845,9 @@ sr_subscr_session_count(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, s
 
     /* operational get subscriptions */
     for (i = 0; i < subscr->oper_get_sub_count; ++i) {
-        oper_get_subs = &subscr->oper_get_subs[i];
-        for (j = 0; j < oper_get_subs->sub_count; ++j) {
-            if (oper_get_subs->subs[j].sess == sess) {
+        oper_get_sub = &subscr->oper_get_subs[i];
+        for (j = 0; j < oper_get_sub->sub_count; ++j) {
+            if (oper_get_sub->subs[j].sess == sess) {
                 ++count;
             }
         }
@@ -1434,7 +1434,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_subscr_oper_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, sr_mod_oper_get_sub_type_t *sub_type,
+sr_subscr_oper_path_check(const struct ly_ctx *ly_ctx, const char *path, sr_mod_oper_get_sub_type_t *sub_type,
         int *valid)
 {
     sr_error_info_t *err_info = NULL;
@@ -1442,7 +1442,7 @@ sr_subscr_oper_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, sr_mo
     struct ly_set *set = NULL;
     uint32_t i;
 
-    if (lys_find_xpath(ly_ctx, NULL, xpath, LYS_FIND_NO_MATCH_ERROR, &set)) {
+    if (lys_find_xpath(ly_ctx, NULL, path, LYS_FIND_NO_MATCH_ERROR, &set)) {
         if (valid) {
             *valid = 0;
         } else {
@@ -1453,7 +1453,7 @@ sr_subscr_oper_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, sr_mo
         if (valid) {
             *valid = 0;
         } else {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "XPath \"%s\" does not point to any nodes.", xpath);
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Path \"%s\" does not point to any nodes.", path);
         }
         goto cleanup;
     }

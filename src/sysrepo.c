@@ -6244,7 +6244,7 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
     }
 
     /* check path, find out what kinds of nodes are provided */
-    if ((err_info = sr_subscr_oper_xpath_check(conn->ly_ctx, path, &sub_type, NULL))) {
+    if ((err_info = sr_subscr_oper_path_check(conn->ly_ctx, path, &sub_type, NULL))) {
         goto cleanup;
     }
 

@@ -35,7 +35,8 @@ struct state {
     sr_conn_ctx_t *conn;
     sr_session_ctx_t *sess;
     ATOMIC_T cb_called;
-    pthread_barrier_t barrier;
+    pthread_barrier_t barrier2;
+    pthread_barrier_t barrier5;
 };
 
 static int
@@ -113,7 +114,8 @@ setup(void **state)
 
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
 
-    pthread_barrier_init(&st->barrier, NULL, 2);
+    pthread_barrier_init(&st->barrier2, NULL, 2);
+    pthread_barrier_init(&st->barrier5, NULL, 5);
 
     return 0;
 }
@@ -141,7 +143,8 @@ teardown(void **state)
     sr_remove_module(st->conn, "test", 0);
 
     sr_disconnect(st->conn);
-    pthread_barrier_destroy(&st->barrier);
+    pthread_barrier_destroy(&st->barrier2);
+    pthread_barrier_destroy(&st->barrier5);
     free(st);
     return 0;
 }
@@ -5254,7 +5257,6 @@ same_xpath_parallel_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *m
         const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     struct state *st = (struct state *)private_data;
-    int ret;
 
     (void)session;
     (void)sub_id;
@@ -5265,10 +5267,7 @@ same_xpath_parallel_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *m
     (void)parent;
 
     /* wait for all the threads so that we assure getting data is parallel */
-    ret = pthread_barrier_wait(&st->barrier);
-    if (ret && ret != PTHREAD_BARRIER_SERIAL_THREAD) {
-        fail();
-    }
+    pthread_barrier_wait(&st->barrier5);
 
     return SR_ERR_OK;
 }
@@ -5281,33 +5280,29 @@ test_same_xpath_parallel(void **state)
     sr_data_t *data;
     sr_subscription_ctx_t *subscr1 = NULL, *subscr2 = NULL, *subscr3 = NULL, *subscr4 = NULL, *subscr5 = NULL;
 
-    /* initialize pthread barrier */
-    ret = pthread_barrier_init(&st->barrier, NULL, 5);
-    assert_int_equal(ret, 0);
-
     /* subscribe as state data provider */
     ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", same_xpath_parallel_cb,
-            *state, 0, &subscr1);
+            st, 0, &subscr1);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as state data provider */
     ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", same_xpath_parallel_cb,
-            *state, SR_SUBSCR_OPER_MERGE, &subscr2);
+            st, SR_SUBSCR_OPER_MERGE, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as state data provider */
     ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", same_xpath_parallel_cb,
-            *state, SR_SUBSCR_OPER_MERGE, &subscr3);
+            st, SR_SUBSCR_OPER_MERGE, &subscr3);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as state data provider */
     ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", same_xpath_parallel_cb,
-            *state, SR_SUBSCR_OPER_MERGE, &subscr4);
+            st, SR_SUBSCR_OPER_MERGE, &subscr4);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe as state data provider */
     ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", same_xpath_parallel_cb,
-            *state, SR_SUBSCR_OPER_MERGE, &subscr5);
+            st, SR_SUBSCR_OPER_MERGE, &subscr5);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to read them back from operational DS */
@@ -5325,11 +5320,6 @@ test_same_xpath_parallel(void **state)
     sr_unsubscribe(subscr3);
     sr_unsubscribe(subscr4);
     sr_unsubscribe(subscr5);
-
-    /* see if EBUSY is thrown */
-    ret = pthread_barrier_destroy(&st->barrier);
-    assert_int_not_equal(ret, EBUSY);
-    assert_int_equal(ret, 0);
 }
 
 /* TEST */
@@ -5338,7 +5328,6 @@ same_xpath_fail_successful_cb(sr_session_ctx_t *session, uint32_t sub_id, const 
         const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     struct state *st = (struct state *)private_data;
-    int ret;
 
     (void)session;
     (void)sub_id;
@@ -5349,10 +5338,7 @@ same_xpath_fail_successful_cb(sr_session_ctx_t *session, uint32_t sub_id, const 
     (void)parent;
 
     /* wait for all the threads so that we assure getting data is parallel */
-    ret = pthread_barrier_wait(&st->barrier);
-    if (ret && ret != PTHREAD_BARRIER_SERIAL_THREAD) {
-        fail();
-    }
+    pthread_barrier_wait(&st->barrier5);
 
     return SR_ERR_OK;
 }
@@ -5362,7 +5348,6 @@ same_xpath_fail_failed_cb(sr_session_ctx_t *session, uint32_t sub_id, const char
         const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     struct state *st = (struct state *)private_data;
-    int ret;
 
     (void)session;
     (void)sub_id;
@@ -5373,10 +5358,7 @@ same_xpath_fail_failed_cb(sr_session_ctx_t *session, uint32_t sub_id, const char
     (void)parent;
 
     /* wait for all the threads so that we assure getting data is parallel */
-    ret = pthread_barrier_wait(&st->barrier);
-    if (ret && ret != PTHREAD_BARRIER_SERIAL_THREAD) {
-        fail();
-    }
+    pthread_barrier_wait(&st->barrier5);
 
     return SR_ERR_CALLBACK_FAILED;
 }
@@ -5388,10 +5370,6 @@ test_same_xpath_fail(void **state)
     int ret;
     sr_data_t *data;
     sr_subscription_ctx_t *subscr1 = NULL, *subscr2 = NULL, *subscr3 = NULL, *subscr4 = NULL, *subscr5 = NULL;
-
-    /* initialize pthread barrier */
-    ret = pthread_barrier_init(&st->barrier, NULL, 5);
-    assert_int_equal(ret, 0);
 
     /* subscribe as state data provider */
     ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", same_xpath_fail_successful_cb,
