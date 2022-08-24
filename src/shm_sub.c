@@ -2041,7 +2041,8 @@ sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, cons
     struct sr_shmsub_oper_get_sub_s *notify_subs = NULL;
     sr_mod_oper_get_xpath_sub_t *xpath_sub;
 
-    for (i = 0; i < oper_get_subs[idx1].xpath_sub_count; ++i) {
+    i = 0;
+    while (i < oper_get_subs[idx1].xpath_sub_count) {
         xpath_sub = &((sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + oper_get_subs[idx1].xpath_subs))[i];
 
         /* check subscription aliveness */
@@ -2055,6 +2056,7 @@ sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, cons
 
         /* skip suspended subscriptions */
         if (ATOMIC_LOAD_RELAXED(xpath_sub->suspended)) {
+            ++i;
             continue;
         }
 
@@ -2066,6 +2068,8 @@ sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, cons
         notify_subs[notify_count].shm_sub.fd = -1;
         notify_subs[notify_count].shm_data_sub.fd = -1;
         ++notify_count;
+
+        ++i;
     }
 
     if (notify_count == 1) {
