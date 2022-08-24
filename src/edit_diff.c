@@ -918,7 +918,7 @@ sr_edit_diff_add(struct lyd_node *node, const char *attr_val, const char *prev_a
         struct lyd_node *diff_parent, struct lyd_node **diff_root, struct lyd_node **diff_node)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *node_dup = NULL, *tmp;
+    struct lyd_node *node_dup = NULL, *tmp = NULL;
 
     assert((op == EDIT_NONE) || (op == EDIT_CREATE) || (op == EDIT_DELETE) || (op == EDIT_REPLACE));
     assert(!*diff_node);
@@ -949,7 +949,11 @@ sr_edit_diff_add(struct lyd_node *node, const char *attr_val, const char *prev_a
         goto error;
     }
 
-    lyd_find_sibling(diff_parent ? diff_parent->child : *diff_root, node_dup, &tmp);
+    if (((node_dup->schema->nodetype != LYS_LIST) || ((struct lys_node_list *)node_dup->schema)->keys_size) &&
+            ((node_dup->schema->nodetype != LYS_LEAFLIST) || (node_dup->schema->flags & LYS_CONFIG_W))) {
+        /* we can detect duplicate instances */
+        lyd_find_sibling(diff_parent ? diff_parent->child : *diff_root, node_dup, &tmp);
+    }
     if (tmp && (tmp->schema->nodetype == LYS_CONTAINER) && tmp->dflt) {
         /* just remove this default container and create it anew */
         lyd_free(tmp);
