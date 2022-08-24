@@ -918,7 +918,7 @@ sr_edit_diff_add(struct lyd_node *node, const char *attr_val, const char *prev_a
         struct lyd_node *diff_parent, struct lyd_node **diff_root, struct lyd_node **diff_node)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *node_dup = NULL;
+    struct lyd_node *node_dup = NULL, *tmp;
 
     assert((op == EDIT_NONE) || (op == EDIT_CREATE) || (op == EDIT_DELETE) || (op == EDIT_REPLACE));
     assert(!*diff_node);
@@ -949,14 +949,22 @@ sr_edit_diff_add(struct lyd_node *node, const char *attr_val, const char *prev_a
         goto error;
     }
 
-    if ((node_dup->schema->nodetype == LYS_LEAFLIST) && ((struct lys_node_leaflist *)node_dup->schema)->dflt && (op == EDIT_CREATE)) {
-        /* default leaf-list with the same value may have been removed, so we need to merge these 2 diffs */
+    lyd_find_sibling(diff_parent ? diff_parent->child : *diff_root, node_dup, &tmp);
+    if (tmp && (tmp->schema->nodetype == LYS_CONTAINER) && tmp->dflt) {
+        /* just remove this default container and create it anew */
+        lyd_free(tmp);
+        tmp = NULL;
+    }
+    if (tmp) {
+        /* for some reason the node is already in diff, we need to merge it (for example, default leaf-list with the
+         * same value may have been removed) */
         if ((err_info = sr_diff_merge_r(node_dup, op, NULL, diff_parent, diff_root, NULL))) {
             goto error;
         }
-        /* it was duplicated, so free it and do not return any diff node (since it has no children, it is okay) */
+        /* it was duplicated, so find the duplicated node (fine if it is not there) and free it */
+        lyd_find_sibling(diff_parent ? diff_parent->child : *diff_root, node_dup, &tmp);
         lyd_free(node_dup);
-        node_dup = NULL;
+        node_dup = tmp;
     } else {
         /* insert node into diff */
         sr_diff_insert(node_dup, diff_parent, diff_root);
