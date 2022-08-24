@@ -119,7 +119,7 @@ sr_error_info_t *sr_shmext_change_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mo
         int del_evpipe, sr_lock_mode_t has_locks, int recovery);
 
 /**
- * @brief Add main SHM module operational get subscription and create sub SHM.
+ * @brief Add main SHM module operational get subscription, create sub SHM, notify oper poll subs.
  * Ext SHM may be remapped!
  *
  * @param[in] conn Connection to use.

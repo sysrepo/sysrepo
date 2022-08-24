@@ -1102,24 +1102,36 @@ sr_oper_get_sub_del(sr_subscription_ctx_t *subscr, struct modsub_operget_s *oper
         sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
+    char *path = NULL;
     sr_mod_t *shm_mod;
 
     assert(has_subs_lock == SR_LOCK_READ_UPGR);
     (void)has_subs_lock;
 
+    /* remember the path */
+    path = strdup(oper_get_sub->subs[idx].path);
+    SR_CHECK_MEM_GOTO(!path, err_info, cleanup);
+
     /* find module */
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), oper_get_sub->module_name);
-    SR_CHECK_INT_RET(!shm_mod, err_info);
+    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* properly remove the subscription from ext SHM, with separate specific SHM segment if no longer needed */
     if ((err_info = sr_shmext_oper_get_sub_del(subscr->conn, shm_mod, oper_get_sub->subs[idx].sub_id))) {
-        return err_info;
+        goto cleanup;
+    }
+
+    /* operational get subscriptions change (before oper_get_sub is removed) */
+    if ((err_info = sr_shmsub_oper_poll_get_sub_change_notify_evpipe(subscr->conn, oper_get_sub->module_name, path))) {
+        goto cleanup;
     }
 
     /* remove the subscription from the subscription structure */
     sr_subscr_oper_get_sub_del(subscr, oper_get_sub->subs[idx].sub_id, has_subs_lock);
 
-    return NULL;
+cleanup:
+    free(path);
+    return err_info;
 }
 
 /**
@@ -1138,12 +1150,13 @@ sr_oper_poll_sub_del(sr_subscription_ctx_t *subscr, struct modsub_operpoll_s *op
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
+    uint32_t sub_id;
 
     assert(has_subs_lock == SR_LOCK_READ_UPGR);
     (void)has_subs_lock;
 
-    /* remove the oper cache entry from the connection */
-    sr_conn_oper_cache_del(subscr->conn, oper_poll_sub->subs[idx].sub_id);
+    /* rememeber sub ID */
+    sub_id = oper_poll_sub->subs[idx].sub_id;
 
     /* find module */
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), oper_poll_sub->module_name);
@@ -1156,6 +1169,9 @@ sr_oper_poll_sub_del(sr_subscription_ctx_t *subscr, struct modsub_operpoll_s *op
 
     /* remove the subscription from the subscription structure */
     sr_subscr_oper_poll_sub_del(subscr, oper_poll_sub->subs[idx].sub_id, has_subs_lock);
+
+    /* remove the oper cache entry from the connection after the subscription was removed from the structure */
+    sr_conn_oper_cache_del(subscr->conn, sub_id);
 
     return NULL;
 }
@@ -4805,30 +4821,6 @@ sr_conn_oper_cache_flush(sr_conn_ctx_t *conn)
 
     /* CONN OPER CACHE UNLOCK */
     sr_rwunlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
-}
-
-int
-sr_conn_oper_cache_is_valid(const struct sr_oper_poll_cache_s *cache, uint32_t valid_ms, struct timespec *invalid_in)
-{
-    struct timespec cur_ts, timeout_ts;
-
-    if (!cache->timestamp.tv_sec) {
-        /* uninitialized */
-        return 0;
-    }
-
-    sr_time_get(&cur_ts, 0);
-    timeout_ts = sr_time_ts_add(&cache->timestamp, valid_ms);
-    if (sr_time_cmp(&timeout_ts, &cur_ts) <= 0) {
-        /* not valid */
-        return 0;
-    }
-
-    /* valid */
-    if (invalid_in) {
-        *invalid_in = sr_time_sub(&timeout_ts, &cur_ts);
-    }
-    return 1;
 }
 
 void *

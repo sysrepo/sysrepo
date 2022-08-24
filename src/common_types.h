@@ -135,7 +135,7 @@ struct sr_conn_ctx_s {
         char *module_name;          /**< Operational poll subscription module name. */
         char *path;                 /**< Operational poll/get subscription path. */
 
-        sr_rwlock_t data_lock;      /**< Lock for accessing the data. */
+        sr_rwlock_t data_lock;      /**< Lock for accessing the data and timestamp. */
         struct lyd_node *data;      /**< Cached data of a single operational get subscription. */
         struct timespec timestamp;  /**< Timestamp of the cached operational data. */
     } *oper_caches;                 /**< Operational get subscription data caches. */

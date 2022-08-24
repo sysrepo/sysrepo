@@ -38,6 +38,7 @@
 #include "modinfo.h"
 #include "replay.h"
 #include "shm_ext.h"
+#include "shm_mod.h"
 #include "sysrepo.h"
 #include "utils/nacm.h"
 
@@ -2051,6 +2052,11 @@ sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, cons
             if ((err_info = sr_shmext_oper_get_sub_stop(conn, mod->shm_mod, idx1, i, 1, SR_LOCK_READ, 1))) {
                 sr_errinfo_free(&err_info);
             }
+
+            /* operational get subscriptions change */
+            if ((err_info = sr_shmsub_oper_poll_get_sub_change_notify_evpipe(conn, mod->ly_mod->name, xpath))) {
+                sr_errinfo_free(&err_info);
+            }
             continue;
         }
 
@@ -3419,6 +3425,101 @@ error:
     return err_info;
 }
 
+/**
+ * @brief Find an operational get subscription for an operational poll subscription.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_name Subscription module name.
+ * @param[in] oper_poll_path Operational poll subscription path.
+ * @param[out] found Whether an oper get sub was found or not.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_shmsub_oper_poll_listen_find_get_sub(sr_conn_ctx_t *conn, const char *module_name, const char *oper_poll_path,
+        int *found)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod;
+    sr_mod_oper_get_sub_t *shm_subs;
+    sr_mod_oper_get_xpath_sub_t *xpath_subs;
+    uint32_t i, j;
+
+    *found = 0;
+
+    /* find the module in SHM */
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), module_name);
+    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
+
+    /* OPER GET SUB READ LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
+            NULL, NULL))) {
+        goto cleanup;
+    }
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        goto cleanup_opergetsub_unlock;
+    }
+
+    shm_subs = (sr_mod_oper_get_sub_t *)(conn->ext_shm.addr + shm_mod->oper_get_subs);
+    for (i = 0; i < shm_mod->oper_get_sub_count; ++i) {
+        if (!strcmp(oper_poll_path, conn->ext_shm.addr + shm_subs[i].xpath)) {
+            /* consider suspended oper get subscriptions as non-existent */
+            xpath_subs = (sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + shm_subs[i].xpath_subs);
+            for (j = 0; j < shm_subs[i].xpath_sub_count; ++j) {
+                if (!ATOMIC_LOAD_RELAXED(xpath_subs[j].suspended)) {
+                    *found = 1;
+                    break;
+                }
+            }
+            break;
+        }
+    }
+
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+cleanup_opergetsub_unlock:
+    /* OPER GET SUB READ UNLOCK */
+    sr_rwunlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+cleanup:
+    return err_info;
+}
+
+/**
+ * @brief Check whether particular cached data are still valid.
+ *
+ * @param[in] cache Cached data to check.
+ * @param[in] valid_ms Validity period of the data.
+ * @param[out] invalid_in Optional time when the cache will become invalid, set only if valid.
+ * @return Whether the cache data are valid or not.
+ */
+static int
+sr_shmsub_oper_poll_listen_is_cache_valid(const struct sr_oper_poll_cache_s *cache, uint32_t valid_ms,
+        struct timespec *invalid_in)
+{
+    struct timespec cur_ts, timeout_ts;
+
+    if (!cache->timestamp.tv_sec) {
+        /* uninitialized */
+        return 0;
+    }
+
+    sr_time_get(&cur_ts, 0);
+    timeout_ts = sr_time_ts_add(&cache->timestamp, valid_ms);
+    if (sr_time_cmp(&timeout_ts, &cur_ts) <= 0) {
+        /* not valid */
+        return 0;
+    }
+
+    /* valid */
+    if (invalid_in) {
+        *invalid_in = sr_time_sub(&timeout_ts, &cur_ts);
+    }
+    return 1;
+}
+
 sr_error_info_t *
 sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_poll_subs, sr_conn_ctx_t *conn,
         struct timespec *wake_up_in)
@@ -3429,17 +3530,18 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
     struct sr_oper_poll_cache_s *cache;
     struct modsub_operpollsub_s *oper_poll_sub;
     struct timespec invalid_in;
+    int found, r;
     sr_session_ctx_t *ev_sess = NULL;
     sr_get_options_t get_opts;
 
-    for (i = 0; !err_info && (i < oper_poll_subs->sub_count); ++i) {
-        oper_poll_sub = &oper_poll_subs->subs[i];
+    /* CONN OPER CACHE READ LOCK */
+    if ((err_info = sr_rwlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+            __func__, NULL, NULL))) {
+        return err_info;
+    }
 
-        /* CONN OPER CACHE READ LOCK */
-        if ((err_info = sr_rwlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
-                __func__, NULL, NULL))) {
-            goto cleanup;
-        }
+    for (i = 0; i < oper_poll_subs->sub_count; ++i) {
+        oper_poll_sub = &oper_poll_subs->subs[i];
 
         /* find the oper cache entry */
         cache = NULL;
@@ -3451,32 +3553,51 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
         }
         assert(cache);
 
-        /* check data validity */
-        if (sr_conn_oper_cache_is_valid(cache, oper_poll_sub->valid_ms, &invalid_in)) {
-            /* update when to wake up */
-            if (wake_up_in && (sr_time_cmp(&invalid_in, wake_up_in) < 0)) {
-                *wake_up_in = invalid_in;
-            }
-            goto next_iter;
-        }
-
-        /* create a session */
-        if ((err_info = _sr_session_start(conn, SR_DS_OPERATIONAL, SR_SUB_EV_NONE, NULL, &ev_sess))) {
-            goto next_iter;
-        }
-
-        /* get the data, API function */
-        get_opts = SR_OPER_NO_STORED | SR_OPER_NO_CACHED | SR_OPER_WITH_ORIGIN;
-        if (sr_get_data(ev_sess, oper_poll_sub->path, 0, 0, get_opts, &data)) {
-            err_info = ev_sess->err_info;
-            ev_sess->err_info = NULL;
-            goto next_iter;
-        }
-
         /* CACHE DATA WRITE LOCK */
         if ((err_info = sr_rwlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
                 __func__, NULL, NULL))) {
             goto cleanup;
+        }
+
+        /* 1) check that there is an oper get subscription */
+        if ((err_info = sr_shmsub_oper_poll_listen_find_get_sub(conn, oper_poll_subs->module_name, oper_poll_sub->path,
+                &found))) {
+            goto data_unlock;
+        }
+        if (!found) {
+            /* free any previously cached data */
+            lyd_free_siblings(cache->data);
+            cache->data = NULL;
+            memset(&cache->timestamp, 0, sizeof cache->timestamp);
+
+            SR_LOG_INF("No operational get subscription \"%s\" to cache.", oper_poll_sub->path);
+            goto data_unlock;
+        }
+
+        /* 2) check cache validity */
+        if (sr_shmsub_oper_poll_listen_is_cache_valid(cache, oper_poll_sub->valid_ms, &invalid_in)) {
+            /* update when to wake up */
+            if (wake_up_in && (sr_time_cmp(&invalid_in, wake_up_in) < 0)) {
+                *wake_up_in = invalid_in;
+            }
+            goto data_unlock;
+        }
+
+        /* create a session */
+        if ((err_info = _sr_session_start(conn, SR_DS_OPERATIONAL, SR_SUB_EV_NONE, NULL, &ev_sess))) {
+            goto data_unlock;
+        }
+
+        /* get the data, API function */
+        get_opts = SR_OPER_NO_STORED | SR_OPER_NO_CACHED | SR_OPER_WITH_ORIGIN;
+        r = sr_get_data(ev_sess, oper_poll_sub->path, 0, 0, get_opts, &data);
+        if (r) {
+            err_info = ev_sess->err_info;
+            ev_sess->err_info = NULL;
+        }
+        sr_session_stop(ev_sess);
+        if (err_info) {
+            goto data_unlock;
         }
 
         /* store in cache */
@@ -3486,6 +3607,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
             cache->data = data->tree;
             data->tree = NULL;
         }
+        sr_release_data(data);
 
         /* update timestamp and when to wake up */
         sr_time_get(&cache->timestamp, 0);
@@ -3494,21 +3616,64 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
             *wake_up_in = invalid_in;
         }
 
-        /* CACHE DATA UNLOCK */
-        sr_rwunlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
-
-        /* finish event */
         SR_LOG_INF("Successful \"operational poll\" \"%s\" cache update.", oper_poll_sub->path);
 
-next_iter:
-        /* CONN OPER CACHE UNLOCK */
-        sr_rwunlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+data_unlock:
+        /* CACHE DATA WRITE UNLOCK */
+        sr_rwunlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 
-        sr_release_data(data);
-        data = NULL;
-        sr_session_stop(ev_sess);
-        ev_sess = NULL;
+        if (err_info) {
+            goto cleanup;
+        }
     }
+
+cleanup:
+    /* CONN OPER CACHE READ UNLOCK */
+    sr_rwunlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+    return err_info;
+}
+
+sr_error_info_t *
+sr_shmsub_oper_poll_get_sub_change_notify_evpipe(sr_conn_ctx_t *conn, const char *module_name, const char *oper_get_path)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod;
+    sr_mod_oper_poll_sub_t *shm_subs;
+    uint32_t i;
+
+    /* find the module in SHM */
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), module_name);
+    SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
+
+    /* OPER POLL SUB READ LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->oper_poll_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
+            NULL, NULL))) {
+        goto cleanup;
+    }
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        goto cleanup_opergetsub_unlock;
+    }
+
+    shm_subs = (sr_mod_oper_poll_sub_t *)(conn->ext_shm.addr + shm_mod->oper_poll_subs);
+    for (i = 0; i < shm_mod->oper_poll_sub_count; ++i) {
+        if (!strcmp(oper_get_path, conn->ext_shm.addr + shm_subs[i].xpath)) {
+            /* relevant oper get subscriptions change for this oper poll subscription */
+            if ((err_info = sr_shmsub_notify_evpipe(shm_subs[i].evpipe_num))) {
+                goto cleanup_opergetsub_ext_unlock;
+            }
+        }
+    }
+
+cleanup_opergetsub_ext_unlock:
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+cleanup_opergetsub_unlock:
+    /* OPER POLL SUB READ UNLOCK */
+    sr_rwunlock(&shm_mod->oper_poll_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
 cleanup:
     return err_info;

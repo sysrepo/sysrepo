@@ -1143,16 +1143,6 @@ void sr_conn_oper_cache_del(sr_conn_ctx_t *conn, uint32_t sub_id);
 void sr_conn_oper_cache_flush(sr_conn_ctx_t *conn);
 
 /**
- * @brief Check whether particular cached data are still valid.
- *
- * @param[in] cache Cached data to check.
- * @param[in] valid_ms Validity period of the data.
- * @param[out] invalid_in Optional time when the cache will become invalid, set only if valid.
- * @return Whether the data are valid or not.
- */
-int sr_conn_oper_cache_is_valid(const struct sr_oper_poll_cache_s *cache, uint32_t valid_ms, struct timespec *invalid_in);
-
-/**
  * @brief Wrapper to realloc() that frees memory on failure.
  *
  * @param[in] ptr Pointer to the current memory.

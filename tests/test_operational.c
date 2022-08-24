@@ -5550,6 +5550,87 @@ test_cache(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 }
 
+/* TEST */
+static void
+test_cache_no_sub(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_data_t *data;
+    sr_subscription_ctx_t *subscr1 = NULL, *subscr2 = NULL;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+
+    /* subscribe for oper poll */
+    ret = sr_oper_poll_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", 3000, 0, &subscr2);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the data from operational #1 */
+    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+    assert_null(str1);
+
+    /* oper get subscribe */
+    ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", cache_oper_cb,
+            st, 0, &subscr1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* manually fill the cache */
+    ret = sr_subscription_process_events(subscr2, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the data from operational #2 */
+    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+    str2 =
+    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth5</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<oper-status>testing</oper-status>"
+            "<statistics>"
+                "<discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>"
+            "</statistics>"
+        "</interface>"
+    "</interfaces-state>";
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* unsubscribe oper get */
+    sr_unsubscribe(subscr1);
+
+    /* manually clear the cache */
+    ret = sr_subscription_process_events(subscr2, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the data from operational #3 */
+    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+    assert_null(str1);
+
+    sr_unsubscribe(subscr2);
+
+    /* only a single callback call expected, cache used otherwise */
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
+}
+
 int
 main(void)
 {
@@ -5593,6 +5674,7 @@ main(void)
         cmocka_unit_test_teardown(test_same_xpath_parallel, clear_up),
         cmocka_unit_test_teardown(test_same_xpath_fail, clear_up),
         cmocka_unit_test_teardown(test_cache, clear_up),
+        cmocka_unit_test_teardown(test_cache_no_sub, clear_up),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

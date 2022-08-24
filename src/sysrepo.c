@@ -4243,6 +4243,7 @@ _sr_subscription_suspend_change(sr_subscription_ctx_t *subscription, uint32_t su
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_notifsub_s *notif_sub = NULL;
+    struct modsub_opergetsub_s *oper_get_sub;
     const char *module_name, *path;
     sr_datastore_t ds;
     sr_session_ctx_t *ev_sess = NULL;
@@ -4256,9 +4257,15 @@ _sr_subscription_suspend_change(sr_subscription_ctx_t *subscription, uint32_t su
         if ((err_info = sr_shmext_change_sub_suspended(subscription->conn, module_name, ds, sub_id, suspend, NULL))) {
             goto cleanup;
         }
-    } else if (sr_subscr_oper_get_sub_find(subscription, sub_id, &module_name)) {
+    } else if ((oper_get_sub = sr_subscr_oper_get_sub_find(subscription, sub_id, &module_name))) {
         /* oper get sub */
         if ((err_info = sr_shmext_oper_get_sub_suspended(subscription->conn, module_name, sub_id, suspend, NULL))) {
+            goto cleanup;
+        }
+
+        /* operational get subscriptions change */
+        if ((err_info = sr_shmsub_oper_poll_get_sub_change_notify_evpipe(subscription->conn, module_name,
+                oper_get_sub->path))) {
             goto cleanup;
         }
     } else if (sr_subscr_oper_poll_sub_find(subscription, sub_id, &module_name)) {
@@ -6325,7 +6332,18 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
         goto error2;
     }
 
+    /* operational get subscriptions change */
+    if ((err_info = sr_shmsub_oper_poll_get_sub_change_notify_evpipe(conn, module_name, path))) {
+        goto error3;
+    }
+
     goto cleanup_unlock;
+
+error3:
+    if ((tmp_err = sr_ptr_del(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
+            *subscription))) {
+        sr_errinfo_merge(&err_info, tmp_err);
+    }
 
 error2:
     sr_subscr_oper_get_sub_del(*subscription, sub_id, SR_LOCK_WRITE);

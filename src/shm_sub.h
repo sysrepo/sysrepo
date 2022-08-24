@@ -232,6 +232,17 @@ sr_error_info_t *sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_no
 sr_error_info_t *sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_subs, sr_conn_ctx_t *conn);
 
 /**
+ * @brief Write into evpipe of relevant operational poll subscriptions on an operational get subscription change (added/removed).
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_name Subscription module name.
+ * @param[in] oper_get_path Operational get subscription path.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_oper_poll_get_sub_change_notify_evpipe(sr_conn_ctx_t *conn, const char *module_name,
+        const char *oper_get_path);
+
+/**
  * @brief Process all module get operational events, if any.
  *
  * @param[in] oper_get_subs Module get operational subscriptions.

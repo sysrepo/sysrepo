@@ -952,7 +952,7 @@ cleanup_opergetsub_unlock:
 }
 
 /**
- * @brief Free operational get subscription data from ext SHM, remove sub SHM.
+ * @brief Free operational get subscription data from ext SHM, remove sub SHM, notify oper poll subs.
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module with subscriptions.
@@ -1921,6 +1921,12 @@ sr_shmext_recover_sub_all(sr_conn_ctx_t *conn)
                     sr_errinfo_free(&err_info);
                 }
             }
+
+            /* operational get subscriptions change */
+            if ((err_info = sr_shmsub_oper_poll_get_sub_change_notify_evpipe(conn, conn->mod_shm.addr + shm_mod->name,
+                    conn->ext_shm.addr + shm_sub->xpath))) {
+                sr_errinfo_free(&err_info);
+            }
         }
 
         for (count = shm_mod->notif_sub_count; count; --count) {
@@ -2327,7 +2333,6 @@ sr_shmext_oper_get_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, uint
     /* find the subscription in ext SHM */
     shm_subs = (sr_mod_oper_get_sub_t *)(conn->ext_shm.addr + shm_mod->oper_get_subs);
     for (i = 0; i < shm_mod->oper_get_sub_count; ++i) {
-
         xpath_subs = (sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + shm_subs[i].xpath_subs);
         for (j = 0; j < shm_subs->xpath_sub_count; ++j) {
             if (xpath_subs[j].sub_id == sub_id) {
@@ -2339,7 +2344,7 @@ sr_shmext_oper_get_sub_suspended(sr_conn_ctx_t *conn, const char *mod_name, uint
             break;
         }
     }
-    SR_CHECK_INT_GOTO(i == shm_mod->oper_get_sub_count, err_info, cleanup_opergetsub_ext_unlock);
+    SR_CHECK_INT_GOTO(!found, err_info, cleanup_opergetsub_ext_unlock);
 
     if (set_suspended > -1) {
         /* check whether the flag can be changed */
