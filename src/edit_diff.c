@@ -2167,6 +2167,11 @@ sr_diff_merge_create(struct lyd_node *diff_match, enum edit_op cur_op, int cur_o
         }
         break;
     default:
+        if ((diff_match->schema->nodetype == LYS_CONTAINER) && diff_match->dflt) {
+            /* can occur in some corner-cases */
+            return NULL;
+        }
+
         /* create and replace operations are not valid */
         SR_ERRINFO_INT(&err_info);
         return err_info;
