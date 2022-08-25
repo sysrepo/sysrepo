@@ -2855,6 +2855,109 @@ cleanup:
 }
 
 sr_error_info_t *
+sr_modinfo_change_notify_update(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session, uint32_t timeout_ms,
+        sr_lock_mode_t *change_sub_lock, sr_error_info_t **cb_err_info)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *update_edit = NULL, *old_diff = NULL, *new_diff = NULL;
+    uint32_t sid = 0;
+    char *orig_name = NULL;
+    void *orig_data = NULL;
+
+    assert(mod_info->diff);
+    assert(*change_sub_lock == SR_LOCK_READ);
+
+    *cb_err_info = NULL;
+
+    /* get session info */
+    if (session) {
+        sid = session->sid;
+        orig_name = session->orig_name;
+        orig_data = session->orig_data;
+    }
+
+    /* publish current diff in an "update" event for the subscribers to update it */
+    if ((err_info = sr_shmsub_change_notify_update(mod_info, orig_name, orig_data, timeout_ms, &update_edit, cb_err_info))) {
+        goto cleanup;
+    }
+    if (*cb_err_info) {
+        /* "update" event failed, just clear the sub SHM and finish */
+        err_info = sr_shmsub_change_notify_clear(mod_info);
+        goto cleanup;
+    }
+
+    /* create new diff if we have an update edit */
+    if (update_edit) {
+        /* backup the old diff */
+        old_diff = mod_info->diff;
+        mod_info->diff = NULL;
+
+        /* get new diff using the updated edit */
+        if ((err_info = sr_modinfo_edit_apply(mod_info, update_edit, 1))) {
+            goto cleanup;
+        }
+
+        /* unlock so that we can lock after additonal modules were marked as changed */
+
+        /* CHANGE SUB READ UNLOCK */
+        sr_modinfo_changesub_rdunlock(mod_info);
+        *change_sub_lock = SR_LOCK_NONE;
+
+        /* validate updated data trees and finish new diff */
+        switch (mod_info->ds) {
+        case SR_DS_STARTUP:
+        case SR_DS_RUNNING:
+            /* add new modules */
+            if ((err_info = sr_modinfo_collect_deps(mod_info))) {
+                goto cleanup;
+            }
+            if ((err_info = sr_modinfo_consolidate(mod_info, 0, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_PERM_NO, sid,
+                    orig_name, orig_data, 0, 0, 0))) {
+                goto cleanup;
+            }
+
+            /* validate */
+            if ((err_info = sr_modinfo_validate(mod_info, MOD_INFO_CHANGED | MOD_INFO_INV_DEP, 1))) {
+                goto cleanup;
+            }
+            break;
+        case SR_DS_CANDIDATE:
+            if ((err_info = sr_modinfo_add_defaults(mod_info, 1))) {
+                goto cleanup;
+            }
+            if ((err_info = sr_modinfo_check_state_data(mod_info))) {
+                goto cleanup;
+            }
+            break;
+        case SR_DS_OPERATIONAL:
+            break;
+        }
+
+        /* CHANGE SUB READ LOCK */
+        if ((err_info = sr_modinfo_changesub_rdlock(mod_info))) {
+            goto cleanup;
+        }
+        *change_sub_lock = SR_LOCK_READ;
+
+        /* put the old diff back */
+        new_diff = mod_info->diff;
+        mod_info->diff = old_diff;
+        old_diff = NULL;
+
+        /* merge diffs into one */
+        if ((err_info = sr_modinfo_diff_merge(mod_info, new_diff))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    lyd_free_all(update_edit);
+    lyd_free_all(old_diff);
+    lyd_free_all(new_diff);
+    return err_info;
+}
+
+sr_error_info_t *
 sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session)
 {
     sr_error_info_t *err_info = NULL, *tmp_err_info = NULL;

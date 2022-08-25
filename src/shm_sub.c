@@ -3524,20 +3524,43 @@ sr_error_info_t *
 sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_poll_subs, sr_conn_ctx_t *conn,
         struct timespec *wake_up_in)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     uint32_t i, j;
     sr_data_t *data = NULL;
+    const struct lys_module *ly_mod;
+    struct sr_mod_info_s mod_info;
+    sr_lock_mode_t change_sub_lock = SR_LOCK_NONE;
     struct sr_oper_poll_cache_s *cache;
     struct modsub_operpollsub_s *oper_poll_sub;
     struct timespec invalid_in;
-    int found, r;
+    int found;
     sr_session_ctx_t *ev_sess = NULL;
     sr_get_options_t get_opts;
+
+    /* find LY module */
+    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, oper_poll_subs->module_name);
+    SR_CHECK_INT_GOTO(!ly_mod, err_info, cleanup);
+
+    /* init mod info */
+    SR_MODINFO_INIT(mod_info, conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL);
+    if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_NONE, SR_MI_DATA_NO | SR_MI_PERM_NO, 0, NULL, NULL,
+            0, 0, 0))) {
+        goto cleanup;
+    }
+
+    /* CHANGE SUB READ LOCK */
+    if ((err_info = sr_modinfo_changesub_rdlock(&mod_info))) {
+        goto cleanup;
+    }
+    change_sub_lock = SR_LOCK_READ;
 
     /* CONN OPER CACHE READ LOCK */
     if ((err_info = sr_rwlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
             __func__, NULL, NULL))) {
-        return err_info;
+        goto cleanup;
     }
 
     for (i = 0; i < oper_poll_subs->sub_count; ++i) {
@@ -3556,13 +3579,13 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
         /* CACHE DATA WRITE LOCK */
         if ((err_info = sr_rwlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
                 __func__, NULL, NULL))) {
-            goto cleanup;
+            goto cleanup_unlock;
         }
 
         /* 1) check that there is an oper get subscription */
         if ((err_info = sr_shmsub_oper_poll_listen_find_get_sub(conn, oper_poll_subs->module_name, oper_poll_sub->path,
                 &found))) {
-            goto data_unlock;
+            goto finish_iter;
         }
         if (!found) {
             /* free any previously cached data and timestamp */
@@ -3571,7 +3594,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
             memset(&cache->timestamp, 0, sizeof cache->timestamp);
 
             SR_LOG_INF("No operational get subscription \"%s\" to cache.", oper_poll_sub->path);
-            goto data_unlock;
+            goto finish_iter;
         }
 
         /* 2) check cache validity */
@@ -3580,31 +3603,55 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
             if (wake_up_in && (!wake_up_in->tv_sec || (sr_time_cmp(&invalid_in, wake_up_in) < 0))) {
                 *wake_up_in = invalid_in;
             }
-            goto data_unlock;
+            goto finish_iter;
         }
 
         /* create a session */
         if ((err_info = _sr_session_start(conn, SR_DS_OPERATIONAL, SR_SUB_EV_NONE, NULL, &ev_sess))) {
-            goto data_unlock;
+            goto finish_iter;
         }
 
         /* get the data, API function */
         get_opts = SR_OPER_NO_STORED | SR_OPER_NO_CACHED | SR_OPER_WITH_ORIGIN;
-        r = sr_get_data(ev_sess, oper_poll_sub->path, 0, 0, get_opts, &data);
-        if (r) {
+        if (sr_get_data(ev_sess, oper_poll_sub->path, 0, 0, get_opts, &data)) {
             err_info = ev_sess->err_info;
             ev_sess->err_info = NULL;
         }
         sr_session_stop(ev_sess);
         if (err_info) {
-            goto data_unlock;
+            goto finish_iter;
+        }
+
+        /* generate diff if supported */
+        if (oper_poll_sub->opts & SR_SUBSCR_OPER_POLL_DIFF) {
+            /* prepare mod info */
+            mod_info.data = cache->data;
+            if (lyd_diff_siblings(cache->data, data->tree, LYD_DIFF_DEFAULTS, &mod_info.diff)) {
+                sr_errinfo_new_ly(&err_info, conn->ly_ctx, NULL);
+                goto finish_iter;
+            }
+
+            if (mod_info.diff) {
+                /* publish "update" event to update the data/diff */
+                if ((err_info = sr_modinfo_change_notify_update(&mod_info, NULL, SR_CHANGE_CB_TIMEOUT, &change_sub_lock,
+                        &cb_err_info))) {
+                    goto finish_iter;
+                }
+
+                if (cb_err_info) {
+                    /* return callback error if some was generated */
+                    sr_errinfo_merge(&err_info, cb_err_info);
+                    sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, "User callback failed.");
+                    goto finish_iter;
+                }
+            }
         }
 
         /* store in cache and update the timestamp */
         lyd_free_siblings(cache->data);
-        cache->data = NULL;
+        cache->data = mod_info.data = NULL;
         if (data) {
-            cache->data = data->tree;
+            cache->data = mod_info.data = data->tree;
             data->tree = NULL;
         }
         sr_release_data(data);
@@ -3618,19 +3665,45 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
 
         SR_LOG_INF("Successful \"operational poll\" \"%s\" cache update.", oper_poll_sub->path);
 
-data_unlock:
+finish_iter:
         /* CACHE DATA WRITE UNLOCK */
         sr_rwunlock(&cache->data_lock, SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 
         if (err_info) {
-            goto cleanup;
+            goto cleanup_unlock;
+        }
+
+        if (mod_info.diff) {
+            /* publish "change" event, we do not care about callback failure */
+            if ((err_info = sr_shmsub_change_notify_change(&mod_info, NULL, NULL, SR_CHANGE_CB_TIMEOUT, &cb_err_info))) {
+                goto cleanup_unlock;
+            }
+            sr_errinfo_free(&cb_err_info);
+
+            /* publish "done" event */
+            if ((err_info = sr_shmsub_change_notify_change_done(&mod_info, NULL, NULL, SR_CHANGE_CB_TIMEOUT))) {
+                goto cleanup_unlock;
+            }
+
+            lyd_free_siblings(mod_info.diff);
+            mod_info.diff = NULL;
         }
     }
 
-cleanup:
+cleanup_unlock:
+    if (change_sub_lock) {
+        assert(change_sub_lock == SR_LOCK_READ);
+
+        /* CHANGE SUB READ UNLOCK */
+        sr_modinfo_changesub_rdunlock(&mod_info);
+    }
+
     /* CONN OPER CACHE READ UNLOCK */
     sr_rwunlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
+cleanup:
+    lyd_free_siblings(mod_info.diff);
+    free(mod_info.mods);
     return err_info;
 }
 

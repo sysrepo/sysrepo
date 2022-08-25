@@ -5466,6 +5466,10 @@ test_cache(void **state)
     ret = sr_oper_poll_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", 3000, 0, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
 
+    /* another subscribe fails */
+    ret = sr_oper_poll_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", 1000, 0, &subscr2);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
     /* read the data from operational #1 */
     sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
@@ -5631,6 +5635,291 @@ test_cache_no_sub(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 }
 
+/* TEST */
+static int
+cache_diff_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    struct state *st = private_data;
+    const struct ly_ctx *ly_ctx;
+
+    (void)sub_id;
+    (void)request_xpath;
+    (void)request_id;
+    (void)private_data;
+
+    assert_string_equal(module_name, "ietf-interfaces");
+    assert_string_equal(xpath, "/ietf-interfaces:interfaces-state");
+    assert_non_null(parent);
+    assert_null(*parent);
+
+    ly_ctx = sr_acquire_context(sr_session_get_connection(session));
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
+    case 0:
+        assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/ietf-interfaces:interfaces-state/interface[name='eth5']/type",
+                "iana-if-type:ethernetCsmacd", 0, parent));
+        assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
+                "oper-status", "testing", 0, NULL));
+        assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
+                "statistics/discontinuity-time", "2000-01-01T02:00:00-00:00", 0, NULL));
+        break;
+    case 2:
+        assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/ietf-interfaces:interfaces-state/interface[name='eth5']/type",
+                "iana-if-type:ethernetCsmacd", 0, parent));
+        assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
+                "oper-status", "dormant", 0, NULL));
+        assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
+                "statistics/discontinuity-time", "2000-01-01T02:00:00-00:00", 0, NULL));
+        break;
+    case 4:
+        assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/ietf-interfaces:interfaces-state/interface[name='eth5']/type",
+                "iana-if-type:softwareLoopback", 0, parent));
+        assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
+                "oper-status", "dormant", 0, NULL));
+        assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ietf-interfaces:interfaces-state/interface[name='eth5']/"
+                "statistics/discontinuity-time", "2010-01-01T02:00:00-00:00", 0, NULL));
+        break;
+    default:
+        fail();
+    }
+    sr_release_context(sr_session_get_connection(session));
+
+    ATOMIC_INC_RELAXED(st->cb_called);
+    return SR_ERR_OK;
+}
+
+static int
+cache_diff_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    sr_change_oper_t op;
+    sr_change_iter_t *iter;
+    sr_val_t *old_val, *new_val;
+    int ret;
+
+    (void)sub_id;
+    (void)request_id;
+
+    assert_string_equal(module_name, "ietf-interfaces");
+    assert_string_equal(xpath, "/ietf-interfaces:*");
+
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
+    case 1:
+        assert_int_equal(event, SR_EV_DONE);
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/ietf-interfaces:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces");
+
+        sr_free_val(new_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state");
+
+        sr_free_val(new_val);
+
+        /* 3rd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']");
+
+        sr_free_val(new_val);
+
+        /* 4th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']/name");
+
+        sr_free_val(new_val);
+
+        /* 5th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']/type");
+
+        sr_free_val(new_val);
+
+        /* 6th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']/oper-status");
+
+        sr_free_val(new_val);
+
+        /* 7th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']/statistics");
+
+        sr_free_val(new_val);
+
+        /* 8th change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_null(old_val);
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']/statistics/discontinuity-time");
+
+        sr_free_val(new_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    case 3:
+        assert_int_equal(event, SR_EV_DONE);
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/ietf-interfaces:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_MODIFIED);
+        assert_non_null(old_val);
+        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']/oper-status");
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']/oper-status");
+
+        sr_free_val(old_val);
+        sr_free_val(new_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    case 5:
+        assert_int_equal(event, SR_EV_DONE);
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/ietf-interfaces:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_MODIFIED);
+        assert_non_null(old_val);
+        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']/type");
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']/type");
+
+        sr_free_val(old_val);
+        sr_free_val(new_val);
+
+        /* 2nd change */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_MODIFIED);
+        assert_non_null(old_val);
+        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']/statistics/discontinuity-time");
+        assert_non_null(new_val);
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']/statistics/discontinuity-time");
+
+        sr_free_val(old_val);
+        sr_free_val(new_val);
+
+        /* no more changes */
+        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    default:
+        fail();
+    }
+
+    ATOMIC_INC_RELAXED(st->cb_called);
+    return SR_ERR_OK;
+}
+
+static void
+test_cache_diff(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr1 = NULL, *subscr2 = NULL;
+    int ret;
+
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+
+    /* subscribe as state data provider */
+    ret = sr_oper_get_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", cache_diff_oper_cb,
+            st, 0, &subscr1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe for oper data changes */
+    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:*", cache_diff_change_cb, st, 0,
+            SR_SUBSCR_DONE_ONLY, &subscr1);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe for oper poll with diff, no thread */
+    ret = sr_oper_poll_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state", 1,
+            SR_SUBSCR_NO_THREAD | SR_SUBSCR_OPER_POLL_DIFF, &subscr2);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* update cache #1 */
+    usleep(1000);
+    ret = sr_subscription_process_events(subscr2, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* update cache #2 */
+    usleep(1000);
+    ret = sr_subscription_process_events(subscr2, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_unsubscribe(subscr1);
+    sr_unsubscribe(subscr2);
+
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 6);
+}
+
 int
 main(void)
 {
@@ -5675,6 +5964,7 @@ main(void)
         cmocka_unit_test_teardown(test_same_xpath_fail, clear_up),
         cmocka_unit_test_teardown(test_cache, clear_up),
         cmocka_unit_test_teardown(test_cache_no_sub, clear_up),
+        cmocka_unit_test_teardown(test_cache_diff, clear_up),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
