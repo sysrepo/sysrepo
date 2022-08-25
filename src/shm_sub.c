@@ -3492,7 +3492,7 @@ cleanup:
  *
  * @param[in] cache Cached data to check.
  * @param[in] valid_ms Validity period of the data.
- * @param[out] invalid_in Optional time when the cache will become invalid, set only if valid.
+ * @param[out] invalid_in Optional relative time when the cache will become invalid, set only if valid.
  * @return Whether the cache data are valid or not.
  */
 static int
@@ -3565,7 +3565,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
             goto data_unlock;
         }
         if (!found) {
-            /* free any previously cached data */
+            /* free any previously cached data and timestamp */
             lyd_free_siblings(cache->data);
             cache->data = NULL;
             memset(&cache->timestamp, 0, sizeof cache->timestamp);
@@ -3577,7 +3577,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
         /* 2) check cache validity */
         if (sr_shmsub_oper_poll_listen_is_cache_valid(cache, oper_poll_sub->valid_ms, &invalid_in)) {
             /* update when to wake up */
-            if (wake_up_in && (sr_time_cmp(&invalid_in, wake_up_in) < 0)) {
+            if (wake_up_in && (!wake_up_in->tv_sec || (sr_time_cmp(&invalid_in, wake_up_in) < 0))) {
                 *wake_up_in = invalid_in;
             }
             goto data_unlock;
@@ -3600,7 +3600,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
             goto data_unlock;
         }
 
-        /* store in cache */
+        /* store in cache and update the timestamp */
         lyd_free_siblings(cache->data);
         cache->data = NULL;
         if (data) {
@@ -3608,11 +3608,11 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
             data->tree = NULL;
         }
         sr_release_data(data);
-
-        /* update timestamp and when to wake up */
         sr_time_get(&cache->timestamp, 0);
-        invalid_in = sr_time_ts_add(&cache->timestamp, oper_poll_sub->valid_ms);
-        if (wake_up_in && (sr_time_cmp(&invalid_in, wake_up_in) < 0)) {
+
+        /* update when to wake up */
+        invalid_in = sr_time_ts_add(NULL, oper_poll_sub->valid_ms);
+        if (wake_up_in && (!wake_up_in->tv_sec || (sr_time_cmp(&invalid_in, wake_up_in) < 0))) {
             *wake_up_in = invalid_in;
         }
 

@@ -3306,13 +3306,15 @@ sr_time_get(struct timespec *ts, uint32_t add_ms)
 struct timespec
 sr_time_ts_add(const struct timespec *ts, uint32_t add_ms)
 {
-    struct timespec ret;
+    struct timespec ret = {0};
 
     if (!add_ms) {
-        return *ts;
+        return ts ? *ts : ret;
     }
 
-    ret = *ts;
+    if (ts) {
+        ret = *ts;
+    }
     if (ret.tv_nsec) {
         add_ms += ret.tv_nsec / 1000000;
         ret.tv_nsec %= 1000000;

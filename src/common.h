@@ -787,7 +787,7 @@ void sr_time_get(struct timespec *ts, uint32_t add_ms);
 /**
  * @brief Add milliseconds to a timespec.
  *
- * @param[in] ts Timespec to add to.
+ * @param[in] ts Optional timespec to add to, use 0 if none.
  * @param[in] add_ms Number of milliseconds to add.
  * @return Resulting timespec.
  */
