@@ -86,3 +86,14 @@ void srpd_swap(struct srpd_plugin_s *a, struct srpd_plugin_s *b);
  * @return SR_ERR_OK on success.
  */
 int srpd_sort_plugins(sr_session_ctx_t *sess, struct srpd_plugin_s *plugins, int plugin_count, const char *plugin_name);
+
+/*
+ * plugins
+ */
+
+/**
+ * @brief Internal rotation notification plugin ::srp_init_cb_t and ::srp_cleanup_cb_t callback.
+ *
+ */
+int srpd_rotation_init_cb(sr_session_ctx_t *session, void **private_data);
+void srpd_rotation_cleanup_cb(sr_session_ctx_t *session, void *private_data);

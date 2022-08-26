@@ -26,13 +26,14 @@
 #include <sys/wait.h>
 
 #include "bin_common.h"
-#include "srpd_rotation.h"
 #include "sysrepo.h"
 
 /**
  * @brief An array of internal plugins
  */
-struct srpd_int_plugin_s int_plugins[1] = {{srpd_rotation_init_cb, srpd_rotation_cleanup_cb, "srpd_rotation"}};
+struct srpd_int_plugin_s int_plugins[] = {
+    {srpd_rotation_init_cb, srpd_rotation_cleanup_cb, "srpd_rotation"},
+};
 
 /* from src/common.c */
 int

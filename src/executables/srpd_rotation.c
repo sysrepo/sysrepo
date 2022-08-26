@@ -13,7 +13,6 @@
  *
  *     https://opensource.org/licenses/BSD-3-Clause
  */
-
 #define _GNU_SOURCE
 
 #include <assert.h>
@@ -31,61 +30,22 @@
 #include "compat.h"
 #include "config.h"
 #include "srpd_common.h"
-#include "srpd_rotation.h"
 
-int
-srpd_rotation_init_cb(sr_session_ctx_t *session, void **private_data)
-{
-    int r = 0;
-    srpd_rotation_opts_t *opts = NULL;
+#define SRPD_PLUGIN_NAME "srpd_rotation"
 
-    opts = calloc(1, sizeof *opts);
-    if (!opts) {
-        SRPLG_LOG_ERR("srpd_rotation", "Memory allocation failed (%s:%d).", __FILE__, __LINE__);
-        goto error;
-    }
-
-    /* create notification rotation change subscription */
-    if ((r = sr_module_change_subscribe(session, "sysrepo-plugind", "/sysrepo-plugind:sysrepo-plugind/notif-datastore/rotation/enabled",
-            srpd_rotation_change_cb, opts, 0, SR_SUBSCR_ENABLED | SR_SUBSCR_DONE_ONLY, &opts->subscr))) {
-        SRPLG_LOG_ERR("srpd_rotation", "Failed to subscribe (%s)", r);
-        goto error;
-    }
-
-    /* create notification rotation state data change subscription */
-    if ((r = sr_oper_get_subscribe(session, "sysrepo-plugind", "/sysrepo-plugind:sysrepo-plugind/notif-datastore/rotation/rotated-files-count",
-            srpd_get_rot_count_cb, opts, 0, &opts->subscr))) {
-        SRPLG_LOG_ERR("srpd_rotation", "Failed to subscribe (%s)", r);
-        goto error;
-    }
-
-    *private_data = opts;
-    return 0;
-
-error:
-    if (opts) {
-        sr_unsubscribe(opts->subscr);
-        free(opts);
-    }
-    return r;
-}
-
-void
-srpd_rotation_cleanup_cb(sr_session_ctx_t *session, void *private_data)
-{
-    int rc;
-    srpd_rotation_opts_t *opts = (srpd_rotation_opts_t *)private_data;
-
-    (void)session;
-
-    sr_unsubscribe(opts->subscr);
-    ATOMIC_STORE_RELAXED(opts->running, 0);
-    if ((rc = pthread_join(opts->tid, NULL))) {
-        SRPLG_LOG_ERR("srpd_rotation", "pthread_join failed (%s).", rc);
-    }
-    free(ATOMIC_PTR_LOAD_RELAXED(opts->output_folder));
-    free(opts);
-}
+/**
+ * @brief Internal struct for rotation.
+ *
+ */
+typedef struct {
+    ATOMIC64_T rotation_time;
+    ATOMIC_PTR_T output_folder;
+    ATOMIC_T compress;
+    ATOMIC64_T rotated_files_count;
+    sr_subscription_ctx_t *subscr;
+    pthread_t tid;
+    ATOMIC_T running;
+} srpd_rotation_data_t;
 
 /**
  * @brief Get the path to notif folder.
@@ -108,14 +68,14 @@ srpd_get_notif_path(void)
     return path;
 }
 
-int
+static int
 srpd_get_rot_count_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *path,
         const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
     int rc = 0;
     const struct ly_ctx *ctx;
     char value[21];
-    srpd_rotation_opts_t *opts = (srpd_rotation_opts_t *)private_data;
+    srpd_rotation_data_t *data = (srpd_rotation_data_t *)private_data;
 
     (void)sub_id;
     (void)module_name;
@@ -123,7 +83,7 @@ srpd_get_rot_count_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
     (void)request_xpath;
     (void)request_id;
 
-    sprintf(value, "%" PRIu64, ATOMIC_LOAD_RELAXED(opts->rotated_files_count));
+    sprintf(value, "%" PRIu64, ATOMIC_LOAD_RELAXED(data->rotated_files_count));
     ctx = sr_session_acquire_context(session);
     if ((rc = lyd_new_path(*parent, ctx, "/sysrepo-plugind:sysrepo-plugind/notif-datastore/rotation/rotated-files-count",
             value, 0, NULL)) != LY_SUCCESS) {
@@ -195,20 +155,20 @@ srpd_rotation_loop(void *arg)
     DIR *d = NULL;
     struct dirent *dir = NULL;
     time_t current_time, file_time2 = 0;
-    srpd_rotation_opts_t *opts = (srpd_rotation_opts_t *)arg;
+    srpd_rotation_data_t *data = (srpd_rotation_data_t *)arg;
     char *arg1 = NULL, *arg2 = NULL, *remove_str = NULL, *notif_dir_name = NULL;
 
     notif_dir_name = srpd_get_notif_path();
     if (!notif_dir_name) {
-        SRPLG_LOG_ERR("srpd_rotation", "Notif directory is NULL.");
+        SRPLG_LOG_ERR(SRPD_PLUGIN_NAME, "Notif directory is NULL.");
         goto cleanup;
     }
-    if (srpd_mkpath((char *)ATOMIC_PTR_LOAD_RELAXED(opts->output_folder), 0777, NULL) == -1) {
-        SRPLG_LOG_ERR("srpd_rotation", "Archive directory could not be created");
+    if (srpd_mkpath((char *)ATOMIC_PTR_LOAD_RELAXED(data->output_folder), 0777, NULL) == -1) {
+        SRPLG_LOG_ERR(SRPD_PLUGIN_NAME, "Archive directory could not be created");
         goto cleanup;
     }
 
-    for ( ; ATOMIC_LOAD_RELAXED(opts->running); sleep(1)) {
+    for ( ; ATOMIC_LOAD_RELAXED(data->running); sleep(1)) {
 
         /* remember current time */
         time(&current_time);
@@ -220,7 +180,7 @@ srpd_rotation_loop(void *arg)
         }
 
         /* read whole directory */
-        while ((dir = readdir(d)) && ATOMIC_LOAD_RELAXED(opts->running)) {
+        while ((dir = readdir(d)) && ATOMIC_LOAD_RELAXED(data->running)) {
 
             /* skip current and parent directories */
             if (!strcmp(dir->d_name, ".") || !strcmp(dir->d_name, "..")) {
@@ -233,12 +193,12 @@ srpd_rotation_loop(void *arg)
             }
 
             /* check whether a file is older than configured time */
-            if ((current_time >= (time_t)ATOMIC_LOAD_RELAXED(opts->rotation_time)) &&
-                    (file_time2 < (current_time - (time_t)ATOMIC_LOAD_RELAXED(opts->rotation_time)))) {
+            if ((current_time >= (time_t)ATOMIC_LOAD_RELAXED(data->rotation_time)) &&
+                    (file_time2 < (current_time - (time_t)ATOMIC_LOAD_RELAXED(data->rotation_time)))) {
 
                 /* build compressing args */
-                if (ATOMIC_LOAD_RELAXED(opts->compress)) {
-                    if (asprintf(&arg1, "%s%s.tar.gz", (char *)ATOMIC_PTR_LOAD_RELAXED(opts->output_folder), dir->d_name) == -1) {
+                if (ATOMIC_LOAD_RELAXED(data->compress)) {
+                    if (asprintf(&arg1, "%s%s.tar.gz", (char *)ATOMIC_PTR_LOAD_RELAXED(data->output_folder), dir->d_name) == -1) {
                         goto cleanup;
                     }
                     if (asprintf(&arg2, "%s%s", notif_dir_name, dir->d_name) == -1) {
@@ -246,10 +206,10 @@ srpd_rotation_loop(void *arg)
                     }
 
                     /* compress a file with tar in output folder */
-                    if ((rc = srpd_exec("srpd_rotation", SRPD_TAR_BINARY, 4, SRPD_TAR_BINARY, "-czvf", arg1, arg2))) {
-                        SRPLG_LOG_ERR("srpd_rotation", "Compressing a file %s failed.", arg2);
+                    if ((rc = srpd_exec(SRPD_PLUGIN_NAME, SRPD_TAR_BINARY, 4, SRPD_TAR_BINARY, "-czvf", arg1, arg2))) {
+                        SRPLG_LOG_ERR(SRPD_PLUGIN_NAME, "Compressing a file %s failed.", arg2);
                     } else {
-                        ATOMIC_INC_RELAXED(opts->rotated_files_count);
+                        ATOMIC_INC_RELAXED(data->rotated_files_count);
 
                         if (asprintf(&remove_str, "%s%s", notif_dir_name, dir->d_name) == -1) {
                             goto cleanup;
@@ -257,7 +217,7 @@ srpd_rotation_loop(void *arg)
 
                         /* remove a file from notif folder */
                         if (remove(remove_str)) {
-                            SRPLG_LOG_ERR("srpd_rotation", "Removing a file %s failed.", remove_str);
+                            SRPLG_LOG_ERR(SRPD_PLUGIN_NAME, "Removing a file %s failed.", remove_str);
                         }
                     }
 
@@ -266,15 +226,15 @@ srpd_rotation_loop(void *arg)
                     if (asprintf(&arg1, "%s%s", notif_dir_name, dir->d_name) == -1) {
                         goto cleanup;
                     }
-                    if (asprintf(&arg2, "%s%s", (char *)ATOMIC_PTR_LOAD_RELAXED(opts->output_folder), dir->d_name) == -1) {
+                    if (asprintf(&arg2, "%s%s", (char *)ATOMIC_PTR_LOAD_RELAXED(data->output_folder), dir->d_name) == -1) {
                         goto cleanup;
                     }
 
                     /* move a file to the output folder */
                     if ((rc = rename(arg1, arg2)) == -1) {
-                        SRPLG_LOG_ERR("srpd_rotation", "Moving a file %s failed.", arg1);
+                        SRPLG_LOG_ERR(SRPD_PLUGIN_NAME, "Moving a file %s failed.", arg1);
                     } else {
-                        ATOMIC_INC_RELAXED(opts->rotated_files_count);
+                        ATOMIC_INC_RELAXED(data->rotated_files_count);
                     }
                 }
 
@@ -301,39 +261,31 @@ cleanup:
     return NULL;
 }
 
-int
-srpd_rotation_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
-        sr_event_t event, uint32_t request_id, void *private_data)
+static int
+srpd_rotation_change_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNUSED(module_name),
+        const char *UNUSED(xpath), sr_event_t UNUSED(event), uint32_t UNUSED(request_id), void *private_data)
 {
-    int rc = 0, t_creat = 0;
-    char *time_unit = NULL;
+    srpd_rotation_data_t *data = (srpd_rotation_data_t *)private_data;
+    int rc = SR_ERR_OK, t_creat = 0;
     time_t time_value;
     sr_change_iter_t *iter = NULL;
     sr_change_oper_t oper;
     const struct lyd_node *node;
-    srpd_rotation_opts_t *opts = (srpd_rotation_opts_t *)private_data;
-    char *temp = NULL, *dir_str = NULL;
-
-    (void)sub_id;
-    (void)module_name;
-    (void)xpath;
-    (void)event;
-    (void)request_id;
+    char *temp = NULL, *dir_str = NULL, *time_unit = NULL;
 
     if ((rc = sr_get_changes_iter(session, "/sysrepo-plugind:sysrepo-plugind/notif-datastore/rotation/enabled//.",
-            &iter)) != SR_ERR_OK) {
+            &iter))) {
         goto cleanup;
     }
 
-    while ((rc = sr_get_change_tree_next(session, iter, &oper, &node, NULL, NULL, NULL)) == SR_ERR_OK) {
-
+    while (!(rc = sr_get_change_tree_next(session, iter, &oper, &node, NULL, NULL, NULL))) {
         if (!strcmp(node->schema->name, "enabled")) {
             if (oper == SR_OP_CREATED) {
                 t_creat = 1;
             } else if (oper == SR_OP_DELETED) {
-                ATOMIC_STORE_RELAXED(opts->running, 0);
-                if ((rc = pthread_join(opts->tid, NULL))) {
-                    SRPLG_LOG_ERR("srpd_rotation", "pthread_join failed (%s).", sr_strerror(rc));
+                ATOMIC_STORE_RELAXED(data->running, 0);
+                if ((rc = pthread_join(data->tid, NULL))) {
+                    SRPLG_LOG_ERR(SRPD_PLUGIN_NAME, "pthread_join failed (%s).", sr_strerror(rc));
                 }
                 /* continue and free iter */
             }
@@ -370,11 +322,11 @@ srpd_rotation_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *
                 break;
             }
 
-            ATOMIC_STORE_RELAXED(opts->rotation_time, time_value);
+            ATOMIC_STORE_RELAXED(data->rotation_time, time_value);
 
         } else if (!strcmp(node->schema->name, "output-dir")) {
             /* safe update of the output_folder (srpd_rotation_loop() reads output_folder!) */
-            temp = ATOMIC_PTR_LOAD_RELAXED(opts->output_folder);
+            temp = ATOMIC_PTR_LOAD_RELAXED(data->output_folder);
 
             /* check whether there is a '/' at the end to further append other strings */
             if (lyd_get_value(node)[strlen(lyd_get_value(node)) - 1] != '/') {
@@ -383,29 +335,28 @@ srpd_rotation_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *
                 rc = asprintf(&dir_str, "%s", lyd_get_value(node));
             }
             if (rc == -1) {
-                SRPLG_LOG_ERR("srpd_rotation", "asprintf() failed (%s:%d) (%s)", __FILE__, __LINE__, strerror(errno));
+                SRPLG_LOG_ERR(SRPD_PLUGIN_NAME, "asprintf() failed (%s:%d) (%s)", __FILE__, __LINE__, strerror(errno));
                 goto cleanup;
             }
-            ATOMIC_PTR_STORE_RELAXED(opts->output_folder, dir_str);
+            ATOMIC_PTR_STORE_RELAXED(data->output_folder, dir_str);
             free(temp);
             temp = NULL;
 
         } else if (!strcmp(node->schema->name, "compress")) {
             if (!strcmp(lyd_get_value(node), "true")) {
-                ATOMIC_STORE_RELAXED(opts->compress, 1);
+                ATOMIC_STORE_RELAXED(data->compress, 1);
             } else {
-                ATOMIC_STORE_RELAXED(opts->compress, 0);
+                ATOMIC_STORE_RELAXED(data->compress, 0);
             }
         }
     }
 
     /* check whether a thread should be created */
     if (t_creat) {
-        assert(ATOMIC_PTR_LOAD_RELAXED(opts->output_folder));
-        ATOMIC_STORE_RELAXED(opts->running, 1);
-        if ((rc = pthread_create(&(opts->tid), NULL, &srpd_rotation_loop, opts))) {
-            SRPLG_LOG_ERR("srpd_rotation", "Sysrepo-plugind change config notif callback failed to create thread: %s.",
-                    sr_strerror(rc));
+        assert(ATOMIC_PTR_LOAD_RELAXED(data->output_folder));
+        ATOMIC_STORE_RELAXED(data->running, 1);
+        if ((rc = pthread_create(&(data->tid), NULL, &srpd_rotation_loop, data))) {
+            SRPLG_LOG_ERR(SRPD_PLUGIN_NAME, "Pthread create failed (%s).", strerror(rc));
         }
         t_creat = 0;
     }
@@ -414,4 +365,57 @@ cleanup:
     free(temp);
     sr_free_change_iter(iter);
     return rc;
+}
+
+int
+srpd_rotation_init_cb(sr_session_ctx_t *session, void **private_data)
+{
+    int rc = SR_ERR_OK;
+    srpd_rotation_data_t *data = NULL;
+
+    data = calloc(1, sizeof *data);
+    if (!data) {
+        SRPLG_LOG_ERR(SRPD_PLUGIN_NAME, "Memory allocation failed (%s:%d).", __FILE__, __LINE__);
+        rc = SR_ERR_NO_MEMORY;
+        goto cleanup;
+    }
+
+    /* create notification rotation change subscription */
+    if ((rc = sr_module_change_subscribe(session, "sysrepo-plugind", "/sysrepo-plugind:sysrepo-plugind/notif-datastore/rotation/enabled",
+            srpd_rotation_change_cb, data, 0, SR_SUBSCR_ENABLED | SR_SUBSCR_DONE_ONLY, &data->subscr))) {
+        SRPLG_LOG_ERR(SRPD_PLUGIN_NAME, "Failed to subscribe (%s)", sr_strerror(rc));
+        goto cleanup;
+    }
+
+    /* create notification rotation state data change subscription */
+    if ((rc = sr_oper_get_subscribe(session, "sysrepo-plugind", "/sysrepo-plugind:sysrepo-plugind/notif-datastore/rotation/rotated-files-count",
+            srpd_get_rot_count_cb, data, 0, &data->subscr))) {
+        SRPLG_LOG_ERR(SRPD_PLUGIN_NAME, "Failed to subscribe (%s)", sr_strerror(rc));
+        goto cleanup;
+    }
+
+cleanup:
+    if (rc) {
+        if (data) {
+            sr_unsubscribe(data->subscr);
+            free(data);
+        }
+    } else {
+        *private_data = data;
+    }
+    return rc;
+}
+
+void
+srpd_rotation_cleanup_cb(sr_session_ctx_t *UNUSED(session), void *private_data)
+{
+    srpd_rotation_data_t *data = private_data;
+
+    sr_unsubscribe(data->subscr);
+    if (ATOMIC_LOAD_RELAXED(data->running)) {
+        ATOMIC_STORE_RELAXED(data->running, 0);
+        pthread_join(data->tid, NULL);
+    }
+    free(ATOMIC_PTR_LOAD_RELAXED(data->output_folder));
+    free(data);
 }
