@@ -2387,7 +2387,6 @@ sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff)
 
     assert(!mod_info->data_cached && SR_IS_CONVENTIONAL_DS(mod_info->ds));
 
-    /* create an array of all the modules that will be processed */
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
         switch (mod->state & MOD_INFO_TYPE_MASK) {
@@ -2425,6 +2424,47 @@ sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff)
 
 cleanup:
     lyd_free_all(diff);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_modinfo_check_state_data(struct sr_mod_info_s *mod_info)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_mod_info_mod_s *mod;
+    struct lyd_node *root, *node;
+    uint32_t i;
+
+    for (i = 0; i < mod_info->mod_count; ++i) {
+        mod = &mod_info->mods[i];
+        if (!(mod->state & MOD_INFO_REQ)) {
+            continue;
+        }
+
+        /* check this module data for state nodes */
+        LY_LIST_FOR(mod_info->data, root) {
+            if (lyd_owner_module(root) == mod->ly_mod) {
+                break;
+            }
+        }
+        LY_LIST_FOR(root, root) {
+            if (lyd_owner_module(root) != mod->ly_mod) {
+                break;
+            }
+
+            LYD_TREE_DFS_BEGIN(root, node) {
+                if (node->schema->flags & LYS_CONFIG_R) {
+                    sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Unexpected data state node \"%s\" found.",
+                            LYD_NAME(node));
+                    SR_ERRINFO_VALID(&err_info);
+                    goto cleanup;
+                }
+                LYD_TREE_DFS_END(root, node);
+            }
+        }
+    }
+
+cleanup:
     return err_info;
 }
 

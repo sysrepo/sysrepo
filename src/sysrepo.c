@@ -3275,8 +3275,11 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
         }
         break;
     case SR_DS_CANDIDATE:
-        /* does not have to be valid but we need all default values */
+        /* does not have to be valid but we need all default values and no state data */
         if ((err_info = sr_modinfo_add_defaults(mod_info, 1))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_modinfo_check_state_data(mod_info))) {
             goto cleanup;
         }
         break;

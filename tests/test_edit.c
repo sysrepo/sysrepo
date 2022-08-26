@@ -139,6 +139,32 @@ test_edit_item(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='val']/name", "val", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
 
+    /* state data */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='val']", NULL, NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='val']", NULL, NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_session_switch_ds(st->sess, SR_DS_STARTUP);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='val']", NULL, NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+
     /* same edits are ignored */
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']", 0);
     assert_int_equal(ret, SR_ERR_OK);

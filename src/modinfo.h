@@ -255,6 +255,14 @@ sr_error_info_t *sr_modinfo_validate(struct sr_mod_info_s *mod_info, int mod_sta
 sr_error_info_t *sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff);
 
 /**
+ * @brief Check data in mod info for state data nodes.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_modinfo_check_state_data(struct sr_mod_info_s *mod_info);
+
+/**
  * @brief Validate operation using modules in mod info.
  *
  * @param[in] mod_info Mod info to use.
