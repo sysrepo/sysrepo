@@ -78,7 +78,7 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 #define SR_YANG_PATH "@YANG_MODULE_PATH@"
 
 /** where SHM files are stored */
-#define SR_SHM_DIR "/dev/shm"
+#define SR_SHM_DIR "@SHM_DIR@"
 
 /** default prefix for SHM files in /dev/shm */
 #define SR_SHM_PREFIX_DEFAULT "sr"

@@ -119,6 +119,15 @@ set(NACM_RECOVERY_USER "root" CACHE STRING "NACM recovery session user that has 
 set(NACM_SRMON_DATA_PERM "600" CACHE STRING "NACM modules ietf-netconf-acm and sysrepo-monitoring default data permissions.")
 
 # paths
+if(NOT SHM_DIR)
+    if("${CMAKE_SYSTEM_NAME}" STREQUAL "FreeBSD")
+        set(SHM_DIR "/tmp/shm")
+    else()
+        set(SHM_DIR "/dev/shm")
+    endif()
+endif()
+set(SHM_DIR "${SHM_DIR}" CACHE PATH "SHM file directory, contains all shared memory files.")
+
 if(NOT REPO_PATH)
     if("${BUILD_TYPE_UPPER}" STREQUAL "DEBUG")
         set(REPO_PATH "${CMAKE_BINARY_DIR}/repository")
@@ -435,8 +444,8 @@ source_format(${FORMAT_SOURCES})
 
 # phony target for clearing sysrepo SHM
 add_custom_target(shm_clean
-    COMMAND rm -rf /dev/shm/sr_*
-    COMMAND rm -rf /dev/shm/srsub_*
+    COMMAND rm -rf ${SHM_DIR}/sr_*
+    COMMAND rm -rf ${SHM_DIR}/srsub_*
     COMMENT "Removing all volatile SHM files prefixed with \"sr\""
 )
 
