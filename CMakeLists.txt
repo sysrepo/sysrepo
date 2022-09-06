@@ -194,6 +194,7 @@ set (SYSREPOCFG_SRC
 
 set (SYSREPOPLUGIND_SRC
     src/executables/srpd_rotation.c
+    src/executables/srpd_oper_poll_diff.c
     src/executables/srpd_common.c
     src/executables/sysrepo-plugind.c)
 

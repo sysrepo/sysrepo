@@ -22,7 +22,7 @@ extern struct srpd_int_plugin_s {
     srp_init_cb_t init_cb;
     srp_cleanup_cb_t cleanup_cb;
     const char *plugin_name;
-} int_plugins[1];
+} int_plugins[2];
 
 struct srpd_plugin_s {
     void *handle;
@@ -97,3 +97,10 @@ int srpd_sort_plugins(sr_session_ctx_t *sess, struct srpd_plugin_s *plugins, int
  */
 int srpd_rotation_init_cb(sr_session_ctx_t *session, void **private_data);
 void srpd_rotation_cleanup_cb(sr_session_ctx_t *session, void *private_data);
+
+/**
+ * @brief Internal oper poll diff plugin ::srp_init_cb_t and ::srp_cleanup_cb_t callback.
+ *
+ */
+int srpd_oper_poll_diff_init_cb(sr_session_ctx_t *session, void **private_data);
+void srpd_oper_poll_diff_cleanup_cb(sr_session_ctx_t *session, void *private_data);
