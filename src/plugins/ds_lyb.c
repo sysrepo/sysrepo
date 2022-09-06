@@ -25,11 +25,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/inotify.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+
+#ifdef SR_HAVE_INOTIFY
+# include <sys/inotify.h>
+#endif
 
 #include <libyang/libyang.h>
 
