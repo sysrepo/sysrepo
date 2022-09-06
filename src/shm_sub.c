@@ -3528,7 +3528,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
     uint32_t i, j;
     sr_data_t *data = NULL;
     const struct lys_module *ly_mod;
-    struct sr_mod_info_s mod_info;
+    struct sr_mod_info_s mod_info = {0};
     sr_lock_mode_t change_sub_lock = SR_LOCK_NONE;
     struct sr_oper_poll_cache_s *cache;
     struct modsub_operpollsub_s *oper_poll_sub;
