@@ -30,15 +30,15 @@
 #include <time.h>
 #include <unistd.h>
 
-#ifdef SR_HAVE_INOTIFY
-# include <sys/inotify.h>
-#endif
-
 #include <libyang/libyang.h>
 
 #include "compat.h"
 #include "common_lyb.h"
 #include "sysrepo.h"
+
+#ifdef SR_HAVE_INOTIFY
+# include <sys/inotify.h>
+#endif
 
 #define srpds_name "LYB DS file"  /**< plugin name */
 
