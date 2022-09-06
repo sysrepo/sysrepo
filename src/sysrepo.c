@@ -167,6 +167,7 @@ sr_conn_free(sr_conn_ctx_t *conn)
     sr_ds_handle_free(conn->ds_handles, conn->ds_handle_count);
     sr_rwlock_destroy(&conn->running_cache_lock);
     sr_ntf_handle_free(conn->ntf_handles, conn->ntf_handle_count);
+    sr_rwlock_destroy(&conn->oper_cache_lock);
 
     free(conn);
 }
