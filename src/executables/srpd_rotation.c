@@ -285,7 +285,7 @@ srpd_rotation_change_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), cons
             } else if (oper == SR_OP_DELETED) {
                 ATOMIC_STORE_RELAXED(data->running, 0);
                 if ((rc = pthread_join(data->tid, NULL))) {
-                    SRPLG_LOG_ERR(SRPD_PLUGIN_NAME, "pthread_join failed (%s).", sr_strerror(rc));
+                    SRPLG_LOG_ERR(SRPD_PLUGIN_NAME, "pthread_join failed (%s).", strerror(rc));
                 }
                 /* continue and free iter */
             }
@@ -410,11 +410,14 @@ void
 srpd_rotation_cleanup_cb(sr_session_ctx_t *UNUSED(session), void *private_data)
 {
     srpd_rotation_data_t *data = private_data;
+    int r;
 
     sr_unsubscribe(data->subscr);
     if (ATOMIC_LOAD_RELAXED(data->running)) {
         ATOMIC_STORE_RELAXED(data->running, 0);
-        pthread_join(data->tid, NULL);
+        if ((r = pthread_join(data->tid, NULL))) {
+            SRPLG_LOG_ERR(SRPD_PLUGIN_NAME, "pthread_join failed (%s).", strerror(r));
+        }
     }
     free(ATOMIC_PTR_LOAD_RELAXED(data->output_folder));
     free(data);
