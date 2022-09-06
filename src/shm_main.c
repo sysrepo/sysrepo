@@ -453,7 +453,7 @@ sr_shmmain_open(sr_shm_t *shm, int *created)
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm;
-    char *shm_name = NULL;
+    char *shm_name = NULL, buf[128];
     int creat = 0;
 
     err_info = sr_path_main_shm(&shm_name);
@@ -468,6 +468,12 @@ sr_shmmain_open(sr_shm_t *shm, int *created)
             /* we do not want to create the memory now */
             free(shm_name);
             return NULL;
+        }
+
+        /* make sure the directory exists */
+        strcpy(buf, SR_SHM_DIR);
+        if ((err_info = sr_mkpath(buf, SR_DIR_PERM))) {
+            goto error;
         }
 
         /* create shared memory */
