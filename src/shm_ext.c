@@ -909,9 +909,9 @@ sr_shmext_oper_get_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_
     SR_LOG_DBG("#SHM before (adding oper get xpath sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
-    /* allocate new XPath subscription, if any */
+    /* allocate new XPath subscription */
     if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_sub->xpath_subs, &shm_sub->xpath_sub_count, 1, sizeof *xpath_sub,
-            j, (void **)&xpath_sub, 0, NULL))) {
+            -1, (void **)&xpath_sub, 0, NULL))) {
         goto cleanup_opergetsub_ext_unlock;
     }
 
