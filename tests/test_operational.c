@@ -5719,7 +5719,7 @@ cache_diff_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces");
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state");
 
         sr_free_val(new_val);
 
@@ -5730,7 +5730,7 @@ cache_diff_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state");
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']");
 
         sr_free_val(new_val);
 
@@ -5741,7 +5741,7 @@ cache_diff_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']");
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']/name");
 
         sr_free_val(new_val);
 
@@ -5752,7 +5752,7 @@ cache_diff_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']/name");
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']/type");
 
         sr_free_val(new_val);
 
@@ -5763,7 +5763,7 @@ cache_diff_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']/type");
+        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']/oper-status");
 
         sr_free_val(new_val);
 
@@ -5774,22 +5774,11 @@ cache_diff_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
         assert_int_equal(op, SR_OP_CREATED);
         assert_null(old_val);
         assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']/oper-status");
-
-        sr_free_val(new_val);
-
-        /* 7th change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
         assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth5']/statistics");
 
         sr_free_val(new_val);
 
-        /* 8th change */
+        /* 7th change */
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
