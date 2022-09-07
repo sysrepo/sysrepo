@@ -845,8 +845,26 @@ sr_shmext_oper_get_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_
 
     /* check that this exact subscription does not exist yet while finding its position */
     new_len = sr_xpath_len_no_predicates(path);
-    for (i = 0; i < shm_mod->oper_get_sub_count; ++i) {
+    i = 0;
+    while (i < shm_mod->oper_get_sub_count) {
         shm_sub = &((sr_mod_oper_get_sub_t *)(conn->ext_shm.addr + shm_mod->oper_get_subs))[i];
+
+        j = 0;
+        while (j < shm_sub->xpath_sub_count) {
+            xpath_sub = &((sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + shm_sub->xpath_subs))[j];
+            if (!sr_conn_is_alive(xpath_sub->cid)) {
+                /* subscription is dead, recover it */
+                if ((err_info = sr_shmext_oper_get_sub_stop(conn, shm_mod, i, j, 1, SR_LOCK_WRITE, 1))) {
+                    goto cleanup_opergetsub_ext_unlock;
+                }
+            } else {
+                ++j;
+            }
+        }
+        if (!j) {
+            /* all subscriptions for this XPath recovered, none left */
+            continue;
+        }
 
         cur_len = sr_xpath_len_no_predicates(conn->ext_shm.addr + shm_sub->xpath);
         if (cur_len > new_len) {
@@ -863,33 +881,22 @@ sr_shmext_oper_get_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_
             xpath_found = 1;
             break;
         }
+
+        ++i;
     }
 
-    *prio = 1;
-    j = 0;
     if (xpath_found) {
-        while (j < shm_sub->xpath_sub_count) {
-            xpath_sub = &((sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + shm_sub->xpath_subs))[j];
-
-            if (!sr_conn_is_alive(xpath_sub->cid)) {
-                /* subscription is dead, recover it */
-                if ((err_info = sr_shmext_oper_get_sub_stop(conn, shm_mod, i, j, 1, SR_LOCK_WRITE, 1))) {
-                    goto cleanup_opergetsub_ext_unlock;
-                }
-            } else {
-                ++j;
-            }
-        }
-        if (j) {
-            xpath_sub = &((sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + shm_sub->xpath_subs))[shm_sub->xpath_sub_count - 1];
-            *prio = xpath_sub->priority + 1;
-        }
-
+        /* use priority of the last subscription (highest) + 1 */
+        xpath_sub = &((sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + shm_sub->xpath_subs))[shm_sub->xpath_sub_count - 1];
+        *prio = xpath_sub->priority + 1;
     } else {
+        /* use starting priority 1 */
+        *prio = 1;
+
         SR_LOG_DBG("#SHM before (adding oper get sub)");
         sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
-        /* allocate new subscription and its xpath, if any */
+        /* allocate new subscription and its xpath */
         if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_mod->oper_get_subs, &shm_mod->oper_get_sub_count, 0,
                 sizeof *shm_sub, i, (void **)&shm_sub, sr_strshmlen(path), &xpath_off))) {
             goto cleanup_opergetsub_ext_unlock;
