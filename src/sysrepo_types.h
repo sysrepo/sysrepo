@@ -284,25 +284,25 @@ typedef struct sr_val_s sr_val_t;
  * @brief Flags used to override default data get behaviour on ::SR_DS_OPERATIONAL.
  */
 typedef enum {
-    SR_OPER_DEFAULT = 0,             /**< No special behaviour. */
-    SR_OPER_NO_STATE = 1,            /**< Return only configuration data. */
-    SR_OPER_NO_CONFIG = 2,           /**< Return only state data. If there are some state subtrees with configuration
+    SR_OPER_DEFAULT = 0x00,          /**< No special behaviour. */
+    SR_OPER_NO_STATE = 0x01,         /**< Return only configuration data. */
+    SR_OPER_NO_CONFIG = 0x02,        /**< Return only state data. If there are some state subtrees with configuration
                                           parents, these are also returned (with keys if lists). */
-    SR_OPER_NO_SUBS = 4,             /**< Return only stored operational data (push), do not call subscriber callbacks (pull). */
-    SR_OPER_NO_STORED = 8,           /**< Do not merge with stored operational data (push). */
-    SR_OPER_WITH_ORIGIN = 16,        /**< Return data with their [origin attributes](@ref datastores). Nodes without
+    SR_OPER_NO_SUBS = 0x04,          /**< Return only stored operational data (push), do not call subscriber callbacks (pull). */
+    SR_OPER_NO_STORED = 0x08,        /**< Do not merge with stored operational data (push). */
+    SR_OPER_WITH_ORIGIN = 0x10,      /**< Return data with their [origin attributes](@ref datastores). Nodes without
                                           one inherit the origin from parents. */
-    SR_OPER_NO_CACHED = 32           /**< Do not use cached oper data from operational poll subscriptions even if
+    SR_OPER_NO_CACHED = 0x20         /**< Do not use cached oper data from operational poll subscriptions even if
                                           available. */
 } sr_get_oper_flag_t;
 
-#define SR_OPER_MASK 63              /**< Mask for all get oper data flags. */
+#define SR_OPER_MASK 0xFFFF          /**< Mask for all get oper data flags. */
 
 /**
  * @brief Flags used to override default data get behavior.
  */
 typedef enum {
-    SR_GET_NO_FILTER = 32            /**< Do not apply the filter and return the whole "base" data which the filter
+    SR_GET_NO_FILTER = 0x010000      /**< Do not apply the filter and return the whole "base" data which the filter
                                           would normally be applied on. The filter is used only when deciding what data
                                           to retrieve from subscribers and similar optimization cases. */
 } sr_get_flag_t;
@@ -324,13 +324,13 @@ typedef uint32_t sr_get_options_t;
  * @brief Flags used to override default behavior of data manipulation calls.
  */
 typedef enum {
-    SR_EDIT_DEFAULT = 0,        /**< Default behavior - non-strict. */
-    SR_EDIT_NON_RECURSIVE = 1,  /**< Non-recursive behavior:
+    SR_EDIT_DEFAULT = 0x0,      /**< Default behavior - non-strict. */
+    SR_EDIT_NON_RECURSIVE = 0x1,/**< Non-recursive behavior:
                                      by ::sr_set_item, all preceding nodes (parents) of the identified element must exist. */
-    SR_EDIT_STRICT = 2,         /**< Strict behavior:
+    SR_EDIT_STRICT = 0x2,       /**< Strict behavior:
                                      by ::sr_set_item the identified element must not exist (similar to NETCONF create operation),
                                      by ::sr_delete_item the identified element must exist (similar to NETCONF delete operation). */
-    SR_EDIT_ISOLATE = 4         /**< Create new operation separately, independent of all the previous operations. Since all the
+    SR_EDIT_ISOLATE = 0x4       /**< Create new operation separately, independent of all the previous operations. Since all the
                                      operations are concatenated into one edit tree, it may happen that 2 incompatible operations
                                      are set and an error is observed. This flag can in those cases be used. Also, if an error
                                      is returned the previous edit is always left untouched. */
@@ -373,28 +373,28 @@ typedef enum {
      * - the callback will be called twice, once with ::SR_EV_CHANGE event and once with ::SR_EV_DONE / ::SR_EV_ABORT
      *   event passed in (can be changed with ::SR_SUBSCR_DONE_ONLY flag).
      */
-    SR_SUBSCR_DEFAULT = 0,
+    SR_SUBSCR_DEFAULT = 0x00,
 
     /**
      * @brief There will be no thread created for handling this subscription meaning no event will be processed!
      * Use this flag when the application has its own event loop and it will listen for and process events manually
      * (see ::sr_get_event_pipe and ::sr_subscription_process_events).
      */
-    SR_SUBSCR_NO_THREAD = 1,
+    SR_SUBSCR_NO_THREAD = 0x01,
 
     /**
      * @brief The subscriber is not the "owner" of the subscribed data tree, just a passive watcher for changes.
      * When this option is passed in to ::sr_module_change_subscribe, the subscription will have no effect on
      * the presence of the subtree in the operational datastore.
      */
-    SR_SUBSCR_PASSIVE = 2,
+    SR_SUBSCR_PASSIVE = 0x02,
 
     /**
      * @brief The subscriber does not support verification of the changes and wants to be notified only after
      * the changes has been applied in the datastore, without the possibility to deny them
      * (it will not receive ::SR_EV_CHANGE nor ::SR_EV_ABORT but only ::SR_EV_DONE events).
      */
-    SR_SUBSCR_DONE_ONLY = 4,
+    SR_SUBSCR_DONE_ONLY = 0x04,
 
     /**
      * @brief The subscriber wants to be notified about the current configuration at the moment of subscribing.
@@ -403,7 +403,7 @@ typedef enum {
      * even if there are no data so there will not be any changes! Also, this event callback is called as part
      * of the subscribe call (in the same thread) unlike other events.
      */
-    SR_SUBSCR_ENABLED = 8,
+    SR_SUBSCR_ENABLED = 0x08,
 
     /**
      * @brief The subscriber will be called before any other subscribers for the particular module
@@ -411,27 +411,27 @@ typedef enum {
      * by calling standard set functions (such as ::sr_set_item_str) on the implicit callback session and returning.
      * Note that you cannot subscribe more callbacks with this flag on one module with the same priority.
      */
-    SR_SUBSCR_UPDATE = 16,
+    SR_SUBSCR_UPDATE = 0x10,
 
     /**
      * @brief Instead of removing any previous existing matching data before getting them from an operational
      * subscription callback, keep them. Then the returned data are merged into the existing data. Accepted
      * only for ::sr_oper_get_subscribe().
      */
-    SR_SUBSCR_OPER_MERGE = 32,
+    SR_SUBSCR_OPER_MERGE = 0x20,
 
     /**
      * @brief Suspend the default handler thread before adding the subscription if it is running. In case of the
      * first subscription, start the handler thread suspended. Meaning any events will not be handled until
      * ::sr_subscription_thread_resume() is called.
      */
-    SR_SUBSCR_THREAD_SUSPEND = 64,
+    SR_SUBSCR_THREAD_SUSPEND = 0x40,
 
     /**
      * @brief On every data retrieval additionally compute diff with the previous data and report the changes to any
      * operational data module change subscriptions. Accepted only for ::sr_oper_poll_subscribe().
      */
-    SR_SUBSCR_OPER_POLL_DIFF = 128
+    SR_SUBSCR_OPER_POLL_DIFF = 0x80
 
 } sr_subscr_flag_t;
 
