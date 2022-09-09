@@ -1,5 +1,5 @@
 /**
-@page example Plugin Example
+@page srpd_example sysrepo-plugind Plugin Example
 
 This page includes a guide on how to write a simple YANG module and then get Sysrepo to handle its data either
 as a [plugin](@ref bins) or a stand-alone daemon. It is best to have at least a [basic understanding](@ref about)
@@ -105,7 +105,7 @@ module oven {
 Here it will be step-by-step explained how to write a proper [plugin](@ref bins) that will manage the oven.
 All code snippets are taken from the actual implementation.
 
-@ref plugin_api
+@ref srpd_plugin_api
 
 ## Initialization
 
@@ -283,7 +283,7 @@ above is just basic and detailed descriptions of all these mechanisms can be fou
 Before being concerned with this particular plugin, Sysrepo must be properly built and installed. Having done that,
 you must install first the model, then the plugin. For installing the model, you can use [sysrepoctl](@ref bins).
 Then, you can use [sysrepo-plugind](@ref bins) to install the plugin `oven.so` or manually put it into
-[plugins path](@ref plugins_path).
+[plugins path](@ref srpd_plugins_path).
 
 After that you should be ready to start `sysrepo-plugind`, which should load the plugin. If you enable debug
 messages, you should see that the `oven` plugin was successfully initialized.

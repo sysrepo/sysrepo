@@ -1646,11 +1646,11 @@ int sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, c
 /** @} oper_subs */
 
 ////////////////////////////////////////////////////////////////////////////////
-// Plugin API
+// sysrepo-plugind Plugin API
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @defgroup plugin_api Plugin API
+ * @defgroup srpd_plugin_api sysrepo-plugind Plugin API
  * @{
  */
 
@@ -1700,7 +1700,7 @@ int sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, c
  */
 #define SRPLG_LOG_DBG(plg_name, ...) srplg_log(plg_name, SR_LL_DBG, __VA_ARGS__)
 
-/** @} plugin */
+/** @} srpd_plugin_api */
 
 /**
  * @internal

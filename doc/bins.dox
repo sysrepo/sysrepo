@@ -8,7 +8,7 @@ useful for some common tasks and by including them every user does not have to w
 - `sysrepocfg(1)` - manipulation of YANG instance data
 - `sysrepo-plugind(8)` - small daemon grouping sysrepo plugins in a single process
 
-## Sysrepo Plugin
+## sysrepo-plugind Plugin
 
 Plugin is a shared object that must expose 2 functions, `sr_plugin_init_cb()` and `sr_plugin_cleanup_cb()` that are
 called on _sysrepo-plugind_ start and end, respectively. The initialization function must perform all the run-time
@@ -16,10 +16,10 @@ tasks because no other function will be called by the daemon. It usually involve
 that then handle events on their own. Cleanup usually stops these subscriptions. There is also a working detailed
 [plugin example](@ref oven_plugin).
 
-@ref plugin_api
+@ref srpd_plugin_api
 
-## Plugins Path
-@anchor plugins_path
+## sysrepo-plugind Plugins Path
+@anchor srpd_plugins_path
 
 This is the path where plugins should be stored and nothing else. The default one can be changed during compilation
 (`PLUGINS_PATH` option) but `$SRPD_PLUGINS_PATH` environment variable will always overwrite this default path, if set.

@@ -4,8 +4,8 @@
  * @brief API for datastore plugins
  *
  * @copyright
- * Copyright (c) 2021 Deutsche Telekom AG.
- * Copyright (c) 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2022 Deutsche Telekom AG.
+ * Copyright (c) 2021 - 2022 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -27,6 +27,15 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+////////////////////////////////////////////////////////////////////////////////
+// Datastore Plugin API
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @defgroup dsplg_api Datastore Plugin API
+ * @{
+ */
 
 /**
  * @brief Datastore plugin API version
@@ -266,6 +275,8 @@ struct srplg_ds_s {
 #define SRPLG_DATASTORE \
     uint32_t srpds_apiver__ = SRPLG_DS_API_VERSION; \
     const struct srplg_ds_s srpds__
+
+/** @} dsplg_api */
 
 #ifdef __cplusplus
 }

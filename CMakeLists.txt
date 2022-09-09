@@ -220,6 +220,8 @@ set(LIB_HEADERS
 set(DOXY_FILES
     doc/
     ${LIB_HEADERS}
+    src/plugins_datastore.h
+    src/plugins_notification.h
     ${PROJECT_BINARY_DIR}/version.h)
 
 # project (doxygen) logo

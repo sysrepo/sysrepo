@@ -12,6 +12,7 @@ options there are in general and how they work.
 - @subpage edit_data
 - @subpage lock
 - @subpage subs
-- @subpage example
+- @subpage sr_plugins
+- @subpage srpd_example
 
 */

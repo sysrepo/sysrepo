@@ -4,8 +4,8 @@
  * @brief API for notification plugins
  *
  * @copyright
- * Copyright (c) 2021 Deutsche Telekom AG.
- * Copyright (c) 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2022 Deutsche Telekom AG.
+ * Copyright (c) 2021 - 2022 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -27,6 +27,15 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+////////////////////////////////////////////////////////////////////////////////
+// Notification Plugin API
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @defgroup ntfplg_api Notification Plugin API
+ * @{
+ */
 
 /**
  * @brief Notification plugin API version
@@ -151,6 +160,8 @@ struct srplg_ntf_s {
 #define SRPLG_NOTIFICATION \
     uint32_t srpntf_apiver__ = SRPLG_NTF_API_VERSION; \
     const struct srplg_ntf_s srpntf__
+
+/** @} ntfplg_api */
 
 #ifdef __cplusplus
 }
