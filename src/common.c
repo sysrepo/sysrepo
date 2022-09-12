@@ -2397,7 +2397,7 @@ sr_remove_module_yang_r(const struct lys_module *ly_mod, const struct ly_ctx *ne
     const struct lysp_module *pmod;
     LY_ARRAY_COUNT_TYPE u;
 
-    if (sr_module_is_internal(ly_mod) || ly_ctx_get_module(new_ctx, ly_mod->name, ly_mod->revision) ||
+    if (sr_is_module_internal(ly_mod) || ly_ctx_get_module(new_ctx, ly_mod->name, ly_mod->revision) ||
             ly_set_contains(del_mod, (void *)ly_mod, NULL)) {
         /* internal, still in the context, or already removed */
         return NULL;
@@ -2448,13 +2448,7 @@ cleanup:
     return err_info;
 }
 
-/**
- * @brief Check whether a module is internal libyang module.
- *
- * @param[in] ly_mod Module to check.
- * @return 0 if not, non-zero if it is.
- */
-static int
+int
 sr_ly_module_is_internal(const struct lys_module *ly_mod)
 {
     if (!ly_mod->revision) {
@@ -2823,50 +2817,12 @@ cleanup:
     return err_info;
 }
 
-int
-sr_module_is_internal(const struct lys_module *ly_mod)
-{
-    if (!ly_mod->revision) {
-        return 0;
-    }
-
-    if (sr_ly_module_is_internal(ly_mod)) {
-        return 1;
-    }
-
-    if (!strcmp(ly_mod->name, "ietf-datastores") && !strcmp(ly_mod->revision, "2018-02-14")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-yang-schema-mount")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-yang-library")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-netconf")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-netconf-with-defaults") && !strcmp(ly_mod->revision, "2011-06-01")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-origin") && !strcmp(ly_mod->revision, "2018-02-14")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-netconf-notifications") && !strcmp(ly_mod->revision, "2012-02-06")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "sysrepo")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "sysrepo-monitoring")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "sysrepo-plugind")) {
-        return 1;
-    } else if (!strcmp(ly_mod->name, "ietf-netconf-acm")) {
-        return 1;
-    }
-
-    return 0;
-}
-
 mode_t
 sr_module_default_mode(const struct lys_module *ly_mod)
 {
     if (!strcmp(ly_mod->name, "sysrepo")) {
         return SR_INTMOD_MAIN_FILE_PERM;
-    } else if (sr_module_is_internal(ly_mod)) {
+    } else if (sr_is_module_internal(ly_mod)) {
         if (!strcmp(ly_mod->name, "sysrepo-plugind") || !strcmp(ly_mod->name, "ietf-yang-schema-mount") ||
                 !strcmp(ly_mod->name, "ietf-yang-library") || !strcmp(ly_mod->name, "ietf-netconf-notifications") ||
                 !strcmp(ly_mod->name, "ietf-netconf")) {

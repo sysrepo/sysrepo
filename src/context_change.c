@@ -34,6 +34,7 @@
 #include "plugins_notification.h"
 #include "shm_ext.h"
 #include "shm_mod.h"
+#include "sysrepo.h"
 #include "sysrepo_types.h"
 
 sr_error_info_t *
@@ -790,7 +791,7 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx
     LY_ERR lyrc;
 
     while ((new_ly_mod = ly_ctx_get_module_iter(ly_ctx, &idx))) {
-        if (!new_ly_mod->implemented || sr_module_is_internal(new_ly_mod)) {
+        if (!new_ly_mod->implemented || sr_is_module_internal(new_ly_mod)) {
             continue;
         }
 

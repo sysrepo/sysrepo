@@ -648,6 +648,16 @@ int sr_disable_module_feature(sr_conn_ctx_t *conn, const char *module_name, cons
  */
 int sr_get_module_info(sr_conn_ctx_t *conn, sr_data_t **sysrepo_data);
 
+/**
+ * @brief Check whether a module is an internal *libyang* or *sysrepo* module. Evaluates to true
+ * for all the modules that are installed by default when no modules were explicitly added.
+ *
+ * @param[in] ly_mod Module to check.
+ * @return true (0) for an internal module.
+ * @return false (non-zero) for other modules.
+ */
+int sr_is_module_internal(const struct lys_module *ly_mod);
+
 /** @} schema */
 
 ////////////////////////////////////////////////////////////////////////////////

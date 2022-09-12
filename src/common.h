@@ -602,6 +602,14 @@ sr_error_info_t *sr_remove_module_yang_r(const struct lys_module *ly_mod, const 
         struct ly_set *del_mod);
 
 /**
+ * @brief Check whether a module is internal libyang module.
+ *
+ * @param[in] ly_mod Module to check.
+ * @return 0 if not, non-zero if it is.
+ */
+int sr_ly_module_is_internal(const struct lys_module *ly_mod);
+
+/**
  * @brief Read full contents of a file into a buffer.
  *
  * @param[in] path Path to the file.
@@ -626,14 +634,6 @@ sr_error_info_t *sr_store_module_yang_r(const struct lys_module *ly_mod);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_collect_module_impl_deps(const struct lys_module *ly_mod, struct ly_set *mod_set);
-
-/**
- * @brief Check whether a module is internal libyang or sysrepo module.
- *
- * @param[in] ly_mod Module to check.
- * @return 0 if not, non-zero if it is.
- */
-int sr_module_is_internal(const struct lys_module *ly_mod);
 
 /**
  * @brief Get default file mode for DS files of a module.

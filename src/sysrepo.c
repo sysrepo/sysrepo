@@ -1477,7 +1477,7 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name, int force)
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
         goto cleanup;
     }
-    if (sr_module_is_internal(ly_mod)) {
+    if (sr_is_module_internal(ly_mod)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Internal module \"%s\" cannot be uninstalled.", module_name);
         goto cleanup;
     }
@@ -2289,6 +2289,44 @@ cleanup:
         *sysrepo_data = NULL;
     }
     return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_is_module_internal(const struct lys_module *ly_mod)
+{
+    if (!ly_mod->revision) {
+        return 0;
+    }
+
+    if (sr_ly_module_is_internal(ly_mod)) {
+        return 1;
+    }
+
+    if (!strcmp(ly_mod->name, "ietf-datastores") && !strcmp(ly_mod->revision, "2018-02-14")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-yang-schema-mount")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-yang-library")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-netconf")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-netconf-with-defaults") && !strcmp(ly_mod->revision, "2011-06-01")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-origin") && !strcmp(ly_mod->revision, "2018-02-14")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-netconf-notifications") && !strcmp(ly_mod->revision, "2012-02-06")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "sysrepo")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "sysrepo-monitoring")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "sysrepo-plugind")) {
+        return 1;
+    } else if (!strcmp(ly_mod->name, "ietf-netconf-acm")) {
+        return 1;
+    }
+
+    return 0;
 }
 
 API int
