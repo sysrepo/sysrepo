@@ -70,8 +70,12 @@ static int
 teardown(void **state)
 {
     struct state *st = (struct state *)*state;
+    const char *module_names[] = {
+        "mod1",
+        NULL
+    };
 
-    sr_remove_module(st->conn, "mod1", 0);
+    sr_remove_modules(st->conn, module_names, 0);
 
     sr_disconnect(st->conn);
     free(st);

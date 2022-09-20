@@ -565,10 +565,22 @@ int sr_install_modules2(sr_conn_ctx_t *conn, const sr_install_mod_t *modules, ui
  *
  * @param[in] conn Connection to use.
  * @param[in] module_name Name of the module to remove.
- * @param[in] force If there are other installed modules depending on this one, remove them, too.
+ * @param[in] force If there are other installed modules depending on @p module_name, remove them, too.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_remove_module(sr_conn_ctx_t *conn, const char *module_name, int force);
+
+/**
+ * @brief Remove installed modules from sysrepo.
+ *
+ * Required WRITE access.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_names Array of names of modules to remove terminated by NULL.
+ * @param[in] force If there are other installed modules depending on @p module_names, remove them, too.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force);
 
 /**
  * @brief Update an installed schema (module) to a new revision.

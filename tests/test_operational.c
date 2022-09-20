@@ -116,23 +116,27 @@ static int
 teardown(void **state)
 {
     struct state *st = (struct state *)*state;
+    const char *module_names[] = {
+        "sm",
+        "oper-group-test",
+        "czechlight-roadm-device",
+        "ops",
+        "ops-ref",
+        "defaults",
+        "act3",
+        "act2",
+        "act",
+        "mixed-config",
+        "ietf-microwave-radio-link",
+        "ietf-interface-protection",
+        "ietf-if-aug",
+        "iana-if-type",
+        "ietf-interfaces",
+        "test",
+        NULL
+    };
 
-    sr_remove_module(st->conn, "sm", 0);
-    sr_remove_module(st->conn, "oper-group-test", 0);
-    sr_remove_module(st->conn, "czechlight-roadm-device", 0);
-    sr_remove_module(st->conn, "ops", 0);
-    sr_remove_module(st->conn, "ops-ref", 0);
-    sr_remove_module(st->conn, "defaults", 0);
-    sr_remove_module(st->conn, "act3", 0);
-    sr_remove_module(st->conn, "act2", 0);
-    sr_remove_module(st->conn, "act", 0);
-    sr_remove_module(st->conn, "mixed-config", 0);
-    sr_remove_module(st->conn, "ietf-microwave-radio-link", 0);
-    sr_remove_module(st->conn, "ietf-interface-protection", 0);
-    sr_remove_module(st->conn, "ietf-if-aug", 0);
-    sr_remove_module(st->conn, "iana-if-type", 0);
-    sr_remove_module(st->conn, "ietf-interfaces", 0);
-    sr_remove_module(st->conn, "test", 0);
+    sr_remove_modules(st->conn, module_names, 0);
 
     sr_disconnect(st->conn);
     pthread_barrier_destroy(&st->barrier2);

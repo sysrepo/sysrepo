@@ -1593,6 +1593,17 @@ cleanup:
 API int
 sr_remove_module(sr_conn_ctx_t *conn, const char *module_name, int force)
 {
+    const char *module_names[] = {
+        module_name,
+        NULL
+    };
+
+    return sr_remove_modules(conn, module_names, force);
+}
+
+API int
+sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
+{
     sr_error_info_t *err_info = NULL;
     struct ly_ctx *new_ctx = NULL, *old_ctx = NULL;
     struct ly_set mod_set = {0};
@@ -1601,8 +1612,9 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name, int force)
             *new_o_data = NULL;
     const struct lys_module *ly_mod;
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
+    uint32_t i;
 
-    SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
+    SR_CHECK_ARG_APIRET(!conn || !module_names, NULL, err_info);
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ_UPGR, 1, __func__))) {
@@ -1610,33 +1622,35 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name, int force)
     }
     ctx_mode = SR_LOCK_READ_UPGR;
 
-    /* try to find this module */
-    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
-    if (!ly_mod) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
-        goto cleanup;
-    }
-    if (sr_is_module_internal(ly_mod)) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Internal module \"%s\" cannot be uninstalled.", module_name);
-        goto cleanup;
-    }
-
-    if (force) {
-        /* collect all the removed modules for this module to be deleted */
-        if ((err_info = sr_collect_module_impl_deps(ly_mod, &mod_set))) {
+    for (i = 0; module_names[i]; ++i) {
+        /* try to find the modules */
+        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_names[i]);
+        if (!ly_mod) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_names[i]);
             goto cleanup;
         }
-    } else {
-        /* add only this module to the removed mod set */
-        if (ly_set_add(&mod_set, (void *)ly_mod, 1, NULL)) {
-            SR_ERRINFO_MEM(&err_info);
+        if (sr_is_module_internal(ly_mod)) {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Internal module \"%s\" cannot be uninstalled.", module_names[i]);
             goto cleanup;
         }
-    }
 
-    /* check write permission */
-    if ((err_info = sr_perm_check(conn, ly_mod, SR_DS_STARTUP, 1, NULL))) {
-        goto cleanup;
+        if (force) {
+            /* collect all the removed modules for this module to be deleted */
+            if ((err_info = sr_collect_module_impl_deps(ly_mod, &mod_set))) {
+                goto cleanup;
+            }
+        } else {
+            /* add only this module to the removed mod set */
+            if (ly_set_add(&mod_set, (void *)ly_mod, 1, NULL)) {
+                SR_ERRINFO_MEM(&err_info);
+                goto cleanup;
+            }
+        }
+
+        /* check write permission */
+        if ((err_info = sr_perm_check(conn, ly_mod, SR_DS_STARTUP, 1, NULL))) {
+            goto cleanup;
+        }
     }
 
     /* create new temporary context */
@@ -1674,7 +1688,7 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name, int force)
         goto cleanup;
     }
 
-    /* finish removing the module */
+    /* finish removing the modules */
     if ((err_info = sr_lycc_del_module(conn, new_ctx, &mod_set, sr_del_mods))) {
         goto cleanup;
     }

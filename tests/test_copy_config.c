@@ -74,18 +74,22 @@ static int
 teardown(void **state)
 {
     struct state *st = (struct state *)*state;
+    const char *module_names[] = {
+        "when2",
+        "when1",
+        "list-case",
+        "ietf-ip",
+        "iana-if-type",
+        "ietf-interfaces",
+        "test",
+        NULL
+    };
 
     if (st->ly_ctx) {
         sr_release_context(st->conn);
     }
 
-    sr_remove_module(st->conn, "when2", 0);
-    sr_remove_module(st->conn, "when1", 0);
-    sr_remove_module(st->conn, "list-case", 0);
-    sr_remove_module(st->conn, "ietf-ip", 0);
-    sr_remove_module(st->conn, "iana-if-type", 0);
-    sr_remove_module(st->conn, "ietf-interfaces", 0);
-    sr_remove_module(st->conn, "test", 0);
+    sr_remove_modules(st->conn, module_names, 0);
 
     sr_disconnect(st->conn);
     free(st);

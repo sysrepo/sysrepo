@@ -101,19 +101,23 @@ teardown(void **state)
 {
     struct state *st = (struct state *)*state;
     int ret = 0;
+    const char *module_names[] = {
+        "act3",
+        "act2",
+        "act",
+        "ops",
+        "ops-ref",
+        "iana-if-type",
+        "ietf-interfaces",
+        "test",
+        NULL
+    };
 
     if (st->ly_ctx) {
         sr_release_context(st->conn);
     }
 
-    ret += sr_remove_module(st->conn, "act3", 0);
-    ret += sr_remove_module(st->conn, "act2", 0);
-    ret += sr_remove_module(st->conn, "act", 0);
-    ret += sr_remove_module(st->conn, "ops", 0);
-    ret += sr_remove_module(st->conn, "ops-ref", 0);
-    ret += sr_remove_module(st->conn, "iana-if-type", 0);
-    ret += sr_remove_module(st->conn, "ietf-interfaces", 0);
-    ret += sr_remove_module(st->conn, "test", 0);
+    ret += sr_remove_modules(st->conn, module_names, 0);
 
     sr_disconnect(st->conn);
     pthread_barrier_destroy(&st->barrier);

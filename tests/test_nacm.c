@@ -70,8 +70,12 @@ static int
 teardown_f(void **state)
 {
     struct state *st = (struct state *)*state;
+    const char *module_names[] = {
+        "test",
+        NULL
+    };
 
-    sr_remove_module(st->conn, "test", 0);
+    sr_remove_modules(st->conn, module_names, 0);
 
     sr_unsubscribe(st->sub);
     sr_nacm_destroy();

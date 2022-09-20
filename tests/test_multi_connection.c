@@ -88,10 +88,14 @@ static int
 teardown_f(void **state)
 {
     struct state *st = (struct state *)*state;
+    const char *module_names[] = {
+        "ietf-interfaces",
+        "iana-if-type",
+        "test",
+        NULL
+    };
 
-    sr_remove_module(st->conn1, "ietf-interfaces", 0);
-    sr_remove_module(st->conn1, "iana-if-type", 0);
-    sr_remove_module(st->conn1, "test", 0);
+    sr_remove_modules(st->conn1, module_names, 0);
 
     sr_disconnect(st->conn1);
     sr_disconnect(st->conn2);

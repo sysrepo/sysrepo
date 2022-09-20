@@ -81,10 +81,14 @@ static int
 teardown_f(void **state)
 {
     struct state *st = (struct state *)*state;
+    const char *module_names[] = {
+        "simple-aug",
+        "simple",
+        "defaults",
+        NULL
+    };
 
-    sr_remove_module(st->conn, "simple-aug", 0);
-    sr_remove_module(st->conn, "simple", 0);
-    sr_remove_module(st->conn, "defaults", 0);
+    sr_remove_modules(st->conn, module_names, 0);
 
     sr_disconnect(st->conn);
     free(st);

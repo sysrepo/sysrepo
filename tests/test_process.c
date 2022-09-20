@@ -178,14 +178,18 @@ static void
 teardown(void)
 {
     sr_conn_ctx_t *conn;
+    const char *module_names[] = {
+        "mod1",
+        "ietf-interfaces",
+        "iana-if-type",
+        "ops",
+        "ops-ref",
+        NULL
+    };
 
     sr_assert(sr_connect(0, &conn) == SR_ERR_OK);
 
-    sr_assert(sr_remove_module(conn, "mod1", 0) == SR_ERR_OK);
-    sr_assert(sr_remove_module(conn, "ietf-interfaces", 0) == SR_ERR_OK);
-    sr_assert(sr_remove_module(conn, "iana-if-type", 0) == SR_ERR_OK);
-    sr_assert(sr_remove_module(conn, "ops", 0) == SR_ERR_OK);
-    sr_assert(sr_remove_module(conn, "ops-ref", 0) == SR_ERR_OK);
+    sr_assert(sr_remove_modules(conn, module_names, 0) == SR_ERR_OK);
 
     sr_disconnect(conn);
 }
