@@ -1928,7 +1928,7 @@ sr_shmsub_oper_get_notify_many(struct sr_mod_info_mod_s *mod, const char *xpath,
 {
     sr_error_info_t *err_info = NULL;
     char *parent_lyb = NULL;
-    uint32_t parent_lyb_len, request_id, i;
+    uint32_t parent_lyb_len, request_id = 0, i;
     struct lyd_node *oper_data;
 
     if (!request_xpath) {
