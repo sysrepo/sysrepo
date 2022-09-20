@@ -40,6 +40,12 @@ static int
 setup(void **state, int cached)
 {
     struct state *st;
+    const char *schema_paths[] = {
+        TESTS_SRC_DIR "/files/simple.yang",
+        TESTS_SRC_DIR "/files/simple-aug.yang",
+        TESTS_SRC_DIR "/files/defaults.yang",
+        NULL
+    };
 
     st = calloc(1, sizeof *st);
     *state = st;
@@ -48,13 +54,7 @@ setup(void **state, int cached)
         return 1;
     }
 
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/simple.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/simple-aug.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/defaults.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_modules(st->conn, schema_paths, TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
 

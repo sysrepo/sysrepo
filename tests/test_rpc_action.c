@@ -46,7 +46,28 @@ setup(void **state)
 {
     struct state *st;
     uint32_t nc_id;
+    const char *schema_paths[] = {
+        TESTS_SRC_DIR "/files/test.yang",
+        TESTS_SRC_DIR "/files/ietf-interfaces.yang",
+        TESTS_SRC_DIR "/files/iana-if-type.yang",
+        TESTS_SRC_DIR "/files/ops-ref.yang",
+        TESTS_SRC_DIR "/files/ops.yang",
+        TESTS_SRC_DIR "/files/act.yang",
+        TESTS_SRC_DIR "/files/act2.yang",
+        TESTS_SRC_DIR "/files/act3.yang",
+        NULL
+    };
     const char *ops_ref_feats[] = {"feat1", NULL}, *act_feats[] = {"advanced-testing", NULL};
+    const char **features[] = {
+        NULL,
+        NULL,
+        NULL,
+        ops_ref_feats,
+        NULL,
+        act_feats,
+        NULL,
+        NULL
+    };
 
     st = calloc(1, sizeof *st);
     *state = st;
@@ -58,28 +79,7 @@ setup(void **state)
         return 1;
     }
 
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/test.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/ietf-interfaces.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/iana-if-type.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/ops-ref.yang", TESTS_SRC_DIR "/files", ops_ref_feats) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/ops.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/act.yang", TESTS_SRC_DIR "/files", act_feats) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/act2.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/act3.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_modules(st->conn, schema_paths, TESTS_SRC_DIR "/files", features) != SR_ERR_OK) {
         return 1;
     }
 

@@ -1158,6 +1158,42 @@ sr_get_repo_path(void)
 }
 
 /**
+ * @brief Set all search dirs for a context.
+ *
+ * @param[in] new_ctx New context to modify.
+ * @param[in] search_dirs String with all search dirs.
+ * @param[out] search_dir_count Count of added search dirs.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_install_module_set_searchdirs(struct ly_ctx *new_ctx, const char *search_dirs, uint32_t *search_dir_count)
+{
+    sr_error_info_t *err_info = NULL;
+    char *sdirs_str = NULL, *ptr, *ptr2 = NULL;
+
+    *search_dir_count = 0;
+
+    if (!search_dirs) {
+        goto cleanup;
+    }
+
+    sdirs_str = strdup(search_dirs);
+    SR_CHECK_MEM_GOTO(!sdirs_str, err_info, cleanup);
+
+    /* add each search dir */
+    for (ptr = strtok_r(sdirs_str, ":", &ptr2); ptr; ptr = strtok_r(NULL, ":", &ptr2)) {
+        if (!ly_ctx_set_searchdir(new_ctx, ptr)) {
+            /* added (it was not already there) */
+            ++(*search_dir_count);
+        }
+    }
+
+cleanup:
+    free(sdirs_str);
+    return err_info;
+}
+
+/**
  * @brief Learn YANG module name and format.
  *
  * @param[in] schema_path Path to the module file.
@@ -1166,7 +1202,7 @@ sr_get_repo_path(void)
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_get_module_name_format(const char *schema_path, char **module_name, LYS_INFORMAT *format)
+sr_install_module_get_name_format(const char *schema_path, char **module_name, LYS_INFORMAT *format)
 {
     sr_error_info_t *err_info = NULL;
     const char *ptr;
@@ -1202,87 +1238,17 @@ sr_get_module_name_format(const char *schema_path, char **module_name, LYS_INFOR
 }
 
 /**
- * @brief Parse a YANG module.
+ * @brief Parse initial data of new module(s), if any.
  *
- * @param[in] ly_ctx Context to use.
- * @param[in] schema_path Path to the module file.
- * @param[in] format Module format.
- * @param[in] features Features to enable.
- * @param[in] search_dirs Optional search dirs, in format <dir>[:<dir>]*.
- * @param[out] ly_mod Parsed libyang module.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_parse_module(struct ly_ctx *ly_ctx, const char *schema_path, LYS_INFORMAT format, const char **features,
-        const char *search_dirs, const struct lys_module **ly_mod)
-{
-    sr_error_info_t *err_info = NULL;
-    char *sdirs_str = NULL, *ptr, *ptr2 = NULL;
-    size_t sdir_count = 0;
-    struct ly_in *in = NULL;
-
-    if (search_dirs) {
-        sdirs_str = strdup(search_dirs);
-        if (!sdirs_str) {
-            SR_ERRINFO_MEM(&err_info);
-            goto cleanup;
-        }
-
-        /* add each search dir */
-        for (ptr = strtok_r(sdirs_str, ":", &ptr2); ptr; ptr = strtok_r(NULL, ":", &ptr2)) {
-            if (!ly_ctx_set_searchdir(ly_ctx, ptr)) {
-                /* added (it was not already there) */
-                ++sdir_count;
-            }
-        }
-    }
-
-    /* parse the module */
-    if (ly_in_new_filepath(schema_path, 0, &in)) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to create input handler for \"%s\".", schema_path);
-        goto cleanup;
-    }
-    if (lys_parse(ly_ctx, in, format, features, (struct lys_module **)ly_mod)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
-        goto cleanup;
-    }
-
-    /* compile */
-    if (ly_ctx_compile(ly_ctx)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
-        goto cleanup;
-    }
-
-cleanup:
-    /* remove added search dirs */
-    ly_ctx_unset_searchdir_last(ly_ctx, sdir_count);
-
-    ly_in_free(in, 0);
-    free(sdirs_str);
-    if (err_info) {
-        *ly_mod = NULL;
-    }
-    return err_info;
-}
-
-API int
-sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs, const char **features)
-{
-    return sr_install_module2(conn, schema_path, search_dirs, features, NULL, NULL, NULL, 0, NULL, NULL, 0);
-}
-
-/**
- * @brief Parse initial data of a new module, if any.
- *
- * @param[in] ly_mod New module to be added.
+ * @param[in] new_ctx New libyang context for parsing the data.
  * @param[in] data Optional initial data in @p format to set.
  * @param[in] data_path Optional path to a data file in @p format to set.
  * @param[in] format Format of @p data or @p data_path file.
- * @param[out] mod_data Initial module data.
+ * @param[out] mod_data Initial module(s) data.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_install_module_data(const struct lys_module *ly_mod, const char *data, const char *data_path, LYD_FORMAT format,
+sr_install_module_get_data(const struct ly_ctx *new_ctx, const char *data, const char *data_path, LYD_FORMAT format,
         struct lyd_node **mod_data)
 {
     sr_error_info_t *err_info = NULL;
@@ -1291,14 +1257,14 @@ sr_install_module_data(const struct lys_module *ly_mod, const char *data, const 
     *mod_data = NULL;
 
     if (data_path) {
-        lyrc = lyd_parse_data_path(ly_mod->ctx, data_path, format, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, mod_data);
+        lyrc = lyd_parse_data_path(new_ctx, data_path, format, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, mod_data);
     } else if (data) {
-        lyrc = lyd_parse_data_mem(ly_mod->ctx, data, format, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, mod_data);
+        lyrc = lyd_parse_data_mem(new_ctx, data, format, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, mod_data);
     }
 
     /* empty data are fine */
     if (lyrc && (lyrc != LY_EINVAL)) {
-        sr_errinfo_new_ly(&err_info, ly_mod->ctx, NULL);
+        sr_errinfo_new_ly(&err_info, new_ctx, NULL);
         goto cleanup;
     }
 
@@ -1310,32 +1276,115 @@ cleanup:
     return err_info;
 }
 
-API int
-sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs, const char **features,
-        const sr_module_ds_t *module_ds, const char *owner, const char *group, mode_t perm, const char *data,
-        const char *data_path, LYD_FORMAT format)
+/**
+ * @brief Prepare members of a new module.
+ *
+ * @param[in] new_ctx New context to use for parsing.
+ * @param[in] conn Connection to use.
+ * @param[in,out] new_mod New module to update.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_install_module_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_int_install_mod_t *new_mod)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_in *in = NULL;
+    char *mod_name = NULL;
+    LYS_INFORMAT format;
+    sr_datastore_t ds;
+
+    /* learn module name and format */
+    if ((err_info = sr_install_module_get_name_format(new_mod->schema_path, &mod_name, &format))) {
+        goto cleanup;
+    }
+
+    /* try to find the module */
+    if (ly_ctx_get_module_implemented(conn->ly_ctx, mod_name)) {
+        sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Module \"%s\" is already in sysrepo.", mod_name);
+        goto cleanup;
+    }
+
+    /* check plugin existence */
+    for (ds = 0; ds < SR_DS_COUNT; ++ds) {
+        if (!new_mod->module_ds.plugin_name[ds]) {
+            /* use default plugin */
+            new_mod->module_ds.plugin_name[ds] = sr_default_module_ds.plugin_name[ds];
+        }
+        if ((err_info = sr_ds_plugin_find(new_mod->module_ds.plugin_name[ds], conn, NULL))) {
+            goto cleanup;
+        }
+    }
+    if (!new_mod->module_ds.plugin_name[SR_MOD_DS_NOTIF]) {
+        /* use default plugin */
+        new_mod->module_ds.plugin_name[SR_MOD_DS_NOTIF] = sr_default_module_ds.plugin_name[SR_MOD_DS_NOTIF];
+    }
+    if ((err_info = sr_ntf_plugin_find(new_mod->module_ds.plugin_name[SR_MOD_DS_NOTIF], conn, NULL))) {
+        goto cleanup;
+    }
+
+    /* parse the module with the features */
+    if (ly_in_new_filepath(new_mod->schema_path, 0, &in)) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to create input handler for \"%s\".",
+                new_mod->schema_path);
+        goto cleanup;
+    }
+    if (lys_parse(new_ctx, in, format, new_mod->features, (struct lys_module **)&new_mod->ly_mod)) {
+        sr_errinfo_new_ly(&err_info, new_ctx, NULL);
+        goto cleanup;
+    }
+
+    if (!new_mod->perm) {
+        /* use default permissions */
+        new_mod->perm = sr_module_default_mode(new_mod->ly_mod);
+    }
+
+    if (!new_mod->group && strlen(SR_GROUP)) {
+        /* use default group */
+        new_mod->group = SR_GROUP;
+    }
+
+cleanup:
+    ly_in_free(in, 0);
+    free(mod_name);
+    return err_info;
+}
+
+/**
+ * @brief Install new modules described by an array of module info.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] search_dirs String with search directories to use.
+ * @param[in] data Optional initial module data as a string, do not set if @p data_path is set.
+ * @param[in] data_path Optional initial module data as a file path, do not set if @p data is set.
+ * @param[in] format YANG data format of @p data or @p data_path.
+ * @param[in,out] new_mods Array of new modules to install, implemented dependencies are added.
+ * @param[in,out] new_mod_count Count of @p new_mods.
+ * @return SR_ERR value.
+ */
+static int
+_sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *data, const char *data_path,
+        LYD_FORMAT format, sr_int_install_mod_t **new_mods, uint32_t *new_mod_count)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_ctx *new_ctx = NULL, *old_ctx = NULL;
-    const struct lys_module *ly_mod;
-    struct ly_set mod_set = {0};
-    LYS_INFORMAT lys_format;
-    char *mod_name = NULL;
     struct lyd_node *mod_data = NULL, *sr_mods = NULL;
     struct lyd_node *old_s_data = NULL, *new_s_data = NULL, *old_r_data = NULL, *new_r_data = NULL, *old_o_data = NULL,
             *new_o_data = NULL;
-    sr_datastore_t ds;
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
+    uint32_t i, search_dir_count = 0;
 
-    SR_CHECK_ARG_APIRET(!conn || !schema_path || (data && data_path), NULL, err_info);
-
-    if (!module_ds) {
-        /* use default plugins */
-        module_ds = &sr_default_module_ds;
+    /* create new temporary context */
+    if ((err_info = sr_ly_ctx_init(conn->opts, conn->ext_cb, conn->ext_cb_data, conn->ext_searchdir, &new_ctx))) {
+        goto cleanup;
     }
 
-    /* learn module name and format */
-    if ((err_info = sr_get_module_name_format(schema_path, &mod_name, &lys_format))) {
+    /* use temporary context to load current modules */
+    if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), new_ctx, NULL))) {
+        goto cleanup;
+    }
+
+    /* set search dirs */
+    if ((err_info = sr_install_module_set_searchdirs(new_ctx, search_dirs, &search_dir_count))) {
         goto cleanup;
     }
 
@@ -1345,45 +1394,29 @@ sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *sea
     }
     ctx_mode = SR_LOCK_READ_UPGR;
 
-    /* try to find the module */
-    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, mod_name);
-    if (ly_mod) {
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Module \"%s\" is already in sysrepo.", mod_name);
-        goto cleanup;
-    }
-
-    /* check plugin existence */
-    for (ds = 0; ds < SR_DS_COUNT; ++ds) {
-        if ((err_info = sr_ds_plugin_find(module_ds->plugin_name[ds], conn, NULL))) {
+    for (i = 0; i < *new_mod_count; ++i) {
+        /* process every new module and check/fill its info */
+        if ((err_info = sr_install_module_prepare_mod(new_ctx, conn, &(*new_mods)[i]))) {
             goto cleanup;
         }
     }
-    if ((err_info = sr_ntf_plugin_find(module_ds->plugin_name[SR_MOD_DS_NOTIF], conn, NULL))) {
+
+    /* compile the final context */
+    if (ly_ctx_compile(new_ctx)) {
+        sr_errinfo_new_ly(&err_info, new_ctx, NULL);
         goto cleanup;
     }
 
-    /* create new temporary context */
-    if ((err_info = sr_ly_ctx_init(conn->opts, conn->ext_cb, conn->ext_cb_data, conn->ext_searchdir, &new_ctx))) {
-        goto cleanup;
-    }
+    /* remove added search dirs */
+    ly_ctx_unset_searchdir_last(new_ctx, search_dir_count);
 
-    /* use temporary context to load modules */
-    if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), new_ctx, NULL))) {
-        goto cleanup;
-    }
-
-    /* parse the module with the features */
-    if ((err_info = sr_parse_module(new_ctx, schema_path, lys_format, features, search_dirs, &ly_mod))) {
-        goto cleanup;
-    }
-
-    /* parse module data, if any */
-    if ((err_info = sr_install_module_data(ly_mod, data, data_path, format, &mod_data))) {
+    /* parse modules data, if any */
+    if ((err_info = sr_install_module_get_data(new_ctx, data, data_path, format, &mod_data))) {
         goto cleanup;
     }
 
     /* check the new context can be used, optionally with initial module data */
-    if ((err_info = sr_lycc_check_add_module(conn, new_ctx))) {
+    if ((err_info = sr_lycc_check_add_modules(conn, new_ctx))) {
         goto cleanup;
     }
     if ((err_info = sr_lycc_update_data(conn, new_ctx, mod_data, &old_s_data, &new_s_data, &old_r_data, &new_r_data,
@@ -1398,7 +1431,7 @@ sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *sea
     ctx_mode = SR_LOCK_WRITE;
 
     /* update lydmods data */
-    if ((err_info = sr_lydmods_change_add_module(conn->ly_ctx, ly_mod, module_ds, &mod_set, &sr_mods))) {
+    if ((err_info = sr_lydmods_change_add_modules(new_ctx, new_mods, new_mod_count, &sr_mods))) {
         goto cleanup;
     }
 
@@ -1408,7 +1441,7 @@ sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *sea
     }
 
     /* finish adding the modules */
-    if ((err_info = sr_lycc_add_module(conn, &mod_set, module_ds, owner, group, perm))) {
+    if ((err_info = sr_lycc_add_modules(conn, *new_mods, *new_mod_count))) {
         goto cleanup;
     }
 
@@ -1434,21 +1467,127 @@ cleanup:
     lyd_free_siblings(old_s_data);
     lyd_free_siblings(old_r_data);
     lyd_free_siblings(old_o_data);
-    lyd_free_siblings(sr_mods);
     ly_ctx_destroy(old_ctx);
 
     lyd_free_siblings(new_s_data);
     lyd_free_siblings(new_r_data);
     lyd_free_siblings(new_o_data);
     lyd_free_siblings(mod_data);
+    lyd_free_siblings(sr_mods);
     ly_ctx_destroy(new_ctx);
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(conn, ctx_mode, 1, __func__);
 
-    ly_set_erase(&mod_set, NULL);
-    free(mod_name);
     return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs, const char **features)
+{
+    return sr_install_module2(conn, schema_path, search_dirs, features, NULL, NULL, NULL, 0, NULL, NULL, 0);
+}
+
+API int
+sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs, const char **features,
+        const sr_module_ds_t *module_ds, const char *owner, const char *group, mode_t perm, const char *data,
+        const char *data_path, LYD_FORMAT format)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_int_install_mod_t *new_mod;
+    uint32_t new_mod_count;
+    int rc;
+
+    SR_CHECK_ARG_APIRET(!conn || !schema_path || (data && data_path), NULL, err_info);
+
+    new_mod = calloc(1, sizeof *new_mod);
+    if (!new_mod) {
+        SR_ERRINFO_MEM(&err_info);
+        return sr_api_ret(NULL, err_info);
+    }
+    new_mod_count = 1;
+
+    new_mod->schema_path = schema_path;
+    new_mod->features = features;
+    if (module_ds) {
+        new_mod->module_ds = *module_ds;
+    }
+    new_mod->owner = owner;
+    new_mod->group = group;
+    new_mod->perm = perm;
+
+    rc = _sr_install_modules(conn, search_dirs, data, data_path, format, &new_mod, &new_mod_count);
+    free(new_mod);
+    return rc;
+}
+
+API int
+sr_install_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *search_dirs,
+        const char ***features)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_int_install_mod_t *new_mods = NULL;
+    uint32_t i, new_mod_count;
+    int rc = SR_ERR_OK;
+
+    SR_CHECK_ARG_APIRET(!conn || !schema_paths, NULL, err_info);
+
+    /* learn count */
+    for (new_mod_count = 0; schema_paths[new_mod_count]; ++new_mod_count) {}
+
+    /* alloc */
+    new_mods = calloc(new_mod_count, sizeof *new_mods);
+    SR_CHECK_MEM_GOTO(!new_mods, err_info, cleanup);
+
+    /* fill all the items */
+    for (i = 0; i < new_mod_count; ++i) {
+        new_mods[i].schema_path = schema_paths[i];
+        new_mods[i].features = features ? features[i] : NULL;
+    }
+
+    /* install */
+    rc = _sr_install_modules(conn, search_dirs, NULL, NULL, 0, &new_mods, &new_mod_count);
+
+cleanup:
+    free(new_mods);
+    if (err_info) {
+        return sr_api_ret(NULL, err_info);
+    } else {
+        return rc;
+    }
+}
+
+API int
+sr_install_modules2(sr_conn_ctx_t *conn, const sr_install_mod_t *modules, uint32_t module_count,
+        const char *search_dirs, const char *data, const char *data_path, LYD_FORMAT format)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_int_install_mod_t *new_mods = NULL;
+    uint32_t i, new_mod_count = 0;
+    int rc = SR_ERR_OK;
+
+    SR_CHECK_ARG_APIRET(!conn || !modules || !module_count, NULL, err_info);
+
+    /* alloc */
+    new_mods = calloc(module_count, sizeof *new_mods);
+    SR_CHECK_MEM_GOTO(!new_mods, err_info, cleanup);
+    new_mod_count = module_count;
+
+    /* copy all the items */
+    for (i = 0; i < module_count; ++i) {
+        memcpy(&new_mods[i], &modules[i], sizeof *modules);
+    }
+
+    /* install */
+    rc = _sr_install_modules(conn, search_dirs, data, data_path, format, &new_mods, &new_mod_count);
+
+cleanup:
+    free(new_mods);
+    if (err_info) {
+        return sr_api_ret(NULL, err_info);
+    } else {
+        return rc;
+    }
 }
 
 API int
@@ -1595,7 +1734,7 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
     SR_CHECK_ARG_APIRET(!conn || !schema_path, NULL, err_info);
 
     /* learn about the module */
-    if ((err_info = sr_get_module_name_format(schema_path, &mod_name, &format))) {
+    if ((err_info = sr_install_module_get_name_format(schema_path, &mod_name, &format))) {
         goto cleanup;
     }
 

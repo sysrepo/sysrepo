@@ -19,6 +19,7 @@
 
 #include <libyang/libyang.h>
 
+#include "common.h"
 #include "common_types.h"
 #include "sysrepo_types.h"
 
@@ -63,27 +64,23 @@ sr_error_info_t *sr_lycc_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const 
 void sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const char *func);
 
 /**
- * @brief Check that a module can be added.
+ * @brief Check that modules can be added.
  *
  * @param[in] conn Connection to use.
- * @param[in] new_ctx New context with the module.
+ * @param[in] new_ctx New context with all the modules.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lycc_check_add_module(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx);
+sr_error_info_t *sr_lycc_check_add_modules(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx);
 
 /**
- * @brief Finish adding a new module(s).
+ * @brief Finish adding new modules.
  *
  * @param[in] conn Connection to use.
- * @param[in] mod_set Set with all the new modules.
- * @param[in] module_ds Module datastore plugins for the module(s).
- * @param[in] owner Optional initial owner of the module data.
- * @param[in] group Optional initial group of the module data.
- * @param[in] perm Optional initial permissions of the module data.
+ * @param[in] new_mods Array of new modules.
+ * @param[in] new_mod_count Count of @p new_mods.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lycc_add_module(sr_conn_ctx_t *conn, const struct ly_set *mod_set, const sr_module_ds_t *module_ds,
-        const char *owner, const char *group, mode_t perm);
+sr_error_info_t *sr_lycc_add_modules(sr_conn_ctx_t *conn, const sr_int_install_mod_t *new_mods, uint32_t new_mod_count);
 
 /**
  * @brief Check that modules can be removed.

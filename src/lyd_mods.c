@@ -4,8 +4,8 @@
  * @brief Sysrepo module data routines
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -115,32 +115,38 @@ cleanup:
 }
 
 /**
- * @brief Add module and all of its implemented imports into sysrepo module data (if not there already), recursively.
+ * @brief Add dependent module and all of its implemented imports into sysrepo module data (if not there already), recursively.
  * All new modules have their data files created and YANG modules stored as well.
  *
  * @param[in] sr_mods Internal sysrepo data.
  * @param[in] ly_mod Module with implemented imports to add.
- * @param[in] module_ds Module datastore plugins.
- * @param[in] log_first If set to 0, nothing will be logged on success. Set to 2 to log installing module
- * and its dependencies.
- * @param[in,out] mod_set Set of all the newly installed modules, is added to.
+ * @param[in] dep_new_mod Index in @p new_mods of the module with @p ly_mod as a dependency.
+ * @param[in,out] new_mods Array of all the newly installed modules, is added to.
+ * @param[in,out] new_mod_count Count of @p new_mods.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_module *ly_mod,
-        const sr_module_ds_t *module_ds, int log_first, struct ly_set *mod_set)
+sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_module *ly_mod, uint32_t dep_new_mod,
+        sr_int_install_mod_t **new_mods, uint32_t *new_mod_count)
 {
     sr_error_info_t *err_info = NULL;
     const struct lysp_submodule *lysp_submod;
-    char *xpath;
+    sr_int_install_mod_t *new_mod;
+    void *mem;
+    char *xpath = NULL;
     int found = 0;
     LY_ARRAY_COUNT_TYPE i, j;
 
     if (ly_mod->implemented) {
-        if (ly_set_contains(mod_set, (void *)ly_mod, NULL)) {
-            /* installed in this batch, nothing else to do */
-            goto cleanup;
-        }
+        i = *new_mod_count;
+        do {
+            --i;
+            if ((*new_mods)[i].ly_mod == ly_mod) {
+                /* module found and was/will be installed in this batch */
+                goto cleanup;
+            }
+        } while (i);
+
         if (asprintf(&xpath, "module[name='%s']", ly_mod->name) == -1) {
             SR_ERRINFO_MEM(&err_info);
             goto cleanup;
@@ -149,35 +155,33 @@ sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_mod
             /* installed before but there may be new implemented modules in its imports anyway */
             found = 1;
         }
-        free(xpath);
 
         if (!found) {
             /* install the module */
-            if ((err_info = sr_lydmods_add_module(sr_mods, ly_mod, module_ds))) {
+            if ((err_info = sr_lydmods_add_module(sr_mods, ly_mod, &(*new_mods)[dep_new_mod].module_ds))) {
                 goto cleanup;
             }
 
-            /* add into the set */
-            if (ly_set_add(mod_set, (void *)ly_mod, 1, NULL)) {
-                SR_ERRINFO_MEM(&err_info);
-                goto cleanup;
-            }
+            /* add into new_mods */
+            mem = realloc(*new_mods, (*new_mod_count + 1) * sizeof **new_mods);
+            SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
+            *new_mods = mem;
+            new_mod = &(*new_mods)[*new_mod_count];
+            memset(new_mod, 0, sizeof *new_mod);
+            ++(*new_mod_count);
 
-            if (log_first == 2) {
-                SR_LOG_INF("Module \"%s\" was installed.", ly_mod->name);
-
-                /* the rest of the modules will be dependencies */
-                --log_first;
-            } else if (log_first == 1) {
-                SR_LOG_INF("Dependency module \"%s\" was installed.", ly_mod->name);
-            }
+            new_mod->ly_mod = ly_mod;
+            new_mod->module_ds = (*new_mods)[dep_new_mod].module_ds;
+            new_mod->owner = (*new_mods)[dep_new_mod].owner;
+            new_mod->group = (*new_mods)[dep_new_mod].group;
+            new_mod->perm = (*new_mods)[dep_new_mod].perm;
         }
     }
 
     /* all newly implemented modules will be added also from imports and includes, recursively */
     LY_ARRAY_FOR(ly_mod->parsed->imports, i) {
-        if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod->parsed->imports[i].module, module_ds,
-                log_first, mod_set))) {
+        if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod->parsed->imports[i].module, 0, new_mods,
+                new_mod_count))) {
             goto cleanup;
         }
     }
@@ -185,8 +189,57 @@ sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_mod
     LY_ARRAY_FOR(ly_mod->parsed->includes, i) {
         lysp_submod = ly_mod->parsed->includes[i].submodule;
         LY_ARRAY_FOR(lysp_submod->imports, j) {
-            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, lysp_submod->imports[j].module, module_ds,
-                    log_first, mod_set))) {
+            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, lysp_submod->imports[j].module, 0, new_mods,
+                    new_mod_count))) {
+                goto cleanup;
+            }
+        }
+    }
+
+cleanup:
+    free(xpath);
+    return err_info;
+}
+
+/**
+ * @brief Add explicit module and all of its implemented imports into sysrepo module data (if not there already), recursively.
+ * All new modules have their data files created and YANG modules stored as well.
+ *
+ * @param[in] sr_mods Internal sysrepo data.
+ * @param[in] cur_new_mod Index in @p new_mods of the explicitly installed module.
+ * @param[in,out] new_mods Array of all the newly installed modules, is added to.
+ * @param[in,out] new_mod_count Count of @p new_mods.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_lydmods_add_module_with_imps(struct lyd_node *sr_mods, uint32_t cur_new_mod, sr_int_install_mod_t **new_mods,
+        uint32_t *new_mod_count)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod = (*new_mods)[cur_new_mod].ly_mod;
+    const struct lysp_submodule *lysp_submod;
+    LY_ARRAY_COUNT_TYPE i, j;
+
+    assert(ly_mod->implemented);
+
+    /* install the module */
+    if ((err_info = sr_lydmods_add_module(sr_mods, ly_mod, &(*new_mods)[cur_new_mod].module_ds))) {
+        goto cleanup;
+    }
+
+    /* all newly implemented modules will be added also from imports and includes, recursively */
+    LY_ARRAY_FOR(ly_mod->parsed->imports, i) {
+        if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod->parsed->imports[i].module, cur_new_mod,
+                new_mods, new_mod_count))) {
+            goto cleanup;
+        }
+    }
+
+    LY_ARRAY_FOR(ly_mod->parsed->includes, i) {
+        lysp_submod = ly_mod->parsed->includes[i].submodule;
+        LY_ARRAY_FOR(lysp_submod->imports, j) {
+            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, lysp_submod->imports[j].module, cur_new_mod,
+                    new_mods, new_mod_count))) {
                 goto cleanup;
             }
         }
@@ -882,15 +935,15 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     sr_error_info_t *err_info = NULL;
     struct lys_module *ly_mod;
     struct lyd_node *sr_mods = NULL;
-    struct ly_set mod_set = {0};
-    uint32_t i;
+    sr_int_install_mod_t *new_mods = NULL;
+    uint32_t i, new_mod_count = 0;
 
-#define SR_INSTALL_INT_MOD(ctx, yang_mod, dep, mod_set) \
+#define SR_INSTALL_INT_MOD(ctx, yang_mod, dep, new_mods, new_mod_count) \
     if (lys_parse_mem(ctx, yang_mod, LYS_IN_YANG, &ly_mod)) { \
         sr_errinfo_new_ly(&err_info, ctx, NULL); \
         goto cleanup; \
     } \
-    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, &sr_default_module_ds, 0, mod_set))) { \
+    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0, &(new_mods), &(new_mod_count)))) { \
         goto cleanup; \
     } \
     SR_LOG_INF("Sysrepo internal%s module \"%s\" was installed.", dep ? " dependency" : "", ly_mod->name)
@@ -899,10 +952,13 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     SR_CHECK_INT_RET(!ly_mod, err_info);
 
     /* store sysrepo as an installed module */
-    if (ly_set_add(&mod_set, (void *)ly_mod, 1, NULL)) {
-        SR_ERRINFO_MEM(&err_info);
-        return err_info;
-    }
+    new_mods = calloc(1, sizeof *new_mods);
+    SR_CHECK_MEM_GOTO(!new_mods, err_info, cleanup);
+    new_mods[new_mod_count].ly_mod = ly_mod;
+    new_mods[new_mod_count].module_ds = sr_default_module_ds;
+    new_mods[new_mod_count].group = strlen(SR_GROUP) ? SR_GROUP : NULL;
+    new_mods[new_mod_count].perm = sr_module_default_mode(ly_mod);
+    ++new_mod_count;
 
     /* create empty container */
     SR_CHECK_INT_RET(lyd_new_inner(NULL, ly_mod, "sysrepo-modules", 0, &sr_mods), err_info);
@@ -915,7 +971,7 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     while ((i < ly_ctx_internal_modules_count(ly_ctx)) && (ly_mod = ly_ctx_get_module_iter(ly_ctx, &i))) {
         /* module must be implemented */
         if (ly_mod->implemented) {
-            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, &sr_default_module_ds, 0, &mod_set))) {
+            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0, &new_mods, &new_mod_count))) {
                 goto cleanup;
             }
             SR_LOG_INF("Libyang internal module \"%s\" was installed.", ly_mod->name);
@@ -923,27 +979,27 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     }
 
     /* install ietf-datastores and ietf-yang-library */
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_datastores_yang, 1, &mod_set);
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_yang_library_yang, 0, &mod_set);
+    SR_INSTALL_INT_MOD(ly_ctx, ietf_datastores_yang, 1, new_mods, new_mod_count);
+    SR_INSTALL_INT_MOD(ly_ctx, ietf_yang_library_yang, 0, new_mods, new_mod_count);
 
     /* install ietf-netconf-acm */
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_acm_yang, 0, &mod_set);
+    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_acm_yang, 0, new_mods, new_mod_count);
 
     /* install sysrepo-monitoring */
-    SR_INSTALL_INT_MOD(ly_ctx, sysrepo_monitoring_yang, 0, &mod_set);
+    SR_INSTALL_INT_MOD(ly_ctx, sysrepo_monitoring_yang, 0, new_mods, new_mod_count);
 
     /* install sysrepo-plugind */
-    SR_INSTALL_INT_MOD(ly_ctx, sysrepo_plugind_yang, 0, &mod_set);
+    SR_INSTALL_INT_MOD(ly_ctx, sysrepo_plugind_yang, 0, new_mods, new_mod_count);
 
     /* install ietf-netconf (implemented dependency) and ietf-netconf-with-defaults */
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_yang, 1, &mod_set);
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_with_defaults_yang, 0, &mod_set);
+    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_yang, 1, new_mods, new_mod_count);
+    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_with_defaults_yang, 0, new_mods, new_mod_count);
 
     /* install ietf-netconf-notifications */
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_notifications_yang, 0, &mod_set);
+    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_notifications_yang, 0, new_mods, new_mod_count);
 
     /* install ietf-origin */
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_origin_yang, 0, &mod_set);
+    SR_INSTALL_INT_MOD(ly_ctx, ietf_origin_yang, 0, new_mods, new_mod_count);
 
     /* compile all */
     if (ly_ctx_compile(ly_ctx)) {
@@ -957,7 +1013,7 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     }
 
     /* finish installing all the modules (default DS plugins, so connection not needed) */
-    if ((err_info = sr_lycc_add_module(NULL, &mod_set, &sr_default_module_ds, NULL, NULL, 0))) {
+    if ((err_info = sr_lycc_add_modules(NULL, new_mods, new_mod_count))) {
         goto cleanup;
     }
 
@@ -967,7 +1023,7 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     }
 
 cleanup:
-    ly_set_erase(&mod_set, NULL);
+    free(new_mods);
     if (err_info) {
         lyd_free_all(sr_mods);
     } else {
@@ -1020,10 +1076,11 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_lydmods_change_add_module(const struct ly_ctx *ly_ctx, const struct lys_module *ly_mod, const sr_module_ds_t *module_ds,
-        struct ly_set *mod_set, struct lyd_node **sr_mods)
+sr_lydmods_change_add_modules(const struct ly_ctx *ly_ctx, sr_int_install_mod_t **new_mods, uint32_t *new_mod_count,
+        struct lyd_node **sr_mods)
 {
     sr_error_info_t *err_info = NULL;
+    uint32_t i, orig_mod_count = *new_mod_count;
 
     *sr_mods = NULL;
 
@@ -1032,9 +1089,16 @@ sr_lydmods_change_add_module(const struct ly_ctx *ly_ctx, const struct lys_modul
         goto cleanup;
     }
 
-    /* add new module with all implemented dependencies to SR data */
-    if ((err_info = sr_lydmods_add_module_with_imps_r(*sr_mods, ly_mod, module_ds, 2, mod_set))) {
-        goto cleanup;
+    /* add new modules with all implemented dependencies to SR data, the latter are added to new_mods as well */
+    for (i = 0; i < orig_mod_count; ++i) {
+        if ((err_info = sr_lydmods_add_module_with_imps(*sr_mods, i, new_mods, new_mod_count))) {
+            goto cleanup;
+        }
+        SR_LOG_INF("Module \"%s\" was installed.", (*new_mods)[i].ly_mod->name);
+    }
+    for ( ; i < *new_mod_count; ++i) {
+        /* all dependencies already installed */
+        SR_LOG_INF("Dependency module \"%s\" was installed.", (*new_mods)[i].ly_mod->name);
     }
 
     /* delete all dependencies */
@@ -1043,7 +1107,7 @@ sr_lydmods_change_add_module(const struct ly_ctx *ly_ctx, const struct lys_modul
     }
 
     /* add new dependencies for all the modules */
-    if ((err_info = sr_lydmods_add_deps_all(ly_mod->ctx, *sr_mods))) {
+    if ((err_info = sr_lydmods_add_deps_all(ly_ctx, *sr_mods))) {
         goto cleanup;
     }
 

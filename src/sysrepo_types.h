@@ -4,8 +4,8 @@
  * @brief public sysrepo types header
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -163,6 +163,18 @@ typedef struct {
     sr_error_info_err_t *err;   /**< Array of all generated errors. */
     uint32_t err_count;         /**< Error count. */
 } sr_error_info_t;
+
+/**
+ * @brief Information about a module to be installed.
+ */
+typedef struct {
+    const char *schema_path;        /**< Path to the schema file. */
+    const char **features;          /**< Optional array of features to enable terminated by NULL. */
+    sr_module_ds_t module_ds;       /**< Optional datastore implementation plugin names for each datastore. */
+    const char *owner;              /**< Optional module data owner, process user by default. */
+    const char *group;              /**< Optional module data group, process group by default. */
+    mode_t perm;                    /**< Optional module data permissions. */
+} sr_install_mod_t;
 
 /** @} connsess */
 

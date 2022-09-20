@@ -21,6 +21,7 @@
 
 #include <libyang/libyang.h>
 
+#include "common.h"
 #include "shm_types.h"
 #include "sysrepo_types.h"
 
@@ -35,17 +36,16 @@
 sr_error_info_t *sr_lydmods_parse(const struct ly_ctx *ly_ctx, int allow_ctx_change, struct lyd_node **sr_mods_p);
 
 /**
- * @brief Add a module to SR internal module data.
+ * @brief Add modules to SR internal module data.
  *
  * @param[in] ly_ctx Context to use for parsing SR data.
- * @param[in] ly_mod Module that was added.
- * @param[in] module_ds Datastore implementation plugin name for each config datastore.
- * @param[in,out] mod_set Set of all the newly installed modules.
+ * @param[in] new_mods Array of new modules that were added.
+ * @param[in] new_mod_count Count of @p new_mods.
  * @param[out] sr_mods SR internal module data.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lydmods_change_add_module(const struct ly_ctx *ly_ctx, const struct lys_module *ly_mod,
-        const sr_module_ds_t *module_ds, struct ly_set *mod_set, struct lyd_node **sr_mods);
+sr_error_info_t *sr_lydmods_change_add_modules(const struct ly_ctx *ly_ctx, sr_int_install_mod_t **new_mods,
+        uint32_t *new_mod_count, struct lyd_node **sr_mods);
 
 /**
  * @brief Remove a module from SR internal module data.

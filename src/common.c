@@ -2207,7 +2207,8 @@ sr_ds_plugin_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, const struct 
 
     /* search internal DS plugins */
     for (i = 0; i < sr_ds_plugin_int_count(); ++i) {
-        if (!strcmp(sr_internal_ds_plugins[i]->name, ds_plugin_name)) {
+        if ((sr_internal_ds_plugins[i]->name == ds_plugin_name) ||
+                !strcmp(sr_internal_ds_plugins[i]->name, ds_plugin_name)) {
             if (ds_plugin) {
                 *ds_plugin = (struct srplg_ds_s *)sr_internal_ds_plugins[i];
             }

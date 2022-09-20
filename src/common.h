@@ -161,6 +161,22 @@ extern const sr_module_ds_t sr_default_module_ds;
 #define SR_MODINFO_INIT(mi, c, d, d2) mi.ds = (d); mi.ds2 = (d2); mi.diff = NULL; mi.data = NULL; \
         mi.data_cached = 0; mi.conn = (c); mi.mods = NULL; mi.mod_count = 0
 
+/**
+ * @brief Internal information about a module to be installed.
+ */
+typedef struct {
+    /* compatible with sr_install_mod_t */
+    const char *schema_path;
+    const char **features;
+    sr_module_ds_t module_ds;
+    const char *owner;
+    const char *group;
+    mode_t perm;
+
+    /* additional members */
+    const struct lys_module *ly_mod;
+} sr_int_install_mod_t;
+
 /*
  * From sysrepo.c
  */

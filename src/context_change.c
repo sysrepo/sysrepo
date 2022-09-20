@@ -178,7 +178,7 @@ sr_lycc_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const
 }
 
 sr_error_info_t *
-sr_lycc_check_add_module(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx)
+sr_lycc_check_add_modules(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod, *ly_mod2;
@@ -213,39 +213,27 @@ sr_lycc_check_add_module(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx)
 }
 
 sr_error_info_t *
-sr_lycc_add_module(sr_conn_ctx_t *conn, const struct ly_set *mod_set, const sr_module_ds_t *module_ds, const char *owner,
-        const char *group, mode_t perm)
+sr_lycc_add_modules(sr_conn_ctx_t *conn, const sr_int_install_mod_t *new_mods, uint32_t new_mod_count)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
     uint32_t i;
     sr_datastore_t ds;
     const struct srplg_ds_s *ds_plg;
-    mode_t mod_perm;
     int rc;
 
-    if (!group && strlen(SR_GROUP)) {
-        /* set default group */
-        group = SR_GROUP;
-    }
-
-    for (i = 0; i < mod_set->count; ++i) {
-        ly_mod = mod_set->objs[i];
+    for (i = 0; i < new_mod_count; ++i) {
+        ly_mod = new_mods[i].ly_mod;
 
         /* init module for all DS plugins */
         for (ds = 0; ds < SR_DS_COUNT; ++ds) {
             /* find plugin */
-            if (module_ds == &sr_default_module_ds) {
-                ds_plg = (struct srplg_ds_s *)sr_internal_ds_plugins[0];
-            } else if ((err_info = sr_ds_plugin_find(module_ds->plugin_name[ds], conn, &ds_plg))) {
+            if ((err_info = sr_ds_plugin_find(new_mods[i].module_ds.plugin_name[ds], conn, &ds_plg))) {
                 return err_info;
             }
 
-            /* get module permissions */
-            mod_perm = perm ? perm : sr_module_default_mode(ly_mod);
-
             /* call init */
-            if ((rc = ds_plg->init_cb(ly_mod, ds, owner, group, mod_perm))) {
+            if ((rc = ds_plg->init_cb(ly_mod, ds, new_mods[i].owner, new_mods[i].group, new_mods[i].perm))) {
                 SR_ERRINFO_DSPLUGIN(&err_info, rc, "init", ds_plg->name, ly_mod->name);
                 return err_info;
             }

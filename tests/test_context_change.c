@@ -43,7 +43,14 @@ static int
 setup(void **state)
 {
     struct state *st;
-    const char *mod1_feats[] = {"f1", NULL};
+    const char *schema_paths[] = {
+        TESTS_SRC_DIR "/files/mod1.yang",
+        NULL
+    };
+    const char *mod1_features[] = {"f1", NULL};
+    const char **features[] = {
+        mod1_features
+    };
 
     st = calloc(1, sizeof *st);
     *state = st;
@@ -52,7 +59,7 @@ setup(void **state)
         return 1;
     }
 
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/mod1.yang", TESTS_SRC_DIR "/files", mod1_feats) != SR_ERR_OK) {
+    if (sr_install_modules(st->conn, schema_paths, TESTS_SRC_DIR "/files", features) != SR_ERR_OK) {
         return 1;
     }
 

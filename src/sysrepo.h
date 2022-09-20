@@ -517,14 +517,46 @@ int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *
  * @param[in] owner Optional initial owner of the module data, process user by default.
  * @param[in] group Optional initial group of the module data, process group by default.
  * @param[in] perm Optional initial permissions of the module data, otherwise system defaults are applied.
- * @param[in] data Optional initial data in @p format to set.
- * @param[in] data_path Optional path to a data file in @p format to set.
+ * @param[in] data Optional initial data in @p format to set, only if @p data_path is not set.
+ * @param[in] data_path Optional path to an initial data file in @p format to set, only if @p data is not set.
  * @param[in] format Format of @p data or @p data_path file.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs, const char **features,
         const sr_module_ds_t *module_ds, const char *owner, const char *group, mode_t perm, const char *data,
         const char *data_path, LYD_FORMAT format);
+
+/**
+ * @brief Install new schemas (modules) into sysrepo in a batch.
+ *
+ * For all datastores and notifications the default plugins are used.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] schema_paths Array of paths to the new schemas terminated by NULL. Can have either YANG or YIN extension/format.
+ * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
+ * @param[in] features Array of the same length as @p schema_paths (minus the last NULL). Each item is an array of
+ * enabled features ended with NULL for the @p schema_paths on the same index. Can be NULL for leaving all
+ * the features disabled.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_install_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *search_dirs,
+        const char ***features);
+
+/**
+ * @brief Install new schemas (modules) into sysrepo in a batch with all the available options.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] modules Array of new modules to be installed with all their information.
+ * @param[in] module_count Count of @p modules.
+ * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
+ * @param[in] data Optional initial data of all the modules in @p format to set, only if @p data_path is not set.
+ * @param[in] data_path Optional path to an initial data file of all the modules in @p format to set, only if @p data
+ * is not set.
+ * @param[in] format Format of @p data or @p data_path file.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_install_modules2(sr_conn_ctx_t *conn, const sr_install_mod_t *modules, uint32_t module_count,
+        const char *search_dirs, const char *data, const char *data_path, LYD_FORMAT format);
 
 /**
  * @brief Remove an installed module from sysrepo.

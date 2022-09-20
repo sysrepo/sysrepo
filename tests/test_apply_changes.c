@@ -43,6 +43,18 @@ static int
 setup(void **state)
 {
     struct state *st;
+    const char *schema_paths[] = {
+        TESTS_SRC_DIR "/files/test.yang",
+        TESTS_SRC_DIR "/files/ietf-interfaces.yang",
+        TESTS_SRC_DIR "/files/ietf-ip.yang",
+        TESTS_SRC_DIR "/files/iana-if-type.yang",
+        TESTS_SRC_DIR "/files/ietf-if-aug.yang",
+        TESTS_SRC_DIR "/files/when1.yang",
+        TESTS_SRC_DIR "/files/when2.yang",
+        TESTS_SRC_DIR "/files/defaults.yang",
+        TESTS_SRC_DIR "/files/sm.yang",
+        NULL
+    };
 
     st = calloc(1, sizeof *st);
     *state = st;
@@ -51,31 +63,7 @@ setup(void **state)
         return 1;
     }
 
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/test.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/ietf-interfaces.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/ietf-ip.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/iana-if-type.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/ietf-if-aug.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/when1.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/when2.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/defaults.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn, TESTS_SRC_DIR "/files/sm.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_modules(st->conn, schema_paths, TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
 

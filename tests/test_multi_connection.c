@@ -43,11 +43,17 @@ static int
 setup_f(void **state)
 {
     struct state *st;
+    const char *schema_paths[] = {
+        TESTS_SRC_DIR "/files/test.yang",
+        TESTS_SRC_DIR "/files/ietf-interfaces.yang",
+        TESTS_SRC_DIR "/files/iana-if-type.yang",
+        NULL
+    };
 
     st = calloc(1, sizeof *st);
     *state = st;
 
-    // Connection 1
+    /* connection 1 */
     if (sr_connect(0, &(st->conn1)) != SR_ERR_OK) {
         return 1;
     }
@@ -55,7 +61,7 @@ setup_f(void **state)
         return 1;
     }
 
-    // Connection 2
+    /* connection 2 */
     if (sr_connect(0, &(st->conn2)) != SR_ERR_OK) {
         return 1;
     }
@@ -63,7 +69,7 @@ setup_f(void **state)
         return 1;
     }
 
-    // Connection 3
+    /* connection 3 */
     if (sr_connect(0, &(st->conn3)) != SR_ERR_OK) {
         return 1;
     }
@@ -71,13 +77,7 @@ setup_f(void **state)
         return 1;
     }
 
-    if (sr_install_module(st->conn1, TESTS_SRC_DIR "/files/test.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn1, TESTS_SRC_DIR "/files/ietf-interfaces.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
-        return 1;
-    }
-    if (sr_install_module(st->conn1, TESTS_SRC_DIR "/files/iana-if-type.yang", TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
+    if (sr_install_modules(st->conn1, schema_paths, TESTS_SRC_DIR "/files", NULL) != SR_ERR_OK) {
         return 1;
     }
 
