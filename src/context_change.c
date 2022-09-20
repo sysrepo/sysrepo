@@ -612,14 +612,14 @@ cleanup:
  * @brief Append all stored DS data by implemented modules from context.
  *
  * @param[in] conn Connection to use.
- * @param[in] ly_ctx New context to iterate over.
+ * @param[in] new_ctx New context to iterate over.
  * @param[out] start_data Startup data tree.
  * @param[out] run_data Running data tree.
  * @param[out] oper_data Operational stored edit.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct lyd_node **start_data,
+sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, struct lyd_node **start_data,
         struct lyd_node **run_data, struct lyd_node **oper_data)
 {
     sr_error_info_t *err_info = NULL;
@@ -629,7 +629,7 @@ sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct lyd
     sr_datastore_t ds;
     uint32_t idx = 0;
 
-    while ((ly_mod = ly_ctx_get_module_iter(ly_ctx, &idx))) {
+    while ((ly_mod = ly_ctx_get_module_iter(new_ctx, &idx))) {
         if (!ly_mod->implemented || !strcmp(ly_mod->name, "sysrepo")) {
             /* we need data of only implemented modules and never from internal SR module */
             continue;
@@ -675,13 +675,13 @@ sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct lyd
  *
  * @param[in] old_data Old data to update.
  * @param[in] parse_opts Parse options to use for parsing back @p old_data.
- * @param[in] ly_ctx New context to use.
+ * @param[in] new_ctx New context to use.
  * @param[in] append_data Optional data to append.
- * @param[out] new_data Data tree in @p ly_ctx with optional @p append_data.
+ * @param[out] new_data Data tree in @p new_ctx with optional @p append_data.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lycc_update_data_tree(const struct lyd_node *old_data, uint32_t parse_opts, const struct ly_ctx *ly_ctx,
+sr_lycc_update_data_tree(const struct lyd_node *old_data, uint32_t parse_opts, const struct ly_ctx *new_ctx,
         const struct lyd_node *append_data, struct lyd_node **new_data)
 {
     sr_error_info_t *err_info = NULL;
@@ -696,8 +696,8 @@ sr_lycc_update_data_tree(const struct lyd_node *old_data, uint32_t parse_opts, c
     }
 
     /* try to load it into the new updated context skipping any unknown nodes */
-    if (lyd_parse_data_mem(ly_ctx, data_json, LYD_JSON, parse_opts, 0, new_data)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+    if (lyd_parse_data_mem(new_ctx, data_json, LYD_JSON, parse_opts, 0, new_data)) {
+        sr_errinfo_new_ly(&err_info, new_ctx, NULL);
         goto cleanup;
     }
 
@@ -705,11 +705,11 @@ sr_lycc_update_data_tree(const struct lyd_node *old_data, uint32_t parse_opts, c
         /* link to the new data */
         if (!(*new_data)) {
             if (lyd_dup_siblings(append_data, NULL, LYD_DUP_RECURSIVE, new_data)) {
-                sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+                sr_errinfo_new_ly(&err_info, new_ctx, NULL);
                 goto cleanup;
             }
         } else if (lyd_merge_siblings(new_data, append_data, 0)) {
-            sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+            sr_errinfo_new_ly(&err_info, new_ctx, NULL);
             goto cleanup;
         }
     }
@@ -720,7 +720,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_lycc_update_data(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const struct lyd_node *mod_data,
+sr_lycc_update_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, const struct lyd_node *mod_data,
         struct lyd_node **old_s_data, struct lyd_node **new_s_data, struct lyd_node **old_r_data,
         struct lyd_node **new_r_data, struct lyd_node **old_o_data, struct lyd_node **new_o_data)
 {
@@ -741,21 +741,21 @@ sr_lycc_update_data(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const stru
 
     /* update data for the new context */
     parse_opts = LYD_PARSE_NO_STATE | LYD_PARSE_ONLY;
-    if ((err_info = sr_lycc_update_data_tree(*old_s_data, parse_opts, ly_ctx, mod_data, new_s_data))) {
+    if ((err_info = sr_lycc_update_data_tree(*old_s_data, parse_opts, new_ctx, mod_data, new_s_data))) {
         goto cleanup;
     }
-    if ((err_info = sr_lycc_update_data_tree(*old_r_data, parse_opts, ly_ctx, mod_data, new_r_data))) {
+    if ((err_info = sr_lycc_update_data_tree(*old_r_data, parse_opts, new_ctx, mod_data, new_r_data))) {
         goto cleanup;
     }
     parse_opts &= ~LYD_PARSE_NO_STATE;
-    if ((err_info = sr_lycc_update_data_tree(*old_o_data, parse_opts, ly_ctx, NULL, new_o_data))) {
+    if ((err_info = sr_lycc_update_data_tree(*old_o_data, parse_opts, new_ctx, NULL, new_o_data))) {
         goto cleanup;
     }
 
     /* fully validate complete startup and running datastore */
-    if (lyd_validate_all(new_s_data, ly_ctx, LYD_VALIDATE_NO_STATE, NULL) ||
-            lyd_validate_all(new_r_data, ly_ctx, LYD_VALIDATE_NO_STATE, NULL)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+    if (lyd_validate_all(new_s_data, new_ctx, LYD_VALIDATE_NO_STATE, NULL) ||
+            lyd_validate_all(new_r_data, new_ctx, LYD_VALIDATE_NO_STATE, NULL)) {
+        sr_errinfo_new_ly(&err_info, new_ctx, NULL);
         err_info->err[0].err_code = SR_ERR_VALIDATION_FAILED;
         goto cleanup;
     }
@@ -777,7 +777,7 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, sr_datastore_t ds,
+sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, sr_datastore_t ds,
         const struct lyd_node *sr_mods, struct lyd_node **old_data, struct lyd_node **new_data)
 {
     sr_error_info_t *err_info = NULL;
@@ -790,7 +790,7 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx
     int rc, differ;
     LY_ERR lyrc;
 
-    while ((new_ly_mod = ly_ctx_get_module_iter(ly_ctx, &idx))) {
+    while ((new_ly_mod = ly_ctx_get_module_iter(new_ctx, &idx))) {
         if (!new_ly_mod->implemented || sr_is_module_internal(new_ly_mod)) {
             continue;
         }
@@ -850,24 +850,24 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx
 }
 
 sr_error_info_t *
-sr_lycc_store_data_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const struct lyd_node *sr_mods,
+sr_lycc_store_data_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, const struct lyd_node *sr_mods,
         struct lyd_node **old_s_data, struct lyd_node **new_s_data, struct lyd_node **old_r_data,
         struct lyd_node **new_r_data, struct lyd_node **old_o_data, struct lyd_node **new_o_data)
 {
     sr_error_info_t *err_info = NULL;
 
     /* startup */
-    if ((err_info = sr_lycc_store_data_ds_if_differ(conn, ly_ctx, SR_DS_STARTUP, sr_mods, old_s_data, new_s_data))) {
+    if ((err_info = sr_lycc_store_data_ds_if_differ(conn, new_ctx, SR_DS_STARTUP, sr_mods, old_s_data, new_s_data))) {
         return err_info;
     }
 
     /* running */
-    if ((err_info = sr_lycc_store_data_ds_if_differ(conn, ly_ctx, SR_DS_RUNNING, sr_mods, old_r_data, new_r_data))) {
+    if ((err_info = sr_lycc_store_data_ds_if_differ(conn, new_ctx, SR_DS_RUNNING, sr_mods, old_r_data, new_r_data))) {
         return err_info;
     }
 
     /* operational */
-    if ((err_info = sr_lycc_store_data_ds_if_differ(conn, ly_ctx, SR_DS_OPERATIONAL, sr_mods, old_o_data, new_o_data))) {
+    if ((err_info = sr_lycc_store_data_ds_if_differ(conn, new_ctx, SR_DS_OPERATIONAL, sr_mods, old_o_data, new_o_data))) {
         return err_info;
     }
 
