@@ -101,10 +101,10 @@ typedef struct sr_session_ctx_s sr_session_ctx_t;
  * @brief Flags used to override default connection handling by ::sr_connect call.
  */
 typedef enum {
-    SR_CONN_DEFAULT = 0,            /**< No special behaviour. */
-    SR_CONN_CACHE_RUNNING = 1,      /**< Always cache running datastore data which makes mainly repeated retrieval of data
-                                         much faster. Affects all sessions created on this connection. */
-    SR_CONN_CTX_SET_PRIV_PARSED = 2 /**< Use LY_CTX_SET_PRIV_PARSED option for the connection libyang context. */
+    SR_CONN_DEFAULT = 0x0,              /**< No special behaviour. */
+    SR_CONN_CACHE_RUNNING = 0x1,        /**< Always cache running datastore data which makes mainly repeated retrieval
+                                             of data much faster. Affects all sessions created on this connection. */
+    SR_CONN_CTX_SET_PRIV_PARSED = 0x2   /**< Use LY_CTX_SET_PRIV_PARSED option for the connection libyang context. */
 } sr_conn_flag_t;
 
 /**
@@ -142,33 +142,27 @@ typedef enum {
 /**
  * @brief Custom datastore implementation config for each datastore and notifications of a module.
  */
-struct sr_module_ds_s {
+typedef struct {
     const char *plugin_name[SR_MOD_DS_PLUGIN_COUNT];    /**< Datastore plugin name. */
-};
-
-typedef struct sr_module_ds_s sr_module_ds_t;
+} sr_module_ds_t;
 
 /**
  * @brief A single, detailed error message. Used in sr_error_info_t
  */
-struct sr_error_info_err_s {
+typedef struct {
     sr_error_t err_code;    /**< Error code. */
     char *message;          /**< Error message. */
     char *error_format;     /**< Error format identifier. */
     void *error_data;       /**< Opaque error data specific for @p error_format. */
-};
-
-typedef struct sr_error_info_err_s sr_error_info_err_t;
+} sr_error_info_err_t;
 
 /**
  * @brief Detailed sysrepo session error information.
  */
-struct sr_error_info_s {
+typedef struct {
     sr_error_info_err_t *err;   /**< Array of all generated errors. */
     uint32_t err_count;         /**< Error count. */
-};
-
-typedef struct sr_error_info_s sr_error_info_t;
+} sr_error_info_t;
 
 /** @} connsess */
 
@@ -180,15 +174,13 @@ typedef struct sr_error_info_s sr_error_info_t;
 /**
  * @brief Structure that safely wraps libyang data and prevents unexpected context changes.
  */
-struct sr_data_s {
+typedef struct {
     /** Connection whose context was used for creating @p tree. */
     const sr_conn_ctx_t *conn;
 
     /** Arbitrary libyang data, it can be modified */
     struct lyd_node *tree;
-};
-
-typedef struct sr_data_s sr_data_t;
+} sr_data_t;
 
 /**
  * @brief Possible types of a data element stored in the sysrepo datastore.
@@ -227,7 +219,7 @@ typedef enum {
 /**
  * @brief Data of an element (if applicable), properly set according to the type.
  */
-union sr_val_data_u {
+typedef union {
     char *binary_val;       /**< Base64-encoded binary data ([RFC 7950 sec 9.8](http://tools.ietf.org/html/rfc7950#section-9.8)) */
     char *bits_val;         /**< A set of bits or flags ([RFC 7950 sec 9.7](http://tools.ietf.org/html/rfc7950#section-9.7)) */
     int bool_val;           /**< A boolean value ([RFC 7950 sec 9.5](http://tools.ietf.org/html/rfc7950#section-9.5)) */
@@ -249,14 +241,12 @@ union sr_val_data_u {
     uint64_t uint64_val;    /**< 64-bit unsigned integer ([RFC 7950 sec 9.2](https://tools.ietf.org/html/rfc7950#section-9.2)) */
     char *anyxml_val;       /**< Unknown chunk of XML ([RFC 7950 sec 7.10](https://tools.ietf.org/html/rfc7950#section-7.10)) */
     char *anydata_val;      /**< Unknown set of nodes, encoded in XML ([RFC 7950 sec 7.10](https://tools.ietf.org/html/rfc7950#section-7.10)) */
-};
-
-typedef union sr_val_data_u sr_val_data_t;
+} sr_val_data_t;
 
 /**
  * @brief Structure that contains value of an data element stored in the sysrepo datastore.
  */
-struct sr_val_s {
+typedef struct {
     /** [XPath](@ref paths) (or rather path) identifier of the data element. */
     char *xpath;
 
@@ -276,9 +266,7 @@ struct sr_val_s {
 
     /** Data of an element (if applicable), properly set according to the type. */
     sr_val_data_t data;
-};
-
-typedef struct sr_val_s sr_val_t;
+} sr_val_t;
 
 /**
  * @brief Flags used to override default data get behaviour on ::SR_DS_OPERATIONAL.
