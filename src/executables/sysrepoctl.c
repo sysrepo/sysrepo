@@ -516,12 +516,18 @@ srctl_change(sr_conn_ctx_t *conn, struct change_item *citem)
 {
     int r = 0, i;
 
+    if (!strcmp(citem->module_name, ":ALL")) {
+        /* all the modules */
+        if (citem->features || citem->dis_features) {
+            error_print(0, "To enable/disable features, the module must be specified");
+            r = 1;
+            goto cleanup;
+        }
+        citem->module_name = NULL;
+    }
+
     /* change owner, group, and/or permissions */
     if (citem->owner || citem->group || citem->perms) {
-        if (!strcmp(citem->module_name, ":ALL")) {
-            /* all the modules */
-            citem->module_name = NULL;
-        }
         if (citem->mod_ds == SR_MOD_DS_PLUGIN_COUNT) {
             for (i = 0; i < SR_MOD_DS_PLUGIN_COUNT; ++i) {
                 if ((r = sr_set_module_ds_access(conn, citem->module_name, i, citem->owner, citem->group, citem->perms))) {
@@ -562,10 +568,6 @@ srctl_change(sr_conn_ctx_t *conn, struct change_item *citem)
 
     /* change replay */
     if (citem->replay != -1) {
-        if (!strcmp(citem->module_name, ":ALL")) {
-            /* all the modules */
-            citem->module_name = NULL;
-        }
         if ((r = sr_set_module_replay_support(conn, citem->module_name, citem->replay))) {
             error_print(r, "Failed to change replay support");
             goto cleanup;
