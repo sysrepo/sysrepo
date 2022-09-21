@@ -949,7 +949,7 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     SR_LOG_INF("Sysrepo internal%s module \"%s\" was installed.", dep ? " dependency" : "", ly_mod->name)
 
     ly_mod = ly_ctx_get_module_implemented(ly_ctx, "sysrepo");
-    SR_CHECK_INT_RET(!ly_mod, err_info);
+    SR_CHECK_INT_GOTO(!ly_mod, err_info, cleanup);
 
     /* store sysrepo as an installed module */
     new_mods = calloc(1, sizeof *new_mods);
@@ -961,10 +961,10 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     ++new_mod_count;
 
     /* create empty container */
-    SR_CHECK_INT_RET(lyd_new_inner(NULL, ly_mod, "sysrepo-modules", 0, &sr_mods), err_info);
+    SR_CHECK_INT_GOTO(lyd_new_inner(NULL, ly_mod, "sysrepo-modules", 0, &sr_mods), err_info, cleanup);
 
     /* add content-id */
-    SR_CHECK_INT_RET(lyd_new_term(sr_mods, NULL, "content-id", "1", 0, NULL), err_info);
+    SR_CHECK_INT_GOTO(lyd_new_term(sr_mods, NULL, "content-id", "1", 0, NULL), err_info, cleanup);
 
     /* for internal libyang modules create files and store in the persistent module data tree */
     i = 0;
