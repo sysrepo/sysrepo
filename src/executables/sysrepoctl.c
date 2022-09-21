@@ -52,6 +52,17 @@ struct list_item {
     char *features;
 };
 
+struct change_item {
+    const char *module_name;
+    const char **features;
+    const char **dis_features;
+    int replay;
+    const char *owner;
+    const char *group;
+    mode_t perms;
+    int mod_ds;
+};
+
 sr_log_level_t log_level = SR_LL_ERR;
 
 static void
@@ -75,13 +86,16 @@ help_print(void)
             "  -V, --version        Print only information about sysrepo version.\n"
             "  -l, --list           List YANG modules in sysrepo.\n"
             "  -i, --install <path> Install the specified schema into sysrepo. Can be in either YANG or YIN format.\n"
+            "                       Can be specified multiple times to install several modules. All the options\n"
+            "                       will affect the module of the last operation and can be specified for each.\n"
             "  -u, --uninstall <module>\n"
-            "                       Uninstall the specified module from sysrepo.\n"
+            "                       Uninstall the specified module from sysrepo. Can be specified multiple times\n"
+            "                       to uninstall several modules.\n"
             "  -c, --change <module>\n"
             "                       Change access rights, features, or replay support of the specified module.\n"
             "                       Use special \":ALL\" module name to change the access rights or replay support\n"
             "                       of all the modules.\n"
-            "  -U, --update <path>  Update the specified schema in sysrepo. Can be in either YANG or YIN format.\n"
+            "  -U, --update <path>  Update the specified module in sysrepo. Can be in either YANG or YIN format.\n"
             "  -L, --plugin-list    List loaded sysrepo plugins.\n"
             "  -P, --plugin-install <path>\n"
             "                       Install a datastore or notification sysrepo plugin. The plugin is simply copied\n"
@@ -112,7 +126,7 @@ help_print(void)
             "                       candidate, operational, or notification), can be specified multiple times for\n"
             "                       different module datastores. Accepted by install op.\n"
             "  -I, --init-data <path>\n"
-            "                       Initial data in a file with XML or JSON extension to be set for a module,\n"
+            "                       Initial data in a file with XML or JSON extension to be set for module(s),\n"
             "                       useful when there are mandatory top-level nodes. Accepted by install op.\n"
             "  -f, --force          Force the specific operation. Accepted by uninstall op.\n"
             "  -v, --verbosity <level>\n"
@@ -140,6 +154,163 @@ error_print(int sr_error, const char *format, ...)
     if (log_level < SR_LL_INF) {
         fprintf(stderr, "For more details you may try to increase the verbosity up to \"-v3\".\n");
     }
+}
+
+static void
+error_operation(int operation, int opt)
+{
+    if (!operation) {
+        error_print(0, "Operation must be specified before the parameter -%c", opt);
+    } else {
+        error_print(0, "Invalid parameter -%c for the operation '%c'", opt, operation);
+    }
+}
+
+static int
+new_iitem(const char *optarg, sr_install_mod_t **iitems, uint32_t *iitem_count)
+{
+    sr_install_mod_t *iitem;
+
+    *iitems = realloc(*iitems, (*iitem_count + 1) * sizeof **iitems);
+    if (!*iitems) {
+        return 1;
+    }
+    iitem = &(*iitems)[*iitem_count];
+    memset(iitem, 0, sizeof *iitem);
+    ++(*iitem_count);
+
+    iitem->schema_path = optarg;
+    return 0;
+}
+
+static int
+new_str(const char *optarg, const char ***strs)
+{
+    uint32_t count;
+
+    for (count = 0; *strs && (*strs)[count]; ++count) {}
+
+    *strs = realloc(*strs, (count + 2) * sizeof **strs);
+    if (!*strs) {
+        return 1;
+    }
+
+    (*strs)[count++] = optarg;
+    (*strs)[count] = NULL;
+    return 0;
+}
+
+static int
+set_replay(const char *optarg, int *replay)
+{
+    if (!strcmp(optarg, "on") || !strcmp(optarg, "1")) {
+        *replay = 1;
+    } else if (!strcmp(optarg, "off") || !strcmp(optarg, "0")) {
+        *replay = 0;
+    } else {
+        error_print(0, "Invalid replay support \"%s\"", optarg);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int
+set_owner(const char *optarg, const char **owner)
+{
+    if (*owner) {
+        error_print(0, "Owner already specified");
+        return 1;
+    }
+
+    *owner = optarg;
+    return 0;
+}
+
+static int
+set_group(const char *optarg, const char **group)
+{
+    if (*group) {
+        error_print(0, "Group already specified");
+        return 1;
+    }
+
+    *group = optarg;
+    return 0;
+}
+
+static int
+set_perms(const char *optarg, mode_t *perms)
+{
+    char *ptr;
+
+    if (*perms) {
+        error_print(0, "Permissions already specified");
+        return 1;
+    }
+
+    *perms = strtoul(optarg, &ptr, 8);
+    if (ptr[0]) {
+        error_print(0, "Invalid permissions \"%s\"", optarg);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int
+set_datastore(const char *optarg, int *mod_ds)
+{
+    if (*mod_ds != SR_MOD_DS_PLUGIN_COUNT) {
+        error_print(0, "Datastore already specified");
+        return 1;
+    }
+
+    if (!strcmp(optarg, "running")) {
+        *mod_ds = SR_DS_RUNNING;
+    } else if (!strcmp(optarg, "startup")) {
+        *mod_ds = SR_DS_STARTUP;
+    } else if (!strcmp(optarg, "candidate")) {
+        *mod_ds = SR_DS_CANDIDATE;
+    } else if (!strcmp(optarg, "operational")) {
+        *mod_ds = SR_DS_OPERATIONAL;
+    } else if (!strcmp(optarg, "notification")) {
+        *mod_ds = SR_MOD_DS_NOTIF;
+    } else if (strcmp(optarg, ":ALL")) {
+        error_print(0, "Unknown datastore \"%s\"", optarg);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int
+set_module_ds(const char *optarg, sr_module_ds_t *module_ds)
+{
+    char *ptr;
+    int module_ds_idx;
+
+    if (!(ptr = strchr(optarg, ':'))) {
+        error_print(0, "Invalid module-plugin parameter \"%s\"", optarg);
+        return 1;
+    }
+    if (!strncmp(optarg, "running", ptr - optarg)) {
+        module_ds_idx = SR_DS_RUNNING;
+    } else if (!strncmp(optarg, "startup", ptr - optarg)) {
+        module_ds_idx = SR_DS_STARTUP;
+    } else if (!strncmp(optarg, "candidate", ptr - optarg)) {
+        module_ds_idx = SR_DS_CANDIDATE;
+    } else if (!strncmp(optarg, "operational", ptr - optarg)) {
+        module_ds_idx = SR_DS_OPERATIONAL;
+    } else if (!strncmp(optarg, "notification", ptr - optarg)) {
+        module_ds_idx = SR_MOD_DS_NOTIF;
+    } else {
+        error_print(0, "Unknown datastore \"%.*s\"", (int)(ptr - optarg), optarg);
+        return 1;
+    }
+
+    module_ds->plugin_name[module_ds_idx] = ptr + 1;
+    return 0;
 }
 
 static int
@@ -341,6 +512,71 @@ cleanup:
 }
 
 static int
+srctl_change(sr_conn_ctx_t *conn, struct change_item *citem)
+{
+    int r = 0, i;
+
+    /* change owner, group, and/or permissions */
+    if (citem->owner || citem->group || citem->perms) {
+        if (!strcmp(citem->module_name, ":ALL")) {
+            /* all the modules */
+            citem->module_name = NULL;
+        }
+        if (citem->mod_ds == SR_MOD_DS_PLUGIN_COUNT) {
+            for (i = 0; i < SR_MOD_DS_PLUGIN_COUNT; ++i) {
+                if ((r = sr_set_module_ds_access(conn, citem->module_name, i, citem->owner, citem->group, citem->perms))) {
+                    if (citem->module_name) {
+                        error_print(r, "Failed to change module \"%s\" access", citem->module_name);
+                    } else {
+                        error_print(r, "Failed to change modules access");
+                    }
+                    goto cleanup;
+                }
+            }
+        } else if ((r = sr_set_module_ds_access(conn, citem->module_name, citem->mod_ds, citem->owner, citem->group,
+                citem->perms))) {
+            if (citem->module_name) {
+                error_print(r, "Failed to change module \"%s\" access", citem->module_name);
+            } else {
+                error_print(r, "Failed to change modules access");
+            }
+            goto cleanup;
+        }
+    }
+
+    /* change enabled features */
+    for (i = 0; citem->features && citem->features[i]; ++i) {
+        if ((r = sr_enable_module_feature(conn, citem->module_name, citem->features[i]))) {
+            error_print(r, "Failed to enable feature \"%s\"", citem->features[i]);
+            goto cleanup;
+        }
+    }
+
+    /* change disabled features */
+    for (i = 0; citem->dis_features && citem->dis_features[i]; ++i) {
+        if ((r = sr_disable_module_feature(conn, citem->module_name, citem->dis_features[i]))) {
+            error_print(r, "Failed to disable feature \"%s\"", citem->dis_features[i]);
+            goto cleanup;
+        }
+    }
+
+    /* change replay */
+    if (citem->replay != -1) {
+        if (!strcmp(citem->module_name, ":ALL")) {
+            /* all the modules */
+            citem->module_name = NULL;
+        }
+        if ((r = sr_set_module_replay_support(conn, citem->module_name, citem->replay))) {
+            error_print(r, "Failed to change replay support");
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    return r;
+}
+
+static int
 srctl_plugin_list(sr_conn_ctx_t *conn)
 {
     int ret = SR_ERR_OK;
@@ -371,12 +607,12 @@ int
 main(int argc, char **argv)
 {
     sr_conn_ctx_t *conn = NULL;
-    const char *file_path = NULL, *search_dirs = NULL, *module_name = NULL, *data_path = NULL, *owner = NULL, *group = NULL;
-    char **features = NULL, **dis_features = NULL, *ptr;
-    mode_t perms = 0;
-    sr_module_ds_t module_ds = {{"LYB DS file", "LYB DS file", "LYB DS file", "LYB DS file", "LYB notif"}};
-    int r, i, rc = EXIT_FAILURE, opt, module_ds_idx;
-    int operation = 0, feat_count = 0, dis_feat_count = 0, replay = -1, force = 0, mod_ds = SR_MOD_DS_PLUGIN_COUNT;
+    sr_install_mod_t *iitems = NULL;
+    uint32_t i, iitem_count = 0;
+    struct change_item citem = {.replay = -1, .mod_ds = SR_MOD_DS_PLUGIN_COUNT};
+    const char *file_path = NULL, *search_dirs = NULL, **module_names = NULL, *data_path = NULL;
+    char *ptr;
+    int r, rc = EXIT_FAILURE, opt, operation = 0, force = 0;
     struct option options[] = {
         {"help",            no_argument,       NULL, 'h'},
         {"version",         no_argument,       NULL, 'V'},
@@ -412,15 +648,18 @@ main(int argc, char **argv)
     while ((opt = getopt_long(argc, argv, "hVli:u:c:U:LP:s:e:d:r:o:g:p:D:m:I:fv:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
+            /* help */
             version_print();
             help_print();
             rc = EXIT_SUCCESS;
             goto cleanup;
         case 'V':
+            /* version */
             version_print();
             rc = EXIT_SUCCESS;
             goto cleanup;
         case 'l':
+            /* list */
             if (operation) {
                 error_print(0, "Operation already specified");
                 goto cleanup;
@@ -428,30 +667,38 @@ main(int argc, char **argv)
             operation = 'l';
             break;
         case 'i':
-            if (operation) {
+            /* install */
+            if (operation && (operation != 'i')) {
                 error_print(0, "Operation already specified");
                 goto cleanup;
             }
             operation = 'i';
-            file_path = optarg;
+            if (new_iitem(optarg, &iitems, &iitem_count)) {
+                goto cleanup;
+            }
             break;
         case 'u':
-            if (operation) {
+            /* uninstall */
+            if (operation && (operation != 'u')) {
                 error_print(0, "Operation already specified");
                 goto cleanup;
             }
             operation = 'u';
-            module_name = optarg;
+            if (new_str(optarg, &module_names)) {
+                goto cleanup;
+            }
             break;
         case 'c':
+            /* change */
             if (operation) {
                 error_print(0, "Operation already specified");
                 goto cleanup;
             }
             operation = 'c';
-            module_name = optarg;
+            citem.module_name = optarg;
             break;
         case 'U':
+            /* update */
             if (operation) {
                 error_print(0, "Operation already specified");
                 goto cleanup;
@@ -460,6 +707,7 @@ main(int argc, char **argv)
             file_path = optarg;
             break;
         case 'L':
+            /* plugin-list */
             if (operation) {
                 error_print(0, "Operation already specified");
                 goto cleanup;
@@ -467,6 +715,7 @@ main(int argc, char **argv)
             operation = 'L';
             break;
         case 'P':
+            /* plugin-install */
             if (operation) {
                 error_print(0, "Operation already specified");
                 goto cleanup;
@@ -475,6 +724,7 @@ main(int argc, char **argv)
             file_path = optarg;
             break;
         case 's':
+            /* search-dirs */
             if (search_dirs) {
                 error_print(0, "Search dirs already specified");
                 goto cleanup;
@@ -482,126 +732,129 @@ main(int argc, char **argv)
             search_dirs = optarg;
             break;
         case 'e':
-            if (operation && (operation != 'i') && (operation != 'c')) {
-                error_print(0, "Invalid parameter -%c for the operation", opt);
+            /* enable-feature */
+            if (operation == 'i') {
+                if (new_str(optarg, &iitems[iitem_count - 1].features)) {
+                    goto cleanup;
+                }
+            } else if (operation == 'c') {
+                if (new_str(optarg, &citem.features)) {
+                    goto cleanup;
+                }
+            } else {
+                error_operation(operation, opt);
                 goto cleanup;
             }
-            features = realloc(features, (feat_count + 2) * sizeof *features);
-            features[feat_count++] = optarg;
-            features[feat_count] = NULL;
             break;
         case 'd':
-            if (operation && (operation != 'c')) {
-                error_print(0, "Invalid parameter -%c for the operation", opt);
+            /* disable-feature */
+            if (operation == 'c') {
+                if (new_str(optarg, &citem.dis_features)) {
+                    goto cleanup;
+                }
+            } else {
+                error_operation(operation, opt);
                 goto cleanup;
             }
-            dis_features = realloc(dis_features, (dis_feat_count + 1) * sizeof *dis_features);
-            dis_features[dis_feat_count++] = optarg;
             break;
         case 'r':
-            if (operation && (operation != 'c')) {
-                error_print(0, "Invalid parameter -%c for the operation", opt);
-                goto cleanup;
-            }
-            if (!strcmp(optarg, "on") || !strcmp(optarg, "1")) {
-                replay = 1;
-            } else if (!strcmp(optarg, "off") || !strcmp(optarg, "0")) {
-                replay = 0;
+            /* replay */
+            if (operation == 'c') {
+                if (set_replay(optarg, &citem.replay)) {
+                    goto cleanup;
+                }
             } else {
-                error_print(0, "Invalid replay support \"%s\"", optarg);
+                error_operation(operation, opt);
                 goto cleanup;
             }
             break;
         case 'o':
-            if (operation && (operation != 'i') && (operation != 'c')) {
-                error_print(0, "Invalid parameter -%c for the operation", opt);
+            /* owner */
+            if (operation == 'i') {
+                if (set_owner(optarg, &iitems[iitem_count - 1].owner)) {
+                    goto cleanup;
+                }
+            } else if (operation == 'c') {
+                if (set_owner(optarg, &citem.owner)) {
+                    goto cleanup;
+                }
+            } else {
+                error_operation(operation, opt);
                 goto cleanup;
             }
-            if (owner) {
-                error_print(0, "Owner already specified");
-                goto cleanup;
-            }
-            owner = optarg;
             break;
         case 'g':
-            if (operation && (operation != 'i') && (operation != 'c')) {
-                error_print(0, "Invalid parameter -%c for the operation", opt);
+            /* group */
+            if (operation == 'i') {
+                if (set_group(optarg, &iitems[iitem_count - 1].group)) {
+                    goto cleanup;
+                }
+            } else if (operation == 'c') {
+                if (set_group(optarg, &citem.group)) {
+                    goto cleanup;
+                }
+            } else {
+                error_operation(operation, opt);
                 goto cleanup;
             }
-            if (group) {
-                error_print(0, "Group already specified");
-                goto cleanup;
-            }
-            group = optarg;
             break;
         case 'p':
-            if (operation && (operation != 'i') && (operation != 'c')) {
-                error_print(0, "Invalid parameter -%c for the operation", opt);
-                goto cleanup;
-            }
-            if (perms) {
-                error_print(0, "Permissions already specified");
-                goto cleanup;
-            }
-            perms = strtoul(optarg, &ptr, 8);
-            if (ptr[0]) {
-                error_print(0, "Invalid permissions \"%s\"", optarg);
+            /* permissions */
+            if (operation == 'i') {
+                if (set_perms(optarg, &iitems[iitem_count - 1].perm)) {
+                    goto cleanup;
+                }
+            } else if (operation == 'c') {
+                if (set_perms(optarg, &citem.perms)) {
+                    goto cleanup;
+                }
+            } else {
+                error_operation(operation, opt);
                 goto cleanup;
             }
             break;
         case 'D':
-            if (operation && (operation != 'c')) {
-                error_print(0, "Invalid parameter -%c for the operation", opt);
-                goto cleanup;
-            }
-            if (!strcmp(optarg, "running")) {
-                mod_ds = SR_DS_RUNNING;
-            } else if (!strcmp(optarg, "startup")) {
-                mod_ds = SR_DS_STARTUP;
-            } else if (!strcmp(optarg, "candidate")) {
-                mod_ds = SR_DS_CANDIDATE;
-            } else if (!strcmp(optarg, "operational")) {
-                mod_ds = SR_DS_OPERATIONAL;
-            } else if (!strcmp(optarg, "notification")) {
-                mod_ds = SR_MOD_DS_NOTIF;
-            } else if (strcmp(optarg, ":ALL")) {
-                error_print(0, "Unknown datastore \"%s\"", optarg);
+            /* datastore */
+            if (operation == 'c') {
+                if (set_datastore(optarg, &citem.mod_ds)) {
+                    goto cleanup;
+                }
+            } else {
+                error_operation(operation, opt);
                 goto cleanup;
             }
             break;
         case 'm':
-            if (!(ptr = strchr(optarg, ':'))) {
-                error_print(0, "Invalid module-plugin parameter \"%s\"", optarg);
-                goto cleanup;
-            }
-            if (!strncmp(optarg, "running", ptr - optarg)) {
-                module_ds_idx = SR_DS_RUNNING;
-            } else if (!strncmp(optarg, "startup", ptr - optarg)) {
-                module_ds_idx = SR_DS_STARTUP;
-            } else if (!strncmp(optarg, "candidate", ptr - optarg)) {
-                module_ds_idx = SR_DS_CANDIDATE;
-            } else if (!strncmp(optarg, "operational", ptr - optarg)) {
-                module_ds_idx = SR_DS_OPERATIONAL;
-            } else if (!strncmp(optarg, "notification", ptr - optarg)) {
-                module_ds_idx = SR_MOD_DS_NOTIF;
+            /* module-plugin */
+            if (operation == 'i') {
+                if (set_module_ds(optarg, &iitems[iitem_count - 1].module_ds)) {
+                    goto cleanup;
+                }
             } else {
-                error_print(0, "Unknown datastore \"%.*s\"", (int)(ptr - optarg), optarg);
+                error_operation(operation, opt);
                 goto cleanup;
             }
-
-            module_ds.plugin_name[module_ds_idx] = ptr + 1;
             break;
         case 'I':
-            if (operation && (operation != 'i')) {
-                error_print(0, "Invalid parameter -%c for the operation", opt);
+            /* init-data */
+            if (operation == 'i') {
+                data_path = optarg;
+            } else {
+                error_operation(operation, opt);
                 goto cleanup;
             }
-            data_path = optarg;
             break;
         case 'f':
-            force = 1;
+            /* force */
+            if (operation == 'u') {
+                force = 1;
+            } else {
+                error_operation(operation, opt);
+                goto cleanup;
+            }
             break;
         case 'v':
+            /* verbosity */
             if (!strcmp(optarg, "none")) {
                 log_level = SR_LL_NONE;
             } else if (!strcmp(optarg, "error")) {
@@ -653,78 +906,25 @@ main(int argc, char **argv)
         break;
     case 'i':
         /* install */
-        if ((r = sr_install_module2(conn, file_path, search_dirs, (const char **)features, &module_ds, owner, group,
-                perms, NULL, data_path, 0))) {
+        if ((r = sr_install_modules2(conn, iitems, iitem_count, search_dirs, NULL, data_path, 0))) {
             /* succeed if the module is already installed */
             if (r != SR_ERR_EXISTS) {
-                error_print(r, "Failed to install module \"%s\"", file_path);
+                error_print(r, "Failed to install modules");
                 goto cleanup;
             }
         }
         break;
     case 'u':
         /* uninstall */
-        if ((r = sr_remove_module(conn, module_name, force))) {
-            error_print(r, "Failed to uninstall module \"%s\"", module_name);
+        if ((r = sr_remove_modules(conn, module_names, force))) {
+            error_print(r, "Failed to uninstall modules");
             goto cleanup;
         }
         break;
     case 'c':
         /* change */
-
-        /* change owner, group, and/or permissions */
-        if (owner || group || perms) {
-            if (!strcmp(module_name, ":ALL")) {
-                /* all the modules */
-                module_name = NULL;
-            }
-            if (mod_ds == SR_MOD_DS_PLUGIN_COUNT) {
-                for (i = 0; i < SR_MOD_DS_PLUGIN_COUNT; ++i) {
-                    if ((r = sr_set_module_ds_access(conn, module_name, i, owner, group, perms))) {
-                        if (module_name) {
-                            error_print(r, "Failed to change module \"%s\" access", module_name);
-                        } else {
-                            error_print(r, "Failed to change modules access");
-                        }
-                        goto cleanup;
-                    }
-                }
-            } else if ((r = sr_set_module_ds_access(conn, module_name, mod_ds, owner, group, perms))) {
-                if (module_name) {
-                    error_print(r, "Failed to change module \"%s\" access", module_name);
-                } else {
-                    error_print(r, "Failed to change modules access");
-                }
-                goto cleanup;
-            }
-        }
-
-        /* change enabled features */
-        for (i = 0; i < feat_count; ++i) {
-            if ((r = sr_enable_module_feature(conn, module_name, features[i]))) {
-                error_print(r, "Failed to enable feature \"%s\"", features[i]);
-                goto cleanup;
-            }
-        }
-
-        /* change disabled features */
-        for (i = 0; i < dis_feat_count; ++i) {
-            if ((r = sr_disable_module_feature(conn, module_name, dis_features[i]))) {
-                error_print(r, "Failed to disable feature \"%s\"", dis_features[i]);
-                goto cleanup;
-            }
-        }
-
-        /* change replay */
-        if (replay != -1) {
-            if (!strcmp(module_name, ":ALL")) {
-                /* all the modules */
-                module_name = NULL;
-            }
-            if ((r = sr_set_module_replay_support(conn, module_name, replay))) {
-                error_print(r, "Failed to change replay support");
-                goto cleanup;
-            }
+        if ((r = srctl_change(conn, &citem))) {
+            goto cleanup;
         }
         break;
     case 'U':
@@ -766,7 +966,12 @@ main(int argc, char **argv)
 
 cleanup:
     sr_disconnect(conn);
-    free(features);
-    free(dis_features);
+    for (i = 0; i < iitem_count; ++i) {
+        free(iitems[i].features);
+    }
+    free(iitems);
+    free(citem.features);
+    free(citem.dis_features);
+    free(module_names);
     return rc;
 }
