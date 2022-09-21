@@ -49,6 +49,14 @@ pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 /** The name of the configuration module for the sysrepo-plugind program itself. */
 #define SRPD_MODULE_NAME "sysrepo-plugind"
 
+/**
+ * @brief An array of internal plugins
+ */
+static struct srpd_int_plugin_s int_plugins[] = {
+    {srpd_rotation_init_cb, srpd_rotation_cleanup_cb, "srpd_rotation"},
+    {srpd_oper_poll_diff_init_cb, srpd_oper_poll_diff_cleanup_cb, "srpd_oper_poll_diff"},
+};
+
 static void
 error_print(int sr_error, const char *format, ...)
 {

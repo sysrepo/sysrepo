@@ -18,11 +18,11 @@
 
 #include "sysrepo_types.h"
 
-extern struct srpd_int_plugin_s {
+struct srpd_int_plugin_s {
     srp_init_cb_t init_cb;
     srp_cleanup_cb_t cleanup_cb;
     const char *plugin_name;
-} int_plugins[2];
+};
 
 struct srpd_plugin_s {
     void *handle;
