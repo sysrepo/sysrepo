@@ -748,7 +748,6 @@ srpds_lyb_running_flush_cached(sr_cid_t cid)
     /* consolidate the cache */
     --data_cache.cache_count;
     if (i < data_cache.cache_count) {
-        SRPLG_LOG_ERR(srpds_name, "arg1 %p, arg2 %p, arg3 %u", data_cache.caches + i, data_cache.caches + i + 1, (data_cache.cache_count - i) * sizeof *data_cache.caches);
         memmove(data_cache.caches + i, data_cache.caches + i + 1, (data_cache.cache_count - i) * sizeof *data_cache.caches);
     } else if (!data_cache.cache_count) {
         free(data_cache.caches);
