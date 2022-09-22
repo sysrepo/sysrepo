@@ -514,7 +514,7 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
             }
         } else {
             /* apply relevant edit changes */
-            if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, 0, &mod_info->data, create_diff ? &mod_info->diff : NULL,
+            if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, create_diff ? &mod_info->diff : NULL,
                     &change))) {
                 goto cleanup;
             }
@@ -971,7 +971,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
     }
     if (edit) {
         /* apply the edit */
-        err_info = sr_edit_mod_apply(edit, mod->ly_mod, 1, data, NULL, NULL);
+        err_info = sr_edit_mod_apply(edit, mod->ly_mod, data, NULL, NULL);
         lyd_free_all(edit);
         if (err_info) {
             return err_info;
@@ -2822,7 +2822,7 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
                 sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
                 goto cleanup;
             }
-            if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, is_oper_ds, &mod_info->data, NULL, NULL))) {
+            if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, NULL, NULL))) {
                 goto cleanup;
             }
         }
