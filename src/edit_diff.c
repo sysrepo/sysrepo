@@ -1301,102 +1301,96 @@ sr_edit_op2str(enum edit_op op)
 /**
  * @brief Insert an edit node into a data tree.
  *
- * @param[in,out] first_node First sibling of the data tree.
- * @param[in] parent_node Data tree sibling parent node.
+ * @param[in,out] data_root First top-level sibling of the data tree.
+ * @param[in] data_parent Data tree node parent.
  * @param[in] new_node Edit node to insert.
  * @param[in] insert Place where to insert the node.
  * @param[in] userord_anchor Optional user-ordered anchor of relative (leaf-)list instance.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_insert(struct lyd_node **first_node, struct lyd_node *parent_node, struct lyd_node *new_node,
+sr_edit_insert(struct lyd_node **data_root, struct lyd_node *data_parent, struct lyd_node *new_node,
         enum insert_val insert, const char *userord_anchor)
 {
     sr_error_info_t *err_info = NULL;
+    const struct ly_ctx *ly_ctx;
     struct lyd_node *anchor;
+    LY_ERR lyrc = 0;
 
     assert(new_node);
 
-    if (!*first_node) {
-        if (!parent_node) {
-            /* no parent or siblings */
-            *first_node = new_node;
-            return NULL;
-        }
-
-        /* simply insert into parent, no other children */
-        if (userord_anchor) {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" instance to insert next to not found.",
-                    new_node->schema->name);
-            return err_info;
-        }
-        if (new_node->flags & LYD_EXT) {
-            if (lyd_insert_ext(parent_node, new_node)) {
-                sr_errinfo_new_ly(&err_info, LYD_CTX(parent_node), NULL);
-                return err_info;
-            }
-        } else {
-            if (lyd_insert_child(parent_node, new_node)) {
-                sr_errinfo_new_ly(&err_info, LYD_CTX(parent_node), NULL);
-                return err_info;
-            }
-        }
-        return NULL;
+    if (data_parent) {
+        ly_ctx = LYD_CTX(data_parent);
+    } else if (*data_root) {
+        ly_ctx = LYD_CTX(*data_root);
+    } else {
+        ly_ctx = LYD_CTX(new_node);
     }
 
-    assert(!(*first_node)->parent || ((*first_node)->parent == (struct lyd_node_inner *)parent_node));
-
     /* unlink properly first to avoid unwanted behavior (first node equals new_node or new_node is the first sibling) */
-    if (new_node == *first_node) {
-        *first_node = (*first_node)->next;
+    if (new_node == *data_root) {
+        *data_root = (*data_root)->next;
     }
     lyd_unlink_tree(new_node);
 
     /* insert last or first */
     if ((insert == INSERT_DEFAULT) || (insert == INSERT_LAST)) {
         /* default insert is at the last position */
-        lyd_insert_sibling(*first_node, new_node, parent_node ? NULL : first_node);
-        return NULL;
+        if (data_parent) {
+            if (new_node->flags & LYD_EXT) {
+                lyrc = lyd_insert_ext(data_parent, new_node);
+            } else {
+                lyrc = lyd_insert_child(data_parent, new_node);
+            }
+        } else {
+            lyrc = lyd_insert_sibling(*data_root, new_node, data_root);
+        }
+        goto cleanup;
     } else if (insert == INSERT_FIRST) {
         /* find first instance */
-        lyd_find_sibling_val(*first_node, new_node->schema, NULL, 0, &anchor);
+        lyd_find_sibling_val(data_parent ? lyd_child(data_parent) : *data_root, new_node->schema, NULL, 0, &anchor);
         if (anchor) {
             /* insert before the first instance */
-            lyd_insert_before(anchor, new_node);
-            if (anchor == *first_node) {
-                assert((*first_node)->prev == new_node);
-                *first_node = new_node;
+            lyrc = lyd_insert_before(anchor, new_node);
+            if (anchor == *data_root) {
+                assert((*data_root)->prev == new_node);
+                *data_root = new_node;
             }
         } else {
             /* insert anywhere, there are no instances */
-            lyd_insert_sibling(*first_node, new_node, parent_node ? NULL : first_node);
+            lyrc = lyd_insert_sibling(*data_root, new_node, data_parent ? NULL : data_root);
         }
-        return NULL;
+        goto cleanup;
     }
 
     assert(lysc_is_userordered(new_node->schema) && userord_anchor);
 
     /* find the anchor sibling */
-    if ((err_info = sr_edit_find_userord_predicate(*first_node, new_node, userord_anchor, &anchor))) {
-        return err_info;
+    if ((err_info = sr_edit_find_userord_predicate(data_parent ? lyd_child(data_parent) : *data_root, new_node,
+            userord_anchor, &anchor))) {
+        goto cleanup;
     }
 
     /* insert before or after */
     if (insert == INSERT_BEFORE) {
-        lyd_insert_before(anchor, new_node);
+        lyrc = lyd_insert_before(anchor, new_node);
         assert(anchor->prev == new_node);
-        if (*first_node == anchor) {
-            *first_node = new_node;
+        if (*data_root == anchor) {
+            *data_root = new_node;
         }
     } else if (insert == INSERT_AFTER) {
-        lyd_insert_after(anchor, new_node);
+        lyrc = lyd_insert_after(anchor, new_node);
         assert(new_node->prev == anchor);
-        if (*first_node == new_node) {
-            *first_node = anchor;
+        if (*data_root == new_node) {
+            *data_root = anchor;
         }
     }
 
-    return NULL;
+cleanup:
+    if (lyrc) {
+        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+    }
+    return err_info;
 }
 
 sr_error_info_t *
