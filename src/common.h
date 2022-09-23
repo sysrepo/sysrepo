@@ -1412,6 +1412,14 @@ sr_error_info_t *sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths,
 sr_error_info_t *sr_lyd_xpath_complement(struct lyd_node **data, const char *xpath);
 
 /**
+ * @brief Safely free a subtree when there is also a pointer that may point to it.
+ *
+ * @param[in] tree Tree to free.
+ * @param[in,out] first Pointer to the first top-level node that may actually be @p tree.
+ */
+void sr_lyd_free_tree_safe(struct lyd_node *tree, struct lyd_node **first);
+
+/**
  * @brief Get a hash of a string value.
  *
  * @param[in] str String to hash.

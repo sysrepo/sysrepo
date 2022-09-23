@@ -2566,10 +2566,7 @@ reapply:
     if (diff_root && diff_parent) {
         /* remove any redundant nodes */
         if (sr_diff_is_redundant(diff_parent)) {
-            if (diff_parent == *diff_root) {
-                *diff_root = (*diff_root)->next;
-            }
-            lyd_free_tree(diff_parent);
+            sr_lyd_free_tree_safe(diff_parent, diff_root);
         }
     }
 
@@ -3038,10 +3035,7 @@ error:
     /* fallthrough */
 error_safe:
     /* free only the created subtree */
-    if (parent && (session->dt[session->ds].edit->tree == parent)) {
-        session->dt[session->ds].edit->tree = parent->next;
-    }
-    lyd_free_tree(parent);
+    sr_lyd_free_tree_safe(parent, &session->dt[session->ds].edit->tree);
     return err_info;
 }
 

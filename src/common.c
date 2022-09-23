@@ -4,8 +4,8 @@
  * @brief common routines
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -5921,11 +5921,7 @@ sr_lyd_xpath_complement(struct lyd_node **data, const char *xpath)
     for (depth = max_depth; depth; --depth) {
         for (i = 0; i < node_set->count; ++i) {
             if (depth == (uintptr_t)depth_set->objs[i]) {
-                if (node_set->dnodes[i] == *data) {
-                    /* freeing the first top-level sibling */
-                    *data = (*data)->next;
-                }
-                lyd_free_tree(node_set->dnodes[i]);
+                sr_lyd_free_tree_safe(node_set->dnodes[i], data);
             }
         }
     }
@@ -5936,6 +5932,38 @@ cleanup:
     ly_set_free(node_set, NULL);
     ly_set_free(depth_set, NULL);
     return err_info;
+}
+
+void
+sr_lyd_free_tree_safe(struct lyd_node *tree, struct lyd_node **first)
+{
+    struct lyd_node *parent, *iter;
+
+    if (!tree) {
+        return;
+    }
+
+    /* update first pointer */
+    if (first && (*first == tree)) {
+        *first = (*first)->next;
+    }
+
+    /* free the subtree */
+    parent = lyd_parent(tree);
+    lyd_free_tree(tree);
+
+    /* set empty non-presence container dflt flag */
+    if (!parent || (parent->schema->nodetype != LYS_CONTAINER)) {
+        return;
+    }
+    LY_LIST_FOR(lyd_child(parent), iter) {
+        if (!(iter->flags & LYD_DEFAULT)) {
+            return;
+        }
+    }
+    if (!(parent->schema->flags & LYS_PRESENCE)) {
+        parent->flags |= LYD_DEFAULT;
+    }
 }
 
 /*

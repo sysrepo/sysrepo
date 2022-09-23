@@ -1272,10 +1272,7 @@ sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_ope
             /* state subtree */
             if (get_oper_opts & SR_OPER_NO_STATE) {
                 /* free it whole */
-                if (*data == elem) {
-                    *data = (*data)->next;
-                }
-                lyd_free_tree(elem);
+                sr_lyd_free_tree_safe(elem, data);
                 continue;
             }
 
@@ -1290,10 +1287,7 @@ sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_ope
 
         if ((elem->schema->flags & LYS_CONFIG_W) && (get_oper_opts & SR_OPER_NO_CONFIG) && !lyd_child_no_keys(elem)) {
             /* config-only subtree (config node with no children) */
-            if (*data == elem) {
-                *data = (*data)->next;
-            }
-            lyd_free_tree(elem);
+            sr_lyd_free_tree_safe(elem, data);
             continue;
         }
 
