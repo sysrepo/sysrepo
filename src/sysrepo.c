@@ -1194,89 +1194,6 @@ cleanup:
 }
 
 /**
- * @brief Learn YANG module name and format.
- *
- * @param[in] schema_path Path to the module file.
- * @param[out] module_name Name of the module.
- * @param[out] format Module format.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_install_module_get_name_format(const char *schema_path, char **module_name, LYS_INFORMAT *format)
-{
-    sr_error_info_t *err_info = NULL;
-    const char *ptr;
-    int index;
-
-    /* learn the format */
-    if ((strlen(schema_path) > 4) && !strcmp(schema_path + strlen(schema_path) - 4, ".yin")) {
-        *format = LYS_IN_YIN;
-        ptr = schema_path + strlen(schema_path) - 4;
-    } else if ((strlen(schema_path) > 5) && !strcmp(schema_path + strlen(schema_path) - 5, ".yang")) {
-        *format = LYS_IN_YANG;
-        ptr = schema_path + strlen(schema_path) - 5;
-    } else {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Unknown format of module \"%s\".", schema_path);
-        return err_info;
-    }
-
-    /* parse module name */
-    for (index = 0; (ptr != schema_path) && (ptr[0] != '/'); ++index, --ptr) {}
-    if (ptr[0] == '/') {
-        ++ptr;
-        --index;
-    }
-    *module_name = strndup(ptr, index);
-    SR_CHECK_MEM_RET(!*module_name, err_info);
-    ptr = strchr(*module_name, '@');
-    if (ptr) {
-        /* truncate revision */
-        ((char *)ptr)[0] = '\0';
-    }
-
-    return NULL;
-}
-
-/**
- * @brief Parse initial data of new module(s), if any.
- *
- * @param[in] new_ctx New libyang context for parsing the data.
- * @param[in] data Optional initial data in @p format to set.
- * @param[in] data_path Optional path to a data file in @p format to set.
- * @param[in] format Format of @p data or @p data_path file.
- * @param[out] mod_data Initial module(s) data.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_install_module_get_data(const struct ly_ctx *new_ctx, const char *data, const char *data_path, LYD_FORMAT format,
-        struct lyd_node **mod_data)
-{
-    sr_error_info_t *err_info = NULL;
-    LY_ERR lyrc = LY_SUCCESS;
-
-    *mod_data = NULL;
-
-    if (data_path) {
-        lyrc = lyd_parse_data_path(new_ctx, data_path, format, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, mod_data);
-    } else if (data) {
-        lyrc = lyd_parse_data_mem(new_ctx, data, format, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, mod_data);
-    }
-
-    /* empty data are fine */
-    if (lyrc && (lyrc != LY_EINVAL)) {
-        sr_errinfo_new_ly(&err_info, new_ctx, NULL);
-        goto cleanup;
-    }
-
-cleanup:
-    if (err_info) {
-        lyd_free_siblings(*mod_data);
-        *mod_data = NULL;
-    }
-    return err_info;
-}
-
-/**
  * @brief Prepare members of a new module.
  *
  * @param[in] new_ctx New context to use for parsing.
@@ -1294,7 +1211,7 @@ sr_install_module_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_in
     sr_datastore_t ds;
 
     /* learn module name and format */
-    if ((err_info = sr_install_module_get_name_format(new_mod->schema_path, &mod_name, &format))) {
+    if ((err_info = sr_get_schema_name_format(new_mod->schema_path, &mod_name, &format))) {
         goto cleanup;
     }
 
@@ -1411,7 +1328,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     ly_ctx_unset_searchdir_last(new_ctx, search_dir_count);
 
     /* parse modules data, if any */
-    if ((err_info = sr_install_module_get_data(new_ctx, data, data_path, format, &mod_data))) {
+    if ((err_info = sr_lyd_parse_module_data(new_ctx, data, data_path, format, &mod_data))) {
         goto cleanup;
     }
 
@@ -1748,7 +1665,7 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
     SR_CHECK_ARG_APIRET(!conn || !schema_path, NULL, err_info);
 
     /* learn about the module */
-    if ((err_info = sr_install_module_get_name_format(schema_path, &mod_name, &format))) {
+    if ((err_info = sr_get_schema_name_format(schema_path, &mod_name, &format))) {
         goto cleanup;
     }
 

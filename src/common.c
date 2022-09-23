@@ -5021,6 +5021,42 @@ sr_get_trim_predicates(const char *expr, char **expr2)
     return NULL;
 }
 
+sr_error_info_t *
+sr_get_schema_name_format(const char *schema_path, char **module_name, LYS_INFORMAT *format)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *ptr;
+    int index;
+
+    /* learn the format */
+    if ((strlen(schema_path) > 4) && !strcmp(schema_path + strlen(schema_path) - 4, ".yin")) {
+        *format = LYS_IN_YIN;
+        ptr = schema_path + strlen(schema_path) - 4;
+    } else if ((strlen(schema_path) > 5) && !strcmp(schema_path + strlen(schema_path) - 5, ".yang")) {
+        *format = LYS_IN_YANG;
+        ptr = schema_path + strlen(schema_path) - 5;
+    } else {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Unknown format of module \"%s\".", schema_path);
+        return err_info;
+    }
+
+    /* parse module name */
+    for (index = 0; (ptr != schema_path) && (ptr[0] != '/'); ++index, --ptr) {}
+    if (ptr[0] == '/') {
+        ++ptr;
+        --index;
+    }
+    *module_name = strndup(ptr, index);
+    SR_CHECK_MEM_RET(!*module_name, err_info);
+    ptr = strchr(*module_name, '@');
+    if (ptr) {
+        /* truncate revision */
+        ((char *)ptr)[0] = '\0';
+    }
+
+    return NULL;
+}
+
 const char *
 sr_ds2str(sr_datastore_t ds)
 {
@@ -5964,6 +6000,35 @@ sr_lyd_free_tree_safe(struct lyd_node *tree, struct lyd_node **first)
     if (!(parent->schema->flags & LYS_PRESENCE)) {
         parent->flags |= LYD_DEFAULT;
     }
+}
+
+sr_error_info_t *
+sr_lyd_parse_module_data(const struct ly_ctx *ly_ctx, const char *data, const char *data_path, LYD_FORMAT format,
+        struct lyd_node **mod_data)
+{
+    sr_error_info_t *err_info = NULL;
+    LY_ERR lyrc = LY_SUCCESS;
+
+    *mod_data = NULL;
+
+    if (data_path) {
+        lyrc = lyd_parse_data_path(ly_ctx, data_path, format, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, mod_data);
+    } else if (data) {
+        lyrc = lyd_parse_data_mem(ly_ctx, data, format, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, mod_data);
+    }
+
+    /* empty data are fine */
+    if (lyrc && (lyrc != LY_EINVAL)) {
+        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+        goto cleanup;
+    }
+
+cleanup:
+    if (err_info) {
+        lyd_free_siblings(*mod_data);
+        *mod_data = NULL;
+    }
+    return err_info;
 }
 
 /*

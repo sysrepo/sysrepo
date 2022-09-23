@@ -1220,6 +1220,16 @@ char *sr_get_first_ns(const char *expr);
 sr_error_info_t *sr_get_trim_predicates(const char *expr, char **expr2);
 
 /**
+ * @brief Learn schema file module name and format.
+ *
+ * @param[in] schema_path Path to the module file.
+ * @param[out] module_name Name of the module.
+ * @param[out] format Module format.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_get_schema_name_format(const char *schema_path, char **module_name, LYS_INFORMAT *format);
+
+/**
  * @brief Get datastore string name.
  *
  * @param[in] ds Datastore to transform.
@@ -1418,6 +1428,19 @@ sr_error_info_t *sr_lyd_xpath_complement(struct lyd_node **data, const char *xpa
  * @param[in,out] first Pointer to the first top-level node that may actually be @p tree.
  */
 void sr_lyd_free_tree_safe(struct lyd_node *tree, struct lyd_node **first);
+
+/**
+ * @brief Parse initial data of new module(s), if any.
+ *
+ * @param[in] new_ctx New libyang context for parsing the data.
+ * @param[in] data Optional initial data in @p format to set.
+ * @param[in] data_path Optional path to a data file in @p format to set.
+ * @param[in] format Format of @p data or @p data_path file.
+ * @param[out] mod_data Initial module(s) data.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_parse_module_data(const struct ly_ctx *ly_ctx, const char *data, const char *data_path,
+        LYD_FORMAT format, struct lyd_node **mod_data);
 
 /**
  * @brief Get a hash of a string value.
