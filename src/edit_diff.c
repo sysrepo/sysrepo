@@ -1627,19 +1627,19 @@ sr_edit_diff_set_origin(struct lyd_node *node, const char *origin, int overwrite
 /**
  * @brief Add a node from data tree/edit into sysrepo diff.
  *
- * @param[in,out] node Changed node, may be freed.
+ * @param[in] node Changed node to be added to the diff.
  * @param[in] meta_val Metadata value (meaning depends on the nodetype).
  * @param[in] prev_meta_value Previous metadata value (meaning depends on the nodetype).
  * @param[in] op Diff operation.
- * @param[in] no_dup Do not duplicate the tree (handy when deleting subtree while having datastore).
+ * @param[in] subtree Add the whole subtree into diff, not just the node.
  * @param[in] diff_parent Current sysrepo diff parent.
  * @param[in,out] diff_root Current sysrepo diff root node.
  * @param[out] diff_node Optional created diff node.
  * @return err_info, NULL on error.
  */
 static sr_error_info_t *
-sr_edit_diff_add(struct lyd_node **node, const char *meta_val, const char *prev_meta_val, enum edit_op op, int no_dup,
-        struct lyd_node *diff_parent, struct lyd_node **diff_root, struct lyd_node **diff_node)
+sr_edit_diff_add(const struct lyd_node *node, const char *meta_val, const char *prev_meta_val, enum edit_op op,
+        int subtree, struct lyd_node *diff_parent, struct lyd_node **diff_root, struct lyd_node **diff_node)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *node_dup = NULL, *elem;
@@ -1651,26 +1651,29 @@ sr_edit_diff_add(struct lyd_node **node, const char *meta_val, const char *prev_
 
     if (!diff_parent && !diff_root) {
         /* we are actually not generating a diff, so just perform what we are supposed to to change the datastore */
-        if (no_dup) {
-            lyd_free_tree(*node);
-            *node = NULL;
-        }
         return NULL;
     }
 
-    if (no_dup) {
-        assert(op == EDIT_DELETE);
+    /* duplicate node */
+    if (lyd_dup_single(node, NULL, LYD_DUP_NO_META | (subtree ? LYD_DUP_RECURSIVE : 0), &node_dup)) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL);
+        goto cleanup;
+    }
 
-        /* unlink subtree */
-        lyd_unlink_tree(*node);
-        node_dup = *node;
+    /* add specific attributes for the node */
+    if ((err_info = sr_diff_add_meta(node_dup, meta_val, prev_meta_val, op))) {
+        goto cleanup;
+    }
+
+    if (subtree) {
+        assert(op == EDIT_DELETE);
 
         /* add attributes for all nodes in the subtree */
         LYD_TREE_DFS_BEGIN(node_dup, elem) {
             if (elem == node_dup) {
                 /* meta values are relevant for this node only */
                 if ((err_info = sr_diff_add_meta(elem, meta_val, prev_meta_val, op))) {
-                    goto error;
+                    goto cleanup;
                 }
             } else if (lysc_is_userordered(elem->schema)) {
                 /* only add information about previous instance for userord lists, nothing else is needed */
@@ -1681,7 +1684,7 @@ sr_edit_diff_add(struct lyd_node **node, const char *meta_val, const char *prev_
 
                 /* add metadata */
                 if ((err_info = sr_diff_add_meta(elem, NULL, sibling_before_val, op))) {
-                    goto error;
+                    goto cleanup;
                 }
                 free(sibling_before_val);
                 sibling_before_val = NULL;
@@ -1689,32 +1692,25 @@ sr_edit_diff_add(struct lyd_node **node, const char *meta_val, const char *prev_
 
             LYD_TREE_DFS_END(node_dup, elem);
         }
-    } else {
-        /* duplicate node */
-        if (lyd_dup_single(*node, NULL, LYD_DUP_NO_META, &node_dup)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(*node), NULL);
-            goto error;
-        }
-
-        /* add specific attributes for the node */
-        if ((err_info = sr_diff_add_meta(node_dup, meta_val, prev_meta_val, op))) {
-            goto error;
-        }
     }
 
     if ((node_dup->schema->nodetype == LYS_LEAFLIST) && ((struct lysc_node_leaflist *)node_dup->schema)->dflts &&
             (op == EDIT_CREATE)) {
         /* default leaf-list with the same value may have been removed, so we need to merge these 2 diffs */
         if (lyd_diff_merge_tree(diff_root, diff_parent, node_dup, NULL, NULL, 0)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(*node), NULL);
-            goto error;
+            sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL);
+            goto cleanup;
         }
 
-        /* it was duplicated, so free it and do not return any diff node (since it has no children, it is okay) */
-        lyd_free_tree(node_dup);
-        node_dup = NULL;
-    } else {
-        /* insert node into diff */
+        if (diff_node) {
+            /* find the merged node in the diff */
+            if (lyd_find_sibling_first(diff_parent ? lyd_child(diff_parent) : *diff_root, node_dup, diff_node)) {
+                sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL);
+                goto cleanup;
+            }
+        }
+    } else if (lyd_find_sibling_first(diff_parent ? lyd_child(diff_parent) : *diff_root, node_dup, diff_node)) {
+        /* insert node into diff, not there */
         if (diff_parent) {
             if (node_dup->flags & LYD_EXT) {
                 lyd_insert_ext(diff_parent, node_dup);
@@ -1724,48 +1720,24 @@ sr_edit_diff_add(struct lyd_node **node, const char *meta_val, const char *prev_
         } else {
             lyd_insert_sibling(*diff_root, node_dup, diff_root);
         }
+
+        if (diff_node) {
+            *diff_node = node_dup;
+        }
+        node_dup = NULL;
+    } else {
+        /* diff already updated and diff_node found, nothing else to do */
+        assert(op == EDIT_DELETE);
     }
 
-    if (diff_node) {
-        *diff_node = node_dup;
-    }
-    return NULL;
-
-error:
-    if (!no_dup) {
-        lyd_free_tree(node_dup);
-    }
+cleanup:
+    lyd_free_tree(node_dup);
     free(sibling_before_val);
     return err_info;
 }
 
-/**
- * @brief Set container default flag for all empty containers as a result of delete operation.
- *
- * @param[in] parent First possibly affected parent.
- */
-static void
-sr_edit_delete_set_cont_dflt(struct lyd_node *parent)
-{
-    struct lyd_node *iter;
-
-    if (!parent || (parent->schema->nodetype != LYS_CONTAINER)) {
-        return;
-    }
-
-    LY_LIST_FOR(lyd_child(parent), iter) {
-        if (!(iter->flags & LYD_DEFAULT)) {
-            return;
-        }
-    }
-
-    if (parent->schema->flags & LYS_PRESENCE) {
-        parent->flags |= LYD_DEFAULT;
-    }
-}
-
-#define EDIT_APPLY_REPLACE_R 0x01       /**< There was a replace operation in a parent, change behavior accordingly. */
-#define EDIT_APPLY_CHECK_OP_R 0x02      /**< Do not apply edit, just check whether the operations are valid. */
+#define EDIT_APPLY_REPLACE_R    0x01    /**< There was a replace operation in a parent, change behavior accordingly. */
+#define EDIT_APPLY_DELETE_R     0x02    /**< There was a delete operation in a parent, change behavior accordingly. */
 
 /**
  * @brief Check whether this diff node is redundant (does not change data).
@@ -1849,16 +1821,14 @@ sr_diff_is_redundant(struct lyd_node *diff)
 /**
  * @brief Apply edit ether operation.
  *
- * @param[in] match_node Matching data tree node.
+ * @param[in] data_match Matching data tree node.
  * @param[out] next_op Next operation to be performed with these nodes.
- * @param[in,out] flags_r Modified flags for the rest of recursive applpying of this operation.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_apply_ether(struct lyd_node *match_node, enum edit_op *next_op, int *flags_r)
+sr_edit_apply_ether(struct lyd_node *data_match, enum edit_op *next_op)
 {
-    if (!match_node) {
-        *flags_r |= EDIT_APPLY_CHECK_OP_R;
+    if (!data_match) {
         *next_op = EDIT_CONTINUE;
     } else {
         *next_op = EDIT_NONE;
@@ -1924,76 +1894,51 @@ sr_edit_apply_none(struct lyd_node *data_match, const struct lyd_node *edit_node
 /**
  * @brief Apply edit remove operation.
  *
- * @param[in,out] first_node First sibling of the data tree.
- * @param[in] parent_node Parent of the first sibling.
- * @param[in,out] match_node Matching data tree node, may be updated for auto-remove.
+ * @param[in] data_match Matching data tree node.
  * @param[in] diff_parent Current sysrepo diff parent.
  * @param[in,out] diff_root Sysrepo diff root node.
  * @param[out] diff_node Created diff node.
  * @param[out] next_op Next operation to be performed with these nodes.
- * @param[in,out] flags_r Modified flags for the rest of recursive applpying of this operation.
+ * @param[in,out] flags_r Modified flags for the rest of recursive applying of this operation.
  * @param[out] change Whether some data change occurred.
+ * @param[out] data_del Deleted tree in the data, freed only after all the descendants are processed.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_apply_remove(struct lyd_node **first_node, struct lyd_node *parent_node, struct lyd_node **match_node,
-        struct lyd_node *diff_parent, struct lyd_node **diff_root, struct lyd_node **diff_node, enum edit_op *next_op,
-        int *flags_r, int *change)
+sr_edit_apply_remove(struct lyd_node *data_match, struct lyd_node *diff_parent, struct lyd_node **diff_root,
+        struct lyd_node **diff_node, enum edit_op *next_op, int *flags_r, int *change, struct lyd_node **data_del)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *parent;
     const struct lyd_node *sibling_before;
     char *sibling_before_val = NULL;
 
-    /* just use the value because it is only in an assert */
-    (void)parent_node;
-
-    if (*match_node) {
-        if (lysc_is_userordered((*match_node)->schema)) {
+    if (data_match) {
+        if (lysc_is_userordered(data_match->schema)) {
             /* get original (current) previous instance to be stored in diff */
-            sibling_before = sr_edit_find_previous_instance(*match_node);
+            sibling_before = sr_edit_find_previous_instance(data_match);
             if (sibling_before) {
                 sibling_before_val = sr_edit_create_userord_predicate(sibling_before);
             }
         }
 
-        if ((*match_node == *first_node) && !(*match_node)->parent) {
-            assert(!parent_node);
-
-            /* we will unlink a top-level node */
-            *first_node = (*first_node)->next;
-        }
-        parent = lyd_parent(*match_node);
-
-        /* update diff, remove the whole subtree by relinking it to the diff */
-        if ((err_info = sr_edit_diff_add(match_node, NULL, sibling_before_val, EDIT_DELETE, 1, diff_parent, diff_root,
+        /* update diff, whole subtree removed */
+        if ((err_info = sr_edit_diff_add(data_match, NULL, sibling_before_val, EDIT_DELETE, 1, diff_parent, diff_root,
                 diff_node))) {
             goto cleanup;
-        }
-
-        /* set empty non-presence container dflt flag */
-        sr_edit_delete_set_cont_dflt(parent);
-
-        if (*flags_r & EDIT_APPLY_REPLACE_R) {
-            /* we are definitely finished with this subtree now and there is no edit to continue with */
-            *next_op = EDIT_FINISH;
-        } else {
-            /* subtree removed, just check operations in the rest of edit subtree */
-            *flags_r |= EDIT_APPLY_CHECK_OP_R;
-            *next_op = EDIT_CONTINUE;
         }
 
         if (change) {
             *change = 1;
         }
-    } else {
-        /* match is not valid, value does not match */
-        *match_node = NULL;
 
-        /* there is nothing to remove, just check operations in the rest of this edit subtree */
-        *flags_r |= EDIT_APPLY_CHECK_OP_R;
-        *next_op = EDIT_CONTINUE;
+        /* the subtree must be later removed from the data */
+        *data_del = data_match;
+
+        /* puts constraint on the operations of any descendants */
+        *flags_r |= EDIT_APPLY_DELETE_R;
     }
+
+    *next_op = EDIT_CONTINUE;
 
 cleanup:
     free(sibling_before_val);
@@ -2358,11 +2303,23 @@ sr_edit_apply_delete(struct lyd_node *data_match, const struct lyd_node *edit_no
 }
 
 /**
+ * @brief Generate operation failed to be applied error.
+ *
+ * @param[in,out] err_info Error info to use.
+ * @param[in] op Operation that failed.
+ */
+static void
+sr_edit_apply_op_error(sr_error_info_t **err_info, enum edit_op op)
+{
+    sr_errinfo_new(err_info, (*err_info)->err[0].err_code, "Applying operation \"%s\" failed.", sr_edit_op2str(op));
+}
+
+/**
  * @brief Apply sysrepo edit subtree on data tree nodes, recursively. Optionally,
  * sysrepo diff is being also created/updated.
  *
- * @param[in,out] first_node First sibling of the data tree. If not set, data tree is not modified.
- * @param[in] parent_node Parent of the first sibling.
+ * @param[in,out] data_root First top-level sibling of the data tree. If not set, data tree is not modified.
+ * @param[in] data_parent Data tree node parent.
  * @param[in] edit_node Sysrepo edit node.
  * @param[in] parent_op Parent operation.
  * @param[in] diff_parent Current sysrepo diff parent.
@@ -2372,24 +2329,23 @@ sr_edit_apply_delete(struct lyd_node *data_match, const struct lyd_node *edit_no
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_apply_r(struct lyd_node **first_node, struct lyd_node *parent_node, const struct lyd_node *edit_node,
+sr_edit_apply_r(struct lyd_node **data_root, struct lyd_node *data_parent, const struct lyd_node *edit_node,
         enum edit_op parent_op, struct lyd_node *diff_parent, struct lyd_node **diff_root, int flags, int *change)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *match = NULL, *child, *next, *edit_match, *diff_node = NULL;
+    struct lyd_node *data_match = NULL, *child, *next, *edit_match, *diff_node = NULL, *data_del = NULL;
     enum edit_op op, next_op, prev_op = 0;
     enum insert_val insert;
     const char *key_or_value;
-    char *origin;
+    char *origin = NULL;
     int val_equal;
 
-    assert(first_node || (flags & EDIT_APPLY_CHECK_OP_R));
     /* if data node is set, it must be the first sibling */
-    assert(!first_node || !*first_node || !(*first_node)->prev->next);
+    assert(!data_root || !*data_root || (!(*data_root)->prev->next && !(*data_root)->parent));
 
     /* get this node operation */
     if ((err_info = sr_edit_op(edit_node, parent_op, &op, &insert, &key_or_value))) {
-        return err_info;
+        goto cleanup;
     }
 
     if (lysc_is_key(edit_node->schema)) {
@@ -2398,20 +2354,25 @@ sr_edit_apply_r(struct lyd_node **first_node, struct lyd_node *parent_node, cons
             sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
                     "Key \"%s\" operation \"%s\" differs from its parent list operation \"%s\".",
                     LYD_NAME(edit_node), sr_edit_op2str(op), sr_edit_op2str(parent_op));
-            goto op_error;
+            sr_edit_apply_op_error(&err_info, op);
         }
-        return NULL;
+        goto cleanup;
+    }
+
+    /* check for invalid nested operation */
+    if ((flags & EDIT_APPLY_DELETE_R) && ((op == EDIT_REPLACE) || (op == EDIT_CREATE) || (op == EDIT_MERGE) ||
+            (op == EDIT_NONE) || (op == EDIT_ETHER))) {
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
+                "Invalid operation \"%s\" for node \"%s\" with parent operation \"delete\".",
+                sr_edit_op2str(op), LYD_NAME(edit_node));
+        goto cleanup;
     }
 
 reapply:
     /* find an equal node in the current data */
-    if (flags & EDIT_APPLY_CHECK_OP_R) {
-        /* we have no data */
-        match = NULL;
-    } else {
-        if ((err_info = sr_edit_find(*first_node, edit_node, op, insert, key_or_value, 1, &match, &val_equal))) {
-            return err_info;
-        }
+    if ((err_info = sr_edit_find(data_parent ? lyd_child(data_parent) : *data_root, edit_node, op, insert, key_or_value,
+            1, &data_match, &val_equal))) {
+        goto cleanup;
     }
 
     /* apply */
@@ -2419,40 +2380,29 @@ reapply:
     do {
         switch (next_op) {
         case EDIT_REPLACE:
-            if (flags & EDIT_APPLY_CHECK_OP_R) {
-                sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
-                        "Node \"%s\" cannot be created because its parent does not exist.", LYD_NAME(edit_node));
-                goto op_error;
-            }
-            if ((err_info = sr_edit_apply_replace(match, val_equal, edit_node, diff_parent, diff_root, &diff_node,
+            if ((err_info = sr_edit_apply_replace(data_match, val_equal, edit_node, diff_parent, diff_root, &diff_node,
                     &next_op, &flags, change))) {
-                goto op_error;
+                sr_edit_apply_op_error(&err_info, op);
+                goto cleanup;
             }
             break;
         case EDIT_CREATE:
-            if (flags & EDIT_APPLY_CHECK_OP_R) {
-                sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
-                        "Node \"%s\" cannot be created because its parent does not exist.", LYD_NAME(edit_node));
-                goto op_error;
-            }
-            if ((err_info = sr_edit_apply_create(first_node, parent_node, &match, val_equal, edit_node, diff_parent,
+            if ((err_info = sr_edit_apply_create(data_root, data_parent, &data_match, val_equal, edit_node, diff_parent,
                     diff_root, &diff_node, &next_op, change))) {
-                goto op_error;
+                sr_edit_apply_op_error(&err_info, op);
+                goto cleanup;
             }
             break;
         case EDIT_MERGE:
-            if (flags & EDIT_APPLY_CHECK_OP_R) {
-                sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
-                        "Node \"%s\" cannot be created because its parent does not exist.", LYD_NAME(edit_node));
-                goto op_error;
-            }
-            if ((err_info = sr_edit_apply_merge(match, val_equal, &next_op))) {
-                goto op_error;
+            if ((err_info = sr_edit_apply_merge(data_match, val_equal, &next_op))) {
+                sr_edit_apply_op_error(&err_info, op);
+                goto cleanup;
             }
             break;
         case EDIT_DELETE:
-            if ((err_info = sr_edit_apply_delete(match, edit_node, &next_op))) {
-                goto op_error;
+            if ((err_info = sr_edit_apply_delete(data_match, edit_node, &next_op))) {
+                sr_edit_apply_op_error(&err_info, op);
+                goto cleanup;
             }
             break;
         case EDIT_AUTO_REMOVE:
@@ -2460,64 +2410,59 @@ reapply:
             prev_op = next_op;
         /* fallthrough */
         case EDIT_REMOVE:
-            if ((err_info = sr_edit_apply_remove(first_node, parent_node, &match, diff_parent, diff_root, &diff_node,
-                    &next_op, &flags, change))) {
-                goto op_error;
+            if ((err_info = sr_edit_apply_remove(data_match, diff_parent, diff_root, &diff_node, &next_op, &flags,
+                    change, &data_del))) {
+                sr_edit_apply_op_error(&err_info, op);
+                goto cleanup;
             }
             break;
         case EDIT_MOVE:
-            if ((err_info = sr_edit_apply_move(first_node, parent_node, edit_node, &match, insert, key_or_value,
+            if ((err_info = sr_edit_apply_move(data_root, data_parent, edit_node, &data_match, insert, key_or_value,
                     diff_parent, diff_root, &diff_node, &next_op, change))) {
-                goto op_error;
+                sr_edit_apply_op_error(&err_info, op);
+                goto cleanup;
             }
             break;
         case EDIT_NONE:
-            if ((err_info = sr_edit_apply_none(match, edit_node, diff_parent, diff_root, &diff_node, &next_op, change))) {
-                goto op_error;
+            if ((err_info = sr_edit_apply_none(data_match, edit_node, diff_parent, diff_root, &diff_node, &next_op, change))) {
+                sr_edit_apply_op_error(&err_info, op);
+                goto cleanup;
             }
             break;
         case EDIT_ETHER:
-            if ((err_info = sr_edit_apply_ether(match, &next_op, &flags))) {
-                goto op_error;
+            if ((err_info = sr_edit_apply_ether(data_match, &next_op))) {
+                sr_edit_apply_op_error(&err_info, op);
+                goto cleanup;
             }
             break;
         case EDIT_CONTINUE:
         case EDIT_FINISH:
             SR_ERRINFO_INT(&err_info);
-            return err_info;
+            goto cleanup;
         }
     } while ((next_op != EDIT_CONTINUE) && (next_op != EDIT_FINISH));
 
     /* fix origin in data */
     sr_edit_diff_get_origin(edit_node, &origin, NULL);
-    if (match && origin && (err_info = sr_edit_diff_set_origin(match, origin, 1))) {
-        free(origin);
-        return err_info;
+    if (data_match && origin && (err_info = sr_edit_diff_set_origin(data_match, origin, 1))) {
+        goto cleanup;
     }
 
     /* fix origin in diff */
     if (diff_node && origin && (err_info = sr_edit_diff_set_origin(diff_node, origin, 1))) {
-        free(origin);
-        return err_info;
+        goto cleanup;
     }
-    free(origin);
 
     if ((prev_op == EDIT_AUTO_REMOVE) || ((prev_op == EDIT_PURGE) && diff_node)) {
         /* we have removed one subtree of data from another case/one default leaf-list instance/one purged instance,
          * try this whole edit again */
         prev_op = 0;
-        flags &= ~EDIT_APPLY_CHECK_OP_R;
         diff_node = NULL;
+        sr_lyd_free_tree_safe(data_del, data_root);
+        data_del = NULL;
         goto reapply;
     } else if (next_op == EDIT_FINISH) {
-        return NULL;
-    }
-
-    /* next recursive iteration */
-    if (flags & EDIT_APPLY_CHECK_OP_R) {
-        /* once we start just checking operations, we do not want to work with diff in recursive calls */
-        diff_parent = NULL;
-        diff_root = NULL;
+        goto cleanup;
     }
 
     if (diff_root) {
@@ -2527,33 +2472,27 @@ reapply:
 
     if (flags & EDIT_APPLY_REPLACE_R) {
         /* remove all non-default children that are not in the edit, recursively */
-        LY_LIST_FOR_SAFE(lyd_child_no_keys(match), next, child) {
+        LY_LIST_FOR_SAFE(lyd_child_no_keys(data_match), next, child) {
             if (child->flags & LYD_DEFAULT) {
                 continue;
             }
 
             if ((err_info = sr_edit_find(lyd_child_no_keys(edit_node), child, EDIT_DELETE, 0, NULL, 0,
                     &edit_match, NULL))) {
-                return err_info;
+                goto cleanup;
             }
-            if (!edit_match && (err_info = sr_edit_apply_r(&((struct lyd_node_inner *)match)->child, match, child,
-                    EDIT_DELETE, diff_parent, diff_root, flags, change))) {
-                return err_info;
+            if (!edit_match && (err_info = sr_edit_apply_r(data_root, data_match, child, EDIT_DELETE, diff_parent,
+                    diff_root, flags, change))) {
+                goto cleanup;
             }
         }
     }
 
-    /* apply edit recursively, keys are being checked */
-    LY_LIST_FOR(lyd_child(edit_node), child) {
-        if (flags & EDIT_APPLY_CHECK_OP_R) {
-            /* we do not operate with any datastore data or diff anymore */
-            err_info = sr_edit_apply_r(NULL, NULL, child, op, NULL, NULL, flags, change);
-        } else {
-            err_info = sr_edit_apply_r(&((struct lyd_node_inner *)match)->child, match, child, op, diff_parent,
-                    diff_root, flags, change);
-        }
-        if (err_info) {
-            return err_info;
+    /* apply edit recursively, keys are being checked, in case we were called by the recursion above,
+     * edit_node and data_match are the same and so child will be freed, hence the safe loop */
+    LY_LIST_FOR_SAFE(lyd_child(edit_node), next, child) {
+        if ((err_info = sr_edit_apply_r(data_root, data_match, child, op, diff_parent, diff_root, flags, change))) {
+            goto cleanup;
         }
     }
 
@@ -2564,11 +2503,9 @@ reapply:
         }
     }
 
-    return NULL;
-
-op_error:
-    assert(err_info);
-    sr_errinfo_new(&err_info, err_info->err[0].err_code, "Applying operation \"%s\" failed.", sr_edit_op2str(op));
+cleanup:
+    sr_lyd_free_tree_safe(data_del, data_root);
+    free(origin);
     return err_info;
 }
 
