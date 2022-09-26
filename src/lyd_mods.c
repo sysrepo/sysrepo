@@ -1194,11 +1194,13 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_lydmods_change_upd_module(const struct ly_ctx *ly_ctx, const struct lys_module *ly_mod, struct lyd_node **sr_mods)
+sr_lydmods_change_upd_modules(const struct ly_ctx *ly_ctx, const struct ly_set *upd_mod_set, struct lyd_node **sr_mods)
 {
     sr_error_info_t *err_info = NULL;
+    const struct lys_module *upd_mod;
     struct lyd_node *sr_mod, *sr_rev;
     char *path = NULL;
+    uint32_t i;
 
     *sr_mods = NULL;
 
@@ -1207,22 +1209,30 @@ sr_lydmods_change_upd_module(const struct ly_ctx *ly_ctx, const struct lys_modul
         goto cleanup;
     }
 
-    /* find module in SR data */
-    if (asprintf(&path, "module[name=\"%s\"]", ly_mod->name) == -1) {
-        SR_ERRINFO_MEM(&err_info);
-        goto cleanup;
-    }
-    SR_CHECK_INT_GOTO(lyd_find_path(*sr_mods, path, 0, &sr_mod), err_info, cleanup);
+    for (i = 0; i < upd_mod_set->count; ++i) {
+        upd_mod = upd_mod_set->objs[i];
 
-    /* remove revision, if any */
-    lyd_find_path(sr_mod, "revision", 0, &sr_rev);
-    lyd_free_tree(sr_rev);
+        /* find module in SR data */
+        if (asprintf(&path, "module[name=\"%s\"]", upd_mod->name) == -1) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+        SR_CHECK_INT_GOTO(lyd_find_path(*sr_mods, path, 0, &sr_mod), err_info, cleanup);
+        free(path);
+        path = NULL;
 
-    /* add new revision */
-    assert(ly_mod->revision);
-    if (lyd_new_term(sr_mod, NULL, "revision", ly_mod->revision, 0, NULL)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
-        goto cleanup;
+        /* remove revision, if any */
+        lyd_find_path(sr_mod, "revision", 0, &sr_rev);
+        lyd_free_tree(sr_rev);
+
+        /* add new revision */
+        assert(upd_mod->revision);
+        if (lyd_new_term(sr_mod, NULL, "revision", upd_mod->revision, 0, NULL)) {
+            sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+            goto cleanup;
+        }
+
+        SR_LOG_INF("Module \"%s\" updated.", upd_mod->name);
     }
 
     /* delete all dependencies */
@@ -1231,7 +1241,7 @@ sr_lydmods_change_upd_module(const struct ly_ctx *ly_ctx, const struct lys_modul
     }
 
     /* add new dependencies for all the modules */
-    if ((err_info = sr_lydmods_add_deps_all(ly_mod->ctx, *sr_mods))) {
+    if ((err_info = sr_lydmods_add_deps_all(upd_mod->ctx, *sr_mods))) {
         goto cleanup;
     }
 
@@ -1239,8 +1249,6 @@ sr_lydmods_change_upd_module(const struct ly_ctx *ly_ctx, const struct lys_modul
     if ((err_info = sr_lydmods_print(sr_mods))) {
         goto cleanup;
     }
-
-    SR_LOG_INF("Module \"%s\" updated.", ly_mod->name);
 
 cleanup:
     free(path);

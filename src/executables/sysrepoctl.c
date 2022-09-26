@@ -4,8 +4,8 @@
  * @brief sysrepoctl tool
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -96,6 +96,7 @@ help_print(void)
             "                       Use special \":ALL\" module name to change the access rights or replay support\n"
             "                       of all the modules.\n"
             "  -U, --update <path>  Update the specified module in sysrepo. Can be in either YANG or YIN format.\n"
+            "                       Can be specified multiple times to update several modules.\n"
             "  -L, --plugin-list    List loaded sysrepo plugins.\n"
             "  -P, --plugin-install <path>\n"
             "                       Install a datastore or notification sysrepo plugin. The plugin is simply copied\n"
@@ -701,12 +702,14 @@ main(int argc, char **argv)
             break;
         case 'U':
             /* update */
-            if (operation) {
+            if (operation && (operation != 'U')) {
                 error_print(0, "Operation already specified");
                 goto cleanup;
             }
             operation = 'U';
-            file_path = optarg;
+            if (new_str(optarg, &module_names)) {
+                goto cleanup;
+            }
             break;
         case 'L':
             /* plugin-list */
@@ -931,8 +934,8 @@ main(int argc, char **argv)
         break;
     case 'U':
         /* update */
-        if ((r = sr_update_module(conn, file_path, search_dirs))) {
-            error_print(r, "Failed to update module \"%s\"", file_path);
+        if ((r = sr_update_modules(conn, module_names, search_dirs))) {
+            error_print(r, "Failed to update modules");
             goto cleanup;
         }
         break;

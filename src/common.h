@@ -177,6 +177,15 @@ typedef struct {
     const struct lys_module *ly_mod;
 } sr_int_install_mod_t;
 
+/**
+ * @brief Internal information about a module to be updated.
+ */
+typedef struct {
+    const char *schema_path;
+    char *name;
+    LYS_INFORMAT format;
+} sr_int_update_mod_t;
+
 /*
  * From sysrepo.c
  */

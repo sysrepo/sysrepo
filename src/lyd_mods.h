@@ -61,14 +61,14 @@ sr_error_info_t *sr_lydmods_change_del_module(const struct ly_ctx *ly_ctx, const
         const struct ly_set *mod_set, struct lyd_node **sr_del_mods, struct lyd_node **sr_mods);
 
 /**
- * @brief Update a module in SR internal module data.
+ * @brief Update modules in SR internal module data.
  *
  * @param[in] ly_ctx Context to use for parsing SR data.
- * @param[in] ly_mod Updated module.
+ * @param[in] upd_mod_set Set with all the new updated modules.
  * @param[out] sr_mods SR internal module data.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lydmods_change_upd_module(const struct ly_ctx *ly_ctx, const struct lys_module *ly_mod,
+sr_error_info_t *sr_lydmods_change_upd_modules(const struct ly_ctx *ly_ctx, const struct ly_set *upd_mod_set,
         struct lyd_node **sr_mods);
 
 /**

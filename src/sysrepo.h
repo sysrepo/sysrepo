@@ -595,6 +595,18 @@ int sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
 int sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs);
 
 /**
+ * @brief Update installed schemas (modules) to new revisions in a batch.
+ *
+ * Required WRITE access.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] schema_paths Array of paths to the new schemas terminated by NULL. Can have either YANG or YIN extension/format.
+ * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *search_dirs);
+
+/**
  * @brief Change module replay support.
  *
  * @param[in] conn Connection to use.

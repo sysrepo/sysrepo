@@ -1194,7 +1194,7 @@ cleanup:
 }
 
 /**
- * @brief Prepare members of a new module.
+ * @brief Prepare members of a new module to be installed.
  *
  * @param[in] new_ctx New context to use for parsing.
  * @param[in] conn Connection to use.
@@ -1202,7 +1202,7 @@ cleanup:
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_install_module_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_int_install_mod_t *new_mod)
+sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_int_install_mod_t *new_mod)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_in *in = NULL;
@@ -1313,7 +1313,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
 
     for (i = 0; i < *new_mod_count; ++i) {
         /* process every new module and check/fill its info */
-        if ((err_info = sr_install_module_prepare_mod(new_ctx, conn, &(*new_mods)[i]))) {
+        if ((err_info = sr_install_modules_prepare_mod(new_ctx, conn, &(*new_mods)[i]))) {
             goto cleanup;
         }
     }
@@ -1519,6 +1519,17 @@ sr_remove_module(sr_conn_ctx_t *conn, const char *module_name, int force)
 }
 
 API int
+sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs)
+{
+    const char *schema_paths[] = {
+        schema_path,
+        NULL
+    };
+
+    return sr_update_modules(conn, schema_paths, search_dirs);
+}
+
+API int
 sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
 {
     sr_error_info_t *err_info = NULL;
@@ -1648,24 +1659,183 @@ cleanup:
     return sr_api_ret(NULL, err_info);
 }
 
+/**
+ * @brief Import module data free libyang callback.
+ */
+static void
+sr_ly_update_module_imp_data_free_cb(void *module_data, void *UNUSED(user_data))
+{
+    free(module_data);
+}
+
+/**
+ * @brief Import module libyang callback.
+ */
+static LY_ERR
+sr_ly_update_module_imp_cb(const char *mod_name, const char *mod_rev, const char *submod_name, const char *UNUSED(submod_rev),
+        void *user_data, LYS_INFORMAT *format, const char **module_data, ly_module_imp_data_free_clb *free_module_data)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_int_update_mod_t *upd_mods = user_data, *upd_mod = NULL;
+    uint32_t i;
+
+    for (i = 0; upd_mods[i].name; ++i) {
+        if (!strcmp(mod_name, upd_mods[i].name) && !mod_rev && !submod_name) {
+            /* found in the specific revision */
+            upd_mod = &upd_mods[i];
+            break;
+        }
+    }
+    if (!upd_mod) {
+        /* not found */
+        return LY_ENOTFOUND;
+    }
+
+    /* read schema file contents */
+    if ((err_info = sr_file_read(upd_mod->schema_path, (char **)module_data))) {
+        sr_errinfo_free(&err_info);
+        return LY_ESYS;
+    }
+
+    *format = upd_mod->format;
+    *free_module_data = sr_ly_update_module_imp_data_free_cb;
+    return LY_SUCCESS;
+}
+
+/**
+ * @brief Prepare modules to be updated and load them into the new context.
+ *
+ * @param[in] new_ctx New context to use for parsing.
+ * @param[in] conn Connection to use.
+ * @param[in] schema_paths Array of schema paths to the updated modules.
+ * @param[in,out] old_mod_set Set to add old (current) modules into, only the updated ones.
+ * @param[in,out] upd_mod_set Set to add updated modules into.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_update_modules_prepare(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, const char **schema_paths,
+        struct ly_set *old_mod_set, struct ly_set *upd_mod_set)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_int_update_mod_t *upd_mods = NULL;
+    const struct lys_module *old_mod, *upd_mod;
+    const char **features = NULL, *no_features[] = {NULL};
+    struct ly_in *in = NULL;
+    struct lysp_feature *f = NULL;
+    uint32_t i, j, schema_path_count = 0, feat_count = 0;
+
+    /* get schema path count */
+    for (i = 0; schema_paths[i]; ++i) {
+        ++schema_path_count;
+    }
+
+    /* alloc import CB data */
+    upd_mods = calloc(schema_path_count + 1, sizeof *upd_mods);
+    SR_CHECK_MEM_GOTO(!upd_mods, err_info, cleanup);
+
+    for (i = 0; i < schema_path_count; ++i) {
+        /* learn about the module */
+        upd_mods[i].schema_path = schema_paths[i];
+        if ((err_info = sr_get_schema_name_format(upd_mods[i].schema_path, &upd_mods[i].name, &upd_mods[i].format))) {
+            goto cleanup;
+        }
+
+        /* try to find this module */
+        old_mod = ly_ctx_get_module_implemented(conn->ly_ctx, upd_mods[i].name);
+        if (!old_mod) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", upd_mods[i].name);
+            goto cleanup;
+        }
+
+        /* check write permission */
+        if ((err_info = sr_perm_check(conn, old_mod, SR_DS_STARTUP, 1, NULL))) {
+            goto cleanup;
+        }
+
+        /* old module */
+        if (ly_set_add(old_mod_set, (void *)old_mod, 1, NULL)) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+    }
+
+    /* set import callback in case a module would try to import this module to be updated, to not load the old revision */
+    ly_ctx_set_module_imp_clb(new_ctx, sr_ly_update_module_imp_cb, upd_mods);
+
+    /* load non-updated modules into the context */
+    if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), new_ctx, old_mod_set))) {
+        goto cleanup;
+    }
+
+    for (i = 0; i < schema_path_count; ++i) {
+        old_mod = old_mod_set->objs[i];
+
+        /* collect current enabled features */
+        j = 0;
+        while ((f = lysp_feature_next(f, old_mod->parsed, &j))) {
+            if (f->flags & LYS_FENABLED) {
+                features = sr_realloc(features, (feat_count + 2) * sizeof *features);
+                SR_CHECK_MEM_GOTO(!features, err_info, cleanup);
+                features[feat_count] = f->name;
+                features[feat_count + 1] = NULL;
+                ++feat_count;
+            }
+        }
+
+        /* try to parse the updated module, if already an import, at least implement it and set the features */
+        if (ly_in_new_filepath(upd_mods[i].schema_path, 0, &in)) {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to parse \"%s\".", upd_mods[i].schema_path);
+            goto cleanup;
+        }
+        if (lys_parse(new_ctx, in, upd_mods[i].format, features ? features : no_features, (struct lys_module **)&upd_mod)) {
+            sr_errinfo_new_ly(&err_info, new_ctx, NULL);
+            goto cleanup;
+        }
+
+        /* updated module */
+        if (ly_set_add(upd_mod_set, (void *)upd_mod, 1, NULL)) {
+            SR_ERRINFO_MEM(&err_info);
+            goto cleanup;
+        }
+
+        free(features);
+        features = NULL;
+        feat_count = 0;
+        ly_in_free(in, 0);
+        in = NULL;
+    }
+
+cleanup:
+    for (i = 0; i < schema_path_count; ++i) {
+        free(upd_mods[i].name);
+    }
+    free(upd_mods);
+    free(features);
+    ly_in_free(in, 0);
+    return err_info;
+}
+
 API int
-sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs)
+sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *search_dirs)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_ctx *new_ctx = NULL, *old_ctx = NULL;
-    struct ly_set mod_set = {0};
+    struct ly_set old_mod_set = {0}, upd_mod_set = {0};
     struct lyd_node *sr_mods = NULL;
     struct lyd_node *old_s_data = NULL, *new_s_data = NULL, *old_r_data = NULL, *new_r_data = NULL, *old_o_data = NULL,
             *new_o_data = NULL;
-    const struct lys_module *ly_mod, *upd_ly_mod;
-    LYS_INFORMAT format;
-    char *mod_name = NULL;
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
+    uint32_t search_dir_count = 0;
 
-    SR_CHECK_ARG_APIRET(!conn || !schema_path, NULL, err_info);
+    SR_CHECK_ARG_APIRET(!conn || !schema_paths, NULL, err_info);
 
-    /* learn about the module */
-    if ((err_info = sr_get_schema_name_format(schema_path, &mod_name, &format))) {
+    /* create new temporary context */
+    if ((err_info = sr_ly_ctx_init(conn->opts, conn->ext_cb, conn->ext_cb_data, conn->ext_searchdir, &new_ctx))) {
+        goto cleanup;
+    }
+
+    /* set search dirs */
+    if ((err_info = sr_install_module_set_searchdirs(new_ctx, search_dirs, &search_dir_count))) {
         goto cleanup;
     }
 
@@ -1675,25 +1845,22 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
     }
     ctx_mode = SR_LOCK_READ_UPGR;
 
-    /* try to find this module */
-    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, mod_name);
-    if (!ly_mod) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", mod_name);
+    /* process every updated module and parse it */
+    if ((err_info = sr_update_modules_prepare(new_ctx, conn, schema_paths, &old_mod_set, &upd_mod_set))) {
         goto cleanup;
     }
 
-    /* check write permission */
-    if ((err_info = sr_perm_check(conn, ly_mod, SR_DS_STARTUP, 1, NULL))) {
+    /* compile the final context */
+    if (ly_ctx_compile(new_ctx)) {
+        sr_errinfo_new_ly(&err_info, new_ctx, NULL);
         goto cleanup;
     }
 
-    /* create new context */
-    if ((err_info = sr_lycc_upd_module_new_context(conn, schema_path, format, search_dirs, ly_mod, &new_ctx, &upd_ly_mod))) {
-        goto cleanup;
-    }
+    /* remove added search dirs */
+    ly_ctx_unset_searchdir_last(new_ctx, search_dir_count);
 
     /* check the new context can be used */
-    if ((err_info = sr_lycc_check_upd_module(conn, upd_ly_mod, ly_mod))) {
+    if ((err_info = sr_lycc_check_upd_modules(conn, &old_mod_set, &upd_mod_set))) {
         goto cleanup;
     }
     if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, &old_s_data, &new_s_data, &old_r_data, &new_r_data,
@@ -1708,7 +1875,7 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
     ctx_mode = SR_LOCK_WRITE;
 
     /* update lydmods data */
-    if ((err_info = sr_lydmods_change_upd_module(conn->ly_ctx, upd_ly_mod, &sr_mods))) {
+    if ((err_info = sr_lydmods_change_upd_modules(conn->ly_ctx, &upd_mod_set, &sr_mods))) {
         goto cleanup;
     }
 
@@ -1717,8 +1884,8 @@ sr_update_module(sr_conn_ctx_t *conn, const char *schema_path, const char *searc
         goto cleanup;
     }
 
-    /* finish updating the module */
-    if ((err_info = sr_lycc_upd_module(upd_ly_mod, ly_mod))) {
+    /* finish updating the modules */
+    if ((err_info = sr_lycc_upd_modules(&old_mod_set, &upd_mod_set))) {
         goto cleanup;
     }
 
@@ -1755,8 +1922,8 @@ cleanup:
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(conn, ctx_mode, 1, __func__);
 
-    free(mod_name);
-    ly_set_erase(&mod_set, NULL);
+    ly_set_erase(&old_mod_set, NULL);
+    ly_set_erase(&upd_mod_set, NULL);
     return sr_api_ret(NULL, err_info);
 }
 

@@ -31,9 +31,12 @@ List YANG modules in sysrepo.
 .TP
 .BR "\-i\fR,\fP \-\^\-install \fIPATH\fP"
 Install the specified schema into sysrepo. Can be in either YANG or YIN format.
+Can be specified multiple times to install several modules. All the options will
+affect the module of the last operation and can be specified for each.
 .TP
 .BR "\-u\fR,\fP \-\^\-uninstall \fIMODULE\fP"
-Uninstall the specified module from sysrepo.
+Uninstall the specified module from sysrepo. Can be specified multiple times
+to uninstall several modules.
 .TP
 .BR "\-c\fR,\fP \-\^\-change \fIMODULE\fP"
 Change access rights, features, or replay support of the specified module.
@@ -41,6 +44,7 @@ Use special \fI:ALL\fP module name to change the access rights or replay support
 .TP
 .BR "\-U\fR,\fP \-\^\-update \fIPATH\fP"
 Update the specified schema in sysrepo. Can be in either YANG or YIN format.
+Can be specified multiple times to update several modules.
 .TP
 .BR "\-L\fR,\fP \-\^\-plugin\-list"
 List loaded sysrepo plugins.
@@ -114,6 +118,6 @@ https://github.com/sysrepo/sysrepo (sysrepo Git repository)
 Michal Vasko <mvasko@cesnet.cz>
 .
 .SH COPYRIGHT
-Copyright \(co 2018-2021 CESNET, a.l.e.
+Copyright \(co 2018-2022 CESNET, a.l.e.
 .TP
-Copyright \(co 2018-2021 Deutsche Telekom AG.
+Copyright \(co 2018-2022 Deutsche Telekom AG.
