@@ -4,7 +4,7 @@
  * @brief example of an application handling changes
  *
  * @copyright
- * Copyright (c) 2019 CESNET, z.s.p.o.
+ * Copyright (c) 2019 - 2022 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -232,6 +232,41 @@ sigint_handler(int signum)
     exit_application = 1;
 }
 
+static const char *
+ds2str(sr_datastore_t ds)
+{
+    switch (ds) {
+    case SR_DS_RUNNING:
+        return "running";
+    case SR_DS_OPERATIONAL:
+        return "operational";
+    case SR_DS_STARTUP:
+        return "startup";
+    case SR_DS_CANDIDATE:
+        return "candidate";
+    default:
+        return NULL;
+    }
+}
+
+static int
+str2ds(const char *str, sr_datastore_t *ds)
+{
+    if (!strcmp(str, "running")) {
+        *ds = SR_DS_RUNNING;
+    } else if (!strcmp(str, "operational")) {
+        *ds = SR_DS_OPERATIONAL;
+    } else if (!strcmp(str, "startup")) {
+        *ds = SR_DS_STARTUP;
+    } else if (!strcmp(str, "candidate")) {
+        *ds = SR_DS_CANDIDATE;
+    } else {
+        return 1;
+    }
+
+    return 0;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -240,17 +275,27 @@ main(int argc, char **argv)
     sr_subscription_ctx_t *subscription = NULL;
     int rc = SR_ERR_OK;
     const char *mod_name, *xpath = NULL;
+    sr_datastore_t ds = SR_DS_RUNNING;
 
-    if ((argc < 2) || (argc > 3)) {
-        printf("%s <module-to-subscribe> [<xpath-to-subscribe>]\n", argv[0]);
+    if ((argc < 2) || (argc > 4)) {
+        printf("%s <module-to-subscribe> [<xpath-to-subscribe>] [startup/running/operational/candidate]\n", argv[0]);
         return EXIT_FAILURE;
     }
     mod_name = argv[1];
-    if (argc == 3) {
-        xpath = argv[2];
+    if (argc > 2) {
+        if (str2ds(argv[2], &ds)) {
+            /* 2nd arg xpath */
+            xpath = argv[2];
+        }
+    }
+    if (argc > 3) {
+        if (str2ds(argv[3], &ds)) {
+            printf("Invalid datastore %s\n", argv[3]);
+            return EXIT_FAILURE;
+        }
     }
 
-    printf("Application will watch for changes in \"%s\".\n", xpath ? xpath : mod_name);
+    printf("Application will watch for \"%s\" changes in \"%s\" datastore.\n", xpath ? xpath : mod_name, ds2str(ds));
 
     /* turn logging on */
     sr_log_stderr(SR_LL_WRN);
@@ -262,7 +307,7 @@ main(int argc, char **argv)
     }
 
     /* start session */
-    rc = sr_session_start(connection, SR_DS_RUNNING, &session);
+    rc = sr_session_start(connection, ds, &session);
     if (rc != SR_ERR_OK) {
         goto cleanup;
     }
