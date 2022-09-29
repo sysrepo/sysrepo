@@ -4849,6 +4849,8 @@ sr_subscr_new(sr_conn_ctx_t *conn, sr_subscr_options_t opts, sr_subscription_ctx
     char *path = NULL;
     int ret;
 
+    assert(!*subs_p);
+
     /* allocate new subscription */
     *subs_p = calloc(1, sizeof **subs_p);
     SR_CHECK_MEM_RET(!*subs_p, err_info);
@@ -4906,6 +4908,7 @@ error:
         close((*subs_p)->evpipe);
     }
     free(*subs_p);
+    *subs_p = NULL;
     return err_info;
 }
 
