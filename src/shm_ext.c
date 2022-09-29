@@ -1948,7 +1948,7 @@ sr_shmext_recover_sub_all(sr_conn_ctx_t *conn)
     sr_rpc_t *shm_rpc;
     sr_mod_oper_get_sub_t *shm_sub;
     uint32_t i, j, count;
-    char *path;
+    char *path = NULL;
 
     /* go through all the modules, RPCs and recover their subscriptions */
     for (i = 0; i < SR_CONN_MOD_SHM(conn)->mod_count; ++i) {
@@ -2004,6 +2004,7 @@ sr_shmext_recover_sub_all(sr_conn_ctx_t *conn)
                 }
             }
             free(path);
+            path = NULL;
         }
     }
 }
