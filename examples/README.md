@@ -21,7 +21,7 @@ This will set */examples:cont/l* to *value*. You should see information about th
 ### Operational State Data
 
 ```
-oper_data_example examples /examples:stats
+oper_data_pull_example examples /examples:stats
 ```
 This will subscribe for providing *<operational>* data */examples:stats* in the *examples* module. Use another terminal
 to request the data.
