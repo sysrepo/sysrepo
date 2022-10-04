@@ -675,12 +675,12 @@ cleanup:
 }
 
 static int
-srpds_lyb_running_update_cached(sr_cid_t cid, const struct lys_module **UNUSED(mods), uint32_t UNUSED(mod_count))
+srpds_lyb_running_update_cached(sr_cid_t cid, const struct lys_module **mods, uint32_t mod_count)
 {
     struct srlyb_cache_conn_s *cache = NULL;
     struct srlyb_cache_mod_s *cmod;
     struct lyd_node *mod_data;
-    uint32_t i;
+    uint32_t i, j;
     int rc = SR_ERR_OK;
 
     /* find the connection cache */
@@ -696,6 +696,16 @@ srpds_lyb_running_update_cached(sr_cid_t cid, const struct lys_module **UNUSED(m
         cmod = &cache->mods[i];
         if (cmod->current) {
             /* module data in the cache are current */
+            continue;
+        }
+
+        for (j = 0; j < mod_count; ++j) {
+            if (cmod->mod == mods[j]) {
+                break;
+            }
+        }
+        if (j == mod_count) {
+            /* data are not needed and we are not holding this module lock */
             continue;
         }
 
