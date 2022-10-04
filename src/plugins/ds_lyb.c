@@ -592,6 +592,7 @@ srpds_lyb_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uint
             break;
         }
     }
+
     if (!cache) {
         /* CACHE UNLOCK */
         pthread_rwlock_unlock(&data_cache.lock);
@@ -603,9 +604,16 @@ srpds_lyb_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uint
             goto cleanup;
         }
 
-        /* a new cache may have been added in the meantime */
-        i = data_cache.cache_count;
+        /* try to find it again after READ unlock/WRITE lock */
+        for (i = 0; i < data_cache.cache_count; ++i) {
+            if (data_cache.caches[i].cid == cid) {
+                cache = &data_cache.caches[i];
+                break;
+            }
+        }
+    }
 
+    if (!cache) {
         /* create cache for this connection */
         mem = realloc(data_cache.caches, (i + 1) * sizeof *data_cache.caches);
         if (!mem) {
@@ -647,21 +655,22 @@ srpds_lyb_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uint
     }
 
     /* check module data */
-    rc = srpds_lyb_running_load_cached_mods(cache, mods, mod_count, &cache_update);
+    if ((rc = srpds_lyb_running_load_cached_mods(cache, mods, mod_count, &cache_update))) {
+        goto cleanup_unlock;
+    }
+
+    if (cache_update) {
+        /* cache needs to be updated first */
+        rc = SR_ERR_OPERATION_FAILED;
+    } else {
+        *data = cache->data;
+    }
 
 cleanup_unlock:
     /* CACHE UNLOCK */
     pthread_rwlock_unlock(&data_cache.lock);
 
 cleanup:
-    if (!rc) {
-        if (cache_update) {
-            /* cache needs to be updated first */
-            rc = SR_ERR_OPERATION_FAILED;
-        } else {
-            *data = cache->data;
-        }
-    }
     return rc;
 }
 
