@@ -918,7 +918,9 @@ sr_edit_diff_add(struct lyd_node *node, const char *attr_val, const char *prev_a
         struct lyd_node *diff_parent, struct lyd_node **diff_root, struct lyd_node **diff_node)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *node_dup = NULL, *tmp = NULL;
+    struct lyd_node *node_dup = NULL, *tmp;
+    struct ly_set *set = NULL;
+    int dup_inst_list;
 
     assert((op == EDIT_NONE) || (op == EDIT_CREATE) || (op == EDIT_DELETE) || (op == EDIT_REPLACE));
     assert(!*diff_node);
@@ -951,12 +953,30 @@ sr_edit_diff_add(struct lyd_node *node, const char *attr_val, const char *prev_a
 
     if (((node_dup->schema->nodetype != LYS_LIST) || ((struct lys_node_list *)node_dup->schema)->keys_size) &&
             ((node_dup->schema->nodetype != LYS_LEAFLIST) || (node_dup->schema->flags & LYS_CONFIG_W))) {
-        /* we can detect duplicate instances */
+        dup_inst_list = 0;
+    } else {
+        dup_inst_list = 1;
+    }
+
+    /* detect duplicate instances */
+    tmp = NULL;
+    if (dup_inst_list) {
+        lyd_find_sibling_set(diff_parent ? diff_parent->child : *diff_root, node_dup, &set);
+        if (set->number) {
+            /* always use the last instance, nothing better to do */
+            tmp = set->set.d[set->number - 1];
+        }
+        ly_set_free(set);
+    } else {
         lyd_find_sibling(diff_parent ? diff_parent->child : *diff_root, node_dup, &tmp);
     }
     if (tmp && (tmp->schema->nodetype == LYS_CONTAINER) && tmp->dflt) {
         /* just remove this default container and create it anew */
         lyd_free(tmp);
+        tmp = NULL;
+    }
+    if (tmp && (sr_edit_find_oper(tmp, 1, NULL) == op)) {
+        /* it is not possible to merge the same operations meaning there really should be a duplicate */
         tmp = NULL;
     }
     if (tmp) {
@@ -966,7 +986,17 @@ sr_edit_diff_add(struct lyd_node *node, const char *attr_val, const char *prev_a
             goto error;
         }
         /* it was duplicated, so find the duplicated node (fine if it is not there) and free it */
-        lyd_find_sibling(diff_parent ? diff_parent->child : *diff_root, node_dup, &tmp);
+        if (dup_inst_list) {
+            lyd_find_sibling_set(diff_parent ? diff_parent->child : *diff_root, node_dup, &set);
+            if (set->number) {
+                tmp = set->set.d[set->number - 1];
+            } else {
+                tmp = NULL;
+            }
+            ly_set_free(set);
+        } else {
+            lyd_find_sibling(diff_parent ? diff_parent->child : *diff_root, node_dup, &tmp);
+        }
         lyd_free(node_dup);
         node_dup = tmp;
     } else {
