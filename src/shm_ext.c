@@ -1679,7 +1679,7 @@ sr_shmext_rpc_sub_add(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, u
         if (r) {
             continue;
         }
-        path_found = 1;
+        ++path_found;
 
         /* priority */
         if (shm_sub[i].priority != priority) {
@@ -1691,6 +1691,7 @@ sr_shmext_rpc_sub_add(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, u
             if ((err_info = sr_shmext_rpc_sub_stop(conn, sub_lock, subs, sub_count, path, i, 1, SR_LOCK_WRITE, 1))) {
                 goto cleanup_rpcsub_ext_unlock;
             }
+            --path_found;
 
             /* there could not be several such subscriptions */
             break;
