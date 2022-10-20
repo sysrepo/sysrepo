@@ -51,9 +51,6 @@ setup(void **state)
         TESTS_SRC_DIR "/files/ietf-interface-protection.yang",
         TESTS_SRC_DIR "/files/ietf-microwave-radio-link.yang",
         TESTS_SRC_DIR "/files/mixed-config.yang",
-        TESTS_SRC_DIR "/files/act.yang",
-        TESTS_SRC_DIR "/files/act2.yang",
-        TESTS_SRC_DIR "/files/act3.yang",
         TESTS_SRC_DIR "/files/defaults.yang",
         TESTS_SRC_DIR "/files/ops-ref.yang",
         TESTS_SRC_DIR "/files/ops.yang",
@@ -62,16 +59,13 @@ setup(void **state)
         TESTS_SRC_DIR "/files/sm.yang",
         NULL
     };
-    const char *act_feats[] = {"advanced-testing", NULL}, *rd_feats[] = {"hw-line-9", NULL};
+    const char *rd_feats[] = {"hw-line-9", NULL};
     const char **features[] = {
         NULL,
         NULL,
         NULL,
         NULL,
         NULL,
-        NULL,
-        NULL,
-        act_feats,
         NULL,
         NULL,
         NULL,
@@ -117,9 +111,6 @@ teardown(void **state)
         "ops",
         "ops-ref",
         "defaults",
-        "act3",
-        "act2",
-        "act",
         "mixed-config",
         "ietf-microwave-radio-link",
         "ietf-interface-protection",
