@@ -561,7 +561,7 @@ stored_state_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *m
 }
 
 static void
-test_stored_state(void **state)
+test_state(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
@@ -886,7 +886,7 @@ stored_state_list_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const ch
 }
 
 static void
-test_stored_state_list(void **state)
+test_state_list(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
@@ -1018,7 +1018,7 @@ test_stored_state_list(void **state)
 
 /* TEST */
 static void
-test_stored_config(void **state)
+test_config(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
@@ -1182,7 +1182,7 @@ test_stored_config(void **state)
 
 /* TEST */
 static void
-test_stored_top_list(void **state)
+test_top_list(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_subscription_ctx_t *subscr = NULL;
@@ -1369,7 +1369,7 @@ test_stored_top_list(void **state)
 
 /* TEST */
 static void
-test_stored_change_revert(void **state)
+test_change_revert(void **state)
 {
     struct state *st = (struct state *)*state;
     int ret;
@@ -1525,7 +1525,7 @@ stored_edit_ether_diff_remove_change_cb(sr_session_ctx_t *session, uint32_t sub_
 }
 
 static void
-test_stored_edit_ether_diff_remove(void **state)
+test_edit_ether_diff_remove(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_subscription_ctx_t *subscr = NULL;
@@ -1566,7 +1566,7 @@ test_stored_edit_ether_diff_remove(void **state)
 
 /* TEST */
 static void
-test_stored_np_cont1(void **state)
+test_np_cont1(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
@@ -1666,7 +1666,7 @@ test_stored_np_cont1(void **state)
 
 /* TEST */
 static void
-test_stored_np_cont2(void **state)
+test_np_cont2(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
@@ -1727,7 +1727,7 @@ test_stored_np_cont2(void **state)
 
 /* TEST */
 static void
-test_stored_edit_merge_leaf(void **state)
+test_edit_merge_leaf(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
@@ -1839,7 +1839,7 @@ test_stored_edit_merge_leaf(void **state)
 
 /* TEST */
 static void
-test_stored_diff_merge_userord(void **state)
+test_diff_merge_userord(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
@@ -2091,7 +2091,7 @@ ly_ext_data_cb(const struct lysc_ext_instance *ext, void *user_data, void **ext_
 }
 
 static void
-test_stored_schema_mount(void **state)
+test_schema_mount(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
@@ -2143,7 +2143,7 @@ test_stored_schema_mount(void **state)
 
 /* TEST */
 static int
-change_cb_stored_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
+change_cb_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
         uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
@@ -2308,7 +2308,7 @@ change_cb_stored_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *modu
 }
 
 static void
-test_change_cb_stored(void **state)
+test_change_cb(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
@@ -2318,7 +2318,7 @@ test_change_cb_stored(void **state)
     int ret;
 
     /* subscribe to all configuration data */
-    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", NULL, change_cb_stored_cb, st, 0, 0, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", NULL, change_cb_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some configuration data and trigger the callback */
@@ -2366,18 +2366,18 @@ main(void)
         cmocka_unit_test_teardown(test_conn_owner1, clear_up),
         cmocka_unit_test_teardown(test_conn_owner2, clear_up),
         cmocka_unit_test_teardown(test_conn_owner_same_data, clear_up),
-        cmocka_unit_test_teardown(test_stored_state, clear_up),
-        cmocka_unit_test_teardown(test_stored_state_list, clear_up),
-        cmocka_unit_test_teardown(test_stored_config, clear_up),
-        cmocka_unit_test_teardown(test_stored_top_list, clear_up),
-        cmocka_unit_test_teardown(test_stored_change_revert, clear_up),
-        cmocka_unit_test_teardown(test_stored_edit_ether_diff_remove, clear_up),
-        cmocka_unit_test_teardown(test_stored_np_cont1, clear_up),
-        cmocka_unit_test_teardown(test_stored_np_cont2, clear_up),
-        cmocka_unit_test_teardown(test_stored_edit_merge_leaf, clear_up),
-        cmocka_unit_test_teardown(test_stored_diff_merge_userord, clear_up),
-        cmocka_unit_test_teardown(test_stored_schema_mount, clear_up),
-        cmocka_unit_test_teardown(test_change_cb_stored, clear_up),
+        cmocka_unit_test_teardown(test_state, clear_up),
+        cmocka_unit_test_teardown(test_state_list, clear_up),
+        cmocka_unit_test_teardown(test_config, clear_up),
+        cmocka_unit_test_teardown(test_top_list, clear_up),
+        cmocka_unit_test_teardown(test_change_revert, clear_up),
+        cmocka_unit_test_teardown(test_edit_ether_diff_remove, clear_up),
+        cmocka_unit_test_teardown(test_np_cont1, clear_up),
+        cmocka_unit_test_teardown(test_np_cont2, clear_up),
+        cmocka_unit_test_teardown(test_edit_merge_leaf, clear_up),
+        cmocka_unit_test_teardown(test_diff_merge_userord, clear_up),
+        cmocka_unit_test_teardown(test_schema_mount, clear_up),
+        cmocka_unit_test_teardown(test_change_cb, clear_up),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
