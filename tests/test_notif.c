@@ -487,7 +487,7 @@ test_oper_dep(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
     assert_string_equal(err_info->err[0].message, "Invalid instance-identifier \"/ops:cont/list1[k='key']/cont2\" value "
-            "- required instance not found. (Schema location \"/ops:notif3/list2/l15\", data location \"/ops:notif3/list2[k='k']/l15\".)");
+            "- required instance not found. (Data location \"/ops:notif3/list2[k='k']/l15\".)");
     assert_string_equal(err_info->err[1].message, "Notification validation failed.");
 
     /* subscribe to required ops oper data and some non-required */
@@ -504,7 +504,7 @@ test_oper_dep(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
     assert_string_equal(err_info->err[0].message, "Invalid leafref value \"l1-val\" - no target instance \"/or:l1\" with the same value. "
-            "(Schema location \"/ops:notif3/list2/l14\", data location \"/ops:notif3/list2[k='k']/l14\".)");
+            "(Data location \"/ops:notif3/list2[k='k']/l14\".)");
     assert_string_equal(err_info->err[1].message, "Notification validation failed.");
 
     /* subscribe to required ops-ref oper data and some non-required */
