@@ -4089,47 +4089,6 @@ sr_munlock(pthread_mutex_t *lock)
 }
 
 sr_error_info_t *
-sr_cond_init(pthread_cond_t *cond, int shared)
-{
-    sr_error_info_t *err_info = NULL;
-    pthread_condattr_t attr;
-    int ret;
-
-    /* check address alignment */
-    if (SR_COND_ALIGN_CHECK(cond)) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Condition variable address not aligned.");
-        return err_info;
-    }
-
-    if (shared) {
-        /* init attr */
-        if ((ret = pthread_condattr_init(&attr))) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Initializing pthread attr failed (%s).", strerror(ret));
-            return err_info;
-        }
-        if ((ret = pthread_condattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
-            pthread_condattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Changing pthread attr failed (%s).", strerror(ret));
-            return err_info;
-        }
-
-        if ((ret = pthread_cond_init(cond, &attr))) {
-            pthread_condattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Initializing pthread rwlock failed (%s).", strerror(ret));
-            return err_info;
-        }
-        pthread_condattr_destroy(&attr);
-    } else {
-        if ((ret = pthread_cond_init(cond, NULL))) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Initializing pthread rwlock failed (%s).", strerror(ret));
-            return err_info;
-        }
-    }
-
-    return NULL;
-}
-
-sr_error_info_t *
 sr_rwlock_init(sr_rwlock_t *rwlock, int shared)
 {
     sr_error_info_t *err_info = NULL;
@@ -4137,14 +4096,14 @@ sr_rwlock_init(sr_rwlock_t *rwlock, int shared)
     if ((err_info = sr_mutex_init(&rwlock->mutex, shared))) {
         return err_info;
     }
-    if ((err_info = sr_cond_init(&rwlock->cond, shared))) {
+    if ((err_info = sr_cond_init(&rwlock->cond, shared, shared))) {
         pthread_mutex_destroy(&rwlock->mutex);
         return err_info;
     }
 
     if ((err_info = _sr_mutex_init(&rwlock->r_mutex, shared, 0))) {
         pthread_mutex_destroy(&rwlock->mutex);
-        pthread_cond_destroy(&rwlock->cond);
+        sr_cond_destroy(&rwlock->cond);
         return err_info;
     }
     memset(rwlock->readers, 0, sizeof rwlock->readers);
@@ -4158,7 +4117,7 @@ void
 sr_rwlock_destroy(sr_rwlock_t *rwlock)
 {
     pthread_mutex_destroy(&rwlock->mutex);
-    pthread_cond_destroy(&rwlock->cond);
+    sr_cond_destroy(&rwlock->cond);
     pthread_mutex_destroy(&rwlock->r_mutex);
 }
 
@@ -4394,7 +4353,7 @@ _sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t ci
         ret = 0;
         while (!ret && rwlock->readers[0]) {
             /* COND WAIT */
-            ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
+            ret = sr_cond_timedwait(&rwlock->cond, &rwlock->mutex, timeout_ms);
         }
         if (ret == ETIMEDOUT) {
             /* recover the lock again, the owner may have died while processing */
@@ -4430,7 +4389,7 @@ _sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t ci
             ret = 0;
             while (!ret && rwlock->upgr) {
                 /* COND WAIT */
-                ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
+                ret = sr_cond_timedwait(&rwlock->cond, &rwlock->mutex, timeout_ms);
             }
             if (ret == ETIMEDOUT) {
                 /* recover the lock again, the owner may have died while processing */
@@ -4524,7 +4483,7 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
         ret = 0;
         while (!ret && (rwlock->readers[1] || (rwlock->read_count[0] > 1))) {
             /* COND WAIT */
-            ret = pthread_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_ts);
+            ret = sr_cond_timedwait(&rwlock->cond, &rwlock->mutex, timeout_ms);
         }
         if (ret == ETIMEDOUT) {
             sr_rwlock_recover(rwlock, func, cb, cb_data);
@@ -4629,7 +4588,7 @@ sr_rwunlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
     if (!rwlock->readers[0] || (!rwlock->readers[1] && (rwlock->read_count[0] == 1) && rwlock->upgr) ||
             (mode == SR_LOCK_READ_UPGR)) {
         /* broadcast on condition */
-        pthread_cond_broadcast(&rwlock->cond);
+        sr_cond_broadcast(&rwlock->cond);
     }
 
     /* MUTEX UNLOCK */

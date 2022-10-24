@@ -265,20 +265,14 @@ cleanup:
 static void
 sr_shmsub_recover(sr_sub_shm_t *sub_shm)
 {
-    sr_error_info_t *err_info = NULL;
-
     if (!sr_conn_is_alive(sub_shm->orig_cid)) {
         SR_LOG_WRN("Recovered an event of CID %" PRIu32 " with ID %" PRIu32 ".", sub_shm->orig_cid, sub_shm->request_id);
 
         /* clear the event */
         sub_shm->event = SR_SUB_EV_NONE;
 
-        /* since the originator crashed while wating for this event, in all likelihood it was waiting on the conditional
-         * variable that is corrupted now, we cannot destroy it because we would get blocked, so just reinitialize it
-         * even though manual says it is undefined behavior (there is no better way of fixing it) */
-        if ((err_info = sr_cond_init(&sub_shm->lock.cond, 1))) {
-            sr_errinfo_free(&err_info);
-        }
+        /* make consistent */
+        sr_cond_consistent(&sub_shm->lock.cond);
     }
 }
 
@@ -295,7 +289,6 @@ static sr_error_info_t *
 sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_event_t lock_event, sr_cid_t cid)
 {
     sr_error_info_t *err_info = NULL;
-    struct timespec timeout_ts;
     uint32_t request_id;
     int ret;
 
@@ -317,11 +310,10 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
     sub_shm->lock.writer = 0;
 
     /* wait until there is no event and there are no readers (just like write lock) */
-    sr_time_get(&timeout_ts, SR_SUBSHM_LOCK_TIMEOUT);
     ret = 0;
     while (!ret && (sub_shm->lock.readers[0] || (sub_shm->event && (sub_shm->event != lock_event)))) {
         /* COND WAIT */
-        ret = pthread_cond_timedwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, &timeout_ts);
+        ret = sr_cond_timedwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, SR_SUBSHM_LOCK_TIMEOUT);
     }
 
     /* FAKE WRITE LOCK */
@@ -386,7 +378,6 @@ sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int 
         sr_cid_t cid, sr_shm_t *shm_data_sub, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
-    struct timespec timeout_ts;
     sr_error_t err_code;
     const char *ptr, *err_msg, *err_format, *err_data;
     sr_sub_event_t event;
@@ -405,11 +396,10 @@ sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int 
     sub_shm->lock.writer = 0;
 
     /* wait until this event was processed and there are no readers (just like write lock) */
-    sr_time_get(&timeout_ts, timeout_ms);
     ret = 0;
     while (!ret && (sub_shm->lock.readers[0] || (sub_shm->event && !SR_IS_NOTIFY_EVENT(sub_shm->event)))) {
         /* COND WAIT */
-        ret = pthread_cond_timedwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, &timeout_ts);
+        ret = sr_cond_timedwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, timeout_ms);
     }
     /* we are holding the mutex but no lock flags are set */
 

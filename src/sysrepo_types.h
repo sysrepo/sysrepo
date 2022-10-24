@@ -17,6 +17,7 @@
 #ifndef _SYSREPO_TYPES_H
 #define _SYSREPO_TYPES_H
 
+#include <fcntl.h>
 #include <inttypes.h>
 #include <stddef.h>
 #include <sys/stat.h>

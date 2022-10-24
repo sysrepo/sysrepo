@@ -133,12 +133,7 @@ sr_notif_buf_store(sr_session_ctx_t *sess, const struct lyd_node *notif, struct 
     }
 
     /* broadcast condition */
-    ret = pthread_cond_broadcast(&notif_buf->lock.cond);
-    if (ret) {
-        /* continue */
-        SR_ERRINFO_COND(&err_info, __func__, ret);
-        sr_errinfo_free(&err_info);
-    }
+    sr_cond_broadcast(&notif_buf->lock.cond);
 
     /* MUTEX UNLOCK */
     pthread_mutex_unlock(&notif_buf->lock.mutex);
@@ -262,7 +257,7 @@ sr_notif_buf_thread(void *arg)
         ret = 0;
         while (!ret && ATOMIC_LOAD_RELAXED(sess->notif_buf.thread_running) && !sess->notif_buf.first) {
             /* COND WAIT */
-            ret = pthread_cond_wait(&sess->notif_buf.lock.cond, &sess->notif_buf.lock.mutex);
+            ret = sr_cond_wait(&sess->notif_buf.lock.cond, &sess->notif_buf.lock.mutex);
         }
         if (ret) {
             /* MUTEX UNLOCK */

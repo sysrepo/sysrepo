@@ -4,8 +4,8 @@
  * @brief configuration header
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -20,18 +20,14 @@
 #include <pthread.h>
 #include <time.h>
 
+#include "sr_cond_pthread.h"
+
 /*
  * If the compiler supports attribute to mark objects as hidden, mark all
  * objects as hidden and export only objects explicitly marked to be part of
  * the public API.
  */
 #define API __attribute__((visibility("default")))
-
-/** support for pthread_mutex_timedlock */
-#cmakedefine SR_HAVE_PTHREAD_MUTEX_TIMEDLOCK
-#ifndef SR_HAVE_PTHREAD_MUTEX_TIMEDLOCK
-int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *abstime);
-#endif
 
 /** use access() if eaccess() is not available (it may adversely affect access control, however) */
 #cmakedefine SR_HAVE_EACCESS

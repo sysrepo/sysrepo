@@ -4,8 +4,8 @@
  * @brief common types header
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@
 #include <libyang/libyang.h>
 
 #include "compat.h"
+#include "config.h"
 #include "sysrepo_types.h"
 
 /**
@@ -51,7 +52,7 @@ typedef enum {
  */
 typedef struct {
     pthread_mutex_t mutex;          /**< Lock mutex. */
-    pthread_cond_t cond;            /**< Lock condition variable. */
+    sr_cond_t cond;                 /**< Lock condition variable. */
 
     pthread_mutex_t r_mutex;        /**< Mutex for accessing readers, needed because of concurrent reading. */
     sr_cid_t readers[SR_RWLOCK_READ_LIMIT]; /**< CIDs of all READ lock owners (including READ-UPGR), 0s otherwise. */

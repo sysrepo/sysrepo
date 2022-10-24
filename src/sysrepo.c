@@ -735,7 +735,7 @@ sr_session_notif_buf_stop(sr_session_ctx_t *session)
     }
 
     /* wake up the thread */
-    pthread_cond_broadcast(&session->notif_buf.lock.cond);
+    sr_cond_broadcast(&session->notif_buf.lock.cond);
 
     /* MUTEX UNLOCK */
     pthread_mutex_unlock(&session->notif_buf.lock.mutex);

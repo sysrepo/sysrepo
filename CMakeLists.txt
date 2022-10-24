@@ -187,6 +187,7 @@ set(LIB_SRC
     src/shm_ext.c
     src/shm_mod.c
     src/shm_sub.c
+    src/sr_cond_pthread.c
     src/plugins/ds_lyb.c
     src/plugins/ntf_lyb.c
     src/plugins/common_lyb.c
