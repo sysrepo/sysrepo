@@ -70,7 +70,7 @@ int sr_cond_timedwait(sr_cond_t *cond, pthread_mutex_t *mutex, uint32_t timeout_
 void sr_cond_broadcast(sr_cond_t *cond);
 
 /**
- * @brief Make conditional variable consistent after it was being used by a srached process.
+ * @brief Make conditional variable consistent after it was being used by a crashed process.
  *
  * @param[in] cond Conditional variable to make consistent.
  */

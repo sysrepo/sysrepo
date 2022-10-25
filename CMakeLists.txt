@@ -8,6 +8,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 
 include(GNUInstallDirs)
 include(CheckSymbolExists)
+include(CheckIncludeFile)
 include(CheckLibraryExists)
 include(UseCompat)
 include(ABICheck)
@@ -118,6 +119,17 @@ endif()
 set(NACM_RECOVERY_USER "root" CACHE STRING "NACM recovery session user that has unrestricted access.")
 set(NACM_SRMON_DATA_PERM "600" CACHE STRING "NACM modules ietf-netconf-acm and sysrepo-monitoring default data permissions.")
 
+# sr_cond implementation
+if(NOT SR_COND_IMPL)
+    check_include_file("linux/futex.h" HAS_FUTEX)
+    if(HAS_FUTEX)
+        set(SR_COND_IMPL "sr_cond_futex")
+    else()
+        set(SR_COND_IMPL "sr_cond_pthread")
+    endif()
+endif()
+message(STATUS "Conditional variable implementation: ${SR_COND_IMPL}")
+
 # paths
 if(NOT SHM_DIR)
     if("${CMAKE_SYSTEM_NAME}" STREQUAL "FreeBSD")
@@ -187,7 +199,7 @@ set(LIB_SRC
     src/shm_ext.c
     src/shm_mod.c
     src/shm_sub.c
-    src/sr_cond_pthread.c
+    src/sr_cond/${SR_COND_IMPL}.c
     src/plugins/ds_lyb.c
     src/plugins/ntf_lyb.c
     src/plugins/common_lyb.c

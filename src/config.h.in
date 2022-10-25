@@ -20,7 +20,7 @@
 #include <pthread.h>
 #include <time.h>
 
-#include "sr_cond_pthread.h"
+#include "sr_cond/@SR_COND_IMPL@.h"
 
 /*
  * If the compiler supports attribute to mark objects as hidden, mark all
