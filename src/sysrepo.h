@@ -961,7 +961,8 @@ int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_op
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifier of the data element to be deleted.
- * @param[in] value String representation of the value deleted.
+ * @param[in] value String representation of the value deleted. Should be NULL for lists and must match the deleted
+ * node value only for leaf-lists.
  * @param[in] opts Options overriding default behavior of this call. ::SR_EDIT_STRICT is not supported.
  * @return Error code (::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if the whole edit was discarded).
  */
