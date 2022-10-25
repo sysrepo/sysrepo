@@ -423,18 +423,21 @@ sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int 
                 /* event timeout */
                 sr_errinfo_new(cb_err_info, SR_ERR_TIME_OUT, "Callback event \"%s\" with ID %" PRIu32
                         " processing timed out.", sr_ev2str(event), request_id);
-                if ((event == sub_shm->event) && (request_id == sub_shm->request_id)) {
-                    if (clear_ev_on_err) {
-                        sub_shm->event = SR_SUB_EV_NONE;
-                    } else if ((expected_ev == SR_SUB_EV_SUCCESS) || (expected_ev == SR_SUB_EV_ERROR)) {
-                        sub_shm->event = SR_SUB_EV_ERROR;
-                    }
-                }
             }
         } else {
             /* other error */
             SR_ERRINFO_COND(&err_info, __func__, ret);
         }
+
+        if ((event == sub_shm->event) && (request_id == sub_shm->request_id)) {
+            /* event failed */
+            if (clear_ev_on_err) {
+                sub_shm->event = SR_SUB_EV_NONE;
+            } else if ((expected_ev == SR_SUB_EV_SUCCESS) || (expected_ev == SR_SUB_EV_ERROR)) {
+                sub_shm->event = SR_SUB_EV_ERROR;
+            }
+        }
+
         if (err_info && (err_info->err[0].err_code == SR_ERR_TIME_OUT)) {
             /* UNLOCK mutex as well, on timeout caused by another lock we have lost the WRITE lock anyway */
             sr_munlock(&sub_shm->lock.mutex);
