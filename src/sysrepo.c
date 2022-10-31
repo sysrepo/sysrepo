@@ -3172,7 +3172,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     const struct lysc_node *snode;
     int ly_log_opts;
 
-    SR_CHECK_ARG_APIRET(!session || !SR_IS_CONVENTIONAL_DS(session->ds) || !path, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !path, session, err_info);
 
     if (!session->dt[session->ds].edit) {
         /* CONTEXT LOCK */
@@ -3191,8 +3191,21 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     if ((path[strlen(path) - 1] != ']') && (snode = lys_find_path(session->conn->ly_ctx, NULL, path, 0)) &&
             (snode->nodetype & (LYS_LEAFLIST | LYS_LIST)) &&
             !strcmp((path + strlen(path)) - strlen(snode->name), snode->name)) {
+        if (!SR_IS_CONVENTIONAL_DS(session->ds)) {
+            /* not allowed */
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Lists and leaf-lists instances need to be identified by "
+                    "a predicate for operational data edits.");
+            goto cleanup;
+        }
+
         operation = "purge";
     } else if (opts & SR_EDIT_STRICT) {
+        if (!SR_IS_CONVENTIONAL_DS(session->ds)) {
+            /* not allowed */
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Strict removal is forbidden for operational data edits.");
+            goto cleanup;
+        }
+
         operation = "delete";
     } else {
         operation = "remove";
@@ -3212,33 +3225,9 @@ cleanup:
 }
 
 API int
-sr_oper_delete_item_str(sr_session_ctx_t *session, const char *path, const char *value, const sr_edit_options_t opts)
+sr_oper_delete_item_str(sr_session_ctx_t *session, const char *path, const char *UNUSED(value), const sr_edit_options_t opts)
 {
-    sr_error_info_t *err_info = NULL;
-
-    SR_CHECK_ARG_APIRET(!session || SR_IS_CONVENTIONAL_DS(session->ds) || !path, session, err_info);
-
-    if (!session->dt[session->ds].edit) {
-        /* CONTEXT LOCK */
-        if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
-            goto cleanup;
-        }
-
-        /* prepare edit with context lock */
-        if ((err_info = _sr_acquire_data(session->conn, NULL, &session->dt[session->ds].edit))) {
-            goto cleanup;
-        }
-    }
-
-    /* add the operation into edit */
-    err_info = sr_edit_add(session, path, value, "remove", "ether", NULL, NULL, NULL, NULL, opts & SR_EDIT_ISOLATE);
-
-cleanup:
-    if (session->dt[session->ds].edit && !session->dt[session->ds].edit->tree) {
-        sr_release_data(session->dt[session->ds].edit);
-        session->dt[session->ds].edit = NULL;
-    }
-    return sr_api_ret(session, err_info);
+    return sr_delete_item(session, path, opts);
 }
 
 API int

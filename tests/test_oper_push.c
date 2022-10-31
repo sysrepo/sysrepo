@@ -1081,8 +1081,7 @@ test_config(void **state)
     /*
      * 2) store oper data changing the value now
      */
-    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled",
-            "false", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", "false", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1116,9 +1115,9 @@ test_config(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/description",
             "oper-description", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_oper_delete_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", "false", 0);
-    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_discard_oper_changes(st->conn, st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/enabled", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read the operational data */
@@ -1137,7 +1136,7 @@ test_config(void **state)
             "<name>eth1</name>"
             "<description or:origin=\"or:unknown\">oper-description</description>"
             "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<enabled or:origin=\"or:unknown\">true</enabled>"
+            "<enabled or:origin=\"or:default\">true</enabled>"
         "</interface>"
     "</interfaces>";
 
@@ -1378,16 +1377,22 @@ test_change_revert(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* create a list instance */
+    /* create a list instance with a leaf */
     ret = sr_set_item_str(st->sess, "/mixed-config:test-state/test-case[name='a']/a", "vala", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* remove the list instance */
-    ret = sr_oper_delete_item_str(st->sess, "/mixed-config:test-state/test-case[name='a']", NULL, 0);
+    /* remove the leaf, error */
+    ret = sr_delete_item(st->sess, "/mixed-config:test-state/test-case[name='a']/a", 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_UNSUPPORTED);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* discard the leaf instead */
+    ret = sr_discard_oper_changes(st->conn, st->sess, "/mixed-config:test-state/test-case[name='a']/a", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* remove all stored data */
@@ -1550,9 +1555,7 @@ test_edit_ether_diff_remove(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /* remove the list instance */
-    ret = sr_oper_delete_item_str(st->sess, "/mixed-config:test-state/test-case[name='a']", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
+    ret = sr_discard_oper_changes(st->conn, st->sess, "/mixed-config:test-state/test-case[name='a']", 0);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 

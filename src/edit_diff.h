@@ -46,26 +46,6 @@ enum edit_op {
 };
 
 /**
- * @brief Callback data for libyang merge callback.
- */
-struct sr_lyd_merge_cb_data {
-    sr_cid_t cid;           /**< Source edit owner CID. */
-    struct lyd_node **diff; /**< Pointer to generated diff, do not generate if NULL. */
-    int changed;            /**< Whether there was any change at all. */
-    sr_error_info_t *err_info;  /**< Error info in case of error. */
-};
-
-/**
- * @brief Callback for libyang merge, used for operational edit merge.
- *
- * @param[in] trg_node Target node.
- * @param[in] src_node Source node, NULL if there was no target node found.
- * @param[in] cb_data Pointer to ::sr_lyd_merge_cb_data structure.
- * @return LY_ERR value.
- */
-LY_ERR sr_lyd_merge_cb(struct lyd_node *trg_node, const struct lyd_node *src_node, void *cb_data);
-
-/**
  * @brief Callback for libyang diff apply.
  *
  * @param[in] diff_node Diff node.
@@ -121,15 +101,6 @@ sr_error_info_t *sr_diff_set_oper(struct lyd_node *diff, const char *op);
 enum edit_op sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper);
 
 /**
- * @brief Delete a metadata/attribute from an edit node. Only internal (from ietf-netconf or sysrepo modules)
- * ones are considered.
- *
- * @param[in] edit Node to modify.
- * @param[in] name Name of the attribute.
- */
-void sr_edit_del_meta_attr(struct lyd_node *edit, const char *name);
-
-/**
  * @brief Get (inherited) origin of a node.
  *
  * @param[in] node Node to examine.
@@ -167,6 +138,20 @@ sr_error_info_t *sr_edit_created_subtree_apply_move(struct lyd_node *match_subtr
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_edit_mod_apply(const struct lyd_node *edit, const struct lys_module *ly_mod,
+        struct lyd_node **data, struct lyd_node **diff, int *change);
+
+/**
+ * @brief Merge sysrepo edit with a specific module edit data tree.
+ *
+ * @param[in] edit Edit tree to apply.
+ * @param[in] cid Connection CID of @p edit to set.
+ * @param[in] ly_mod Edit data tree module.
+ * @param[in,out] data Edit data tree to modify.
+ * @param[in,out] diff Optionally create the diff of the original edit and the new one (or merge into diff).
+ * @param[out] change Optional, set if there were some module changes.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_edit_mod_merge(const struct lyd_node *edit, uint32_t cid, const struct lys_module *ly_mod,
         struct lyd_node **data, struct lyd_node **diff, int *change);
 
 /**

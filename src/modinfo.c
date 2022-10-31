@@ -469,7 +469,6 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
     const struct lyd_node *node;
     uint32_t *aux = NULL;
     int change;
-    struct sr_lyd_merge_cb_data cb_data;
 
     assert(!mod_info->data_cached);
 
@@ -492,25 +491,10 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
         assert(mod->state & MOD_INFO_REQ);
 
         if (mod_info->ds == SR_DS_OPERATIONAL) {
-            /* prepare callback data */
-            cb_data.cid = mod_info->conn->cid;
-            cb_data.diff = create_diff ? &mod_info->diff : NULL;
-            cb_data.changed = 0;
-            cb_data.err_info = NULL;
-
-            /* merge edit */
-            if (lyd_merge_module(&mod_info->data, edit, mod->ly_mod, sr_lyd_merge_cb, &cb_data, 0)) {
-                if (cb_data.err_info) {
-                    err_info = cb_data.err_info;
-                } else {
-                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
-                }
+            /* merge relevant edit changes */
+            if ((err_info = sr_edit_mod_merge(edit, mod_info->conn->cid, mod->ly_mod, &mod_info->data,
+                    create_diff ? &mod_info->diff : NULL, &change))) {
                 goto cleanup;
-            }
-
-            if (cb_data.changed) {
-                /* there is a diff for this module */
-                mod->state |= MOD_INFO_CHANGED;
             }
         } else {
             /* apply relevant edit changes */
@@ -518,11 +502,11 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
                     &change))) {
                 goto cleanup;
             }
+        }
 
-            if (change) {
-                /* there is a diff for this module */
-                mod->state |= MOD_INFO_CHANGED;
-            }
+        if (change) {
+            /* there is a diff for this module */
+            mod->state |= MOD_INFO_CHANGED;
         }
     }
 
