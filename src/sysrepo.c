@@ -649,10 +649,6 @@ _sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_sub_ev
 
     /* use new SR session ID and increment it (no lock needed, we are just reading and main SHM is never remapped) */
     (*session)->sid = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sr_sid);
-    if ((*session)->sid == (uint32_t)(ATOMIC_T_MAX - 1)) {
-        /* the value in the main SHM is actually ATOMIC_T_MAX and calling another INC would cause an overflow */
-        ATOMIC_STORE_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sr_sid, 1);
-    }
 
     /* remember current real process owner */
     uid = getuid();
@@ -4849,10 +4845,6 @@ sr_subscr_new(sr_conn_ctx_t *conn, sr_subscr_options_t opts, sr_subscription_ctx
 
     /* get new event pipe number and increment it */
     (*subs_p)->evpipe_num = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM((*subs_p)->conn)->new_evpipe_num);
-    if ((*subs_p)->evpipe_num == (uint32_t)(ATOMIC_T_MAX - 1)) {
-        /* the value in the main SHM is actually ATOMIC_T_MAX and calling another INC would cause an overflow */
-        ATOMIC_STORE_RELAXED(SR_CONN_MAIN_SHM((*subs_p)->conn)->new_evpipe_num, 1);
-    }
 
     /* get event pipe name */
     if ((err_info = sr_path_evpipe((*subs_p)->evpipe_num, &path))) {
@@ -4949,10 +4941,6 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
 
     /* get new sub ID */
     sub_id = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id);
-    if (sub_id == (uint32_t)(ATOMIC_T_MAX - 1)) {
-        /* the value in the main SHM is actually ATOMIC_T_MAX and calling another INC would cause an overflow */
-        ATOMIC_STORE_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id, 1);
-    }
 
     /* find the module in SHM */
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), module_name);
@@ -5578,10 +5566,6 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
 
     /* get new sub ID */
     sub_id = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id);
-    if (sub_id == (uint32_t)(ATOMIC_T_MAX - 1)) {
-        /* the value in the main SHM is actually ATOMIC_T_MAX and calling another INC would cause an overflow */
-        ATOMIC_STORE_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id, 1);
-    }
 
     if (is_ext) {
         /* find module */
@@ -6168,10 +6152,6 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
 
     /* get new sub ID */
     sub_id = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id);
-    if (sub_id == (uint32_t)(ATOMIC_T_MAX - 1)) {
-        /* the value in the main SHM is actually ATOMIC_T_MAX and calling another INC would cause an overflow */
-        ATOMIC_STORE_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id, 1);
-    }
 
     /* find module */
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
@@ -6652,10 +6632,6 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
 
     /* get new sub ID */
     sub_id = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id);
-    if (sub_id == (uint32_t)(ATOMIC_T_MAX - 1)) {
-        /* the value in the main SHM is actually ATOMIC_T_MAX and calling another INC would cause an overflow */
-        ATOMIC_STORE_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id, 1);
-    }
 
     /* find module */
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), module_name);
@@ -6770,10 +6746,6 @@ sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, const
 
     /* get new sub ID */
     sub_id = ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id);
-    if (sub_id == (uint32_t)(ATOMIC_T_MAX - 1)) {
-        /* the value in the main SHM is actually ATOMIC_T_MAX and calling another INC would cause an overflow */
-        ATOMIC_STORE_RELAXED(SR_CONN_MAIN_SHM(conn)->new_sub_id, 1);
-    }
 
     /* find module */
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), module_name);
