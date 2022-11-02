@@ -554,7 +554,7 @@ sr_modinfo_replace(struct sr_mod_info_s *mod_info, struct lyd_node **src_data)
 
             /* get diff on only this module's data */
             if (lyd_diff_siblings(dst_mod_data, src_mod_data, LYD_DIFF_DEFAULTS, &diff)) {
-                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
+                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, src_mod_data);
                 lyd_free_all(dst_mod_data);
                 lyd_free_all(src_mod_data);
                 return err_info;
