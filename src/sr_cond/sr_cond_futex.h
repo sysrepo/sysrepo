@@ -27,8 +27,9 @@
  * @brief Condition variable futex implementation.
  */
 typedef struct {
-    uint32_t futex;
-    uint32_t waiters;
+    uint32_t futex;             /**< futex used for waiting and signalling idle/ready */
+    uint32_t waiters;           /**< number of waiters for the futex */
+    pthread_mutex_t wait_lock;  /**< lock held while the futex is being waited on */
 } sr_cond_t;
 
 /**
