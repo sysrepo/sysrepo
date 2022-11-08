@@ -34,7 +34,6 @@
 #include <unistd.h>
 
 #include <libyang/libyang.h>
-#include <libyang/metadata.h>
 
 #include "common.h"
 #include "compat.h"

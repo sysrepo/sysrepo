@@ -27,7 +27,6 @@
 #include <unistd.h>
 
 #include <libyang/libyang.h>
-#include <libyang/metadata.h>
 #include <libyang/plugins_exts.h>
 
 #include "../sysrepo.h"
