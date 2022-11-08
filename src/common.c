@@ -39,6 +39,9 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <libyang/metadata.h>
+#include <libyang/plugins_exts.h>
+
 #include "compat.h"
 #include "config.h"
 #include "edit_diff.h"

@@ -30,6 +30,7 @@
 #include <unistd.h>
 
 #include <libyang/libyang.h>
+#include <libyang/metadata.h>
 #include <libyang/plugins_exts.h>
 #include <libyang/plugins_types.h>
 
@@ -2638,7 +2639,7 @@ cleanup:
         for (i = 0; i < set->count; ++i) {
             node = set->dnodes[i];
             lyd_unlink_tree(node);
-            if (lyd_insert_ext(data_ext_parent, node)) {
+            if (lyplg_ext_insert(data_ext_parent, node)) {
                 sr_errinfo_new_ly(&err_info, LYD_CTX(data_ext_parent), node);
             }
         }

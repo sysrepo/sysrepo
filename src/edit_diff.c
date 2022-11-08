@@ -29,6 +29,7 @@
 #include <unistd.h>
 
 #include <libyang/libyang.h>
+#include <libyang/metadata.h>
 #include <libyang/plugins_exts.h>
 #include <libyang/plugins_types.h>
 
@@ -880,7 +881,7 @@ sr_edit_diff_append(const struct lyd_node *edit, enum edit_op op, int recursive,
     /* finally, insert subtree into diff parent */
     if (diff_parent) {
         if (diff_subtree->flags & LYD_EXT) {
-            lyd_insert_ext(diff_parent, diff_subtree);
+            lyplg_ext_insert(diff_parent, diff_subtree);
         } else {
             lyd_insert_child(diff_parent, diff_subtree);
         }
@@ -1258,7 +1259,7 @@ sr_edit_insert(struct lyd_node **data_root, struct lyd_node *data_parent, struct
         /* default insert is at the last position */
         if (data_parent) {
             if (new_node->flags & LYD_EXT) {
-                lyrc = lyd_insert_ext(data_parent, new_node);
+                lyrc = lyplg_ext_insert(data_parent, new_node);
             } else {
                 lyrc = lyd_insert_child(data_parent, new_node);
             }
@@ -1582,7 +1583,7 @@ sr_edit_diff_add(const struct lyd_node *node, const char *meta_val, const char *
         /* insert node into diff, not there */
         if (diff_parent) {
             if (node_dup->flags & LYD_EXT) {
-                lyd_insert_ext(diff_parent, node_dup);
+                lyplg_ext_insert(diff_parent, node_dup);
             } else {
                 lyd_insert_child(diff_parent, node_dup);
             }

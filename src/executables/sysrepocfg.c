@@ -29,6 +29,7 @@
 #include <unistd.h>
 
 #include <libyang/libyang.h>
+#include <libyang/plugins_exts.h>
 
 #include "bin_common.h"
 #include "compat.h"
