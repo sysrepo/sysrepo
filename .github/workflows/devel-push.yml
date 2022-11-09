@@ -10,7 +10,7 @@ env:
 jobs:
   git-branch:
     name: Get git branch
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     outputs:
       branch-name: ${{ steps.get-git-branch.outputs.branch-name }}
     steps:
@@ -21,7 +21,7 @@ jobs:
           else
             export GIT_BRANCH=${{ github.base_ref }}
           fi
-          echo "::set-output name=branch-name::$GIT_BRANCH"
+          echo "branch-name=$GIT_BRANCH" >> $GITHUB_OUTPUT
 
   build:
     name: ${{ matrix.config.name }}
@@ -57,7 +57,7 @@ jobs:
           }
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Deps-packages
         shell: bash
@@ -84,7 +84,7 @@ jobs:
       - name: Deps-libyang
         shell: bash
         run: |
-          git clone -b ${{needs.git-branch.outputs.branch-name}} https://github.com/CESNET/libyang.git
+          git clone -b ${{ needs.git-branch.outputs.branch-name }} https://github.com/CESNET/libyang.git
           cd libyang
           mkdir build
           cd build
