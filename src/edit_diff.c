@@ -230,10 +230,10 @@ sr_edit_find_cid(struct lyd_node *edit, sr_cid_t *cid, int *meta_own)
                 if (strcmp(attr->name.name, "cid")) {
                     continue;
                 }
-                if ((attr->format == LY_VALUE_XML) && strcmp(attr->name.module_ns, "urn:ietf:params:xml:ns:yang:1")) {
+                if ((attr->format == LY_VALUE_XML) && strcmp(attr->name.module_ns, "http://www.sysrepo.org/yang/sysrepo")) {
                     continue;
                 }
-                if ((attr->format == LY_VALUE_JSON) && strcmp(attr->name.module_name, "yang")) {
+                if ((attr->format == LY_VALUE_JSON) && strcmp(attr->name.module_name, "sysrepo")) {
                     continue;
                 }
 
