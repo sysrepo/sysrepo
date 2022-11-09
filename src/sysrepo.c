@@ -566,7 +566,7 @@ sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const ch
     for (i = 0; i < mod_info.mod_count; ++i) {
         mod = &mod_info.mods[i];
         LY_LIST_FOR(change_edit, node) {
-            if (node->schema->module == mod->ly_mod) {
+            if (lyd_owner_module(node) == mod->ly_mod) {
                 mod->state |= MOD_INFO_CHANGED;
                 break;
             }

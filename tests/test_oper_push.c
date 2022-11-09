@@ -1368,6 +1368,52 @@ test_top_list(void **state)
 
 /* TEST */
 static void
+test_top_leaf(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr = NULL;
+    sr_data_t *data;
+    char *str1;
+    int ret;
+
+    /* subscribe to data */
+    ret = sr_module_change_subscribe(st->sess, "test", NULL, dummy_change_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some configuration data */
+    ret = sr_set_item_str(st->sess, "/test:test-leaf", "20", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* delete the node */
+    ret = sr_delete_item(st->sess, "/test:test-leaf", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the operational data */
+    ret = sr_get_data(st->sess, "/test:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+
+    assert_null(str1);
+
+    /* cleanup */
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_unsubscribe(subscr);
+}
+
+/* TEST */
+static void
 test_change_revert(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -2373,6 +2419,7 @@ main(void)
         cmocka_unit_test_teardown(test_state_list, clear_up),
         cmocka_unit_test_teardown(test_config, clear_up),
         cmocka_unit_test_teardown(test_top_list, clear_up),
+        cmocka_unit_test_teardown(test_top_leaf, clear_up),
         cmocka_unit_test_teardown(test_change_revert, clear_up),
         cmocka_unit_test_teardown(test_edit_ether_diff_remove, clear_up),
         cmocka_unit_test_teardown(test_np_cont1, clear_up),

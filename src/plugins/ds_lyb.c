@@ -427,11 +427,14 @@ srpds_lyb_load(const struct lys_module *mod, sr_datastore_t ds, const char **UNU
     }
 
     /* set parse options */
+    parse_opts = LYD_PARSE_ONLY | LYD_PARSE_STRICT | LYD_PARSE_ORDERED;
+    if (ds == SR_DS_OPERATIONAL) {
+        /* edit may include opaque nodes */
+        parse_opts |= LYD_PARSE_OPAQ;
+    }
     if (!strcmp(mod->name, "sysrepo")) {
         /* internal module, accept an update */
-        parse_opts = LYD_PARSE_LYB_MOD_UPDATE | LYD_PARSE_ONLY | LYD_PARSE_STRICT | LYD_PARSE_ORDERED;
-    } else {
-        parse_opts = LYD_PARSE_ONLY | LYD_PARSE_STRICT | LYD_PARSE_ORDERED;
+        parse_opts |= LYD_PARSE_LYB_MOD_UPDATE;
     }
 
     /* load the data */
