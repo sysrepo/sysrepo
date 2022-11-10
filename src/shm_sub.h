@@ -296,21 +296,18 @@ void sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif
 
 /**
  * @brief Check notification subscriptions stop time and finish the subscription if it has elapsed.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
  *
- * @param[in] notif_subs Module notification subscriptions.
+ * @param[in] notif_subs_idx Index of the notification subscriptions in @p subscr.
  * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @param[in] subscr Subscriptions structure.
  * @param[out] module_finished Whether the last module notification subscription was finished.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lock_mode_t has_subs_lock,
+sr_error_info_t *sr_shmsub_notif_listen_module_stop_time(uint32_t notif_subs_idx, sr_lock_mode_t has_subs_lock,
         sr_subscription_ctx_t *subscr, int *module_finished);
 
 /**
  * @brief Check notification subscription replay state and perform it if requested.
- * Main SHM read-upgr lock must be held and will be temporarily upgraded!
- * May remap ext SHM!
  *
  * @param[in] notif_subs Module notification subscriptions.
  * @param[in] subscr Subscriptions structure.

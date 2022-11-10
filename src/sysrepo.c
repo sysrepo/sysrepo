@@ -4320,8 +4320,7 @@ sr_subscription_process_events(sr_subscription_ctx_t *subscription, sr_session_c
 
         /* check whether a subscription did not finish */
         mod_finished = 0;
-        if ((err_info = sr_shmsub_notif_listen_module_stop_time(&subscription->notif_subs[i], SR_LOCK_READ,
-                subscription, &mod_finished))) {
+        if ((err_info = sr_shmsub_notif_listen_module_stop_time(i, SR_LOCK_READ, subscription, &mod_finished))) {
             goto cleanup_unlock;
         }
 

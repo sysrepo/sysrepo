@@ -4381,10 +4381,11 @@ sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif_subs
 }
 
 sr_error_info_t *
-sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lock_mode_t has_subs_lock,
+sr_shmsub_notif_listen_module_stop_time(uint32_t notif_subs_idx, sr_lock_mode_t has_subs_lock,
         sr_subscription_ctx_t *subscr, int *mod_finished)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
+    struct modsub_notif_s *notif_subs;
     struct modsub_notifsub_s *notif_sub;
     struct timespec cur_ts;
     uint32_t i;
@@ -4398,6 +4399,7 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lo
 
     sr_time_get(&cur_ts, 0);
     i = 0;
+    notif_subs = &subscr->notif_subs[notif_subs_idx];
     while (i < notif_subs->sub_count) {
         notif_sub = &notif_subs->subs[i];
         if (!SR_TS_IS_ZERO(notif_sub->stop_time) && (sr_time_cmp(&notif_sub->stop_time, &cur_ts) < 1)) {
@@ -4415,6 +4417,7 @@ sr_shmsub_notif_listen_module_stop_time(struct modsub_notif_s *notif_subs, sr_lo
 
                 /* restart the loop, now the subscriptions cannot change */
                 i = 0;
+                notif_subs = &subscr->notif_subs[notif_subs_idx];
                 continue;
             }
 
