@@ -1374,6 +1374,7 @@ test_top_leaf(void **state)
     sr_subscription_ctx_t *subscr = NULL;
     sr_data_t *data;
     char *str1;
+    const char *str2;
     int ret;
 
     /* subscribe to data */
@@ -1403,8 +1404,25 @@ test_top_leaf(void **state)
     ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
     assert_int_equal(ret, 0);
     sr_release_data(data);
-
     assert_null(str1);
+
+    /* discard the oper change */
+    ret = sr_discard_oper_changes(st->conn, st->sess, "/test:test-leaf", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the operational data */
+    ret = sr_get_data(st->sess, "/test:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+
+    str2 =
+            "<test-leaf xmlns=\"urn:test\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" "
+            "or:origin=\"or:intended\">20</test-leaf>";
+    assert_string_equal(str1, str2);
+    free(str1);
 
     /* cleanup */
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
