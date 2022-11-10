@@ -337,7 +337,7 @@ sr_edit_create_meta_attr(struct lyd_node *edit_node, const char *mod_name, const
         }
     } else {
         /* create a new attribute */
-        if (lyd_new_attr2(edit_node, mod->ns, name, value, NULL)) {
+        if (lyd_new_attr(edit_node, mod->name, name, value, NULL)) {
             sr_errinfo_new_ly(&err_info, LYD_CTX(edit_node), NULL);
             return err_info;
         }
