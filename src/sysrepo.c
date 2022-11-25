@@ -5435,14 +5435,10 @@ sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_ch
         break;
     case SR_OP_MODIFIED:
         /* "orig-value" metadata contains the previous value */
-        for (meta = (*node)->meta;
-                meta && (strcmp(meta->annotation->module->name, "yang") || strcmp(meta->name, "orig-value"));
-                meta = meta->next) {}
+        meta = lyd_find_meta((*node)->meta, NULL, "yang:orig-value");
 
         /* "orig-default" holds the previous default flag value */
-        for (meta2 = (*node)->meta;
-                meta2 && (strcmp(meta2->annotation->module->name, "yang") || strcmp(meta2->name, "orig-default"));
-                meta2 = meta2->next) {}
+        meta2 = lyd_find_meta((*node)->meta, NULL, "yang:orig-default");
 
         if (!meta || !meta2) {
             SR_ERRINFO_INT(&err_info);
@@ -5462,22 +5458,21 @@ sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, sr_ch
         }
     /* fallthrough */
     case SR_OP_MOVED:
-        if ((*node)->schema->nodetype == LYS_LEAFLIST) {
-            meta_name = "value";
+        if (lysc_is_dup_inst_list((*node)->schema)) {
+            meta_name = "yang:position";
+        } else if ((*node)->schema->nodetype == LYS_LEAFLIST) {
+            meta_name = "yang:value";
         } else {
             assert((*node)->schema->nodetype == LYS_LIST);
-            meta_name = "key";
+            meta_name = "yang:key";
         }
-
-        /* attribute contains the value (predicates) of the preceding instance in the order */
-        for (meta = (*node)->meta;
-                meta && (strcmp(meta->annotation->module->name, "yang") || strcmp(meta->name, meta_name));
-                meta = meta->next) {}
+        /* attribute contains the value of the node before in the order */
+        meta = lyd_find_meta((*node)->meta, NULL, meta_name);
         if (!meta) {
             SR_ERRINFO_INT(&err_info);
             return sr_api_ret(session, err_info);
         }
-        if ((*node)->schema->nodetype == LYS_LEAFLIST) {
+        if (lysc_is_dup_inst_list((*node)->schema) || ((*node)->schema->nodetype == LYS_LEAFLIST)) {
             if (prev_value) {
                 *prev_value = lyd_get_meta_value(meta);
             }

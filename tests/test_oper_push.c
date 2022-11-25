@@ -653,7 +653,8 @@ stored_state_list_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const ch
     struct state *st = (struct state *)private_data;
     sr_change_oper_t op;
     sr_change_iter_t *iter;
-    sr_val_t *old_val, *new_val;
+    const struct lyd_node *node;
+    const char *prev_value;
     int ret;
 
     (void)sub_id;
@@ -676,88 +677,63 @@ stored_state_list_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const ch
         assert_int_equal(ret, SR_ERR_OK);
 
         /* 1st change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/mixed-config:test-state");
-
-        sr_free_val(new_val);
+        assert_string_equal(node->schema->name, "test-state");
+        assert_null(prev_value);
 
         /* 2nd change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/mixed-config:test-state/l[1]");
-
-        sr_free_val(new_val);
+        assert_string_equal(node->schema->name, "l");
+        assert_string_equal(prev_value, "");
 
         /* 3rd change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/mixed-config:test-state/l[1]/l1");
-
-        sr_free_val(new_val);
+        assert_string_equal(node->schema->name, "l1");
+        assert_null(prev_value);
 
         /* 4th change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_CREATED);
-        assert_non_null(old_val);
-        assert_string_equal(old_val->xpath, "/mixed-config:test-state/l[1]");
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/mixed-config:test-state/l[2]");
-
-        sr_free_val(old_val);
-        sr_free_val(new_val);
+        assert_string_equal(node->schema->name, "l");
+        assert_string_equal(prev_value, "1");
 
         /* 5th change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/mixed-config:test-state/l[2]/l1");
-
-        sr_free_val(new_val);
+        assert_string_equal(node->schema->name, "l1");
+        assert_null(prev_value);
 
         /* 6th change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/mixed-config:test-state/ll[1]");
-
-        sr_free_val(new_val);
+        assert_string_equal(node->schema->name, "ll");
+        assert_string_equal(prev_value, "");
 
         /* 7th change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_CREATED);
-        assert_non_null(old_val);
-        assert_string_equal(old_val->xpath, "/mixed-config:test-state/ll[1]");
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/mixed-config:test-state/ll[2]");
-
-        sr_free_val(old_val);
-        sr_free_val(new_val);
+        assert_string_equal(node->schema->name, "ll");
+        assert_string_equal(prev_value, "1");
 
         /* no more changes */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
         sr_free_change_iter(iter);
@@ -775,18 +751,15 @@ stored_state_list_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const ch
         assert_int_equal(ret, SR_ERR_OK);
 
         /* 1st change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_DELETED);
-        assert_non_null(old_val);
-        assert_string_equal(old_val->xpath, "/mixed-config:test-state/l[1]/l1");
-        assert_null(new_val);
-
-        sr_free_val(old_val);
+        assert_string_equal(node->schema->name, "l1");
+        assert_null(prev_value);
 
         /* no more changes */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
         sr_free_change_iter(iter);
@@ -804,18 +777,15 @@ stored_state_list_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const ch
         assert_int_equal(ret, SR_ERR_OK);
 
         /* 1st change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_DELETED);
-        assert_non_null(old_val);
-        assert_string_equal(old_val->xpath, "/mixed-config:test-state/ll[1]");
-        assert_null(new_val);
-
-        sr_free_val(old_val);
+        assert_string_equal(node->schema->name, "ll");
+        assert_null(prev_value);
 
         /* no more changes */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
         sr_free_change_iter(iter);
@@ -833,46 +803,31 @@ stored_state_list_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const ch
         assert_int_equal(ret, SR_ERR_OK);
 
         /* 1st change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_CREATED);
-        assert_non_null(old_val);
-        assert_string_equal(old_val->xpath, "/mixed-config:test-state/ll[1]");
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/mixed-config:test-state/ll[1]");
-
-        sr_free_val(old_val);
-        sr_free_val(new_val);
+        assert_string_equal(node->schema->name, "ll");
+        assert_string_equal(prev_value, "1");
 
         /* 2nd change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_CREATED);
-        assert_non_null(old_val);
-        assert_string_equal(old_val->xpath, "/mixed-config:test-state/ll[2]");
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/mixed-config:test-state/ll[2]");
-
-        sr_free_val(old_val);
-        sr_free_val(new_val);
+        assert_string_equal(node->schema->name, "ll");
+        assert_string_equal(prev_value, "2");
 
         /* 3rd change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_CREATED);
-        assert_non_null(old_val);
-        assert_string_equal(old_val->xpath, "/mixed-config:test-state/ll[3]");
-        assert_non_null(new_val);
-        assert_string_equal(new_val->xpath, "/mixed-config:test-state/ll[3]");
-
-        sr_free_val(old_val);
-        sr_free_val(new_val);
+        assert_string_equal(node->schema->name, "ll");
+        assert_string_equal(prev_value, "3");
 
         /* no more changes */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
         sr_free_change_iter(iter);
