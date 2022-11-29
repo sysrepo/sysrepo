@@ -2974,7 +2974,7 @@ sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "More nodes match \"%s\".", path);
         goto cleanup;
     } else if (!set->count) {
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "No node found for \"%s\".", path);
+        /* not found */
         goto cleanup;
     }
 
@@ -3004,9 +3004,17 @@ cleanup:
     ly_set_free(set, NULL);
     sr_modinfo_erase(&mod_info);
 
-    if (err_info || !(*node)->tree) {
+    if (err_info) {
+        /* error */
         sr_release_data(*node);
         *node = NULL;
+    } else if (!(*node)->tree) {
+        /* not found */
+        sr_release_data(*node);
+        *node = NULL;
+
+        sr_api_ret(session, err_info);
+        return SR_ERR_NOT_FOUND;
     }
     return sr_api_ret(session, err_info);
 }
