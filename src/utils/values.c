@@ -375,6 +375,80 @@ cleanup:
 }
 
 static int
+sr_cmp_str(const char *c1, const char *c2)
+{
+    if ((c1 != NULL) && (c2 == NULL)) {
+        return -1;
+    } else if ((c1 == NULL) && (c2 != NULL)) {
+        return 1;
+    } else if ((c1 == NULL) && (c2 == NULL)) {
+        return 0;
+    }
+
+    return strcmp(c1, c2);
+}
+
+API int
+sr_equal_val(const sr_val_t *value1, const sr_val_t *value2)
+{
+    if ((value1->type != value2->type) ||
+            (0 != sr_cmp_str(value1->origin, value2->origin)) ||
+            (0 != sr_cmp_str(value1->xpath, value2->xpath)) ||
+            (value1->dflt != value2->dflt)) {
+        return 0;
+    }
+
+    switch (value1->type) {
+    case SR_BINARY_T:
+        return 0 == sr_cmp_str(value1->data.binary_val, value2->data.binary_val);
+    case SR_BITS_T:
+        return 0 == sr_cmp_str(value1->data.bits_val, value2->data.bits_val);
+    case SR_ENUM_T:
+        return 0 == sr_cmp_str(value1->data.enum_val, value2->data.enum_val);
+    case SR_IDENTITYREF_T:
+        return 0 == sr_cmp_str(value1->data.identityref_val, value2->data.identityref_val);
+    case SR_INSTANCEID_T:
+        return 0 == sr_cmp_str(value1->data.instanceid_val, value2->data.instanceid_val);
+    case SR_STRING_T:
+        return 0 == sr_cmp_str(value1->data.string_val, value2->data.string_val);
+    case SR_ANYXML_T:
+        return 0 == sr_cmp_str(value1->data.anyxml_val, value2->data.anyxml_val);
+    case SR_ANYDATA_T:
+        return 0 == sr_cmp_str(value1->data.anydata_val, value2->data.anydata_val);
+    case SR_BOOL_T:
+        return value1->data.bool_val == value2->data.bool_val;
+    case SR_DECIMAL64_T:
+        return value1->data.decimal64_val == value2->data.decimal64_val;
+    case SR_INT8_T:
+        return value1->data.int8_val == value2->data.int8_val;
+    case SR_INT16_T:
+        return value1->data.int16_val == value2->data.int16_val;
+    case SR_INT32_T:
+        return value1->data.int32_val == value2->data.int32_val;
+    case SR_INT64_T:
+        return value1->data.int64_val == value2->data.int64_val;
+    case SR_UINT8_T:
+        return value1->data.uint8_val == value2->data.uint8_val;
+    case SR_UINT16_T:
+        return value1->data.uint16_val == value2->data.uint16_val;
+    case SR_UINT32_T:
+        return value1->data.uint32_val == value2->data.uint32_val;
+    case SR_UINT64_T:
+        return value1->data.uint64_val == value2->data.uint64_val;
+    case SR_UNKNOWN_T:
+    case SR_CONTAINER_T:
+    case SR_CONTAINER_PRESENCE_T:
+    case SR_LIST_T:
+    case SR_LEAF_EMPTY_T:
+    case SR_NOTIFICATION_T:
+        /* No value to compare */
+        break;
+    }
+
+    return 1;
+}
+
+static int
 sr_print(sr_print_ctx_t *print_ctx, const char *format, ...)
 {
     int rc = SR_ERR_OK, count = 0, len = 0;
