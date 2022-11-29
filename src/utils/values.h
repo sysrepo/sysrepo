@@ -118,6 +118,16 @@ int sr_val_build_str_data(sr_val_t *value, sr_val_type_t type, const char *forma
 int sr_dup_val(const sr_val_t *value, sr_val_t **value_dup);
 
 /**
+ * @brief Check if two ::sr_val_t values are equal.
+ * They are considered unequal if their type, origin, xpath, default flag, or actual value differ.
+ *
+ * @param [in] value1 Sysrepo value to compare
+ * @param [in] value2 Sysrepo value to compare
+ * @return 1 if equal, 0 otherwise
+ */
+int sr_equal_val(const sr_val_t *value1, const sr_val_t *value2);
+
+/**
  * @brief Duplicate values (with or without Sysrepo memory context) into a new
  * array with memory context.
  *
