@@ -59,20 +59,20 @@
  * @brief Internal DS plugin array.
  */
 const struct srplg_ds_s *sr_internal_ds_plugins[] = {
-    &srpds_lyb,     /**< default */
+    &srpds_json,    /**< default */
 };
 
 /**
  * @brief Internal notification plugin array.
  */
 const struct srplg_ntf_s *sr_internal_ntf_plugins[] = {
-    &srpntf_lyb,    /**< default */
+    &srpntf_json,   /**< default */
 };
 
 /**
  * @brief Default module DS plugins.
  */
-const sr_module_ds_t sr_default_module_ds = {{"LYB DS file", "LYB DS file", "LYB DS file", "LYB DS file", "LYB notif"}};
+const sr_module_ds_t sr_default_module_ds = {{"JSON DS file", "JSON DS file", "JSON DS file", "JSON DS file", "JSON notif"}};
 
 sr_error_info_t *
 sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess, const char *mod_name,
@@ -5974,17 +5974,17 @@ sr_lyd_free_tree_safe(struct lyd_node *tree, struct lyd_node **first)
     parent = lyd_parent(tree);
     lyd_free_tree(tree);
 
-    /* set empty non-presence container dflt flag */
-    if (!parent || (parent->schema->nodetype != LYS_CONTAINER)) {
-        return;
-    }
-    LY_LIST_FOR(lyd_child(parent), iter) {
-        if (!(iter->flags & LYD_DEFAULT)) {
-            return;
+    while (parent && (parent->schema->nodetype == LYS_CONTAINER) && !(parent->schema->flags & LYS_PRESENCE)) {
+        /* set empty non-presence container dflt flag */
+        LY_LIST_FOR(lyd_child(parent), iter) {
+            if (!(iter->flags & LYD_DEFAULT)) {
+                return;
+            }
         }
-    }
-    if (!(parent->schema->flags & LYS_PRESENCE)) {
         parent->flags |= LYD_DEFAULT;
+
+        /* check all the parent containers */
+        parent = lyd_parent(parent);
     }
 }
 

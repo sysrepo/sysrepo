@@ -78,8 +78,8 @@ set(SYSREPO_SOVERSION_FULL ${SYSREPO_MAJOR_SOVERSION}.${SYSREPO_MINOR_SOVERSION}
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_SOVERSION})
 
 # Version of libyang library that this sysrepo depends on
-set(LIBYANG_DEP_VERSION 2.1.6)
-set(LIBYANG_DEP_SOVERSION 2.26.0)
+set(LIBYANG_DEP_VERSION 2.1.13)
+set(LIBYANG_DEP_SOVERSION 2.27.0)
 set(LIBYANG_DEP_SOVERSION_MAJOR 2)
 
 # generate only version header, it is needed for docs
@@ -200,9 +200,9 @@ set(LIB_SRC
     src/shm_mod.c
     src/shm_sub.c
     src/sr_cond/${SR_COND_IMPL}.c
-    src/plugins/ds_lyb.c
-    src/plugins/ntf_lyb.c
-    src/plugins/common_lyb.c
+    src/plugins/ds_json.c
+    src/plugins/ntf_json.c
+    src/plugins/common_json.c
     src/utils/values.c
     src/utils/xpath.c
     src/utils/error_format.c
@@ -404,7 +404,7 @@ endif()
 
 # generate files
 configure_file("${PROJECT_SOURCE_DIR}/src/config.h.in" "${PROJECT_BINARY_DIR}/config.h" ESCAPE_QUOTES @ONLY)
-configure_file("${PROJECT_SOURCE_DIR}/src/plugins/common_lyb.h.in" "${PROJECT_BINARY_DIR}/common_lyb.h" ESCAPE_QUOTES @ONLY)
+configure_file("${PROJECT_SOURCE_DIR}/src/plugins/common_json.h.in" "${PROJECT_BINARY_DIR}/common_json.h" ESCAPE_QUOTES @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/sysrepo.pc.in" "${PROJECT_BINARY_DIR}/sysrepo.pc" @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/bin_common.h.in" "${PROJECT_BINARY_DIR}/bin_common.h" ESCAPE_QUOTES @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/sysrepo-plugind.service.in" "${PROJECT_BINARY_DIR}/sysrepo-plugind.service" @ONLY)

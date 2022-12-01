@@ -911,8 +911,8 @@ sr_lydmods_print(struct lyd_node **sr_mods)
         return err_info;
     }
 
-    /* store the data using the internal LYB plugin */
-    if ((rc = srpds_lyb.store_cb(sr_ly_mod, SR_DS_STARTUP, *sr_mods))) {
+    /* store the data using the internal JSON plugin */
+    if ((rc = srpds_json.store_cb(sr_ly_mod, SR_DS_STARTUP, *sr_mods))) {
         sr_errinfo_new(&err_info, rc, "Storing \"sysrepo\" data failed.");
         return err_info;
     }
@@ -1048,8 +1048,8 @@ sr_lydmods_parse(const struct ly_ctx *ly_ctx, int allow_ctx_change, struct lyd_n
     ly_mod = ly_ctx_get_module_implemented(ly_ctx, "sysrepo");
     assert(ly_mod);
 
-    /* load the data using the internal LYB plugin */
-    if ((rc = srpds_lyb.load_cb(ly_mod, SR_DS_STARTUP, NULL, 0, &sr_mods))) {
+    /* load the data using the internal JSON plugin */
+    if ((rc = srpds_json.load_cb(ly_mod, SR_DS_STARTUP, NULL, 0, &sr_mods))) {
         sr_errinfo_new(&err_info, rc, "Loading \"sysrepo\" data failed.");
         goto cleanup;
     }

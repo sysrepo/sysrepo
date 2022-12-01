@@ -1,7 +1,7 @@
 /**
- * @file common_lyb.c
+ * @file common_json.c
  * @author Michal Vasko <mvasko@cesnet.cz>
- * @brief common routines for LYB plugins
+ * @brief common routines for JSON plugins
  *
  * @copyright
  * Copyright (c) 2021 - 2022 Deutsche Telekom AG.
@@ -16,7 +16,7 @@
 
 #define _GNU_SOURCE
 
-#include "common_lyb.h"
+#include "common_json.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -38,10 +38,10 @@
 #include "config.h"
 #include "sysrepo.h"
 
-struct srlyb_cache_s data_cache = {.lock = PTHREAD_RWLOCK_INITIALIZER};
+struct srpjson_cache_s data_cache = {.lock = PTHREAD_RWLOCK_INITIALIZER};
 
 int
-srlyb_writev(const char *plg_name, int fd, struct iovec *iov, int iovcnt)
+srpjson_writev(const char *plg_name, int fd, struct iovec *iov, int iovcnt)
 {
     ssize_t ret;
     size_t written;
@@ -80,7 +80,7 @@ srlyb_writev(const char *plg_name, int fd, struct iovec *iov, int iovcnt)
 }
 
 int
-srlyb_read(const char *plg_name, int fd, void *buf, size_t count)
+srpjson_read(const char *plg_name, int fd, void *buf, size_t count)
 {
     ssize_t ret;
     size_t have_read;
@@ -105,7 +105,7 @@ srlyb_read(const char *plg_name, int fd, void *buf, size_t count)
 }
 
 int
-srlyb_file_exists(const char *plg_name, const char *path)
+srpjson_file_exists(const char *plg_name, const char *path)
 {
     int ret;
 
@@ -124,7 +124,7 @@ srlyb_file_exists(const char *plg_name, const char *path)
 }
 
 int
-srlyb_shm_prefix(const char *plg_name, const char **prefix)
+srpjson_shm_prefix(const char *plg_name, const char **prefix)
 {
     int rc = SR_ERR_OK;
 
@@ -141,7 +141,7 @@ srlyb_shm_prefix(const char *plg_name, const char **prefix)
 }
 
 const char *
-srlyb_ds2str(sr_datastore_t ds)
+srpjson_ds2str(sr_datastore_t ds)
 {
     switch (ds) {
     case SR_DS_RUNNING:
@@ -158,7 +158,7 @@ srlyb_ds2str(sr_datastore_t ds)
 }
 
 void
-srplyb_log_err_ly(const char *plg_name, const struct ly_ctx *ly_ctx)
+srpjson_log_err_ly(const char *plg_name, const struct ly_ctx *ly_ctx)
 {
     struct ly_err_item *e;
 
@@ -187,7 +187,7 @@ srplyb_log_err_ly(const char *plg_name, const struct ly_ctx *ly_ctx)
 }
 
 int
-srlyb_open(const char *path, int flags, mode_t mode)
+srpjson_open(const char *path, int flags, mode_t mode)
 {
     int fd;
 
@@ -221,7 +221,7 @@ srlyb_open(const char *path, int flags, mode_t mode)
 }
 
 int
-srlyb_open_error(const char *plg_name, const char *path)
+srpjson_open_error(const char *plg_name, const char *path)
 {
     FILE *f;
     char buf[8], *ret = NULL;
@@ -244,7 +244,7 @@ srlyb_open_error(const char *plg_name, const char *path)
 }
 
 int
-srlyb_get_pwd(const char *plg_name, uid_t *uid, char **user)
+srpjson_get_pwd(const char *plg_name, uid_t *uid, char **user)
 {
     int rc = SR_ERR_OK, r;
     struct passwd pwd, *pwd_p;
@@ -321,7 +321,7 @@ cleanup:
 }
 
 int
-srlyb_get_grp(const char *plg_name, gid_t *gid, char **group)
+srpjson_get_grp(const char *plg_name, gid_t *gid, char **group)
 {
     int rc = SR_ERR_OK, r;
     struct group grp, *grp_p;
@@ -398,7 +398,7 @@ cleanup:
 }
 
 int
-srlyb_chmodown(const char *plg_name, const char *path, const char *owner, const char *group, mode_t perm)
+srpjson_chmodown(const char *plg_name, const char *path, const char *owner, const char *group, mode_t perm)
 {
     int rc;
     uid_t uid = -1;
@@ -417,12 +417,12 @@ srlyb_chmodown(const char *plg_name, const char *path, const char *owner, const 
     }
 
     /* we are going to change the owner */
-    if (owner && (rc = srlyb_get_pwd(plg_name, &uid, (char **)&owner))) {
+    if (owner && (rc = srpjson_get_pwd(plg_name, &uid, (char **)&owner))) {
         return rc;
     }
 
     /* we are going to change the group */
-    if (group && (rc = srlyb_get_grp(plg_name, &gid, (char **)&group))) {
+    if (group && (rc = srpjson_get_grp(plg_name, &gid, (char **)&group))) {
         return rc;
     }
 
@@ -452,23 +452,23 @@ srlyb_chmodown(const char *plg_name, const char *path, const char *owner, const 
 }
 
 int
-srlyb_cp_path(const char *plg_name, const char *to, const char *from)
+srpjson_cp_path(const char *plg_name, const char *to, const char *from)
 {
     int rc = SR_ERR_OK, fd_to = -1, fd_from = -1;
     char *out_ptr, buf[4096];
     ssize_t nread, nwritten;
 
     /* open "from" file */
-    fd_from = srlyb_open(from, O_RDONLY, 0);
+    fd_from = srpjson_open(from, O_RDONLY, 0);
     if (fd_from < 0) {
-        rc = srlyb_open_error(plg_name, from);
+        rc = srpjson_open_error(plg_name, from);
         goto cleanup;
     }
 
     /* open "to" */
-    fd_to = srlyb_open(to, O_WRONLY | O_TRUNC, 0);
+    fd_to = srpjson_open(to, O_WRONLY | O_TRUNC, 0);
     if (fd_to < 0) {
-        rc = srlyb_open_error(plg_name, to);
+        rc = srpjson_open_error(plg_name, to);
         goto cleanup;
     }
 
@@ -503,7 +503,7 @@ cleanup:
 }
 
 int
-srlyb_mkpath(const char *plg_name, char *path, mode_t mode)
+srpjson_mkpath(const char *plg_name, char *path, mode_t mode)
 {
     int rc = SR_ERR_OK, r;
     char *p = NULL;
@@ -516,7 +516,7 @@ srlyb_mkpath(const char *plg_name, char *path, mode_t mode)
     mode &= ~SR_UMASK;
 
     /* get GID of the group */
-    if (strlen(SR_GROUP) && (rc = srlyb_get_grp(plg_name, &gid, (char **)&group))) {
+    if (strlen(SR_GROUP) && (rc = srpjson_get_grp(plg_name, &gid, (char **)&group))) {
         goto cleanup;
     }
 
@@ -575,7 +575,7 @@ cleanup:
 }
 
 int
-srlyb_time_cmp(const struct timespec *ts1, const struct timespec *ts2)
+srpjson_time_cmp(const struct timespec *ts1, const struct timespec *ts2)
 {
     /* seconds diff */
     if (ts1->tv_sec > ts2->tv_sec) {
@@ -595,7 +595,7 @@ srlyb_time_cmp(const struct timespec *ts1, const struct timespec *ts2)
 }
 
 int
-srlyb_get_startup_dir(const char *plg_name, char **path)
+srpjson_get_startup_dir(const char *plg_name, char **path)
 {
     if (SR_STARTUP_PATH[0]) {
         *path = strdup(SR_STARTUP_PATH);
@@ -613,7 +613,7 @@ srlyb_get_startup_dir(const char *plg_name, char **path)
 }
 
 int
-srlyb_get_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, char **path)
+srpjson_get_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, char **path)
 {
     int r = 0, rc;
     const char *prefix;
@@ -631,11 +631,11 @@ srlyb_get_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, ch
     case SR_DS_RUNNING:
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
-        if ((rc = srlyb_shm_prefix(plg_name, &prefix))) {
+        if ((rc = srpjson_shm_prefix(plg_name, &prefix))) {
             return rc;
         }
 
-        r = asprintf(path, "%s/%s_%s.%s", SR_SHM_DIR, prefix, mod_name, srlyb_ds2str(ds));
+        r = asprintf(path, "%s/%s_%s.%s", SR_SHM_DIR, prefix, mod_name, srpjson_ds2str(ds));
         break;
     }
 
@@ -649,7 +649,7 @@ srlyb_get_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, ch
 }
 
 int
-srlyb_get_perm_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, char **path)
+srpjson_get_perm_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, char **path)
 {
     int r = 0;
 
@@ -662,9 +662,9 @@ srlyb_get_perm_path(const char *plg_name, const char *mod_name, sr_datastore_t d
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
         if (SR_STARTUP_PATH[0]) {
-            r = asprintf(path, "%s/%s.%s.perm", SR_STARTUP_PATH, mod_name, srlyb_ds2str(ds));
+            r = asprintf(path, "%s/%s.%s.perm", SR_STARTUP_PATH, mod_name, srpjson_ds2str(ds));
         } else {
-            r = asprintf(path, "%s/data/%s.%s.perm", sr_get_repo_path(), mod_name, srlyb_ds2str(ds));
+            r = asprintf(path, "%s/data/%s.%s.perm", sr_get_repo_path(), mod_name, srpjson_ds2str(ds));
         }
         break;
     }
@@ -679,7 +679,7 @@ srlyb_get_perm_path(const char *plg_name, const char *mod_name, sr_datastore_t d
 }
 
 int
-srlyb_get_notif_dir(const char *plg_name, char **path)
+srpjson_get_notif_dir(const char *plg_name, char **path)
 {
     if (SR_NOTIFICATION_PATH[0]) {
         *path = strdup(SR_NOTIFICATION_PATH);
@@ -697,7 +697,7 @@ srlyb_get_notif_dir(const char *plg_name, char **path)
 }
 
 int
-srlyb_get_notif_path(const char *plg_name, const char *mod_name, time_t from_ts, time_t to_ts, char **path)
+srpjson_get_notif_path(const char *plg_name, const char *mod_name, time_t from_ts, time_t to_ts, char **path)
 {
     int r;
 
@@ -715,7 +715,7 @@ srlyb_get_notif_path(const char *plg_name, const char *mod_name, time_t from_ts,
 }
 
 struct lyd_node *
-srlyb_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod)
+srpjson_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod)
 {
     struct lyd_node *next, *node, *mod_data = NULL;
 

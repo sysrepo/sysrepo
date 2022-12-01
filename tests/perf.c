@@ -25,7 +25,7 @@
 
 #include "sysrepo.h"
 #include "config.h"
-#include "tests/test_common.h"
+#include "tests/tcommon.h"
 
 #ifdef SR_HAVE_CALLGRIND
 # include <valgrind/callgrind.h>

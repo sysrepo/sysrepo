@@ -171,22 +171,22 @@ clear_ops_notif(void **state)
 static int
 store_notif(int fd, const struct ly_ctx *ly_ctx, const char *notif_xpath, off_t ts_offset)
 {
-    char *notif_lyb;
-    uint32_t notif_lyb_len;
+    char *notif_json;
+    uint32_t notif_json_len;
     struct lyd_node *notif;
     struct timespec notif_ts = {0};
 
     if (lyd_new_path(NULL, ly_ctx, notif_xpath, NULL, 0, &notif)) {
         return 1;
     }
-    lyd_print_mem(&notif_lyb, notif, LYD_LYB, LYD_PRINT_WITHSIBLINGS);
-    notif_lyb_len = lyd_lyb_data_length(notif_lyb);
+    lyd_print_mem(&notif_json, notif, LYD_JSON, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    notif_json_len = strlen(notif_json);
     notif_ts.tv_sec = start_ts + ts_offset;
     assert_int_equal(write(fd, &notif_ts, sizeof notif_ts), sizeof notif_ts);
-    assert_int_equal(write(fd, &notif_lyb_len, sizeof notif_lyb_len), sizeof notif_lyb_len);
-    assert_int_equal(write(fd, notif_lyb, notif_lyb_len), notif_lyb_len);
+    assert_int_equal(write(fd, &notif_json_len, sizeof notif_json_len), sizeof notif_json_len);
+    assert_int_equal(write(fd, notif_json, notif_json_len), notif_json_len);
     lyd_free_all(notif);
-    free(notif_lyb);
+    free(notif_json);
 
     return 0;
 }

@@ -320,13 +320,13 @@ struct sr_change_iter_s {
 typedef void (*sr_lock_recover_cb)(sr_lock_mode_t mode, sr_cid_t cid, void *data);
 
 /**
- * @brief Internal DS plugin "LYB DS file".
+ * @brief Internal DS plugin "JSON DS file".
  */
-extern const struct srplg_ds_s srpds_lyb;
+extern const struct srplg_ds_s srpds_json;
 
 /**
- * @brief Internal notif plugin "LYB notif".
+ * @brief Internal notif plugin "JSON notif".
  */
-extern const struct srplg_ntf_s srpntf_lyb;
+extern const struct srplg_ntf_s srpntf_json;
 
 #endif /* _COMMON_TYPES_H */

@@ -1,7 +1,7 @@
 /**
- * @file ntf_lyb.c
+ * @file ntf_json.c
  * @author Michal Vasko <mvasko@cesnet.cz>
- * @brief internal LYB notifications plugin
+ * @brief internal JSON notifications plugin
  *
  * @copyright
  * Copyright (c) 2021 Deutsche Telekom AG.
@@ -33,21 +33,21 @@
 #include <libyang/libyang.h>
 
 #include "compat.h"
-#include "common_lyb.h"
+#include "common_json.h"
 #include "sysrepo.h"
 
-#define srpntf_name "LYB notif" /**< plugin name */
+#define srpntf_name "JSON notif" /**< plugin name */
 
 /**
  * @brief Write notification into fd using vector IO.
  *
- * @param[in] notif_lyb Notification in LYB format.
- * @param[in] notif_lyb_len Length of notification in LYB format.
+ * @param[in] notif_json Notification in JSON format.
+ * @param[in] notif_json_len Length of notification in JSON format.
  * @param[in] notif_ts Notification timestamp.
  * @return SR err value.
  */
 static int
-srpntf_writev_notif(int fd, const char *notif_lyb, uint32_t notif_lyb_len, const struct timespec *notif_ts)
+srpntf_writev_notif(int fd, const char *notif_json, uint32_t notif_json_len, const struct timespec *notif_ts)
 {
     int rc;
     struct iovec iov[3];
@@ -57,15 +57,15 @@ srpntf_writev_notif(int fd, const char *notif_lyb, uint32_t notif_lyb_len, const
     iov[0].iov_len = sizeof *notif_ts;
 
     /* notification length */
-    iov[1].iov_base = &notif_lyb_len;
-    iov[1].iov_len = sizeof notif_lyb_len;
+    iov[1].iov_base = &notif_json_len;
+    iov[1].iov_len = sizeof notif_json_len;
 
     /* notification */
-    iov[2].iov_base = (void *)notif_lyb;
-    iov[2].iov_len = notif_lyb_len;
+    iov[2].iov_base = (void *)notif_json;
+    iov[2].iov_len = notif_json_len;
 
     /* write the vector */
-    if ((rc = srlyb_writev(srpntf_name, fd, iov, 3))) {
+    if ((rc = srpjson_writev(srpntf_name, fd, iov, 3))) {
         return rc;
     }
 
@@ -89,7 +89,7 @@ static int
 srpntf_read_ts(int notif_fd, struct timespec *notif_ts)
 {
     memset(notif_ts, 0, sizeof *notif_ts);
-    return srlyb_read(srpntf_name, notif_fd, notif_ts, sizeof *notif_ts);
+    return srpjson_read(srpntf_name, notif_fd, notif_ts, sizeof *notif_ts);
 }
 
 /**
@@ -104,37 +104,38 @@ static int
 srpntf_read_notif(int notif_fd, struct ly_ctx *ly_ctx, struct lyd_node **notif)
 {
     int rc = SR_ERR_OK;
-    char *notif_lyb = NULL;
+    char *notif_json = NULL;
     struct ly_in *in = NULL;
-    uint32_t notif_lyb_len;
+    uint32_t notif_json_len;
 
     /* read the length */
-    if ((rc = srlyb_read(srpntf_name, notif_fd, &notif_lyb_len, sizeof notif_lyb_len))) {
+    if ((rc = srpjson_read(srpntf_name, notif_fd, &notif_json_len, sizeof notif_json_len))) {
         goto cleanup;
     }
 
     /* read the notification */
-    notif_lyb = malloc(notif_lyb_len);
-    if (!notif_lyb) {
+    notif_json = malloc(notif_json_len + 1);
+    if (!notif_json) {
         SRPLG_LOG_ERR(srpntf_name, "Memory allocation failed.");
         rc = SR_ERR_NO_MEMORY;
         goto cleanup;
     }
 
-    if ((rc = srlyb_read(srpntf_name, notif_fd, notif_lyb, notif_lyb_len))) {
+    if ((rc = srpjson_read(srpntf_name, notif_fd, notif_json, notif_json_len))) {
         goto cleanup;
     }
+    notif_json[notif_json_len] = '\0';
 
     /* parse the notification */
-    ly_in_new_memory(notif_lyb, &in);
-    if (lyd_parse_op(ly_ctx, NULL, in, LYD_LYB, LYD_TYPE_NOTIF_YANG, notif, NULL)) {
-        srplyb_log_err_ly(srpntf_name, ly_ctx);
+    ly_in_new_memory(notif_json, &in);
+    if (lyd_parse_op(ly_ctx, NULL, in, LYD_JSON, LYD_TYPE_NOTIF_YANG, notif, NULL)) {
+        srpjson_log_err_ly(srpntf_name, ly_ctx);
         rc = SR_ERR_LY;
         goto cleanup;
     }
 
 cleanup:
-    free(notif_lyb);
+    free(notif_json);
     ly_in_free(in, 0);
     return rc;
 }
@@ -149,15 +150,15 @@ static int
 srpntf_skip_notif(int notif_fd)
 {
     int rc;
-    uint32_t notif_lyb_len;
+    uint32_t notif_json_len;
 
     /* read notification length */
-    if ((rc = srlyb_read(srpntf_name, notif_fd, &notif_lyb_len, sizeof notif_lyb_len))) {
+    if ((rc = srpjson_read(srpntf_name, notif_fd, &notif_json_len, sizeof notif_json_len))) {
         return rc;
     }
 
     /* skip the notification */
-    if (lseek(notif_fd, notif_lyb_len, SEEK_CUR) == -1) {
+    if (lseek(notif_fd, notif_json_len, SEEK_CUR) == -1) {
         SRPLG_LOG_ERR(srpntf_name, "Lseek failed (%s).", strerror(errno));
         return SR_ERR_SYS;
     }
@@ -180,17 +181,17 @@ srpntf_open_file(const char *mod_name, time_t from_ts, time_t to_ts, int flags, 
 {
     int rc = SR_ERR_OK;
     char *path = NULL;
-    mode_t perm = SRLYB_NOTIF_PERM;
+    mode_t perm = SRPJSON_NOTIF_PERM;
 
     *notif_fd = -1;
 
-    if ((rc = srlyb_get_notif_path(srpntf_name, mod_name, from_ts, to_ts, &path))) {
+    if ((rc = srpjson_get_notif_path(srpntf_name, mod_name, from_ts, to_ts, &path))) {
         goto cleanup;
     }
 
-    *notif_fd = srlyb_open(path, flags, perm);
+    *notif_fd = srpjson_open(path, flags, perm);
     if (*notif_fd == -1) {
-        rc = srlyb_open_error(srpntf_name, path);
+        rc = srpjson_open_error(srpntf_name, path);
         goto cleanup;
     }
 
@@ -230,7 +231,7 @@ srpntf_find_file(const char *mod_name, time_t from_ts, time_t to_ts, time_t *fil
     *file_from_ts = 0;
     *file_to_ts = 0;
 
-    if ((rc = srlyb_get_notif_dir(srpntf_name, &dir_path))) {
+    if ((rc = srpjson_get_notif_dir(srpntf_name, &dir_path))) {
         goto cleanup;
     }
 
@@ -307,8 +308,6 @@ srpntf_find_file(const char *mod_name, time_t from_ts, time_t to_ts, time_t *fil
         *file_to_ts = ts2;
     }
 
-    /* success */
-
 cleanup:
     free(dir_path);
     free(prefix);
@@ -341,12 +340,12 @@ srpntf_rename_file(const char *mod_name, time_t old_from_ts, time_t old_to_ts, t
     }
 
     /* old file name */
-    if ((rc = srlyb_get_notif_path(srpntf_name, mod_name, old_from_ts, old_to_ts, &old_path))) {
+    if ((rc = srpjson_get_notif_path(srpntf_name, mod_name, old_from_ts, old_to_ts, &old_path))) {
         goto cleanup;
     }
 
     /* new file name */
-    if ((rc = srlyb_get_notif_path(srpntf_name, mod_name, old_from_ts, new_to_ts, &new_path))) {
+    if ((rc = srpjson_get_notif_path(srpntf_name, mod_name, old_from_ts, new_to_ts, &new_path))) {
         goto cleanup;
     }
 
@@ -360,8 +359,6 @@ srpntf_rename_file(const char *mod_name, time_t old_from_ts, time_t old_to_ts, t
     SRPLG_LOG_INF(srpntf_name, "Replay file \"%s\" renamed to \"%s\".", strrchr(old_path, '/') + 1,
             strrchr(new_path, '/') + 1);
 
-    /* success */
-
 cleanup:
     free(old_path);
     free(new_path);
@@ -369,7 +366,7 @@ cleanup:
 }
 
 static int
-srpntf_lyb_init(const struct lys_module *mod)
+srpntf_json_init(const struct lys_module *mod)
 {
     int rc = SR_ERR_OK, r;
     char *dir_path = NULL;
@@ -377,7 +374,7 @@ srpntf_lyb_init(const struct lys_module *mod)
     (void)mod;
 
     /* notif dir */
-    if ((rc = srlyb_get_notif_dir(srpntf_name, &dir_path))) {
+    if ((rc = srpjson_get_notif_dir(srpntf_name, &dir_path))) {
         goto cleanup;
     }
     if (((r = access(dir_path, F_OK)) == -1) && (errno != ENOENT)) {
@@ -385,7 +382,7 @@ srpntf_lyb_init(const struct lys_module *mod)
         rc = SR_ERR_SYS;
         goto cleanup;
     }
-    if (r && (rc = srlyb_mkpath(srpntf_name, dir_path, SRLYB_DIR_PERM))) {
+    if (r && (rc = srpjson_mkpath(srpntf_name, dir_path, SRPJSON_DIR_PERM))) {
         goto cleanup;
     }
 
@@ -395,7 +392,7 @@ cleanup:
 }
 
 static int
-srpntf_lyb_destroy(const struct lys_module *mod)
+srpntf_json_destroy(const struct lys_module *mod)
 {
     (void)mod;
 
@@ -403,31 +400,31 @@ srpntf_lyb_destroy(const struct lys_module *mod)
 }
 
 static int
-srpntf_lyb_store(const struct lys_module *mod, const struct lyd_node *notif, const struct timespec *notif_ts)
+srpntf_json_store(const struct lys_module *mod, const struct lyd_node *notif, const struct timespec *notif_ts)
 {
     int rc = SR_ERR_OK, fd = -1;
     struct ly_out *out = NULL;
     struct stat st;
-    char *notif_lyb = NULL;
-    uint32_t notif_lyb_len;
+    char *notif_json = NULL;
+    uint32_t notif_json_len;
     time_t from_ts, to_ts;
     size_t file_size;
 
     /* create out */
-    if (ly_out_new_memory(&notif_lyb, 0, &out)) {
+    if (ly_out_new_memory(&notif_json, 0, &out)) {
         rc = SR_ERR_LY;
         goto cleanup;
     }
 
-    /* convert notification into LYB */
-    if (lyd_print_all(out, notif, LYD_LYB, LYD_PRINT_SHRINK)) {
-        srplyb_log_err_ly(srpntf_name, mod->ctx);
+    /* convert notification into JSON */
+    if (lyd_print_all(out, notif, LYD_JSON, LYD_PRINT_SHRINK)) {
+        srpjson_log_err_ly(srpntf_name, mod->ctx);
         rc = SR_ERR_LY;
         goto cleanup;
     }
 
     /* learn its length */
-    notif_lyb_len = ly_out_printed(out);
+    notif_json_len = ly_out_printed(out);
 
     /* find the latest notification file for this module */
     if ((rc = srpntf_find_file(mod->name, 0, 0, &from_ts, &to_ts))) {
@@ -448,9 +445,9 @@ srpntf_lyb_store(const struct lys_module *mod, const struct lyd_node *notif, con
         }
         file_size = st.st_size;
 
-        if (file_size + sizeof *notif_ts + sizeof notif_lyb_len + notif_lyb_len <= SRLYB_NOTIF_FILE_MAX_SIZE * 1024) {
+        if (file_size + sizeof *notif_ts + sizeof notif_json_len + notif_json_len <= SRPJSON_NOTIF_FILE_MAX_SIZE * 1024) {
             /* add the notification into the file if there is still space */
-            if ((rc = srpntf_writev_notif(fd, notif_lyb, notif_lyb_len, notif_ts))) {
+            if ((rc = srpntf_writev_notif(fd, notif_json, notif_json_len, notif_ts))) {
                 goto cleanup;
             }
 
@@ -474,18 +471,16 @@ srpntf_lyb_store(const struct lys_module *mod, const struct lyd_node *notif, con
     }
 
     /* write the notification */
-    if ((rc = srpntf_writev_notif(fd, notif_lyb, notif_lyb_len, notif_ts))) {
+    if ((rc = srpntf_writev_notif(fd, notif_json, notif_json_len, notif_ts))) {
         goto cleanup;
     }
-
-    /* success */
 
 cleanup:
     ly_out_free(out, NULL, 0);
     if (fd > -1) {
         close(fd);
     }
-    free(notif_lyb);
+    free(notif_json);
     return rc;
 }
 
@@ -496,7 +491,7 @@ struct srpntf_rn_state {
 };
 
 static int
-srpntf_lyb_replay_next(const struct lys_module *mod, const struct timespec *start, const struct timespec *stop,
+srpntf_json_replay_next(const struct lys_module *mod, const struct timespec *start, const struct timespec *stop,
         struct lyd_node **notif, struct timespec *notif_ts, void *state)
 {
     int rc = SR_ERR_OK;
@@ -544,7 +539,7 @@ srpntf_lyb_replay_next(const struct lys_module *mod, const struct timespec *star
                 goto cleanup;
             }
 
-            if (!notif_ts->tv_sec || (srlyb_time_cmp(notif_ts, start) > -1)) {
+            if (!notif_ts->tv_sec || (srpjson_time_cmp(notif_ts, start) > -1)) {
                 /* there can be no more notifications in the specific case when the last notif has timestamp
                  * 100.25 and start time is 100.50, for example, because file is opened only based on seconds */
                 break;
@@ -557,7 +552,7 @@ srpntf_lyb_replay_next(const struct lys_module *mod, const struct timespec *star
         }
 
         /* replay notifications until stop is reached */
-        while (notif_ts->tv_sec && (srlyb_time_cmp(notif_ts, stop) < 0)) {
+        while (notif_ts->tv_sec && (srpjson_time_cmp(notif_ts, stop) < 0)) {
 
             /* parse notification, return it */
             rc = srpntf_read_notif(st->fd, mod->ctx, notif);
@@ -571,7 +566,7 @@ next_notif:
         }
 
         /* no more notifications should be replayed */
-        if (srlyb_time_cmp(notif_ts, stop) > -1) {
+        if (srpjson_time_cmp(notif_ts, stop) > -1) {
             rc = SR_ERR_NOT_FOUND;
             break;
         }
@@ -598,13 +593,13 @@ cleanup:
 }
 
 static int
-srpntf_lyb_earliest_get(const struct lys_module *mod, struct timespec *ts)
+srpntf_json_earliest_get(const struct lys_module *mod, struct timespec *ts)
 {
     int rc = SR_ERR_OK, fd = -1;
     time_t file_from, file_to;
 
     /* create directory in case does not exist */
-    if ((rc = srpntf_lyb_init(mod))) {
+    if ((rc = srpntf_json_init(mod))) {
         goto cleanup;
     }
 
@@ -640,7 +635,7 @@ cleanup:
 }
 
 static int
-srpntf_lyb_access_set(const struct lys_module *mod, const char *owner, const char *group, mode_t perm)
+srpntf_json_access_set(const struct lys_module *mod, const char *owner, const char *group, mode_t perm)
 {
     int rc;
     time_t file_from, file_to;
@@ -653,12 +648,12 @@ srpntf_lyb_access_set(const struct lys_module *mod, const char *owner, const cha
     }
     while (file_from && file_to) {
         /* get next notification file path */
-        if ((rc = srlyb_get_notif_path(srpntf_name, mod->name, file_from, file_to, &path))) {
+        if ((rc = srpjson_get_notif_path(srpntf_name, mod->name, file_from, file_to, &path))) {
             return rc;
         }
 
         /* update notification file permissions and owner */
-        rc = srlyb_chmodown(srpntf_name, path, owner, group, perm);
+        rc = srpjson_chmodown(srpntf_name, path, owner, group, perm);
         free(path);
         if (rc) {
             return rc;
@@ -669,7 +664,7 @@ srpntf_lyb_access_set(const struct lys_module *mod, const char *owner, const cha
 }
 
 static int
-srpntf_lyb_access_get(const struct lys_module *mod, char **owner, char **group, mode_t *perm)
+srpntf_json_access_get(const struct lys_module *mod, char **owner, char **group, mode_t *perm)
 {
     int rc = SR_ERR_OK, r;
     time_t file_from, file_to;
@@ -694,7 +689,7 @@ srpntf_lyb_access_get(const struct lys_module *mod, char **owner, char **group, 
     }
 
     /* path */
-    if ((rc = srlyb_get_notif_path(srpntf_name, mod->name, file_from, file_to, &path))) {
+    if ((rc = srpjson_get_notif_path(srpntf_name, mod->name, file_from, file_to, &path))) {
         return rc;
     }
 
@@ -713,12 +708,12 @@ srpntf_lyb_access_get(const struct lys_module *mod, char **owner, char **group, 
     }
 
     /* get owner */
-    if (owner && (rc = srlyb_get_pwd(srpntf_name, &st.st_uid, owner))) {
+    if (owner && (rc = srpjson_get_pwd(srpntf_name, &st.st_uid, owner))) {
         goto error;
     }
 
     /* get group */
-    if (group && (rc = srlyb_get_grp(srpntf_name, &st.st_gid, group))) {
+    if (group && (rc = srpjson_get_grp(srpntf_name, &st.st_gid, group))) {
         goto error;
     }
 
@@ -740,7 +735,7 @@ error:
 }
 
 static int
-srpntf_lyb_access_check(const struct lys_module *mod, int *read, int *write)
+srpntf_json_access_check(const struct lys_module *mod, int *read, int *write)
 {
     int rc = SR_ERR_OK;
     time_t file_from, file_to;
@@ -759,7 +754,7 @@ srpntf_lyb_access_check(const struct lys_module *mod, int *read, int *write)
     }
 
     /* path */
-    if ((rc = srlyb_get_notif_path(srpntf_name, mod->name, file_from, file_to, &path))) {
+    if ((rc = srpjson_get_notif_path(srpntf_name, mod->name, file_from, file_to, &path))) {
         return rc;
     }
 
@@ -798,14 +793,14 @@ cleanup:
     return rc;
 }
 
-const struct srplg_ntf_s srpntf_lyb = {
+const struct srplg_ntf_s srpntf_json = {
     .name = srpntf_name,
-    .init_cb = srpntf_lyb_init,
-    .destroy_cb = srpntf_lyb_destroy,
-    .store_cb = srpntf_lyb_store,
-    .replay_next_cb = srpntf_lyb_replay_next,
-    .earliest_get_cb = srpntf_lyb_earliest_get,
-    .access_set_cb = srpntf_lyb_access_set,
-    .access_get_cb = srpntf_lyb_access_get,
-    .access_check_cb = srpntf_lyb_access_check,
+    .init_cb = srpntf_json_init,
+    .destroy_cb = srpntf_json_destroy,
+    .store_cb = srpntf_json_store,
+    .replay_next_cb = srpntf_json_replay_next,
+    .earliest_get_cb = srpntf_json_earliest_get,
+    .access_set_cb = srpntf_json_access_set,
+    .access_get_cb = srpntf_json_access_get,
+    .access_check_cb = srpntf_json_access_check,
 };

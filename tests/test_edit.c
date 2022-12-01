@@ -997,12 +997,12 @@ test_mutiple_types(void **state)
 
     /* anydata */
     val.type = SR_ANYDATA_T;
-    val.data.string_val = "test";
+    val.data.string_val = "<test/>";
     ret = sr_set_item(st->sess, "/test-module:main/any-data", &val, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/test-module:main/any-data", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(((struct lyd_node_any *)subtree->tree)->value.str, "test");
+    assert_string_equal(LYD_NAME(((struct lyd_node_any *)subtree->tree)->value.tree), "test");
     sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);

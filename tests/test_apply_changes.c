@@ -2512,7 +2512,7 @@ module_change_any_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
         str2 =
         "<cont xmlns=\"urn:test\">"
             "<anyx>&lt;some-xml&gt;&lt;elem&gt;value&lt;/elem&gt;&lt;/some-xml&gt;</anyx>"
-            "<anyd>{\"mod:some-data\": 24}</anyd>"
+            "<anyd><some-data>24</some-data></anyd>"
         "</cont>";
 
         assert_string_equal(str1, str2);
@@ -2543,7 +2543,7 @@ module_change_any_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_MODIFIED);
-        assert_string_equal(prev_val, "{\"mod:some-data\": 24}");
+        assert_string_equal(prev_val, "<some-data>24</some-data>\n");
         assert_string_equal(node->schema->name, "anyd");
 
         /* no more changes */
@@ -2563,7 +2563,7 @@ module_change_any_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
         str2 =
         "<cont xmlns=\"urn:test\">"
             "<anyx>&lt;other-xml&gt;&lt;elem2&gt;value2&lt;/elem2&gt;&lt;/other-xml&gt;</anyx>"
-            "<anyd>{\"mod:new-data\": 48}</anyd>"
+            "<anyd><new-data>48</new-data></anyd>"
         "</cont>";
 
         assert_string_equal(str1, str2);
@@ -2653,7 +2653,7 @@ apply_change_any_thread(void *arg)
     str2 =
         "<cont xmlns=\"urn:test\">"
             "<anyx>&lt;some-xml&gt;&lt;elem&gt;value&lt;/elem&gt;&lt;/some-xml&gt;</anyx>"
-            "<anyd>{\"mod:some-data\": 24}</anyd>"
+            "<anyd><some-data>24</some-data></anyd>"
         "</cont>";
 
     assert_string_equal(str1, str2);
@@ -2678,7 +2678,7 @@ apply_change_any_thread(void *arg)
     str2 =
         "<cont xmlns=\"urn:test\">"
             "<anyx>&lt;other-xml&gt;&lt;elem2&gt;value2&lt;/elem2&gt;&lt;/other-xml&gt;</anyx>"
-            "<anyd>{\"mod:new-data\": 48}</anyd>"
+            "<anyd><new-data>48</new-data></anyd>"
         "</cont>";
 
     assert_string_equal(str1, str2);
@@ -3299,12 +3299,30 @@ apply_change_dflt_leaf_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* check only second node */
-    assert_string_equal(data->tree->schema->name, "l1");
-    assert_true(lyd_child(lyd_child(lyd_child(data->tree)->next))->flags & LYD_DEFAULT);
-    assert_string_equal(lyd_get_value(lyd_child(lyd_child(lyd_child(data->tree)->next))), "10");
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
 
     sr_release_data(data);
+
+    str2 =
+    "<l1 xmlns=\"urn:defaults\">"
+        "<k>when-true</k>"
+        "<cont1>"
+            "<cont2>"
+                "<dflt1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">10</dflt1>"
+            "</cont2>"
+        "</cont1>"
+    "</l1>"
+    "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
+        "I exist!"
+    "</dflt2>"
+    "<cont xmlns=\"urn:defaults\">"
+        "<l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>"
+        "<interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>"
+    "</cont>";
+
+    assert_string_equal(str1, str2);
+    free(str1);
 
     /*
      * perform 6th change
@@ -3313,7 +3331,6 @@ apply_change_dflt_leaf_thread(void *arg)
      */
     ret = sr_delete_item(sess, "/defaults:l1[k='when-true']", 0);
     assert_int_equal(ret, SR_ERR_OK);
-
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -4250,7 +4267,6 @@ apply_change_dflt_choice_thread(void *arg)
      */
     ret = sr_set_item_str(sess, "/defaults:cont/daily", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -4272,7 +4288,6 @@ apply_change_dflt_choice_thread(void *arg)
      */
     ret = sr_delete_item(sess, "/defaults:cont/daily", 0);
     assert_int_equal(ret, SR_ERR_OK);
-
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 

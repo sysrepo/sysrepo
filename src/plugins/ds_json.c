@@ -1,7 +1,7 @@
 /**
- * @file ds_lyb.c
+ * @file ds_json.c
  * @author Michal Vasko <mvasko@cesnet.cz>
- * @brief internal LYB datastore plugin
+ * @brief internal JSON datastore plugin
  *
  * @copyright
  * Copyright (c) 2021 - 2022 Deutsche Telekom AG.
@@ -33,32 +33,33 @@
 #include <libyang/libyang.h>
 
 #include "compat.h"
-#include "common_lyb.h"
+#include "common_json.h"
 #include "sysrepo.h"
 
 #ifdef SR_HAVE_INOTIFY
 # include <sys/inotify.h>
 #endif
 
-#define srpds_name "LYB DS file"  /**< plugin name */
+#define srpds_name "JSON DS file"  /**< plugin name */
 
-static int srpds_lyb_load(const struct lys_module *mod, sr_datastore_t ds, const char **xpaths, uint32_t xpath_count,
+static int srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, const char **xpaths, uint32_t xpath_count,
         struct lyd_node **mod_data);
 
-static int srpds_lyb_access_get(const struct lys_module *mod, sr_datastore_t ds, char **owner, char **group,
+static int srpds_json_access_get(const struct lys_module *mod, sr_datastore_t ds, char **owner, char **group,
         mode_t *perm);
 
 static int
-srpds_lyb_store_(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *mod_data, const char *owner,
+srpds_json_store_(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *mod_data, const char *owner,
         const char *group, mode_t perm, int make_backup)
 {
     int rc = SR_ERR_OK;
     struct stat st;
     char *path = NULL, *bck_path = NULL;
     int fd = -1, backup = 0, creat = 0;
+    uint32_t print_opts;
 
     /* get path */
-    if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
+    if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
 
@@ -76,14 +77,14 @@ srpds_lyb_store_(const struct lys_module *mod, sr_datastore_t ds, const struct l
         }
 
         /* generate the backup path */
-        if (asprintf(&bck_path, "%s%s", path, SRLYB_FILE_BACKUP_SUFFIX) == -1) {
+        if (asprintf(&bck_path, "%s%s", path, SRPJSON_FILE_BACKUP_SUFFIX) == -1) {
             SRPLG_LOG_ERR(srpds_name, "Memory allocation failed.");
             rc = SR_ERR_NO_MEMORY;
             goto cleanup;
         }
 
         /* create backup file with same owner/group/perm */
-        if ((fd = srlyb_open(bck_path, O_WRONLY | O_CREAT | O_EXCL, st.st_mode)) == -1) {
+        if ((fd = srpjson_open(bck_path, O_WRONLY | O_CREAT | O_EXCL, st.st_mode)) == -1) {
             SRPLG_LOG_ERR(srpds_name, "Opening \"%s\" failed (%s).", bck_path, strerror(errno));
             rc = SR_ERR_SYS;
             goto cleanup;
@@ -104,39 +105,47 @@ srpds_lyb_store_(const struct lys_module *mod, sr_datastore_t ds, const struct l
         fd = -1;
 
         /* back up any existing file */
-        if ((rc = srlyb_cp_path(srpds_name, bck_path, path))) {
+        if ((rc = srpjson_cp_path(srpds_name, bck_path, path))) {
             goto cleanup;
         }
     }
 
     if (perm) {
         /* try to create the file */
-        fd = srlyb_open(path, O_WRONLY | O_CREAT | O_EXCL, perm);
+        fd = srpjson_open(path, O_WRONLY | O_CREAT | O_EXCL, perm);
         if (fd > 0) {
             creat = 1;
         }
     }
     if (fd == -1) {
         /* open existing file */
-        fd = srlyb_open(path, O_WRONLY, perm);
+        fd = srpjson_open(path, O_WRONLY, perm);
     }
     if (fd == -1) {
-        rc = srlyb_open_error(srpds_name, path);
+        rc = srpjson_open_error(srpds_name, path);
         goto cleanup;
     }
 
     if (creat && (owner || group)) {
         /* change the owner of the created file */
-        if ((rc = srlyb_chmodown(srpds_name, path, owner, group, 0))) {
+        if ((rc = srpjson_chmodown(srpds_name, path, owner, group, 0))) {
             goto cleanup;
         }
     }
 
     /* print data */
-    if (lyd_print_fd(fd, mod_data, LYD_LYB, LYD_PRINT_WITHSIBLINGS)) {
-        srplyb_log_err_ly(srpds_name, LYD_CTX(mod_data));
+    print_opts = LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS | LYD_PRINT_KEEPEMPTYCONT | LYD_PRINT_WD_IMPL_TAG;
+    if (lyd_print_fd(fd, mod_data, LYD_JSON, print_opts)) {
+        srpjson_log_err_ly(srpds_name, LYD_CTX(mod_data));
         SRPLG_LOG_ERR(srpds_name, "Failed to store data into \"%s\".", path);
         rc = SR_ERR_INTERNAL;
+        goto cleanup;
+    }
+
+    /* truncate the file to the exact size (to get rid of possible following old data) */
+    if (ftruncate(fd, lseek(fd, 0, SEEK_CUR)) == -1) {
+        SRPLG_LOG_ERR(srpds_name, "Failed to truncate \"%s\" (%s).", path, strerror(errno));
+        rc = SR_ERR_SYS;
         goto cleanup;
     }
 
@@ -167,17 +176,17 @@ cleanup:
  * @return SR_ERR value.
  */
 static int
-srpds_lyb_init_startup(const struct lys_module *mod, const char *owner, const char *group, mode_t perm)
+srpds_json_init_startup(const struct lys_module *mod, const char *owner, const char *group, mode_t perm)
 {
     int rc = SR_ERR_OK;
     struct lyd_node *root = NULL;
     char *path = NULL;
 
     /* check whether the file does not exist */
-    if ((rc = srlyb_get_path(srpds_name, mod->name, SR_DS_STARTUP, &path))) {
+    if ((rc = srpjson_get_path(srpds_name, mod->name, SR_DS_STARTUP, &path))) {
         goto cleanup;
     }
-    if (srlyb_file_exists(srpds_name, path)) {
+    if (srpjson_file_exists(srpds_name, path)) {
         SRPLG_LOG_ERR(srpds_name, "File \"%s\" already exists.", path);
         rc = SR_ERR_EXISTS;
         goto cleanup;
@@ -185,13 +194,13 @@ srpds_lyb_init_startup(const struct lys_module *mod, const char *owner, const ch
 
     /* get default values */
     if (lyd_new_implicit_module(&root, mod, LYD_IMPLICIT_NO_STATE, NULL)) {
-        srplyb_log_err_ly(srpds_name, mod->ctx);
+        srpjson_log_err_ly(srpds_name, mod->ctx);
         rc = SR_ERR_LY;
         goto cleanup;
     }
 
     /* print them into the startup file */
-    if ((rc = srpds_lyb_store_(mod, SR_DS_STARTUP, root, owner, group, perm, 0))) {
+    if ((rc = srpds_json_store_(mod, SR_DS_STARTUP, root, owner, group, perm, 0))) {
         goto cleanup;
     }
 
@@ -202,7 +211,7 @@ cleanup:
 }
 
 static int
-srpds_lyb_init(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm)
+srpds_json_init(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm)
 {
     int rc = SR_ERR_OK, fd = -1;
     char *path = NULL;
@@ -210,34 +219,34 @@ srpds_lyb_init(const struct lys_module *mod, sr_datastore_t ds, const char *owne
     assert(perm);
 
     /* startup data dir */
-    if ((rc = srlyb_get_startup_dir(srpds_name, &path))) {
+    if ((rc = srpjson_get_startup_dir(srpds_name, &path))) {
         return rc;
     }
-    if (!srlyb_file_exists(srpds_name, path) && (rc = srlyb_mkpath(srpds_name, path, SRLYB_DIR_PERM))) {
+    if (!srpjson_file_exists(srpds_name, path) && (rc = srpjson_mkpath(srpds_name, path, SRPJSON_DIR_PERM))) {
         goto cleanup;
     }
 
     if (ds == SR_DS_STARTUP) {
         /* startup init */
-        rc = srpds_lyb_init_startup(mod, owner, group, perm);
+        rc = srpds_json_init_startup(mod, owner, group, perm);
         goto cleanup;
     }
 
     /* get path to the perm file */
     free(path);
-    if ((rc = srlyb_get_perm_path(srpds_name, mod->name, ds, &path))) {
+    if ((rc = srpjson_get_perm_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
 
     /* create the file with the correct permissions */
-    if ((fd = srlyb_open(path, O_RDONLY | O_CREAT | O_EXCL, perm)) == -1) {
-        rc = srlyb_open_error(srpds_name, path);
+    if ((fd = srpjson_open(path, O_RDONLY | O_CREAT | O_EXCL, perm)) == -1) {
+        rc = srpjson_open_error(srpds_name, path);
         goto cleanup;
     }
 
     /* update the owner/group of the file */
     if (owner || group) {
-        if ((rc = srlyb_chmodown(srpds_name, path, owner, group, 0))) {
+        if ((rc = srpjson_chmodown(srpds_name, path, owner, group, 0))) {
             goto cleanup;
         }
     }
@@ -251,13 +260,13 @@ cleanup:
 }
 
 static int
-srpds_lyb_destroy(const struct lys_module *mod, sr_datastore_t ds)
+srpds_json_destroy(const struct lys_module *mod, sr_datastore_t ds)
 {
     int rc = SR_ERR_OK;
     char *path = NULL;
 
     /* unlink data file */
-    if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
+    if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
     if ((unlink(path) == -1) && ((errno != ENOENT) || (ds == SR_DS_STARTUP))) {
@@ -272,7 +281,7 @@ srpds_lyb_destroy(const struct lys_module *mod, sr_datastore_t ds)
 
     /* unlink perm file */
     free(path);
-    if ((rc = srlyb_get_perm_path(srpds_name, mod->name, ds, &path))) {
+    if ((rc = srpjson_get_perm_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
     if (unlink(path) == -1) {
@@ -285,7 +294,7 @@ cleanup:
 }
 
 static int
-srpds_lyb_store(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *mod_data)
+srpds_json_store(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *mod_data)
 {
     mode_t perm = 0;
     int rc;
@@ -299,24 +308,24 @@ srpds_lyb_store(const struct lys_module *mod, sr_datastore_t ds, const struct ly
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
         /* get data file path */
-        if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
+        if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
             goto cleanup;
         }
 
-        if (srlyb_file_exists(srpds_name, path)) {
+        if (srpjson_file_exists(srpds_name, path)) {
             /* file exists */
             break;
         }
 
         /* get the correct permissions to set for the new file */
-        if ((rc = srpds_lyb_access_get(mod, ds, &owner, &group, &perm))) {
+        if ((rc = srpds_json_access_get(mod, ds, &owner, &group, &perm))) {
             goto cleanup;
         }
         break;
     }
 
     /* store */
-    if ((rc = srpds_lyb_store_(mod, ds, mod_data, owner, group, perm, 1))) {
+    if ((rc = srpds_json_store_(mod, ds, mod_data, owner, group, perm, 1))) {
         goto cleanup;
     }
 
@@ -328,18 +337,18 @@ cleanup:
 }
 
 static void
-srpds_lyb_recover(const struct lys_module *mod, sr_datastore_t ds)
+srpds_json_recover(const struct lys_module *mod, sr_datastore_t ds)
 {
     char *path = NULL, *bck_path = NULL;
     struct lyd_node *mod_data = NULL;
 
     /* get path */
-    if (srlyb_get_path(srpds_name, mod->name, ds, &path)) {
+    if (srpjson_get_path(srpds_name, mod->name, ds, &path)) {
         goto cleanup;
     }
 
     /* check whether the file is valid */
-    if (!srpds_lyb_load(mod, ds, NULL, 0, &mod_data)) {
+    if (!srpds_json_load(mod, ds, NULL, 0, &mod_data)) {
         /* data are valid, nothing to do */
         goto cleanup;
     }
@@ -349,13 +358,13 @@ srpds_lyb_recover(const struct lys_module *mod, sr_datastore_t ds)
         SRPLG_LOG_WRN("Recovering \"%s\" startup data from a backup.", mod->name);
 
         /* generate the backup path */
-        if (asprintf(&bck_path, "%s%s", path, SRLYB_FILE_BACKUP_SUFFIX) == -1) {
+        if (asprintf(&bck_path, "%s%s", path, SRPJSON_FILE_BACKUP_SUFFIX) == -1) {
             SRPLG_LOG_ERR(srpds_name, "Memory allocation failed.");
             goto cleanup;
         }
 
         /* restore the backup data, avoid changing permissions of the target file */
-        if (srlyb_cp_path(srpds_name, path, bck_path)) {
+        if (srpjson_cp_path(srpds_name, path, bck_path)) {
             goto cleanup;
         }
 
@@ -369,17 +378,17 @@ srpds_lyb_recover(const struct lys_module *mod, sr_datastore_t ds)
         SRPLG_LOG_WRN("Recovering \"%s\" running data from the startup data.", mod->name);
 
         /* generate the startup data file path */
-        if (srlyb_get_path(srpds_name, mod->name, SR_DS_STARTUP, &bck_path)) {
+        if (srpjson_get_path(srpds_name, mod->name, SR_DS_STARTUP, &bck_path)) {
             goto cleanup;
         }
 
         /* copy startup data to running */
-        if (srlyb_cp_path(srpds_name, path, bck_path)) {
+        if (srpjson_cp_path(srpds_name, path, bck_path)) {
             goto cleanup;
         }
     } else {
         /* there is not much to do but remove the corrupted file */
-        SRPLG_LOG_WRN("Recovering \"%s\" %s data by removing the corrupted data file.", mod->name, srlyb_ds2str(ds));
+        SRPLG_LOG_WRN("Recovering \"%s\" %s data by removing the corrupted data file.", mod->name, srpjson_ds2str(ds));
 
         if (unlink(path) == -1) {
             SRPLG_LOG_ERR(srpds_name, "Unlinking \"%s\" failed (%s).", path, strerror(errno));
@@ -394,7 +403,7 @@ cleanup:
 }
 
 static int
-srpds_lyb_load(const struct lys_module *mod, sr_datastore_t ds, const char **UNUSED(xpaths), uint32_t UNUSED(xpath_count),
+srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, const char **UNUSED(xpaths), uint32_t UNUSED(xpath_count),
         struct lyd_node **mod_data)
 {
     int rc = SR_ERR_OK, fd = -1;
@@ -404,12 +413,12 @@ srpds_lyb_load(const struct lys_module *mod, sr_datastore_t ds, const char **UNU
     *mod_data = NULL;
 
     /* prepare correct file path */
-    if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
+    if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
 
     /* open fd */
-    fd = srlyb_open(path, O_RDONLY, 0);
+    fd = srpjson_open(path, O_RDONLY, 0);
     if (fd == -1) {
         if (errno == ENOENT) {
             if (ds == SR_DS_CANDIDATE) {
@@ -422,24 +431,26 @@ srpds_lyb_load(const struct lys_module *mod, sr_datastore_t ds, const char **UNU
             }
         }
 
-        rc = srlyb_open_error(srpds_name, path);
+        rc = srpjson_open_error(srpds_name, path);
         goto cleanup;
     }
 
     /* set parse options */
-    parse_opts = LYD_PARSE_ONLY | LYD_PARSE_STRICT | LYD_PARSE_ORDERED;
+    parse_opts = LYD_PARSE_ONLY | LYD_PARSE_ORDERED;
     if (ds == SR_DS_OPERATIONAL) {
         /* edit may include opaque nodes */
         parse_opts |= LYD_PARSE_OPAQ;
+    } else {
+        parse_opts |= LYD_PARSE_STRICT;
     }
-    if (!strcmp(mod->name, "sysrepo")) {
-        /* internal module, accept an update */
-        parse_opts |= LYD_PARSE_LYB_MOD_UPDATE;
+    if ((ds == SR_DS_RUNNING) || (ds == SR_DS_STARTUP)) {
+        /* always valid datastores */
+        parse_opts |= LYD_PARSE_WHEN_TRUE | LYD_PARSE_NO_NEW;
     }
 
     /* load the data */
-    if (lyd_parse_data_fd(mod->ctx, fd, LYD_LYB, parse_opts, 0, mod_data)) {
-        srplyb_log_err_ly(srpds_name, mod->ctx);
+    if (lyd_parse_data_fd(mod->ctx, fd, LYD_JSON, parse_opts, 0, mod_data)) {
+        srpjson_log_err_ly(srpds_name, mod->ctx);
         rc = SR_ERR_LY;
         goto cleanup;
     }
@@ -464,10 +475,10 @@ cleanup:
  * @return SR_ERR value.
  */
 static int
-srpds_lyb_running_load_cached_mods(struct srlyb_cache_conn_s *cache, const struct lys_module **mods, uint32_t mod_count,
+srpds_json_running_load_cached_mods(struct srpjson_cache_conn_s *cache, const struct lys_module **mods, uint32_t mod_count,
         int *cache_update)
 {
-    struct srlyb_cache_mod_s *cmod;
+    struct srpjson_cache_mod_s *cmod;
     struct inotify_event event;
     struct timespec ts_timeout;
     char *path = NULL;
@@ -535,7 +546,7 @@ srpds_lyb_running_load_cached_mods(struct srlyb_cache_conn_s *cache, const struc
         if (cmod->inot_watch == -1) {
             /* prepare correct file path */
             free(path);
-            if ((rc = srlyb_get_path(srpds_name, mods[i]->name, SR_DS_RUNNING, &path))) {
+            if ((rc = srpjson_get_path(srpds_name, mods[i]->name, SR_DS_RUNNING, &path))) {
                 goto cleanup_unlock;
             }
 
@@ -568,10 +579,10 @@ cleanup_unlock:
 }
 
 static int
-srpds_lyb_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uint32_t mod_count,
+srpds_json_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uint32_t mod_count,
         const struct lyd_node **data)
 {
-    struct srlyb_cache_conn_s *cache = NULL;
+    struct srpjson_cache_conn_s *cache = NULL;
     struct timespec ts_timeout;
     uint32_t i;
     void *mem;
@@ -658,7 +669,7 @@ srpds_lyb_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uint
     }
 
     /* check module data */
-    if ((rc = srpds_lyb_running_load_cached_mods(cache, mods, mod_count, &cache_update))) {
+    if ((rc = srpds_json_running_load_cached_mods(cache, mods, mod_count, &cache_update))) {
         goto cleanup_unlock;
     }
 
@@ -678,10 +689,10 @@ cleanup:
 }
 
 static int
-srpds_lyb_running_update_cached(sr_cid_t cid, const struct lys_module **mods, uint32_t mod_count)
+srpds_json_running_update_cached(sr_cid_t cid, const struct lys_module **mods, uint32_t mod_count)
 {
-    struct srlyb_cache_conn_s *cache = NULL;
-    struct srlyb_cache_mod_s *cmod;
+    struct srpjson_cache_conn_s *cache = NULL;
+    struct srpjson_cache_mod_s *cmod;
     struct lyd_node *mod_data;
     uint32_t i, j;
     int rc = SR_ERR_OK;
@@ -713,11 +724,11 @@ srpds_lyb_running_update_cached(sr_cid_t cid, const struct lys_module **mods, ui
         }
 
         /* remove old data */
-        mod_data = srlyb_module_data_unlink(&cache->data, cmod->mod);
+        mod_data = srpjson_module_data_unlink(&cache->data, cmod->mod);
         lyd_free_siblings(mod_data);
 
         /* need to actually load the data */
-        if ((rc = srpds_lyb_load(cmod->mod, SR_DS_RUNNING, NULL, 0, &mod_data))) {
+        if ((rc = srpds_json_load(cmod->mod, SR_DS_RUNNING, NULL, 0, &mod_data))) {
             goto cleanup;
         }
         if (mod_data) {
@@ -733,9 +744,9 @@ cleanup:
 }
 
 static void
-srpds_lyb_running_flush_cached(sr_cid_t cid)
+srpds_json_running_flush_cached(sr_cid_t cid)
 {
-    struct srlyb_cache_conn_s *cache = NULL;
+    struct srpjson_cache_conn_s *cache = NULL;
     struct timespec ts_timeout;
     uint32_t i;
     int r;
@@ -784,14 +795,14 @@ cleanup:
 #endif
 
 static int
-srpds_lyb_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datastore_t src_ds)
+srpds_json_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datastore_t src_ds)
 {
     int rc = SR_ERR_OK, fd = -1;
     char *src_path = NULL, *trg_path = NULL, *owner = NULL, *group = NULL;
     mode_t perm = 0;
 
     /* target path */
-    if ((rc = srlyb_get_path(srpds_name, mod->name, trg_ds, &trg_path))) {
+    if ((rc = srpjson_get_path(srpds_name, mod->name, trg_ds, &trg_path))) {
         goto cleanup;
     }
 
@@ -802,36 +813,36 @@ srpds_lyb_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datastore
     case SR_DS_RUNNING:
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
-        if (srlyb_file_exists(srpds_name, trg_path)) {
+        if (srpjson_file_exists(srpds_name, trg_path)) {
             /* file exists */
             break;
         }
 
         /* get the correct permissions to set for the new file */
-        if ((rc = srpds_lyb_access_get(mod, trg_ds, &owner, &group, &perm))) {
+        if ((rc = srpds_json_access_get(mod, trg_ds, &owner, &group, &perm))) {
             goto cleanup;
         }
 
         /* create the target file with the correct permissions */
-        if ((fd = srlyb_open(trg_path, O_WRONLY | O_CREAT | O_EXCL, perm)) == -1) {
-            rc = srlyb_open_error(srpds_name, trg_path);
+        if ((fd = srpjson_open(trg_path, O_WRONLY | O_CREAT | O_EXCL, perm)) == -1) {
+            rc = srpjson_open_error(srpds_name, trg_path);
             goto cleanup;
         }
 
         /* change the owner/group of the new file */
-        if ((rc = srlyb_chmodown(srpds_name, trg_path, owner, group, 0))) {
+        if ((rc = srpjson_chmodown(srpds_name, trg_path, owner, group, 0))) {
             goto cleanup;
         }
         break;
     }
 
     /* source path */
-    if ((rc = srlyb_get_path(srpds_name, mod->name, src_ds, &src_path))) {
+    if ((rc = srpjson_get_path(srpds_name, mod->name, src_ds, &src_path))) {
         goto cleanup;
     }
 
     /* copy contents of source to target */
-    if ((rc = srlyb_cp_path(srpds_name, trg_path, src_path))) {
+    if ((rc = srpjson_cp_path(srpds_name, trg_path, src_path))) {
         goto cleanup;
     }
 
@@ -847,51 +858,15 @@ cleanup:
 }
 
 static int
-srpds_lyb_update_differ(const struct lys_module *old_mod, const struct lyd_node *old_mod_data,
+srpds_json_update_differ(const struct lys_module *UNUSED(old_mod), const struct lyd_node *old_mod_data,
         const struct lys_module *new_mod, const struct lyd_node *new_mod_data, int *differ)
 {
-    const struct lys_module *mod_iter, *mod_iter2;
-    uint32_t idx = 0;
-    LY_ARRAY_COUNT_TYPE u;
     LY_ERR lyrc;
-
-    if (old_mod) {
-        /* first check whether any modules augmenting/deviating this module were not removed or updated, in that
-         * case LYB metadata have changed and the data must be stored whether they differ or not */
-        while ((mod_iter = ly_ctx_get_module_iter(old_mod->ctx, &idx))) {
-            if (!mod_iter->implemented) {
-                /* we need data of only implemented modules */
-                continue;
-            }
-
-            mod_iter2 = ly_ctx_get_module_implemented(new_mod->ctx, mod_iter->name);
-            if (mod_iter2 && (mod_iter->revision == mod_iter2->revision)) {
-                /* module was not removed nor updated, irrelevant */
-                continue;
-            }
-
-            /* deviates */
-            LY_ARRAY_FOR(old_mod->deviated_by, u) {
-                if (old_mod->deviated_by[u] == mod_iter) {
-                    *differ = 1;
-                    return SR_ERR_OK;
-                }
-            }
-
-            /* augments */
-            LY_ARRAY_FOR(old_mod->augmented_by, u) {
-                if (old_mod->augmented_by[u] == mod_iter) {
-                    *differ = 1;
-                    return SR_ERR_OK;
-                }
-            }
-        }
-    }
 
     /* check for data difference */
     lyrc = lyd_compare_siblings(new_mod_data, old_mod_data, LYD_COMPARE_FULL_RECURSION | LYD_COMPARE_DEFAULTS);
     if (lyrc && (lyrc != LY_ENOT)) {
-        srplyb_log_err_ly(srpds_name, new_mod->ctx);
+        srpjson_log_err_ly(srpds_name, new_mod->ctx);
         return SR_ERR_LY;
     }
 
@@ -904,17 +879,17 @@ srpds_lyb_update_differ(const struct lys_module *old_mod, const struct lyd_node 
 }
 
 static int
-srpds_lyb_candidate_modified(const struct lys_module *mod, int *modified)
+srpds_json_candidate_modified(const struct lys_module *mod, int *modified)
 {
     int rc = SR_ERR_OK;
     char *path = NULL;
 
     /* candidate DS file cannot exist */
-    if ((rc = srlyb_get_path(srpds_name, mod->name, SR_DS_CANDIDATE, &path))) {
+    if ((rc = srpjson_get_path(srpds_name, mod->name, SR_DS_CANDIDATE, &path))) {
         goto cleanup;
     }
 
-    if (srlyb_file_exists(srpds_name, path)) {
+    if (srpjson_file_exists(srpds_name, path)) {
         /* file exists so it is modified */
         *modified = 1;
     } else {
@@ -927,12 +902,12 @@ cleanup:
 }
 
 static int
-srpds_lyb_candidate_reset(const struct lys_module *mod)
+srpds_json_candidate_reset(const struct lys_module *mod)
 {
     int rc = SR_ERR_OK;
     char *path;
 
-    if ((rc = srlyb_get_path(srpds_name, mod->name, SR_DS_CANDIDATE, &path))) {
+    if ((rc = srpjson_get_path(srpds_name, mod->name, SR_DS_CANDIDATE, &path))) {
         return rc;
     }
 
@@ -945,7 +920,7 @@ srpds_lyb_candidate_reset(const struct lys_module *mod)
 }
 
 static int
-srpds_lyb_access_set(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm)
+srpds_json_access_set(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm)
 {
     int rc = SR_ERR_OK, file_exists = 0;
     char *path = NULL;
@@ -953,7 +928,7 @@ srpds_lyb_access_set(const struct lys_module *mod, sr_datastore_t ds, const char
     assert(mod && (owner || group || perm));
 
     /* get correct path to the datastore file */
-    if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
+    if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
 
@@ -966,12 +941,12 @@ srpds_lyb_access_set(const struct lys_module *mod, sr_datastore_t ds, const char
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
         /* datastore file may not exist */
-        file_exists = srlyb_file_exists(srpds_name, path);
+        file_exists = srpjson_file_exists(srpds_name, path);
         break;
     }
 
     /* update file permissions and owner */
-    if (file_exists && (rc = srlyb_chmodown(srpds_name, path, owner, group, perm))) {
+    if (file_exists && (rc = srpjson_chmodown(srpds_name, path, owner, group, perm))) {
         goto cleanup;
     }
 
@@ -984,12 +959,12 @@ srpds_lyb_access_set(const struct lys_module *mod, sr_datastore_t ds, const char
     case SR_DS_OPERATIONAL:
         /* volatile datastore permission file */
         free(path);
-        if ((rc = srlyb_get_perm_path(srpds_name, mod->name, ds, &path))) {
+        if ((rc = srpjson_get_perm_path(srpds_name, mod->name, ds, &path))) {
             goto cleanup;
         }
 
         /* update file permissions and owner */
-        if ((rc = srlyb_chmodown(srpds_name, path, owner, group, perm))) {
+        if ((rc = srpjson_chmodown(srpds_name, path, owner, group, perm))) {
             goto cleanup;
         }
         break;
@@ -1001,7 +976,7 @@ cleanup:
 }
 
 static int
-srpds_lyb_access_get(const struct lys_module *mod, sr_datastore_t ds, char **owner, char **group, mode_t *perm)
+srpds_json_access_get(const struct lys_module *mod, sr_datastore_t ds, char **owner, char **group, mode_t *perm)
 {
     int rc = SR_ERR_OK, r;
     struct stat st;
@@ -1017,14 +992,14 @@ srpds_lyb_access_get(const struct lys_module *mod, sr_datastore_t ds, char **own
     /* get correct path */
     switch (ds) {
     case SR_DS_STARTUP:
-        if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
+        if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
             return rc;
         }
         break;
     case SR_DS_RUNNING:
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
-        if ((rc = srlyb_get_perm_path(srpds_name, mod->name, ds, &path))) {
+        if ((rc = srpjson_get_perm_path(srpds_name, mod->name, ds, &path))) {
             return rc;
         }
         break;
@@ -1046,12 +1021,12 @@ srpds_lyb_access_get(const struct lys_module *mod, sr_datastore_t ds, char **own
     free(path);
 
     /* get owner */
-    if (owner && (rc = srlyb_get_pwd(srpds_name, &st.st_uid, owner))) {
+    if (owner && (rc = srpjson_get_pwd(srpds_name, &st.st_uid, owner))) {
         goto error;
     }
 
     /* get group */
-    if (group && (rc = srlyb_get_grp(srpds_name, &st.st_gid, group))) {
+    if (group && (rc = srpjson_get_grp(srpds_name, &st.st_gid, group))) {
         goto error;
     }
 
@@ -1073,7 +1048,7 @@ error:
 }
 
 static int
-srpds_lyb_access_check(const struct lys_module *mod, sr_datastore_t ds, int *read, int *write)
+srpds_json_access_check(const struct lys_module *mod, sr_datastore_t ds, int *read, int *write)
 {
     int rc = SR_ERR_OK;
     char *path;
@@ -1081,14 +1056,14 @@ srpds_lyb_access_check(const struct lys_module *mod, sr_datastore_t ds, int *rea
     /* get correct path */
     switch (ds) {
     case SR_DS_STARTUP:
-        if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
+        if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
             goto cleanup;
         }
         break;
     case SR_DS_RUNNING:
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
-        if ((rc = srlyb_get_perm_path(srpds_name, mod->name, ds, &path))) {
+        if ((rc = srpjson_get_perm_path(srpds_name, mod->name, ds, &path))) {
             goto cleanup;
         }
         break;
@@ -1130,13 +1105,13 @@ cleanup:
 }
 
 static int
-srpds_lyb_last_modif(const struct lys_module *mod, sr_datastore_t ds, struct timespec *mtime)
+srpds_json_last_modif(const struct lys_module *mod, sr_datastore_t ds, struct timespec *mtime)
 {
     int rc = SR_ERR_OK;
     char *path = NULL;
     struct stat buf;
 
-    if ((rc = srlyb_get_path(srpds_name, mod->name, ds, &path))) {
+    if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
 
@@ -1157,28 +1132,28 @@ cleanup:
     return rc;
 }
 
-const struct srplg_ds_s srpds_lyb = {
+const struct srplg_ds_s srpds_json = {
     .name = srpds_name,
-    .init_cb = srpds_lyb_init,
-    .destroy_cb = srpds_lyb_destroy,
-    .store_cb = srpds_lyb_store,
-    .recover_cb = srpds_lyb_recover,
-    .load_cb = srpds_lyb_load,
+    .init_cb = srpds_json_init,
+    .destroy_cb = srpds_json_destroy,
+    .store_cb = srpds_json_store,
+    .recover_cb = srpds_json_recover,
+    .load_cb = srpds_json_load,
 #ifdef SR_HAVE_INOTIFY
-    .running_load_cached_cb = srpds_lyb_running_load_cached,
-    .running_update_cached_cb = srpds_lyb_running_update_cached,
-    .running_flush_cached_cb = srpds_lyb_running_flush_cached,
+    .running_load_cached_cb = srpds_json_running_load_cached,
+    .running_update_cached_cb = srpds_json_running_update_cached,
+    .running_flush_cached_cb = srpds_json_running_flush_cached,
 #else
     .running_load_cached_cb = NULL,
     .running_update_cached_cb = NULL,
     .running_flush_cached_cb = NULL,
 #endif
-    .copy_cb = srpds_lyb_copy,
-    .update_differ_cb = srpds_lyb_update_differ,
-    .candidate_modified_cb = srpds_lyb_candidate_modified,
-    .candidate_reset_cb = srpds_lyb_candidate_reset,
-    .access_set_cb = srpds_lyb_access_set,
-    .access_get_cb = srpds_lyb_access_get,
-    .access_check_cb = srpds_lyb_access_check,
-    .last_modif_cb = srpds_lyb_last_modif,
+    .copy_cb = srpds_json_copy,
+    .update_differ_cb = srpds_json_update_differ,
+    .candidate_modified_cb = srpds_json_candidate_modified,
+    .candidate_reset_cb = srpds_json_candidate_reset,
+    .access_set_cb = srpds_json_access_set,
+    .access_get_cb = srpds_json_access_get,
+    .access_check_cb = srpds_json_access_check,
+    .last_modif_cb = srpds_json_last_modif,
 };
