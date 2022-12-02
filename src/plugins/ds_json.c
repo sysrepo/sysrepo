@@ -57,6 +57,7 @@ srpds_json_store_(const struct lys_module *mod, sr_datastore_t ds, const struct 
     char *path = NULL, *bck_path = NULL;
     int fd = -1, backup = 0, creat = 0;
     uint32_t print_opts;
+    off_t size;
 
     /* get path */
     if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
@@ -143,7 +144,12 @@ srpds_json_store_(const struct lys_module *mod, sr_datastore_t ds, const struct 
     }
 
     /* truncate the file to the exact size (to get rid of possible following old data) */
-    if (ftruncate(fd, lseek(fd, 0, SEEK_CUR)) == -1) {
+    if ((size = lseek(fd, 0, SEEK_CUR)) == -1) {
+        SRPLG_LOG_ERR(srpds_name, "Failed to get the size of \"%s\" (%s).", path, strerror(errno));
+        rc = SR_ERR_SYS;
+        goto cleanup;
+    }
+    if (ftruncate(fd, size) == -1) {
         SRPLG_LOG_ERR(srpds_name, "Failed to truncate \"%s\" (%s).", path, strerror(errno));
         rc = SR_ERR_SYS;
         goto cleanup;
