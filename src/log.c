@@ -443,7 +443,7 @@ sr_strerror(int err_code)
 API void
 sr_log_stderr(sr_log_level_t log_level)
 {
-    /* initializes libyang logging for our purpose */
+    /* initializes libyang logging for our purposes */
     ly_log_options(LY_LOSTORE);
 
     sr_stderr_ll = log_level;
@@ -458,7 +458,7 @@ sr_log_get_stderr(void)
 API void
 sr_log_syslog(const char *app_name, sr_log_level_t log_level)
 {
-    /* initializes libyang logging for our purpose */
+    /* initializes libyang logging for our purposes */
     ly_log_options(LY_LOSTORE);
 
     sr_syslog_ll = log_level;
@@ -483,5 +483,8 @@ sr_log_get_syslog(void)
 API void
 sr_log_set_cb(sr_log_cb log_callback)
 {
+    /* initializes libyang logging for our purposes */
+    ly_log_options(LY_LOSTORE);
+
     sr_lcb = log_callback;
 }
