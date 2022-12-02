@@ -1525,6 +1525,65 @@ sr_shmmod_update_replay_support(sr_mod_shm_t *mod_shm, const struct ly_set *mod_
     return NULL;
 }
 
+/**
+ * @brief Copy data of a module.
+ *
+ * @param[in] ly_mod Module.
+ * @param[in] sds_plg Source startup data plugin.
+ * @param[in] rds_plg Target running data plugin.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_shmmod_copy_start2run_mod(const struct lys_module *ly_mod, const struct srplg_ds_s *sds_plg,
+        const struct srplg_ds_s *rds_plg)
+{
+    sr_error_info_t *err_info = NULL;
+    int rc = SR_ERR_OK;
+    LY_ERR lyrc;
+    struct lyd_node *s_mod_data = NULL, *r_mod_data = NULL, *mod_diff = NULL;
+
+    if (sds_plg == rds_plg) {
+        /* same plugin, we can use the copy callback */
+        rc = sds_plg->copy_cb(ly_mod, SR_DS_RUNNING, SR_DS_STARTUP);
+        goto cleanup;
+    }
+
+    /* load source startup data */
+    if ((rc = sds_plg->load_cb(ly_mod, SR_DS_STARTUP, NULL, 0, &s_mod_data))) {
+        goto cleanup;
+    }
+
+    /* load current runing data */
+    if ((rc = rds_plg->load_cb(ly_mod, SR_DS_RUNNING, NULL, 0, &r_mod_data))) {
+        goto cleanup;
+    }
+
+    /* get data diff */
+    lyrc = lyd_diff_siblings(r_mod_data, s_mod_data, LYD_DIFF_DEFAULTS, &mod_diff);
+    if (lyrc) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(r_mod_data), NULL);
+        rc = SR_ERR_LY;
+        goto cleanup;
+    } else if (!mod_diff) {
+        /* no data changes */
+        goto cleanup;
+    }
+
+    /* write data to running */
+    if ((rc = rds_plg->store_cb(ly_mod, SR_DS_RUNNING, mod_diff, s_mod_data))) {
+        goto cleanup;
+    }
+
+cleanup:
+    lyd_free_siblings(s_mod_data);
+    lyd_free_siblings(r_mod_data);
+    lyd_free_siblings(mod_diff);
+    if (rc) {
+        sr_errinfo_new(&err_info, rc, "Copying module \"%s\" data from <startup> to <running> failed.", ly_mod->name);
+    }
+    return err_info;
+}
+
 sr_error_info_t *
 sr_shmmod_copy_startup_to_running(sr_conn_ctx_t *conn)
 {
@@ -1532,10 +1591,7 @@ sr_shmmod_copy_startup_to_running(sr_conn_ctx_t *conn)
     sr_mod_shm_t *mod_shm;
     sr_mod_t *smod;
     const struct lys_module *ly_mod;
-    struct lyd_node *mod_data;
-    const struct srplg_ds_s *ds_plg[SR_DS_COUNT] = {0};
-    sr_datastore_t ds;
-    int rc;
+    const struct srplg_ds_s *sds_plg, *rds_plg;
     uint32_t i;
 
     mod_shm = SR_CONN_MOD_SHM(conn);
@@ -1553,28 +1609,15 @@ sr_shmmod_copy_startup_to_running(sr_conn_ctx_t *conn)
         }
 
         /* find DS plugins */
-        for (ds = SR_DS_STARTUP; ds < SR_DS_COUNT; ++ds) {
-            if ((err_info = sr_ds_plugin_find(((char *)mod_shm) + smod->plugins[ds], conn, &ds_plg[ds]))) {
-                return err_info;
-            }
+        if ((err_info = sr_ds_plugin_find(((char *)mod_shm) + smod->plugins[SR_DS_STARTUP], conn, &sds_plg))) {
+            return err_info;
+        }
+        if ((err_info = sr_ds_plugin_find(((char *)mod_shm) + smod->plugins[SR_DS_RUNNING], conn, &rds_plg))) {
+            return err_info;
         }
 
         /* copy startup to running */
-        if (ds_plg[SR_DS_STARTUP] == ds_plg[SR_DS_RUNNING]) {
-            /* same plugin, we can use copy callback */
-            rc = ds_plg[SR_DS_STARTUP]->copy_cb(ly_mod, SR_DS_RUNNING, SR_DS_STARTUP);
-        } else {
-            /* load source data */
-            rc = ds_plg[SR_DS_STARTUP]->load_cb(ly_mod, SR_DS_STARTUP, NULL, 0, &mod_data);
-
-            if (!rc) {
-                /* write data to target */
-                rc = ds_plg[SR_DS_RUNNING]->store_cb(ly_mod, SR_DS_RUNNING, mod_data);
-                lyd_free_siblings(mod_data);
-            }
-        }
-        if (rc) {
-            sr_errinfo_new(&err_info, rc, "Copying module \"%s\" data from <startup> to <running> failed.", ly_mod->name);
+        if ((err_info = sr_shmmod_copy_start2run_mod(ly_mod, sds_plg, rds_plg))) {
             return err_info;
         }
     }

@@ -40,7 +40,7 @@ extern "C" {
 /**
  * @brief Datastore plugin API version
  */
-#define SRPLG_DS_API_VERSION 5
+#define SRPLG_DS_API_VERSION 6
 
 /**
  * @brief Initialize data of a new module.
@@ -69,17 +69,19 @@ typedef int (*srds_init)(const struct lys_module *mod, sr_datastore_t ds, const 
 typedef int (*srds_destroy)(const struct lys_module *mod, sr_datastore_t ds);
 
 /**
- * @brief Store data for a module.
+ * @brief Store data for a module. Either a diff can be applied manually or full new data tree stored.
  *
- * if @p ds is ::SR_DS_OPERATIONAL, it is actually an edit data tree that is being stored.
+ * If @p ds is ::SR_DS_OPERATIONAL, it is actually an edit data tree that is being stored.
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
- * @param[in] mod_data Module data to store.
+ * @param[in] mod_diff Diff of currently stored module data and the new @p mod_data.
+ * @param[in] mod_data New module data tree to store.
  * @return ::SR_ERR_OK on success;
  * @return Sysrepo error value on error.
  */
-typedef int (*srds_store)(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *mod_data);
+typedef int (*srds_store)(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *mod_diff,
+        const struct lyd_node *mod_data);
 
 /**
  * @brief Recover module data when a crash occurred while they were being written.
@@ -156,20 +158,6 @@ typedef void (*srds_running_flush_cached)(sr_cid_t cid);
  * @return Sysrepo error value on error.
  */
 typedef int (*srds_copy)(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datastore_t src_ds);
-
-/**
- * @brief Check whether module data differ after some context update. If so, they are stored.
- *
- * @param[in] old_mod Specific module of @p old_mod_data.
- * @param[in] old_mod_data Pre-update module data.
- * @param[in] new_mod Specific module of @p new_mod_data.
- * @param[in] new_mod_data Post-update module data.
- * @param[out] differ Whether @p old_mod_data and @p new_mod_data differ and need to be replaced.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
- */
-typedef int (*srds_update_differ)(const struct lys_module *old_mod, const struct lyd_node *old_mod_data,
-        const struct lys_module *new_mod, const struct lyd_node *new_mod_data, int *differ);
 
 /**
  * @brief Learn whether the candidate datastore was modified and is different from running.
@@ -257,7 +245,6 @@ struct srplg_ds_s {
     srds_running_update_cached running_update_cached_cb;    /**< callback for updating cached running module data */
     srds_running_flush_cached running_flush_cached_cb;  /**< callback for flushin cached running module data */
     srds_copy copy_cb;              /**< callback for copying stored module data from one datastore to another */
-    srds_update_differ update_differ_cb;            /**< callback for checking for data difference after an update */
     srds_candidate_modified candidate_modified_cb;  /**< callback for checking whether candidate was modified */
     srds_candidate_reset candidate_reset_cb;        /**< callback for resetting candidate to running */
     srds_access_set access_set_cb;  /**< callback for setting access rights for module data */

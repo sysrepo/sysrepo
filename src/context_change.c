@@ -655,12 +655,12 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *new_ly_mod, *old_ly_mod;
-    struct lyd_node *new_mod_data = NULL, *old_mod_data = NULL;
+    struct lyd_node *new_mod_data = NULL, *old_mod_data = NULL, *mod_diff = NULL;
     const struct srplg_ds_s *ds_plg;
     struct ly_set *set;
     char *xpath;
     uint32_t idx = 0;
-    int rc, differ;
+    int rc;
     LY_ERR lyrc;
 
     while ((new_ly_mod = ly_ctx_get_module_iter(new_ctx, &idx))) {
@@ -702,15 +702,16 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
             break;
         }
 
-        /* check whether the data differs and needs to be stored */
-        if ((rc = ds_plg->update_differ_cb(old_ly_mod, old_mod_data, new_ly_mod, new_mod_data, &differ))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "update_differ", ds_plg->name, new_ly_mod->name);
+        /* generate a diff of old and new data */
+        lyd_free_siblings(mod_diff);
+        if (lyd_diff_siblings(old_mod_data, new_mod_data, LYD_DIFF_DEFAULTS, &mod_diff)) {
+            sr_errinfo_new_ly(&err_info, LYD_CTX(sr_mods), NULL);
             break;
         }
 
-        if (differ) {
-            /* store data */
-            if ((rc = ds_plg->store_cb(new_ly_mod, ds, new_mod_data))) {
+        if (mod_diff) {
+            /* store new data */
+            if ((rc = ds_plg->store_cb(new_ly_mod, ds, mod_diff, new_mod_data))) {
                 SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", ds_plg->name, new_ly_mod->name);
                 break;
             }
@@ -719,6 +720,7 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
 
     lyd_free_siblings(new_mod_data);
     lyd_free_siblings(old_mod_data);
+    lyd_free_siblings(mod_diff);
     return err_info;
 }
 

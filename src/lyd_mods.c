@@ -912,7 +912,7 @@ sr_lydmods_print(struct lyd_node **sr_mods)
     }
 
     /* store the data using the internal JSON plugin */
-    if ((rc = srpds_json.store_cb(sr_ly_mod, SR_DS_STARTUP, *sr_mods))) {
+    if ((rc = srpds_json.store_cb(sr_ly_mod, SR_DS_STARTUP, NULL, *sr_mods))) {
         sr_errinfo_new(&err_info, rc, "Storing \"sysrepo\" data failed.");
         return err_info;
     }

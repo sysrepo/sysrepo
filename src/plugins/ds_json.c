@@ -300,7 +300,8 @@ cleanup:
 }
 
 static int
-srpds_json_store(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *mod_data)
+srpds_json_store(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *UNUSED(mod_diff),
+        const struct lyd_node *mod_data)
 {
     mode_t perm = 0;
     int rc;
@@ -864,27 +865,6 @@ cleanup:
 }
 
 static int
-srpds_json_update_differ(const struct lys_module *UNUSED(old_mod), const struct lyd_node *old_mod_data,
-        const struct lys_module *new_mod, const struct lyd_node *new_mod_data, int *differ)
-{
-    LY_ERR lyrc;
-
-    /* check for data difference */
-    lyrc = lyd_compare_siblings(new_mod_data, old_mod_data, LYD_COMPARE_FULL_RECURSION | LYD_COMPARE_DEFAULTS);
-    if (lyrc && (lyrc != LY_ENOT)) {
-        srpjson_log_err_ly(srpds_name, new_mod->ctx);
-        return SR_ERR_LY;
-    }
-
-    if (lyrc == LY_ENOT) {
-        *differ = 1;
-    } else {
-        *differ = 0;
-    }
-    return SR_ERR_OK;
-}
-
-static int
 srpds_json_candidate_modified(const struct lys_module *mod, int *modified)
 {
     int rc = SR_ERR_OK;
@@ -1155,7 +1135,6 @@ const struct srplg_ds_s srpds_json = {
     .running_flush_cached_cb = NULL,
 #endif
     .copy_cb = srpds_json_copy,
-    .update_differ_cb = srpds_json_update_differ,
     .candidate_modified_cb = srpds_json_candidate_modified,
     .candidate_reset_cb = srpds_json_candidate_reset,
     .access_set_cb = srpds_json_access_set,

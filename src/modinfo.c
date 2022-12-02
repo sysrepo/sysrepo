@@ -3122,7 +3122,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
-    struct lyd_node *mod_data;
+    struct lyd_node *mod_diff, *mod_data;
     uint32_t i;
     int rc;
 
@@ -3131,16 +3131,18 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_CHANGED) {
-            /* separate data of this module */
+            /* separate diff and data of this module */
+            mod_diff = sr_module_data_unlink(&mod_info->diff, mod->ly_mod);
             mod_data = sr_module_data_unlink(&mod_info->data, mod->ly_mod);
 
             /* store the new data */
-            if ((rc = mod->ds_plg[mod_info->ds]->store_cb(mod->ly_mod, mod_info->ds, mod_data))) {
+            if ((rc = mod->ds_plg[mod_info->ds]->store_cb(mod->ly_mod, mod_info->ds, mod_diff, mod_data))) {
                 SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", mod->ds_plg[mod_info->ds]->name, mod->ly_mod->name);
                 goto cleanup;
             }
 
             /* connect them back */
+            lyd_insert_sibling(mod_info->diff, mod_diff, &mod_info->diff);
             if (mod_data) {
                 lyd_insert_sibling(mod_info->data, mod_data, &mod_info->data);
             }
