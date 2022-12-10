@@ -33,10 +33,8 @@
 #include <sys/uio.h>
 #include <unistd.h>
 
-#include <libyang/libyang.h>
-
+#include "common.h"
 #include "config.h"
-#include "sysrepo.h"
 
 sr_error_info_t *
 srpjson_writev(const char *plg_name, int fd, struct iovec *iov, int iovcnt)
@@ -220,6 +218,9 @@ srpjson_open(const char *plg_name, const char *path, int flags, mode_t mode)
             return -1;
         }
 
+        if (!sr_is_prod_env()) {
+            return fd;
+        }
         /* set correct permissions if not already */
         if (((st.st_mode & 00777) != mode) && (fchmod(fd, mode) == -1)) {
             close(fd);
@@ -447,7 +448,7 @@ srpjson_chmodown(const char *plg_name, const char *path, const char *owner, cons
     }
 
     /* we are going to change the group */
-    if (group && (err_info = srpjson_get_grp(plg_name, &gid, (char **)&group))) {
+    if (sr_is_prod_env() && group && (err_info = srpjson_get_grp(plg_name, &gid, (char **)&group))) {
         return err_info;
     }
 
@@ -528,13 +529,11 @@ srpjson_mkpath(const char *plg_name, char *path, mode_t mode)
     const char *group = SR_GROUP;
     gid_t gid;
 
-    assert(path[0] == '/');
-
     /* apply umask on mode */
     mode &= ~SR_UMASK;
 
     /* get GID of the group */
-    if (strlen(SR_GROUP) && (err_info = srpjson_get_grp(plg_name, &gid, (char **)&group))) {
+    if (sr_is_prod_env() && strlen(SR_GROUP) && (err_info = srpjson_get_grp(plg_name, &gid, (char **)&group))) {
         goto cleanup;
     }
 
@@ -554,7 +553,7 @@ srpjson_mkpath(const char *plg_name, char *path, mode_t mode)
                         path, strerror(errno));
                 goto cleanup;
             }
-            if (strlen(SR_GROUP) && (chown(path, -1, gid) == -1)) {
+            if (sr_is_prod_env() && strlen(SR_GROUP) && (chown(path, -1, gid) == -1)) {
                 srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_SYS, "Changing group of directory \"%s\" failed (%s).",
                         path, strerror(errno));
                 goto cleanup;
@@ -578,7 +577,7 @@ srpjson_mkpath(const char *plg_name, char *path, mode_t mode)
                     path, strerror(errno));
             goto cleanup;
         }
-        if (strlen(SR_GROUP) && (chown(path, -1, gid) == -1)) {
+        if (sr_is_prod_env() && strlen(SR_GROUP) && (chown(path, -1, gid) == -1)) {
             srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_SYS, "Changing group of directory \"%s\" failed (%s).",
                     path, strerror(errno));
             goto cleanup;

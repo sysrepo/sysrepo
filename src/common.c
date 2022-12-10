@@ -774,7 +774,7 @@ sr_store_module_yang(const struct lys_module *ly_mod, const struct lysp_submodul
     }
 
     /* update group */
-    if (strlen(SR_GROUP)) {
+    if (sr_is_prod_env() && strlen(SR_GROUP)) {
         if ((err_info = sr_get_gid(SR_GROUP, &gid))) {
             goto cleanup;
         }
@@ -3471,7 +3471,7 @@ sr_open(const char *path, int flags, mode_t mode)
         }
 
         /* set correct group if needed */
-        if (strlen(SR_GROUP)) {
+        if (sr_is_prod_env() && strlen(SR_GROUP)) {
             /* get GID */
             if ((err_info = sr_get_gid(SR_GROUP, &gid))) {
                 sr_errinfo_free(&err_info);
@@ -3498,13 +3498,11 @@ sr_mkpath(char *path, mode_t mode)
     int r;
     gid_t gid;
 
-    assert(path[0] == '/');
-
     /* apply umask on mode */
     mode &= ~SR_UMASK;
 
     /* get GID of the group */
-    if (strlen(SR_GROUP) && (err_info = sr_get_gid(SR_GROUP, &gid))) {
+    if (sr_is_prod_env() && strlen(SR_GROUP) && (err_info = sr_get_gid(SR_GROUP, &gid))) {
         goto cleanup;
     }
 
@@ -3522,7 +3520,7 @@ sr_mkpath(char *path, mode_t mode)
                 SR_ERRINFO_SYSERRNO(&err_info, "chmod");
                 goto cleanup;
             }
-            if (strlen(SR_GROUP) && (chown(path, -1, gid) == -1)) {
+            if (sr_is_prod_env() && strlen(SR_GROUP) && (chown(path, -1, gid) == -1)) {
                 SR_ERRINFO_SYSERRNO(&err_info, "chown");
                 goto cleanup;
             }
@@ -3542,7 +3540,7 @@ sr_mkpath(char *path, mode_t mode)
             SR_ERRINFO_SYSERRNO(&err_info, "chmod");
             goto cleanup;
         }
-        if (strlen(SR_GROUP) && (chown(path, -1, gid) == -1)) {
+        if (sr_is_prod_env() && strlen(SR_GROUP) && (chown(path, -1, gid) == -1)) {
             SR_ERRINFO_SYSERRNO(&err_info, "chown");
             goto cleanup;
         }
@@ -5610,4 +5608,15 @@ cleanup:
     sr_munlock(&conn->oper_push_mod_lock);
 
     return err_info;
+}
+
+int
+sr_is_prod_env(void)
+{
+    static int sr_prod_env = -1;
+
+    if (sr_prod_env < 0) {
+        sr_prod_env = !getenv("SR_ENV_RUN_TESTS");
+    }
+    return sr_prod_env;
 }

@@ -1372,4 +1372,10 @@ sr_error_info_t *sr_conn_push_oper_mod_add(sr_conn_ctx_t *conn, const char *mod_
  */
 sr_error_info_t *sr_conn_push_oper_mod_del(sr_conn_ctx_t *conn, const char *mod_name);
 
+/**
+ * @brief Check if we are running in a development/test env - we may not be able to chown/chmod.
+ * @return 1 if SR_ENV_RUN_TESTS is set in the env, 0 otherwise.
+ */
+int sr_is_prod_env(void);
+
 #endif /* _COMMON_H */
