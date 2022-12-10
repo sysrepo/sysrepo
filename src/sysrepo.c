@@ -6599,7 +6599,7 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
 
     conn = session->conn;
     /* only these options are relevant outside this function and will be stored */
-    sub_opts = opts & SR_SUBSCR_OPER_MERGE;
+    sub_opts = opts & (SR_SUBSCR_OPER_MERGE | SR_SUBSCR_OPER_ONCE);
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {

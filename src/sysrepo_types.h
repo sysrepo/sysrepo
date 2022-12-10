@@ -432,7 +432,14 @@ typedef enum {
      * @brief On every data retrieval additionally compute diff with the previous data and report the changes to any
      * operational data module change subscriptions. Accepted only for ::sr_oper_poll_subscribe().
      */
-    SR_SUBSCR_OPER_POLL_DIFF = 0x80
+    SR_SUBSCR_OPER_POLL_DIFF = 0x80,
+
+    /**
+     * @brief For a given "get" operation on the operational datastore, this option ensures that a subscriber
+     * is called no more than once, regardless of whether the subscription path is a child of a list.
+     * When this option is specified, a parent node is not passed to the subscriber's callback.
+     */
+    SR_SUBSCR_OPER_ONCE = 0x100
 
 } sr_subscr_flag_t;
 

@@ -1057,10 +1057,10 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
             }
 
             /* nested data */
-            for (j = 0; j < set->count; ++j) {
+            if (xpath_subs[0].opts & SR_SUBSCR_OPER_ONCE) {
                 /* get oper data from the client */
                 if ((err_info = sr_xpath_oper_data_get(mod, sub_xpath, request_xpaths, req_xpath_count, orig_name,
-                        orig_data, shm_subs, i, set->dnodes[j], timeout_ms, conn, &oper_data))) {
+                        orig_data, shm_subs, i, NULL, timeout_ms, conn, &oper_data))) {
                     goto cleanup_opergetsub_ext_unlock;
                 }
 
@@ -1069,6 +1069,21 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
                     lyd_free_all(oper_data);
                     sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx, NULL);
                     goto cleanup_opergetsub_ext_unlock;
+                }
+            } else {
+                for (j = 0; j < set->count; ++j) {
+                    /* get oper data from the client */
+                    if ((err_info = sr_xpath_oper_data_get(mod, sub_xpath, request_xpaths, req_xpath_count, orig_name,
+                            orig_data, shm_subs, i, set->dnodes[j], timeout_ms, conn, &oper_data))) {
+                        goto cleanup_opergetsub_ext_unlock;
+                    }
+
+                    /* merge into one data tree */
+                    if (lyd_merge_siblings(data, oper_data, LYD_MERGE_DESTRUCT)) {
+                        lyd_free_all(oper_data);
+                        sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx, NULL);
+                        goto cleanup_opergetsub_ext_unlock;
+                    }
                 }
             }
 
