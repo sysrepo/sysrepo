@@ -77,6 +77,7 @@ if(ENABLE_TESTS)
             "MALLOC_CHECK_=3"
             "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"
             "SYSREPO_SHM_PREFIX=_tests_sr_${test_name}"
+            "SR_ENV_RUN_TESTS=1"
         )
 
         # avoid loading installed plugins by sysrepo-plugind
@@ -118,6 +119,7 @@ if(ENABLE_VALGRIND_TESTS)
         set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
             "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"
             "SYSREPO_SHM_PREFIX=_tests_sr_${test_name}"
+            "SR_ENV_RUN_TESTS=1"
         )
 
         # avoid loading installed plugins by sysrepo-plugind
