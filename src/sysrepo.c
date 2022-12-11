@@ -3904,7 +3904,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     }
 
     if (!mod_info->diff) {
-        SR_LOG_INF("No \"%s\" datastore changes to apply.", sr_ds2str(mod_info->ds));
+        SR_LOG_DBG("No \"%s\" datastore changes to apply.", sr_ds2str(mod_info->ds));
         goto store;
     }
 
@@ -3968,7 +3968,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
 
     if (!mod_info->diff) {
         /* diff can disappear after validation */
-        SR_LOG_INF("No \"%s\" datastore changes to apply.", sr_ds2str(mod_info->ds));
+        SR_LOG_DBG("No \"%s\" datastore changes to apply after validation.", sr_ds2str(mod_info->ds));
         goto store;
     }
 
@@ -3990,7 +3990,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     }
 
     if (!mod_info->diff) {
-        SR_LOG_INF("No \"%s\" datastore changes to apply.", sr_ds2str(mod_info->ds));
+        SR_LOG_DBG("No \"%s\" datastore changes to apply after update.", sr_ds2str(mod_info->ds));
         goto store;
     }
 
@@ -4110,6 +4110,7 @@ cleanup:
         sr_errinfo_merge(&err_info, cb_err_info);
         sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, "User callback failed.");
     }
+    SR_LOG_DBG("Applying \"%s\" datastore changes  %s.", sr_ds2str(session->ds), err_info ? "failed" : "success");
     return sr_api_ret(session, err_info);
 }
 
