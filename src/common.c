@@ -2044,9 +2044,54 @@ sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *d
     return err_info;
 }
 
+/**
+ * @brief Ext data callback for a connection context to provide schema mount data.
+ */
+static LY_ERR
+sr_ly_ext_data_clb(const struct lysc_ext_instance *ext, void *user_data, void **ext_data, ly_bool *ext_data_free)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_conn_ctx_t *conn = user_data;
+    struct lyd_node *ext_data_dup;
+    LY_ERR r;
+
+    if (strcmp(ext->def->module->name, "ietf-yang-schema-mount") || strcmp(ext->def->name, "mount-point")) {
+        return LY_EINVAL;
+    }
+
+    /* LY EXT DATA READ LOCK */
+    if ((err_info = sr_rwlock(&conn->ly_ext_data_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+            __func__, NULL, NULL))) {
+        sr_errinfo_free(&err_info);
+        return LY_ESYS;
+    }
+
+    if (!conn->ly_ext_data) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND,
+                "No \"ietf-yang-schema-mount\" operational data set needed for parsing mounted data.");
+        sr_errinfo_free(&err_info);
+        r = LY_ENOTFOUND;
+    } else {
+        /* create LY ext data duplicate */
+        r = lyd_dup_siblings(conn->ly_ext_data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &ext_data_dup);
+    }
+
+    /* LY EXT DATA UNLOCK */
+    sr_rwunlock(&conn->ly_ext_data_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+    if (r) {
+        return r;
+    }
+
+    /* return a duplicate of ext data */
+    *ext_data = ext_data_dup;
+    *ext_data_free = 1;
+
+    return LY_SUCCESS;
+}
+
 sr_error_info_t *
-sr_ly_ctx_init(sr_conn_options_t opts, ly_ext_data_clb ext_cb, void *ext_cb_data, const char *ext_searchdir,
-        struct ly_ctx **ly_ctx)
+sr_ly_ctx_init(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx)
 {
     sr_error_info_t *err_info = NULL;
     char *yang_dir;
@@ -2055,7 +2100,7 @@ sr_ly_ctx_init(sr_conn_options_t opts, ly_ext_data_clb ext_cb, void *ext_cb_data
 
     /* context options */
     ctx_opts = LY_CTX_NO_YANGLIBRARY | LY_CTX_DISABLE_SEARCHDIR_CWD | LY_CTX_REF_IMPLEMENTED | LY_CTX_EXPLICIT_COMPILE;
-    if (opts & SR_CONN_CTX_SET_PRIV_PARSED) {
+    if (conn && (conn->opts & SR_CONN_CTX_SET_PRIV_PARSED)) {
         ctx_opts |= LY_CTX_SET_PRIV_PARSED;
     }
 
@@ -2070,12 +2115,6 @@ sr_ly_ctx_init(sr_conn_options_t opts, ly_ext_data_clb ext_cb, void *ext_cb_data
         goto cleanup;
     }
 
-    /* set the callback and searchdir */
-    ly_ctx_set_ext_data_clb(*ly_ctx, ext_cb, ext_cb_data);
-    if (ext_searchdir) {
-        ly_ctx_set_searchdir(*ly_ctx, ext_searchdir);
-    }
-
     /* load just the internal module */
     if (lys_parse_mem(*ly_ctx, sysrepo_yang, LYS_IN_YANG, NULL)) {
         sr_errinfo_new_ly(&err_info, *ly_ctx, NULL);
@@ -2086,6 +2125,11 @@ sr_ly_ctx_init(sr_conn_options_t opts, ly_ext_data_clb ext_cb, void *ext_cb_data
     if (ly_ctx_compile(*ly_ctx)) {
         sr_errinfo_new_ly(&err_info, *ly_ctx, NULL);
         goto cleanup;
+    }
+
+    if (conn) {
+        /* set the ext callback */
+        ly_ctx_set_ext_data_clb(*ly_ctx, sr_ly_ext_data_clb, conn);
     }
 
 cleanup:
@@ -4612,29 +4656,74 @@ sr_conn_is_alive(sr_cid_t cid)
     return alive;
 }
 
-void
-sr_conn_running_cache_flush(sr_conn_ctx_t *conn)
+sr_error_info_t *
+sr_conn_ext_data_update(sr_conn_ctx_t *conn)
 {
-    uint32_t i;
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+    struct sr_mod_info_s mi;
+    struct lyd_node *yl_data = NULL, *new_ext_data = NULL;
+    uint32_t content_id;
 
-    if (!(conn->opts & SR_CONN_CACHE_RUNNING)) {
-        return;
+    /* init mod info for cleanup */
+    SR_MODINFO_INIT(mi, conn, SR_DS_OPERATIONAL, SR_DS_RUNNING);
+
+    /* manually get ietf-yang-schema-mount operational data but avoid recursive call of this function */
+    ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, "ietf-yang-schema-mount");
+    assert(ly_mod);
+    if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 1, &mi))) {
+        goto cleanup;
     }
-    /* context will be destroyed, free the cache */
+    if ((err_info = sr_modinfo_consolidate(&mi, 0, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_READ, 0, NULL, NULL,
+            SR_OPER_CB_TIMEOUT, 0, 0))) {
+        goto cleanup;
+    }
 
-    /* internal DS plugins */
-    for (i = 0; i < sr_ds_plugin_int_count(); ++i) {
-        if (sr_internal_ds_plugins[i]->running_flush_cached_cb) {
-            sr_internal_ds_plugins[i]->running_flush_cached_cb(conn->cid);
+    if (mi.data && !(mi.data->flags & LYD_DEFAULT)) {
+        /* validate them for the parent reference prefixes to be resolved */
+        if (lyd_validate_module(&mi.data, mi.data->schema->module, 0, NULL)) {
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx, NULL);
+            goto cleanup;
         }
+
+        /* get ietf-yang-library operational data */
+        content_id = SR_CONN_MAIN_SHM(conn)->content_id;
+        if (ly_ctx_get_yanglib_data(conn->ly_ctx, &yl_data, "%" PRIu32, content_id)) {
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx, NULL);
+            goto cleanup;
+        }
+
+        /* merge the data into one tree */
+        if (lyd_insert_sibling(yl_data, mi.data, &new_ext_data)) {
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx, NULL);
+            goto cleanup;
+        }
+        yl_data = NULL;
+        mi.data = NULL;
     }
 
-    /* dynamic DS plugins */
-    for (i = 0; i < conn->ds_handle_count; ++i) {
-        if (conn->ds_handles[i].plugin->running_flush_cached_cb) {
-            conn->ds_handles[i].plugin->running_flush_cached_cb(conn->cid);
-        }
+    /* LY EXT DATA WRITE LOCK */
+    if ((err_info = sr_rwlock(&conn->ly_ext_data_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+            __func__, NULL, NULL))) {
+        goto cleanup;
     }
+
+    /* update LY ext data */
+    lyd_free_siblings(conn->ly_ext_data);
+    conn->ly_ext_data = new_ext_data;
+    new_ext_data = NULL;
+
+    /* LY EXT DATA UNLOCK */
+    sr_rwunlock(&conn->ly_ext_data_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+
+cleanup:
+    /* MODULES UNLOCK */
+    sr_shmmod_modinfo_unlock(&mi);
+
+    sr_modinfo_erase(&mi);
+    lyd_free_siblings(yl_data);
+    lyd_free_siblings(new_ext_data);
+    return err_info;
 }
 
 sr_error_info_t *
@@ -4730,7 +4819,69 @@ sr_conn_oper_cache_del(sr_conn_ctx_t *conn, uint32_t sub_id)
     sr_rwunlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 }
 
-void
+/**
+ * @brief Replace cached schema-mount operational data (LY ext data) of a connection.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] new_ext_data New LY ext data to use, may be NULL.
+ */
+static void
+sr_conn_ext_data_replace(sr_conn_ctx_t *conn, struct lyd_node *new_ext_data)
+{
+    sr_error_info_t *err_info = NULL;
+
+    /* expected to be called with CTX LOCK so we can access the data */
+
+    /* LY EXT DATA WRITE LOCK */
+    err_info = sr_rwlock(&conn->ly_ext_data_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
+            NULL, NULL);
+
+    /* replace LY ext data */
+    lyd_free_siblings(conn->ly_ext_data);
+    conn->ly_ext_data = new_ext_data;
+
+    if (!err_info) {
+        /* LY EXT DATA UNLOCK */
+        sr_rwunlock(&conn->ly_ext_data_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    }
+}
+
+/**
+ * @brief Flush all cached running data of a connection in all its DS plugins.
+ *
+ * @param[in] conn Connection to use.
+ */
+static void
+sr_conn_running_cache_flush(sr_conn_ctx_t *conn)
+{
+    uint32_t i;
+
+    if (!(conn->opts & SR_CONN_CACHE_RUNNING)) {
+        return;
+    }
+    /* context will be destroyed, free the cache */
+
+    /* internal DS plugins */
+    for (i = 0; i < sr_ds_plugin_int_count(); ++i) {
+        if (sr_internal_ds_plugins[i]->running_flush_cached_cb) {
+            sr_internal_ds_plugins[i]->running_flush_cached_cb(conn->cid);
+        }
+    }
+
+    /* dynamic DS plugins */
+    for (i = 0; i < conn->ds_handle_count; ++i) {
+        if (conn->ds_handles[i].plugin->running_flush_cached_cb) {
+            conn->ds_handles[i].plugin->running_flush_cached_cb(conn->cid);
+        }
+    }
+}
+
+/**
+ * @brief Flush all cached oper data of a connection.
+ *
+ * @param[in] conn Connection to use.
+ */
+static void
 sr_conn_oper_cache_flush(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
@@ -4765,6 +4916,48 @@ sr_conn_oper_cache_flush(sr_conn_ctx_t *conn)
 
     /* CONN OPER CACHE UNLOCK */
     sr_rwunlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+}
+
+void
+sr_conn_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx **new_ctx, struct ly_ctx **old_ctx)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *new_ext_data = NULL;
+
+    assert(new_ctx || !old_ctx);
+
+    if (new_ctx && conn->ly_ext_data) {
+        /* copy the ext data into the new context */
+        if (lyd_dup_siblings_to_ctx(conn->ly_ext_data, *new_ctx, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS,
+                &new_ext_data)) {
+            sr_errinfo_new_ly(&err_info, *new_ctx, NULL);
+            sr_errinfo_free(&err_info);
+        }
+    }
+
+    /* replace/flush caches before context destroy */
+    sr_conn_ext_data_replace(conn, new_ext_data);
+    sr_conn_running_cache_flush(conn);
+    sr_conn_oper_cache_flush(conn);
+
+    /* update content ID */
+    conn->content_id = SR_CONN_MAIN_SHM(conn)->content_id;
+
+    /* old ctx */
+    if (old_ctx) {
+        *old_ctx = conn->ly_ctx;
+    } else {
+        ly_ctx_destroy(conn->ly_ctx);
+    }
+
+    if (!new_ctx) {
+        /* just free the old context and data in it */
+        return;
+    }
+
+    /* new ctx */
+    conn->ly_ctx = *new_ctx;
+    *new_ctx = NULL;
 }
 
 void *

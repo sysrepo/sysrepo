@@ -158,8 +158,7 @@ extern const sr_module_ds_t sr_default_module_ds;
 #define SR_SHM_INITIALIZER {.fd = -1, .size = 0, .addr = NULL}
 
 /** initializer of mod_info structure */
-#define SR_MODINFO_INIT(mi, c, d, d2) (mi).ds = (d); (mi).ds2 = (d2); (mi).diff = NULL; (mi).data = NULL; \
-        (mi).data_cached = 0; (mi).conn = (c); (mi).mods = NULL; (mi).mod_count = 0
+#define SR_MODINFO_INIT(mi, c, d, d2) memset(&(mi), 0, sizeof (mi)); (mi).ds = (d); (mi).ds2 = (d2); (mi).conn = (c)
 
 /**
  * @brief Internal information about a module to be installed.
@@ -540,15 +539,11 @@ sr_error_info_t *sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *p
 /**
  * @brief Create a new libyang context.
  *
- * @param[in] opts Connection options.
- * @param[in] ext_cb LY ext data cb to use.
- * @param[in] ext_cb_data LY ext data cb data to use.
- * @param[in] ext_searchdir LY ext data searchdir.
+ * @param[in] conn Connection to read opts from and use for the LY ext data callback.
  * @param[out] ly_ctx libyang context.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_ly_ctx_init(sr_conn_options_t opts, ly_ext_data_clb ext_cb, void *ext_cb_data,
-        const char *ext_searchdir, struct ly_ctx **ly_ctx);
+sr_error_info_t *sr_ly_ctx_init(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx);
 
 /**
  * @brief Initialize all dynamic DS handles.
@@ -1129,11 +1124,12 @@ void sr_rwunlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_ci
 int sr_conn_is_alive(sr_cid_t cid);
 
 /**
- * @brief Flush all cached running data of a connection in all its DS plugins.
+ * @brief Update cached schema-mount operational data (LY ext data) of a connection.
  *
  * @param[in] conn Connection to use.
+ * @return err_info, NULL on success.
  */
-void sr_conn_running_cache_flush(sr_conn_ctx_t *conn);
+sr_error_info_t *sr_conn_ext_data_update(sr_conn_ctx_t *conn);
 
 /**
  * @brief Add a new oper cache entry into a connection.
@@ -1155,11 +1151,13 @@ sr_error_info_t *sr_conn_oper_cache_add(sr_conn_ctx_t *conn, uint32_t sub_id, co
 void sr_conn_oper_cache_del(sr_conn_ctx_t *conn, uint32_t sub_id);
 
 /**
- * @brief Flush all cached oper data of a connection.
+ * @brief Switch the context of a connection while correctly handling all connection data in the context.
  *
  * @param[in] conn Connection to use.
+ * @param[in,out] new_ctx New context to use, set to NULL after use. If not set, flush all data and destroy old context.
+ * @param[out] old_ctx Optional old context, destroyed if not set.
  */
-void sr_conn_oper_cache_flush(sr_conn_ctx_t *conn);
+void sr_conn_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx **new_ctx, struct ly_ctx **old_ctx);
 
 /**
  * @brief Wrapper to realloc() that frees memory on failure.

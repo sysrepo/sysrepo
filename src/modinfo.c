@@ -45,6 +45,9 @@
 #include "shm_sub.h"
 #include "utils/nacm.h"
 
+static sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig_name,
+        const void *orig_data, uint32_t timeout_ms, sr_get_oper_flag_t get_oper_opts);
+
 sr_error_info_t *
 sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int dup_xpath, int no_dup_check,
         struct sr_mod_info_s *mod_info)
@@ -261,11 +264,9 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
     LY_ARRAY_COUNT_TYPE u;
     struct lysc_ext_instance *sm_ext = NULL;
     struct ly_set *set = NULL;
-    struct lyd_node *ext_data = NULL;
     struct lyd_node_term *term;
     struct lyd_value_xpath10 *xp_val;
     const struct lys_module *mod;
-    ly_bool ext_data_free = 0;
     struct ly_err_item *err;
     uint32_t i;
 
@@ -278,12 +279,6 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
         }
     }
     if (!sm_ext) {
-        goto cleanup;
-    }
-
-    /* check there is a callback defined */
-    if (!mod_info->conn->ext_cb) {
-        sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Missing extension callback for parsing mounted data.");
         goto cleanup;
     }
 
@@ -303,9 +298,8 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
      * 2) collect all data in parent-references of the mount-point
      */
 
-    /* get ext data */
-    if (mod_info->conn->ext_cb(sm_ext, mod_info->conn->ext_cb_data, (void **)&ext_data, &ext_data_free)) {
-        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
+    if (!mod_info->conn->ly_ext_data) {
+        /* no parent references for sure */
         goto cleanup;
     }
 
@@ -316,7 +310,7 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
         SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }
-    if (lyd_find_xpath(ext_data, path, &set)) {
+    if (lyd_find_xpath(mod_info->conn->ly_ext_data, path, &set)) {
         sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
         goto cleanup;
     }
@@ -351,9 +345,6 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
     }
 
 cleanup:
-    if (ext_data_free) {
-        lyd_free_siblings(ext_data);
-    }
     free(path);
     free(str_val);
     ly_set_free(set, NULL);
@@ -2176,7 +2167,18 @@ sr_modinfo_qsort_cmp(const void *ptr1, const void *ptr2)
     return 0;
 }
 
-sr_error_info_t *
+/**
+ * @brief Load data for modules in mod info.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] cache Whether it makes sense to use cached data, if available.
+ * @param[in] orig_name Event originator name.
+ * @param[in] orig_data Event originator data.
+ * @param[in] timeout_ms Operational callback timeout in milliseconds.
+ * @param[in] get_oper_opts Get oper data options, ignored if getting only ::SR_DS_OPERATIONAL data (edit).
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
 sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig_name, const void *orig_data,
         uint32_t timeout_ms, sr_get_oper_flag_t get_oper_opts)
 {
@@ -2321,7 +2323,7 @@ sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mod
     assert(mi_opts & (SR_MI_PERM_NO | SR_MI_PERM_READ | SR_MI_PERM_WRITE));
 
     if (!mod_info->mod_count) {
-        return NULL;
+        goto cleanup;
     }
 
     if (mi_opts & SR_MI_NEW_DEPS) {
@@ -2338,7 +2340,7 @@ sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mod
 
             /* consolidate without inverse dependencies to not lose track of new modules */
             if ((err_info = sr_modinfo_mod_new(mod_info->mods[i].ly_mod, mod_type, mod_info))) {
-                return err_info;
+                goto cleanup;
             }
         }
     }
@@ -2352,7 +2354,7 @@ sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mod
         for (i = 0; i < mod_info->mod_count; ++i) {
             if (mod_info->mods[i].state & mod_type) {
                 if ((err_info = sr_modinfo_mod_inv_deps(mod_info->mods[i].shm_mod, mod_info))) {
-                    return err_info;
+                    goto cleanup;
                 }
             }
         }
@@ -2361,7 +2363,7 @@ sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mod
     if (!(mi_opts & SR_MI_PERM_NO)) {
         /* check permissions */
         if ((err_info = sr_modinfo_perm_check(mod_info, mi_opts & SR_MI_PERM_WRITE ? 1 : 0, mi_opts & SR_MI_PERM_STRICT))) {
-            return err_info;
+            goto cleanup;
         }
     }
 
@@ -2375,12 +2377,12 @@ sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mod
         if (mod_lock == SR_LOCK_READ) {
             /* MODULES READ LOCK */
             if ((err_info = sr_shmmod_modinfo_rdlock(mod_info, mi_opts & SR_MI_LOCK_UPGRADEABLE, sid, ds_lock_timeout_ms))) {
-                return err_info;
+                goto cleanup;
             }
         } else {
             /* MODULES WRITE LOCK */
             if ((err_info = sr_shmmod_modinfo_wrlock(mod_info, sid, ds_lock_timeout_ms))) {
-                return err_info;
+                goto cleanup;
             }
         }
     }
@@ -2389,11 +2391,12 @@ sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mod
         /* load all modules data */
         if ((err_info = sr_modinfo_data_load(mod_info, mi_opts & SR_MI_DATA_CACHE, orig_name, orig_data, timeout_ms,
                 get_oper_opts))) {
-            return err_info;
+            goto cleanup;
         }
     }
 
-    return NULL;
+cleanup:
+    return err_info;
 }
 
 sr_error_info_t *
@@ -3210,6 +3213,7 @@ sr_modinfo_erase(struct sr_mod_info_s *mod_info)
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
+        assert(!(mod->state & (MOD_INFO_RLOCK | MOD_INFO_RLOCK_UPGR | MOD_INFO_WLOCK | MOD_INFO_RLOCK2)));
 
         if (mod->state & MOD_INFO_XPATH_DYN) {
             for (j = 0; j < mod->xpath_count; ++j) {

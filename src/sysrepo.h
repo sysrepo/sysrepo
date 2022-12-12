@@ -192,27 +192,6 @@ void sr_session_release_context(sr_session_ctx_t *session);
 uint32_t sr_get_content_id(sr_conn_ctx_t *conn);
 
 /**
- * @brief Set libyang extension data callback for the connection. Even if the context is recompiled,
- * the callback will be used.
- *
- * @note If using schema-mount, to specify directory with the mounted YANG modules, use ::sr_set_ext_data_searchdir().
- *
- * @param[in] conn Connection to use.
- * @param[in] cb Libyang ext data callback.
- * @param[in] user_data User data passed to @p cb.
- */
-void sr_set_ext_data_cb(sr_conn_ctx_t *conn, ly_ext_data_clb cb, void *user_data);
-
-/**
- * @brief Set libyang search directory for YANG modules needed for parsing extension instance data (such as schema-mount).
- *
- * @param[in] conn Connection to use.
- * @param[in] searchdir Search directory for YANG modules.
- * @return Error code (::SR_ERR_OK on success).
- */
-int sr_set_ext_data_searchdir(sr_conn_ctx_t *conn, const char *searchdir);
-
-/**
  * @brief Get loaded plugins of a connection.
  *
  * @param[in] conn Connection to use.

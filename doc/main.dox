@@ -42,7 +42,7 @@ intermediary process (daemon). If there are several such daemons, they can be wr
 - almost __no CPU time wasted__ in the library (no active waiting or periodic checks)
 - fully customizable __event handling__ from periodic checks or using `poll(2)`/`select(2)` to automatic thread
   handlers creation (more in [threading](@ref threads))
-- __access control__ relies strictly on the file system (more in [access control](@ref access_control))
+- own __access control__ abstraction is implemented (more in [access control](@ref access_control))
 - [libyang](https://github.com/CESNET/libyang) is a critical part and is often used directly in API so one should
   be familiar with it before working with Sysrepo
 - most API calls working with data __have 2 variants__, one using _libyang_ structures, another accepting
@@ -185,6 +185,13 @@ Permissions are checked for the session user that is inherited from the process 
 [Changing it](@ref ::sr_session_set_user) is possible if the process owner is `root` but should be done only if Sysrepo
 session is created by an application that delegates requests from other sources than the application itself
 (NETCONF, for example, more in [sessions](@ref conn_sess)).
+
+# Schema Mount
+@anchor schema_mount
+
+Schema-mount extension ([RFC 8528](https://www.rfc-editor.org/rfc/rfc8528.html)) is supported but requires
+operational data of `ietf-yang-schema-mount:schema-mounts` to be provided. If you do, using any of the [methods](@ref oper_data),
+it will automatically work. Note that these data are cached in the connection and are updated on __new session creation__.
 
 # Path and XPath
 @anchor paths

@@ -6430,100 +6430,6 @@ test_change_enabled(void **state)
 }
 
 /* TEST */
-static LY_ERR
-ly_ext_data_cb(const struct lysc_ext_instance *ext, void *user_data, void **ext_data, ly_bool *ext_data_free)
-{
-    struct state *st = (struct state *)user_data;
-    LY_ERR r;
-    const struct ly_ctx *ly_ctx;
-    struct lyd_node *data = NULL;
-    const char *xml = "<yang-library xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-library\" "
-            "    xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">"
-            "  <module-set>"
-            "    <name>test-set</name>"
-            "    <module>"
-            "      <name>ietf-datastores</name>"
-            "      <revision>2018-02-14</revision>"
-            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-datastores</namespace>"
-            "    </module>"
-            "    <module>"
-            "      <name>ietf-yang-library</name>"
-            "      <revision>2019-01-04</revision>"
-            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-yang-library</namespace>"
-            "    </module>"
-            "    <module>"
-            "      <name>ietf-yang-schema-mount</name>"
-            "      <revision>2019-01-14</revision>"
-            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-yang-schema-mount</namespace>"
-            "    </module>"
-            "    <module>"
-            "      <name>ietf-interfaces</name>"
-            "      <revision>2014-05-08</revision>"
-            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-interfaces</namespace>"
-            "    </module>"
-            "    <module>"
-            "      <name>iana-if-type</name>"
-            "      <revision>2014-05-08</revision>"
-            "      <namespace>urn:ietf:params:xml:ns:yang:iana-if-type</namespace>"
-            "    </module>"
-            "    <module>"
-            "      <name>ietf-netconf</name>"
-            "      <revision>2013-09-29</revision>"
-            "      <namespace>urn:ietf:params:xml:ns:netconf:base:1.0</namespace>"
-            "    </module>"
-            "    <module>"
-            "      <name>ietf-origin</name>"
-            "      <revision>2018-02-14</revision>"
-            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-origin</namespace>"
-            "    </module>"
-            "    <import-only-module>"
-            "      <name>ietf-yang-types</name>"
-            "      <revision>2013-07-15</revision>"
-            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-yang-types</namespace>"
-            "    </import-only-module>"
-            "    <import-only-module>"
-            "      <name>ietf-netconf-acm</name>"
-            "      <revision>2018-02-14</revision>"
-            "      <namespace>urn:ietf:params:xml:ns:yang:ietf-netconf-acm</namespace>"
-            "    </import-only-module>"
-            "  </module-set>"
-            "  <schema>"
-            "    <name>test-schema</name>"
-            "    <module-set>test-set</module-set>"
-            "  </schema>"
-            "  <datastore>"
-            "    <name>ds:running</name>"
-            "    <schema>test-schema</schema>"
-            "  </datastore>"
-            "  <datastore>"
-            "    <name>ds:operational</name>"
-            "    <schema>test-schema</schema>"
-            "  </datastore>"
-            "  <content-id>1</content-id>"
-            "</yang-library>"
-            "<modules-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-library\">"
-            "  <module-set-id>1</module-set-id>"
-            "</modules-state>"
-            "<schema-mounts xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-schema-mount\">"
-            "  <mount-point>"
-            "    <module>sm</module>"
-            "    <label>root</label>"
-            "    <shared-schema/>"
-            "  </mount-point>"
-            "</schema-mounts>";
-
-    (void)ext;
-
-    ly_ctx = sr_acquire_context(st->conn);
-    r = lyd_parse_data_mem(ly_ctx, xml, LYD_XML, LYD_PARSE_STRICT, LYD_VALIDATE_PRESENT, &data);
-    sr_release_context(st->conn);
-    assert_int_equal(r, LY_SUCCESS);
-
-    *ext_data = data;
-    *ext_data_free = 1;
-    return LY_SUCCESS;
-}
-
 static int
 module_change_schema_mount_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data)
@@ -6637,15 +6543,27 @@ apply_change_schema_mount_thread(void *arg)
     sr_session_ctx_t *sess;
     int ret;
 
-    /* set cb and create a session */
-    sr_set_ext_data_cb(st->conn, ly_ext_data_cb, st);
-    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    /* create a session and set ext data */
+    ret = sr_session_start(st->conn, SR_DS_OPERATIONAL, &sess);
     assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess,
+            "/ietf-yang-schema-mount:schema-mounts/mount-point[module='sm'][label='root']/shared-schema", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_session_stop(sess);
+
+    /* signal that the subscription can be created */
+    pthread_barrier_wait(&st->barrier);
 
     /* wait for subscription */
     pthread_barrier_wait(&st->barrier);
 
-    /* create some data */
+    /* create a new session to update LY ext data and get the schema-mount data */
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create some running data */
     ret = sr_set_item_str(sess, "/sm:root/ietf-interfaces:interfaces/interface[name='bu']/type",
             "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -6680,6 +6598,9 @@ subscribe_change_schema_mount_thread(void *arg)
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
+    /* wait with creating the subscription */
+    pthread_barrier_wait(&st->barrier);
+
     /* subscribe */
     ret = sr_module_change_subscribe(sess, "sm", NULL, module_change_schema_mount_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
@@ -6712,7 +6633,7 @@ test_change_schema_mount(void **state)
 }
 
 /* TEST */
-#define APPLY_ITERATIONS 100
+#define APPLY_ITERATIONS 50
 
 static void *
 apply_when1_thread(void *arg)

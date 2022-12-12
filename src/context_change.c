@@ -4,8 +4,8 @@
  * @brief Sysrepo context change routines
  *
  * @copyright
- * Copyright (c) 2021 Deutsche Telekom AG.
- * Copyright (c) 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2022 Deutsche Telekom AG.
+ * Copyright (c) 2021 - 2022 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -63,7 +63,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
     }
     remap_mode = SR_LOCK_READ;
 
-    /* check whether the context is current and does not need to be udpated */
+    /* check whether the context is current and does not need to be updated */
     if (main_shm->content_id != conn->content_id) {
         /* MOD REMAP UNLOCK */
         sr_rwunlock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func);
@@ -76,17 +76,13 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
         }
         remap_mode = SR_LOCK_WRITE;
 
-        /* context will be destroyed, free the caches */
-        sr_conn_running_cache_flush(conn);
-        sr_conn_oper_cache_flush(conn);
-
         /* remap mod SHM */
         if ((err_info = sr_shm_remap(&conn->mod_shm, 0))) {
             goto cleanup_unlock;
         }
 
         /* context was updated, create a new one with the current modules */
-        if ((err_info = sr_ly_ctx_init(conn->opts, conn->ext_cb, conn->ext_cb_data, conn->ext_searchdir, &new_ctx))) {
+        if ((err_info = sr_ly_ctx_init(conn, &new_ctx))) {
             goto cleanup_unlock;
         }
         if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), new_ctx, NULL))) {
@@ -105,10 +101,7 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
         }
 
         /* use the new context */
-        ly_ctx_destroy(conn->ly_ctx);
-        conn->ly_ctx = new_ctx;
-        new_ctx = NULL;
-        conn->content_id = main_shm->content_id;
+        sr_conn_ctx_switch(conn, &new_ctx, NULL);
 
         /* MOD REMAP DOWNGRADE */
         if ((err_info = sr_rwrelock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func,

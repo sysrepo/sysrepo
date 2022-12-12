@@ -93,8 +93,6 @@ help_print(void)
             "  -e, --defaults <wd-mode>     Print the default values, which are trimmed by default (\"report-all\",\n"
             "                               \"report-all-tagged\", \"trim\", \"explicit\", \"implicit-tagged\").\n"
             "                               Accepted by export, edit, rpc op.\n"
-            "  -c, --ext-data <path>        Path to a data file with data for libyang ext data callback. They are\n"
-            "                               required for supporting some extensions such as schema-mount.\n"
             "  -v, --verbosity <level>      Change verbosity to a level (none, error, warning, info, debug) or\n"
             "                               number (0, 1, 2, 3, 4).\n"
             "\n");
@@ -652,27 +650,6 @@ arg_get_ds(const char *optarg, sr_datastore_t *ds)
     return 0;
 }
 
-static LY_ERR
-ext_data_clb(const struct lysc_ext_instance *ext, void *user_data, void **ext_data, ly_bool *ext_data_free)
-{
-    const char *path = user_data;
-    struct lyd_node *data;
-    LY_ERR r;
-
-    if (strcmp(ext->def->module->name, "ietf-yang-schema-mount") || strcmp(ext->def->name, "mount-point")) {
-        return LY_EINVAL;
-    }
-
-    /* parse the data file */
-    if ((r = lyd_parse_data_path(ext->def->module->ctx, path, 0, LYD_PARSE_STRICT, LYD_VALIDATE_PRESENT, &data))) {
-        return r;
-    }
-
-    *ext_data = data;
-    *ext_data_free = 1;
-    return LY_SUCCESS;
-}
-
 int
 main(int argc, char **argv)
 {
@@ -680,7 +657,7 @@ main(int argc, char **argv)
     sr_session_ctx_t *sess = NULL;
     sr_datastore_t ds = SR_DS_RUNNING, source_ds;
     LYD_FORMAT format = LYD_UNKNOWN;
-    const char *module_name = NULL, *editor = NULL, *file_path = NULL, *xpath = NULL, *ext_data_path = NULL, *op_str;
+    const char *module_name = NULL, *editor = NULL, *file_path = NULL, *xpath = NULL, *op_str;
     char *ptr;
     int r, rc = EXIT_FAILURE, opt, operation = 0, lock = 0, not_strict = 0, opaq = 0, timeout = 0, wd_opt = 0;
     uint32_t max_depth = 0;
@@ -703,7 +680,6 @@ main(int argc, char **argv)
         {"depth",           required_argument, NULL, 'p'},
         {"timeout",         required_argument, NULL, 't'},
         {"defaults",        required_argument, NULL, 'e'},
-        {"ext-data",        required_argument, NULL, 'c'},
         {"verbosity",       required_argument, NULL, 'v'},
         {NULL,              0,                 NULL, 0},
     };
@@ -715,7 +691,7 @@ main(int argc, char **argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:d:m:x:f:lnop:t:e:c:v:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:d:m:x:f:lnop:t:e:v:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -878,9 +854,6 @@ main(int argc, char **argv)
                 goto cleanup;
             }
             break;
-        case 'c':
-            ext_data_path = optarg;
-            break;
         case 'v':
             if (!strcmp(optarg, "none")) {
                 log_level = SR_LL_NONE;
@@ -941,11 +914,6 @@ main(int argc, char **argv)
     if ((r = sr_connect(0, &conn)) != SR_ERR_OK) {
         error_print(r, "Failed to connect");
         goto cleanup;
-    }
-
-    /* set the ext data callback */
-    if (ext_data_path) {
-        sr_set_ext_data_cb(conn, ext_data_clb, (void *)ext_data_path);
     }
 
     /* create session */
