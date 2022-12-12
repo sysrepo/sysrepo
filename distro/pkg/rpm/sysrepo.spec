@@ -103,6 +103,8 @@ rm -rf /dev/shm/srsub_*
 %doc README.md
 %{_sysusersdir}/sysrepo.conf
 %{_libdir}/libsysrepo.so.7*
+%{_datadir}/yang/modules/sysrepo/*.yang
+%dir %{_datadir}/yang/modules/sysrepo/
 %attr(0770,root,sysrepo) %{_sysconfdir}/sysrepo
 
 %files devel

@@ -100,6 +100,7 @@ endif()
 option(ENABLE_EXAMPLES "Build examples." ON)
 option(ENABLE_COVERAGE "Build code coverage report from tests" OFF)
 option(INSTALL_SYSCTL_CONF "Install sysctl conf file to allow shared access to SHM files." OFF)
+set(YANG_MODULE_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/yang/modules/sysrepo" CACHE STRING "Directory where to copy the YANG modules to")
 
 # ietf-yang-library revision
 set(YANGLIB_REVISION "2019-01-04" CACHE STRING
@@ -410,6 +411,8 @@ configure_file("${PROJECT_SOURCE_DIR}/src/executables/bin_common.h.in" "${PROJEC
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/sysrepo-plugind.service.in" "${PROJECT_BINARY_DIR}/sysrepo-plugind.service" @ONLY)
 
 # installation
+install(DIRECTORY "${PROJECT_SOURCE_DIR}/modules/" DESTINATION ${YANG_MODULE_DIR} FILES_MATCHING PATTERN "*.yang")
+
 install(TARGETS sysrepo DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(FILES ${PROJECT_SOURCE_DIR}/src/sysrepo.h ${PROJECT_SOURCE_DIR}/src/sysrepo_types.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
