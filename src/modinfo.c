@@ -2376,12 +2376,13 @@ sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mod
     if (mod_lock) {
         if (mod_lock == SR_LOCK_READ) {
             /* MODULES READ LOCK */
-            if ((err_info = sr_shmmod_modinfo_rdlock(mod_info, mi_opts & SR_MI_LOCK_UPGRADEABLE, sid, ds_lock_timeout_ms))) {
+            if ((err_info = sr_shmmod_modinfo_rdlock(mod_info, mi_opts & SR_MI_LOCK_UPGRADEABLE, sid, timeout_ms,
+                    ds_lock_timeout_ms))) {
                 goto cleanup;
             }
         } else {
             /* MODULES WRITE LOCK */
-            if ((err_info = sr_shmmod_modinfo_wrlock(mod_info, sid, ds_lock_timeout_ms))) {
+            if ((err_info = sr_shmmod_modinfo_wrlock(mod_info, sid, timeout_ms, ds_lock_timeout_ms))) {
                 goto cleanup;
             }
         }

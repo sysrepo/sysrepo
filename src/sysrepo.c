@@ -3551,7 +3551,7 @@ store:
     }
 
     /* MODULES WRITE LOCK (upgrade) */
-    if ((err_info = sr_shmmod_modinfo_rdlock_upgrade(mod_info, sid, 0))) {
+    if ((err_info = sr_shmmod_modinfo_rdlock_upgrade(mod_info, sid, timeout_ms, timeout_ms))) {
         goto cleanup;
     }
 
@@ -3561,7 +3561,7 @@ store:
     }
 
     /* MODULES READ LOCK (downgrade) */
-    if ((err_info = sr_shmmod_modinfo_wrlock_downgrade(mod_info, sid))) {
+    if ((err_info = sr_shmmod_modinfo_wrlock_downgrade(mod_info, sid, timeout_ms))) {
         goto cleanup;
     }
 
@@ -3865,7 +3865,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
 
     if ((src_datastore == SR_DS_CANDIDATE) && (session->ds == SR_DS_RUNNING)) {
         /* MODULES WRITE LOCK */
-        if ((err_info = sr_shmmod_modinfo_wrlock(&mod_info, session->sid, 0))) {
+        if ((err_info = sr_shmmod_modinfo_wrlock(&mod_info, session->sid, timeout_ms, timeout_ms))) {
             goto cleanup;
         }
 
@@ -5888,7 +5888,7 @@ _sr_rpc_ext_send_tree(sr_session_ctx_t *session, const struct lyd_node *ext_pare
     /* use the same mod info, just get READ lock again */
 
     /* MODULES READ LOCK */
-    if ((err_info = sr_shmmod_modinfo_rdlock(mod_info, 0, session->sid, SR_OPER_CB_TIMEOUT))) {
+    if ((err_info = sr_shmmod_modinfo_rdlock(mod_info, 0, session->sid, timeout_ms, SR_OPER_CB_TIMEOUT))) {
         return err_info;
     }
 
