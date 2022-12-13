@@ -193,12 +193,12 @@ sr_cond_wait_(sr_cond_t *cond, pthread_mutex_t *mutex, struct timespec *timeout_
         cond->futex = FUTEX_VAL_IDLE;
     }
 
-    /* error check */
-    if ((rf == -1) && (errno != EAGAIN)) {
-        return errno;
+    if (!rf || (errno == EAGAIN)) {
+        /* futex changed value before being waited on */
+        return 0;
     }
 
-    return 0;
+    return errno;
 }
 
 int
