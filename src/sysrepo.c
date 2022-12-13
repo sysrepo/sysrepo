@@ -5225,8 +5225,6 @@ sr_change_ly2sr(const struct lyd_node *node, const char *value_str, const char *
         free(sr_val->xpath);
         sr_val->xpath = lyd_path(node, LYD_PATH_STD_NO_LAST_PRED, NULL, 0);
         SR_CHECK_MEM_GOTO(!sr_val->xpath, err_info, cleanup);
-    } else if (node->schema->nodetype & LYS_ANYDATA) {
-        /* TODO */
     }
 
 cleanup:

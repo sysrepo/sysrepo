@@ -1462,6 +1462,7 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid)
     for (i = 0; i < SR_CONN_MOD_SHM(conn)->mod_count; ++i) {
         smod = SR_SHM_MOD_IDX(conn->mod_shm.addr, i);
         ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, conn->mod_shm.addr + smod->name);
+        assert(ly_mod);
         for (ds = 0; ds < SR_DS_COUNT; ++ds) {
             shm_lock = &smod->data_lock_info[ds];
 

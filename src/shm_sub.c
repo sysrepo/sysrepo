@@ -500,11 +500,7 @@ event_handled:
         }
     } else {
         /* we expect no event */
-        switch (sub_shm->event) {
-        case SR_SUB_EV_NONE:
-            /* fine */
-            break;
-        default:
+        if (sub_shm->event != SR_SUB_EV_NONE) {
             sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unexpected sub SHM event \"%s\" (expected \"%s\").",
                     sr_ev2str(sub_shm->event), sr_ev2str(expected_ev));
             return err_info;
@@ -675,11 +671,7 @@ sr_shmsub_notify_all_wait_wr(struct sr_shmsub_oper_get_sub_s *notify_subs, uint3
             }
         } else {
             /* we expect no event */
-            switch (notify_subs[i].sub_shm->event) {
-            case SR_SUB_EV_NONE:
-                /* fine */
-                break;
-            default:
+            if (notify_subs[i].sub_shm->event != SR_SUB_EV_NONE) {
                 sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unexpected sub SHM event \"%s\" (expected \"%s\").",
                         sr_ev2str(notify_subs[i].sub_shm->event), sr_ev2str(expected_ev));
                 goto cleanup;
@@ -3197,20 +3189,16 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, sr_error_t err_code, sr_shm_
 
     event = sub_shm->event;
 
-    switch (event) {
-    case SR_SUB_EV_OPER:
-        /* notifier waits for these events */
-        if (err_code) {
-            sub_shm->event = SR_SUB_EV_ERROR;
-        } else {
-            sub_shm->event = SR_SUB_EV_SUCCESS;
-        }
-        break;
-    default:
-        /* unreachable */
+    if (event != SR_SUB_EV_OPER) {
         SR_ERRINFO_INT(&err_info);
-        sr_errinfo_free(&err_info);
-        break;
+        return err_info;
+    }
+
+    /* notifier waits for these events */
+    if (err_code) {
+        sub_shm->event = SR_SUB_EV_ERROR;
+    } else {
+        sub_shm->event = SR_SUB_EV_SUCCESS;
     }
 
     if (data && data_len) {

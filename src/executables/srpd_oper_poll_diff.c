@@ -186,6 +186,7 @@ srpd_oper_poll_diff_change_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id)
     while (!(r = sr_get_change_tree_next(session, iter, &oper, &node, NULL, NULL, NULL))) {
         if (!strcmp(node->schema->name, "poll-diff-subscription")) {
             node = lyd_child(node);
+            assert(node);
             module_name = lyd_get_value(node);
 
             node = node->next;
