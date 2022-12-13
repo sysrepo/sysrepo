@@ -277,7 +277,7 @@ srpds_json_destroy(const struct lys_module *mod, sr_datastore_t ds)
     }
     if ((unlink(path) == -1) && ((errno != ENOENT) || (ds == SR_DS_STARTUP))) {
         /* only startup is persistent and must always exist */
-        SRPLG_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
+        SRPLG_LOG_WRN(srpds_name, "Failed to unlink \"%s\" (%s).", path, strerror(errno));
     }
 
     if (ds == SR_DS_STARTUP) {
@@ -291,7 +291,7 @@ srpds_json_destroy(const struct lys_module *mod, sr_datastore_t ds)
         goto cleanup;
     }
     if (unlink(path) == -1) {
-        SRPLG_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
+        SRPLG_LOG_WRN(srpds_name, "Failed to unlink \"%s\" (%s).", path, strerror(errno));
     }
 
 cleanup:
@@ -362,7 +362,7 @@ srpds_json_recover(const struct lys_module *mod, sr_datastore_t ds)
 
     if (ds == SR_DS_STARTUP) {
         /* there must be a backup file for startup data */
-        SRPLG_LOG_WRN("Recovering \"%s\" startup data from a backup.", mod->name);
+        SRPLG_LOG_WRN(srpds_name, "Recovering \"%s\" startup data from a backup.", mod->name);
 
         /* generate the backup path */
         if (asprintf(&bck_path, "%s%s", path, SRPJSON_FILE_BACKUP_SUFFIX) == -1) {
@@ -382,7 +382,7 @@ srpds_json_recover(const struct lys_module *mod, sr_datastore_t ds)
         }
     } else if (ds == SR_DS_RUNNING) {
         /* perform startup->running data file copy */
-        SRPLG_LOG_WRN("Recovering \"%s\" running data from the startup data.", mod->name);
+        SRPLG_LOG_WRN(srpds_name, "Recovering \"%s\" running data from the startup data.", mod->name);
 
         /* generate the startup data file path */
         if (srpjson_get_path(srpds_name, mod->name, SR_DS_STARTUP, &bck_path)) {
@@ -395,7 +395,8 @@ srpds_json_recover(const struct lys_module *mod, sr_datastore_t ds)
         }
     } else {
         /* there is not much to do but remove the corrupted file */
-        SRPLG_LOG_WRN("Recovering \"%s\" %s data by removing the corrupted data file.", mod->name, srpjson_ds2str(ds));
+        SRPLG_LOG_WRN(srpds_name, "Recovering \"%s\" %s data by removing the corrupted data file.", mod->name,
+                srpjson_ds2str(ds));
 
         if (unlink(path) == -1) {
             SRPLG_LOG_ERR(srpds_name, "Unlinking \"%s\" failed (%s).", path, strerror(errno));
@@ -898,7 +899,7 @@ srpds_json_candidate_reset(const struct lys_module *mod)
     }
 
     if ((unlink(path) == -1) && (errno != ENOENT)) {
-        SRPLG_LOG_WRN("Failed to unlink \"%s\" (%s).", path, strerror(errno));
+        SRPLG_LOG_WRN(srpds_name, "Failed to unlink \"%s\" (%s).", path, strerror(errno));
     }
     free(path);
 
