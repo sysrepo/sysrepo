@@ -2977,7 +2977,7 @@ sr_edit_add_update_op(struct lyd_node *node, const char *def_operation)
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sibling, *parent;
     enum edit_op op = 0, def_op;
-    int own_oper, next_iter_oper, is_sup;
+    int own_oper = 0, next_iter_oper, is_sup;
 
     next_iter_oper = 0;
     for (parent = lyd_parent(node); parent; node = parent, parent = lyd_parent(parent)) {
