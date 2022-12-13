@@ -959,7 +959,7 @@ sr_session_dup_error(sr_session_ctx_t *src_session, sr_session_ctx_t *trg_sessio
     }
 
     /* message */
-    ret = sr_session_set_error_message(trg_session, src_session->err_info->err[0].message);
+    ret = sr_session_set_error_message(trg_session, "%s", src_session->err_info->err[0].message);
     if (ret) {
         return ret;
     }

@@ -174,10 +174,10 @@ srpjson_log_err_ly(const char *plg_name, const struct ly_ctx *ly_ctx)
 
     do {
         if (e->level == LY_LLWRN) {
-            SRPLG_LOG_WRN(plg_name, e->msg);
+            SRPLG_LOG_WRN(plg_name, "%s", e->msg);
         } else {
             assert(e->level == LY_LLERR);
-            SRPLG_LOG_ERR(plg_name, e->msg);
+            SRPLG_LOG_ERR(plg_name, "%s", e->msg);
         }
 
         e = e->next;
