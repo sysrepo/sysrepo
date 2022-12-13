@@ -1197,7 +1197,7 @@ sr_error_info_t *
 sr_lydmods_change_upd_modules(const struct ly_ctx *ly_ctx, const struct ly_set *upd_mod_set, struct lyd_node **sr_mods)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *upd_mod;
+    const struct lys_module *upd_mod = NULL;
     struct lyd_node *sr_mod, *sr_rev;
     char *path = NULL;
     uint32_t i;

@@ -5469,8 +5469,8 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     const struct lys_module *ly_mod;
     uint32_t sub_id;
     sr_conn_ctx_t *conn;
-    sr_rpc_t *shm_rpc;
-    sr_mod_t *shm_mod;
+    sr_rpc_t *shm_rpc = NULL;
+    sr_mod_t *shm_mod = NULL;
     int is_ext;
 
     SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !xpath || (!callback && !tree_callback) || !subscription,

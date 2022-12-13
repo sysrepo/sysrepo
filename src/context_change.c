@@ -347,7 +347,7 @@ sr_error_info_t *
 sr_lycc_check_upd_modules(sr_conn_ctx_t *conn, const struct ly_set *old_mod_set, const struct ly_set *upd_mod_set)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *upd_mod, *old_mod;
+    const struct lys_module *upd_mod = NULL, *old_mod;
     uint32_t i;
 
     for (i = 0; i < upd_mod_set->count; ++i) {
