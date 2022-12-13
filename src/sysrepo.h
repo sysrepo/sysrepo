@@ -1217,7 +1217,7 @@ int sr_subscription_resume(sr_subscription_ctx_t *subscription, uint32_t sub_id)
  * until ::sr_unsubscribe() is called, even if there are no actual subscriptions left in it. This
  * is useful for preventing dead locks if using the subscription in a custom event loop.
  *
- * @note On error the function should be retried and must eventually succeed.
+ * @note On ::SR_ERR_TIME_OUT the function should be retried and must eventually succeed.
  *
  * @param[in] subscription Subscription context to use.
  * @param[in] sub_id Subscription ID of the subscription to unsubscribe, 0 for all the subscriptions.
@@ -1245,7 +1245,7 @@ int sr_subscription_thread_resume(sr_subscription_ctx_t *subscription);
 /**
  * @brief Unsubscribe all the subscriptions in a subscription structure and free it.
  *
- * @note On error the function should be retried and must eventually succeed.
+ * @note On ::SR_ERR_TIME_OUT the function should be retried and must eventually succeed.
  *
  * @param[in] subscription Subscription context to free.
  * @return Error code (::SR_ERR_OK on success).
