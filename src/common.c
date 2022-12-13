@@ -6868,6 +6868,21 @@ sr_lyd_print_lyb(const struct lyd_node *data, char **str, uint32_t *len)
     return NULL;
 }
 
+const char *
+sr_userord_anchor_meta_name(const struct lysc_node *schema)
+{
+    assert(lysc_is_userordered(schema));
+
+    if (lysc_is_dup_inst_list(schema)) {
+        return "yang:position";
+    } else if (schema->nodetype == LYS_LEAFLIST) {
+        return "yang:value";
+    } else {
+        assert(schema->nodetype == LYS_LIST);
+        return "yang:key";
+    }
+}
+
 struct lyd_node *
 sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod)
 {

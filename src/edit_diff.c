@@ -621,18 +621,8 @@ sr_diff_add_meta(struct lyd_node *diff_node, const char *meta_val, const char *p
     case EDIT_CREATE:
         if (lysc_is_userordered(diff_node->schema)) {
             /* add info about inserted place as a metadata (meta_val can be NULL, inserted on the first place) */
-            if (lysc_is_dup_inst_list(diff_node->schema)) {
-                if (lyd_new_meta(NULL, diff_node, NULL, "yang:position", meta_val, 0, NULL)) {
-                    goto ly_error;
-                }
-            } else if (diff_node->schema->nodetype == LYS_LIST) {
-                if (lyd_new_meta(NULL, diff_node, NULL, "yang:key", meta_val, 0, NULL)) {
-                    goto ly_error;
-                }
-            } else {
-                if (lyd_new_meta(NULL, diff_node, NULL, "yang:value", meta_val, 0, NULL)) {
-                    goto ly_error;
-                }
+            if (lyd_new_meta(NULL, diff_node, NULL, sr_userord_anchor_meta_name(diff_node->schema), meta_val, 0, NULL)) {
+                goto ly_error;
             }
         }
         break;

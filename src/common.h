@@ -1533,6 +1533,14 @@ sr_error_info_t *sr_ly_find_last_parent(struct lyd_node **parent, int nodetype);
 sr_error_info_t *sr_lyd_print_lyb(const struct lyd_node *data, char **str, uint32_t *len);
 
 /**
+ * @brief Get metadata name of the anchor value of user-ordered nodes.
+ *
+ * @param[in] schema Schema node of the anchor.
+ * @return Metadata name (with module name as prefix).
+ */
+const char *sr_userord_anchor_meta_name(const struct lysc_node *schema);
+
+/**
  * @brief Unlink data of a specific module from a data tree.
  *
  * @param[in,out] data Data tree.
