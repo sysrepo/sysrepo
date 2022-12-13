@@ -14,6 +14,9 @@
  *     https://opensource.org/licenses/BSD-3-Clause
  */
 
+#ifndef _SRPD_COMMON_H
+#define _SRPD_COMMON_H
+
 #include <sys/types.h>
 
 #include "sysrepo_types.h"
@@ -104,3 +107,5 @@ void srpd_rotation_cleanup_cb(sr_session_ctx_t *session, void *private_data);
  */
 int srpd_oper_poll_diff_init_cb(sr_session_ctx_t *session, void **private_data);
 void srpd_oper_poll_diff_cleanup_cb(sr_session_ctx_t *session, void *private_data);
+
+#endif
