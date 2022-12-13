@@ -41,7 +41,8 @@ typedef enum {
     SR_LOCK_NONE = 0,           /**< Not locked. */
     SR_LOCK_READ,               /**< Read lock. */
     SR_LOCK_READ_UPGR,          /**< Read lock with the upgrade capability. */
-    SR_LOCK_WRITE               /**< Write lock. */
+    SR_LOCK_WRITE,              /**< Write lock. */
+    SR_LOCK_WRITE_URGE          /**< Write lock with priority forcing next readers to wait. */
 } sr_lock_mode_t;
 
 /** maximum number of system-wide concurrent connection owners of a read lock */

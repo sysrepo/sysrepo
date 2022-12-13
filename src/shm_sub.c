@@ -395,9 +395,11 @@ sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int 
     /* FAKE WRITE UNLOCK */
     sub_shm->lock.writer = 0;
 
-    /* wait until this event was processed and there are no readers (just like write lock) */
+    /* wait until this event was processed and there are no readers or another writer
+     * (just like write lock except do not set a waiting writer, needs to wait for everyone else, even writers) */
     ret = 0;
-    while (!ret && (sub_shm->lock.readers[0] || (sub_shm->event && !SR_IS_NOTIFY_EVENT(sub_shm->event)))) {
+    while (!ret && (sub_shm->lock.readers[0] || /*sub_shm->lock.writer ||*/
+            (sub_shm->event && !SR_IS_NOTIFY_EVENT(sub_shm->event)))) {
         /* COND WAIT */
         ret = sr_cond_timedwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, timeout_ms);
     }

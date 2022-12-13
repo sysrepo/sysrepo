@@ -36,7 +36,7 @@
 struct state {
     sr_conn_ctx_t *conn;
     ATOMIC_T cb_called, cb_called2;
-    pthread_barrier_t barrier, barrier2;
+    pthread_barrier_t barrier, barrier2, barrier6;
 };
 
 static int
@@ -103,6 +103,7 @@ setup_f(void **state)
     ATOMIC_STORE_RELAXED(st->cb_called2, 0);
     pthread_barrier_init(&st->barrier, NULL, 2);
     pthread_barrier_init(&st->barrier2, NULL, 2);
+    pthread_barrier_init(&st->barrier6, NULL, 6);
     return 0;
 }
 
@@ -113,6 +114,7 @@ teardown_f(void **state)
 
     pthread_barrier_destroy(&st->barrier);
     pthread_barrier_destroy(&st->barrier2);
+    pthread_barrier_destroy(&st->barrier6);
     return 0;
 }
 
@@ -6633,6 +6635,135 @@ test_change_schema_mount(void **state)
 }
 
 /* TEST */
+static int
+oper_write_starve_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    int ret = SR_ERR_OK;
+
+    (void)session;
+    (void)sub_id;
+    (void)request_id;
+    (void)private_data;
+
+    assert_string_equal(module_name, "test");
+    assert_string_equal(xpath, "/test:ll1");
+    assert_string_equal(request_xpath, "/test:ll1");
+    assert_non_null(parent);
+    assert_null(*parent);
+
+    /* 1 s oper cb wait */
+    sleep(1);
+    return ret;
+}
+
+static void *
+apply_write_starve_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    int ret;
+    uint32_t i;
+    char num_str[4];
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* sync all the threads */
+    pthread_barrier_wait(&st->barrier6);
+
+    /* perform the write in a loop */
+    for (i = 0; i < 4; ++i) {
+        sprintf(num_str, "%u", i);
+        ret = sr_set_item_str(sess, "/test:test-leaf", num_str, NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1.5 s (max 1 s oper cb wait + processing) */
+        ret = sr_apply_changes(sess, 1500);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    /* cleanup */
+    ret = sr_delete_item(sess, "/test:test-leaf", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+subscribe_write_starve_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    int ret;
+    sr_subscription_ctx_t *subscr = NULL;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe */
+    ret = sr_oper_get_subscribe(sess, "test", "/test:ll1", oper_write_starve_cb, NULL, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* sync all the threads */
+    pthread_barrier_wait(&st->barrier6);
+
+    /* 1 s oper cb wait (2x read for every reader) */
+    sleep(2);
+
+    sr_unsubscribe(subscr);
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+read_write_starve_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    int ret, i;
+    sr_data_t *data;
+
+    ret = sr_session_start(st->conn, SR_DS_OPERATIONAL, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* sync all the threads */
+    pthread_barrier_wait(&st->barrier6);
+
+    /* perform 2 reads */
+    for (i = 0; i < 2; ++i) {
+        ret = sr_get_subtree(sess, "/test:ll1", 0, &data);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        sr_release_data(data);
+    }
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void
+test_write_starve(void **state)
+{
+    pthread_t tid[6];
+    int i;
+
+    pthread_create(&tid[0], NULL, apply_write_starve_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_write_starve_thread, *state);
+    pthread_create(&tid[2], NULL, read_write_starve_thread, *state);
+    pthread_create(&tid[3], NULL, read_write_starve_thread, *state);
+    pthread_create(&tid[4], NULL, read_write_starve_thread, *state);
+    pthread_create(&tid[5], NULL, read_write_starve_thread, *state);
+
+    for (i = 0; i < 6; ++i) {
+        pthread_join(tid[i], NULL);
+    }
+}
+
+/* TEST */
 #define APPLY_ITERATIONS 50
 
 static void *
@@ -6770,6 +6901,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_change_userord, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_enabled, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_schema_mount, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_write_starve, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_mult_update, setup_f, teardown_f),
     };
 

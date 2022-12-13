@@ -59,7 +59,7 @@ sr_shmext_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock
     }
 
     /* remap ext SHM */
-    if (mode == SR_LOCK_WRITE) {
+    if ((mode == SR_LOCK_WRITE) || (mode == SR_LOCK_WRITE_URGE)) {
         /* we have WRITE lock, it is safe */
         if ((err_info = sr_shm_remap(&conn->ext_shm, 0))) {
             goto error_ext_remap_unlock;
@@ -134,7 +134,7 @@ sr_shmext_conn_remap_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lo
     size_t shm_file_size;
 
     /* make ext SHM smaller if there is a memory hole at its end */
-    if ((mode == SR_LOCK_WRITE) && ext_lock) {
+    if (((mode == SR_LOCK_WRITE) || (mode == SR_LOCK_WRITE_URGE)) && ext_lock) {
         while ((iter = sr_ext_hole_next(last, SR_CONN_EXT_SHM(conn)))) {
             last = iter;
         }

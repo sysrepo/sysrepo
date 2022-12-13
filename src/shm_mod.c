@@ -1181,7 +1181,7 @@ ds_lock_retry:
         goto cleanup;
     }
 
-    if ((mode == SR_LOCK_READ_UPGR) || (mode == SR_LOCK_WRITE)) {
+    if ((mode == SR_LOCK_READ_UPGR) || (mode == SR_LOCK_WRITE) || (mode == SR_LOCK_WRITE_URGE)) {
         /* DS LOCK */
         if ((err_info = sr_mlock(&shm_lock->ds_lock, SR_DS_LOCK_MUTEX_TIMEOUT, __func__, NULL, NULL))) {
             goto revert_lock;
@@ -1205,7 +1205,7 @@ ds_lock_retry:
 revert_lock:
     if (relock) {
         /* RELOCK */
-        if ((mode == SR_LOCK_READ) || (mode == SR_LOCK_READ_UPGR)) {
+        if ((mode == SR_LOCK_READ) || (mode == SR_LOCK_READ_UPGR) || (mode == SR_LOCK_WRITE_URGE)) {
             /* is downgraded, upgrade */
             tmp_err = sr_rwrelock(&shm_lock->data_lock, timeout_ms, SR_LOCK_WRITE, cid, __func__, NULL, NULL);
         } else {
@@ -1330,9 +1330,9 @@ sr_shmmod_modinfo_wrlock(struct sr_mod_info_s *mod_info, uint32_t sid, uint32_t 
 {
     sr_error_info_t *err_info = NULL;
 
-    /* write-lock main DS */
+    /* urge write-lock main DS (to prevent starvation) */
     if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds, MOD_INFO_RLOCK | MOD_INFO_RLOCK_UPGR |
-            MOD_INFO_WLOCK, 0, SR_LOCK_WRITE, MOD_INFO_WLOCK, sid, timeout_ms, ds_timeout_ms))) {
+            MOD_INFO_WLOCK, 0, SR_LOCK_WRITE_URGE, MOD_INFO_WLOCK, sid, timeout_ms, ds_timeout_ms))) {
         return err_info;
     }
 
@@ -1363,7 +1363,7 @@ sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, uint32_t sid, u
          * causing potential dead-lock */
         if ((mod->state & (MOD_INFO_RLOCK_UPGR | MOD_INFO_REQ)) == (MOD_INFO_RLOCK_UPGR | MOD_INFO_REQ)) {
             /* MOD WRITE UPGRADE */
-            if ((err_info = sr_shmmod_lock(mod->ly_mod, mod_info->ds, shm_lock, timeout_ms, SR_LOCK_WRITE,
+            if ((err_info = sr_shmmod_lock(mod->ly_mod, mod_info->ds, shm_lock, timeout_ms, SR_LOCK_WRITE_URGE,
                     ds_timeout_ms, mod_info->conn->cid, sid, mod->ds_plg[mod_info->ds], 1))) {
                 return err_info;
             }
