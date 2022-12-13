@@ -427,7 +427,7 @@ srctl_list(sr_conn_ctx_t *conn)
 {
     int ret = SR_ERR_OK;
     const struct ly_ctx *ly_ctx;
-    char flags_str[5], perm_str[4];
+    char flags_str[5], perm_str[12];
     struct list_item *list = NULL;
     size_t i, line_len, list_count = 0;
     int max_name_len, max_owner_len, max_submod_len, max_feat_len;
