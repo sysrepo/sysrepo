@@ -49,7 +49,7 @@ jobs:
           cd libyang
           mkdir build
           cd build
-          cmake -DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP -DENABLE_BUILD_TESTS=OFF ..
+          cmake -DCMAKE_INSTALL_PREFIX=$RUNNER_TEMP -DENABLE_TESTS=OFF ..
           make -j2
           sudo make install
 
