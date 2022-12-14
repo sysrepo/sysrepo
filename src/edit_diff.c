@@ -1606,9 +1606,6 @@ sr_edit_diff_add(const struct lyd_node *node, const char *meta_val, const char *
             *diff_node = node_dup;
         }
         node_dup = NULL;
-    } else {
-        /* diff already updated and diff_node found, nothing else to do */
-        assert(op == EDIT_DELETE);
     }
 
 cleanup:
