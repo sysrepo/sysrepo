@@ -4364,7 +4364,7 @@ _sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t ci
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
-    int ret = 0;
+    int ret = 0, wr_urged;
 
     assert(mode && (timeout_ms >= 0) && cid);
 
@@ -4387,7 +4387,7 @@ _sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t ci
         return err_info;
     }
 
-    if ((mode == SR_LOCK_WRITE) || (mode == SR_LOCK_WRITE_URGE)) {
+    if (mode == SR_LOCK_WRITE) {
         /* WRITE lock */
         if (rwlock->readers[0] || rwlock->writer) {
             /* instead of waiting, try to recover the lock immediately */
@@ -4396,10 +4396,43 @@ _sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t ci
 
         /* wait until there are no readers or another writer waiting */
         ret = 0;
-        while (!ret && (rwlock->readers[0] || (rwlock->writer && (rwlock->writer != cid)))) {
-            if ((mode == SR_LOCK_WRITE_URGE) && !rwlock->writer) {
+        while (!ret && (rwlock->readers[0] || rwlock->writer)) {
+            /* COND WAIT */
+            ret = sr_cond_timedwait(&rwlock->cond, &rwlock->mutex, timeout_ms);
+        }
+        if (ret == ETIMEDOUT) {
+            /* recover the lock again, the owner may have died while processing */
+            sr_rwlock_recover(rwlock, func, cb, cb_data);
+            if (!rwlock->readers[0] && !rwlock->writer) {
+                /* recovered */
+                ret = 0;
+            }
+        }
+        if (ret) {
+            goto error_cond_unlock;
+        }
+
+        /* consistency checks */
+        assert(!rwlock->upgr && !rwlock->writer);
+
+        /* set writer flag */
+        rwlock->writer = cid;
+
+    } else if (mode == SR_LOCK_WRITE_URGE) {
+        /* WRITE URGE lock */
+        if (rwlock->readers[0] || rwlock->writer) {
+            /* instead of waiting, try to recover the lock immediately */
+            sr_rwlock_recover(rwlock, func, cb, cb_data);
+        }
+
+        /* wait until there are no readers or another writer waiting */
+        ret = 0;
+        wr_urged = 0;
+        while (!ret && (rwlock->readers[0] || (rwlock->writer && !wr_urged))) {
+            if (!rwlock->writer) {
                 /* urge waiting for write lock */
                 rwlock->writer = cid;
+                wr_urged = 1;
             }
 
             /* COND WAIT */
@@ -4408,20 +4441,27 @@ _sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t ci
         if (ret == ETIMEDOUT) {
             /* recover the lock again, the owner may have died while processing */
             sr_rwlock_recover(rwlock, func, cb, cb_data);
-            if (!rwlock->readers[0] && (!rwlock->writer || (rwlock->writer == cid))) {
+            if (!rwlock->readers[0] && (!rwlock->writer || wr_urged)) {
                 /* recovered */
                 ret = 0;
             }
         }
         if (ret) {
-            goto wr_error_cond_unlock;
+            /* restore flags */
+            if (wr_urged) {
+                rwlock->writer = 0;
+            }
+            goto error_cond_unlock;
         }
 
         /* consistency checks */
         assert(!rwlock->upgr);
 
         /* set writer flag (if not set before) */
-        rwlock->writer = cid;
+        if (!wr_urged) {
+            rwlock->writer = cid;
+        }
+
     } else if (mode == SR_LOCK_READ_UPGR) {
         /* READ UPGR lock */
         if (rwlock->readers[SR_RWLOCK_READ_LIMIT - 1] || rwlock->upgr || rwlock->writer) {
@@ -4455,6 +4495,7 @@ _sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t ci
 
         /* MUTEX UNLOCK */
         pthread_mutex_unlock(&rwlock->mutex);
+
     } else {
         /* READ lock */
         if (rwlock->readers[SR_RWLOCK_READ_LIMIT - 1] || rwlock->writer) {
@@ -4489,12 +4530,6 @@ _sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t ci
 
     return NULL;
 
-wr_error_cond_unlock:
-    /* restore flags */
-    if ((mode == SR_LOCK_WRITE_URGE) && (rwlock->writer == cid)) {
-        rwlock->writer = 0;
-    }
-
 error_cond_unlock:
     if (!has_mutex) {
         /* MUTEX UNLOCK */
@@ -4525,12 +4560,12 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
-    int ret;
+    int ret, wr_urged;
 
     assert(mode && cid);
-    assert((mode != SR_LOCK_WRITE) || (timeout_ms > 0));
+    assert(((mode != SR_LOCK_WRITE) && (mode != SR_LOCK_WRITE_URGE)) || (timeout_ms > 0));
 
-    if ((mode == SR_LOCK_WRITE) || (mode == SR_LOCK_WRITE_URGE)) {
+    if (mode == SR_LOCK_WRITE) {
         /*
          * upgrade from upgradeable read-lock to write-lock
          */
@@ -4553,11 +4588,6 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
         /* consistency checks */
         assert(rwlock->upgr == cid);
 
-        if (mode == SR_LOCK_WRITE_URGE) {
-            /* clear the flag, wanting write now */
-            rwlock->upgr = 0;
-        }
-
         if (rwlock->readers[1] || (rwlock->read_count[0] > 1) || rwlock->writer) {
             /* instead of waiting, try to recover the lock immediately */
             sr_rwlock_recover(rwlock, func, cb, cb_data);
@@ -4565,10 +4595,72 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
 
         /* wait until there are no readers except for this one */
         ret = 0;
-        while (!ret && (rwlock->readers[1] || (rwlock->read_count[0] > 1) || (rwlock->writer && (rwlock->writer != cid)))) {
-            if ((mode == SR_LOCK_WRITE_URGE) && !rwlock->writer) {
+        while (!ret && (rwlock->readers[1] || (rwlock->read_count[0] > 1) || rwlock->writer)) {
+            /* COND WAIT */
+            ret = sr_cond_timedwait(&rwlock->cond, &rwlock->mutex, timeout_ms);
+        }
+        if (ret == ETIMEDOUT) {
+            sr_rwlock_recover(rwlock, func, cb, cb_data);
+            if (!rwlock->readers[1] && (rwlock->read_count[0] == 1) && !rwlock->writer) {
+                /* recovered */
+                ret = 0;
+            }
+        }
+        if (ret) {
+            SR_ERRINFO_COND(&err_info, func, ret);
+            goto cleanup_unlock;
+        }
+
+        /* additional consistency check */
+        assert((rwlock->upgr == cid) && (rwlock->readers[0] == cid));
+
+        /* update flags */
+        sr_rwlock_reader_del(rwlock, cid);
+        rwlock->upgr = 0;
+        rwlock->writer = cid;
+
+        /* simply keep the lock */
+        return NULL;
+
+    } else if (mode == SR_LOCK_WRITE_URGE) {
+        /*
+         * upgrade from upgradeable read-lock to write-lock, urged
+         */
+        sr_time_get(&timeout_ts, timeout_ms);
+
+        /* MUTEX LOCK */
+        ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_ts);
+        if (ret == EOWNERDEAD) {
+            /* make it consistent */
+            ret = pthread_mutex_consistent(&rwlock->mutex);
+
+            /* recover the lock */
+            sr_rwlock_recover(rwlock, func, cb, cb_data);
+            SR_CHECK_INT_RET(ret, err_info);
+        } else if (ret) {
+            SR_ERRINFO_LOCK(&err_info, func, ret);
+            return err_info;
+        }
+
+        /* consistency checks */
+        assert(rwlock->upgr == cid);
+
+        /* clear the flag, wanting write now */
+        rwlock->upgr = 0;
+
+        if (rwlock->readers[1] || (rwlock->read_count[0] > 1) || rwlock->writer) {
+            /* instead of waiting, try to recover the lock immediately */
+            sr_rwlock_recover(rwlock, func, cb, cb_data);
+        }
+
+        /* wait until there are no readers except for this one */
+        wr_urged = 0;
+        ret = 0;
+        while (!ret && (rwlock->readers[1] || (rwlock->read_count[0] > 1) || (rwlock->writer && !wr_urged))) {
+            if (!rwlock->writer) {
                 /* waiting for write lock */
                 rwlock->writer = cid;
+                wr_urged = 1;
             }
 
             /* COND WAIT */
@@ -4576,19 +4668,17 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
         }
         if (ret == ETIMEDOUT) {
             sr_rwlock_recover(rwlock, func, cb, cb_data);
-            if (!rwlock->readers[1] && (rwlock->read_count[0] == 1) && (!rwlock->writer || (rwlock->writer == cid))) {
+            if (!rwlock->readers[1] && (rwlock->read_count[0] == 1) && (!rwlock->writer || wr_urged)) {
                 /* recovered */
                 ret = 0;
             }
         }
         if (ret) {
             /* restore flags */
-            if (mode == SR_LOCK_WRITE_URGE) {
-                if (rwlock->writer == cid) {
-                    rwlock->writer = 0;
-                }
-                rwlock->upgr = cid;
+            if (wr_urged) {
+                rwlock->writer = 0;
             }
+            rwlock->upgr = cid;
 
             SR_ERRINFO_COND(&err_info, func, ret);
             goto cleanup_unlock;
@@ -4599,8 +4689,9 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
 
         /* update flags */
         sr_rwlock_reader_del(rwlock, cid);
-        rwlock->upgr = 0;
-        rwlock->writer = cid;
+        if (!wr_urged) {
+            rwlock->writer = cid;
+        }
 
         /* simply keep the lock */
         return NULL;
