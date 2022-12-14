@@ -959,6 +959,12 @@ cleanup:
     return sr_api_ret(session, err_info);
 }
 
+API const char *
+sr_nacm_get_user(sr_session_ctx_t *session)
+{
+    return session ? session->nacm_user : NULL;
+}
+
 #define SR_CONFIG_SUBSCR(session, sub, mod_name, xpath, opts, cb) \
     rc = sr_module_change_subscribe(session, mod_name, xpath, cb, NULL, 0, \
             SR_SUBSCR_DONE_ONLY | SR_SUBSCR_ENABLED | opts, sub); \

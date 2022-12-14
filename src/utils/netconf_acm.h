@@ -72,6 +72,13 @@ void sr_nacm_destroy(void);
 int sr_nacm_set_user(sr_session_ctx_t *session, const char *user);
 
 /**
+ * @brief Get the NACM user of the session.
+ *
+ * @return Session NACM user.
+ */
+const char *sr_nacm_get_user(sr_session_ctx_t *session);
+
+/**
  * @brief Get username of the NACM recovery user with unrestricted access.
  *
  * @return Username of NACM recovery session.
