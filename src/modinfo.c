@@ -1502,6 +1502,124 @@ cleanup:
 }
 
 /**
+ * @brief Append a "subscriptions" data node with the specific subscriptions to sysrepo-monitoring module data.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module to read from.
+ * @param[in,out] sr_mod Module list node of sysrepo-monitoring.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_modinfo_module_srmon_module_subs(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct lyd_node *sr_mod)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *sr_subs, *sr_xpath_sub, *sr_sub;
+    sr_datastore_t ds;
+    sr_mod_change_sub_t *change_subs;
+    sr_mod_oper_get_sub_t *oper_get_subs;
+    sr_mod_oper_get_xpath_sub_t *xpath_sub;
+    sr_mod_oper_poll_sub_t *oper_poll_subs;
+    sr_mod_notif_sub_t *notif_subs;
+    uint32_t i, j;
+    char buf[128];
+    const struct ly_ctx *ly_ctx = LYD_CTX(sr_mod);
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        return err_info;
+    }
+
+    /* subscriptions, make implicit */
+    SR_CHECK_LY_GOTO(lyd_new_inner(sr_mod, NULL, "subscriptions", 0, &sr_subs), ly_ctx, err_info, cleanup);
+    sr_subs->flags |= LYD_DEFAULT;
+
+    for (ds = 0; ds < SR_DS_COUNT; ++ds) {
+        change_subs = (sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs);
+        for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
+            /* change-sub */
+            SR_CHECK_LY_GOTO(lyd_new_list(sr_subs, NULL, "change-sub", 0, &sr_sub), ly_ctx, err_info, cleanup);
+
+            /* datastore */
+            SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "datastore", sr_ds2ident(ds), 0, NULL), ly_ctx, err_info, cleanup);
+
+            /* xpath */
+            if (change_subs[i].xpath) {
+                SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "xpath", conn->ext_shm.addr + change_subs[i].xpath, 0, NULL),
+                        ly_ctx, err_info, cleanup);
+            }
+
+            /* priority */
+            sprintf(buf, "%" PRIu32, change_subs[i].priority);
+            SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "priority", buf, 0, NULL), ly_ctx, err_info, cleanup);
+
+            /* cid */
+            sprintf(buf, "%" PRIu32, change_subs[i].cid);
+            SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info, cleanup);
+
+            /* suspended */
+            sprintf(buf, "%s", ATOMIC_LOAD_RELAXED(change_subs[i].suspended) ? "true" : "false");
+            SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info, cleanup);
+        }
+    }
+
+    oper_get_subs = (sr_mod_oper_get_sub_t *)(conn->ext_shm.addr + shm_mod->oper_get_subs);
+    for (i = 0; i < shm_mod->oper_get_sub_count; ++i) {
+        /* operational-get-sub with xpath */
+        SR_CHECK_LY_GOTO(lyd_new_list(sr_subs, NULL, "operational-get-sub", 0, &sr_xpath_sub,
+                conn->ext_shm.addr + oper_get_subs[i].xpath), ly_ctx, err_info, cleanup);
+
+        for (j = 0; j < oper_get_subs[i].xpath_sub_count; ++j) {
+            xpath_sub = &((sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + oper_get_subs[i].xpath_subs))[j];
+
+            SR_CHECK_LY_GOTO(lyd_new_list(sr_xpath_sub, NULL, "xpath-sub", 0, &sr_sub), ly_ctx, err_info, cleanup);
+
+            /* cid */
+            sprintf(buf, "%" PRIu32, xpath_sub->cid);
+            SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info, cleanup);
+
+            /* suspended */
+            sprintf(buf, "%s", ATOMIC_LOAD_RELAXED(xpath_sub->suspended) ? "true" : "false");
+            SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info, cleanup);
+        }
+    }
+
+    oper_poll_subs = (sr_mod_oper_poll_sub_t *)(conn->ext_shm.addr + shm_mod->oper_poll_subs);
+    for (i = 0; i < shm_mod->oper_poll_sub_count; ++i) {
+        /* operational-poll-sub with xpath */
+        SR_CHECK_LY_GOTO(lyd_new_list(sr_subs, NULL, "operational-poll-sub", 0, &sr_sub,
+                conn->ext_shm.addr + oper_poll_subs[i].xpath), ly_ctx, err_info, cleanup);
+
+        /* cid */
+        sprintf(buf, "%" PRIu32, oper_poll_subs[i].cid);
+        SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info, cleanup);
+
+        /* suspended */
+        sprintf(buf, "%s", ATOMIC_LOAD_RELAXED(oper_poll_subs[i].suspended) ? "true" : "false");
+        SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info, cleanup);
+    }
+
+    notif_subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
+    for (i = 0; i < shm_mod->notif_sub_count; ++i) {
+        /* notification-sub */
+        SR_CHECK_LY_GOTO(lyd_new_list(sr_subs, NULL, "notification-sub", 0, &sr_sub), ly_ctx, err_info, cleanup);
+
+        /* cid */
+        sprintf(buf, "%" PRIu32, notif_subs[i].cid);
+        SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info, cleanup);
+
+        /* suspended */
+        sprintf(buf, "%s", ATOMIC_LOAD_RELAXED(notif_subs[i].suspended) ? "true" : "false");
+        SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info, cleanup);
+    }
+
+cleanup:
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+    return err_info;
+}
+
+/**
  * @brief Append a "module" data node with its subscriptions to sysrepo-monitoring data.
  *
  * @param[in] conn Connection to use.
@@ -1513,21 +1631,13 @@ static sr_error_info_t *
 sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct lyd_node *sr_state)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *sr_mod, *sr_subs, *sr_xpath_sub, *sr_sub, *sr_ds_lock;
+    struct lyd_node *sr_mod, *sr_ds_lock;
     sr_datastore_t ds;
-    sr_mod_change_sub_t *change_subs;
-    sr_mod_oper_get_sub_t *oper_get_subs;
-    sr_mod_oper_get_xpath_sub_t *xpath_sub;
-    sr_mod_oper_poll_sub_t *oper_poll_subs;
-    sr_mod_notif_sub_t *notif_subs;
     struct sr_mod_lock_s *shm_lock;
-    uint32_t i, j;
 
 #define BUF_LEN 128
     char buf[BUF_LEN], *str = NULL;
-    const struct ly_ctx *ly_ctx;
-
-    ly_ctx = LYD_CTX(sr_state);
+    const struct ly_ctx *ly_ctx = LYD_CTX(sr_state);
 
     /* module with name */
     SR_CHECK_LY_RET(lyd_new_list(sr_state, NULL, "module", 0, &sr_mod, conn->mod_shm.addr + shm_mod->name), ly_ctx,
@@ -1617,87 +1727,9 @@ ds_unlock:
         return err_info;
     }
 
-    /* subscriptions, make implicit */
-    SR_CHECK_LY_RET(lyd_new_inner(sr_mod, NULL, "subscriptions", 0, &sr_subs), ly_ctx, err_info);
-    sr_subs->flags |= LYD_DEFAULT;
-
-    for (ds = 0; ds < SR_DS_COUNT; ++ds) {
-        change_subs = (sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs);
-        for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
-            /* change-sub */
-            SR_CHECK_LY_RET(lyd_new_list(sr_subs, NULL, "change-sub", 0, &sr_sub), ly_ctx, err_info);
-
-            /* datastore */
-            SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "datastore", sr_ds2ident(ds), 0, NULL), ly_ctx, err_info);
-
-            /* xpath */
-            if (change_subs[i].xpath) {
-                SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "xpath", conn->ext_shm.addr + change_subs[i].xpath, 0, NULL),
-                        ly_ctx, err_info);
-            }
-
-            /* priority */
-            sprintf(buf, "%" PRIu32, change_subs[i].priority);
-            SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "priority", buf, 0, NULL), ly_ctx, err_info);
-
-            /* cid */
-            sprintf(buf, "%" PRIu32, change_subs[i].cid);
-            SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info);
-
-            /* suspended */
-            sprintf(buf, "%s", ATOMIC_LOAD_RELAXED(change_subs[i].suspended) ? "true" : "false");
-            SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info);
-        }
-    }
-
-    oper_get_subs = (sr_mod_oper_get_sub_t *)(conn->ext_shm.addr + shm_mod->oper_get_subs);
-    for (i = 0; i < shm_mod->oper_get_sub_count; ++i) {
-        /* operational-get-sub with xpath */
-        SR_CHECK_LY_RET(lyd_new_list(sr_subs, NULL, "operational-get-sub", 0, &sr_xpath_sub,
-                conn->ext_shm.addr + oper_get_subs[i].xpath), ly_ctx, err_info);
-
-        for (j = 0; j < oper_get_subs[i].xpath_sub_count; ++j) {
-            xpath_sub = &((sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + oper_get_subs[i].xpath_subs))[j];
-
-            SR_CHECK_LY_RET(lyd_new_list(sr_xpath_sub, NULL, "xpath-sub", 0, &sr_sub), ly_ctx, err_info);
-
-            /* cid */
-            sprintf(buf, "%" PRIu32, xpath_sub->cid);
-            SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info);
-
-            /* suspended */
-            sprintf(buf, "%s", ATOMIC_LOAD_RELAXED(xpath_sub->suspended) ? "true" : "false");
-            SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info);
-        }
-    }
-
-    oper_poll_subs = (sr_mod_oper_poll_sub_t *)(conn->ext_shm.addr + shm_mod->oper_poll_subs);
-    for (i = 0; i < shm_mod->oper_poll_sub_count; ++i) {
-        /* operational-poll-sub with xpath */
-        SR_CHECK_LY_RET(lyd_new_list(sr_subs, NULL, "operational-poll-sub", 0, &sr_sub,
-                conn->ext_shm.addr + oper_poll_subs[i].xpath), ly_ctx, err_info);
-
-        /* cid */
-        sprintf(buf, "%" PRIu32, oper_poll_subs[i].cid);
-        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info);
-
-        /* suspended */
-        sprintf(buf, "%s", ATOMIC_LOAD_RELAXED(oper_poll_subs[i].suspended) ? "true" : "false");
-        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info);
-    }
-
-    notif_subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
-    for (i = 0; i < shm_mod->notif_sub_count; ++i) {
-        /* notification-sub */
-        SR_CHECK_LY_RET(lyd_new_list(sr_subs, NULL, "notification-sub", 0, &sr_sub), ly_ctx, err_info);
-
-        /* cid */
-        sprintf(buf, "%" PRIu32, notif_subs[i].cid);
-        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info);
-
-        /* suspended */
-        sprintf(buf, "%s", ATOMIC_LOAD_RELAXED(notif_subs[i].suspended) ? "true" : "false");
-        SR_CHECK_LY_RET(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info);
+    /* module subscriptions */
+    if ((err_info = sr_modinfo_module_srmon_module_subs(conn, shm_mod, sr_mod))) {
+        return err_info;
     }
 
     return NULL;
