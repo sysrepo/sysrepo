@@ -1524,97 +1524,193 @@ sr_modinfo_module_srmon_module_subs(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, stru
     char buf[128];
     const struct ly_ctx *ly_ctx = LYD_CTX(sr_mod);
 
-    /* EXT READ LOCK */
-    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
-        return err_info;
-    }
-
     /* subscriptions, make implicit */
-    SR_CHECK_LY_GOTO(lyd_new_inner(sr_mod, NULL, "subscriptions", 0, &sr_subs), ly_ctx, err_info, cleanup);
+    SR_CHECK_LY_RET(lyd_new_inner(sr_mod, NULL, "subscriptions", 0, &sr_subs), ly_ctx, err_info);
     sr_subs->flags |= LYD_DEFAULT;
 
+    /*
+     * change subscriptions
+     */
+
     for (ds = 0; ds < SR_DS_COUNT; ++ds) {
+        /* CHANGE SUB READ LOCK */
+        if ((err_info = sr_rwlock(&shm_mod->change_sub[ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+                __func__, NULL, NULL))) {
+            return err_info;
+        }
+
+        /* EXT READ LOCK */
+        if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+            goto change_sub_unlock;
+        }
+
         change_subs = (sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs);
         for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
             /* change-sub */
-            SR_CHECK_LY_GOTO(lyd_new_list(sr_subs, NULL, "change-sub", 0, &sr_sub), ly_ctx, err_info, cleanup);
+            SR_CHECK_LY_GOTO(lyd_new_list(sr_subs, NULL, "change-sub", 0, &sr_sub), ly_ctx, err_info, change_ext_sub_unlock);
 
             /* datastore */
-            SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "datastore", sr_ds2ident(ds), 0, NULL), ly_ctx, err_info, cleanup);
+            SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "datastore", sr_ds2ident(ds), 0, NULL), ly_ctx, err_info,
+                    change_ext_sub_unlock);
 
             /* xpath */
             if (change_subs[i].xpath) {
                 SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "xpath", conn->ext_shm.addr + change_subs[i].xpath, 0, NULL),
-                        ly_ctx, err_info, cleanup);
+                        ly_ctx, err_info, change_ext_sub_unlock);
             }
 
             /* priority */
             sprintf(buf, "%" PRIu32, change_subs[i].priority);
-            SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "priority", buf, 0, NULL), ly_ctx, err_info, cleanup);
+            SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "priority", buf, 0, NULL), ly_ctx, err_info, change_ext_sub_unlock);
 
             /* cid */
             sprintf(buf, "%" PRIu32, change_subs[i].cid);
-            SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info, cleanup);
+            SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info, change_ext_sub_unlock);
 
             /* suspended */
             sprintf(buf, "%s", ATOMIC_LOAD_RELAXED(change_subs[i].suspended) ? "true" : "false");
-            SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info, cleanup);
+            SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info, change_ext_sub_unlock);
         }
+
+change_ext_sub_unlock:
+        /* EXT READ UNLOCK */
+        sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+change_sub_unlock:
+        /* CHANGE SUB READ UNLOCK */
+        sr_rwunlock(&shm_mod->change_sub[ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+        if (err_info) {
+            return err_info;
+        }
+    }
+
+    /*
+     * oper get subscriptions
+     */
+
+    /* OPER GET SUB READ LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+            __func__, NULL, NULL))) {
+        return err_info;
+    }
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        goto operget_sub_unlock;
     }
 
     oper_get_subs = (sr_mod_oper_get_sub_t *)(conn->ext_shm.addr + shm_mod->oper_get_subs);
     for (i = 0; i < shm_mod->oper_get_sub_count; ++i) {
         /* operational-get-sub with xpath */
         SR_CHECK_LY_GOTO(lyd_new_list(sr_subs, NULL, "operational-get-sub", 0, &sr_xpath_sub,
-                conn->ext_shm.addr + oper_get_subs[i].xpath), ly_ctx, err_info, cleanup);
+                conn->ext_shm.addr + oper_get_subs[i].xpath), ly_ctx, err_info, operget_ext_sub_unlock);
 
         for (j = 0; j < oper_get_subs[i].xpath_sub_count; ++j) {
             xpath_sub = &((sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + oper_get_subs[i].xpath_subs))[j];
 
-            SR_CHECK_LY_GOTO(lyd_new_list(sr_xpath_sub, NULL, "xpath-sub", 0, &sr_sub), ly_ctx, err_info, cleanup);
+            SR_CHECK_LY_GOTO(lyd_new_list(sr_xpath_sub, NULL, "xpath-sub", 0, &sr_sub), ly_ctx, err_info, operget_ext_sub_unlock);
 
             /* cid */
             sprintf(buf, "%" PRIu32, xpath_sub->cid);
-            SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info, cleanup);
+            SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info, operget_ext_sub_unlock);
 
             /* suspended */
             sprintf(buf, "%s", ATOMIC_LOAD_RELAXED(xpath_sub->suspended) ? "true" : "false");
-            SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info, cleanup);
+            SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info, operget_ext_sub_unlock);
         }
+    }
+
+operget_ext_sub_unlock:
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+operget_sub_unlock:
+    /* OPER GET SUB READ UNLOCK */
+    sr_rwunlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+    if (err_info) {
+        return err_info;
+    }
+
+    /*
+     * oper poll subscriptions
+     */
+
+    /* OPER POLL SUB READ LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->oper_poll_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+            __func__, NULL, NULL))) {
+        return err_info;
+    }
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        goto operpoll_sub_unlock;
     }
 
     oper_poll_subs = (sr_mod_oper_poll_sub_t *)(conn->ext_shm.addr + shm_mod->oper_poll_subs);
     for (i = 0; i < shm_mod->oper_poll_sub_count; ++i) {
         /* operational-poll-sub with xpath */
         SR_CHECK_LY_GOTO(lyd_new_list(sr_subs, NULL, "operational-poll-sub", 0, &sr_sub,
-                conn->ext_shm.addr + oper_poll_subs[i].xpath), ly_ctx, err_info, cleanup);
+                conn->ext_shm.addr + oper_poll_subs[i].xpath), ly_ctx, err_info, operpoll_ext_sub_unlock);
 
         /* cid */
         sprintf(buf, "%" PRIu32, oper_poll_subs[i].cid);
-        SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info, cleanup);
+        SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info, operpoll_ext_sub_unlock);
 
         /* suspended */
         sprintf(buf, "%s", ATOMIC_LOAD_RELAXED(oper_poll_subs[i].suspended) ? "true" : "false");
-        SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info, cleanup);
+        SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info, operpoll_ext_sub_unlock);
+    }
+
+operpoll_ext_sub_unlock:
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+operpoll_sub_unlock:
+    /* OPER POLL SUB READ UNLOCK */
+    sr_rwunlock(&shm_mod->oper_poll_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+
+    if (err_info) {
+        return err_info;
+    }
+
+    /*
+     * notification subscriptions
+     */
+
+    /* NOTIF SUB READ LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+            __func__, NULL, NULL))) {
+        return err_info;
+    }
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        goto notif_sub_unlock;
     }
 
     notif_subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
     for (i = 0; i < shm_mod->notif_sub_count; ++i) {
         /* notification-sub */
-        SR_CHECK_LY_GOTO(lyd_new_list(sr_subs, NULL, "notification-sub", 0, &sr_sub), ly_ctx, err_info, cleanup);
+        SR_CHECK_LY_GOTO(lyd_new_list(sr_subs, NULL, "notification-sub", 0, &sr_sub), ly_ctx, err_info, notif_ext_sub_unlock);
 
         /* cid */
         sprintf(buf, "%" PRIu32, notif_subs[i].cid);
-        SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info, cleanup);
+        SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "cid", buf, 0, NULL), ly_ctx, err_info, notif_ext_sub_unlock);
 
         /* suspended */
         sprintf(buf, "%s", ATOMIC_LOAD_RELAXED(notif_subs[i].suspended) ? "true" : "false");
-        SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info, cleanup);
+        SR_CHECK_LY_GOTO(lyd_new_term(sr_sub, NULL, "suspended", buf, 0, NULL), ly_ctx, err_info, notif_ext_sub_unlock);
     }
 
-cleanup:
+notif_ext_sub_unlock:
     /* EXT READ UNLOCK */
     sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+notif_sub_unlock:
+    /* NOTIF SUB READ UNLOCK */
+    sr_rwunlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
     return err_info;
 }
