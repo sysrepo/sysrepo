@@ -1187,6 +1187,68 @@ test_edit_forbid_node_types(void **state)
     free(str);
 }
 
+static void
+test_anyxml(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const struct ly_ctx *ly_ctx = sr_acquire_context(st->conn);
+    struct lyd_node *edit;
+    sr_data_t *data;
+    char *str;
+    const char *str2;
+    int ret;
+
+    /* store an array */
+    str2 =
+            "{\n"
+            "  \"test-module:main\": {\n"
+            "    \"xml-data\": [\"val1\", \"val2\"]\n"
+            "  }\n"
+            "}\n";
+    ret = lyd_parse_data_mem(ly_ctx, str2, LYD_JSON, LYD_PARSE_ONLY, 0, &edit);
+    assert_int_equal(ret, LY_SUCCESS);
+
+    ret = sr_edit_batch(st->sess, edit, "merge");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_free_siblings(edit);
+
+    ret = sr_get_data(st->sess, "/test-module:main/xml-data", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_print_mem(&str, data->tree, LYD_JSON, LYD_PRINT_WITHSIBLINGS);
+
+    assert_string_equal(str, str2);
+    sr_release_data(data);
+    free(str);
+
+    /* store an empty array */
+    str2 =
+            "{\n"
+            "  \"test-module:main\": {\n"
+            "    \"xml-data\": []\n"
+            "  }\n"
+            "}\n";
+    ret = lyd_parse_data_mem(ly_ctx, str2, LYD_JSON, LYD_PARSE_ONLY, 0, &edit);
+    assert_int_equal(ret, LY_SUCCESS);
+
+    ret = sr_edit_batch(st->sess, edit, "merge");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_free_siblings(edit);
+
+    ret = sr_get_data(st->sess, "/test-module:main/xml-data", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_print_mem(&str, data->tree, LYD_JSON, LYD_PRINT_WITHSIBLINGS);
+
+    assert_string_equal(str, str2);
+    sr_release_data(data);
+    free(str);
+
+    sr_release_context(st->conn);
+}
+
 int
 main(void)
 {
@@ -1206,6 +1268,7 @@ main(void)
         cmocka_unit_test(test_decimal64),
         cmocka_unit_test(test_mutiple_types),
         cmocka_unit_test(test_edit_forbid_node_types),
+        cmocka_unit_test(test_anyxml),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
