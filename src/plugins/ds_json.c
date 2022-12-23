@@ -84,22 +84,14 @@ srpds_json_store_(const struct lys_module *mod, sr_datastore_t ds, const struct 
             goto cleanup;
         }
 
-        /* create backup file with same owner/group/perm */
+        /* create backup file with same permissions (not owner/group because it may be different and this process
+         * not has permissions to use that owner/group) */
         if ((fd = srpjson_open(bck_path, O_WRONLY | O_CREAT | O_EXCL, st.st_mode)) == -1) {
             SRPLG_LOG_ERR(srpds_name, "Opening \"%s\" failed (%s).", bck_path, strerror(errno));
             rc = SR_ERR_SYS;
             goto cleanup;
         }
         backup = 1;
-        if (fchown(fd, st.st_uid, st.st_gid) == -1) {
-            SRPLG_LOG_ERR(srpds_name, "Changing owner of \"%s\" failed (%s).", bck_path, strerror(errno));
-            if ((errno == EACCES) || (errno == EPERM)) {
-                rc = SR_ERR_UNAUTHORIZED;
-            } else {
-                rc = SR_ERR_INTERNAL;
-            }
-            goto cleanup;
-        }
 
         /* close */
         close(fd);
