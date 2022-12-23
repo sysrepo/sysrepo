@@ -297,7 +297,7 @@ srpds_json_store(const struct lys_module *mod, sr_datastore_t ds, const struct l
 {
     mode_t perm = 0;
     int rc;
-    char *path = NULL, *owner = NULL, *group = NULL;
+    char *path = NULL;
 
     switch (ds) {
     case SR_DS_STARTUP:
@@ -316,22 +316,20 @@ srpds_json_store(const struct lys_module *mod, sr_datastore_t ds, const struct l
             break;
         }
 
-        /* get the correct permissions to set for the new file */
-        if ((rc = srpds_json_access_get(mod, ds, &owner, &group, &perm))) {
+        /* get the correct permissions to set for the new file (not owner/group because we may not have permissions to set them) */
+        if ((rc = srpds_json_access_get(mod, ds, NULL, NULL, &perm))) {
             goto cleanup;
         }
         break;
     }
 
     /* store */
-    if ((rc = srpds_json_store_(mod, ds, mod_data, owner, group, perm, 1))) {
+    if ((rc = srpds_json_store_(mod, ds, mod_data, NULL, NULL, perm, 1))) {
         goto cleanup;
     }
 
 cleanup:
     free(path);
-    free(owner);
-    free(group);
     return rc;
 }
 
