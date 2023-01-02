@@ -36,7 +36,7 @@
 struct state {
     sr_conn_ctx_t *conn;
     ATOMIC_T cb_called, cb_called2;
-    pthread_barrier_t barrier, barrier2, barrier6;
+    pthread_barrier_t barrier, barrier2, barrier4;
 };
 
 static int
@@ -103,7 +103,7 @@ setup_f(void **state)
     ATOMIC_STORE_RELAXED(st->cb_called2, 0);
     pthread_barrier_init(&st->barrier, NULL, 2);
     pthread_barrier_init(&st->barrier2, NULL, 2);
-    pthread_barrier_init(&st->barrier6, NULL, 6);
+    pthread_barrier_init(&st->barrier4, NULL, 4);
     return 0;
 }
 
@@ -114,7 +114,7 @@ teardown_f(void **state)
 
     pthread_barrier_destroy(&st->barrier);
     pthread_barrier_destroy(&st->barrier2);
-    pthread_barrier_destroy(&st->barrier6);
+    pthread_barrier_destroy(&st->barrier4);
     return 0;
 }
 
@@ -6643,12 +6643,12 @@ oper_write_starve_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
 
     (void)session;
     (void)sub_id;
+    (void)xpath;
+    (void)request_xpath;
     (void)request_id;
     (void)private_data;
 
     assert_string_equal(module_name, "test");
-    assert_string_equal(xpath, "/test:ll1");
-    assert_string_equal(request_xpath, "/test:ll1");
     assert_non_null(parent);
     assert_null(*parent);
 
@@ -6670,10 +6670,10 @@ apply_write_starve_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* sync all the threads */
-    pthread_barrier_wait(&st->barrier6);
+    pthread_barrier_wait(&st->barrier4);
 
     /* perform the write in a loop */
-    for (i = 0; i < 4; ++i) {
+    for (i = 0; i < 2; ++i) {
         sprintf(num_str, "%u", i);
         ret = sr_set_item_str(sess, "/test:test-leaf", num_str, NULL, 0);
         assert_int_equal(ret, SR_ERR_OK);
@@ -6699,28 +6699,31 @@ subscribe_write_starve_thread(void *arg)
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
     int ret;
-    sr_subscription_ctx_t *subscr = NULL;
+    sr_subscription_ctx_t *subscr1 = NULL, *subscr2 = NULL;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe */
-    ret = sr_oper_get_subscribe(sess, "test", "/test:ll1", oper_write_starve_cb, NULL, 0, &subscr);
+    ret = sr_oper_get_subscribe(sess, "test", "/test:ll1", oper_write_starve_cb, NULL, 0, &subscr1);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_oper_get_subscribe(sess, "test", "/test:l3", oper_write_starve_cb, NULL, 0, &subscr2);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* sync all the threads */
-    pthread_barrier_wait(&st->barrier6);
+    pthread_barrier_wait(&st->barrier4);
 
-    /* 1 s oper cb wait (2x read for every reader) */
+    /* 1 s oper cb wait (2x read) */
     sleep(2);
 
-    sr_unsubscribe(subscr);
+    sr_unsubscribe(subscr1);
+    sr_unsubscribe(subscr2);
     sr_session_stop(sess);
     return NULL;
 }
 
 static void *
-read_write_starve_thread(void *arg)
+read_write_starve_thread1(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
@@ -6731,7 +6734,7 @@ read_write_starve_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* sync all the threads */
-    pthread_barrier_wait(&st->barrier6);
+    pthread_barrier_wait(&st->barrier4);
 
     /* perform 2 reads */
     for (i = 0; i < 2; ++i) {
@@ -6745,20 +6748,44 @@ read_write_starve_thread(void *arg)
     return NULL;
 }
 
+static void *
+read_write_starve_thread2(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    int ret, i;
+    sr_data_t *data;
+
+    ret = sr_session_start(st->conn, SR_DS_OPERATIONAL, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* sync all the threads */
+    pthread_barrier_wait(&st->barrier4);
+
+    /* perform 2 reads */
+    for (i = 0; i < 2; ++i) {
+        ret = sr_get_subtree(sess, "/test:l3", 0, &data);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        sr_release_data(data);
+    }
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
 static void
 test_write_starve(void **state)
 {
-    pthread_t tid[6];
+    pthread_t tid[4];
     int i;
 
     pthread_create(&tid[0], NULL, apply_write_starve_thread, *state);
     pthread_create(&tid[1], NULL, subscribe_write_starve_thread, *state);
-    pthread_create(&tid[2], NULL, read_write_starve_thread, *state);
-    pthread_create(&tid[3], NULL, read_write_starve_thread, *state);
-    pthread_create(&tid[4], NULL, read_write_starve_thread, *state);
-    pthread_create(&tid[5], NULL, read_write_starve_thread, *state);
+    pthread_create(&tid[2], NULL, read_write_starve_thread1, *state);
+    pthread_create(&tid[3], NULL, read_write_starve_thread2, *state);
 
-    for (i = 0; i < 6; ++i) {
+    for (i = 0; i < 4; ++i) {
         pthread_join(tid[i], NULL);
     }
 }
