@@ -18,6 +18,7 @@
 #define _SR_COND_PTHREAD_H
 
 #include <pthread.h>
+#include <time.h>
 
 #include "sysrepo_types.h"
 
@@ -57,10 +58,10 @@ int sr_cond_wait(sr_cond_t *cond, pthread_mutex_t *mutex);
  *
  * @param[in] cond Condition variable to wait on.
  * @param[in] mutex Conditional variable mutex.
- * @param[in] timeout_ms Timeout to wait for the condition.
+ * @param[in] timeout_abs Absolute real timeout for waiting on the condition.
  * @return errno
  */
-int sr_cond_timedwait(sr_cond_t *cond, pthread_mutex_t *mutex, uint32_t timeout_ms);
+int sr_cond_timedwait(sr_cond_t *cond, pthread_mutex_t *mutex, struct timespec *timeout_abs);
 
 /**
  * @brief Wrapper for pthread_cond_broadcast().

@@ -289,6 +289,7 @@ static sr_error_info_t *
 sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_event_t lock_event, sr_cid_t cid)
 {
     sr_error_info_t *err_info = NULL;
+    struct timespec timeout_abs;
     uint32_t request_id;
     int ret;
 
@@ -310,10 +311,11 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
     sub_shm->lock.writer = 0;
 
     /* wait until there is no event and there are no readers (just like write lock) */
+    sr_time_get(&timeout_abs, SR_SUBSHM_LOCK_TIMEOUT);
     ret = 0;
     while (!ret && (sub_shm->lock.readers[0] || (sub_shm->event && (sub_shm->event != lock_event)))) {
         /* COND WAIT */
-        ret = sr_cond_timedwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, SR_SUBSHM_LOCK_TIMEOUT);
+        ret = sr_cond_timedwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, &timeout_abs);
     }
 
     /* FAKE WRITE LOCK */
@@ -378,6 +380,7 @@ sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int 
         sr_cid_t cid, sr_shm_t *shm_data_sub, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
+    struct timespec timeout_abs;
     sr_error_t err_code;
     const char *ptr, *err_msg, *err_format, *err_data;
     sr_sub_event_t event;
@@ -397,11 +400,12 @@ sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int 
 
     /* wait until this event was processed and there are no readers or another writer
      * (just like write lock except do not set a waiting writer, needs to wait for everyone else, even writers) */
+    sr_time_get(&timeout_abs, timeout_ms);
     ret = 0;
     while (!ret && (sub_shm->lock.readers[0] || /*sub_shm->lock.writer ||*/
             (sub_shm->event && !SR_IS_NOTIFY_EVENT(sub_shm->event)))) {
         /* COND WAIT */
-        ret = sr_cond_timedwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, timeout_ms);
+        ret = sr_cond_timedwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, &timeout_abs);
     }
     /* we are holding the mutex but no lock flags are set */
 
@@ -591,7 +595,7 @@ sr_shmsub_notify_all_wait_wr(struct sr_shmsub_oper_get_sub_s *notify_subs, uint3
             notify_subs[i].locked = 0;
         }
         if (pending_event) {
-            /* active loop backoff sleep to avoid starving SUB locks*/
+            /* active loop backoff sleep to avoid starving SUB locks */
             sr_msleep(SR_SHMSUB_OPER_EVENT_TIMEOUT_STEP_MS);
         }
     }

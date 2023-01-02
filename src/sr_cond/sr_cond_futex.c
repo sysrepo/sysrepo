@@ -64,13 +64,13 @@ sr_cond_destroy(sr_cond_t *cond)
  *
  * @param[in] uaddr Futex address.
  * @param[in] expected Expected value in the futex.
- * @param[in] timeout Absolute timeout for waiting, infinite if NULL.
+ * @param[in] timeout Absolute real timeout for waiting, infinite if NULL.
  * @return 0 on success, -1 on error.
  */
 static int
 sys_futex_wait(uint32_t *uaddr, uint32_t expected, const struct timespec *timeout)
 {
-    return syscall(SYS_futex, uaddr, FUTEX_WAIT_BITSET, expected, timeout, NULL, FUTEX_BITSET_MATCH_ANY);
+    return syscall(SYS_futex, uaddr, FUTEX_WAIT_BITSET | FUTEX_CLOCK_REALTIME, expected, timeout, NULL, FUTEX_BITSET_MATCH_ANY);
 }
 
 /**
@@ -156,7 +156,7 @@ sr_cond_mutex_lock(pthread_mutex_t *mutex, sr_cond_t *cond)
 }
 
 static int
-sr_cond_wait_(sr_cond_t *cond, pthread_mutex_t *mutex, struct timespec *timeout_ts)
+sr_cond_wait_(sr_cond_t *cond, pthread_mutex_t *mutex, struct timespec *timeout_abs)
 {
     int r, wait_locked, rf;
 
@@ -174,7 +174,7 @@ sr_cond_wait_(sr_cond_t *cond, pthread_mutex_t *mutex, struct timespec *timeout_
     /* wait, ignore EINTR */
     do {
         errno = 0;
-        rf = sys_futex_wait(&cond->futex, FUTEX_VAL_IDLE, timeout_ts);
+        rf = sys_futex_wait(&cond->futex, FUTEX_VAL_IDLE, timeout_abs);
     } while ((rf == -1) && (errno == EINTR));
 
     /* MUTEX LOCK */
@@ -208,15 +208,9 @@ sr_cond_wait(sr_cond_t *cond, pthread_mutex_t *mutex)
 }
 
 int
-sr_cond_timedwait(sr_cond_t *cond, pthread_mutex_t *mutex, uint32_t timeout_ms)
+sr_cond_timedwait(sr_cond_t *cond, pthread_mutex_t *mutex, struct timespec *timeout_abs)
 {
-    struct timespec timeout_ts;
-
-    /* get absolute monotonic timeout */
-    clock_gettime(CLOCK_MONOTONIC, &timeout_ts);
-    timeout_ts = sr_time_ts_add(&timeout_ts, timeout_ms);
-
-    return sr_cond_wait_(cond, mutex, &timeout_ts);
+    return sr_cond_wait_(cond, mutex, timeout_abs);
 }
 
 void

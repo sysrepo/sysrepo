@@ -19,6 +19,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "compat.h"
 #include "log.h"
@@ -78,13 +79,9 @@ sr_cond_wait(sr_cond_t *cond, pthread_mutex_t *mutex)
 }
 
 int
-sr_cond_timedwait(sr_cond_t *cond, pthread_mutex_t *mutex, uint32_t timeout_ms)
+sr_cond_timedwait(sr_cond_t *cond, pthread_mutex_t *mutex, struct timespec *timeout_abs)
 {
-    struct timespec timeout_ts;
-
-    sr_time_get(&timeout_ts, timeout_ms);
-
-    return pthread_cond_timedwait(cond, mutex, &timeout_ts);
+    return pthread_cond_timedwait(cond, mutex, timeout_abs);
 }
 
 void
