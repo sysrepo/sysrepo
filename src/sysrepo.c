@@ -4846,7 +4846,6 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         sr_subscription_ctx_t **subscription)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
-    sr_lock_mode_t chsub_lock_mode = SR_LOCK_NONE;
     const struct lys_module *ly_mod;
     struct sr_mod_info_s mod_info;
     sr_conn_ctx_t *conn;
@@ -4903,33 +4902,32 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         _sr_subscription_thread_suspend(*subscription);
     }
 
+    /* we need to lock write subscriptions here to keep CHANGE SUB and MODULES lock order */
+
+    /* CHANGE SUB WRITE LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->change_sub[session->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE,
+            conn->cid, __func__, NULL, NULL))) {
+        goto cleanup;
+    }
+
     if (opts & SR_SUBSCR_ENABLED) {
-        /* we need to lock write subscriptions here to keep CHANGE SUB and MODULES lock order */
-
-        /* CHANGE SUB WRITE LOCK */
-        if ((err_info = sr_rwlock(&shm_mod->change_sub[session->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE,
-                conn->cid, __func__, NULL, NULL))) {
-            goto cleanup;
-        }
-        chsub_lock_mode = SR_LOCK_WRITE;
-
         /* call the callback with the current configuration, keep any used modules locked in mod_info */
         if ((err_info = sr_module_change_subscribe_enable(session, &mod_info, ly_mod, xpath, callback, private_data,
                 sub_id, opts))) {
-            goto cleanup;
+            goto cleanup_change_unlock;
         }
     }
 
     /* SUBS WRITE LOCK */
     if ((err_info = sr_rwlock(&(*subscription)->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
             __func__, NULL, NULL))) {
-        goto cleanup;
+        goto cleanup_change_unlock;
     }
 
     /* add module subscription into ext SHM and create separate specific SHM segment */
-    if ((err_info = sr_shmext_change_sub_add(conn, shm_mod, chsub_lock_mode, session->ds, sub_id, xpath, priority,
+    if ((err_info = sr_shmext_change_sub_add(conn, shm_mod, SR_LOCK_WRITE, session->ds, sub_id, xpath, priority,
             sub_opts, (*subscription)->evpipe_num))) {
-        goto cleanup_unlock;
+        goto cleanup_subs_change_unlock;
     }
 
     /* we are holding SUBS lock so that even if event is generated based on the ext SHM subscription we have just added,
@@ -4947,25 +4945,23 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         goto error2;
     }
 
-    goto cleanup_unlock;
+    goto cleanup_subs_change_unlock;
 
 error2:
     sr_subscr_change_sub_del(*subscription, sub_id, SR_LOCK_WRITE);
 
 error1:
-    if ((tmp_err = sr_shmext_change_sub_del(conn, shm_mod, chsub_lock_mode, session->ds, sub_id))) {
+    if ((tmp_err = sr_shmext_change_sub_del(conn, shm_mod, SR_LOCK_WRITE, session->ds, sub_id))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
-cleanup_unlock:
+cleanup_subs_change_unlock:
     /* SUBS WRITE UNLOCK */
     sr_rwunlock(&(*subscription)->subs_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
-cleanup:
-    if (chsub_lock_mode) {
-        /* CHANGE SUB UNLOCK */
-        sr_rwunlock(&shm_mod->change_sub[session->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, chsub_lock_mode, conn->cid, __func__);
-    }
+cleanup_change_unlock:
+    /* CHANGE SUB UNLOCK */
+    sr_rwunlock(&shm_mod->change_sub[session->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 
     /* if there are any modules, unlock them after the enabled event was handled and the subscription was added
      * to avoid losing any changes */
@@ -4975,6 +4971,7 @@ cleanup:
 
     sr_modinfo_erase(&mod_info);
 
+cleanup:
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
     return sr_api_ret(session, err_info);

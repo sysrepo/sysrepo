@@ -505,19 +505,13 @@ sr_shmext_change_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t 
     sr_mod_change_sub_t *shm_sub;
     uint32_t i;
 
-    assert((has_lock == SR_LOCK_NONE) || (has_lock == SR_LOCK_WRITE));
-
-    if (has_lock == SR_LOCK_NONE) {
-        /* CHANGE SUB WRITE LOCK */
-        if ((err_info = sr_rwlock(&shm_mod->change_sub[ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-                __func__, NULL, NULL))) {
-            return err_info;
-        }
-    }
+    /* kept for possible future use */
+    assert(has_lock == SR_LOCK_WRITE);
+    (void)has_lock;
 
     /* EXT WRITE LOCK */
     if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_WRITE, 1, __func__))) {
-        goto cleanup_changesub_unlock;
+        goto cleanup;
     }
 
     if (sub_opts & SR_SUBSCR_UPDATE) {
@@ -528,7 +522,7 @@ sr_shmext_change_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t 
                 if (!sr_conn_is_alive(shm_sub[i].cid)) {
                     /* subscription is dead, recover it */
                     if ((err_info = sr_shmext_change_sub_stop(conn, shm_mod, ds, i, 1, SR_LOCK_WRITE, 1))) {
-                        goto cleanup_changesub_ext_unlock;
+                        goto cleanup_ext_unlock;
                     }
 
                     /* there could not be more of such subscriptions, we have the right index for insertion */
@@ -538,7 +532,7 @@ sr_shmext_change_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t 
                 sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG,
                         "There already is an \"update\" subscription on module \"%s\" with priority %" PRIu32 " for %s DS.",
                         conn->mod_shm.addr + shm_mod->name, priority, sr_ds2str(ds));
-                goto cleanup_changesub_ext_unlock;
+                goto cleanup_ext_unlock;
             }
         }
     }
@@ -549,7 +543,7 @@ sr_shmext_change_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t 
     /* allocate new subscription and its xpath, if any */
     if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_mod->change_sub[ds].subs, &shm_mod->change_sub[ds].sub_count,
             0, sizeof *shm_sub, -1, (void **)&shm_sub, xpath ? sr_strshmlen(xpath) : 0, &xpath_off))) {
-        goto cleanup_changesub_ext_unlock;
+        goto cleanup_ext_unlock;
     }
 
     /* fill new subscription */
@@ -573,7 +567,7 @@ sr_shmext_change_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t 
         /* create the sub SHM while still holding the locks */
         if ((err_info = sr_shmsub_create(conn->mod_shm.addr + shm_mod->name, sr_ds2str(ds), -1,
                 sizeof(sr_multi_sub_shm_t)))) {
-            goto cleanup_changesub_ext_unlock;
+            goto cleanup_ext_unlock;
         }
 
         /* create the data sub SHM */
@@ -581,20 +575,15 @@ sr_shmext_change_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t 
             if ((tmp_err = sr_shmsub_unlink(conn->mod_shm.addr + shm_mod->name, sr_ds2str(ds), -1))) {
                 sr_errinfo_merge(&err_info, tmp_err);
             }
-            goto cleanup_changesub_ext_unlock;
+            goto cleanup_ext_unlock;
         }
     }
 
-cleanup_changesub_ext_unlock:
+cleanup_ext_unlock:
     /* EXT WRITE UNLOCK */
     sr_shmext_conn_remap_unlock(conn, SR_LOCK_WRITE, 1, __func__);
 
-cleanup_changesub_unlock:
-    if (has_lock == SR_LOCK_NONE) {
-        /* CHANGE SUB WRITE UNLOCK */
-        sr_rwunlock(&shm_mod->change_sub[ds].lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
-    }
-
+cleanup:
     return err_info;
 }
 
