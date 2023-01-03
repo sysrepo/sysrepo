@@ -44,7 +44,6 @@ sr_error_info_t *
 sr_shmext_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock, const char *func)
 {
     sr_error_info_t *err_info = NULL;
-    size_t shm_file_size;
 
     if (ext_lock) {
         /* EXT LOCK */
@@ -64,52 +63,10 @@ sr_shmext_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock
         if ((err_info = sr_shm_remap(&conn->ext_shm, 0))) {
             goto error_ext_remap_unlock;
         }
-    } else {
-        if ((err_info = sr_file_get_size(conn->ext_shm.fd, &shm_file_size))) {
-            goto error_ext_remap_unlock;
-        }
-        if (shm_file_size != conn->ext_shm.size) {
-            /* ext SHM size changed and we need to remap it */
-            if (mode == SR_LOCK_READ_UPGR) {
-                /* REMAP WRITE LOCK UPGRADE */
-                if ((err_info = sr_rwrelock(&conn->ext_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-                        func, NULL, NULL))) {
-                    goto error_ext_remap_unlock;
-                }
-            } else {
-                /* REMAP READ UNLOCK */
-                sr_rwunlock(&conn->ext_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func);
-                /* REMAP WRITE LOCK */
-                if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-                        func, NULL, NULL))) {
-                    goto error_ext_unlock;
-                }
-            }
-
-            /* remap SHM */
-            if ((err_info = sr_shm_remap(&conn->ext_shm, 0))) {
-                mode = SR_LOCK_WRITE;
-                goto error_ext_remap_unlock;
-            }
-
-            /* do not release the lock anymore because ext SHM could be again remapped */
-            if (mode == SR_LOCK_READ_UPGR) {
-                /* REMAP READ UPGR LOCK DOWNGRADE */
-                if ((err_info = sr_rwrelock(&conn->ext_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ_UPGR,
-                        conn->cid, func, NULL, NULL))) {
-                    mode = SR_LOCK_WRITE;
-                    goto error_ext_remap_unlock;
-                }
-            } else {
-                /* REMAP READ LOCK DOWNGRADE */
-                if ((err_info = sr_rwrelock(&conn->ext_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ,
-                        conn->cid, func, NULL, NULL))) {
-                    mode = SR_LOCK_WRITE;
-                    goto error_ext_remap_unlock;
-                }
-            }
-        } /* else no remapping needed */
     }
+    /* else we will only be reading something (READ LOCK) that we must have locked before (some subscriptions) meaning
+     * it cannot be changed or moved (changing other ext SHM data does not affect existing data) so we are safe to
+     * continue with the existing mapping */
 
     return NULL;
 
