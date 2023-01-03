@@ -622,15 +622,9 @@ sr_shmext_change_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t
 
     shm_sub = &((sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs))[del_idx];
 
-    SR_LOG_DBG("#SHM before (removing change sub)");
-    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
-
     /* free the subscription and its xpath, if any */
     sr_shmrealloc_del(&conn->ext_shm, &shm_mod->change_sub[ds].subs, &shm_mod->change_sub[ds].sub_count, sizeof *shm_sub,
             del_idx, shm_sub->xpath ? sr_strshmlen(conn->ext_shm.addr + shm_sub->xpath) : 0, shm_sub->xpath);
-
-    SR_LOG_DBG("#SHM after (removing change sub)");
-    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
     if (!shm_mod->change_sub[ds].sub_count) {
         /* unlink the sub SHM */
@@ -953,26 +947,14 @@ sr_shmext_oper_get_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del
         goto cleanup;
     }
 
-    SR_LOG_DBG("#SHM before (removing xpath oper get sub)");
-    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
-
     /* free the XPath subscription */
     sr_shmrealloc_del(&conn->ext_shm, &shm_sub->xpath_subs, &shm_sub->xpath_sub_count, sizeof *xpath_sub, del_idx2,
             0, 0);
 
-    SR_LOG_DBG("#SHM after (removing xpath oper get sub)");
-    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
-
     if (!shm_sub->xpath_sub_count) {
-        SR_LOG_DBG("#SHM before (removing oper get sub)");
-        sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
-
         /* last XPath subscription deleted, free the oper subscription */
         sr_shmrealloc_del(&conn->ext_shm, &shm_mod->oper_get_subs, &shm_mod->oper_get_sub_count, sizeof *shm_sub,
                 del_idx1, sr_strshmlen(conn->ext_shm.addr + shm_sub->xpath), shm_sub->xpath);
-
-        SR_LOG_DBG("#SHM after (removing oper get sub)");
-        sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
     }
 
 cleanup:
@@ -1209,15 +1191,9 @@ sr_shmext_oper_poll_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t de
 
     shm_sub = &((sr_mod_oper_poll_sub_t *)(conn->ext_shm.addr + shm_mod->oper_poll_subs))[del_idx];
 
-    SR_LOG_DBG("#SHM before (removing oper poll sub)");
-    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
-
     /* free the subscription */
     sr_shmrealloc_del(&conn->ext_shm, &shm_mod->oper_poll_subs, &shm_mod->oper_poll_sub_count, sizeof *shm_sub,
             del_idx, sr_strshmlen(conn->ext_shm.addr + shm_sub->xpath), shm_sub->xpath);
-
-    SR_LOG_DBG("#SHM after (removing oper poll sub)");
-    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
     return NULL;
 }
@@ -1439,15 +1415,9 @@ sr_shmext_notif_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_id
 
     shm_sub = &((sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs))[del_idx];
 
-    SR_LOG_DBG("#SHM before (removing notif sub)");
-    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
-
     /* free the subscription */
     sr_shmrealloc_del(&conn->ext_shm, &shm_mod->notif_subs, &shm_mod->notif_sub_count, sizeof *shm_sub,
             del_idx, shm_sub->xpath ? sr_strshmlen(conn->ext_shm.addr + shm_sub->xpath) : 0, shm_sub->xpath);
-
-    SR_LOG_DBG("#SHM after (removing notif sub)");
-    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
     if (!shm_mod->notif_sub_count) {
         /* unlink the sub SHM */
@@ -1719,15 +1689,9 @@ sr_shmext_rpc_sub_free(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, co
 
     shm_subs = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + *subs);
 
-    SR_LOG_DBG("#SHM before (removing rpc sub)");
-    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
-
     /* free the subscription */
     sr_shmrealloc_del(&conn->ext_shm, subs, sub_count, sizeof *shm_subs, del_idx,
             sr_strshmlen(conn->ext_shm.addr + shm_subs[del_idx].xpath), shm_subs[del_idx].xpath);
-
-    SR_LOG_DBG("#SHM after (removing rpc sub)");
-    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
     for (i = 0; i < *sub_count; ++i) {
         if ((err_info = sr_get_trim_predicates(conn->ext_shm.addr + shm_subs[i].xpath, &p))) {
