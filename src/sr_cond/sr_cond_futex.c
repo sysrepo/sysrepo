@@ -34,29 +34,16 @@
 #include "log.h"
 #include "sysrepo_types.h"
 
-#define FUTEX_VAL_IDLE  0
-#define FUTEX_VAL_READY 1
-
 sr_error_info_t *
-sr_cond_init(sr_cond_t *cond, int shared, int UNUSED(robust))
+sr_cond_init(sr_cond_t *cond, int UNUSED(shared), int UNUSED(robust))
 {
-    sr_error_info_t *err_info = NULL;
-
-    cond->futex = FUTEX_VAL_IDLE;
-    cond->waiters = 0;
-
-    /* if shared, always robust */
-    if ((err_info = sr_mutex_init(&cond->wait_lock, shared))) {
-        return err_info;
-    }
-
+    cond->futex = 1;
     return NULL;
 }
 
 void
-sr_cond_destroy(sr_cond_t *cond)
+sr_cond_destroy(sr_cond_t * UNUSED(cond))
 {
-    pthread_mutex_destroy(&cond->wait_lock);
 }
 
 /**
@@ -84,45 +71,6 @@ static int
 sys_futex_wake(uint32_t *uaddr, uint32_t waiter_count)
 {
     return syscall(SYS_futex, uaddr, FUTEX_WAKE, waiter_count, NULL, NULL, 0);
-}
-
-/**
- * @brief Lock condition wait lock.
- *
- * @param[in] cond Cond var to use.
- * @param[out] locked Whether the lock was locked or not.
- * @return errno
- */
-static int
-sr_cond_wait_lock(sr_cond_t *cond, int *locked)
-{
-    int r;
-
-    /* try to get the wait lock */
-    r = pthread_mutex_trylock(&cond->wait_lock);
-
-    if (r == EOWNERDEAD) {
-        /* dead owner, make consistent */
-        if ((r = pthread_mutex_consistent(&cond->wait_lock))) {
-            /* fatal error */
-            return r;
-        }
-        sr_cond_consistent(cond);
-
-        /* now properly locked */
-        *locked = 1;
-    } else if (r == EBUSY) {
-        /* not the first waiter, fine */
-        *locked = 0;
-    } else if (r) {
-        /* fatal error */
-        return r;
-    } else {
-        /* success, locked */
-        *locked = 1;
-    }
-
-    return 0;
 }
 
 /**
@@ -158,15 +106,8 @@ sr_cond_mutex_lock(pthread_mutex_t *mutex, sr_cond_t *cond)
 static int
 sr_cond_wait_(sr_cond_t *cond, pthread_mutex_t *mutex, struct timespec *timeout_abs)
 {
-    int r, wait_locked, rf;
-
-    /* new waiter */
-    ++cond->waiters;
-
-    /* WAIT LOCK */
-    if ((r = sr_cond_wait_lock(cond, &wait_locked))) {
-        return r;
-    }
+    int r, rf;
+    uint32_t last_val = cond->futex;
 
     /* MUTEX UNLOCK */
     pthread_mutex_unlock(mutex);
@@ -174,23 +115,12 @@ sr_cond_wait_(sr_cond_t *cond, pthread_mutex_t *mutex, struct timespec *timeout_
     /* wait, ignore EINTR */
     do {
         errno = 0;
-        rf = sys_futex_wait(&cond->futex, FUTEX_VAL_IDLE, timeout_abs);
+        rf = sys_futex_wait(&cond->futex, last_val, timeout_abs);
     } while ((rf == -1) && (errno == EINTR));
 
     /* MUTEX LOCK */
     if ((r = sr_cond_mutex_lock(mutex, cond))) {
         return r;
-    }
-
-    if (wait_locked) {
-        /* WAIT UNLOCK */
-        pthread_mutex_unlock(&cond->wait_lock);
-    }
-
-    /* woken, remove waiter (check for 0 waiters, they can be incorrectly removed by sr_cond_consistent() but it
-     * does not matter) */
-    if (cond->waiters && !--cond->waiters) {
-        cond->futex = FUTEX_VAL_IDLE;
     }
 
     if (!rf || (errno == EAGAIN)) {
@@ -216,13 +146,7 @@ sr_cond_timedwait(sr_cond_t *cond, pthread_mutex_t *mutex, struct timespec *time
 void
 sr_cond_broadcast(sr_cond_t *cond)
 {
-    if (!cond->waiters) {
-        /* no waiters */
-        return;
-    }
-
-    /* wake all the current waiters (there could be more than cond->waiters if a waiter crashed, it removes all waiters) */
-    cond->futex = FUTEX_VAL_READY;
+    cond->futex++;
     sys_futex_wake(&cond->futex, INT_MAX);
 }
 
@@ -230,8 +154,5 @@ void
 sr_cond_consistent(sr_cond_t *cond)
 {
     /* futex not ready */
-    cond->futex = FUTEX_VAL_IDLE;
-
-    /* remove all waiters except for the current one */
-    cond->waiters = 1;
+    cond->futex = 0;
 }
