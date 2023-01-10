@@ -4302,9 +4302,19 @@ sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_lock_recover_cb cb, 
     /* readers */
     while ((i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i]) {
         if (!sr_conn_is_alive(rwlock->readers[i])) {
+
+            /* READ MUTEX LOCK */
+            if (pthread_mutex_lock(&rwlock->r_mutex)) {
+                /* ignore errors, should never occur */
+                continue;
+            }
+
             /* remove the dead reader */
             cid = rwlock->readers[i];
             sr_rwlock_reader_del_(rwlock, i);
+
+            /* READ MUTEX UNLOCK */
+            pthread_mutex_unlock(&rwlock->r_mutex);
 
             /* recover */
             if (cb) {
