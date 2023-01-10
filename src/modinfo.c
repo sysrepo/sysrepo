@@ -1749,18 +1749,9 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
     for (ds = 0; ds < SR_DS_COUNT; ++ds) {
         shm_lock = &shm_mod->data_lock_info[ds];
 
-        /* MOD READ LOCK */
-        if ((err_info = sr_rwlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__, NULL,
-                NULL))) {
-            return err_info;
-        }
-
         /* data-lock */
         snprintf(buf, BUF_LEN, "data-lock[cid='%%" PRIu32 "'][datastore='%s']/mode", sr_ds2ident(ds));
         err_info = sr_modinfo_module_srmon_locks_ds(&shm_lock->data_lock, conn->cid, buf, sr_mod);
-
-        /* MOD READ UNLOCK */
-        sr_rwunlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
         if (err_info) {
             return err_info;
