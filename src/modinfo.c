@@ -2525,7 +2525,7 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, int mod_state, int finish_di
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
-    struct lyd_node *diff = NULL;
+    struct lyd_node *diff = NULL, *iter;
     uint32_t i;
     int val_opts;
 
@@ -2560,6 +2560,16 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, int mod_state, int finish_di
 
                 lyd_free_all(diff);
                 diff = NULL;
+
+                LY_LIST_FOR(mod_info->diff, iter) {
+                    if (lyd_owner_module(iter) == mod->ly_mod) {
+                        break;
+                    }
+                }
+                if (!iter) {
+                    /* the previous changes have actually been reverted */
+                    mod->state &= ~MOD_INFO_CHANGED;
+                }
             }
         }
     }
@@ -2574,7 +2584,7 @@ sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
-    struct lyd_node *diff = NULL;
+    struct lyd_node *diff = NULL, *iter;
     uint32_t i;
 
     assert(!mod_info->data_cached && SR_IS_CONVENTIONAL_DS(mod_info->ds));
@@ -2603,6 +2613,16 @@ sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff)
 
                 lyd_free_all(diff);
                 diff = NULL;
+
+                LY_LIST_FOR(mod_info->diff, iter) {
+                    if (lyd_owner_module(iter) == mod->ly_mod) {
+                        break;
+                    }
+                }
+                if (!iter) {
+                    /* the previous changes have actually been reverted */
+                    mod->state &= ~MOD_INFO_CHANGED;
+                }
             }
             break;
         case MOD_INFO_INV_DEP:
