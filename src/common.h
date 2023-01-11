@@ -1151,10 +1151,17 @@ sr_error_info_t *sr_conn_oper_cache_add(sr_conn_ctx_t *conn, uint32_t sub_id, co
 void sr_conn_oper_cache_del(sr_conn_ctx_t *conn, uint32_t sub_id);
 
 /**
+ * @brief Flush all cached running data of a connection in all its DS plugins.
+ *
+ * @param[in] conn Connection to use.
+ */
+void sr_conn_running_cache_flush(sr_conn_ctx_t *conn);
+
+/**
  * @brief Switch the context of a connection while correctly handling all connection data in the context.
  *
  * @param[in] conn Connection to use.
- * @param[in,out] new_ctx New context to use, set to NULL after use. If not set, flush all data and destroy old context.
+ * @param[in,out] new_ctx New context to use, set to NULL after use.
  * @param[out] old_ctx Optional old context, destroyed if not set.
  */
 void sr_conn_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx **new_ctx, struct ly_ctx **old_ctx);

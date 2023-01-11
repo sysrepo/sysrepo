@@ -4999,12 +4999,7 @@ sr_conn_ext_data_replace(sr_conn_ctx_t *conn, struct lyd_node *new_ext_data)
     }
 }
 
-/**
- * @brief Flush all cached running data of a connection in all its DS plugins.
- *
- * @param[in] conn Connection to use.
- */
-static void
+void
 sr_conn_running_cache_flush(sr_conn_ctx_t *conn)
 {
     uint32_t i;
@@ -5077,9 +5072,9 @@ sr_conn_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx **new_ctx, struct ly_ctx *
     sr_error_info_t *err_info = NULL;
     struct lyd_node *new_ext_data = NULL;
 
-    assert(new_ctx || !old_ctx);
+    assert(new_ctx);
 
-    if (new_ctx && conn->ly_ext_data) {
+    if (conn->ly_ext_data) {
         /* copy the ext data into the new context */
         if (lyd_dup_siblings_to_ctx(conn->ly_ext_data, *new_ctx, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS,
                 &new_ext_data)) {
@@ -5101,11 +5096,6 @@ sr_conn_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx **new_ctx, struct ly_ctx *
         *old_ctx = conn->ly_ctx;
     } else {
         ly_ctx_destroy(conn->ly_ctx);
-    }
-
-    if (!new_ctx) {
-        /* just free the old context and data in it */
-        return;
     }
 
     /* new ctx */

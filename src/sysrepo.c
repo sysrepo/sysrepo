@@ -149,14 +149,23 @@ error1:
 static void
 sr_conn_free(sr_conn_ctx_t *conn)
 {
+    uint32_t i;
+
     if (!conn) {
         return;
     }
 
     assert(!conn->oper_caches);
 
-    /* data and context destroy */
-    sr_conn_ctx_switch(conn, NULL, NULL);
+    /* unlocked data destroy */
+    lyd_free_siblings(conn->ly_ext_data);
+    sr_conn_running_cache_flush(conn);
+    for (i = 0; i < conn->oper_cache_count; ++i) {
+        lyd_free_siblings(conn->oper_caches[i].data);
+    }
+
+    /* context destroy */
+    ly_ctx_destroy(conn->ly_ctx);
 
     pthread_mutex_destroy(&conn->ptr_lock);
     sr_rwlock_destroy(&conn->ly_ext_data_lock);
