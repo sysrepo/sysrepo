@@ -4471,6 +4471,7 @@ _sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t ci
         if (!wr_urged) {
             rwlock->writer = cid;
         }
+        assert(rwlock->writer == cid);
 
     } else if (mode == SR_LOCK_READ_UPGR) {
         /* READ UPGR lock */
