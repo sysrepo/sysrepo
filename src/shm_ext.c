@@ -4,8 +4,8 @@
  * @brief ext SHM routines
  *
  * @copyright
- * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -44,6 +44,7 @@ sr_error_info_t *
 sr_shmext_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock, const char *func)
 {
     sr_error_info_t *err_info = NULL;
+    size_t shm_file_size;
 
     if (ext_lock) {
         /* EXT LOCK */
@@ -63,10 +64,52 @@ sr_shmext_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock
         if ((err_info = sr_shm_remap(&conn->ext_shm, 0))) {
             goto error_ext_remap_unlock;
         }
+    } else {
+        if ((err_info = sr_file_get_size(conn->ext_shm.fd, &shm_file_size))) {
+            goto error_ext_remap_unlock;
+        }
+        if (shm_file_size != conn->ext_shm.size) {
+            /* ext SHM size changed and we need to remap it */
+            if (mode == SR_LOCK_READ_UPGR) {
+                /* REMAP WRITE LOCK UPGRADE */
+                if ((err_info = sr_rwrelock(&conn->ext_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+                        func, NULL, NULL))) {
+                    goto error_ext_remap_unlock;
+                }
+            } else {
+                /* REMAP READ UNLOCK */
+                sr_rwunlock(&conn->ext_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func);
+                /* REMAP WRITE LOCK */
+                if ((err_info = sr_rwlock(&conn->ext_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+                        func, NULL, NULL))) {
+                    goto error_ext_unlock;
+                }
+            }
+
+            /* remap SHM */
+            if ((err_info = sr_shm_remap(&conn->ext_shm, 0))) {
+                mode = SR_LOCK_WRITE;
+                goto error_ext_remap_unlock;
+            }
+
+            /* do not release the lock anymore because ext SHM could be again remapped */
+            if (mode == SR_LOCK_READ_UPGR) {
+                /* REMAP READ UPGR LOCK DOWNGRADE */
+                if ((err_info = sr_rwrelock(&conn->ext_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ_UPGR,
+                        conn->cid, func, NULL, NULL))) {
+                    mode = SR_LOCK_WRITE;
+                    goto error_ext_remap_unlock;
+                }
+            } else {
+                /* REMAP READ LOCK DOWNGRADE */
+                if ((err_info = sr_rwrelock(&conn->ext_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ,
+                        conn->cid, func, NULL, NULL))) {
+                    mode = SR_LOCK_WRITE;
+                    goto error_ext_remap_unlock;
+                }
+            }
+        } /* else no remapping needed */
     }
-    /* else we will only be reading something (READ LOCK) that we must have locked before (some subscriptions) meaning
-     * it cannot be changed or moved (changing other ext SHM data does not affect existing data) so we are safe to
-     * continue with the existing mapping */
 
     return NULL;
 
@@ -622,9 +665,15 @@ sr_shmext_change_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t
 
     shm_sub = &((sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs))[del_idx];
 
+    SR_LOG_DBG("#SHM before (removing change sub)");
+    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
+
     /* free the subscription and its xpath, if any */
     sr_shmrealloc_del(&conn->ext_shm, &shm_mod->change_sub[ds].subs, &shm_mod->change_sub[ds].sub_count, sizeof *shm_sub,
             del_idx, shm_sub->xpath ? sr_strshmlen(conn->ext_shm.addr + shm_sub->xpath) : 0, shm_sub->xpath);
+
+    SR_LOG_DBG("#SHM after (removing change sub)");
+    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
     if (!shm_mod->change_sub[ds].sub_count) {
         /* unlink the sub SHM */
@@ -947,14 +996,26 @@ sr_shmext_oper_get_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del
         goto cleanup;
     }
 
+    SR_LOG_DBG("#SHM before (removing xpath oper get sub)");
+    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
+
     /* free the XPath subscription */
     sr_shmrealloc_del(&conn->ext_shm, &shm_sub->xpath_subs, &shm_sub->xpath_sub_count, sizeof *xpath_sub, del_idx2,
             0, 0);
 
+    SR_LOG_DBG("#SHM after (removing xpath oper get sub)");
+    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
+
     if (!shm_sub->xpath_sub_count) {
+        SR_LOG_DBG("#SHM before (removing oper get sub)");
+        sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
+
         /* last XPath subscription deleted, free the oper subscription */
         sr_shmrealloc_del(&conn->ext_shm, &shm_mod->oper_get_subs, &shm_mod->oper_get_sub_count, sizeof *shm_sub,
                 del_idx1, sr_strshmlen(conn->ext_shm.addr + shm_sub->xpath), shm_sub->xpath);
+
+        SR_LOG_DBG("#SHM after (removing oper get sub)");
+        sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
     }
 
 cleanup:
@@ -1191,9 +1252,15 @@ sr_shmext_oper_poll_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t de
 
     shm_sub = &((sr_mod_oper_poll_sub_t *)(conn->ext_shm.addr + shm_mod->oper_poll_subs))[del_idx];
 
+    SR_LOG_DBG("#SHM before (removing oper poll sub)");
+    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
+
     /* free the subscription */
     sr_shmrealloc_del(&conn->ext_shm, &shm_mod->oper_poll_subs, &shm_mod->oper_poll_sub_count, sizeof *shm_sub,
             del_idx, sr_strshmlen(conn->ext_shm.addr + shm_sub->xpath), shm_sub->xpath);
+
+    SR_LOG_DBG("#SHM after (removing oper poll sub)");
+    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
     return NULL;
 }
@@ -1415,9 +1482,15 @@ sr_shmext_notif_sub_free(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_id
 
     shm_sub = &((sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs))[del_idx];
 
+    SR_LOG_DBG("#SHM before (removing notif sub)");
+    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
+
     /* free the subscription */
     sr_shmrealloc_del(&conn->ext_shm, &shm_mod->notif_subs, &shm_mod->notif_sub_count, sizeof *shm_sub,
             del_idx, shm_sub->xpath ? sr_strshmlen(conn->ext_shm.addr + shm_sub->xpath) : 0, shm_sub->xpath);
+
+    SR_LOG_DBG("#SHM after (removing notif sub)");
+    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
     if (!shm_mod->notif_sub_count) {
         /* unlink the sub SHM */
@@ -1689,9 +1762,15 @@ sr_shmext_rpc_sub_free(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, co
 
     shm_subs = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + *subs);
 
+    SR_LOG_DBG("#SHM before (removing rpc sub)");
+    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
+
     /* free the subscription */
     sr_shmrealloc_del(&conn->ext_shm, subs, sub_count, sizeof *shm_subs, del_idx,
             sr_strshmlen(conn->ext_shm.addr + shm_subs[del_idx].xpath), shm_subs[del_idx].xpath);
+
+    SR_LOG_DBG("#SHM after (removing rpc sub)");
+    sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
     for (i = 0; i < *sub_count; ++i) {
         if ((err_info = sr_get_trim_predicates(conn->ext_shm.addr + shm_subs[i].xpath, &p))) {
