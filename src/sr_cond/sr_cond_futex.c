@@ -38,6 +38,7 @@ sr_error_info_t *
 sr_cond_init(sr_cond_t *cond, int UNUSED(shared), int UNUSED(robust))
 {
     cond->futex = 1;
+
     return NULL;
 }
 
@@ -107,7 +108,10 @@ static int
 sr_cond_wait_(sr_cond_t *cond, pthread_mutex_t *mutex, struct timespec *timeout_abs)
 {
     int r, rf;
-    uint32_t last_val = cond->futex;
+    uint32_t last_val;
+
+    /* always wait until a "change" occurs */
+    last_val = cond->futex;
 
     /* MUTEX UNLOCK */
     pthread_mutex_unlock(mutex);
@@ -146,13 +150,13 @@ sr_cond_timedwait(sr_cond_t *cond, pthread_mutex_t *mutex, struct timespec *time
 void
 sr_cond_broadcast(sr_cond_t *cond)
 {
+    /* just increase the counter, makes sure it is recognized as a new "change" */
     cond->futex++;
+
     sys_futex_wake(&cond->futex, INT_MAX);
 }
 
 void
-sr_cond_consistent(sr_cond_t *cond)
+sr_cond_consistent(sr_cond_t *UNUSED(cond))
 {
-    /* futex not ready */
-    cond->futex = 0;
 }
