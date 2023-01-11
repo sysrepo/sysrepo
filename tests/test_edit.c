@@ -4,8 +4,8 @@
  * @brief test for edits performed in a datastore
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -566,7 +566,7 @@ test_replace_userord(void **state)
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* check final datastore contents */
+    /* check datastore contents */
     ret = sr_get_data(st->sess, "/test:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -578,6 +578,43 @@ test_replace_userord(void **state)
         "<k>one</k>"
         "<ll3>3</ll3>"
     "</l3>";
+
+    assert_string_equal(str, str2);
+    free(str);
+
+    /* create some items */
+    ret = sr_set_item_str(st->sess, "/test:l1[k='key']/ll12", "0", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/test:l1[k='key']/ll12", "1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* replace data with a custom set of items keeping the order */
+    str2 =
+    "<l1 xmlns=\"urn:test\">"
+        "<k>key</k>"
+        "<ll12>A</ll12>"
+        "<ll12>B</ll12>"
+        "<ll12>C</ll12>"
+        "<ll12>0</ll12>"
+        "<ll12>1</ll12>"
+    "</l1>";
+    ly_ctx = sr_acquire_context(st->conn);
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str2, LYD_XML, LYD_PARSE_ONLY, 0, &edit));
+    ret = sr_edit_batch(st->sess, edit, "replace");
+    lyd_free_all(edit);
+    sr_release_context(st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check datastore contents */
+    ret = sr_get_data(st->sess, "/test:l1", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
 
     assert_string_equal(str, str2);
     free(str);

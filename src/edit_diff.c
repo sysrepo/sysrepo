@@ -1116,6 +1116,9 @@ sr_edit_find_match(const struct lyd_node *data_sibling, const struct lyd_node *e
     return NULL;
 }
 
+#define EDIT_APPLY_REPLACE_R    0x01    /**< There was a replace operation in a parent, change behavior accordingly. */
+#define EDIT_APPLY_DELETE_R     0x02    /**< There was a delete operation in a parent, change behavior accordingly. */
+
 /**
  * @brief Find a matching node in data tree for an edit node.
  *
@@ -1125,13 +1128,14 @@ sr_edit_find_match(const struct lyd_node *data_sibling, const struct lyd_node *e
  * @param[in] insert Optional insert place of the operation.
  * @param[in] userord_anchor Optional user-ordered list anchor of relative (leaf-)list instance of the operation.
  * @param[in] dflt_ll_skip Whether to skip found default leaf-list instance.
+ * @param[in] flags Flags modifying the behavior.
  * @param[out] match_p Matching node.
  * @param[out] val_equal_p Whether even the value matches.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_edit_find(const struct lyd_node *data_sibling, const struct lyd_node *edit_node, enum edit_op op, enum insert_val insert,
-        const char *userord_anchor, int dflt_ll_skip, struct lyd_node **match_p, int *val_equal_p)
+        const char *userord_anchor, int dflt_ll_skip, int flags, struct lyd_node **match_p, int *val_equal_p)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *anchor_node;
@@ -1185,7 +1189,16 @@ sr_edit_find(const struct lyd_node *data_sibling, const struct lyd_node *edit_no
                         if ((err_info = sr_edit_find_userord_predicate(data_sibling, match, userord_anchor, &anchor_node))) {
                             return err_info;
                         }
+                    } else if (flags & EDIT_APPLY_REPLACE_R) {
+                        /* take the order from the edit */
+                        anchor_node = (struct lyd_node *)sr_edit_find_previous_instance(edit_node);
+                        if (anchor_node) {
+                            insert = INSERT_AFTER;
+                        } else {
+                            insert = INSERT_FIRST;
+                        }
                     }
+
                     /* check for move */
                     if (sr_edit_userord_is_moved(match, insert, anchor_node)) {
                         val_equal = 0;
@@ -1613,9 +1626,6 @@ cleanup:
     free(sibling_before_val);
     return err_info;
 }
-
-#define EDIT_APPLY_REPLACE_R    0x01    /**< There was a replace operation in a parent, change behavior accordingly. */
-#define EDIT_APPLY_DELETE_R     0x02    /**< There was a delete operation in a parent, change behavior accordingly. */
 
 /**
  * @brief Check whether this diff node is redundant (does not change data).
@@ -2249,7 +2259,7 @@ sr_edit_apply_r(struct lyd_node **data_root, struct lyd_node *data_parent, const
 reapply:
     /* find an equal node in the current data */
     if ((err_info = sr_edit_find(data_parent ? lyd_child(data_parent) : *data_root, edit_node, op, insert, key_or_value,
-            1, &data_match, &val_equal))) {
+            1, flags, &data_match, &val_equal))) {
         goto cleanup;
     }
 
@@ -2355,7 +2365,7 @@ reapply:
                 continue;
             }
 
-            if ((err_info = sr_edit_find(lyd_child_no_keys(edit_node), child, EDIT_DELETE, 0, NULL, 0,
+            if ((err_info = sr_edit_find(lyd_child_no_keys(edit_node), child, EDIT_DELETE, 0, NULL, 0, 0,
                     &edit_match, NULL))) {
                 goto cleanup;
             }
