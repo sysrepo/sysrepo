@@ -2659,28 +2659,31 @@ cleanup:
 static int
 sr_shmsub_change_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct modsub_changesub_s *sub)
 {
+    sr_sub_event_t event = ATOMIC_LOAD_RELAXED(multi_sub_shm->event);
+    uint32_t request_id = ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id);
+    uint32_t priority = ATOMIC_LOAD_RELAXED(multi_sub_shm->priority);
+
     /* not a listener event */
-    if (!SR_IS_LISTEN_EVENT(multi_sub_shm->event)) {
+    if (!SR_IS_LISTEN_EVENT(event)) {
         return 0;
     }
 
     /* new event and request ID */
-    if ((multi_sub_shm->request_id == sub->request_id) && (multi_sub_shm->event == sub->event)) {
+    if ((request_id == sub->request_id) && (event == sub->event)) {
         return 0;
     }
-    if ((multi_sub_shm->event == SR_SUB_EV_ABORT) && ((sub->event != SR_SUB_EV_CHANGE) ||
-            (sub->request_id != multi_sub_shm->request_id))) {
+    if ((event == SR_SUB_EV_ABORT) && ((sub->event != SR_SUB_EV_CHANGE) || (sub->request_id != request_id))) {
         /* process "abort" only on subscriptions that have successfully processed "change" */
         return 0;
     }
 
     /* priority */
-    if (multi_sub_shm->priority != sub->priority) {
+    if (priority != sub->priority) {
         return 0;
     }
 
     /* subscription options and event */
-    if (!sr_shmsub_change_listen_event_is_valid(multi_sub_shm->event, sub->opts)) {
+    if (!sr_shmsub_change_listen_event_is_valid(event, sub->opts)) {
         return 0;
     }
 
@@ -2754,7 +2757,7 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
 
     assert(multi_sub_shm->subscriber_count >= valid_subscr_count);
 
-    event = multi_sub_shm->event;
+    event = ATOMIC_LOAD_RELAXED(multi_sub_shm->event);
 
     if ((multi_sub_shm->subscriber_count == valid_subscr_count) || err_code) {
         /* last subscriber finished or an error, update event */
@@ -2764,9 +2767,9 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
         case SR_SUB_EV_RPC:
             /* notifier waits for these events */
             if (err_code) {
-                multi_sub_shm->event = SR_SUB_EV_ERROR;
+                ATOMIC_STORE_RELAXED(multi_sub_shm->event, SR_SUB_EV_ERROR);
             } else {
-                multi_sub_shm->event = SR_SUB_EV_SUCCESS;
+                ATOMIC_STORE_RELAXED(multi_sub_shm->event, SR_SUB_EV_SUCCESS);
             }
             break;
         case SR_SUB_EV_DONE:
@@ -2774,7 +2777,7 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
         case SR_SUB_EV_NOTIF:
             /* notifier does not wait for these events */
             assert(!err_code);
-            multi_sub_shm->event = SR_SUB_EV_NONE;
+            ATOMIC_STORE_RELAXED(multi_sub_shm->event, SR_SUB_EV_NONE);
             break;
         default:
             /* unreachable, it was checked before */
@@ -2795,7 +2798,8 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
     }
 
     SR_LOG_INF("%s processing of \"%s\" event with ID %" PRIu32 " priority %" PRIu32 " (remaining %" PRIu32 " subscribers).",
-            result_str, sr_ev2str(event), multi_sub_shm->request_id, multi_sub_shm->priority, multi_sub_shm->subscriber_count);
+            result_str, sr_ev2str(event), ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id),
+            ATOMIC_LOAD_RELAXED(multi_sub_shm->priority), multi_sub_shm->subscriber_count);
     return NULL;
 }
 
@@ -2913,7 +2917,8 @@ sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t
     }
 
     /* check that SHM is still valid even after the lock was released and re-acquired */
-    if ((sub_info->event != multi_sub_shm->event) || (sub_info->request_id != multi_sub_shm->request_id)) {
+    if ((sub_info->event != ATOMIC_LOAD_RELAXED(multi_sub_shm->event)) ||
+            (sub_info->request_id != ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id))) {
         /* SUB READ/WRITE UNLOCK */
         sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, ev_sess->conn->cid, __func__);
 
@@ -3001,6 +3006,16 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
 
     multi_sub_shm = (sr_multi_sub_shm_t *)change_subs->sub_shm.addr;
 
+    for (i = 0; i < change_subs->sub_count; ++i) {
+        if (sr_shmsub_change_listen_is_new_event(multi_sub_shm, &change_subs->subs[i])) {
+            break;
+        }
+    }
+    if (i == change_subs->sub_count) {
+        /* no new module event */
+        goto cleanup;
+    }
+
     /* SUB READ LOCK */
     if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
             NULL, NULL))) {
@@ -3008,12 +3023,12 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
     }
     sub_lock = SR_LOCK_READ;
 
-    for (i = 0; i < change_subs->sub_count; ++i) {
+    /* recheck new event with lock */
+    for ( ; i < change_subs->sub_count; ++i) {
         if (sr_shmsub_change_listen_is_new_event(multi_sub_shm, &change_subs->subs[i])) {
             break;
         }
     }
-    /* no new module event */
     if (i == change_subs->sub_count) {
         goto cleanup;
     }
@@ -3025,12 +3040,12 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
     shm_data_ptr = shm_data_sub.addr;
 
     /* remember subscription info in SHM */
-    sub_info.event = multi_sub_shm->event;
-    sub_info.request_id = multi_sub_shm->request_id;
-    sub_info.priority = multi_sub_shm->priority;
+    sub_info.event = ATOMIC_LOAD_RELAXED(multi_sub_shm->event);
+    sub_info.request_id = ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id);
+    sub_info.priority = ATOMIC_LOAD_RELAXED(multi_sub_shm->priority);
 
     /* parse originator name and data (while creating the event session) */
-    if ((err_info = _sr_session_start(conn, change_subs->ds, multi_sub_shm->event, &shm_data_ptr, &ev_sess))) {
+    if ((err_info = _sr_session_start(conn, change_subs->ds, sub_info.event, &shm_data_ptr, &ev_sess))) {
         goto cleanup;
     }
 
@@ -3046,7 +3061,7 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
 
     /* process event */
     SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %" PRIu32 " priority %" PRIu32 " (remaining %" PRIu32 " subscribers).",
-            change_subs->module_name, sr_ev2str(multi_sub_shm->event), multi_sub_shm->request_id, multi_sub_shm->priority,
+            change_subs->module_name, sr_ev2str(sub_info.event), sub_info.request_id, sub_info.priority,
             multi_sub_shm->subscriber_count);
 
     /* process individual subscriptions (starting at the last found subscription, it was valid) */
@@ -3103,14 +3118,14 @@ process_event:
         ++valid_subscr_count;
 
         /* remember request ID and event so that we do not process it again */
-        change_sub->request_id = multi_sub_shm->request_id;
-        change_sub->event = multi_sub_shm->event;
+        change_sub->request_id = ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id);
+        change_sub->event = ATOMIC_LOAD_RELAXED(multi_sub_shm->event);
     }
 
     /*
      * prepare additional event data written into subscription data SHM
      */
-    switch (multi_sub_shm->event) {
+    switch (ATOMIC_LOAD_RELAXED(multi_sub_shm->event)) {
     case SR_SUB_EV_UPDATE:
         if (!err_code) {
             /* we may have an updated edit (empty is fine), check it */
@@ -3249,7 +3264,7 @@ sr_shmsub_oper_get_listen_relock(sr_sub_shm_t *sub_shm, sr_lock_mode_t mode, sr_
     }
 
     /* check that SHM is still valid even after the lock was released and re-acquired */
-    if ((SR_SUB_EV_OPER != sub_shm->event) || (exp_req_id != sub_shm->request_id)) {
+    if ((SR_SUB_EV_OPER != ATOMIC_LOAD_RELAXED(sub_shm->event)) || (exp_req_id != ATOMIC_LOAD_RELAXED(sub_shm->request_id))) {
         /* SUB READ/WRITE UNLOCK */
         sr_rwunlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, cid, __func__);
 
@@ -3281,19 +3296,26 @@ sr_shmsub_oper_get_listen_process_module_events(struct modsub_operget_s *oper_ge
         oper_get_sub = &oper_get_subs->subs[i];
         sub_shm = (sr_sub_shm_t *)oper_get_sub->sub_shm.addr;
 
+        /* no new event */
+        if ((ATOMIC_LOAD_RELAXED(sub_shm->event) != SR_SUB_EV_OPER) ||
+                (ATOMIC_LOAD_RELAXED(sub_shm->request_id) == oper_get_sub->request_id)) {
+            continue;
+        }
+
         /* SUB READ LOCK */
         if ((err_info = sr_rwlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
                 NULL, NULL))) {
             goto error;
         }
 
-        /* no new event */
-        if ((sub_shm->event != SR_SUB_EV_OPER) || (sub_shm->request_id == oper_get_sub->request_id)) {
+        /* recheck new event with lock */
+        if ((ATOMIC_LOAD_RELAXED(sub_shm->event) != SR_SUB_EV_OPER) ||
+                (ATOMIC_LOAD_RELAXED(sub_shm->request_id) == oper_get_sub->request_id)) {
             /* SUB READ UNLOCK */
             sr_rwunlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
             continue;
         }
-        request_id = sub_shm->request_id;
+        request_id = ATOMIC_LOAD_RELAXED(sub_shm->request_id);
 
         /* open sub data SHM */
         if ((err_info = sr_shmsub_data_open_remap(oper_get_subs->module_name, "oper", sr_str_hash(oper_get_sub->path,
@@ -3889,23 +3911,26 @@ cleanup:
 static int
 sr_shmsub_rpc_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct opsub_rpcsub_s *sub)
 {
+    sr_sub_event_t event = ATOMIC_LOAD_RELAXED(multi_sub_shm->event);
+    uint32_t request_id = ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id);
+    uint32_t priority = ATOMIC_LOAD_RELAXED(multi_sub_shm->priority);
+
     /* not a listener event */
-    if (!SR_IS_LISTEN_EVENT(multi_sub_shm->event)) {
+    if (!SR_IS_LISTEN_EVENT(event)) {
         return 0;
     }
 
     /* new event and request ID */
-    if ((multi_sub_shm->request_id == sub->request_id) && (multi_sub_shm->event == sub->event)) {
+    if ((request_id == sub->request_id) && (event == sub->event)) {
         return 0;
     }
-    if ((multi_sub_shm->event == SR_SUB_EV_ABORT) && ((sub->event != SR_SUB_EV_RPC) ||
-            (sub->request_id != multi_sub_shm->request_id))) {
+    if ((event == SR_SUB_EV_ABORT) && ((sub->event != SR_SUB_EV_RPC) || (sub->request_id != request_id))) {
         /* process "abort" only on subscriptions that have successfully processed "RPC" */
         return 0;
     }
 
     /* priority */
-    if (multi_sub_shm->priority != sub->priority) {
+    if (priority != sub->priority) {
         return 0;
     }
 
@@ -3945,7 +3970,8 @@ sr_shmsub_rpc_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t mo
     }
 
     /* check that SHM is still valid even after the lock was released and re-acquired */
-    if ((sub_info->event != multi_sub_shm->event) || (sub_info->request_id != multi_sub_shm->request_id)) {
+    if ((sub_info->event != ATOMIC_LOAD_RELAXED(multi_sub_shm->event)) ||
+            (sub_info->request_id != ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id))) {
         /* SUB READ/WRITE UNLOCK */
         sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, ev_sess->conn->cid, __func__);
 
@@ -3994,45 +4020,55 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
 
     multi_sub_shm = (sr_multi_sub_shm_t *)rpc_subs->sub_shm.addr;
 
-    /* SUB READ UPGR LOCK */
-    if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
-            NULL, NULL))) {
-        goto cleanup;
-    }
-    sub_lock = SR_LOCK_READ;
-
     for (i = 0; i < rpc_subs->sub_count; ++i) {
         rpc_sub = &rpc_subs->subs[i];
-        if (sr_shmsub_rpc_listen_is_new_event(multi_sub_shm, rpc_sub)) {
-            /* there is a new event so there is some operation that can be parsed */
-            if (!ev_sess) {
-                /* open sub data SHM */
-                module_name = sr_get_first_ns(rpc_subs->path);
-                if ((err_info = sr_shmsub_data_open_remap(module_name, "rpc", sr_str_hash(rpc_subs->path, 0),
-                        &shm_data_sub, 0))) {
-                    goto cleanup;
-                }
-                shm_data_ptr = shm_data_sub.addr;
+        if (!sr_shmsub_rpc_listen_is_new_event(multi_sub_shm, rpc_sub)) {
+            /* no new event */
+            continue;
+        }
 
-                /* parse originator name and data (while creating the event session) */
-                if ((err_info = _sr_session_start(conn, SR_DS_OPERATIONAL, SR_SUB_EV_RPC, &shm_data_ptr, &ev_sess))) {
-                    goto cleanup;
-                }
-
-                /* parse RPC/action input */
-                ly_in_new_memory(shm_data_ptr, &in);
-                if (lyd_parse_op(conn->ly_ctx, NULL, in, LYD_LYB, LYD_TYPE_RPC_YANG, &input, NULL)) {
-                    sr_errinfo_new_ly(&err_info, conn->ly_ctx, NULL);
-                    SR_ERRINFO_INT(&err_info);
-                    goto cleanup;
-                }
+        if (sub_lock == SR_LOCK_NONE) {
+            /* SUB READ LOCK */
+            if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
+                    NULL, NULL))) {
+                goto cleanup;
             }
-            assert(input);
+            sub_lock = SR_LOCK_READ;
+        }
 
-            /* XPath filtering */
-            if (sr_shmsub_rpc_listen_filter_is_valid(input, rpc_sub->xpath)) {
-                break;
+        /* recheck new event with lock */
+        if (!sr_shmsub_rpc_listen_is_new_event(multi_sub_shm, rpc_sub)) {
+            continue;
+        }
+
+        /* there is a new event so there is some operation that can be parsed */
+        if (!ev_sess) {
+            /* open sub data SHM */
+            module_name = sr_get_first_ns(rpc_subs->path);
+            if ((err_info = sr_shmsub_data_open_remap(module_name, "rpc", sr_str_hash(rpc_subs->path, 0),
+                    &shm_data_sub, 0))) {
+                goto cleanup;
             }
+            shm_data_ptr = shm_data_sub.addr;
+
+            /* parse originator name and data (while creating the event session) */
+            if ((err_info = _sr_session_start(conn, SR_DS_OPERATIONAL, SR_SUB_EV_RPC, &shm_data_ptr, &ev_sess))) {
+                goto cleanup;
+            }
+
+            /* parse RPC/action input */
+            ly_in_new_memory(shm_data_ptr, &in);
+            if (lyd_parse_op(conn->ly_ctx, NULL, in, LYD_LYB, LYD_TYPE_RPC_YANG, &input, NULL)) {
+                sr_errinfo_new_ly(&err_info, conn->ly_ctx, NULL);
+                SR_ERRINFO_INT(&err_info);
+                goto cleanup;
+            }
+        }
+        assert(input);
+
+        /* XPath filtering */
+        if (sr_shmsub_rpc_listen_filter_is_valid(input, rpc_sub->xpath)) {
+            break;
         }
     }
     /* no new RPC event */
@@ -4041,9 +4077,9 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
     }
 
     /* remember subscription info in SHM */
-    sub_info.event = multi_sub_shm->event;
-    sub_info.request_id = multi_sub_shm->request_id;
-    sub_info.priority = multi_sub_shm->priority;
+    sub_info.event = ATOMIC_LOAD_RELAXED(multi_sub_shm->event);
+    sub_info.request_id = ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id);
+    sub_info.priority = ATOMIC_LOAD_RELAXED(multi_sub_shm->priority);
 
     /* go to the operation, not the root */
     input_op = input;
@@ -4053,7 +4089,7 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
 
     /* process event */
     SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %" PRIu32 " priority %" PRIu32 " (remaining %" PRIu32 " subscribers).",
-            rpc_subs->path, sr_ev2str(multi_sub_shm->event), multi_sub_shm->request_id, multi_sub_shm->priority,
+            rpc_subs->path, sr_ev2str(sub_info.event), sub_info.request_id, sub_info.priority,
             multi_sub_shm->subscriber_count);
 
     /* process individual subscriptions (starting at the last found subscription, it was valid) */
@@ -4092,14 +4128,15 @@ process_event:
             if (ret == SR_ERR_CALLBACK_SHELVE) {
                 /* processing was shelved, so interupt the whole RPC processing in order to get correct final output */
                 SR_LOG_INF("Shelved processing of \"%s\" event with ID %" PRIu32 " priority %" PRIu32 ".",
-                        sr_ev2str(multi_sub_shm->event), multi_sub_shm->request_id, multi_sub_shm->priority);
+                        sr_ev2str(ATOMIC_LOAD_RELAXED(multi_sub_shm->event)),
+                        ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id), ATOMIC_LOAD_RELAXED(multi_sub_shm->priority));
                 goto cleanup;
             } else if (ret != SR_ERR_OK) {
                 /* whole event failed */
                 err_code = ret;
 
                 /* remember request ID and "abort" event so that we do not process it */
-                rpc_sub->request_id = multi_sub_shm->request_id;
+                rpc_sub->request_id = ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id);
                 rpc_sub->event = SR_SUB_EV_ABORT;
                 break;
             }
@@ -4109,8 +4146,8 @@ process_event:
         ++valid_subscr_count;
 
         /* remember request ID and event so that we do not process it again */
-        rpc_sub->request_id = multi_sub_shm->request_id;
-        rpc_sub->event = multi_sub_shm->event;
+        rpc_sub->request_id = ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id);
+        rpc_sub->event = ATOMIC_LOAD_RELAXED(multi_sub_shm->event);
     }
 
     /*
@@ -4207,17 +4244,24 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
 
     multi_sub_shm = (sr_multi_sub_shm_t *)notif_subs->sub_shm.addr;
 
+    /* no new event */
+    if ((ATOMIC_LOAD_RELAXED(multi_sub_shm->event) != SR_SUB_EV_NOTIF) ||
+            (ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id) == notif_subs->request_id)) {
+        goto cleanup;
+    }
+
     /* SUB READ LOCK */
     if ((err_info = sr_rwlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
             NULL, NULL))) {
         goto cleanup;
     }
 
-    /* no new event */
-    if ((multi_sub_shm->event != SR_SUB_EV_NOTIF) || (multi_sub_shm->request_id == notif_subs->request_id)) {
+    /* recheck new event with lock */
+    if ((ATOMIC_LOAD_RELAXED(multi_sub_shm->event) != SR_SUB_EV_NOTIF) ||
+            (ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id) == notif_subs->request_id)) {
         goto cleanup_rdunlock;
     }
-    request_id = multi_sub_shm->request_id;
+    request_id = ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id);
 
     /* open sub data SHM */
     if ((err_info = sr_shmsub_data_open_remap(notif_subs->module_name, "notif", -1, &shm_data_sub, 0))) {
@@ -4317,7 +4361,8 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     }
 
     /* no error/timeout should be possible */
-    if ((multi_sub_shm->event != SR_SUB_EV_NOTIF) || (multi_sub_shm->request_id != notif_subs->request_id)) {
+    if ((ATOMIC_LOAD_RELAXED(multi_sub_shm->event) != SR_SUB_EV_NOTIF) ||
+            (ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id) != notif_subs->request_id)) {
         SR_ERRINFO_INT(&err_info);
         goto cleanup_wrunlock;
     }

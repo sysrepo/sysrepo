@@ -20,6 +20,8 @@
 #include <sys/types.h>
 #include <time.h>
 
+#include "compat.h"
+
 #include "common_types.h"
 #include "sysrepo_types.h"
 
@@ -342,8 +344,8 @@ typedef struct {
     sr_rwlock_t lock;           /**< Process-shared lock for accessing the SHM structure. */
 
     sr_cid_t orig_cid;          /**< Event originator CID. */
-    uint32_t request_id;        /**< Request ID. */
-    sr_sub_event_t event;       /**< Event. */
+    ATOMIC_T request_id;        /**< Request ID. */
+    ATOMIC_T event;             /**< Event. */
 } sr_sub_shm_t;
 
 /**
@@ -353,11 +355,11 @@ typedef struct {
     sr_rwlock_t lock;           /**< Process-shared lock for accessing the SHM structure. */
 
     sr_cid_t orig_cid;          /**< Event originator CID. */
-    uint32_t request_id;        /**< Request ID. */
-    sr_sub_event_t event;       /**< Event. */
+    ATOMIC_T request_id;        /**< Request ID. */
+    ATOMIC_T event;             /**< Event. */
 
     /* specific fields */
-    uint32_t priority;          /**< Priority of the subscriber. */
+    ATOMIC_T priority;          /**< Priority of the subscriber. */
     uint32_t subscriber_count;  /**< Number of subscribers to process this event. */
 } sr_multi_sub_shm_t;
 
