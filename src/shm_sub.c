@@ -266,10 +266,11 @@ static void
 sr_shmsub_recover(sr_sub_shm_t *sub_shm)
 {
     if (!sr_conn_is_alive(sub_shm->orig_cid)) {
-        SR_LOG_WRN("Recovered an event of CID %" PRIu32 " with ID %" PRIu32 ".", sub_shm->orig_cid, sub_shm->request_id);
+        SR_LOG_WRN("Recovered an event of CID %" PRIu32 " with ID %" PRIu32 ".", sub_shm->orig_cid,
+                ATOMIC_LOAD_RELAXED(sub_shm->request_id));
 
         /* clear the event */
-        sub_shm->event = SR_SUB_EV_NONE;
+        ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
 
         /* make consistent */
         sr_cond_consistent(&sub_shm->lock.cond);
@@ -290,7 +291,8 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_abs;
-    uint32_t request_id;
+    sr_sub_event_t last_event;
+    uint32_t request_id, last_request_id;
     int ret;
 
     /* WRITE LOCK */
@@ -298,13 +300,13 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
         return err_info;
     }
 
-    if (sub_shm->event && (sub_shm->event != lock_event)) {
+    if (ATOMIC_LOAD_RELAXED(sub_shm->event) && (ATOMIC_LOAD_RELAXED(sub_shm->event) != lock_event)) {
         /* instead of wating, try to recover the event immediately */
         sr_shmsub_recover(sub_shm);
     }
 
     /* remember current request_id */
-    request_id = sub_shm->request_id;
+    request_id = ATOMIC_LOAD_RELAXED(sub_shm->request_id);
 
     assert(sub_shm->lock.writer == cid);
     /* FAKE WRITE UNLOCK */
@@ -313,7 +315,8 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
     /* wait until there is no event and there are no readers (just like write lock) */
     sr_time_get(&timeout_abs, SR_SUBSHM_LOCK_TIMEOUT);
     ret = 0;
-    while (!ret && (sub_shm->lock.readers[0] || (sub_shm->event && (sub_shm->event != lock_event)))) {
+    while (!ret && (sub_shm->lock.readers[0] || (ATOMIC_LOAD_RELAXED(sub_shm->event) &&
+            (ATOMIC_LOAD_RELAXED(sub_shm->event) != lock_event)))) {
         /* COND WAIT */
         ret = sr_cond_timedwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, &timeout_abs);
     }
@@ -322,24 +325,27 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
     sub_shm->lock.writer = cid;
 
     if ((ret == ETIMEDOUT) && !sub_shm->lock.readers[0]) {
-        assert(sub_shm->event);
+        assert(ATOMIC_LOAD_RELAXED(sub_shm->event));
         /* try to recover the event again in case the originator crashed later */
         sr_shmsub_recover(sub_shm);
-        if (!sub_shm->event) {
+        if (!ATOMIC_LOAD_RELAXED(sub_shm->event)) {
             /* recovered */
             ret = 0;
         }
     }
 
+    last_event = ATOMIC_LOAD_RELAXED(sub_shm->event);
+    last_request_id = ATOMIC_LOAD_RELAXED(sub_shm->request_id);
+
     if (ret) {
-        if ((ret == ETIMEDOUT) && (!sub_shm->event || (sub_shm->event == lock_event)) && (request_id == sub_shm->request_id)) {
+        if ((ret == ETIMEDOUT) && (!last_event || (last_event == lock_event)) && (request_id == last_request_id)) {
             /* even though the timeout has elapsed, the event was handled so continue normally */
             goto event_handled;
-        } else if ((ret == ETIMEDOUT) && (sub_shm->event && (sub_shm->event != lock_event))) {
+        } else if ((ret == ETIMEDOUT) && (last_event && (last_event != lock_event))) {
             /* timeout */
             sr_errinfo_new(&err_info, SR_ERR_TIME_OUT,
                     "Waiting for subscription of \"%s\" failed, previous event \"%s\" with ID %" PRIu32 " was not processed.",
-                    shm_name, sr_ev2str(sub_shm->event), sub_shm->request_id);
+                    shm_name, sr_ev2str(last_event), last_request_id);
         } else {
             /* other error */
             SR_ERRINFO_COND(&err_info, __func__, ret);
@@ -383,16 +389,16 @@ sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int 
     struct timespec timeout_abs;
     sr_error_t err_code;
     const char *ptr, *err_msg, *err_format, *err_data;
-    sr_sub_event_t event;
-    uint32_t request_id;
+    sr_sub_event_t event, last_event;
+    uint32_t request_id, last_request_id;
     int ret;
 
     assert((expected_ev == SR_SUB_EV_NONE) || (expected_ev == SR_SUB_EV_SUCCESS) || (expected_ev == SR_SUB_EV_ERROR));
     assert(shm_data_sub->fd > -1);
 
     /* remember current event and request_id */
-    event = sub_shm->event;
-    request_id = sub_shm->request_id;
+    event = ATOMIC_LOAD_RELAXED(sub_shm->event);
+    request_id = ATOMIC_LOAD_RELAXED(sub_shm->request_id);
 
     assert(sub_shm->lock.writer == cid);
     /* FAKE WRITE UNLOCK */
@@ -402,17 +408,19 @@ sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int 
     sr_time_get(&timeout_abs, timeout_ms);
     ret = 0;
     while (!ret && (sub_shm->lock.readers[0] || sub_shm->lock.writer ||
-            (sub_shm->event && !SR_IS_NOTIFY_EVENT(sub_shm->event)))) {
+            (ATOMIC_LOAD_RELAXED(sub_shm->event) && !SR_IS_NOTIFY_EVENT(ATOMIC_LOAD_RELAXED(sub_shm->event))))) {
         /* COND WAIT */
         ret = sr_cond_timedwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, &timeout_abs);
     }
     /* we are holding the mutex but no lock flags are set */
 
+    last_event = ATOMIC_LOAD_RELAXED(sub_shm->event);
+    last_request_id = ATOMIC_LOAD_RELAXED(sub_shm->request_id);
     if (ret) {
-        if ((ret == ETIMEDOUT) && SR_IS_NOTIFY_EVENT(sub_shm->event) && (request_id == sub_shm->request_id)) {
+        if ((ret == ETIMEDOUT) && SR_IS_NOTIFY_EVENT(last_event) && (request_id == last_request_id)) {
             /* even though the timeout has elapsed, the event was handled so continue normally */
             goto event_handled;
-        } else if ((ret == ETIMEDOUT) && (sub_shm->event && !SR_IS_NOTIFY_EVENT(sub_shm->event))) {
+        } else if ((ret == ETIMEDOUT) && (last_event && !SR_IS_NOTIFY_EVENT(last_event))) {
             /* WRITE LOCK, chances are we will get it if we ignore the event */
             if (!(err_info = sr_sub_rwlock_has_mutex(&sub_shm->lock, timeout_ms, SR_LOCK_WRITE, cid, __func__, NULL, NULL))) {
                 /* event timeout */
@@ -424,12 +432,12 @@ sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int 
             SR_ERRINFO_COND(&err_info, __func__, ret);
         }
 
-        if ((event == sub_shm->event) && (request_id == sub_shm->request_id)) {
+        if ((event == last_event) && (request_id == last_request_id)) {
             /* event failed */
             if (clear_ev_on_err) {
-                sub_shm->event = SR_SUB_EV_NONE;
+                ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
             } else if ((expected_ev == SR_SUB_EV_SUCCESS) || (expected_ev == SR_SUB_EV_ERROR)) {
-                sub_shm->event = SR_SUB_EV_ERROR;
+                ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_ERROR);
             }
         }
 
@@ -454,12 +462,12 @@ event_handled:
 
     if ((expected_ev == SR_SUB_EV_SUCCESS) || (expected_ev == SR_SUB_EV_ERROR)) {
         /* we expect a reply (success/error) */
-        switch (sub_shm->event) {
+        switch (last_event) {
         case SR_SUB_EV_SUCCESS:
             /* what was expected */
             if (expected_ev == SR_SUB_EV_SUCCESS) {
                 /* clear it */
-                sub_shm->event = SR_SUB_EV_NONE;
+                ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
             }
             break;
         case SR_SUB_EV_ERROR:
@@ -493,19 +501,19 @@ event_handled:
 
             if (clear_ev_on_err) {
                 /* clear the error */
-                sub_shm->event = SR_SUB_EV_NONE;
+                ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
             }
             break;
         default:
             sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unexpected sub SHM event \"%s\" (expected \"%s\").",
-                    sr_ev2str(sub_shm->event), sr_ev2str(expected_ev));
+                    sr_ev2str(last_event), sr_ev2str(expected_ev));
             return err_info;
         }
     } else {
         /* we expect no event */
         if (sub_shm->event != SR_SUB_EV_NONE) {
             sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unexpected sub SHM event \"%s\" (expected \"%s\").",
-                    sr_ev2str(sub_shm->event), sr_ev2str(expected_ev));
+                    sr_ev2str(last_event), sr_ev2str(expected_ev));
             return err_info;
         }
     }
@@ -551,8 +559,8 @@ sr_shmsub_notify_all_wait_wr(struct sr_shmsub_oper_get_sub_s *notify_subs, uint3
         assert(notify_subs[i].shm_data_sub.fd > -1);
 
         /* remember current event and request_id */
-        notify_subs[i].event = notify_subs[i].sub_shm->event;
-        notify_subs[i].request_id = notify_subs[i].sub_shm->request_id;
+        notify_subs[i].event = ATOMIC_LOAD_RELAXED(notify_subs[i].sub_shm->event);
+        notify_subs[i].request_id = ATOMIC_LOAD_RELAXED(notify_subs[i].sub_shm->request_id);
     }
 
     for (i = 0; i < notify_count; ++i) {
@@ -584,8 +592,8 @@ sr_shmsub_notify_all_wait_wr(struct sr_shmsub_oper_get_sub_s *notify_subs, uint3
             }
             notify_subs[i].locked = 1;
 
-            if (notify_subs[i].sub_shm->lock.readers[0] || (notify_subs[i].sub_shm->event &&
-                    !SR_IS_NOTIFY_EVENT(notify_subs[i].sub_shm->event))) {
+            if (notify_subs[i].sub_shm->lock.readers[0] || (ATOMIC_LOAD_RELAXED(notify_subs[i].sub_shm->event) &&
+                    !SR_IS_NOTIFY_EVENT(ATOMIC_LOAD_RELAXED(notify_subs[i].sub_shm->event)))) {
                 pending_event = 1;
             }
 
@@ -625,12 +633,12 @@ sr_shmsub_notify_all_wait_wr(struct sr_shmsub_oper_get_sub_s *notify_subs, uint3
 
         if ((expected_ev == SR_SUB_EV_SUCCESS) || (expected_ev == SR_SUB_EV_ERROR)) {
             /* we expect a reply (success/error) */
-            switch (notify_subs[i].sub_shm->event) {
+            switch (ATOMIC_LOAD_RELAXED(notify_subs[i].sub_shm->event)) {
             case SR_SUB_EV_SUCCESS:
                 /* what was expected */
                 if (expected_ev == SR_SUB_EV_SUCCESS) {
                     /* clear it */
-                    notify_subs[i].sub_shm->event = SR_SUB_EV_NONE;
+                    ATOMIC_STORE_RELAXED(notify_subs[i].sub_shm->event, SR_SUB_EV_NONE);
                 }
                 break;
             case SR_SUB_EV_ERROR:
@@ -664,19 +672,19 @@ sr_shmsub_notify_all_wait_wr(struct sr_shmsub_oper_get_sub_s *notify_subs, uint3
 
                 if (clear_ev_on_err) {
                     /* clear the error */
-                    notify_subs[i].sub_shm->event = SR_SUB_EV_NONE;
+                    ATOMIC_STORE_RELAXED(notify_subs[i].sub_shm->event, SR_SUB_EV_NONE);
                 }
                 break;
             default:
                 sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unexpected sub SHM event \"%s\" (expected \"%s\").",
-                        sr_ev2str(notify_subs[i].sub_shm->event), sr_ev2str(expected_ev));
+                        sr_ev2str(ATOMIC_LOAD_RELAXED(notify_subs[i].sub_shm->event)), sr_ev2str(expected_ev));
                 goto cleanup;
             }
         } else {
             /* we expect no event */
-            if (notify_subs[i].sub_shm->event != SR_SUB_EV_NONE) {
+            if (ATOMIC_LOAD_RELAXED(notify_subs[i].sub_shm->event) != SR_SUB_EV_NONE) {
                 sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unexpected sub SHM event \"%s\" (expected \"%s\").",
-                        sr_ev2str(notify_subs[i].sub_shm->event), sr_ev2str(expected_ev));
+                        sr_ev2str(ATOMIC_LOAD_RELAXED(notify_subs[i].sub_shm->event)), sr_ev2str(expected_ev));
                 goto cleanup;
             }
         }
@@ -735,8 +743,8 @@ sr_shmsub_notify_write_event(sr_sub_shm_t *sub_shm, sr_cid_t orig_cid, uint32_t 
     }
 
     sub_shm->orig_cid = orig_cid;
-    sub_shm->request_id = request_id;
-    sub_shm->event = event;
+    ATOMIC_STORE_RELAXED(sub_shm->request_id, request_id);
+    ATOMIC_STORE_RELAXED(sub_shm->event, event);
 
     /* remap if needed */
     if (xpath || data_len) {
@@ -813,9 +821,9 @@ sr_shmsub_multi_notify_write_event(sr_multi_sub_shm_t *multi_sub_shm, sr_cid_t o
     }
 
     multi_sub_shm->orig_cid = orig_cid;
-    multi_sub_shm->request_id = request_id;
-    multi_sub_shm->event = event;
-    multi_sub_shm->priority = priority;
+    ATOMIC_STORE_RELAXED(multi_sub_shm->request_id, request_id);
+    ATOMIC_STORE_RELAXED(multi_sub_shm->event, event);
+    ATOMIC_STORE_RELAXED(multi_sub_shm->priority, priority);
     multi_sub_shm->subscriber_count = subscriber_count;
 
     /* remap if needed */
