@@ -2476,9 +2476,8 @@ sr_edit_merge_meta(struct lyd_node *trg_node, enum edit_op trg_op, int trg_op_ow
             ((src_op != EDIT_ETHER) || (trg_op != EDIT_ETHER))) {
         if (lyd_parent(trg_node)) {
             ptrg_op = sr_edit_diff_find_oper(lyd_parent(trg_node), 1, NULL);
-            if (((src_op == EDIT_REMOVE) && (trg_op == EDIT_MERGE) && (ptrg_op == EDIT_MERGE)) ||
-                    ((src_op == EDIT_MERGE) && (trg_op == EDIT_REMOVE) && (ptrg_op == EDIT_REMOVE))) {
-                /* we cannot have op remove under merge and vice versa */
+            if ((src_op == EDIT_MERGE) && (trg_op == EDIT_REMOVE) && (ptrg_op == EDIT_REMOVE)) {
+                /* we cannot have op merge under remove */
                 sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
                         "Unable to merge operation \"%s\" of node \"%s\" with \"%s\" of its parent \"%s\".",
                         sr_edit_op2str(src_op), LYD_NAME(src_node), sr_edit_op2str(ptrg_op), LYD_NAME(lyd_parent(trg_node)));

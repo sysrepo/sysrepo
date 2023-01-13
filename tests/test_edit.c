@@ -818,14 +818,51 @@ test_oper(void **state)
     struct state *st = (struct state *)*state;
     const struct ly_ctx *ly_ctx;
     struct lyd_node *edit;
+    sr_data_t *subtree;
     const char *str;
+    char *str2;
     int ret;
 
-    /* delete an interface in oper DS */
+    ly_ctx = sr_acquire_context(st->conn);
+
+    /* merge a series of oper edits */
     sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+
     str =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" "
-        " xmlns:sr=\"http://www.sysrepo.org/yang/sysrepo\" sr:operation=\"ether\">"
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth0</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+        "</interface>"
+    "</interfaces>";
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &edit));
+    ret = sr_edit_batch(st->sess, edit, "merge");
+    lyd_free_all(edit);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    str =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth0</name>"
+            "<ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">"
+                "<address>"
+                    "<ip>192.0.2.1</ip>"
+                    "<prefix-length>24</prefix-length>"
+                "</address>"
+            "</ipv4>"
+        "</interface>"
+    "</interfaces>";
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &edit));
+    ret = sr_edit_batch(st->sess, edit, "merge");
+    lyd_free_all(edit);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    str =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
         "<interface>"
             "<name>eth0</name>"
             "<ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">"
@@ -835,15 +872,31 @@ test_oper(void **state)
             "</ipv4>"
         "</interface>"
     "</interfaces>";
-    ly_ctx = sr_acquire_context(st->conn);
     assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &edit));
-
     ret = sr_edit_batch(st->sess, edit, "merge");
     lyd_free_all(edit);
-    sr_release_context(st->conn);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
+
+    /* check datastore contents */
+    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_print_mem(&str2, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(subtree);
+
+    str =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth0</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\"/>"
+        "</interface>"
+    "</interfaces>";
+    assert_string_equal(str, str2);
+    free(str2);
+
+    sr_release_context(st->conn);
 }
 
 static void

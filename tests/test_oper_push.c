@@ -1386,40 +1386,6 @@ test_top_leaf(void **state)
 }
 
 /* TEST */
-static void
-test_change_revert(void **state)
-{
-    struct state *st = (struct state *)*state;
-    int ret;
-
-    /* switch to operational DS */
-    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* create a list instance with a leaf */
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/test-case[name='a']/a", "vala", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* remove the leaf, error */
-    ret = sr_delete_item(st->sess, "/mixed-config:test-state/test-case[name='a']/a", 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_UNSUPPORTED);
-    ret = sr_discard_changes(st->sess);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* discard the leaf instead */
-    ret = sr_discard_oper_changes(st->conn, st->sess, "/mixed-config:test-state/test-case[name='a']/a", 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* remove all stored data */
-    ret = sr_discard_oper_changes(st->conn, st->sess, NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-}
-
-/* TEST */
 static int
 stored_edit_ether_diff_remove_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name,
         const char *xpath, sr_event_t event, uint32_t request_id, void *private_data)
@@ -2309,7 +2275,6 @@ main(void)
         cmocka_unit_test_teardown(test_config, clear_up),
         cmocka_unit_test_teardown(test_top_list, clear_up),
         cmocka_unit_test_teardown(test_top_leaf, clear_up),
-        cmocka_unit_test_teardown(test_change_revert, clear_up),
         cmocka_unit_test_teardown(test_edit_ether_diff_remove, clear_up),
         cmocka_unit_test_teardown(test_np_cont1, clear_up),
         cmocka_unit_test_teardown(test_np_cont2, clear_up),
