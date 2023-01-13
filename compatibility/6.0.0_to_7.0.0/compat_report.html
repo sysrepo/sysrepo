@@ -1,0 +1,1023 @@
+<!-- kind:binary;verdict:incompatible;affected:16;added:26;removed:17;type_problems_high:0;type_problems_medium:0;type_problems_low:1;interface_problems_high:0;interface_problems_medium:7;interface_problems_low:1;changed_constants:0;tool_version:2.3 -->
+<!-- kind:source;verdict:incompatible;affected:16;added:26;removed:17;type_problems_high:0;type_problems_medium:0;type_problems_low:1;interface_problems_high:0;interface_problems_medium:7;interface_problems_low:0;changed_constants:0;interface_changes_other:1;tool_version:2.3 -->
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="keywords" content="libsysrepo.so, compatibility, API, ABI, report" />
+<meta name="description" content="API/ABI compatibility report for the libsysrepo.so object between 6.0.0 and 7.0.0 versions" />
+<title>libsysrepo.so: 6.0.0 to 7.0.0 compatibility report</title>
+<style type="text/css">
+body {
+    font-family:Arial, sans-serif;
+    background-color:White;
+    color:Black;
+}
+hr {
+    color:Black;
+    background-color:Black;
+    height:1px;
+    border:0;
+}
+h1 {
+    margin-bottom:0px;
+    padding-bottom:0px;
+    font-size:1.625em;
+}
+h2 {
+    margin-bottom:0px;
+    padding-bottom:0px;
+    font-size:1.25em;
+    white-space:nowrap;
+}
+span.section {
+    font-weight:bold;
+    cursor:pointer;
+    color:#003E69;
+    white-space:nowrap;
+    margin-left:0.3125em;
+}
+span.new_sign {
+    font-weight:bold;
+    margin-left:1.65em;
+    color:#003E69;
+}
+span.new_sign_lbl {
+    margin-left:3em;
+    font-size:1em;
+    color:Black;
+}
+span:hover.section {
+    color:#336699;
+}
+span.sect_aff {
+    cursor:pointer;
+    padding-left:1.55em;
+    font-size:0.875em;
+    color:#cc3300;
+}
+span.sect_info {
+    cursor:pointer;
+    padding-left:1.55em;
+    font-size:0.875em;
+    color:Black;
+}
+span.ext {
+    font-weight:normal;
+}
+span.h_name {
+    color:#cc3300;
+    font-size:0.875em;
+    font-weight:bold;
+}
+div.h_list, div.lib_list {
+    font-size:0.94em;
+    padding-left:0.4em;
+}
+span.ns {
+    color:#408080;
+    font-size:0.94em;
+}
+span.lib_name {
+    color:Green;
+    font-size:0.875em;
+    font-weight:bold;
+}
+span.iname {
+    font-weight:bold;
+    color:#003E69;
+    margin-left:0.3125em;
+}
+span.iname_b {
+    font-weight:bold;
+}
+span.iname_a {
+    color:#333333;
+    font-weight:bold;
+    font-size:0.94em;
+}
+span.sym_p {
+    font-weight:normal;
+    white-space:normal;
+}
+span.sym_pd {
+    white-space:normal;
+}
+span.sym_p span, span.sym_pd span {
+    white-space:nowrap;
+}
+div.affect {
+    padding-left:1em;
+    padding-bottom:10px;
+    font-size:0.87em;
+    font-style:italic;
+    line-height:0.9em;
+}
+div.affected {
+    padding-left:1.9em;
+    padding-top:10px;
+}
+table.ptable {
+    border-collapse:collapse;
+    border:1px outset black;
+    margin-left:0.95em;
+    margin-top:3px;
+    margin-bottom:3px;
+    width:56.25em;
+}
+table.ptable td {
+    border:1px solid gray;
+    padding:3px;
+    font-size:0.875em;
+    text-align:left;
+    vertical-align:top;
+    max-width:28em;
+    word-wrap:break-word;
+}
+table.ptable th.pn {
+    width:2%;
+}
+table.ptable th.chg {
+    width:47%;
+}
+table.vtable {
+    border-collapse:collapse;
+    border:1px outset black;
+    margin-left:1.9em;
+    margin-top:0.7em;
+}
+table.vtable td {
+    border:1px solid gray;
+    padding:3px;
+    font-size:0.875em;
+    vertical-align:top;
+    max-width:450px;
+    word-wrap:break-word;
+}
+table.ptable th, table.vtable th {
+    background-color:#eeeeee;
+    font-weight:bold;
+    color:#333333;
+    font-family:Verdana, Arial;
+    font-size:0.875em;
+    border:1px solid gray;
+    text-align:center;
+    vertical-align:top;
+    white-space:nowrap;
+    padding:3px;
+}
+table.summary {
+    border-collapse:collapse;
+    border:1px outset black;
+}
+table.summary th {
+    background-color:#eeeeee;
+    font-weight:normal;
+    text-align:left;
+    font-size:0.94em;
+    white-space:nowrap;
+    border:1px inset gray;
+    padding:3px;
+}
+table.summary td {
+    text-align:right;
+    white-space:nowrap;
+    border:1px inset gray;
+    padding:3px 5px 3px 10px;
+}
+span.mngl {
+    padding-left:1em;
+    font-size:0.875em;
+    cursor:text;
+    color:#444444;
+    font-weight:bold;
+}
+span.pleft {
+    padding-left:2.5em;
+}
+span.sym_ver {
+    color:#333333;
+    white-space:nowrap;
+    font-family:"DejaVu Sans Mono", Monospace;
+}
+span.attr {
+    color:#333333;
+    font-weight:normal;
+}
+span.color_p {
+    font-style:italic;
+    color:Brown;
+}
+span.p {
+    font-style:italic;
+}
+span.fp {
+    font-style:italic;
+    background-color:#DCDCDC;
+}
+span.ttype {
+    font-weight:normal;
+}
+span.nowrap {
+    white-space:nowrap;
+}
+span.value {
+    font-weight:bold;
+}
+.passed {
+    background-color:#CCFFCC;
+    font-weight:normal;
+}
+.warning {
+    background-color:#F4F4AF;
+    font-weight:normal;
+}
+.failed {
+    background-color:#FFCCCC;
+    font-weight:normal;
+}
+.new {
+    background-color:#C6DEFF;
+    font-weight:normal;
+}
+.compatible {
+    background-color:#CCFFCC;
+    font-weight:normal;
+}
+.almost_compatible {
+    background-color:#FFDAA3;
+    font-weight:normal;
+}
+.incompatible {
+    background-color:#FFCCCC;
+    font-weight:normal;
+}
+.gray {
+    background-color:#DCDCDC;
+    font-weight:normal;
+}
+.top_ref {
+    font-size:0.69em;
+}
+.footer {
+    font-size:0.75em;
+}
+
+.tabset {
+    float:left;
+}
+a.tab {
+    border:1px solid Black;
+    float:left;
+    margin:0px 5px -1px 0px;
+    padding:3px 5px 3px 5px;
+    position:relative;
+    font-size:0.875em;
+    background-color:#DDD;
+    text-decoration:none;
+    color:Black;
+}
+a.disabled:hover
+{
+    color:Black;
+    background:#EEE;
+}
+a.active:hover
+{
+    color:Black;
+    background:White;
+}
+a.active {
+    border-bottom-color:White;
+    background-color:White;
+}
+div.tab {
+    border-top:1px solid Black;
+    padding:0px;
+    width:100%;
+    clear:both;
+}
+</style>
+<script type="text/javascript" language="JavaScript">
+<!--
+function showContent(header, id)
+{
+    e = document.getElementById(id);
+    if(e.style.display == 'none')
+    {
+        e.style.display = 'block';
+        e.style.visibility = 'visible';
+        header.innerHTML = header.innerHTML.replace(/\[[^0-9 ]\]/gi,"[&minus;]");
+    }
+    else
+    {
+        e.style.display = 'none';
+        e.style.visibility = 'hidden';
+        header.innerHTML = header.innerHTML.replace(/\[[^0-9 ]\]/gi,"[+]");
+    }
+}
+function initTabs()
+{
+    var url = window.location.href;
+    if(url.indexOf('_Source_')!=-1 || url.indexOf('#Source')!=-1)
+    {
+        var tab1 = document.getElementById('BinaryID');
+        var tab2 = document.getElementById('SourceID');
+        tab1.className='tab disabled';
+        tab2.className='tab active';
+    }
+    var sets = document.getElementsByTagName('div');
+    for (var i = 0; i < sets.length; i++)
+    {
+        if (sets[i].className.indexOf('tabset') != -1)
+        {
+            var tabs = [];
+            var links = sets[i].getElementsByTagName('a');
+            for (var j = 0; j < links.length; j++)
+            {
+                if (links[j].className.indexOf('tab') != -1)
+                {
+                    tabs.push(links[j]);
+                    links[j].tabs = tabs;
+                    var tab = document.getElementById(links[j].href.substr(links[j].href.indexOf('#') + 1));
+                    //reset all tabs on start
+                    if (tab)
+                    {
+                        if (links[j].className.indexOf('active')!=-1) {
+                            tab.style.display = 'block';
+                        }
+                        else {
+                            tab.style.display = 'none';
+                        }
+                    }
+                    links[j].onclick = function()
+                    {
+                        var tab = document.getElementById(this.href.substr(this.href.indexOf('#') + 1));
+                        if (tab)
+                        {
+                            //reset all tabs before change
+                            for (var k = 0; k < this.tabs.length; k++)
+                            {
+                                document.getElementById(this.tabs[k].href.substr(this.tabs[k].href.indexOf('#') + 1)).style.display = 'none';
+                                this.tabs[k].className = this.tabs[k].className.replace('active', 'disabled');
+                            }
+                            this.className = 'tab active';
+                            tab.style.display = 'block';
+                            // window.location.hash = this.id.replace('ID', '');
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if(url.indexOf('#')!=-1) {
+        location.href=location.href;
+    }
+}
+if (window.addEventListener) window.addEventListener('load', initTabs, false);
+else if (window.attachEvent) window.attachEvent('onload', initTabs);
+-->
+</script>
+</head>
+<body><a name='Source'></a><a name='Binary'></a><a name='Top'></a><h1>API compatibility report for the <span style='color:Blue;'>libsysrepo.so</span> object between <span style='color:Red;'>6.0.0</span> and <span style='color:Red;'>7.0.0</span> versions on <span style='color:Blue;'>x86_64</span></h1>
+
+            <br/>
+            <div class='tabset'>
+            <a id='BinaryID' href='#BinaryTab' class='tab active'>Binary<br/>Compatibility</a>
+            <a id='SourceID' href='#SourceTab' style='margin-left:3px' class='tab disabled'>Source<br/>Compatibility</a>
+            </div><div id='BinaryTab' class='tab'>
+<h2>Test Info</h2><hr/>
+<table class='summary'>
+<tr><th>Module Name</th><td>libsysrepo.so</td></tr>
+<tr><th>Version #1</th><td>6.0.0</td></tr>
+<tr><th>Version #2</th><td>7.0.0</td></tr>
+<tr><th>Arch</th><td>x86_64</td></tr>
+<tr><th>GCC Version</th><td>11.2.1</td></tr>
+<tr><th>Subject</th><td width='150px'>Binary Compatibility</td></tr>
+</table>
+<h2>Test Results</h2><hr/>
+<table class='summary'><tr><th>Total Header Files</th><td><a href='#Headers' style='color:Blue;'>3</a></td></tr>
+<tr><th>Total Objects</th><td><a href='#Libs' style='color:Blue;'>1</a></td></tr>
+<tr><th>Total Symbols / Types</th><td>128 / 28</td></tr>
+<tr><th>Compatibility</th>
+<td class='almost_compatible'>84%</td>
+</tr>
+</table>
+<h2>Problem Summary</h2><hr/>
+<table class='summary'><tr><th></th><th style='text-align:center;'>Severity</th><th style='text-align:center;'>Count</th></tr><tr><th>Added Symbols</th><td>-</td><td class='new'><a href='#Binary_Added' style='color:Blue;'>26</a></td></tr>
+<tr><th>Removed Symbols</th><td>High</td><td class='failed'><a href='#Binary_Removed' style='color:Blue;'>17</a></td></tr>
+<tr><th rowspan='3'>Problems with<br/>Data Types</th><td>High</td><td>0</td></tr>
+<tr><td>Medium</td><td>0</td></tr>
+<tr><td>Low</td><td class='warning'><a href='#Type_Binary_Problems_Low' style='color:Blue;'>1</a></td></tr>
+<tr><th rowspan='3'>Problems with<br/>Symbols</th><td>High</td><td>0</td></tr>
+<tr><td>Medium</td><td class='failed'><a href='#Symbol_Binary_Problems_Medium' style='color:Blue;'>7</a></td></tr>
+<tr><td>Low</td><td class='warning'><a href='#Symbol_Binary_Problems_Low' style='color:Blue;'>1</a></td></tr>
+<tr><th>Problems with<br/>Constants</th><td>Low</td><td>0</td></tr>
+</table>
+
+<a name='Binary_Added'></a><h2>Added Symbols <span class='new'>&nbsp;26&nbsp;</span></h2><hr/>
+<span class='h_name'>sysrepo.h</span>, <span class='lib_name'>libsysrepo.so.7.0.0</span><br/>
+<span class="iname">sr_acquire_context&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_acquire_data&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>struct lyd_node* <span class='color_p'>tree</span></span>, <span>sr_data_t** <span class='color_p'>data</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_check_module_ds_access&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>int <span class='color_p'>mod_ds</span></span>, <span>int* <span class='color_p'>read</span></span>, <span>int* <span class='color_p'>write</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_get_module_ds_access&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>int <span class='color_p'>mod_ds</span></span>, <span>char** <span class='color_p'>owner</span></span>, <span>char** <span class='color_p'>group</span></span>, <span>mode_t* <span class='color_p'>perm</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_get_module_replay_support&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>struct timespec* <span class='color_p'>earliest_notif</span></span>, <span>int* <span class='color_p'>enabled</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_get_su_uid&#160;<span class='sym_p'>(&#160;)</span></span><br/>
+<span class="iname">sr_install_module2&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>schema_path</span></span>, <span>char const* <span class='color_p'>search_dirs</span></span>, <span>char const** <span class='color_p'>features</span></span>, <span>sr_module_ds_t const* <span class='color_p'>module_ds</span></span>, <span>char const* <span class='color_p'>owner</span></span>, <span>char const* <span class='color_p'>group</span></span>, <span>mode_t <span class='color_p'>perm</span></span>, <span>char const* <span class='color_p'>data</span></span>, <span>char const* <span class='color_p'>data_path</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_notif_send&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>path</span></span>, <span>sr_val_t const* <span class='color_p'>values</span></span>, <span>size_t const <span class='color_p'>values_cnt</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>int <span class='color_p'>wait</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_notif_send_tree&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>struct lyd_node* <span class='color_p'>notif</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>int <span class='color_p'>wait</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_notif_sub_get_info&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>, <span>uint32_t <span class='color_p'>sub_id</span></span>, <span>char const** <span class='color_p'>module_name</span></span>, <span>char const** <span class='color_p'>xpath</span></span>, <span>struct timespec* <span class='color_p'>start_time</span></span>, <span>struct timespec* <span class='color_p'>stop_time</span></span>, <span>uint32_t* <span class='color_p'>filtered_out</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_notif_sub_modify_stop_time&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>, <span>uint32_t <span class='color_p'>sub_id</span></span>, <span>struct timespec const* <span class='color_p'>stop_time</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_notif_sub_modify_xpath&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>, <span>uint32_t <span class='color_p'>sub_id</span></span>, <span>char const* <span class='color_p'>xpath</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_notif_subscribe&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>xpath</span></span>, <span>struct timespec const* <span class='color_p'>start_time</span></span>, <span>struct timespec const* <span class='color_p'>stop_time</span></span>, <span>void(*<span class='color_p'>callback</span>)(struct sr_session_ctx_s*, unsigned int, ,char const*, struct sr_val_s const*, unsigned long const, struct timespec*, void*)</span>, <span>void* <span class='color_p'>private_data</span></span>, <span>sr_subscr_options_t <span class='color_p'>opts</span></span>, <span>sr_subscription_ctx_t** <span class='color_p'>subscription</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_notif_subscribe_tree&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>xpath</span></span>, <span>struct timespec const* <span class='color_p'>start_time</span></span>, <span>struct timespec const* <span class='color_p'>stop_time</span></span>, <span>sr_event_notif_tree_cb <span class='color_p'>callback</span></span>, <span>void* <span class='color_p'>private_data</span></span>, <span>sr_subscr_options_t <span class='color_p'>opts</span></span>, <span>sr_subscription_ctx_t** <span class='color_p'>subscription</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_oper_delete_item_str&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>path</span></span>, <span>char const* <span class='color_p'>value</span></span>, <span>sr_edit_options_t const <span class='color_p'>opts</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_oper_get_subscribe&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>path</span></span>, <span>sr_oper_get_items_cb <span class='color_p'>callback</span></span>, <span>void* <span class='color_p'>private_data</span></span>, <span>sr_subscr_options_t <span class='color_p'>opts</span></span>, <span>sr_subscription_ctx_t** <span class='color_p'>subscription</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_release_context&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_release_data&#160;<span class='sym_p'><span>(&#160;sr_data_t* <span class='color_p'>data</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_session_acquire_context&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_session_acquire_data&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>struct lyd_node* <span class='color_p'>tree</span></span>, <span>sr_data_t** <span class='color_p'>data</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_session_release_context&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_set_module_ds_access&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>int <span class='color_p'>mod_ds</span></span>, <span>char const* <span class='color_p'>owner</span></span>, <span>char const* <span class='color_p'>group</span></span>, <span>mode_t <span class='color_p'>perm</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_subscription_process_events&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>, <span>sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>struct timespec* <span class='color_p'>stop_time_in</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_subscription_thread_resume&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_subscription_thread_suspend&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>&#160;)</span></span><br/>
+<span class="iname">srplg_log&#160;<span class='sym_p'><span>(&#160;char const* <span class='color_p'>plg_name</span></span>, <span>char const* <span class='color_p'>format</span></span>, <span>...</span>&#160;)</span></span><br/>
+<br/>
+<a class='top_ref' href='#Top'>to the top</a><br/>
+<a name='Binary_Removed'></a><a name='Binary_Withdrawn'></a><h2>Removed Symbols <span class='failed'>&nbsp;17&nbsp;</span></h2><hr/>
+<span class='h_name'>sysrepo.h</span>, <span class='lib_name'>libsysrepo.so.6.0.0</span><br/>
+<span class="iname">sr_cancel_update_module&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_connection_count&#160;<span class='sym_p'><span>(&#160;uint32_t* <span class='color_p'>conn_count</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_event_notif_send&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>path</span></span>, <span>size_t const <span class='color_p'>values_cnt</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>int <span class='color_p'>wait</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_event_notif_send_tree&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>struct lyd_node* <span class='color_p'>notif</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>int <span class='color_p'>wait</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_event_notif_sub_get_info&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>, <span>uint32_t <span class='color_p'>sub_id</span></span>, <span>char const** <span class='color_p'>module_name</span></span>, <span>char const** <span class='color_p'>xpath</span></span>, <span>time_t* <span class='color_p'>start_time</span></span>, <span>time_t* <span class='color_p'>stop_time</span></span>, <span>uint32_t* <span class='color_p'>filtered_out</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_event_notif_sub_modify_stop_time&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>, <span>uint32_t <span class='color_p'>sub_id</span></span>, <span>time_t <span class='color_p'>stop_time</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_event_notif_sub_modify_xpath&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>, <span>uint32_t <span class='color_p'>sub_id</span></span>, <span>char const* <span class='color_p'>xpath</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_event_notif_subscribe&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>xpath</span></span>, <span>time_t <span class='color_p'>start_time</span></span>, <span>time_t <span class='color_p'>stop_time</span></span>, <span>void(*<span class='color_p'>callback</span>)(struct sr_session_ctx_s*, unsigned int, ,char const*, ,unsigned long const, struct timespec*, void*)</span>, <span>void* <span class='color_p'>private_data</span></span>, <span>sr_subscr_options_t <span class='color_p'>opts</span></span>, <span>sr_subscription_ctx_t** <span class='color_p'>subscription</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_event_notif_subscribe_tree&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>xpath</span></span>, <span>time_t <span class='color_p'>start_time</span></span>, <span>time_t <span class='color_p'>stop_time</span></span>, <span>sr_event_notif_tree_cb <span class='color_p'>callback</span></span>, <span>void* <span class='color_p'>private_data</span></span>, <span>sr_subscr_options_t <span class='color_p'>opts</span></span>, <span>sr_subscription_ctx_t** <span class='color_p'>subscription</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_get_context&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_get_module_access&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char** <span class='color_p'>owner</span></span>, <span>char** <span class='color_p'>group</span></span>, <span>mode_t* <span class='color_p'>perm</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_get_module_info&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>struct lyd_node** <span class='color_p'>sysrepo_data</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_install_module_data&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>data</span></span>, <span>char const* <span class='color_p'>data_path</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_oper_get_items_subscribe&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>path</span></span>, <span>sr_oper_get_items_cb <span class='color_p'>callback</span></span>, <span>void* <span class='color_p'>private_data</span></span>, <span>sr_subscr_options_t <span class='color_p'>opts</span></span>, <span>sr_subscription_ctx_t** <span class='color_p'>subscription</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_process_events&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>, <span>sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>time_t* <span class='color_p'>stop_time_in</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_set_module_access&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>owner</span></span>, <span>char const* <span class='color_p'>group</span></span>, <span>mode_t <span class='color_p'>perm</span></span>&#160;)</span></span><br/>
+<span class="iname">srp_log&#160;<span class='sym_p'><span>(&#160;char const* <span class='color_p'>format</span></span>, <span>...</span>&#160;)</span></span><br/>
+<br/>
+<a class='top_ref' href='#Top'>to the top</a><br/>
+<a name='Medium_Risk_Binary_Problems'></a><a name='Symbol_Binary_Problems_Medium'></a><a name='Interface_Binary_Problems_Medium'></a>
+<h2>Problems with Symbols, Medium Severity <span class='failed'>&nbsp;7&nbsp;</span></h2><hr/>
+<span class='h_name'>sysrepo.h</span>, <span class='lib_name'>libsysrepo.so.6.0.0</span><br/>
+<span class="section" onclick="javascript:showContent(this, 'c_1')">
+<span class='ext'>[+]</span> sr_disable_module_feature&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>feature_name</span></span>&#160;)</span> <span class='failed'>&nbsp;1&nbsp;</span></span>
+<br/>
+<div id="c_1" style="display:none;">
+
+
+<span class='new_sign_lbl'>&#8675;</span>
+<br/>
+<span class='new_sign'>sr_disable_module_feature&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>feature_name</span></span>, <span>int <span class='color_p'>force</span></span>&#160;)</span></span><br/>
+<table class='ptable'>
+<tr>
+<th class='pn'></th>
+<th class='chg'>Change</th>
+<th>Effect</th>
+</tr>
+<tr>
+<th>1</th>
+<td>Parameter <b>force</b> of type <b>int</b> has been added to the calling stack.</td>
+<td>This parameter will not be initialized by old clients.</td>
+</tr>
+</table>
+<br/>
+</div>
+<span class="section" onclick="javascript:showContent(this, 'c_2')">
+<span class='ext'>[+]</span> sr_enable_module_feature&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>feature_name</span></span>&#160;)</span> <span class='failed'>&nbsp;1&nbsp;</span></span>
+<br/>
+<div id="c_2" style="display:none;">
+
+
+<span class='new_sign_lbl'>&#8675;</span>
+<br/>
+<span class='new_sign'>sr_enable_module_feature&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>feature_name</span></span>, <span>int <span class='color_p'>force</span></span>&#160;)</span></span><br/>
+<table class='ptable'>
+<tr>
+<th class='pn'></th>
+<th class='chg'>Change</th>
+<th>Effect</th>
+</tr>
+<tr>
+<th>1</th>
+<td>Parameter <b>force</b> of type <b>int</b> has been added to the calling stack.</td>
+<td>This parameter will not be initialized by old clients.</td>
+</tr>
+</table>
+<br/>
+</div>
+<span class="section" onclick="javascript:showContent(this, 'c_3')">
+<span class='ext'>[+]</span> sr_get_data&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>xpath</span></span>, <span>uint32_t <span class='color_p'>max_depth</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>sr_get_oper_options_t const <span class='color_p'>opts</span></span>, <span>struct lyd_node** <span class='color_p'>data</span></span>&#160;)</span> <span class='failed'>&nbsp;1&nbsp;</span></span>
+<br/>
+<div id="c_3" style="display:none;">
+
+
+<span class='new_sign_lbl'>&#8675;</span>
+<br/>
+<span class='new_sign'>sr_get_data&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>xpath</span></span>, <span>uint32_t <span class='color_p'>max_depth</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>sr_get_oper_options_t const <span class='color_p'>opts</span></span>, <span>sr_data_t** <span class='color_p'>data</span></span>&#160;)</span></span><br/>
+<table class='ptable'>
+<tr>
+<th class='pn'></th>
+<th class='chg'>Change</th>
+<th>Effect</th>
+</tr>
+<tr>
+<th>1</th>
+<td>Base type of <b>6th</b> parameter <b>data</b> has been changed from <span class='nowrap'><span class='value'>struct lyd_node</span> (<b>56</b> bytes)</span> to <span class='nowrap'><span class='value'>struct sr_data_s</span> (<b>16</b> bytes)</span>.</td>
+<td>This parameter may be incorrectly initialized by applications.</td>
+</tr>
+</table>
+<br/>
+</div>
+<span class="section" onclick="javascript:showContent(this, 'c_4')">
+<span class='ext'>[+]</span> sr_get_subtree&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>path</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>struct lyd_node** <span class='color_p'>subtree</span></span>&#160;)</span> <span class='failed'>&nbsp;1&nbsp;</span></span>
+<br/>
+<div id="c_4" style="display:none;">
+
+
+<span class='new_sign_lbl'>&#8675;</span>
+<br/>
+<span class='new_sign'>sr_get_subtree&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>path</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>sr_data_t** <span class='color_p'>subtree</span></span>&#160;)</span></span><br/>
+<table class='ptable'>
+<tr>
+<th class='pn'></th>
+<th class='chg'>Change</th>
+<th>Effect</th>
+</tr>
+<tr>
+<th>1</th>
+<td>Base type of <b>4th</b> parameter <b>subtree</b> has been changed from <span class='nowrap'><span class='value'>struct lyd_node</span> (<b>56</b> bytes)</span> to <span class='nowrap'><span class='value'>struct sr_data_s</span> (<b>16</b> bytes)</span>.</td>
+<td>This parameter may be incorrectly initialized by applications.</td>
+</tr>
+</table>
+<br/>
+</div>
+<span class="section" onclick="javascript:showContent(this, 'c_5')">
+<span class='ext'>[+]</span> sr_lock&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>module_name</span></span>&#160;)</span> <span class='failed'>&nbsp;1&nbsp;</span></span>
+<br/>
+<div id="c_5" style="display:none;">
+
+
+<span class='new_sign_lbl'>&#8675;</span>
+<br/>
+<span class='new_sign'>sr_lock&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>&#160;)</span></span><br/>
+<table class='ptable'>
+<tr>
+<th class='pn'></th>
+<th class='chg'>Change</th>
+<th>Effect</th>
+</tr>
+<tr>
+<th>1</th>
+<td>Parameter <b>timeout_ms</b> of type <b>uint32_t</b> has been added to the calling stack.</td>
+<td>This parameter will not be initialized by old clients.</td>
+</tr>
+</table>
+<br/>
+</div>
+<span class="section" onclick="javascript:showContent(this, 'c_6')">
+<span class='ext'>[+]</span> sr_remove_module&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>&#160;)</span> <span class='failed'>&nbsp;1&nbsp;</span></span>
+<br/>
+<div id="c_6" style="display:none;">
+
+
+<span class='new_sign_lbl'>&#8675;</span>
+<br/>
+<span class='new_sign'>sr_remove_module&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>int <span class='color_p'>force</span></span>&#160;)</span></span><br/>
+<table class='ptable'>
+<tr>
+<th class='pn'></th>
+<th class='chg'>Change</th>
+<th>Effect</th>
+</tr>
+<tr>
+<th>1</th>
+<td>Parameter <b>force</b> of type <b>int</b> has been added to the calling stack.</td>
+<td>This parameter will not be initialized by old clients.</td>
+</tr>
+</table>
+<br/>
+</div>
+<span class="section" onclick="javascript:showContent(this, 'c_7')">
+<span class='ext'>[+]</span> sr_rpc_send_tree&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>struct lyd_node* <span class='color_p'>input</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>struct lyd_node** <span class='color_p'>output</span></span>&#160;)</span> <span class='failed'>&nbsp;1&nbsp;</span></span>
+<br/>
+<div id="c_7" style="display:none;">
+
+
+<span class='new_sign_lbl'>&#8675;</span>
+<br/>
+<span class='new_sign'>sr_rpc_send_tree&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>struct lyd_node* <span class='color_p'>input</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>sr_data_t** <span class='color_p'>output</span></span>&#160;)</span></span><br/>
+<table class='ptable'>
+<tr>
+<th class='pn'></th>
+<th class='chg'>Change</th>
+<th>Effect</th>
+</tr>
+<tr>
+<th>1</th>
+<td>Base type of <b>4th</b> parameter <b>output</b> has been changed from <span class='nowrap'><span class='value'>struct lyd_node</span> (<b>56</b> bytes)</span> to <span class='nowrap'><span class='value'>struct sr_data_s</span> (<b>16</b> bytes)</span>.</td>
+<td>This parameter may be incorrectly initialized by applications.</td>
+</tr>
+</table>
+<br/>
+</div>
+<br/>
+<a class='top_ref' href='#Top'>to the top</a><br/>
+<a name='Low_Risk_Binary_Problems'></a><a name='Type_Binary_Problems_Low'></a>
+<h2>Problems with Data Types, Low Severity <span class='warning'>&nbsp;1&nbsp;</span></h2><hr/>
+<span class='h_name'>sysrepo_types.h</span><br/>
+<span class="section" onclick="javascript:showContent(this, 'c_8')">
+<span class='ext'>[+]</span> <span class='ttype'>typedef</span> sr_rpc_cb <span class='warning'>&nbsp;1&nbsp;</span></span>
+<br/>
+<div id="c_8" style="display:none;">
+<table class='ptable'><tr>
+<th class='pn'></th>
+<th class='chg'>Change</th>
+<th>Effect</th></tr><tr>
+<th>1</th>
+<td>Base type has been changed from <span class='value'>int(*)(sr_session_ctx_t*, uint32_t, char const*, , size_t const, , uint32_t, , size_t*, void*)</span> to <span class='value'>int(*)(sr_session_ctx_t*, uint32_t, char const*, sr_val_t const*, size_t const, , uint32_t, sr_val_t**, size_t*, void*)</span>.</td>
+<td>Replacement of the base data type may indicate a change in its semantic meaning.</td>
+</tr>
+</table>
+<span class="sect_aff" onclick="javascript:showContent(this, 'c_9')">
+[+] affected symbols: 1 (0.8%)</span>
+<div id="c_9" style="display:none;">
+<div class='affected'><span class='iname_a'>sr_rpc_subscribe&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <i>session</i></span>, <span>char const* <i>xpath</i></span>, <span>int(*<span class='fp'>callback</span>)(struct sr_session_ctx_s*, unsigned int, char const*, ,unsigned long const, ,unsigned int, ,unsigned long*, void*)</span>, <span>void* <i>private_data</i></span>, <span>uint32_t <i>priority</i></span>, <span>sr_subscr_options_t <i>opts</i></span>, <span>sr_subscription_ctx_t** <i>subscription</i></span>&#160;)</span></span><br/>
+<div class='affect'>3rd parameter &#39;callback&#39; is of type &#39;sr_rpc_cb&#39;.</div>
+</div>
+</div>
+<br/><br/></div>
+
+<br/>
+<a class='top_ref' href='#Top'>to the top</a><br/>
+<a name='Symbol_Binary_Problems_Low'></a><a name='Interface_Binary_Problems_Low'></a>
+<h2>Problems with Symbols, Low Severity <span class='warning'>&nbsp;1&nbsp;</span></h2><hr/>
+<span class='h_name'>sysrepo.h</span>, <span class='lib_name'>libsysrepo.so.6.0.0</span><br/>
+<span class="section" onclick="javascript:showContent(this, 'c_10')">
+<span class='ext'>[+]</span> sr_set_module_replay_support&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>int <span class='color_p'>replay_support</span></span>&#160;)</span> <span class='warning'>&nbsp;1&nbsp;</span></span>
+<br/>
+<div id="c_10" style="display:none;">
+
+
+<span class='new_sign_lbl'>&#8675;</span>
+<br/>
+<span class='new_sign'>sr_set_module_replay_support&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>int <span class='color_p'>enable</span></span>&#160;)</span></span><br/>
+<table class='ptable'>
+<tr>
+<th class='pn'></th>
+<th class='chg'>Change</th>
+<th>Effect</th>
+</tr>
+<tr>
+<th>1</th>
+<td><b>3rd</b> parameter <b>replay_support</b> has been renamed to <b>enable</b>.</td>
+<td>Renaming of a parameter may indicate a change in its semantic meaning.</td>
+</tr>
+</table>
+<br/>
+</div>
+<br/>
+<a class='top_ref' href='#Top'>to the top</a><br/>
+<a name='Headers'></a><h2>Header Files <span class='gray'>&nbsp;3&nbsp;</span></h2><hr/>
+<div class='h_list'>
+sysrepo.h<br/>
+values.h<br/>
+xpath.h<br/>
+</div>
+<br/><a class='top_ref' href='#Top'>to the top</a><br/>
+<a name='Libs'></a><h2>Objects <span class='gray'>&nbsp;1&nbsp;</span></h2><hr/>
+<div class='lib_list'>
+libsysrepo.so.6.0.0<br/>
+</div>
+<br/><a class='top_ref' href='#Top'>to the top</a><br/>
+<br/><br/><br/></div><div id='SourceTab' class='tab'>
+<h2>Test Info</h2><hr/>
+<table class='summary'>
+<tr><th>Module Name</th><td>libsysrepo.so</td></tr>
+<tr><th>Version #1</th><td>6.0.0</td></tr>
+<tr><th>Version #2</th><td>7.0.0</td></tr>
+<tr><th>Arch</th><td>x86_64</td></tr>
+<tr><th>Subject</th><td width='150px'>Source Compatibility</td></tr>
+</table>
+<h2>Test Results</h2><hr/>
+<table class='summary'><tr><th>Total Header Files</th><td><a href='#Headers' style='color:Blue;'>3</a></td></tr>
+<tr><th>Total Objects</th><td><a href='#Libs' style='color:Blue;'>1</a></td></tr>
+<tr><th>Total Symbols / Types</th><td>128 / 28</td></tr>
+<tr><th>Compatibility</th>
+<td class='almost_compatible'>84%</td>
+</tr>
+</table>
+<h2>Problem Summary</h2><hr/>
+<table class='summary'><tr><th></th><th style='text-align:center;'>Severity</th><th style='text-align:center;'>Count</th></tr><tr><th>Added Symbols</th><td>-</td><td class='new'><a href='#Source_Added' style='color:Blue;'>26</a></td></tr>
+<tr><th>Removed Symbols</th><td>High</td><td class='failed'><a href='#Source_Removed' style='color:Blue;'>17</a></td></tr>
+<tr><th rowspan='3'>Problems with<br/>Data Types</th><td>High</td><td>0</td></tr>
+<tr><td>Medium</td><td>0</td></tr>
+<tr><td>Low</td><td class='warning'><a href='#Type_Source_Problems_Low' style='color:Blue;'>1</a></td></tr>
+<tr><th rowspan='3'>Problems with<br/>Symbols</th><td>High</td><td>0</td></tr>
+<tr><td>Medium</td><td class='failed'><a href='#Symbol_Source_Problems_Medium' style='color:Blue;'>7</a></td></tr>
+<tr><td>Low</td><td>0</td></tr>
+<tr><th>Problems with<br/>Constants</th><td>Low</td><td>0</td></tr>
+<tr><th>Other Changes<br/>in Symbols</th><td>-</td><td class='passed'><a href='#Other_Source_Changes_In_Symbols' style='color:Blue;'>1</a></td></tr>
+</table>
+
+<a name='Source_Added'></a><h2>Added Symbols <span class='new'>&nbsp;26&nbsp;</span></h2><hr/>
+<span class='h_name'>sysrepo.h</span><br/>
+<span class="iname">sr_acquire_context&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_acquire_data&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>struct lyd_node* <span class='color_p'>tree</span></span>, <span>sr_data_t** <span class='color_p'>data</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_check_module_ds_access&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>int <span class='color_p'>mod_ds</span></span>, <span>int* <span class='color_p'>read</span></span>, <span>int* <span class='color_p'>write</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_get_module_ds_access&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>int <span class='color_p'>mod_ds</span></span>, <span>char** <span class='color_p'>owner</span></span>, <span>char** <span class='color_p'>group</span></span>, <span>mode_t* <span class='color_p'>perm</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_get_module_replay_support&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>struct timespec* <span class='color_p'>earliest_notif</span></span>, <span>int* <span class='color_p'>enabled</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_get_su_uid&#160;<span class='sym_p'>(&#160;)</span></span><br/>
+<span class="iname">sr_install_module2&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>schema_path</span></span>, <span>char const* <span class='color_p'>search_dirs</span></span>, <span>char const** <span class='color_p'>features</span></span>, <span>sr_module_ds_t const* <span class='color_p'>module_ds</span></span>, <span>char const* <span class='color_p'>owner</span></span>, <span>char const* <span class='color_p'>group</span></span>, <span>mode_t <span class='color_p'>perm</span></span>, <span>char const* <span class='color_p'>data</span></span>, <span>char const* <span class='color_p'>data_path</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_notif_send&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>path</span></span>, <span>sr_val_t const* <span class='color_p'>values</span></span>, <span>size_t const <span class='color_p'>values_cnt</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>int <span class='color_p'>wait</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_notif_send_tree&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>struct lyd_node* <span class='color_p'>notif</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>int <span class='color_p'>wait</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_notif_sub_get_info&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>, <span>uint32_t <span class='color_p'>sub_id</span></span>, <span>char const** <span class='color_p'>module_name</span></span>, <span>char const** <span class='color_p'>xpath</span></span>, <span>struct timespec* <span class='color_p'>start_time</span></span>, <span>struct timespec* <span class='color_p'>stop_time</span></span>, <span>uint32_t* <span class='color_p'>filtered_out</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_notif_sub_modify_stop_time&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>, <span>uint32_t <span class='color_p'>sub_id</span></span>, <span>struct timespec const* <span class='color_p'>stop_time</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_notif_sub_modify_xpath&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>, <span>uint32_t <span class='color_p'>sub_id</span></span>, <span>char const* <span class='color_p'>xpath</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_notif_subscribe&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>xpath</span></span>, <span>struct timespec const* <span class='color_p'>start_time</span></span>, <span>struct timespec const* <span class='color_p'>stop_time</span></span>, <span>void(*<span class='color_p'>callback</span>)(struct sr_session_ctx_s*, unsigned int, ,char const*, struct sr_val_s const*, unsigned long const, struct timespec*, void*)</span>, <span>void* <span class='color_p'>private_data</span></span>, <span>sr_subscr_options_t <span class='color_p'>opts</span></span>, <span>sr_subscription_ctx_t** <span class='color_p'>subscription</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_notif_subscribe_tree&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>xpath</span></span>, <span>struct timespec const* <span class='color_p'>start_time</span></span>, <span>struct timespec const* <span class='color_p'>stop_time</span></span>, <span>sr_event_notif_tree_cb <span class='color_p'>callback</span></span>, <span>void* <span class='color_p'>private_data</span></span>, <span>sr_subscr_options_t <span class='color_p'>opts</span></span>, <span>sr_subscription_ctx_t** <span class='color_p'>subscription</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_oper_delete_item_str&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>path</span></span>, <span>char const* <span class='color_p'>value</span></span>, <span>sr_edit_options_t const <span class='color_p'>opts</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_oper_get_subscribe&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>path</span></span>, <span>sr_oper_get_items_cb <span class='color_p'>callback</span></span>, <span>void* <span class='color_p'>private_data</span></span>, <span>sr_subscr_options_t <span class='color_p'>opts</span></span>, <span>sr_subscription_ctx_t** <span class='color_p'>subscription</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_release_context&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_release_data&#160;<span class='sym_p'><span>(&#160;sr_data_t* <span class='color_p'>data</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_session_acquire_context&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_session_acquire_data&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>struct lyd_node* <span class='color_p'>tree</span></span>, <span>sr_data_t** <span class='color_p'>data</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_session_release_context&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_set_module_ds_access&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>int <span class='color_p'>mod_ds</span></span>, <span>char const* <span class='color_p'>owner</span></span>, <span>char const* <span class='color_p'>group</span></span>, <span>mode_t <span class='color_p'>perm</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_subscription_process_events&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>, <span>sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>struct timespec* <span class='color_p'>stop_time_in</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_subscription_thread_resume&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_subscription_thread_suspend&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>&#160;)</span></span><br/>
+<span class="iname">srplg_log&#160;<span class='sym_p'><span>(&#160;char const* <span class='color_p'>plg_name</span></span>, <span>char const* <span class='color_p'>format</span></span>, <span>...</span>&#160;)</span></span><br/>
+<br/>
+<a class='top_ref' href='#Top'>to the top</a><br/>
+<a name='Source_Removed'></a><a name='Source_Withdrawn'></a><h2>Removed Symbols <span class='failed'>&nbsp;17&nbsp;</span></h2><hr/>
+<span class='h_name'>sysrepo.h</span><br/>
+<span class="iname">sr_cancel_update_module&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_connection_count&#160;<span class='sym_p'><span>(&#160;uint32_t* <span class='color_p'>conn_count</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_event_notif_send&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>path</span></span>, <span>size_t const <span class='color_p'>values_cnt</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>int <span class='color_p'>wait</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_event_notif_send_tree&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>struct lyd_node* <span class='color_p'>notif</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>int <span class='color_p'>wait</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_event_notif_sub_get_info&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>, <span>uint32_t <span class='color_p'>sub_id</span></span>, <span>char const** <span class='color_p'>module_name</span></span>, <span>char const** <span class='color_p'>xpath</span></span>, <span>time_t* <span class='color_p'>start_time</span></span>, <span>time_t* <span class='color_p'>stop_time</span></span>, <span>uint32_t* <span class='color_p'>filtered_out</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_event_notif_sub_modify_stop_time&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>, <span>uint32_t <span class='color_p'>sub_id</span></span>, <span>time_t <span class='color_p'>stop_time</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_event_notif_sub_modify_xpath&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>, <span>uint32_t <span class='color_p'>sub_id</span></span>, <span>char const* <span class='color_p'>xpath</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_event_notif_subscribe&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>xpath</span></span>, <span>time_t <span class='color_p'>start_time</span></span>, <span>time_t <span class='color_p'>stop_time</span></span>, <span>void(*<span class='color_p'>callback</span>)(struct sr_session_ctx_s*, unsigned int, ,char const*, ,unsigned long const, struct timespec*, void*)</span>, <span>void* <span class='color_p'>private_data</span></span>, <span>sr_subscr_options_t <span class='color_p'>opts</span></span>, <span>sr_subscription_ctx_t** <span class='color_p'>subscription</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_event_notif_subscribe_tree&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>xpath</span></span>, <span>time_t <span class='color_p'>start_time</span></span>, <span>time_t <span class='color_p'>stop_time</span></span>, <span>sr_event_notif_tree_cb <span class='color_p'>callback</span></span>, <span>void* <span class='color_p'>private_data</span></span>, <span>sr_subscr_options_t <span class='color_p'>opts</span></span>, <span>sr_subscription_ctx_t** <span class='color_p'>subscription</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_get_context&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_get_module_access&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char** <span class='color_p'>owner</span></span>, <span>char** <span class='color_p'>group</span></span>, <span>mode_t* <span class='color_p'>perm</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_get_module_info&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>struct lyd_node** <span class='color_p'>sysrepo_data</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_install_module_data&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>data</span></span>, <span>char const* <span class='color_p'>data_path</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_oper_get_items_subscribe&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>path</span></span>, <span>sr_oper_get_items_cb <span class='color_p'>callback</span></span>, <span>void* <span class='color_p'>private_data</span></span>, <span>sr_subscr_options_t <span class='color_p'>opts</span></span>, <span>sr_subscription_ctx_t** <span class='color_p'>subscription</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_process_events&#160;<span class='sym_p'><span>(&#160;sr_subscription_ctx_t* <span class='color_p'>subscription</span></span>, <span>sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>time_t* <span class='color_p'>stop_time_in</span></span>&#160;)</span></span><br/>
+<span class="iname">sr_set_module_access&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>owner</span></span>, <span>char const* <span class='color_p'>group</span></span>, <span>mode_t <span class='color_p'>perm</span></span>&#160;)</span></span><br/>
+<span class="iname">srp_log&#160;<span class='sym_p'><span>(&#160;char const* <span class='color_p'>format</span></span>, <span>...</span>&#160;)</span></span><br/>
+<br/>
+<a class='top_ref' href='#Top'>to the top</a><br/>
+<a name='Medium_Risk_Source_Problems'></a><a name='Symbol_Source_Problems_Medium'></a><a name='Interface_Source_Problems_Medium'></a>
+<h2>Problems with Symbols, Medium Severity <span class='failed'>&nbsp;7&nbsp;</span></h2><hr/>
+<span class='h_name'>sysrepo.h</span><br/>
+<span class="section" onclick="javascript:showContent(this, 'c_11')">
+<span class='ext'>[+]</span> sr_disable_module_feature&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>feature_name</span></span>&#160;)</span> <span class='failed'>&nbsp;1&nbsp;</span></span>
+<br/>
+<div id="c_11" style="display:none;">
+
+
+<span class='new_sign_lbl'>&#8675;</span>
+<br/>
+<span class='new_sign'>sr_disable_module_feature&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>feature_name</span></span>, <span>int <span class='color_p'>force</span></span>&#160;)</span></span><br/>
+<table class='ptable'>
+<tr>
+<th class='pn'></th>
+<th class='chg'>Change</th>
+<th>Effect</th>
+</tr>
+<tr>
+<th>1</th>
+<td>Parameter <b>force</b> of type <b>int</b> has been added to the calling stack.</td>
+<td>Recompilation of a client program may be broken.</td>
+</tr>
+</table>
+<br/>
+</div>
+<span class="section" onclick="javascript:showContent(this, 'c_12')">
+<span class='ext'>[+]</span> sr_enable_module_feature&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>feature_name</span></span>&#160;)</span> <span class='failed'>&nbsp;1&nbsp;</span></span>
+<br/>
+<div id="c_12" style="display:none;">
+
+
+<span class='new_sign_lbl'>&#8675;</span>
+<br/>
+<span class='new_sign'>sr_enable_module_feature&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>char const* <span class='color_p'>feature_name</span></span>, <span>int <span class='color_p'>force</span></span>&#160;)</span></span><br/>
+<table class='ptable'>
+<tr>
+<th class='pn'></th>
+<th class='chg'>Change</th>
+<th>Effect</th>
+</tr>
+<tr>
+<th>1</th>
+<td>Parameter <b>force</b> of type <b>int</b> has been added to the calling stack.</td>
+<td>Recompilation of a client program may be broken.</td>
+</tr>
+</table>
+<br/>
+</div>
+<span class="section" onclick="javascript:showContent(this, 'c_13')">
+<span class='ext'>[+]</span> sr_get_data&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>xpath</span></span>, <span>uint32_t <span class='color_p'>max_depth</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>sr_get_oper_options_t const <span class='color_p'>opts</span></span>, <span>struct lyd_node** <span class='color_p'>data</span></span>&#160;)</span> <span class='failed'>&nbsp;1&nbsp;</span></span>
+<br/>
+<div id="c_13" style="display:none;">
+
+
+<span class='new_sign_lbl'>&#8675;</span>
+<br/>
+<span class='new_sign'>sr_get_data&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>xpath</span></span>, <span>uint32_t <span class='color_p'>max_depth</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>sr_get_oper_options_t const <span class='color_p'>opts</span></span>, <span>sr_data_t** <span class='color_p'>data</span></span>&#160;)</span></span><br/>
+<table class='ptable'>
+<tr>
+<th class='pn'></th>
+<th class='chg'>Change</th>
+<th>Effect</th>
+</tr>
+<tr>
+<th>1</th>
+<td>Base type of parameter <b>data</b> has been changed from <span class='value'>struct lyd_node</span> to <span class='value'>struct sr_data_s</span> of different format.</td>
+<td>Recompilation of a client program may be broken.</td>
+</tr>
+</table>
+<br/>
+</div>
+<span class="section" onclick="javascript:showContent(this, 'c_14')">
+<span class='ext'>[+]</span> sr_get_subtree&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>path</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>struct lyd_node** <span class='color_p'>subtree</span></span>&#160;)</span> <span class='failed'>&nbsp;1&nbsp;</span></span>
+<br/>
+<div id="c_14" style="display:none;">
+
+
+<span class='new_sign_lbl'>&#8675;</span>
+<br/>
+<span class='new_sign'>sr_get_subtree&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>path</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>sr_data_t** <span class='color_p'>subtree</span></span>&#160;)</span></span><br/>
+<table class='ptable'>
+<tr>
+<th class='pn'></th>
+<th class='chg'>Change</th>
+<th>Effect</th>
+</tr>
+<tr>
+<th>1</th>
+<td>Base type of parameter <b>subtree</b> has been changed from <span class='value'>struct lyd_node</span> to <span class='value'>struct sr_data_s</span> of different format.</td>
+<td>Recompilation of a client program may be broken.</td>
+</tr>
+</table>
+<br/>
+</div>
+<span class="section" onclick="javascript:showContent(this, 'c_15')">
+<span class='ext'>[+]</span> sr_lock&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>module_name</span></span>&#160;)</span> <span class='failed'>&nbsp;1&nbsp;</span></span>
+<br/>
+<div id="c_15" style="display:none;">
+
+
+<span class='new_sign_lbl'>&#8675;</span>
+<br/>
+<span class='new_sign'>sr_lock&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>&#160;)</span></span><br/>
+<table class='ptable'>
+<tr>
+<th class='pn'></th>
+<th class='chg'>Change</th>
+<th>Effect</th>
+</tr>
+<tr>
+<th>1</th>
+<td>Parameter <b>timeout_ms</b> of type <b>uint32_t</b> has been added to the calling stack.</td>
+<td>Recompilation of a client program may be broken.</td>
+</tr>
+</table>
+<br/>
+</div>
+<span class="section" onclick="javascript:showContent(this, 'c_16')">
+<span class='ext'>[+]</span> sr_remove_module&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>&#160;)</span> <span class='failed'>&nbsp;1&nbsp;</span></span>
+<br/>
+<div id="c_16" style="display:none;">
+
+
+<span class='new_sign_lbl'>&#8675;</span>
+<br/>
+<span class='new_sign'>sr_remove_module&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>int <span class='color_p'>force</span></span>&#160;)</span></span><br/>
+<table class='ptable'>
+<tr>
+<th class='pn'></th>
+<th class='chg'>Change</th>
+<th>Effect</th>
+</tr>
+<tr>
+<th>1</th>
+<td>Parameter <b>force</b> of type <b>int</b> has been added to the calling stack.</td>
+<td>Recompilation of a client program may be broken.</td>
+</tr>
+</table>
+<br/>
+</div>
+<span class="section" onclick="javascript:showContent(this, 'c_17')">
+<span class='ext'>[+]</span> sr_rpc_send_tree&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>struct lyd_node* <span class='color_p'>input</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>struct lyd_node** <span class='color_p'>output</span></span>&#160;)</span> <span class='failed'>&nbsp;1&nbsp;</span></span>
+<br/>
+<div id="c_17" style="display:none;">
+
+
+<span class='new_sign_lbl'>&#8675;</span>
+<br/>
+<span class='new_sign'>sr_rpc_send_tree&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <span class='color_p'>session</span></span>, <span>struct lyd_node* <span class='color_p'>input</span></span>, <span>uint32_t <span class='color_p'>timeout_ms</span></span>, <span>sr_data_t** <span class='color_p'>output</span></span>&#160;)</span></span><br/>
+<table class='ptable'>
+<tr>
+<th class='pn'></th>
+<th class='chg'>Change</th>
+<th>Effect</th>
+</tr>
+<tr>
+<th>1</th>
+<td>Base type of parameter <b>output</b> has been changed from <span class='value'>struct lyd_node</span> to <span class='value'>struct sr_data_s</span> of different format.</td>
+<td>Recompilation of a client program may be broken.</td>
+</tr>
+</table>
+<br/>
+</div>
+<br/>
+<a class='top_ref' href='#Top'>to the top</a><br/>
+<a name='Low_Risk_Source_Problems'></a><a name='Type_Source_Problems_Low'></a>
+<h2>Problems with Data Types, Low Severity <span class='warning'>&nbsp;1&nbsp;</span></h2><hr/>
+<span class='h_name'>sysrepo_types.h</span><br/>
+<span class="section" onclick="javascript:showContent(this, 'c_18')">
+<span class='ext'>[+]</span> <span class='ttype'>typedef</span> sr_rpc_cb <span class='warning'>&nbsp;1&nbsp;</span></span>
+<br/>
+<div id="c_18" style="display:none;">
+<table class='ptable'><tr>
+<th class='pn'></th>
+<th class='chg'>Change</th>
+<th>Effect</th></tr><tr>
+<th>1</th>
+<td>Base type has been changed from <span class='value'>int(*)(sr_session_ctx_t*, uint32_t, char const*, , size_t const, , uint32_t, , size_t*, void*)</span> to <span class='value'>int(*)(sr_session_ctx_t*, uint32_t, char const*, sr_val_t const*, size_t const, , uint32_t, sr_val_t**, size_t*, void*)</span>.</td>
+<td>Recompilation of a client program may be broken.</td>
+</tr>
+</table>
+<span class="sect_aff" onclick="javascript:showContent(this, 'c_19')">
+[+] affected symbols: 1 (0.8%)</span>
+<div id="c_19" style="display:none;">
+<div class='affected'><span class='iname_a'>sr_rpc_subscribe&#160;<span class='sym_p'><span>(&#160;sr_session_ctx_t* <i>session</i></span>, <span>char const* <i>xpath</i></span>, <span>int(*<span class='fp'>callback</span>)(struct sr_session_ctx_s*, unsigned int, char const*, ,unsigned long const, ,unsigned int, ,unsigned long*, void*)</span>, <span>void* <i>private_data</i></span>, <span>uint32_t <i>priority</i></span>, <span>sr_subscr_options_t <i>opts</i></span>, <span>sr_subscription_ctx_t** <i>subscription</i></span>&#160;)</span></span><br/>
+<div class='affect'>3rd parameter &#39;callback&#39; is of type &#39;sr_rpc_cb&#39;.</div>
+</div>
+</div>
+<br/><br/></div>
+
+<br/>
+<a class='top_ref' href='#Top'>to the top</a><br/>
+<a name='Other_Source_Changes'></a><a name='Other_Source_Changes_In_Symbols'></a><a name='Other_Source_Changes_In_Interfaces'></a>
+<h2>Other Changes in Symbols <span class='passed'>&nbsp;1&nbsp;</span></h2><hr/>
+<span class='h_name'>sysrepo.h</span><br/>
+<span class="section" onclick="javascript:showContent(this, 'c_20')">
+<span class='ext'>[+]</span> sr_set_module_replay_support&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>int <span class='color_p'>replay_support</span></span>&#160;)</span> <span class='passed'>&nbsp;1&nbsp;</span></span>
+<br/>
+<div id="c_20" style="display:none;">
+
+
+<span class='new_sign_lbl'>&#8675;</span>
+<br/>
+<span class='new_sign'>sr_set_module_replay_support&#160;<span class='sym_p'><span>(&#160;sr_conn_ctx_t* <span class='color_p'>conn</span></span>, <span>char const* <span class='color_p'>module_name</span></span>, <span>int <span class='color_p'>enable</span></span>&#160;)</span></span><br/>
+<table class='ptable'>
+<tr>
+<th class='pn'></th>
+<th class='chg'>Change</th>
+<th>Effect</th>
+</tr>
+<tr>
+<th>1</th>
+<td><b>3rd</b> parameter <b>replay_support</b> has been renamed to <b>enable</b>.</td>
+<td>No effect.</td>
+</tr>
+</table>
+<br/>
+</div>
+<br/>
+<a class='top_ref' href='#Top'>to the top</a><br/>
+<a name='Headers'></a><h2>Header Files <span class='gray'>&nbsp;3&nbsp;</span></h2><hr/>
+<div class='h_list'>
+sysrepo.h<br/>
+values.h<br/>
+xpath.h<br/>
+</div>
+<br/><a class='top_ref' href='#Top'>to the top</a><br/>
+<a name='Libs'></a><h2>Objects <span class='gray'>&nbsp;1&nbsp;</span></h2><hr/>
+<div class='lib_list'>
+libsysrepo.so.6.0.0<br/>
+</div>
+<br/><a class='top_ref' href='#Top'>to the top</a><br/>
+<br/><br/><br/></div><hr/>
+<div class='footer' align='right'><i>Generated by <a href='https://github.com/lvc/abi-compliance-checker'>ABI Compliance Checker</a> 2.3 &#160;</i>
+</div>
+<br/>
+
+</body></html>

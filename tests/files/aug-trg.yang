@@ -1,0 +1,10 @@
+module aug-trg {
+    namespace at;
+    prefix at;
+
+    container ac1 {
+        leaf acs1 {
+            type string;
+        }
+    }
+}

@@ -1,0 +1,33 @@
+- only Python and C++ bindings are supported
+- sr_get_changes_iter() xpath parameter changed - it now properly selects changes based on the XPath, not subtrees
+- sr_*_item flag SR_EDIT_NON_RECURSIVE not supported for sr_delete_item()
+- sr_node_t -> struct lyd_node *
+- sr_get_subtree(s) removed opts (no iterative retrieval)
+- sr_unsubscribe first parameter removed
+- SR_EV_VERIFY -> SR_EV_CHANGE, SR_EV_APPLY -> SR_EV_DONE
+- new event SR_EV_UPDATE (called first, but if several subscriptions, they will not get changes from the previous callbacks unless in one subscription)
+- deleting a leaf does not check the value/it can be empty! but otherwise only limited paths are accepted, no xpath
+- sr_move_item() different relative item input
+- error retrieval from session API slightly changed
+- threading - do not share one session between several threads
+- session options removed, did not make sense anymore
+- NO_ABORT_FOR_REFUSED_CFG subscription option removed, default behaviour
+- SR_EV_NOTIF_T_REPLAY_STOP -> SR_EV_NOTIF_STOP
+- removed option SR_NOTIF_EPHEMERAL (only whole modules can be set that way)
+- replaced 4 functions sr_(un)lock_(module|datastore) with 2 sr_(un)lock
+
+removed functions:
+- sr_commit() (renamed to sr_apply_changes())
+- sr_dp_get_items_subscribe() (renamed to sr_oper_get_items_subscribe())
+- sr_module_install_subscribe (use notifications)
+- sr_feature_enable_subscribe (use notifications)
+- sr_subtree_change_subscribe (use sr_module_change_subscribe() with xpath)
+- sr_session_refresh (not needed, performed automatically)
+- sr_check_exec_permission (NACM no longer included)
+- whole action API (use RPC API)
+- sr_session_check (does not make sense anymore)
+- whole get-schema API (use sr_get_module_info)
+- sr_session_start_user (create a normal session followed by calling sr_session_set_user)
+- sr_get_items_iter, sr_get_item_next (not supported for now)
+- plugins.h functions - included in sysrepo.h with some minor changes (SRP_LOG_ERR_MSG -> SRP_LOG_ERRMSG)
+- trees.h (libyang trees used instead)

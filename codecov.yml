@@ -1,11 +1,12 @@
 comment:
   layout: header, changes, diff
-  
+
 coverage:
   precision: 2
   round: nearest
-  
+
   ignore:
+  - compat/.*
   - tests/.*
   - examples/.*
 
@@ -28,4 +29,3 @@ coverage:
         loop: no
         conditional: no
         method: no
-

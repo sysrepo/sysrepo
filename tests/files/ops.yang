@@ -1,0 +1,147 @@
+module ops {
+    yang-version 1.1;
+    namespace "urn:ops";
+    prefix o;
+
+    import ops-ref {
+        prefix or;
+    }
+
+    rpc rpc1 {
+        input {
+            leaf l1 {
+                type leafref {
+                    path "/or:l1";
+                }
+            }
+            leaf l2 {
+                type instance-identifier {
+                    require-instance false;
+                }
+                default "/or:l2";
+            }
+        }
+    }
+
+    rpc rpc2 {
+        output {
+            container cont {
+                leaf l3 {
+                    type leafref {
+                        path "/or:l2";
+                    }
+                }
+            }
+        }
+    }
+
+    rpc rpc3 {
+        input {
+            leaf l4 {
+                type string;
+            }
+        }
+
+        output {
+            leaf l5 {
+                type uint16;
+            }
+        }
+    }
+
+    container cont {
+        list list1 {
+            key "k";
+            leaf k {
+                type string;
+            }
+
+            container cont2 {
+                action act1 {
+                    input {
+                        leaf l6 {
+                            type string;
+                        }
+
+                        leaf l7 {
+                            type leafref {
+                                path "../l6";
+                            }
+                        }
+                    }
+                    output {
+                        leaf l8 {
+                            type instance-identifier;
+                            default "/o:cont/o:list1[o:k='key']/o:k";
+                        }
+
+                        leaf l9 {
+                            type leafref {
+                                path "../../../../l12";
+                            }
+                        }
+                    }
+                }
+            }
+
+            action act2 {
+                if-feature or:feat1;
+                input {
+                    leaf l10 {
+                        type enumeration {
+                            enum e1;
+                            enum e2;
+                            enum e3;
+                        }
+                    }
+                }
+
+                output {
+                    leaf l11 {
+                        type int64;
+                    }
+                }
+            }
+        }
+
+        leaf l12 {
+            type string;
+        }
+
+        container cont3 {
+            notification notif2 {
+                leaf l13 {
+                    when "starts-with(/or:l1, 'l1')";
+                    type instance-identifier;
+                }
+            }
+        }
+    }
+
+    notification notif3 {
+        if-feature or:feat1;
+        list list2 {
+            key "k";
+            leaf k {
+                type string;
+            }
+
+            leaf l14 {
+                type leafref {
+                    path "/or:l1";
+                }
+            }
+
+            leaf l15 {
+                type instance-identifier;
+                default "/o:cont/o:list1[o:k='key']/o:cont2";
+            }
+        }
+    }
+
+    notification notif4 {
+        leaf-list l {
+            type string;
+        }
+    }
+}

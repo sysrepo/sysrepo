@@ -1,0 +1,105 @@
+module test {
+    namespace "urn:test";
+    prefix t;
+
+    yang-version 1.1;
+
+    import ietf-inet-types {
+        prefix inet;
+    }
+
+    import ietf-netconf-acm {
+        prefix nacm;
+    }
+
+    leaf test-leaf {
+        type uint8;
+    }
+
+    leaf test-leafref {
+        type leafref {
+            path "../test-leaf";
+        }
+        config false;
+    }
+
+    list l1 {
+        ordered-by user;
+        key "k";
+
+        leaf k {
+            type string;
+        }
+
+        leaf v {
+            type uint8;
+        }
+
+        leaf-list ll12 {
+            ordered-by user;
+            type string;
+        }
+    }
+
+    leaf-list ll1 {
+        ordered-by user;
+        type int16;
+    }
+
+    container cont {
+        list l2 {
+            ordered-by user;
+            key "k";
+
+            leaf k {
+                type string;
+            }
+
+            leaf v {
+                type uint8;
+            }
+        }
+
+        leaf-list ll2 {
+            ordered-by user;
+            type int16;
+        }
+
+        leaf server {
+            type inet:host;
+        }
+
+        anyxml anyx;
+
+        anydata anyd;
+    }
+
+    list l3 {
+        key "k";
+        leaf k {
+            type string;
+        }
+
+        leaf-list ll3 {
+            ordered-by user;
+            type uint32;
+            default 5;
+            default 10;
+            default 15;
+        }
+
+        list l4 {
+            ordered-by user;
+            key "k";
+            leaf k {
+                type string;
+            }
+        }
+    }
+
+    rpc r1;
+
+    rpc r2 {
+        nacm:default-deny-all;
+    }
+}

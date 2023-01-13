@@ -1,26 +1,49 @@
-#  CMOCKA_FOUND - System has CMocka
-#  CMOCKA_INCLUDE_DIRS - The CMocka include directories
-#  CMOCKA_LIBRARIES - The libraries needed to use CMocka
+# - Try to find CMocka
+# Once done this will define
+#
+#  CMOCKA_ROOT_DIR - Set this variable to the root installation of CMocka
+#
+# Read-Only variables:
+#  CMOCKA_FOUND - system has CMocka
+#  CMOCKA_INCLUDE_DIR - the CMocka include directory
+#  CMOCKA_LIBRARIES - Link these to use CMocka
 #  CMOCKA_DEFINITIONS - Compiler switches required for using CMocka
+#
+#=============================================================================
+#  Copyright (c) 2011-2012 Andreas Schneider <asn@cryptomilk.org>
+#
+#  Distributed under the OSI-approved BSD License (the "License");
+#  see accompanying file Copyright.txt for details.
+#
+#  This software is distributed WITHOUT ANY WARRANTY; without even the
+#  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#  See the License for more information.
+#=============================================================================
+#
 
-find_package(PkgConfig QUIET)
-if(PKG_CONFIG_FOUND)
-    pkg_check_modules(PC_CMOCKA QUIET cmocka)
-    set(CMOCKA_DEFINITIONS ${PC_CMOCKA_CFLAGS_OTHER})
-endif()
+find_path(CMOCKA_INCLUDE_DIR
+    NAMES
+        cmocka.h
+    PATHS
+        ${CMOCKA_ROOT_DIR}/include
+)
 
-find_path(CMOCKA_INCLUDE_DIR cmocka.h
-          HINTS ${PC_CMOCKA_INCLUDEDIR} ${PC_CMOCKA_INCLUDE_DIRS}
-          PATH_SUFFIXES cmocka)
+find_library(CMOCKA_LIBRARY
+    NAMES
+        cmocka cmocka_shared
+    PATHS
+        ${CMOCKA_ROOT_DIR}/include
+)
 
-find_library(CMOCKA_LIBRARY NAMES cmocka 
-             HINTS ${PC_CMOCKA_LIBDIR} ${PC_CMOCKA_LIBRARY_DIRS})
-
-set(CMOCKA_LIBRARIES ${CMOCKA_LIBRARY})
-set(CMOCKA_INCLUDE_DIRS ${CMOCKA_INCLUDE_DIR})
+if (CMOCKA_LIBRARY)
+  set(CMOCKA_LIBRARIES
+      ${CMOCKA_LIBRARIES}
+      ${CMOCKA_LIBRARY}
+  )
+endif (CMOCKA_LIBRARY)
 
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(cmocka  DEFAULT_MSG
-                                  CMOCKA_LIBRARY CMOCKA_INCLUDE_DIR)
+find_package_handle_standard_args(CMocka DEFAULT_MSG CMOCKA_LIBRARIES CMOCKA_INCLUDE_DIR)
 
-mark_as_advanced(CMOCKA_INCLUDE_DIR CMOCKA_LIBRARY)
+# show the CMOCKA_INCLUDE_DIR and CMOCKA_LIBRARIES variables only in the advanced view
+mark_as_advanced(CMOCKA_INCLUDE_DIR CMOCKA_LIBRARIES)

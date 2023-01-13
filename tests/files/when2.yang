@@ -1,0 +1,30 @@
+module when2 {
+    namespace "urn:when2";
+    prefix w2;
+
+    import when1 {
+        prefix w1;
+    }
+
+    container cont {
+        when "/w1:l1";
+        leaf l {
+            type string;
+        }
+    }
+
+    leaf ll {
+        when "/w1:l2";
+        type string;
+        default "zzZZzz";
+    }
+
+    augment /w1:cont {
+        when "starts-with(w1:l4,'sri')";
+        container cont2 {
+            leaf bl {
+                type string;
+            }
+        }
+    }
+}

@@ -1,0 +1,79 @@
+module act2 {
+  yang-version 1.1;
+  namespace "urn:act2";
+  prefix a2;
+
+  import act {
+     prefix a;
+  }
+
+  revision 2019-04-30 {
+    description
+      "Initial revision.";
+    reference "";
+  }
+
+  grouping complex_number {
+    container complex_number {
+      leaf real_part {
+        type decimal64 {
+          fraction-digits 9;
+        }
+      }
+      leaf imaginary_part {
+        type decimal64 {
+          fraction-digits 9;
+        }
+      }
+    }
+  }
+
+  augment "/a:basics/a:subbasics" {
+
+    uses complex_number {
+      refine "complex_number/imaginary_part" {
+        description
+          "Refined comment";
+      }
+    }
+
+    choice decision {
+      case first {
+        leaf one {
+          type boolean;
+        }
+      }
+      case second {
+        leaf two {
+          type string;
+        }
+      }
+    }
+    leaf bitek {
+      type bits {
+        bit a;
+        bit b;
+        bit c {
+          position 10;
+        }
+      }
+    }
+    leaf scalar_ref {
+      type leafref {
+        require-instance false;
+        path "/a:basics/a:referee";
+      }
+    }
+    leaf link {
+      default "/a:basics/a:scalar";
+      type instance-identifier {
+        require-instance false;
+      }
+    }
+    leaf wall {
+      type identityref {
+        base "a:color";
+      }
+    }
+  }
+}

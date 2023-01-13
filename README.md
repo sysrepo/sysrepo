@@ -1,72 +1,281 @@
-[![Build Status](https://travis-ci.org/sysrepo/sysrepo.svg)](https://travis-ci.org/sysrepo/sysrepo)
-[![Coverity Scan Build Status](https://scan.coverity.com/projects/7479/badge.svg)](https://scan.coverity.com/projects/sysrepo-sysrepo)
-[![codecov.io](https://codecov.io/github/sysrepo/sysrepo/coverage.svg?branch=master)](https://codecov.io/github/sysrepo/sysrepo?branch=master)
-[![GitHub license](https://img.shields.io/badge/license-Apache%20license%202.0-blue.svg)](https://github.com/sysrepo/sysrepo/blob/master/LICENSE)
+# Sysrepo
 
-## Sysrepo
-Sysrepo is an [YANG](http://tools.ietf.org/html/rfc6020)-based configuration and operational state data store for Unix/Linux applications.
+[![BSD license](https://img.shields.io/badge/License-BSD-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
+[![Website](https://img.shields.io/website?down_color=lightgrey&down_message=offline&up_color=blue&up_message=online&url=https%3A%2F%2Fwww.sysrepo.org%2F)](https://www.sysrepo.org/)
+[![Build](https://github.com/sysrepo/sysrepo/workflows/sysrepo%20CI/badge.svg)](https://github.com/sysrepo/sysrepo/actions?query=workflow%3A%22sysrepo+CI%22)
+[![Docs](https://img.shields.io/badge/docs-link-blue)](https://netopeer.liberouter.org/doc/sysrepo/)
+[![Coverity](https://scan.coverity.com/projects/7479/badge.svg)](https://scan.coverity.com/projects/sysrepo-sysrepo)
+[![Codecov](https://codecov.io/gh/sysrepo/sysrepo/branch/master/graph/badge.svg?token=tsZ6WOOMNz)](https://codecov.io/gh/sysrepo/sysrepo)
 
-Applications can use sysrepo to store their configuration modeled by provided YANG model instead of using e.g. flat configuration files. Sysrepo will ensure data consistency of the data stored in the datastore and enforce data constraints defined by YANG model. Applications can currently use [C language API](inc/sysrepo.h) of sysrepo Client Library to access the configuration in the datastore, but the support for other programming languages is planed for later too (since sysrepo uses [Google Protocol Buffers](https://developers.google.com/protocol-buffers/) as the interface between the datastore and client library, writing of a native client library for any programing language that supports GPB is possible).
+Sysrepo is a [YANG](http://tools.ietf.org/html/rfc7950)-based configuration and operational state data store for Unix/Linux applications.
+
+Applications can use sysrepo to store their configuration modeled by provided YANG model instead of using e.g. flat configuration files. Sysrepo will ensure data consistency of the data stored in the datastore and enforce data constraints defined by YANG model. Applications can currently use [C language API](inc/sysrepo.h) of sysrepo Client Library to access the configuration in the datastore, but the support for other programming languages is planed for later, too.
 
 Sysrepo can be easily integrated with management agents such as [NETCONF](https://tools.ietf.org/html/rfc6241) or [RESTCONF](https://tools.ietf.org/html/rfc8040) servers, using the same client library API that applications use to access their configuration. As of now, sysrepo is integrated with the [Netopeer 2 NETCONF server](https://github.com/CESNET/Netopeer2). This means that applications that use sysrepo to store their configuration can automatically benefit from the ability to being controlled via NETCONF.
 
-![Sysrepo Architecture](doc/high_level_architecture.png)
+## Branches
 
-## Features
--	ability to store / retrieve YANG-modeled data elements adressed by XPath
--	startup, running and candidate datastore support
--	data consistency and constraints enforecment according to YANG models
--	no single point of failure design (does not require any daemon to be running)
--	full transaction and concurrency support
--	notifications of subscribed applications about the changes made in the datastore
--	commit verifiers (change verification by subscribed applications)
--	operational data support (publishing of application's state data to sysrepo)
--	plugins infrastructure for loosely-coupled integration with sysrepo
--	YANG 1.1 support
--	custom RPC, Event Notifications, YANG 1.1 Actions support
--	Python 2 & 3, Lua 5.1 & 5.2, Java bindigs
--	notification store & notification replay
--	NACM (NETCONF Access Control Model) - disabled by default
--	(TODO) confirmed commit support
--	(TODO) native client libraries / plugins for other programming languages (Python, Java, ...)
+The project uses 2 main branches `master` and `devel`. Other branches should not be cloned. In `master` there are files of the
+last official *release*. Any latest improvements and changes, which were tested at least briefly are found in `devel`. On every
+new *release*, `devel` is merged into `master`.
 
-## Status
-- September 2017: sysrepo [version 0.7.1](https://github.com/sysrepo/sysrepo/releases/tag/v0.7.1) released with many bugfixes and optimizations
-- August 2017: sysrepo [version 0.7.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.7.0) released with several important improvements and changes: full NACM support, (X)Paths for subscriptions unified, candidate datastore changes, `sr_commit` functionality change and many bugfixes and enhancements
-- May 2017: sysrepo [version 0.6.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.6.0) realeased with many bugfixes and improvements including event notification replay.
-- November 2016: sysrepo [version 0.5.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.5.0) realeased with many bugfixes and some minor improvements.
-- October 2016: sysrepo [version 0.4.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.4.0) realeased with lots of new features such as: operational data support, commit verifiers, YANG 1.1 support, subtree-based data retrieval or RPC / event notifications support.
-- July 2016: new features added into the [devel branch](https://github.com/sysrepo/sysrepo/tree/devel): experimental operational data support and event notifications support
-- June 2016: new subscription API & changeset retrieval functionality ready, sysrepocfg tool, released as sysrepo [version 0.3.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.3.0)
-- May 2016: RPC support and sysrepo plugins infrastructure ready, working on new subscription API & changeset retrieval functionality
-- April 2016: full concurrency and locking support ready, generated Python bindings, integrated with [Netopeer 2 NETCONF server](https://github.com/CESNET/Netopeer2), released as sysrepo [version 0.2.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.2.0)
-- March 2016: syrepo daemon and data manipulation (edit-config) functionality ready, working on full concurrency and locking support
-- February 2016: working on sysrepo daemon, data manipulation (edit-config) functionality
-- January 2016: data retrieval (get-config) functionality ready, released as sysrepo [version 0.1.0](https://github.com/sysrepo/sysrepo/releases/tag/v0.1.0)
-- December 2015: implementation started - building internal infrastructure, data retrieval (get-config) functionality
+This means that when only stable official releases are to be used, either `master` can be used or specific *releases* downloaded.
+If all the latest bugfixes should be applied, `devel` branch is the  one to be used. Note that whenever **a new issue is created**
+and it occurs on the `master` branch, the **first response will likely be** to use `devel` before any further provided support.
 
-## Performance
-According to our measurements using the [performance unit-test](tests/perf_test.c) and [concurrency unit-test](tests/concurr_test.c), sysrepo is able to handle more than 100 000 of requests per second (100 requests per millisecond) by concurrent access and about a half of it by sequential access on a conventional laptop hardware. According to the [API performance testing](http://www.sysrepo.org/sysrepo-performance), an application is able to retrieve more that 1 000 000 data nodes per second from sysrepo, and set / update up to 50 000 data nodes per second in sysrepo.
+## Compatibility Between Versions
 
-## Build & Installation Steps
-See [INSTALL.md](INSTALL.md) file, which contains detailed build and installation steps.
+When upgrading Sysrepo to a newer major SO version, look into the `compatibility` directory for a summary of changes.
+Each directory describes the changes between the specific SO versions. Be aware that they do not match project versions.
 
-## Usage Examples
-See [examples](examples) directory, which contains an example per each data-acess API function.
+## Provided Features
 
-Also see our [fork of dnsmasq](https://github.com/sysrepo/dnsmasq-sysrepo) that uses sysrepo to store its configuration for short demonstration of how sysrepo can be integrated into an existing application ([see the diff](https://github.com/sysrepo/dnsmasq-sysrepo/compare/a92c41eda58624056242f0c3a71c1efb7bba91b5...master)).
+* Ability to store / retrieve YANG-modeled data elements adressed by XPath
+* Startup, running, candidate, and operational datastore support
+* Data consistency and constraints enforcement according to YANG models
+* No single point of failure design (is just a library)
+* Full transaction and concurrency support
+* Notifications of subscribed applications about the changes made in the datastore
+* Commit verifiers (change verification by subscribed applications)
+* Operational data support (publishing of application's state/configuration data to sysrepo)
+* YANG 1.1 support
+* Custom RPC, Event Notifications, YANG 1.1 Actions support
+* Notification store & notification replay
 
-## Documentation
-Client Library API, as well as all internal modules of sysrepo are documented with Doxygen comments. To read the documentation, you can navigate to the [nigthly build of documentation on sysrepo.org](http://www.sysrepo.org/static/doc/html/), or [build your own copy](INSTALL.md) of the documentation.
+## Packages
 
-## Contact
-For bug reports, please open an issue on GitHub. For general questions and feedback, please post to our [mailing lists](http://lists.sysrepo.org/listinfo/). You are also welcome to subscribe to our mailing lists if you have interest in sysrepo:
-- sysrepo-devel@sysrepo.org - if you want to be involved in all technical discussions
-- sysrepo-announce@sysrepo.org - if you want to be informed about new releases and released features
+Binary RPM or DEB packages of the latest release can be built locally using `apkg`, look into `README` in
+the `distro` directory.
 
-## Other Resources
-- [sysrepo.org](http://www.sysrepo.org/) - General information about the project
-- CESNET's [Netopeer 2](https://github.com/CESNET/Netopeer2) NETCONF Toolset
-- CESNET's [libyang](https://github.com/cesnet/libyang) YANG toolkit
-- [RFC 6020](http://tools.ietf.org/html/rfc6020) (YANG Data Modeling Language)
-- [RFC 6241](https://tools.ietf.org/html/rfc6241) (Network Configuration Protocol - NETCONF)
+## Security Notes
+
+Sysrepo does not have any master process that could enforce complex access control. So instead, it relies on and
+utilizes standard file system permissions but there are some things to bear in mind.
+
+To prevent any sensitive data from being accessible by unauthorized processes, it is imperative to **always
+set correct permissions and owner** for all YANG modules being installed. The utility `sysrepoctl` can help
+with both displaying all the permissions (`--list`) and modifying them (`--change <module>`) in addition
+to this functionality being available in the API.
+
+Having made certain of this, the default configuration should be suitable for a reasonably secure machine
+that has no malicious running processes. Specifically, it is trivial for such a process to completely break
+sysrepo by writing into shared files that must be accessible for all the processes linked with sysrepo. Also,
+with some reverse engineering, it may even be possible to access data by an unathorized process when they are being
+communicated in these shared files.
+
+In order to avoid all such security issues, there are 2 `cmake` variables `SYSREPO_UMASK` and `SYSREPO_GROUP`
+that should be adjusted. Generally, a new system group should be created and set for `SYSREPO_GROUP` and then
+all outside access frobidden by setting `SYSREPO_UMASK` to `00007`. If then all the users executing sysrepo
+processes belong to this group, none of sysrepo files and no sensitive information should be accessible to
+other users.
+
+## Requirements
+
+### Build Requirements
+
+* C compiler (gcc >= 4.8.4, clang >= 3.0, ...)
+* cmake >= 2.8.12
+* [libyang](https://github.com/CESNET/libyang)
+* tar(1)
+
+#### Optional
+
+* pkg-config & libsystemd (to support `sysrepo-plugind` systemd service)
+* doxygen (for generating documentation)
+* cmocka >= 1.0.1 (for tests only, see [Tests](#Tests))
+* valgrind (for enhanced testing)
+* gcov (for code coverage)
+* lcov (for code coverage)
+* genhtml (for code coverage)
+
+## Building
+
+```
+$ mkdir build; cd build
+$ cmake ..
+$ make
+# make install
+```
+
+### Plugin development documentation
+
+Another markdown document aimed at plugin developers is available in [plugin_dev_doc.md](./plugin_dev_doc.md).
+The goal of the document is to provide a single place where a complete overview of information required to
+start developing plugins is available.
+The document describes the basics of Sysrepo plugin development and the technologies required to work with
+Sysrepo like YANG, XPath, NETCONF and others.
+
+### Useful CMake sysrepo Options
+
+Set custom repository path:
+```
+-DREPO_PATH=/opt/sysrepo/my_repository
+```
+
+Set custom `sysrepo` DS and NTF plugins path:
+```
+-DSR_PLUGINS_PATH=/opt/sysrepo/plugins
+```
+
+Set custom `sysrepo-plugind` plugins path:
+```
+-DSRPD_PLUGINS_PATH=/opt/sysrepo-plugind/plugins
+```
+
+Set global `umask` for all sysrepo file and directory creation:
+```
+-DSYSREPO_UMASK=00007
+```
+
+Set system group to own all sysrepo-related files:
+```
+-DSYSREPO_GROUP=sysrepo
+```
+
+Set `systemd` system service unit path:
+```
+-DSYSTEMD_UNIT_DIR=/usr/lib/systemd/system
+```
+
+Set [NACM](#NACM) recovery username with unrestricted access:
+```
+-DNACM_RECOVERY_USER=root
+```
+
+Set [NACM](#NACM) configuration data and 'sysrepo-monitoring' default permissions:
+```
+-DNACM_SRMON_DATA_PERM=000
+```
+### Useful CMake Build Options
+
+#### Changing Compiler
+
+Set `CC` variable:
+
+```
+$ CC=/usr/bin/clang cmake ..
+```
+
+#### Changing Install Path
+
+To change the prefix where the library, headers and any other files are installed,
+set `CMAKE_INSTALL_PREFIX` variable:
+```
+$ cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
+```
+
+Default prefix is `/usr/local`.
+
+#### Build Modes
+
+There are two build modes:
+* Release.
+  This generates library for the production use without any debug information.
+* Debug.
+  This generates library with the debug information and disables optimization
+  of the code.
+
+The `Debug` mode is currently used as the default one. to switch to the
+`Release` mode, enter at the command line:
+```
+$ cmake -D CMAKE_BUILD_TYPE:String="Release" ..
+```
+
+#### Code Coverage
+
+Based on the tests run, it is possible to generate code coverage report. But
+it must be enabled and these commands are needed to generate the report:
+```
+$ cmake -DENABLE_COVERAGE=ON ..
+$ make
+$ make coverage
+```
+
+## Usage
+
+All Sysrepo functions are available via the main header:
+
+```C
+#include <sysrepo.h>
+```
+
+To compile your program with libsysrepo, it is necessary to link it using the
+following linker parameters:
+```
+-lsysrepo
+```
+
+Note, that it may be necessary to call `ldconfig(8)` after library installation and if the
+library was installed into a non-standard path, the path to it must be specified to the
+linker. To help with setting all the compiler's options, there is `sysrepo.pc` file for
+`pkg-config(1)` available in the source tree. The file is installed with the library.
+
+### Used run-time enviromental variables
+
+It is possible to change the repository path by setting `SYSREPO_REPOSITORY_PATH` variable.
+Also, if `SYSREPO_SHM_PREFIX` is defined, it is used for all SHM files created. This way
+everal *sysrepo* instances can effectively be run simultanously on one machine.
+
+## NACM
+
+NETCONF Access Control Module with configuration data in *ietf-netconf-acm* YANG module is implemented
+as part of *sysrepo*. However, its use is completely optional and needs a separate header to be included:
+```C
+#include <sysrepo/netconf_acm.h>
+```
+
+By default, no users other than the recovery user (default `root`) will be allowed to *write* any data but
+should be granted *read* and *execute* permissions unless the access was modified by a NACM extension.
+
+## Examples
+
+See [examples](examples) directory, which contains an example for basic API functions.
+
+## Bindings
+
+There are no bindings for other languages directly in this project but they are
+available separately.
+
+* [Python](https://github.com/sysrepo/sysrepo-python/)
+* [C++](https://github.com/sysrepo/sysrepo-cpp/)
+
+## Tests
+
+There are several tests included and built with [cmocka](https://cmocka.org/). The tests
+can be found in `tests` subdirectory and they are designed for checking library
+functionality after code changes.
+
+The tests are by default built in the `Debug` build mode by running
+```
+$ make
+```
+
+In case of the `Release` mode, the tests are not built by default (it requires
+additional dependency), but they can be enabled via cmake option:
+```
+$ cmake -DENABLE_TESTS=ON ..
+```
+
+Note that if the necessary [cmocka](https://cmocka.org/) headers are not present
+in the system include paths, tests are not available despite the build mode or
+cmake's options.
+
+Tests can be run by the make's `test` target:
+```
+$ make test
+```
+
+### Perf
+
+There is a performance measurement tool included that prints information about
+the time required to execute common use-cases of working with large YANG instance data.
+
+To enable this test, use an option and to get representative results, enable Release build type:
+```
+$ cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_PERF_TESTS=ON ..
+```
+and to run the test with seeing its output run:
+```
+$ make
+$ ctest -V -R sr_perf
+```

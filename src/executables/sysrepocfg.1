@@ -1,0 +1,125 @@
+.\" Manpage for sysrepocfg.
+.\" Process this file with
+.\" groff -man -Tascii sysrepocfg.1
+.\"
+
+.TH SYSREPOCFG 1 "2021-10-07" "sysrepo"
+.SH NAME
+sysrepocfg \- sysrepo configuration manipulation tool
+.
+.SH SYNOPSIS
+.B sysrepocfg
+\fIOPERATION\fP
+[\fIOPTIONS\fP]
+.br
+.
+.SH DESCRIPTION
+\fBsysrepocfg\fP is a command-line tool for manipulation of YANG data configuration
+stored in sysrepo. It can modify it in several ways and also send YANG RPCs and
+notifications.
+.
+.SH OPERATION
+.TP
+.BR "\-h\fR,\fP \-\^\-help"
+Print usage help.
+.TP
+.BR "\-V\fR,\fP \-\^\-version"
+Print only information about sysrepo version.
+.TP
+.BR "\-I\fR,\fP \-\^\-import[=\fIPATH\fP]"
+Import the configuration from a file or \fISTDIN\fP.
+.TP
+.BR "\-X\fR,\fP \-\^\-export[=\fIPATH\fP]"
+Export configuration to a file or \fISTDOUT\fP.
+.TP
+.BR "\-E\fR,\fP \-\^\-edit[=\fIPATH\fP/\fIEDITOR\fP]"
+Edit configuration data by merging (applying) a configuration (edit) file or
+by editing the current datastore content using a text editor.
+.TP
+.BR "\-R\fR,\fP \-\^\-rpc[=\fIPATH\fP/\fIEDITOR\fP]"
+Send a RPC/action in a file or using a text editor. Output is printed to \fISTDOUT\fP.
+.TP
+.BR "\-N\fR,\fP \-\^\-notification[=\fIPATH\fP/\fIEDITOR\fP]"
+Send a notification in a file or using a text editor.
+.TP
+.BR "\-C\fR,\fP \-\^\-copy\-from \fIPATH\fP/\fISOURCE-DATASTORE\fP"
+Perform a copy-config from a file or a datastore.
+.LP
+When both a \fIPATH\fP and \fIEDITOR\fP/\fISOURCE-DATASTORE\fP can be specified,
+it is always first checked that the file exists. If not, then it is interpreted as
+the other parameter. If no \fIPATH\fP and no \fIEDITOR\fP is set, use text editor
+in $VISUAL or $EDITOR environment variables.
+.
+.SH OPTIONS
+.TP
+.BR "\-d\fR,\fP \-\^\-datastore \fIDATASTORE\fP"
+Datastore to be operated on. Accepted by \fBimport\fP, \fBexport\fP, \fBedit\fP,
+\fBcopy-from\fP op. \fIDATASTORE\fP is:
+ \[bu] \fBrunning\fP (default)
+ \[bu] \fBstartup\fP
+ \[bu] \fBcandidate\fP
+ \[bu] \fBoperational\fP
+.TP
+.BR "\-m\fR,\fP \-\^\-module \fIMODULE\fP"
+Module to be operated on, otherwise it is operated on full datastore.
+Accepted by \fBimport\fP, \fBexport\fP, \fBedit\fP, \fBcopy-from\fP, mandatory for \fBnew-data\fP op.
+.TP
+.BR "\-x\fR,\fP \-\^\-xpath \fIXPATH\fP"
+XPath to select. Accepted by \fBexport\fP op.
+.TP
+.BR "\-f\fR,\fP \-\^\-format \fIFORMAT\fP"
+Data format to be used, by default based on file extension or \fBxml\fP if not applicable.
+Accepted by \fBall\fP op.
+\fIDATASTORE\fP is:
+ \[bu] \fBxml\fP (default)
+ \[bu] \fBjson\fP
+ \[bu] \fBlyb\fP
+.TP
+.BR "\-l\fR,\fP \-\^\-lock"
+Lock the specified datastore for the whole operation. Accepted by \fBedit\fP op.
+.TP
+.BR "\-n\fR,\fP \-\^\-not\-strict"
+Silently ignore any unknown data. Accepted by \fBimport\fP, \fBedit\fP, \fBrpc\fP, \fBnotification\fP,
+\fBcopy-from\fP op.
+.TP
+.BR "\-o\fR,\fP \-\^\-opaque"
+Parse invalid nodes in the edit into opaque nodes. Accepted by \fBedit\fP op.
+.TP
+.BR "\-p\fR,\fP \-\^\-depth \fIDEPTH\fP"
+Limit the depth of returned subtrees, \fB0\fP (unlimited) by default. Accepted by
+\fBexport\fP op.
+.TP
+.BR "\-t\fR,\fP \-\^\-timeout \fISECONDS\fP"
+Set the timeout for the operation, otherwise the default one is used.
+Accepted by \fBall\fP op.
+.TP
+.BR "\-e\fR,\fP \-\^\-defaults \fIWD-MODE\fP"
+Print the default values, which are trimmed by default.
+Accepted by \fBexport\fP, \fBedit\fP, \fBrpc\fP op.
+\fIWD-MODE\fP is:
+ \[bu] \fBtrim\fP (default)
+ \[bu] \fBreport-all\fP
+ \[bu] \fBreport-all-tagged\fP
+ \[bu] \fBexplicit\fP
+ \[bu] \fBimplicit-tagged\fP
+.TP
+.BR "\-v\fR,\fP \-\^\-verbosity \fILEVEL\fP"
+Change verbosity to a level. Accepted by \fBall\fP op. \fILEVEL\fP can be a string or a number:
+ \[bu] \fBnone\fP/\fB0\fP
+ \[bu] \fBerror\fP/\fB1\fP (default)
+ \[bu] \fBwarning\fP/\fB2\fP
+ \[bu] \fBinfo\fP/\fB3\fP
+ \[bu] \fBdebug\fP/\fB4\fP
+.
+.SH SEE ALSO
+https://www.sysrepo.org (sysrepo home page)
+.TP
+https://github.com/sysrepo/sysrepo (sysrepo Git repository)
+.
+.SH AUTHORS
+Michal Vasko <mvasko@cesnet.cz>
+.
+.SH COPYRIGHT
+Copyright \(co 2018-2022 CESNET, a.l.e.
+.TP
+Copyright \(co 2018-2022 Deutsche Telekom AG.

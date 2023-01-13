@@ -1,0 +1,68 @@
+module act3 {
+  yang-version 1.1;
+  namespace "urn:act3";
+  prefix t3;
+
+  import act {
+     prefix a;
+  }
+
+  import act2 {
+     prefix a2;
+  }
+
+  revision 2019-04-30 {
+    description
+      "Initial revision.";
+    reference "";
+  }
+
+  augment "/a:advanced" {
+    if-feature a:advanced-testing;
+
+    leaf triple_indirection {
+      type leafref {
+        require-instance false;
+        path "/a:basics/a:subbasics/a2:scalar_ref";
+      }
+    }
+    leaf double_indirection {
+      default "/a:basics/a:subbasics/a2:link";
+      type instance-identifier {
+        require-instance false;
+      }
+    }
+  }
+
+  augment "/a:advanced" {
+    if-feature a:advanced-testing;
+    when "a:condition = 'true'";
+
+    container conditional {
+      action conditional_action {
+      }
+      leaf b_positive {
+        type int32;
+      }
+      must "b_positive >= 0";
+    }
+  }
+
+  augment "/a:advanced" {
+    when "a:condition = 'true'";
+
+    action conditional_action2;
+  }
+
+  augment "/a:basics/a:subbasics/a2:decision" {
+    case third {
+      leaf three {
+        type leafref {
+          require-instance false;
+          path "/a:basics/a:subbasics/a2:wall";
+        }
+      }
+    }
+  }
+}
+

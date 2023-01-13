@@ -1,0 +1,10 @@
+/**
+@page lock Locking
+
+Sysrepo supports explicit locking of separate modules or whole datastores. That way exclusive access to the data
+is requested. These _datastore_ locks are mutually exclusive with _write_ locks that are implicitly required
+when changing data.
+
+@ref lock_api
+
+*/

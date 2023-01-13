@@ -1,0 +1,15 @@
+submodule sub-mod {
+    belongs-to main-mod {
+        prefix mm;
+    }
+
+    import sub-mod-types {
+        prefix smt;
+    }
+
+    feature feat;
+
+    leaf sub-leaf {
+        type smt:sub-type;
+    }
+}

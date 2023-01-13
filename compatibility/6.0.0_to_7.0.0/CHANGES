@@ -1,0 +1,54 @@
+Removed redundant functions:
+
+sr_cancel_update_module()
+sr_connection_count()
+sr_get_module_info()
+
+
+Renamed functions with no or minimal functionality changes:
+
+sr_event_notif_send() -> sr_notif_send()
+sr_event_notif_send_tree() -> sr_notif_send_tree()
+sr_event_notif_sub_get_info() -> sr_notif_sub_get_info()
+sr_event_notif_sub_modify_stop_time() -> sr_notif_sub_modify_stop_time()
+sr_event_notif_sub_modify_xpath() -> sr_notif_sub_modify_xpath()
+sr_event_notif_subscribe() -> sr_notif_subscribe()
+sr_event_notif_subscribe_tree() -> sr_notif_subscribe_tree()
+sr_oper_get_items_subscribe() -> sr_oper_get_subscribe()
+sr_process_events() -> sr_subscription_process_events()
+srp_log() -> srplg_log()
+
+
+Added simple functions:
+
+sr_check_module_ds_access()
+sr_get_module_replay_support()
+sr_get_su_uid()
+
+
+Changed functions:
+
+sr_get_context() -> sr_acquire_context() and sr_release_context()
+- since the context can be changed at any point, these 2 functions lock and unlock the context lock to make sure it
+is always safe to use
+
+sr_acquire_data(); sr_session_acquire_data() and sr_release_data()
+- helper functions for new sr_data_t type that is just a context-change-safe wrapper for libyang data trees, read its
+documentation for more information
+
+sr_get_module_access() -> sr_get_module_ds_access()
+sr_set_module_access() -> sr_set_module_ds_access()
+- with support for custom DS distinction for access permissions for each datastore was added
+
+sr_install_module_data() -> sr_install_module2()
+- separate function for setting initial module data no longer made sense and instead a new function was added for
+installing modules with all the possible parameters that may be needed, while keeping the simple sr_install_module()
+
+sr_subscription_thread_resume() and sr_subscription_thread_suspend()
+- new ability to suspend and resume subscription threads
+
+
+Flag changes:
+
+removed SR_SUBSCR_CTX_REUSE
+- redundant because now the [out] subscrption parameter must always be initialized to NULL on the first call

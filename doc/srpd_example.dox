@@ -1,0 +1,357 @@
+/**
+@page srpd_example sysrepo-plugind Plugin Example
+
+This page includes a guide on how to write a simple YANG module and then get Sysrepo to handle its data either
+as a [plugin](@ref bins) or a stand-alone daemon. It is best to have at least a [basic understanding](@ref about)
+of Sysrepo before continuing.
+
+# Simple YANG module
+@anchor yang_module
+
+For any device you want to manage with Sysrepo you will need a [YANG](@ref rfcs) module of the device. The language
+is quite rich and allows for description of almost any system. As an example, an **oven** will be fully managed by Sysrepo.
+All basic parts of YANG will be covered, namely configuration data, state data, RPCs, and notifications.
+
+To simplify things, our oven is a cheap model that has only a switch for turning it on and off and a slider to set
+the temperature. However, it can provide information about the actual temperature inside and also notify the cook
+when the internal temperature reaches the configured temperature. Furthermore, raw food can be prepared in advance
+and the oven can automatically put it inside or remove it if prompted. That leaves us with this YANG model:
+
+~~~~~~~~~~~~~~{.yang}
+module oven {
+    namespace "urn:sysrepo:oven";
+    prefix ov;
+
+    revision 2018-01-19 {
+        description "Initial revision.";
+    }
+
+    typedef oven-temperature {
+        description "Temperature range that is accepted by the oven.";
+        type uint8 {
+            range "0..250";
+        }
+    }
+
+    container oven {
+        description "Configuration container of the oven.";
+
+        leaf turned-on {
+            description "Main switch determining whether the oven is on or off.";
+            type boolean;
+            default false;
+        }
+
+        leaf temperature {
+            description "Slider for configuring the desired temperature.";
+            type oven-temperature;
+            default 0;
+        }
+    }
+
+    container oven-state {
+        description "State data container of the oven.";
+        config false;
+
+        leaf temperature {
+            description "Actual temperature inside the oven.";
+            type oven-temperature;
+        }
+
+        leaf food-inside {
+            description "Informs whether the food is inside the oven or not.";
+            type boolean;
+        }
+    }
+
+    rpc insert-food {
+        description "Operation to order the oven to put the prepared food inside.";
+
+        input {
+            leaf time {
+                description "Parameter determining when to perform the operation.";
+                type enumeration {
+                    enum now {
+                        description "Put the food in the oven immediately.";
+                    }
+                    enum on-oven-ready {
+                        description
+                            "Put the food in once the temperature inside
+                             the oven is at least the configured one. If it
+                             is already, the behaviour is similar to 'now'.";
+                    }
+                }
+            }
+        }
+    }
+
+    rpc remove-food {
+        description "Operation to order the oven to take the food out.";
+    }
+
+    notification oven-ready {
+        description
+            "Event of the configured temperature matching the actual
+             temperature inside the oven. If the configured temperature
+             is lower than the actual one, no notification is generated
+             when the oven cools down to the configured temperature.";
+    }
+}
+~~~~~~~~~~~~~~
+
+# Oven Plugin
+@anchor oven_plugin
+
+Here it will be step-by-step explained how to write a proper [plugin](@ref bins) that will manage the oven.
+All code snippets are taken from the actual implementation.
+
+@ref srpd_plugin_api
+
+## Initialization
+
+In the initialization function you must generally initialize the device and create subscriptions
+to any relevant YANG nodes.
+~~~{.c}
+    food_inside = 0;
+    insert_food_on_ready = 0;
+    oven_temperature = 25;
+~~~
+To start with, the oven must certainly be informed about any changes in its
+configuration parameters so it is easiest to subscribe to the whole module. The flag #SR_SUBSCR_ENABLED is set
+so that independently of the state of the oven (device) at the moment `sysrepo-plugind` starts, the currently stored
+configuration is applied to the device and consistency is kept. The other flag, #SR_SUBSCR_DONE_ONLY is used
+so that the callback is not called to verify any pending changes. For our example, as long as the value is
+valid based on YANG restrictions, it is always correct.
+
+It is also possible to subscribe to an arbitrary configuration data subtree instead but it is not needed for this example.
+~~~{.c}
+    rc = sr_module_change_subscribe(session, "oven", oven_config_change_cb, NULL, 0,
+            SR_SUBSCR_ENABLED | SR_SUBSCR_DONE_ONLY, &subscription);
+~~~
+Then, as there are also state data in the oven model, a subscription that marks this plugin to be a (exclusive)
+provider of them is performed. It is called whenever Sysrepo needs the state data subtree, usually when a client
+asks for them.
+
+Lastly, the plugin will also handle any RPC calls, which also need subsciptions.
+~~~{.c}
+    rc = sr_rpc_subscribe(session, "/oven:insert-food", oven_insert_food_cb, NULL, 0, &subscription);
+    rc = sr_rpc_subscribe(session, "/oven:remove-food", oven_remove_food_cb, NULL, 0, &subscription);
+~~~
+Sysrepo provides macros for plugins to be able to print messages in a unified manner so it is advised to use them.
+~~~{.c}
+    SRP_LOG_DBGMSG("OVEN: Oven plugin initialized successfully.");
+~~~
+The general format is `SRP_LOG_(level)(MSG)`. Instead of `(level)` the message severity is written, one of `DBG`, `VRB`,
+`WRN`, or `ERR`. In the example the suffix `MSG` was used because there were no additional variable arguments specified.
+If there are, this suffix is omitted. The arguments are the same as one would use for the `printf()` function.
+
+## Cleanup
+
+As for cleanup, the tasks performed vary greatly and depend on the device. However, it is always required to properly
+terminate the subscriptions made in the init function and that is the only work required in this example.
+~~~{.c}
+    sr_unsubscribe(subscription);
+~~~
+`subscription` was defined as a global variable to simplify the code but it is possible to use `private_data`, for instance,
+to store it possibly also with any additional data your application needs. All the other callbacks assigned before can use
+the same mechanism for passing additional data if needed.
+
+## Configuration Data
+
+In the example it is subscribed for the module changes with `oven_config_change_cb()`. The code seen here is
+a simplification of the actual code but is better for understanding what the callback should do.
+~~~{.c}
+static int
+oven_config_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
+{
+    int rc;
+    sr_val_t *val;
+
+    rc = sr_get_item(session, "/oven:oven/temperature", &val);
+    if (rc != SR_ERR_OK) {
+        goto sr_error;
+    }
+
+    //apply the temperature to the device
+    sr_free_val(val);
+
+    rc = sr_get_item(session, "/oven:oven/turned-on", &val);
+    if (rc != SR_ERR_OK) {
+        goto sr_error;
+    }
+
+    //apply the switch state to the device
+    sr_free_val(val);
+
+    return SR_ERR_OK;
+
+sr_error:
+    SRP_LOG_ERR("OVEN: Oven config change callback failed: %s.", sr_strerror(rc));
+    return rc;
+}
+~~~
+Firstly, as can be observed, the `event` variable is ignored. In our example we perform the same actions no matter
+which event is being processed, it will not be any other than ::SR_EV_DONE because of the subscription flags.
+
+Then, all the relevant data nodes are read and applied. This approach is the most simple one and cannot be always
+employed but is fine in this case because it is possible to re-apply changes without any effect. More elaborate machanism,
+which returns the changes, is using ::sr_get_changes_iter() with the provided session and thus getting only
+the specific changed values.
+
+## State Data
+
+~~~{.c}
+static int
+oven_state_cb(sr_session_ctx_t *session, const char *module_name, const char *path, struct lyd_node **parent, void *private_data)
+{
+    char str[32];
+
+    sprintf(str, "%u", oven_temperature);
+    lyd_new_path(*parent, NULL, "/oven:oven-state/temperature", str, 0, 0);
+    lyd_new_path(*parent, NULL, "/oven:oven-state/food-inside", food_inside ? "true" : "false", 0, 0);
+
+    return SR_ERR_OK;
+}
+~~~
+The state data callback is self-explaining. As the subscription was only for one container with 2 leaves as children,
+the `path` can only have one value. The corresponding children are created.
+
+## RPC Subscriptions
+
+~~~{.c}
+static int
+oven_insert_food_cb(const char *path, const sr_val_t *input, const size_t input_cnt,
+        sr_val_t **output, size_t *output_cnt, void *private_data)
+{
+    if (food_inside) {
+        SRP_LOG_ERRMSG("OVEN: Food already in the oven.");
+        return SR_ERR_OPERATION_FAILED;
+    }
+
+    if (strcmp(input[0].data.enum_val, "on-oven-ready") == 0) {
+        if (insert_food_on_ready) {
+            SRP_LOG_ERRMSG("OVEN: Food already waiting for the oven to be ready.");
+            return SR_ERR_OPERATION_FAILED;
+        }
+        insert_food_on_ready = 1;
+        return SR_ERR_OK;
+    }
+
+    insert_food_on_ready = 0;
+    food_inside = 1;
+    SRP_LOG_DBGMSG("OVEN: Food put into the oven.");
+    return SR_ERR_OK;
+}
+
+static int
+oven_remove_food_cb(const char *path, const sr_val_t *input, const size_t input_cnt,
+        sr_val_t **output, size_t *output_cnt, void *private_ctx)
+{
+    if (!food_inside) {
+        SRP_LOG_ERRMSG("OVEN: Food not in the oven.");
+        return SR_ERR_OPERATION_FAILED;
+    }
+
+    food_inside = 0;
+    SRP_LOG_DBGMSG("OVEN: Food taken out of the oven.");
+    return SR_ERR_OK;
+}
+~~~
+RPC callbacks should execute the corresponding RPC. `remove-food` does only that. But `insert-food` has some
+input parameters defined so they need to be handled. In the same way, if there were some output parameters, they
+would need to be created and returned but that is not our case.
+
+## Notifications
+
+The provider of a notification does not need to subscribe to anything but simply generate any notifications
+whenever they occur.
+~~~{.c}
+    rc = sr_event_notif_send(sess, "/oven:oven-ready", NULL, 0);
+~~~
+It is quite straightforward as can be seen from the example. Additionally, if there were any children nodes
+of the notification, they would need to be created and then passed to the function.
+
+## Trying It Out
+
+The model and full plugin source can be found in `sysrepo/examples/plugin`. Once Sysrepo is built, the `oven` shared library
+is stored in `examples` but it is not installed automatically. Before installing and actually running the plugin it is
+best to go carefully through the source code. It is just a small well-documented file so it should not take long and
+one should understand the implemented `oven` functionality. Also, most of the information covered in the sections
+above is just basic and detailed descriptions of all these mechanisms can be found in other subpages in the parent
+[developer guide](@ref dev_guide) page.
+
+Before being concerned with this particular plugin, Sysrepo must be properly built and installed. Having done that,
+you must install first the model, then the plugin. For installing the model, you can use [sysrepoctl](@ref bins).
+Then, you can use [sysrepo-plugind](@ref bins) to install the plugin `oven.so` or manually put it into
+[plugins path](@ref srpd_plugins_path).
+
+After that you should be ready to start `sysrepo-plugind`, which should load the plugin. If you enable debug
+messages, you should see that the `oven` plugin was successfully initialized.
+
+Now you are free to play with the `oven` configuration, RPCs, and notifications. It should work like it is
+described in the YANG model and how would one expect an oven to behave. Here is one example use-case:
+
+1.  As the very first step, subscribe to `oven` notifications using `notif_subscribe_example`
+
+        notif_subscribe_example oven
+
+2.  Prepare food to be inserted into the oven once it reaches a temperature, which will be configured later. The oven
+    is turned off by default. In NETCONF terms, you execute the `insert-food` RPC. You can do that using [sysrepocfg](@ref bins)
+
+        sysrepocfg --rpc=vim
+
+    and input
+
+        <insert-food xmlns="urn:sysrepo:oven">
+            <time>on-oven-ready</time>
+        </insert-food>
+
+    as the RPC content. You should see some informational `sysrepo-plugind` output.
+
+3.  Now you are going to turn the oven on and expect to be notified once it reaches the configured temperature. Also,
+    the food should be inserted at that moment. So, you execute
+
+        sysrepocfg --edit=vim --datastore running
+
+    with the content
+
+        <oven xmlns="urn:sysrepo:oven">
+            <turned-on>true</turned-on>
+            <temperature>200</temperature>
+        </oven>
+
+4.  After ~4 seconds you should receive the notification. You can also verify that everything went correctly with
+
+        sysrepocfg --export --xpath /oven:*
+
+    The food should be inside the oven.
+
+5.  Once you think the food is baked just right, remove it with another RPC by
+
+        sysrepocfg --rpc=vim
+
+    with
+
+        <remove-food xmlns="urn:sysrepo:oven"/>
+
+    Bon appetit!
+
+# Oven Daemon
+
+If you want your device to have a stand-alone daemon that will run as a separate process not using
+[sysrepo-plugind](@ref bins) then you do not need to develop a plugin. Having a separate daemon actually has only
+a few differences that have been mentioned in the previous sentence.
+
+As for the code itself, no specific functions are required as the code will not be compiled into a shared library but
+an executable binary. However, if the plugin is to be transformed into an application nothing prevents reusing the
+whole code.
+
+All that is needed is a `main()` function that will call `sr_plugin_init_cb()` at the beginning and
+`sr_plugin_cleanup_cb()` before terminating. In addition, these functions need a Sysrepo session. To create
+one we first need a connection. So, a connection is created with ::sr_connect() and if successful,
+a session created with ::sr_session_start(). Now, it is possible to call the **init** function and on daemon termination
+to properly cleanup by both calling the **cleanup** function and freeing the session and connection. Additionally, before
+being able to compile such an application, the printing macros would have to be changed as there will no longer be
+a master daemon that would handle printing messages. After these changes, the `oven` daemon should be ready.
+
+*/

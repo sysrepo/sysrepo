@@ -1,0 +1,22 @@
+module aug {
+    namespace aug;
+    prefix aug;
+    import aug-trg {prefix t;}
+
+    container bc1 {
+        leaf bcs1 {
+            type string;
+        }
+    }
+
+    augment "/t:ac1" {
+        when "starts-with(acs1, 'aa')";
+        container bauga {
+            leaf baugas1 {
+                type leafref {
+                    path "/aug:bc1/aug:bcs1";
+                }
+            }
+        }
+    }
+}

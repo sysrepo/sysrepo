@@ -1,0 +1,10 @@
+[project]
+name = "sysrepo"
+make_archive_script = "distro/scripts/make-archive.sh"
+
+[upstream]
+archive_url = "https://github.com/sysrepo/sysrepo/archive/v{{ version }}/sysrepo-{{ version }}.tar.gz"
+version_script = "distro/scripts/upstream-version.sh"
+
+[apkg]
+compat = 2

@@ -1,0 +1,18 @@
+module rev-ref {
+    namespace "urn:rev-ref";
+    prefix rf;
+
+    import rev {
+        prefix r;
+    }
+
+    deviation /r:l {
+        deviate replace {
+            type string;
+        }
+    }
+
+    leaf l2 {
+        type empty;
+    }
+}

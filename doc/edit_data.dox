@@ -1,0 +1,20 @@
+/**
+@page edit_data Editing Data
+
+It is possible to edit all the @ref datastores "Datastores", _startup_, _running_, _candidate_, and _operational_. Any
+changes are first only for the particular session and are not validated, persistent, nor visible for other sessions.
+These prepared changes can be validated with the current datastore content, discarded, or applied, which will also call
+any [relevant callbacks](@ref change_subs) and make them visible for all sessions.
+
+The uncommitted changes are stored in the form of a NETCONF (@ref rfcs "RFC") _edit-config_ content. It can also be
+directly provided instead of performing the changes one-by-one.
+
+Note that changes of _operational_ datastore behave in a special way (more in [operational data](@ref oper_data)).
+
+Lastly, it is possible to simply replace the whole datastore (only conventional datastores, all except
+::SR_DS_OPERATIONAL) or only a specific module data with a data tree. Or the source configuration may also come from
+another datastore or module data, respectively.
+
+@ref edit_data_api
+
+*/

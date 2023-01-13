@@ -1,0 +1,131 @@
+module defaults {
+    namespace "urn:defaults";
+    prefix d;
+
+    yang-version 1.1;
+
+    typedef my_ip4addr {
+        type union {
+            type uint8;
+            type string;
+        }
+    }
+
+    typedef my_ipaddr {
+        type union {
+            type my_ip4addr;
+            type string;
+        }
+    }
+
+    list l1 {
+        key "k";
+        leaf k {
+            type string;
+        }
+
+        container cont1 {
+            container cont2 {
+                leaf dflt1 {
+                    type uint8;
+                    default "10";
+                }
+            }
+
+            leaf ll {
+                type string;
+            }
+        }
+    }
+
+    leaf dflt2 {
+        type string;
+        when "/l1[k='when-true']";
+        default "I exist!";
+    }
+
+    list l2 {
+        key "k";
+        leaf k {
+            type string;
+        }
+
+        container c1 {
+            leaf lf1 {
+                type string;
+                default "lf1";
+            }
+
+            leaf lf2 {
+                type string;
+                default "lf2";
+            }
+
+            leaf lf3 {
+                type string;
+                default "lf3";
+            }
+
+            leaf lf4 {
+                type string;
+                default "lf4";
+            }
+        }
+    }
+
+    container cont {
+        leaf l {
+            type string;
+            default "dflt";
+        }
+
+        choice ch {
+            default interval;
+            case interval {
+                leaf interval {
+                    type uint16;
+                    default 30;
+                    units minutes;
+                }
+            }
+            case daily {
+                leaf daily {
+                    type empty;
+                }
+                leaf time-of-day {
+                    type string;
+                    units 24-hour-clock;
+                    default 1am;
+                }
+            }
+            case manual {
+                leaf manual {
+                    type empty;
+                }
+            }
+        }
+    }
+
+    container pcont {
+        presence "";
+        leaf-list ll {
+            type uint16;
+            default 1;
+            default 2;
+            default 3;
+        }
+
+        leaf uni {
+            type my_ipaddr;
+            default "some-ip";
+        }
+
+        leaf-list ll2 {
+            type uint16;
+            ordered-by user;
+            default 4;
+            default 5;
+            default 6;
+        }
+    }
+}

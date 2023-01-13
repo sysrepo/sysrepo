@@ -1,0 +1,53 @@
+/**
+ * @file tcommon.h
+ * @author Michal Vasko <mvasko@cesnet.cz>
+ * @brief test configuration header
+ *
+ * @copyright
+ * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
+ *
+ * This source code is licensed under BSD 3-Clause License (the "License").
+ * You may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://opensource.org/licenses/BSD-3-Clause
+ */
+#ifndef SRTEST_COMMON_H_
+#define SRTEST_COMMON_H_
+
+#define TESTS_SRC_DIR "@TESTS_SRC_DIR@"
+
+#define TESTS_REPO_DIR "@TESTS_REPO_DIR@"
+
+/* path to all compiled executables */
+#define SR_BINARY_DIR "@PROJECT_BINARY_DIR@"
+
+/** implemented ietf-yang-library revision (copied from common.h) */
+#define SR_YANGLIB_REVISION @YANGLIB_REVISION@
+
+#cmakedefine SR_HAVE_PTHREAD_BARRIER
+#ifndef SR_HAVE_PTHREAD_BARRIER
+# include "pthread_barrier.h"
+#endif
+
+/**
+ * @brief Macro for support of callgrind header and macros.
+ */
+#cmakedefine SR_HAVE_CALLGRIND
+
+/**
+ * Only function that needs to be called from test code
+ * Initializes callback and facilitates logging to stderr
+ * with timestamps and thread-id
+ */
+void test_log_init(void);
+
+/* Test Logging macros */
+#define TLOG_ERR(...) _test_log(SR_LL_ERR, __VA_ARGS__)
+#define TLOG_WRN(...) _test_log(SR_LL_WRN, __VA_ARGS__)
+#define TLOG_INF(...) _test_log(SR_LL_INF, __VA_ARGS__)
+
+void _test_log(sr_log_level_t ll, ...);
+
+#endif /* SRTEST_COMMON_H_ */

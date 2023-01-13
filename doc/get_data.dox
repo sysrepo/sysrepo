@@ -1,0 +1,17 @@
+/**
+@page get_data Getting Data
+
+Retrieving data from Sysrepo is simple and flexible. The selection is specified using
+[XPath 1.0](https://www.w3.org/TR/1999/REC-xpath-19991116/) language. Accepted expressions are limited only by
+_libyang_ implementation, which means almost everything is supported.
+
+When reading data, it is important to select the right [datastore](@ref datastores) in the session used. Be aware that
+every call of these functions can simply return a copy of cached data at best (caching mentioned in [connections](@ref conn_sess))
+or it can request some subtrees from one or more applications that will need to [provide them](@ref oper_subs) for
+the _operational_ datastore.
+
+Lastly, be aware that all data are modified by the [prepared changes](@ref edit_data) in the session, if any.
+
+@ref get_data_api
+
+*/

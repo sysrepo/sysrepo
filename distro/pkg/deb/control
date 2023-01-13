@@ -1,0 +1,53 @@
+Source: sysrepo
+Section: libs
+Homepage: https://github.com/sysrepo/sysrepo/
+Maintainer: CESNET <mvasko@cesnet.cz>
+Priority: optional
+Standards-Version: 4.5.0
+Build-Depends: cmake,
+               debhelper (>= 10),
+               libyang2-dev,
+               libsystemd-dev,
+               pkg-config
+Vcs-Browser: https://github.com/sysrepo/sysrepo/tree/master
+Vcs-Git: https://github.com/sysrepo/sysrepo.git
+
+Package: libsysrepo7
+Depends: ${misc:Depends},
+         ${shlibs:Depends}
+Architecture: any
+Description: YANG-based configuration and operational data store - runtime
+ Applications can use sysrepo to store their configuration modeled by provided
+ YANG model instead of using e.g. flat configuration files. Sysrepo will ensure
+ data consistency of the data stored in the datastore and enforce data
+ constraints defined by YANG model.
+ .
+ The library is implemented in C and provides an API for other software
+ to use for accessing sysrepo datastore.
+
+Package: libsysrepo-dev
+Depends: libyang2-dev,
+         libsysrepo7 (= ${binary:Version}),
+         ${misc:Depends}
+Section: libdevel
+Architecture: any
+Description: YANG-based configuration and operational data store - development files
+ Applications can use sysrepo to store their configuration modeled by provided
+ YANG model instead of using e.g. flat configuration files. Sysrepo will ensure
+ data consistency of the data stored in the datastore and enforce data
+ constraints defined by YANG model.
+ .
+ This package contains the C headers, a pkgconfig file, and .so entry point
+ for sysrepo.
+
+Package: sysrepo-tools
+Depends: libsysrepo7 (= ${binary:Version}),
+         ${misc:Depends},
+         ${shlibs:Depends}
+Section: devel
+Architecture: any
+Description: YANG-based configuration and operational data store - executable tools
+ This package provides the "sysrepoctl" and "sysrepocfg" tools which can be used
+ for manipulation of installed YANG modules and their YANG data, respectively.
+ There is also "sysrepo-plugind" that is a simple daemon grouping all installed
+ sysrepo plugins in a single process.

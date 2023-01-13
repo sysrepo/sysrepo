@@ -1,0 +1,8 @@
+module rev {
+    namespace "urn:rev";
+    prefix r;
+
+    leaf l {
+        type empty;
+    }
+}

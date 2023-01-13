@@ -1,0 +1,55 @@
+.\" Manpage for sysrepo-plugind.
+.\" Process this file with
+.\" groff -man -Tascii sysrepo-plugind.8
+.\"
+
+.TH SYSREPO-PLUGIND 8 "2021-10-07" "sysrepo"
+.SH NAME
+sysrepo-plugind \- sysrepo plugin daemon
+.
+.SH SYNOPSIS
+.B sysrepo-plugind
+[\fB\-h\fP] [\fB\-v\fP \fILEVEL\fP] [\fB-d\fP]
+.br
+.
+.SH DESCRIPTION
+\fBsysrepo-plugind\fP is a simple daemon tool for loading sysrepo plugins. These
+are provided with a connection and session and all running in a single process.
+.
+.SH OPTIONS
+.TP
+.BR "\-h\fR,\fP \-\^\-help"
+Prints usage help.
+.TP
+.BR "\-V\fR,\fP \-\^\-version"
+Prints only information about sysrepo version.
+.TP
+.BR "\-v\fR,\fP \-\^\-verbosity \fILEVEL\fP"
+Change verbosity to a level. \fILEVEL\fP can be a string or a number:
+ \[bu] \fBnone\fP/\fB0\fP
+ \[bu] \fBerror\fP/\fB1\fP (default)
+ \[bu] \fBwarning\fP/\fB2\fP
+ \[bu] \fBinfo\fP/\fB3\fP
+ \[bu] \fBdebug\fP/\fB4\fP
+.TP
+.BR "\-d\fR,\fP \-\^\-debug"
+Debug mode - is not daemonized and logs to stderr instead of syslog.
+.TP
+.BR "\-P\fR,\fP \-\^\-plugin\-install \fIPATH\fP"
+Install a sysrepo-plugind plugin. The plugin is simply copied
+to the designated plugin directory.
+.LP
+Environment variable $SRPD_PLUGINS_PATH overwrites the default plugins directory.
+.
+.SH SEE ALSO
+https://www.sysrepo.org (sysrepo home page)
+.TP
+https://github.com/sysrepo/sysrepo (sysrepo Git repository)
+.
+.SH AUTHORS
+Michal Vasko <mvasko@cesnet.cz>
+.
+.SH COPYRIGHT
+Copyright \(co 2018-2022 CESNET, a.l.e.
+.TP
+Copyright \(co 2018-2022 Deutsche Telekom AG.

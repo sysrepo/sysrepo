@@ -1,207 +1,118 @@
-set(TEST_REPOSITORY_LOC "${CMAKE_BINARY_DIR}/repository")
-set(TEST_SCHEMA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/yang/")
-set(TEST_DATA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/data/")
-set(TEST_INTERNAL_SCHEMA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/yang/internal/")
-set(TEST_INTERNAL_DATA_SEARCH_DIR "${TEST_REPOSITORY_LOC}/data/internal/")
-
-set(TEST_HELPERS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/helpers/")
-set(TEST_HELPERS_BIN_DIR "${CMAKE_CURRENT_BINARY_DIR}/helpers/")
-
-CHECK_INCLUDE_FILES(regex.h HAVE_REGEX_H)
-
-configure_file("${TEST_HELPERS_DIR}/test_data.h.in" "${TEST_HELPERS_BIN_DIR}/test_data.h" ESCAPE_QUOTES @ONLY)
-
-include_directories (
-    "${PROJECT_SOURCE_DIR}/src"
-    "${PROJECT_SOURCE_DIR}/src/clientlib"
-    "${PROJECT_SOURCE_DIR}/src/common"
-    "${PROJECT_BINARY_DIR}/src/common"
-    "${PROJECT_SOURCE_DIR}/inc"
-    "${TEST_HELPERS_DIR}"
-    "${TEST_HELPERS_BIN_DIR}"
-)
-
-find_program(valgrind_FOUND valgrind)
-find_program(timeout_FOUND timeout)
-
-add_library(HELPERS OBJECT ${TEST_HELPERS_DIR}rp_dt_context_helper.c
-            ${TEST_HELPERS_DIR}test_module_helper.c
-            ${TEST_HELPERS_DIR}system_helper.c
-            ${TEST_HELPERS_DIR}nacm_module_helper.c)
-add_dependencies(HELPERS COMMON)
-
-# create test target with specified options
-macro(ADD_UNIT_TEST_WITH_OPTS TEST_NAME USE_HELPERS USE_VALGRIND WRAP_FUNCTION)
-    if ("${WRAP_FUNCTION}" STREQUAL "")
-        set(test_link_flags "")
-    else()
-        set(test_link_flags "-Wl,--wrap,${WRAP_FUNCTION}")
-    endif()
-    if(${USE_HELPERS})
-        add_executable(${TEST_NAME} ${TEST_NAME}.c $<TARGET_OBJECTS:HELPERS>)
-    else()
-        add_executable(${TEST_NAME} ${TEST_NAME}.c)
-    endif()
-
-    target_link_libraries(${TEST_NAME} ${CMOCKA_LIBRARIES} sysrepo_a ${test_link_flags})
-    if(timeout_FOUND AND NOT ${CMAKE_C_FLAGS} MATCHES "-fsanitize")
-        add_test(${TEST_NAME} timeout
-            --signal=6 360
-            ./${TEST_NAME})
-    else()
-        add_test(${TEST_NAME} ${TEST_NAME})
-    endif()
-    if(valgrind_FOUND AND ${USE_VALGRIND} AND NOT ${CMAKE_C_FLAGS} MATCHES "-fsanitize")
-        add_test(${TEST_NAME}_valgrind valgrind
-            --error-exitcode=1 --read-var-info=yes
-            --leak-check=full --show-leak-kinds=all
-            --num-callers=20
-            --suppressions=${TEST_HELPERS_DIR}valgrind.supp
-            ./${TEST_NAME})
-    endif()
-    add_dependencies(${TEST_NAME} COMMON)
-endmacro(ADD_UNIT_TEST_WITH_OPTS)
-
-# create default test target with valgrind is on
-macro(ADD_UNIT_TEST TEST_NAME USE_HELPERS)
-    ADD_UNIT_TEST_WITH_OPTS(${TEST_NAME} ${USE_HELPERS} "1" "")
-endmacro(ADD_UNIT_TEST)
-
-
-ADD_UNIT_TEST(common_test 1)
-ADD_UNIT_TEST(xpath_utils_test 1)
-ADD_UNIT_TEST(ac_test 1)
-if(USE_SR_MEM_MGMT)
-    ADD_UNIT_TEST(mem_mgmt_test 1)
-endif(USE_SR_MEM_MGMT)
-ADD_UNIT_TEST(values_test 1)
-ADD_UNIT_TEST(trees_test 1)
-
-ADD_UNIT_TEST(cm_sm_test 1)
-IF (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    ADD_UNIT_TEST_WITH_OPTS(np_test 1 1 "cm_msg_send")
-    ADD_UNIT_TEST_WITH_OPTS(pm_test 1 1 "cm_msg_send")
-ENDIF()
-
-ADD_UNIT_TEST(dm_test 1)
-
-ADD_UNIT_TEST(rp_dt_xpath_test 1)
-ADD_UNIT_TEST(rp_datatree_test 1)
-ADD_UNIT_TEST(rp_dt_edit_test 1)
-ADD_UNIT_TEST(rp_dt_running_test 1)
-
-ADD_UNIT_TEST(md_test 1)
-
-if("${TEST_REPOSITORY_LOC}" STREQUAL "${REPOSITORY_LOC}")
-    # end-to-end tests that work only if test repository location equals to
-    # global procject's repository location
-
-    ADD_UNIT_TEST(cm_test 1)
-    ADD_UNIT_TEST(rp_test 1)
-    if(ENABLE_NACM)
-        ADD_UNIT_TEST(nacm_test 1)
-    endif(ENABLE_NACM)
-
-    ADD_UNIT_TEST(cl_test 1)
-    ADD_UNIT_TEST(cl_test2 1)
-    ADD_UNIT_TEST(cl_notifications_test 1)
-    ADD_UNIT_TEST(cl_state_data_test 1)
-    ADD_UNIT_TEST(cl_fd_watcher_test 1)
-    if(ENABLE_NACM)
-        ADD_UNIT_TEST(nacm_cl_test 1)
-    endif(ENABLE_NACM)
-    ADD_UNIT_TEST(concurr_test 1)
-    ADD_UNIT_TEST_WITH_OPTS(perf_test 1 0 "")
-    ADD_UNIT_TEST_WITH_OPTS(daemon_test 1 0 "")
-    ADD_UNIT_TEST_WITH_OPTS(plugin_daemon_test 1 0 "")
-    ADD_UNIT_TEST_WITH_OPTS(sysrepoctl_test 1 0 "")
-    ADD_UNIT_TEST_WITH_OPTS(sysrepocfg_test 1 0 "")
-    ADD_UNIT_TEST(rp_dt_edit_test_features 1)
-    IF (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-        ADD_UNIT_TEST_WITH_OPTS(np_test_store 1 1 "cm_msg_send")
-    ENDIF()
-
-    ADD_CUSTOM_COMMAND(
-        TARGET sysrepocfg_test
-        POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/sysrepocfg_test_editor.sh ${CMAKE_CURRENT_BINARY_DIR}
-        VERBATIM
-    )
-
-    add_executable(measure_perf measure_performance.c ${TEST_HELPERS_DIR}test_module_helper.c)
-    target_link_libraries(measure_perf ${CMOCKA_LIBRARIES} sysrepo_a)
-    add_executable(subscription_test_app subscription_test_app.c)
-    target_link_libraries(subscription_test_app ${CMOCKA_LIBRARIES} sysrepo_a)
-    add_executable(notifications_test_app notifications_test_app.c)
-    target_link_libraries(notifications_test_app ${CMOCKA_LIBRARIES} sysrepo_a)
-
-else()
-    message(STATUS "Test repostory location differs to system repository location, some tests will be disabled.")
+if(NOT SYSREPO_VERSION)
+    message(FATAL_ERROR "Please use the root CMakeLists file instead.")
 endif()
 
+# correct RPATH usage on OS X
+set(CMAKE_MACOSX_RPATH TRUE)
 
-# create test repository directories and copy internal schemas
-add_custom_target(create_internals
-    COMMAND mkdir -p "${TEST_SCHEMA_SEARCH_DIR}" "${TEST_DATA_SEARCH_DIR}" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}" "${TEST_INTERNAL_DATA_SEARCH_DIR}"
-    COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-persistent-data.yang" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
-    COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-module-dependencies.yang" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
-    COMMAND cp "${PROJECT_SOURCE_DIR}/yang/sysrepo-notification-store.yang" "${TEST_INTERNAL_SCHEMA_SEARCH_DIR}"
+# set paths to realpath
+get_filename_component(TESTS_SRC_DIR "${CMAKE_SOURCE_DIR}/tests" REALPATH)
+get_filename_component(TESTS_REPO_DIR "${CMAKE_BINARY_DIR}" REALPATH)
+
+include_directories(SYSTEM ${CMOCKA_INCLUDE_DIR})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(${PROJECT_BINARY_DIR}/tests)
+
+# headers test for including compat.h
+add_test(NAME headers
+    COMMAND ${CMAKE_SOURCE_DIR}/compat/check_includes.sh ${CMAKE_SOURCE_DIR}/src/ ${CMAKE_SOURCE_DIR}/src/executables/ ${CMAKE_SOURCE_DIR}/src/utils/)
+
+set(test_sources "tcommon.c")
+
+# check for pthread_barrier existence
+check_function_exists(pthread_barrier_init SR_HAVE_PTHREAD_BARRIER)
+if(NOT SR_HAVE_PTHREAD_BARRIER)
+    list(APPEND test_sources "pthread_barrier.c")
+endif()
+
+# generate config
+configure_file("${PROJECT_SOURCE_DIR}/tests/tcommon.h.in" "${PROJECT_BINARY_DIR}/tests/tcommon.h" ESCAPE_QUOTES @ONLY)
+
+set(TEST_CLEAR_REPOS_CMD rm -rf ${PROJECT_BINARY_DIR}/test_repositories)
+set(TEST_CLEAR_SHM_CMD find /dev/shm/ -maxdepth 1 -readable -name _tests_sr_* -delete)
+if(${CMAKE_VERSION} VERSION_GREATER "3.7")
+    # tests cleanup fixtures
+    add_test(NAME tests_clear_repos
+        COMMAND ${TEST_CLEAR_REPOS_CMD}
+    )
+    set_tests_properties(tests_clear_repos PROPERTIES FIXTURES_CLEANUP tests_cleanup)
+    add_test(NAME tests_clear_shm
+        COMMAND ${TEST_CLEAR_SHM_CMD}
+    )
+    set_tests_properties(tests_clear_shm PROPERTIES FIXTURES_CLEANUP tests_cleanup)
+endif()
+
+if(ENABLE_TESTS)
+    # format
+    if(${SOURCE_FORMAT_ENABLED})
+        add_test(NAME format WORKING_DIRECTORY ${CMAKE_BINARY_DIR} COMMAND cmake --build ${CMAKE_BINARY_DIR} --target format-check)
+    endif()
+
+    # lists of all the tests
+    set(tests test_modules test_context_change test_validation test_edit test_candidate test_oper_pull test_oper_push
+        test_lock test_apply_changes test_copy_config test_rpc_action test_notif test_get test_process
+        test_multi_connection test_nacm test_rotation)
+
+    foreach(test_name IN LISTS tests)
+        add_executable(${test_name} ${test_sources} ${test_name}.c)
+    endforeach()
+
+    # set common attributes of all tests
+    foreach(test_name IN LISTS tests)
+        target_link_libraries(${test_name} ${CMOCKA_LIBRARIES} sysrepo)
+        add_test(NAME ${test_name} COMMAND $<TARGET_FILE:${test_name}>)
+        set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
+            "MALLOC_CHECK_=3"
+            "CMOCKA_TEST_ABORT=1"
+            "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"
+            "SYSREPO_SHM_PREFIX=_tests_sr_${test_name}"
+        )
+
+        # avoid loading installed plugins by sysrepo-plugind
+        if(${test_name} STREQUAL "test_rotation")
+            set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
+                "SRPD_PLUGINS_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}/testing")
+        endif()
+
+        if(${CMAKE_VERSION} VERSION_GREATER "3.7")
+            set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED tests_cleanup)
+        endif()
+    endforeach()
+endif()
+
+# sr_perf benchmark binary
+if(ENABLE_PERF_TESTS)
+    add_executable(sr_perf ${CMAKE_CURRENT_SOURCE_DIR}/perf.c)
+    target_link_libraries(sr_perf sysrepo)
+
+    add_test(NAME sr_perf_1000 COMMAND sr_perf 1000 10)
+    add_test(NAME sr_perf_100000 COMMAND sr_perf 100000 3)
+endif()
+
+# valgrind tests
+if(ENABLE_VALGRIND_TESTS)
+    foreach(test_name IN LISTS tests)
+        add_test(NAME ${test_name}_valgrind COMMAND valgrind --leak-check=full --show-leak-kinds=all --error-exitcode=1 ${CMAKE_BINARY_DIR}/tests/${test_name})
+        set(test_name "${test_name}_valgrind")
+        set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
+            "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"
+            "SYSREPO_SHM_PREFIX=_tests_sr_${test_name}"
+        )
+
+        # avoid loading installed plugins by sysrepo-plugind
+        if(${test_name} STREQUAL "test_rotation_valgrind")
+            set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
+                "SRPD_PLUGINS_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}/testing")
+        endif()
+
+        if(${CMAKE_VERSION} VERSION_GREATER "3.7")
+            set_tests_properties(${test_name} PROPERTIES FIXTURES_REQUIRED tests_cleanup)
+        endif()
+    endforeach()
+endif()
+
+# phony target for clearing all sysrepo test data
+add_custom_target(test_clean
+    COMMAND ${TEST_CLEAR_REPOS_CMD}
+    COMMAND ${TEST_CLEAR_SHM_CMD}
 )
-
-# make common_test depend on sysrepoctl
-add_dependencies(common_test create_internals sysrepoctl)
-
-# install testing YANG modules
-macro(INSTALL_YANG_FOR_TESTS MODULE_NAME)
-    ADD_CUSTOM_COMMAND(
-        TARGET common_test
-        POST_BUILD
-        COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --install --yang=${CMAKE_CURRENT_SOURCE_DIR}/yang/${MODULE_NAME}.yang -0 ${TEST_REPOSITORY_LOC} > /dev/null
-        VERBATIM
-    )
-endmacro(INSTALL_YANG_FOR_TESTS)
-
-macro(ENABLE_FEATURE_FOR_TESTS MODULE_NAME FEATURE_NAME)
-    ADD_CUSTOM_COMMAND(
-        TARGET common_test
-        POST_BUILD
-        COMMAND ${CMAKE_BINARY_DIR}/src/sysrepoctl --feature-enable ${FEATURE_NAME} --module ${MODULE_NAME} -0 ${TEST_REPOSITORY_LOC} > /dev/null
-        VERBATIM
-    )
-endmacro(ENABLE_FEATURE_FOR_TESTS)
-
-if(ENABLE_NACM)
-    INSTALL_YANG_FOR_TESTS("ietf-netconf-acm@2018-02-14")
-endif(ENABLE_NACM)
-INSTALL_YANG_FOR_TESTS("example-module")
-INSTALL_YANG_FOR_TESTS("test-module")
-INSTALL_YANG_FOR_TESTS("small-module")
-INSTALL_YANG_FOR_TESTS("info-module")
-INSTALL_YANG_FOR_TESTS("id-ref-aug")
-INSTALL_YANG_FOR_TESTS("id-ref-hello")
-INSTALL_YANG_FOR_TESTS("id-def-extended")
-INSTALL_YANG_FOR_TESTS("id-ref-main")
-INSTALL_YANG_FOR_TESTS("id-ref-installed")
-INSTALL_YANG_FOR_TESTS("augm_leafref_m1")
-INSTALL_YANG_FOR_TESTS("module-a@2016-02-10")
-INSTALL_YANG_FOR_TESTS("module-b@2016-02-05")
-INSTALL_YANG_FOR_TESTS("ietf-interfaces@2014-05-08")
-INSTALL_YANG_FOR_TESTS("iana-if-type")
-INSTALL_YANG_FOR_TESTS("ietf-ip@2014-06-16")
-INSTALL_YANG_FOR_TESTS("state-module@2016-07-01")
-INSTALL_YANG_FOR_TESTS("top-level-mandatory")
-INSTALL_YANG_FOR_TESTS("referenced-data")
-INSTALL_YANG_FOR_TESTS("cross-module")
-INSTALL_YANG_FOR_TESTS("turing-machine")
-INSTALL_YANG_FOR_TESTS("ietf-netconf-notifications")
-INSTALL_YANG_FOR_TESTS("nc-notifications")
-INSTALL_YANG_FOR_TESTS("servers")
-INSTALL_YANG_FOR_TESTS("commit-nacm")
-
-
-# dummy testing plugins
-add_library(dummy-plugin-1 SHARED ${TEST_HELPERS_DIR}dummy_plugin.c)
-target_link_libraries(dummy-plugin-1 sysrepo)
-
-add_library(dummy-plugin-2 SHARED ${TEST_HELPERS_DIR}dummy_plugin.c)
-target_link_libraries(dummy-plugin-2 sysrepo)

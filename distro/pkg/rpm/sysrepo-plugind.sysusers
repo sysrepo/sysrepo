@@ -1,0 +1,3 @@
+# Type Name             ID      GECOS                   Home directory        Shell
+u      sysrepo-plugind  -       "sysrepo plugind user"  /run/sysrepo-plugind  /sbin/nologin
+m      sysrepo-plugind  sysrepo

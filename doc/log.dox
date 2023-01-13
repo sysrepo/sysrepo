@@ -1,0 +1,15 @@
+/**
+@page log Logging
+
+By default, all Sysrepo logging is off. There are 3 kinds of output for the logging messages if enabled. They can
+be written to `stderr`, handled by `syslog`, or simply passed to a callback.
+
+It is important to note that enabling Sysrepo logging also modifies _libyang_ logging settings. Error messages are
+treated as standard Sysrepo errors and other messages of lower severity are completely hidden. To change this behaviour,
+simply adjust _libyang_ logging settings **after** enabling Sysrepo logging.
+
+Also, almost every Sysrepo API function returns an error code that can be transformed to a string, if needed.
+
+@ref log_api
+
+*/

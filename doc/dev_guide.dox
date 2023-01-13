@@ -1,21 +1,18 @@
 /**
+@page dev_guide Developer Guide
 
-@page dev_guidelines Developer Guide
+Following pages document implementation details of YANG concepts supported by Sysrepo from the developer perspective.
+Before implementing a Sysrepo client, one should familiarize themselves with all of these sections to know what
+options there are in general and how they work.
 
-This guide contains information intended for developers that are using Sysrepo in their applications.
-
-Before reading this guide, please read also:
-
-- @ref user_guidelines
-- @ref cl API
-
-The guide is divided in the following sections:
-
-- @subpage start_page
-- @subpage subscribtions
-- @subpage xp_page
-- @subpage plugins
-- @subpage security
-- @subpage mem_mgmt
+- @subpage log
+- @subpage conn_sess
+- @subpage schema
+- @subpage get_data
+- @subpage edit_data
+- @subpage lock
+- @subpage subs
+- @subpage sr_plugins
+- @subpage srpd_example
 
 */

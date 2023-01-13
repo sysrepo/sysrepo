@@ -1,0 +1,12 @@
+module rev {
+    namespace "urn:rev";
+    prefix r;
+
+    revision 1970-01-01;
+
+    leaf l {
+        type empty;
+    }
+
+    notification notif;
+}

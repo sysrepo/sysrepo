@@ -1,0 +1,156 @@
+/**
+@page subs Subscriptions
+
+Every `*_subscribe()` call will return a subscription structure. It is possible to subscribe using
+an existing subscription and then multiple events will be handled by a single subscription. By default,
+there is a dedicated thread for handling all the events in a subscription structure so no further action is required.
+
+If this is not desired, it is possible to handle events on a subscription without a separate thread. When subscribing,
+the flag ::SR_SUBSCR_NO_THREAD needs to be used so that the thread is not created. Be careful, if you use it,
+the subscription exists and events can occur but they are not being handled so they can time out, for example, unless
+processed manually. That can be achieved by a function that processes all pending events on a subscription.
+::sr_subscription_process_events() can either be called periodically or only when there are actual events. This can be learnt by
+the [subscription event pipe](@ref ::sr_get_event_pipe) being ready for reading.
+
+To safely destroy a subscription managed by a custom loop, there are specific steps needed. First, ::sr_unsubscribe_sub()
+with `sub_id` `0` should be called, then the event loop should stop handling events on the subscription, and finally
+::sr_unsubscribe() can be called. This prevents the data race when there is a pending event but it is not processed
+because the subscription is being freed.
+
+@ref subs_api
+
+## Change Subscriptions
+@anchor change_subs
+
+These are the most common kinds of subscriptions. A callback can be set to be called when specific data
+changes occur so that it can appropriately react and adjust the system or whatever it manages accordingly. There can
+be many subscribers for the same data and arbitrary XPath filters can be applied.
+
+Any datastore can be subscribed to (startup, running, and operational). The datastore is determined by the current
+datastore at the time of subscription (that is, the call to ::sr_module_change_subscribe()). Changing the active
+datastore after that does not have an effect on subscriptions that have already been made. For example, it is possible
+to subscribe to running datastore, switch to the startup datastore, subscribe to it, and then switch back to edit the
+running datastore all with one session and one subscription context.
+
+On changes, the callback is called with an event. By default, there are always 2 events following one after
+the other. On _change_, the new datastore content is prepared but not written yet and so the changes can be refused
+for any reason. If they are not, the changes are committed and hence visible for any subsequent operations. Right
+after that _done_ event is generated and callbacks called. It is no longer possible to revert the changes. In case
+at least one of the callbacks has failed during _change_ event, the whole commit is aborted. Callbacks that already
+processed the _change_ event successfully will be called with _abort_ event so they can revert them and keep Sysrepo
+and the system consistent.
+
+There is one special event _update_ that is generated only for subscriptions that request it. This event occurs before
+any of the other ones mentioned before because it allows to further modify the data changes that are being handled.
+Callback with this event can fail and cause the changes to be immediately refused.
+
+Also, a subscription can request the _enabled_ event and get the current datastore configuration at the time of
+subscribing. This event is normally followed by _done_ event, just like the _change_ event. However, the _enabled_
+event is generated even if the current configuration is empty (so there will be no changes available in the callback)!
+
+When subscribing to _operational_ datastore changes, be aware of some specific conditions. Normally, only [push](@ref oper_data)
+changes are acknowledged and callbacks called. Changes in pull subscriptions are reported only if a corresponding
+[operational poll subscription](@ref oper_subs) is created.
+
+On the events _update_ and _change_, the callback can return a special ::SR_ERR_CALLBACK_SHELVE value. This causes
+the event not to be processed and simply skipped (shelved). When all the events on the subscription are processed
+next time, this subscription callback with the same event is called again. This special return value can be returned
+several times but be careful for the timeout not to elapse! Typically, this whole mechanism is used only when the events
+are handled by the application, not by a Sysrepo thread (::SR_SUBSCR_NO_THREAD). Otherwise the application does not have
+full control over calling the event processing function ::sr_subscription_process_events() (strictly speaking, it can be called
+directly even if Sysrepo thread is handling this subscription, but there is likely no use-case).
+
+For each of these events, the changes are retrieved using an iterator, which can be created several times
+and optionally with only selected changes.
+
+It is important to be aware of the effect of subscribing to _running_ data on [operational datastore](@ref oper_ds).
+
+@ref change_subs_api
+
+## RPC/Action Subscriptions
+@anchor rpc_subs
+
+All the functions can be used for both RPCs and actions. If there are no matching subscriptions, the RPC/action
+cannot even be sent. Callbacks work as one would expect, on _rpc_ event they are provided each with the input and
+can fail or succeed with optionally generating some output that is sent back to the original sender. There
+can be predicates on the subscription XPath filtering only specific RPC/action instances.
+
+In case there are several subscriptions matching a single RPC/action, there can only be __one__
+subscription with a specific priority. This lowest priority (main) subscription will be the one generating
+output for the sender (previous outputs will be overwritten) and, additionally, will never receive the _abort_
+event (in case it fails, only all the other higher priority callbacks will be aborted).
+
+RPC subscriptions can also return ::SR_ERR_CALLBACK_SHELVE on _rpc_ event.
+
+@ref rpc_subs_api
+
+## Notification Subscriptions
+@anchor notif_subs
+
+Notifications are supported by specific subscriptions that allow them to be sent and received. Sent notification are
+also stored for possible future replay if the particular module was configued that way (mentioned in [schemas](@ref schema)).
+
+When subscribing to notifications, there are several options that can be specified and which follow the definitions
+from [NETCONF Notifications RFC](@ref rfcs). Normally, all notifications are _real-time_. If replay is requested,
+these are _replay_ notifications. If a replay finished and the subscription changes into a standard one,
+_replay complete_ notification is delivered. Lastly, once the subscription should be terminated because its stop
+time was reached, _stop_ is received before removing the subscription.
+
+@ref notif_subs_api
+
+## Operational Subscriptions
+@anchor oper_subs
+
+There are 2 types of operational subscriptions that are completely different. Operational **get** subscriptions allow
+providing data that are requested by clients. Commonly, these can be used to read the current state of a device, for
+example, and then return them as _state_ data nodes. However, they can also be used to provide _configuration_ data
+nodes. In that case they should return only the configuration that is actually in-use by the managed device. Much more
+details and explanations can be found in the [NMDA RFC](@ref rfcs).
+
+Any operational get subscription is meant to provide all nodes in the subtree it is subscribed for. All the previous nodes
+(copied from _running_ datastore, provided by [push operational data](@ref oper_data), or even by previous operational
+get subscription) are replaced by the new ones provided. This behavior can be changed and the previous nodes merged if
+::SR_SUBSCR_OPER_MERGE option is used for the subscription. That can be useful, for example, for a scenario such as
+providing some state data nodes into a subtree with configuration nodes as well, which are desired to be kept.
+
+Operational **poll** subscriptions are special kind of subscriptions that do not call any callback. Instead, they
+periodically request data of an operational get subscription and store them in the connection. Then, whenever these
+data are required by a session on the connection, these cached data are used instead of calling the callback of the
+operational get subscription. In addition to this caching mechanism, on every cache refresh these subscriptions can
+optionally generate a list of changes (diff) that is reported to any [change](@ref change_subs) subscribers on the
+particular data.
+
+When using [pull operational get data](@ref oper_data) subscriptions, the subscription must be **actively handling events**
+whenever **operational datastore data of the module are requested** (so these 2 operations cannot occur in a single thread
+and they must have individual subscription structures) to **avoid a time out**. Note that operational datastore data are
+required not only when requested explicitly using a getter but also when validating operational datastore (all modules
+or the same module), setting push operational data (for the same module), sending an RPC/action or a notification
+(if the specific module data are required for validation), or an operational poll subscription refreshing the cache.
+
+Operational callback is not called unless its data are required so keep these rules in mind:
+
+- if the parent of the provided data does not exist in the __operational__ datastore, neither can its descendants,
+  see [operational data](@ref oper_data) for details about data existence;
+
+  _Example_: If you subscribed for providing `/mod:config-container/config-list/state-leaf`, your callback
+  would be called for every existing instance of `/mod:config-container/config-list`, not at all if there was none.
+
+- in case there are nested subscriptions, the deeper ones are called last so their parents can be created;
+
+  _Example_: If you subscribed to `/mod:config-container/config-list` and `/mod:config-container/config-list/state-leaf`,
+  the former callback would be called before the latter, so whatever _list_ instances were created in that first
+  call, only for those would then the _leaf_ value be retrieved.
+
+- if a filter is used that does not select the data provided by a callback, this callback is _usually_ not called.
+  This redundancy check is performed only textually so it will never cover all the cases.
+
+  _Example_: If you subscribed to `/mod:config-container/config-list[key="val"]` and then `/mod:config-container/state-list/\asterisk`
+  was requested, your callback __would not__ be called. __Neither would__ it be called when `/mod:config-container/config-list[key="val2"]`
+  was requested. However, if `/mod:config-container/config-list/key[.="val2"]` was used as the filter (even though there is
+  no reason to use such a path), the callback __would__ be called and the returned data filtered out later.
+
+Finally, just like configuration and RPC subscription, operational subscription callback can return ::SR_ERR_CALLBACK_SHELVE.
+
+@ref oper_subs_api
+
+*/

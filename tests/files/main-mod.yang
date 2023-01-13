@@ -1,0 +1,8 @@
+module main-mod {
+    namespace "urn:main-mod";
+    prefix mm;
+
+    include sub-mod;
+
+    container cont;
+}

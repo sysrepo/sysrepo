@@ -1,0 +1,138 @@
+module act {
+  yang-version 1.1;
+  namespace "urn:act";
+  prefix a;
+
+  revision 2019-04-30 {
+    description
+      "Initial revision.";
+  }
+
+  feature advanced-testing;
+
+  identity color {
+    description
+      "Base identity for the colors.";
+  }
+
+  identity red {
+    base color;
+  }
+
+  identity green {
+    base color;
+  }
+
+  identity yellow {
+    base red;
+    base green;
+  }
+
+  container basics {
+
+    leaf scalar {
+      type int32;
+      description
+        "An int32 value.";
+    }
+    leaf text {
+      type string;
+      description
+        "Some text.";
+    }
+    leaf referee {
+      type leafref {
+        require-instance false;
+        path "/a:basics/a:scalar";
+      }
+    }
+    leaf half-glass {
+      type empty;
+    }
+
+    list animals {
+      key species;
+
+      leaf species {
+        type string;
+      }
+      leaf weight {
+        description
+          "Weight of the animal in kg/lbs.";
+        type uint64;
+      }
+      action convert {
+        input {
+          leaf direction {
+            type boolean;
+            default true;
+            description
+              "TRUE:  kg->lbs
+               FALSE: lbs->kg";
+          }
+        }
+        output {
+          leaf mass {
+            type uint64;
+          }
+        }
+      }
+    }
+
+    list books {
+      key title;
+      ordered-by user;
+
+      leaf title {
+        type string;
+      }
+      leaf author {
+        type string;
+      }
+    }
+
+    leaf-list words {
+      type string;
+    }
+
+    leaf-list sentence {
+      type string;
+      ordered-by user;
+    }
+
+    container subbasics {
+
+      leaf coolness {
+        type enumeration {
+          enum warm;
+          enum cool;
+          enum awesome;
+        }
+        default cool;
+      }
+    }
+  }
+
+  container advanced {
+    leaf condition {
+      type boolean;
+      default false;
+    }
+  }
+
+  rpc capitalize {
+    description
+      "Capitalize the input string.";
+    input {
+      leaf text_in {
+        type string;
+      }
+    }
+    output {
+      leaf text_out {
+        type string;
+      }
+    }
+  }
+}
+

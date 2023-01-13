@@ -1,0 +1,13 @@
+[Unit]
+Description=Sysrepo plugin daemon
+#After=
+
+[Service]
+Type=notify
+ExecStart=@CMAKE_INSTALL_PREFIX@/@CMAKE_INSTALL_BINDIR@/sysrepo-plugind -d -v2
+Restart=always
+SystemCallArchitectures=native
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

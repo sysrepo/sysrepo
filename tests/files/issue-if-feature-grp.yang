@@ -1,0 +1,41 @@
+module issue-if-feature-grp {
+  namespace "urn:issue:if:feature:grp";
+  prefix iifg;
+
+  import issue-if-feature {
+    prefix iif;
+  }
+  import issue-if-feature-tm {
+    prefix iift;
+  }
+
+  feature root-value {
+    if-feature iift:root;
+  }
+
+  typedef group-ref {
+    type leafref {
+      path "/iif:root/iifg:group/iifg:values/iifg:name";
+    }
+  }
+
+  augment "/iif:root" {
+
+    container group {
+      if-feature iift:root;
+
+      list values {
+        key name;
+
+        leaf name {
+          type string;
+        }
+
+        leaf value {
+          if-feature root-value;
+          type iift:value-type;
+        }
+      }
+    }
+  }
+}
