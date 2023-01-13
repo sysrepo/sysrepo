@@ -41,6 +41,7 @@ setup_f(void **state)
         TESTS_SRC_DIR "/files/test.yang",
         TESTS_SRC_DIR "/files/ietf-interfaces.yang",
         TESTS_SRC_DIR "/files/iana-if-type.yang",
+        TESTS_SRC_DIR "/files/ietf-ip.yang",
         TESTS_SRC_DIR "/files/decimal.yang",
         TESTS_SRC_DIR "/files/referenced-data.yang",
         TESTS_SRC_DIR "/files/test-module.yang",
@@ -72,14 +73,15 @@ teardown_f(void **state)
 {
     struct state *st = (struct state *)*state;
     const char *module_names[] = {
-        "decimal",
-        "ietf-interfaces",
-        "iana-if-type",
-        "test",
-        "test-module",
-        "referenced-data",
         "ops",
         "ops-ref",
+        "test-module",
+        "referenced-data",
+        "decimal",
+        "ietf-ip",
+        "iana-if-type",
+        "ietf-interfaces",
+        "test",
         NULL
     };
 
@@ -95,9 +97,12 @@ clear_interfaces(void **state)
 {
     struct state *st = (struct state *)*state;
 
+    sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+
     sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0);
     sr_apply_changes(st->sess, 0);
 
+    sr_discard_oper_changes(st->conn, st->sess, NULL, 0);
     return 0;
 }
 
@@ -808,6 +813,40 @@ test_top_op(void **state)
 }
 
 static void
+test_oper(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const struct ly_ctx *ly_ctx;
+    struct lyd_node *edit;
+    const char *str;
+    int ret;
+
+    /* delete an interface in oper DS */
+    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    str =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" "
+        " xmlns:sr=\"http://www.sysrepo.org/yang/sysrepo\" sr:operation=\"ether\">"
+        "<interface>"
+            "<name>eth0</name>"
+            "<ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">"
+                "<address xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\" nc:operation=\"remove\">"
+                    "<ip>192.0.2.1</ip>"
+                "</address>"
+            "</ipv4>"
+        "</interface>"
+    "</interfaces>";
+    ly_ctx = sr_acquire_context(st->conn);
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &edit));
+
+    ret = sr_edit_batch(st->sess, edit, "merge");
+    lyd_free_all(edit);
+    sr_release_context(st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+static void
 test_union(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -1301,6 +1340,7 @@ main(void)
         cmocka_unit_test_teardown(test_isolate, clear_interfaces),
         cmocka_unit_test(test_purge),
         cmocka_unit_test(test_top_op),
+        cmocka_unit_test_teardown(test_oper, clear_interfaces),
         cmocka_unit_test_teardown(test_union, clear_test),
         cmocka_unit_test(test_decimal64),
         cmocka_unit_test(test_mutiple_types),
