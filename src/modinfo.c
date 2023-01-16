@@ -1383,7 +1383,6 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
     sr_error_info_t *err_info = NULL;
     sr_cid_t cid, skip_read_upgr_cid = 0;
     uint32_t i;
-    int ret;
 
 #define PATH_LEN 128
     char path[PATH_LEN];
@@ -1391,10 +1390,6 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
 
     ly_ctx = (struct ly_ctx *)LYD_CTX(ctx_node);
 
-    if ((cid = rwlock->writer)) {
-        snprintf(path, PATH_LEN, path_format, cid);
-        SR_CHECK_LY_RET(lyd_new_path(ctx_node, NULL, path, "write", 0, NULL), ly_ctx, err_info);
-    }
     if ((cid = rwlock->upgr)) {
         snprintf(path, PATH_LEN, path_format, cid);
         SR_CHECK_LY_RET(lyd_new_path(ctx_node, NULL, path, "read-upgr", 0, NULL), ly_ctx, err_info);
@@ -1404,8 +1399,7 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
     }
 
     /* READ MUTEX LOCK */
-    ret = pthread_mutex_lock(&rwlock->r_mutex);
-    if (ret) {
+    if (pthread_mutex_lock(&rwlock->r_mutex)) {
         SR_ERRINFO_INT(&err_info);
         return err_info;
     }
@@ -1430,7 +1424,17 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
     /* READ MUTEX UNLOCK */
     pthread_mutex_unlock(&rwlock->r_mutex);
 
-    return err_info;
+    if (err_info) {
+        return err_info;
+    }
+
+    /* if there is a read-lock and the writer is set, it is just an urged write-lock being waited on, ignore it */
+    if (!i && (cid = rwlock->writer)) {
+        snprintf(path, PATH_LEN, path_format, cid);
+        SR_CHECK_LY_RET(lyd_new_path(ctx_node, NULL, path, "write", 0, NULL), ly_ctx, err_info);
+    }
+
+    return NULL;
 #undef PATH_LEN
 }
 
