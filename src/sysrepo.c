@@ -1117,7 +1117,7 @@ sr_session_set_user(sr_session_ctx_t *session, const char *user)
         SR_ERRINFO_MEM(&err_info);
     }
 
-    return sr_api_ret(session, err_info);
+    return SR_ERR_OK;
 }
 
 API const char *
