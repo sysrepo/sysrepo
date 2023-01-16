@@ -218,8 +218,8 @@ struct sr_subscription_ctx_s {
             sr_session_ctx_t *sess; /**< Subscription session. */
             ATOMIC_T filtered_out;  /**< Number of notifications that were filtered out. */
 
-            uint32_t request_id;    /**< Request ID of the last processed request. */
-            sr_sub_event_t event;   /**< Type of the last processed event. */
+            ATOMIC_T request_id;    /**< Request ID of the last processed request. */
+            ATOMIC_T event;         /**< Type of the last processed event. */
         } *subs;                    /**< Configuration change subscriptions for each XPath. */
         uint32_t sub_count;         /**< Configuration change module XPath subscription count. */
 
@@ -237,7 +237,7 @@ struct sr_subscription_ctx_s {
             void *private_data;     /**< Subscription callback private data. */
             sr_session_ctx_t *sess; /**< Subscription session. */
 
-            uint32_t request_id;    /**< Request ID of the last processed request. */
+            ATOMIC_T request_id;    /**< Request ID of the last processed request. */
             sr_shm_t sub_shm;       /**< Subscription SHM. */
         } *subs;                    /**< Operational subscriptions for each XPath. */
         uint32_t sub_count;         /**< Operational module XPath subscription count. */
@@ -274,7 +274,7 @@ struct sr_subscription_ctx_s {
         } *subs;                    /**< Notification subscriptions for each XPath. */
         uint32_t sub_count;         /**< Notification module XPath subscription count. */
 
-        uint32_t request_id;        /**< Request ID of the last processed request. */
+        ATOMIC_T request_id;        /**< Request ID of the last processed request. */
         sr_shm_t sub_shm;           /**< Subscription SHM. */
     } *notif_subs;                  /**< Notification subscriptions for each module. */
     uint32_t notif_sub_count;       /**< Notification module subscription count. */
@@ -291,8 +291,8 @@ struct sr_subscription_ctx_s {
             void *private_data;     /**< Subscription callback private data. */
             sr_session_ctx_t *sess; /**< Subscription session. */
 
-            uint32_t request_id;    /**< Request ID of the last processed request. */
-            sr_sub_event_t event;   /**< Type of the last processed event. */
+            ATOMIC_T request_id;    /**< Request ID of the last processed request. */
+            ATOMIC_T event;         /**< Type of the last processed event. */
         } *subs;                    /**< RPC/action subscription for each XPath. */
         uint32_t sub_count;         /**< RPC/action XPath subscription count. */
 
