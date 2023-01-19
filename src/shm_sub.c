@@ -52,7 +52,7 @@ struct sr_shmsub_oper_get_sub_s {
     sr_sub_shm_t *sub_shm;
     sr_sub_event_t event;
     uint32_t request_id;
-    int locked;
+    sr_lock_mode_t lock;
 };
 
 sr_error_info_t *
@@ -568,7 +568,7 @@ sr_shmsub_notify_all_wait_wr(struct sr_shmsub_oper_get_sub_s *notify_subs, uint3
 
         /* SUB WRITE UNLOCK */
         sr_rwunlock(&notify_subs[i].sub_shm->lock, 0, SR_LOCK_WRITE, cid, __func__);
-        notify_subs[i].locked = 0;
+        notify_subs[i].lock = SR_LOCK_WRITE;
     }
 
     /* wait until this event was processed and there are no readers (just like write lock) */
@@ -590,7 +590,7 @@ sr_shmsub_notify_all_wait_wr(struct sr_shmsub_oper_get_sub_s *notify_subs, uint3
                 sr_errinfo_merge(&err_info, err_temp);
                 break;
             }
-            notify_subs[i].locked = 1;
+            notify_subs[i].lock = SR_LOCK_WRITE;
 
             if (notify_subs[i].sub_shm->lock.readers[0] || (ATOMIC_LOAD_RELAXED(notify_subs[i].sub_shm->event) &&
                     !SR_IS_NOTIFY_EVENT(ATOMIC_LOAD_RELAXED(notify_subs[i].sub_shm->event)))) {
@@ -599,7 +599,7 @@ sr_shmsub_notify_all_wait_wr(struct sr_shmsub_oper_get_sub_s *notify_subs, uint3
 
             /* SUB WRITE UNLOCK */
             sr_rwunlock(&notify_subs[i].sub_shm->lock, 0, SR_LOCK_WRITE, cid, __func__);
-            notify_subs[i].locked = 0;
+            notify_subs[i].lock = SR_LOCK_NONE;
         }
         if (pending_event) {
             /* active loop backoff sleep to avoid starving SUB locks */
@@ -629,7 +629,7 @@ sr_shmsub_notify_all_wait_wr(struct sr_shmsub_oper_get_sub_s *notify_subs, uint3
                 goto cleanup;
             }
         }
-        notify_subs[i].locked = 1;
+        notify_subs[i].lock = SR_LOCK_WRITE;
 
         if ((expected_ev == SR_SUB_EV_SUCCESS) || (expected_ev == SR_SUB_EV_ERROR)) {
             /* we expect a reply (success/error) */
@@ -693,10 +693,10 @@ sr_shmsub_notify_all_wait_wr(struct sr_shmsub_oper_get_sub_s *notify_subs, uint3
 cleanup:
     if (err_info) {
         for (i = 0; i < notify_count; ++i) {
-            if (notify_subs[i].locked) {
-                /* SUB WRITE UNLOCK */
-                sr_rwunlock(&notify_subs[i].sub_shm->lock, 0, SR_LOCK_WRITE, cid, __func__);
-                notify_subs[i].locked = 0;
+            if (notify_subs[i].lock) {
+                /* SUB UNLOCK */
+                sr_rwunlock(&notify_subs[i].sub_shm->lock, 0, notify_subs[i].lock, cid, __func__);
+                notify_subs[i].lock = SR_LOCK_NONE;
             }
         }
     }
@@ -1952,7 +1952,7 @@ sr_shmsub_oper_get_notify_many(struct sr_mod_info_mod_s *mod, const char *xpath,
         if ((err_info = sr_shmsub_notify_new_wrlock(notify_subs[i].sub_shm, mod->ly_mod->name, 0, conn->cid))) {
             goto cleanup;
         }
-        notify_subs[i].locked = 1;
+        notify_subs[i].lock = SR_LOCK_WRITE;
 
         /* open sub data SHM */
         if ((err_info = sr_shmsub_data_open_remap(mod->ly_mod->name, "oper",
@@ -2004,7 +2004,7 @@ sr_shmsub_oper_get_notify_many(struct sr_mod_info_mod_s *mod, const char *xpath,
 
         /* SUB WRITE UNLOCK */
         sr_rwunlock(&notify_subs[i].sub_shm->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
-        notify_subs[i].locked = 0;
+        notify_subs[i].lock = SR_LOCK_NONE;
 
         /* merge returned data into data tree */
         if (lyd_merge_siblings(data, oper_data, LYD_MERGE_DESTRUCT | LYD_MERGE_WITH_FLAGS)) {
@@ -2014,11 +2014,11 @@ sr_shmsub_oper_get_notify_many(struct sr_mod_info_mod_s *mod, const char *xpath,
     }
 
 cleanup:
-    /* SUB WRITE UNLOCK */
+    /* SUB UNLOCK */
     for (i = 0; i < notify_count; ++i) {
-        if (notify_subs[i].locked) {
-            sr_rwunlock(&notify_subs[i].sub_shm->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
-            notify_subs[i].locked = 0;
+        if (notify_subs[i].lock) {
+            sr_rwunlock(&notify_subs[i].sub_shm->lock, 0, notify_subs[i].lock, conn->cid, __func__);
+            notify_subs[i].lock = SR_LOCK_NONE;
         }
     }
 
