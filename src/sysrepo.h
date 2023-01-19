@@ -1274,7 +1274,7 @@ int sr_unsubscribe(sr_subscription_ctx_t *subscription);
  * @param[in] xpath Optional [XPath](@ref paths) further filtering the changes that will be handled by this subscription.
  * @param[in] callback Callback to be called when the change in the datastore occurs.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
- * @param[in] priority Specifies the order in which the callbacks (**within module**) will be called.
+ * @param[in] priority Specifies the order in which the callbacks (**within module**) will be called, higher first.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
  * @param[in,out] subscription Subscription context, zeroed for first subscription, freed by ::sr_unsubscribe.
@@ -1415,7 +1415,7 @@ void sr_free_change_iter(sr_change_iter_t *iter);
  * @param[in] xpath [XPath](@ref paths) identifying the RPC/action. Any predicates are allowed.
  * @param[in] callback Callback to be called.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
- * @param[in] priority Specifies the order in which the callbacks (**within RPC/action**) will be called.
+ * @param[in] priority Specifies the order in which the callbacks (**within RPC/action**) will be called, higher first.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
  * @param[in,out] subscription Subscription context, zeroed for first subscription, freed by ::sr_unsubscribe.
@@ -1433,7 +1433,7 @@ int sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb cal
  * @param[in] xpath [XPath](@ref paths) identifying the RPC/action. Any predicates are allowed.
  * @param[in] callback Callback to be called.
  * @param[in] private_data Private context passed to the callback function, opaque to sysrepo.
- * @param[in] priority Specifies the order in which the callbacks (**within RPC/action**) will be called.
+ * @param[in] priority Specifies the order in which the callbacks (**within RPC/action**) will be called, higher first.
  * @param[in] opts Options overriding default behavior of the subscription, it is supposed to be
  * a bitwise OR-ed value of any ::sr_subscr_flag_t flags.
  * @param[in,out] subscription Subscription context, zeroed for first subscription, freed by ::sr_unsubscribe.
