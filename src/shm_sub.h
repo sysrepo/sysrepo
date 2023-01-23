@@ -4,8 +4,8 @@
  * @brief header for sub SHM routines
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -28,6 +28,15 @@ struct modsub_oper_s;
 struct opsub_rpc_s;
 struct sr_mod_info_mod_s;
 struct sr_mod_info_s;
+
+/**
+ * @brief Macro for getting a notify sub item on a specific index.
+ *
+ * @param[in] nsubs Notify subs array.
+ * @param[in] i Index of the desired item.
+ * @param[in] item_size Actual size of every item in @p nsubs.
+ */
+#define SR_NOTIFY_SUB_IDX(nsubs, i, item_size) (void *)(((char *)nsubs) + i * item_size)
 
 /**
  * @brief Create and initialize a subscription SHM.
@@ -114,7 +123,6 @@ sr_error_info_t *sr_shmsub_change_notify_clear(struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Notify about (generate) a change "change" event.
- * Main SHM read lock must be held and may be temporarily unlocked!
  *
  * @param[in] mod_info Mod info to use.
  * @param[in] orig_name Event originator name.

@@ -115,8 +115,8 @@ struct srplg_ntf_s;
 /** default timeout for notification subscrption callback (ms) */
 #define SR_NOTIF_CB_TIMEOUT 2000
 
-/** timeout step for operational subscription loop */
-#define SR_SHMSUB_OPER_EVENT_TIMEOUT_STEP_MS 1
+/** timeout step for parallel subscription active polling loop */
+#define SR_SHMSUB_MANY_EVENT_TIMEOUT_STEP_MS 1
 
 /** permissions of main SHM lock file and main/mod/ext SHM */
 #define SR_SHM_PERM 00666
@@ -750,20 +750,21 @@ sr_error_info_t *sr_rwlock_init(sr_rwlock_t *rwlock, int shared);
 void sr_rwlock_destroy(sr_rwlock_t *rwlock);
 
 /**
- * @brief Special lock of a sysrepo RW lock to be used when the mutex is already held but no lock flags are set.
- * On failure, the lock is not changed in any way.
+ * @brief Lock a sysrepo RW lock with additional options for sub SHM. On failure, the lock is not changed in any way.
  *
  * @param[in] rwlock RW lock to lock.
- * @param[in] timeout_ms Timeout in ms for locking.
+ * @param[in] timeout_abs Absolute timeout for locking.
  * @param[in] mode Lock mode to set.
  * @param[in] cid Lock owner connection ID.
  * @param[in] func Name of the calling function for logging.
  * @param[in] cb Optional callback called when recovering locks. When calling it, WRITE lock is always held.
  * @param[in] cb_data Arbitrary user data for @p cb.
+ * @param[in] has_mutex Set if the lock mutex is already held.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_sub_rwlock_has_mutex(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid,
-        const char *func, sr_lock_recover_cb cb, void *cb_data);
+sr_error_info_t *
+sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
+        sr_lock_recover_cb cb, void *cb_data, int has_mutex);
 
 /**
  * @brief Lock a sysrepo RW lock. On failure, the lock is not changed in any way.

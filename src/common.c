@@ -2464,34 +2464,18 @@ sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_lock_recover_cb cb, 
     }
 }
 
-/**
- * @brief Lock a sysrepo RW lock. On failure, the lock is not changed in any way.
- *
- * @param[in] rwlock RW lock to lock.
- * @param[in] timeout_ms Timeout in ms for locking.
- * @param[in] mode Lock mode to set.
- * @param[in] cid Lock owner connection ID.
- * @param[in] func Name of the calling function for logging.
- * @param[in] cb Optional callback called when recovering locks. When calling it, WRITE lock is always held.
- * @param[in] cb_data Arbitrary user data for @p cb.
- * @param[in] has_mutex Set if the lock mutex is already held.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-_sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
+sr_error_info_t *
+sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
         sr_lock_recover_cb cb, void *cb_data, int has_mutex)
 {
     sr_error_info_t *err_info = NULL;
-    struct timespec timeout_abs;
     int ret = 0, wr_urged;
 
-    assert(mode && (timeout_ms >= 0) && cid);
-
-    sr_time_get(&timeout_abs, timeout_ms);
+    assert(mode && timeout_abs && cid);
 
     if (!has_mutex) {
         /* MUTEX LOCK */
-        ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_abs);
+        ret = pthread_mutex_timedlock(&rwlock->mutex, timeout_abs);
     }
 
     if (ret == EOWNERDEAD) {
@@ -2517,7 +2501,7 @@ _sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t ci
         ret = 0;
         while (!ret && (rwlock->readers[0] || rwlock->writer)) {
             /* COND WAIT */
-            ret = sr_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_abs);
+            ret = sr_cond_timedwait(&rwlock->cond, &rwlock->mutex, timeout_abs);
         }
         if (ret == ETIMEDOUT) {
             /* recover the lock again, the owner may have died while processing */
@@ -2555,7 +2539,7 @@ _sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t ci
             }
 
             /* COND WAIT */
-            ret = sr_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_abs);
+            ret = sr_cond_timedwait(&rwlock->cond, &rwlock->mutex, timeout_abs);
         }
         if (ret == ETIMEDOUT) {
             /* recover the lock again, the owner may have died while processing */
@@ -2593,7 +2577,7 @@ _sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t ci
         ret = 0;
         while (!ret && (rwlock->upgr || rwlock->writer)) {
             /* COND WAIT */
-            ret = sr_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_abs);
+            ret = sr_cond_timedwait(&rwlock->cond, &rwlock->mutex, timeout_abs);
         }
         if (ret == ETIMEDOUT) {
             /* recover the lock again, the owner may have died while processing */
@@ -2627,7 +2611,7 @@ _sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t ci
         ret = 0;
         while (!ret && rwlock->writer) {
             /* COND WAIT */
-            ret = sr_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_abs);
+            ret = sr_cond_timedwait(&rwlock->cond, &rwlock->mutex, timeout_abs);
         }
         if (ret == ETIMEDOUT) {
             /* recover the lock again, the owner may have died while processing */
@@ -2661,17 +2645,14 @@ error_cond_unlock:
 }
 
 sr_error_info_t *
-sr_sub_rwlock_has_mutex(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
-        sr_lock_recover_cb cb, void *cb_data)
-{
-    return _sr_rwlock(rwlock, timeout_ms, mode, cid, func, cb, cb_data, 1);
-}
-
-sr_error_info_t *
 sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
         sr_lock_recover_cb cb, void *cb_data)
 {
-    return _sr_rwlock(rwlock, timeout_ms, mode, cid, func, cb, cb_data, 0);
+    struct timespec timeout_abs;
+
+    sr_time_get(&timeout_abs, timeout_ms);
+
+    return sr_sub_rwlock(rwlock, &timeout_abs, mode, cid, func, cb, cb_data, 0);
 }
 
 sr_error_info_t *
@@ -2852,7 +2833,6 @@ sr_rwunlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
     int ret;
 
     assert(mode && cid);
-    assert((mode == SR_LOCK_WRITE) || (mode == SR_LOCK_WRITE_URGE) || (timeout_ms > 0));
 
     if ((mode == SR_LOCK_WRITE) || (mode == SR_LOCK_WRITE_URGE)) {
         /* we are unlocking a write lock, there can be no readers */
