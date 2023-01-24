@@ -39,6 +39,7 @@
 #include "replay.h"
 #include "shm_ext.h"
 #include "shm_mod.h"
+#include "subscr.h"
 #include "sysrepo.h"
 #include "utils/nacm.h"
 

@@ -50,6 +50,7 @@
 #include "shm_main.h"
 #include "shm_mod.h"
 #include "shm_sub.h"
+#include "subscr.h"
 #include "utils/nacm.h"
 
 static sr_error_info_t *sr_session_notif_buf_stop(sr_session_ctx_t *session);

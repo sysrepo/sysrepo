@@ -43,6 +43,7 @@
 #include "shm_ext.h"
 #include "shm_mod.h"
 #include "shm_sub.h"
+#include "subscr.h"
 #include "utils/nacm.h"
 
 static sr_error_info_t *sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig_name,

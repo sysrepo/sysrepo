@@ -37,6 +37,7 @@
 #include "log.h"
 #include "plugins_notification.h"
 #include "shm_mod.h"
+#include "subscr.h"
 #include "sysrepo.h"
 
 /**

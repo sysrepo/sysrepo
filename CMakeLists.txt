@@ -190,6 +190,7 @@ message(STATUS "SRPD plugins path:  ${SRPD_PLUGINS_PATH}")
 set(LIB_SRC
     src/sysrepo.c
     src/common.c
+    src/subscr.c
     src/log.c
     src/replay.c
     src/modinfo.c

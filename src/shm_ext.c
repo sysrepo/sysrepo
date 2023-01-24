@@ -39,6 +39,7 @@
 #include "log.h"
 #include "shm_mod.h"
 #include "shm_sub.h"
+#include "subscr.h"
 
 sr_error_info_t *
 sr_shmext_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock, const char *func)
