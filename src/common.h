@@ -88,6 +88,9 @@ struct srplg_ntf_s;
 /** timeout for write-locking connection subscription oper cache data (ms) */
 #define SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT 1000
 
+/** timeout for accessing stored connection ext data (duplication) (ms) */
+#define SR_CONN_EXT_DATA_LOCK_TIMEOUT 100
+
 /** timeout for locking (data of) a module; maximum time a module write lock is expected to be held (ms) */
 #define SR_MOD_LOCK_TIMEOUT 5000
 

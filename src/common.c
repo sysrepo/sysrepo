@@ -2060,7 +2060,7 @@ sr_ly_ext_data_clb(const struct lysc_ext_instance *ext, void *user_data, void **
     }
 
     /* LY EXT DATA READ LOCK */
-    if ((err_info = sr_rwlock(&conn->ly_ext_data_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+    if ((err_info = sr_rwlock(&conn->ly_ext_data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
             __func__, NULL, NULL))) {
         sr_errinfo_free(&err_info);
         return LY_ESYS;
@@ -2077,7 +2077,7 @@ sr_ly_ext_data_clb(const struct lysc_ext_instance *ext, void *user_data, void **
     }
 
     /* LY EXT DATA UNLOCK */
-    sr_rwunlock(&conn->ly_ext_data_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+    sr_rwunlock(&conn->ly_ext_data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
     if (r) {
         return r;
@@ -4857,7 +4857,7 @@ sr_conn_ext_data_update(sr_conn_ctx_t *conn)
     }
 
     /* LY EXT DATA WRITE LOCK */
-    if ((err_info = sr_rwlock(&conn->ly_ext_data_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+    if ((err_info = sr_rwlock(&conn->ly_ext_data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
             __func__, NULL, NULL))) {
         goto cleanup;
     }
@@ -4868,7 +4868,7 @@ sr_conn_ext_data_update(sr_conn_ctx_t *conn)
     new_ext_data = NULL;
 
     /* LY EXT DATA UNLOCK */
-    sr_rwunlock(&conn->ly_ext_data_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    sr_rwunlock(&conn->ly_ext_data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 
 cleanup:
     /* MODULES UNLOCK */
@@ -4987,7 +4987,7 @@ sr_conn_ext_data_replace(sr_conn_ctx_t *conn, struct lyd_node *new_ext_data)
     /* expected to be called with CTX LOCK so we can access the data */
 
     /* LY EXT DATA WRITE LOCK */
-    err_info = sr_rwlock(&conn->ly_ext_data_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
+    err_info = sr_rwlock(&conn->ly_ext_data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
             NULL, NULL);
 
     /* replace LY ext data */
@@ -4996,7 +4996,7 @@ sr_conn_ext_data_replace(sr_conn_ctx_t *conn, struct lyd_node *new_ext_data)
 
     if (!err_info) {
         /* LY EXT DATA UNLOCK */
-        sr_rwunlock(&conn->ly_ext_data_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+        sr_rwunlock(&conn->ly_ext_data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
     }
 }
 
