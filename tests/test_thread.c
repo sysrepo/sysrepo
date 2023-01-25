@@ -35,7 +35,7 @@ struct state {
     sr_conn_ctx_t *conn;
     sr_subscription_ctx_t *subscr;
     ATOMIC_T sub_id;
-    pthread_barrier_t barrier2;
+    pthread_barrier_t barrier3;
 };
 
 #define TEST_ITER_COUNT 100
@@ -60,7 +60,7 @@ setup(void **state)
         return 1;
     }
 
-    pthread_barrier_init(&st->barrier2, NULL, 2);
+    pthread_barrier_init(&st->barrier3, NULL, 3);
 
     return 0;
 }
@@ -78,7 +78,7 @@ teardown(void **state)
     sr_remove_modules(st->conn, module_names, 0);
 
     sr_disconnect(st->conn);
-    pthread_barrier_destroy(&st->barrier2);
+    pthread_barrier_destroy(&st->barrier3);
     free(st);
     return 0;
 }
@@ -100,7 +100,7 @@ dummy_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_n
 
 /* TEST */
 static void *
-change_subscribe_thread(void *arg)
+module_change_subscribe_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
@@ -121,7 +121,7 @@ change_subscribe_thread(void *arg)
     }
 
     /* signal that the first batch of subscriptions is done */
-    pthread_barrier_wait(&st->barrier2);
+    pthread_barrier_wait(&st->barrier3);
 
     for (i = 0; i < TEST_ITER_COUNT; ++i) {
         ret = sr_module_change_subscribe(sess, "test", NULL, dummy_change_cb, NULL, 0, 0, &st->subscr);
@@ -129,20 +129,20 @@ change_subscribe_thread(void *arg)
     }
 
     /* wait until the first batch of subscriptions is unsubscribed */
-    pthread_barrier_wait(&st->barrier2);
+    pthread_barrier_wait(&st->barrier3);
 
     sr_session_stop(sess);
     return NULL;
 }
 
 static void *
-change_unsubscribe_thread(void *arg)
+module_change_unsubscribe_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     int i, ret;
 
     /* wait until the first batch of subscriptions is done */
-    pthread_barrier_wait(&st->barrier2);
+    pthread_barrier_wait(&st->barrier3);
 
     for (i = 0; i < TEST_ITER_COUNT; ++i) {
         ret = sr_unsubscribe_sub(st->subscr, ATOMIC_LOAD_RELAXED(st->sub_id) + i);
@@ -150,28 +150,59 @@ change_unsubscribe_thread(void *arg)
     }
 
     /* signal that the first batch was unsubscribed */
-    pthread_barrier_wait(&st->barrier2);
+    pthread_barrier_wait(&st->barrier3);
+
+    return NULL;
+}
+
+static void *
+module_change_apply_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    int i, ret;
+    char num_str[4];
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait until the first batch of subscriptions is done */
+    pthread_barrier_wait(&st->barrier3);
+
+    for (i = 0; i < TEST_ITER_COUNT; ++i) {
+        sprintf(num_str, "%d", i);
+        ret = sr_set_item_str(sess, "/test:test-leaf", num_str, NULL, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        ret = sr_apply_changes(sess, 0);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    /* signal that we are done applying changes */
+    pthread_barrier_wait(&st->barrier3);
 
     return NULL;
 }
 
 static void
-test_change_sub_unsub(void **state)
+test_module_changes(void **state)
 {
-    pthread_t tid[2];
+    pthread_t tid[3];
 
-    pthread_create(&tid[0], NULL, change_subscribe_thread, *state);
-    pthread_create(&tid[1], NULL, change_unsubscribe_thread, *state);
+    pthread_create(&tid[0], NULL, module_change_subscribe_thread, *state);
+    pthread_create(&tid[1], NULL, module_change_unsubscribe_thread, *state);
+    pthread_create(&tid[2], NULL, module_change_apply_thread, *state);
 
     pthread_join(tid[0], NULL);
     pthread_join(tid[1], NULL);
+    pthread_join(tid[2], NULL);
 }
 
 int
 main(void)
 {
     const struct CMUnitTest tests[] = {
-        cmocka_unit_test(test_change_sub_unsub),
+        cmocka_unit_test(test_module_changes),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

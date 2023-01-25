@@ -4444,12 +4444,11 @@ sr_error_info_t *
 sr_shmsub_notif_listen_module_stop_time(uint32_t notif_subs_idx, sr_lock_mode_t has_subs_lock,
         sr_subscription_ctx_t *subscr, int *mod_finished)
 {
-    sr_error_info_t *err_info = NULL, *tmp_err;
+    sr_error_info_t *err_info = NULL;
     struct modsub_notif_s *notif_subs;
     struct modsub_notifsub_s *notif_sub;
     struct timespec cur_ts;
     uint32_t i;
-    sr_lock_mode_t lock_mode = has_subs_lock;
 
     /* safety measure for future changes */
     assert(has_subs_lock == SR_LOCK_READ);
@@ -4463,31 +4462,13 @@ sr_shmsub_notif_listen_module_stop_time(uint32_t notif_subs_idx, sr_lock_mode_t 
     while (i < notif_subs->sub_count) {
         notif_sub = &notif_subs->subs[i];
         if (!SR_TS_IS_ZERO(notif_sub->stop_time) && (sr_time_cmp(&notif_sub->stop_time, &cur_ts) < 1)) {
-            if (lock_mode != SR_LOCK_READ_UPGR) {
-                /* SUBS READ UNLOCK */
-                sr_rwunlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscr->conn->cid, __func__);
-                lock_mode = SR_LOCK_NONE;
-
-                /* SUBS READ UPGR LOCK */
-                if ((err_info = sr_rwlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, subscr->conn->cid,
-                        __func__, NULL, NULL))) {
-                    goto cleanup;
-                }
-                lock_mode = SR_LOCK_READ_UPGR;
-
-                /* restart the loop, now the subscriptions cannot change */
-                i = 0;
-                notif_subs = &subscr->notif_subs[notif_subs_idx];
-                continue;
-            }
-
             if (notif_subs->sub_count == 1) {
                 /* removing last subscription to this module */
                 *mod_finished = 1;
             }
 
             /* remove the subscription */
-            if ((err_info = sr_subscr_del(subscr, notif_subs->subs[i].sub_id, lock_mode))) {
+            if ((err_info = sr_subscr_del(subscr, notif_subs->subs[i].sub_id, NULL, has_subs_lock))) {
                 goto cleanup;
             }
 
@@ -4503,27 +4484,6 @@ sr_shmsub_notif_listen_module_stop_time(uint32_t notif_subs_idx, sr_lock_mode_t 
     }
 
 cleanup:
-    if (has_subs_lock != lock_mode) {
-        if (lock_mode == SR_LOCK_NONE) {
-            /* SUBS LOCK */
-            if ((tmp_err = sr_rwlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, has_subs_lock, subscr->conn->cid,
-                    __func__, NULL, NULL))) {
-                sr_errinfo_merge(&err_info, tmp_err);
-            }
-        } else {
-            assert(lock_mode == SR_LOCK_READ_UPGR);
-
-            /* SUBS UNLOCK */
-            sr_rwunlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, lock_mode, subscr->conn->cid, __func__);
-
-            /* SUBS LOCK */
-            if ((tmp_err = sr_rwlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, has_subs_lock, subscr->conn->cid,
-                    __func__, NULL, NULL))) {
-                sr_errinfo_merge(&err_info, tmp_err);
-            }
-        }
-    }
-
     return err_info;
 }
 
