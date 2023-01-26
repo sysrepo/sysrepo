@@ -301,8 +301,8 @@ static void
 sr_shmsub_recover(sr_sub_shm_t *sub_shm)
 {
     if (!sr_conn_is_alive(sub_shm->orig_cid)) {
-        SR_LOG_WRN("Recovered an event of CID %" PRIu32 " with ID %" PRIu32 ".", sub_shm->orig_cid,
-                ATOMIC_LOAD_RELAXED(sub_shm->request_id));
+        SR_LOG_WRN("EV ORIGIN: \"%s\" of CID %" PRIu32 " ID %" PRIu32 " recovered.",
+                sr_ev2str(ATOMIC_LOAD_RELAXED(sub_shm->event)), sub_shm->orig_cid, ATOMIC_LOAD_RELAXED(sub_shm->request_id));
 
         /* clear the event */
         ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
@@ -379,7 +379,7 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
         } else if ((ret == ETIMEDOUT) && (last_event && (last_event != lock_event))) {
             /* timeout */
             sr_errinfo_new(&err_info, SR_ERR_TIME_OUT,
-                    "Waiting for subscription of \"%s\" failed, previous event \"%s\" with ID %" PRIu32 " was not processed.",
+                    "Waiting for subscription of \"%s\" failed, previous event \"%s\" ID %" PRIu32 " was not processed.",
                     shm_name, sr_ev2str(last_event), last_request_id);
         } else {
             /* other error */
@@ -455,8 +455,8 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
             /* WRITE LOCK, chances are we will get it if we ignore the event */
             if (!(err_info = sr_sub_rwlock(&sub_shm->lock, timeout_abs, SR_LOCK_WRITE, cid, __func__, NULL, NULL, 1))) {
                 /* event timeout */
-                sr_errinfo_new(cb_err_info, SR_ERR_TIME_OUT, "Callback event \"%s\" with ID %" PRIu32
-                        " processing timed out.", sr_ev2str(event), request_id);
+                sr_errinfo_new(cb_err_info, SR_ERR_TIME_OUT, "EV ORIGIN: \"%s\" ID %" PRIu32 " processing timed out.",
+                        sr_ev2str(event), request_id);
             }
         } else {
             /* other error */
@@ -752,7 +752,7 @@ sr_shmsub_notify_write_event(sr_sub_shm_t *sub_shm, sr_cid_t orig_cid, uint32_t 
     }
 
     if (event) {
-        SR_LOG_INF("Published event \"%s\" \"%s\" with ID %" PRIu32 ".", sr_ev2str(event), event_desc, request_id);
+        SR_LOG_INF("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " published.", event_desc, sr_ev2str(event), request_id);
     }
     return NULL;
 }
@@ -833,8 +833,8 @@ sr_shmsub_multi_notify_write_event(sr_multi_sub_shm_t *multi_sub_shm, sr_cid_t o
     }
 
     if (event) {
-        SR_LOG_INF("Published event \"%s\" \"%s\" with ID %" PRIu32 " priority %" PRIu32 " for %" PRIu32 " subscribers.",
-                sr_ev2str(event), event_desc, request_id, priority, subscriber_count);
+        SR_LOG_INF("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " for %" PRIu32 " subscribers published.",
+                event_desc, sr_ev2str(event), request_id, priority, subscriber_count);
     }
     return NULL;
 }
@@ -1232,12 +1232,12 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, const char *orig_
 
             if (*cb_err_info) {
                 /* failed callback or timeout */
-                SR_LOG_WRN("Event \"%s\" with ID %" PRIu32 " priority %" PRIu32 " failed (%s).", sr_ev2str(SR_SUB_EV_UPDATE),
-                        mod->request_id, cur_priority, sr_strerror((*cb_err_info)->err[0].err_code));
+                SR_LOG_WRN("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " failed (%s).", mod->ly_mod->name,
+                        sr_ev2str(SR_SUB_EV_UPDATE), mod->request_id, cur_priority, sr_strerror((*cb_err_info)->err[0].err_code));
                 goto cleanup_wrunlock;
             } else {
-                SR_LOG_INF("Event \"%s\" with ID %" PRIu32 " priority %" PRIu32 " succeeded.", sr_ev2str(SR_SUB_EV_UPDATE),
-                        mod->request_id, cur_priority);
+                SR_LOG_INF("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " succeeded.", mod->ly_mod->name,
+                        sr_ev2str(SR_SUB_EV_UPDATE), mod->request_id, cur_priority);
             }
 
             assert(multi_sub_shm->event == SR_SUB_EV_SUCCESS);
@@ -1486,15 +1486,16 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
 
             if (nsub->cb_err_info) {
                 /* failed callback or timeout */
-                SR_LOG_WRN("Event \"%s\" with ID %" PRIu32 " priority %" PRIu32 " failed (%s).", sr_ev2str(SR_SUB_EV_CHANGE),
-                        nsub->mod->request_id, nsub->cur_priority, sr_strerror(nsub->cb_err_info->err[0].err_code));
+                SR_LOG_WRN("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " failed (%s).",
+                        nsub->mod->ly_mod->name, sr_ev2str(SR_SUB_EV_CHANGE), nsub->mod->request_id, nsub->cur_priority,
+                        sr_strerror(nsub->cb_err_info->err[0].err_code));
 
                 /* merge the error */
                 sr_errinfo_merge(cb_err_info, nsub->cb_err_info);
                 nsub->cb_err_info = NULL;
             } else {
-                SR_LOG_INF("Event \"%s\" with ID %" PRIu32 " priority %" PRIu32 " succeeded.", sr_ev2str(SR_SUB_EV_CHANGE),
-                        nsub->mod->request_id, nsub->cur_priority);
+                SR_LOG_INF("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " succeeded.",
+                        nsub->mod->ly_mod->name, sr_ev2str(SR_SUB_EV_CHANGE), nsub->mod->request_id, nsub->cur_priority);
             }
             nsub->pending_event = 0;
         }
@@ -1833,7 +1834,7 @@ sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, cons
                 sr_errinfo_free(&err_info);
             }
 
-            /* operational get subscriptions change */
+            /* oper get subscriptions change */
             if ((err_info = sr_shmsub_oper_poll_get_sub_change_notify_evpipe(conn, mod->ly_mod->name, xpath))) {
                 sr_errinfo_free(&err_info);
             }
@@ -1918,8 +1919,8 @@ sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, cons
 
         if (nsub->cb_err_info) {
             /* failed callback */
-            SR_LOG_WRN("Event \"operational\" with ID %" PRIu32 " failed (%s).", nsub->request_id,
-                    sr_strerror(nsub->cb_err_info->err[0].err_code));
+            SR_LOG_WRN("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " failed (%s).", xpath, sr_ev2str(SR_SUB_EV_OPER),
+                    nsub->request_id, sr_strerror(nsub->cb_err_info->err[0].err_code));
 
             /* merge the error and continue */
             sr_errinfo_merge(cb_err_info, nsub->cb_err_info);
@@ -1927,7 +1928,8 @@ sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, cons
             nsub->pending_event = 0;
             continue;
         } else {
-            SR_LOG_INF("Event \"operational\" with ID %" PRIu32 " succeeded.", nsub->request_id);
+            SR_LOG_INF("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " succeeded.", xpath, sr_ev2str(SR_SUB_EV_OPER),
+                    nsub->request_id);
         }
 
         assert(ATOMIC_LOAD_RELAXED(nsub->sub_shm->event) == SR_SUB_EV_SUCCESS);
@@ -2247,12 +2249,12 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, ui
 
         if (*cb_err_info) {
             /* failed callback or timeout */
-            SR_LOG_WRN("Event \"%s\" with ID %" PRIu32 " priority %" PRIu32 " failed (%s).", sr_ev2str(SR_SUB_EV_RPC),
-                    *request_id, cur_priority, sr_strerror((*cb_err_info)->err[0].err_code));
+            SR_LOG_WRN("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " failed (%s).", path,
+                    sr_ev2str(SR_SUB_EV_RPC), *request_id, cur_priority, sr_strerror((*cb_err_info)->err[0].err_code));
             goto cleanup_wrunlock;
         } else {
-            SR_LOG_INF("Event \"%s\" with ID %" PRIu32 " priority %" PRIu32 " succeeded.", sr_ev2str(SR_SUB_EV_RPC),
-                    *request_id, cur_priority);
+            SR_LOG_INF("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " succeeded.", path,
+                    sr_ev2str(SR_SUB_EV_RPC), *request_id, cur_priority);
         }
 
         assert(multi_sub_shm->event == SR_SUB_EV_SUCCESS);
@@ -2637,12 +2639,13 @@ sr_shmsub_change_listen_filter_is_valid(struct modsub_changesub_s *sub, const st
  * @param[in] shm_data_sub Opened sub data SHM.
  * @param[in] data Optional data to write after the structure.
  * @param[in] data_len Additional data length.
+ * @param[in] event_desc Specific event description for printing.
  * @param[in] result_str Result of processing the event in string.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t valid_subscr_count, sr_error_t err_code,
-        sr_shm_t *shm_data_sub, const char *data, uint32_t data_len, const char *result_str)
+        sr_shm_t *shm_data_sub, const char *data, uint32_t data_len, const char *event_desc, const char *result_str)
 {
     sr_error_info_t *err_info = NULL;
     sr_sub_event_t event;
@@ -2689,9 +2692,9 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
         memcpy(shm_data_sub->addr, data, data_len);
     }
 
-    SR_LOG_INF("%s processing of \"%s\" event with ID %" PRIu32 " priority %" PRIu32 " (remaining %" PRIu32 " subscribers).",
-            result_str, sr_ev2str(event), ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id),
-            ATOMIC_LOAD_RELAXED(multi_sub_shm->priority), multi_sub_shm->subscriber_count);
+    SR_LOG_INF("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " %s (remaining %" PRIu32 " subscribers).",
+            event_desc, sr_ev2str(event), ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id),
+            ATOMIC_LOAD_RELAXED(multi_sub_shm->priority), result_str, multi_sub_shm->subscriber_count);
     return NULL;
 }
 
@@ -2814,8 +2817,8 @@ sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t
         /* SUB READ/WRITE UNLOCK */
         sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, ev_sess->conn->cid, __func__);
 
-        SR_LOG_INF("%s processing of \"%s\" event with ID %" PRIu32 " priority %" PRIu32 " (after timeout or earlier error).",
-                err_code ? "Failed" : "Successful", sr_ev2str(sub_info->event), sub_info->request_id, sub_info->priority);
+        SR_LOG_INF("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " processing %s (after timeout or earlier error).",
+                module_name, sr_ev2str(sub_info->event), sub_info->request_id, sub_info->priority, err_code ? "fail" : "success");
 
         /* self-generate abort event in case the change was applied successfully */
         if ((sub_info->event == SR_SUB_EV_CHANGE) && (err_code == SR_ERR_OK) &&
@@ -2830,7 +2833,7 @@ sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t
             lyd_free_all(ev_sess->dt[ev_sess->ds].diff);
             ev_sess->dt[ev_sess->ds].diff = abort_diff;
 
-            SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %" PRIu32 " priority %" PRIu32 " (self-generated).",
+            SR_LOG_INF("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " processing (self-generated).",
                     module_name, sr_ev2str(SR_SUB_EV_ABORT), sub_info->request_id, sub_info->priority);
 
             /* call callback */
@@ -2952,7 +2955,7 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
     ev_sess->dt[ev_sess->ds].diff = diff;
 
     /* process event */
-    SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %" PRIu32 " priority %" PRIu32 " (remaining %" PRIu32 " subscribers).",
+    SR_LOG_INF("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " processing (remaining %" PRIu32 " subscribers).",
             change_subs->module_name, sr_ev2str(sub_info.event), sub_info.request_id, sub_info.priority,
             multi_sub_shm->subscriber_count);
 
@@ -2991,8 +2994,8 @@ process_event:
         if ((sub_info.event == SR_SUB_EV_UPDATE) || (sub_info.event == SR_SUB_EV_CHANGE)) {
             if (ret == SR_ERR_CALLBACK_SHELVE) {
                 /* this subscription did not process the event yet, skip it */
-                SR_LOG_INF("Shelved processing of \"%s\" event with ID %" PRIu32 " priority %" PRIu32 ".",
-                        sr_ev2str(sub_info.event), sub_info.request_id, sub_info.priority);
+                SR_LOG_INF("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " processing shelved.",
+                        change_subs->module_name, sr_ev2str(sub_info.event), sub_info.request_id, sub_info.priority);
                 continue;
             } else if (ret) {
                 /* whole event failed */
@@ -3066,7 +3069,7 @@ process_event:
 
     /* finish event */
     if ((err_info = sr_shmsub_multi_listen_write_event(multi_sub_shm, valid_subscr_count, err_code, &shm_data_sub, data,
-            data_len, err_code ? "Failed" : "Successful"))) {
+            data_len, change_subs->module_name, err_code ? "fail" : "success"))) {
         goto cleanup;
     }
 
@@ -3092,12 +3095,13 @@ cleanup:
  * @param[in] shm_data_sub Opened sub data SHM.
  * @param[in] data Optional data to write after the structure.
  * @param[in] data_len Additional data length.
+ * @param[in] event_desc Specific event description for printing.
  * @param[in] result_str Result of processing the event in string.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, sr_error_t err_code, sr_shm_t *shm_data_sub, const char *data,
-        uint32_t data_len, const char *result_str)
+        uint32_t data_len, const char *event_desc, const char *result_str)
 {
     sr_error_info_t *err_info = NULL;
     sr_sub_event_t event;
@@ -3126,8 +3130,8 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, sr_error_t err_code, sr_shm_
         memcpy(shm_data_sub->addr, data, data_len);
     }
 
-    SR_LOG_INF("%s processing of \"%s\" event with ID %" PRIu32 ".", result_str, sr_ev2str(event),
-            ATOMIC_LOAD_RELAXED(sub_shm->request_id));
+    SR_LOG_INF("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " processing %s.", event_desc, sr_ev2str(event),
+            ATOMIC_LOAD_RELAXED(sub_shm->request_id), result_str);
     return NULL;
 }
 
@@ -3161,8 +3165,8 @@ sr_shmsub_oper_get_listen_relock(sr_sub_shm_t *sub_shm, sr_lock_mode_t mode, sr_
         /* SUB READ/WRITE UNLOCK */
         sr_rwunlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, cid, __func__);
 
-        SR_LOG_INF("%s processing of \"%s\" event with ID %" PRIu32 " (after timeout).", err_code ? "Failed" : "Successful",
-                sr_ev2str(SR_SUB_EV_OPER), exp_req_id);
+        SR_LOG_INF("EV LISTEN: \"%s\" ID %" PRIu32 " processing %s (after timeout).", sr_ev2str(SR_SUB_EV_OPER),
+                exp_req_id, err_code ? "fail" : "success");
 
         /* we have completely finished processing (with no error) */
         return 1;
@@ -3242,7 +3246,8 @@ sr_shmsub_oper_get_listen_process_module_events(struct modsub_operget_s *oper_ge
         sr_rwunlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
         /* process event */
-        SR_LOG_INF("Processing \"%s\" \"operational get\" event with ID %" PRIu32 ".", oper_get_subs->module_name, request_id);
+        SR_LOG_INF("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " processing.", oper_get_sub->path, sr_ev2str(SR_SUB_EV_OPER),
+                request_id);
 
         /* call callback */
         orig_parent = parent;
@@ -3268,7 +3273,8 @@ sr_shmsub_oper_get_listen_process_module_events(struct modsub_operget_s *oper_ge
 
         if (err_code == SR_ERR_CALLBACK_SHELVE) {
             /* this subscription did not process the event yet, skip it */
-            SR_LOG_INF("Shelved processing of \"operational get\" event with ID %" PRIu32 ".", request_id);
+            SR_LOG_INF("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " processing shelved.", oper_get_sub->path,
+                    sr_ev2str(SR_SUB_EV_OPER), request_id);
             goto next_iter;
         }
 
@@ -3296,7 +3302,7 @@ sr_shmsub_oper_get_listen_process_module_events(struct modsub_operget_s *oper_ge
 
         /* finish event */
         if ((err_info = sr_shmsub_listen_write_event(sub_shm, err_code, &shm_data_sub, data, data_len,
-                err_code ? "Failed" : "Successful"))) {
+                oper_get_sub->path, err_code ? "fail" : "success"))) {
             goto error_wrunlock;
         }
 
@@ -3338,7 +3344,7 @@ error:
 }
 
 /**
- * @brief Find an operational get subscription for an operational poll subscription.
+ * @brief Find an oper get subscription for an operational poll subscription.
  *
  * @param[in] conn Connection to use.
  * @param[in] module_name Subscription module name.
@@ -3505,7 +3511,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
             cache->data = NULL;
             memset(&cache->timestamp, 0, sizeof cache->timestamp);
 
-            SR_LOG_INF("No operational get subscription \"%s\" to cache.", oper_poll_sub->path);
+            SR_LOG_INF("No oper get subscription \"%s\" to cache.", oper_poll_sub->path);
             goto finish_iter;
         }
 
@@ -3575,7 +3581,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
             *wake_up_in = invalid_in;
         }
 
-        SR_LOG_INF("Successful \"operational poll\" \"%s\" cache update.", oper_poll_sub->path);
+        SR_LOG_INF("Successful \"%s\" \"oper poll\" cache update.", oper_poll_sub->path);
 
 finish_iter:
         /* CACHE DATA WRITE UNLOCK */
@@ -3869,15 +3875,15 @@ sr_shmsub_rpc_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t mo
         /* SUB READ/WRITE UNLOCK */
         sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, ev_sess->conn->cid, __func__);
 
-        SR_LOG_INF("%s processing of \"%s\" event with ID %" PRIu32 " priority %" PRIu32 " (after timeout or earlier error).",
-                err_code ? "Failed" : "Successful", sr_ev2str(sub_info->event), sub_info->request_id, sub_info->priority);
+        SR_LOG_INF("EV LISTEN: \"%s\" ID %" PRIu32 " priority %" PRIu32 " processing %s (after timeout or earlier error).",
+                sr_ev2str(sub_info->event), sub_info->request_id, sub_info->priority, err_code ? "Failed" : "Successful");
 
         /* self-generate abort event in case the RPC was applied successfully */
         if (err_code == SR_ERR_OK) {
             /* update session */
             ev_sess->ev = SR_SUB_EV_ABORT;
 
-            SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %" PRIu32 " priority %" PRIu32 " (self-generated).",
+            SR_LOG_INF("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " processing (self-generated).",
                     path, sr_ev2str(SR_SUB_EV_ABORT), sub_info->request_id, sub_info->priority);
 
             /* call callback */
@@ -3982,7 +3988,7 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
     }
 
     /* process event */
-    SR_LOG_INF("Processing \"%s\" \"%s\" event with ID %" PRIu32 " priority %" PRIu32 " (remaining %" PRIu32 " subscribers).",
+    SR_LOG_INF("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " processing (remaining %" PRIu32 " subscribers).",
             rpc_subs->path, sr_ev2str(sub_info.event), sub_info.request_id, sub_info.priority,
             multi_sub_shm->subscriber_count);
 
@@ -4021,7 +4027,7 @@ process_event:
         if (sub_info.event == SR_SUB_EV_RPC) {
             if (ret == SR_ERR_CALLBACK_SHELVE) {
                 /* processing was shelved, so interupt the whole RPC processing in order to get correct final output */
-                SR_LOG_INF("Shelved processing of \"%s\" event with ID %" PRIu32 " priority %" PRIu32 ".",
+                SR_LOG_INF("EV LISTEN: \"%s\" ID %" PRIu32 " priority %" PRIu32 " processing shelved.",
                         sr_ev2str(ATOMIC_LOAD_RELAXED(multi_sub_shm->event)),
                         ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id), ATOMIC_LOAD_RELAXED(multi_sub_shm->priority));
                 goto cleanup;
@@ -4072,7 +4078,7 @@ process_event:
 
     /* finish event */
     if ((err_info = sr_shmsub_multi_listen_write_event(multi_sub_shm, valid_subscr_count, err_code, &shm_data_sub, data,
-            data_len, err_code ? "Failed" : "Successful"))) {
+            data_len, rpc_subs->path, err_code ? "fail" : "success"))) {
         goto cleanup;
     }
 
@@ -4184,7 +4190,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
     /* process event */
-    SR_LOG_INF("Processing \"notif\" \"%s\" event with ID %" PRIu32 ".", notif_subs->module_name, request_id);
+    SR_LOG_INF("EV LISTEN: \"%s\" \"notif\" ID %" PRIu32 " processing.", notif_subs->module_name, request_id);
 
     for (i = 0; i < notif_subs->sub_count; ++i) {
         sub = &notif_subs->subs[i];
@@ -4263,7 +4269,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
 
     /* finish event */
     if ((err_info = sr_shmsub_multi_listen_write_event(multi_sub_shm, notif_subs->sub_count, 0, &shm_data_sub, NULL, 0,
-            "Successful"))) {
+            notif_subs->module_name, "success"))) {
         goto cleanup_wrunlock;
     }
 

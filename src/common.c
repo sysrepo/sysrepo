@@ -3653,7 +3653,7 @@ sr_ev2str(sr_sub_event_t ev)
     case SR_SUB_EV_ENABLED:
         return "enabled";
     case SR_SUB_EV_OPER:
-        return "operational get";
+        return "oper get";
     case SR_SUB_EV_RPC:
         return "rpc";
     case SR_SUB_EV_NOTIF:
