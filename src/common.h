@@ -762,9 +762,8 @@ void sr_rwlock_destroy(sr_rwlock_t *rwlock);
  * @param[in] has_mutex Set if the lock mutex is already held.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *
-sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
-        sr_lock_recover_cb cb, void *cb_data, int has_mutex);
+sr_error_info_t *sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t mode, sr_cid_t cid,
+        const char *func, sr_lock_recover_cb cb, void *cb_data, int has_mutex);
 
 /**
  * @brief Lock a sysrepo RW lock. On failure, the lock is not changed in any way.
