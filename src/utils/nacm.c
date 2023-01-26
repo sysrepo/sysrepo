@@ -1228,7 +1228,7 @@ sr_nacm_collect_groups(const char *user, char ***groups, uint32_t *group_count)
 {
     sr_error_info_t *err_info = NULL;
     struct group grp, *grp_p;
-    gid_t user_gid;
+    gid_t user_gid = 0;
     char *buf = NULL;
     gid_t *gids = NULL;
     ssize_t buflen;
