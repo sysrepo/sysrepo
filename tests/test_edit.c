@@ -1378,6 +1378,35 @@ test_anyxml(void **state)
     sr_release_context(st->conn);
 }
 
+static void
+test_unknown_ns(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const struct ly_ctx *ly_ctx;
+    struct lyd_node *edit;
+    const char *str;
+    int ret;
+
+    /* custom edit with unknown namespace */
+    str =
+    "<l3 xmlns=\"urn:test\">"
+        "<k>one</k>"
+        "<ll3>3</ll3>"
+    "</l3>"
+    "<l3 xmlns=\"urn:invalid\"/>";
+    ly_ctx = sr_acquire_context(st->conn);
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_OPAQ, 0, &edit));
+    ret = sr_edit_batch(st->sess, edit, "merge");
+    lyd_free_all(edit);
+    sr_release_context(st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_LY);
+
+    /* cleanup */
+    sr_discard_changes(st->sess);
+}
+
 int
 main(void)
 {
@@ -1399,6 +1428,7 @@ main(void)
         cmocka_unit_test(test_mutiple_types),
         cmocka_unit_test(test_edit_forbid_node_types),
         cmocka_unit_test(test_anyxml),
+        cmocka_unit_test(test_unknown_ns),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
