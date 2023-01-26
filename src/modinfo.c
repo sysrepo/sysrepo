@@ -152,9 +152,8 @@ sr_modinfo_collect_edit(const struct lyd_node *edit, struct sr_mod_info_s *mod_i
     const struct lyd_node *root;
 
     /* add all the modules from the edit into our array */
-    ly_mod = NULL;
     LY_LIST_FOR(edit, root) {
-        if (lyd_owner_module(root) == ly_mod) {
+        if (lyd_owner_module(root) == NULL) {
             continue;
         } else if (!strcmp(lyd_owner_module(root)->name, "sysrepo")) {
             sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"sysrepo\" cannot be modified.");
