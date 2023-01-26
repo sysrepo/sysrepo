@@ -115,6 +115,15 @@ void sr_errinfo_new_data(sr_error_info_t **err_info, sr_error_t err_code, const 
 void sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx, const struct lyd_node *data);
 
 /**
+ * @brief Log the error(s) and warning(s) from a libyang context and add them into an error info structure.
+ *
+ * @param[in,out] err_info Existing error info.
+ * @param[in] ly_ctx libyang context to use.
+ * @param[in] data Optional data tree to look for another extension context that may have the error.
+ */
+void sr_errinfo_new_wrn_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx, const struct lyd_node *data);
+
+/**
  * @brief Log the first error from a libyang context and add it into an error info structure.
  *
  * @param[in,out] err_info Existing error info.

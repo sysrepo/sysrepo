@@ -184,8 +184,8 @@ sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_data
     uint32_t i;
 
     /* learn what nodes are needed for evaluation */
-    if (lys_find_xpath_atoms(ly_ctx, NULL, xpath, 0, &set)) {
-        sr_errinfo_new_ly(&err_info, (struct ly_ctx *)ly_ctx, NULL);
+    if (lys_find_xpath_atoms(ly_ctx, NULL, xpath, 0, &set) || ly_err_first(ly_ctx)) {
+        sr_errinfo_new_wrn_ly(&err_info, (struct ly_ctx *)ly_ctx, NULL);
         goto cleanup;
     }
 
