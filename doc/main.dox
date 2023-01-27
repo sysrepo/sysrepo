@@ -153,9 +153,11 @@ any number of processes, each with several threads.
 
 As for [subscriptions](@ref subs), they are fully synchronized but it makes no sense to process events of a single
 subscription in several threads (theoretically possible when ::SR_SUBSCR_NO_THREAD is used) because all events on
-a single subscription are handled sequentially. It is up to the application to divide its events-of-interest
-(all `*_subscribe()` calls) into individual subscription structures to allow their concurrent handling (such as reacting
-to configuration changes while notifications are being received).
+a single subscription are handled sequentially. Also, processing events of a subscription while concurrently (in
+a different thread) modifying it (adding/modifying/removing subscribed events) may result in timeouts caused by
+**deadlocks**. It is up to the application to divide its events-of-interest (all `*_subscribe()` calls) into individual
+subscription structures to allow their concurrent handling (such as reacting to configuration changes while
+notifications are being received).
 
 Every subscription can then be handled in various ways. It can be fully managed by Sysrepo and it will by default create
 a separate thread that will wait for events on the subscription and process them. But, if your application has a custom

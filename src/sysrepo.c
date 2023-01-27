@@ -825,7 +825,7 @@ sr_session_unsubscribe(sr_session_ctx_t *session)
     }
 
     while (session->subscription_count) {
-        if ((err_info = sr_subscr_del(session->subscriptions[0], 0, session, SR_LOCK_NONE))) {
+        if ((err_info = sr_subscr_session_del(session->subscriptions[0], session, SR_LOCK_NONE))) {
             return sr_api_ret(NULL, err_info);
         }
     }
@@ -4509,7 +4509,7 @@ sr_unsubscribe_sub(sr_subscription_ctx_t *subscription, uint32_t sub_id)
         return sr_api_ret(NULL, err_info);
     }
 
-    err_info = sr_subscr_del(subscription, sub_id, NULL, SR_LOCK_NONE);
+    err_info = sr_subscr_del(subscription, sub_id, SR_LOCK_NONE);
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(subscription->conn, SR_LOCK_READ, 0, __func__);
@@ -4615,8 +4615,8 @@ _sr_unsubscribe(sr_subscription_ctx_t *subscription)
         return err_info;
     }
 
-    /* delete all subscriptions which also removes this subscription from all the sessions */
-    err_info = sr_subscr_del(subscription, 0, NULL, SR_LOCK_NONE);
+    /* delete a specific subscription or delete all subscriptions which also removes this subscription from all the sessions */
+    err_info = sr_subscr_del(subscription, 0, SR_LOCK_NONE);
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(subscription->conn, SR_LOCK_READ, 0, __func__);
@@ -4935,8 +4935,8 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     }
 
     /* add module subscription into ext SHM and create separate specific SHM segment */
-    if ((err_info = sr_shmext_change_sub_add(conn, shm_mod, session->ds, sub_id, xpath, priority, sub_opts,
-            (*subscription)->evpipe_num, SR_LOCK_WRITE))) {
+    if ((err_info = sr_shmext_change_sub_add(conn, shm_mod, SR_LOCK_WRITE, session->ds, sub_id, xpath, priority,
+            sub_opts, (*subscription)->evpipe_num))) {
         goto cleanup_subs_change_unlock;
     }
 
@@ -4961,7 +4961,7 @@ error2:
     sr_subscr_change_sub_del(*subscription, sub_id, SR_LOCK_WRITE);
 
 error1:
-    if ((tmp_err = sr_shmext_change_sub_del(conn, shm_mod, session->ds, sub_id, SR_LOCK_WRITE))) {
+    if ((tmp_err = sr_shmext_change_sub_del(conn, shm_mod, SR_LOCK_WRITE, session->ds, sub_id))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
@@ -5558,12 +5558,11 @@ error2:
 error1:
     if (is_ext) {
         if ((tmp_err = sr_shmext_rpc_sub_del(conn, &shm_mod->rpc_ext_lock, &shm_mod->rpc_ext_subs,
-                &shm_mod->rpc_ext_sub_count, path, sub_id, SR_LOCK_NONE))) {
+                &shm_mod->rpc_ext_sub_count, path, sub_id))) {
             sr_errinfo_merge(&err_info, tmp_err);
         }
     } else {
-        if ((tmp_err = sr_shmext_rpc_sub_del(conn, &shm_rpc->lock, &shm_rpc->subs, &shm_rpc->sub_count, path, sub_id,
-                SR_LOCK_NONE))) {
+        if ((tmp_err = sr_shmext_rpc_sub_del(conn, &shm_rpc->lock, &shm_rpc->subs, &shm_rpc->sub_count, path, sub_id))) {
             sr_errinfo_merge(&err_info, tmp_err);
         }
     }
@@ -6126,7 +6125,7 @@ error2:
     sr_subscr_notif_sub_del(*subscription, sub_id, SR_LOCK_WRITE);
 
 error1:
-    if ((tmp_err = sr_shmext_notif_sub_del(conn, shm_mod, sub_id, SR_LOCK_NONE))) {
+    if ((tmp_err = sr_shmext_notif_sub_del(conn, shm_mod, sub_id))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
@@ -6611,7 +6610,7 @@ error2:
     sr_subscr_oper_get_sub_del(*subscription, sub_id, SR_LOCK_WRITE);
 
 error1:
-    if ((tmp_err = sr_shmext_oper_get_sub_del(conn, shm_mod, sub_id, SR_LOCK_NONE))) {
+    if ((tmp_err = sr_shmext_oper_get_sub_del(conn, shm_mod, sub_id))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
@@ -6732,7 +6731,7 @@ error3:
     sr_subscr_oper_poll_sub_del(*subscription, sub_id, SR_LOCK_WRITE);
 
 error2:
-    if ((tmp_err = sr_shmext_oper_poll_sub_del(conn, shm_mod, sub_id, SR_LOCK_NONE))) {
+    if ((tmp_err = sr_shmext_oper_poll_sub_del(conn, shm_mod, sub_id))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 

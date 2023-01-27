@@ -64,17 +64,17 @@ void sr_shmext_print(sr_mod_shm_t *mod_shm, sr_shm_t *shm_ext);
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
+ * @param[in] has_lock Whether CHANGE SUB lock is already held.
  * @param[in] ds Datastore.
  * @param[in] sub_id Unique sub ID.
  * @param[in] xpath Subscription XPath.
  * @param[in] priority Subscription priority.
  * @param[in] sub_opts Subscription options.
  * @param[in] evpipe_num Subscription event pipe number.
- * @param[in] has_lock Whether CHANGE SUB lock is already held.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_change_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, uint32_t sub_id,
-        const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num, sr_lock_mode_t has_lock);
+sr_error_info_t *sr_shmext_change_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t has_lock,
+        sr_datastore_t ds, uint32_t sub_id, const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num);
 
 /**
  * @brief Modify existing main SHM module change subscription.
@@ -95,13 +95,13 @@ sr_error_info_t *sr_shmext_change_sub_modify(sr_conn_ctx_t *conn, sr_mod_t *shm_
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
+ * @param[in] has_lock Whether CHANGE SUB lock is already held.
  * @param[in] ds Datastore.
  * @param[in] sub_id Unique sub ID.
- * @param[in] has_lock Whether CHANGE SUB lock is already held.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_change_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, uint32_t sub_id,
-        sr_lock_mode_t has_lock);
+sr_error_info_t *sr_shmext_change_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t has_lock,
+        sr_datastore_t ds, uint32_t sub_id);
 
 /**
  * @brief Remove main SHM module change subscription with param-based cleanup.
@@ -141,10 +141,9 @@ sr_error_info_t *sr_shmext_oper_get_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_m
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
  * @param[in] sub_id Unique sub ID.
- * @param[in] has_lock Whether OPER GET SUB lock is already held.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_oper_get_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, sr_lock_mode_t has_lock);
+sr_error_info_t *sr_shmext_oper_get_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id);
 
 /**
  * @brief Remove main SHM module operational get subscription with param-based cleanup.
@@ -182,10 +181,9 @@ sr_error_info_t *sr_shmext_oper_poll_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
  * @param[in] sub_id Unique sub ID.
- * @param[in] has_lock Whether OPER POLL SUB lock is already held.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_oper_poll_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, sr_lock_mode_t has_lock);
+sr_error_info_t *sr_shmext_oper_poll_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id);
 
 /**
  * @brief Remove main SHM module operational poll subscription with param-based cleanup.
@@ -222,10 +220,9 @@ sr_error_info_t *sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod,
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
  * @param[in] sub_id Unique sub ID.
- * @param[in] has_lock Whether NOTIF SUB lock is already held.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_notif_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, sr_lock_mode_t has_lock);
+sr_error_info_t *sr_shmext_notif_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id);
 
 /**
  * @brief Remove main SHM module notification subscription with param-based cleanup.
@@ -269,11 +266,10 @@ sr_error_info_t *sr_shmext_rpc_sub_add(sr_conn_ctx_t *conn, sr_rwlock_t *sub_loc
  * @param[in,out] sub_count Ext SHM RPC sub count.
  * @param[in] path RPC path.
  * @param[in] sub_id Unique sub ID.
- * @param[in] has_lock Whether RPC SUB lock is already held.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmext_rpc_sub_del(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, uint32_t *sub_count,
-        const char *path, uint32_t sub_id, sr_lock_mode_t has_lock);
+        const char *path, uint32_t sub_id);
 
 /**
  * @brief Remove main SHM module RPC/action subscription with param-based cleanup.
