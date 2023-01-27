@@ -4,8 +4,8 @@
  * @brief main SHM routines modifying module information
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -1631,5 +1631,48 @@ sr_shmmod_copy_startup_to_running(sr_conn_ctx_t *conn)
     }
 
     SR_LOG_INF("Datastore copied from <startup> to <running>.");
+    return NULL;
+}
+
+sr_error_info_t *
+sr_shmmod_change_prio(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore_t ds, uint32_t prio,
+        uint32_t *prio_p)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_t *shm_mod;
+    const struct srplg_ds_s *ds_plg;
+    struct sr_mod_lock_s *shm_lock;
+
+    assert((!prio && prio_p) || !prio_p);
+
+    /* find the module in SHM */
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
+    SR_CHECK_INT_RET(!shm_mod, err_info);
+
+    /* get DS plugin */
+    if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_plg))) {
+        return err_info;
+    }
+
+    /* use read lock for getting, write lock for setting */
+    shm_lock = &shm_mod->data_lock_info[ds];
+
+    /* SHM MOD LOCK */
+    if ((err_info = sr_shmmod_lock(ly_mod, ds, shm_lock, SR_CHANGE_CB_TIMEOUT, prio_p ? SR_LOCK_READ : SR_LOCK_WRITE,
+            SR_CHANGE_CB_TIMEOUT, conn->cid, 0, ds_plg, 0))) {
+        return err_info;
+    }
+
+    if (prio_p) {
+        /* get the priority */
+        *prio_p = shm_lock->prio;
+    } else {
+        /* set the priority */
+        shm_lock->prio = prio;
+    }
+
+    /* SHM MOD UNLOCK */
+    sr_rwunlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT, prio_p ? SR_LOCK_READ : SR_LOCK_WRITE, conn->cid, __func__);
+
     return NULL;
 }

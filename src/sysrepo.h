@@ -1264,8 +1264,47 @@ int sr_unsubscribe(sr_subscription_ctx_t *subscription);
  */
 
 /**
- * @brief Subscribe for changes made in the specified module. If there are changes made in several
- * modules, the module order is determined by the **order in the changes** (it is kept).
+ * @brief Change the global priority of modules being notified about their changes. The default priority of every
+ * module is 0 and modules with the same priority have their callbacks notified **simultaneously**.
+ *
+ * Example callback order for modules A, B, C with A having callbacks with priority 10, 5, and 0, module B with
+ * callbacks 5, 4, and 3, and module C with 1, and 0. Simultaneously notified:
+ * ```
+ * A10, B5, C1;
+ * A5, B4, C0;
+ * A0, B3;
+ * ```
+ * As soon as a callback fails, its batch of callbacks is the last to be notified. Also note that the callbacks may
+ * not actually be executed concurrently in case they are handled by a single subscription (thread).
+ *
+ * Required WRITE access.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_name Name of the module whose order to change.
+ * @param[in] ds Affected datastore.
+ * @param[in] priority New priority of the module, higher first.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_module_change_set_order(sr_conn_ctx_t *conn, const char *module_name, sr_datastore_t ds, uint32_t priority);
+
+/**
+ * @brief Get the current global priority of change subscriptions of a module.
+ *
+ * Required READ access.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] module_name Name of the module whose order to change.
+ * @param[in] ds Affected datastore.
+ * @param[out] priority Priority of the module.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_module_change_get_order(sr_conn_ctx_t *conn, const char *module_name, sr_datastore_t ds, uint32_t *priority);
+
+/**
+ * @brief Subscribe for changes made in the specified module.
+ *
+ * The order of callbacks of a **single** module is determined by their @p priority. The order of **modules**
+ * being notified is determined by their priority which can be adjusted by ::sr_module_change_order().
  *
  * Required WRITE access. If ::SR_SUBSCR_PASSIVE is set, required READ access.
  *

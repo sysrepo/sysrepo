@@ -5749,9 +5749,6 @@ test_done_timeout(void **state)
     pthread_join(tid[1], NULL);
 }
 
-#if 0
-/* currently not supported */
-
 /* TEST */
 static int
 module_change_order_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
@@ -5778,12 +5775,15 @@ module_change_order_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *m
         assert_int_equal(event, SR_EV_CHANGE);
         break;
     case 2:
+    case 7:
+    case 11:
+        assert_string_equal(module_name, "test");
+        assert_int_equal(event, SR_EV_DONE);
+        break;
     case 3:
     case 6:
-    case 7:
     case 10:
-    case 11:
-        /* we cannot rely on any order for DONE event */
+        assert_string_equal(module_name, "ietf-interfaces");
         assert_int_equal(event, SR_EV_DONE);
         break;
     default:
@@ -5804,7 +5804,11 @@ apply_change_order_thread(void *arg)
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* edit will be created in this order */
+    /* order: test, ietf-interfaces */
+    sr_module_change_set_order(st->conn, "test", SR_DS_RUNNING, 100);
+    sr_module_change_set_order(st->conn, "ietf-interfaces", SR_DS_RUNNING, 0);
+
+    /* change both modules */
     ret = sr_set_item_str(sess, "/test:l1[k='one']/v", "30", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
@@ -5819,10 +5823,14 @@ apply_change_order_thread(void *arg)
 
     pthread_barrier_wait(&st->barrier);
 
-    /* create edit in different order */
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
+    /* order: ietf-interfaces, test */
+    sr_module_change_set_order(st->conn, "test", SR_DS_RUNNING, 0);
+    sr_module_change_set_order(st->conn, "ietf-interfaces", SR_DS_RUNNING, 50);
+
+    /* change both modules */
     ret = sr_set_item_str(sess, "/test:l1[k='two']/v", "30", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform the second change */
@@ -5832,9 +5840,9 @@ apply_change_order_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* cleanup edit */
-    ret = sr_delete_item(sess, "/ietf-interfaces:interfaces", 0);
-    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(sess, "/test:l1", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(sess, "/ietf-interfaces:interfaces", 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform the third change */
@@ -5844,6 +5852,8 @@ apply_change_order_thread(void *arg)
     /* signal that we have finished applying changes */
     pthread_barrier_wait(&st->barrier);
 
+    sr_module_change_set_order(st->conn, "test", SR_DS_RUNNING, 0);
+    sr_module_change_set_order(st->conn, "ietf-interfaces", SR_DS_RUNNING, 0);
     sr_session_stop(sess);
     return NULL;
 }
@@ -5854,7 +5864,7 @@ subscribe_change_order_thread(void *arg)
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr = NULL;
-    int count, ret;
+    int ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -5862,39 +5872,23 @@ subscribe_change_order_thread(void *arg)
     /* make subscription to 2 different modules */
     ret = sr_module_change_subscribe(sess, "test", NULL, module_change_order_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_change_order_cb, st, 0, SR_SUBSCR_CTX_REUSE, &subscr);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_change_order_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* signal that subscription was created */
     pthread_barrier_wait(&st->barrier);
 
-    count = 0;
-    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 4) && (count < 1500)) {
-        usleep(10000);
-        ++count;
-    }
+    /* wait for the first edit */
+    pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
+    /* wait for the second edit */
     pthread_barrier_wait(&st->barrier);
-
-    count = 0;
-    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 8) && (count < 1500)) {
-        usleep(10000);
-        ++count;
-    }
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 8);
 
+    /* wait for the third edit */
     pthread_barrier_wait(&st->barrier);
-
-    count = 0;
-    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 12) && (count < 1500)) {
-        usleep(10000);
-        ++count;
-    }
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 12);
-
-    /* wait for the other thread to finish */
-    pthread_barrier_wait(&st->barrier);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);
@@ -5912,7 +5906,6 @@ test_change_order(void **state)
     pthread_join(tid[0], NULL);
     pthread_join(tid[1], NULL);
 }
-#endif
 
 /* TEST */
 static int
@@ -6970,7 +6963,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_change_unlocked, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_timeout, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_done_timeout, setup_f, teardown_f),
-        // cmocka_unit_test_setup_teardown(test_change_order, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_change_order, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_userord, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_enabled, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_schema_mount, setup_f, teardown_f),

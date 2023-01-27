@@ -71,6 +71,7 @@ struct sr_shmsub_many_info_change_s {
     sr_error_info_t *cb_err_info;
 
     struct sr_mod_info_mod_s *mod;
+    uint32_t mod_priority;
     uint32_t cur_priority;
     int change_error;
     uint32_t err_priority;
@@ -1358,12 +1359,58 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Set module priority of all notify_subs modules. Priorities are consolidated to always have
+ * a difference of 1 with the lowest priority being 0.
+ *
+ * @param[in] nsubs Array of notify_subs.
+ * @param[in] ncount Count of @p nsubs.
+ * @param[in] ds Datastore.
+ * @param[out] max_mpriority Maxmimum module priority assigned.
+ */
+static void
+sr_shmsub_change_notify_nsubs_set_mod_prio(struct sr_shmsub_many_info_change_s *nsubs, uint32_t ncount,
+        sr_datastore_t ds, uint32_t *max_mpriority)
+{
+    uint32_t i, cur_mprio = 0, min_mprio, nsubs_left = ncount;
+
+    for (i = 0; i < ncount; ++i) {
+        /* assign all module priorities */
+        nsubs[i].mod_priority = nsubs[i].mod->shm_mod->data_lock_info[ds].prio;
+    }
+
+    do {
+        /* find the next lowest priority */
+        min_mprio = UINT32_MAX;
+        for (i = 0; i < ncount; ++i) {
+            if (nsubs[i].mod_priority < cur_mprio) {
+                continue;
+            }
+            if (nsubs[i].mod_priority < min_mprio) {
+                min_mprio = nsubs[i].mod_priority;
+            }
+        }
+
+        /* consolidate the priority of all modules with this priority */
+        for (i = 0; i < ncount; ++i) {
+            if (nsubs[i].mod_priority == min_mprio) {
+                nsubs[i].mod_priority = cur_mprio;
+                --nsubs_left;
+            }
+        }
+
+        ++cur_mprio;
+    } while (nsubs_left);
+
+    *max_mpriority = cur_mprio - 1;
+}
+
 sr_error_info_t *
 sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_name, const void *orig_data,
         uint32_t timeout_ms, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t notify_count = 0, max_priority, diff_lyb_len, *aux = NULL, i, subscriber_count;
+    uint32_t notify_count = 0, max_priority, cur_mpriority, diff_lyb_len, *aux = NULL, i, subscriber_count;
     struct sr_shmsub_many_info_change_s *notify_subs = NULL, *nsub;
     struct sr_mod_info_mod_s *mod = NULL;
     char *diff_lyb = NULL;
@@ -1407,6 +1454,9 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
         goto cleanup;
     }
 
+    /* assign consolidated module priorities */
+    sr_shmsub_change_notify_nsubs_set_mod_prio(notify_subs, notify_count, mod_info->ds, &cur_mpriority);
+
     /* prepare the diff to write into subscription SHM */
     if ((err_info = sr_lyd_print_lyb(mod_info->diff, &diff_lyb, &diff_lyb_len))) {
         goto cleanup;
@@ -1416,6 +1466,10 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
         pending_events = 0;
         for (i = 0; i < notify_count; ++i) {
             nsub = &notify_subs[i];
+            if (nsub->mod_priority != cur_mpriority) {
+                /* different module priority */
+                continue;
+            }
 
             /* get next subscriber(s) priority and subscriber count */
             if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, nsub->mod, mod_info->ds,
@@ -1465,8 +1519,13 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
             }
         }
         if (!pending_events) {
-            /* all events generated and processed */
-            break;
+            /* all module events generated and processed, next module priority, if any */
+            if (!cur_mpriority) {
+                break;
+            }
+
+            --cur_mpriority;
+            continue;
         }
 
         /* wait until the events are processed */
@@ -1529,7 +1588,7 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod = NULL;
-    uint32_t notify_count = 0, max_priority, diff_lyb_len, *aux = NULL, i, subscriber_count;
+    uint32_t notify_count = 0, max_priority, cur_mpriority, diff_lyb_len, *aux = NULL, i, subscriber_count;
     struct sr_shmsub_many_info_change_s *notify_subs = NULL, *nsub;
     char *diff_lyb = NULL;
     int opts, pending_events;
@@ -1565,6 +1624,9 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
         goto cleanup;
     }
 
+    /* assign consolidated module priorities */
+    sr_shmsub_change_notify_nsubs_set_mod_prio(notify_subs, notify_count, mod_info->ds, &cur_mpriority);
+
     /* prepare the diff to write into subscription SHM */
     if (!diff_lyb && (err_info = sr_lyd_print_lyb(mod_info->diff, &diff_lyb, &diff_lyb_len))) {
         goto cleanup;
@@ -1574,6 +1636,10 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
         pending_events = 0;
         for (i = 0; i < notify_count; ++i) {
             nsub = &notify_subs[i];
+            if (nsub->mod_priority != cur_mpriority) {
+                /* different module priority */
+                continue;
+            }
 
             /* get next subscriber(s) priority and subscriber count */
             if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, nsub->mod, mod_info->ds,
@@ -1622,8 +1688,13 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
             }
         }
         if (!pending_events) {
-            /* all events generated and processed */
-            break;
+            /* all module events generated and processed, next module priority, if any */
+            if (!cur_mpriority) {
+                break;
+            }
+
+            --cur_mpriority;
+            continue;
         }
 
         /* wait until the events are processed */
@@ -1679,7 +1750,7 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
     sr_multi_sub_shm_t *multi_sub_shm;
     struct lyd_node *abort_diff;
     struct sr_mod_info_mod_s *mod = NULL;
-    uint32_t notify_count = 0, max_priority, subscriber_count, diff_lyb_len, *aux = NULL, i;
+    uint32_t notify_count = 0, max_priority, cur_mpriority, subscriber_count, diff_lyb_len, *aux = NULL, i;
     struct sr_shmsub_many_info_change_s *notify_subs = NULL, *nsub;
     char *diff_lyb = NULL;
     int last_priority = 0, pending_events;
@@ -1755,6 +1826,9 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
         nsub->lock = SR_LOCK_NONE;
     }
 
+    /* assign consolidated module priorities */
+    sr_shmsub_change_notify_nsubs_set_mod_prio(notify_subs, notify_count, mod_info->ds, &cur_mpriority);
+
     /* first reverse change diff for abort */
     if (lyd_diff_reverse_all(mod_info->diff, &abort_diff)) {
         sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
@@ -1772,6 +1846,10 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
         pending_events = 0;
         for (i = 0; i < notify_count; ++i) {
             nsub = &notify_subs[i];
+            if (nsub->mod_priority != cur_mpriority) {
+                /* different module priority */
+                continue;
+            }
 
             /* get next subscriber(s) priority and subscriber count */
             if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, nsub->mod, mod_info->ds,
@@ -1822,8 +1900,13 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
             }
         }
         if (!pending_events) {
-            /* all events generated and processed */
-            break;
+            /* all module events generated and processed, next module priority, if any */
+            if (!cur_mpriority) {
+                break;
+            }
+
+            --cur_mpriority;
+            continue;
         }
 
         /* wait until the events are processed */

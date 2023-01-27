@@ -4,8 +4,8 @@
  * @brief sysrepo API routines
  *
  * @copyright
- * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -4672,6 +4672,58 @@ sr_unsubscribe(sr_subscription_ctx_t *subscription)
     }
 
     err_info = _sr_unsubscribe(subscription);
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_module_change_set_order(sr_conn_ctx_t *conn, const char *module_name, sr_datastore_t ds, uint32_t priority)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+
+    SR_CHECK_ARG_APIRET(!conn || !module_name, NULL, err_info);
+
+    /* check module existence */
+    if (!(ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name))) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
+        goto cleanup;
+    }
+
+    /* check write perm */
+    if ((err_info = sr_perm_check(conn, ly_mod, ds, 1, NULL))) {
+        goto cleanup;
+    }
+
+    /* update its priority (order) */
+    err_info = sr_shmmod_change_prio(conn, ly_mod, ds, priority, NULL);
+
+cleanup:
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_module_change_get_order(sr_conn_ctx_t *conn, const char *module_name, sr_datastore_t ds, uint32_t *priority)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+
+    SR_CHECK_ARG_APIRET(!conn || !module_name || !priority, NULL, err_info);
+
+    /* check module existence */
+    if (!(ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name))) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
+        goto cleanup;
+    }
+
+    /* check read perm */
+    if ((err_info = sr_perm_check(conn, ly_mod, ds, 0, NULL))) {
+        goto cleanup;
+    }
+
+    /* read its priority (order) */
+    err_info = sr_shmmod_change_prio(conn, ly_mod, ds, 0, priority);
+
+cleanup:
     return sr_api_ret(NULL, err_info);
 }
 

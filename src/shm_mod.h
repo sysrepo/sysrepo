@@ -238,4 +238,17 @@ sr_error_info_t *sr_shmmod_update_replay_support(sr_mod_shm_t *mod_shm, const st
  */
 sr_error_info_t *sr_shmmod_copy_startup_to_running(sr_conn_ctx_t *conn);
 
+/**
+ * @brief Set/get change priority of a module.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] ly_mod libyang module.
+ * @param[in] ds Datastore.
+ * @param[in] prio Priority to set, leave 0 on get.
+ * @param[in,out] prio_p Got priority, leave NULL on set.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_change_prio(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore_t ds,
+        uint32_t prio, uint32_t *prio_p);
+
 #endif /* _SHM_MOD_H */
