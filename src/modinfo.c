@@ -193,9 +193,11 @@ sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_data
     prev_ly_mod = NULL;
     for (i = 0; i < set->count; ++i) {
         snode = set->snodes[i];
-
-        /* skip uninteresting nodes */
         if ((snode->nodetype & (LYS_RPC | LYS_NOTIF)) || ((snode->flags & LYS_CONFIG_R) && SR_IS_CONVENTIONAL_DS(ds))) {
+            /* skip uninteresting nodes */
+            continue;
+        } else if (snode->module->ctx != ly_ctx) {
+            /* skip mounted schema nodes */
             continue;
         }
 
