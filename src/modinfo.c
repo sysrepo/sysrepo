@@ -957,7 +957,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
 
         /* add any missing NP containers in the data */
         if (lyd_new_implicit_module(data, mod->ly_mod, LYD_IMPLICIT_NO_DEFAULTS, NULL)) {
-            sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx, NULL);
+            sr_errinfo_new_ly(&err_info, mod->ly_mod->ctx, *data);
             return err_info;
         }
     }
