@@ -43,7 +43,7 @@ sr_cond_init(sr_cond_t *cond, int UNUSED(shared), int UNUSED(robust))
 }
 
 void
-sr_cond_destroy(sr_cond_t * UNUSED(cond))
+sr_cond_destroy(sr_cond_t *UNUSED(cond))
 {
 }
 
@@ -52,13 +52,24 @@ sr_cond_destroy(sr_cond_t * UNUSED(cond))
  *
  * @param[in] uaddr Futex address.
  * @param[in] expected Expected value in the futex.
+ * @param[in] clockid ID of the clock to use.
  * @param[in] timeout Absolute real timeout for waiting, infinite if NULL.
  * @return 0 on success, -1 on error.
  */
 static int
-sys_futex_wait(uint32_t *uaddr, uint32_t expected, const struct timespec *timeout)
+sys_futex_wait(uint32_t *uaddr, uint32_t expected, clockid_t clockid, const struct timespec *timeout)
 {
-    return syscall(SYS_futex, uaddr, FUTEX_WAIT_BITSET | FUTEX_CLOCK_REALTIME, expected, timeout, NULL, FUTEX_BITSET_MATCH_ANY);
+    int futex_op;
+
+    if (clockid == CLOCK_MONOTONIC) {
+        futex_op = FUTEX_WAIT_BITSET;
+    } else if (clockid == CLOCK_REALTIME) {
+        futex_op = FUTEX_WAIT_BITSET | FUTEX_CLOCK_REALTIME;
+    } else {
+        return EINVAL;
+    }
+
+    return syscall(SYS_futex, uaddr, futex_op, expected, timeout, NULL, FUTEX_BITSET_MATCH_ANY);
 }
 
 /**
@@ -105,7 +116,7 @@ sr_cond_mutex_lock(pthread_mutex_t *mutex, sr_cond_t *cond)
 }
 
 static int
-sr_cond_wait_(sr_cond_t *cond, pthread_mutex_t *mutex, struct timespec *timeout_abs)
+sr_cond_wait_(sr_cond_t *cond, pthread_mutex_t *mutex, clockid_t clockid, struct timespec *timeout_abs)
 {
     int r, rf;
     uint32_t last_val;
@@ -119,7 +130,7 @@ sr_cond_wait_(sr_cond_t *cond, pthread_mutex_t *mutex, struct timespec *timeout_
     /* wait, ignore EINTR */
     do {
         errno = 0;
-        rf = sys_futex_wait(&cond->futex, last_val, timeout_abs);
+        rf = sys_futex_wait(&cond->futex, last_val, clockid, timeout_abs);
     } while ((rf == -1) && (errno == EINTR));
 
     /* MUTEX LOCK */
@@ -138,13 +149,13 @@ sr_cond_wait_(sr_cond_t *cond, pthread_mutex_t *mutex, struct timespec *timeout_
 int
 sr_cond_wait(sr_cond_t *cond, pthread_mutex_t *mutex)
 {
-    return sr_cond_wait_(cond, mutex, NULL);
+    return sr_cond_wait_(cond, mutex, 0, NULL);
 }
 
 int
-sr_cond_timedwait(sr_cond_t *cond, pthread_mutex_t *mutex, struct timespec *timeout_abs)
+sr_cond_clockwait(sr_cond_t *cond, pthread_mutex_t *mutex, clockid_t clockid, struct timespec *timeout_abs)
 {
-    return sr_cond_wait_(cond, mutex, timeout_abs);
+    return sr_cond_wait_(cond, mutex, clockid, timeout_abs);
 }
 
 void

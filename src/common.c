@@ -1425,7 +1425,22 @@ cleanup:
 }
 
 void
-sr_time_get(struct timespec *ts, uint32_t add_ms)
+sr_timeouttime_get(struct timespec *ts, uint32_t add_ms)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if (clock_gettime(COMPAT_CLOCK_ID, ts) == -1) {
+        SR_ERRINFO_SYSERRNO(&err_info, "clock_gettime");
+        /* will not happen anyway */
+        sr_errinfo_free(&err_info);
+        return;
+    }
+
+    *ts = sr_time_ts_add(ts, add_ms);
+}
+
+void
+sr_realtime_get(struct timespec *ts)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -1435,8 +1450,6 @@ sr_time_get(struct timespec *ts, uint32_t add_ms)
         sr_errinfo_free(&err_info);
         return;
     }
-
-    *ts = sr_time_ts_add(ts, add_ms);
 }
 
 struct timespec
@@ -2208,8 +2221,8 @@ sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *func, sr_lock_recove
     if (timeout_ms == -1) {
         ret = pthread_mutex_lock(lock);
     } else {
-        sr_time_get(&abs_ts, (uint32_t)timeout_ms);
-        ret = pthread_mutex_timedlock(lock, &abs_ts);
+        sr_timeouttime_get(&abs_ts, (uint32_t)timeout_ms);
+        ret = pthread_mutex_clocklock(lock, COMPAT_CLOCK_ID, &abs_ts);
     }
 
     if (ret == EOWNERDEAD) {
@@ -2475,7 +2488,7 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
 
     if (!has_mutex) {
         /* MUTEX LOCK */
-        ret = pthread_mutex_timedlock(&rwlock->mutex, timeout_abs);
+        ret = pthread_mutex_clocklock(&rwlock->mutex, COMPAT_CLOCK_ID, timeout_abs);
     }
 
     if (ret == EOWNERDEAD) {
@@ -2501,7 +2514,7 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
         ret = 0;
         while (!ret && (rwlock->readers[0] || rwlock->writer)) {
             /* COND WAIT */
-            ret = sr_cond_timedwait(&rwlock->cond, &rwlock->mutex, timeout_abs);
+            ret = sr_cond_clockwait(&rwlock->cond, &rwlock->mutex, COMPAT_CLOCK_ID, timeout_abs);
         }
         if (ret == ETIMEDOUT) {
             /* recover the lock again, the owner may have died while processing */
@@ -2539,7 +2552,7 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
             }
 
             /* COND WAIT */
-            ret = sr_cond_timedwait(&rwlock->cond, &rwlock->mutex, timeout_abs);
+            ret = sr_cond_clockwait(&rwlock->cond, &rwlock->mutex, COMPAT_CLOCK_ID, timeout_abs);
         }
         if (ret == ETIMEDOUT) {
             /* recover the lock again, the owner may have died while processing */
@@ -2577,7 +2590,7 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
         ret = 0;
         while (!ret && (rwlock->upgr || rwlock->writer)) {
             /* COND WAIT */
-            ret = sr_cond_timedwait(&rwlock->cond, &rwlock->mutex, timeout_abs);
+            ret = sr_cond_clockwait(&rwlock->cond, &rwlock->mutex, COMPAT_CLOCK_ID, timeout_abs);
         }
         if (ret == ETIMEDOUT) {
             /* recover the lock again, the owner may have died while processing */
@@ -2611,7 +2624,7 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
         ret = 0;
         while (!ret && rwlock->writer) {
             /* COND WAIT */
-            ret = sr_cond_timedwait(&rwlock->cond, &rwlock->mutex, timeout_abs);
+            ret = sr_cond_clockwait(&rwlock->cond, &rwlock->mutex, COMPAT_CLOCK_ID, timeout_abs);
         }
         if (ret == ETIMEDOUT) {
             /* recover the lock again, the owner may have died while processing */
@@ -2650,7 +2663,7 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid
 {
     struct timespec timeout_abs;
 
-    sr_time_get(&timeout_abs, timeout_ms);
+    sr_timeouttime_get(&timeout_abs, timeout_ms);
 
     return sr_sub_rwlock(rwlock, &timeout_abs, mode, cid, func, cb, cb_data, 0);
 }
@@ -2670,10 +2683,10 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
         /*
          * upgrade from upgradeable read-lock to write-lock
          */
-        sr_time_get(&timeout_abs, timeout_ms);
+        sr_timeouttime_get(&timeout_abs, timeout_ms);
 
         /* MUTEX LOCK */
-        ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_abs);
+        ret = pthread_mutex_clocklock(&rwlock->mutex, COMPAT_CLOCK_ID, &timeout_abs);
         if (ret == EOWNERDEAD) {
             /* make it consistent */
             ret = pthread_mutex_consistent(&rwlock->mutex);
@@ -2698,7 +2711,7 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
         ret = 0;
         while (!ret && (rwlock->readers[1] || (rwlock->read_count[0] > 1) || rwlock->writer)) {
             /* COND WAIT */
-            ret = sr_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_abs);
+            ret = sr_cond_clockwait(&rwlock->cond, &rwlock->mutex, COMPAT_CLOCK_ID, &timeout_abs);
         }
         if (ret == ETIMEDOUT) {
             sr_rwlock_recover(rwlock, func, cb, cb_data);
@@ -2727,10 +2740,10 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
         /*
          * upgrade from upgradeable read-lock to write-lock, urged
          */
-        sr_time_get(&timeout_abs, timeout_ms);
+        sr_timeouttime_get(&timeout_abs, timeout_ms);
 
         /* MUTEX LOCK */
-        ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_abs);
+        ret = pthread_mutex_clocklock(&rwlock->mutex, COMPAT_CLOCK_ID, &timeout_abs);
         if (ret == EOWNERDEAD) {
             /* make it consistent */
             ret = pthread_mutex_consistent(&rwlock->mutex);
@@ -2765,7 +2778,7 @@ sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
             }
 
             /* COND WAIT */
-            ret = sr_cond_timedwait(&rwlock->cond, &rwlock->mutex, &timeout_abs);
+            ret = sr_cond_clockwait(&rwlock->cond, &rwlock->mutex, COMPAT_CLOCK_ID, &timeout_abs);
         }
         if (ret == ETIMEDOUT) {
             sr_rwlock_recover(rwlock, func, cb, cb_data);
@@ -2841,10 +2854,10 @@ sr_rwunlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t c
         /* remove the writer flag */
         rwlock->writer = 0;
     } else {
-        sr_time_get(&timeout_ts, timeout_ms);
+        sr_timeouttime_get(&timeout_ts, timeout_ms);
 
         /* MUTEX LOCK */
-        ret = pthread_mutex_timedlock(&rwlock->mutex, &timeout_ts);
+        ret = pthread_mutex_clocklock(&rwlock->mutex, COMPAT_CLOCK_ID, &timeout_ts);
         if (ret == EOWNERDEAD) {
             /* make it consistent */
             ret = pthread_mutex_consistent(&rwlock->mutex);

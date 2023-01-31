@@ -705,10 +705,10 @@ sr_session_notif_buf_stop(sr_session_ctx_t *session)
     /* signal the thread to terminate */
     ATOMIC_STORE_RELAXED(session->notif_buf.thread_running, 0);
 
-    sr_time_get(&timeout_ts, SR_NOTIF_BUF_LOCK_TIMEOUT);
+    sr_timeouttime_get(&timeout_ts, SR_NOTIF_BUF_LOCK_TIMEOUT);
 
     /* MUTEX LOCK */
-    ret = pthread_mutex_timedlock(&session->notif_buf.lock.mutex, &timeout_ts);
+    ret = pthread_mutex_clocklock(&session->notif_buf.lock.mutex, COMPAT_CLOCK_ID, &timeout_ts);
     if (ret) {
         SR_ERRINFO_LOCK(&err_info, __func__, ret);
         /* restore */
@@ -3952,7 +3952,7 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, uint32_t sid, int lock)
         /* change DS lock state and remember the time */
         if (lock) {
             shm_lock->ds_lock_sid = sid;
-            sr_time_get(&shm_lock->ds_lock_ts, 0);
+            sr_realtime_get(&shm_lock->ds_lock_ts);
         } else {
             shm_lock->ds_lock_sid = 0;
             memset(&shm_lock->ds_lock_ts, 0, sizeof shm_lock->ds_lock_ts);
@@ -3986,7 +3986,7 @@ error:
                 memset(&shm_lock->ds_lock_ts, 0, sizeof shm_lock->ds_lock_ts);
             } else {
                 shm_lock->ds_lock_sid = sid;
-                sr_time_get(&shm_lock->ds_lock_ts, 0);
+                sr_realtime_get(&shm_lock->ds_lock_ts);
             }
 
             /* DS UNLOCK */
@@ -4439,7 +4439,7 @@ _sr_subscription_suspend_change(sr_subscription_ctx_t *subscription, uint32_t su
         }
 
         /* send the special notification */
-        sr_time_get(&cur_time, 0);
+        sr_realtime_get(&cur_time);
         if ((err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
                 suspend ? SR_EV_NOTIF_SUSPENDED : SR_EV_NOTIF_RESUMED, sub_id, NULL, &cur_time))) {
             goto cleanup;
@@ -6093,7 +6093,7 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
     uint32_t sub_id;
     sr_mod_t *shm_mod;
 
-    sr_time_get(&cur_ts, 0);
+    sr_realtime_get(&cur_ts);
 
     SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !mod_name ||
             (start_time && (sr_time_cmp(start_time, &cur_ts) > 0)) ||
@@ -6281,7 +6281,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
     SR_MODINFO_INIT(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING);
 
     /* remember when the notification was generated */
-    sr_time_get(&notif_ts, 0);
+    sr_realtime_get(&notif_ts);
 
     /* check notif data tree */
     notif_op = NULL;
@@ -6491,7 +6491,7 @@ sr_notif_sub_modify_xpath(sr_subscription_ctx_t *subscription, uint32_t sub_id, 
     }
 
     /* send the special notification */
-    sr_time_get(&cur_time, 0);
+    sr_realtime_get(&cur_time);
     if ((err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
             SR_EV_NOTIF_MODIFIED, sub_id, NULL, &cur_time))) {
         goto cleanup_unlock;
@@ -6552,7 +6552,7 @@ sr_notif_sub_modify_stop_time(sr_subscription_ctx_t *subscription, uint32_t sub_
     }
 
     /* send the special notification */
-    sr_time_get(&cur_time, 0);
+    sr_realtime_get(&cur_time);
     if ((err_info = sr_notif_call_callback(ev_sess, notif_sub->cb, notif_sub->tree_cb, notif_sub->private_data,
             SR_EV_NOTIF_MODIFIED, sub_id, NULL, &cur_time))) {
         goto cleanup_unlock;

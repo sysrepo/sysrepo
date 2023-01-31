@@ -38,30 +38,28 @@ sr_cond_init(sr_cond_t *cond, int shared, int UNUSED(robust))
         return err_info;
     }
 
-    if (shared) {
-        /* init attr */
-        if ((ret = pthread_condattr_init(&attr))) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Initializing pthread attr failed (%s).", strerror(ret));
-            return err_info;
-        }
-        if ((ret = pthread_condattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
-            pthread_condattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Changing pthread attr failed (%s).", strerror(ret));
-            return err_info;
-        }
-
-        if ((ret = pthread_cond_init(cond, &attr))) {
-            pthread_condattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Initializing pthread rwlock failed (%s).", strerror(ret));
-            return err_info;
-        }
-        pthread_condattr_destroy(&attr);
-    } else {
-        if ((ret = pthread_cond_init(cond, NULL))) {
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Initializing pthread rwlock failed (%s).", strerror(ret));
-            return err_info;
-        }
+    /* init attr */
+    if ((ret = pthread_condattr_init(&attr))) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Initializing pthread attr failed (%s).", strerror(ret));
+        return err_info;
     }
+    if (shared && (ret = pthread_condattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
+        pthread_condattr_destroy(&attr);
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Changing pthread attr failed (%s).", strerror(ret));
+        return err_info;
+    }
+    if ((ret = pthread_condattr_setclock(&attr, COMPAT_CLOCK_ID))) {
+        pthread_condattr_destroy(&attr);
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Changing pthread attr failed (%s).", strerror(ret));
+        return err_info;
+    }
+
+    if ((ret = pthread_cond_init(cond, &attr))) {
+        pthread_condattr_destroy(&attr);
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Initializing pthread cond failed (%s).", strerror(ret));
+        return err_info;
+    }
+    pthread_condattr_destroy(&attr);
 
     return NULL;
 }
@@ -79,9 +77,9 @@ sr_cond_wait(sr_cond_t *cond, pthread_mutex_t *mutex)
 }
 
 int
-sr_cond_timedwait(sr_cond_t *cond, pthread_mutex_t *mutex, struct timespec *timeout_abs)
+sr_cond_clockwait(sr_cond_t *cond, pthread_mutex_t *mutex, clockid_t clockid, struct timespec *timeout_abs)
 {
-    return pthread_cond_timedwait(cond, mutex, timeout_abs);
+    return pthread_cond_clockwait(cond, mutex, clockid, timeout_abs);
 }
 
 void

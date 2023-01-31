@@ -1382,7 +1382,7 @@ sr_lydmods_update_replay_support_module(sr_conn_ctx_t *conn, const struct lys_mo
             return err_info;
         }
         if (SR_TS_IS_ZERO(ts)) {
-            sr_time_get(&ts, 0);
+            sr_realtime_get(&ts);
         }
         if (ly_time_ts2str(&ts, &buf)) {
             sr_errinfo_new_ly(&err_info, conn->ly_ctx, NULL);

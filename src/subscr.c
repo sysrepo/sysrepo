@@ -628,7 +628,7 @@ sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_
 
             if (ev_sess) {
                 /* send special last notification */
-                sr_time_get(&cur_time, 0);
+                sr_realtime_get(&cur_time);
                 if ((err_info = sr_notif_call_callback(ev_sess, sub->cb, sub->tree_cb, sub->private_data,
                         SR_EV_NOTIF_TERMINATED, sub->sub_id, NULL, &cur_time))) {
                     sr_errinfo_free(&err_info);

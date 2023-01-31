@@ -494,12 +494,19 @@ sr_error_info_t *sr_perm_check(sr_conn_ctx_t *conn, const struct lys_module *ly_
         int *has_access);
 
 /**
- * @brief Get current time with an offset.
+ * @brief Get current clock (uses COMPAT_CLOCK_ID) time with an offset.
  *
  * @param[out] ts Current time offset by @p add_ms.
  * @param[in] add_ms Number of milliseconds to add.
  */
-void sr_time_get(struct timespec *ts, uint32_t add_ms);
+void sr_timeouttime_get(struct timespec *ts, uint32_t add_ms);
+
+/**
+ * @brief Get current CLOCK_REALTIME time.
+ *
+ * @param[out] ts Current real time.
+ */
+void sr_realtime_get(struct timespec *ts);
 
 /**
  * @brief Add milliseconds to a timespec.

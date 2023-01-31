@@ -4,8 +4,8 @@
  * @brief notification replay routines
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -98,7 +98,7 @@ sr_notif_buf_store(sr_session_ctx_t *sess, const struct lyd_node *notif, struct 
     struct timespec timeout_ts;
     int ret;
 
-    sr_time_get(&timeout_ts, SR_NOTIF_BUF_LOCK_TIMEOUT);
+    sr_timeouttime_get(&timeout_ts, SR_NOTIF_BUF_LOCK_TIMEOUT);
 
     /* create a new node while we do not have any lock */
     node = malloc(sizeof *node);
@@ -111,7 +111,7 @@ sr_notif_buf_store(sr_session_ctx_t *sess, const struct lyd_node *notif, struct 
     node->next = NULL;
 
     /* MUTEX LOCK */
-    ret = pthread_mutex_timedlock(&notif_buf->lock.mutex, &timeout_ts);
+    ret = pthread_mutex_clocklock(&notif_buf->lock.mutex, COMPAT_CLOCK_ID, &timeout_ts);
     if (ret) {
         SR_ERRINFO_LOCK(&err_info, __func__, ret);
         goto error;
@@ -244,11 +244,11 @@ sr_notif_buf_thread(void *arg)
     struct timespec timeout_ts;
     int ret, last_check = 0;
 
-    sr_time_get(&timeout_ts, SR_NOTIF_BUF_LOCK_TIMEOUT);
+    sr_timeouttime_get(&timeout_ts, SR_NOTIF_BUF_LOCK_TIMEOUT);
 
     while (!last_check) {
         /* MUTEX LOCK */
-        ret = pthread_mutex_timedlock(&sess->notif_buf.lock.mutex, &timeout_ts);
+        ret = pthread_mutex_clocklock(&sess->notif_buf.lock.mutex, COMPAT_CLOCK_ID, &timeout_ts);
         if (ret) {
             SR_ERRINFO_LOCK(&err_info, __func__, ret);
             goto cleanup;
@@ -380,7 +380,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
 
 replay_complete:
     /* replay is completed */
-    sr_time_get(&notif_ts, 0);
+    sr_realtime_get(&notif_ts);
     if ((err_info = sr_notif_call_callback(ev_sess, cb, tree_cb, private_data, SR_EV_NOTIF_REPLAY_COMPLETE, sub_id,
             NULL, &notif_ts))) {
         goto cleanup;

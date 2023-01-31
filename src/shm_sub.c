@@ -352,12 +352,12 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
     sub_shm->lock.writer = 0;
 
     /* wait until there is no event and there are no readers (just like write lock) */
-    sr_time_get(&timeout_abs, SR_SUBSHM_LOCK_TIMEOUT);
+    sr_timeouttime_get(&timeout_abs, SR_SUBSHM_LOCK_TIMEOUT);
     ret = 0;
     while (!ret && (sub_shm->lock.readers[0] || (ATOMIC_LOAD_RELAXED(sub_shm->event) &&
             (ATOMIC_LOAD_RELAXED(sub_shm->event) != lock_event)))) {
         /* COND WAIT */
-        ret = sr_cond_timedwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, &timeout_abs);
+        ret = sr_cond_clockwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, COMPAT_CLOCK_ID, &timeout_abs);
     }
 
     /* FAKE WRITE LOCK */
@@ -445,7 +445,7 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
     while (!ret && (sub_shm->lock.readers[0] || sub_shm->lock.writer ||
             (ATOMIC_LOAD_RELAXED(sub_shm->event) && !SR_IS_NOTIFY_EVENT(ATOMIC_LOAD_RELAXED(sub_shm->event))))) {
         /* COND WAIT */
-        ret = sr_cond_timedwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, timeout_abs);
+        ret = sr_cond_clockwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, COMPAT_CLOCK_ID, timeout_abs);
     }
     /* we are holding the mutex but no lock flags are set */
 
@@ -589,7 +589,7 @@ sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t expected_ev, int 
     request_id = ATOMIC_LOAD_RELAXED(sub_shm->request_id);
 
     /* compute the timeout */
-    sr_time_get(&timeout_abs, timeout_ms);
+    sr_timeouttime_get(&timeout_abs, timeout_ms);
 
     return _sr_shmsub_notify_wait_wr(sub_shm, event, request_id, expected_ev, clear_ev_on_err, cid, shm_data_sub,
             &timeout_abs, cb_err_info);
@@ -622,7 +622,7 @@ sr_shmsub_notify_many_wait_wr(struct sr_shmsub_many_info_s *notify_subs, uint32_
     uint32_t i;
 
     /* compute the timeout */
-    sr_time_get(&timeout_abs, timeout_ms);
+    sr_timeouttime_get(&timeout_abs, timeout_ms);
 
     /* remember current event and request_id for all the subscribers and unlock so they can start processing the events */
     for (i = 0; i < notify_count; ++i) {
@@ -3579,7 +3579,7 @@ sr_shmsub_oper_poll_listen_is_cache_valid(const struct sr_oper_poll_cache_s *cac
         return 0;
     }
 
-    sr_time_get(&cur_ts, 0);
+    sr_realtime_get(&cur_ts);
     timeout_ts = sr_time_ts_add(&cache->timestamp, valid_ms);
     if (sr_time_cmp(&timeout_ts, &cur_ts) <= 0) {
         /* not valid */
@@ -3728,7 +3728,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
             data->tree = NULL;
         }
         sr_release_data(data);
-        sr_time_get(&cache->timestamp, 0);
+        sr_realtime_get(&cache->timestamp);
 
         /* update when to wake up */
         invalid_in = sr_time_ts_add(NULL, oper_poll_sub->valid_ms);
@@ -4471,7 +4471,7 @@ sr_shmsub_notif_listen_module_get_stop_time_in(struct modsub_notif_s *notif_subs
         return;
     }
 
-    sr_time_get(&cur_time, 0);
+    sr_realtime_get(&cur_time);
     if (sr_time_cmp(&cur_time, &next_stop_time) > -1) {
         /* stop time has already elapsed while we were processing some other events, handle this as soon as possible */
         wake_up_in->tv_nsec = 1;
@@ -4501,7 +4501,7 @@ sr_shmsub_notif_listen_module_stop_time(uint32_t notif_subs_idx, sr_lock_mode_t 
 
     *mod_finished = 0;
 
-    sr_time_get(&cur_ts, 0);
+    sr_realtime_get(&cur_ts);
     i = 0;
     notif_subs = &subscr->notif_subs[notif_subs_idx];
     while (i < notif_subs->sub_count) {

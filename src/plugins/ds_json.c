@@ -485,11 +485,11 @@ srpds_json_running_load_cached_mods(struct srpjson_cache_conn_s *cache, const st
     int r, rc = SR_ERR_OK;
 
     /* init timeout to 1s */
-    clock_gettime(CLOCK_REALTIME, &ts_timeout);
+    clock_gettime(COMPAT_CLOCK_ID, &ts_timeout);
     ++ts_timeout.tv_sec;
 
     /* MODS LOCK */
-    if ((r = pthread_mutex_timedlock(&cache->lock, &ts_timeout))) {
+    if ((r = pthread_mutex_clocklock(&cache->lock, COMPAT_CLOCK_ID, &ts_timeout))) {
         SRPLG_LOG_ERR(srpds_name, "Cache mods lock failed (%s).", strerror(r));
         return SR_ERR_SYS;
     }
@@ -587,11 +587,11 @@ srpds_json_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uin
     int r, rc = SR_ERR_OK, cache_update = 0;
 
     /* init timeout to 1s */
-    clock_gettime(CLOCK_REALTIME, &ts_timeout);
+    clock_gettime(COMPAT_CLOCK_ID, &ts_timeout);
     ++ts_timeout.tv_sec;
 
     /* CACHE READ LOCK */
-    if ((r = pthread_rwlock_timedrdlock(&data_cache.lock, &ts_timeout))) {
+    if ((r = pthread_rwlock_clockrdlock(&data_cache.lock, COMPAT_CLOCK_ID, &ts_timeout))) {
         SRPLG_LOG_ERR(srpds_name, "Cache read lock failed (%s).", strerror(r));
         rc = SR_ERR_SYS;
         goto cleanup;
@@ -610,7 +610,7 @@ srpds_json_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uin
         pthread_rwlock_unlock(&data_cache.lock);
 
         /* CACHE WRITE LOCK */
-        if ((r = pthread_rwlock_timedwrlock(&data_cache.lock, &ts_timeout))) {
+        if ((r = pthread_rwlock_clockwrlock(&data_cache.lock, COMPAT_CLOCK_ID, &ts_timeout))) {
             SRPLG_LOG_ERR(srpds_name, "Cache read lock failed (%s).", strerror(r));
             rc = SR_ERR_SYS;
             goto cleanup;
@@ -656,7 +656,7 @@ srpds_json_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uin
         pthread_rwlock_unlock(&data_cache.lock);
 
         /* CACHE READ LOCK */
-        if ((r = pthread_rwlock_timedrdlock(&data_cache.lock, &ts_timeout))) {
+        if ((r = pthread_rwlock_clockrdlock(&data_cache.lock, COMPAT_CLOCK_ID, &ts_timeout))) {
             SRPLG_LOG_ERR(srpds_name, "Cache read lock failed (%s).", strerror(r));
             rc = SR_ERR_SYS;
             goto cleanup;
@@ -750,11 +750,11 @@ srpds_json_running_flush_cached(sr_cid_t cid)
     int r;
 
     /* init timeout to 1s */
-    clock_gettime(CLOCK_REALTIME, &ts_timeout);
+    clock_gettime(COMPAT_CLOCK_ID, &ts_timeout);
     ++ts_timeout.tv_sec;
 
     /* CACHE WRITE LOCK */
-    if ((r = pthread_rwlock_timedwrlock(&data_cache.lock, &ts_timeout))) {
+    if ((r = pthread_rwlock_clockwrlock(&data_cache.lock, COMPAT_CLOCK_ID, &ts_timeout))) {
         SRPLG_LOG_ERR(srpds_name, "Cache write lock failed (%s).", strerror(r));
         return;
     }

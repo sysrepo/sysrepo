@@ -1410,7 +1410,7 @@ sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
     }
 
     /* if a notification is sent now, once it gets the lock, this subscription will already be listening */
-    sr_time_get(listen_since, 0);
+    sr_realtime_get(listen_since);
 
     /* EXT WRITE LOCK */
     if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_WRITE, 1, __func__))) {

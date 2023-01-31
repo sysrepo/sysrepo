@@ -3128,7 +3128,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     }
 
     /* remember when the notification was generated */
-    sr_time_get(&notif_ts, 0);
+    sr_realtime_get(&notif_ts);
 
     /* EXT READ LOCK */
     if ((err_info = sr_shmext_conn_remap_lock(mod_info->conn, SR_LOCK_READ, 0, __func__))) {

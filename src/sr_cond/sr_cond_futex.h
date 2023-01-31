@@ -4,8 +4,8 @@
  * @brief Conditional variable futex implementation header.
  *
  * @copyright
- * Copyright (c) 2022 Deutsche Telekom AG.
- * Copyright (c) 2022 CESNET, z.s.p.o.
+ * Copyright (c) 2022 - 2023 Deutsche Telekom AG.
+ * Copyright (c) 2022 - 2023 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -58,14 +58,15 @@ void sr_cond_destroy(sr_cond_t *cond);
 int sr_cond_wait(sr_cond_t *cond, pthread_mutex_t *mutex);
 
 /**
- * @brief Wrapper for pthread_cond_timedwait().
+ * @brief Wrapper for pthread_cond_clockwait().
  *
  * @param[in] cond Condition variable to wait on.
  * @param[in] mutex Conditional variable mutex.
- * @param[in] timeout_abs Absolute real timeout for waiting on the condition.
+ * @param[in] clockid ID of the clock to use.
+ * @param[in] timeout_abs Absolute timeout for waiting on the condition.
  * @return errno
  */
-int sr_cond_timedwait(sr_cond_t *cond, pthread_mutex_t *mutex, struct timespec *timeout_abs);
+int sr_cond_clockwait(sr_cond_t *cond, pthread_mutex_t *mutex, clockid_t clockid, struct timespec *timeout_abs);
 
 /**
  * @brief Wrapper for pthread_cond_broadcast().
