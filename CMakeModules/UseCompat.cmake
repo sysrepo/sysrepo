@@ -6,7 +6,7 @@
 # Additionally, "compat.h" include directory is added and can be included.
 #
 # Author Michal Vasko <mvasko@cesnet.cz>
-#  Copyright (c) 2021 CESNET, z.s.p.o.
+#  Copyright (c) 2021 - 2023 CESNET, z.s.p.o.
 #
 # This source code is licensed under BSD 3-Clause License (the "License").
 # You may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
 #     https://opensource.org/licenses/BSD-3-Clause
 #
 include(CheckSymbolExists)
-include(CheckFunctionExists)
 include(CheckIncludeFile)
 include(TestBigEndian)
 if(POLICY CMP0075)
@@ -29,6 +28,26 @@ macro(USE_COMPAT)
     list(APPEND CMAKE_REQUIRED_DEFINITIONS -D__BSD_VISIBLE=1)
     set(CMAKE_REQUIRED_LIBRARIES pthread)
 
+    check_symbol_exists(_POSIX_TIMERS "unistd.h" HAVE_CLOCK)
+    if(NOT HAVE_CLOCK)
+        message(FATAL_ERROR "Missing support for clock_gettime() and similar functions!")
+    endif()
+
+    check_symbol_exists(pthread_mutex_timedlock "pthread.h" HAVE_PTHREAD_MUTEX_TIMEDLOCK)
+    check_symbol_exists(pthread_mutex_clocklock "pthread.h" HAVE_PTHREAD_MUTEX_CLOCKLOCK)
+    check_symbol_exists(pthread_rwlock_clockrdlock "pthread.h" HAVE_PTHREAD_RWLOCK_CLOCKRDLOCK)
+    check_symbol_exists(pthread_rwlock_clockwrlock "pthread.h" HAVE_PTHREAD_RWLOCK_CLOCKWRLOCK)
+    check_symbol_exists(pthread_cond_clockwait "pthread.h" HAVE_PTHREAD_COND_CLOCKWAIT)
+    if(HAVE_PTHREAD_MUTEX_CLOCKLOCK)
+        # can use CLOCK_MONOTONIC only if we have pthread_mutex_clocklock()
+        check_symbol_exists(_POSIX_MONOTONIC_CLOCK "unistd.h" HAVE_CLOCK_MONOTONIC)
+    endif()
+    if(HAVE_CLOCK_MONOTONIC)
+        set(COMPAT_CLOCK_ID "CLOCK_MONOTONIC")
+    else()
+        set(COMPAT_CLOCK_ID "CLOCK_REALTIME")
+    endif()
+
     check_symbol_exists(vdprintf "stdio.h;stdarg.h" HAVE_VDPRINTF)
     check_symbol_exists(asprintf "stdio.h" HAVE_ASPRINTF)
     check_symbol_exists(vasprintf "stdio.h" HAVE_VASPRINTF)
@@ -40,8 +59,6 @@ macro(USE_COMPAT)
     check_symbol_exists(strchrnul "string.h" HAVE_STRCHRNUL)
 
     check_symbol_exists(get_current_dir_name "unistd.h" HAVE_GET_CURRENT_DIR_NAME)
-
-    check_function_exists(pthread_mutex_timedlock HAVE_PTHREAD_MUTEX_TIMEDLOCK)
 
     TEST_BIG_ENDIAN(IS_BIG_ENDIAN)
 

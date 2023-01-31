@@ -3,7 +3,7 @@
  * @author Michal Vasko <mvasko@cesnet.cz>
  * @brief compatibility functions header
  *
- * Copyright (c) 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2023 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 #ifndef _COMPAT_H_
 #define _COMPAT_H_
 
+#include <alloca.h>
 #include <limits.h>
 #include <pthread.h>
 #include <stdarg.h>
@@ -48,6 +49,13 @@
 # define _PACKED
 #endif
 
+#define COMPAT_CLOCK_ID @COMPAT_CLOCK_ID@
+#cmakedefine HAVE_PTHREAD_MUTEX_TIMEDLOCK
+#cmakedefine HAVE_PTHREAD_MUTEX_CLOCKLOCK
+#cmakedefine HAVE_PTHREAD_RWLOCK_CLOCKRDLOCK
+#cmakedefine HAVE_PTHREAD_RWLOCK_CLOCKWRLOCK
+#cmakedefine HAVE_PTHREAD_COND_CLOCKWAIT
+
 #cmakedefine HAVE_VDPRINTF
 #cmakedefine HAVE_ASPRINTF
 #cmakedefine HAVE_VASPRINTF
@@ -57,7 +65,6 @@
 #cmakedefine HAVE_STRDUPA
 #cmakedefine HAVE_STRCHRNUL
 #cmakedefine HAVE_GET_CURRENT_DIR_NAME
-#cmakedefine HAVE_PTHREAD_MUTEX_TIMEDLOCK
 
 #ifndef bswap64
 #define bswap64(val) \
@@ -130,6 +137,26 @@
 # define ATOMIC_PTR_LOAD_RELAXED(var) (var)
 #endif
 
+#ifndef HAVE_PTHREAD_MUTEX_TIMEDLOCK
+int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *abstime);
+#endif
+
+#ifndef HAVE_PTHREAD_MUTEX_CLOCKLOCK
+int pthread_mutex_clocklock(pthread_mutex_t *mutex, clockid_t clockid, const struct timespec *abstime);
+#endif
+
+#ifndef HAVE_PTHREAD_RWLOCK_CLOCKRDLOCK
+int pthread_rwlock_clockrdlock(pthread_rwlock_t *rwlock, clockid_t clockid, const struct timespec *abstime);
+#endif
+
+#ifndef HAVE_PTHREAD_RWLOCK_CLOCKWRLOCK
+int pthread_rwlock_clockwrlock(pthread_rwlock_t *rwlock, clockid_t clockid, const struct timespec *abstime);
+#endif
+
+#ifndef HAVE_PTHREAD_COND_CLOCKWAIT
+int pthread_cond_clockwait(pthread_cond_t *cond, pthread_mutex_t *mutex, clockid_t clockid, const struct timespec *abstime);
+#endif
+
 #ifndef HAVE_VDPRINTF
 int vdprintf(int fd, const char *format, va_list ap);
 #endif
@@ -171,10 +198,6 @@ char *strchrnul(const char *s, int c);
 
 #ifndef HAVE_GET_CURRENT_DIR_NAME
 char *get_current_dir_name(void);
-#endif
-
-#ifndef HAVE_PTHREAD_MUTEX_TIMEDLOCK
-int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *abstime);
 #endif
 
 #endif /* _COMPAT_H_ */

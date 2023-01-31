@@ -3,7 +3,7 @@
  * @author Michal Vasko <mvasko@cesnet.cz>
  * @brief compatibility functions
  *
- * Copyright (c) 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2023 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -27,6 +27,100 @@
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
+
+#ifndef HAVE_PTHREAD_MUTEX_TIMEDLOCK
+int
+pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *abstime)
+{
+    int64_t nsec_diff;
+    int32_t diff;
+    struct timespec cur, dur;
+    int rc;
+
+    /* try to acquire the lock and, if we fail, sleep for 5ms. */
+    while ((rc = pthread_mutex_trylock(mutex)) == EBUSY) {
+        /* get time */
+        clock_gettime(COMPAT_CLOCK_ID, &cur);
+
+        /* get time diff */
+        nsec_diff = 0;
+        nsec_diff += (((int64_t)abstime->tv_sec) - ((int64_t)cur.tv_sec)) * 1000000000L;
+        nsec_diff += ((int64_t)abstime->tv_nsec) - ((int64_t)cur.tv_nsec);
+        diff = (nsec_diff ? nsec_diff / 1000000L : 0);
+
+        if (diff < 1) {
+            /* timeout */
+            break;
+        } else if (diff < 5) {
+            /* sleep until timeout */
+            dur.tv_sec = 0;
+            dur.tv_nsec = (long)diff * 1000000;
+        } else {
+            /* sleep 5 ms */
+            dur.tv_sec = 0;
+            dur.tv_nsec = 5000000;
+        }
+
+        nanosleep(&dur, NULL);
+    }
+
+    return rc;
+}
+
+#endif
+
+#ifndef HAVE_PTHREAD_MUTEX_CLOCKLOCK
+int
+pthread_mutex_clocklock(pthread_mutex_t *mutex, clockid_t clockid, const struct timespec *abstime)
+{
+    /* only real time supported without this function */
+    if (clockid != CLOCK_REALTIME) {
+        return EINVAL;
+    }
+
+    return pthread_mutex_timedlock(mutex, abstime);
+}
+
+#endif
+
+#ifndef HAVE_PTHREAD_RWLOCK_CLOCKRDLOCK
+int
+pthread_rwlock_clockrdlock(pthread_rwlock_t *rwlock, clockid_t clockid, const struct timespec *abstime)
+{
+    /* only real time supported without this function */
+    if (clockid != CLOCK_REALTIME) {
+        return EINVAL;
+    }
+
+    return pthread_rwlock_timedrdlock(rwlock, abstime);
+}
+
+#endif
+
+#ifndef HAVE_PTHREAD_RWLOCK_CLOCKWRLOCK
+int
+pthread_rwlock_clockwrlock(pthread_rwlock_t *rwlock, clockid_t clockid, const struct timespec *abstime)
+{
+    /* only real time supported without this function */
+    if (clockid != CLOCK_REALTIME) {
+        return EINVAL;
+    }
+
+    return pthread_rwlock_timedwrlock(rwlock, abstime);
+}
+
+#endif
+
+#ifndef HAVE_PTHREAD_COND_CLOCKWAIT
+int
+pthread_cond_clockwait(pthread_cond_t *cond, pthread_mutex_t *mutex, clockid_t UNUSED(clockid),
+        const struct timespec *abstime)
+{
+    /* assume the correct clock is set during cond init */
+    return pthread_cond_timedwait(cond, mutex, abstime);
+}
+
+#endif
 
 #ifndef HAVE_VDPRINTF
 int
@@ -196,55 +290,6 @@ get_current_dir_name(void)
     }
 
     return retval;
-}
-
-#endif
-
-#ifndef HAVE_PTHREAD_MUTEX_TIMEDLOCK
-int
-pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *abstime)
-{
-    int64_t nsec_diff;
-    int32_t diff;
-    struct timespec cur, dur;
-    int rc;
-
-    /* try to acquire the lock and, if we fail, sleep for 5ms. */
-    while ((rc = pthread_mutex_trylock(mutex)) == EBUSY) {
-        /* get real time */
-#ifdef CLOCK_REALTIME
-        clock_gettime(CLOCK_REALTIME, &cur);
-#else
-        struct timeval tv;
-
-        gettimeofday(&tv, NULL);
-        cur.tv_sec = (time_t)tv.tv_sec;
-        cur.tv_nsec = 1000L * (long)tv.tv_usec;
-#endif
-
-        /* get time diff */
-        nsec_diff = 0;
-        nsec_diff += (((int64_t)abstime->tv_sec) - ((int64_t)cur.tv_sec)) * 1000000000L;
-        nsec_diff += ((int64_t)abstime->tv_nsec) - ((int64_t)cur.tv_nsec);
-        diff = (nsec_diff ? nsec_diff / 1000000L : 0);
-
-        if (diff < 1) {
-            /* timeout */
-            break;
-        } else if (diff < 5) {
-            /* sleep until timeout */
-            dur.tv_sec = 0;
-            dur.tv_nsec = (long)diff * 1000000;
-        } else {
-            /* sleep 5 ms */
-            dur.tv_sec = 0;
-            dur.tv_nsec = 5000000;
-        }
-
-        nanosleep(&dur, NULL);
-    }
-
-    return rc;
 }
 
 #endif
