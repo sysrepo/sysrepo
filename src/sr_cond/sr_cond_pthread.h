@@ -71,11 +71,4 @@ int sr_cond_clockwait(sr_cond_t *cond, pthread_mutex_t *mutex, clockid_t clockid
  */
 void sr_cond_broadcast(sr_cond_t *cond);
 
-/**
- * @brief Make conditional variable consistent after it was being used by a crashed process.
- *
- * @param[in] cond Conditional variable to make consistent.
- */
-void sr_cond_consistent(sr_cond_t *cond);
-
 #endif /* _SR_COND_PTHREAD_H */

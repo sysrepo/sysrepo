@@ -89,11 +89,10 @@ sys_futex_wake(uint32_t *uaddr, uint32_t waiter_count)
  * @brief Lock condition mutex.
  *
  * @param[in] mutex Cond mutex to lock.
- * @param[in] cond Cond var to make consistent.
  * @return errno
  */
 static int
-sr_cond_mutex_lock(pthread_mutex_t *mutex, sr_cond_t *cond)
+sr_cond_mutex_lock(pthread_mutex_t *mutex)
 {
     int r;
 
@@ -106,7 +105,6 @@ sr_cond_mutex_lock(pthread_mutex_t *mutex, sr_cond_t *cond)
             /* fatal error */
             return r;
         }
-        sr_cond_consistent(cond);
     } else if (r) {
         /* fatal error */
         return r;
@@ -134,7 +132,7 @@ sr_cond_wait_(sr_cond_t *cond, pthread_mutex_t *mutex, clockid_t clockid, struct
     } while ((rf == -1) && (errno == EINTR));
 
     /* MUTEX LOCK */
-    if ((r = sr_cond_mutex_lock(mutex, cond))) {
+    if ((r = sr_cond_mutex_lock(mutex))) {
         return r;
     }
 
@@ -165,9 +163,4 @@ sr_cond_broadcast(sr_cond_t *cond)
     cond->futex++;
 
     sys_futex_wake(&cond->futex, INT_MAX);
-}
-
-void
-sr_cond_consistent(sr_cond_t *UNUSED(cond))
-{
 }

@@ -87,16 +87,3 @@ sr_cond_broadcast(sr_cond_t *cond)
 {
     pthread_cond_broadcast(cond);
 }
-
-void
-sr_cond_consistent(sr_cond_t *cond)
-{
-    sr_error_info_t *err_info = NULL;
-
-    /* since the originator crashed while wating for this event, in all likelihood it was waiting on the conditional
-     * variable that is corrupted now, we cannot destroy it because we would get blocked, so just reinitialize it
-     * even though manual says it is undefined behavior (there is no better way of fixing it) */
-    if ((err_info = sr_cond_init(cond, 1, 1))) {
-        sr_errinfo_free(&err_info);
-    }
-}

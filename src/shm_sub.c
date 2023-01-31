@@ -310,9 +310,6 @@ sr_shmsub_recover(sr_sub_shm_t *sub_shm)
 
         /* clear the event */
         ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
-
-        /* make consistent */
-        sr_cond_consistent(&sub_shm->lock.cond);
     }
 }
 
