@@ -1,3 +1,5 @@
+include(CheckFunctionExists)
+
 if(NOT SYSREPO_VERSION)
     message(FATAL_ERROR "Please use the root CMakeLists file instead.")
 endif()
