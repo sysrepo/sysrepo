@@ -5961,12 +5961,14 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_s mod_info;
-    struct lyd_node *input_op, *ext_parent = NULL;
+    struct lyd_node *input_top, *input_op, *ext_parent = NULL;
     char *path = NULL, *str, *parent_path = NULL;
     const struct lyd_node *denied_node;
 
     SR_CHECK_ARG_APIRET(!session || !input || !output, session, err_info);
-    if (session->conn->ly_ctx != LYD_CTX(input)) {
+
+    for (input_top = input; input_top->parent; input_top = lyd_parent(input_top)) {}
+    if (session->conn->ly_ctx != LYD_CTX(input_top)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Data trees must be created using the session connection libyang context.");
         return sr_api_ret(session, err_info);
     }
@@ -5981,8 +5983,6 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     if (input->schema) {
         switch (input->schema->nodetype) {
         case LYS_ACTION:
-            for (input_op = input; input->parent; input = lyd_parent(input)) {}
-            break;
         case LYS_RPC:
             input_op = input;
             break;
@@ -5991,24 +5991,27 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
             /* find the action (RPC in case of schema-mount) */
             input_op = input;
             err_info = sr_ly_find_last_parent(&input_op, LYS_ACTION | LYS_RPC);
+            if (!(input_op->schema->nodetype & (LYS_ACTION | LYS_RPC))) {
+                input_op = NULL;
+            }
             break;
         default:
             break;
         }
     }
-    if (!input_op || lyd_parent(input)) {
+    if (!input_op) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Provided input is not a valid RPC or action invocation.");
         goto cleanup;
     }
 
     /* check read perm */
-    if ((err_info = sr_perm_check(session->conn, lyd_owner_module(input), SR_DS_STARTUP, 0, NULL))) {
+    if ((err_info = sr_perm_check(session->conn, lyd_owner_module(input_top), SR_DS_STARTUP, 0, NULL))) {
         goto cleanup;
     }
 
     if (session->nacm_user) {
         /* check NACM */
-        if ((err_info = sr_nacm_check_operation(session->nacm_user, input, &denied_node))) {
+        if ((err_info = sr_nacm_check_operation(session->nacm_user, input_top, &denied_node))) {
             goto cleanup;
         }
 
@@ -6029,12 +6032,12 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
         goto cleanup;
     }
 
-    if (input != input_op) {
+    if (input_top != input_op) {
         /* we need the OP parent to check it exists */
         parent_path = lyd_path(lyd_parent(input_op), LYD_PATH_STD, NULL, 0);
         SR_CHECK_MEM_GOTO(!parent_path, err_info, cleanup);
         /* only reference to parent_path is stored, so it cannot be freed! */
-        if ((err_info = sr_modinfo_add(lyd_owner_module(input), parent_path, 0, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_add(lyd_owner_module(input_top), parent_path, 0, 0, &mod_info))) {
             goto cleanup;
         }
         if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_NO,
@@ -6043,14 +6046,14 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
         }
     }
 
-    if (LYD_CTX(input) != LYD_CTX(input_op)) {
+    if (LYD_CTX(input_top) != LYD_CTX(input_op)) {
         /* different contexts if these are data of an extension (schema-mount) */
         for (ext_parent = input_op; ext_parent && !(ext_parent->flags & LYD_EXT); ext_parent = lyd_parent(ext_parent)) {}
         SR_CHECK_INT_GOTO(!ext_parent, err_info, cleanup);
 
-        err_info = _sr_rpc_ext_send_tree(session, ext_parent, &mod_info, path, input, input_op, timeout_ms, output);
+        err_info = _sr_rpc_ext_send_tree(session, ext_parent, &mod_info, path, input_top, input_op, timeout_ms, output);
     } else {
-        err_info = _sr_rpc_send_tree(session, &mod_info, path, input, input_op, timeout_ms, output);
+        err_info = _sr_rpc_send_tree(session, &mod_info, path, input_top, input_op, timeout_ms, output);
     }
 
 cleanup:
@@ -6257,7 +6260,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
 {
     sr_error_info_t *err_info = NULL, *tmp_err = NULL;
     struct sr_mod_info_s mod_info;
-    struct lyd_node *notif_op, *parent;
+    struct lyd_node *notif_top, *notif_op, *parent;
     sr_dep_t *shm_deps;
     sr_mod_t *shm_mod;
     struct timespec notif_ts;
@@ -6265,7 +6268,9 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
     char *parent_path = NULL;
 
     SR_CHECK_ARG_APIRET(!session || !notif, session, err_info);
-    if (session->conn->ly_ctx != LYD_CTX(notif)) {
+
+    for (notif_top = notif; notif_top->parent; notif_top = lyd_parent(notif_top)) {}
+    if (session->conn->ly_ctx != LYD_CTX(notif_top)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Data trees must be created using the session connection libyang context.");
         return sr_api_ret(session, err_info);
     }
@@ -6279,30 +6284,36 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
     sr_time_get(&notif_ts, 0);
 
     /* check notif data tree */
-    switch (notif->schema->nodetype) {
-    case LYS_NOTIF:
-        for (notif_op = notif; notif->parent; notif = lyd_parent(notif)) {}
-        break;
-    case LYS_CONTAINER:
-    case LYS_LIST:
-        /* find the notification */
-        notif_op = notif;
-        if ((err_info = sr_ly_find_last_parent(&notif_op, LYS_NOTIF))) {
-            goto cleanup;
-        }
-        if (notif_op->schema->nodetype == LYS_NOTIF) {
+    notif_op = NULL;
+    if (notif->schema) {
+        switch (notif->schema->nodetype) {
+        case LYS_NOTIF:
+            notif_op = notif;
+            break;
+        case LYS_CONTAINER:
+        case LYS_LIST:
+            /* find the notification */
+            notif_op = notif;
+            if ((err_info = sr_ly_find_last_parent(&notif_op, LYS_NOTIF))) {
+                goto cleanup;
+            }
+            if (notif_op->schema->nodetype != LYS_NOTIF) {
+                notif_op = NULL;
+            }
+            break;
+        default:
             break;
         }
-    /* fallthrough */
-    default:
+    }
+    if (!notif_op) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Provided tree is not a valid notification invocation.");
         goto cleanup;
     }
 
     /* check write/read perm */
-    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(session->conn), lyd_owner_module(notif)->name);
+    shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(session->conn), lyd_owner_module(notif_top)->name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
-    if ((err_info = sr_perm_check(session->conn, lyd_owner_module(notif), SR_DS_STARTUP, shm_mod->replay_supp, NULL))) {
+    if ((err_info = sr_perm_check(session->conn, lyd_owner_module(notif_top), SR_DS_STARTUP, shm_mod->replay_supp, NULL))) {
         goto cleanup;
     }
 
@@ -6310,7 +6321,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
         /* we need the OP parent to check it exists */
         parent_path = lyd_path(lyd_parent(notif_op), LYD_PATH_STD, NULL, 0);
         SR_CHECK_MEM_GOTO(!parent_path, err_info, cleanup);
-        if ((err_info = sr_modinfo_add(lyd_owner_module(notif), parent_path, 0, 0, &mod_info))) {
+        if ((err_info = sr_modinfo_add(lyd_owner_module(notif_top), parent_path, 0, 0, &mod_info))) {
             goto cleanup;
         }
         if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_NO,
@@ -6320,7 +6331,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
     }
 
     /* collect all required modules for OP validation */
-    if (LYD_CTX(notif) != LYD_CTX(notif_op)) {
+    if (LYD_CTX(notif_top) != LYD_CTX(notif_op)) {
         /* different contexts if these are data of an extension (schema-mount) */
         for (parent = notif_op; parent && !(parent->flags & LYD_EXT); parent = lyd_parent(parent)) {}
         SR_CHECK_INT_GOTO(!parent, err_info, cleanup);
@@ -6330,11 +6341,11 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
             goto cleanup;
         }
     } else {
-        if ((err_info = sr_shmmod_get_notif_deps(SR_CONN_MOD_SHM(session->conn), lyd_owner_module(notif), notif_op,
+        if ((err_info = sr_shmmod_get_notif_deps(SR_CONN_MOD_SHM(session->conn), lyd_owner_module(notif_top), notif_op,
                 &shm_deps, &shm_dep_count))) {
             goto cleanup;
         }
-        if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(session->conn), shm_deps, shm_dep_count, notif, &mod_info))) {
+        if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(session->conn), shm_deps, shm_dep_count, notif_top, &mod_info))) {
             goto cleanup;
         }
     }
@@ -6352,7 +6363,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
     sr_shmmod_modinfo_unlock(&mod_info);
 
     /* store the notification for a replay, we continue on failure */
-    err_info = sr_replay_store(session, notif, notif_ts);
+    err_info = sr_replay_store(session, notif_top, notif_ts);
 
     /* NOTIF SUB READ LOCK */
     if ((tmp_err = sr_rwlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__,
@@ -6361,7 +6372,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
     }
 
     /* publish notif in an event */
-    if ((tmp_err = sr_shmsub_notif_notify(session->conn, notif, notif_ts, session->orig_name, session->orig_data,
+    if ((tmp_err = sr_shmsub_notif_notify(session->conn, notif_top, notif_ts, session->orig_name, session->orig_data,
             timeout_ms, wait))) {
         goto cleanup_notifsub_unlock;
     }
