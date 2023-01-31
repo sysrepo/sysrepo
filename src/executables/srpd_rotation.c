@@ -257,7 +257,9 @@ cleanup:
     free(arg2);
     free(remove_str);
     free(notif_dir_name);
-    closedir(d);
+    if (d) {
+        closedir(d);
+    }
     return NULL;
 }
 
