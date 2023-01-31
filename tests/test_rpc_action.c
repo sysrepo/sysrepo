@@ -1593,6 +1593,7 @@ schema_mount_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
     if (!strcmp(module_name, "sm") && !strcmp(xpath, "/sm:root")) {
         assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, st->ly_ctx, "/sm:root/ops-ref:l1", "val", 0, parent));
         assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/sm:root/ops-ref:l2", "val2", 0, NULL));
+        assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/sm:root/ops:cont/list1[k='key']", NULL, 0, NULL));
     } else if (!strcmp(module_name, "ops") && !strcmp(xpath, "/ops:cont/l12")) {
         assert_int_equal(LY_SUCCESS, lyd_new_path(*parent, NULL, "/ops:cont/l12", "val12", 0, NULL));
     } else if (!strcmp(module_name, "ops") && !strcmp(xpath, "/ops:cont/list1")) {

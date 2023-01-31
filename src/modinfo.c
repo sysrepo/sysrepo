@@ -109,7 +109,6 @@ sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int dup_xpath
 
         mod->xpaths[mod->xpath_count] = dup_xpath ? strdup(xpath) : xpath;
         ++mod->xpath_count;
-        mod->state |= MOD_INFO_NEW | (dup_xpath ? MOD_INFO_XPATH_DYN : 0);
     }
 
     return NULL;
