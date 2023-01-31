@@ -1132,7 +1132,7 @@ sr_shmext_oper_get_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del
             sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 1, __func__);
 
             /* OPER GET SUB READ LOCK DOWNGRADE */
-            if ((err_info = sr_rwrelock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+            if ((tmp_err = sr_rwrelock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
                     __func__, NULL, NULL))) {
                 sr_errinfo_merge(&err_info, tmp_err);
             }
@@ -1364,7 +1364,7 @@ sr_shmext_oper_poll_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t de
             sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 1, __func__);
 
             /* OPER POLL SUB READ LOCK DOWNGRADE */
-            if ((err_info = sr_rwrelock(&shm_mod->oper_poll_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+            if ((tmp_err = sr_rwrelock(&shm_mod->oper_poll_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
                     __func__, NULL, NULL))) {
                 sr_errinfo_merge(&err_info, tmp_err);
             }
@@ -1898,7 +1898,7 @@ sr_shmext_rpc_sub_stop(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, 
             sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 1, __func__);
 
             /* RPC SUB READ LOCK DOWNGRADE */
-            if ((err_info = sr_rwrelock(sub_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
+            if ((tmp_err = sr_rwrelock(sub_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__,
                     NULL, NULL))) {
                 sr_errinfo_merge(&err_info, tmp_err);
             }
