@@ -4897,6 +4897,7 @@ error:
     if ((*subs_p)->evpipe > -1) {
         close((*subs_p)->evpipe);
     }
+    sr_rwlock_destroy(&(*subs_p)->subs_lock);
     free(*subs_p);
     *subs_p = NULL;
     return err_info;
