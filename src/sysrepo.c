@@ -3817,7 +3817,12 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
     if (!timeout_ms) {
         timeout_ms = SR_CHANGE_CB_TIMEOUT;
     }
-    SR_MODINFO_INIT(mod_info, session->conn, src_datastore, src_datastore);
+    if ((src_datastore == SR_DS_RUNNING) && (session->ds == SR_DS_CANDIDATE)) {
+        /* discard-changes, need no data, but lock running for READ and candidate for WRITE */
+        SR_MODINFO_INIT(mod_info, session->conn, session->ds, src_datastore);
+    } else {
+        SR_MODINFO_INIT(mod_info, session->conn, src_datastore, src_datastore);
+    }
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
