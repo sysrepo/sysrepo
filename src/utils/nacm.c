@@ -1297,6 +1297,7 @@ sr_nacm_collect_groups(const char *user, char ***groups, uint32_t *group_count)
 
             /* add, if not already there */
             if (sr_nacm_strarr_sort_add((const char **)&grp.gr_name, sizeof **groups, 1, groups, group_count)) {
+                SR_ERRINFO_MEM(&err_info);
                 goto cleanup;
             }
         }
@@ -1305,7 +1306,7 @@ sr_nacm_collect_groups(const char *user, char ***groups, uint32_t *group_count)
 cleanup:
     free(gids);
     free(buf);
-    return NULL;
+    return err_info;
 }
 
 /**

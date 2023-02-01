@@ -3093,7 +3093,7 @@ cleanup:
 sr_error_info_t *
 sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session)
 {
-    sr_error_info_t *err_info = NULL, *tmp_err_info = NULL;
+    sr_error_info_t *err_info = NULL, *tmp_err = NULL;
     struct lyd_node *root, *elem, *notif = NULL;
     struct ly_set *set;
     sr_mod_t *shm_mod;
@@ -3247,16 +3247,17 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
             goto cleanup;
         }
     }
+    if (err_info) {
+        goto cleanup;
+    }
 
     /* store the notification for a replay, we continue on failure */
-    tmp_err_info = sr_replay_store(session, notif, notif_ts);
+    tmp_err = sr_replay_store(session, notif, notif_ts);
 
     /* send the notification (non-validated, if everything works correctly it must be valid) */
     if ((err_info = sr_shmsub_notif_notify(mod_info->conn, notif, notif_ts, session->orig_name, session->orig_data, 0, 0))) {
         goto cleanup;
     }
-
-    /* success */
 
 cleanup:
     ly_set_free(set, NULL);
@@ -3266,8 +3267,8 @@ cleanup:
         sr_errinfo_new(&err_info, err_info->err[0].err_code, "Failed to generate netconf-config-change notification, "
                 "but changes were applied.");
     }
-    if (tmp_err_info) {
-        sr_errinfo_merge(&err_info, tmp_err_info);
+    if (tmp_err) {
+        sr_errinfo_merge(&err_info, tmp_err);
     }
     return err_info;
 }

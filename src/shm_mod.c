@@ -379,6 +379,7 @@ cleanup:
  *
  * @param[in] sr_dep Dependency in internal sysrepo data.
  * @param[in,out] shm_size Size of SHM to add to.
+ * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_shmmod_add_dep_size(const struct lyd_node *sr_dep, size_t *shm_size)
@@ -447,7 +448,9 @@ sr_shmmod_add_deps(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node 
             LY_LIST_FOR(lyd_child(sr_child), sr_dep) {
                 /* another data dependency and additional strings */
                 ++smod->dep_count;
-                sr_shmmod_add_dep_size(sr_dep, &paths_len);
+                if ((err_info = sr_shmmod_add_dep_size(sr_dep, &paths_len))) {
+                    return err_info;
+                }
             }
         } else if (!strcmp(sr_child->schema->name, "inverse-deps")) {
             /* another inverse data dependency */
@@ -541,7 +544,9 @@ sr_shmmod_add_rpcs(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node 
                     LY_LIST_FOR(lyd_child(sr_op_dep), sr_dep) {
                         /* another dependency */
                         ++dep_i;
-                        sr_shmmod_add_dep_size(sr_dep, &paths_len);
+                        if ((err_info = sr_shmmod_add_dep_size(sr_dep, &paths_len))) {
+                            return err_info;
+                        }
                     }
 
                     /* all RPC input/output dependencies (must be counted this way to align all the arrays individually) */
@@ -679,7 +684,9 @@ sr_shmmod_add_notifs(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_nod
                     LY_LIST_FOR(lyd_child(sr_op_dep), sr_dep) {
                         /* another dependency */
                         ++dep_i;
-                        sr_shmmod_add_dep_size(sr_dep, &paths_len);
+                        if ((err_info = sr_shmmod_add_dep_size(sr_dep, &paths_len))) {
+                            return err_info;
+                        }
                     }
 
                     /* all notification dependencies (must be counted this way to align all the arrays individually) */

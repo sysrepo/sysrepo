@@ -3100,6 +3100,7 @@ sr_conn_ext_data_replace(sr_conn_ctx_t *conn, struct lyd_node *new_ext_data)
         /* LY EXT DATA UNLOCK */
         sr_rwunlock(&conn->ly_ext_data_lock, SR_CONN_EXT_DATA_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
     }
+    sr_errinfo_free(&err_info);
 }
 
 void

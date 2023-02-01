@@ -5990,7 +5990,9 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
         case LYS_LIST:
             /* find the action (RPC in case of schema-mount) */
             input_op = input;
-            err_info = sr_ly_find_last_parent(&input_op, LYS_ACTION | LYS_RPC);
+            if ((err_info = sr_ly_find_last_parent(&input_op, LYS_ACTION | LYS_RPC))) {
+                goto cleanup;
+            }
             if (!(input_op->schema->nodetype & (LYS_ACTION | LYS_RPC))) {
                 input_op = NULL;
             }
