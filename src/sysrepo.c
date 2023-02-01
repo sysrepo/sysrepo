@@ -4848,7 +4848,9 @@ sr_subscr_new(sr_conn_ctx_t *conn, sr_subscr_options_t opts, sr_subscription_ctx
     /* allocate new subscription */
     *subs_p = calloc(1, sizeof **subs_p);
     SR_CHECK_MEM_RET(!*subs_p, err_info);
-    sr_rwlock_init(&(*subs_p)->subs_lock, 0);
+    if ((err_info = sr_rwlock_init(&(*subs_p)->subs_lock, 0))) {
+        goto error;
+    }
     (*subs_p)->conn = conn;
     (*subs_p)->evpipe = -1;
 

@@ -2159,7 +2159,7 @@ sr_nacm_check_diff(const char *nacm_user, const struct lyd_node *diff, const str
     /* NACM LOCK */
     pthread_mutex_lock(&nacm.lock);
 
-    if (sr_nacm_collect_groups(nacm_user, &groups, &group_count)) {
+    if ((err_info = sr_nacm_collect_groups(nacm_user, &groups, &group_count))) {
         goto cleanup;
     }
 
