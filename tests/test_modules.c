@@ -738,7 +738,7 @@ test_change_feature(void **state)
 
     /* check that the conditional data were removed */
     ret = sr_get_item(sess, "/features:l2", 0, &val);
-    assert_int_equal(ret, SR_ERR_LY);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
     /* cleanup */
     ret = sr_session_switch_ds(sess, SR_DS_RUNNING);

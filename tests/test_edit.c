@@ -1296,7 +1296,7 @@ test_edit_forbid_node_types(void **state)
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/ops:notif3/list2[k='k']", 0, &subtree);
-    assert_int_equal(ret, SR_ERR_LY);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
     /* not throw away the whole edit, the successfully created node still exists */
     ret = sr_get_subtree(st->sess, "/ops:cont", 0, &subtree);

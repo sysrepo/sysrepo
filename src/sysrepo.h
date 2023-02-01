@@ -788,7 +788,8 @@ int sr_acquire_data(sr_conn_ctx_t *conn, struct lyd_node *tree, sr_data_t **data
  * @param[in] path [Path](@ref paths) selecting the root node of the subtree to be retrieved.
  * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
  * @param[out] subtree SR data with the requested subtree. NULL if none found.
- * @return Error code (::SR_ERR_OK on success, ::SR_ERR_INVAL_ARG if multiple nodes match the path).
+ * @return Error code (::SR_ERR_OK on success, ::SR_ERR_INVAL_ARG if multiple nodes match the path,
+ * ::SR_ERR_NOT_FOUND if path is invalid - no nodes will ever match it).
  */
 int sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr_data_t **subtree);
 
@@ -814,7 +815,7 @@ int sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout
  * @param[in] timeout_ms Operational callback timeout in milliseconds. If 0, default is used.
  * @param[in] opts Options overriding default get behaviour.
  * @param[out] data SR data with connected top-level data trees of all the requested data. NULL if none found.
- * @return Error code (::SR_ERR_OK on success).
+ * @return Error code (::SR_ERR_OK on success, ::SR_ERR_NOT_FOUND if xpath is invalid - no nodes will ever match it).
  */
 int sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, uint32_t timeout_ms,
         const sr_get_options_t opts, sr_data_t **data);

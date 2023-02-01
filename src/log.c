@@ -224,6 +224,10 @@ sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *msg_
         /* there is no dynamic memory, use the static error structure */
         sr_errinfo_free(err_info);
         *err_info = &sr_errinfo_mem;
+    } else if (!msg_format) {
+        /* error without a message */
+        sr_errinfo_add(err_info, err_code, NULL, NULL, NULL, NULL);
+        return;
     } else {
         va_start(vargs, msg_format);
         sr_errinfo_add(err_info, err_code, NULL, NULL, msg_format, &vargs);
@@ -294,45 +298,6 @@ sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx, const
             } else {
                 sr_errinfo_new(err_info, SR_ERR_LY, "%s", e->msg);
             }
-        }
-
-        e = e->next;
-    } while (e);
-
-    ly_err_clean((struct ly_ctx *)ly_ctx, NULL);
-}
-
-void
-sr_errinfo_new_wrn_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx, const struct lyd_node *data)
-{
-    struct ly_err_item *e;
-    const struct lyd_node *node;
-
-    e = ly_err_first(ly_ctx);
-    if (!e && data) {
-        LYD_TREE_DFS_BEGIN(data, node) {
-            if (node->flags & LYD_EXT) {
-                e = ly_err_first(LYD_CTX(node));
-                break;
-            }
-            LYD_TREE_DFS_END(data, node);
-        }
-    }
-
-    /* this function should is called only when an error or warning is expected, but it is still possible there
-     * will be none -> libyang problem or simply the error was externally processed, sysrepo is
-     * unable to detect that */
-    if (!e) {
-        sr_errinfo_new(err_info, SR_ERR_LY, "Unknown libyang error.");
-        return;
-    }
-
-    do {
-        /* store it and print it */
-        if (e->path) {
-            sr_errinfo_new(err_info, SR_ERR_LY, "%s (%s)", e->msg, e->path);
-        } else {
-            sr_errinfo_new(err_info, SR_ERR_LY, "%s", e->msg);
         }
 
         e = e->next;
