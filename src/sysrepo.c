@@ -6317,7 +6317,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
         goto cleanup;
     }
 
-    if (lysc_data_parent(notif_op->schema)) {
+    if (notif_top != notif_op) {
         /* we need the OP parent to check it exists */
         parent_path = lyd_path(lyd_parent(notif_op), LYD_PATH_STD, NULL, 0);
         SR_CHECK_MEM_GOTO(!parent_path, err_info, cleanup);
