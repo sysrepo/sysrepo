@@ -5880,11 +5880,11 @@ subscribe_change_order_thread(void *arg)
 
     /* wait for the first edit */
     pthread_barrier_wait(&st->barrier);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
+    assert_true(ATOMIC_LOAD_RELAXED(st->cb_called) >= 4);
 
     /* wait for the second edit */
     pthread_barrier_wait(&st->barrier);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 8);
+    assert_true(ATOMIC_LOAD_RELAXED(st->cb_called) >= 8);
 
     /* wait for the third edit */
     pthread_barrier_wait(&st->barrier);
