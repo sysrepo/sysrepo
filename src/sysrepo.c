@@ -193,7 +193,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     sr_conn_ctx_t *conn = NULL;
     struct ly_ctx *tmp_ly_ctx = NULL;
     struct lyd_node *sr_mods = NULL;
-    int created = 0;
+    int created = 0, initialized = 0;
     sr_main_shm_t *main_shm;
     sr_ext_hole_t *hole;
 
@@ -241,7 +241,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         }
 
         /* parse SR mods */
-        if ((err_info = sr_lydmods_parse(tmp_ly_ctx, 1, &sr_mods))) {
+        if ((err_info = sr_lydmods_parse(tmp_ly_ctx, &initialized, &sr_mods))) {
             goto cleanup_unlock;
         }
 
@@ -284,8 +284,8 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
 
     if (created) {
-        /* copy <startup> to <running> */
-        if ((err_info = sr_shmmod_copy_startup_to_running(conn))) {
+        /* initialize the datastores */
+        if ((err_info = sr_shmmod_reboot_init(conn, initialized))) {
             goto cleanup_unlock;
         }
     }
@@ -2462,7 +2462,7 @@ sr_get_module_info(sr_conn_ctx_t *conn, sr_data_t **sysrepo_data)
     }
 
     /* get internal sysrepo data */
-    if ((err_info = sr_lydmods_parse(conn->ly_ctx, 0, &(*sysrepo_data)->tree))) {
+    if ((err_info = sr_lydmods_parse(conn->ly_ctx, NULL, &(*sysrepo_data)->tree))) {
         goto cleanup;
     }
 

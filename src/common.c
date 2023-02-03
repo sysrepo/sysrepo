@@ -317,9 +317,10 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
             SR_LOG_WRN("DS plugin \"%s\" missing the callback structure.", path);
             goto next_file;
         }
-        if (!srpds->name || !srpds->init_cb || !srpds->destroy_cb || !srpds->store_cb || !srpds->recover_cb ||
-                !srpds->load_cb || !srpds->copy_cb || !srpds->candidate_modified_cb || !srpds->candidate_reset_cb ||
-                !srpds->access_set_cb || !srpds->access_get_cb || !srpds->access_check_cb || !srpds->last_modif_cb) {
+        if (!srpds->name || !srpds->install_cb || !srpds->uninstall_cb || !srpds->init_cb || !srpds->store_cb ||
+                !srpds->recover_cb || !srpds->load_cb || !srpds->copy_cb || !srpds->candidate_modified_cb ||
+                !srpds->candidate_reset_cb || !srpds->access_set_cb || !srpds->access_get_cb ||
+                !srpds->access_check_cb || !srpds->last_modif_cb) {
             SR_LOG_WRN("DS plugin \"%s\" with incomplete callback structure.", path);
             goto next_file;
         }
@@ -478,7 +479,7 @@ sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32_t *ntf_handle_co
             SR_LOG_WRN("NTF plugin \"%s\" missing the callback structure.", path);
             goto next_file;
         }
-        if (!srpntf->name || !srpntf->init_cb || !srpntf->destroy_cb || !srpntf->store_cb || !srpntf->replay_next_cb ||
+        if (!srpntf->name || !srpntf->enable_cb || !srpntf->disable_cb || !srpntf->store_cb || !srpntf->replay_next_cb ||
                 !srpntf->earliest_get_cb || !srpntf->access_set_cb || !srpntf->access_get_cb || !srpntf->access_check_cb) {
             SR_LOG_WRN("NTF plugin \"%s\" with incomplete callback structure.", path);
             goto next_file;
@@ -983,7 +984,7 @@ sr_collect_module_impl_deps(const struct lys_module *ly_mod, struct ly_set *mod_
     struct lyd_node *sr_mods = NULL;
 
     /* parse SR mod data for the dependencies */
-    if ((err_info = sr_lydmods_parse(ly_mod->ctx, 0, &sr_mods))) {
+    if ((err_info = sr_lydmods_parse(ly_mod->ctx, NULL, &sr_mods))) {
         goto cleanup;
     }
 

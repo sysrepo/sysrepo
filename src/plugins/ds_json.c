@@ -33,6 +33,7 @@
 #include <libyang/libyang.h>
 
 #include "compat.h"
+#include "common.h"
 #include "common_json.h"
 #include "sysrepo.h"
 
@@ -174,7 +175,7 @@ cleanup:
  * @return SR_ERR value.
  */
 static int
-srpds_json_init_startup(const struct lys_module *mod, const char *owner, const char *group, mode_t perm)
+srpds_json_install_startup(const struct lys_module *mod, const char *owner, const char *group, mode_t perm)
 {
     int rc = SR_ERR_OK;
     struct lyd_node *root = NULL;
@@ -209,7 +210,7 @@ cleanup:
 }
 
 static int
-srpds_json_init(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm)
+srpds_json_install(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm)
 {
     int rc = SR_ERR_OK, fd = -1;
     char *path = NULL;
@@ -225,8 +226,8 @@ srpds_json_init(const struct lys_module *mod, sr_datastore_t ds, const char *own
     }
 
     if (ds == SR_DS_STARTUP) {
-        /* startup init */
-        rc = srpds_json_init_startup(mod, owner, group, perm);
+        /* startup install */
+        rc = srpds_json_install_startup(mod, owner, group, perm);
         goto cleanup;
     }
 
@@ -258,7 +259,7 @@ cleanup:
 }
 
 static int
-srpds_json_destroy(const struct lys_module *mod, sr_datastore_t ds)
+srpds_json_uninstall(const struct lys_module *mod, sr_datastore_t ds)
 {
     int rc = SR_ERR_OK;
     char *path = NULL;
@@ -292,6 +293,60 @@ cleanup:
 }
 
 static int
+srpds_json_init(const struct lys_module *mod, sr_datastore_t ds)
+{
+    int rc = SR_ERR_OK, fd = -1;
+    char *owner = NULL, *group = NULL, *path = NULL;
+    mode_t perm;
+
+    if (ds != SR_DS_RUNNING) {
+        /* startup is persistent and candidate with operational exists only if modified */
+        return SR_ERR_OK;
+    }
+
+    if (!sr_module_has_data(mod, 0)) {
+        /* no data, do not create the file */
+        return SR_ERR_OK;
+    }
+
+    /* get owner/group/perms of the datastore file */
+    if ((rc = srpds_json_access_get(mod, ds, &owner, &group, &perm))) {
+        goto cleanup;
+    }
+
+    /* get path to the file */
+    if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
+        goto cleanup;
+    }
+
+    /* create the file with the correct permissions */
+    if ((fd = srpjson_open(path, O_WRONLY | O_CREAT | O_EXCL, perm)) == -1) {
+        rc = srpjson_open_error(srpds_name, path);
+        goto cleanup;
+    }
+
+    /* print empty JSON file */
+    if (lyd_print_fd(fd, NULL, LYD_JSON, LYD_PRINT_SHRINK)) {
+        rc = SR_ERR_LY;
+        goto cleanup;
+    }
+
+    /* update the owner/group of the file */
+    if ((rc = srpjson_chmodown(srpds_name, path, owner, group, 0))) {
+        goto cleanup;
+    }
+
+cleanup:
+    if (fd > -1) {
+        close(fd);
+    }
+    free(owner);
+    free(group);
+    free(path);
+    return rc;
+}
+
+static int
 srpds_json_store(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *UNUSED(mod_diff),
         const struct lyd_node *mod_data)
 {
@@ -304,6 +359,8 @@ srpds_json_store(const struct lys_module *mod, sr_datastore_t ds, const struct l
         /* must exist */
         break;
     case SR_DS_RUNNING:
+        /* must exist except for case when all the data were disabled by a feature, which has just been enabled */
+    /* fallthrough */
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
         /* get data file path */
@@ -419,12 +476,22 @@ srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, const char **UN
     fd = srpjson_open(path, O_RDONLY, 0);
     if (fd == -1) {
         if (errno == ENOENT) {
-            if (ds == SR_DS_CANDIDATE) {
+            switch (ds) {
+            case SR_DS_STARTUP:
+                /* error */
+                break;
+            case SR_DS_RUNNING:
+                if (!sr_module_has_data(mod, 0)) {
+                    /* no data */
+                    goto cleanup;
+                }
+                break;
+            case SR_DS_CANDIDATE:
                 /* no candidate exists */
                 rc = SR_ERR_NOT_FOUND;
                 goto cleanup;
-            } else if ((ds != SR_DS_STARTUP) || !strcmp(mod->name, "sysrepo")) {
-                /* volatile DS data file may not exist */
+            case SR_DS_OPERATIONAL:
+                /* operational empty */
                 goto cleanup;
             }
         }
@@ -806,9 +873,9 @@ srpds_json_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datastor
 
     switch (trg_ds) {
     case SR_DS_STARTUP:
+    case SR_DS_RUNNING:
         /* must exist */
         break;
-    case SR_DS_RUNNING:
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
         if (srpjson_file_exists(srpds_name, trg_path)) {
@@ -1111,8 +1178,9 @@ cleanup:
 
 const struct srplg_ds_s srpds_json = {
     .name = srpds_name,
+    .install_cb = srpds_json_install,
+    .uninstall_cb = srpds_json_uninstall,
     .init_cb = srpds_json_init,
-    .destroy_cb = srpds_json_destroy,
     .store_cb = srpds_json_store,
     .recover_cb = srpds_json_recover,
     .load_cb = srpds_json_load,

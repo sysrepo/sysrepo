@@ -231,12 +231,13 @@ void sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid);
 sr_error_info_t *sr_shmmod_update_replay_support(sr_mod_shm_t *mod_shm, const struct ly_set *mod_set, int enable);
 
 /**
- * @brief Copy startup DS to running DS after reboot after SHM was created.
+ * @brief Initialize datastores after a reboot. Includes calling init callbacks and copying startup DS to running DS.
  *
  * @param[in] conn Connection to use.
+ * @param[in] initialized Whether installed modules have already been initialized or not.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_copy_startup_to_running(sr_conn_ctx_t *conn);
+sr_error_info_t *sr_shmmod_reboot_init(sr_conn_ctx_t *conn, int initialized);
 
 /**
  * @brief Set/get change priority of a module.

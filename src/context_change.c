@@ -225,8 +225,14 @@ sr_lycc_add_modules(sr_conn_ctx_t *conn, const sr_int_install_mod_t *new_mods, u
                 return err_info;
             }
 
+            /* call install */
+            if ((rc = ds_plg->install_cb(ly_mod, ds, new_mods[i].owner, new_mods[i].group, new_mods[i].perm))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "install", ds_plg->name, ly_mod->name);
+                return err_info;
+            }
+
             /* call init */
-            if ((rc = ds_plg->init_cb(ly_mod, ds, new_mods[i].owner, new_mods[i].group, new_mods[i].perm))) {
+            if ((rc = ds_plg->init_cb(ly_mod, ds))) {
                 SR_ERRINFO_DSPLUGIN(&err_info, rc, "init", ds_plg->name, ly_mod->name);
                 return err_info;
             }
@@ -306,9 +312,9 @@ sr_lycc_del_module(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const struc
                 goto cleanup;
             }
 
-            /* call destroy */
-            if ((rc = ds_plg->destroy_cb(ly_mod, ds))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "destroy", ds_plg->name, ly_mod->name);
+            /* call uninstall */
+            if ((rc = ds_plg->uninstall_cb(ly_mod, ds))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "uninstall", ds_plg->name, ly_mod->name);
                 goto cleanup;
             }
         }
@@ -325,9 +331,9 @@ sr_lycc_del_module(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const struc
                 goto cleanup;
             }
 
-            /* call destroy */
-            if ((rc = ntf_plg->destroy_cb(ly_mod))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "destroy", ntf_plg->name, ly_mod->name);
+            /* call disable */
+            if ((rc = ntf_plg->disable_cb(ly_mod))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "disable", ntf_plg->name, ly_mod->name);
                 goto cleanup;
             }
         }
@@ -456,15 +462,15 @@ sr_lycc_set_replay_support(sr_conn_ctx_t *conn, const struct ly_set *mod_set, in
         }
 
         if (enable) {
-            /* call init */
-            if ((rc = ntf_plg->init_cb(ly_mod))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "init", ntf_plg->name, ly_mod->name);
+            /* call enable */
+            if ((rc = ntf_plg->enable_cb(ly_mod))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "enable", ntf_plg->name, ly_mod->name);
                 goto cleanup;
             }
         } else {
-            /* call destroy */
-            if ((rc = ntf_plg->destroy_cb(ly_mod))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "destroy", ntf_plg->name, ly_mod->name);
+            /* call disable */
+            if ((rc = ntf_plg->disable_cb(ly_mod))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "disable", ntf_plg->name, ly_mod->name);
                 goto cleanup;
             }
         }

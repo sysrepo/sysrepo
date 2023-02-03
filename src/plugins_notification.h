@@ -40,27 +40,29 @@ extern "C" {
 /**
  * @brief Notification plugin API version
  */
-#define SRPLG_NTF_API_VERSION 1
+#define SRPLG_NTF_API_VERSION 2
 
 /**
  * @brief Initialize notification storage for a specific module.
  *
+ * Install is called once for every module on enabled replay.
+ *
  * @param[in] mod Specific module.
  * @return ::SR_ERR_OK on success;
  * @return Sysrepo error value on error.
  */
-typedef int (*srntf_init)(const struct lys_module *mod);
+typedef int (*srntf_enable)(const struct lys_module *mod);
 
 /**
  * @brief Destroy notification storage of a specific module.
  *
- * Stored notifications may be kept and usable once ::srntf_init is called again for the module.
+ * Stored notifications may be kept and usable once ::srntf_enable is called again for the module.
  *
  * @param[in] mod Specific module.
  * @return ::SR_ERR_OK on success;
  * @return Sysrepo error value on error.
  */
-typedef int (*srntf_destroy)(const struct lys_module *mod);
+typedef int (*srntf_disable)(const struct lys_module *mod);
 
 /**
  * @brief Store a notification for replay.
@@ -141,8 +143,8 @@ typedef int (*srntf_access_check)(const struct lys_module *mod, int *read, int *
  */
 struct srplg_ntf_s {
     const char *name;               /**< name of the notification implementation plugin by which it is referenced */
-    srntf_init init_cb;             /**< initialize notification storage of a module */
-    srntf_destroy destroy_cb;       /**< destroy notification storage of a module */
+    srntf_enable enable_cb;         /**< enable notification storage of a module */
+    srntf_disable disable_cb;       /**< disable notification storage of a module */
     srntf_store store_cb;           /**< store a notification for replay */
     srntf_replay_next replay_next_cb;   /**< replay next notification in order */
     srntf_earliest_get earliest_get_cb; /**< get the timestamp of the earliest stored notification */

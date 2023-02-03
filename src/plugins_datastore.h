@@ -40,12 +40,12 @@ extern "C" {
 /**
  * @brief Datastore plugin API version
  */
-#define SRPLG_DS_API_VERSION 6
+#define SRPLG_DS_API_VERSION 7
 
 /**
- * @brief Initialize data of a new module.
+ * @brief Setup datastore of a newly installed module.
  *
- * Initialization is called once for every new installed module for each datastore.
+ * Install is called once for every new installed module for each datastore.
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
@@ -55,18 +55,30 @@ extern "C" {
  * @return ::SR_ERR_OK on success;
  * @return Sysrepo error value on error.
  */
-typedef int (*srds_init)(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group,
+typedef int (*srds_install)(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group,
         mode_t perm);
 
 /**
- * @brief Destroy data of a removed module.
+ * @brief Destroy data of an uninstalled module.
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
  * @return ::SR_ERR_OK on success;
  * @return Sysrepo error value on error.
  */
-typedef int (*srds_destroy)(const struct lys_module *mod, sr_datastore_t ds);
+typedef int (*srds_uninstall)(const struct lys_module *mod, sr_datastore_t ds);
+
+/**
+ * @brief Initialize data of a newly installed module.
+ *
+ * Init is called after fresh reboot of the system for every module for each datastore.
+ *
+ * @param[in] mod Specific module.
+ * @param[in] ds Specific datastore.
+ * @return ::SR_ERR_OK on success;
+ * @return Sysrepo error value on error.
+ */
+typedef int (*srds_init)(const struct lys_module *mod, sr_datastore_t ds);
 
 /**
  * @brief Store data for a module. Either a diff can be applied manually or full new data tree stored.
@@ -236,8 +248,9 @@ typedef int (*srds_last_modif)(const struct lys_module *mod, sr_datastore_t ds, 
  */
 struct srplg_ds_s {
     const char *name;               /**< name of the datastore implementation plugin by which it is referenced */
-    srds_init init_cb;              /**< callback for initialization of a new module */
-    srds_destroy destroy_cb;        /**< callback for freeing a removed module */
+    srds_install install_cb;        /**< callback for installing a new module */
+    srds_uninstall uninstall_cb;    /**< callback for uninstalling a removed module */
+    srds_init init_cb;              /**< callback for after-boot initialization of a module */
     srds_store store_cb;            /**< callback for storing module data */
     srds_recover recover_cb;        /**< callback for stored module data recovery */
     srds_load load_cb;              /**< callback for loading stored module data */

@@ -366,7 +366,7 @@ cleanup:
 }
 
 static int
-srpntf_json_init(const struct lys_module *mod)
+srpntf_json_enable(const struct lys_module *mod)
 {
     int rc = SR_ERR_OK, r;
     char *dir_path = NULL;
@@ -392,7 +392,7 @@ cleanup:
 }
 
 static int
-srpntf_json_destroy(const struct lys_module *mod)
+srpntf_json_disable(const struct lys_module *mod)
 {
     (void)mod;
 
@@ -599,7 +599,7 @@ srpntf_json_earliest_get(const struct lys_module *mod, struct timespec *ts)
     time_t file_from, file_to;
 
     /* create directory in case does not exist */
-    if ((rc = srpntf_json_init(mod))) {
+    if ((rc = srpntf_json_enable(mod))) {
         goto cleanup;
     }
 
@@ -795,8 +795,8 @@ cleanup:
 
 const struct srplg_ntf_s srpntf_json = {
     .name = srpntf_name,
-    .init_cb = srpntf_json_init,
-    .destroy_cb = srpntf_json_destroy,
+    .enable_cb = srpntf_json_enable,
+    .disable_cb = srpntf_json_disable,
     .store_cb = srpntf_json_store,
     .replay_next_cb = srpntf_json_replay_next,
     .earliest_get_cb = srpntf_json_earliest_get,

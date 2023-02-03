@@ -29,11 +29,11 @@
  * @brief Parse internal module data.
  *
  * @param[in] ly_ctx Context to use for parsing SR data.
- * @param[in] allow_ctx_change Allow @p ly_ctx to be initialized with the internal modules, if not already.
+ * @param[in] initialized If set, allow @p ly_ctx to be initialized with the internal modules, if not already.
  * @param[out] sr_mods_p Sysrepo module data tree.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lydmods_parse(const struct ly_ctx *ly_ctx, int allow_ctx_change, struct lyd_node **sr_mods_p);
+sr_error_info_t *sr_lydmods_parse(const struct ly_ctx *ly_ctx, int *initialized, struct lyd_node **sr_mods_p);
 
 /**
  * @brief Add modules to SR internal module data.

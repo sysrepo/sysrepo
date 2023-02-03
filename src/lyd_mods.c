@@ -34,6 +34,7 @@
 #include <libyang/plugins_types.h>
 
 #include "common.h"
+#include "common_json.h"
 #include "common_types.h"
 #include "compat.h"
 #include "config.h"
@@ -71,7 +72,7 @@
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_add_module(struct lyd_node *sr_mods, const struct lys_module *ly_mod, const sr_module_ds_t *module_ds)
+sr_lydmods_add_module(struct lyd_node *sr_mods, const struct lys_module *ly_mod, const sr_module_ds_t module_ds)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mod, *sr_plugin;
@@ -104,7 +105,7 @@ sr_lydmods_add_module(struct lyd_node *sr_mods, const struct lys_module *ly_mod,
             sr_errinfo_new_ly(&err_info, ly_mod->ctx, NULL);
             goto cleanup;
         }
-        if (lyd_new_term(sr_plugin, NULL, "name", module_ds->plugin_name[i], 0, NULL)) {
+        if (lyd_new_term(sr_plugin, NULL, "name", module_ds.plugin_name[i], 0, NULL)) {
             sr_errinfo_new_ly(&err_info, ly_mod->ctx, NULL);
             goto cleanup;
         }
@@ -120,14 +121,17 @@ cleanup:
  *
  * @param[in] sr_mods Internal sysrepo data.
  * @param[in] ly_mod Module with implemented imports to add.
- * @param[in] dep_new_mod Index in @p new_mods of the module with @p ly_mod as a dependency.
+ * @param[in] module_ds Array of datastoru plugin names to use.
+ * @param[in] owner Owner of the module.
+ * @param[in] group Group of the module.
+ * @param[in] perm Permissions of the module.
  * @param[in,out] new_mods Array of all the newly installed modules, is added to.
  * @param[in,out] new_mod_count Count of @p new_mods.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_module *ly_mod, uint32_t dep_new_mod,
-        sr_int_install_mod_t **new_mods, uint32_t *new_mod_count)
+sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_module *ly_mod, const sr_module_ds_t module_ds,
+        const char *owner, const char *group, mode_t perm, sr_int_install_mod_t **new_mods, uint32_t *new_mod_count)
 {
     sr_error_info_t *err_info = NULL;
     const struct lysp_submodule *lysp_submod;
@@ -138,14 +142,16 @@ sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_mod
     LY_ARRAY_COUNT_TYPE i, j;
 
     if (ly_mod->implemented) {
-        i = *new_mod_count;
-        do {
-            --i;
-            if ((*new_mods)[i].ly_mod == ly_mod) {
-                /* module found and was/will be installed in this batch */
-                goto cleanup;
-            }
-        } while (i);
+        if (*new_mod_count) {
+            i = *new_mod_count;
+            do {
+                --i;
+                if ((*new_mods)[i].ly_mod == ly_mod) {
+                    /* module found and was/will be installed in this batch */
+                    goto cleanup;
+                }
+            } while (i);
+        }
 
         if (asprintf(&xpath, "module[name='%s']", ly_mod->name) == -1) {
             SR_ERRINFO_MEM(&err_info);
@@ -158,7 +164,7 @@ sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_mod
 
         if (!found) {
             /* install the module */
-            if ((err_info = sr_lydmods_add_module(sr_mods, ly_mod, &(*new_mods)[dep_new_mod].module_ds))) {
+            if ((err_info = sr_lydmods_add_module(sr_mods, ly_mod, module_ds))) {
                 goto cleanup;
             }
 
@@ -171,17 +177,17 @@ sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_mod
             ++(*new_mod_count);
 
             new_mod->ly_mod = ly_mod;
-            new_mod->module_ds = (*new_mods)[dep_new_mod].module_ds;
-            new_mod->owner = (*new_mods)[dep_new_mod].owner;
-            new_mod->group = (*new_mods)[dep_new_mod].group;
-            new_mod->perm = (*new_mods)[dep_new_mod].perm;
+            new_mod->module_ds = module_ds;
+            new_mod->owner = owner;
+            new_mod->group = group;
+            new_mod->perm = perm;
         }
     }
 
     /* all newly implemented modules will be added also from imports and includes, recursively */
     LY_ARRAY_FOR(ly_mod->parsed->imports, i) {
-        if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod->parsed->imports[i].module, 0, new_mods,
-                new_mod_count))) {
+        if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod->parsed->imports[i].module, module_ds, owner,
+                group, perm, new_mods, new_mod_count))) {
             goto cleanup;
         }
     }
@@ -189,8 +195,8 @@ sr_lydmods_add_module_with_imps_r(struct lyd_node *sr_mods, const struct lys_mod
     LY_ARRAY_FOR(ly_mod->parsed->includes, i) {
         lysp_submod = ly_mod->parsed->includes[i].submodule;
         LY_ARRAY_FOR(lysp_submod->imports, j) {
-            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, lysp_submod->imports[j].module, 0, new_mods,
-                    new_mod_count))) {
+            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, lysp_submod->imports[j].module, module_ds, owner,
+                    group, perm, new_mods, new_mod_count))) {
                 goto cleanup;
             }
         }
@@ -206,31 +212,35 @@ cleanup:
  * All new modules have their data files created and YANG modules stored as well.
  *
  * @param[in] sr_mods Internal sysrepo data.
- * @param[in] cur_new_mod Index in @p new_mods of the explicitly installed module.
+ * @param[in] ly_mod Module to add.
+ * @param[in] module_ds Array of datastoru plugin names to use.
+ * @param[in] owner Owner of the module.
+ * @param[in] group Group of the module.
+ * @param[in] perm Permissions of the module.
  * @param[in,out] new_mods Array of all the newly installed modules, is added to.
  * @param[in,out] new_mod_count Count of @p new_mods.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_add_module_with_imps(struct lyd_node *sr_mods, uint32_t cur_new_mod, sr_int_install_mod_t **new_mods,
-        uint32_t *new_mod_count)
+sr_lydmods_add_module_with_imps(struct lyd_node *sr_mods, const struct lys_module *ly_mod,
+        const sr_module_ds_t module_ds, const char *owner, const char *group, mode_t perm,
+        sr_int_install_mod_t **new_mods, uint32_t *new_mod_count)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod = (*new_mods)[cur_new_mod].ly_mod;
     const struct lysp_submodule *lysp_submod;
     LY_ARRAY_COUNT_TYPE i, j;
 
     assert(ly_mod->implemented);
 
     /* install the module */
-    if ((err_info = sr_lydmods_add_module(sr_mods, ly_mod, &(*new_mods)[cur_new_mod].module_ds))) {
+    if ((err_info = sr_lydmods_add_module(sr_mods, ly_mod, module_ds))) {
         goto cleanup;
     }
 
     /* all newly implemented modules will be added also from imports and includes, recursively */
     LY_ARRAY_FOR(ly_mod->parsed->imports, i) {
-        if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod->parsed->imports[i].module, cur_new_mod,
-                new_mods, new_mod_count))) {
+        if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod->parsed->imports[i].module, module_ds, owner,
+                group, perm, new_mods, new_mod_count))) {
             goto cleanup;
         }
     }
@@ -238,8 +248,8 @@ sr_lydmods_add_module_with_imps(struct lyd_node *sr_mods, uint32_t cur_new_mod, 
     LY_ARRAY_FOR(ly_mod->parsed->includes, i) {
         lysp_submod = ly_mod->parsed->includes[i].submodule;
         LY_ARRAY_FOR(lysp_submod->imports, j) {
-            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, lysp_submod->imports[j].module, cur_new_mod,
-                    new_mods, new_mod_count))) {
+            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, lysp_submod->imports[j].module, module_ds, owner,
+                    group, perm, new_mods, new_mod_count))) {
                 goto cleanup;
             }
         }
@@ -943,22 +953,14 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
         sr_errinfo_new_ly(&err_info, ctx, NULL); \
         goto cleanup; \
     } \
-    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0, &(new_mods), &(new_mod_count)))) { \
+    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, sr_default_module_ds, NULL, \
+            strlen(SR_GROUP) ? SR_GROUP : NULL, sr_module_default_mode(ly_mod), &(new_mods), &(new_mod_count)))) { \
         goto cleanup; \
     } \
     SR_LOG_INF("Sysrepo internal%s module \"%s\" was installed.", dep ? " dependency" : "", ly_mod->name)
 
     ly_mod = ly_ctx_get_module_implemented(ly_ctx, "sysrepo");
     SR_CHECK_INT_GOTO(!ly_mod, err_info, cleanup);
-
-    /* store sysrepo as an installed module */
-    new_mods = calloc(1, sizeof *new_mods);
-    SR_CHECK_MEM_GOTO(!new_mods, err_info, cleanup);
-    new_mods[new_mod_count].ly_mod = ly_mod;
-    new_mods[new_mod_count].module_ds = sr_default_module_ds;
-    new_mods[new_mod_count].group = strlen(SR_GROUP) ? SR_GROUP : NULL;
-    new_mods[new_mod_count].perm = sr_module_default_mode(ly_mod);
-    ++new_mod_count;
 
     /* create empty container */
     SR_CHECK_INT_GOTO(lyd_new_inner(NULL, ly_mod, "sysrepo-modules", 0, &sr_mods), err_info, cleanup);
@@ -971,7 +973,8 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     while ((i < ly_ctx_internal_modules_count(ly_ctx)) && (ly_mod = ly_ctx_get_module_iter(ly_ctx, &i))) {
         /* module must be implemented */
         if (ly_mod->implemented) {
-            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, 0, &new_mods, &new_mod_count))) {
+            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, sr_default_module_ds, NULL,
+                    strlen(SR_GROUP) ? SR_GROUP : NULL, sr_module_default_mode(ly_mod), &new_mods, &new_mod_count))) {
                 goto cleanup;
             }
             SR_LOG_INF("Libyang internal module \"%s\" was installed.", ly_mod->name);
@@ -1035,35 +1038,54 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_lydmods_parse(const struct ly_ctx *ly_ctx, int allow_ctx_change, struct lyd_node **sr_mods_p)
+sr_lydmods_parse(const struct ly_ctx *ly_ctx, int *initialized, struct lyd_node **sr_mods_p)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mods = NULL;
     const struct lys_module *ly_mod;
+    char *path = NULL;
     int rc;
 
     assert(ly_ctx && sr_mods_p);
+
+    if (initialized) {
+        *initialized = 0;
+    }
 
     /* get SR module */
     ly_mod = ly_ctx_get_module_implemented(ly_ctx, "sysrepo");
     assert(ly_mod);
 
-    /* load the data using the internal JSON plugin */
-    if ((rc = srpds_json.load_cb(ly_mod, SR_DS_STARTUP, NULL, 0, &sr_mods))) {
-        sr_errinfo_new(&err_info, rc, "Loading \"sysrepo\" data failed.");
+    /* check whether the file exists */
+    if (srpjson_get_path(NULL, ly_mod->name, SR_DS_STARTUP, &path)) {
+        SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }
-
-    if (!sr_mods) {
-        if (allow_ctx_change) {
-            /* no data, need to be initialized */
-            if ((err_info = sr_lydmods_create((struct ly_ctx *)ly_ctx, &sr_mods))) {
-                goto cleanup;
-            }
-        } else {
-            SR_ERRINFO_INT(&err_info);
+    if (srpjson_file_exists(NULL, path)) {
+        /* load the data using the internal JSON plugin */
+        if ((rc = srpds_json.load_cb(ly_mod, SR_DS_STARTUP, NULL, 0, &sr_mods))) {
+            sr_errinfo_new(&err_info, rc, "Loading \"sysrepo\" data failed.");
             goto cleanup;
         }
+    } else if (initialized) {
+        /* install the "sysrepo" module */
+        if ((rc = srpds_json.install_cb(ly_mod, SR_DS_STARTUP, NULL, strlen(SR_GROUP) ? SR_GROUP : NULL,
+                SR_INTMOD_MAIN_FILE_PERM))) {
+            sr_errinfo_new(&err_info, rc, "Initializing \"sysrepo\" data failed.");
+            goto cleanup;
+        }
+        if ((err_info = sr_store_module_yang_r(ly_mod))) {
+            goto cleanup;
+        }
+
+        /* no data, create default */
+        if ((err_info = sr_lydmods_create((struct ly_ctx *)ly_ctx, &sr_mods))) {
+            goto cleanup;
+        }
+        *initialized = 1;
+    } else {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Startup \"sysrepo\" data file does not exist.");
+        goto cleanup;
     }
 
 cleanup:
@@ -1072,6 +1094,7 @@ cleanup:
     } else {
         *sr_mods_p = sr_mods;
     }
+    free(path);
     return err_info;
 }
 
@@ -1085,13 +1108,14 @@ sr_lydmods_change_add_modules(const struct ly_ctx *ly_ctx, sr_int_install_mod_t 
     *sr_mods = NULL;
 
     /* parse current module information */
-    if ((err_info = sr_lydmods_parse(ly_ctx, 0, sr_mods))) {
+    if ((err_info = sr_lydmods_parse(ly_ctx, NULL, sr_mods))) {
         goto cleanup;
     }
 
     /* add new modules with all implemented dependencies to SR data, the latter are added to new_mods as well */
     for (i = 0; i < orig_mod_count; ++i) {
-        if ((err_info = sr_lydmods_add_module_with_imps(*sr_mods, i, new_mods, new_mod_count))) {
+        if ((err_info = sr_lydmods_add_module_with_imps(*sr_mods, (*new_mods)[i].ly_mod, (*new_mods)[i].module_ds,
+                (*new_mods)[i].owner, (*new_mods)[i].group, (*new_mods)[i].perm, new_mods, new_mod_count))) {
             goto cleanup;
         }
         SR_LOG_INF("Module \"%s\" was installed.", (*new_mods)[i].ly_mod->name);
@@ -1138,7 +1162,7 @@ sr_lydmods_change_del_module(const struct ly_ctx *ly_ctx, const struct ly_ctx *n
     *sr_mods = NULL;
 
     /* parse current module information */
-    if ((err_info = sr_lydmods_parse(ly_ctx, 0, sr_mods))) {
+    if ((err_info = sr_lydmods_parse(ly_ctx, NULL, sr_mods))) {
         goto cleanup;
     }
 
@@ -1205,7 +1229,7 @@ sr_lydmods_change_upd_modules(const struct ly_ctx *ly_ctx, const struct ly_set *
     *sr_mods = NULL;
 
     /* parse current module information */
-    if ((err_info = sr_lydmods_parse(ly_ctx, 0, sr_mods))) {
+    if ((err_info = sr_lydmods_parse(ly_ctx, NULL, sr_mods))) {
         goto cleanup;
     }
 
@@ -1270,7 +1294,7 @@ sr_lydmods_change_chng_feature(const struct ly_ctx *ly_ctx, const struct lys_mod
     *sr_mods = NULL;
 
     /* parse current module information */
-    if ((err_info = sr_lydmods_parse(ly_ctx, 0, sr_mods))) {
+    if ((err_info = sr_lydmods_parse(ly_ctx, NULL, sr_mods))) {
         goto cleanup;
     }
 
@@ -1415,7 +1439,7 @@ sr_lydmods_change_chng_replay_support(sr_conn_ctx_t *conn, const struct lys_modu
     char *path = NULL;
 
     /* parse current module information */
-    if ((err_info = sr_lydmods_parse(conn->ly_ctx, 0, sr_mods))) {
+    if ((err_info = sr_lydmods_parse(conn->ly_ctx, NULL, sr_mods))) {
         goto cleanup;
     }
 
