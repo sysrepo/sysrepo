@@ -1305,7 +1305,7 @@ int sr_module_change_get_order(sr_conn_ctx_t *conn, const char *module_name, sr_
  * @brief Subscribe for changes made in the specified module.
  *
  * The order of callbacks of a **single** module is determined by their @p priority. The order of **modules**
- * being notified is determined by their priority which can be adjusted by ::sr_module_change_order().
+ * being notified is determined by their priority which can be adjusted by ::sr_module_change_set_order().
  *
  * Required WRITE access. If ::SR_SUBSCR_PASSIVE is set, required READ access.
  *

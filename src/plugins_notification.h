@@ -94,7 +94,7 @@ typedef int (*srntf_replay_next)(const struct lys_module *mod, const struct time
 /**
  * @brief Get the timestamp of the earliest stored notification of the module.
  *
- * Is called even before ::srntf_init().
+ * Is called even before ::srntf_enable().
  *
  * @param[in] mod Specific module.
  * @param[out] ts Timestamp of the earliest notification, zeroed if there are none.

@@ -45,7 +45,8 @@ extern "C" {
 /**
  * @brief Setup datastore of a newly installed module.
  *
- * Install is called once for every new installed module for each datastore.
+ * Install is called once for every new installed module for each datastore. Right after that ::srds_init
+ * is called.
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
@@ -72,6 +73,7 @@ typedef int (*srds_uninstall)(const struct lys_module *mod, sr_datastore_t ds);
  * @brief Initialize data of a newly installed module.
  *
  * Init is called after fresh reboot of the system for every module for each datastore.
+ * Also, right after ::srds_install is called.
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
