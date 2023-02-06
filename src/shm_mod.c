@@ -328,6 +328,8 @@ sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data)
     struct lyd_node *mod_data = NULL;
     (void)cid;
 
+    assert(cb_data);
+
     if (mode != SR_LOCK_WRITE) {
         /* nothing to recover */
         return;
