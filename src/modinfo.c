@@ -2562,6 +2562,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
     int change, create_flags;
     int oper_mod_locked = 0;
     struct sr_mod_lock_s *shm_lock;
+    struct sr_shmmod_recover_cb_s cb_data;
 
     assert(!mod_info->data_cached);
 
@@ -2629,11 +2630,16 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                     /* Acquire write lock on oper ds */
                     shm_lock = &mod->shm_mod->data_lock_info[SR_DS_OPERATIONAL];
 
+                    /* fill recovery callback information */
+                    cb_data.ly_mod = mod->ly_mod;
+                    cb_data.ds = SR_DS_OPERATIONAL;
+
                     if ((err_info = sr_rwlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT,
-                            SR_LOCK_WRITE, mod_info->conn->cid, __func__, sr_shmmod_recover_cb, NULL))) {
+                            SR_LOCK_WRITE, mod_info->conn->cid, __func__, sr_shmmod_recover_cb, &cb_data))) {
                         goto cleanup;
                     }
                     oper_mod_locked = 1;
+
                     /* update diffs of stored operational data, if any */
                     if ((err_info = sr_module_file_oper_data_load(mod, &diff))) {
                         goto cleanup;
