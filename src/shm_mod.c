@@ -539,6 +539,15 @@ sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradeable, uint32
 {
     sr_error_info_t *err_info = NULL;
 
+    /* Always lock ds2 before ds1 */
+    if (mod_info->ds2 != mod_info->ds) {
+        /* read-lock the secondary DS */
+        if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds2, MOD_INFO_RLOCK2, 0, SR_LOCK_READ,
+                MOD_INFO_RLOCK2, sid))) {
+            return err_info;
+        }
+    }
+
     if (upgradeable) {
         /* read-upgr-lock main DS */
         if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds, MOD_INFO_RLOCK | MOD_INFO_RLOCK_UPGR |
@@ -553,14 +562,6 @@ sr_shmmod_modinfo_rdlock(struct sr_mod_info_s *mod_info, int upgradeable, uint32
         return err_info;
     }
 
-    if (mod_info->ds2 != mod_info->ds) {
-        /* read-lock the secondary DS */
-        if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds2, MOD_INFO_RLOCK2, 0, SR_LOCK_READ,
-                MOD_INFO_RLOCK2, sid))) {
-            return err_info;
-        }
-    }
-
     return NULL;
 }
 
@@ -569,18 +570,19 @@ sr_shmmod_modinfo_wrlock(struct sr_mod_info_s *mod_info, uint32_t sid)
 {
     sr_error_info_t *err_info = NULL;
 
-    /* write-lock main DS */
-    if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds, MOD_INFO_RLOCK | MOD_INFO_RLOCK_UPGR
-            | MOD_INFO_WLOCK, 0, SR_LOCK_WRITE, MOD_INFO_WLOCK, sid))) {
-        return err_info;
-    }
-
+    /* Always lock ds2 before ds1 */
     if (mod_info->ds2 != mod_info->ds) {
         /* read-lock the secondary DS */
         if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds2, MOD_INFO_RLOCK2, 0, SR_LOCK_READ,
                 MOD_INFO_RLOCK2, sid))) {
             return err_info;
         }
+    }
+
+    /* write-lock main DS */
+    if ((err_info = sr_shmmod_modinfo_lock(mod_info, mod_info->ds, MOD_INFO_RLOCK | MOD_INFO_RLOCK_UPGR
+            | MOD_INFO_WLOCK, 0, SR_LOCK_WRITE, MOD_INFO_WLOCK, sid))) {
+        return err_info;
     }
 
     return NULL;

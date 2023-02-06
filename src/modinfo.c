@@ -2560,6 +2560,8 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
     struct lyd_node *mod_data, *enab_mod_data = NULL, *diff = NULL;
     uint32_t i;
     int change, create_flags;
+    int oper_mod_locked = 0;
+    struct sr_mod_lock_s *shm_lock;
 
     assert(!mod_info->data_cached);
 
@@ -2624,6 +2626,14 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                 }
 
                 if (mod_info->ds == SR_DS_RUNNING) {
+                    /* Acquire write lock on oper ds */
+                    shm_lock = &mod->shm_mod->data_lock_info[SR_DS_OPERATIONAL];
+
+                    if ((err_info = sr_rwlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT,
+                            SR_LOCK_WRITE, mod_info->conn->cid, __func__, sr_shmmod_recover_cb, NULL))) {
+                        goto cleanup;
+                    }
+                    oper_mod_locked = 1;
                     /* update diffs of stored operational data, if any */
                     if ((err_info = sr_module_file_oper_data_load(mod, &diff))) {
                         goto cleanup;
@@ -2645,11 +2655,16 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                                 SR_FILE_PERM))) {
                             goto cleanup;
                         }
+
                         lyd_free_withsiblings(diff);
                         diff = NULL;
                         lyd_free_withsiblings(enab_mod_data);
                         enab_mod_data = NULL;
                     }
+
+                    sr_rwunlock(&shm_lock->data_lock, 0,
+                            SR_LOCK_WRITE, mod_info->conn->cid, __func__);
+                    oper_mod_locked = 0;
                 }
             }
         }
@@ -2661,6 +2676,10 @@ cleanup:
     }
     lyd_free_withsiblings(diff);
     lyd_free_withsiblings(enab_mod_data);
+    if (oper_mod_locked) {
+        sr_rwunlock(&shm_lock->data_lock, 0,
+                SR_LOCK_WRITE, mod_info->conn->cid, __func__);
+    }
     return err_info;
 
 }
