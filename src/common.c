@@ -4043,10 +4043,10 @@ sr_lyd_trim_depth(struct lyd_node *subtree, uint32_t max_depth)
 /**
  * @brief Copy any existing config NP containers, recursively.
  *
- * @param[in,out] first First sibling, not needed if @p parent is set.
+ * @param[in,out] first First sibling, do not set if @p parent is set.
  * @param[in] parent Parent of any copied containers.
  * @param[in] src_sibling Any source sibling to look for existing NP containers.
- * @param[in] ly_mod Module, whose top-level containers to create, if @p first is set.
+ * @param[in] ly_mod Module, whose top-level containers to create, if @p first is set. Set only for top-level data.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
@@ -4054,20 +4054,19 @@ sr_lyd_copy_config_np_cont_r(struct lyd_node **first, struct lyd_node *parent, c
         const struct lys_module *ly_mod)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lyd_node *src, *src_top;
+    const struct lyd_node *src;
     const struct lys_module *mod;
     struct lyd_node *node;
-
-    assert(ly_mod);
 
     if (!src_sibling) {
         /* nothing to do */
         return NULL;
     }
 
+    assert((first && !parent && !src_sibling->parent && ly_mod) || (!first && parent && src_sibling->parent && !ly_mod));
+
     for (src = src_sibling; src; src = src->next) {
-        for (src_top = src; src_top->parent; src_top = lyd_parent(src_top)) {}
-        if (lyd_owner_module(src_top) != ly_mod) {
+        if (ly_mod && (lysc_owner_module(src->schema) != ly_mod)) {
             /* these data do not belong to this module */
             continue;
         }
@@ -4099,7 +4098,7 @@ sr_lyd_copy_config_np_cont_r(struct lyd_node **first, struct lyd_node *parent, c
         }
 
         /* copy any nested NP containers */
-        if ((err_info = sr_lyd_copy_config_np_cont_r(NULL, node, lyd_child(src), ly_mod))) {
+        if ((err_info = sr_lyd_copy_config_np_cont_r(NULL, node, lyd_child(src), NULL))) {
             return err_info;
         }
 
@@ -4144,7 +4143,7 @@ sr_lyd_get_module_data(struct lyd_node **data, const struct lys_module *ly_mod, 
     assert(ly_mod && new_data);
 
     LY_LIST_FOR_SAFE(*data, next, node) {
-        if (lyd_owner_module(node) == ly_mod) {
+        if (lysc_owner_module(node->schema) == ly_mod) {
             if (dup) {
                 /* duplicate subtree */
                 if (lyd_dup_single(node, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &subtree)) {
@@ -4193,12 +4192,12 @@ sr_lyd_get_enabled_copy_config_np_cont(struct lyd_node *node, const struct lyd_n
     sr_error_info_t *err_info = NULL;
 
     while (node) {
-        if ((err_info = sr_lyd_copy_config_np_cont_r(NULL, node, src, lyd_owner_module(src)))) {
+        if ((err_info = sr_lyd_copy_config_np_cont_r(NULL, node, src, NULL))) {
             return err_info;
         }
 
-        node = lyd_parent(node);
-        src = lyd_parent(src);
+        node = &node->parent->node;
+        src = &src->parent->node;
     }
 
     return NULL;
@@ -4248,7 +4247,7 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
             }
 
             /* copy any nested config NP containers */
-            if ((err_info = sr_lyd_get_enabled_copy_config_np_cont(lyd_parent(root), src))) {
+            if ((err_info = sr_lyd_get_enabled_copy_config_np_cont(&root->parent->node, src))) {
                 goto cleanup;
             }
         } else {
@@ -4260,7 +4259,7 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
             /* duplicate only the parents */
             parent = NULL;
             if (src->parent) {
-                if (lyd_dup_single(lyd_parent(src), NULL, LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS, &parent)) {
+                if (lyd_dup_single(&src->parent->node, NULL, LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS, &parent)) {
                     sr_errinfo_new_ly(&err_info, ctx, NULL);
                     goto cleanup;
                 }
@@ -4303,7 +4302,7 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
 
             /* check whether there is not a subtree of this tree in set */
             for (j = i + 1; j < set->count; ++j) {
-                for (iter = lyd_parent(set->dnodes[j]); iter; iter = lyd_parent(iter)) {
+                for (iter = &set->dnodes[j]->parent->node; iter; iter = &iter->parent->node) {
                     if (root == iter) {
                         /* it is, so it will now be merged with its parent and freed node left in set, prevent that */
                         set->dnodes[j] = NULL;
@@ -4315,7 +4314,7 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
 
         /* find top-level root */
         while (root->parent) {
-            root = lyd_parent(root);
+            root = &root->parent->node;
         }
 
         /* add any state NP containers */
