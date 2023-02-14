@@ -8,5 +8,12 @@ module rev {
         type empty;
     }
 
+    container cont {
+        leaf d1 {
+            type string;
+            default "def";
+        }
+    }
+
     notification notif;
 }
