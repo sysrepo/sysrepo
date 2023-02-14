@@ -4247,7 +4247,7 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
             }
 
             /* copy any nested config NP containers */
-            if ((err_info = sr_lyd_get_enabled_copy_config_np_cont(&root->parent->node, src))) {
+            if ((err_info = sr_lyd_get_enabled_copy_config_np_cont((struct lyd_node *)root->parent, src))) {
                 goto cleanup;
             }
         } else {
@@ -4302,7 +4302,7 @@ sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths, uint16_t xp_coun
 
             /* check whether there is not a subtree of this tree in set */
             for (j = i + 1; j < set->count; ++j) {
-                for (iter = &set->dnodes[j]->parent->node; iter; iter = &iter->parent->node) {
+                for (iter = (struct lyd_node *)set->dnodes[j]->parent; iter; iter = (struct lyd_node *)iter->parent) {
                     if (root == iter) {
                         /* it is, so it will now be merged with its parent and freed node left in set, prevent that */
                         set->dnodes[j] = NULL;
