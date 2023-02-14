@@ -4196,8 +4196,8 @@ sr_lyd_get_enabled_copy_config_np_cont(struct lyd_node *node, const struct lyd_n
             return err_info;
         }
 
-        node = &node->parent->node;
-        src = &src->parent->node;
+        node = (struct lyd_node *)node->parent;
+        src = (struct lyd_node *)src->parent;
     }
 
     return NULL;
