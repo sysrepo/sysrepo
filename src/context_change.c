@@ -687,7 +687,7 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
         lyrc = lyd_find_xpath(sr_mods, xpath, &set);
         free(xpath);
         if (lyrc) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(sr_mods), NULL);
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx, NULL);
             break;
         } else if (set->count != 1) {
             SR_ERRINFO_INT(&err_info);
@@ -704,7 +704,7 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
         /* generate a diff of old and new data */
         lyd_free_siblings(mod_diff);
         if (lyd_diff_siblings(old_mod_data, new_mod_data, LYD_DIFF_DEFAULTS, &mod_diff)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(old_mod_data), new_mod_data);
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx, new_mod_data);
             break;
         }
 
