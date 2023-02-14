@@ -269,20 +269,23 @@ sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx, const
 
     e = ly_err_first(ly_ctx);
     if (!e && data) {
-        LYD_TREE_DFS_BEGIN(data, node) {
-            if (node->flags & LYD_EXT) {
-                e = ly_err_first(LYD_CTX(node));
-                break;
+        if (ly_ctx != LYD_CTX(data)) {
+            e = ly_err_first(LYD_CTX(data));
+        } else {
+            LYD_TREE_DFS_BEGIN(data, node) {
+                if (node->flags & LYD_EXT) {
+                    e = ly_err_first(LYD_CTX(node));
+                    break;
+                }
+                LYD_TREE_DFS_END(data, node);
             }
-            LYD_TREE_DFS_END(data, node);
         }
     }
 
-    /* this function is called only when an error is expected, but it is still possible there
-     * will be none -> libyang problem or simply the error was externally processed, sysrepo is
-     * unable to detect that */
     if (!e) {
-        sr_errinfo_new(err_info, SR_ERR_LY, "Unknown libyang error.");
+        /* this function is called only when an error is expected, but it is still possible there
+         * will be none in a context, try to use the last */
+        sr_errinfo_new(err_info, SR_ERR_LY, "%s", ly_last_errmsg());
         return;
     }
 
