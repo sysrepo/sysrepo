@@ -122,23 +122,29 @@ typedef enum {
     SR_DS_STARTUP = 0,     /**< Contains configuration data that will be loaded when a device starts. */
     SR_DS_RUNNING = 1,     /**< Contains current configuration data. */
     SR_DS_CANDIDATE = 2,   /**< Contains prepared configuration data that do not affect actual configuration. */
-    SR_DS_OPERATIONAL = 3  /**< Contains currently used configuration (see [operational datastore](@ref oper_ds)). */
+    SR_DS_OPERATIONAL = 3, /**< Contains currently used configuration (see [operational datastore](@ref oper_ds)). */
+    SR_DS_FACTORY_DEFAULT = 4   /**< Contains factory-default configuration to be used when factory-reset RPC is executed. */
 } sr_datastore_t;
 
 /**
- * @brief Count of all the datastore types
+ * @brief Count of all the standard (modifiable) datastore types.
  */
 #define SR_DS_COUNT 4
 
 /**
- * @brief Special notification datastore of a module.
+ * @brief Count of all the readable datastore types.
  */
-#define SR_MOD_DS_NOTIF 4
+#define SR_DS_READ_COUNT 5
 
 /**
- * @brief Count of all module datastore plugin types (datastores and notifications).
+ * @brief Special notification datastore of a module.
  */
-#define SR_MOD_DS_PLUGIN_COUNT 5
+#define SR_MOD_DS_NOTIF 5
+
+/**
+ * @brief Count of all module plugin types (datastores and notifications).
+ */
+#define SR_MOD_DS_PLUGIN_COUNT 6
 
 /**
  * @brief Custom datastore implementation config for each datastore and notifications of a module.

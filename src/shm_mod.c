@@ -239,7 +239,7 @@ sr_shmmod_fill(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_
             ++feat_i;
         } else if (!strcmp(sr_child->schema->name, "plugin")) {
             /* get DS */
-            ds = sr_str2mod_ds(lyd_get_value(lyd_child(sr_child)));
+            ds = sr_ident2mod_ds(lyd_get_value(lyd_child(sr_child)));
 
             /* copy DS plugin name */
             smod->plugins[ds] = sr_shmstrcpy(shm_mod->addr, lyd_get_value(lyd_child(sr_child)->next), &shm_end);
@@ -1606,7 +1606,7 @@ sr_shmmod_reboot_init(sr_conn_ctx_t *conn, int initialized)
     sr_mod_shm_t *mod_shm;
     sr_mod_t *smod;
     const struct lys_module *ly_mod;
-    const struct srplg_ds_s *ds_plg[SR_DS_COUNT];
+    const struct srplg_ds_s *ds_plg[SR_DS_READ_COUNT];
     sr_datastore_t ds;
     uint32_t i;
     int rc;
@@ -1621,7 +1621,7 @@ sr_shmmod_reboot_init(sr_conn_ctx_t *conn, int initialized)
         assert(ly_mod);
 
         /* find DS plugins and init them */
-        for (ds = 0; ds < SR_DS_COUNT; ++ds) {
+        for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
             if ((err_info = sr_ds_plugin_find(((char *)mod_shm) + smod->plugins[ds], conn, &ds_plg[ds]))) {
                 return err_info;
             }

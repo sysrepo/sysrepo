@@ -165,23 +165,24 @@ cleanup:
 }
 
 /**
- * @brief Initialize startup datastore file.
+ * @brief Initialize persistent datastore file.
  *
  * @param[in] mod Module to initialize.
+ * @param[in] ds Datastore.
  * @param[in] owner Owner of the data, may be NULL.
  * @param[in] group Group of the data, may be NULL.
  * @param[in] perm Permissions of the data.
  * @return SR_ERR value.
  */
 static int
-srpds_json_install_startup(const struct lys_module *mod, const char *owner, const char *group, mode_t perm)
+srpds_json_install_persistent(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm)
 {
     int rc = SR_ERR_OK;
     struct lyd_node *root = NULL;
     char *path = NULL;
 
     /* check whether the file does not exist */
-    if ((rc = srpjson_get_path(srpds_name, mod->name, SR_DS_STARTUP, &path))) {
+    if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
     if (srpjson_file_exists(srpds_name, path)) {
@@ -197,8 +198,8 @@ srpds_json_install_startup(const struct lys_module *mod, const char *owner, cons
         goto cleanup;
     }
 
-    /* print them into the startup file */
-    if ((rc = srpds_json_store_(mod, SR_DS_STARTUP, root, owner, group, perm, 0))) {
+    /* print them into the file */
+    if ((rc = srpds_json_store_(mod, ds, root, owner, group, perm, 0))) {
         goto cleanup;
     }
 
@@ -224,9 +225,9 @@ srpds_json_install(const struct lys_module *mod, sr_datastore_t ds, const char *
         goto cleanup;
     }
 
-    if (ds == SR_DS_STARTUP) {
-        /* startup install */
-        rc = srpds_json_install_startup(mod, owner, group, perm);
+    if ((ds == SR_DS_STARTUP) || (ds == SR_DS_FACTORY_DEFAULT)) {
+        /* persistent DS file install */
+        rc = srpds_json_install_persistent(mod, ds, owner, group, perm);
         goto cleanup;
     }
 
@@ -267,12 +268,12 @@ srpds_json_uninstall(const struct lys_module *mod, sr_datastore_t ds)
     if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
-    if ((unlink(path) == -1) && ((errno != ENOENT) || (ds == SR_DS_STARTUP))) {
-        /* only startup is persistent and must always exist */
+    if ((unlink(path) == -1) && ((errno != ENOENT) || (ds == SR_DS_STARTUP) || (ds == SR_DS_FACTORY_DEFAULT))) {
+        /* only startup and factory-default are persistent and must always exist */
         SRPLG_LOG_WRN(srpds_name, "Failed to unlink \"%s\" (%s).", path, strerror(errno));
     }
 
-    if (ds == SR_DS_STARTUP) {
+    if ((ds == SR_DS_STARTUP) || (ds == SR_DS_FACTORY_DEFAULT)) {
         /* done */
         goto cleanup;
     }
@@ -299,7 +300,7 @@ srpds_json_init(const struct lys_module *mod, sr_datastore_t ds)
     mode_t perm;
 
     if (ds != SR_DS_RUNNING) {
-        /* startup is persistent and candidate with operational exists only if modified */
+        /* startup and factory-default are persistent and candidate with operational exists only if modified */
         return SR_ERR_OK;
     }
 
@@ -355,6 +356,7 @@ srpds_json_store(const struct lys_module *mod, sr_datastore_t ds, const struct l
 
     switch (ds) {
     case SR_DS_STARTUP:
+    case SR_DS_FACTORY_DEFAULT:
         /* must exist */
         break;
     case SR_DS_RUNNING:
@@ -477,6 +479,7 @@ srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, const char **UN
         if (errno == ENOENT) {
             switch (ds) {
             case SR_DS_STARTUP:
+            case SR_DS_FACTORY_DEFAULT:
                 /* error */
                 break;
             case SR_DS_RUNNING:
@@ -507,7 +510,7 @@ srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, const char **UN
     } else {
         parse_opts |= LYD_PARSE_STRICT;
     }
-    if ((ds == SR_DS_RUNNING) || (ds == SR_DS_STARTUP)) {
+    if ((ds == SR_DS_RUNNING) || (ds == SR_DS_STARTUP) || (ds == SR_DS_FACTORY_DEFAULT)) {
         /* always valid datastores */
         parse_opts |= LYD_PARSE_WHEN_TRUE | LYD_PARSE_NO_NEW;
     }
@@ -873,6 +876,7 @@ srpds_json_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datastor
     switch (trg_ds) {
     case SR_DS_STARTUP:
     case SR_DS_RUNNING:
+    case SR_DS_FACTORY_DEFAULT:
         /* must exist */
         break;
     case SR_DS_CANDIDATE:
@@ -977,6 +981,7 @@ srpds_json_access_set(const struct lys_module *mod, sr_datastore_t ds, const cha
 
     switch (ds) {
     case SR_DS_STARTUP:
+    case SR_DS_FACTORY_DEFAULT:
         /* single file that must exist */
         file_exists = 1;
         break;
@@ -995,6 +1000,7 @@ srpds_json_access_set(const struct lys_module *mod, sr_datastore_t ds, const cha
 
     switch (ds) {
     case SR_DS_STARTUP:
+    case SR_DS_FACTORY_DEFAULT:
         /* no permission file */
         break;
     case SR_DS_RUNNING:
@@ -1035,6 +1041,7 @@ srpds_json_access_get(const struct lys_module *mod, sr_datastore_t ds, char **ow
     /* get correct path */
     switch (ds) {
     case SR_DS_STARTUP:
+    case SR_DS_FACTORY_DEFAULT:
         if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
             return rc;
         }
@@ -1099,6 +1106,7 @@ srpds_json_access_check(const struct lys_module *mod, sr_datastore_t ds, int *re
     /* get correct path */
     switch (ds) {
     case SR_DS_STARTUP:
+    case SR_DS_FACTORY_DEFAULT:
         if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
             goto cleanup;
         }

@@ -2165,7 +2165,7 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
-    const struct srplg_ds_s *ds_plg[SR_DS_COUNT] = {0};
+    const struct srplg_ds_s *ds_plg[SR_DS_READ_COUNT] = {0};
     struct sr_mod_info_mod_s *mod = NULL;
     uint32_t i;
     int new = 0;
@@ -2203,6 +2203,7 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
     }
     switch (mod_info->ds) {
     case SR_DS_STARTUP:
+    case SR_DS_FACTORY_DEFAULT:
         /* plugin for this datastore is enough */
         break;
     case SR_DS_RUNNING:
@@ -3064,6 +3065,9 @@ sr_modinfo_change_notify_update(struct sr_mod_info_s *mod_info, sr_session_ctx_t
             break;
         case SR_DS_OPERATIONAL:
             break;
+        case SR_DS_FACTORY_DEFAULT:
+            SR_ERRINFO_INT(&err_info);
+            goto cleanup;
         }
 
         /* CHANGE SUB READ LOCK */

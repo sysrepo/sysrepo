@@ -8,6 +8,10 @@ module sysrepo {
         prefix yang;
     }
 
+    import ietf-datastores {
+        prefix ds;
+    }
+
     import ietf-yang-metadata {
         prefix md;
         revision-date 2016-08-05;
@@ -22,6 +26,11 @@ module sysrepo {
 
     description
         "Sysrepo YANG datastore internal attributes and information.";
+
+    revision "2023-02-16" {
+        description
+            "Import and use ietf-datastores for enabled extending supported datastores.";
+    }
 
     revision "2021-10-08" {
         description
@@ -112,6 +121,12 @@ module sysrepo {
             "Process with this CID is the owner of the operational data subtree.";
     }
 
+    identity notification {
+        base ds:datastore;
+        description
+            "Special datastore for storing notifications for replay.";
+    }
+
     grouping module-info-grp {
         leaf name {
             type string;
@@ -133,18 +148,12 @@ module sysrepo {
 
         list plugin {
             key "datastore";
-            min-elements 5;
-            max-elements 5;
             description
                 "Module datastore plugin handling specific datastore data.";
 
             leaf datastore {
-                type enumeration {
-                    enum "running";
-                    enum "startup";
-                    enum "candidate";
-                    enum "operational";
-                    enum "notification";
+                type identityref {
+                    base ds:datastore;
                 }
                 description
                     "Datastore of this plugin.";

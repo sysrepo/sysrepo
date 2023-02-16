@@ -264,10 +264,12 @@ sr_errinfo_new_data(sr_error_info_t **err_info, sr_error_t err_code, const char 
 void
 sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx, const struct lyd_node *data)
 {
-    struct ly_err_item *e;
+    struct ly_err_item *e = NULL;
     const struct lyd_node *node;
 
-    e = ly_err_first(ly_ctx);
+    if (ly_ctx) {
+        e = ly_err_first(ly_ctx);
+    }
     if (!e && data) {
         if (ly_ctx != LYD_CTX(data)) {
             e = ly_err_first(LYD_CTX(data));
@@ -306,7 +308,9 @@ sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx, const
         e = e->next;
     } while (e);
 
-    ly_err_clean((struct ly_ctx *)ly_ctx, NULL);
+    if (ly_ctx) {
+        ly_err_clean((struct ly_ctx *)ly_ctx, NULL);
+    }
 }
 
 void

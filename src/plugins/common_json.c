@@ -152,6 +152,8 @@ srpjson_ds2str(sr_datastore_t ds)
         return "candidate";
     case SR_DS_OPERATIONAL:
         return "operational";
+    case SR_DS_FACTORY_DEFAULT:
+        return "factory-default";
     }
 
     return NULL;
@@ -628,6 +630,13 @@ srpjson_get_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, 
             r = asprintf(path, "%s/data/%s.startup", sr_get_repo_path(), mod_name);
         }
         break;
+    case SR_DS_FACTORY_DEFAULT:
+        if (SR_FACTORY_DEFAULT_PATH[0]) {
+            r = asprintf(path, "%s/%s.factory-default", SR_FACTORY_DEFAULT_PATH, mod_name);
+        } else {
+            r = asprintf(path, "%s/data/%s.factory-default", sr_get_repo_path(), mod_name);
+        }
+        break;
     case SR_DS_RUNNING:
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
@@ -657,6 +666,7 @@ srpjson_get_perm_path(const char *plg_name, const char *mod_name, sr_datastore_t
 
     switch (ds) {
     case SR_DS_STARTUP:
+    case SR_DS_FACTORY_DEFAULT:
         return SR_ERR_INTERNAL;
     case SR_DS_RUNNING:
     case SR_DS_CANDIDATE:

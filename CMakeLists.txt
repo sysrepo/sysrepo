@@ -158,6 +158,13 @@ else()
     message(STATUS "Startup data path:  ${REPO_PATH}/data")
 endif()
 
+set(FACTORY_DEFAULT_DATA_PATH "${FACTORY_DEFAULT_DATA_PATH}" CACHE PATH "Factory-default data path, contains factory-default datastore module files.")
+if(FACTORY_DEFAULT_DATA_PATH)
+    message(STATUS "Factory-default data path: ${FACTORY_DEFAULT_DATA_PATH}")
+else()
+    message(STATUS "Factory-default data path: ${REPO_PATH}/data")
+endif()
+
 set(NOTIFICATION_PATH "${NOTIFICATION_PATH}" CACHE PATH "Notification path, contains stored notifications.")
 if(NOTIFICATION_PATH)
     message(STATUS "Notification path:  ${NOTIFICATION_PATH}")

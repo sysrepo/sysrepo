@@ -72,7 +72,14 @@ const struct srplg_ntf_s *sr_internal_ntf_plugins[] = {
 /**
  * @brief Default module DS plugins.
  */
-const sr_module_ds_t sr_default_module_ds = {{"JSON DS file", "JSON DS file", "JSON DS file", "JSON DS file", "JSON notif"}};
+const sr_module_ds_t sr_default_module_ds = {{
+        "JSON DS file", /**< startup */
+        "JSON DS file", /**< running */
+        "JSON DS file", /**< candidate */
+        "JSON DS file", /**< operational */
+        "JSON DS file", /**< factory-default */
+        "JSON notif"    /**< notification */
+    }};
 
 sr_error_info_t *
 sr_ptr_add(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *add_ptr)
@@ -204,7 +211,9 @@ sr_ly_ctx_init(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx)
 {
     sr_error_info_t *err_info = NULL;
     char *yang_dir;
+    const char *factory_default_features[] = {"factory-default-datastore", NULL};
     uint16_t ctx_opts;
+    struct ly_in *in = NULL;
     LY_ERR lyrc;
 
     /* context options */
@@ -224,8 +233,25 @@ sr_ly_ctx_init(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx)
         goto cleanup;
     }
 
-    /* load just the internal module */
+    /* load just the internal datastores modules and the "sysrepo" module */
+    if (lys_parse_mem(*ly_ctx, ietf_datastores_yang, LYS_IN_YANG, NULL)) {
+        sr_errinfo_new_ly(&err_info, *ly_ctx, NULL);
+        goto cleanup;
+    }
     if (lys_parse_mem(*ly_ctx, sysrepo_yang, LYS_IN_YANG, NULL)) {
+        sr_errinfo_new_ly(&err_info, *ly_ctx, NULL);
+        goto cleanup;
+    }
+    if (lys_parse_mem(*ly_ctx, ietf_netconf_acm_yang, LYS_IN_YANG, NULL)) {
+        sr_errinfo_new_ly(&err_info, *ly_ctx, NULL);
+        goto cleanup;
+    }
+
+    if (ly_in_new_memory(ietf_factory_default_yang, &in)) {
+        sr_errinfo_new_ly(&err_info, NULL, NULL);
+        goto cleanup;
+    }
+    if (lys_parse(*ly_ctx, in, LYS_IN_YANG, factory_default_features, NULL)) {
         sr_errinfo_new_ly(&err_info, *ly_ctx, NULL);
         goto cleanup;
     }
@@ -246,6 +272,7 @@ cleanup:
         ly_ctx_destroy(*ly_ctx);
         *ly_ctx = NULL;
     }
+    ly_in_free(in, 0);
     return err_info;
 }
 
@@ -396,13 +423,15 @@ sr_ds_plugin_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, const struct 
         }
     }
 
-    /* search dynamic plugins */
-    for (i = 0; i < conn->ds_handle_count; ++i) {
-        if (!strcmp(conn->ds_handles[i].plugin->name, ds_plugin_name)) {
-            if (ds_plugin) {
-                *ds_plugin = (struct srplg_ds_s *)conn->ds_handles[i].plugin;
+    if (conn) {
+        /* search dynamic plugins */
+        for (i = 0; i < conn->ds_handle_count; ++i) {
+            if (!strcmp(conn->ds_handles[i].plugin->name, ds_plugin_name)) {
+                if (ds_plugin) {
+                    *ds_plugin = (struct srplg_ds_s *)conn->ds_handles[i].plugin;
+                }
+                return NULL;
             }
-            return NULL;
         }
     }
 
@@ -3495,23 +3524,27 @@ sr_ds2str(sr_datastore_t ds)
         return "candidate";
     case SR_DS_OPERATIONAL:
         return "operational";
+    case SR_DS_FACTORY_DEFAULT:
+        return "factory-default";
     }
 
     return NULL;
 }
 
 int
-sr_str2mod_ds(const char *str)
+sr_ident2mod_ds(const char *str)
 {
-    if (!strcmp(str, "running")) {
+    if (!strcmp(str, "ietf-datastores:running")) {
         return SR_DS_RUNNING;
-    } else if (!strcmp(str, "startup")) {
+    } else if (!strcmp(str, "ietf-datastores:startup")) {
         return SR_DS_STARTUP;
-    } else if (!strcmp(str, "candidate")) {
+    } else if (!strcmp(str, "ietf-datastores:candidate")) {
         return SR_DS_CANDIDATE;
-    } else if (!strcmp(str, "operational")) {
+    } else if (!strcmp(str, "ietf-datastores:operational")) {
         return SR_DS_OPERATIONAL;
-    } else if (!strcmp(str, "notification")) {
+    } else if (!strcmp(str, "ietf-factory-default:factory-default")) {
+        return SR_DS_FACTORY_DEFAULT;
+    } else if (!strcmp(str, "sysrepo:notification")) {
         return SR_MOD_DS_NOTIF;
     }
 
@@ -3519,28 +3552,9 @@ sr_str2mod_ds(const char *str)
 }
 
 const char *
-sr_mod_ds2str(int mod_ds)
+sr_mod_ds2ident(int mod_ds)
 {
     switch (mod_ds) {
-    case SR_DS_RUNNING:
-        return "running";
-    case SR_DS_STARTUP:
-        return "startup";
-    case SR_DS_CANDIDATE:
-        return "candidate";
-    case SR_DS_OPERATIONAL:
-        return "operational";
-    case SR_MOD_DS_NOTIF:
-        return "notification";
-    }
-
-    return NULL;
-}
-
-const char *
-sr_ds2ident(sr_datastore_t ds)
-{
-    switch (ds) {
     case SR_DS_RUNNING:
         return "ietf-datastores:running";
     case SR_DS_STARTUP:
@@ -3549,9 +3563,19 @@ sr_ds2ident(sr_datastore_t ds)
         return "ietf-datastores:candidate";
     case SR_DS_OPERATIONAL:
         return "ietf-datastores:operational";
+    case SR_DS_FACTORY_DEFAULT:
+        return "ietf-factory-default:factory-default";
+    case SR_MOD_DS_NOTIF:
+        return "sysrepo:notification";
     }
 
     return NULL;
+}
+
+const char *
+sr_ds2ident(sr_datastore_t ds)
+{
+    return sr_mod_ds2ident(ds);
 }
 
 sr_error_info_t *

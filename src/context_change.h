@@ -4,8 +4,8 @@
  * @brief header for sysrepo context change routines
  *
  * @copyright
- * Copyright (c) 2021 Deutsche Telekom AG.
- * Copyright (c) 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2023 Deutsche Telekom AG.
+ * Copyright (c) 2021 - 2023 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -22,6 +22,19 @@
 #include "common.h"
 #include "common_types.h"
 #include "sysrepo_types.h"
+
+/**
+ * @brief Structure for holding old and new when when being updated.
+ */
+struct sr_data_update_s {
+    struct sr_data_update_set_s {
+        struct lyd_node *start;
+        struct lyd_node *run;
+        struct lyd_node *oper;
+        struct lyd_node *fdflt;
+    } old;
+    struct sr_data_update_set_s new;
+};
 
 /**
  * @brief Lock context and update it if needed.
@@ -142,34 +155,28 @@ sr_error_info_t *sr_lycc_set_replay_support(sr_conn_ctx_t *conn, const struct ly
  * @param[in] conn Connection to use.
  * @param[in] new_ctx New context.
  * @param[in] mod_data Optional new module initial data.
- * @param[out] old_s_data Previous (current) startup data in @p conn context.
- * @param[out] new_s_data New startup data in @p new_ctx.
- * @param[out] old_r_data Previous (current) running data in @p conn context.
- * @param[out] new_r_data New running data in @p new_ctx.
- * @param[out] old_o_data Previous (current) operational data in @p conn context.
- * @param[out] new_o_data New operational data in @p new_ctx.
+ * @param[in,out] data_info Old (current) data in @p conn context and new data in @p new_ctx.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lycc_update_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, const struct lyd_node *mod_data,
-        struct lyd_node **old_s_data, struct lyd_node **new_s_data, struct lyd_node **old_r_data,
-        struct lyd_node **new_r_data, struct lyd_node **old_o_data, struct lyd_node **new_o_data);
+        struct sr_data_update_s *data_info);
 
 /**
  * @brief Store updated SR data (destructively) for each module only if they differ from the current data.
  *
  * @param[in] conn Connection to use.
  * @param[in] new_ctx New context to iterate over.
- * @param[in,out] old_s_data Previous (current) startup data.
- * @param[in,out] new_s_data New startup data.
- * @param[in,out] old_r_data Previous (current) running data.
- * @param[in,out] new_r_data New running data.
- * @param[in,out] old_o_data Previous (current) operational data.
- * @param[in,out] new_o_data New operational data.
+ * @param[in,out] data_info Old (current) data and new data.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lycc_store_data_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx,
-        const struct lyd_node *sr_mods, struct lyd_node **old_s_data, struct lyd_node **new_s_data,
-        struct lyd_node **old_r_data, struct lyd_node **new_r_data, struct lyd_node **old_o_data,
-        struct lyd_node **new_o_data);
+        const struct lyd_node *sr_mods, struct sr_data_update_s *data_info);
+
+/**
+ * @brief Free all the members of an update data info structure.
+ *
+ * @param[in] data_info Data info to clear.
+ */
+void sr_lycc_update_data_clear(struct sr_data_update_s *data_info);
 
 #endif

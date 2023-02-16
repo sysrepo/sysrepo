@@ -37,8 +37,11 @@ struct srplg_ntf_s;
 /** macro for cond align check */
 #define SR_COND_ALIGN_CHECK(cond) ((uintptr_t)cond % sizeof(void *))
 
-/** macro for checking datastore type */
+/** macro for checking conventional datastore type */
 #define SR_IS_CONVENTIONAL_DS(ds) ((ds == SR_DS_STARTUP) || (ds == SR_DS_RUNNING) || (ds == SR_DS_CANDIDATE))
+
+/** macro for checking standard (modifiable) datastore type */
+#define SR_IS_STANDARD_DS(ds) (SR_IS_CONVENTIONAL_DS(ds) || (ds == SR_DS_OPERATIONAL))
 
 /** macro for checking session type */
 #define SR_IS_EVENT_SESS(session) (session->ev != SR_SUB_EV_NONE)
@@ -149,7 +152,10 @@ struct srplg_ntf_s;
  * Internal declarations + definitions
  */
 
+extern char ietf_datastores_yang[];
 extern char sysrepo_yang[];
+extern char ietf_netconf_acm_yang[];
+extern char ietf_factory_default_yang[];
 
 extern const struct srplg_ds_s *sr_internal_ds_plugins[];
 
@@ -947,20 +953,20 @@ sr_error_info_t *sr_get_schema_name_format(const char *schema_path, char **modul
 const char *sr_ds2str(sr_datastore_t ds);
 
 /**
- * @brief Get module datastore from a string name.
+ * @brief Get module datastore from an identity name.
  *
- * @param[in] str String to transform.
- * @return Datastore.
+ * @param[in] str String identity to transform.
+ * @return Module datastore.
  */
-int sr_str2mod_ds(const char *str);
+int sr_ident2mod_ds(const char *str);
 
 /**
- * @brief Get string name of a module datastore.
+ * @brief Get string identity name of a module datastore.
  *
  * @param[in] mod_ds Module datastore to transform.
- * @return Module datastore string name.
+ * @return Module datastore identity full name.
  */
-const char *sr_mod_ds2str(int mod_ds);
+const char *sr_mod_ds2ident(int mod_ds);
 
 /**
  * @brief Get datastore identity name from ietf-datastores.

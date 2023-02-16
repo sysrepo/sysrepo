@@ -46,7 +46,10 @@
 #include "shm_mod.h"
 
 #include "../modules/ietf_datastores_yang.h"
+#include "../modules/ietf_factory_default_yang.h"
+#include "../modules/ietf_netconf_acm_yang.h"
 #include "../modules/sysrepo_yang.h"
+
 #if SR_YANGLIB_REVISION == 2019 - 01 - 04
 # include "../modules/ietf_yang_library@2019_01_04_yang.h"
 #elif SR_YANGLIB_REVISION == 2016 - 06 - 21
@@ -55,7 +58,6 @@
 # error "Unknown yang-library revision!"
 #endif
 
-#include "../modules/ietf_netconf_acm_yang.h"
 #include "../modules/ietf_netconf_notifications_yang.h"
 #include "../modules/ietf_netconf_with_defaults_yang.h"
 #include "../modules/ietf_netconf_yang.h"
@@ -101,7 +103,7 @@ sr_lydmods_add_module(struct lyd_node *sr_mods, const struct lys_module *ly_mod,
 
     /* set datastore plugin names */
     for (i = 0; i < SR_MOD_DS_PLUGIN_COUNT; ++i) {
-        if (lyd_new_list(sr_mod, NULL, "plugin", 0, &sr_plugin, sr_mod_ds2str(i))) {
+        if (lyd_new_list(sr_mod, NULL, "plugin", 0, &sr_plugin, sr_mod_ds2ident(i))) {
             sr_errinfo_new_ly(&err_info, ly_mod->ctx, NULL);
             goto cleanup;
         }
@@ -947,6 +949,7 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     struct lyd_node *sr_mods = NULL;
     sr_int_install_mod_t *new_mods = NULL;
     uint32_t i, new_mod_count = 0;
+    const char *mod_origin;
 
 #define SR_INSTALL_INT_MOD(ctx, yang_mod, dep, new_mods, new_mod_count) \
     if (lys_parse_mem(ctx, yang_mod, LYS_IN_YANG, &ly_mod)) { \
@@ -968,21 +971,24 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     /* add content-id */
     SR_CHECK_INT_GOTO(lyd_new_term(sr_mods, NULL, "content-id", "1", 0, NULL), err_info, cleanup);
 
-    /* for internal libyang modules create files and store in the persistent module data tree */
+    /* for internal libyang and sysrepo modules create files and store in the persistent module data tree */
     i = 0;
-    while ((i < ly_ctx_internal_modules_count(ly_ctx)) && (ly_mod = ly_ctx_get_module_iter(ly_ctx, &i))) {
-        /* module must be implemented */
-        if (ly_mod->implemented) {
-            if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, sr_default_module_ds, NULL,
-                    strlen(SR_GROUP) ? SR_GROUP : NULL, sr_module_default_mode(ly_mod), &new_mods, &new_mod_count))) {
-                goto cleanup;
-            }
-            SR_LOG_INF("Libyang internal module \"%s\" was installed.", ly_mod->name);
+    while ((ly_mod = ly_ctx_get_module_iter(ly_ctx, &i))) {
+        /* no "sysrepo" and module must be implemented */
+        if (!ly_mod->implemented || !strcmp(ly_mod->name, "sysrepo")) {
+            continue;
         }
+
+        if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, sr_default_module_ds, NULL,
+                strlen(SR_GROUP) ? SR_GROUP : NULL, sr_module_default_mode(ly_mod), &new_mods, &new_mod_count))) {
+            goto cleanup;
+        }
+
+        mod_origin = (i < ly_ctx_internal_modules_count(ly_ctx)) ? "Libyang" : "Sysrepo";
+        SR_LOG_INF("%s internal module \"%s\" was installed.", mod_origin, ly_mod->name);
     }
 
-    /* install ietf-datastores and ietf-yang-library */
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_datastores_yang, 1, new_mods, new_mod_count);
+    /* install ietf-yang-library */
     SR_INSTALL_INT_MOD(ly_ctx, ietf_yang_library_yang, 0, new_mods, new_mod_count);
 
     /* install ietf-netconf-acm */

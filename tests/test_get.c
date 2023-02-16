@@ -555,6 +555,77 @@ test_key(void **state)
     sr_apply_changes(st->sess, 0);
 }
 
+/* TEST */
+static void
+test_factory_default(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const char *init_data;
+    sr_data_t *data;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* install module with factory-default data */
+    init_data =
+            "<container xmlns=\"urn:ietf:params:xml:ns:yang:example\">\n"
+            "  <list>\n"
+            "    <key1>k1a</key1>\n"
+            "    <key2>k2a</key2>\n"
+            "  </list>\n"
+            "</container>\n"
+            "<number xmlns=\"urn:ietf:params:xml:ns:yang:example\">20</number>\n";
+    ret = sr_install_module2(st->conn, TESTS_SRC_DIR "/files/example-module.yang", TESTS_SRC_DIR "/files", NULL, NULL,
+            NULL, NULL, 0, init_data, NULL, LYD_XML);
+    assert_int_equal(SR_ERR_OK, ret);
+
+    /* set some startup data */
+    sr_session_switch_ds(st->sess, SR_DS_STARTUP);
+    ret = sr_set_item_str(st->sess, "/example-module:number", "25", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/example-module:container/list[key1='k1b'][key2='k2b']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read factory-default data */
+    sr_session_switch_ds(st->sess, SR_DS_FACTORY_DEFAULT);
+    ret = sr_get_data(st->sess, "/example-module:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+    str2 = init_data;
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* read startup data */
+    sr_session_switch_ds(st->sess, SR_DS_STARTUP);
+    ret = sr_get_data(st->sess, "/example-module:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+    str2 =
+            "<container xmlns=\"urn:ietf:params:xml:ns:yang:example\">\n"
+            "  <list>\n"
+            "    <key1>k1a</key1>\n"
+            "    <key2>k2a</key2>\n"
+            "  </list>\n"
+            "  <list>\n"
+            "    <key1>k1b</key1>\n"
+            "    <key2>k2b</key2>\n"
+            "  </list>\n"
+            "</container>\n"
+            "<number xmlns=\"urn:ietf:params:xml:ns:yang:example\">20</number>\n"
+            "<number xmlns=\"urn:ietf:params:xml:ns:yang:example\">25</number>\n";
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* cleanup */
+    sr_remove_module(st->conn, "example-module", 0);
+}
+
 int
 main(void)
 {
@@ -568,6 +639,7 @@ main(void)
         cmocka_unit_test(test_explicit_default),
         cmocka_unit_test(test_union),
         cmocka_unit_test(test_key),
+        cmocka_unit_test(test_factory_default),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

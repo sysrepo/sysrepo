@@ -1239,7 +1239,7 @@ sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_i
     }
 
     /* check plugin existence */
-    for (ds = 0; ds < SR_DS_COUNT; ++ds) {
+    for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
         if (!new_mod->module_ds.plugin_name[ds]) {
             /* use default plugin */
             new_mod->module_ds.plugin_name[ds] = sr_default_module_ds.plugin_name[ds];
@@ -1310,8 +1310,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     sr_error_info_t *err_info = NULL;
     struct ly_ctx *new_ctx = NULL, *old_ctx = NULL;
     struct lyd_node *mod_data = NULL, *sr_mods = NULL;
-    struct lyd_node *old_s_data = NULL, *new_s_data = NULL, *old_r_data = NULL, *new_r_data = NULL, *old_o_data = NULL,
-            *new_o_data = NULL;
+    struct sr_data_update_s data_info = {0};
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
     uint32_t i, search_dir_count = 0;
 
@@ -1361,8 +1360,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     if ((err_info = sr_lycc_check_add_modules(conn, new_ctx))) {
         goto cleanup;
     }
-    if ((err_info = sr_lycc_update_data(conn, new_ctx, mod_data, &old_s_data, &new_s_data, &old_r_data, &new_r_data,
-            &old_o_data, &new_o_data))) {
+    if ((err_info = sr_lycc_update_data(conn, new_ctx, mod_data, &data_info))) {
         goto cleanup;
     }
 
@@ -1388,8 +1386,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     }
 
     /* store new data if they differ */
-    if ((err_info = sr_lycc_store_data_if_differ(conn, new_ctx, sr_mods, &old_s_data, &new_s_data, &old_r_data,
-            &new_r_data, &old_o_data, &new_o_data))) {
+    if ((err_info = sr_lycc_store_data_if_differ(conn, new_ctx, sr_mods, &data_info))) {
         goto cleanup;
     }
 
@@ -1398,16 +1395,10 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     sr_conn_ctx_switch(conn, &new_ctx, &old_ctx);
 
 cleanup:
-    lyd_free_siblings(old_s_data);
-    lyd_free_siblings(old_r_data);
-    lyd_free_siblings(old_o_data);
-    ly_ctx_destroy(old_ctx);
-
-    lyd_free_siblings(new_s_data);
-    lyd_free_siblings(new_r_data);
-    lyd_free_siblings(new_o_data);
+    sr_lycc_update_data_clear(&data_info);
     lyd_free_siblings(mod_data);
     lyd_free_siblings(sr_mods);
+    ly_ctx_destroy(old_ctx);
     ly_ctx_destroy(new_ctx);
 
     /* CONTEXT UNLOCK */
@@ -1553,8 +1544,7 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     struct ly_ctx *new_ctx = NULL, *old_ctx = NULL;
     struct ly_set mod_set = {0};
     struct lyd_node *sr_mods = NULL, *sr_del_mods = NULL;
-    struct lyd_node *old_s_data = NULL, *new_s_data = NULL, *old_r_data = NULL, *new_r_data = NULL, *old_o_data = NULL,
-            *new_o_data = NULL;
+    struct sr_data_update_s data_info = {0};
     const struct lys_module *ly_mod;
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
     uint32_t i;
@@ -1612,8 +1602,7 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     if ((err_info = sr_lycc_check_del_module(conn, new_ctx, &mod_set))) {
         goto cleanup;
     }
-    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, &old_s_data, &new_s_data, &old_r_data, &new_r_data,
-            &old_o_data, &new_o_data))) {
+    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, &data_info))) {
         goto cleanup;
     }
 
@@ -1639,8 +1628,7 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     }
 
     /* store new data if they differ */
-    if ((err_info = sr_lycc_store_data_if_differ(conn, new_ctx, sr_mods, &old_s_data, &new_s_data, &old_r_data,
-            &new_r_data, &old_o_data, &new_o_data))) {
+    if ((err_info = sr_lycc_store_data_if_differ(conn, new_ctx, sr_mods, &data_info))) {
         goto cleanup;
     }
 
@@ -1649,16 +1637,10 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     sr_conn_ctx_switch(conn, &new_ctx, &old_ctx);
 
 cleanup:
-    lyd_free_siblings(old_s_data);
-    lyd_free_siblings(old_r_data);
-    lyd_free_siblings(old_o_data);
+    sr_lycc_update_data_clear(&data_info);
     lyd_free_siblings(sr_mods);
     lyd_free_siblings(sr_del_mods);
     ly_ctx_destroy(old_ctx);
-
-    lyd_free_siblings(new_s_data);
-    lyd_free_siblings(new_r_data);
-    lyd_free_siblings(new_o_data);
     ly_ctx_destroy(new_ctx);
 
     /* CONTEXT UNLOCK */
@@ -1831,8 +1813,7 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
     struct ly_ctx *new_ctx = NULL, *old_ctx = NULL;
     struct ly_set old_mod_set = {0}, upd_mod_set = {0};
     struct lyd_node *sr_mods = NULL;
-    struct lyd_node *old_s_data = NULL, *new_s_data = NULL, *old_r_data = NULL, *new_r_data = NULL, *old_o_data = NULL,
-            *new_o_data = NULL;
+    struct sr_data_update_s data_info = {0};
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
     uint32_t search_dir_count = 0;
 
@@ -1872,8 +1853,7 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
     if ((err_info = sr_lycc_check_upd_modules(conn, &old_mod_set, &upd_mod_set))) {
         goto cleanup;
     }
-    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, &old_s_data, &new_s_data, &old_r_data, &new_r_data,
-            &old_o_data, &new_o_data))) {
+    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, &data_info))) {
         goto cleanup;
     }
 
@@ -1899,8 +1879,7 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
     }
 
     /* store new data if they differ */
-    if ((err_info = sr_lycc_store_data_if_differ(conn, new_ctx, sr_mods, &old_s_data, &new_s_data, &old_r_data,
-            &new_r_data, &old_o_data, &new_o_data))) {
+    if ((err_info = sr_lycc_store_data_if_differ(conn, new_ctx, sr_mods, &data_info))) {
         goto cleanup;
     }
 
@@ -1909,15 +1888,9 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
     sr_conn_ctx_switch(conn, &new_ctx, &old_ctx);
 
 cleanup:
-    lyd_free_siblings(old_s_data);
-    lyd_free_siblings(old_r_data);
-    lyd_free_siblings(old_o_data);
+    sr_lycc_update_data_clear(&data_info);
     lyd_free_siblings(sr_mods);
     ly_ctx_destroy(old_ctx);
-
-    lyd_free_siblings(new_s_data);
-    lyd_free_siblings(new_r_data);
-    lyd_free_siblings(new_o_data);
     ly_ctx_destroy(new_ctx);
 
     /* CONTEXT UNLOCK */
@@ -2323,8 +2296,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     struct ly_ctx *new_ctx = NULL, *old_ctx = NULL;
     struct ly_set mod_set = {0};
     struct lyd_node *sr_mods = NULL;
-    struct lyd_node *old_s_data = NULL, *new_s_data = NULL, *old_r_data = NULL, *new_r_data = NULL, *old_o_data = NULL,
-            *new_o_data = NULL;
+    struct sr_data_update_s data_info = {0};
     const struct lys_module *ly_mod, *upd_ly_mod;
     LY_ERR lyrc;
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
@@ -2386,8 +2358,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     if ((err_info = sr_lycc_check_chng_feature(conn, new_ctx))) {
         goto cleanup;
     }
-    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, &old_s_data, &new_s_data, &old_r_data, &new_r_data,
-            &old_o_data, &new_o_data))) {
+    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, &data_info))) {
         goto cleanup;
     }
 
@@ -2408,8 +2379,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     /* store new data if they differ */
-    if ((err_info = sr_lycc_store_data_if_differ(conn, new_ctx, sr_mods, &old_s_data, &new_s_data, &old_r_data,
-            &new_r_data, &old_o_data, &new_o_data))) {
+    if ((err_info = sr_lycc_store_data_if_differ(conn, new_ctx, sr_mods, &data_info))) {
         goto cleanup;
     }
 
@@ -2418,15 +2388,9 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     sr_conn_ctx_switch(conn, &new_ctx, &old_ctx);
 
 cleanup:
-    lyd_free_siblings(old_s_data);
-    lyd_free_siblings(old_r_data);
-    lyd_free_siblings(old_o_data);
+    sr_lycc_update_data_clear(&data_info);
     lyd_free_siblings(sr_mods);
     ly_ctx_destroy(old_ctx);
-
-    lyd_free_siblings(new_s_data);
-    lyd_free_siblings(new_r_data);
-    lyd_free_siblings(new_o_data);
     ly_ctx_destroy(new_ctx);
 
     /* CONTEXT UNLOCK */
@@ -3097,8 +3061,8 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
     sr_error_info_t *err_info = NULL;
     char str[22], *str_val;
 
-    SR_CHECK_ARG_APIRET(!session || (!path && (!value || !value->xpath)) || (!SR_IS_CONVENTIONAL_DS(session->ds) &&
-            (opts & (SR_EDIT_STRICT | SR_EDIT_NON_RECURSIVE))), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || (!path && (!value || !value->xpath)) || !SR_IS_STANDARD_DS(session->ds) ||
+            (!SR_IS_CONVENTIONAL_DS(session->ds) && (opts & (SR_EDIT_STRICT | SR_EDIT_NON_RECURSIVE))), session, err_info);
 
     if (!path) {
         path = value->xpath;
@@ -3125,7 +3089,7 @@ sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, 
     sr_error_info_t *err_info = NULL;
     char *pref_origin = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || !path || (!SR_IS_CONVENTIONAL_DS(session->ds) &&
+    SR_CHECK_ARG_APIRET(!session || !path || !SR_IS_STANDARD_DS(session->ds) || (!SR_IS_CONVENTIONAL_DS(session->ds) &&
             (opts & (SR_EDIT_STRICT | SR_EDIT_NON_RECURSIVE))), session, err_info);
 
     /* we do not need any lock, ext SHM is not accessed */
@@ -3173,7 +3137,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     const struct lysc_node *snode;
     int ly_log_opts;
 
-    SR_CHECK_ARG_APIRET(!session || !path, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !path || !SR_IS_STANDARD_DS(session->ds), session, err_info);
 
     if (!session->dt[session->ds].edit) {
         /* CONTEXT LOCK */
@@ -3238,7 +3202,7 @@ sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position
     sr_error_info_t *err_info = NULL;
     char *pref_origin = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || !path || (!SR_IS_CONVENTIONAL_DS(session->ds) &&
+    SR_CHECK_ARG_APIRET(!session || !path || !SR_IS_STANDARD_DS(session->ds) || (!SR_IS_CONVENTIONAL_DS(session->ds) &&
             (opts & (SR_EDIT_STRICT | SR_EDIT_NON_RECURSIVE))), session, err_info);
 
     if (origin) {
@@ -3284,7 +3248,7 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
     struct lyd_node *dup_edit = NULL, *root, *elem;
     enum edit_op op;
 
-    SR_CHECK_ARG_APIRET(!session || !edit || !default_operation, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !edit || !default_operation || !SR_IS_STANDARD_DS(session->ds), session, err_info);
     SR_CHECK_ARG_APIRET(strcmp(default_operation, "merge") && strcmp(default_operation, "replace") &&
             strcmp(default_operation, "none"), session, err_info);
 
@@ -3363,7 +3327,7 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
     const struct lyd_node *node, *edit;
     struct sr_mod_info_s mod_info;
 
-    SR_CHECK_ARG_APIRET(!session, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !SR_IS_STANDARD_DS(session->ds), session, err_info);
 
     if (!timeout_ms) {
         timeout_ms = SR_OPER_CB_TIMEOUT;
@@ -3429,6 +3393,9 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
             }
         }
         break;
+    case SR_DS_FACTORY_DEFAULT:
+        SR_ERRINFO_INT(&err_info);
+        goto cleanup;
     }
 
     /* add modules into mod_info with deps, locking, and their data (we need inverse dependencies because the data will
@@ -3469,6 +3436,9 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
             goto cleanup;
         }
         break;
+    case SR_DS_FACTORY_DEFAULT:
+        SR_ERRINFO_INT(&err_info);
+        goto cleanup;
     }
 
 cleanup:
@@ -3561,6 +3531,9 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     case SR_DS_OPERATIONAL:
         /* not valid and just an edit, nothing more needed */
         break;
+    case SR_DS_FACTORY_DEFAULT:
+        SR_ERRINFO_INT(&err_info);
+        goto cleanup;
     }
 
     if (!mod_info->diff) {
@@ -3649,7 +3622,7 @@ sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
     struct sr_mod_info_s mod_info;
     int mod_deps;
 
-    SR_CHECK_ARG_APIRET(!session, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !SR_IS_STANDARD_DS(session->ds), session, err_info);
 
     if (!session->dt[session->ds].edit) {
         return sr_api_ret(session, NULL);
@@ -3708,7 +3681,11 @@ cleanup:
 API int
 sr_has_changes(sr_session_ctx_t *session)
 {
-    if (session && session->dt[session->ds].edit) {
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(!session || !SR_IS_STANDARD_DS(session->ds), session, err_info);
+
+    if (session->dt[session->ds].edit) {
         return 1;
     }
 
@@ -3718,7 +3695,11 @@ sr_has_changes(sr_session_ctx_t *session)
 API const struct lyd_node *
 sr_get_changes(sr_session_ctx_t *session)
 {
-    if (!session || !session->dt[session->ds].edit) {
+    if (!session || !SR_IS_STANDARD_DS(session->ds)) {
+        return NULL;
+    }
+
+    if (!session->dt[session->ds].edit) {
         return NULL;
     }
 
@@ -3730,7 +3711,7 @@ sr_discard_changes(sr_session_ctx_t *session)
 {
     sr_error_info_t *err_info = NULL;
 
-    SR_CHECK_ARG_APIRET(!session, session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !SR_IS_STANDARD_DS(session->ds), session, err_info);
 
     sr_release_data(session->dt[session->ds].edit);
     session->dt[session->ds].edit = NULL;
@@ -4970,8 +4951,8 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     sr_subscr_options_t sub_opts;
     sr_mod_t *shm_mod;
 
-    SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !module_name || !callback || !subscription,
-            session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !SR_IS_STANDARD_DS(session->ds) || SR_IS_EVENT_SESS(session) || !module_name ||
+            !callback || !subscription, session, err_info);
 
     SR_MODINFO_INIT(mod_info, session->conn, SR_DS_RUNNING, SR_DS_RUNNING);
 

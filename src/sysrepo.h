@@ -487,6 +487,8 @@ int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *
 /**
  * @brief Install a new schema (module) into sysrepo with all the available options.
  *
+ * Any initial data are also used as factory-default datastore data.
+ *
  * @param[in] conn Connection to use.
  * @param[in] schema_path Path to the new schema. Can have either YANG or YIN extension/format.
  * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
@@ -523,6 +525,8 @@ int sr_install_modules(sr_conn_ctx_t *conn, const char **schema_paths, const cha
 
 /**
  * @brief Install new schemas (modules) into sysrepo in a batch with all the available options.
+ *
+ * Any initial data are also used as factory-default datastore data.
  *
  * @param[in] conn Connection to use.
  * @param[in] modules Array of new modules to be installed with all their information.

@@ -67,6 +67,9 @@
 /** if not set, defaults to "SR_REPO_PATH/data" */
 #define SR_STARTUP_PATH "@STARTUP_DATA_PATH@"
 
+/** if not set, defaults to "SR_REPO_PATH/data" */
+#define SR_FACTORY_DEFAULT_PATH "@FACTORY_DEFAULT_DATA_PATH@"
+
 /** if not set, defaults to "SR_REPO_PATH/data/notif" */
 #define SR_NOTIFICATION_PATH "@NOTIFICATION_PATH@"
 
