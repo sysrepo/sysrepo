@@ -1799,7 +1799,8 @@ apply_change_fail_thread(void *arg)
     assert_null(str1);
     sr_release_data(subtree);
 
-    /* signal that we have finished applying changes #1 */
+    /* signal that we have finished applying changes #1 and wait for the cb_called check */
+    pthread_barrier_wait(&st->barrier);
     pthread_barrier_wait(&st->barrier);
 
     /* perform another change (it should fail) */
@@ -1823,7 +1824,8 @@ apply_change_fail_thread(void *arg)
     assert_null(str1);
     sr_release_data(subtree);
 
-    /* signal that we have finished applying changes #2 */
+    /* signal that we have finished applying changes #2 and wait for the cb_called check */
+    pthread_barrier_wait(&st->barrier);
     pthread_barrier_wait(&st->barrier);
 
     sr_session_stop(sess);
@@ -1866,12 +1868,18 @@ subscribe_change_fail_thread(void *arg)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called2), 2);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called3), 1);
 
+    /* cb_called checked */
+    pthread_barrier_wait(&st->barrier);
+
     /* wait for the other thread to signal #2 (all changes sent) */
     pthread_barrier_wait(&st->barrier);
 
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called2), 3);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called3), 3);
+
+    /* cb_called checked */
+    pthread_barrier_wait(&st->barrier);
 
     sr_unsubscribe(subscr);
 
