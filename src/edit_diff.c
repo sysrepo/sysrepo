@@ -4044,6 +4044,7 @@ sr_diff_del_conn_r(struct lyd_node *subtree, sr_cid_t cid, sr_cid_t parent_cid, 
     sr_error_info_t *err_info = NULL;
     struct lyd_node *next, *child;
     struct lyd_attr *attr;
+    enum edit_op op;
     sr_cid_t cur_cid, child_cid, ch_cid;
     char cid_str[11];
 
@@ -4069,6 +4070,19 @@ sr_diff_del_conn_r(struct lyd_node *subtree, sr_cid_t cid, sr_cid_t parent_cid, 
         /* try to find a child with the parent CID, then we can simply keep it */
         if (ch_cid && (!child_cid || (child_cid != parent_cid))) {
             child_cid = ch_cid;
+        }
+    }
+
+    if (!sr_lyd_child(subtree, 1)) {
+        if ((err_info = sr_diff_op(subtree, &op, NULL, NULL))) {
+            return err_info;
+        }
+
+        if (op == EDIT_NONE) {
+            /* redundant diff node, always remove */
+            lyd_free(subtree);
+            *child_cid_p = 0;
+            return NULL;
         }
     }
 
