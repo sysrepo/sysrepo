@@ -33,11 +33,13 @@
 
 struct state {
     sr_conn_ctx_t *conn;
+    sr_conn_ctx_t *cconn;
     sr_session_ctx_t *sess;
+    sr_session_ctx_t *csess;
 };
 
 static int
-setup(void **state, int cached)
+setup(void **state)
 {
     struct state *st;
     const char *schema_paths[] = {
@@ -50,7 +52,10 @@ setup(void **state, int cached)
     st = calloc(1, sizeof *st);
     *state = st;
 
-    if (sr_connect(cached ? SR_CONN_CACHE_RUNNING : 0, &st->conn) != SR_ERR_OK) {
+    if (sr_connect(0, &st->conn) != SR_ERR_OK) {
+        return 1;
+    }
+    if (sr_connect(SR_CONN_CACHE_RUNNING, &st->cconn) != SR_ERR_OK) {
         return 1;
     }
 
@@ -61,24 +66,15 @@ setup(void **state, int cached)
     if (sr_session_start(st->conn, SR_DS_RUNNING, &st->sess) != SR_ERR_OK) {
         return 1;
     }
+    if (sr_session_start(st->cconn, SR_DS_RUNNING, &st->csess) != SR_ERR_OK) {
+        return 1;
+    }
 
     return 0;
 }
 
 static int
-setup_f(void **state)
-{
-    return setup(state, 0);
-}
-
-static int
-setup_cached_f(void **state)
-{
-    return setup(state, 1);
-}
-
-static int
-teardown_f(void **state)
+teardown(void **state)
 {
     struct state *st = (struct state *)*state;
     const char *module_names[] = {
@@ -91,6 +87,7 @@ teardown_f(void **state)
     sr_remove_modules(st->conn, module_names, 0);
 
     sr_disconnect(st->conn);
+    sr_disconnect(st->cconn);
     free(st);
     return 0;
 }
@@ -117,41 +114,41 @@ test_cached_datastore(void **state)
     int ret;
 
     /* try to get RUNNING data */
-    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
+    ret = sr_get_data(st->csess, "/*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_non_null(data);
     sr_release_data(data);
 
     /* try to get STARTUP data */
-    ret = sr_session_switch_ds(st->sess, SR_DS_STARTUP);
+    ret = sr_session_switch_ds(st->csess, SR_DS_STARTUP);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
+    ret = sr_get_data(st->csess, "/*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_non_null(data);
     sr_release_data(data);
 
     /* try to get CANDIDATE data */
-    ret = sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
+    ret = sr_session_switch_ds(st->csess, SR_DS_CANDIDATE);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
+    ret = sr_get_data(st->csess, "/*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_non_null(data);
     sr_release_data(data);
 
     /* try to get OPERATIONAL data */
-    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    ret = sr_session_switch_ds(st->csess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
+    ret = sr_get_data(st->csess, "/*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     assert_non_null(data);
     sr_release_data(data);
 
     /* switch DS back */
-    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    ret = sr_session_switch_ds(st->csess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -225,6 +222,12 @@ test_cached_thread(void **state)
 
         sr_disconnect(conn);
     }
+
+    /* cleanup */
+    ret = sr_delete_item(st->sess, "/simple:ac1", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
 }
 
 /* TEST */
@@ -262,9 +265,9 @@ test_enable_cached_get(void **state)
     int ret;
 
     /* subscribe to both modules with enabled flag */
-    ret = sr_module_change_subscribe(st->sess, "simple", NULL, enable_cached_get_cb, NULL, 0, SR_SUBSCR_ENABLED, &sub);
+    ret = sr_module_change_subscribe(st->csess, "simple", NULL, enable_cached_get_cb, NULL, 0, SR_SUBSCR_ENABLED, &sub);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_module_change_subscribe(st->sess, "simple-aug", NULL, enable_cached_get_cb, NULL, 0,
+    ret = sr_module_change_subscribe(st->csess, "simple-aug", NULL, enable_cached_get_cb, NULL, 0,
             SR_SUBSCR_ENABLED, &sub);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -286,18 +289,18 @@ test_no_read_access(void **state)
     }
 
     /* set no permissions for default module */
-    ret = sr_set_module_ds_access(st->conn, "defaults", SR_DS_RUNNING, NULL, NULL, 00200);
+    ret = sr_set_module_ds_access(st->cconn, "defaults", SR_DS_RUNNING, NULL, NULL, 00200);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* try to get its data */
-    ret = sr_get_data(st->sess, "/defaults:*", 0, 0, 0, &data);
+    ret = sr_get_data(st->csess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* no data should be returned, not even defaults */
     assert_null(data);
 
     /* try to get all data */
-    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
+    ret = sr_get_data(st->csess, "/*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* only some default values */
@@ -306,7 +309,7 @@ test_no_read_access(void **state)
     sr_release_data(data);
 
     /* set permissions back so that it can be removed */
-    ret = sr_set_module_ds_access(st->conn, "defaults", SR_DS_RUNNING, NULL, NULL, 00600);
+    ret = sr_set_module_ds_access(st->cconn, "defaults", SR_DS_RUNNING, NULL, NULL, 00600);
     assert_int_equal(ret, SR_ERR_OK);
 }
 
@@ -556,18 +559,18 @@ int
 main(void)
 {
     const struct CMUnitTest tests[] = {
-        cmocka_unit_test_setup_teardown(test_invalid, setup_f, teardown_f),
-        cmocka_unit_test_setup_teardown(test_cached_datastore, setup_cached_f, teardown_f),
-        cmocka_unit_test_setup_teardown(test_cached_thread, setup_f, teardown_f),
-        cmocka_unit_test_setup_teardown(test_enable_cached_get, setup_cached_f, teardown_f),
-        cmocka_unit_test_setup_teardown(test_no_read_access, setup_f, teardown_f),
-        cmocka_unit_test_setup_teardown(test_no_read_access, setup_cached_f, teardown_f),
-        cmocka_unit_test_setup_teardown(test_explicit_default, setup_f, teardown_f),
-        cmocka_unit_test_setup_teardown(test_union, setup_f, teardown_f),
-        cmocka_unit_test_setup_teardown(test_key, setup_f, teardown_f),
+        cmocka_unit_test(test_invalid),
+        cmocka_unit_test(test_cached_datastore),
+        cmocka_unit_test(test_cached_thread),
+        cmocka_unit_test(test_enable_cached_get),
+        cmocka_unit_test(test_no_read_access),
+        cmocka_unit_test(test_no_read_access),
+        cmocka_unit_test(test_explicit_default),
+        cmocka_unit_test(test_union),
+        cmocka_unit_test(test_key),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
     test_log_init();
-    return cmocka_run_group_tests(tests, NULL, NULL);
+    return cmocka_run_group_tests(tests, setup, teardown);
 }
