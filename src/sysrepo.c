@@ -702,12 +702,25 @@ sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_session
 
     SR_CHECK_ARG_APIRET(!conn || !session, NULL, err_info);
 
-    /* update LY ext data on every new explicit session creation */
-    if ((err_info = sr_conn_ext_data_update(conn))) {
-        return sr_api_ret(NULL, err_info);
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        goto cleanup;
     }
 
-    err_info = _sr_session_start(conn, datastore, SR_SUB_EV_NONE, NULL, session);
+    /* update LY ext data on every new explicit session creation */
+    if ((err_info = sr_conn_ext_data_update(conn))) {
+        goto cleanup;
+    }
+
+    /* start the session */
+    if ((err_info = _sr_session_start(conn, datastore, SR_SUB_EV_NONE, NULL, session))) {
+        goto cleanup;
+    }
+
+cleanup:
+    /* CONTEXT UNLOCK */
+    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
+
     return sr_api_ret(NULL, err_info);
 }
 
