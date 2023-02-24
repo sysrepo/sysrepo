@@ -36,6 +36,7 @@
 #include "edit_diff.h"
 #include "log.h"
 #include "modinfo.h"
+#include "plugins_datastore.h"
 #include "replay.h"
 #include "shm_ext.h"
 #include "shm_mod.h"
@@ -2128,6 +2129,92 @@ cleanup:
 }
 
 /**
+ * @brief Call internal RPC/action "callback".
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] input Input tree pointing to the operation node.
+ * @param[out] output Output tree pointing to the operation node.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node *input, struct lyd_node **output)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lyd_node *child;
+    const struct lys_module *ly_mod;
+    const struct srplg_ds_s *ds_plg[SR_DS_READ_COUNT];
+    sr_mod_t *shm_mod;
+    sr_datastore_t ds;
+    int rc;
+
+    assert(input->schema->nodetype & (LYS_RPC | LYS_ACTION));
+
+    LY_LIST_FOR(lyd_child(input), child) {
+        /* get LY module */
+        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, lyd_get_value(child));
+        if (!ly_mod) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", lyd_get_value(child));
+            goto cleanup;
+        } else if (!strcmp(ly_mod->name, "sysrepo")) {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Internal module \"%s\" cannot be reset to factory-default.", lyd_get_value(child));
+            goto cleanup;
+        }
+
+        if (!sr_module_has_data(ly_mod, 0)) {
+            /* skip copying for modules without configuration data */
+            continue;
+        }
+
+        /* find the module in SHM */
+        shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
+        SR_CHECK_INT_RET(!shm_mod, err_info);
+
+        /* find the plugins */
+        for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
+            if (ds == SR_DS_OPERATIONAL) {
+                /* not needed */
+                continue;
+            }
+
+            if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_plg[ds]))) {
+                goto cleanup;
+            }
+        }
+
+        /* perform all the copies */
+        ds = SR_DS_FACTORY_DEFAULT;
+        if ((err_info = sr_shmmod_copy_mod(ly_mod, ds_plg[ds], ds, ds_plg[SR_DS_STARTUP], SR_DS_STARTUP))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_shmmod_copy_mod(ly_mod, ds_plg[ds], ds, ds_plg[SR_DS_RUNNING], SR_DS_RUNNING))) {
+            goto cleanup;
+        }
+
+        /* reset candidate */
+        if ((rc = ds_plg[SR_DS_CANDIDATE]->candidate_reset_cb(ly_mod))) {
+            SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_reset", ds_plg[SR_DS_CANDIDATE]->name, ly_mod->name);
+            goto cleanup;
+        }
+    }
+
+    /* generate output */
+    if (lyd_dup_single(input, NULL, LYD_DUP_WITH_PARENTS, output)) {
+        sr_errinfo_new_ly(&err_info, conn->ly_ctx, NULL);
+        goto cleanup;
+    }
+
+cleanup:
+    if (err_info) {
+        SR_LOG_WRN("EV ORIGIN: Internal \"%s\" \"%s\" priority %" PRIu32 " failed (%s).", SR_RPC_FACTORY_RESET_PATH,
+                sr_ev2str(SR_SUB_EV_RPC), SR_RPC_FACTORY_RESET_INT_PRIO, sr_strerror(err_info->err[0].err_code));
+    } else {
+        SR_LOG_INF("EV ORIGIN: Internal \"%s\" \"%s\" priority %" PRIu32 " succeeded.", SR_RPC_FACTORY_RESET_PATH,
+                sr_ev2str(SR_SUB_EV_RPC), SR_RPC_FACTORY_RESET_INT_PRIO);
+    }
+    return err_info;
+}
+
+/**
  * @brief Whether an RPC/action is valid (not filtered out) for an RPC subscription.
  *
  * @param[in] input Operation input data tree.
@@ -2187,7 +2274,7 @@ sr_shmsub_rpc_notify_has_subscription(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock
     i = 0;
     while (i < *sub_count) {
         /* check subscription aliveness */
-        if (!sr_conn_is_alive(shm_subs[i].cid)) {
+        if (shm_subs[i].cid && !sr_conn_is_alive(shm_subs[i].cid)) {
             /* recover the subscription */
             if ((err_info = sr_shmext_rpc_sub_stop(conn, sub_lock, subs, sub_count, path, i, 1, SR_LOCK_READ, 1))) {
                 sr_errinfo_free(&err_info);
@@ -2255,7 +2342,7 @@ sr_shmsub_rpc_notify_next_subscription(sr_conn_ctx_t *conn, sr_rwlock_t *sub_loc
     i = 0;
     while (i < *sub_count) {
         /* check subscription aliveness */
-        if (!sr_conn_is_alive(shm_subs[i].cid)) {
+        if (shm_subs[i].cid && !sr_conn_is_alive(shm_subs[i].cid)) {
             /* recover the subscription */
             if ((err_info = sr_shmext_rpc_sub_stop(conn, sub_lock, subs, sub_count, path, i, 1, SR_LOCK_READ, 1))) {
                 sr_errinfo_free(&err_info);
@@ -2338,6 +2425,7 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, ui
         goto cleanup;
     }
 
+first_sub:
     /* correctly start the loop, with fake last priority 1 higher than the actual highest */
     if ((err_info = sr_shmsub_rpc_notify_next_subscription(conn, sub_lock, subs, sub_count, path, input, cur_priority + 1,
             &cur_priority, &evpipes, &subscriber_count, &opts))) {
@@ -2347,6 +2435,18 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, ui
     if (!subscriber_count) {
         /* the subscription(s) was recovered just now so there are not any */
         goto cleanup;
+    }
+
+    if (!strcmp(path, SR_RPC_FACTORY_RESET_PATH) && (cur_priority == SR_RPC_FACTORY_RESET_INT_PRIO)) {
+        assert(subscriber_count == 1);
+
+        /* internal RPC subscription */
+        if ((err_info = sr_shmsub_rpc_internal_call_callback(conn, input, output))) {
+            goto cleanup;
+        }
+        free(evpipes);
+        --cur_priority;
+        goto first_sub;
     }
 
     /* print the input into LYB */
@@ -2373,6 +2473,20 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, ui
     }
 
     do {
+        /* free any previous output */
+        lyd_free_all(*output);
+        *output = NULL;
+
+        if (!strcmp(path, SR_RPC_FACTORY_RESET_PATH) && (cur_priority == SR_RPC_FACTORY_RESET_INT_PRIO)) {
+            assert(subscriber_count == 1);
+
+            /* internal RPC subscription */
+            if ((err_info = sr_shmsub_rpc_internal_call_callback(conn, input, output))) {
+                goto cleanup;
+            }
+            goto next_sub;
+        }
+
         /* write the event */
         if (!*request_id) {
             *request_id = ++multi_sub_shm->request_id;
@@ -2412,9 +2526,7 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, ui
 
         assert(multi_sub_shm->event == SR_SUB_EV_SUCCESS);
 
-        /* parse returned reply, overwrite any previous ones */
-        lyd_free_all(*output);
-        *output = NULL;
+        /* parse returned reply */
         ly_in_free(in, 0);
         ly_in_new_memory(shm_data_sub.addr, &in);
         if (lyd_parse_op(LYD_CTX(input), NULL, in, LYD_LYB, LYD_TYPE_REPLY_YANG, output, NULL)) {
@@ -2426,6 +2538,7 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, ui
         /* event processed */
         multi_sub_shm->event = SR_SUB_EV_NONE;
 
+next_sub:
         /* find out what is the next priority and how many subscribers have it */
         free(evpipes);
         if ((err_info = sr_shmsub_rpc_notify_next_subscription(conn, sub_lock, subs, sub_count, path, input, cur_priority,

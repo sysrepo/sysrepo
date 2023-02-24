@@ -1636,7 +1636,7 @@ sr_shmext_notif_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_id
 
 sr_error_info_t *
 sr_shmext_rpc_sub_add(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, uint32_t *sub_count, const char *path,
-        uint32_t sub_id, const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num)
+        uint32_t sub_id, const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num, sr_cid_t sub_cid)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     off_t xpath_off;
@@ -1669,14 +1669,16 @@ sr_shmext_rpc_sub_add(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, u
         if (r) {
             continue;
         }
-        ++path_found;
+        if (shm_sub[i].cid) {
+            ++path_found;
+        }
 
         /* priority */
         if (shm_sub[i].priority != priority) {
             continue;
         }
 
-        if (!sr_conn_is_alive(shm_sub[i].cid)) {
+        if (shm_sub[i].cid && !sr_conn_is_alive(shm_sub[i].cid)) {
             /* subscription is dead, recover it */
             if ((err_info = sr_shmext_rpc_sub_stop(conn, sub_lock, subs, sub_count, path, i, 1, SR_LOCK_WRITE, 1))) {
                 goto cleanup_rpcsub_ext_unlock;
@@ -1709,12 +1711,12 @@ sr_shmext_rpc_sub_add(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, u
     shm_sub->sub_id = sub_id;
     shm_sub->evpipe_num = evpipe_num;
     ATOMIC_STORE_RELAXED(shm_sub->suspended, 0);
-    shm_sub->cid = conn->cid;
+    shm_sub->cid = sub_cid;
 
     SR_LOG_DBG("#SHM after (adding rpc sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
-    if (!path_found) {
+    if (!path_found && sub_cid) {
         /* create the sub SHM while still holding the locks */
         mod_name = sr_get_first_ns(path);
         if ((err_info = sr_shmsub_create(mod_name, "rpc", sr_str_hash(path, 0), sizeof(sr_multi_sub_shm_t)))) {
@@ -1774,6 +1776,11 @@ sr_shmext_rpc_sub_free(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, co
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
     for (i = 0; i < *sub_count; ++i) {
+        if (!shm_subs[i].cid) {
+            /* skip internal subscriptions */
+            continue;
+        }
+
         if ((err_info = sr_get_trim_predicates(conn->ext_shm.addr + shm_subs[i].xpath, &p))) {
             goto cleanup;
         }

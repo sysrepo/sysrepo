@@ -255,6 +255,10 @@ sr_ly_ctx_init(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx)
         sr_errinfo_new_ly(&err_info, *ly_ctx, NULL);
         goto cleanup;
     }
+    if (lys_parse_mem(*ly_ctx, sysrepo_factory_default_yang, LYS_IN_YANG, NULL)) {
+        sr_errinfo_new_ly(&err_info, *ly_ctx, NULL);
+        goto cleanup;
+    }
 
     /* compile */
     if (ly_ctx_compile(*ly_ctx)) {

@@ -252,10 +252,12 @@ sr_error_info_t *sr_shmext_notif_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod
  * @param[in] priority Subscription priority.
  * @param[in] sub_opts Subscriptions options.
  * @param[in] evpipe_num Subscription event pipe number.
+ * @param[in] sub_cid Subscription CID.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmext_rpc_sub_add(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, uint32_t *sub_count,
-        const char *path, uint32_t sub_id, const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num);
+        const char *path, uint32_t sub_id, const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num,
+        sr_cid_t sub_cid);
 
 /**
  * @brief Remove main SHM RPC/action subscription and unlink sub SHM if the last subscription was removed.

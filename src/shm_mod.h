@@ -4,8 +4,8 @@
  * @brief header for mod SHM routines
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -229,6 +229,19 @@ void sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmod_update_replay_support(sr_mod_shm_t *mod_shm, const struct ly_set *mod_set, int enable);
+
+/**
+ * @brief Copy data of a module.
+ *
+ * @param[in] ly_mod Module.
+ * @param[in] sds_plg Source data plugin.
+ * @param[in] sds Source datastore.
+ * @param[in] tds_plg Target data plugin.
+ * @param[in] tds Target datastore.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_copy_mod(const struct lys_module *ly_mod, const struct srplg_ds_s *sds_plg,
+        sr_datastore_t sds, const struct srplg_ds_s *tds_plg, sr_datastore_t tds);
 
 /**
  * @brief Initialize datastores after a reboot. Includes calling init callbacks and copying startup DS to running DS.

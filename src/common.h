@@ -142,6 +142,12 @@ struct srplg_ntf_s;
 /** default operational origin for enabled running data */
 #define SR_CONFIG_ORIGIN "ietf-origin:intended"
 
+/** path of the internal factory-reset RPC subscription */
+#define SR_RPC_FACTORY_RESET_PATH "/ietf-factory-default:factory-reset"
+
+/** priority of the internal factory-reset RPC subscription */
+#define SR_RPC_FACTORY_RESET_INT_PRIO 10
+
 /** get string value of the first child of a node */
 #define SR_LY_CHILD_VALUE(node) lyd_get_value(lyd_child(node))
 
@@ -156,6 +162,7 @@ extern char ietf_datastores_yang[];
 extern char sysrepo_yang[];
 extern char ietf_netconf_acm_yang[];
 extern char ietf_factory_default_yang[];
+extern char sysrepo_factory_default_yang[];
 
 extern const struct srplg_ds_s *sr_internal_ds_plugins[];
 

@@ -201,6 +201,8 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     int created = 0, initialized = 0;
     sr_main_shm_t *main_shm;
     sr_ext_hole_t *hole;
+    const char *rpc_path;
+    sr_rpc_t *shm_rpc;
 
     SR_CHECK_ARG_APIRET(!conn_p, NULL, err_info);
 
@@ -275,6 +277,15 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
                 goto cleanup_unlock;
             }
             SR_CONN_EXT_SHM(conn)->first_hole_off = 0;
+        }
+
+        /* add internal RPC subscription into ext SHM */
+        rpc_path = SR_RPC_FACTORY_RESET_PATH;
+        shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(conn), rpc_path);
+        SR_CHECK_INT_GOTO(!shm_rpc, err_info, cleanup_unlock);
+        if ((err_info = sr_shmext_rpc_sub_add(conn, &shm_rpc->lock, &shm_rpc->subs, &shm_rpc->sub_count, rpc_path, 0,
+                rpc_path, SR_RPC_FACTORY_RESET_INT_PRIO, 0, -1, 0))) {
+            goto cleanup;
         }
     }
 
@@ -5613,12 +5624,12 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     /* add RPC/action subscription into ext SHM and create separate specific SHM segment */
     if (is_ext) {
         if ((err_info = sr_shmext_rpc_sub_add(conn, &shm_mod->rpc_ext_lock, &shm_mod->rpc_ext_subs,
-                &shm_mod->rpc_ext_sub_count, path, sub_id, xpath, priority, 0, (*subscription)->evpipe_num))) {
+                &shm_mod->rpc_ext_sub_count, path, sub_id, xpath, priority, 0, (*subscription)->evpipe_num, conn->cid))) {
             goto cleanup_unlock;
         }
     } else {
         if ((err_info = sr_shmext_rpc_sub_add(conn, &shm_rpc->lock, &shm_rpc->subs, &shm_rpc->sub_count, path, sub_id,
-                xpath, priority, 0, (*subscription)->evpipe_num))) {
+                xpath, priority, 0, (*subscription)->evpipe_num, conn->cid))) {
             goto cleanup_unlock;
         }
     }
@@ -5758,6 +5769,54 @@ cleanup:
 }
 
 /**
+ * @brief Update the input of an internal RPC factory-reset.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] input_op Input operation of the RPC.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_rpc_internal_input_update(sr_conn_ctx_t *conn, struct lyd_node *input_op)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod, *ly_srfd_mod;
+    uint32_t i = 0;
+
+    assert(!strcmp(LYD_NAME(input_op), "factory-reset"));
+
+    if (lyd_child(input_op)) {
+        /* explicit modules specified */
+        return NULL;
+    }
+
+    /* find sysrepo-factory-default module */
+    ly_srfd_mod = ly_ctx_get_module_implemented(conn->ly_ctx, "sysrepo-factory-default");
+    assert(ly_srfd_mod);
+
+    while ((ly_mod = ly_ctx_get_module_iter(conn->ly_ctx, &i))) {
+        if (!ly_mod->implemented) {
+            continue;
+        } else if (!strcmp(ly_mod->name, "sysrepo")) {
+            /* sysrepo internal data will not be reset */
+            continue;
+        } else if (!strcmp(ly_mod->name, "ietf-netconf")) {
+            /* ietf-netconf defines data but only internal that should be ignored */
+            continue;
+        } else if (!sr_module_has_data(ly_mod, 0)) {
+            /* no configuration data */
+            continue;
+        }
+
+        if (lyd_new_term(input_op, ly_srfd_mod, "module", ly_mod->name, 0, NULL)) {
+            sr_errinfo_new_ly(&err_info, conn->ly_ctx, NULL);
+            return err_info;
+        }
+    }
+
+    return err_info;
+}
+
+/**
  * @brief Validate and notify about an RPC/action.
  *
  * @param[in] session Session to use.
@@ -5811,6 +5870,13 @@ _sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, con
 
     sr_modinfo_erase(mod_info);
     SR_MODINFO_INIT(*mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING);
+
+    if (!strcmp(path, SR_RPC_FACTORY_RESET_PATH)) {
+        /* update the input as needed */
+        if ((err_info = sr_rpc_internal_input_update(session->conn, input_op))) {
+            goto cleanup;
+        }
+    }
 
     /* find the RPC */
     shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(session->conn), path);

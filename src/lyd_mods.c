@@ -48,6 +48,7 @@
 #include "../modules/ietf_datastores_yang.h"
 #include "../modules/ietf_factory_default_yang.h"
 #include "../modules/ietf_netconf_acm_yang.h"
+#include "../modules/sysrepo_factory_default_yang.h"
 #include "../modules/sysrepo_yang.h"
 
 #if SR_YANGLIB_REVISION == 2019 - 01 - 04

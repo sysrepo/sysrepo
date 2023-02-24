@@ -4,8 +4,8 @@
  * @brief test for sending/receiving RPCs/actions
  *
  * @copyright
- * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -46,29 +46,17 @@ setup(void **state)
 {
     struct state *st;
     uint32_t nc_id;
-    const char *schema_paths[] = {
-        TESTS_SRC_DIR "/files/test.yang",
-        TESTS_SRC_DIR "/files/ietf-interfaces.yang",
-        TESTS_SRC_DIR "/files/iana-if-type.yang",
-        TESTS_SRC_DIR "/files/ops-ref.yang",
-        TESTS_SRC_DIR "/files/ops.yang",
-        TESTS_SRC_DIR "/files/act.yang",
-        TESTS_SRC_DIR "/files/act2.yang",
-        TESTS_SRC_DIR "/files/act3.yang",
-        TESTS_SRC_DIR "/files/sm.yang",
-        NULL
-    };
-    const char *ops_ref_feats[] = {"feat1", NULL}, *act_feats[] = {"advanced-testing", NULL};
-    const char **features[] = {
-        NULL,
-        NULL,
-        NULL,
-        ops_ref_feats,
-        NULL,
-        act_feats,
-        NULL,
-        NULL,
-        NULL
+    const char *ops_ref_feats[] = {"feat1", NULL}, *act_feats[] = {"advanced-testing", NULL}, *init_data;
+    sr_install_mod_t new_mods[] = {
+        { .schema_path = TESTS_SRC_DIR "/files/test.yang" },
+        { .schema_path = TESTS_SRC_DIR "/files/ietf-interfaces.yang" },
+        { .schema_path = TESTS_SRC_DIR "/files/iana-if-type.yang" },
+        { .schema_path = TESTS_SRC_DIR "/files/ops-ref.yang", .features = ops_ref_feats },
+        { .schema_path = TESTS_SRC_DIR "/files/ops.yang" },
+        { .schema_path = TESTS_SRC_DIR "/files/act.yang", .features = act_feats },
+        { .schema_path = TESTS_SRC_DIR "/files/act2.yang" },
+        { .schema_path = TESTS_SRC_DIR "/files/act3.yang" },
+        { .schema_path = TESTS_SRC_DIR "/files/sm.yang" },
     };
 
     st = calloc(1, sizeof *st);
@@ -77,17 +65,46 @@ setup(void **state)
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
     pthread_barrier_init(&st->barrier, NULL, 2);
 
-    if (sr_connect(0, &(st->conn)) != SR_ERR_OK) {
+    if (sr_connect(0, &(st->conn))) {
         return 1;
     }
 
-    if (sr_install_modules(st->conn, schema_paths, TESTS_SRC_DIR "/files", features) != SR_ERR_OK) {
+    /* set factory-default data */
+    init_data =
+            "<test-leaf xmlns=\"urn:test\">1</test-leaf>\n"
+            "<cont xmlns=\"urn:test\">\n"
+            "  <l2>\n"
+            "    <k>key</k>\n"
+            "    <v>5</v>\n"
+            "  </l2>\n"
+            "</cont>\n"
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "  <interface>\n"
+            "    <name>bu</name>\n"
+            "    <type xmlns:ii=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ii:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
+    if (sr_install_modules2(st->conn, new_mods, 9, TESTS_SRC_DIR "/files", init_data, NULL, LYD_XML)) {
         return 1;
     }
 
     st->ly_ctx = sr_acquire_context(st->conn);
 
-    if (sr_session_start(st->conn, SR_DS_RUNNING, &st->sess) != SR_ERR_OK) {
+    if (sr_session_start(st->conn, SR_DS_RUNNING, &st->sess)) {
+        return 1;
+    }
+
+    /* clear running DS */
+    if (sr_delete_item(st->sess, "/test:test-leaf", 0)) {
+        return 1;
+    }
+    if (sr_delete_item(st->sess, "/test:cont", 0)) {
+        return 1;
+    }
+    if (sr_delete_item(st->sess, "/ietf-interfaces:interfaces", 0)) {
+        return 1;
+    }
+    if (sr_apply_changes(st->sess, 0)) {
         return 1;
     }
 
@@ -1686,6 +1703,157 @@ test_schema_mount(void **state)
     sr_unsubscribe(sub);
 }
 
+/* TEST */
+static int
+rpc_factory_reset_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const struct lyd_node *input,
+        sr_event_t event, uint32_t request_id, struct lyd_node *output, void *private_data)
+{
+    struct state *st = private_data;
+    const char *modules[] = {"ietf-netconf-acm", "sysrepo-plugind", "test", "ietf-interfaces", "ops-ref", "ops", "act", "sm"};
+    struct ly_set *set;
+    uint32_t i;
+    int ret;
+
+    (void)session;
+    (void)sub_id;
+    (void)op_path;
+    (void)event;
+    (void)request_id;
+    (void)output;
+
+    /* check the modules being reset */
+    ret = lyd_find_xpath(input, "sysrepo-factory-default:module", &set);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_int_equal(set->count, 8);
+    for (i = 0; i < set->count; ++i) {
+        assert_string_equal(modules[i], lyd_get_value(set->dnodes[i]));
+    }
+    ly_set_free(set, NULL);
+
+    ATOMIC_INC_RELAXED(st->cb_called);
+    return SR_ERR_OK;
+}
+
+static void
+test_factory_reset(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr = NULL;
+    struct lyd_node *input;
+    sr_data_t *data, *output;
+    char *str;
+    const char *xml;
+    int ret;
+
+    /* clear startup DS */
+    sr_session_switch_ds(st->sess, SR_DS_STARTUP);
+    ret = sr_copy_config(st->sess, NULL, SR_DS_RUNNING, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* modify candidate DS */
+    sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
+    ret = sr_set_item_str(st->sess, "/test:cont/l2[k='cand']/v", "0", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth100']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* equal priority */
+    ret = sr_rpc_subscribe_tree(st->sess, "/ietf-factory-default:factory-reset", rpc_factory_reset_cb, st, 10, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+
+    /* subscribe x2 */
+    ret = sr_rpc_subscribe_tree(st->sess, "/ietf-factory-default:factory-reset", rpc_factory_reset_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_rpc_subscribe_tree(st->sess, "/ietf-factory-default:factory-reset", rpc_factory_reset_cb, st, 20, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check DS contents */
+    sr_session_switch_ds(st->sess, SR_DS_STARTUP);
+    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_non_null(data);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_null(str);
+
+    sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_non_null(data);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_null(str);
+
+    sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
+    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_non_null(data);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_string_equal(str,
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+            "<interface><name>eth100</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "</interface></interfaces>"
+            "<cont xmlns=\"urn:test\"><l2><k>cand</k><v>0</v></l2></cont>");
+    free(str);
+
+    /* execute */
+    ret = lyd_new_path(NULL, st->ly_ctx, "/ietf-factory-default:factory-reset", NULL, 0, &input);
+    assert_int_equal(ret, SR_ERR_OK);
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+    ret = sr_rpc_send_tree(st->sess, input, 0, &output);
+    lyd_free_tree(input);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_release_data(output);
+    assert_int_equal(2, ATOMIC_LOAD_RELAXED(st->cb_called));
+
+    /* check DS contents */
+    xml = "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+            "<interface><name>bu</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type></interface>"
+            "</interfaces>"
+            "<test-leaf xmlns=\"urn:test\">1</test-leaf>"
+            "<cont xmlns=\"urn:test\"><l2><k>key</k><v>5</v></l2></cont>";
+    sr_session_switch_ds(st->sess, SR_DS_STARTUP);
+    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_non_null(data);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_string_equal(str, xml);
+    free(str);
+
+    sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_non_null(data);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_string_equal(str, xml);
+    free(str);
+
+    sr_session_switch_ds(st->sess, SR_DS_CANDIDATE);
+    ret = sr_get_data(st->sess, "/*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_non_null(data);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
+    assert_int_equal(ret, LY_SUCCESS);
+    assert_string_equal(str, xml);
+    free(str);
+
+    /* cleanup */
+    sr_unsubscribe(subscr);
+}
+
 /* MAIN */
 int
 main(void)
@@ -1701,9 +1869,10 @@ main(void)
         cmocka_unit_test_teardown(test_action_change_config, clear_ops),
         cmocka_unit_test(test_rpc_shelve),
         cmocka_unit_test(test_input_parameters),
-        cmocka_unit_test(test_rpc_action_with_no_thread),
+        cmocka_unit_test_teardown(test_rpc_action_with_no_thread, clear_ops),
         cmocka_unit_test(test_rpc_oper),
         cmocka_unit_test(test_schema_mount),
+        cmocka_unit_test(test_factory_reset),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

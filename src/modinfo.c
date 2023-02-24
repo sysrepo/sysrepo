@@ -1337,6 +1337,15 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
     return NULL;
 }
 
+/**
+ * @brief Add last datastore modification time nodes to a data tree.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] ds Datastore.
+ * @param[in,out] sr_state SR state data node to apend to.
+ * @return err_info, NULL on success.
+ */
 static sr_error_info_t *
 sr_modinfo_module_srmon_datastore(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, struct lyd_node *sr_state)
 {
