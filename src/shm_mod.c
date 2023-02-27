@@ -1212,7 +1212,7 @@ ds_lock_retry:
 revert_lock:
     if (relock) {
         /* RELOCK */
-        if ((mode == SR_LOCK_READ) || (mode == SR_LOCK_READ_UPGR) || (mode == SR_LOCK_WRITE_URGE)) {
+        if ((mode == SR_LOCK_READ) || (mode == SR_LOCK_READ_UPGR)) {
             /* is downgraded, upgrade */
             tmp_err = sr_rwrelock(&shm_lock->data_lock, timeout_ms, SR_LOCK_WRITE, cid, __func__, NULL, NULL);
         } else {
