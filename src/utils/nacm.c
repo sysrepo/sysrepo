@@ -4,8 +4,8 @@
  * @brief NACM and ietf-netconf-acm callbacks
  *
  * @copyright
- * Copyright (c) 2019 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2017 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2019 - 2023 Deutsche Telekom AG.
+ * Copyright (c) 2017 - 2023 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -1316,14 +1316,16 @@ cleanup:
  *
  * @param[in] rule_target Rule target instance-identifier.
  * @param[in] node_path Node data path.
+ * @param[in] user NACM user.
  * @return 0 if does not match.
  * @return 1 if the rule path matches.
  * @return 2 if the path is a partial match.
  */
 static int
-sr_nacm_allowed_path(const char *rule_target, const char *node_path)
+sr_nacm_allowed_path(const char *rule_target, const char *node_path, const char *user)
 {
     const char *rule_ptr, *node_ptr;
+    size_t val_len;
 
     rule_ptr = rule_target;
     node_ptr = node_path;
@@ -1332,6 +1334,22 @@ sr_nacm_allowed_path(const char *rule_target, const char *node_path)
         if (rule_ptr[0] == node_ptr[0]) {
             ++rule_ptr;
             ++node_ptr;
+        } else if ((rule_ptr[0] == '$') && (rule_ptr[-1] == '=') && (node_ptr[0] == '\'') && (node_ptr[-1] == '=')) {
+            /* variable used */
+            ++rule_ptr;
+            if (strncmp(rule_ptr, "USER]", 5)) {
+                SR_LOG_WRN("Variable \"%.*s\" not defined.", (int)(strchr(rule_ptr, ']') - rule_ptr), rule_ptr);
+                return 0;
+            }
+            rule_ptr += 4;
+
+            /* compare value */
+            ++node_ptr;
+            val_len = strchr(node_ptr, '\'') - node_ptr;
+            if ((strlen(user) != val_len) || strncmp(user, node_ptr, val_len)) {
+                return 0;
+            }
+            node_ptr += val_len + 1;
         } else if ((rule_ptr[0] == '/') && (node_ptr[0] == '[')) {
             /* target has no predicate, skip it in path as well because it matches any value */
             while (node_ptr[0] != ']') {
@@ -1431,12 +1449,13 @@ sr_nacm_free_groups(char **groups, uint32_t group_count)
  * @param[in] oper Operation to check.
  * @param[in] groups Array of groups name to be checked for permissions
  * @param[in] group_count Length of @p groups
+ * @param[in] user NACM user.
  * @param[out] access SR_NACM access enum.
  * @return errinfo, NULL on success.
  */
 static sr_error_info_t *
 sr_nacm_allowed_node(const struct lyd_node *node, const char *node_path, const struct lysc_node *node_schema,
-        uint8_t oper, char **groups, uint32_t group_count, enum sr_nacm_access *access)
+        uint8_t oper, char **groups, uint32_t group_count, const char *user, enum sr_nacm_access *access)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_nacm_rule_list *rlist;
@@ -1516,10 +1535,10 @@ sr_nacm_allowed_node(const struct lyd_node *node, const char *node_path, const s
                     /* exact match or is a descendant (specified in RFC 8341 page 27) for full tree access */
                     if (!node_path) {
                         path = lyd_path(node, LYD_PATH_STD, NULL, 0);
-                        path_match = sr_nacm_allowed_path(rule->target, path);
+                        path_match = sr_nacm_allowed_path(rule->target, path, user);
                         free(path);
                     } else {
-                        path_match = sr_nacm_allowed_path(rule->target, node_path);
+                        path_match = sr_nacm_allowed_path(rule->target, node_path, user);
                     }
 
                     if (!path_match) {
@@ -1667,7 +1686,7 @@ sr_nacm_check_operation(const char *nacm_user, const struct lyd_node *data, cons
 
     if (op->schema->nodetype & (LYS_RPC | LYS_ACTION)) {
         /* check X access on the RPC/action */
-        if ((err_info = sr_nacm_allowed_node(op, NULL, NULL, SR_NACM_OP_EXEC, groups, group_count, &access))) {
+        if ((err_info = sr_nacm_allowed_node(op, NULL, NULL, SR_NACM_OP_EXEC, groups, group_count, nacm_user, &access))) {
             goto cleanup;
         }
 
@@ -1678,7 +1697,7 @@ sr_nacm_check_operation(const char *nacm_user, const struct lyd_node *data, cons
         assert(op->schema->nodetype == LYS_NOTIF);
 
         /* check R access on the notification */
-        if ((err_info = sr_nacm_allowed_node(op, NULL, NULL, SR_NACM_OP_READ, groups, group_count, &access))) {
+        if ((err_info = sr_nacm_allowed_node(op, NULL, NULL, SR_NACM_OP_READ, groups, group_count, nacm_user, &access))) {
             goto cleanup;
         }
 
@@ -1689,7 +1708,7 @@ sr_nacm_check_operation(const char *nacm_user, const struct lyd_node *data, cons
 
     if (op->parent) {
         /* check R access on the parents, the last parent must be enough */
-        if ((err_info = sr_nacm_allowed_node(lyd_parent(op), NULL, NULL, SR_NACM_OP_READ, groups, group_count, &access))) {
+        if ((err_info = sr_nacm_allowed_node(lyd_parent(op), NULL, NULL, SR_NACM_OP_READ, groups, group_count, nacm_user, &access))) {
             goto cleanup;
         }
 
@@ -1744,7 +1763,7 @@ sr_nacm_check_data_read_filter_r(struct lyd_node **subtree, const char *user, ch
     }
 
     /* check access of the node */
-    if ((err_info = sr_nacm_allowed_node(*subtree, NULL, NULL, SR_NACM_OP_READ, groups, group_count, &node_access))) {
+    if ((err_info = sr_nacm_allowed_node(*subtree, NULL, NULL, SR_NACM_OP_READ, groups, group_count, user, &node_access))) {
         return err_info;
     }
 
@@ -1824,7 +1843,7 @@ sr_nacm_check_data_read_filter_select_r(struct lyd_node **subtree, const char *u
             parent = lyd_parent(parent);
 
             /* check access for parent node */
-            if ((err_info = sr_nacm_allowed_node(parent, NULL, NULL, SR_NACM_OP_READ, groups, group_count, access))) {
+            if ((err_info = sr_nacm_allowed_node(parent, NULL, NULL, SR_NACM_OP_READ, groups, group_count, user, access))) {
                 return err_info;
             }
 
@@ -2021,7 +2040,7 @@ sr_nacm_check_push_update_notif(const char *nacm_user, struct lyd_node *notif, c
 
         /* check the change itself */
         if ((err_info = sr_nacm_allowed_node(NULL, lyd_get_value(ly_target), snode, SR_NACM_OP_READ, groups,
-                group_count, &access))) {
+                group_count, nacm_user, &access))) {
             goto cleanup;
         }
 
@@ -2125,7 +2144,7 @@ sr_nacm_check_diff_r(const struct lyd_node *diff, const char *user, const char *
         /* check access for the node, none operation is always allowed, and partial access is relevant only for
          * read operation */
         if (oper) {
-            if ((err_info = sr_nacm_allowed_node(diff, NULL, NULL, oper, groups, group_count, &access))) {
+            if ((err_info = sr_nacm_allowed_node(diff, NULL, NULL, oper, groups, group_count, user, &access))) {
                 return err_info;
             }
 

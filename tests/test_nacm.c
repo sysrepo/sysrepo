@@ -675,6 +675,145 @@ test_exec(void **state)
     sr_unsubscribe(sub);
 }
 
+/* TEST */
+static int
+setup_read_var_nacm(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const struct ly_ctx *ctx;
+    const char *data;
+    struct lyd_node *edit;
+
+    /* set NACM and some data */
+    data = "<nacm xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-acm\">\n"
+            "  <read-default>deny</read-default>\n"
+            "  <enable-external-groups>false</enable-external-groups>\n"
+            "  <groups>\n"
+            "    <group>\n"
+            "      <name>test-group</name>\n"
+            "      <user-name>test-user</user-name>\n"
+            "    </group>\n"
+            "  </groups>\n"
+            "  <rule-list>\n"
+            "    <name>rule1</name>\n"
+            "    <group>test-group</group>\n"
+            "    <rule>\n"
+            "      <name>allow-user-key</name>\n"
+            "      <module-name>test</module-name>\n"
+            "      <path xmlns:t=\"urn:test\">/t:cont/t:l2[t:k=$USER]</path>\n"
+            "      <access-operations>read</access-operations>\n"
+            "      <action>permit</action>\n"
+            "    </rule>\n"
+            "  </rule-list>\n"
+            "</nacm>\n"
+            "<cont xmlns=\"urn:test\">\n"
+            "  <l2>\n"
+            "    <k>test-user</k>\n"
+            "    <v>10</v>\n"
+            "  </l2>\n"
+            "  <l2>\n"
+            "    <k>test-user2</k>\n"
+            "    <v>15</v>\n"
+            "  </l2>\n"
+            "  <l2>\n"
+            "    <k>test-user3</k>\n"
+            "    <v>20</v>\n"
+            "  </l2>\n"
+            "  <ll2>25</ll2>\n"
+            "</cont>\n";
+    ctx = sr_acquire_context(st->conn);
+    if (lyd_parse_data_mem(ctx, data, LYD_XML, LYD_PARSE_STRICT | LYD_PARSE_ONLY, 0, &edit)) {
+        return 1;
+    }
+    if (sr_edit_batch(st->sess, edit, "merge")) {
+        return 1;
+    }
+    lyd_free_siblings(edit);
+    sr_release_context(st->conn);
+    if (sr_apply_changes(st->sess, 0)) {
+        return 1;
+    }
+
+    /* set user */
+    if (sr_nacm_set_user(st->sess, "test-user")) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static void
+test_read_var(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_data_t *data;
+    char *str;
+    int ret;
+
+    /* read data #1 */
+    ret = sr_get_data(st->sess, "/test:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, LY_SUCCESS);
+    sr_release_data(data);
+    assert_string_equal(str,
+            "<cont xmlns=\"urn:test\">\n"
+            "  <l2>\n"
+            "    <k>test-user</k>\n"
+            "    <v>10</v>\n"
+            "  </l2>\n"
+            "</cont>\n");
+    free(str);
+
+    /* read data #2 */
+    ret = sr_get_data(st->sess, "/test:cont/l2", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, LY_SUCCESS);
+    sr_release_data(data);
+    assert_string_equal(str,
+            "<cont xmlns=\"urn:test\">\n"
+            "  <l2>\n"
+            "    <k>test-user</k>\n"
+            "    <v>10</v>\n"
+            "  </l2>\n"
+            "</cont>\n");
+    free(str);
+
+    /* read data #3 */
+    ret = sr_get_data(st->sess, "/test:cont/l2/k", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, LY_SUCCESS);
+    sr_release_data(data);
+    assert_string_equal(str,
+            "<cont xmlns=\"urn:test\">\n"
+            "  <l2>\n"
+            "    <k>test-user</k>\n"
+            "  </l2>\n"
+            "</cont>\n");
+    free(str);
+
+    /* read data #4 */
+    ret = sr_get_data(st->sess, "/test:cont/l2/v", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, LY_SUCCESS);
+    sr_release_data(data);
+    assert_string_equal(str,
+            "<cont xmlns=\"urn:test\">\n"
+            "  <l2>\n"
+            "    <k>test-user</k>\n"
+            "    <v>10</v>\n"
+            "  </l2>\n"
+            "</cont>\n");
+    free(str);
+}
+
 int
 main(void)
 {
@@ -684,6 +823,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_filter_denied, setup_filter_denied_nacm, teardown_nacm),
         cmocka_unit_test_setup_teardown(test_write, setup_write_nacm, teardown_nacm),
         cmocka_unit_test_setup_teardown(test_exec, setup_exec_nacm, teardown_nacm),
+        cmocka_unit_test_setup_teardown(test_read_var, setup_read_var_nacm, teardown_nacm),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
