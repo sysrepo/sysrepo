@@ -824,8 +824,8 @@ int sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth
  * @brief Retrieve a single value matching the provided XPath.
  * Data are represented as a single _libyang_ node.
  *
- * Compared to ::sr_get_data() or ::sr_get_subtree() this function returns only the selected node
- * without any of its parents so it is more efficient.
+ * Compared to ::sr_get_data() or ::sr_get_subtree() this function is a bit more efficient because it returns
+ * only the selected node which is *disconnected* from its parents.
  *
  * Required READ access, but if the access check fails, the module data are simply ignored without an error.
  *
