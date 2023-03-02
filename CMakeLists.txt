@@ -302,7 +302,7 @@ if(ENABLE_COVERAGE)
 endif()
 
 if ("${BUILD_TYPE_UPPER}" STREQUAL "DEBUG")
-    source_format_enable(0.75)
+    source_format_enable(0.76)
 endif()
 
 if("${BUILD_TYPE_UPPER}" STREQUAL "DOCONLY")

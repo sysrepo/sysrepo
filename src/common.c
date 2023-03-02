@@ -1360,7 +1360,7 @@ sr_get_pwd(uid_t *uid, char **user)
                     *user, strerror(ret));
         } else {
             sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Retrieving UID \"%lu\" passwd entry failed (%s).",
-                    (unsigned long int)*uid, strerror(ret));
+                    (unsigned long)*uid, strerror(ret));
         }
         goto cleanup;
     } else if (!pwd_p) {
@@ -1369,7 +1369,7 @@ sr_get_pwd(uid_t *uid, char **user)
                     *user);
         } else {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Retrieving UID \"%lu\" passwd entry failed (No such UID).",
-                    (unsigned long int)*uid);
+                    (unsigned long)*uid);
         }
         goto cleanup;
     }
