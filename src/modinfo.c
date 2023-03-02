@@ -2532,7 +2532,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_modinfo_validate(struct sr_mod_info_s *mod_info, int mod_state, int finish_diff)
+sr_modinfo_validate(struct sr_mod_info_s *mod_info, uint32_t mod_state, int finish_diff)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;

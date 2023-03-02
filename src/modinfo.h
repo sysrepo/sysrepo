@@ -224,11 +224,11 @@ sr_error_info_t *sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_
  * @brief Validate data for modules in mod info.
  *
  * @param[in] mod_info Mod info to use.
- * @param[in] mod_state Bitmask of state flags, module with at least one matching but will be validated.
+ * @param[in] mod_state Bitmask of state flags, module with at least one matching bit will be validated.
  * @param[in] finish_diff Whether to update diff with possible changes caused by validation.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_validate(struct sr_mod_info_s *mod_info, int mod_state, int finish_diff);
+sr_error_info_t *sr_modinfo_validate(struct sr_mod_info_s *mod_info, uint32_t mod_state, int finish_diff);
 
 /**
  * @brief Add default values into data for modules in mod info.
