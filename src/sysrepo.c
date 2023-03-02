@@ -183,6 +183,11 @@ sr_conn_free(sr_conn_ctx_t *conn)
     sr_ntf_handle_free(conn->ntf_handles, conn->ntf_handle_count);
     sr_rwlock_destroy(&conn->oper_cache_lock);
 
+    for (i = 0; i < conn->oper_push_mod_count; ++i) {
+        free(conn->oper_push_mods[i]);
+    }
+    free(conn->oper_push_mods);
+
     free(conn);
 }
 
@@ -501,6 +506,7 @@ sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const ch
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
+    const struct lys_module *ly_mod;
     struct sr_mod_info_mod_s *mod;
     struct lyd_node *change_edit = NULL, *node;
     uint32_t i;
@@ -523,8 +529,16 @@ sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const ch
             goto cleanup;
         }
     } else {
-        if ((err_info = sr_modinfo_add_all_modules_with_data(conn->ly_ctx, 1, &mod_info))) {
-            goto cleanup;
+        /* add only the cached modules */
+        for (i = 0; i < conn->oper_push_mod_count; ++i) {
+            ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, conn->oper_push_mods[i]);
+            if (!ly_mod) {
+                /* could have been removed */
+                continue;
+            }
+            if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 1, &mod_info))) {
+                goto cleanup;
+            }
         }
     }
 
@@ -556,7 +570,19 @@ sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const ch
     }
 
     /* notify all the subscribers and store the changes */
-    err_info = sr_changes_notify_store(&mod_info, session, timeout_ms, &cb_err_info);
+    if ((err_info = sr_changes_notify_store(&mod_info, session, timeout_ms, &cb_err_info))) {
+        goto cleanup;
+    }
+
+    if (!xpath) {
+        /* no modules now modified */
+        for (i = 0; i < conn->oper_push_mod_count; ++i) {
+            free(conn->oper_push_mods[i]);
+        }
+        free(conn->oper_push_mods);
+        conn->oper_push_mods = NULL;
+        conn->oper_push_mod_count = 0;
+    }
 
 cleanup:
     /* MODULES UNLOCK */

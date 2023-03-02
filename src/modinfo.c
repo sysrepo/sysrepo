@@ -3302,6 +3302,13 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
             if (mod_data) {
                 lyd_insert_sibling(mod_info->data, mod_data, &mod_info->data);
             }
+
+            if ((mod_info->ds == SR_DS_OPERATIONAL) && (mod_info->ds2 == SR_DS_OPERATIONAL)) {
+                /* stored oper data, cache the modified module in the connection */
+                if ((err_info = sr_conn_push_oper_mod_add(mod_info->conn, mod->ly_mod->name))) {
+                    goto cleanup;
+                }
+            }
         }
     }
 

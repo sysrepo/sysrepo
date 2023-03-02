@@ -5284,3 +5284,30 @@ cleanup:
     }
     return err_info;
 }
+
+sr_error_info_t *
+sr_conn_push_oper_mod_add(sr_conn_ctx_t *conn, const char *mod_name)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i;
+    void *mem;
+
+    for (i = 0; i < conn->oper_push_mod_count; ++i) {
+        if (!strcmp(conn->oper_push_mods[i], mod_name)) {
+            /* already added */
+            goto cleanup;
+        }
+    }
+
+    /* add new module */
+    mem = realloc(conn->oper_push_mods, (i + 1) * sizeof *conn->oper_push_mods);
+    SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
+    conn->oper_push_mods = mem;
+
+    conn->oper_push_mods[i] = strdup(mod_name);
+    SR_CHECK_MEM_GOTO(!conn->oper_push_mods[i], err_info, cleanup);
+    ++conn->oper_push_mod_count;
+
+cleanup:
+    return err_info;
+}
