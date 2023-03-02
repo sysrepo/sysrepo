@@ -1754,13 +1754,9 @@ sr_subscr_oper_path_check(const struct ly_ctx *ly_ctx, const char *path, sr_mod_
                     /* go into */
                     break;
                 default:
-                    /* should not be reachable */
-                    SR_ERRINFO_INT(&err_info);
-                    if (valid) {
-                        sr_errinfo_free(&err_info);
-                        *valid = 0;
-                    }
-                    goto cleanup;
+                    /* ignore */
+                    LYSC_TREE_DFS_continue = 1;
+                    break;
                 }
 
                 if ((*sub_type == SR_OPER_GET_SUB_STATE) || (*sub_type == SR_OPER_GET_SUB_MIXED)) {
