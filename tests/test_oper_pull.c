@@ -276,36 +276,16 @@ test_yang_lib(void **state)
     assert_string_equal(data->tree->schema->name, "modules-state");
     assert_string_equal(lyd_child(data->tree)->prev->schema->name, "module-set-id");
 #endif
-
-    /* they must be valid */
-    ret = lyd_validate_module(&data->tree, data->tree->schema->module, 0, NULL);
-    assert_int_equal(ret, 0);
-
     sr_release_data(data);
 
     /* subscribe as dummy state data provider, they should get deleted */
-#if SR_YANGLIB_REVISION == 2019 - 01 - 04
-    ret = sr_oper_get_subscribe(st->sess, "ietf-yang-library", "/ietf-yang-library:yang-library", yang_lib_oper_cb,
-            NULL, 0, &subscr);
-#else
-    ret = sr_oper_get_subscribe(st->sess, "ietf-yang-library", "/ietf-yang-library:modules-state", yang_lib_oper_cb,
-            NULL, 0, &subscr);
-#endif
+    ret = sr_oper_get_subscribe(st->sess, "ietf-yang-library", "/ietf-yang-library:*", yang_lib_oper_cb, NULL, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* read ietf-yang-library data again */
     ret = sr_get_data(st->sess, "/ietf-yang-library:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-
-#if SR_YANGLIB_REVISION == 2019 - 01 - 04
-    assert_non_null(data);
-    assert_string_equal(data->tree->schema->name, "modules-state");
-    assert_false(data->tree->flags & LYD_DEFAULT);
-    assert_null(data->tree->next);
-#else
     assert_null(data);
-#endif
-    sr_release_data(data);
 
     /* cleanup */
     sr_session_switch_ds(st->sess, SR_DS_RUNNING);
@@ -1884,15 +1864,15 @@ invalid_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_n
     (void)private_data;
 
     assert_string_equal(xpath, "/test:test-leafref");
-    assert_string_equal(request_xpath, "/test:*");
+    assert_null(request_xpath);
     assert_string_equal(module_name, "test");
     assert_non_null(parent);
 
-    ly_ctx = sr_acquire_context(sr_session_get_connection(session));
+    ly_ctx = sr_session_acquire_context(session);
 
     assert_int_equal(LY_SUCCESS, lyd_new_path(NULL, ly_ctx, "/test:test-leafref", "25", 0, parent));
 
-    sr_release_context(sr_session_get_connection(session));
+    sr_session_release_context(session);
 
     return SR_ERR_OK;
 }
@@ -1901,46 +1881,36 @@ static void
 test_invalid(void **state)
 {
     struct state *st = (struct state *)*state;
-    sr_data_t *data;
     sr_subscription_ctx_t *subscr = NULL;
-    char *str1;
-    const char *str2;
     int ret;
 
+    /* subscribe as state data provider and listen */
+    ret = sr_oper_get_subscribe(st->sess, "test", "/test:test-leafref", invalid_oper_cb, NULL, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* validate */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_validate(st->sess, "test", 0);
+    assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
+
     /* set some configuration data */
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:test-leaf", "25", NULL, SR_EDIT_STRICT);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* subscribe to all configuration data just to enable them */
+    /* subscribe to all configuration data to enable them */
     ret = sr_module_change_subscribe(st->sess, "test", NULL, dummy_change_cb, NULL, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* subscribe as state data provider and listen, it should be called only 2x */
-    ret = sr_oper_get_subscribe(st->sess, "test", "/test:test-leafref", invalid_oper_cb, NULL, 0, &subscr);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* read all data from operational */
+    /* validate */
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
-
-    ret = sr_get_data(st->sess, "/test:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    ret = sr_validate(st->sess, "test", 0);
     assert_int_equal(ret, SR_ERR_OK);
-
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
-    assert_int_equal(ret, 0);
-
-    sr_release_data(data);
-
-    str2 =
-    "<test-leaf xmlns=\"urn:test\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" "
-        "or:origin=\"or:intended\">25</test-leaf>"
-    "<test-leafref xmlns=\"urn:test\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" "
-        "or:origin=\"or:unknown\">25</test-leafref>";
-
-    assert_string_equal(str1, str2);
-    free(str1);
 
     sr_unsubscribe(subscr);
 }

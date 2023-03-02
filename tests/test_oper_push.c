@@ -443,7 +443,7 @@ test_conn_owner_same_data(void **state)
 
 /* TEST */
 static int
-stored_state_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+state_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
@@ -577,7 +577,7 @@ test_state(void **state)
     /* subscribe to operational data changes */
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", "/ietf-interfaces:interfaces-state",
-            stored_state_change_cb, st, 0, 0, &subscr);
+            state_change_cb, st, 0, 0, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some operational data */
@@ -1554,6 +1554,36 @@ test_edit_ether_diff_remove(void **state)
 
 /* TEST */
 static void
+test_invalid(void **state)
+{
+    struct state *st = (struct state *)*state;
+    int ret;
+
+    /* set invalid operational data */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/test:test-leafref", "25", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* validate */
+    ret = sr_validate(st->sess, "test", 0);
+    assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);
+
+    /* make stored oper data valid */
+    ret = sr_set_item_str(st->sess, "/test:test-leaf", "25", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* validate */
+    ret = sr_validate(st->sess, "test", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
+/* TEST */
+static void
 test_np_cont1(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -2276,6 +2306,7 @@ main(void)
         cmocka_unit_test_teardown(test_top_list, clear_up),
         cmocka_unit_test_teardown(test_top_leaf, clear_up),
         cmocka_unit_test_teardown(test_edit_ether_diff_remove, clear_up),
+        cmocka_unit_test_teardown(test_invalid, clear_up),
         cmocka_unit_test_teardown(test_np_cont1, clear_up),
         cmocka_unit_test_teardown(test_np_cont2, clear_up),
         cmocka_unit_test_teardown(test_edit_merge_leaf, clear_up),

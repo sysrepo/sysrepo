@@ -2547,7 +2547,7 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, uint32_t mod_state, int fini
     if (SR_IS_CONVENTIONAL_DS(mod_info->ds)) {
         val_opts = LYD_VALIDATE_NO_STATE;
     } else {
-        val_opts = 0;
+        val_opts = LYD_VALIDATE_OPERATIONAL | LYD_VALIDATE_NO_DEFAULTS;
     }
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
