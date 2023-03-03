@@ -739,3 +739,21 @@ srpjson_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_m
 
     return mod_data;
 }
+
+int
+srpjson_module_has_data(const struct lys_module *ly_mod, int state_data)
+{
+    const struct lysc_node *root;
+
+    LY_LIST_FOR(ly_mod->compiled->data, root) {
+        if (!(root->nodetype & (LYS_CONTAINER | LYS_LIST | LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA | LYS_CHOICE))) {
+            continue;
+        }
+
+        if ((root->flags & LYS_CONFIG_W) || (state_data && (root->flags & LYS_CONFIG_R))) {
+            return 1;
+        }
+    }
+
+    return 0;
+}

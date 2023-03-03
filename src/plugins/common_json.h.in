@@ -267,4 +267,13 @@ int srpjson_get_notif_path(const char *plg_name, const char *mod_name, time_t fr
  */
 struct lyd_node *srpjson_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod);
 
+/**
+ * @brief Check whether a module defines any instantiable data nodes (ignoring operations).
+ *
+ * @param[in] ly_mod Module to examine.
+ * @param[in] state_data Whether to accept even state data or must be configuration.
+ * @return Whether the module has data or not.
+ */
+int srpjson_module_has_data(const struct lys_module *ly_mod, int state_data);
+
 #endif /* _COMMON_JSON_H */

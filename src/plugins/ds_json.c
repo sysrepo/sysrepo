@@ -4,8 +4,8 @@
  * @brief internal JSON datastore plugin
  *
  * @copyright
- * Copyright (c) 2021 - 2022 Deutsche Telekom AG.
- * Copyright (c) 2021 - 2022 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2023 Deutsche Telekom AG.
+ * Copyright (c) 2021 - 2023 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -33,7 +33,6 @@
 #include <libyang/libyang.h>
 
 #include "compat.h"
-#include "common.h"
 #include "common_json.h"
 #include "sysrepo.h"
 
@@ -304,7 +303,7 @@ srpds_json_init(const struct lys_module *mod, sr_datastore_t ds)
         return SR_ERR_OK;
     }
 
-    if (!sr_module_has_data(mod, 0)) {
+    if (!srpjson_module_has_data(mod, 0)) {
         /* no data, do not create the file */
         return SR_ERR_OK;
     }
@@ -481,7 +480,7 @@ srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, const char **UN
                 /* error */
                 break;
             case SR_DS_RUNNING:
-                if (!sr_module_has_data(mod, 0)) {
+                if (!srpjson_module_has_data(mod, 0)) {
                     /* no data */
                     goto cleanup;
                 }
