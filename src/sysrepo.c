@@ -3906,7 +3906,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
 
     if ((src_datastore == SR_DS_CANDIDATE) && (session->ds == SR_DS_RUNNING)) {
         /* MODULES WRITE LOCK */
-        if ((err_info = sr_shmmod_modinfo_wrlock(&mod_info, session->sid, timeout_ms, timeout_ms))) {
+        if ((err_info = sr_shmmod_modinfo_wrlock(&mod_info, session->sid, 0, 0))) {
             goto cleanup;
         }
 
