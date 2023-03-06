@@ -752,7 +752,7 @@ sr_shmsub_notify_write_event(sr_sub_shm_t *sub_shm, sr_cid_t orig_cid, uint32_t 
         memcpy(shm_data_ptr, data, data_len);
     }
 
-    if (event) {
+    if (event && event_desc) {
         SR_LOG_INF("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " published.", event_desc, sr_ev2str(event), request_id);
     }
     return NULL;
@@ -833,7 +833,7 @@ sr_shmsub_multi_notify_write_event(sr_multi_sub_shm_t *multi_sub_shm, sr_cid_t o
         shm_data_ptr += data_len;
     }
 
-    if (event) {
+    if (event && event_desc) {
         SR_LOG_INF("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " for %" PRIu32 " subscribers published.",
                 event_desc, sr_ev2str(event), request_id, priority, subscriber_count);
     }
@@ -2043,11 +2043,12 @@ sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, cons
 
         /* write the request for state data */
         request_id = ATOMIC_LOAD_RELAXED(nsub->sub_shm->request_id) + 1;
-        if ((err_info = sr_shmsub_notify_write_event(nsub->sub_shm, cid, request_id, SR_SUB_EV_OPER,
-                orig_name, orig_data, &nsub->shm_data_sub, request_xpath, parent_lyb, parent_lyb_len,
-                xpath))) {
+        if ((err_info = sr_shmsub_notify_write_event(nsub->sub_shm, cid, request_id, SR_SUB_EV_OPER, orig_name,
+                orig_data, &nsub->shm_data_sub, request_xpath, parent_lyb, parent_lyb_len, NULL))) {
             goto cleanup;
         }
+        SR_LOG_INF("EV ORIGIN: \"%s\" \"%s\" index %" PRIu32 " ID %" PRIu32 " published.", xpath,
+                sr_ev2str(SR_SUB_EV_OPER), i, request_id);
 
         /* notify using event pipe */
         if ((err_info = sr_shmsub_notify_evpipe(nsub->xpath_sub->evpipe_num))) {
@@ -2071,8 +2072,8 @@ sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, cons
 
         if (nsub->cb_err_info) {
             /* failed callback */
-            SR_LOG_WRN("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " failed (%s).", xpath, sr_ev2str(SR_SUB_EV_OPER),
-                    nsub->request_id, sr_strerror(nsub->cb_err_info->err[0].err_code));
+            SR_LOG_WRN("EV ORIGIN: \"%s\" \"%s\" index %" PRIu32 " ID %" PRIu32 " failed (%s).", xpath,
+                    sr_ev2str(SR_SUB_EV_OPER), i, nsub->request_id, sr_strerror(nsub->cb_err_info->err[0].err_code));
 
             /* merge the error and continue */
             sr_errinfo_merge(cb_err_info, nsub->cb_err_info);
@@ -2080,8 +2081,8 @@ sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, cons
             nsub->pending_event = 0;
             continue;
         } else {
-            SR_LOG_INF("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " succeeded.", xpath, sr_ev2str(SR_SUB_EV_OPER),
-                    nsub->request_id);
+            SR_LOG_INF("EV ORIGIN: \"%s\" \"%s\" index %" PRIu32 " ID %" PRIu32 " succeeded.", xpath,
+                    sr_ev2str(SR_SUB_EV_OPER), i, nsub->request_id);
         }
 
         assert(ATOMIC_LOAD_RELAXED(nsub->sub_shm->event) == SR_SUB_EV_SUCCESS);
