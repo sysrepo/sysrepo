@@ -276,7 +276,7 @@ sr_error_info_t *sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_n
  */
 sr_error_info_t *sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb,
         void *private_data, const sr_ev_notif_type_t notif_type, uint32_t sub_id, const struct lyd_node *notif_op,
-        struct timespec *notif_ts);
+        const struct timespec *notif_ts);
 
 /**
  * @brief Check the XPath of a change subscription.

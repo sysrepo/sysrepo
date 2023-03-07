@@ -1605,7 +1605,7 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
 
 sr_error_info_t *
 sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data,
-        const sr_ev_notif_type_t notif_type, uint32_t sub_id, const struct lyd_node *notif_op, struct timespec *notif_ts)
+        const sr_ev_notif_type_t notif_type, uint32_t sub_id, const struct lyd_node *notif_op, const struct timespec *notif_ts)
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *elem;
@@ -1619,7 +1619,7 @@ sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_notif_cb cb, sr_event
 
     if (tree_cb) {
         /* callback */
-        tree_cb(ev_sess, sub_id, notif_type, notif_op, notif_ts, private_data);
+        tree_cb(ev_sess, sub_id, notif_type, notif_op, (struct timespec *)notif_ts, private_data);
     } else {
         if (notif_op) {
             /* prepare XPath */
@@ -1649,10 +1649,8 @@ sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_notif_cb cb, sr_event
         }
 
         /* callback */
-        cb(ev_sess, sub_id, notif_type, notif_xpath, vals, val_count, notif_ts, private_data);
+        cb(ev_sess, sub_id, notif_type, notif_xpath, vals, val_count, (struct timespec *)notif_ts, private_data);
     }
-
-    /* success */
 
 cleanup:
     free(notif_xpath);
