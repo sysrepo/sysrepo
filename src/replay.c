@@ -316,6 +316,13 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     void *state = NULL;
     int rc;
 
+    /* get the stop timestamp - only notifications with smaller timestamp can be replayed */
+    if (!SR_TS_IS_ZERO(*stop_time) && (sr_time_cmp(stop_time, listen_since) < 1)) {
+        stop_ts = *stop_time;
+    } else {
+        stop_ts = *listen_since;
+    }
+
     /* find SHM mod for replay lock and check if replay is even supported */
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), mod_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
@@ -332,13 +339,6 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     /* find plugin */
     if ((err_info = sr_ntf_plugin_find(conn->mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_plg))) {
         goto cleanup;
-    }
-
-    /* get the stop timestamp - only notifications with smaller timestamp can be replayed */
-    if (!SR_TS_IS_ZERO(*stop_time) && (sr_time_cmp(stop_time, listen_since) < 1)) {
-        stop_ts = *stop_time;
-    } else {
-        stop_ts = *listen_since;
     }
 
     /* create event session */
@@ -380,13 +380,10 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
 
 replay_complete:
     /* replay is completed */
-    sr_realtime_get(&notif_ts);
     if ((err_info = sr_notif_call_callback(ev_sess, cb, tree_cb, private_data, SR_EV_NOTIF_REPLAY_COMPLETE, sub_id,
-            NULL, &notif_ts))) {
+            NULL, &stop_ts))) {
         goto cleanup;
     }
-
-    /* success */
 
 cleanup:
     sr_session_stop(ev_sess);
