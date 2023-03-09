@@ -41,6 +41,7 @@ Each directory describes the changes between the specific SO versions. Be aware 
 * YANG 1.1 support
 * Custom RPC, Event Notifications, YANG 1.1 Actions support
 * Notification store & notification replay
+* Factory Default Datastore support (RFC 8808)
 
 ## Packages
 
@@ -226,6 +227,15 @@ as part of *sysrepo*. However, its use is completely optional and needs a separa
 
 By default, no users other than the recovery user (default `root`) will be allowed to *write* any data but
 should be granted *read* and *execute* permissions unless the access was modified by a NACM extension.
+
+## Factory Default
+
+The `factory-default` datastore contents of a module are automatically populated by the initial data used
+when installing the specific module and **cannot** be changed (unless the module is reinstalled). There is
+an internal subscription to the `/factory-default:factory-reset` RPC which performs the copying of
+`factory-default` data into all the other datastores. This RPC has a priority 10 so applications are
+able to subscribe to it with higher or lower priority and perform any other tasks required for a device
+to be rest to its factory settings.
 
 ## Examples
 
