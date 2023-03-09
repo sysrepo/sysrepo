@@ -1556,11 +1556,13 @@ sr_shmmod_copy_mod(const struct lys_module *ly_mod, const struct srplg_ds_s *sds
     }
 
     /* load source data */
+    assert(sds != SR_DS_CANDIDATE);
     if ((rc = sds_plg->load_cb(ly_mod, sds, NULL, 0, &s_mod_data))) {
         goto cleanup;
     }
 
     /* load also current target data */
+    assert(tds != SR_DS_CANDIDATE);
     if ((rc = tds_plg->load_cb(ly_mod, tds, NULL, 0, &r_mod_data))) {
         goto cleanup;
     }

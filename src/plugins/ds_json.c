@@ -479,6 +479,7 @@ srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, const char **UN
         if (errno == ENOENT) {
             switch (ds) {
             case SR_DS_STARTUP:
+            case SR_DS_CANDIDATE:
             case SR_DS_FACTORY_DEFAULT:
                 /* error */
                 break;
@@ -488,10 +489,6 @@ srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, const char **UN
                     goto cleanup;
                 }
                 break;
-            case SR_DS_CANDIDATE:
-                /* no candidate exists */
-                rc = SR_ERR_NOT_FOUND;
-                goto cleanup;
             case SR_DS_OPERATIONAL:
                 /* operational empty */
                 goto cleanup;

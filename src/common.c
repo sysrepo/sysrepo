@@ -5138,16 +5138,22 @@ sr_module_file_data_append(const struct lys_module *ly_mod, const struct srplg_d
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *mod_data;
-    int rc;
+    int rc, modified;
+
+    if (ds == SR_DS_CANDIDATE) {
+        if ((rc = ds_plg[ds]->candidate_modified_cb(ly_mod, &modified))) {
+            SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_modified", ds_plg[ds]->name, ly_mod->name);
+            return err_info;
+        }
+
+        if (!modified) {
+            /* use running datastore instead */
+            ds = SR_DS_RUNNING;
+        }
+    }
 
     /* get the data */
-    rc = ds_plg[ds]->load_cb(ly_mod, ds, xpaths, xpath_count, &mod_data);
-    if ((rc == SR_ERR_NOT_FOUND) && (ds == SR_DS_CANDIDATE)) {
-        /* not modified, just use running */
-        ds = SR_DS_RUNNING;
-        rc = ds_plg[ds]->load_cb(ly_mod, ds, xpaths, xpath_count, &mod_data);
-    }
-    if (rc) {
+    if ((rc = ds_plg[ds]->load_cb(ly_mod, ds, xpaths, xpath_count, &mod_data))) {
         SR_ERRINFO_DSPLUGIN(&err_info, rc, "load", ds_plg[ds]->name, ly_mod->name);
         return err_info;
     }
