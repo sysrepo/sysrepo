@@ -52,7 +52,7 @@ extern "C" {
  * @param[in] ds Specific datastore.
  * @param[in] owner Optional initial owner of the module data, process user by default.
  * @param[in] group Optional initial group of the module data, process group by default.
- * @param[in] perm Initial permissions of the module data.
+ * @param[in] perm Initial permissions of the module data, execute bits are never set.
  * @return ::SR_ERR_OK on success;
  * @return Sysrepo error value on error.
  */
@@ -199,7 +199,7 @@ typedef int (*srds_candidate_reset)(const struct lys_module *mod);
  * @param[in] ds Specific datastore.
  * @param[in] owner Optional new owner of the module data.
  * @param[in] group Optional new group of the module data.
- * @param[in] perm Optional new permissions of the module data.
+ * @param[in] perm Optional new permissions of the module data, execute bits are never set.
  * @return ::SR_ERR_OK on success;
  * @return Sysrepo error value on error.
  */
