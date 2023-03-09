@@ -1,0 +1,36 @@
+module sysrepo-factory-default {
+    namespace "urn:sysrepo:yang:sysrepo-factory-default";
+    prefix srm;
+
+    yang-version 1.1;
+
+    import ietf-factory-default {
+        prefix fd;
+    }
+
+    organization
+        "CESNET";
+
+    contact
+        "Author: Michal Vasko
+                 <mvasko@cesnet.cz>";
+
+    description
+        "Sysrepo YANG augment of the factory-reset RPC.";
+
+    revision "2023-02-23" {
+        description
+            "Initial revision.";
+    }
+
+    augment /fd:factory-reset/fd:input {
+        description
+            "Adds leaf-list of modules that are reset to the default factory state. If there are none, sysrepo
+             automatically populates the leaf-list with all the modules being reset.";
+        leaf-list module {
+            type string;
+            description
+                "Module that will be reset to its default factory state.";
+        }
+    }
+}
