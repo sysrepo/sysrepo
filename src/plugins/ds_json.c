@@ -15,6 +15,7 @@
  */
 
 #define _GNU_SOURCE
+#define _POSIX_C_SOURCE >= 200809L /* stat.mtim */
 
 #include "plugins_datastore.h"
 
@@ -1157,15 +1158,14 @@ srpds_json_last_modif(const struct lys_module *mod, sr_datastore_t ds, struct ti
 {
     int rc = SR_ERR_OK;
     char *path = NULL;
-    struct stat buf;
+    struct stat st;
 
     if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
 
-    if (stat(path, &buf) == 0) {
-        mtime->tv_sec = buf.st_mtime;
-        mtime->tv_nsec = 0;
+    if (stat(path, &st) == 0) {
+        *mtime = st.st_mtim;
     } else if (errno == ENOENT) {
         /* the file may not exist */
         mtime->tv_sec = 0;
