@@ -865,11 +865,21 @@ sr_error_info_t *sr_conn_oper_cache_add(sr_conn_ctx_t *conn, uint32_t sub_id, co
 void sr_conn_oper_cache_del(sr_conn_ctx_t *conn, uint32_t sub_id);
 
 /**
- * @brief Flush all cached running data of a connection in all its DS plugins.
+ * @brief Update cached running data of a connection.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] mod_info Mod info with modules to cache.
+ * @param[in] has_lock Currently held conn run cache lock mode.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_info, sr_lock_mode_t has_lock);
+
+/**
+ * @brief Flush all cached running data of a connection.
  *
  * @param[in] conn Connection to use.
  */
-void sr_conn_running_cache_flush(sr_conn_ctx_t *conn);
+void sr_conn_run_cache_flush(sr_conn_ctx_t *conn);
 
 /**
  * @brief Switch the context of a connection while correctly handling all connection data in the context.

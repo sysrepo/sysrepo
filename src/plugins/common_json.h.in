@@ -25,9 +25,6 @@
 
 #include "sysrepo.h"
 
-/** inotify required for caching */
-#cmakedefine SR_HAVE_INOTIFY
-
 /** suffix of backed-up JSON files */
 #define SRPJSON_FILE_BACKUP_SUFFIX ".bck"
 
@@ -39,29 +36,6 @@
 
 /** notification file will never exceed this size (kB) */
 #define SRPJSON_NOTIF_FILE_MAX_SIZE 1024
-
-struct srpjson_cache_s {
-    struct srpjson_cache_conn_s {
-        sr_cid_t cid;               /**< connection CID of this cache */
-        struct lyd_node *data;      /**< cached data of all the modules */
-        struct srpjson_cache_mod_s {
-            const struct lys_module *mod;   /**< libyang module */
-            int inot_watch;                 /**< inotify watch for the data file */
-            int current;                    /**< whether the cached data are current */
-        } *mods;                    /**< libyang modules in the cache */
-        uint32_t mod_count;         /**< cached module count */
-        pthread_mutex_t lock;       /**< lock for accessing the modules */
-        int inot_fd;                /**< inotify fd */
-    } *caches;
-    uint32_t cache_count;
-
-    pthread_rwlock_t lock;          /**< rwlock for accessing the caches */
-};
-
-/**
- * @brief running data cache
- */
-extern struct srpjson_cache_s data_cache;
 
 /**
  * @brief Wrapper for writev().
@@ -257,15 +231,6 @@ int srpjson_get_notif_dir(const char *plg_name, char **path);
  * @return SR err value.
  */
 int srpjson_get_notif_path(const char *plg_name, const char *mod_name, time_t from_ts, time_t to_ts, char **path);
-
-/**
- * @brief Unlink data of a specific module from a data tree.
- *
- * @param[in,out] data Data tree.
- * @param[in] ly_mod libyang module of interest.
- * @return Unlinked data tree.
- */
-struct lyd_node *srpjson_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod);
 
 /**
  * @brief Check whether a module defines any instantiable data nodes (ignoring operations).

@@ -38,8 +38,6 @@
 #include "config.h"
 #include "sysrepo.h"
 
-struct srpjson_cache_s data_cache = {.lock = PTHREAD_RWLOCK_INITIALIZER};
-
 int
 srpjson_writev(const char *plg_name, int fd, struct iovec *iov, int iovcnt)
 {
@@ -722,32 +720,6 @@ srpjson_get_notif_path(const char *plg_name, const char *mod_name, time_t from_t
         return SR_ERR_NO_MEMORY;
     }
     return SR_ERR_OK;
-}
-
-struct lyd_node *
-srpjson_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod)
-{
-    struct lyd_node *next, *node, *mod_data = NULL;
-
-    assert(data && ly_mod);
-
-    LY_LIST_FOR_SAFE(*data, next, node) {
-        if (lyd_owner_module(node) == ly_mod) {
-            /* properly unlink this node */
-            if (node == *data) {
-                *data = next;
-            }
-            lyd_unlink_tree(node);
-
-            /* connect it to other data from this module */
-            lyd_insert_sibling(mod_data, node, &mod_data);
-        } else if (mod_data) {
-            /* we went through all the data from this module */
-            break;
-        }
-    }
-
-    return mod_data;
 }
 
 int

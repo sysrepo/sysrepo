@@ -40,7 +40,7 @@ extern "C" {
 /**
  * @brief Datastore plugin API version
  */
-#define SRPLG_DS_API_VERSION 7
+#define SRPLG_DS_API_VERSION 8
 
 /**
  * @brief Setup datastore of a newly installed module.
@@ -123,46 +123,6 @@ typedef int (*srds_load)(const struct lys_module *mod, sr_datastore_t ds, const 
         struct lyd_node **mod_data);
 
 /**
- * @brief Load cached running datastore data of specific modules. Optional callback.
- *
- * For the duration of this callback and while @p data are being used, a READ lock for the connection is being held
- * meaning it can be called concurrently. Data must always be connection-specific because each connection uses its
- * own libyang context.
- *
- * @param[in] cid Connection ID of the cache.
- * @param[in] mods Array of modules.
- * @param[in] mod_count Number of @p mods.
- * @param[out] data Cached data of at least all the @p mods.
- * @return ::SR_ERR_OK on success;
- * @return ::SR_ERR_OPERATION_FAILED if some of @p mods data need to be updated first;
- * @return Sysrepo error value on error.
- */
-typedef int (*srds_running_load_cached)(sr_cid_t cid, const struct lys_module **mods, uint32_t mod_count,
-        const struct lyd_node **data);
-
-/**
- * @brief Update cached running datastore data of specific modules. Optional callback.
- *
- * For the duration of this callback, a WRITE lock for the connection is held.
- *
- * @param[in] cid Connection ID of the cache.
- * @param[in] mods Array of modules.
- * @param[in] mod_count Number of @p mods.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
- */
-typedef int (*srds_running_update_cached)(sr_cid_t cid, const struct lys_module **mods, uint32_t mod_count);
-
-/**
- * @brief Flush cached data. Optional callback.
- *
- * May be called concurrently.
- *
- * @param[in] cid Connection ID of the cache.
- */
-typedef void (*srds_running_flush_cached)(sr_cid_t cid);
-
-/**
  * @brief Copy data of a module from source datastore to the target datastore.
  *
  * Called only if this plugin is used for both datastores of a module.
@@ -237,7 +197,10 @@ typedef int (*srds_access_check)(const struct lys_module *mod, sr_datastore_t ds
 /**
  * @brief Get the time when the datastore data of the module were last modified.
  *
- * The function succeedes even if the respective file does not exist. In such case is the @p mtime set to 0.
+ * The function succeedes even if the respective file does not exist. In such a case the @p mtime is set to 0.
+ *
+ * This function is used for implementing running data cache in connections. For that to work correctly,
+ * **every** data change should result in changed @p mtime returned.
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
@@ -258,9 +221,6 @@ struct srplg_ds_s {
     srds_store store_cb;            /**< callback for storing module data */
     srds_recover recover_cb;        /**< callback for stored module data recovery */
     srds_load load_cb;              /**< callback for loading stored module data */
-    srds_running_load_cached running_load_cached_cb;    /**< callback for loading cached running module data */
-    srds_running_update_cached running_update_cached_cb;    /**< callback for updating cached running module data */
-    srds_running_flush_cached running_flush_cached_cb;  /**< callback for flushin cached running module data */
     srds_copy copy_cb;              /**< callback for copying stored module data from one datastore to another */
     srds_candidate_modified candidate_modified_cb;  /**< callback for checking whether candidate was modified */
     srds_candidate_reset candidate_reset_cb;        /**< callback for resetting candidate to running */

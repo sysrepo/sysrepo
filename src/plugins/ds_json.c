@@ -37,10 +37,6 @@
 #include "common_json.h"
 #include "sysrepo.h"
 
-#ifdef SR_HAVE_INOTIFY
-# include <sys/inotify.h>
-#endif
-
 #define srpds_name "JSON DS file"  /**< plugin name */
 
 static int srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, const char **xpaths, uint32_t xpath_count,
@@ -55,6 +51,7 @@ srpds_json_store_(const struct lys_module *mod, sr_datastore_t ds, const struct 
 {
     int rc = SR_ERR_OK;
     struct stat st;
+    struct timespec times[2];
     char *path = NULL, *bck_path = NULL;
     int fd = -1, backup = 0, creat = 0;
     uint32_t print_opts;
@@ -144,6 +141,16 @@ srpds_json_store_(const struct lys_module *mod, sr_datastore_t ds, const struct 
     }
     if (ftruncate(fd, size) == -1) {
         SRPLG_LOG_ERR(srpds_name, "Failed to truncate \"%s\" (%s).", path, strerror(errno));
+        rc = SR_ERR_SYS;
+        goto cleanup;
+    }
+
+    /* manually update modification time to get maximum supported frequency updates (by default, some cached timestamp
+     * is used that has a really poor update period) */
+    times[0].tv_nsec = UTIME_OMIT;
+    clock_gettime(CLOCK_REALTIME, &times[1]);
+    if (futimens(fd, times) == -1) {
+        SRPLG_LOG_ERR(srpds_name, "Failed to update file \"%s\" modification time (%s).", path, strerror(errno));
         rc = SR_ERR_SYS;
         goto cleanup;
     }
@@ -528,337 +535,6 @@ cleanup:
     return rc;
 }
 
-#ifdef SR_HAVE_INOTIFY
-
-/**
- * @brief Mark outdated cached data for specific modules.
- *
- * @param[in] cache Cache to use.
- * @param[in] mods Array of modules.
- * @param[in] mod_count Count of @p mods.
- * @param[out] cache_update Whether any of the module data needs to be updated.
- * @return SR_ERR value.
- */
-static int
-srpds_json_running_load_cached_mods(struct srpjson_cache_conn_s *cache, const struct lys_module **mods, uint32_t mod_count,
-        int *cache_update)
-{
-    struct srpjson_cache_mod_s *cmod;
-    struct inotify_event event;
-    struct timespec ts_timeout;
-    char *path = NULL;
-    uint32_t i, j;
-    void *mem;
-    int r, rc = SR_ERR_OK;
-
-    /* init timeout to 1s */
-    clock_gettime(COMPAT_CLOCK_ID, &ts_timeout);
-    ++ts_timeout.tv_sec;
-
-    /* MODS LOCK */
-    if ((r = pthread_mutex_clocklock(&cache->lock, COMPAT_CLOCK_ID, &ts_timeout))) {
-        SRPLG_LOG_ERR(srpds_name, "Cache mods lock failed (%s).", strerror(r));
-        return SR_ERR_SYS;
-    }
-
-    /* check for inotify changes of module data */
-    while (read(cache->inot_fd, &event, sizeof event) != -1) {
-        assert(!event.len && (event.mask == IN_MODIFY));
-
-        /* find the affected module */
-        for (j = 0; j < cache->mod_count; ++j) {
-            if (cache->mods[j].inot_watch == event.wd) {
-                cache->mods[j].current = 0;
-                break;
-            }
-        }
-        assert(j < cache->mod_count);
-    }
-    if (errno != EAGAIN) {
-        SRPLG_LOG_ERR(srpds_name, "Inotify read failed (%s).", strerror(errno));
-        rc = SR_ERR_SYS;
-        goto cleanup_unlock;
-    }
-
-    for (i = 0; i < mod_count; ++i) {
-        /* find entry for each module */
-        cmod = NULL;
-        for (j = 0; j < cache->mod_count; ++j) {
-            if (cache->mods[j].mod == mods[i]) {
-                cmod = &cache->mods[j];
-                break;
-            }
-        }
-        if (!cmod) {
-            /* create an entry for this module */
-            mem = realloc(cache->mods, (j + 1) * sizeof *cache->mods);
-            if (!mem) {
-                SRPLG_LOG_ERR(srpds_name, "Memory allocation failed.");
-                rc = SR_ERR_NO_MEMORY;
-                goto cleanup_unlock;
-            }
-            cache->mods = mem;
-
-            cmod = &cache->mods[j];
-            memset(cmod, 0, sizeof *cmod);
-            ++cache->mod_count;
-
-            cmod->mod = mods[i];
-            cmod->inot_watch = -1;
-            cmod->current = 1;
-        }
-
-        if (cmod->inot_watch == -1) {
-            /* prepare correct file path */
-            free(path);
-            if ((rc = srpjson_get_path(srpds_name, mods[i]->name, SR_DS_RUNNING, &path))) {
-                goto cleanup_unlock;
-            }
-
-            /* create a watch for the module data file */
-            cmod->inot_watch = inotify_add_watch(cache->inot_fd, path, IN_MODIFY);
-            if (cmod->inot_watch == -1) {
-                if (errno != ENOENT) {
-                    SRPLG_LOG_ERR(srpds_name, "Inotify_add_watch failed (%s).", strerror(errno));
-                    rc = SR_ERR_SYS;
-                    goto cleanup_unlock;
-                } /* else no data so consider them current */
-            } else {
-                /* some data exist */
-                cmod->current = 0;
-            }
-        }
-
-        if (!cmod->current) {
-            /* module data in the cache need to be updated first */
-            *cache_update = 1;
-        }
-    }
-
-cleanup_unlock:
-    /* MODS UNLOCK */
-    pthread_mutex_unlock(&cache->lock);
-
-    free(path);
-    return rc;
-}
-
-static int
-srpds_json_running_load_cached(sr_cid_t cid, const struct lys_module **mods, uint32_t mod_count,
-        const struct lyd_node **data)
-{
-    struct srpjson_cache_conn_s *cache = NULL;
-    struct timespec ts_timeout;
-    uint32_t i;
-    void *mem;
-    int r, rc = SR_ERR_OK, cache_update = 0;
-
-    /* init timeout to 1s */
-    clock_gettime(COMPAT_CLOCK_ID, &ts_timeout);
-    ++ts_timeout.tv_sec;
-
-    /* CACHE READ LOCK */
-    if ((r = pthread_rwlock_clockrdlock(&data_cache.lock, COMPAT_CLOCK_ID, &ts_timeout))) {
-        SRPLG_LOG_ERR(srpds_name, "Cache read lock failed (%s).", strerror(r));
-        rc = SR_ERR_SYS;
-        goto cleanup;
-    }
-
-    /* find the connection cache */
-    for (i = 0; i < data_cache.cache_count; ++i) {
-        if (data_cache.caches[i].cid == cid) {
-            cache = &data_cache.caches[i];
-            break;
-        }
-    }
-
-    if (!cache) {
-        /* CACHE UNLOCK */
-        pthread_rwlock_unlock(&data_cache.lock);
-
-        /* CACHE WRITE LOCK */
-        if ((r = pthread_rwlock_clockwrlock(&data_cache.lock, COMPAT_CLOCK_ID, &ts_timeout))) {
-            SRPLG_LOG_ERR(srpds_name, "Cache read lock failed (%s).", strerror(r));
-            rc = SR_ERR_SYS;
-            goto cleanup;
-        }
-
-        /* try to find it again after READ unlock/WRITE lock */
-        for (i = 0; i < data_cache.cache_count; ++i) {
-            if (data_cache.caches[i].cid == cid) {
-                cache = &data_cache.caches[i];
-                break;
-            }
-        }
-    }
-
-    if (!cache) {
-        /* create cache for this connection */
-        mem = realloc(data_cache.caches, (i + 1) * sizeof *data_cache.caches);
-        if (!mem) {
-            SRPLG_LOG_ERR(srpds_name, "Memory allocation failed.");
-            rc = SR_ERR_NO_MEMORY;
-            goto cleanup_unlock;
-        }
-        data_cache.caches = mem;
-
-        cache = &data_cache.caches[i];
-        memset(cache, 0, sizeof *cache);
-        ++data_cache.cache_count;
-
-        cache->cid = cid;
-        if ((r = pthread_mutex_init(&cache->lock, NULL))) {
-            SRPLG_LOG_ERR(srpds_name, "Initializing RW lock failed (%s).", strerror(r));
-            rc = SR_ERR_SYS;
-            goto cleanup_unlock;
-        }
-        cache->inot_fd = inotify_init1(IN_NONBLOCK);
-        if (cache->inot_fd == -1) {
-            SRPLG_LOG_ERR(srpds_name, "Inotify_init failed (%s).", strerror(errno));
-            rc = SR_ERR_SYS;
-            goto cleanup_unlock;
-        }
-
-        /* CACHE UNLOCK */
-        pthread_rwlock_unlock(&data_cache.lock);
-
-        /* CACHE READ LOCK */
-        if ((r = pthread_rwlock_clockrdlock(&data_cache.lock, COMPAT_CLOCK_ID, &ts_timeout))) {
-            SRPLG_LOG_ERR(srpds_name, "Cache read lock failed (%s).", strerror(r));
-            rc = SR_ERR_SYS;
-            goto cleanup;
-        }
-
-        /* caches could have been realloc'd */
-        cache = &data_cache.caches[i];
-    }
-
-    /* check module data */
-    if ((rc = srpds_json_running_load_cached_mods(cache, mods, mod_count, &cache_update))) {
-        goto cleanup_unlock;
-    }
-
-    if (cache_update) {
-        /* cache needs to be updated first */
-        rc = SR_ERR_OPERATION_FAILED;
-    } else {
-        *data = cache->data;
-    }
-
-cleanup_unlock:
-    /* CACHE UNLOCK */
-    pthread_rwlock_unlock(&data_cache.lock);
-
-cleanup:
-    return rc;
-}
-
-static int
-srpds_json_running_update_cached(sr_cid_t cid, const struct lys_module **mods, uint32_t mod_count)
-{
-    struct srpjson_cache_conn_s *cache = NULL;
-    struct srpjson_cache_mod_s *cmod;
-    struct lyd_node *mod_data;
-    uint32_t i, j;
-    int rc = SR_ERR_OK;
-
-    /* find the connection cache */
-    for (i = 0; i < data_cache.cache_count; ++i) {
-        if (data_cache.caches[i].cid == cid) {
-            cache = &data_cache.caches[i];
-            break;
-        }
-    }
-    assert(cache);
-
-    for (i = 0; i < cache->mod_count; ++i) {
-        cmod = &cache->mods[i];
-        if (cmod->current) {
-            /* module data in the cache are current */
-            continue;
-        }
-
-        for (j = 0; j < mod_count; ++j) {
-            if (cmod->mod == mods[j]) {
-                break;
-            }
-        }
-        if (j == mod_count) {
-            /* data are not needed and we are not holding this module lock */
-            continue;
-        }
-
-        /* remove old data */
-        mod_data = srpjson_module_data_unlink(&cache->data, cmod->mod);
-        lyd_free_siblings(mod_data);
-
-        /* need to actually load the data */
-        if ((rc = srpds_json_load(cmod->mod, SR_DS_RUNNING, NULL, 0, &mod_data))) {
-            goto cleanup;
-        }
-        if (mod_data) {
-            lyd_insert_sibling(cache->data, mod_data, &cache->data);
-        }
-
-        /* data now current */
-        cmod->current = 1;
-    }
-
-cleanup:
-    return rc;
-}
-
-static void
-srpds_json_running_flush_cached(sr_cid_t cid)
-{
-    struct srpjson_cache_conn_s *cache = NULL;
-    struct timespec ts_timeout;
-    uint32_t i;
-    int r;
-
-    /* init timeout to 1s */
-    clock_gettime(COMPAT_CLOCK_ID, &ts_timeout);
-    ++ts_timeout.tv_sec;
-
-    /* CACHE WRITE LOCK */
-    if ((r = pthread_rwlock_clockwrlock(&data_cache.lock, COMPAT_CLOCK_ID, &ts_timeout))) {
-        SRPLG_LOG_ERR(srpds_name, "Cache write lock failed (%s).", strerror(r));
-        return;
-    }
-
-    /* find the connection cache */
-    for (i = 0; i < data_cache.cache_count; ++i) {
-        if (data_cache.caches[i].cid == cid) {
-            cache = &data_cache.caches[i];
-            break;
-        }
-    }
-    if (!cache) {
-        goto cleanup;
-    }
-
-    /* free the connection cache */
-    lyd_free_siblings(cache->data);
-    free(cache->mods);
-    pthread_mutex_destroy(&cache->lock);
-    close(cache->inot_fd);
-
-    /* consolidate the cache */
-    --data_cache.cache_count;
-    if (i < data_cache.cache_count) {
-        memmove(data_cache.caches + i, data_cache.caches + i + 1, (data_cache.cache_count - i) * sizeof *data_cache.caches);
-    } else if (!data_cache.cache_count) {
-        free(data_cache.caches);
-        data_cache.caches = NULL;
-    }
-
-cleanup:
-    /* CACHE UNLOCK */
-    pthread_rwlock_unlock(&data_cache.lock);
-}
-
-#endif
-
 static int
 srpds_json_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datastore_t src_ds)
 {
@@ -1188,15 +864,6 @@ const struct srplg_ds_s srpds_json = {
     .store_cb = srpds_json_store,
     .recover_cb = srpds_json_recover,
     .load_cb = srpds_json_load,
-#ifdef SR_HAVE_INOTIFY
-    .running_load_cached_cb = srpds_json_running_load_cached,
-    .running_update_cached_cb = srpds_json_running_update_cached,
-    .running_flush_cached_cb = srpds_json_running_flush_cached,
-#else
-    .running_load_cached_cb = NULL,
-    .running_update_cached_cb = NULL,
-    .running_flush_cached_cb = NULL,
-#endif
     .copy_cb = srpds_json_copy,
     .candidate_modified_cb = srpds_json_candidate_modified,
     .candidate_reset_cb = srpds_json_candidate_reset,

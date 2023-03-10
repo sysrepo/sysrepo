@@ -4,8 +4,8 @@
  * @brief common types header
  *
  * @copyright
- * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -17,7 +17,10 @@
 #ifndef _COMMON_TYPES_H
 #define _COMMON_TYPES_H
 
+#define _GNU_SOURCE
+
 #include <pthread.h>
+#include <time.h>
 
 #include <libyang/libyang.h>
 
@@ -123,7 +126,13 @@ struct sr_conn_ctx_s {
     } *ds_handles;                  /**< Datastore implementation handles. */
     uint32_t ds_handle_count;       /**< Datastore implementaion handle count. */
 
-    sr_rwlock_t running_cache_lock; /**< Session-shared lock for accessing running data cache. */
+    struct lyd_node *run_cache_data;    /**< Cached running data of all the modules. */
+    struct sr_run_cache_s {
+        const struct lys_module *mod;   /**< Cached libyang module. */
+        struct timespec ts;         /**< Cached module data timestamp. */
+    } *run_cache_mods;
+    uint32_t run_cache_mod_count;
+    sr_rwlock_t run_cache_lock;     /**< Session-shared lock for accessing running data cache. */
 
     struct sr_ntf_handle_s {
         void *dl_handle;            /**< Handle from dlopen(3) call. */

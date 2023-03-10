@@ -398,10 +398,6 @@ if(NOT SR_HAVE_EACCESS)
     message(WARNING "Function eaccess() is not supported, using access() instead which may "
         "change results of access control checks!")
 endif()
-check_symbol_exists(inotify_init "sys/inotify.h" SR_HAVE_INOTIFY)
-if(NOT SR_HAVE_INOTIFY)
-    message(STATUS "inotify API is not supported, LYB datastore module data caching will not be supported.")
-endif()
 check_symbol_exists(mkstemps "stdlib.h" SR_HAVE_MKSTEMPS)
 unset(CMAKE_REQUIRED_DEFINITIONS)
 
