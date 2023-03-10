@@ -2877,7 +2877,7 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
     *result = NULL;
     *dup = 0;
 
-    for (i = 0; i < mod_info->mod_count; ++i) {
+    for (i = 0; (i < mod_info->mod_count) && (session->ds < SR_DS_COUNT); ++i) {
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_REQ) {
             edit = NULL;
