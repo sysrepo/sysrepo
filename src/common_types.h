@@ -192,7 +192,7 @@ struct sr_session_ctx_s {
     } dt[SR_DS_COUNT];              /**< Session-exclusive prepared changes. */
 
     struct sr_sess_notif_buf {
-        ATOMIC_T thread_running;    /**< Flag whether the notification buffering thread of this session is running. */
+        int thread_running;         /**< Flag whether the notification buffering thread of this session is running. */
         pthread_t tid;              /**< Thread ID of the thread. */
         sr_rwlock_t lock;           /**< Lock for accessing thread_running and the notification buffer
                                          (READ-lock is not used). */

@@ -746,25 +746,22 @@ sr_session_notif_buf_stop(sr_session_ctx_t *session)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
-    int ret;
+    int r;
 
     if (!session->notif_buf.tid) {
         return NULL;
     }
 
-    /* signal the thread to terminate */
-    ATOMIC_STORE_RELAXED(session->notif_buf.thread_running, 0);
-
     sr_timeouttime_get(&timeout_ts, SR_NOTIF_BUF_LOCK_TIMEOUT);
 
     /* MUTEX LOCK */
-    ret = pthread_mutex_clocklock(&session->notif_buf.lock.mutex, COMPAT_CLOCK_ID, &timeout_ts);
-    if (ret) {
-        SR_ERRINFO_LOCK(&err_info, __func__, ret);
-        /* restore */
-        ATOMIC_STORE_RELAXED(session->notif_buf.thread_running, 1);
+    if ((r = pthread_mutex_clocklock(&session->notif_buf.lock.mutex, COMPAT_CLOCK_ID, &timeout_ts))) {
+        SR_ERRINFO_LOCK(&err_info, __func__, r);
         return err_info;
     }
+
+    /* signal the thread to terminate */
+    session->notif_buf.thread_running = 0;
 
     /* wake up the thread */
     sr_cond_broadcast(&session->notif_buf.lock.cond);
@@ -773,9 +770,8 @@ sr_session_notif_buf_stop(sr_session_ctx_t *session)
     pthread_mutex_unlock(&session->notif_buf.lock.mutex);
 
     /* join the thread, it will make sure all the buffered notifications are stored */
-    ret = pthread_join(session->notif_buf.tid, NULL);
-    if (ret) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Joining the notification buffer thread failed (%s).", strerror(ret));
+    if ((r = pthread_join(session->notif_buf.tid, NULL))) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Joining the notification buffer thread failed (%s).", strerror(r));
         return err_info;
     }
 
@@ -887,21 +883,20 @@ API int
 sr_session_notif_buffer(sr_session_ctx_t *session)
 {
     sr_error_info_t *err_info = NULL;
-    int ret;
+    int r;
 
     if (!session || session->notif_buf.tid) {
         return sr_api_ret(NULL, NULL);
     }
 
     /* it could not be running */
-    ret = ATOMIC_INC_RELAXED(session->notif_buf.thread_running);
-    assert(!ret);
+    assert(!session->notif_buf.thread_running);
+    session->notif_buf.thread_running = 1;
 
     /* start the buffering thread */
-    ret = pthread_create(&session->notif_buf.tid, NULL, sr_notif_buf_thread, session);
-    if (ret) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Creating a new thread failed (%s).", strerror(ret));
-        ATOMIC_STORE_RELAXED(session->notif_buf.thread_running, 0);
+    if ((r = pthread_create(&session->notif_buf.tid, NULL, sr_notif_buf_thread, session))) {
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Creating a new thread failed (%s).", strerror(r));
+        session->notif_buf.thread_running = 0;
         return sr_api_ret(session, err_info);
     }
 
