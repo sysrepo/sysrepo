@@ -46,7 +46,8 @@ extern "C" {
  * @brief Setup datastore of a newly installed module.
  *
  * Install is called once for every new installed module for each datastore. Right after that ::srds_init
- * is called.
+ * is called. Afterwards, the data of the module must be valid meaning any following ::srds_load
+ * __must return valid data__.
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
