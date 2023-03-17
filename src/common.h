@@ -67,8 +67,8 @@ struct srplg_ntf_s;
 /** timeout for locking context; should be enough for changing it (ms) */
 #define SR_CONTEXT_LOCK_TIMEOUT 10000
 
-/** timeout for locking notification buffer lock, used when adding/removing notifications (ms) */
-#define SR_NOTIF_BUF_LOCK_TIMEOUT 100
+/** timeout for locking notification buffer lock, used when adding (including dup)/removing notifications (ms) */
+#define SR_NOTIF_BUF_LOCK_TIMEOUT 500
 
 /** timeout for locking subscription SHM; maximum time an event handling should take (ms) */
 #define SR_SUBSHM_LOCK_TIMEOUT 10000

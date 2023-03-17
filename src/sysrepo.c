@@ -746,7 +746,8 @@ sr_session_notif_buf_stop(sr_session_ctx_t *session)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
-    int r;
+    struct sr_sess_notif_buf_node *next, *iter;
+    int r, has_notif = 0;
 
     if (!session->notif_buf.tid) {
         return NULL;
@@ -770,15 +771,31 @@ sr_session_notif_buf_stop(sr_session_ctx_t *session)
     pthread_mutex_unlock(&session->notif_buf.lock.mutex);
 
     /* join the thread, it will make sure all the buffered notifications are stored */
-    if ((r = pthread_join(session->notif_buf.tid, NULL))) {
+    if ((r = pthread_join(session->notif_buf.tid, (void **)&err_info))) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, "Joining the notification buffer thread failed (%s).", strerror(r));
-        return err_info;
+    } else if (err_info) {
+        /* notif thread error, clean up the notifications */
+        if (session->notif_buf.first) {
+            has_notif = 1;
+        }
+        LY_LIST_FOR_SAFE(session->notif_buf.first, next, iter) {
+            lyd_free_siblings(iter->notif);
+            free(iter);
+        }
+        session->notif_buf.tid = 0;
+
+        if (has_notif) {
+            /* CONTEXT UNLOCK */
+            sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
+            sr_errinfo_new(&err_info, err_info->err[0].err_code, "Failed to store some buffered notifications.");
+        }
+    } else {
+        /* all fine */
+        session->notif_buf.tid = 0;
+        assert(!session->notif_buf.first);
     }
 
-    session->notif_buf.tid = 0;
-    assert(!session->notif_buf.first);
-
-    return NULL;
+    return err_info;
 }
 
 /**

@@ -297,8 +297,7 @@ sr_notif_buf_thread(void *arg)
     }
 
 cleanup:
-    sr_errinfo_free(&err_info);
-    return NULL;
+    return err_info;
 }
 
 sr_error_info_t *
