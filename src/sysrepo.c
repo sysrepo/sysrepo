@@ -3915,29 +3915,36 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
         goto cleanup;
     }
 
-    /* add modules into mod_info */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_PERM_NO, session->sid, session->orig_name,
-            session->orig_data, 0, 0, 0))) {
-        goto cleanup;
-    }
-
-    /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info);
-
-    /* replace the data */
-    if ((err_info = _sr_replace_config(session, ly_mod, &mod_info.data, timeout_ms))) {
-        goto cleanup;
-    }
-
     if ((src_datastore == SR_DS_CANDIDATE) && (session->ds == SR_DS_RUNNING)) {
-        /* MODULES WRITE LOCK */
-        if ((err_info = sr_shmmod_modinfo_wrlock(&mod_info, session->sid, 0, 0))) {
+        /* add modules into mod_info, WRITE lock */
+        if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_WRITE, SR_MI_PERM_NO, session->sid, session->orig_name,
+                session->orig_data, 0, 0, 0))) {
+            goto cleanup;
+        }
+
+        /* replace the data */
+        if ((err_info = _sr_replace_config(session, ly_mod, &mod_info.data, timeout_ms))) {
             goto cleanup;
         }
 
         /* reset candidate after it was applied in running */
-        err_info = sr_modinfo_candidate_reset(&mod_info);
-        goto cleanup;
+        if ((err_info = sr_modinfo_candidate_reset(&mod_info))) {
+            goto cleanup;
+        }
+    } else {
+        /* add modules into mod_info, READ lock */
+        if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_PERM_NO, session->sid, session->orig_name,
+                session->orig_data, 0, 0, 0))) {
+            goto cleanup;
+        }
+
+        /* MODULES UNLOCK */
+        sr_shmmod_modinfo_unlock(&mod_info);
+
+        /* replace the data */
+        if ((err_info = _sr_replace_config(session, ly_mod, &mod_info.data, timeout_ms))) {
+            goto cleanup;
+        }
     }
 
 cleanup:
