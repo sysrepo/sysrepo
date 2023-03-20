@@ -2021,6 +2021,7 @@ sr_shmext_change_sub_check(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_change_sub_t *subs;
+    const struct lys_module *ly_mod = NULL;
     uint32_t i;
     const char *mod_name, *xpath;
     int valid;
@@ -2036,18 +2037,23 @@ sr_shmext_change_sub_check(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_
         goto changesub_unlock;
     }
 
-    if (shm_mod->change_sub[ds].sub_count) {
-        /* check that module still exists */
-        mod_name = conn->mod_shm.addr + shm_mod->name;
-        if (!ly_ctx_get_module_implemented(new_ctx, mod_name)) {
-            sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Change subscription(s) to module \"%s\" no longer valid.",
-                    mod_name);
-            goto ext_changesub_unlock;
-        }
-    }
-
     subs = (sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs);
     for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
+        if (!sr_conn_is_alive(subs[i].cid)) {
+            /* ignore, we would need WRITE locks for recovery */
+            continue;
+        }
+
+        if (!ly_mod) {
+            /* check that module still exists */
+            mod_name = conn->mod_shm.addr + shm_mod->name;
+            if (!(ly_mod = ly_ctx_get_module_implemented(new_ctx, mod_name))) {
+                sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Change subscription(s) to module \"%s\" no longer valid.",
+                        mod_name);
+                goto ext_changesub_unlock;
+            }
+        }
+
         if (!subs[i].xpath) {
             continue;
         }
@@ -2086,7 +2092,9 @@ sr_shmext_oper_sub_check(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct ly
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_oper_get_sub_t *subs;
-    uint32_t i;
+    sr_mod_oper_get_xpath_sub_t *xp_subs;
+    const struct lys_module *ly_mod = NULL;
+    uint32_t i, j;
     const char *mod_name, *xpath;
     int valid;
 
@@ -2101,18 +2109,33 @@ sr_shmext_oper_sub_check(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct ly
         goto opersub_unlock;
     }
 
-    if (shm_mod->oper_get_sub_count) {
-        /* check that module still exists */
-        mod_name = conn->mod_shm.addr + shm_mod->name;
-        if (!ly_ctx_get_module_implemented(new_ctx, mod_name)) {
-            sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Oper subscription(s) to module \"%s\" no longer valid.",
-                    mod_name);
-            goto ext_opersub_unlock;
-        }
-    }
-
     subs = (sr_mod_oper_get_sub_t *)(conn->ext_shm.addr + shm_mod->oper_get_subs);
     for (i = 0; i < shm_mod->oper_get_sub_count; ++i) {
+        valid = 0;
+        xp_subs = (sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + subs[i].xpath_subs);
+        for (j = 0; j < subs[i].xpath_sub_count; ++j) {
+            if (!sr_conn_is_alive(xp_subs[j].cid)) {
+                /* ignore, we would need WRITE locks for recovery */
+                continue;
+            }
+
+            valid = 1;
+            break;
+        }
+        if (!valid) {
+            continue;
+        }
+
+        if (!ly_mod) {
+            /* check that module still exists */
+            mod_name = conn->mod_shm.addr + shm_mod->name;
+            if (!(ly_mod = ly_ctx_get_module_implemented(new_ctx, mod_name))) {
+                sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Oper subscription(s) to module \"%s\" no longer valid.",
+                        mod_name);
+                goto ext_opersub_unlock;
+            }
+        }
+
         /* check subs xpath */
         xpath = conn->ext_shm.addr + subs[i].xpath;
         sr_subscr_oper_path_check(new_ctx, xpath, NULL, &valid);
@@ -2163,18 +2186,23 @@ sr_shmext_notif_sub_check(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct l
         goto notifsub_unlock;
     }
 
-    if (shm_mod->notif_sub_count) {
-        /* check that module still exists */
-        mod_name = conn->mod_shm.addr + shm_mod->name;
-        if (!(ly_mod = ly_ctx_get_module_implemented(new_ctx, mod_name))) {
-            sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Notif subscription(s) to module \"%s\" no longer valid.",
-                    mod_name);
-            goto ext_notifsub_unlock;
-        }
-    }
-
     subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
     for (i = 0; i < shm_mod->notif_sub_count; ++i) {
+        if (!sr_conn_is_alive(subs[i].cid)) {
+            /* ignore, we would need WRITE locks for recovery */
+            continue;
+        }
+
+        if (!ly_mod) {
+            /* check that module still exists */
+            mod_name = conn->mod_shm.addr + shm_mod->name;
+            if (!(ly_mod = ly_ctx_get_module_implemented(new_ctx, mod_name))) {
+                sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Notif subscription(s) to module \"%s\" no longer valid.",
+                        mod_name);
+                goto ext_notifsub_unlock;
+            }
+        }
+
         if (!subs[i].xpath) {
             continue;
         }
@@ -2214,6 +2242,7 @@ sr_shmext_rpc_sub_check(sr_conn_ctx_t *conn, const char *mod_name, sr_rpc_t *shm
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_rpc_sub_t *subs;
+    const struct lys_module *ly_mod = NULL;
     uint32_t i;
     const char *xpath;
     int valid;
@@ -2228,17 +2257,22 @@ sr_shmext_rpc_sub_check(sr_conn_ctx_t *conn, const char *mod_name, sr_rpc_t *shm
         goto rpcsub_unlock;
     }
 
-    if (shm_rpc->sub_count) {
-        /* check that module still exists */
-        if (!ly_ctx_get_module_implemented(new_ctx, mod_name)) {
-            sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "RPC subscription(s) to module \"%s\" no longer valid.",
-                    mod_name);
-            goto ext_rpcsub_unlock;
-        }
-    }
-
     subs = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + shm_rpc->subs);
     for (i = 0; i < shm_rpc->sub_count; ++i) {
+        if (subs[i].cid && !sr_conn_is_alive(subs[i].cid)) {
+            /* ignore, we would need WRITE locks for recovery */
+            continue;
+        }
+
+        if (!ly_mod) {
+            /* check that module still exists */
+            if (!(ly_mod = ly_ctx_get_module_implemented(new_ctx, mod_name))) {
+                sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "RPC subscription(s) to module \"%s\" no longer valid.",
+                        mod_name);
+                goto ext_rpcsub_unlock;
+            }
+        }
+
         /* check subs xpath */
         xpath = conn->ext_shm.addr + subs[i].xpath;
         sr_subscr_rpc_xpath_check(new_ctx, xpath, NULL, NULL, &valid);
