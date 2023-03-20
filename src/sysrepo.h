@@ -927,7 +927,8 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
  *
  * If ::SR_EDIT_STRICT flag is set the specified node must must exist in the datastore.
  * If the @p path includes the list keys/leaf-list value, the specified instance is deleted.
- * If the @p path of list/leaf-list does not include keys/value, all instances are deleted.
+ * If the @p path of list/leaf-list does not include keys/value, all instances are deleted but there can be no further
+ * changes merged into the list, use ::SR_EDIT_ISOLATE in such a case.
  *
  * For ::SR_DS_OPERATIONAL, the flag is not allowed and list/leaf-list instance must always include its predicate.
  *
