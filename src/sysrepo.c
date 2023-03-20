@@ -3747,7 +3747,7 @@ sr_discard_changes(sr_session_ctx_t *session)
  *
  * @param[in] session Session to use.
  * @param[in] ly_mod Optional specific module.
- * @param[in] src_config Source data for the replace, they are spent.
+ * @param[in,out] src_config Source data for the replace, they are spent.
  * @param[in] timeout_ms Change callback timeout in milliseconds.
  * @return err_info, NULL on success.
  */
