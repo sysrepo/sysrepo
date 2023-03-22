@@ -1414,7 +1414,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     }
 
     /* update content ID and safely switch the context */
-    ++SR_CONN_MAIN_SHM(conn)->content_id;
+    SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
     sr_conn_ctx_switch(conn, &new_ctx, &old_ctx);
 
 cleanup:
@@ -1656,7 +1656,7 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     }
 
     /* update content ID and safely switch the context */
-    ++SR_CONN_MAIN_SHM(conn)->content_id;
+    SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
     sr_conn_ctx_switch(conn, &new_ctx, &old_ctx);
 
 cleanup:
@@ -1907,7 +1907,7 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
     }
 
     /* update content ID and safely switch the context */
-    ++SR_CONN_MAIN_SHM(conn)->content_id;
+    SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
     sr_conn_ctx_switch(conn, &new_ctx, &old_ctx);
 
 cleanup:
@@ -2407,7 +2407,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     /* update content ID and safely switch the context */
-    ++SR_CONN_MAIN_SHM(conn)->content_id;
+    SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
     sr_conn_ctx_switch(conn, &new_ctx, &old_ctx);
 
 cleanup:
