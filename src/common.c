@@ -3196,9 +3196,9 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
         }
 
         /* check whether the data are current */
-        if (sr_time_cmp(&cmod->ts, &mtime) >= 0) {
+        if (!sr_time_cmp(&cmod->ts, &mtime)) {
             continue;
-        }
+        } /* older mtime can only mean an NTP change followed by data change */
 
         if (has_lock != SR_LOCK_WRITE) {
             /* CACHE READ UNLOCK */
