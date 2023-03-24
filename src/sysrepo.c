@@ -1431,7 +1431,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
         if (installed) {
             /* module already installed, remove it from the array */
             if (i < (*new_mod_count) - 1) {
-                memmove(nmod, nmod + 1, (*new_mod_count - 1) * sizeof *nmod);
+                memmove(nmod, nmod + 1, (*new_mod_count - i) * sizeof *nmod);
             }
             if (!--(*new_mod_count)) {
                 /* no modules left to install */
