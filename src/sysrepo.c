@@ -1234,21 +1234,76 @@ cleanup:
 }
 
 /**
+ * @brief Check whether enabled features of a module match those specified.
+ *
+ * @param[in] ly_mod Module to check.
+ * @param[in] features Array of expected enabled features, NULL if none are enabled.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_install_modules_check_features(const struct lys_module *ly_mod, const char **features)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lysp_feature *f = NULL;
+    uint32_t i = 0, j;
+    const char *feature;
+
+    /* first check feature existence */
+    for (j = 0; features && features[j]; ++j) {
+        if (lys_feature_value(ly_mod, features[j]) == LY_ENOTFOUND) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Feature \"%s\" was not found in module \"%s\".",
+                    features[j], ly_mod->name);
+            return err_info;
+        }
+    }
+
+    /* then make sure all the enabled features are enabled and the rest is disabled */
+    while ((f = lysp_feature_next(f, ly_mod->parsed, &i))) {
+        feature = NULL;
+        j = 0;
+        while (features && features[j]) {
+            if (!strcmp(f->name, features[j])) {
+                feature = features[j];
+                break;
+            }
+
+            ++j;
+        }
+
+        if ((f->flags & LYS_FENABLED) && !feature) {
+            sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Module \"%s\" is already in sysrepo with feature \"%s\" enabled.",
+                    ly_mod->name, f->name);
+            return err_info;
+        } else if (!(f->flags & LYS_FENABLED) && feature) {
+            sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Module \"%s\" is already in sysrepo with feature \"%s\" disabled.",
+                    ly_mod->name, feature);
+            return err_info;
+        }
+    }
+
+    return NULL;
+}
+
+/**
  * @brief Prepare members of a new module to be installed.
  *
  * @param[in] new_ctx New context to use for parsing.
  * @param[in] conn Connection to use.
  * @param[in,out] new_mod New module to update.
+ * @param[out] installed Set if the module has already been installed.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_int_install_mod_t *new_mod)
+sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_int_install_mod_t *new_mod, int *installed)
 {
     sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
     struct ly_in *in = NULL;
     char *mod_name = NULL;
     LYS_INFORMAT format;
     sr_datastore_t ds;
+
+    *installed = 0;
 
     /* learn module name and format */
     if ((err_info = sr_get_schema_name_format(new_mod->schema_path, &mod_name, &format))) {
@@ -1256,8 +1311,13 @@ sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_i
     }
 
     /* try to find the module */
-    if (ly_ctx_get_module_implemented(conn->ly_ctx, mod_name)) {
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Module \"%s\" is already in sysrepo.", mod_name);
+    if ((ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, mod_name))) {
+        if ((err_info = sr_install_modules_check_features(ly_mod, new_mod->features))) {
+            /* module installed with different features */
+            goto cleanup;
+        }
+        SR_LOG_WRN("Module \"%s\" is already in sysrepo.", mod_name);
+        *installed = 1;
         goto cleanup;
     }
 
@@ -1322,7 +1382,7 @@ cleanup:
  * @param[in] data Optional initial module data as a string, do not set if @p data_path is set.
  * @param[in] data_path Optional initial module data as a file path, do not set if @p data is set.
  * @param[in] format YANG data format of @p data or @p data_path.
- * @param[in,out] new_mods Array of new modules to install, implemented dependencies are added.
+ * @param[in,out] new_mods Array of new modules to install, implemented dependencies are added, installed modules removed.
  * @param[in,out] new_mod_count Count of @p new_mods.
  * @return SR_ERR value.
  */
@@ -1333,9 +1393,11 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     sr_error_info_t *err_info = NULL;
     struct ly_ctx *new_ctx = NULL, *old_ctx = NULL;
     struct lyd_node *mod_data = NULL, *sr_mods = NULL;
+    sr_int_install_mod_t *nmod;
     struct sr_data_update_s data_info = {0};
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
     uint32_t i, search_dir_count = 0;
+    int installed;
 
     /* create new temporary context */
     if ((err_info = sr_ly_ctx_init(conn, &new_ctx))) {
@@ -1358,11 +1420,27 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     }
     ctx_mode = SR_LOCK_READ_UPGR;
 
-    for (i = 0; i < *new_mod_count; ++i) {
+    i = 0;
+    while (i < *new_mod_count) {
+        nmod = &(*new_mods)[i];
+
         /* process every new module and check/fill its info */
-        if ((err_info = sr_install_modules_prepare_mod(new_ctx, conn, &(*new_mods)[i]))) {
+        if ((err_info = sr_install_modules_prepare_mod(new_ctx, conn, nmod, &installed))) {
             goto cleanup;
         }
+        if (installed) {
+            /* module already installed, remove it from the array */
+            if (i < (*new_mod_count) - 1) {
+                memmove(nmod, nmod + 1, (*new_mod_count - 1) * sizeof *nmod);
+            }
+            if (!--(*new_mod_count)) {
+                /* no modules left to install */
+                goto cleanup;
+            }
+            continue;
+        }
+
+        ++i;
     }
 
     /* compile the final context */

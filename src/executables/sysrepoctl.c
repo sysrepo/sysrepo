@@ -912,11 +912,8 @@ main(int argc, char **argv)
     case 'i':
         /* install */
         if ((r = sr_install_modules2(conn, iitems, iitem_count, search_dirs, NULL, data_path, 0))) {
-            /* succeed if the module is already installed */
-            if (r != SR_ERR_EXISTS) {
-                error_print(r, "Failed to install modules");
-                goto cleanup;
-            }
+            error_print(r, "Failed to install modules");
+            goto cleanup;
         }
         break;
     case 'u':
