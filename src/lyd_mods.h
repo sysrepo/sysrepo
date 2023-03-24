@@ -4,8 +4,8 @@
  * @brief header for sysrepo module data routines
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -16,8 +16,6 @@
 
 #ifndef _LYD_MODS_H
 #define _LYD_MODS_H
-
-#include <pthread.h>
 
 #include <libyang/libyang.h>
 

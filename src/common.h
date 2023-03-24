@@ -17,6 +17,8 @@
 #ifndef _COMMON_H
 #define _COMMON_H
 
+#define _GNU_SOURCE
+
 #include <inttypes.h>
 #include <pthread.h>
 
