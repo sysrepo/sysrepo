@@ -1304,7 +1304,7 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
     content_id = SR_CONN_MAIN_SHM(mod_info->conn)->content_id;
 
     /* get the data from libyang */
-    SR_CHECK_LY_RET(ly_ctx_get_yanglib_data(mod_info->conn->ly_ctx, &mod_data, "%" PRIu32, content_id),
+    SR_CHECK_LY_RET(ly_ctx_get_yanglib_data(mod_info->conn->ly_ctx, &mod_data, "0x%08x", content_id),
             mod_info->conn->ly_ctx, err_info);
 
     if (!strcmp(mod->ly_mod->revision, "2019-01-04")) {
