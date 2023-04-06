@@ -41,10 +41,12 @@ main(int argc, const char **argv)
     sr_conn_ctx_t *connection = NULL;
     sr_session_ctx_t *session = NULL;
     int rc = SR_ERR_OK;
-    const char *path, *value = NULL;
+    const char *path, *filepath = NULL, *value = NULL;
+    const struct ly_ctx *ly_ctx = NULL;
+    struct lyd_node *edit = NULL;
 
     if (argc < 2) {
-        printf("%s <path-to-set> (<value-to-set>)\n", argv[0]);
+        printf("%s <file-to-set> / ( <path-to-set> (<value-to-set>) )\n", argv[0]);
         return EXIT_FAILURE;
     }
     path = argv[1];
@@ -52,7 +54,13 @@ main(int argc, const char **argv)
         value = argv[2];
     }
 
-    if (value) {
+    if (strrchr(path, '.')) {
+        filepath = path;
+    }
+
+    if (filepath) {
+        printf("Application will parse and set \"%s\".\n\n", filepath);
+    } else if (value) {
         printf("Application will set \"%s\" to value \"%s\".\n\n", path, value);
     } else {
         printf("Application will set \"%s\".\n\n", path);
@@ -73,10 +81,25 @@ main(int argc, const char **argv)
         goto cleanup;
     }
 
-    /* set push operational data (their lifetime is limited by the lifetime of the connection) */
-    rc = sr_set_item_str(session, path, value, NULL, 0);
-    if (rc != SR_ERR_OK) {
-        goto cleanup;
+    if (filepath) {
+        /* parse the edit */
+        ly_ctx = sr_session_acquire_context(session);
+        rc = lyd_parse_data_path(ly_ctx, filepath, LYD_JSON, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &edit);
+        if (rc != LY_SUCCESS) {
+            goto cleanup;
+        }
+
+        /* set it */
+        rc = sr_edit_batch(session, edit, "merge");
+        if (rc != SR_ERR_OK) {
+            goto cleanup;
+        }
+    } else {
+        /* set push operational data (their lifetime is limited by the lifetime of the connection) */
+        rc = sr_set_item_str(session, path, value, NULL, 0);
+        if (rc != SR_ERR_OK) {
+            goto cleanup;
+        }
     }
     rc = sr_apply_changes(session, 0);
     if (rc != SR_ERR_OK) {
@@ -95,6 +118,10 @@ main(int argc, const char **argv)
     printf("Application exit requested, exiting.\n");
 
 cleanup:
+    if (ly_ctx) {
+        lyd_free_siblings(edit);
+        sr_session_release_context(session);
+    }
     sr_disconnect(connection);
     return rc ? EXIT_FAILURE : EXIT_SUCCESS;
 }
