@@ -16,6 +16,7 @@
 
 #define _GNU_SOURCE
 
+#include "compat.h"
 #include "common_json.h"
 
 #include <assert.h>
@@ -34,7 +35,6 @@
 
 #include <libyang/libyang.h>
 
-#include "compat.h"
 #include "config.h"
 #include "sysrepo.h"
 

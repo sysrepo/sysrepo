@@ -16,6 +16,8 @@
 
 #define _GNU_SOURCE
 
+#include "compat.h"
+
 #include <dirent.h>
 #include <dlfcn.h>
 #include <errno.h>
@@ -33,7 +35,6 @@
 #include <unistd.h>
 
 #include "bin_common.h"
-#include "compat.h"
 #include "srpd_common.h"
 #include "sysrepo.h"
 

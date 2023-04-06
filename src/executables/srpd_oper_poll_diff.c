@@ -15,6 +15,8 @@
  */
 #define _GNU_SOURCE
 
+#include "compat.h"
+
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
@@ -27,7 +29,6 @@
 #include <sysrepo.h>
 
 #include "bin_common.h"
-#include "compat.h"
 #include "config.h"
 #include "srpd_common.h"
 

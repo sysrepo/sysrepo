@@ -16,6 +16,7 @@
 
 #define _GNU_SOURCE
 
+#include "compat.h"
 #include "replay.h"
 
 #include <assert.h>
@@ -31,7 +32,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "compat.h"
 #include "config.h"
 #include "context_change.h"
 #include "log.h"

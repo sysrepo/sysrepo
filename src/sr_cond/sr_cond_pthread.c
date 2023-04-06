@@ -14,6 +14,7 @@
  *     https://opensource.org/licenses/BSD-3-Clause
  */
 
+#include "compat.h"
 #include "sr_cond_pthread.h"
 
 #include <pthread.h>
@@ -21,7 +22,6 @@
 #include <string.h>
 #include <time.h>
 
-#include "compat.h"
 #include "log.h"
 #include "sysrepo_types.h"
 

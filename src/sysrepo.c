@@ -16,6 +16,7 @@
 
 #define _GNU_SOURCE
 
+#include "compat.h"
 #include "sysrepo.h"
 
 #include <assert.h>
@@ -36,7 +37,6 @@
 #include <libyang/libyang.h>
 
 #include "common.h"
-#include "compat.h"
 #include "config.h"
 #include "context_change.h"
 #include "edit_diff.h"

@@ -16,6 +16,7 @@
 
 #define _GNU_SOURCE
 
+#include "compat.h"
 #include "context_change.h"
 
 #include <assert.h>
@@ -27,7 +28,6 @@
 
 #include "common.h"
 #include "common_types.h"
-#include "compat.h"
 #include "config.h"
 #include "log.h"
 #include "plugins_datastore.h"

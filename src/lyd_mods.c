@@ -16,6 +16,7 @@
 
 #define _GNU_SOURCE
 
+#include "compat.h"
 #include "lyd_mods.h"
 
 #include <assert.h>
@@ -36,7 +37,6 @@
 #include "common.h"
 #include "common_json.h"
 #include "common_types.h"
-#include "compat.h"
 #include "config.h"
 #include "context_change.h"
 #include "log.h"

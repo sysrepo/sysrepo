@@ -15,8 +15,9 @@
  */
 
 #define _GNU_SOURCE
-#define _POSIX_C_SOURCE >= 200809L /* stat.mtim */
+#define _POSIX_C_SOURCE 200809L /* stat.mtim */
 
+#include "compat.h"
 #include "plugins_datastore.h"
 
 #include <assert.h>
@@ -33,7 +34,6 @@
 
 #include <libyang/libyang.h>
 
-#include "compat.h"
 #include "common_json.h"
 #include "sysrepo.h"
 

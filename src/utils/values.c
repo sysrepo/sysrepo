@@ -16,6 +16,7 @@
 
 #define _GNU_SOURCE
 
+#include "compat.h"
 #include "values.h"
 
 #include <inttypes.h>
@@ -24,7 +25,6 @@
 #include <unistd.h>
 
 #include "common.h"
-#include "compat.h"
 #include "config.h"
 #include "log.h"
 

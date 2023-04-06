@@ -16,6 +16,8 @@
 
 #define _GNU_SOURCE
 
+#include "compat.h"
+
 #include <errno.h>
 #include <getopt.h>
 #include <stdarg.h>
@@ -32,7 +34,6 @@
 #include <libyang/plugins_exts.h>
 
 #include "bin_common.h"
-#include "compat.h"
 #include "sysrepo.h"
 
 sr_log_level_t log_level = SR_LL_ERR;

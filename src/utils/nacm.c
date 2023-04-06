@@ -15,6 +15,7 @@
  */
 #define _GNU_SOURCE
 
+#include "compat.h"
 #include "nacm.h"
 #include "netconf_acm.h"
 
@@ -30,7 +31,6 @@
 #include <libyang/plugins_exts.h>
 
 #include "../sysrepo.h"
-#include "compat.h"
 #include "config.h"
 #include "log.h"
 

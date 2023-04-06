@@ -16,6 +16,7 @@
 
 #define _GNU_SOURCE
 
+#include "compat.h"
 #include "sr_cond_futex.h"
 
 #include <errno.h>
@@ -30,7 +31,6 @@
 #include <unistd.h>
 
 #include "common.h"
-#include "compat.h"
 #include "log.h"
 #include "sysrepo_types.h"
 

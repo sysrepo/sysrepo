@@ -16,6 +16,7 @@
 
 #define _GNU_SOURCE
 
+#include "compat.h"
 #include "subscr.h"
 
 #include <assert.h>
@@ -23,7 +24,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "compat.h"
 #include "config.h"
 #include "edit_diff.h"
 #include "log.h"

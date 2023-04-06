@@ -16,6 +16,7 @@
 
 #define _GNU_SOURCE
 
+#include "compat.h"
 #include "shm_ext.h"
 
 #include <assert.h>
@@ -35,7 +36,6 @@
 #include <libyang/libyang.h>
 
 #include "common.h"
-#include "compat.h"
 #include "log.h"
 #include "shm_mod.h"
 #include "shm_sub.h"

@@ -16,6 +16,8 @@
 
 #define _GNU_SOURCE
 
+#include "compat.h"
+
 #include <assert.h>
 #include <getopt.h>
 #include <stdarg.h>
@@ -30,7 +32,6 @@
 #include <libyang/libyang.h>
 
 #include "bin_common.h"
-#include "compat.h"
 #include "sysrepo.h"
 
 #define SRCTL_LIST_NAME "Module Name"

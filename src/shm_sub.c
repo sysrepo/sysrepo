@@ -16,6 +16,7 @@
 
 #define _GNU_SOURCE
 
+#include "compat.h"
 #include "shm_sub.h"
 
 #include <assert.h>
@@ -32,7 +33,6 @@
 #include <unistd.h>
 
 #include "common.h"
-#include "compat.h"
 #include "edit_diff.h"
 #include "log.h"
 #include "modinfo.h"
