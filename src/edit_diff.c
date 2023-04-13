@@ -2348,6 +2348,8 @@ reapply:
         diff_node = NULL;
         sr_lyd_free_tree_safe(data_del, data_root);
         data_del = NULL;
+        free(origin);
+        origin = NULL;
         goto reapply;
     } else if (next_op == EDIT_FINISH) {
         goto cleanup;
