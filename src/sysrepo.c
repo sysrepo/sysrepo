@@ -564,6 +564,11 @@ sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const ch
         goto cleanup;
     }
 
+    if (!change_edit) {
+        /* no discarded oper data */
+        goto cleanup;
+    }
+
     /* set changed flags */
     for (i = 0; i < mod_info.mod_count; ++i) {
         mod = &mod_info.mods[i];
