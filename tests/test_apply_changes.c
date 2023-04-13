@@ -2567,7 +2567,7 @@ module_change_any_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
 
         str2 =
         "<cont xmlns=\"urn:test\">"
-            "<anyx>&lt;some-xml&gt;&lt;elem&gt;value&lt;/elem&gt;&lt;/some-xml&gt;</anyx>"
+            "<anyx><some-xml><elem>value</elem></some-xml></anyx>"
             "<anyd><some-data>24</some-data></anyd>"
         "</cont>";
 
@@ -2591,7 +2591,10 @@ module_change_any_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
         assert_int_equal(ret, SR_ERR_OK);
 
         assert_int_equal(op, SR_OP_MODIFIED);
-        assert_string_equal(prev_val, "<some-xml><elem>value</elem></some-xml>");
+        assert_string_equal(prev_val,
+                "<some-xml>\n"
+                "  <elem>value</elem>\n"
+                "</some-xml>\n");
         assert_string_equal(node->schema->name, "anyx");
 
         /* 2nd change */
@@ -2618,7 +2621,7 @@ module_change_any_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
 
         str2 =
         "<cont xmlns=\"urn:test\">"
-            "<anyx>&lt;other-xml&gt;&lt;elem2&gt;value2&lt;/elem2&gt;&lt;/other-xml&gt;</anyx>"
+            "<anyx><other-xml><elem2>value2</elem2></other-xml></anyx>"
             "<anyd><new-data>48</new-data></anyd>"
         "</cont>";
 
@@ -2708,7 +2711,7 @@ apply_change_any_thread(void *arg)
 
     str2 =
         "<cont xmlns=\"urn:test\">"
-            "<anyx>&lt;some-xml&gt;&lt;elem&gt;value&lt;/elem&gt;&lt;/some-xml&gt;</anyx>"
+            "<anyx><some-xml><elem>value</elem></some-xml></anyx>"
             "<anyd><some-data>24</some-data></anyd>"
         "</cont>";
 
@@ -2733,7 +2736,7 @@ apply_change_any_thread(void *arg)
 
     str2 =
         "<cont xmlns=\"urn:test\">"
-            "<anyx>&lt;other-xml&gt;&lt;elem2&gt;value2&lt;/elem2&gt;&lt;/other-xml&gt;</anyx>"
+            "<anyx><other-xml><elem2>value2</elem2></other-xml></anyx>"
             "<anyd><new-data>48</new-data></anyd>"
         "</cont>";
 
