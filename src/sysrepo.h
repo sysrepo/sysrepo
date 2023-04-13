@@ -930,9 +930,9 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
  * If the @p path of list/leaf-list does not include keys/value, all instances are deleted but there can be no further
  * changes merged into the list, use ::SR_EDIT_ISOLATE in such a case.
  *
- * For ::SR_DS_OPERATIONAL, the flag is not allowed and list/leaf-list instance must always include its predicate.
- * However, when trying to **remove a value stored in the push operational data** (set before using ::sr_set_item_str()
- * on ::SR_DS_OPERATIONAL, for example), use ::sr_discard_oper_changes() instead.
+ * For ::SR_DS_OPERATIONAL, the flag is not allowed. However, when trying to **remove a value stored in the push
+ * operational data** (set before using ::sr_set_item_str() on ::SR_DS_OPERATIONAL, for example), use
+ * ::sr_discard_oper_changes() instead.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifier of the data element to be deleted.

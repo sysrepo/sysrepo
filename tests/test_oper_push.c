@@ -2015,6 +2015,103 @@ test_diff_merge_userord(void **state)
 
 /* TEST */
 static void
+test_purge(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_data_t *data;
+    sr_subscription_ctx_t *subscr = NULL;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* set some running list instances */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type", "iana-if-type:ethernetCsmacd",
+            NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:ethernetCsmacd",
+            NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to all configuration data just to enable them */
+    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", NULL, dummy_change_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set some operational data list instances as well */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type", "iana-if-type:ethernetCsmacd",
+            NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth3']/type", "iana-if-type:ethernetCsmacd",
+            NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the data #1 */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+
+    str2 =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\""
+    " or:origin=\"or:intended\">"
+        "<interface>"
+            "<name>eth0</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<enabled or:origin=\"or:default\">true</enabled>"
+        "</interface>"
+        "<interface>"
+            "<name>eth1</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "<enabled or:origin=\"or:default\">true</enabled>"
+        "</interface>"
+        "<interface>"
+            "<name>eth2</name>"
+            "<type or:origin=\"or:unknown\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+        "</interface>"
+        "<interface>"
+            "<name>eth3</name>"
+            "<type or:origin=\"or:unknown\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+        "</interface>"
+    "</interfaces>";
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* purge all the list instances */
+    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces/interface", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the data #2 */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+    assert_null(str1);
+
+    /* fail to create a new list instance */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='wlo1']/type", "iana-if-type:ethernetCsmacd",
+            NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_UNSUPPORTED);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_unsubscribe(subscr);
+}
+
+/* TEST */
+static void
 test_schema_mount(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -2311,6 +2408,7 @@ main(void)
         cmocka_unit_test_teardown(test_np_cont2, clear_up),
         cmocka_unit_test_teardown(test_edit_merge_leaf, clear_up),
         cmocka_unit_test_teardown(test_diff_merge_userord, clear_up),
+        cmocka_unit_test_teardown(test_purge, clear_up),
         cmocka_unit_test_teardown(test_schema_mount, clear_up),
         cmocka_unit_test_teardown(test_change_cb, clear_up),
     };

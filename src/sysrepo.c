@@ -3257,13 +3257,6 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     if ((path[strlen(path) - 1] != ']') && (snode = lys_find_path(session->conn->ly_ctx, NULL, path, 0)) &&
             (snode->nodetype & (LYS_LEAFLIST | LYS_LIST)) &&
             !strcmp((path + strlen(path)) - strlen(snode->name), snode->name)) {
-        if (!SR_IS_CONVENTIONAL_DS(session->ds)) {
-            /* not allowed */
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Lists and leaf-lists instances need to be identified by "
-                    "a predicate for operational data edits.");
-            goto cleanup;
-        }
-
         operation = "purge";
     } else if (opts & SR_EDIT_STRICT) {
         if (!SR_IS_CONVENTIONAL_DS(session->ds)) {

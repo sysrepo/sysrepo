@@ -473,8 +473,8 @@ sr_edit_copy_meta(const struct lyd_node *src_node, struct lyd_node *trg_node, in
         goto cleanup;
     }
 
-    /* copy operation */
-    if (src_op == EDIT_ETHER) {
+    /* special cases */
+    if ((src_op == EDIT_ETHER) || (src_op == EDIT_PURGE)) {
         if ((err_info = sr_edit_create_meta_attr(trg_node, "sysrepo", "operation", sr_edit_op2str(src_op)))) {
             goto cleanup;
         }
@@ -2614,9 +2614,12 @@ sr_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_parent, const s
         enum edit_op parent_op, uint32_t cid, struct lyd_node **diff_root, int *change)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *trg_node = NULL, *child_src, *child, *next;
+    struct lyd_node *trg_node = NULL, *trg_sibling, *child_src, *child, *next;
+    struct ly_set *set = NULL;
     enum edit_op src_op, trg_op;
     int val_equal, meta_changed = 0, trg_op_own;
+    char *path = NULL;
+    uint32_t i;
     LY_ERR lyrc;
 
     /* get this node operation */
@@ -2624,9 +2627,22 @@ sr_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_parent, const s
         goto cleanup;
     }
 
-    /* find an equal node in the current data */
-    if ((err_info = sr_edit_find_match(trg_parent ? lyd_child(trg_parent) : *trg_root, src_node, &trg_node))) {
-        goto cleanup;
+    trg_sibling = trg_parent ? lyd_child(trg_parent) : *trg_root;
+    if (src_op == EDIT_PURGE) {
+        /* remove any operations (instances) of the node */
+        path = lyd_path(src_node, LYD_PATH_STD, NULL, 0);
+        if (trg_sibling && lyd_find_xpath(trg_sibling, path, &set)) {
+            sr_errinfo_new_ly(&err_info, LYD_CTX(trg_sibling), trg_sibling);
+            goto cleanup;
+        }
+        for (i = 0; i < set->count; ++i) {
+            lyd_free_tree(set->dnodes[i]);
+        }
+    } else {
+        /* find an equal node in the current data */
+        if ((err_info = sr_edit_find_match(trg_sibling, src_node, &trg_node))) {
+            goto cleanup;
+        }
     }
 
     if (trg_node) {
@@ -2636,7 +2652,13 @@ sr_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_parent, const s
         /* learn target operation */
         trg_op = sr_edit_diff_find_oper(trg_node, 1, &trg_op_own);
         if ((trg_op != EDIT_MERGE) && (trg_op != EDIT_REMOVE) && (trg_op != EDIT_ETHER)) {
-            SR_ERRINFO_INT(&err_info);
+            if (trg_op == EDIT_PURGE) {
+                sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Operation \"%s\" for nodes \"%s\" cannot be combined "
+                        "with operation \"%s\" or any other.", sr_edit_op2str(trg_op), LYD_NAME(trg_node),
+                        sr_edit_op2str(src_op));
+            } else {
+                SR_ERRINFO_INT(&err_info);
+            }
             goto cleanup;
         }
 
@@ -2726,6 +2748,8 @@ sr_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_parent, const s
     }
 
 cleanup:
+    free(path);
+    ly_set_free(set, NULL);
     return err_info;
 }
 
