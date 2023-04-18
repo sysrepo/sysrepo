@@ -539,6 +539,10 @@ op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FO
         }
     }
     if (node) {
+        if (format == LYD_UNKNOWN) {
+            /* use XML as the default */
+            format = LYD_XML;
+        }
         lyd_print_file(stdout, output->tree, format, wd_opt);
     }
     sr_release_data(output);
