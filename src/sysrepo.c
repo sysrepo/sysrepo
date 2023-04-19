@@ -2950,7 +2950,7 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
             }
 
             /* duplicate only to the specified depth */
-            if ((err_info = sr_lyd_dup(set->dnodes[i], max_depth ? max_depth - 1 : 0, node))) {
+            if (max_depth && (err_info = sr_lyd_dup(set->dnodes[i], max_depth, node))) {
                 lyd_free_all(node);
                 goto cleanup;
             }
