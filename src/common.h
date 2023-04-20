@@ -1222,6 +1222,15 @@ size_t sr_xpath_len_no_predicates(const char *xpath);
 const char *sr_xpath_next_qname(const char *xpath, const char **mod, int *mod_len, const char **name, int *len);
 
 /**
+ * @brief Filter out the results that are descendants of another result. In case the results represent selected
+ * subtrees, the filtered out results are redundant.
+ *
+ * @param[in,out] set Set with selected data nodes (subtrees).
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_xpath_set_filter_subtrees(struct ly_set *set);
+
+/**
  * @brief Get all text atoms (simple paths) for an XPath.
  *
  * @param[in] xpath XPath to parse.

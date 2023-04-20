@@ -40,6 +40,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <libyang/hash_table.h>
 #include <libyang/plugins_exts.h>
 
 #include "config.h"
@@ -4811,6 +4812,71 @@ sr_xpath_next_qname(const char *xpath, const char **mod, int *mod_len, const cha
     }
 
     return ptr;
+}
+
+/**
+ * @brief Comparison callback for lyd_node pointers.
+ *
+ * Implementation of ::lyht_value_equal_cb.
+ */
+static ly_bool
+sr_lyht_value_lyd_node_equal_cb(void *val1_p, void *val2_p, ly_bool UNUSED(mod), void *UNUSED(cb_data))
+{
+    struct lyd_node *val1, *val2;
+
+    val1 = *(struct lyd_node **)val1_p;
+    val2 = *(struct lyd_node **)val2_p;
+
+    return val1 == val2;
+}
+
+sr_error_info_t *
+sr_xpath_set_filter_subtrees(struct ly_set *set)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_ht *ht = NULL;
+    struct lyd_node *node, *parent;
+    uint32_t i, hash;
+
+    if (set->count < 2) {
+        /* nothing to do */
+        goto cleanup;
+    }
+
+    /* fixed hash table for the previous results */
+    ht = lyht_new(lyht_get_fixed_size(set->count), sizeof node, sr_lyht_value_lyd_node_equal_cb, NULL, 0);
+    SR_CHECK_MEM_GOTO(!ht, err_info, cleanup);
+
+    i = 0;
+    while (i < set->count) {
+        node = set->dnodes[i];
+
+        for (parent = lyd_parent(node); parent; parent = lyd_parent(parent)) {
+            hash = lyht_hash((void *)&parent, sizeof parent);
+            if (!lyht_find(ht, &parent, hash, NULL)) {
+                /* parent is another result */
+                break;
+            }
+        }
+        if (parent) {
+            /* this result is redundant */
+            ly_set_rm_index(set, i, NULL);
+            continue;
+        }
+
+        /* store the result in the hash table */
+        hash = lyht_hash((void *)&node, sizeof node);
+        if (lyht_insert(ht, &node, hash, NULL)) {
+            sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_errmsg());
+            goto cleanup;
+        }
+
+        ++i;
+    }
+
+cleanup:
+    lyht_free(ht, NULL);
+    return err_info;
 }
 
 /**

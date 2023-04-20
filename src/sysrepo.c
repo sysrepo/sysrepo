@@ -2932,6 +2932,11 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
         goto cleanup;
     }
 
+    /* get rid of all redundant results that are descendants of another result */
+    if ((err_info = sr_xpath_set_filter_subtrees(set))) {
+        goto cleanup;
+    }
+
     /* duplicate all returned subtrees with their parents and merge into one data tree */
     for (i = 0; i < set->count; ++i) {
         if (dup) {
