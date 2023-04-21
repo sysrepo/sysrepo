@@ -135,21 +135,22 @@ sr_error_info_t *sr_nacm_check_operation(const char *nacm_user, const struct lyd
         const struct lyd_node **denied_node);
 
 /**
- * @brief Filter out any data for which the user does not have R access. Duplicate allowed data tree is created.
+ * @brief Filter out result nodes that do not have R access to.
  *
- * According to https://tools.ietf.org/html/rfc8341#section-3.2.4
- * recovery session is allowed to access all nodes.
- *
- * @param[in] nacm_user NACM username to use.
- * @param[in] tree Data tree (ignoring siblings) to filter. If not top-level, all parents are also checked.
- * @param[out] dup Duplicated @p data tree with only the accessible data. Also, NULL in special case when all data
- * is accessible.
- * @param[out] denied Whether any node access was denied. Distinguishes between @p dup being NULL because no @p data
- * access was granted and when all access was granted.
+ * @param[in] session Session to use.
+ * @param[in,out] set Set of nodes to filter.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_nacm_check_data_read_filter_dup(const char *nacm_user, const struct lyd_node *tree,
-        struct lyd_node **dup, int *denied);
+sr_error_info_t *sr_nacm_get_node_set_read_filter(sr_session_ctx_t *session, struct ly_set *set);
+
+/**
+ * @brief Filter out result tree subtrees that do not have R access to.
+ *
+ * @param[in] session Session to use.
+ * @param[in,out] subtree Subtree to filter, may be freed (as a tree with any parents) and set to NULL.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_nacm_get_subtree_read_filter(sr_session_ctx_t *session, struct lyd_node **subtree);
 
 /**
  * @brief Check whether the notification is allowed for a user and filter out any edits the user

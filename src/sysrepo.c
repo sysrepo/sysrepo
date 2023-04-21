@@ -2634,9 +2634,7 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
 {
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL;
-    int dup = 0;
     struct sr_mod_info_s mod_info;
-    uint32_t i;
 
     SR_CHECK_ARG_APIRET(!session || !path || !value, session, err_info);
 
@@ -2664,7 +2662,12 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, &set, &dup))) {
+    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, &set))) {
+        goto cleanup;
+    }
+
+    /* apply NACM */
+    if ((err_info = sr_nacm_get_node_set_read_filter(session, set))) {
         goto cleanup;
     }
 
@@ -2688,11 +2691,6 @@ cleanup:
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
 
-    if (dup && set) {
-        for (i = 0; i < set->count; ++i) {
-            lyd_free_tree(set->dnodes[i]);
-        }
-    }
     ly_set_free(set, NULL);
     sr_modinfo_erase(&mod_info);
 
@@ -2735,7 +2733,6 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
 {
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL;
-    int dup = 0;
     struct sr_mod_info_s mod_info;
     uint32_t i;
 
@@ -2767,7 +2764,12 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
     }
 
     /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, (opts & SR_GET_NO_FILTER) ? "/*" : xpath, session, &set, &dup))) {
+    if ((err_info = sr_modinfo_get_filter(&mod_info, (opts & SR_GET_NO_FILTER) ? "/*" : xpath, session, &set))) {
+        goto cleanup;
+    }
+
+    /* apply NACM */
+    if ((err_info = sr_nacm_get_node_set_read_filter(session, set))) {
         goto cleanup;
     }
 
@@ -2787,11 +2789,6 @@ cleanup:
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
 
-    if (dup && set) {
-        for (i = 0; i < set->count; ++i) {
-            lyd_free_tree(set->dnodes[i]);
-        }
-    }
     ly_set_free(set, NULL);
     sr_modinfo_erase(&mod_info);
 
@@ -2810,7 +2807,6 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
 {
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL;
-    int dup = 0;
     struct sr_mod_info_s mod_info;
     uint32_t i;
 
@@ -2844,37 +2840,45 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
     }
 
     /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, &set, &dup))) {
+    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, &set))) {
         goto cleanup;
+    }
+
+    /* apply NACM */
+    if (session->nacm_user) {
+        i = 0;
+        while (i < set->count) {
+            if ((err_info = sr_nacm_get_subtree_read_filter(session, &set->dnodes[i]))) {
+                goto cleanup;
+            }
+
+            if (!set->dnodes[i]) {
+                /* result denied */
+                ly_set_rm_index(set, i, NULL);
+                continue;
+            }
+
+            ++i;
+        }
     }
 
     if (set->count > 1) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "More subtrees match \"%s\".", path);
         goto cleanup;
+    } else if (!set->count) {
+        goto cleanup;
     }
 
     /* set result */
-    if (set->count == 1) {
-        if (dup) {
-            (*subtree)->tree = set->dnodes[0];
-            set->dnodes[0] = NULL;
-        } else {
-            if (lyd_dup_single(set->dnodes[0], NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS, &(*subtree)->tree)) {
-                sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
-                goto cleanup;
-            }
-        }
+    if (lyd_dup_single(set->dnodes[0], NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS, &(*subtree)->tree)) {
+        sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
+        goto cleanup;
     }
 
 cleanup:
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
 
-    if (dup && set) {
-        for (i = 0; i < set->count; ++i) {
-            lyd_free_tree(set->dnodes[i]);
-        }
-    }
     ly_set_free(set, NULL);
     sr_modinfo_erase(&mod_info);
 
@@ -2891,7 +2895,7 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
-    int dup_opts, dup = 0;
+    int dup_opts;
     struct sr_mod_info_s mod_info;
     struct ly_set *set = NULL;
     struct lyd_node *node;
@@ -2928,7 +2932,7 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
     }
 
     /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, (opts & SR_GET_NO_FILTER) ? "/*" : xpath, session, &set, &dup))) {
+    if ((err_info = sr_modinfo_get_filter(&mod_info, (opts & SR_GET_NO_FILTER) ? "/*" : xpath, session, &set))) {
         goto cleanup;
     }
 
@@ -2939,26 +2943,25 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
 
     /* duplicate all returned subtrees with their parents and merge into one data tree */
     for (i = 0; i < set->count; ++i) {
-        if (dup) {
-            /* use subtree */
-            node = set->dnodes[i];
-            set->dnodes[i] = NULL;
+        /* duplicate subtree */
+        dup_opts = (max_depth ? 0 : LYD_DUP_RECURSIVE) | LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS;
+        if (lyd_dup_single(set->dnodes[i], NULL, dup_opts, &node)) {
+            sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
+            goto cleanup;
+        }
 
-            /* remove nodes exceeding the maximum depth */
-            sr_lyd_trim_depth(node, max_depth);
-        } else {
-            /* duplicate subtree */
-            dup_opts = (max_depth ? 0 : LYD_DUP_RECURSIVE) | LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS;
-            if (lyd_dup_single(set->dnodes[i], NULL, dup_opts, &node)) {
-                sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
-                goto cleanup;
-            }
+        /* duplicate only to the specified depth */
+        if (max_depth && (err_info = sr_lyd_dup(set->dnodes[i], max_depth, node))) {
+            lyd_free_all(node);
+            goto cleanup;
+        }
 
-            /* duplicate only to the specified depth */
-            if (max_depth && (err_info = sr_lyd_dup(set->dnodes[i], max_depth, node))) {
-                lyd_free_all(node);
-                goto cleanup;
-            }
+        /* apply NACM on the subtree */
+        if ((err_info = sr_nacm_get_subtree_read_filter(session, &node))) {
+            goto cleanup;
+        }
+        if (!node) {
+            continue;
         }
 
         /* always find parent */
@@ -2982,11 +2985,6 @@ cleanup:
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
 
-    if (dup && set) {
-        for (i = 0; i < set->count; ++i) {
-            lyd_free_tree(set->dnodes[i]);
-        }
-    }
     ly_set_free(set, NULL);
     sr_modinfo_erase(&mod_info);
 
@@ -3002,10 +3000,8 @@ sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
 {
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL;
-    int dup = 0;
     struct sr_mod_info_s mod_info;
     struct lyd_node *n;
-    uint32_t i;
 
     SR_CHECK_ARG_APIRET(!session || !path || !node, session, err_info);
 
@@ -3038,7 +3034,12 @@ sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* filter the required data */
-    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, &set, &dup))) {
+    if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, &set))) {
+        goto cleanup;
+    }
+
+    /* apply NACM */
+    if ((err_info = sr_nacm_get_node_set_read_filter(session, set))) {
         goto cleanup;
     }
 
@@ -3051,16 +3052,9 @@ sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* return found node */
-    if (dup) {
-        /* use the node */
-        n = set->dnodes[0];
-        set->dnodes[0] = NULL;
-    } else {
-        /* duplicate the node */
-        if (lyd_dup_single(set->dnodes[0], NULL, LYD_DUP_WITH_FLAGS, &n)) {
-            sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
-            goto cleanup;
-        }
+    if (lyd_dup_single(set->dnodes[0], NULL, LYD_DUP_WITH_FLAGS, &n)) {
+        sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
+        goto cleanup;
     }
     (*node)->tree = n;
 
@@ -3068,11 +3062,6 @@ cleanup:
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
 
-    if (dup && set) {
-        for (i = 0; i < set->count; ++i) {
-            lyd_free_tree(set->dnodes[i]);
-        }
-    }
     ly_set_free(set, NULL);
     sr_modinfo_erase(&mod_info);
 
