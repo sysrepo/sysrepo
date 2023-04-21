@@ -1965,29 +1965,30 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_nacm_get_subtree_read_filter(sr_session_ctx_t *session, struct lyd_node **subtree)
+sr_nacm_get_subtree_read_filter(sr_session_ctx_t *session, struct lyd_node *subtree, int *denied)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_set denied_set = {0};
     struct lyd_node *node;
     uint32_t i;
 
-    if (!session->nacm_user) {
+    *denied = 0;
+
+    if (!session->nacm_user || !subtree) {
         /* nothing to do */
         goto cleanup;
     }
 
     /* apply NACM on the subtree */
-    if ((err_info = sr_nacm_check_data_read_filter(session->nacm_user, *subtree, &denied_set))) {
+    if ((err_info = sr_nacm_check_data_read_filter(session->nacm_user, subtree, &denied_set))) {
         goto cleanup;
     }
     for (i = 0; i < denied_set.count; ++i) {
         /* any parent could have been denied instead of the subtree */
-        for (node = *subtree; node; node = lyd_parent(node)) {
+        for (node = subtree; node; node = lyd_parent(node)) {
             if (denied_set.dnodes[i] == node) {
                 /* whole subtree filtered out */
-                lyd_free_all(*subtree);
-                *subtree = NULL;
+                *denied = 1;
                 goto cleanup;
             }
         }

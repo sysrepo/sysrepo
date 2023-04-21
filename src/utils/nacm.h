@@ -147,10 +147,11 @@ sr_error_info_t *sr_nacm_get_node_set_read_filter(sr_session_ctx_t *session, str
  * @brief Filter out result tree subtrees that do not have R access to.
  *
  * @param[in] session Session to use.
- * @param[in,out] subtree Subtree to filter, may be freed (as a tree with any parents) and set to NULL.
+ * @param[in] subtree Subtree to filter.
+ * @param[out] denied Set if the whole @p subtree should be filtered out.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_nacm_get_subtree_read_filter(sr_session_ctx_t *session, struct lyd_node **subtree);
+sr_error_info_t *sr_nacm_get_subtree_read_filter(sr_session_ctx_t *session, struct lyd_node *subtree, int *denied);
 
 /**
  * @brief Check whether the notification is allowed for a user and filter out any edits the user

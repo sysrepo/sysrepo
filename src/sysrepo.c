@@ -34,6 +34,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <libyang/hash_table.h>
 #include <libyang/libyang.h>
 
 #include "common.h"
@@ -2808,7 +2809,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL;
     struct sr_mod_info_s mod_info;
-    uint32_t i;
+    int denied;
 
     SR_CHECK_ARG_APIRET(!session || !path || !subtree, session, err_info);
 
@@ -2844,22 +2845,9 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
         goto cleanup;
     }
 
-    /* apply NACM */
-    if (session->nacm_user) {
-        i = 0;
-        while (i < set->count) {
-            if ((err_info = sr_nacm_get_subtree_read_filter(session, &set->dnodes[i]))) {
-                goto cleanup;
-            }
-
-            if (!set->dnodes[i]) {
-                /* result denied */
-                ly_set_rm_index(set, i, NULL);
-                continue;
-            }
-
-            ++i;
-        }
+    /* apply NACM #1, get rid of whole denied results */
+    if ((err_info = sr_nacm_get_node_set_read_filter(session, set))) {
+        goto cleanup;
     }
 
     if (set->count > 1) {
@@ -2875,6 +2863,12 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
         goto cleanup;
     }
 
+    /* apply NACM #2, filter out the selected subtree */
+    if ((err_info = sr_nacm_get_subtree_read_filter(session, (*subtree)->tree, &denied))) {
+        goto cleanup;
+    }
+    assert(!denied);
+
 cleanup:
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
@@ -2889,16 +2883,40 @@ cleanup:
     return sr_api_ret(session, err_info);
 }
 
+/**
+ * @brief Get-data parent hash table record.
+ */
+struct sr_lyht_get_data_rec {
+    struct lyd_node *input_parent;  /**< parent in the input (sysrepo) data */
+    struct lyd_node *result_parent; /**< parent in the result (user returned) data */
+};
+
+/**
+ * @brief Get-data parent hash table equal callback.
+ */
+static ly_bool
+sr_lyht_value_get_data_equal_cb(void *val1_p, void *val2_p, ly_bool UNUSED(mod), void *UNUSED(cb_data))
+{
+    struct sr_lyht_get_data_rec *val1, *val2;
+
+    val1 = val1_p;
+    val2 = val2_p;
+
+    return val1->input_parent == val2->input_parent;
+}
+
 API int
 sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, uint32_t timeout_ms,
         const sr_get_options_t opts, sr_data_t **data)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t i;
-    int dup_opts;
+    uint32_t i, hash;
+    int dup_opts, denied;
     struct sr_mod_info_s mod_info;
     struct ly_set *set = NULL;
-    struct lyd_node *node;
+    struct lyd_node *node, *parent, *node_parent, *input_node;
+    struct ly_ht *ht = NULL;
+    struct sr_lyht_get_data_rec rec, *rec_p;
 
     SR_CHECK_ARG_APIRET(!session || !xpath || !data || ((session->ds != SR_DS_OPERATIONAL) && (opts & SR_OPER_MASK)),
             session, err_info);
@@ -2941,43 +2959,71 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
         goto cleanup;
     }
 
-    /* duplicate all returned subtrees with their parents and merge into one data tree */
+    /* create a hash table for finding existing parents */
+    ht = lyht_new(1, sizeof rec, sr_lyht_value_get_data_equal_cb, NULL, 1);
+    SR_CHECK_MEM_GOTO(!ht, err_info, cleanup);
+
     for (i = 0; i < set->count; ++i) {
-        /* duplicate subtree */
+        /* check whether a parent does not exist yet in the result */
+        for (parent = lyd_parent(set->dnodes[i]); parent; parent = lyd_parent(parent)) {
+            hash = lyht_hash((void *)&parent, sizeof parent);
+            rec.input_parent = parent;
+            if (!lyht_find(ht, &rec, hash, (void **)&rec_p)) {
+                /* parent exists, use the one in the result */
+                parent = rec_p->result_parent;
+                break;
+            }
+        }
+
+        /* duplicate subtree and connect it to an existing parent, if any */
         dup_opts = (max_depth ? 0 : LYD_DUP_RECURSIVE) | LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS;
-        if (lyd_dup_single(set->dnodes[i], NULL, dup_opts, &node)) {
+        if (lyd_dup_single(set->dnodes[i], (struct lyd_node_inner *)parent, dup_opts, &node)) {
             sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
             goto cleanup;
         }
 
+        /* get first created node parent (can be node itself) */
+        for (node_parent = node; lyd_parent(node_parent) != parent; node_parent = lyd_parent(node_parent)) {}
+
         /* duplicate only to the specified depth */
         if (max_depth && (err_info = sr_lyd_dup(set->dnodes[i], max_depth, node))) {
-            lyd_free_all(node);
+            lyd_free_tree(node_parent);
             goto cleanup;
         }
 
-        /* apply NACM on the subtree */
-        if ((err_info = sr_nacm_get_subtree_read_filter(session, &node))) {
+        /* apply NACM on the selected subtree */
+        if ((err_info = sr_nacm_get_subtree_read_filter(session, node, &denied))) {
             goto cleanup;
         }
-        if (!node) {
+        if (denied) {
+            /* the whole subtree was filtered out, remove it with any new parents */
+            lyd_free_tree(node_parent);
             continue;
         }
 
-        /* always find parent */
-        while (node->parent) {
-            node = lyd_parent(node);
-        }
-
-        /* connect to the result */
-        if (!(*data)->tree) {
-            (*data)->tree = node;
-        } else {
-            if (lyd_merge_tree(&(*data)->tree, node, LYD_MERGE_DESTRUCT)) {
+        if (!parent) {
+            /* connect to the result */
+            if (lyd_insert_sibling((*data)->tree, node_parent, &(*data)->tree)) {
                 sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
                 lyd_free_tree(node);
                 goto cleanup;
             }
+        }
+
+        /* store all the new potential parents in the result */
+        input_node = lyd_parent(set->dnodes[i]);
+        for (node = lyd_parent(node); node != parent; node = lyd_parent(node)) {
+            hash = lyht_hash((void *)&input_node, sizeof input_node);
+            rec.input_parent = input_node;
+            rec.result_parent = node;
+            assert(rec.input_parent->schema == rec.result_parent->schema);
+            if (lyht_insert(ht, &rec, hash, NULL)) {
+                sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_errmsg());
+                goto cleanup;
+            }
+
+            /* move input */
+            input_node = lyd_parent(input_node);
         }
     }
 
@@ -2987,6 +3033,7 @@ cleanup:
 
     ly_set_free(set, NULL);
     sr_modinfo_erase(&mod_info);
+    lyht_free(ht, NULL);
 
     if (err_info || !(*data)->tree) {
         sr_release_data(*data);
