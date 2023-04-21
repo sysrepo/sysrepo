@@ -1723,6 +1723,12 @@ sr_subscr_oper_path_check(const struct ly_ctx *ly_ctx, const char *path, sr_mod_
         /* learn subscription type */
         *sub_type = SR_OPER_GET_SUB_NONE;
         for (i = 0; i < set->count; ++i) {
+            if (lysc_is_key(set->snodes[i])) {
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG,
+                        "Path \"%s\" selects a list key, whole list instances must be provided instead.", path);
+                goto cleanup;
+            }
+
             LYSC_TREE_DFS_BEGIN(set->snodes[i], elem) {
                 switch (elem->nodetype) {
                 case LYS_CONTAINER:
