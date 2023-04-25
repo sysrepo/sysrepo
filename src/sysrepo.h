@@ -209,18 +209,7 @@ int sr_get_plugins(sr_conn_ctx_t *conn, const char ***ds_plugins, const char ***
 uid_t sr_get_su_uid(void);
 
 /**
- * @brief Discard stored push operational data owned by this connection. Is performed directly on the connection,
- * ::sr_apply_changes() call is not required.
- *
- * Required WRITE access.
- *
- * @param[in] conn Connection to use.
- * @param[in] session Optional session to read SID and originator data from.
- * @param[in] xpath Selected data to discard, if NULL all the data owned by the connection are discarded.
- * @param[in] timeout_ms Change callback timeout in milliseconds. If 0, default is used. Note that this timeout
- * is measured separately for each callback meaning this whole function call can easily __take more time__ than this
- * timeout if there are changes applied for several subscribers.
- * @return Error code (::SR_ERR_OK on success).
+ * @brief Deprecated, use ::sr_discard_items().
  */
 int sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms);
 
@@ -879,7 +868,7 @@ void sr_free_values(sr_val_t *values, size_t count);
 
 /**
  * @brief Prepare to set (create) the value of a leaf, leaf-list, list, or presence container.
- * These changes are applied only after calling ::sr_apply_changes.
+ * These changes are applied only after calling ::sr_apply_changes().
  * Data are represented as ::sr_val_t structures.
  *
  * With default options it recursively creates all missing nodes (containers and
@@ -905,10 +894,10 @@ int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *val
 
 /**
  * @brief Prepare to set (create) the value of a leaf, leaf-list, list, or presence container.
- * These changes are applied only after calling ::sr_apply_changes.
+ * These changes are applied only after calling ::sr_apply_changes().
  * Data are represented as pairs of a path and string value.
  *
- * Function provides the same functionality as ::sr_set_item.
+ * Function provides the same functionality as ::sr_set_item().
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifier of the data element to be set.
@@ -923,7 +912,7 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
 
 /**
  * @brief Prepare to delete the nodes matching the specified xpath. These changes are applied only
- * after calling ::sr_apply_changes. The accepted values are the same as for ::sr_set_item_str.
+ * after calling ::sr_apply_changes(). The accepted values are the same as for ::sr_set_item_str.
  *
  * If ::SR_EDIT_STRICT flag is set the specified node must must exist in the datastore.
  * If the @p path includes the list keys/leaf-list value, the specified instance is deleted.
@@ -932,7 +921,7 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
  *
  * For ::SR_DS_OPERATIONAL, the flag is not allowed. However, when trying to **remove a value stored in the push
  * operational data** (set before using ::sr_set_item_str() on ::SR_DS_OPERATIONAL, for example), use
- * ::sr_discard_oper_changes() instead.
+ * ::sr_discard_items() instead.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifier of the data element to be deleted.
@@ -947,8 +936,22 @@ int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_op
 int sr_oper_delete_item_str(sr_session_ctx_t *session, const char *path, const char *value, const sr_edit_options_t opts);
 
 /**
+ * @brief Prepare to discard nodes matching the specified xpath (or all if not set) previously set by the
+ * session connection. Usable only for ::SR_DS_OPERATIONAL datastore. These changes are applied only
+ * after calling ::sr_apply_changes().
+ *
+ * Creates an opaque node `discard-items` in the `sysrepo` YANG module namespace with @p xpath used as the value.
+ * Such a node can be a part of the edit in ::sr_edit_batch() and will discard nodes like this function does.
+ *
+ * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
+ * @param[in] xpath [XPath](@ref paths) expression filtering the nodes to discard, all if NULL.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_discard_items(sr_session_ctx_t *session, const char *xpath);
+
+/**
  * @brief Prepare to move/create the instance of an user-ordered list or leaf-list to the specified position.
- * These changes are applied only after calling ::sr_apply_changes.
+ * These changes are applied only after calling ::sr_apply_changes().
  *
  * Item can be moved to the first or last position or positioned relatively to its sibling.
  *
@@ -959,7 +962,7 @@ int sr_oper_delete_item_str(sr_session_ctx_t *session, const char *path, const c
  *
  * For ::SR_DS_OPERATIONAL, neither option is allowed.
  *
- * @note To determine current order, you can issue a ::sr_get_items call
+ * @note To determine current order, you can issue a ::sr_get_items() call
  * (without specifying keys of particular list).
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use

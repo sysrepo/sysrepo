@@ -5530,3 +5530,34 @@ sr_conn_push_oper_mod_add(sr_conn_ctx_t *conn, const char *mod_name)
 cleanup:
     return err_info;
 }
+
+sr_error_info_t *
+sr_conn_push_oper_mod_del(sr_conn_ctx_t *conn, const char *mod_name)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i;
+
+    for (i = 0; i < conn->oper_push_mod_count; ++i) {
+        if (!strcmp(conn->oper_push_mods[i], mod_name)) {
+            /* found */
+            break;
+        }
+    }
+    if (i == conn->oper_push_mod_count) {
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL,
+                "Module \"%s\" not found in the push oper module cache of a connection.", mod_name);
+        goto cleanup;
+    }
+
+    free(conn->oper_push_mods[i]);
+    --conn->oper_push_mod_count;
+    if (i < conn->oper_push_mod_count) {
+        conn->oper_push_mods[i] = conn->oper_push_mods[conn->oper_push_mod_count];
+    } else if (!conn->oper_push_mod_count) {
+        free(conn->oper_push_mods);
+        conn->oper_push_mods = NULL;
+    }
+
+cleanup:
+    return err_info;
+}

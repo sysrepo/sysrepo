@@ -3336,6 +3336,43 @@ sr_oper_delete_item_str(sr_session_ctx_t *session, const char *path, const char 
 }
 
 API int
+sr_discard_items(sr_session_ctx_t *session, const char *xpath)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *node;
+
+    SR_CHECK_ARG_APIRET(!session || (session->ds != SR_DS_OPERATIONAL), session, err_info);
+
+    /* we do not need any lock, ext SHM is not accessed */
+
+    if (!session->dt[session->ds].edit) {
+        /* CONTEXT LOCK */
+        if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
+            goto cleanup;
+        }
+
+        /* prepare edit with context lock */
+        if ((err_info = _sr_acquire_data(session->conn, NULL, &session->dt[session->ds].edit))) {
+            goto cleanup;
+        }
+    }
+
+    /* add the operation into edit */
+    if (lyd_new_opaq(NULL, session->conn->ly_ctx, "discard-items", xpath, "sysrepo", "sysrepo", &node)) {
+        sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
+        goto cleanup;
+    }
+    lyd_insert_sibling(session->dt[session->ds].edit->tree, node, &session->dt[session->ds].edit->tree);
+
+cleanup:
+    if (session->dt[session->ds].edit && !session->dt[session->ds].edit->tree) {
+        sr_release_data(session->dt[session->ds].edit);
+        session->dt[session->ds].edit = NULL;
+    }
+    return sr_api_ret(session, err_info);
+}
+
+API int
 sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position_t position, const char *list_keys,
         const char *leaflist_value, const char *origin, const sr_edit_options_t opts)
 {

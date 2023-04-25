@@ -1387,6 +1387,399 @@ test_top_leaf(void **state)
 
 /* TEST */
 static int
+discard_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    sr_change_oper_t op;
+    sr_change_iter_t *iter;
+    const struct lyd_node *node;
+    const char *prev_value;
+    int ret;
+
+    (void)sub_id;
+    (void)request_id;
+
+    assert_string_equal(module_name, "ietf-interfaces");
+    assert_null(xpath);
+
+    if (ATOMIC_LOAD_RELAXED(st->cb_called) % 2 == 0) {
+        assert_int_equal(event, SR_EV_CHANGE);
+    } else {
+        assert_int_equal(event, SR_EV_DONE);
+    }
+
+    /* get changes iter */
+    ret = sr_get_changes_iter(session, "/ietf-interfaces:*//.", &iter);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
+    case 0:
+    case 1:
+        /* 1st change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "interfaces");
+        assert_null(prev_value);
+
+        /* 2nd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "interface");
+        assert_null(prev_value);
+
+        /* 3rd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "name");
+        assert_string_equal(lyd_get_value(node), "eth1");
+        assert_null(prev_value);
+
+        /* 4th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "description");
+        assert_null(prev_value);
+
+        /* 5th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "type");
+        assert_null(prev_value);
+
+        /* 6th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "interface");
+        assert_null(prev_value);
+
+        /* 7th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "name");
+        assert_string_equal(lyd_get_value(node), "eth2");
+        assert_null(prev_value);
+
+        /* 8th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "type");
+        assert_null(prev_value);
+
+        /* 9th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "interface");
+        assert_null(prev_value);
+
+        /* 10th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "name");
+        assert_string_equal(lyd_get_value(node), "eth3");
+        assert_null(prev_value);
+
+        /* 11th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "type");
+        assert_null(prev_value);
+
+        /* no more changes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+        break;
+    case 2:
+    case 3:
+        /* 1st change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "interface");
+        assert_null(prev_value);
+
+        /* 2nd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "name");
+        assert_string_equal(lyd_get_value(node), "eth1");
+        assert_null(prev_value);
+
+        /* 3rd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "description");
+        assert_null(prev_value);
+
+        /* 4th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "type");
+        assert_null(prev_value);
+
+        /* 5th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "interface");
+        assert_null(prev_value);
+
+        /* 6th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "name");
+        assert_string_equal(lyd_get_value(node), "eth2");
+        assert_null(prev_value);
+
+        /* 7th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "type");
+        assert_null(prev_value);
+
+        /* 8th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "interface");
+        assert_null(prev_value);
+
+        /* 9th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "name");
+        assert_string_equal(lyd_get_value(node), "eth3");
+        assert_null(prev_value);
+
+        /* 10th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "type");
+        assert_null(prev_value);
+
+        /* 11th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "interface");
+        assert_null(prev_value);
+
+        /* 12th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "name");
+        assert_string_equal(lyd_get_value(node), "eth4");
+        assert_null(prev_value);
+
+        /* 13th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "type");
+        assert_null(prev_value);
+
+        /* no more changes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+        break;
+    case 4:
+    case 5:
+        /* 1st change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "interfaces");
+        assert_null(prev_value);
+
+        /* 2nd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "interface");
+        assert_null(prev_value);
+
+        /* 3rd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "name");
+        assert_string_equal(lyd_get_value(node), "eth4");
+        assert_null(prev_value);
+
+        /* 4th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "type");
+        assert_null(prev_value);
+
+        /* no more changes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+        break;
+    default:
+        fail();
+    }
+
+    sr_free_change_iter(iter);
+    ATOMIC_INC_RELAXED(st->cb_called);
+    return SR_ERR_OK;
+}
+
+static void
+test_discard(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr = NULL;
+    sr_data_t *data;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to data changes */
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+    ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", NULL, discard_change_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* #1 create some list instances */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth1']/description",
+            "config-description", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth2']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth3']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the operational data */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+    str2 =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth1</name>"
+            "<description>config-description</description>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+        "</interface>"
+        "<interface>"
+            "<name>eth2</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+        "</interface>"
+        "<interface>"
+            "<name>eth3</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+        "</interface>"
+    "</interfaces>";
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* #2 discard list instances and create a new one */
+    ret = sr_discard_items(st->sess, "/ietf-interfaces:interfaces/interface");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth4']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the operational data */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+    str2 =
+    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+        "<interface>"
+            "<name>eth4</name>"
+            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+        "</interface>"
+    "</interfaces>";
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* #3 discard everything */
+    ret = sr_discard_items(st->sess, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the operational data */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+    assert_null(str1);
+
+    /* cleanup */
+    ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_unsubscribe(subscr);
+}
+
+/* TEST */
+static int
 stored_edit_ether_diff_remove_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name,
         const char *xpath, sr_event_t event, uint32_t request_id, void *private_data)
 {
@@ -2402,6 +2795,7 @@ main(void)
         cmocka_unit_test_teardown(test_config, clear_up),
         cmocka_unit_test_teardown(test_top_list, clear_up),
         cmocka_unit_test_teardown(test_top_leaf, clear_up),
+        cmocka_unit_test_teardown(test_discard, clear_up),
         cmocka_unit_test_teardown(test_edit_ether_diff_remove, clear_up),
         cmocka_unit_test_teardown(test_invalid, clear_up),
         cmocka_unit_test_teardown(test_np_cont1, clear_up),

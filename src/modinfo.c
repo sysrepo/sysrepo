@@ -149,6 +149,8 @@ sr_modinfo_collect_edit(const struct lyd_node *edit, struct sr_mod_info_s *mod_i
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
     const struct lyd_node *root;
+    const char *xpath;
+    uint32_t i;
 
     /* add all the modules from the edit into our array */
     ly_mod = NULL;
@@ -156,8 +158,31 @@ sr_modinfo_collect_edit(const struct lyd_node *edit, struct sr_mod_info_s *mod_i
         if (!lyd_owner_module(root) || (lyd_owner_module(root) == ly_mod)) {
             continue;
         } else if (!strcmp(lyd_owner_module(root)->name, "sysrepo")) {
-            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"sysrepo\" cannot be modified.");
-            return err_info;
+            if (root->schema || strcmp(LYD_NAME(root), "discard-items") || (mod_info->ds != SR_DS_OPERATIONAL)) {
+                sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"sysrepo\" cannot be modified.");
+                return err_info;
+            }
+
+            xpath = lyd_get_value(root);
+            if (xpath && xpath[0]) {
+                /* collect xpath to discard */
+                if ((err_info = sr_modinfo_collect_xpath(mod_info->conn->ly_ctx, xpath, SR_DS_OPERATIONAL, 0, 0, mod_info))) {
+                    return err_info;
+                }
+            } else {
+                /* add all the cached modules */
+                for (i = 0; i < mod_info->conn->oper_push_mod_count; ++i) {
+                    ly_mod = ly_ctx_get_module_implemented(mod_info->conn->ly_ctx, mod_info->conn->oper_push_mods[i]);
+                    if (!ly_mod) {
+                        /* could have been removed */
+                        continue;
+                    }
+                    if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, mod_info))) {
+                        return err_info;
+                    }
+                }
+            }
+            continue;
         }
 
         /* remember last mod, good chance it will also be the module of some next data nodes */
@@ -463,9 +488,11 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
-    struct sr_mod_info_mod_s *mod = NULL;
-    const struct lyd_node *node;
-    uint32_t *aux = NULL;
+    struct sr_mod_info_mod_s *mod;
+    const struct lyd_node *node, *iter;
+    struct lyd_node *change_edit;
+    uint32_t *aux = NULL, i;
+    const char *xpath;
     int change;
 
     assert(!mod_info->data_cached);
@@ -479,12 +506,52 @@ sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
         }
 
         assert(ly_mod);
-        if (!strcmp(ly_mod->name, "sysrepo")) {
+        if (strcmp(ly_mod->name, "sysrepo")) {
+            continue;
+        }
+
+        /* invalid edit */
+        if (node->schema || strcmp(LYD_NAME(node), "discard-items") || (mod_info->ds != SR_DS_OPERATIONAL)) {
             sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"sysrepo\" cannot be modified.");
             return err_info;
         }
+
+        /* discard the selected edit nodes */
+        xpath = lyd_get_value(node);
+        if (xpath && !xpath[0]) {
+            xpath = NULL;
+        }
+        change_edit = NULL;
+        if ((err_info = sr_edit_oper_del(&mod_info->data, mod_info->conn->cid, xpath, &change_edit))) {
+            goto cleanup;
+        }
+        if (!change_edit) {
+            continue;
+        }
+
+        /* set changed flags */
+        for (i = 0; i < mod_info->mod_count; ++i) {
+            mod = &mod_info->mods[i];
+            LY_LIST_FOR(change_edit, iter) {
+                if (lyd_owner_module(iter) == mod->ly_mod) {
+                    mod->state |= MOD_INFO_CHANGED;
+                    break;
+                }
+            }
+        }
+
+        /* append diff */
+        if (create_diff) {
+            err_info = sr_edit2diff(change_edit, &mod_info->diff);
+        }
+
+        lyd_free_siblings(change_edit);
+        if (err_info) {
+            goto cleanup;
+        }
     }
 
+    mod = NULL;
     while ((mod = sr_modinfo_next_mod(mod, mod_info, edit, &aux))) {
         assert(mod->state & MOD_INFO_REQ);
 
@@ -3179,9 +3246,15 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
             }
 
             if ((mod_info->ds == SR_DS_OPERATIONAL) && (mod_info->ds2 == SR_DS_OPERATIONAL)) {
-                /* stored oper data, cache the modified module in the connection */
-                if ((err_info = sr_conn_push_oper_mod_add(mod_info->conn, mod->ly_mod->name))) {
-                    goto cleanup;
+                /* stored oper data, update cache of the modified modules in the connection */
+                if (mod_data) {
+                    if ((err_info = sr_conn_push_oper_mod_add(mod_info->conn, mod->ly_mod->name))) {
+                        goto cleanup;
+                    }
+                } else {
+                    if ((err_info = sr_conn_push_oper_mod_del(mod_info->conn, mod->ly_mod->name))) {
+                        goto cleanup;
+                    }
                 }
             }
         }

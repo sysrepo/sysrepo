@@ -1327,12 +1327,21 @@ sr_error_info_t *sr_module_file_oper_data_load(struct sr_mod_info_mod_s *mod, st
 sr_error_info_t *sr_conn_info(sr_cid_t **cids, pid_t **pids, uint32_t *count, sr_cid_t **dead_cids, uint32_t *dead_count);
 
 /**
- * @brief Add a module with modified push oper data by the connection into the connection.
+ * @brief Add a module with modified push oper data by the connection into the connection cache.
  *
  * @param[in] conn Connection to use.
  * @param[in] mod_name Module to add.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_conn_push_oper_mod_add(sr_conn_ctx_t *conn, const char *mod_name);
+
+/**
+ * @brief Remove a module with modified push oper data by the connection from the connection cache.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] mod_name Module to remove.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_conn_push_oper_mod_del(sr_conn_ctx_t *conn, const char *mod_name);
 
 #endif /* _COMMON_H */
