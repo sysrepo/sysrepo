@@ -2783,6 +2783,7 @@ sr_edit_mod_merge(const struct lyd_node *edit, uint32_t cid, const struct lys_mo
                 mod_diff = NULL;
             } else {
                 if (lyd_diff_merge_tree(diff, NULL, mod_diff, NULL, NULL, 0)) {
+                    sr_errinfo_new_ly(&err_info, LYD_CTX(*diff), *diff);
                     goto cleanup;
                 }
                 lyd_free_siblings(mod_diff);
