@@ -2592,7 +2592,7 @@ module_change_any_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
 
         assert_int_equal(op, SR_OP_MODIFIED);
         assert_string_equal(prev_val,
-                "<some-xml>\n"
+                "<some-xml xmlns=\"urn:test\">\n"
                 "  <elem>value</elem>\n"
                 "</some-xml>\n");
         assert_string_equal(node->schema->name, "anyx");
