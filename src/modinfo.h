@@ -193,20 +193,20 @@ sr_error_info_t *sr_modinfo_changesub_rdlock(struct sr_mod_info_s *mod_info);
 void sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info);
 
 #define SR_MI_NEW_DEPS          0x01    /**< new modules are not required (MOD_INFO_REQ) but only dpendencies (MOD_INFO_DEP) */
-#define SR_MI_LOCK_UPGRADEABLE  0x02    /**< only valid for a read lock, make it upgradeable into a write lock */
-#define SR_MI_DATA_CACHE        0x04    /**< enable cache when loading module data */
-#define SR_MI_DATA_NO           0x08    /**< do not load module data */
-#define SR_MI_PERM_STRICT       0x10    /**< failed permission check causes an error instead of silent omission
+#define SR_MI_INV_DEPS          0x02    /**< add inverse dependencies for added modules */
+#define SR_MI_LOCK_UPGRADEABLE  0x04    /**< only valid for a read lock, make it upgradeable into a write lock */
+#define SR_MI_DATA_CACHE        0x08    /**< enable cache when loading module data */
+#define SR_MI_DATA_NO           0x10    /**< do not load module data */
+#define SR_MI_PERM_STRICT       0x20    /**< failed permission check causes an error instead of silent omission
                                              of the offending data */
-#define SR_MI_PERM_NO           0x20    /**< do not check any permissions */
-#define SR_MI_PERM_READ         0x40    /**< check read permissions of the MOD_INFO_REQ modules */
-#define SR_MI_PERM_WRITE        0x80    /**< check write permissions of the MOD_INFO_REQ modules */
+#define SR_MI_PERM_NO           0x40    /**< do not check any permissions */
+#define SR_MI_PERM_READ         0x80    /**< check read permissions of the MOD_INFO_REQ modules */
+#define SR_MI_PERM_WRITE        0x0100  /**< check write permissions of the MOD_INFO_REQ modules */
 
 /**
  * @brief Consolidate mod info by adding dependencies of the added modules, check the permissions, lock, and load data.
  *
  * @param[in,out] mod_info Mod info to consolidate.
- * @param[in] mod_deps Dependency modules to add for each added module. 0 for adding no dependency modules.
  * @param[in] mod_lock Mode of module lock.
  * @param[in] mi_opts Mod info options modifying the default behavior but some SR_MI_PERM_* must always be used.
  * @param[in] sid Session ID to store in lock information.
@@ -216,9 +216,9 @@ void sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info);
  * @param[in] ds_lock_timeout_ms Timeout in ms for DS-lock in case it is required and locked, if 0 no waiting is performed.
  * @param[in] get_oper_opts Get oper data options, ignored if getting only ::SR_DS_OPERATIONAL data (edit).
  */
-sr_error_info_t *sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mode_t mod_lock,
-        int mi_opts, uint32_t sid, const char *orig_name, const void *orig_data, uint32_t timeout_ms,
-        uint32_t ds_lock_timeout_ms, sr_get_oper_flag_t get_oper_opts);
+sr_error_info_t *sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, sr_lock_mode_t mod_lock, int mi_opts,
+        uint32_t sid, const char *orig_name, const void *orig_data, uint32_t timeout_ms, uint32_t ds_lock_timeout_ms,
+        sr_get_oper_flag_t get_oper_opts);
 
 /**
  * @brief Validate data for modules in mod info.

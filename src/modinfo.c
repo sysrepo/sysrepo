@@ -2481,7 +2481,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mode_t mod_lock, int mi_opts, uint32_t sid,
+sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, sr_lock_mode_t mod_lock, int mi_opts, uint32_t sid,
         const char *orig_name, const void *orig_data, uint32_t timeout_ms, uint32_t ds_lock_timeout_ms,
         sr_get_oper_flag_t get_oper_opts)
 {
@@ -2518,7 +2518,7 @@ sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, int mod_deps, sr_lock_mod
         return NULL;
     }
 
-    if (mod_deps & MOD_INFO_INV_DEP) {
+    if (mi_opts & SR_MI_INV_DEPS) {
         /* add inverse dependencies for added modules */
         for (i = 0; i < mod_info->mod_count; ++i) {
             if (mod_info->mods[i].state & mod_type) {
@@ -2983,7 +2983,7 @@ sr_modinfo_change_notify_update(struct sr_mod_info_s *mod_info, sr_session_ctx_t
             if ((err_info = sr_modinfo_collect_deps(mod_info))) {
                 goto cleanup;
             }
-            if ((err_info = sr_modinfo_consolidate(mod_info, 0, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_PERM_NO, sid,
+            if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_PERM_NO, sid,
                     orig_name, orig_data, 0, 0, 0))) {
                 goto cleanup;
             }

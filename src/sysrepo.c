@@ -555,7 +555,7 @@ sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const ch
     }
 
     /* add modules, lock, and get data */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_LOCK_UPGRADEABLE | SR_MI_PERM_WRITE, 0,
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_LOCK_UPGRADEABLE | SR_MI_PERM_WRITE, 0,
             NULL, NULL, 0, 0, 0))) {
         goto cleanup;
     }
@@ -2657,7 +2657,7 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* add modules into mod_info with deps, locking, and their data */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_READ,
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_READ,
             session->sid, session->orig_name, session->orig_data, timeout_ms, 0, 0))) {
         goto cleanup;
     }
@@ -2759,7 +2759,7 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
     }
 
     /* add modules into mod_info with deps, locking, and their data */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_READ, session->sid,
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_READ, session->sid,
             session->orig_name, session->orig_data, timeout_ms, 0, opts))) {
         goto cleanup;
     }
@@ -2835,7 +2835,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
     }
 
     /* add modules into mod_info with deps, locking, and their data */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_READ, session->sid,
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_READ, session->sid,
             session->orig_name, session->orig_data, timeout_ms, 0, 0))) {
         goto cleanup;
     }
@@ -2944,7 +2944,7 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
     }
 
     /* add modules into mod_info with deps, locking, and their data */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_READ, session->sid,
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_READ, session->sid,
             session->orig_name, session->orig_data, timeout_ms, 0, opts))) {
         goto cleanup;
     }
@@ -3075,7 +3075,7 @@ sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* add modules into mod_info with deps, locking, and their data */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_READ,
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_READ,
             session->sid, session->orig_name, session->orig_data, timeout_ms, 0, 0))) {
         goto cleanup;
     }
@@ -3577,7 +3577,7 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
 
     /* add modules into mod_info with deps, locking, and their data (we need inverse dependencies because the data will
      * likely be changed) */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, MOD_INFO_INV_DEP, SR_LOCK_READ, SR_MI_PERM_NO, session->sid,
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_INV_DEPS | SR_MI_PERM_NO, session->sid,
             session->orig_name, session->orig_data, timeout_ms, 0, 0))) {
         goto cleanup;
     }
@@ -3592,7 +3592,7 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
     if ((err_info = sr_modinfo_collect_deps(&mod_info))) {
         goto cleanup;
     }
-    if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_PERM_NO, session->sid,
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_PERM_NO, session->sid,
             session->orig_name, session->orig_data, timeout_ms, 0, 0))) {
         goto cleanup;
     }
@@ -3687,7 +3687,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
         if ((err_info = sr_modinfo_collect_deps(mod_info))) {
             goto cleanup;
         }
-        if ((err_info = sr_modinfo_consolidate(mod_info, 0, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_PERM_NO, sid,
+        if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_PERM_NO, sid,
                 orig_name, orig_data, 0, 0, 0))) {
             goto cleanup;
         }
@@ -3797,7 +3797,7 @@ sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
-    int mod_deps;
+    uint32_t mi_opts;
 
     SR_CHECK_ARG_APIRET(!session || !SR_IS_STANDARD_DS(session->ds), session, err_info);
 
@@ -3811,12 +3811,10 @@ sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
     /* even for operational datastore, we do not need any running data */
     SR_MODINFO_INIT(mod_info, session->conn, session->ds, session->ds);
 
-    if ((session->ds == SR_DS_OPERATIONAL) || (session->ds == SR_DS_CANDIDATE)) {
-        /* stored oper edit or candidate data are not validated so we do not need data from other modules */
-        mod_deps = 0;
-    } else {
-        mod_deps = MOD_INFO_INV_DEP;
-    }
+    mi_opts = SR_MI_LOCK_UPGRADEABLE | SR_MI_PERM_NO;
+    if ((session->ds != SR_DS_OPERATIONAL) && (session->ds != SR_DS_CANDIDATE)) {
+        mi_opts |= SR_MI_INV_DEPS;
+    } /* else stored oper edit or candidate data are not validated so we do not need data from other modules */
 
     /* collect all required modules */
     if ((err_info = sr_modinfo_collect_edit(session->dt[session->ds].edit->tree, &mod_info))) {
@@ -3824,8 +3822,8 @@ sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
     }
 
     /* add modules into mod_info with deps, locking, and their data */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, mod_deps, SR_LOCK_READ, SR_MI_LOCK_UPGRADEABLE | SR_MI_PERM_NO,
-            session->sid, session->orig_name, session->orig_data, 0, 0, 0))) {
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, mi_opts, session->sid, session->orig_name,
+            session->orig_data, 0, 0, 0))) {
         goto cleanup;
     }
 
@@ -3928,8 +3926,8 @@ _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, s
     }
 
     /* add modules with dependencies into mod_info */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, MOD_INFO_INV_DEP, SR_LOCK_READ,
-            SR_MI_LOCK_UPGRADEABLE | SR_MI_PERM_NO, session->sid, session->orig_name, session->orig_data, 0, 0, 0))) {
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_INV_DEPS | SR_MI_LOCK_UPGRADEABLE | SR_MI_PERM_NO,
+            session->sid, session->orig_name, session->orig_data, 0, 0, 0))) {
         goto cleanup;
     }
 
@@ -4059,7 +4057,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
 
     if ((src_datastore == SR_DS_RUNNING) && (session->ds == SR_DS_CANDIDATE)) {
         /* add modules into mod_info without data */
-        if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_WRITE, SR_MI_DATA_NO | SR_MI_PERM_NO, session->sid,
+        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_WRITE, SR_MI_DATA_NO | SR_MI_PERM_NO, session->sid,
                 session->orig_name, session->orig_data, 0, 0, 0))) {
             goto cleanup;
         }
@@ -4071,7 +4069,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
 
     if ((src_datastore == SR_DS_CANDIDATE) && (session->ds == SR_DS_RUNNING)) {
         /* add modules into mod_info, WRITE lock */
-        if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_WRITE, SR_MI_PERM_NO, session->sid, session->orig_name,
+        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_WRITE, SR_MI_PERM_NO, session->sid, session->orig_name,
                 session->orig_data, 0, 0, 0))) {
             goto cleanup;
         }
@@ -4087,7 +4085,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
         }
     } else {
         /* add modules into mod_info, READ lock */
-        if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_PERM_NO, session->sid, session->orig_name,
+        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session->sid, session->orig_name,
                 session->orig_data, 0, 0, 0))) {
             goto cleanup;
         }
@@ -4258,8 +4256,8 @@ _sr_un_lock(sr_session_ctx_t *session, const char *module_name, int lock, uint32
             goto cleanup;
         }
     }
-    if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_WRITE, SR_MI_DATA_NO | SR_MI_PERM_READ |
-            SR_MI_PERM_STRICT, session->sid, session->orig_name, session->orig_data, 0, timeout_ms, 0))) {
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_WRITE, SR_MI_DATA_NO | SR_MI_PERM_READ | SR_MI_PERM_STRICT,
+            session->sid, session->orig_name, session->orig_data, 0, timeout_ms, 0))) {
         goto cleanup;
     }
 
@@ -4344,7 +4342,7 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
             goto cleanup;
         }
     }
-    if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_NONE, SR_MI_DATA_NO | SR_MI_PERM_READ |
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_NONE, SR_MI_DATA_NO | SR_MI_PERM_READ |
             SR_MI_PERM_STRICT, 0, NULL, NULL, 0, 0, 0))) {
         goto cleanup;
     }
@@ -4974,7 +4972,7 @@ sr_module_change_subscribe_enable(sr_session_ctx_t *session, struct sr_mod_info_
     if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, mod_info))) {
         goto cleanup;
     }
-    if ((err_info = sr_modinfo_consolidate(mod_info, 0, SR_LOCK_READ, SR_MI_PERM_NO, session->sid, session->orig_name,
+    if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session->sid, session->orig_name,
             session->orig_data, 0, 0, SR_OPER_NO_SUBS))) {
         goto cleanup;
     }
@@ -6028,7 +6026,7 @@ _sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, con
     if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(session->conn), shm_deps, shm_dep_count, input, mod_info))) {
         goto cleanup;
     }
-    if ((err_info = sr_modinfo_consolidate(mod_info, 0, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_CACHE | SR_MI_PERM_NO,
+    if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_CACHE | SR_MI_PERM_NO,
             session->sid, session->orig_name, session->orig_data, SR_OPER_CB_TIMEOUT, 0, 0))) {
         goto cleanup;
     }
@@ -6089,7 +6087,7 @@ _sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, con
     if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(session->conn), shm_deps, shm_dep_count, input, mod_info))) {
         goto cleanup;
     }
-    if ((err_info = sr_modinfo_consolidate(mod_info, 0, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_CACHE | SR_MI_PERM_NO,
+    if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_CACHE | SR_MI_PERM_NO,
             session->sid, session->orig_name, session->orig_data, SR_OPER_CB_TIMEOUT, 0, 0))) {
         goto cleanup;
     }
@@ -6154,7 +6152,7 @@ _sr_rpc_ext_send_tree(sr_session_ctx_t *session, const struct lyd_node *ext_pare
     if ((err_info = sr_modinfo_collect_ext_deps(lyd_parent(ext_parent)->schema, mod_info))) {
         goto cleanup;
     }
-    if ((err_info = sr_modinfo_consolidate(mod_info, 0, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_CACHE | SR_MI_PERM_NO,
+    if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_CACHE | SR_MI_PERM_NO,
             session->sid, session->orig_name, session->orig_data, SR_OPER_CB_TIMEOUT, 0, 0))) {
         goto cleanup;
     }
@@ -6317,7 +6315,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
         if ((err_info = sr_modinfo_add(lyd_owner_module(input_top), parent_path, 0, 0, &mod_info))) {
             goto cleanup;
         }
-        if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_NO,
+        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_NO,
                 session->sid, session->orig_name, session->orig_data, SR_OPER_CB_TIMEOUT, 0, 0))) {
             goto cleanup;
         }
@@ -6601,7 +6599,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
         if ((err_info = sr_modinfo_add(lyd_owner_module(notif_top), parent_path, 0, 0, &mod_info))) {
             goto cleanup;
         }
-        if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_NO,
+        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_NO,
                 session->sid, session->orig_name, session->orig_data, SR_OPER_CB_TIMEOUT, 0, 0))) {
             goto cleanup;
         }
@@ -6626,7 +6624,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
             goto cleanup;
         }
     }
-    if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_CACHE | SR_MI_PERM_NO,
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_CACHE | SR_MI_PERM_NO,
             session->sid, session->orig_name, session->orig_data, SR_OPER_CB_TIMEOUT, 0, 0))) {
         goto cleanup;
     }

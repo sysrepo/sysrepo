@@ -3730,7 +3730,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
     if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
         goto cleanup;
     }
-    if ((err_info = sr_modinfo_consolidate(&mod_info, 0, SR_LOCK_NONE, SR_MI_DATA_NO | SR_MI_PERM_NO, 0, NULL, NULL,
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_NONE, SR_MI_DATA_NO | SR_MI_PERM_NO, 0, NULL, NULL,
             0, 0, 0))) {
         goto cleanup;
     }
