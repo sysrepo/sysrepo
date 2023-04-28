@@ -1368,7 +1368,7 @@ sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, uint32_t sid, u
         shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds];
 
         /* upgrade only required read-upgr-locked modules and leave others read-upgr-locked to prevent their locking
-         * causing potential dead-lock */
+         * causing potential dead-lock with other apply_changes using the same modules */
         if ((mod->state & (MOD_INFO_RLOCK_UPGR | MOD_INFO_REQ)) == (MOD_INFO_RLOCK_UPGR | MOD_INFO_REQ)) {
             /* MOD WRITE UPGRADE */
             if ((err_info = sr_shmmod_lock(mod->ly_mod, mod_info->ds, shm_lock, timeout_ms, SR_LOCK_WRITE_URGE,
