@@ -47,6 +47,7 @@ setup_f(void **state)
         TESTS_SRC_DIR "/files/test-module.yang",
         TESTS_SRC_DIR "/files/ops-ref.yang",
         TESTS_SRC_DIR "/files/ops.yang",
+        TESTS_SRC_DIR "/files/mod.yang",
         NULL
     };
 
@@ -82,6 +83,7 @@ teardown_f(void **state)
         "iana-if-type",
         "ietf-interfaces",
         "test",
+        "mod",
         NULL
     };
 
@@ -116,6 +118,21 @@ clear_test(void **state)
     sr_delete_item(st->sess, "/test:cont", 0);
     sr_delete_item(st->sess, "/test:l3", 0);
     sr_apply_changes(st->sess, 0);
+
+    return 0;
+}
+
+static int
+clear_mod(void **state)
+{
+    struct state *st = (struct state *)*state;
+
+    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+
+    sr_discard_items(st->sess, "/mod:container");
+    sr_apply_changes(st->sess, 0);
+
+    sr_session_switch_ds(st->sess, SR_DS_RUNNING);
 
     return 0;
 }
@@ -711,6 +728,36 @@ test_isolate(void **state)
 
     assert_string_equal(str, str2);
     free(str);
+}
+
+static void
+test_isolate_oper(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_data_t *data;
+    char *str;
+    int ret;
+
+    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+
+    /* create edit */
+    ret = sr_delete_item(st->sess, "/mod:container/list-entry", SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(st->sess, "/mod:container/pres-cont", SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(st->sess, "/mod:container/pres-cont2", SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(st->sess, "/mod:container/list-enh", SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check datastore contents */
+    ret = sr_get_data(st->sess, "/mod:container", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    sr_release_data(data);
+    assert_null(str);
 }
 
 static void
@@ -1419,6 +1466,7 @@ main(void)
         cmocka_unit_test_teardown(test_replace, clear_interfaces),
         cmocka_unit_test_teardown(test_replace_userord, clear_test),
         cmocka_unit_test_teardown(test_isolate, clear_interfaces),
+        cmocka_unit_test_teardown(test_isolate_oper, clear_mod),
         cmocka_unit_test(test_purge),
         cmocka_unit_test(test_top_op),
         cmocka_unit_test_teardown(test_oper, clear_interfaces),

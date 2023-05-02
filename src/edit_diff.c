@@ -3284,9 +3284,8 @@ static sr_error_info_t *
 sr_edit_oper_del_node(struct lyd_node *node, struct lyd_node **change_edit)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *iter, *new_parent, *parent, *match;
+    struct lyd_node *iter, *new_parent, *parent, *match, *to_free = NULL;
     enum edit_op op, cur_op;
-    int own_op;
 
     if (!change_edit) {
         /* nothing to do */
@@ -3298,32 +3297,42 @@ sr_edit_oper_del_node(struct lyd_node *node, struct lyd_node **change_edit)
         goto cleanup;
     }
 
-    /* learn the operation */
-    op = sr_edit_diff_find_oper(node, 1, &own_op);
-    assert(op);
-    if ((op == EDIT_MERGE) || (op == EDIT_REMOVE)) {
-        /* reverse operation */
-        if (op == EDIT_MERGE) {
-            op = EDIT_REMOVE;
-        } else {
-            op = EDIT_MERGE;
-        }
-    } /* else ether - stays */
-
     if (new_parent || lyd_find_sibling_first(parent ? lyd_child(parent) : *change_edit, node, &match)) {
         /* set parent operation, if any new */
         if (new_parent && (err_info = sr_edit_set_oper(new_parent, "ether"))) {
             goto cleanup;
         }
 
-        /* remove all the operations in the subtree and set the new one */
+        /* update all the operations in the subtree */
         LYD_TREE_DFS_BEGIN(node, iter) {
-            sr_edit_del_meta_attr(iter, "operation");
+            sr_lyd_free_tree_safe(to_free, &node);
+            to_free = NULL;
+
+            /* always set the operation for the root */
+            op = sr_edit_diff_find_oper(iter, (iter == node) ? 1 : 0, NULL);
+            if (op) {
+                if ((op == EDIT_MERGE) || (op == EDIT_REMOVE)) {
+                    /* reverse operation */
+                    if (op == EDIT_MERGE) {
+                        op = EDIT_REMOVE;
+                    } else {
+                        op = EDIT_MERGE;
+                    }
+
+                    sr_edit_del_meta_attr(iter, "operation");
+                    if ((err_info = sr_edit_set_oper(iter, sr_edit_op2str(op)))) {
+                        goto cleanup;
+                    }
+                } else if (op == EDIT_PURGE) {
+                    /* ignore this operation, not much else to do */
+                    to_free = iter;
+                    LYD_TREE_DFS_continue = 1;
+                } /* else ether - stays */
+            }
+
             LYD_TREE_DFS_END(node, iter);
         }
-        if ((err_info = sr_edit_set_oper(node, sr_edit_op2str(op)))) {
-            goto cleanup;
-        }
+        sr_lyd_free_tree_safe(to_free, &node);
 
         /* link to the change edit */
         lyd_unlink_tree(node);
@@ -3334,16 +3343,23 @@ sr_edit_oper_del_node(struct lyd_node *node, struct lyd_node **change_edit)
         }
         node = NULL;
     } else {
-        /* node already exists so keep it, learn its operation */
-        cur_op = sr_edit_diff_find_oper(match, 1, &own_op);
-
-        if (cur_op != op) {
-            /* remove current operation */
-            if (own_op) {
-                sr_edit_del_meta_attr(match, "operation");
+        /* learn the operation */
+        op = sr_edit_diff_find_oper(node, 1, NULL);
+        assert(op);
+        if ((op == EDIT_MERGE) || (op == EDIT_REMOVE)) {
+            /* reverse operation */
+            if (op == EDIT_MERGE) {
+                op = EDIT_REMOVE;
+            } else {
+                op = EDIT_MERGE;
             }
+        }
 
-            /* set new operation */
+        /* node already exists so keep it, learn its operation */
+        cur_op = sr_edit_diff_find_oper(match, 1, NULL);
+        if (cur_op != op) {
+            /* update the operation */
+            sr_edit_del_meta_attr(match, "operation");
             if ((err_info = sr_edit_set_oper(match, sr_edit_op2str(op)))) {
                 goto cleanup;
             }
