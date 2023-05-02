@@ -1,0 +1,87 @@
+module mod {
+    yang-version 1.1;
+    namespace "urn:mod";
+    prefix m;
+
+    import ietf-yang-types {
+        prefix yang;
+    }
+
+    container container {
+        description
+          "A top-level non-presence container.";
+
+        list list-entry {
+            key "name";
+
+            description
+              "A list with one key.";
+
+            leaf name {
+                type string;
+                description
+                  "A name for the list entry.";
+            }
+
+            leaf leaf-bool {
+                type boolean;
+                description
+                  "Boolean leaf.";
+            }
+        }
+
+        container pres-cont {
+            presence
+              "Some deep meaning.";
+            description
+              "Container with presence.";
+
+            leaf mand {
+                type string;
+                mandatory true;
+                description
+                  "Mandatory string leaf for testing mandatory values.";
+            }
+        }
+
+        container pres-cont2 {
+            presence
+              "Some deep meaning.";
+            description
+              "Container with presence and with no child nodes.";
+        }
+
+        container oper-container {
+            config false;
+            description
+              "A non-presence operational-only container.";
+
+            leaf leaf-bool {
+                type boolean;
+                description
+                  "Boolean leaf.";
+            }
+        }
+
+        list list-enh {
+            key "date-and-time label";
+            leaf date-and-time {
+                type yang:date-and-time;
+                description
+                  "A leaf using yang:date-and-time.";
+            }
+            leaf label {
+                type uint32;
+                description
+                    "Label.";
+            }
+            description
+                "List with enhanced values as keys.";
+        }
+
+        container container {
+          description
+            "A nested container that has the same name than the parent container.";
+        }
+    }
+}
