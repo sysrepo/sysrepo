@@ -799,7 +799,7 @@ sr_error_info_t *sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs
  * @param[in] cb_data Arbitrary user data for @p cb.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
+sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
         sr_lock_recover_cb cb, void *cb_data);
 
 /**
@@ -817,7 +817,7 @@ sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t m
  * @param[in] cb_data Arbitrary user data for @p cb.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
+sr_error_info_t *sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
         sr_lock_recover_cb cb, void *cb_data);
 
 /**
@@ -829,7 +829,7 @@ sr_error_info_t *sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t
  * @param[in] cid Lock owner connection ID.
  * @param[in] func Name of the calling function for logging.
  */
-void sr_rwunlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func);
+void sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func);
 
 /**
  * @brief Check whether a connection is alive.

@@ -2693,7 +2693,7 @@ error_cond_unlock:
 }
 
 sr_error_info_t *
-sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
+sr_rwlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
         sr_lock_recover_cb cb, void *cb_data)
 {
     struct timespec timeout_abs;
@@ -2704,7 +2704,7 @@ sr_rwlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid
 }
 
 sr_error_info_t *
-sr_rwrelock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
+sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
         sr_lock_recover_cb cb, void *cb_data)
 {
     sr_error_info_t *err_info = NULL;
@@ -2874,7 +2874,7 @@ cleanup_unlock:
 }
 
 void
-sr_rwunlock(sr_rwlock_t *rwlock, int timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func)
+sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func)
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
