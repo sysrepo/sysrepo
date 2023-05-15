@@ -5232,19 +5232,16 @@ sr_ly_find_last_parent(struct lyd_node **parent, int nodetype)
             }
             break;
         case LYS_LEAF:
-            assert((*parent)->schema->flags & LYS_KEY);
-            if (!(*parent)->next) {
+            if (((*parent)->schema->flags & LYS_KEY) && !(*parent)->next) {
                 /* last key of the last in-depth list, the list instance is what we are looking for */
                 *parent = lyd_parent(*parent);
                 return NULL;
-            } else {
-                *parent = (*parent)->next;
             }
-            break;
+        /* fallthrough */
         default:
-            *parent = NULL;
-            SR_ERRINFO_INT(&err_info);
-            return err_info;
+            /* skip */
+            *parent = (*parent)->next;
+            break;
         }
     }
 
