@@ -402,7 +402,9 @@ check_symbol_exists(mkstemps "stdlib.h" SR_HAVE_MKSTEMPS)
 unset(CMAKE_REQUIRED_DEFINITIONS)
 
 # tar
-find_program(TAR_BINARY "tar")
+if(NOT DEFINED TAR_BINARY)
+    find_program(TAR_BINARY "tar")
+endif()
 if(NOT TAR_BINARY)
     message(FATAL_ERROR "tar binary was not found.")
 endif()
