@@ -28,6 +28,8 @@
 #include <stdlib.h>
 #include <setjmp.h>
 #include <stdarg.h>
+#include <stdint.h>
+
 #include <cmocka.h>
 
 #include <libyang/libyang.h>
