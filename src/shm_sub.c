@@ -2331,14 +2331,15 @@ sr_shmsub_rpc_notify_next_subscription(sr_conn_ctx_t *conn, sr_rwlock_t *sub_loc
     uint32_t i;
     int opts = 0;
 
+    *evpipes_p = NULL;
+    *sub_count_p = 0;
+
     /* EXT READ LOCK */
     if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
         return err_info;
     }
 
     shm_subs = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + *subs);
-    *evpipes_p = NULL;
-    *sub_count_p = 0;
     i = 0;
     while (i < *sub_count) {
         /* check subscription aliveness */
