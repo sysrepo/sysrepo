@@ -4398,7 +4398,7 @@ sr_error_info_t *
 sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t i, request_id;
+    uint32_t i, request_id, valid_subscr_count;
     struct lyd_node *orig_notif = NULL, *notif_dup = NULL, *notif, *notif_op;
     const struct lyd_node *denied_node;
     struct ly_in *in = NULL;
@@ -4459,9 +4459,17 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     /* process event */
     SR_LOG_INF("EV LISTEN: \"%s\" \"notif\" ID %" PRIu32 " processing.", notif_subs->module_name, request_id);
 
+    valid_subscr_count = 0;
     for (i = 0; i < notif_subs->sub_count; ++i) {
         sub = &notif_subs->subs[i];
         denied_node = NULL;
+
+        if (sr_time_cmp(&sub->listen_since, &notif_ts) > 0) {
+            /* generated before this subscription has been made */
+            SR_LOG_INF("EV LISTEN: \"%s\" \"notif\" ID %" PRIu32 " ignored, created after the notification.",
+                    notif_subs->module_name, request_id);
+            continue;
+        }
 
         if (sub->sess->nacm_user && !strcmp(orig_notif->schema->module->name, "ietf-yang-push") &&
                 !strcmp(LYD_NAME(orig_notif), "push-change-update")) {
@@ -4511,6 +4519,9 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
             ATOMIC_INC_RELAXED(notif_subs->subs[i].filtered_out);
         }
 
+        /* processed */
+        ++valid_subscr_count;
+
         if (!denied_node) {
             /* may have been modified and is useless now */
             lyd_free_all(notif_dup);
@@ -4535,7 +4546,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     }
 
     /* finish event */
-    if ((err_info = sr_shmsub_multi_listen_write_event(multi_sub_shm, notif_subs->sub_count, 0, &shm_data_sub, NULL, 0,
+    if ((err_info = sr_shmsub_multi_listen_write_event(multi_sub_shm, valid_subscr_count, 0, &shm_data_sub, NULL, 0,
             notif_subs->module_name, "success"))) {
         goto cleanup_wrunlock;
     }

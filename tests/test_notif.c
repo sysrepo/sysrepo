@@ -1558,6 +1558,59 @@ test_wait(void **state)
 
 /* TEST */
 static void
+notif_send_nowait_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
+        const sr_val_t *values, const size_t values_cnt, struct timespec *timestamp, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)values;
+    (void)values_cnt;
+    (void)timestamp;
+
+    if (notif_type == SR_EV_NOTIF_TERMINATED) {
+        /* ignore */
+        return;
+    }
+
+    assert_int_equal(notif_type, SR_EV_NOTIF_REALTIME);
+    assert_string_equal(xpath, "/ops:notif4");
+
+    ATOMIC_INC_RELAXED(st->cb_called);
+}
+
+static void
+test_send_nowait(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr = NULL;
+    int ret;
+
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+
+    /* subscribe #1 */
+    ret = sr_notif_subscribe(st->sess, "ops", NULL, NULL, NULL, notif_send_nowait_cb, st, SR_SUBSCR_NO_THREAD, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* send notif #1 */
+    ret = sr_notif_send(st->sess, "/ops:notif4", NULL, 0, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe #2 */
+    ret = sr_notif_subscribe(st->sess, "ops", NULL, NULL, NULL, notif_send_nowait_cb, st, SR_SUBSCR_NO_THREAD, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* process events, at the time the notification was sent there has only been 1 subscriber */
+    ret = sr_subscription_process_events(subscr, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+    ATOMIC_STORE_RELAXED(st->cb_called, 1);
+
+    sr_unsubscribe(subscr);
+}
+
+/* TEST */
+static void
 notif_schema_mount_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
         const struct lyd_node *notif, struct timespec *timestamp, void *private_data)
 {
@@ -1731,6 +1784,7 @@ main(void)
         cmocka_unit_test(test_params),
         cmocka_unit_test(test_dup_inst),
         cmocka_unit_test(test_wait),
+        cmocka_unit_test(test_send_nowait),
         cmocka_unit_test(test_schema_mount),
     };
 
