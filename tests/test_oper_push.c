@@ -999,7 +999,7 @@ test_state_list2(void **state)
     ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=1]/is-cleared", "false", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=1]/event-time",
-            "2023-05-17T13:18:21+03:00", NULL, 0);
+            "2023-05-17T13:18:21-00:00", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=4]/fault-source", "fan", NULL, 0);
@@ -1012,7 +1012,7 @@ test_state_list2(void **state)
     ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=4]/is-cleared", "false", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=4]/event-time",
-            "2023-05-18T20:08:55+03:00", NULL, 0);
+            "2023-05-18T20:08:55-00:00", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_apply_changes(st->sess, 0);
@@ -1035,7 +1035,7 @@ test_state_list2(void **state)
     "    </affected-objects>\n"
     "    <fault-severity>MAJOR</fault-severity>\n"
     "    <is-cleared>false</is-cleared>\n"
-    "    <event-time>2023-05-17T12:18:21+02:00</event-time>\n"
+    "    <event-time>2023-05-17T13:18:21-00:00</event-time>\n"
     "  </active-alarms>\n"
     "  <active-alarms>\n"
     "    <fault-id>4</fault-id>\n"
@@ -1045,7 +1045,7 @@ test_state_list2(void **state)
     "    </affected-objects>\n"
     "    <fault-severity>CRITICAL</fault-severity>\n"
     "    <is-cleared>false</is-cleared>\n"
-    "    <event-time>2023-05-18T19:08:55+02:00</event-time>\n"
+    "    <event-time>2023-05-18T20:08:55-00:00</event-time>\n"
     "  </active-alarms>\n"
     "</active-alarm-list>\n";
 
@@ -1063,7 +1063,7 @@ test_state_list2(void **state)
     ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=9]/is-cleared", "false", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=9]/event-time",
-            "2023-05-20T01:17:35+03:00", NULL, 0);
+            "2023-05-20T01:17:35-00:00", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_apply_changes(st->sess, 0);
@@ -1086,7 +1086,7 @@ test_state_list2(void **state)
     "    </affected-objects>\n"
     "    <fault-severity>MAJOR</fault-severity>\n"
     "    <is-cleared>false</is-cleared>\n"
-    "    <event-time>2023-05-17T12:18:21+02:00</event-time>\n"
+    "    <event-time>2023-05-17T13:18:21-00:00</event-time>\n"
     "  </active-alarms>\n"
     "  <active-alarms>\n"
     "    <fault-id>4</fault-id>\n"
@@ -1096,7 +1096,7 @@ test_state_list2(void **state)
     "    </affected-objects>\n"
     "    <fault-severity>CRITICAL</fault-severity>\n"
     "    <is-cleared>false</is-cleared>\n"
-    "    <event-time>2023-05-18T19:08:55+02:00</event-time>\n"
+    "    <event-time>2023-05-18T20:08:55-00:00</event-time>\n"
     "  </active-alarms>\n"
     "  <active-alarms>\n"
     "    <fault-id>9</fault-id>\n"
@@ -1106,7 +1106,7 @@ test_state_list2(void **state)
     "    </affected-objects>\n"
     "    <fault-severity>MINOR</fault-severity>\n"
     "    <is-cleared>false</is-cleared>\n"
-    "    <event-time>2023-05-20T00:17:35+02:00</event-time>\n"
+    "    <event-time>2023-05-20T01:17:35-00:00</event-time>\n"
     "  </active-alarms>\n"
     "</active-alarm-list>\n";
 
