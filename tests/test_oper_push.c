@@ -58,6 +58,7 @@ setup(void **state)
         TESTS_SRC_DIR "/files/czechlight-roadm-device@2019-09-30.yang",
         TESTS_SRC_DIR "/files/oper-group-test.yang",
         TESTS_SRC_DIR "/files/sm.yang",
+        TESTS_SRC_DIR "/files/alarms.yang",
         NULL
     };
     const char *rd_feats[] = {"hw-line-9", NULL};
@@ -73,6 +74,7 @@ setup(void **state)
         NULL,
         NULL,
         rd_feats,
+        NULL,
         NULL,
         NULL
     };
@@ -106,6 +108,7 @@ teardown(void **state)
 {
     struct state *st = (struct state *)*state;
     const char *module_names[] = {
+        "alarms",
         "sm",
         "oper-group-test",
         "czechlight-roadm-device",
@@ -970,6 +973,145 @@ test_state_list(void **state)
     free(str1);
 
     sr_unsubscribe(subscr);
+}
+
+/* TEST */
+static void
+test_state_list2(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_data_t *data;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set oper data */
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=1]/fault-source", "fm", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=1]/affected-objects[name='obj']",
+            NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=1]/fault-severity", "MAJOR", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=1]/is-cleared", "false", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=1]/event-time",
+            "2023-05-17T13:18:21+03:00", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=4]/fault-source", "fan", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=4]/affected-objects[name='obj2']",
+            NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=4]/fault-severity", "CRITICAL", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=4]/is-cleared", "false", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=4]/event-time",
+            "2023-05-18T20:08:55+03:00", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the operational data */
+    ret = sr_get_data(st->sess, "/alarms:active-alarm-list", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+
+    str2 =
+    "<active-alarm-list xmlns=\"urn:alarms\">\n"
+    "  <active-alarms>\n"
+    "    <fault-id>1</fault-id>\n"
+    "    <fault-source>fm</fault-source>\n"
+    "    <affected-objects>\n"
+    "      <name>obj</name>\n"
+    "    </affected-objects>\n"
+    "    <fault-severity>MAJOR</fault-severity>\n"
+    "    <is-cleared>false</is-cleared>\n"
+    "    <event-time>2023-05-17T12:18:21+02:00</event-time>\n"
+    "  </active-alarms>\n"
+    "  <active-alarms>\n"
+    "    <fault-id>4</fault-id>\n"
+    "    <fault-source>fan</fault-source>\n"
+    "    <affected-objects>\n"
+    "      <name>obj2</name>\n"
+    "    </affected-objects>\n"
+    "    <fault-severity>CRITICAL</fault-severity>\n"
+    "    <is-cleared>false</is-cleared>\n"
+    "    <event-time>2023-05-18T19:08:55+02:00</event-time>\n"
+    "  </active-alarms>\n"
+    "</active-alarm-list>\n";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* add another list instance */
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=9]/fault-source", "fm", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=9]/affected-objects[name='obj3']",
+            NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=9]/fault-severity", "MINOR", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=9]/is-cleared", "false", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=9]/event-time",
+            "2023-05-20T01:17:35+03:00", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the operational data */
+    ret = sr_get_data(st->sess, "/alarms:active-alarm-list", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+
+    str2 =
+    "<active-alarm-list xmlns=\"urn:alarms\">\n"
+    "  <active-alarms>\n"
+    "    <fault-id>1</fault-id>\n"
+    "    <fault-source>fm</fault-source>\n"
+    "    <affected-objects>\n"
+    "      <name>obj</name>\n"
+    "    </affected-objects>\n"
+    "    <fault-severity>MAJOR</fault-severity>\n"
+    "    <is-cleared>false</is-cleared>\n"
+    "    <event-time>2023-05-17T12:18:21+02:00</event-time>\n"
+    "  </active-alarms>\n"
+    "  <active-alarms>\n"
+    "    <fault-id>4</fault-id>\n"
+    "    <fault-source>fan</fault-source>\n"
+    "    <affected-objects>\n"
+    "      <name>obj2</name>\n"
+    "    </affected-objects>\n"
+    "    <fault-severity>CRITICAL</fault-severity>\n"
+    "    <is-cleared>false</is-cleared>\n"
+    "    <event-time>2023-05-18T19:08:55+02:00</event-time>\n"
+    "  </active-alarms>\n"
+    "  <active-alarms>\n"
+    "    <fault-id>9</fault-id>\n"
+    "    <fault-source>fm</fault-source>\n"
+    "    <affected-objects>\n"
+    "      <name>obj3</name>\n"
+    "    </affected-objects>\n"
+    "    <fault-severity>MINOR</fault-severity>\n"
+    "    <is-cleared>false</is-cleared>\n"
+    "    <event-time>2023-05-20T00:17:35+02:00</event-time>\n"
+    "  </active-alarms>\n"
+    "</active-alarm-list>\n";
+
+    assert_string_equal(str1, str2);
+    free(str1);
 }
 
 /* TEST */
@@ -2793,6 +2935,7 @@ main(void)
         cmocka_unit_test_teardown(test_conn_owner_same_data, clear_up),
         cmocka_unit_test_teardown(test_state, clear_up),
         cmocka_unit_test_teardown(test_state_list, clear_up),
+        cmocka_unit_test_teardown(test_state_list2, clear_up),
         cmocka_unit_test_teardown(test_config, clear_up),
         cmocka_unit_test_teardown(test_top_list, clear_up),
         cmocka_unit_test_teardown(test_top_leaf, clear_up),

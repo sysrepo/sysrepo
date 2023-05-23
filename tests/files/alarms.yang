@@ -1,0 +1,62 @@
+module alarms {
+  yang-version 1.1;
+  namespace "urn:alarms";
+  prefix "a";
+  import ietf-yang-types {
+    prefix yang;
+    revision-date 2013-07-15;
+  }
+  grouping alarm {
+    leaf fault-id {
+      type uint16;
+      mandatory true;
+    }
+    leaf fault-source {
+      type string {
+        length "1..255";
+      }
+      mandatory true;
+    }
+    list affected-objects {
+      key name;
+      leaf name {
+        type string {
+          length "1..255";
+        }
+        mandatory true;
+      }
+    }
+    leaf fault-severity {
+      type enumeration {
+        enum CRITICAL;
+        enum MAJOR;
+        enum MINOR;
+        enum WARNING;
+      }
+      mandatory true;
+    }
+    leaf is-cleared {
+      type boolean;
+      mandatory true;
+    }
+    leaf fault-text {
+      type string {
+        length "0..255";
+      }
+    }
+    leaf event-time {
+      type yang:date-and-time;
+      mandatory true;
+    }
+  }
+  container active-alarm-list {
+    config false;
+    list active-alarms {
+      key fault-id;
+      uses alarm;
+    }
+  }
+  notification alarm-notif {
+    uses alarm;
+  }
+}
