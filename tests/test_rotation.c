@@ -25,9 +25,11 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <errno.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <setjmp.h>
 #include <stdarg.h>
+
 #include <cmocka.h>
 
 #include <libyang/libyang.h>
