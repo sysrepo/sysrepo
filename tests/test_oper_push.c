@@ -989,29 +989,33 @@ test_state_list2(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set oper data */
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=1]/fault-source", "fm", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/fault-id", "1", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=1]/affected-objects[name='obj']",
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/fault-source", "fm", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/affected-objects[name='obj']",
             NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=1]/fault-severity", "MAJOR", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/fault-severity", "MAJOR", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=1]/is-cleared", "false", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/is-cleared", "false", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=1]/event-time",
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/event-time",
             "2023-05-17T13:18:21-00:00", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=4]/fault-source", "fan", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[2]/fault-id", "4", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=4]/affected-objects[name='obj2']",
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[2]/fault-source", "fan", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[2]/affected-objects[name='obj2']",
             NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=4]/fault-severity", "CRITICAL", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[2]/fault-severity", "CRITICAL", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=4]/is-cleared", "false", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[2]/is-cleared", "false", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=4]/event-time",
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[2]/event-time",
             "2023-05-18T20:08:55-00:00", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -1053,16 +1057,18 @@ test_state_list2(void **state)
     free(str1);
 
     /* add another list instance */
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=9]/fault-source", "fm", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/fault-id", "9", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=9]/affected-objects[name='obj3']",
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/fault-source", "fm", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/affected-objects[name='obj3']",
             NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=9]/fault-severity", "MINOR", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/fault-severity", "MINOR", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=9]/is-cleared", "false", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/is-cleared", "false", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[fault-id=9]/event-time",
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/event-time",
             "2023-05-20T01:17:35-00:00", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 

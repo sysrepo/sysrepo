@@ -52,7 +52,6 @@ module alarms {
   container active-alarm-list {
     config false;
     list active-alarms {
-      key fault-id;
       uses alarm;
     }
   }
