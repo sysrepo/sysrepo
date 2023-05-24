@@ -3462,7 +3462,8 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
 
             /* check that no forbidden data/operations are set */
             LYD_TREE_DFS_BEGIN(root, elem) {
-                if (!elem->schema) {
+                if (!elem->schema && (elem->parent || !lyd_owner_module(elem) ||
+                        strcmp(lyd_owner_module(elem)->name, "sysrepo") || strcmp(LYD_NAME(elem), "discard-items"))) {
                     sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Opaque node \"%s\" is not allowed for operational "
                             "datastore changes.", LYD_NAME(elem));
                     goto cleanup_unlock;
