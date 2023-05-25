@@ -1,5 +1,5 @@
 /**
- * @file netconf_acm.c
+ * @file nacm.c
  * @author Michal Vasko <mvasko@cesnet.cz>
  * @brief NACM and ietf-netconf-acm callbacks
  *
@@ -20,6 +20,7 @@
 #include "netconf_acm.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <grp.h>
 #include <pthread.h>
 #include <pwd.h>
@@ -1116,11 +1117,11 @@ sr_nacm_get_recovery_user(void)
 }
 
 /**
- * @brief Get passwd entry of a user, specifically its UID and GID.
+ * @brief Get passwd entry of a user and return its UID and GID.
  *
  * @param[in] user User to learn about.
- * @param[out] uid User UID, if set.
- * @param[out] gid User GID, if set.
+ * @param[out] uid Optional user UID.
+ * @param[out] gid Optional user GID.
  * @param[out] found 1 if user found, 0 if user not found
  * @return err_info, NULL on success.
  */
@@ -1128,44 +1129,59 @@ static sr_error_info_t *
 sr_nacm_getpwnam(const char *user, uid_t *uid, gid_t *gid, int *found)
 {
     sr_error_info_t *err_info = NULL;
+    int r;
     struct passwd pwd, *pwd_p;
-    char *buf = NULL;
-    ssize_t buflen;
-    int ret;
+    char *buf = NULL, *mem;
+    ssize_t buflen = 0;
 
-    assert(user);
+    assert(user && found);
 
-    buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
-    if (buflen == -1) {
-        buflen = 2048;
-    }
-    buf = malloc(buflen);
-    if (!buf) {
-        SR_ERRINFO_MEM(&err_info);
-        return err_info;
-    }
-    ret = getpwnam_r(user, &pwd, buf, buflen, &pwd_p);
-    if (ret) {
-        /* If we got an error, we don't need to set `found`. */
-        sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Getting user \"%s\" pwd entry failed (%s).", user, strerror(ret));
-        free(buf);
-        return err_info;
+    *found = 0;
+
+    do {
+        if (!buflen) {
+            /* learn suitable buffer size */
+            buflen = sysconf(_SC_GETGR_R_SIZE_MAX);
+            if (buflen == -1) {
+                buflen = 2048;
+            }
+        } else {
+            /* enlarge buffer */
+            buflen += 2048;
+        }
+
+        /* allocate some buffer */
+        mem = realloc(buf, buflen);
+        SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
+        buf = mem;
+
+        /* user -> UID & GID */
+        r = getpwnam_r(user, &pwd, buf, buflen, &pwd_p);
+    } while (r && (r == ERANGE));
+    if (r) {
+        sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Retrieving user \"%s\" passwd entry failed (%s).",
+                user, strerror(r));
+        goto cleanup;
     } else if (!pwd_p) {
-        *found = 0;
-        free(buf);
-        return NULL;
+        /* not found */
+        goto cleanup;
     }
 
+    /* found */
     *found = 1;
 
     if (uid) {
+        /* assign UID */
         *uid = pwd.pw_uid;
     }
     if (gid) {
+        /* assign GID */
         *gid = pwd.pw_gid;
     }
+
+cleanup:
     free(buf);
-    return NULL;
+    return err_info;
 }
 
 /**
@@ -1229,12 +1245,11 @@ sr_nacm_collect_groups(const char *user, char ***groups, uint32_t *group_count)
     sr_error_info_t *err_info = NULL;
     struct group grp, *grp_p;
     gid_t user_gid = 0;
-    char *buf = NULL;
+    char *buf = NULL, *mem;
     gid_t *gids = NULL;
-    ssize_t buflen;
+    ssize_t buflen = 0;
     uint32_t i, j;
-    int found;
-    int gid_count = 0, ret;
+    int found, gid_count = 0, r;
 
     *groups = NULL;
     *group_count = 0;
@@ -1264,34 +1279,38 @@ sr_nacm_collect_groups(const char *user, char ***groups, uint32_t *group_count)
         /* get all GIDs */
         getgrouplist(user, user_gid, gids, &gid_count);
         gids = malloc(gid_count * sizeof *gids);
-        if (!gids) {
-            SR_ERRINFO_MEM(&err_info);
-            goto cleanup;
-        }
-        ret = getgrouplist(user, user_gid, gids, &gid_count);
-        if (ret == -1) {
+        SR_CHECK_MEM_GOTO(!gids, err_info, cleanup);
+        r = getgrouplist(user, user_gid, gids, &gid_count);
+        if (r == -1) {
             sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Getting system groups of user \"%s\" failed.", user);
             goto cleanup;
         }
 
-        /* add all GIDs group names */
-        buflen = sysconf(_SC_GETGR_R_SIZE_MAX);
+        /* allocate some buffer */
+        buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
         if (buflen == -1) {
             buflen = 2048;
         }
-        free(buf);
         buf = malloc(buflen);
-        if (!buf) {
-            SR_ERRINFO_MEM(&err_info);
-            goto cleanup;
-        }
+        SR_CHECK_MEM_GOTO(!buf, err_info, cleanup);
+
+        /* add all GIDs group names */
         for (i = 0; i < (unsigned)gid_count; ++i) {
-            ret = getgrgid_r(gids[i], &grp, buf, buflen, &grp_p);
-            if (ret) {
-                sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Getting GID grp entry failed (%s).", strerror(ret));
+            /* GID -> group */
+            while ((r = getgrgid_r(gids[i], &grp, buf, buflen, &grp_p)) && (r == ERANGE)) {
+                /* enlarge buffer */
+                buflen += 2048;
+                mem = sr_realloc(buf, buflen);
+                SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
+                buf = mem;
+            }
+            if (r) {
+                sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Retrieving GID \"%lu\" grp entry failed (%s).",
+                        (unsigned long)gids[i], strerror(r));
                 goto cleanup;
             } else if (!grp_p) {
-                sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Getting GID grp entry failed (Group not found).");
+                sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Retrieving GID \"%lu\" grp entry failed (No such GID).",
+                        (unsigned long)gids[i]);
                 goto cleanup;
             }
 
