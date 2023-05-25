@@ -773,7 +773,7 @@ sr_get_gid(const char *group, gid_t *gid)
     sr_error_info_t *err_info = NULL;
     int r;
     struct group grp, *grp_p;
-    char *buf = NULL, *mem;
+    char *buf = NULL;
     ssize_t buflen = 0;
 
     do {
@@ -789,9 +789,8 @@ sr_get_gid(const char *group, gid_t *gid)
         }
 
         /* allocate some buffer */
-        mem = realloc(buf, buflen);
-        SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
-        buf = mem;
+        buf = sr_realloc(buf, buflen);
+        SR_CHECK_MEM_GOTO(!buf, err_info, cleanup);
 
         /* group -> GID */
         r = getgrnam_r(group, &grp, buf, buflen, &grp_p);

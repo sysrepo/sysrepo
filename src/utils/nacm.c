@@ -1131,7 +1131,7 @@ sr_nacm_getpwnam(const char *user, uid_t *uid, gid_t *gid, int *found)
     sr_error_info_t *err_info = NULL;
     int r;
     struct passwd pwd, *pwd_p;
-    char *buf = NULL, *mem;
+    char *buf = NULL;
     ssize_t buflen = 0;
 
     assert(user && found);
@@ -1151,9 +1151,8 @@ sr_nacm_getpwnam(const char *user, uid_t *uid, gid_t *gid, int *found)
         }
 
         /* allocate some buffer */
-        mem = realloc(buf, buflen);
-        SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
-        buf = mem;
+        buf = sr_realloc(buf, buflen);
+        SR_CHECK_MEM_GOTO(!buf, err_info, cleanup);
 
         /* user -> UID & GID */
         r = getpwnam_r(user, &pwd, buf, buflen, &pwd_p);
@@ -1245,7 +1244,7 @@ sr_nacm_collect_groups(const char *user, char ***groups, uint32_t *group_count)
     sr_error_info_t *err_info = NULL;
     struct group grp, *grp_p;
     gid_t user_gid = 0;
-    char *buf = NULL, *mem;
+    char *buf = NULL;
     gid_t *gids = NULL;
     ssize_t buflen = 0;
     uint32_t i, j;
@@ -1300,9 +1299,8 @@ sr_nacm_collect_groups(const char *user, char ***groups, uint32_t *group_count)
             while ((r = getgrgid_r(gids[i], &grp, buf, buflen, &grp_p)) && (r == ERANGE)) {
                 /* enlarge buffer */
                 buflen += 2048;
-                mem = sr_realloc(buf, buflen);
-                SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
-                buf = mem;
+                buf = sr_realloc(buf, buflen);
+                SR_CHECK_MEM_GOTO(!buf, err_info, cleanup);
             }
             if (r) {
                 sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Retrieving GID \"%lu\" grp entry failed (%s).",
