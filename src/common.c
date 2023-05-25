@@ -1357,10 +1357,10 @@ sr_error_info_t *
 sr_get_pwd(uid_t *uid, char **user)
 {
     sr_error_info_t *err_info = NULL;
+    int r;
     struct passwd pwd, *pwd_p;
     char *buf = NULL;
     ssize_t buflen = 0;
-    int ret;
 
     assert(uid && user);
 
@@ -1382,19 +1382,19 @@ sr_get_pwd(uid_t *uid, char **user)
 
         if (*user) {
             /* user -> UID */
-            ret = getpwnam_r(*user, &pwd, buf, buflen, &pwd_p);
+            r = getpwnam_r(*user, &pwd, buf, buflen, &pwd_p);
         } else {
             /* UID -> user */
-            ret = getpwuid_r(*uid, &pwd, buf, buflen, &pwd_p);
+            r = getpwuid_r(*uid, &pwd, buf, buflen, &pwd_p);
         }
-    } while (ret && (ret == ERANGE));
-    if (ret) {
+    } while (r && (r == ERANGE));
+    if (r) {
         if (*user) {
             sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Retrieving user \"%s\" passwd entry failed (%s).",
-                    *user, strerror(ret));
+                    *user, strerror(r));
         } else {
             sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Retrieving UID \"%lu\" passwd entry failed (%s).",
-                    (unsigned long)*uid, strerror(ret));
+                    (unsigned long)*uid, strerror(r));
         }
         goto cleanup;
     } else if (!pwd_p) {
@@ -1416,8 +1416,6 @@ sr_get_pwd(uid_t *uid, char **user)
         *user = strdup(pwd.pw_name);
         SR_CHECK_MEM_GOTO(!*user, err_info, cleanup);
     }
-
-    /* success */
 
 cleanup:
     free(buf);
