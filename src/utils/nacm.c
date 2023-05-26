@@ -2237,6 +2237,7 @@ sr_errinfo_new_nacm(sr_error_info_t **err_info, const char *error_type, const ch
     va_list vargs;
     char *error_message = NULL, *error_path = NULL;
     void *err_data = NULL;
+    uint32_t count;
 
     assert(err_info && !*err_info);
 
@@ -2244,6 +2245,12 @@ sr_errinfo_new_nacm(sr_error_info_t **err_info, const char *error_type, const ch
     va_start(vargs, error_message_fmt);
     if (vasprintf(&error_message, error_message_fmt, vargs) == -1) {
         sr_errinfo_new(err_info, SR_ERR_NO_MEMORY, NULL);
+        goto cleanup;
+    }
+
+    /* number of NETCONF errors */
+    count = 1;
+    if ((*err_info = sr_ev_data_push(&err_data, sizeof count, &count))) {
         goto cleanup;
     }
 
@@ -2281,6 +2288,12 @@ sr_errinfo_new_nacm(sr_error_info_t **err_info, const char *error_type, const ch
         goto cleanup;
     }
     if ((*err_info = sr_ev_data_push(&err_data, strlen(error_path) + 1, error_path))) {
+        goto cleanup;
+    }
+
+    /* error-info count */
+    count = 0;
+    if ((*err_info = sr_ev_data_push(&err_data, sizeof count, &count))) {
         goto cleanup;
     }
 
