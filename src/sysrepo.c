@@ -6534,7 +6534,7 @@ cleanup:
 API int
 sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t timeout_ms, int wait)
 {
-    sr_error_info_t *err_info = NULL, *tmp_err = NULL;
+    sr_error_info_t *err_info = NULL;
     struct sr_mod_info_s mod_info;
     struct lyd_node *notif_top, *notif_op, *parent;
     sr_dep_t *shm_deps;
@@ -6555,9 +6555,6 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
         timeout_ms = SR_NOTIF_CB_TIMEOUT;
     }
     SR_MODINFO_INIT(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_RUNNING);
-
-    /* remember when the notification was generated */
-    sr_realtime_get(&notif_ts);
 
     /* check notif data tree */
     notif_op = NULL;
@@ -6638,24 +6635,30 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
 
-    /* store the notification for a replay, we continue on failure */
-    err_info = sr_replay_store(session, notif_top, notif_ts);
-
     /* NOTIF SUB READ LOCK */
-    if ((tmp_err = sr_rwlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__,
-            NULL, NULL))) {
+    if ((err_info = sr_rwlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid,
+            __func__, NULL, NULL))) {
         goto cleanup;
     }
 
-    /* publish notif in an event */
-    if ((tmp_err = sr_shmsub_notif_notify(session->conn, notif_top, notif_ts, session->orig_name, session->orig_data,
-            timeout_ms, wait))) {
-        goto cleanup_notifsub_unlock;
-    }
+    /* remember when the notification was generated */
+    sr_realtime_get(&notif_ts);
 
-cleanup_notifsub_unlock:
+    /* publish notif in an event */
+    err_info = sr_shmsub_notif_notify(session->conn, notif_top, notif_ts, session->orig_name, session->orig_data,
+            timeout_ms, wait);
+
     /* NOTIF SUB READ UNLOCK */
     sr_rwunlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
+
+    if (err_info) {
+        goto cleanup;
+    }
+
+    /* store the notification for a replay */
+    if ((err_info = sr_replay_store(session, notif_top, notif_ts))) {
+        goto cleanup;
+    }
 
 cleanup:
     /* MODULES UNLOCK */
@@ -6663,9 +6666,6 @@ cleanup:
 
     free(parent_path);
     sr_modinfo_erase(&mod_info);
-    if (tmp_err) {
-        sr_errinfo_merge(&err_info, tmp_err);
-    }
     return sr_api_ret(session, err_info);
 }
 
