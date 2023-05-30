@@ -3194,12 +3194,22 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     }
 
     /* store the notification for a replay, we continue on failure */
-    tmp_err = sr_replay_store(session, notif, notif_ts);
+    err_info = sr_replay_store(session, notif, notif_ts);
 
-    /* send the notification (non-validated, if everything works correctly it must be valid) */
-    if ((err_info = sr_shmsub_notif_notify(mod_info->conn, notif, notif_ts, session->orig_name, session->orig_data, 0, 0))) {
+    /* NOTIF SUB READ LOCK */
+    if ((tmp_err = sr_rwlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, mod_info->conn->cid,
+            __func__, NULL, NULL))) {
         goto cleanup;
     }
+
+    /* send the notification (non-validated, if everything works correctly it must be valid) */
+    if ((tmp_err = sr_shmsub_notif_notify(mod_info->conn, notif, notif_ts, session->orig_name, session->orig_data, 0, 0))) {
+        goto cleanup_notifsub_unlock;
+    }
+
+cleanup_notifsub_unlock:
+    /* NOTIF SUB READ UNLOCK */
+    sr_rwunlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, mod_info->conn->cid, __func__);
 
 cleanup:
     ly_set_free(set, NULL);
