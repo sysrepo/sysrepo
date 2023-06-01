@@ -3649,6 +3649,7 @@ sr_ds2str(sr_datastore_t ds)
         return "factory-default";
     }
 
+    assert(0);
     return NULL;
 }
 
@@ -3665,10 +3666,12 @@ sr_ident2mod_ds(const char *str)
         return SR_DS_OPERATIONAL;
     } else if (!strcmp(str, "ietf-factory-default:factory-default")) {
         return SR_DS_FACTORY_DEFAULT;
-    } else if (!strcmp(str, "sysrepo:notification")) {
+    } else if (!strcmp(str, "notification")) {
+        /* local identity, no prefix */
         return SR_MOD_DS_NOTIF;
     }
 
+    assert(0);
     return 0;
 }
 
@@ -3690,6 +3693,7 @@ sr_mod_ds2ident(int mod_ds)
         return "sysrepo:notification";
     }
 
+    assert(0);
     return NULL;
 }
 

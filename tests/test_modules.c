@@ -146,7 +146,7 @@ test_install_module(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
     "</module>"
     );
 
@@ -195,7 +195,7 @@ test_data_deps(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<inverse-deps>refs</inverse-deps>"
         "<rpc><path xmlns:t=\"urn:test\">/t:r1</path></rpc>"
         "<rpc><path xmlns:t=\"urn:test\">/t:r2</path></rpc>"
@@ -210,7 +210,7 @@ test_data_deps(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<replay-support>00000000000000000000000000000000000</replay-support>"
     "</module>"
     );
@@ -223,7 +223,7 @@ test_data_deps(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
     "</module>"
     );
     cmp_int_data(st->conn, "refs",
@@ -234,7 +234,7 @@ test_data_deps(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<replay-support>00000000000000000000000000000000000</replay-support>"
         "<deps>"
             "<lref>"
@@ -286,7 +286,7 @@ test_op_deps(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<replay-support>00000000000000000000000000000000000</replay-support>"
     "</module>"
     );
@@ -299,7 +299,7 @@ test_op_deps(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<rpc>"
             "<path xmlns:o=\"urn:ops\">/o:cont/o:list1/o:cont2/o:act1</path>"
             "<out>"
@@ -364,7 +364,7 @@ test_op_deps(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<rpc>"
             "<path xmlns:o=\"urn:ops\">/o:cont/o:list1/o:cont2/o:act1</path>"
             "<out>"
@@ -459,7 +459,7 @@ test_inv_deps(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<deps>"
             "<lref>"
                 "<target-path xmlns:if=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">/if:interfaces-state/if:interface/if:name</target-path>"
@@ -501,7 +501,7 @@ test_inv_deps(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<deps>"
             "<lref>"
                 "<target-path xmlns:rt=\"urn:ietf:params:xml:ns:yang:ietf-routing\">/rt:routing-state/rt:routing-instance/rt:name</target-path>"
@@ -529,7 +529,7 @@ test_inv_deps(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
     "</module>"
     );
 
@@ -583,7 +583,7 @@ test_remove_imp_module(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
     "</module>"
     );
 
@@ -622,7 +622,7 @@ test_update_module(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<notification>"
             "<path xmlns:r=\"urn:rev\">/r:notif</path>"
         "</notification>"
@@ -658,7 +658,7 @@ test_change_feature(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<deps>"
             "<lref>"
                 "<target-path xmlns:t=\"urn:test\">/t:test-leaf</target-path>"
@@ -675,7 +675,7 @@ test_change_feature(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<inverse-deps>features</inverse-deps>"
         "<rpc><path xmlns:t=\"urn:test\">/t:r1</path></rpc>"
         "<rpc><path xmlns:t=\"urn:test\">/t:r2</path></rpc>"
@@ -699,7 +699,7 @@ test_change_feature(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<deps>"
             "<lref>"
                 "<target-path xmlns:t=\"urn:test\">/t:test-leaf</target-path>"
@@ -745,7 +745,7 @@ test_change_feature(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
     "</module>"
     );
 
@@ -758,7 +758,7 @@ test_change_feature(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<rpc><path xmlns:t=\"urn:test\">/t:r1</path></rpc>"
         "<rpc><path xmlns:t=\"urn:test\">/t:r2</path></rpc>"
     "</module>"
@@ -819,7 +819,7 @@ test_replay_support(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<rpc><path xmlns:t=\"urn:test\">/t:r1</path></rpc>"
         "<rpc><path xmlns:t=\"urn:test\">/t:r2</path></rpc>"
     "</module>"
@@ -833,7 +833,7 @@ test_replay_support(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<replay-support>00000000000000000000000000000000000</replay-support>"
     "</module>"
     );
@@ -846,7 +846,7 @@ test_replay_support(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
     "</module>"
     );
     cmp_int_data(st->conn, "simple",
@@ -857,7 +857,7 @@ test_replay_support(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<replay-support>00000000000000000000000000000000000</replay-support>"
     "</module>"
     );
@@ -874,7 +874,7 @@ test_replay_support(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<replay-support>00000000000000000000000000000000000</replay-support>"
         "<rpc><path xmlns:t=\"urn:test\">/t:r1</path></rpc>"
         "<rpc><path xmlns:t=\"urn:test\">/t:r2</path></rpc>"
@@ -889,7 +889,7 @@ test_replay_support(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<replay-support>00000000000000000000000000000000000</replay-support>"
     "</module>"
     );
@@ -902,7 +902,7 @@ test_replay_support(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<replay-support>00000000000000000000000000000000000</replay-support>"
     "</module>"
     );
@@ -914,7 +914,7 @@ test_replay_support(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<replay-support>00000000000000000000000000000000000</replay-support>"
     "</module>"
     );
@@ -931,7 +931,7 @@ test_replay_support(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<rpc><path xmlns:t=\"urn:test\">/t:r1</path></rpc>"
         "<rpc><path xmlns:t=\"urn:test\">/t:r2</path></rpc>"
     "</module>"
@@ -945,7 +945,7 @@ test_replay_support(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
     "</module>"
     );
     cmp_int_data(st->conn, "iana-if-type",
@@ -957,7 +957,7 @@ test_replay_support(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
     "</module>"
     );
     cmp_int_data(st->conn, "simple",
@@ -968,7 +968,7 @@ test_replay_support(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
     "</module>"
     );
 
@@ -1003,7 +1003,7 @@ test_foreign_aug(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<inverse-deps>aug-trg</inverse-deps>"
     "</module>"
     );
@@ -1016,7 +1016,7 @@ test_foreign_aug(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<deps>"
             "<lref>"
                 "<target-path xmlns:aug=\"aug\">/aug:bc1/aug:bcs1</target-path>"
@@ -1055,7 +1055,7 @@ test_foreign_aug(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<inverse-deps>aug-trg</inverse-deps>"
     "</module>"
     );
@@ -1068,7 +1068,7 @@ test_foreign_aug(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<deps>"
             "<lref>"
                 "<target-path xmlns:aug=\"aug\">/aug:bc1/aug:bcs1</target-path>"
@@ -1175,7 +1175,7 @@ test_startup_data_foreign_identityref(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
         "<deps>"
             "<xpath>"
                 "<expression xmlns:t1=\"http://www.example.net/t1\" xmlns:tt=\"http://www.example.net/t-types\">t1:layer-protocol-name='tt:desc'</expression>"
@@ -1191,7 +1191,7 @@ test_startup_data_foreign_identityref(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
     "</module>"
     );
 
@@ -1395,7 +1395,7 @@ test_feature_deps(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
     "</module>"
     );
     cmp_int_data(st->conn, "feature-deps2",
@@ -1407,7 +1407,7 @@ test_feature_deps(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
     "</module>"
     );
 
@@ -1434,7 +1434,7 @@ test_feature_deps(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
     "</module>"
     );
     cmp_int_data(st->conn, "feature-deps2",
@@ -1445,7 +1445,7 @@ test_feature_deps(void **state)
         "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
         "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
-        "<plugin><datastore>sr:notification</datastore><name>JSON notif</name></plugin>"
+        "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
     "</module>"
     );
 
