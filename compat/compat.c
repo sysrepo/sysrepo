@@ -48,6 +48,7 @@ pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *abstime)
 
         if (nsec_diff <= 0) {
             /* timeout */
+            rc = ETIMEDOUT;
             break;
         } else if (nsec_diff < 5000000) {
             /* sleep until timeout */
