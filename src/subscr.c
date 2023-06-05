@@ -492,9 +492,9 @@ cleanup:
 
 sr_error_info_t *
 sr_subscr_notif_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess, const char *mod_name,
-        const char *xpath, const struct timespec *listen_since, const struct timespec *start_time,
-        const struct timespec *stop_time, sr_event_notif_cb notif_cb, sr_event_notif_tree_cb notif_tree_cb,
-        void *private_data, sr_lock_mode_t has_subs_lock)
+        const char *xpath, const struct timespec *listen_since_mono, const struct timespec *listen_since_real,
+        const struct timespec *start_time, const struct timespec *stop_time, sr_event_notif_cb notif_cb,
+        sr_event_notif_tree_cb notif_tree_cb, void *private_data, sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
     struct modsub_notif_s *notif_sub = NULL;
@@ -556,7 +556,8 @@ sr_subscr_notif_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_sessi
         SR_CHECK_MEM_GOTO(!mem[3], err_info, error);
         notif_sub->subs[notif_sub->sub_count].xpath = mem[3];
     }
-    notif_sub->subs[notif_sub->sub_count].listen_since = *listen_since;
+    notif_sub->subs[notif_sub->sub_count].listen_since_mono = *listen_since_mono;
+    notif_sub->subs[notif_sub->sub_count].listen_since_real = *listen_since_real;
     if (start_time) {
         notif_sub->subs[notif_sub->sub_count].start_time = *start_time;
     }

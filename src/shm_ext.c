@@ -1397,7 +1397,7 @@ sr_shmext_oper_poll_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t de
 
 sr_error_info_t *
 sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, const char *xpath, uint32_t evpipe_num,
-        struct timespec *listen_since)
+        struct timespec *listen_since_mono, struct timespec *listen_since_real)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     off_t xpath_off;
@@ -1410,7 +1410,8 @@ sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
     }
 
     /* if a notification is sent now, once it gets the lock, this subscription will already be listening */
-    sr_realtime_get(listen_since);
+    sr_timeouttime_get(listen_since_mono, 0);
+    sr_realtime_get(listen_since_real);
 
     /* EXT WRITE LOCK */
     if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_WRITE, 1, __func__))) {

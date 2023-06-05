@@ -3039,7 +3039,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     struct lyd_node *root, *elem, *notif = NULL;
     struct ly_set *set;
     sr_mod_t *shm_mod;
-    struct timespec notif_ts;
+    struct timespec notif_ts_mono, notif_ts_real;
     sr_mod_notif_sub_t *notif_subs;
     uint32_t idx = 0, notif_sub_count;
     char *xpath;
@@ -3197,10 +3197,12 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     }
 
     /* remember when the notification was generated */
-    sr_realtime_get(&notif_ts);
+    sr_timeouttime_get(&notif_ts_mono, 0);
+    sr_realtime_get(&notif_ts_real);
 
     /* send the notification (non-validated, if everything works correctly it must be valid) */
-    err_info = sr_shmsub_notif_notify(mod_info->conn, notif, notif_ts, session->orig_name, session->orig_data, 0, 0);
+    err_info = sr_shmsub_notif_notify(mod_info->conn, notif, notif_ts_mono, notif_ts_real, session->orig_name,
+            session->orig_data, 0, 0);
 
     /* NOTIF SUB READ UNLOCK */
     sr_rwunlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, mod_info->conn->cid, __func__);
@@ -3210,7 +3212,7 @@ sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *mod_info, sr_sessi
     }
 
     /* store the notification for a replay */
-    if ((err_info = sr_replay_store(session, notif, notif_ts))) {
+    if ((err_info = sr_replay_store(session, notif, notif_ts_real))) {
         goto cleanup;
     }
 

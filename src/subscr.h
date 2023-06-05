@@ -111,7 +111,8 @@ void sr_subscr_oper_poll_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id,
  * @param[in] sess Subscription session.
  * @param[in] mod_name Subscription module name.
  * @param[in] xpath Subscription XPath.
- * @param[in] listen_since Timestamp of the subscription starting to listen.
+ * @param[in] listen_since_mono Monotonic timestamp of the subscription starting to listen.
+ * @param[in] listen_since_real Realtime timestamp of the subscription starting to listen.
  * @param[in] start_time Optional subscription start time.
  * @param[in] stop_time Optional subscription stop time.
  * @param[in] notif_cb Subscription value callback.
@@ -121,9 +122,9 @@ void sr_subscr_oper_poll_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id,
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_subscr_notif_sub_add(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_session_ctx_t *sess,
-        const char *mod_name, const char *xpath, const struct timespec *listen_since, const struct timespec *start_time,
-        const struct timespec *stop_time, sr_event_notif_cb notif_cb, sr_event_notif_tree_cb notif_tree_cb,
-        void *private_data, sr_lock_mode_t has_subs_lock);
+        const char *mod_name, const char *xpath, const struct timespec *listen_since_mono, const struct timespec *listen_since_real,
+        const struct timespec *start_time, const struct timespec *stop_time, sr_event_notif_cb notif_cb,
+        sr_event_notif_tree_cb notif_tree_cb, void *private_data, sr_lock_mode_t has_subs_lock);
 
 /**
  * @brief Delete a notification subscription from a subscription structure.

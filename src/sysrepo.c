@@ -6363,7 +6363,7 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
         void *private_data, sr_subscr_options_t opts, sr_subscription_ctx_t **subscription)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
-    struct timespec listen_since, cur_ts;
+    struct timespec listen_since_mono, listen_since_real, cur_ts;
     const struct lys_module *ly_mod;
     sr_conn_ctx_t *conn;
     uint32_t sub_id;
@@ -6424,7 +6424,8 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
     }
 
     /* add notification subscription into ext SHM and create separate specific SHM segment */
-    if ((err_info = sr_shmext_notif_sub_add(conn, shm_mod, sub_id, xpath, (*subscription)->evpipe_num, &listen_since))) {
+    if ((err_info = sr_shmext_notif_sub_add(conn, shm_mod, sub_id, xpath, (*subscription)->evpipe_num,
+            &listen_since_mono, &listen_since_real))) {
         goto cleanup_unlock;
     }
 
@@ -6432,8 +6433,8 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
      * the evpipe data cannot be read and the event not processed since it is still missing in the subscr structure */
 
     /* add subscription into structure */
-    if ((err_info = sr_subscr_notif_sub_add(*subscription, sub_id, session, ly_mod->name, xpath, &listen_since,
-            start_time, stop_time, callback, tree_callback, private_data, SR_LOCK_WRITE))) {
+    if ((err_info = sr_subscr_notif_sub_add(*subscription, sub_id, session, ly_mod->name, xpath, &listen_since_mono,
+            &listen_since_real, start_time, stop_time, callback, tree_callback, private_data, SR_LOCK_WRITE))) {
         goto error1;
     }
 
@@ -6539,7 +6540,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
     struct lyd_node *notif_top, *notif_op, *parent;
     sr_dep_t *shm_deps;
     sr_mod_t *shm_mod;
-    struct timespec notif_ts;
+    struct timespec notif_ts_mono, notif_ts_real;
     uint16_t shm_dep_count;
     char *parent_path = NULL;
 
@@ -6642,11 +6643,12 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
     }
 
     /* remember when the notification was generated */
-    sr_realtime_get(&notif_ts);
+    sr_timeouttime_get(&notif_ts_mono, 0);
+    sr_realtime_get(&notif_ts_real);
 
     /* publish notif in an event */
-    err_info = sr_shmsub_notif_notify(session->conn, notif_top, notif_ts, session->orig_name, session->orig_data,
-            timeout_ms, wait);
+    err_info = sr_shmsub_notif_notify(session->conn, notif_top, notif_ts_mono, notif_ts_real, session->orig_name,
+            session->orig_data, timeout_ms, wait);
 
     /* NOTIF SUB READ UNLOCK */
     sr_rwunlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, session->conn->cid, __func__);
@@ -6656,7 +6658,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
     }
 
     /* store the notification for a replay */
-    if ((err_info = sr_replay_store(session, notif_top, notif_ts))) {
+    if ((err_info = sr_replay_store(session, notif_top, notif_ts_real))) {
         goto cleanup;
     }
 

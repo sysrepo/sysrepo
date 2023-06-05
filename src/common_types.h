@@ -274,7 +274,8 @@ struct sr_subscription_ctx_s {
         struct modsub_notifsub_s {
             uint32_t sub_id;        /**< Unique subscription ID. */
             char *xpath;            /**< Subscription XPath. */
-            struct timespec listen_since;   /**< Timestamp of the subscription listening for real-time notifications. */
+            struct timespec listen_since_mono;  /**< Monotonic timestamp of the subscription listening for real-time notifications. */
+            struct timespec listen_since_real;  /**< Realtime timestamp of the subscription listening for real-time notifications. */
             struct timespec start_time; /**< Subscription start time. */
             int replayed;           /**< Flag whether the subscription replay is finished. */
             struct timespec stop_time;  /**< Subscription stop time. */

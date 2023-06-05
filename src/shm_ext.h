@@ -208,11 +208,12 @@ sr_error_info_t *sr_shmext_oper_poll_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm
  * @param[in] sub_id Unique sub ID.
  * @param[in] xpath Subscription XPath.
  * @param[in] evpipe_num Subscription event pipe number.
- * @param[out] listen_since Timestamp of the moment the subscription is listening for notifications.
+ * @param[out] listen_since_mono Monotonic timestamp of the moment the subscription is listening for notifications.
+ * @param[out] listen_since_real Realtime timestamp of the moment the subscription is listening for notifications.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, const char *xpath,
-        uint32_t evpipe_num, struct timespec *listen_since);
+        uint32_t evpipe_num, struct timespec *listen_since_mono, struct timespec *listen_since_real);
 
 /**
  * @brief Remove main SHM module notification subscription and unlink sub SHM if the last subscription was removed.

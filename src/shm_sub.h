@@ -225,15 +225,16 @@ sr_error_info_t *sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, sr_rwlock_t *su
  *
  * @param[in] conn Connection to use.
  * @param[in] notif Notification data tree.
- * @param[in] notif_ts Notification timestamp.
+ * @param[in] notif_ts_mono Notification monotonic timestamp.
+ * @param[in] notif_ts_real Notification realtime timestamp.
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
  * @param[in] timeout_ms Notification callback timeout in milliseconds. Used only if @p wait is set.
  * @param[in] wait Whether to wait for the callbacks or not.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, struct timespec notif_ts,
-        const char *orig_name, const void *orig_data, uint32_t timeout_ms, int wait);
+sr_error_info_t *sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, struct timespec notif_ts_mono,
+        struct timespec notif_ts_real, const char *orig_name, const void *orig_data, uint32_t timeout_ms, int wait);
 
 /**
  * @brief Process all module change events, if any.
