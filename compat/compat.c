@@ -33,7 +33,6 @@ int
 pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *abstime)
 {
     int64_t nsec_diff;
-    int32_t diff;
     struct timespec cur, dur;
     int rc;
 
@@ -46,15 +45,14 @@ pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *abstime)
         nsec_diff = 0;
         nsec_diff += (((int64_t)abstime->tv_sec) - ((int64_t)cur.tv_sec)) * 1000000000L;
         nsec_diff += ((int64_t)abstime->tv_nsec) - ((int64_t)cur.tv_nsec);
-        diff = (nsec_diff ? nsec_diff / 1000000L : 0);
 
-        if (diff < 1) {
+        if (nsec_diff <= 0) {
             /* timeout */
             break;
-        } else if (diff < 5) {
+        } else if (nsec_diff < 5000000) {
             /* sleep until timeout */
             dur.tv_sec = 0;
-            dur.tv_nsec = (long)diff * 1000000;
+            dur.tv_nsec = nsec_diff;
         } else {
             /* sleep 5 ms */
             dur.tv_sec = 0;
