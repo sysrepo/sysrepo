@@ -644,6 +644,65 @@ test_replace_userord(void **state)
 }
 
 static void
+test_none(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const struct ly_ctx *ly_ctx;
+    struct lyd_node *edit;
+    sr_data_t *subtree;
+    char *str, *str2;
+    int ret;
+
+    /* create some data */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']", NULL, NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='eth64']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* prepare edit that should not make any changes */
+    str =
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+            "  <interface>"
+            "    <name>eth64</name>"
+            "    <enabled>false</enabled>"
+            "  </interface>"
+            "  <interface xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\" nc:operation=\"remove\">"
+            "    <name>eth65</name>"
+            "  </interface>"
+            "</interfaces>";
+    ly_ctx = sr_acquire_context(st->conn);
+    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &edit));
+
+    ret = sr_edit_batch(st->sess, edit, "none");
+    lyd_free_all(edit);
+    sr_release_context(st->conn);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check final datastore contents */
+    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    sr_release_data(subtree);
+
+    str2 =
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "  <interface>\n"
+            "    <name>eth64</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
+
+    assert_string_equal(str, str2);
+    free(str);
+}
+
+static void
 test_isolate(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -1466,6 +1525,7 @@ main(void)
         cmocka_unit_test_teardown(test_move, clear_test),
         cmocka_unit_test_teardown(test_replace, clear_interfaces),
         cmocka_unit_test_teardown(test_replace_userord, clear_test),
+        cmocka_unit_test_teardown(test_none, clear_interfaces),
         cmocka_unit_test_teardown(test_isolate, clear_interfaces),
         cmocka_unit_test_teardown(test_isolate_oper, clear_mod),
         cmocka_unit_test(test_purge),

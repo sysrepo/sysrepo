@@ -31,6 +31,7 @@ enum edit_op {
     EDIT_CONTINUE = 0,
     EDIT_MOVE,
     EDIT_AUTO_REMOVE,
+    EDIT_DFLT_CHANGE,
 
     /* sysrepo-specific */
     EDIT_ETHER,

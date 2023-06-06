@@ -1227,6 +1227,13 @@ const char *
 sr_edit_op2str(enum edit_op op)
 {
     switch (op) {
+    case EDIT_FINISH:
+    case EDIT_CONTINUE:
+    case EDIT_MOVE:
+    case EDIT_AUTO_REMOVE:
+        break;
+    case EDIT_DFLT_CHANGE:
+        return "dflt-change";
     case EDIT_ETHER:
         return "ether";
     case EDIT_PURGE:
@@ -1243,8 +1250,6 @@ sr_edit_op2str(enum edit_op op)
         return "delete";
     case EDIT_REMOVE:
         return "remove";
-    default:
-        break;
     }
 
     assert(0);
@@ -1734,15 +1739,13 @@ sr_edit_apply_ether(struct lyd_node *data_match, enum edit_op *next_op)
  * @param[in,out] diff_root Sysrepo diff root node.
  * @param[out] diff_node Created diff node.
  * @param[out] next_op Next operation to be performed with these nodes.
- * @param[out] change Whether some data change occurred.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_edit_apply_none(struct lyd_node *data_match, const struct lyd_node *edit_node, struct lyd_node *diff_parent,
-        struct lyd_node **diff_root, struct lyd_node **diff_node, enum edit_op *next_op, int *change)
+        struct lyd_node **diff_root, struct lyd_node **diff_node, enum edit_op *next_op)
 {
     sr_error_info_t *err_info = NULL;
-    uintptr_t prev_dflt;
 
     assert(edit_node || data_match);
 
@@ -1756,24 +1759,7 @@ sr_edit_apply_none(struct lyd_node *data_match, const struct lyd_node *edit_node
         if ((err_info = sr_edit_diff_add(data_match, NULL, NULL, EDIT_NONE, 0, diff_parent, diff_root, diff_node))) {
             return err_info;
         }
-    } else if ((data_match->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) &&
-            ((data_match->flags & LYD_DEFAULT) != (edit_node->flags & LYD_DEFAULT))) {
-        prev_dflt = data_match->flags & LYD_DEFAULT;
-
-        /* update dflt flag itself */
-        data_match->flags &= ~LYD_DEFAULT;
-        data_match->flags |= edit_node->flags & LYD_DEFAULT;
-
-        /* default flag changed, we need the node in the diff */
-        if ((err_info = sr_edit_diff_add(data_match, NULL, (char *)prev_dflt, EDIT_NONE, 0, diff_parent, diff_root,
-                diff_node))) {
-            return err_info;
-        }
-
-        if (change) {
-            *change = 1;
-        }
-    }
+    } /* else the node exists (possibly with different value/dflt flag) so ignore it */
 
     *next_op = EDIT_CONTINUE;
     return NULL;
@@ -2091,7 +2077,7 @@ sr_edit_apply_create(struct lyd_node **data_root, struct lyd_node *data_parent, 
         if ((edit_node->schema->nodetype == LYS_LEAF) && ((*data_match)->flags & LYD_DEFAULT)) {
             /* allow creating existing default leaves */
             if (val_equal) {
-                *next_op = EDIT_NONE;
+                *next_op = EDIT_DFLT_CHANGE;
             } else {
                 *next_op = EDIT_REPLACE;
             }
@@ -2135,11 +2121,12 @@ sr_edit_apply_create(struct lyd_node **data_root, struct lyd_node *data_parent, 
  *
  * @param[in] data_match Matching data tree node.
  * @param[in] val_equal Whether even values of the nodes match.
+ * @param[in] edit_node Current edit node.
  * @param[out] next_op Next operation to be performed with these nodes.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_apply_merge(struct lyd_node *data_match, int val_equal, enum edit_op *next_op)
+sr_edit_apply_merge(struct lyd_node *data_match, int val_equal, const struct lyd_node *edit_node, enum edit_op *next_op)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -2161,6 +2148,10 @@ sr_edit_apply_merge(struct lyd_node *data_match, int val_equal, enum edit_op *ne
             SR_ERRINFO_INT(&err_info);
             return err_info;
         }
+    } else if ((data_match->schema->nodetype & LYD_NODE_TERM) &&
+            ((data_match->flags & LYD_DEFAULT) != (edit_node->flags & LYD_DEFAULT))) {
+        /* default flag change */
+        *next_op = EDIT_DFLT_CHANGE;
     } else {
         *next_op = EDIT_NONE;
     }
@@ -2187,6 +2178,48 @@ sr_edit_apply_delete(struct lyd_node *data_match, const struct lyd_node *edit_no
     }
 
     *next_op = EDIT_REMOVE;
+    return NULL;
+}
+
+/**
+ * @brief Apply special edit dflt-change operation.
+ *
+ * @param[in] data_match Matching data tree node.
+ * @param[in] edit_node Current edit node.
+ * @param[in] diff_parent Current sysrepo diff parent.
+ * @param[in,out] diff_root Sysrepo diff root node.
+ * @param[out] diff_node Created diff node.
+ * @param[out] next_op Next operation to be performed with these nodes.
+ * @param[out] change Whether some data change occured.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_edit_apply_dflt_change(struct lyd_node *data_match, const struct lyd_node *edit_node, struct lyd_node *diff_parent,
+        struct lyd_node **diff_root, struct lyd_node **diff_node, enum edit_op *next_op, int *change)
+{
+    sr_error_info_t *err_info = NULL;
+    uintptr_t prev_dflt;
+
+    assert(data_match->schema->nodetype & LYD_NODE_TERM);
+    assert((data_match->flags & LYD_DEFAULT) != (edit_node->flags & LYD_DEFAULT));
+
+    prev_dflt = data_match->flags & LYD_DEFAULT;
+
+    /* update dflt flag itself */
+    data_match->flags &= ~LYD_DEFAULT;
+    data_match->flags |= edit_node->flags & LYD_DEFAULT;
+
+    /* default flag changed, we need the node in the diff */
+    if ((err_info = sr_edit_diff_add(data_match, NULL, (char *)prev_dflt, EDIT_NONE, 0, diff_parent, diff_root,
+            diff_node))) {
+        return err_info;
+    }
+
+    *next_op = EDIT_CONTINUE;
+    if (change) {
+        *change = 1;
+    }
+
     return NULL;
 }
 
@@ -2282,13 +2315,20 @@ reapply:
             }
             break;
         case EDIT_MERGE:
-            if ((err_info = sr_edit_apply_merge(data_match, val_equal, &next_op))) {
+            if ((err_info = sr_edit_apply_merge(data_match, val_equal, edit_node, &next_op))) {
                 sr_edit_apply_op_error(&err_info, op);
                 goto cleanup;
             }
             break;
         case EDIT_DELETE:
             if ((err_info = sr_edit_apply_delete(data_match, edit_node, &next_op))) {
+                sr_edit_apply_op_error(&err_info, op);
+                goto cleanup;
+            }
+            break;
+        case EDIT_DFLT_CHANGE:
+            if ((err_info = sr_edit_apply_dflt_change(data_match, edit_node, diff_parent, diff_root, &diff_node,
+                    &next_op, change))) {
                 sr_edit_apply_op_error(&err_info, op);
                 goto cleanup;
             }
@@ -2312,7 +2352,7 @@ reapply:
             }
             break;
         case EDIT_NONE:
-            if ((err_info = sr_edit_apply_none(data_match, edit_node, diff_parent, diff_root, &diff_node, &next_op, change))) {
+            if ((err_info = sr_edit_apply_none(data_match, edit_node, diff_parent, diff_root, &diff_node, &next_op))) {
                 sr_edit_apply_op_error(&err_info, op);
                 goto cleanup;
             }
