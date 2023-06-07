@@ -64,7 +64,6 @@ void sr_shmext_print(sr_mod_shm_t *mod_shm, sr_shm_t *shm_ext);
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
- * @param[in] has_lock Whether CHANGE SUB lock is already held.
  * @param[in] ds Datastore.
  * @param[in] sub_id Unique sub ID.
  * @param[in] xpath Subscription XPath.
@@ -73,8 +72,8 @@ void sr_shmext_print(sr_mod_shm_t *mod_shm, sr_shm_t *shm_ext);
  * @param[in] evpipe_num Subscription event pipe number.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_change_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t has_lock,
-        sr_datastore_t ds, uint32_t sub_id, const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num);
+sr_error_info_t *sr_shmext_change_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, uint32_t sub_id,
+        const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num);
 
 /**
  * @brief Modify existing main SHM module change subscription.
@@ -95,13 +94,11 @@ sr_error_info_t *sr_shmext_change_sub_modify(sr_conn_ctx_t *conn, sr_mod_t *shm_
  *
  * @param[in] conn Connection to use.
  * @param[in] shm_mod SHM module.
- * @param[in] has_lock Whether CHANGE SUB lock is already held.
  * @param[in] ds Datastore.
  * @param[in] sub_id Unique sub ID.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_change_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_lock_mode_t has_lock,
-        sr_datastore_t ds, uint32_t sub_id);
+sr_error_info_t *sr_shmext_change_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, uint32_t sub_id);
 
 /**
  * @brief Remove main SHM module change subscription with param-based cleanup.
@@ -208,12 +205,10 @@ sr_error_info_t *sr_shmext_oper_poll_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm
  * @param[in] sub_id Unique sub ID.
  * @param[in] xpath Subscription XPath.
  * @param[in] evpipe_num Subscription event pipe number.
- * @param[out] listen_since_mono Monotonic timestamp of the moment the subscription is listening for notifications.
- * @param[out] listen_since_real Realtime timestamp of the moment the subscription is listening for notifications.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id, const char *xpath,
-        uint32_t evpipe_num, struct timespec *listen_since_mono, struct timespec *listen_since_real);
+        uint32_t evpipe_num);
 
 /**
  * @brief Remove main SHM module notification subscription and unlink sub SHM if the last subscription was removed.
@@ -264,15 +259,14 @@ sr_error_info_t *sr_shmext_rpc_sub_add(sr_conn_ctx_t *conn, sr_rwlock_t *sub_loc
  * @brief Remove main SHM RPC/action subscription and unlink sub SHM if the last subscription was removed.
  *
  * @param[in] conn Connection to use.
- * @param[in] sub_lock SHM RPC subs lock.
  * @param[in,out] subs Offset in ext SHM of RPC subs.
  * @param[in,out] sub_count Ext SHM RPC sub count.
  * @param[in] path RPC path.
  * @param[in] sub_id Unique sub ID.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_rpc_sub_del(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, uint32_t *sub_count,
-        const char *path, uint32_t sub_id);
+sr_error_info_t *sr_shmext_rpc_sub_del(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, const char *path,
+        uint32_t sub_id);
 
 /**
  * @brief Remove main SHM module RPC/action subscription with param-based cleanup.

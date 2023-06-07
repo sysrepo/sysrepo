@@ -284,9 +284,21 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         rpc_path = SR_RPC_FACTORY_RESET_PATH;
         shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(conn), rpc_path);
         SR_CHECK_INT_GOTO(!shm_rpc, err_info, cleanup_unlock);
-        if ((err_info = sr_shmext_rpc_sub_add(conn, &shm_rpc->lock, &shm_rpc->subs, &shm_rpc->sub_count, rpc_path, 0,
-                rpc_path, SR_RPC_FACTORY_RESET_INT_PRIO, 0, -1, 0))) {
-            goto cleanup;
+
+        /* RPC SUB WRITE LOCK */
+        if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL,
+                NULL))) {
+            goto cleanup_unlock;
+        }
+
+        err_info = sr_shmext_rpc_sub_add(conn, &shm_rpc->lock, &shm_rpc->subs, &shm_rpc->sub_count, rpc_path, 0,
+                rpc_path, SR_RPC_FACTORY_RESET_INT_PRIO, 0, -1, 0);
+
+        /* RPC SUB WRITE UNLOCK */
+        sr_rwunlock(&shm_rpc->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+
+        if (err_info) {
+            goto cleanup_unlock;
         }
     }
 
@@ -5195,24 +5207,21 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         /* call the callback with the current configuration, keep any used modules locked in mod_info */
         if ((err_info = sr_module_change_subscribe_enable(session, &mod_info, ly_mod, xpath, callback, private_data,
                 sub_id, opts))) {
-            goto cleanup_change_unlock;
+            goto cleanup_unlock1;
         }
     }
 
     /* SUBS WRITE LOCK */
     if ((err_info = sr_rwlock(&(*subscription)->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
             __func__, NULL, NULL))) {
-        goto cleanup_change_unlock;
+        goto cleanup_unlock1;
     }
 
     /* add module subscription into ext SHM and create separate specific SHM segment */
-    if ((err_info = sr_shmext_change_sub_add(conn, shm_mod, SR_LOCK_WRITE, session->ds, sub_id, xpath, priority,
-            sub_opts, (*subscription)->evpipe_num))) {
-        goto cleanup_subs_change_unlock;
+    if ((err_info = sr_shmext_change_sub_add(conn, shm_mod, session->ds, sub_id, xpath, priority, sub_opts,
+            (*subscription)->evpipe_num))) {
+        goto cleanup_unlock2;
     }
-
-    /* we are holding SUBS lock so that even if event is generated based on the ext SHM subscription we have just added,
-     * the evpipe data cannot be read and the event not processed since it is still missing in the subscr structure */
 
     /* add subscription into structure */
     if ((err_info = sr_subscr_change_sub_add(*subscription, sub_id, session, module_name, xpath, callback, private_data,
@@ -5226,21 +5235,21 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
         goto error2;
     }
 
-    goto cleanup_subs_change_unlock;
+    goto cleanup_unlock2;
 
 error2:
     sr_subscr_change_sub_del(*subscription, sub_id, SR_LOCK_WRITE);
 
 error1:
-    if ((tmp_err = sr_shmext_change_sub_del(conn, shm_mod, SR_LOCK_WRITE, session->ds, sub_id))) {
+    if ((tmp_err = sr_shmext_change_sub_del(conn, shm_mod, session->ds, sub_id))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
-cleanup_subs_change_unlock:
+cleanup_unlock2:
     /* SUBS WRITE UNLOCK */
     sr_rwunlock(&(*subscription)->subs_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
-cleanup_change_unlock:
+cleanup_unlock1:
     /* CHANGE SUB UNLOCK */
     sr_rwunlock(&shm_mod->change_sub[session->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
 
@@ -5793,21 +5802,31 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
         goto cleanup;
     }
 
+    /* RPC SUB WRITE LOCK */
+    if (is_ext) {
+        if ((err_info = sr_rwlock(&shm_mod->rpc_ext_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
+                NULL, NULL))) {
+            goto cleanup_unlock1;
+        }
+    } else {
+        if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
+                NULL, NULL))) {
+            goto cleanup_unlock1;
+        }
+    }
+
     /* add RPC/action subscription into ext SHM and create separate specific SHM segment */
     if (is_ext) {
         if ((err_info = sr_shmext_rpc_sub_add(conn, &shm_mod->rpc_ext_lock, &shm_mod->rpc_ext_subs,
                 &shm_mod->rpc_ext_sub_count, path, sub_id, xpath, priority, 0, (*subscription)->evpipe_num, conn->cid))) {
-            goto cleanup_unlock;
+            goto cleanup_unlock2;
         }
     } else {
         if ((err_info = sr_shmext_rpc_sub_add(conn, &shm_rpc->lock, &shm_rpc->subs, &shm_rpc->sub_count, path, sub_id,
                 xpath, priority, 0, (*subscription)->evpipe_num, conn->cid))) {
-            goto cleanup_unlock;
+            goto cleanup_unlock2;
         }
     }
-
-    /* we are holding SUBS lock so that even if event is generated based on the ext SHM subscription we have just added,
-     * the evpipe data cannot be read and the event not processed since it is still missing in the subscr structure */
 
     /* add subscription into structure */
     if ((err_info = sr_subscr_rpc_sub_add(*subscription, sub_id, session, path, is_ext, xpath, callback, tree_callback,
@@ -5821,24 +5840,31 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
         goto error2;
     }
 
-    goto cleanup_unlock;
+    goto cleanup_unlock2;
 
 error2:
     sr_subscr_rpc_sub_del(*subscription, sub_id, SR_LOCK_WRITE);
 
 error1:
     if (is_ext) {
-        if ((tmp_err = sr_shmext_rpc_sub_del(conn, &shm_mod->rpc_ext_lock, &shm_mod->rpc_ext_subs,
-                &shm_mod->rpc_ext_sub_count, path, sub_id))) {
+        if ((tmp_err = sr_shmext_rpc_sub_del(conn, &shm_mod->rpc_ext_subs, &shm_mod->rpc_ext_sub_count, path, sub_id))) {
             sr_errinfo_merge(&err_info, tmp_err);
         }
     } else {
-        if ((tmp_err = sr_shmext_rpc_sub_del(conn, &shm_rpc->lock, &shm_rpc->subs, &shm_rpc->sub_count, path, sub_id))) {
+        if ((tmp_err = sr_shmext_rpc_sub_del(conn, &shm_rpc->subs, &shm_rpc->sub_count, path, sub_id))) {
             sr_errinfo_merge(&err_info, tmp_err);
         }
     }
 
-cleanup_unlock:
+cleanup_unlock2:
+    /* RPC SUB WRITE UNLOCK */
+    if (is_ext) {
+        sr_rwunlock(&shm_mod->rpc_ext_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+    } else {
+        sr_rwunlock(&shm_rpc->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+    }
+
+cleanup_unlock1:
     /* SUBS WRITE UNLOCK */
     sr_rwunlock(&(*subscription)->subs_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
@@ -6423,14 +6449,20 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
         goto cleanup;
     }
 
-    /* add notification subscription into ext SHM and create separate specific SHM segment */
-    if ((err_info = sr_shmext_notif_sub_add(conn, shm_mod, sub_id, xpath, (*subscription)->evpipe_num,
-            &listen_since_mono, &listen_since_real))) {
-        goto cleanup_unlock;
+    /* NOTIF SUB WRITE LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
+            NULL, NULL))) {
+        goto cleanup_unlock1;
     }
 
-    /* we are holding SUBS lock so that even if event is generated based on the ext SHM subscription we have just added,
-     * the evpipe data cannot be read and the event not processed since it is still missing in the subscr structure */
+    /* if a notification is sent now, once it gets the lock, this subscription will already be listening */
+    sr_timeouttime_get(&listen_since_mono, 0);
+    sr_realtime_get(&listen_since_real);
+
+    /* add notification subscription into ext SHM and create separate specific SHM segment */
+    if ((err_info = sr_shmext_notif_sub_add(conn, shm_mod, sub_id, xpath, (*subscription)->evpipe_num))) {
+        goto cleanup_unlock2;
+    }
 
     /* add subscription into structure */
     if ((err_info = sr_subscr_notif_sub_add(*subscription, sub_id, session, ly_mod->name, xpath, &listen_since_mono,
@@ -6451,7 +6483,7 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
         }
     }
 
-    goto cleanup_unlock;
+    goto cleanup_unlock2;
 
 error2:
     sr_subscr_notif_sub_del(*subscription, sub_id, SR_LOCK_WRITE);
@@ -6461,7 +6493,11 @@ error1:
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
-cleanup_unlock:
+cleanup_unlock2:
+    /* NOTIF SUB WRITE UNLOCK */
+    sr_rwunlock(&shm_mod->notif_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+
+cleanup_unlock1:
     /* SUBS WRITE UNLOCK */
     sr_rwunlock(&(*subscription)->subs_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
@@ -6913,14 +6949,17 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
         goto cleanup;
     }
 
+    /* OPER GET SUB WRITE LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL,
+            NULL))) {
+        goto cleanup_unlock1;
+    }
+
     /* add oper get subscription into ext SHM and create separate specific SHM segment */
     if ((err_info = sr_shmext_oper_get_sub_add(conn, shm_mod, sub_id, path, sub_type, sub_opts,
             (*subscription)->evpipe_num, &prio))) {
-        goto cleanup_unlock;
+        goto cleanup_unlock2;
     }
-
-    /* we are holding SUBS lock so that even if event is generated based on the ext SHM subscription we have just added,
-     * the evpipe data cannot be read and the event not processed since it is still missing in the subscr structure */
 
     /* add subscription into structure */
     if ((err_info = sr_subscr_oper_get_sub_add(*subscription, sub_id, session, module_name, path, callback, private_data,
@@ -6939,7 +6978,7 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
         goto error3;
     }
 
-    goto cleanup_unlock;
+    goto cleanup_unlock2;
 
 error3:
     if ((tmp_err = sr_ptr_del(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
@@ -6955,7 +6994,11 @@ error1:
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
-cleanup_unlock:
+cleanup_unlock2:
+    /* OPER GET SUB WRITE UNLOCK */
+    sr_rwunlock(&shm_mod->oper_get_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+
+cleanup_unlock1:
     /* SUBS WRITE UNLOCK */
     sr_rwunlock(&(*subscription)->subs_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
@@ -7027,9 +7070,15 @@ sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, const
         goto cleanup;
     }
 
+    /* OPER POLL SUB WRITE LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->oper_poll_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
+            NULL, NULL))) {
+        goto cleanup_unlock1;
+    }
+
     /* add new cache entry into the connection */
     if ((err_info = sr_conn_oper_cache_add(conn, sub_id, module_name, path))) {
-        goto cleanup_unlock;
+        goto cleanup_unlock2;
     }
 
     /* add oper poll subscription into ext SHM */
@@ -7060,7 +7109,7 @@ sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, const
         goto error4;
     }
 
-    goto cleanup_unlock;
+    goto cleanup_unlock2;
 
 error4:
     if ((tmp_err = sr_ptr_del(&session->ptr_lock, (void ***)&session->subscriptions, &session->subscription_count,
@@ -7079,7 +7128,11 @@ error2:
 error1:
     sr_conn_oper_cache_del(conn, sub_id);
 
-cleanup_unlock:
+cleanup_unlock2:
+    /* OPER POLL SUB WRITE UNLOCK */
+    sr_rwunlock(&shm_mod->oper_poll_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+
+cleanup_unlock1:
     /* SUBS WRITE UNLOCK */
     sr_rwunlock(&(*subscription)->subs_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 

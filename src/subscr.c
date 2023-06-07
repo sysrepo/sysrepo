@@ -1032,6 +1032,7 @@ sr_change_sub_del(sr_subscription_ctx_t *subscr, struct modsub_change_s *change_
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
+    sr_datastore_t ds = change_sub->ds;
 
     assert(has_subs_lock == SR_LOCK_READ_UPGR);
     (void)has_subs_lock;
@@ -1040,16 +1041,26 @@ sr_change_sub_del(sr_subscription_ctx_t *subscr, struct modsub_change_s *change_
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), change_sub->module_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    /* properly remove the subscription from ext SHM, with separate specific SHM segment if no longer needed */
-    if ((err_info = sr_shmext_change_sub_del(subscr->conn, shm_mod, SR_LOCK_NONE, change_sub->ds,
-            change_sub->subs[idx].sub_id))) {
+    /* CHANGE SUB WRITE LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->change_sub[ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE,
+            subscr->conn->cid, __func__, NULL, NULL))) {
         return err_info;
+    }
+
+    /* properly remove the subscription from ext SHM, with separate specific SHM segment if no longer needed while
+     * holding CHANGE SUB lock to prevent data races and processing events after the subscription is removed from SHM */
+    if ((err_info = sr_shmext_change_sub_del(subscr->conn, shm_mod, ds, change_sub->subs[idx].sub_id))) {
+        goto cleanup_unlock;
     }
 
     /* remove the subscription from the subscription structure */
     sr_subscr_change_sub_del(subscr, change_sub->subs[idx].sub_id, has_subs_lock);
 
-    return NULL;
+cleanup_unlock:
+    /* CHANGE SUB UNLOCK */
+    sr_rwunlock(&shm_mod->change_sub[ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, subscr->conn->cid, __func__);
+
+    return err_info;
 }
 
 /**
@@ -1081,18 +1092,29 @@ sr_oper_get_sub_del(sr_subscription_ctx_t *subscr, struct modsub_operget_s *oper
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), oper_get_sub->module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
-    /* properly remove the subscription from ext SHM, with separate specific SHM segment if no longer needed */
-    if ((err_info = sr_shmext_oper_get_sub_del(subscr->conn, shm_mod, oper_get_sub->subs[idx].sub_id))) {
+    /* OPER GET SUB WRITE LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, subscr->conn->cid,
+            __func__, NULL, NULL))) {
         goto cleanup;
+    }
+
+    /* properly remove the subscription from ext SHM, with separate specific SHM segment if no longer needed while
+     * holding OPER GET SUB lock to prevent data races and processing events after the subscription is removed from SHM */
+    if ((err_info = sr_shmext_oper_get_sub_del(subscr->conn, shm_mod, oper_get_sub->subs[idx].sub_id))) {
+        goto cleanup_unlock;
     }
 
     /* operational get subscriptions change (before oper_get_sub is removed) */
     if ((err_info = sr_shmsub_oper_poll_get_sub_change_notify_evpipe(subscr->conn, oper_get_sub->module_name, path))) {
-        goto cleanup;
+        goto cleanup_unlock;
     }
 
     /* remove the subscription from the subscription structure */
     sr_subscr_oper_get_sub_del(subscr, oper_get_sub->subs[idx].sub_id, has_subs_lock);
+
+cleanup_unlock:
+    /* OPER GET SUB WRITE UNLOCK */
+    sr_rwunlock(&shm_mod->oper_get_lock, 0, SR_LOCK_WRITE, subscr->conn->cid, __func__);
 
 cleanup:
     free(path);
@@ -1120,16 +1142,23 @@ sr_oper_poll_sub_del(sr_subscription_ctx_t *subscr, struct modsub_operpoll_s *op
     assert(has_subs_lock == SR_LOCK_READ_UPGR);
     (void)has_subs_lock;
 
-    /* rememeber sub ID */
+    /* remember sub ID */
     sub_id = oper_poll_sub->subs[idx].sub_id;
 
     /* find module */
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), oper_poll_sub->module_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    /* properly remove the subscription from ext SHM */
-    if ((err_info = sr_shmext_oper_poll_sub_del(subscr->conn, shm_mod, oper_poll_sub->subs[idx].sub_id))) {
+    /* OPER POLL SUB WRITE LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->oper_poll_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, subscr->conn->cid,
+            __func__, NULL, NULL))) {
         return err_info;
+    }
+
+    /* properly remove the subscription from ext SHM while holding OPER POLL SUB lock to prevent data races and
+     * processing events after the subscription is removed from SHM */
+    if ((err_info = sr_shmext_oper_poll_sub_del(subscr->conn, shm_mod, oper_poll_sub->subs[idx].sub_id))) {
+        goto cleanup_unlock;
     }
 
     /* remove the subscription from the subscription structure */
@@ -1138,7 +1167,11 @@ sr_oper_poll_sub_del(sr_subscription_ctx_t *subscr, struct modsub_operpoll_s *op
     /* remove the oper cache entry from the connection after the subscription was removed from the structure */
     sr_conn_oper_cache_del(subscr->conn, sub_id);
 
-    return NULL;
+cleanup_unlock:
+    /* OPER POLL SUB WRITE UNLOCK */
+    sr_rwunlock(&shm_mod->oper_poll_lock, 0, SR_LOCK_WRITE, subscr->conn->cid, __func__);
+
+    return err_info;
 }
 
 /**
@@ -1158,12 +1191,14 @@ sr_rpc_sub_del(sr_subscription_ctx_t *subscr, struct opsub_rpc_s *rpc_sub, uint3
     char *mod_name = NULL;
     sr_mod_t *shm_mod;
     sr_rpc_t *shm_rpc;
+    int is_ext = rpc_sub->is_ext;
 
     assert(has_subs_lock == SR_LOCK_READ_UPGR);
     (void)has_subs_lock;
 
-    /* properly remove the subscription from the ext SHM, with separate specific SHM segment if no longer needed */
-    if (rpc_sub->is_ext) {
+    /* remove the subscription from the ext SHM, with separate specific SHM segment if no longer needed while
+     * holding RPC SUB lock to prevent data races and processing events after the subscription is removed from SHM */
+    if (is_ext) {
         /* get module name */
         mod_name = sr_get_first_ns(rpc_sub->path);
 
@@ -1171,23 +1206,43 @@ sr_rpc_sub_del(sr_subscription_ctx_t *subscr, struct opsub_rpc_s *rpc_sub, uint3
         shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), mod_name);
         SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
-        if ((err_info = sr_shmext_rpc_sub_del(subscr->conn, &shm_mod->rpc_ext_lock, &shm_mod->rpc_ext_subs,
-                &shm_mod->rpc_ext_sub_count, rpc_sub->path, rpc_sub->subs[idx].sub_id))) {
+        /* RPC SUB WRITE LOCK */
+        if ((err_info = sr_rwlock(&shm_mod->rpc_ext_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, subscr->conn->cid,
+                __func__, NULL, NULL))) {
             goto cleanup;
+        }
+
+        if ((err_info = sr_shmext_rpc_sub_del(subscr->conn, &shm_mod->rpc_ext_subs, &shm_mod->rpc_ext_sub_count,
+                rpc_sub->path, rpc_sub->subs[idx].sub_id))) {
+            goto cleanup_unlock;
         }
     } else {
         /* find RPC/action */
         shm_rpc = sr_shmmod_find_rpc(SR_CONN_MOD_SHM(subscr->conn), rpc_sub->path);
         SR_CHECK_INT_GOTO(!shm_rpc, err_info, cleanup);
 
-        if ((err_info = sr_shmext_rpc_sub_del(subscr->conn, &shm_rpc->lock, &shm_rpc->subs, &shm_rpc->sub_count,
-                rpc_sub->path, rpc_sub->subs[idx].sub_id))) {
+        /* RPC SUB WRITE LOCK */
+        if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, subscr->conn->cid,
+                __func__, NULL, NULL))) {
             goto cleanup;
+        }
+
+        if ((err_info = sr_shmext_rpc_sub_del(subscr->conn, &shm_rpc->subs, &shm_rpc->sub_count, rpc_sub->path,
+                rpc_sub->subs[idx].sub_id))) {
+            goto cleanup_unlock;
         }
     }
 
     /* remove the subscription from the subscription structure */
     sr_subscr_rpc_sub_del(subscr, rpc_sub->subs[idx].sub_id, has_subs_lock);
+
+cleanup_unlock:
+    /* RPC SUB WRITE UNLOCK */
+    if (is_ext) {
+        sr_rwunlock(&shm_mod->rpc_ext_lock, 0, SR_LOCK_WRITE, subscr->conn->cid, __func__);
+    } else {
+        sr_rwunlock(&shm_rpc->lock, 0, SR_LOCK_WRITE, subscr->conn->cid, __func__);
+    }
 
 cleanup:
     free(mod_name);
@@ -1218,15 +1273,26 @@ sr_notif_sub_del(sr_subscription_ctx_t *subscr, struct modsub_notif_s *notif_sub
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(subscr->conn), notif_sub->module_name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    /* properly remove the subscription from ext SHM, with separate specific SHM segment if no longer needed */
-    if ((err_info = sr_shmext_notif_sub_del(subscr->conn, shm_mod, notif_sub->subs[idx].sub_id))) {
+    /* NOTIF SUB WRITE LOCK */
+    if ((err_info = sr_rwlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, subscr->conn->cid,
+            __func__, NULL, NULL))) {
         return err_info;
+    }
+
+    /* properly remove the subscription from ext SHM, with separate specific SHM segment if no longer needed while
+     * holding NOTIF SUB lock to prevent data races and processing events after the subscription is removed from SHM */
+    if ((err_info = sr_shmext_notif_sub_del(subscr->conn, shm_mod, notif_sub->subs[idx].sub_id))) {
+        goto cleanup_unlock;
     }
 
     /* remove the subscription from the subscription structure */
     sr_subscr_notif_sub_del(subscr, notif_sub->subs[idx].sub_id, has_subs_lock);
 
-    return NULL;
+cleanup_unlock:
+    /* NOTIF SUB WRITE UNLOCK */
+    sr_rwunlock(&shm_mod->notif_lock, 0, SR_LOCK_WRITE, subscr->conn->cid, __func__);
+
+    return err_info;
 }
 
 sr_error_info_t *
