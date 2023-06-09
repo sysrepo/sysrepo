@@ -170,6 +170,23 @@ clear_ops_notif(void **state)
 }
 
 static int
+clear_session(void **state)
+{
+    struct state *st = *state;
+    uint32_t nc_id;
+
+    sr_session_stop(st->sess);
+    if (sr_session_start(st->conn, SR_DS_RUNNING, &st->sess) != SR_ERR_OK) {
+        return 1;
+    }
+    sr_session_set_orig_name(st->sess, "test_notif");
+    nc_id = 1000;
+    sr_session_push_orig_data(st->sess, sizeof nc_id, &nc_id);
+
+    return 0;
+}
+
+static int
 store_notif(int fd, const struct ly_ctx *ly_ctx, const char *notif_xpath, off_t ts_offset)
 {
     char *notif_json;
@@ -1611,6 +1628,54 @@ test_send_nowait(void **state)
 
 /* TEST */
 static void
+test_send_nowait2(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr = NULL;
+    int ret;
+    uint32_t sub_id;
+
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+
+    /* subscribe #1 */
+    ret = sr_notif_subscribe(st->sess, "ops", NULL, NULL, NULL, notif_send_nowait_cb, st, SR_SUBSCR_NO_THREAD, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+    sub_id = sr_subscription_get_last_sub_id(subscr);
+
+    /* subscribe #2 */
+    ret = sr_notif_subscribe(st->sess, "ops", NULL, NULL, NULL, notif_send_nowait_cb, st, SR_SUBSCR_NO_THREAD, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* send notif #1 */
+    ret = sr_notif_send(st->sess, "/ops:notif4", NULL, 0, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* unsubscribe one sub */
+    sr_unsubscribe_sub(subscr, sub_id);
+
+    /* process events #1 */
+    ret = sr_subscription_process_events(subscr, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+    ATOMIC_STORE_RELAXED(st->cb_called, 1);
+
+    /* subscribe #3 */
+    ret = sr_notif_subscribe(st->sess, "ops", NULL, NULL, NULL, notif_send_nowait_cb, st, SR_SUBSCR_NO_THREAD, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* send notif #2 */
+    ret = sr_notif_send(st->sess, "/ops:notif4", NULL, 0, 0, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* process events, should be normally processed */
+    ret = sr_subscription_process_events(subscr, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+    ATOMIC_STORE_RELAXED(st->cb_called, 3);
+
+    sr_unsubscribe(subscr);
+}
+
+/* TEST */
+static void
 notif_schema_mount_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type,
         const struct lyd_node *notif, struct timespec *timestamp, void *private_data)
 {
@@ -1779,12 +1844,13 @@ main(void)
         cmocka_unit_test_setup(test_replay_interval, create_ops_notif),
         cmocka_unit_test_setup_teardown(test_no_replay, clear_ops_notif, clear_ops),
         cmocka_unit_test_teardown(test_notif_config_change, clear_ops),
-        cmocka_unit_test(test_notif_buffer),
+        cmocka_unit_test_teardown(test_notif_buffer, clear_session),
         cmocka_unit_test(test_suspend),
         cmocka_unit_test(test_params),
         cmocka_unit_test(test_dup_inst),
         cmocka_unit_test(test_wait),
         cmocka_unit_test(test_send_nowait),
+        cmocka_unit_test(test_send_nowait2),
         cmocka_unit_test(test_schema_mount),
     };
 

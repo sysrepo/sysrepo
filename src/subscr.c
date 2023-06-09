@@ -597,6 +597,7 @@ sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_
     sr_session_ctx_t *ev_sess = NULL;
     sr_lock_mode_t cur_mode = has_subs_lock;
     struct timespec cur_time;
+    sr_multi_sub_shm_t *multi_sub_shm;
 
     assert((has_subs_lock == SR_LOCK_WRITE) || (has_subs_lock == SR_LOCK_READ_UPGR));
 
@@ -625,6 +626,32 @@ sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_
             sub = &notif_sub->subs[j];
             if (sub_id != sub->sub_id) {
                 continue;
+            }
+
+            /* SUBS WRITE LOCK UPGRADE */
+            if ((err_info = sr_rwrelock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscr->conn->cid,
+                    __func__, NULL, NULL))) {
+                sr_errinfo_free(&err_info);
+            } else {
+                cur_mode = SR_LOCK_WRITE;
+            }
+
+            multi_sub_shm = (sr_multi_sub_shm_t *)notif_sub->sub_shm.addr;
+            if ((ATOMIC_LOAD_RELAXED(multi_sub_shm->event) == SR_SUB_EV_NOTIF) &&
+                    (ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id) != ATOMIC_LOAD_RELAXED(notif_sub->request_id))) {
+                /* there is an event we were supposed to process, too late now, just ignore it */
+                if ((err_info = sr_shmsub_multi_listen_write_event(multi_sub_shm, 1, 0, NULL, NULL, 0,
+                        notif_sub->module_name, "ignored"))) {
+                    sr_errinfo_free(&err_info);
+                }
+            }
+
+            /* SUBS WRITE LOCK DOWNGRADE */
+            if ((err_info = sr_rwrelock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, subscr->conn->cid,
+                    __func__, NULL, NULL))) {
+                sr_errinfo_free(&err_info);
+            } else {
+                cur_mode = SR_LOCK_READ_UPGR;
             }
 
             if (ev_sess) {

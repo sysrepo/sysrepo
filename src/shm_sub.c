@@ -2898,22 +2898,7 @@ sr_shmsub_change_listen_filter_is_valid(struct modsub_changesub_s *sub, const st
     return ret;
 }
 
-/**
- * @brief Write the result of having processed a multi-subscriber event.
- *
- * @p shm_data_sub is remapped for the data to write.
- *
- * @param[in] multi_sub_shm Multi subscription SHM to write to.
- * @param[in] valid_subscr_count Number of subscribers that processed the event.
- * @param[in] err_code Optional error code if a callback failed.
- * @param[in] shm_data_sub Opened sub data SHM.
- * @param[in] data Optional data to write after the structure.
- * @param[in] data_len Additional data length.
- * @param[in] event_desc Specific event description for printing.
- * @param[in] result_str Result of processing the event in string.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
 sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t valid_subscr_count, sr_error_t err_code,
         sr_shm_t *shm_data_sub, const char *data, uint32_t data_len, const char *event_desc, const char *result_str)
 {

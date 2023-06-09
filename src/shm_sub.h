@@ -237,6 +237,25 @@ sr_error_info_t *sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_no
         struct timespec notif_ts_real, const char *orig_name, const void *orig_data, uint32_t timeout_ms, int wait);
 
 /**
+ * @brief Write the result of having processed a multi-subscriber event.
+ *
+ * @p shm_data_sub is remapped for the data to write.
+ *
+ * @param[in] multi_sub_shm Multi subscription SHM to write to.
+ * @param[in] valid_subscr_count Number of subscribers that processed the event.
+ * @param[in] err_code Optional error code if a callback failed.
+ * @param[in] shm_data_sub Opened sub data SHM, not needed if no @p data written.
+ * @param[in] data Optional data to write after the structure.
+ * @param[in] data_len Size of @p data.
+ * @param[in] event_desc Specific event description for printing.
+ * @param[in] result_str Result of processing the event in string.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t valid_subscr_count,
+        sr_error_t err_code, sr_shm_t *shm_data_sub, const char *data, uint32_t data_len, const char *event_desc,
+        const char *result_str);
+
+/**
  * @brief Process all module change events, if any.
  *
  * @param[in] change_subs Module change subscriptions.
