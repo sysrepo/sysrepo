@@ -284,16 +284,16 @@ test_create1(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     sr_release_data(subtree);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>eth64</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "  <interface>\n"
+            "    <name>eth64</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str, str2);
     free(str);
@@ -333,16 +333,16 @@ test_create2(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     sr_release_data(subtree);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>eth64</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "  <interface>\n"
+            "    <name>eth64</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str, str2);
     free(str);
@@ -439,24 +439,24 @@ test_move(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* should be in reversed order */
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
 
     str2 =
-    "<l1 xmlns=\"urn:test\">"
-        "<k>key3</k>"
-        "<v>3</v>"
-    "</l1>"
-    "<l1 xmlns=\"urn:test\">"
-        "<k>key2</k>"
-        "<v>2</v>"
-    "</l1>"
-    "<l1 xmlns=\"urn:test\">"
-        "<k>key1</k>"
-        "<v>1</v>"
-    "</l1>"
-    "<ll1 xmlns=\"urn:test\">-3</ll1>"
-    "<ll1 xmlns=\"urn:test\">-2</ll1>"
-    "<ll1 xmlns=\"urn:test\">-1</ll1>";
+            "<l1 xmlns=\"urn:test\">\n"
+            "  <k>key3</k>\n"
+            "  <v>3</v>\n"
+            "</l1>\n"
+            "<l1 xmlns=\"urn:test\">\n"
+            "  <k>key2</k>\n"
+            "  <v>2</v>\n"
+            "</l1>\n"
+            "<l1 xmlns=\"urn:test\">\n"
+            "  <k>key1</k>\n"
+            "  <v>1</v>\n"
+            "</l1>\n"
+            "<ll1 xmlns=\"urn:test\">-3</ll1>\n"
+            "<ll1 xmlns=\"urn:test\">-2</ll1>\n"
+            "<ll1 xmlns=\"urn:test\">-1</ll1>\n";
     assert_string_equal(str, str2);
 
     free(str);
@@ -494,17 +494,26 @@ test_move(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* should be in reversed order */
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, data->tree, LYD_XML, 0);
 
     str2 =
-    "<cont xmlns=\"urn:test\">"
-        "<l2><k>key3</k><v>3</v></l2>"
-        "<l2><k>key2</k><v>2</v></l2>"
-        "<l2><k>key1</k><v>1</v></l2>"
-        "<ll2>-3</ll2>"
-        "<ll2>-2</ll2>"
-        "<ll2>-1</ll2>"
-    "</cont>";
+            "<cont xmlns=\"urn:test\">\n"
+            "  <l2>\n"
+            "    <k>key3</k>\n"
+            "    <v>3</v>\n"
+            "  </l2>\n"
+            "  <l2>\n"
+            "    <k>key2</k>\n"
+            "    <v>2</v>\n"
+            "  </l2>\n"
+            "  <l2>\n"
+            "    <k>key1</k>\n"
+            "    <v>1</v>\n"
+            "  </l2>\n"
+            "  <ll2>-3</ll2>\n"
+            "  <ll2>-2</ll2>\n"
+            "  <ll2>-1</ll2>\n"
+            "</cont>\n";
     assert_string_equal(str, str2);
 
     free(str);
@@ -543,16 +552,16 @@ test_replace(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     sr_release_data(subtree);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>eth32</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "  <interface>\n"
+            "    <name>eth32</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str, str2);
     free(str);
@@ -576,10 +585,10 @@ test_replace_userord(void **state)
 
     /* replace some data with a custom edit */
     str2 =
-    "<l3 xmlns=\"urn:test\" xmlns:xc=\"urn:ietf:params:xml:ns:netconf:base:1.0\" xc:operation=\"replace\">"
-        "<k>one</k>"
-        "<ll3>3</ll3>"
-    "</l3>";
+            "<l3 xmlns=\"urn:test\" xmlns:xc=\"urn:ietf:params:xml:ns:netconf:base:1.0\" xc:operation=\"replace\">"
+            "  <k>one</k>"
+            "  <ll3>3</ll3>"
+            "</l3>";
     ly_ctx = sr_acquire_context(st->conn);
     assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str2, LYD_XML, LYD_PARSE_ONLY, 0, &edit));
     ret = sr_edit_batch(st->sess, edit, "merge");
@@ -593,14 +602,14 @@ test_replace_userord(void **state)
     ret = sr_get_data(st->sess, "/test:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     sr_release_data(data);
 
     str2 =
-    "<l3 xmlns=\"urn:test\">"
-        "<k>one</k>"
-        "<ll3>3</ll3>"
-    "</l3>";
+            "<l3 xmlns=\"urn:test\">\n"
+            "  <k>one</k>\n"
+            "  <ll3>3</ll3>\n"
+            "</l3>\n";
 
     assert_string_equal(str, str2);
     free(str);
@@ -615,14 +624,14 @@ test_replace_userord(void **state)
 
     /* replace data with a custom set of items keeping the order */
     str2 =
-    "<l1 xmlns=\"urn:test\">"
-        "<k>key</k>"
-        "<ll12>A</ll12>"
-        "<ll12>B</ll12>"
-        "<ll12>C</ll12>"
-        "<ll12>0</ll12>"
-        "<ll12>1</ll12>"
-    "</l1>";
+            "<l1 xmlns=\"urn:test\">\n"
+            "  <k>key</k>\n"
+            "  <ll12>A</ll12>\n"
+            "  <ll12>B</ll12>\n"
+            "  <ll12>C</ll12>\n"
+            "  <ll12>0</ll12>\n"
+            "  <ll12>1</ll12>\n"
+            "</l1>\n";
     ly_ctx = sr_acquire_context(st->conn);
     assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str2, LYD_XML, LYD_PARSE_ONLY, 0, &edit));
     ret = sr_edit_batch(st->sess, edit, "replace");
@@ -636,7 +645,7 @@ test_replace_userord(void **state)
     ret = sr_get_data(st->sess, "/test:l1", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     sr_release_data(data);
 
     assert_string_equal(str, str2);
@@ -741,16 +750,16 @@ test_isolate(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     sr_release_data(subtree);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>eth64</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:softwareLoopback</type>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "  <interface>\n"
+            "    <name>eth64</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:softwareLoopback</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str, str2);
     free(str);
@@ -775,16 +784,16 @@ test_isolate(void **state)
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     sr_release_data(subtree);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>eth64</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:other</type>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "  <interface>\n"
+            "    <name>eth64</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:other</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str, str2);
     free(str);
@@ -815,7 +824,7 @@ test_isolate_oper(void **state)
     /* check datastore contents */
     ret = sr_get_data(st->sess, "/mod:container", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     sr_release_data(data);
     assert_null(str);
 }
@@ -936,12 +945,12 @@ test_oper(void **state)
     sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
 
     str =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>eth0</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+            "  <interface>"
+            "    <name>eth0</name>"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
+            "  </interface>"
+            "</interfaces>";
     assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &edit));
     ret = sr_edit_batch(st->sess, edit, "merge");
     lyd_free_all(edit);
@@ -950,17 +959,17 @@ test_oper(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     str =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>eth0</name>"
-            "<ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">"
-                "<address>"
-                    "<ip>192.0.2.1</ip>"
-                    "<prefix-length>24</prefix-length>"
-                "</address>"
-            "</ipv4>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+            "  <interface>"
+            "    <name>eth0</name>"
+            "    <ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">"
+            "      <address>"
+            "        <ip>192.0.2.1</ip>"
+            "        <prefix-length>24</prefix-length>"
+            "      </address>"
+            "    </ipv4>"
+            "  </interface>"
+            "</interfaces>";
     assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &edit));
     ret = sr_edit_batch(st->sess, edit, "merge");
     lyd_free_all(edit);
@@ -969,16 +978,16 @@ test_oper(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     str =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>eth0</name>"
-            "<ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">"
-                "<address xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\" nc:operation=\"remove\">"
-                    "<ip>192.0.2.1</ip>"
-                "</address>"
-            "</ipv4>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+            "  <interface>"
+            "    <name>eth0</name>"
+            "    <ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">"
+            "      <address xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\" nc:operation=\"remove\">"
+            "        <ip>192.0.2.1</ip>"
+            "      </address>"
+            "    </ipv4>"
+            "  </interface>"
+            "</interfaces>";
     assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &edit));
     ret = sr_edit_batch(st->sess, edit, "merge");
     lyd_free_all(edit);
@@ -989,17 +998,17 @@ test_oper(void **state)
     /* check datastore contents */
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    lyd_print_mem(&str2, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str2, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     sr_release_data(subtree);
 
     str =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>eth0</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\"/>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "  <interface>\n"
+            "    <name>eth0</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\"/>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
     assert_string_equal(str, str2);
     free(str2);
 
@@ -1031,13 +1040,13 @@ test_union(void **state)
     ret = sr_get_subtree(st->sess, "/test:cont", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     sr_release_data(subtree);
 
     str2 =
-    "<cont xmlns=\"urn:test\">"
-        "<server>192.168.1.10</server>"
-    "</cont>";
+            "<cont xmlns=\"urn:test\">\n"
+            "  <server>192.168.1.10</server>\n"
+            "</cont>\n";
 
     assert_string_equal(str, str2);
     free(str);
@@ -1219,11 +1228,11 @@ test_mutiple_types(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_data(st->sess, "/test-module:main/instance_id", 0, 0, 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, 0);
     assert_return_code(asprintf(&str2,
-    "<main xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">"
-        "<instance_id xmlns:tm=\"urn:ietf:params:xml:ns:yang:test-module\">/tm:main/tm:options</instance_id>"
-    "</main>"), 0);
+            "<main xmlns=\"urn:ietf:params:xml:ns:yang:test-module\">\n"
+            "  <instance_id xmlns:tm=\"urn:ietf:params:xml:ns:yang:test-module\">/tm:main/tm:options</instance_id>\n"
+            "</main>\n"), 0);
     assert_string_equal(str, str2);
     free(str);
     free(str2);
@@ -1408,14 +1417,14 @@ test_edit_forbid_node_types(void **state)
     /* not throw away the whole edit, the successfully created node still exists */
     ret = sr_get_subtree(st->sess, "/ops:cont", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
 
     str2 =
-    "<cont xmlns=\"urn:ops\">"
-        "<list1>"
-            "<k>key</k>"
-        "</list1>"
-    "</cont>";
+            "<cont xmlns=\"urn:ops\">\n"
+            "  <list1>\n"
+            "    <k>key</k>\n"
+            "  </list1>\n"
+            "</cont>\n";
 
     assert_string_equal(str, str2);
     sr_release_data(subtree);
@@ -1495,11 +1504,11 @@ test_unknown_ns(void **state)
 
     /* custom edit with unknown namespace */
     str =
-    "<l3 xmlns=\"urn:test\">"
-        "<k>one</k>"
-        "<ll3>3</ll3>"
-    "</l3>"
-    "<l3 xmlns=\"urn:invalid\"/>";
+            "<l3 xmlns=\"urn:test\">"
+            "  <k>one</k>"
+            "    <ll3>3</ll3>"
+            "  </l3>"
+            "<l3 xmlns=\"urn:invalid\"/>";
     ly_ctx = sr_acquire_context(st->conn);
     assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_OPAQ, 0, &edit));
     ret = sr_edit_batch(st->sess, edit, "merge");

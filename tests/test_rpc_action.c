@@ -48,15 +48,15 @@ setup(void **state)
     uint32_t nc_id;
     const char *ops_ref_feats[] = {"feat1", NULL}, *act_feats[] = {"advanced-testing", NULL}, *init_data;
     sr_install_mod_t new_mods[] = {
-        { .schema_path = TESTS_SRC_DIR "/files/test.yang" },
-        { .schema_path = TESTS_SRC_DIR "/files/ietf-interfaces.yang" },
-        { .schema_path = TESTS_SRC_DIR "/files/iana-if-type.yang" },
-        { .schema_path = TESTS_SRC_DIR "/files/ops-ref.yang", .features = ops_ref_feats },
-        { .schema_path = TESTS_SRC_DIR "/files/ops.yang" },
-        { .schema_path = TESTS_SRC_DIR "/files/act.yang", .features = act_feats },
-        { .schema_path = TESTS_SRC_DIR "/files/act2.yang" },
-        { .schema_path = TESTS_SRC_DIR "/files/act3.yang" },
-        { .schema_path = TESTS_SRC_DIR "/files/sm.yang" },
+        {.schema_path = TESTS_SRC_DIR "/files/test.yang"},
+        {.schema_path = TESTS_SRC_DIR "/files/ietf-interfaces.yang"},
+        {.schema_path = TESTS_SRC_DIR "/files/iana-if-type.yang"},
+        {.schema_path = TESTS_SRC_DIR "/files/ops-ref.yang", .features = ops_ref_feats},
+        {.schema_path = TESTS_SRC_DIR "/files/ops.yang"},
+        {.schema_path = TESTS_SRC_DIR "/files/act.yang", .features = act_feats},
+        {.schema_path = TESTS_SRC_DIR "/files/act2.yang"},
+        {.schema_path = TESTS_SRC_DIR "/files/act3.yang"},
+        {.schema_path = TESTS_SRC_DIR "/files/sm.yang"},
     };
 
     st = calloc(1, sizeof *st);

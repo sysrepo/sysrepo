@@ -23,8 +23,8 @@
 
 #include <libyang/libyang.h>
 
-#include "sysrepo.h"
 #include "config.h"
+#include "sysrepo.h"
 #include "tests/tcommon.h"
 
 #ifdef SR_HAVE_CALLGRIND
@@ -578,13 +578,13 @@ test_oper_get_tree(struct test_state *state, struct timespec *ts_start, struct t
 }
 
 struct test tests[] = {
-    { "get tree", setup_running, test_get_tree },
-    { "get item", setup_running, test_get_item },
-    { "get tree hash", setup_running, test_get_tree_hash },
-    { "get tree hash cached", setup_running_cached, test_get_tree_hash },
-    { "edit item create", setup_subscribe_change_item, test_edit_item_create },
-    { "edit batch create", setup_subscribe_change_tree, test_edit_batch_create },
-    { "oper get tree", setup_subscribe_oper, test_oper_get_tree },
+    {"get tree", setup_running, test_get_tree},
+    {"get item", setup_running, test_get_item},
+    {"get tree hash", setup_running, test_get_tree_hash},
+    {"get tree hash cached", setup_running_cached, test_get_tree_hash},
+    {"edit item create", setup_subscribe_change_item, test_edit_item_create},
+    {"edit batch create", setup_subscribe_change_tree, test_edit_batch_create},
+    {"oper get tree", setup_subscribe_oper, test_oper_get_tree},
 };
 
 static int

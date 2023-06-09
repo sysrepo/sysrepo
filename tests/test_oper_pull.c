@@ -16,6 +16,7 @@
 
 #define _GNU_SOURCE
 
+#include <errno.h>
 #include <pthread.h>
 #include <setjmp.h>
 #include <stdarg.h>
@@ -23,7 +24,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <errno.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
@@ -94,7 +94,6 @@ setup(void **state)
     if (sr_install_modules(st->conn, schema_paths, TESTS_SRC_DIR "/files", features) != SR_ERR_OK) {
         return 1;
     }
-
 
     if (sr_session_start(st->conn, SR_DS_RUNNING, &st->sess) != SR_ERR_OK) {
         return 1;
@@ -348,7 +347,7 @@ test_sr_mon(void **state)
     struct state *st = (struct state *)*state;
     sr_data_t *data;
     sr_subscription_ctx_t *subscr = NULL;
-    char *str1, *str2 = malloc(9216);
+    char *str1, *str2 = malloc(16384);
     int ret;
 
     /* get almost empty monitoring data */
@@ -358,212 +357,212 @@ test_sr_mon(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check their content */
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, 0);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
-    strcpy(str2, "<sysrepo-state xmlns=\"http://www.sysrepo.org/yang/sysrepo-monitoring\">"
-        "<module>"
-            "<name>yang</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-yang-schema-mount</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-datastores</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-netconf-acm</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-        "</module>"
-        "<module>"
-            "<name>ietf-factory-default</name>"
-        "</module>"
-        "<module>"
-            "<name>sysrepo-factory-default</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-yang-library</name>"
-        "</module>"
-        "<module>"
-            "<name>sysrepo-monitoring</name>"
-        "</module>"
-        "<module>"
-            "<name>sysrepo-plugind</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-        "</module>"
-        "<module>"
-            "<name>ietf-netconf</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-netconf-with-defaults</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-netconf-notifications</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-origin</name>"
-        "</module>"
-        "<module>"
-            "<name>test</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-        "</module>"
-        "<module>"
-            "<name>ietf-interfaces</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-        "</module>"
-        "<module>"
-            "<name>iana-if-type</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-if-aug</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-interface-protection</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-microwave-radio-link</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-        "</module>"
-        "<module>"
-            "<name>mixed-config</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-        "</module>");
+    strcpy(str2, "<sysrepo-state xmlns=\"http://www.sysrepo.org/yang/sysrepo-monitoring\">\n"
+            "  <module>\n"
+            "    <name>yang</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-yang-schema-mount</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-datastores</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-netconf-acm</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-factory-default</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>sysrepo-factory-default</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-yang-library</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>sysrepo-monitoring</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>sysrepo-plugind</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-netconf</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-netconf-with-defaults</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-netconf-notifications</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-origin</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>test</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-interfaces</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>iana-if-type</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-if-aug</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-interface-protection</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-microwave-radio-link</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>mixed-config</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "  </module>\n");
 
-    strcat(str2, "<module>"
-            "<name>act</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-        "</module>"
-        "<module>"
-            "<name>act2</name>"
-        "</module>"
-        "<module>"
-            "<name>act3</name>"
-        "</module>"
-        "<module>"
-            "<name>defaults</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-        "</module>"
-        "<module>"
-            "<name>ops-ref</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-        "</module>"
-        "<module>"
-            "<name>ops</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-        "</module>"
-        "<module>"
-            "<name>czechlight-roadm-device</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-        "</module>"
-        "<module>"
-            "<name>oper-group-test</name>"
-        "</module>"
-        "<module>"
-            "<name>sm</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-        "</module>"
-        "<rpc>"
-            "<path xmlns:fd=\"urn:ietf:params:xml:ns:yang:ietf-factory-default\">/fd:factory-reset</path>"
-            "<rpc-sub>"
-                "<xpath xmlns:fd=\"urn:ietf:params:xml:ns:yang:ietf-factory-default\">/fd:factory-reset</xpath>"
-                "<priority>10</priority>"
-                "<cid></cid>"
-                "<suspended>false</suspended>"
-            "</rpc-sub>"
-        "</rpc>"
-        "<connection>"
-            "<cid></cid>"
-            "<pid></pid>"
-        "</connection>"
-        "</sysrepo-state>");
-    sr_str_del(str1, "<last-modified>","</last-modified>");
-    sr_str_del(str1, "<cid>","</cid>");
-    sr_str_del(str1, "<pid>","</pid>");
+    strcat(str2, "  <module>\n"
+            "    <name>act</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>act2</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>act3</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>defaults</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ops-ref</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ops</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>czechlight-roadm-device</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>oper-group-test</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>sm</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "  </module>\n"
+            "  <rpc>\n"
+            "    <path xmlns:fd=\"urn:ietf:params:xml:ns:yang:ietf-factory-default\">/fd:factory-reset</path>\n"
+            "    <rpc-sub>\n"
+            "      <xpath xmlns:fd=\"urn:ietf:params:xml:ns:yang:ietf-factory-default\">/fd:factory-reset</xpath>\n"
+            "      <priority>10</priority>\n"
+            "      <cid></cid>\n"
+            "      <suspended>false</suspended>\n"
+            "    </rpc-sub>\n"
+            "  </rpc>\n"
+            "  <connection>\n"
+            "    <cid></cid>\n"
+            "    <pid></pid>\n"
+            "  </connection>\n"
+            "</sysrepo-state>\n");
+    sr_str_del(str1, "<last-modified>", "</last-modified>");
+    sr_str_del(str1, "<cid>", "</cid>");
+    sr_str_del(str1, "<pid>", "</pid>");
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -611,342 +610,342 @@ test_sr_mon(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check their content */
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, 0);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
-    strcpy(str2, "<sysrepo-state xmlns=\"http://www.sysrepo.org/yang/sysrepo-monitoring\">"
-        "<module>"
-            "<name>yang</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-yang-schema-mount</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-datastores</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-netconf-acm</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<ds-lock>"
-                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
-                "<sid></sid>"
-                "<timestamp></timestamp>"
-            "</ds-lock>"
-        "</module>"
-        "<module>"
-            "<name>ietf-factory-default</name>"
-        "</module>"
-        "<module>"
-            "<name>sysrepo-factory-default</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-yang-library</name>"
-        "</module>"
-        "<module>"
-            "<name>sysrepo-monitoring</name>"
-        "</module>"
-        "<module>"
-            "<name>sysrepo-plugind</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<ds-lock>"
-                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
-                "<sid></sid>"
-                "<timestamp></timestamp>"
-            "</ds-lock>"
-        "</module>"
-        "<module>"
-            "<name>ietf-netconf</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-netconf-with-defaults</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-netconf-notifications</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-origin</name>"
-        "</module>"
-        "<module>"
-            "<name>test</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<ds-lock>"
-                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
-                "<sid></sid>"
-                "<timestamp></timestamp>"
-            "</ds-lock>"
-        "</module>"
-        "<module>"
-            "<name>ietf-interfaces</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<ds-lock>"
-                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
-                "<sid></sid>"
-                "<timestamp></timestamp>"
-            "</ds-lock>"
-            "<subscriptions>"
-                "<change-sub>"
-                    "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:operational</datastore>"
-                    "<xpath xmlns:if=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">/if:interfaces</xpath>"
-                    "<priority>3</priority>"
-                    "<cid></cid>"
-                    "<suspended>false</suspended>"
-                "</change-sub>"
-                "<operational-get-sub>"
-                    "<xpath xmlns:if=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">/if:interfaces-state</xpath>"
-                    "<xpath-sub>"
-                        "<cid></cid>"
-                        "<suspended>false</suspended>"
-                    "</xpath-sub>"
-                "</operational-get-sub>"
-            "</subscriptions>"
-        "</module>"
-        "<module>"
-            "<name>iana-if-type</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-if-aug</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-interface-protection</name>"
-        "</module>"
-        "<module>"
-            "<name>ietf-microwave-radio-link</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<ds-lock>"
-                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
-                "<sid></sid>"
-                "<timestamp></timestamp>"
-            "</ds-lock>"
-        "</module>");
+    strcpy(str2, "<sysrepo-state xmlns=\"http://www.sysrepo.org/yang/sysrepo-monitoring\">\n"
+            "  <module>\n"
+            "    <name>yang</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-yang-schema-mount</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-datastores</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-netconf-acm</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <ds-lock>\n"
+            "      <datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>\n"
+            "      <sid></sid>\n"
+            "      <timestamp></timestamp>\n"
+            "    </ds-lock>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-factory-default</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>sysrepo-factory-default</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-yang-library</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>sysrepo-monitoring</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>sysrepo-plugind</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <ds-lock>\n"
+            "      <datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>\n"
+            "      <sid></sid>\n"
+            "      <timestamp></timestamp>\n"
+            "    </ds-lock>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-netconf</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-netconf-with-defaults</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-netconf-notifications</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-origin</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>test</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <ds-lock>\n"
+            "      <datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>\n"
+            "      <sid></sid>\n"
+            "      <timestamp></timestamp>\n"
+            "    </ds-lock>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-interfaces</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <ds-lock>\n"
+            "      <datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>\n"
+            "      <sid></sid>\n"
+            "      <timestamp></timestamp>\n"
+            "    </ds-lock>\n"
+            "    <subscriptions>\n"
+            "      <change-sub>\n"
+            "        <datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:operational</datastore>\n"
+            "        <xpath xmlns:if=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">/if:interfaces</xpath>\n"
+            "        <priority>3</priority>\n"
+            "        <cid></cid>\n"
+            "        <suspended>false</suspended>\n"
+            "      </change-sub>\n"
+            "      <operational-get-sub>\n"
+            "        <xpath xmlns:if=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">/if:interfaces-state</xpath>\n"
+            "        <xpath-sub>\n"
+            "          <cid></cid>\n"
+            "          <suspended>false</suspended>\n"
+            "        </xpath-sub>\n"
+            "      </operational-get-sub>\n"
+            "    </subscriptions>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>iana-if-type</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-if-aug</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ietf-interface-protection</name>\n"
+            "  </module>\n");
 
-    strcat(str2, "<module>"
-            "<name>mixed-config</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<ds-lock>"
-                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
-                "<sid></sid>"
-                "<timestamp></timestamp>"
-            "</ds-lock>"
-            "<subscriptions>"
-                "<change-sub>"
-                    "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
-                    "<priority>0</priority>"
-                    "<cid></cid>"
-                    "<suspended>false</suspended>"
-                "</change-sub>"
-            "</subscriptions>"
-        "</module>"
-        "<module>"
-            "<name>act</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<ds-lock>"
-                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
-                "<sid></sid>"
-                "<timestamp></timestamp>"
-            "</ds-lock>"
-            "<subscriptions>"
-                "<operational-get-sub>"
-                    "<xpath xmlns:a=\"urn:act\" xmlns:a2=\"urn:act2\">/a:basics/a:subbasics/a2:complex_number/a2:imaginary_part</xpath>"
-                    "<xpath-sub>"
-                        "<cid></cid>"
-                        "<suspended>false</suspended>"
-                    "</xpath-sub>"
-                "</operational-get-sub>"
-            "</subscriptions>"
-        "</module>"
-        "<module>"
-            "<name>act2</name>"
-        "</module>"
-        "<module>"
-            "<name>act3</name>"
-        "</module>"
-        "<module>"
-            "<name>defaults</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<ds-lock>"
-                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
-                "<sid></sid>"
-                "<timestamp></timestamp>"
-            "</ds-lock>"
-        "</module>"
-        "<module>"
-            "<name>ops-ref</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<ds-lock>"
-                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
-                "<sid></sid>"
-                "<timestamp></timestamp>"
-            "</ds-lock>"
-        "</module>"
-        "<module>"
-            "<name>ops</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<ds-lock>"
-                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
-                "<sid></sid>"
-                "<timestamp></timestamp>"
-            "</ds-lock>"
-            "<subscriptions>"
-                "<notification-sub>"
-                    "<cid></cid>"
-                    "<suspended>false</suspended>"
-                "</notification-sub>"
-                "<notification-sub>"
-                    "<cid></cid>"
-                    "<suspended>false</suspended>"
-                "</notification-sub>"
-            "</subscriptions>"
-        "</module>"
-        "<module>"
-            "<name>czechlight-roadm-device</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<ds-lock>"
-                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
-                "<sid></sid>"
-                "<timestamp></timestamp>"
-            "</ds-lock>"
-        "</module>"
-        "<module>"
-            "<name>oper-group-test</name>"
-        "</module>"
-        "<module>"
-            "<name>sm</name>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<datastore>"
-                "<name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>"
-                "<last-modified></last-modified>"
-            "</datastore>"
-            "<ds-lock>"
-                "<datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>"
-                "<sid></sid>"
-                "<timestamp></timestamp>"
-            "</ds-lock>"
-        "</module>");
+    strcat(str2, "  <module>\n"
+            "    <name>ietf-microwave-radio-link</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <ds-lock>\n"
+            "      <datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>\n"
+            "      <sid></sid>\n"
+            "      <timestamp></timestamp>\n"
+            "    </ds-lock>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>mixed-config</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <ds-lock>\n"
+            "      <datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>\n"
+            "      <sid></sid>\n"
+            "      <timestamp></timestamp>\n"
+            "    </ds-lock>\n"
+            "    <subscriptions>\n"
+            "      <change-sub>\n"
+            "        <datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>\n"
+            "        <priority>0</priority>\n"
+            "        <cid></cid>\n"
+            "        <suspended>false</suspended>\n"
+            "      </change-sub>\n"
+            "    </subscriptions>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>act</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <ds-lock>\n"
+            "      <datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>\n"
+            "      <sid></sid>\n"
+            "      <timestamp></timestamp>\n"
+            "    </ds-lock>\n"
+            "    <subscriptions>\n"
+            "      <operational-get-sub>\n"
+            "        <xpath xmlns:a=\"urn:act\" xmlns:a2=\"urn:act2\">/a:basics/a:subbasics/a2:complex_number/a2:imaginary_part</xpath>\n"
+            "        <xpath-sub>\n"
+            "          <cid></cid>\n"
+            "          <suspended>false</suspended>\n"
+            "        </xpath-sub>\n"
+            "      </operational-get-sub>\n"
+            "    </subscriptions>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>act2</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>act3</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>defaults</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <ds-lock>\n"
+            "      <datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>\n"
+            "      <sid></sid>\n"
+            "      <timestamp></timestamp>\n"
+            "    </ds-lock>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>ops-ref</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <ds-lock>\n"
+            "      <datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>\n"
+            "      <sid></sid>\n"
+            "      <timestamp></timestamp>\n"
+            "    </ds-lock>\n"
+            "  </module>\n");
 
-    strcat(str2, "<rpc>"
-            "<path xmlns:fd=\"urn:ietf:params:xml:ns:yang:ietf-factory-default\">/fd:factory-reset</path>"
-            "<rpc-sub>"
-                "<xpath xmlns:fd=\"urn:ietf:params:xml:ns:yang:ietf-factory-default\">/fd:factory-reset</xpath>"
-                "<priority>10</priority>"
-                "<cid></cid>"
-                "<suspended>false</suspended>"
-            "</rpc-sub>"
-        "</rpc>"
-        "<rpc>"
-            "<path xmlns:a=\"urn:act\">/a:basics/a:animals/a:convert</path>"
-            "<rpc-sub>"
-                "<xpath xmlns:a=\"urn:act\">/a:basics/a:animals/a:convert[a:direction='false']</xpath>"
-                "<priority>5</priority>"
-                "<cid></cid>"
-                "<suspended>false</suspended>"
-            "</rpc-sub>"
-            "<rpc-sub>"
-                "<xpath xmlns:a=\"urn:act\">/a:basics/a:animals/a:convert</xpath>"
-                "<priority>4</priority>"
-                "<cid></cid>"
-                "<suspended>false</suspended>"
-            "</rpc-sub>"
-        "</rpc>"
-        "<rpc>"
-            "<path xmlns:a=\"urn:act\">/a:capitalize</path>"
-            "<rpc-sub>"
-                "<xpath xmlns:a=\"urn:act\">/a:capitalize</xpath>"
-                "<priority>0</priority>"
-                "<cid></cid>"
-                "<suspended>false</suspended>"
-            "</rpc-sub>"
-        "</rpc>"
-        "<connection>"
-            "<cid></cid>"
-            "<pid></pid>"
-        "</connection>"
-        "</sysrepo-state>");
-    sr_str_del(str1, "<last-modified>","</last-modified>");
-    sr_str_del(str1, "<cid>","</cid>");
-    sr_str_del(str1, "<pid>","</pid>");
-    sr_str_del(str1, "<timestamp>","</timestamp>");
-    sr_str_del(str1, "<sid>","</sid>");
+    strcat(str2, "  <module>\n"
+            "    <name>ops</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <ds-lock>\n"
+            "      <datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>\n"
+            "      <sid></sid>\n"
+            "      <timestamp></timestamp>\n"
+            "    </ds-lock>\n"
+            "    <subscriptions>\n"
+            "      <notification-sub>\n"
+            "        <cid></cid>\n"
+            "        <suspended>false</suspended>\n"
+            "      </notification-sub>\n"
+            "      <notification-sub>\n"
+            "        <cid></cid>\n"
+            "        <suspended>false</suspended>\n"
+            "      </notification-sub>\n"
+            "    </subscriptions>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>czechlight-roadm-device</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <ds-lock>\n"
+            "      <datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>\n"
+            "      <sid></sid>\n"
+            "      <timestamp></timestamp>\n"
+            "    </ds-lock>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>oper-group-test</name>\n"
+            "  </module>\n"
+            "  <module>\n"
+            "    <name>sm</name>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:startup</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <datastore>\n"
+            "      <name xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</name>\n"
+            "      <last-modified></last-modified>\n"
+            "    </datastore>\n"
+            "    <ds-lock>\n"
+            "      <datastore xmlns:ds=\"urn:ietf:params:xml:ns:yang:ietf-datastores\">ds:running</datastore>\n"
+            "      <sid></sid>\n"
+            "      <timestamp></timestamp>\n"
+            "    </ds-lock>\n"
+            "  </module>\n"
+            "  <rpc>\n"
+            "    <path xmlns:fd=\"urn:ietf:params:xml:ns:yang:ietf-factory-default\">/fd:factory-reset</path>\n"
+            "    <rpc-sub>\n"
+            "      <xpath xmlns:fd=\"urn:ietf:params:xml:ns:yang:ietf-factory-default\">/fd:factory-reset</xpath>\n"
+            "      <priority>10</priority>\n"
+            "      <cid></cid>\n"
+            "      <suspended>false</suspended>\n"
+            "    </rpc-sub>\n"
+            "  </rpc>\n"
+            "  <rpc>\n"
+            "    <path xmlns:a=\"urn:act\">/a:basics/a:animals/a:convert</path>\n"
+            "    <rpc-sub>\n"
+            "      <xpath xmlns:a=\"urn:act\">/a:basics/a:animals/a:convert[a:direction='false']</xpath>\n"
+            "      <priority>5</priority>\n"
+            "      <cid></cid>\n"
+            "      <suspended>false</suspended>\n"
+            "    </rpc-sub>\n"
+            "    <rpc-sub>\n"
+            "      <xpath xmlns:a=\"urn:act\">/a:basics/a:animals/a:convert</xpath>\n"
+            "      <priority>4</priority>\n"
+            "      <cid></cid>\n"
+            "      <suspended>false</suspended>\n"
+            "    </rpc-sub>\n"
+            "  </rpc>\n"
+            "  <rpc>\n"
+            "    <path xmlns:a=\"urn:act\">/a:capitalize</path>\n"
+            "    <rpc-sub>\n"
+            "      <xpath xmlns:a=\"urn:act\">/a:capitalize</xpath>\n"
+            "      <priority>0</priority>\n"
+            "      <cid></cid>\n"
+            "      <suspended>false</suspended>\n"
+            "    </rpc-sub>\n"
+            "  </rpc>\n"
+            "  <connection>\n"
+            "    <cid></cid>\n"
+            "    <pid></pid>\n"
+            "  </connection>\n"
+            "</sysrepo-state>\n");
+    sr_str_del(str1, "<last-modified>", "</last-modified>");
+    sr_str_del(str1, "<cid>", "</cid>");
+    sr_str_del(str1, "<pid>", "</pid>");
+    sr_str_del(str1, "<timestamp>", "</timestamp>");
+    sr_str_del(str1, "<sid>", "</sid>");
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -1150,18 +1149,18 @@ test_enabled_partial(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
 
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<interface>"
-            "<name>eth128</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<enabled or:origin=\"or:default\">true</enabled>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <interface>\n"
+            "    <name>eth128</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <enabled or:origin=\"or:default\">true</enabled>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str, str2);
     free(str);
@@ -1261,20 +1260,20 @@ test_simple(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<enabled or:origin=\"or:default\">true</enabled>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <enabled or:origin=\"or:default\">true</enabled>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -1288,31 +1287,31 @@ test_simple(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<enabled or:origin=\"or:default\">true</enabled>"
-        "</interface>"
-    "</interfaces>"
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<interface>"
-            "<name>eth5</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<oper-status>testing</oper-status>"
-            "<statistics>"
-                "<discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>"
-            "</statistics>"
-        "</interface>"
-    "</interfaces-state>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <enabled or:origin=\"or:default\">true</enabled>\n"
+            "  </interface>\n"
+            "</interfaces>\n"
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth5</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <oper-status>testing</oper-status>\n"
+            "    <statistics>\n"
+            "      <discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>\n"
+            "    </statistics>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -1455,19 +1454,19 @@ test_config(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_true(data->tree->next->flags & LYD_DEFAULT);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<interface>"
-            "<name>eth5</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth5</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -1539,28 +1538,28 @@ test_list(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_true(data->tree->next->flags & LYD_DEFAULT);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<enabled or:origin=\"or:default\">true</enabled>"
-        "</interface>"
-        "<interface or:origin=\"or:unknown\">"
-            "<name>eth2</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-        "<interface or:origin=\"or:unknown\">"
-            "<name>eth3</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <enabled or:origin=\"or:default\">true</enabled>\n"
+            "  </interface>\n"
+            "  <interface or:origin=\"or:unknown\">\n"
+            "    <name>eth2</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "  <interface or:origin=\"or:unknown\">\n"
+            "    <name>eth3</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -1651,40 +1650,40 @@ test_nested(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<enabled or:origin=\"or:default\">true</enabled>"
-        "</interface>"
-    "</interfaces>"
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<interface>"
-            "<name>eth2</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<oper-status>testing</oper-status>"
-            "<phys-address>01:23:45:67:89:ab</phys-address>"
-            "<statistics>"
-                "<discontinuity-time>2000-01-01T03:00:00-00:00</discontinuity-time>"
-            "</statistics>"
-        "</interface>"
-        "<interface>"
-            "<name>eth3</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<oper-status>dormant</oper-status>"
-            "<statistics>"
-                "<discontinuity-time>2000-01-01T03:00:00-00:00</discontinuity-time>"
-            "</statistics>"
-        "</interface>"
-    "</interfaces-state>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <enabled or:origin=\"or:default\">true</enabled>\n"
+            "  </interface>\n"
+            "</interfaces>\n"
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth2</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <oper-status>testing</oper-status>\n"
+            "    <phys-address>01:23:45:67:89:ab</phys-address>\n"
+            "    <statistics>\n"
+            "      <discontinuity-time>2000-01-01T03:00:00-00:00</discontinuity-time>\n"
+            "    </statistics>\n"
+            "  </interface>\n"
+            "  <interface>\n"
+            "    <name>eth3</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <oper-status>dormant</oper-status>\n"
+            "    <statistics>\n"
+            "      <discontinuity-time>2000-01-01T03:00:00-00:00</discontinuity-time>\n"
+            "    </statistics>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -1772,17 +1771,17 @@ test_choice(void **state)
 
     /* read the data from operational (#1 and #2) */
     str2 =
-    "<oper-data-direct xmlns=\"http://example.org/oper-group-test\">"
-        "<results-description>Grouping 1 values</results-description>"
-        "<g1container>"
-            "<g1leaf1>value2</g1leaf1>"
-        "</g1container>"
-    "</oper-data-direct>";
+            "<oper-data-direct xmlns=\"http://example.org/oper-group-test\">\n"
+            "  <results-description>Grouping 1 values</results-description>\n"
+            "  <g1container>\n"
+            "    <g1leaf1>value2</g1leaf1>\n"
+            "  </g1container>\n"
+            "</oper-data-direct>\n";
 
     ret = sr_get_data(st->sess, "/oper-group-test:oper-data-direct", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -1790,17 +1789,17 @@ test_choice(void **state)
     free(str1);
 
     str2 =
-    "<oper-data-choice xmlns=\"http://example.org/oper-group-test\">"
-        "<results-description>Grouping 1 values</results-description>"
-        "<g1container>"
-            "<g1leaf1>value2</g1leaf1>"
-        "</g1container>"
-    "</oper-data-choice>";
+            "<oper-data-choice xmlns=\"http://example.org/oper-group-test\">\n"
+            "  <results-description>Grouping 1 values</results-description>\n"
+            "  <g1container>\n"
+            "    <g1leaf1>value2</g1leaf1>\n"
+            "  </g1container>\n"
+            "</oper-data-choice>\n";
 
     ret = sr_get_data(st->sess, "/oper-group-test:oper-data-choice", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -1809,17 +1808,17 @@ test_choice(void **state)
 
     /* read the data from operational (#3 and #4) */
     str2 =
-    "<oper-data-direct xmlns=\"http://example.org/oper-group-test\">"
-        "<results-description>Grouping 2 values</results-description>"
-        "<g2container>"
-            "<g2leaf1>value3</g2leaf1>"
-        "</g2container>"
-    "</oper-data-direct>";
+            "<oper-data-direct xmlns=\"http://example.org/oper-group-test\">\n"
+            "  <results-description>Grouping 2 values</results-description>\n"
+            "  <g2container>\n"
+            "    <g2leaf1>value3</g2leaf1>\n"
+            "  </g2container>\n"
+            "</oper-data-direct>\n";
 
     ret = sr_get_data(st->sess, "/oper-group-test:oper-data-direct", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -1827,17 +1826,17 @@ test_choice(void **state)
     free(str1);
 
     str2 =
-    "<oper-data-choice xmlns=\"http://example.org/oper-group-test\">"
-        "<results-description>Grouping 2 values</results-description>"
-        "<g2container>"
-            "<g2leaf1>value3</g2leaf1>"
-        "</g2container>"
-    "</oper-data-choice>";
+            "<oper-data-choice xmlns=\"http://example.org/oper-group-test\">\n"
+            "  <results-description>Grouping 2 values</results-description>\n"
+            "  <g2container>\n"
+            "    <g2leaf1>value3</g2leaf1>\n"
+            "  </g2container>\n"
+            "</oper-data-choice>\n";
 
     ret = sr_get_data(st->sess, "/oper-group-test:oper-data-choice", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -1846,15 +1845,15 @@ test_choice(void **state)
 
     /* read the data from operational (#5 and #6) */
     str2 =
-    "<oper-data-direct xmlns=\"http://example.org/oper-group-test\">"
-        "<results-description>Non-grouping values</results-description>"
-        "<nongroup>value4</nongroup>"
-    "</oper-data-direct>";
+            "<oper-data-direct xmlns=\"http://example.org/oper-group-test\">\n"
+            "  <results-description>Non-grouping values</results-description>\n"
+            "  <nongroup>value4</nongroup>\n"
+            "</oper-data-direct>\n";
 
     ret = sr_get_data(st->sess, "/oper-group-test:oper-data-direct", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -1862,15 +1861,15 @@ test_choice(void **state)
     free(str1);
 
     str2 =
-    "<oper-data-choice xmlns=\"http://example.org/oper-group-test\">"
-        "<results-description>Non-grouping values</results-description>"
-        "<nongroup>value4</nongroup>"
-    "</oper-data-choice>";
+            "<oper-data-choice xmlns=\"http://example.org/oper-group-test\">\n"
+            "  <results-description>Non-grouping values</results-description>\n"
+            "  <nongroup>value4</nongroup>\n"
+            "</oper-data-choice>\n";
 
     ret = sr_get_data(st->sess, "/oper-group-test:oper-data-choice", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
@@ -2015,30 +2014,30 @@ test_mixed(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<interface>"
-            "<name>eth10</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-    "</interfaces>"
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<interface>"
-            "<name>eth11</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<oper-status>down</oper-status>"
-            "<statistics>"
-                "<discontinuity-time>2000-01-01T03:00:00-00:00</discontinuity-time>"
-            "</statistics>"
-        "</interface>"
-    "</interfaces-state>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth10</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n"
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth11</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <oper-status>down</oper-status>\n"
+            "    <statistics>\n"
+            "      <discontinuity-time>2000-01-01T03:00:00-00:00</discontinuity-time>\n"
+            "    </statistics>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2190,21 +2189,21 @@ test_state_only(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<test-case>"
-            "<name>one</name>"
-            "<result>101</result>"
-            "<x>0.5</x>"
-            "<y>-0.5</y>"
-            "<z>-0.25</z>"
-        "</test-case>"
-    "</test-state>";
+            "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <test-case>\n"
+            "    <name>one</name>\n"
+            "    <result>101</result>\n"
+            "    <x>0.5</x>\n"
+            "    <y>-0.5</y>\n"
+            "    <z>-0.25</z>\n"
+            "  </test-case>\n"
+            "</test-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2239,18 +2238,18 @@ test_state_only(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<test-case>"
-            "<name>three</name>"
-            "<result or:origin=\"or:unknown\">100</result>"
-        "</test-case>"
-    "</test-state>";
+            "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <test-case>\n"
+            "    <name>three</name>\n"
+            "    <result or:origin=\"or:unknown\">100</result>\n"
+            "  </test-case>\n"
+            "</test-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2275,18 +2274,18 @@ test_state_only(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<test-case>"
-            "<name>four</name>"
-            "<result or:origin=\"or:unknown\">100</result>"
-        "</test-case>"
-    "</test-state>";
+            "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <test-case>\n"
+            "    <name>four</name>\n"
+            "    <result or:origin=\"or:unknown\">100</result>\n"
+            "  </test-case>\n"
+            "</test-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2328,19 +2327,19 @@ test_config_only(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_NO_STATE | SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<interface>"
-            "<name>eth10</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth10</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2417,18 +2416,18 @@ test_union(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<test-state xmlns=\"urn:sysrepo:mixed-config\">"
-        "<test-case>"
-            "<name>one</name>"
-            "<a>strval</a>"
-        "</test-case>"
-    "</test-state>";
+            "<test-state xmlns=\"urn:sysrepo:mixed-config\">\n"
+            "  <test-case>\n"
+            "    <name>one</name>\n"
+            "    <a>strval</a>\n"
+            "  </test-case>\n"
+            "</test-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2440,24 +2439,24 @@ test_union(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 5);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<test-state xmlns=\"urn:sysrepo:mixed-config\">"
-        "<test-case>"
-            "<name>one</name>"
-            "<a>strval</a>"
-            "<result>100</result>"
-        "</test-case>"
-        "<test-case>"
-            "<name>two</name>"
-            "<a>strval</a>"
-            "<result>100</result>"
-        "</test-case>"
-    "</test-state>";
+            "<test-state xmlns=\"urn:sysrepo:mixed-config\">\n"
+            "  <test-case>\n"
+            "    <name>one</name>\n"
+            "    <a>strval</a>\n"
+            "    <result>100</result>\n"
+            "  </test-case>\n"
+            "  <test-case>\n"
+            "    <name>two</name>\n"
+            "    <a>strval</a>\n"
+            "    <result>100</result>\n"
+            "  </test-case>\n"
+            "</test-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2469,19 +2468,19 @@ test_union(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 7);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<test-state xmlns=\"urn:sysrepo:mixed-config\">"
-        "<test-case>"
-            "<name>one</name>"
-            "<a>strval</a>"
-            "<result>100</result>"
-        "</test-case>"
-    "</test-state>";
+            "<test-state xmlns=\"urn:sysrepo:mixed-config\">\n"
+            "  <test-case>\n"
+            "    <name>one</name>\n"
+            "    <a>strval</a>\n"
+            "    <result>100</result>\n"
+            "  </test-case>\n"
+            "</test-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2506,17 +2505,17 @@ test_default_when(void **state)
     /* read the operational data */
     ret = sr_get_data(st->sess, "/act:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_KEEPEMPTYCONT | LYD_PRINT_WD_ALL | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_KEEPEMPTYCONT | LYD_PRINT_WD_ALL);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
     str2 =
-    "<basics xmlns=\"urn:act\">"
-        "<subbasics>"
-            "<complex_number xmlns=\"urn:act2\"/>"
-        "</subbasics>"
-    "</basics>"
-    "<advanced xmlns=\"urn:act\"/>";
+            "<basics xmlns=\"urn:act\">\n"
+            "  <subbasics>\n"
+            "    <complex_number xmlns=\"urn:act2\"/>\n"
+            "  </subbasics>\n"
+            "</basics>\n"
+            "<advanced xmlns=\"urn:act\"/>\n";
     assert_string_equal(str1, str2);
     free(str1);
 }
@@ -2577,21 +2576,21 @@ test_nested_default(void **state)
     ret = sr_get_data(st->sess, "/defaults:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<l1 xmlns=\"urn:defaults\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<k>val</k>"
-        "<cont1>"
-            "<cont2>"
-                "<dflt1>64</dflt1>"
-            "</cont2>"
-            "<ll>valuee</ll>"
-        "</cont1>"
-    "</l1>";
+            "<l1 xmlns=\"urn:defaults\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <k>val</k>\n"
+            "  <cont1>\n"
+            "    <cont2>\n"
+            "      <dflt1>64</dflt1>\n"
+            "    </cont2>\n"
+            "    <ll>valuee</ll>\n"
+            "  </cont1>\n"
+            "</l1>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2629,17 +2628,17 @@ test_disabled_default(void **state)
     ret = sr_get_data(st->sess, "/defaults:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<pcont xmlns=\"urn:defaults\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<ll or:origin=\"or:default\">1</ll>"
-        "<ll or:origin=\"or:default\">2</ll>"
-        "<ll or:origin=\"or:default\">3</ll>"
-    "</pcont>";
+            "<pcont xmlns=\"urn:defaults\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <ll or:origin=\"or:default\">1</ll>\n"
+            "  <ll or:origin=\"or:default\">2</ll>\n"
+            "  <ll or:origin=\"or:default\">3</ll>\n"
+            "</pcont>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2717,28 +2716,28 @@ test_merge_flag(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<description>operational-desc</description>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-        "<interface>"
-            "<name>eth2</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:frameRelay</type>"
-            "<enabled>true</enabled>"
-        "</interface>"
-        "<interface>"
-            "<name>eth3</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:softwareLoopback</type>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <description>operational-desc</description>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "  <interface>\n"
+            "    <name>eth2</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:frameRelay</type>\n"
+            "    <enabled>true</enabled>\n"
+            "  </interface>\n"
+            "  <interface>\n"
+            "    <name>eth3</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:softwareLoopback</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2800,23 +2799,23 @@ test_state_default_merge(void **state)
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" "
-            "or:origin=\"or:intended\">"
-        "<test-case>"
-            "<name>a</name>"
-            "<a>vala</a>"
-        "</test-case>"
-        "<test-case>"
-            "<name>b</name>"
-            "<a>valb</a>"
-        "</test-case>"
-    "</test-state>";
+            "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\""
+            " or:origin=\"or:intended\">\n"
+            "  <test-case>\n"
+            "    <name>a</name>\n"
+            "    <a>vala</a>\n"
+            "  </test-case>\n"
+            "  <test-case>\n"
+            "    <name>b</name>\n"
+            "    <a>valb</a>\n"
+            "  </test-case>\n"
+            "</test-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2830,26 +2829,26 @@ test_state_default_merge(void **state)
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" "
-            "or:origin=\"or:intended\">"
-        "<test-case>"
-            "<name>a</name>"
-            "<a>vala</a>"
-            "<result>1</result>"
-            "<z or:origin=\"or:default\">4.4</z>"
-        "</test-case>"
-        "<test-case>"
-            "<name>b</name>"
-            "<a>valb</a>"
-            "<x>2.2</x>"
-        "</test-case>"
-    "</test-state>";
+            "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\""
+            " or:origin=\"or:intended\">\n"
+            "  <test-case>\n"
+            "    <name>a</name>\n"
+            "    <a>vala</a>\n"
+            "    <result>1</result>\n"
+            "    <z or:origin=\"or:default\">4.4</z>\n"
+            "  </test-case>\n"
+            "  <test-case>\n"
+            "    <name>b</name>\n"
+            "    <a>valb</a>\n"
+            "    <x>2.2</x>\n"
+            "  </test-case>\n"
+            "</test-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2974,23 +2973,23 @@ test_same_xpath(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<interface>"
-            "<name>eth5</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<oper-status>unknown</oper-status>"
-            "<statistics>"
-                "<discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>"
-            "</statistics>"
-        "</interface>"
-    "</interfaces-state>";
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth5</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <oper-status>unknown</oper-status>\n"
+            "    <statistics>\n"
+            "      <discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>\n"
+            "    </statistics>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -3004,24 +3003,24 @@ test_same_xpath(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str3 =
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<interface>"
-            "<name>eth5</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<oper-status>unknown</oper-status>"
-            "<statistics>"
-                "<discontinuity-time>2001-01-01T02:00:00-00:00</discontinuity-time>"
-                "<in-octets>1</in-octets>"
-            "</statistics>"
-        "</interface>"
-    "</interfaces-state>";
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth5</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <oper-status>unknown</oper-status>\n"
+            "    <statistics>\n"
+            "      <discontinuity-time>2001-01-01T02:00:00-00:00</discontinuity-time>\n"
+            "      <in-octets>1</in-octets>\n"
+            "    </statistics>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
 
     assert_string_equal(str1, str3);
     free(str1);
@@ -3253,23 +3252,23 @@ test_cache(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<interface>"
-            "<name>eth5</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<oper-status>testing</oper-status>"
-            "<statistics>"
-                "<discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>"
-            "</statistics>"
-        "</interface>"
-    "</interfaces-state>";
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth5</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <oper-status>testing</oper-status>\n"
+            "    <statistics>\n"
+            "      <discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>\n"
+            "    </statistics>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -3279,22 +3278,22 @@ test_cache(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>eth5</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<oper-status>testing</oper-status>"
-            "<statistics>"
-                "<discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>"
-            "</statistics>"
-        "</interface>"
-    "</interfaces-state>";
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "  <interface>\n"
+            "    <name>eth5</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <oper-status>testing</oper-status>\n"
+            "    <statistics>\n"
+            "      <discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>\n"
+            "    </statistics>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -3304,23 +3303,23 @@ test_cache(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<interface>"
-            "<name>eth5</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<oper-status>testing</oper-status>"
-            "<statistics>"
-                "<discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>"
-            "</statistics>"
-        "</interface>"
-    "</interfaces-state>";
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth5</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <oper-status>testing</oper-status>\n"
+            "    <statistics>\n"
+            "      <discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>\n"
+            "    </statistics>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -3354,7 +3353,7 @@ test_cache_no_sub(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     assert_null(str1);
@@ -3373,20 +3372,20 @@ test_cache_no_sub(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     str2 =
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>eth5</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<oper-status>testing</oper-status>"
-            "<statistics>"
-                "<discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>"
-            "</statistics>"
-        "</interface>"
-    "</interfaces-state>";
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "  <interface>\n"
+            "    <name>eth5</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <oper-status>testing</oper-status>\n"
+            "    <statistics>\n"
+            "      <discontinuity-time>2000-01-01T02:00:00-00:00</discontinuity-time>\n"
+            "    </statistics>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -3402,7 +3401,7 @@ test_cache_no_sub(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     assert_null(str1);

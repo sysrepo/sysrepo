@@ -13,10 +13,10 @@
  */
 #define _GNU_SOURCE
 
-#include <pthread.h>
 #include <assert.h>
-#include <stdio.h>
+#include <pthread.h>
 #include <stdarg.h>
+#include <stdio.h>
 #include <time.h>
 
 #include "sysrepo.h"
@@ -73,6 +73,7 @@ _test_log(sr_log_level_t ll, ...)
     va_list ap;
     char msg[1024] = "";
     char *fmt = NULL;
+
     va_start(ap, ll);
     fmt = va_arg(ap, char *);
 
@@ -80,4 +81,3 @@ _test_log(sr_log_level_t ll, ...)
     va_end(ap);
     _test_log_msg(ll, msg, "[TestLog]");
 }
-

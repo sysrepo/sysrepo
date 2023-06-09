@@ -16,6 +16,7 @@
 
 #define _GNU_SOURCE
 
+#include <errno.h>
 #include <pthread.h>
 #include <setjmp.h>
 #include <stdarg.h>
@@ -23,7 +24,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <errno.h>
 
 #include <cmocka.h>
 #include <libyang/libyang.h>
@@ -89,7 +89,6 @@ setup(void **state)
     if (sr_install_modules(st->conn, schema_paths, TESTS_SRC_DIR "/files", features) != SR_ERR_OK) {
         return 1;
     }
-
 
     if (sr_session_start(st->conn, SR_DS_RUNNING, &st->sess) != SR_ERR_OK) {
         return 1;
@@ -201,19 +200,19 @@ test_conn_owner1(void **state)
     ret = sr_get_data(sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-    "</interfaces-state>";
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -267,21 +266,21 @@ test_conn_owner2(void **state)
     ret = sr_get_data(sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<oper-status>up</oper-status>"
-            "<speed>1024</speed>"
-        "</interface>"
-    "</interfaces-state>";
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <oper-status>up</oper-status>\n"
+            "    <speed>1024</speed>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -300,23 +299,23 @@ test_conn_owner2(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<oper-status>up</oper-status>"
-            "<speed>1024</speed>"
-            "<statistics>"
-                "<discontinuity-time>2019-10-29T09:43:12-00:00</discontinuity-time>"
-            "</statistics>"
-        "</interface>"
-    "</interfaces-state>";
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <oper-status>up</oper-status>\n"
+            "    <speed>1024</speed>\n"
+            "    <statistics>\n"
+            "      <discontinuity-time>2019-10-29T09:43:12-00:00</discontinuity-time>\n"
+            "    </statistics>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -328,21 +327,21 @@ test_conn_owner2(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<statistics>"
-                "<discontinuity-time>2019-10-29T09:43:12-00:00</discontinuity-time>"
-            "</statistics>"
-        "</interface>"
-    "</interfaces-state>";
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <statistics>\n"
+            "      <discontinuity-time>2019-10-29T09:43:12-00:00</discontinuity-time>\n"
+            "    </statistics>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -383,21 +382,21 @@ test_conn_owner_same_data(void **state)
     ret = sr_get_data(sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<oper-status>up</oper-status>"
-            "<speed>1024</speed>"
-        "</interface>"
-    "</interfaces-state>";
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <oper-status>up</oper-status>\n"
+            "    <speed>1024</speed>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -425,21 +424,21 @@ test_conn_owner_same_data(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<oper-status>up</oper-status>"
-            "<speed>1024</speed>"
-        "</interface>"
-    "</interfaces-state>";
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <oper-status>up</oper-status>\n"
+            "    <speed>1024</speed>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -598,19 +597,19 @@ test_state(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-    "</interfaces-state>";
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -629,19 +628,19 @@ test_state(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:softwareLoopback</type>"
-        "</interface>"
-    "</interfaces-state>";
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:softwareLoopback</type>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -882,23 +881,23 @@ test_state_list(void **state)
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" "
-            "or:origin=\"or:intended\">"
-        "<l or:origin=\"or:unknown\">"
-            "<l1>val1</l1>"
-        "</l>"
-        "<l or:origin=\"or:unknown\">"
-            "<l1>val2</l1>"
-        "</l>"
-        "<ll or:origin=\"or:unknown\">val1</ll>"
-        "<ll or:origin=\"or:unknown\">val2</ll>"
-    "</test-state>";
+            "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\""
+            " or:origin=\"or:intended\">\n"
+            "  <l or:origin=\"or:unknown\">\n"
+            "    <l1>val1</l1>\n"
+            "  </l>\n"
+            "  <l or:origin=\"or:unknown\">\n"
+            "    <l1>val2</l1>\n"
+            "  </l>\n"
+            "  <ll or:origin=\"or:unknown\">val1</ll>\n"
+            "  <ll or:origin=\"or:unknown\">val2</ll>\n"
+            "</test-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -916,20 +915,20 @@ test_state_list(void **state)
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" "
-            "or:origin=\"or:intended\">"
-        "<l or:origin=\"or:unknown\">"
-            "<l1>val1</l1>"
-        "</l>"
-        "<l or:origin=\"or:unknown\"/>"
-        "<ll or:origin=\"or:unknown\">val1</ll>"
-    "</test-state>";
+            "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\""
+            " or:origin=\"or:intended\">\n"
+            "  <l or:origin=\"or:unknown\">\n"
+            "    <l1>val1</l1>\n"
+            "  </l>\n"
+            "  <l or:origin=\"or:unknown\"/>\n"
+            "  <ll or:origin=\"or:unknown\">val1</ll>\n"
+            "</test-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -951,23 +950,23 @@ test_state_list(void **state)
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" "
-            "or:origin=\"or:intended\">"
-        "<l or:origin=\"or:unknown\">"
-            "<l1>val1</l1>"
-        "</l>"
-        "<l or:origin=\"or:unknown\"/>"
-        "<ll or:origin=\"or:unknown\">val1</ll>"
-        "<ll or:origin=\"or:unknown\">val3</ll>"
-        "<ll or:origin=\"or:unknown\">val2</ll>"
-        "<ll or:origin=\"or:unknown\">val3</ll>"
-    "</test-state>";
+            "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\""
+            " or:origin=\"or:intended\">\n"
+            "  <l or:origin=\"or:unknown\">\n"
+            "    <l1>val1</l1>\n"
+            "  </l>\n"
+            "  <l or:origin=\"or:unknown\"/>\n"
+            "  <ll or:origin=\"or:unknown\">val1</ll>\n"
+            "  <ll or:origin=\"or:unknown\">val3</ll>\n"
+            "  <ll or:origin=\"or:unknown\">val2</ll>\n"
+            "  <ll or:origin=\"or:unknown\">val3</ll>\n"
+            "</test-state>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -1030,28 +1029,28 @@ test_state_list2(void **state)
     sr_release_data(data);
 
     str2 =
-    "<active-alarm-list xmlns=\"urn:alarms\">\n"
-    "  <active-alarms>\n"
-    "    <fault-id>1</fault-id>\n"
-    "    <fault-source>fm</fault-source>\n"
-    "    <affected-objects>\n"
-    "      <name>obj</name>\n"
-    "    </affected-objects>\n"
-    "    <fault-severity>MAJOR</fault-severity>\n"
-    "    <is-cleared>false</is-cleared>\n"
-    "    <event-time>2023-05-17T13:18:21-00:00</event-time>\n"
-    "  </active-alarms>\n"
-    "  <active-alarms>\n"
-    "    <fault-id>4</fault-id>\n"
-    "    <fault-source>fan</fault-source>\n"
-    "    <affected-objects>\n"
-    "      <name>obj2</name>\n"
-    "    </affected-objects>\n"
-    "    <fault-severity>CRITICAL</fault-severity>\n"
-    "    <is-cleared>false</is-cleared>\n"
-    "    <event-time>2023-05-18T20:08:55-00:00</event-time>\n"
-    "  </active-alarms>\n"
-    "</active-alarm-list>\n";
+            "<active-alarm-list xmlns=\"urn:alarms\">\n"
+            "  <active-alarms>\n"
+            "    <fault-id>1</fault-id>\n"
+            "    <fault-source>fm</fault-source>\n"
+            "    <affected-objects>\n"
+            "      <name>obj</name>\n"
+            "    </affected-objects>\n"
+            "    <fault-severity>MAJOR</fault-severity>\n"
+            "    <is-cleared>false</is-cleared>\n"
+            "    <event-time>2023-05-17T13:18:21-00:00</event-time>\n"
+            "  </active-alarms>\n"
+            "  <active-alarms>\n"
+            "    <fault-id>4</fault-id>\n"
+            "    <fault-source>fan</fault-source>\n"
+            "    <affected-objects>\n"
+            "      <name>obj2</name>\n"
+            "    </affected-objects>\n"
+            "    <fault-severity>CRITICAL</fault-severity>\n"
+            "    <is-cleared>false</is-cleared>\n"
+            "    <event-time>2023-05-18T20:08:55-00:00</event-time>\n"
+            "  </active-alarms>\n"
+            "</active-alarm-list>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -1083,38 +1082,38 @@ test_state_list2(void **state)
     sr_release_data(data);
 
     str2 =
-    "<active-alarm-list xmlns=\"urn:alarms\">\n"
-    "  <active-alarms>\n"
-    "    <fault-id>1</fault-id>\n"
-    "    <fault-source>fm</fault-source>\n"
-    "    <affected-objects>\n"
-    "      <name>obj</name>\n"
-    "    </affected-objects>\n"
-    "    <fault-severity>MAJOR</fault-severity>\n"
-    "    <is-cleared>false</is-cleared>\n"
-    "    <event-time>2023-05-17T13:18:21-00:00</event-time>\n"
-    "  </active-alarms>\n"
-    "  <active-alarms>\n"
-    "    <fault-id>4</fault-id>\n"
-    "    <fault-source>fan</fault-source>\n"
-    "    <affected-objects>\n"
-    "      <name>obj2</name>\n"
-    "    </affected-objects>\n"
-    "    <fault-severity>CRITICAL</fault-severity>\n"
-    "    <is-cleared>false</is-cleared>\n"
-    "    <event-time>2023-05-18T20:08:55-00:00</event-time>\n"
-    "  </active-alarms>\n"
-    "  <active-alarms>\n"
-    "    <fault-id>9</fault-id>\n"
-    "    <fault-source>fm</fault-source>\n"
-    "    <affected-objects>\n"
-    "      <name>obj3</name>\n"
-    "    </affected-objects>\n"
-    "    <fault-severity>MINOR</fault-severity>\n"
-    "    <is-cleared>false</is-cleared>\n"
-    "    <event-time>2023-05-20T01:17:35-00:00</event-time>\n"
-    "  </active-alarms>\n"
-    "</active-alarm-list>\n";
+            "<active-alarm-list xmlns=\"urn:alarms\">\n"
+            "  <active-alarms>\n"
+            "    <fault-id>1</fault-id>\n"
+            "    <fault-source>fm</fault-source>\n"
+            "    <affected-objects>\n"
+            "      <name>obj</name>\n"
+            "    </affected-objects>\n"
+            "    <fault-severity>MAJOR</fault-severity>\n"
+            "    <is-cleared>false</is-cleared>\n"
+            "    <event-time>2023-05-17T13:18:21-00:00</event-time>\n"
+            "  </active-alarms>\n"
+            "  <active-alarms>\n"
+            "    <fault-id>4</fault-id>\n"
+            "    <fault-source>fan</fault-source>\n"
+            "    <affected-objects>\n"
+            "      <name>obj2</name>\n"
+            "    </affected-objects>\n"
+            "    <fault-severity>CRITICAL</fault-severity>\n"
+            "    <is-cleared>false</is-cleared>\n"
+            "    <event-time>2023-05-18T20:08:55-00:00</event-time>\n"
+            "  </active-alarms>\n"
+            "  <active-alarms>\n"
+            "    <fault-id>9</fault-id>\n"
+            "    <fault-source>fm</fault-source>\n"
+            "    <affected-objects>\n"
+            "      <name>obj3</name>\n"
+            "    </affected-objects>\n"
+            "    <fault-severity>MINOR</fault-severity>\n"
+            "    <is-cleared>false</is-cleared>\n"
+            "    <event-time>2023-05-20T01:17:35-00:00</event-time>\n"
+            "  </active-alarms>\n"
+            "</active-alarm-list>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -1163,21 +1162,21 @@ test_config(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<description>config-description</description>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<enabled or:origin=\"or:unknown\">true</enabled>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <description>config-description</description>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <enabled or:origin=\"or:unknown\">true</enabled>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -1194,21 +1193,21 @@ test_config(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<description>config-description</description>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<enabled or:origin=\"or:unknown\">false</enabled>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <description>config-description</description>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <enabled or:origin=\"or:unknown\">false</enabled>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -1228,21 +1227,21 @@ test_config(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<description or:origin=\"or:unknown\">oper-description</description>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<enabled or:origin=\"or:default\">true</enabled>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <description or:origin=\"or:unknown\">oper-description</description>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <enabled or:origin=\"or:default\">true</enabled>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -1263,19 +1262,19 @@ test_config(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<description or:origin=\"or:unknown\">oper-description</description>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <description or:origin=\"or:unknown\">oper-description</description>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -1333,37 +1332,37 @@ test_top_list(void **state)
     ret = sr_get_data(st->sess, "/czechlight-roadm-device:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<channel-plan xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\" "
-            "xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<channel>"
-            "<name>13.5</name>"
-            "<lower-frequency>191325000</lower-frequency>"
-            "<upper-frequency>191375000</upper-frequency>"
-        "</channel>"
-        "<channel>"
-            "<name>14.0</name>"
-            "<lower-frequency>191375000</lower-frequency>"
-            "<upper-frequency>191425000</upper-frequency>"
-        "</channel>"
-    "</channel-plan>"
-    "<media-channels xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\" "
-            "xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<channel>13.5</channel>"
-        "<power or:origin=\"or:unknown\">"
-            "<common-in>0.1</common-in>"
-            "<common-out>0.2</common-out>"
-        "</power>"
-    "</media-channels>"
-    "<line xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\" "
-            "xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<output-voa or:origin=\"or:default\">0.0</output-voa>"
-    "</line>";
+            "<channel-plan xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <channel>\n"
+            "    <name>13.5</name>\n"
+            "    <lower-frequency>191325000</lower-frequency>\n"
+            "    <upper-frequency>191375000</upper-frequency>\n"
+            "  </channel>\n"
+            "  <channel>\n"
+            "    <name>14.0</name>\n"
+            "    <lower-frequency>191375000</lower-frequency>\n"
+            "    <upper-frequency>191425000</upper-frequency>\n"
+            "  </channel>\n"
+            "</channel-plan>\n"
+            "<media-channels xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <channel>13.5</channel>\n"
+            "  <power or:origin=\"or:unknown\">\n"
+            "    <common-in>0.1</common-in>\n"
+            "    <common-out>0.2</common-out>\n"
+            "  </power>\n"
+            "</media-channels>\n"
+            "<line xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <output-voa or:origin=\"or:default\">0.0</output-voa>\n"
+            "</line>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -1420,46 +1419,46 @@ test_top_list(void **state)
     ret = sr_get_data(st->sess, "/czechlight-roadm-device:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<channel-plan xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\" "
-            "xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<channel>"
-            "<name>13.5</name>"
-            "<lower-frequency>191325000</lower-frequency>"
-            "<upper-frequency>191375000</upper-frequency>"
-        "</channel>"
-        "<channel>"
-            "<name>14.0</name>"
-            "<lower-frequency>191375000</lower-frequency>"
-            "<upper-frequency>191425000</upper-frequency>"
-        "</channel>"
-    "</channel-plan>"
-    "<media-channels xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\" "
-            "xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<channel>13.5</channel>"
-        "<power or:origin=\"or:unknown\">"
-            "<common-in>0.9</common-in>"
-            "<common-out>1.0</common-out>"
-        "</power>"
-    "</media-channels>"
-    "<media-channels xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\" "
-            "xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<channel>14.0</channel>"
-        "<power or:origin=\"or:unknown\">"
-            "<common-in>1.2</common-in>"
-            "<common-out>1.3</common-out>"
-            "<leaf-out>1.4</leaf-out>"
-        "</power>"
-    "</media-channels>"
-    "<line xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\" "
-            "xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<output-voa or:origin=\"or:default\">0.0</output-voa>"
-    "</line>";
+            "<channel-plan xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <channel>\n"
+            "    <name>13.5</name>\n"
+            "    <lower-frequency>191325000</lower-frequency>\n"
+            "    <upper-frequency>191375000</upper-frequency>\n"
+            "  </channel>\n"
+            "  <channel>\n"
+            "    <name>14.0</name>\n"
+            "    <lower-frequency>191375000</lower-frequency>\n"
+            "    <upper-frequency>191425000</upper-frequency>\n"
+            "  </channel>\n"
+            "</channel-plan>\n"
+            "<media-channels xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <channel>13.5</channel>\n"
+            "  <power or:origin=\"or:unknown\">\n"
+            "    <common-in>0.9</common-in>\n"
+            "    <common-out>1.0</common-out>\n"
+            "  </power>\n"
+            "</media-channels>\n"
+            "<media-channels xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <channel>14.0</channel>\n"
+            "  <power or:origin=\"or:unknown\">\n"
+            "    <common-in>1.2</common-in>\n"
+            "    <common-out>1.3</common-out>\n"
+            "    <leaf-out>1.4</leaf-out>\n"
+            "  </power>\n"
+            "</media-channels>\n"
+            "<line xmlns=\"http://czechlight.cesnet.cz/yang/czechlight-roadm-device\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <output-voa or:origin=\"or:default\">0.0</output-voa>\n"
+            "</line>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -1505,7 +1504,7 @@ test_top_leaf(void **state)
     ret = sr_get_data(st->sess, "/test:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     assert_null(str1);
@@ -1518,13 +1517,13 @@ test_top_leaf(void **state)
     ret = sr_get_data(st->sess, "/test:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
     str2 =
-            "<test-leaf xmlns=\"urn:test\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" "
-            "or:origin=\"or:intended\">20</test-leaf>";
+            "<test-leaf xmlns=\"urn:test\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\""
+            " or:origin=\"or:intended\">20</test-leaf>\n";
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -1860,25 +1859,25 @@ test_discard(void **state)
     /* read the operational data */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<description>config-description</description>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-        "<interface>"
-            "<name>eth2</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-        "<interface>"
-            "<name>eth3</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <description>config-description</description>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "  <interface>\n"
+            "    <name>eth2</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "  <interface>\n"
+            "    <name>eth3</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -1894,16 +1893,16 @@ test_discard(void **state)
     /* read the operational data */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>eth4</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "  <interface>\n"
+            "    <name>eth4</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -1916,7 +1915,7 @@ test_discard(void **state)
     /* read the operational data */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     assert_null(str1);
@@ -2163,24 +2162,24 @@ test_np_cont1(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<interface>"
-            "<name>eth0</name>"
-            "<description/>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<enabled or:origin=\"or:default\">true</enabled>"
-            "<c1 xmlns=\"urn:ietf-if-aug\" or:origin=\"or:unknown\">"
-                "<oper1>val</oper1>"
-            "</c1>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <interface>\n"
+            "    <name>eth0</name>\n"
+            "    <description/>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <enabled or:origin=\"or:default\">true</enabled>\n"
+            "    <c1 xmlns=\"urn:ietf-if-aug\" or:origin=\"or:unknown\">\n"
+            "      <oper1>val</oper1>\n"
+            "    </c1>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2199,24 +2198,24 @@ test_np_cont1(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<interface>"
-            "<name>eth0</name>"
-            "<description>test-desc</description>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<enabled or:origin=\"or:default\">true</enabled>"
-            "<c1 xmlns=\"urn:ietf-if-aug\" or:origin=\"or:unknown\">"
-                "<oper1>val</oper1>"
-            "</c1>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <interface>\n"
+            "    <name>eth0</name>\n"
+            "    <description>test-desc</description>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <enabled or:origin=\"or:default\">true</enabled>\n"
+            "    <c1 xmlns=\"urn:ietf-if-aug\" or:origin=\"or:unknown\">\n"
+            "      <oper1>val</oper1>\n"
+            "    </c1>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2260,23 +2259,23 @@ test_np_cont2(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<interface>"
-            "<name>eth0</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<enabled or:origin=\"or:default\">true</enabled>"
-            "<c1 xmlns=\"urn:ietf-if-aug\" or:origin=\"or:unknown\">"
-                "<oper1>val</oper1>"
-            "</c1>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <interface>\n"
+            "    <name>eth0</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <enabled or:origin=\"or:default\">true</enabled>\n"
+            "    <c1 xmlns=\"urn:ietf-if-aug\" or:origin=\"or:unknown\">\n"
+            "      <oper1>val</oper1>\n"
+            "    </c1>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2315,20 +2314,20 @@ test_edit_merge_leaf(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<description or:origin=\"or:unknown\">oper-description</description>"
-            "<type or:origin=\"or:unknown\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<enabled or:origin=\"or:unknown\">false</enabled>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <description or:origin=\"or:unknown\">oper-description</description>\n"
+            "    <type or:origin=\"or:unknown\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <enabled or:origin=\"or:unknown\">false</enabled>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -2345,19 +2344,19 @@ test_edit_merge_leaf(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<description>oper-description2</description>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<enabled>false</enabled>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <description>oper-description2</description>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <enabled>false</enabled>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -2368,19 +2367,19 @@ test_edit_merge_leaf(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<description or:origin=\"or:unknown\">oper-description2</description>"
-            "<type or:origin=\"or:unknown\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <description or:origin=\"or:unknown\">oper-description2</description>\n"
+            "    <type or:origin=\"or:unknown\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -2391,7 +2390,7 @@ test_edit_merge_leaf(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     assert_null(str1);
@@ -2435,25 +2434,25 @@ test_diff_merge_userord(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/test:cont", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
     str2 =
-    "<cont xmlns=\"urn:test\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<l2 or:origin=\"or:unknown\">"
-            "<k>key2</k>"
-            "<v>26</v>"
-        "</l2>"
-        "<l2>"
-            "<k>key1</k>"
-            "<v>25</v>"
-        "</l2>"
-        "<l2>"
-            "<k>key3</k>"
-            "<v or:origin=\"or:unknown\">27</v>"
-        "</l2>"
-    "</cont>";
+            "<cont xmlns=\"urn:test\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <l2 or:origin=\"or:unknown\">\n"
+            "    <k>key2</k>\n"
+            "    <v>26</v>\n"
+            "  </l2>\n"
+            "  <l2>\n"
+            "    <k>key1</k>\n"
+            "    <v>25</v>\n"
+            "  </l2>\n"
+            "  <l2>\n"
+            "    <k>key3</k>\n"
+            "    <v or:origin=\"or:unknown\">27</v>\n"
+            "  </l2>\n"
+            "</cont>\n";
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -2468,25 +2467,25 @@ test_diff_merge_userord(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/test:cont", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
     str2 =
-    "<cont xmlns=\"urn:test\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<l2>"
-            "<k>key1</k>"
-            "<v>25</v>"
-        "</l2>"
-        "<l2 or:origin=\"or:learned\">"
-            "<k>key2</k>"
-            "<v or:origin=\"or:unknown\">20</v>"
-        "</l2>"
-        "<l2>"
-            "<k>key3</k>"
-            "<v or:origin=\"or:unknown\">27</v>"
-        "</l2>"
-    "</cont>";
+            "<cont xmlns=\"urn:test\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <l2>\n"
+            "    <k>key1</k>\n"
+            "    <v>25</v>\n"
+            "  </l2>\n"
+            "  <l2 or:origin=\"or:learned\">\n"
+            "    <k>key2</k>\n"
+            "    <v or:origin=\"or:unknown\">20</v>\n"
+            "  </l2>\n"
+            "  <l2>\n"
+            "    <k>key3</k>\n"
+            "    <v or:origin=\"or:unknown\">27</v>\n"
+            "  </l2>\n"
+            "</cont>\n";
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -2499,25 +2498,25 @@ test_diff_merge_userord(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/test:cont", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
     str2 =
-    "<cont xmlns=\"urn:test\">"
-        "<l2>"
-            "<k>key2</k>"
-            "<v>20</v>"
-        "</l2>"
-        "<l2>"
-            "<k>key1</k>"
-            "<v>25</v>"
-        "</l2>"
-        "<l2>"
-            "<k>key3</k>"
-            "<v>27</v>"
-        "</l2>"
-    "</cont>";
+            "<cont xmlns=\"urn:test\">\n"
+            "  <l2>\n"
+            "    <k>key2</k>\n"
+            "    <v>20</v>\n"
+            "  </l2>\n"
+            "  <l2>\n"
+            "    <k>key1</k>\n"
+            "    <v>25</v>\n"
+            "  </l2>\n"
+            "  <l2>\n"
+            "    <k>key3</k>\n"
+            "    <v>27</v>\n"
+            "  </l2>\n"
+            "</cont>\n";
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -2530,25 +2529,25 @@ test_diff_merge_userord(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/test:cont", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
     str2 =
-    "<cont xmlns=\"urn:test\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<l2 or:origin=\"or:unknown\">"
-            "<k>key3</k>"
-            "<v>27</v>"
-        "</l2>"
-        "<l2 or:origin=\"or:unknown\">"
-            "<k>key2</k>"
-            "<v>20</v>"
-        "</l2>"
-        "<l2>"
-            "<k>key1</k>"
-            "<v>25</v>"
-        "</l2>"
-    "</cont>";
+            "<cont xmlns=\"urn:test\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <l2 or:origin=\"or:unknown\">\n"
+            "    <k>key3</k>\n"
+            "    <v>27</v>\n"
+            "  </l2>\n"
+            "  <l2 or:origin=\"or:unknown\">\n"
+            "    <k>key2</k>\n"
+            "    <v>20</v>\n"
+            "  </l2>\n"
+            "  <l2>\n"
+            "    <k>key1</k>\n"
+            "    <v>25</v>\n"
+            "  </l2>\n"
+            "</cont>\n";
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -2597,32 +2596,32 @@ test_purge(void **state)
     /* read the data #1 */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\""
-    " or:origin=\"or:intended\">"
-        "<interface>"
-            "<name>eth0</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<enabled or:origin=\"or:default\">true</enabled>"
-        "</interface>"
-        "<interface>"
-            "<name>eth1</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<enabled or:origin=\"or:default\">true</enabled>"
-        "</interface>"
-        "<interface>"
-            "<name>eth2</name>"
-            "<type or:origin=\"or:unknown\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-        "<interface>"
-            "<name>eth3</name>"
-            "<type or:origin=\"or:unknown\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\""
+            " or:origin=\"or:intended\">\n"
+            "  <interface>\n"
+            "    <name>eth0</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <enabled or:origin=\"or:default\">true</enabled>\n"
+            "  </interface>\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <enabled or:origin=\"or:default\">true</enabled>\n"
+            "  </interface>\n"
+            "  <interface>\n"
+            "    <name>eth2</name>\n"
+            "    <type or:origin=\"or:unknown\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "  <interface>\n"
+            "    <name>eth3</name>\n"
+            "    <type or:origin=\"or:unknown\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -2635,7 +2634,7 @@ test_purge(void **state)
     /* read the data #2 */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
     assert_null(str1);
@@ -2693,22 +2692,21 @@ test_schema_mount(void **state)
     ret = sr_get_data(st->sess, "/sm:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<root xmlns=\"urn:sm\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">"
-        "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-            "<interface>"
-                "<name>eth1</name>"
-                "<description or:origin=\"or:unknown\">config-description</description>"
-                "<type or:origin=\"or:unknown\" "
-                    "xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "</interface>"
-        "</interfaces>"
-    "</root>";
+            "<root xmlns=\"urn:sm\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "    <interface>\n"
+            "      <name>eth1</name>\n"
+            "      <description or:origin=\"or:unknown\">config-description</description>\n"
+            "      <type or:origin=\"or:unknown\" xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    </interface>\n"
+            "  </interfaces>\n"
+            "</root>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2910,21 +2908,21 @@ test_change_cb(void **state)
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_true(data->tree->next->flags & LYD_DEFAULT);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\""
-            " or:origin=\"or:intended\">"
-        "<interface>"
-            "<name>eth1</name>"
-            "<description or:origin=\"or:unknown\">descr2</description>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<enabled or:origin=\"or:default\">true</enabled>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\""
+            " or:origin=\"or:intended\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <description or:origin=\"or:unknown\">descr2</description>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <enabled or:origin=\"or:default\">true</enabled>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str1, str2);
     free(str1);

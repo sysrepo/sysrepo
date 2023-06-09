@@ -16,28 +16,28 @@
 
 #define _GNU_SOURCE
 
-#include <stdio.h>
-#include <string.h>
 #include <dirent.h>
-#include <unistd.h>
+#include <errno.h>
+#include <setjmp.h>
+#include <signal.h>
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <signal.h>
-#include <errno.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <setjmp.h>
-#include <stdarg.h>
+#include <unistd.h>
 
 #include <cmocka.h>
 
 #include <libyang/libyang.h>
 
+#include "config.h"
 #include "sysrepo.h"
 #include "sysrepo_types.h"
 #include "tests/tcommon.h"
-#include "config.h"
 
 #define TIMEOUT_STEP_US 100000
 #define SRPD_START_TIMEOUT 10
@@ -100,6 +100,7 @@ static int
 create_file(char *path, char *content)
 {
     FILE *fp;
+
     fp = fopen(path, "w+");
     chmod(path, 0700);
     if (!fp) {
@@ -117,6 +118,7 @@ static int
 remove_file(void **state, char *file_name, int notif_dir)
 {
     test_data_t *data = (test_data_t *)(*state);
+
     if (asprintf(&data->path_to_file, "%s%s", (notif_dir) ? data->n_path : data->a_path, file_name) == -1) {
         print_error("asprintf failed (%s:%d)", __FILE__, __LINE__);
     }
@@ -489,7 +491,7 @@ basic_config(void **state)
     }
 
     /* Wait till archivation loop archives the files */
-    if (wait_for_archivation(state, 1 + 1 + NUM_OF_FILES/2)) {
+    if (wait_for_archivation(state, 1 + 1 + NUM_OF_FILES / 2)) {
         return EXIT_FAILURE;
     }
     return 0;

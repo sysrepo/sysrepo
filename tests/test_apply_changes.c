@@ -256,29 +256,29 @@ module_change_done_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
         ret = sr_get_subtree(session, "/ietf-interfaces:interfaces", 0, &subtree);
         assert_int_equal(ret, SR_ERR_OK);
 
-        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG | LYD_PRINT_SHRINK);
+        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
         assert_int_equal(ret, 0);
         sr_release_data(subtree);
 
         str2 =
-        "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-            "<interface>"
-                "<name>eth52</name>"
-                "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-                "<enabled xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" "
-                    "ncwd:default=\"true\">true</enabled>"
-                "<ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">"
-                    "<enabled xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" "
-                        "ncwd:default=\"true\">true</enabled>"
-                    "<forwarding xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" "
-                        "ncwd:default=\"true\">false</forwarding>"
-                    "<address>"
-                        "<ip>192.168.2.100</ip>"
-                        "<prefix-length>24</prefix-length>"
-                    "</address>"
-                "</ipv4>"
-            "</interface>"
-        "</interfaces>";
+                "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+                "  <interface>\n"
+                "    <name>eth52</name>\n"
+                "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+                "    <enabled xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\""
+                " ncwd:default=\"true\">true</enabled>\n"
+                "    <ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">\n"
+                "      <enabled xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\""
+                " ncwd:default=\"true\">true</enabled>\n"
+                "      <forwarding xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\""
+                " ncwd:default=\"true\">false</forwarding>\n"
+                "      <address>\n"
+                "        <ip>192.168.2.100</ip>\n"
+                "        <prefix-length>24</prefix-length>\n"
+                "      </address>\n"
+                "    </ipv4>\n"
+                "  </interface>\n"
+                "</interfaces>\n";
 
         assert_string_equal(str1, str2);
         free(str1);
@@ -445,23 +445,23 @@ apply_change_done_thread(void *arg)
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(subtree);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>eth52</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">"
-                "<address>"
-                    "<ip>192.168.2.100</ip>"
-                    "<prefix-length>24</prefix-length>"
-                "</address>"
-            "</ipv4>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "  <interface>\n"
+            "    <name>eth52</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">\n"
+            "      <address>\n"
+            "        <ip>192.168.2.100</ip>\n"
+            "        <prefix-length>24</prefix-length>\n"
+            "      </address>\n"
+            "    </ipv4>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -636,21 +636,21 @@ module_update_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_
         ret = sr_get_subtree(session, "/ietf-interfaces:interfaces", 0, &subtree);
         assert_int_equal(ret, SR_ERR_OK);
 
-        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
         assert_int_equal(ret, 0);
         sr_release_data(subtree);
 
         str2 =
-        "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-            "<interface>"
-                "<name>eth52</name>"
-                "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:l3ipvlan</type>"
-            "</interface>"
-            "<interface>"
-                "<name>eth64</name>"
-                "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "</interface>"
-        "</interfaces>";
+                "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+                "  <interface>\n"
+                "    <name>eth52</name>\n"
+                "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:l3ipvlan</type>\n"
+                "  </interface>\n"
+                "  <interface>\n"
+                "    <name>eth64</name>\n"
+                "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+                "  </interface>\n"
+                "</interfaces>\n";
 
         assert_string_equal(str1, str2);
         free(str1);
@@ -767,21 +767,21 @@ apply_update_thread(void *arg)
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(subtree);
 
     str2 =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>eth52</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:l3ipvlan</type>"
-        "</interface>"
-        "<interface>"
-            "<name>eth64</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
+            "  <interface>\n"
+            "    <name>eth52</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:l3ipvlan</type>\n"
+            "  </interface>\n"
+            "  <interface>\n"
+            "    <name>eth64</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "  </interface>\n"
+            "</interfaces>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -1972,51 +1972,51 @@ apply_change_fail2_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     str =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>sw0p1</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:bridge</type>"
-            "<enabled>true</enabled>"
-            "<bridge-port xmlns=\"urn:ietf-if-aug\">"
-                "<component-name>br0</component-name>"
-                "<port-type>c-vlan-bridge-port</port-type>"
-                "<pvid>2</pvid>"
-                "<default-priority>0</default-priority>"
-                "<priority-regeneration>"
-                    "<priority0>0</priority0>"
-                    "<priority1>1</priority1>"
-                    "<priority2>2</priority2>"
-                    "<priority3>3</priority3>"
-                    "<priority4>4</priority4>"
-                    "<priority5>5</priority5>"
-                    "<priority6>6</priority6>"
-                    "<priority7>7</priority7>"
-                "</priority-regeneration>"
-                "<service-access-priority>"
-                    "<priority0>0</priority0>"
-                    "<priority1>1</priority1>"
-                    "<priority2>2</priority2>"
-                    "<priority3>3</priority3>"
-                    "<priority4>4</priority4>"
-                    "<priority5>5</priority5>"
-                    "<priority6>6</priority6>"
-                    "<priority7>7</priority7>"
-                "</service-access-priority>"
-                "<traffic-class>"
-                    "<priority0>1</priority0>"
-                    "<priority1>0</priority1>"
-                    "<priority2>2</priority2>"
-                    "<priority3>3</priority3>"
-                    "<priority4>4</priority4>"
-                    "<priority5>5</priority5>"
-                    "<priority6>6</priority6>"
-                    "<priority7>7</priority7>"
-                "</traffic-class>"
-                "<acceptable-frame>admit-all-frames</acceptable-frame>"
-                "<enable-ingress-filtering>true</enable-ingress-filtering>"
-            "</bridge-port>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+            "  <interface>"
+            "    <name>sw0p1</name>"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:bridge</type>"
+            "    <enabled>true</enabled>"
+            "    <bridge-port xmlns=\"urn:ietf-if-aug\">"
+            "      <component-name>br0</component-name>"
+            "      <port-type>c-vlan-bridge-port</port-type>"
+            "      <pvid>2</pvid>"
+            "      <default-priority>0</default-priority>"
+            "      <priority-regeneration>"
+            "        <priority0>0</priority0>"
+            "        <priority1>1</priority1>"
+            "        <priority2>2</priority2>"
+            "        <priority3>3</priority3>"
+            "        <priority4>4</priority4>"
+            "        <priority5>5</priority5>"
+            "        <priority6>6</priority6>"
+            "        <priority7>7</priority7>"
+            "      </priority-regeneration>"
+            "      <service-access-priority>"
+            "        <priority0>0</priority0>"
+            "        <priority1>1</priority1>"
+            "        <priority2>2</priority2>"
+            "        <priority3>3</priority3>"
+            "        <priority4>4</priority4>"
+            "        <priority5>5</priority5>"
+            "        <priority6>6</priority6>"
+            "        <priority7>7</priority7>"
+            "      </service-access-priority>"
+            "      <traffic-class>"
+            "        <priority0>1</priority0>"
+            "        <priority1>0</priority1>"
+            "        <priority2>2</priority2>"
+            "        <priority3>3</priority3>"
+            "        <priority4>4</priority4>"
+            "        <priority5>5</priority5>"
+            "        <priority6>6</priority6>"
+            "        <priority7>7</priority7>"
+            "      </traffic-class>"
+            "      <acceptable-frame>admit-all-frames</acceptable-frame>"
+            "      <enable-ingress-filtering>true</enable-ingress-filtering>"
+            "    </bridge-port>"
+            "  </interface>"
+            "</interfaces>";
     assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(sr_acquire_context(st->conn), str, LYD_XML,
             LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &data));
 
@@ -2065,51 +2065,51 @@ subscribe_change_fail2_thread(void *arg)
 
     /* set some configuration */
     str =
-    "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-        "<interface>"
-            "<name>sw0p1</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:bridge</type>"
-            "<enabled>true</enabled>"
-            "<bridge-port xmlns=\"urn:ietf-if-aug\">"
-                "<component-name>br0</component-name>"
-                "<port-type>c-vlan-bridge-port</port-type>"
-                "<pvid>2</pvid>"
-                "<default-priority>0</default-priority>"
-                "<priority-regeneration>"
-                    "<priority0>0</priority0>"
-                    "<priority1>1</priority1>"
-                    "<priority2>2</priority2>"
-                    "<priority3>3</priority3>"
-                    "<priority4>4</priority4>"
-                    "<priority5>5</priority5>"
-                    "<priority6>6</priority6>"
-                    "<priority7>7</priority7>"
-                "</priority-regeneration>"
-                "<service-access-priority>"
-                    "<priority0>0</priority0>"
-                    "<priority1>1</priority1>"
-                    "<priority2>2</priority2>"
-                    "<priority3>3</priority3>"
-                    "<priority4>4</priority4>"
-                    "<priority5>5</priority5>"
-                    "<priority6>6</priority6>"
-                    "<priority7>7</priority7>"
-                "</service-access-priority>"
-                "<traffic-class>"
-                    "<priority0>0</priority0>"
-                    "<priority1>1</priority1>"
-                    "<priority2>2</priority2>"
-                    "<priority3>3</priority3>"
-                    "<priority4>4</priority4>"
-                    "<priority5>5</priority5>"
-                    "<priority6>6</priority6>"
-                    "<priority7>7</priority7>"
-                "</traffic-class>"
-                "<acceptable-frame>admit-all-frames</acceptable-frame>"
-                "<enable-ingress-filtering>false</enable-ingress-filtering>"
-            "</bridge-port>"
-        "</interface>"
-    "</interfaces>";
+            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
+            "  <interface>"
+            "    <name>sw0p1</name>"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:bridge</type>"
+            "    <enabled>true</enabled>"
+            "    <bridge-port xmlns=\"urn:ietf-if-aug\">"
+            "      <component-name>br0</component-name>"
+            "      <port-type>c-vlan-bridge-port</port-type>"
+            "      <pvid>2</pvid>"
+            "      <default-priority>0</default-priority>"
+            "      <priority-regeneration>"
+            "        <priority0>0</priority0>"
+            "        <priority1>1</priority1>"
+            "        <priority2>2</priority2>"
+            "        <priority3>3</priority3>"
+            "        <priority4>4</priority4>"
+            "        <priority5>5</priority5>"
+            "        <priority6>6</priority6>"
+            "        <priority7>7</priority7>"
+            "      </priority-regeneration>"
+            "      <service-access-priority>"
+            "        <priority0>0</priority0>"
+            "        <priority1>1</priority1>"
+            "        <priority2>2</priority2>"
+            "        <priority3>3</priority3>"
+            "        <priority4>4</priority4>"
+            "        <priority5>5</priority5>"
+            "        <priority6>6</priority6>"
+            "        <priority7>7</priority7>"
+            "      </service-access-priority>"
+            "      <traffic-class>"
+            "        <priority0>1</priority0>"
+            "        <priority1>0</priority1>"
+            "        <priority2>2</priority2>"
+            "        <priority3>3</priority3>"
+            "        <priority4>4</priority4>"
+            "        <priority5>5</priority5>"
+            "        <priority6>6</priority6>"
+            "        <priority7>7</priority7>"
+            "      </traffic-class>"
+            "      <acceptable-frame>admit-all-frames</acceptable-frame>"
+            "      <enable-ingress-filtering>false</enable-ingress-filtering>"
+            "    </bridge-port>"
+            "  </interface>"
+            "</interfaces>";
     assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(sr_acquire_context(st->conn), str, LYD_XML,
             LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &data));
 
@@ -2378,25 +2378,25 @@ apply_no_changes_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<cont xmlns=\"urn:defaults\">"
-        "<l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>"
-        "<interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>"
-    "</cont>"
-    "<pcont xmlns=\"urn:defaults\">"
-        "<ll xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">1</ll>"
-        "<ll xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">2</ll>"
-        "<ll xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">3</ll>"
-        "<uni xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">some-ip</uni>"
-        "<ll2 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">4</ll2>"
-        "<ll2 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">5</ll2>"
-        "<ll2 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">6</ll2>"
-    "</pcont>";
+            "<cont xmlns=\"urn:defaults\">\n"
+            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "</cont>\n"
+            "<pcont xmlns=\"urn:defaults\">\n"
+            "  <ll xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">1</ll>\n"
+            "  <ll xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">2</ll>\n"
+            "  <ll xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">3</ll>\n"
+            "  <uni xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">some-ip</uni>\n"
+            "  <ll2 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">4</ll2>\n"
+            "  <ll2 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">5</ll2>\n"
+            "  <ll2 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">6</ll2>\n"
+            "</pcont>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2427,25 +2427,25 @@ apply_no_changes_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<cont xmlns=\"urn:defaults\">"
-        "<l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>"
-        "<interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>"
-    "</cont>"
-    "<pcont xmlns=\"urn:defaults\">"
-        "<ll>1</ll>"
-        "<ll>2</ll>"
-        "<ll>3</ll>"
-        "<uni>some-ip</uni>"
-        "<ll2>4</ll2>"
-        "<ll2>5</ll2>"
-        "<ll2>6</ll2>"
-    "</pcont>";
+            "<cont xmlns=\"urn:defaults\">\n"
+            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "</cont>\n"
+            "<pcont xmlns=\"urn:defaults\">\n"
+            "  <ll>1</ll>\n"
+            "  <ll>2</ll>\n"
+            "  <ll>3</ll>\n"
+            "  <uni>some-ip</uni>\n"
+            "  <ll2>4</ll2>\n"
+            "  <ll2>5</ll2>\n"
+            "  <ll2>6</ll2>\n"
+            "</pcont>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2562,15 +2562,21 @@ module_change_any_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
         ret = sr_get_subtree(session, "/test:cont", 0, &subtree);
         assert_int_equal(ret, SR_ERR_OK);
 
-        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS);
+        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
         assert_int_equal(ret, 0);
         sr_release_data(subtree);
 
         str2 =
-        "<cont xmlns=\"urn:test\">"
-            "<anyx><some-xml><elem>value</elem></some-xml></anyx>"
-            "<anyd><some-data>24</some-data></anyd>"
-        "</cont>";
+                "<cont xmlns=\"urn:test\">\n"
+                "  <anyx>\n"
+                "    <some-xml>\n"
+                "      <elem>value</elem>\n"
+                "    </some-xml>\n"
+                "  </anyx>\n"
+                "  <anyd>\n"
+                "    <some-data>24</some-data>\n"
+                "  </anyd>\n"
+                "</cont>\n";
 
         assert_string_equal(str1, str2);
         free(str1);
@@ -2616,15 +2622,21 @@ module_change_any_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
         ret = sr_get_subtree(session, "/test:cont", 0, &subtree);
         assert_int_equal(ret, SR_ERR_OK);
 
-        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS);
+        ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
         assert_int_equal(ret, 0);
         sr_release_data(subtree);
 
         str2 =
-        "<cont xmlns=\"urn:test\">"
-            "<anyx><other-xml><elem2>value2</elem2></other-xml></anyx>"
-            "<anyd><new-data>48</new-data></anyd>"
-        "</cont>";
+                "<cont xmlns=\"urn:test\">\n"
+                "  <anyx>\n"
+                "    <other-xml>\n"
+                "      <elem2>value2</elem2>\n"
+                "    </other-xml>\n"
+                "  </anyx>\n"
+                "  <anyd>\n"
+                "    <new-data>48</new-data>\n"
+                "  </anyd>\n"
+                "</cont>\n";
 
         assert_string_equal(str1, str2);
         free(str1);
@@ -2706,15 +2718,21 @@ apply_change_any_thread(void *arg)
     ret = sr_get_subtree(sess, "/test:cont", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(subtree);
 
     str2 =
-        "<cont xmlns=\"urn:test\">"
-            "<anyx><some-xml><elem>value</elem></some-xml></anyx>"
-            "<anyd><some-data>24</some-data></anyd>"
-        "</cont>";
+            "<cont xmlns=\"urn:test\">\n"
+            "  <anyx>\n"
+            "    <some-xml>\n"
+            "      <elem>value</elem>\n"
+            "    </some-xml>\n"
+            "  </anyx>\n"
+            "  <anyd>\n"
+            "    <some-data>24</some-data>\n"
+            "  </anyd>\n"
+            "</cont>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -2731,15 +2749,21 @@ apply_change_any_thread(void *arg)
     ret = sr_get_subtree(sess, "/test:cont", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS);
+    ret = lyd_print_mem(&str1, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(subtree);
 
     str2 =
-        "<cont xmlns=\"urn:test\">"
-            "<anyx><other-xml><elem2>value2</elem2></other-xml></anyx>"
-            "<anyd><new-data>48</new-data></anyd>"
-        "</cont>";
+            "<cont xmlns=\"urn:test\">\n"
+            "  <anyx>\n"
+            "    <other-xml>\n"
+            "      <elem2>value2</elem2>\n"
+            "    </other-xml>\n"
+            "  </anyx>\n"
+            "  <anyd>\n"
+            "    <new-data>48</new-data>\n"
+            "  </anyd>\n"
+            "</cont>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -3198,28 +3222,28 @@ apply_change_dflt_leaf_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<l1 xmlns=\"urn:defaults\">"
-        "<k>when-true</k>"
-        "<cont1>"
-            "<cont2>"
-                "<dflt1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">10</dflt1>"
-            "</cont2>"
-            "<ll>val</ll>"
-        "</cont1>"
-    "</l1>"
-    "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
-        "I exist!"
-    "</dflt2>"
-    "<cont xmlns=\"urn:defaults\">"
-        "<l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>"
-        "<interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>"
-    "</cont>";
+            "<l1 xmlns=\"urn:defaults\">\n"
+            "  <k>when-true</k>\n"
+            "  <cont1>\n"
+            "    <cont2>\n"
+            "      <dflt1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">10</dflt1>\n"
+            "    </cont2>\n"
+            "    <ll>val</ll>\n"
+            "  </cont1>\n"
+            "</l1>\n"
+            "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
+            "I exist!"
+            "</dflt2>\n"
+            "<cont xmlns=\"urn:defaults\">\n"
+            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "</cont>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -3240,27 +3264,27 @@ apply_change_dflt_leaf_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<l1 xmlns=\"urn:defaults\">"
-        "<k>when-true</k>"
-        "<cont1>"
-            "<cont2>"
-                "<dflt1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">10</dflt1>"
-            "</cont2>"
-        "</cont1>"
-    "</l1>"
-    "<dflt2 xmlns=\"urn:defaults\">"
-        "explicit"
-    "</dflt2>"
-    "<cont xmlns=\"urn:defaults\">"
-        "<l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>"
-        "<interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>"
-    "</cont>";
+            "<l1 xmlns=\"urn:defaults\">\n"
+            "  <k>when-true</k>\n"
+            "  <cont1>\n"
+            "    <cont2>\n"
+            "      <dflt1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">10</dflt1>\n"
+            "    </cont2>\n"
+            "  </cont1>\n"
+            "</l1>\n"
+            "<dflt2 xmlns=\"urn:defaults\">"
+            "explicit"
+            "</dflt2>\n"
+            "<cont xmlns=\"urn:defaults\">\n"
+            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "</cont>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -3281,27 +3305,27 @@ apply_change_dflt_leaf_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<l1 xmlns=\"urn:defaults\">"
-        "<k>when-true</k>"
-        "<cont1>"
-            "<cont2>"
-                "<dflt1>5</dflt1>"
-            "</cont2>"
-        "</cont1>"
-    "</l1>"
-    "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
-        "I exist!"
-    "</dflt2>"
-    "<cont xmlns=\"urn:defaults\">"
-        "<l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>"
-        "<interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>"
-    "</cont>";
+            "<l1 xmlns=\"urn:defaults\">\n"
+            "  <k>when-true</k>\n"
+            "  <cont1>\n"
+            "    <cont2>\n"
+            "      <dflt1>5</dflt1>\n"
+            "    </cont2>\n"
+            "  </cont1>\n"
+            "</l1>\n"
+            "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
+            "I exist!"
+            "</dflt2>\n"
+            "<cont xmlns=\"urn:defaults\">\n"
+            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "</cont>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -3320,27 +3344,27 @@ apply_change_dflt_leaf_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<l1 xmlns=\"urn:defaults\">"
-        "<k>when-true</k>"
-        "<cont1>"
-            "<cont2>"
-                "<dflt1>10</dflt1>"
-            "</cont2>"
-        "</cont1>"
-    "</l1>"
-    "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
-        "I exist!"
-    "</dflt2>"
-    "<cont xmlns=\"urn:defaults\">"
-        "<l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>"
-        "<interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>"
-    "</cont>";
+            "<l1 xmlns=\"urn:defaults\">\n"
+            "  <k>when-true</k>\n"
+            "  <cont1>\n"
+            "    <cont2>\n"
+            "      <dflt1>10</dflt1>\n"
+            "    </cont2>\n"
+            "  </cont1>\n"
+            "</l1>\n"
+            "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
+            "I exist!"
+            "</dflt2>\n"
+            "<cont xmlns=\"urn:defaults\">\n"
+            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "</cont>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -3359,27 +3383,27 @@ apply_change_dflt_leaf_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<l1 xmlns=\"urn:defaults\">"
-        "<k>when-true</k>"
-        "<cont1>"
-            "<cont2>"
-                "<dflt1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">10</dflt1>"
-            "</cont2>"
-        "</cont1>"
-    "</l1>"
-    "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
-        "I exist!"
-    "</dflt2>"
-    "<cont xmlns=\"urn:defaults\">"
-        "<l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>"
-        "<interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>"
-    "</cont>";
+            "<l1 xmlns=\"urn:defaults\">\n"
+            "  <k>when-true</k>\n"
+            "  <cont1>\n"
+            "    <cont2>\n"
+            "      <dflt1 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">10</dflt1>\n"
+            "    </cont2>\n"
+            "  </cont1>\n"
+            "</l1>\n"
+            "<dflt2 xmlns=\"urn:defaults\" xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">"
+            "I exist!"
+            "</dflt2>\n"
+            "<cont xmlns=\"urn:defaults\">\n"
+            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "</cont>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -4454,16 +4478,16 @@ apply_change_dflt_create_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<cont xmlns=\"urn:defaults\">"
-        "<l>dflt</l>"
-        "<interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>"
-    "</cont>";
+            "<cont xmlns=\"urn:defaults\">\n"
+            "  <l>dflt</l>\n"
+            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "</cont>\n";
 
     assert_string_equal(str1, str2);
     free(str1);
@@ -4478,16 +4502,16 @@ apply_change_dflt_create_thread(void *arg)
     ret = sr_get_data(sess, "/defaults:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK | LYD_PRINT_WD_IMPL_TAG);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_IMPL_TAG);
     assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<cont xmlns=\"urn:defaults\">"
-        "<l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>"
-        "<interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>"
-    "</cont>";
+            "<cont xmlns=\"urn:defaults\">\n"
+            "  <l xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">dflt</l>\n"
+            "  <interval xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">30</interval>\n"
+            "</cont>\n";
 
     assert_string_equal(str1, str2);
     free(str1);

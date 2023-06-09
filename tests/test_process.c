@@ -414,25 +414,25 @@ test_oper_crash_set1(int rp, int wp)
     ret = sr_get_data(sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     sr_assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     sr_assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<interface>"
-            "<name>eth0</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<speed>512</speed>"
-        "</interface>"
-        "<interface>"
-            "<name>eth1</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<speed>1024</speed>"
-        "</interface>"
-    "</interfaces-state>";
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth0</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <speed>512</speed>\n"
+            "  </interface>\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <speed>1024</speed>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
 
     sr_assert_string_equal(str1, str2);
     free(str1);
@@ -495,25 +495,25 @@ test_oper_crash_set2(int rp, int wp)
     ret = sr_get_data(sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     sr_assert_int_equal(ret, SR_ERR_OK);
 
-    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     sr_assert_int_equal(ret, 0);
 
     sr_release_data(data);
 
     str2 =
-    "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-        " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">"
-        "<interface>"
-            "<name>eth0</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<speed>512</speed>"
-        "</interface>"
-        "<interface>"
-            "<name>eth1</name>"
-            "<type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "<speed>1024</speed>"
-        "</interface>"
-    "</interfaces-state>";
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth0</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <speed>512</speed>\n"
+            "  </interface>\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <speed>1024</speed>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
 
     sr_assert_string_equal(str1, str2);
     free(str1);
@@ -929,6 +929,7 @@ test_apply_thread(void *arg)
     sr_assert_true_ret(r == SR_ERR_OK, (void *)1);
 
     char key[128];
+
     snprintf(key, sizeof(key), "/ietf-interfaces:interfaces/interface[name='eth%d']/type", state->tid);
 
     for (i = 0; i < NUM_ITERS; i++) {
@@ -1048,6 +1049,7 @@ main(void)
         {"conn create", test_conn_create, test_conn_create, setup, teardown},
         {"sub apply", test_sub, test_apply, setup, teardown},
     };
+
     test_log_init();
     run_tests(tests, sizeof tests / sizeof *tests);
     return 0;

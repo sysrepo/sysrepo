@@ -1008,101 +1008,101 @@ notif_config_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_n
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
-        lyd_print_mem(&str1, lyd_child(notif)->next, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+        lyd_print_mem(&str1, lyd_child(notif)->next, LYD_XML, LYD_PRINT_WITHSIBLINGS);
         str2 =
-        "<datastore xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">running</datastore>"
-        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:o=\"urn:ops\">/o:cont/o:list1[o:k='key']</target>"
-            "<operation>create</operation>"
-        "</edit>"
-        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:o=\"urn:ops\">/o:cont/o:list1[o:k='key']/o:k</target>"
-            "<operation>create</operation>"
-        "</edit>"
-        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:o=\"urn:ops\">/o:cont/o:list1[o:k='key']/o:cont2</target>"
-            "<operation>create</operation>"
-        "</edit>";
+                "<datastore xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">running</datastore>\n"
+                "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
+                "  <target xmlns:o=\"urn:ops\">/o:cont/o:list1[o:k='key']</target>\n"
+                "  <operation>create</operation>\n"
+                "</edit>\n"
+                "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
+                "  <target xmlns:o=\"urn:ops\">/o:cont/o:list1[o:k='key']/o:k</target>\n"
+                "  <operation>create</operation>\n"
+                "</edit>\n"
+                "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
+                "  <target xmlns:o=\"urn:ops\">/o:cont/o:list1[o:k='key']/o:cont2</target>\n"
+                "  <operation>create</operation>\n"
+                "</edit>\n";
 
         assert_string_equal(str1, str2);
         free(str1);
         break;
     case 1:
-        lyd_print_mem(&str1, lyd_child(notif)->next, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+        lyd_print_mem(&str1, lyd_child(notif)->next, LYD_XML, LYD_PRINT_WITHSIBLINGS);
         str2 =
-        "<datastore xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">running</datastore>"
-        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:or=\"urn:ops-ref\">/or:l1</target>"
-            "<operation>create</operation>"
-        "</edit>"
-        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:or=\"urn:ops-ref\">/or:l2</target>"
-            "<operation>create</operation>"
-        "</edit>"
-        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:t=\"urn:test\">/t:test-leaf</target>"
-            "<operation>create</operation>"
-        "</edit>"
-        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='one']</target>"
-            "<operation>create</operation>"
-        "</edit>"
-        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='one']/t:k</target>"
-            "<operation>create</operation>"
-        "</edit>"
-        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two:three']</target>"
-            "<operation>create</operation>"
-        "</edit>"
-        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two:three']/t:k</target>"
-            "<operation>create</operation>"
-        "</edit>";
+                "<datastore xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">running</datastore>\n"
+                "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
+                "  <target xmlns:or=\"urn:ops-ref\">/or:l1</target>\n"
+                "  <operation>create</operation>\n"
+                "</edit>\n"
+                "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
+                "  <target xmlns:or=\"urn:ops-ref\">/or:l2</target>\n"
+                "  <operation>create</operation>\n"
+                "</edit>\n"
+                "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
+                "  <target xmlns:t=\"urn:test\">/t:test-leaf</target>\n"
+                "  <operation>create</operation>\n"
+                "</edit>\n"
+                "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
+                "  <target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='one']</target>\n"
+                "  <operation>create</operation>\n"
+                "</edit>\n"
+                "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
+                "  <target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='one']/t:k</target>\n"
+                "  <operation>create</operation>\n"
+                "</edit>\n"
+                "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
+                "  <target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two:three']</target>\n"
+                "  <operation>create</operation>\n"
+                "</edit>\n"
+                "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
+                "  <target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two:three']/t:k</target>\n"
+                "  <operation>create</operation>\n"
+                "</edit>\n";
 
         assert_string_equal(str1, str2);
         free(str1);
         break;
     case 2:
-        lyd_print_mem(&str1, lyd_child(notif)->next, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+        lyd_print_mem(&str1, lyd_child(notif)->next, LYD_XML, LYD_PRINT_WITHSIBLINGS);
         str2 =
-        "<datastore xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">running</datastore>"
-        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:or=\"urn:ops-ref\">/or:l1</target>"
-            "<operation>replace</operation>"
-        "</edit>"
-        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='one']</target>"
-            "<operation>merge</operation>"
-        "</edit>";
+                "<datastore xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">running</datastore>\n"
+                "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
+                "  <target xmlns:or=\"urn:ops-ref\">/or:l1</target>\n"
+                "  <operation>replace</operation>\n"
+                "</edit>\n"
+                "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
+                "  <target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='one']</target>\n"
+                "  <operation>merge</operation>\n"
+                "</edit>\n";
 
         assert_string_equal(str1, str2);
         free(str1);
         break;
     case 3:
-        lyd_print_mem(&str1, lyd_child(notif)->next, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
+        lyd_print_mem(&str1, lyd_child(notif)->next, LYD_XML, LYD_PRINT_WITHSIBLINGS);
         str2 =
-        "<datastore xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">running</datastore>"
-        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:t=\"urn:test\">/t:test-leaf</target>"
-            "<operation>delete</operation>"
-        "</edit>"
-        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='one']</target>"
-            "<operation>delete</operation>"
-        "</edit>"
-        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='one']/t:k</target>"
-            "<operation>delete</operation>"
-        "</edit>"
-        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two:three']</target>"
-            "<operation>delete</operation>"
-        "</edit>"
-        "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">"
-            "<target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two:three']/t:k</target>"
-            "<operation>delete</operation>"
-        "</edit>";
+                "<datastore xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">running</datastore>\n"
+                "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
+                "  <target xmlns:t=\"urn:test\">/t:test-leaf</target>\n"
+                "  <operation>delete</operation>\n"
+                "</edit>\n"
+                "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
+                "  <target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='one']</target>\n"
+                "  <operation>delete</operation>\n"
+                "</edit>\n"
+                "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
+                "  <target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='one']/t:k</target>\n"
+                "  <operation>delete</operation>\n"
+                "</edit>\n"
+                "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
+                "  <target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two:three']</target>\n"
+                "  <operation>delete</operation>\n"
+                "</edit>\n"
+                "<edit xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-notifications\">\n"
+                "  <target xmlns:t=\"urn:test\">/t:cont/t:l2[t:k='two:three']/t:k</target>\n"
+                "  <operation>delete</operation>\n"
+                "</edit>\n";
 
         assert_string_equal(str1, str2);
         free(str1);

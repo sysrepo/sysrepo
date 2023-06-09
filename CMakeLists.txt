@@ -260,7 +260,9 @@ set(FORMAT_SOURCES
     src/*.h
     src/executables/*.c
     src/executables/*.h*
-    src/utils/*)
+    src/utils/*
+    tests/*.c
+    tests/*.c)
 
 #
 # checks

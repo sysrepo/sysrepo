@@ -36,6 +36,7 @@ pthread_barrier_init(pthread_barrier_t * restrict barrier,
     }
     if (pthread_cond_init(&barrier->cond, 0) < 0) {
         int errno_save = errno;
+
         pthread_mutex_destroy(&barrier->mutex);
         errno = errno_save;
         return -1;
@@ -69,6 +70,7 @@ pthread_barrier_wait(pthread_barrier_t *barrier)
         return PTHREAD_BARRIER_SERIAL_THREAD;
     } else {
         unsigned phase = barrier->phase;
+
         do {
             pthread_cond_wait(&barrier->cond, &barrier->mutex);
         } while (phase == barrier->phase);

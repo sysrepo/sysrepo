@@ -219,9 +219,9 @@ test_operational(void **state)
 {
     struct state *st = (struct state *)*state;
     const char *data =
-    "{"
-        "\"test:test-leaf\": 12"
-    "}";
+            "{"
+            "  \"test:test-leaf\": 12"
+            "}";
     struct lyd_node *edit;
     int ret;
 

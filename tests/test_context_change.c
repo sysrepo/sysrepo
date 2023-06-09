@@ -466,7 +466,6 @@ test_feature_change(void **state)
     pthread_join(tid[1], NULL);
 }
 
-
 /* MAIN */
 int
 main(void)
