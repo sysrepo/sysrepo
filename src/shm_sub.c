@@ -358,16 +358,18 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
         ret = sr_cond_clockwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, COMPAT_CLOCK_ID, &timeout_abs);
     }
 
-    /* FAKE WRITE LOCK */
-    sub_shm->lock.writer = cid;
+    if (!sub_shm->lock.readers[0]) {
+        /* FAKE WRITE LOCK */
+        sub_shm->lock.writer = cid;
 
-    if ((ret == ETIMEDOUT) && !sub_shm->lock.readers[0]) {
-        assert(ATOMIC_LOAD_RELAXED(sub_shm->event));
-        /* try to recover the event again in case the originator crashed later */
-        sr_shmsub_recover(sub_shm);
-        if (!ATOMIC_LOAD_RELAXED(sub_shm->event)) {
-            /* recovered */
-            ret = 0;
+        if (ret == ETIMEDOUT) {
+            assert(ATOMIC_LOAD_RELAXED(sub_shm->event));
+            /* try to recover the event again in case the originator crashed later */
+            sr_shmsub_recover(sub_shm);
+            if (!ATOMIC_LOAD_RELAXED(sub_shm->event)) {
+                /* recovered */
+                ret = 0;
+            }
         }
     }
 
@@ -388,8 +390,13 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
             SR_ERRINFO_COND(&err_info, __func__, ret);
         }
 
-        /* WRITE UNLOCK */
-        sr_rwunlock(&sub_shm->lock, 0, SR_LOCK_WRITE, cid, __func__);
+        if (!sub_shm->lock.readers[0]) {
+            /* WRITE UNLOCK */
+            sr_rwunlock(&sub_shm->lock, 0, SR_LOCK_WRITE, cid, __func__);
+        } else {
+            /* we only hold the mutex */
+            pthread_mutex_unlock(&sub_shm->lock.mutex);
+        }
         return err_info;
     }
 
