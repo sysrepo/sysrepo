@@ -75,8 +75,8 @@ help_print(void)
             "\n"
             "Available options:\n"
             "  -d, --datastore <datastore>  Datastore to be operated on, \"running\" by default (\"running\", \"startup\",\n"
-            "                               \"candidate\", or \"operational\"). Accepted by import, export, edit,\n"
-            "                               copy-from op.\n"
+            "                               \"candidate\", \"operational\", or \"factory-default\"). Accepted by\n"
+            "                               import, export, edit, copy-from op.\n"
             "  -m, --module <module-name>   Module to be operated on, otherwise it is operated on full datastore.\n"
             "                               Accepted by import, export, edit, copy-from, mandatory for new-data op.\n"
             "  -x, --xpath <xpath>          XPath to select. Accepted by export op.\n"
@@ -647,6 +647,8 @@ arg_get_ds(const char *optarg, sr_datastore_t *ds)
         *ds = SR_DS_CANDIDATE;
     } else if (!strcmp(optarg, "operational")) {
         *ds = SR_DS_OPERATIONAL;
+    } else if (!strcmp(optarg, "factory-default")) {
+        *ds = SR_DS_FACTORY_DEFAULT;
     } else {
         error_print(0, "Unknown datastore \"%s\"", optarg);
         return -1;
