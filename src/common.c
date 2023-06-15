@@ -3806,6 +3806,14 @@ sr_ev2str(sr_sub_event_t ev)
     sr_error_info_t *err_info = NULL;
 
     switch (ev) {
+    case SR_SUB_EV_NONE:
+        SR_ERRINFO_INT(&err_info);
+        sr_errinfo_free(&err_info);
+        break;
+    case SR_SUB_EV_SUCCESS:
+        return "success";
+    case SR_SUB_EV_ERROR:
+        return "error";
     case SR_SUB_EV_UPDATE:
         return "update";
     case SR_SUB_EV_CHANGE:
@@ -3822,10 +3830,6 @@ sr_ev2str(sr_sub_event_t ev)
         return "rpc";
     case SR_SUB_EV_NOTIF:
         return "notif";
-    default:
-        SR_ERRINFO_INT(&err_info);
-        sr_errinfo_free(&err_info);
-        break;
     }
 
     return NULL;

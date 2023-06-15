@@ -3313,6 +3313,9 @@ process_event:
     case SR_SUB_EV_ABORT:
         /* nothing to do */
         break;
+    case SR_SUB_EV_ERROR:
+        /* we have timed out and the originator signalled an error, will be handled on next write lock */
+        break;
     default:
         SR_ERRINFO_INT(&err_info);
         goto cleanup;
