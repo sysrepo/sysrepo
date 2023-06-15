@@ -4,8 +4,8 @@
  * @brief Sysrepo module data routines
  *
  * @copyright
- * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -944,6 +944,70 @@ sr_lydmods_print(struct lyd_node **sr_mods)
 }
 
 /**
+ * @brief Set startup and factory-default datastore data for implemented internal modules.
+ *
+ * @param[in] ly_ctx Context with the internal modules.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_lydmods_create_data(const struct ly_ctx *ly_ctx)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+    struct lyd_node *data = NULL, *mod_data = NULL, *mod_diff = NULL;
+    uint32_t idx = 0;
+    int rc;
+
+    if (!strlen(SR_INT_MOD_DATA)) {
+        /* no data to set */
+        goto cleanup;
+    }
+
+    /* parse and validate the data */
+    if (lyd_parse_data_mem(ly_ctx, SR_INT_MOD_DATA, SR_INT_MOD_DATA_FORMAT, 0, LYD_VALIDATE_NO_STATE, &data)) {
+        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+        goto cleanup;
+    }
+
+    while ((ly_mod = ly_ctx_get_module_iter(ly_ctx, &idx))) {
+        if (!ly_mod->implemented) {
+            continue;
+        }
+
+        /* get the data for this module */
+        lyd_free_siblings(mod_data);
+        mod_data = sr_module_data_unlink(&data, ly_mod);
+        if (!mod_data) {
+            continue;
+        }
+
+        /* generate a diff */
+        lyd_free_siblings(mod_diff);
+        if (lyd_diff_siblings(NULL, mod_data, LYD_DIFF_DEFAULTS, &mod_diff)) {
+            sr_errinfo_new_ly(&err_info, ly_ctx, mod_data);
+            goto cleanup;
+        }
+        assert(mod_diff);
+
+        /* store the data using the internal JSON plugin */
+        if ((rc = srpds_json.store_cb(ly_mod, SR_DS_STARTUP, mod_diff, mod_data))) {
+            SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", srpds_json.name, ly_mod->name);
+            goto cleanup;
+        }
+        if ((rc = srpds_json.store_cb(ly_mod, SR_DS_FACTORY_DEFAULT, mod_diff, mod_data))) {
+            SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", srpds_json.name, ly_mod->name);
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    lyd_free_siblings(mod_data);
+    lyd_free_siblings(mod_diff);
+    lyd_free_siblings(data);
+    return err_info;
+}
+
+/**
  * @brief Create default sysrepo module data. All libyang internal implemented modules
  * are installed into sysrepo. Sysrepo internal modules ietf-netconf, ietf-netconf-with-defaults,
  * and ietf-netconf-notifications are also installed.
@@ -1039,6 +1103,11 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
 
     /* store the created data */
     if ((err_info = sr_lydmods_print(&sr_mods))) {
+        goto cleanup;
+    }
+
+    /* set the startup and factory-default data, if any */
+    if ((err_info = sr_lydmods_create_data(ly_ctx))) {
         goto cleanup;
     }
 

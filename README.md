@@ -147,6 +147,11 @@ Set [NACM](#NACM) configuration data and 'sysrepo-monitoring' default permission
 ```
 -DNACM_SRMON_DATA_PERM=000
 ```
+
+Set `startup` and `factory-default` datastore data for internal modules (such as `ietf-netconf-acm`):
+```
+-DINTERNAL_MODULE_DATA_PATH=/etc/config/factory_default_config.xml
+```
 ### Useful CMake Build Options
 
 #### Changing Compiler

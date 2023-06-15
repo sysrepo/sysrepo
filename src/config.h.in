@@ -76,6 +76,10 @@
 /** if not set, defaults to "SR_REPO_PATH/yang" */
 #define SR_YANG_PATH "@YANG_MODULE_PATH@"
 
+/** internal module startup and factory-default data and their format */
+#define SR_INT_MOD_DATA "@INTERNAL_MODULE_DATA@"
+#define SR_INT_MOD_DATA_FORMAT @INTERNAL_MODULE_DATA_FORMAT@
+
 /** where SHM files are stored */
 #define SR_SHM_DIR "@SHM_DIR@"
 

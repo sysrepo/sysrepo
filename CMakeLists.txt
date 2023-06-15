@@ -100,7 +100,31 @@ endif()
 option(ENABLE_EXAMPLES "Build examples." ON)
 option(ENABLE_COVERAGE "Build code coverage report from tests" OFF)
 option(INSTALL_SYSCTL_CONF "Install sysctl conf file to allow shared access to SHM files." OFF)
-set(YANG_MODULE_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/yang/modules/sysrepo" CACHE STRING "Directory where to copy the YANG modules to")
+set(YANG_MODULE_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/yang/modules/sysrepo" CACHE STRING "Directory where to copy the YANG modules to.")
+set(INTERNAL_MODULE_DATA_PATH "" CACHE STRING "Path to a file with startup and factory-default data of internal modules. Contents of the file are compiled into the library.")
+if(INTERNAL_MODULE_DATA_PATH)
+    if(NOT EXISTS "${INTERNAL_MODULE_DATA_PATH}")
+        message(FATAL_ERROR "File \"${INTERNAL_MODULE_DATA_PATH}\" does not exist.")
+    endif()
+    string(REGEX MATCH "[.](xml|json|lyb)$" EXT ${INTERNAL_MODULE_DATA_PATH})
+    if(NOT EXT)
+        message(FATAL_ERROR "File \"${INTERNAL_MODULE_DATA_PATH}\" with an unknown extension.")
+    endif()
+
+    file(READ "${INTERNAL_MODULE_DATA_PATH}" INTERNAL_MODULE_DATA_RAW)
+    string(REPLACE "\n" "\\\n" INTERNAL_MODULE_DATA ${INTERNAL_MODULE_DATA_RAW})
+
+    if(${EXT} STREQUAL ".xml")
+        set(INTERNAL_MODULE_DATA_FORMAT LYD_XML)
+    elseif(${EXT} STREQUAL ".json")
+        set(INTERNAL_MODULE_DATA_FORMAT LYD_JSON)
+    else()
+        set(INTERNAL_MODULE_DATA_FORMAT LYD_LYB)
+    endif()
+else()
+    # empty data but the code needs a format
+    set(INTERNAL_MODULE_DATA_FORMAT LYD_XML)
+endif()
 
 # ietf-yang-library revision
 set(YANGLIB_REVISION "2019-01-04" CACHE STRING
