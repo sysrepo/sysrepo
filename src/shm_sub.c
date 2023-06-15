@@ -395,7 +395,7 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
             sr_rwunlock(&sub_shm->lock, 0, SR_LOCK_WRITE, cid, __func__);
         } else {
             /* we only hold the mutex */
-            pthread_mutex_unlock(&sub_shm->lock.mutex);
+            sr_munlock(&sub_shm->lock.mutex);
         }
         return err_info;
     }
