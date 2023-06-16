@@ -480,6 +480,17 @@ sr_error_info_t *sr_path_yang_file(const char *mod_name, const char *mod_rev, ch
 sr_error_info_t *sr_path_conn_lockfile(sr_cid_t cid, int creat, char **path);
 
 /**
+ * @brief Get the path to system factory default input data used to init internal modules
+ *
+ * Looks for the file factory_default_config.xml, with fallback to
+ * factory_default_config.json in /etc/sysrepo/.
+ *
+ * @param[out] path Created path.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_path_factory_default(char **path);
+
+/**
  * @brief Remove any leftover event pipes after crashed subscriptions.
  * There should be none unless there was a subscription structure without subscriptions that crashed.
  */

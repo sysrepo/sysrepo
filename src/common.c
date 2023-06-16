@@ -1316,6 +1316,35 @@ sr_path_conn_lockfile(sr_cid_t cid, int creat, char **path)
     return err_info;
 }
 
+sr_error_info_t *
+sr_path_factory_default(char **path)
+{
+    const char *fdpath = "%s/factory-default.xml";
+    sr_error_info_t *err_info = NULL;
+    int ret, once = 0;
+
+retry:
+    ret = asprintf(path, fdpath, sr_get_repo_path());
+    if (ret == -1) {
+        SR_ERRINFO_MEM(&err_info);
+        goto cleanup;
+    }
+
+    if (sr_file_exists(*path)) {
+        return NULL;
+    }
+
+    free(*path);
+    if (!once++) {
+        fdpath = "%s/factory-default.json";
+        goto retry;
+    }
+
+cleanup:
+    *path = NULL;
+    return err_info;
+}
+
 void
 sr_remove_evpipes(void)
 {

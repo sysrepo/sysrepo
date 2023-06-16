@@ -955,16 +955,27 @@ sr_lydmods_create_data(const struct ly_ctx *ly_ctx)
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
     struct lyd_node *data = NULL, *mod_data = NULL, *mod_diff = NULL;
+    LY_ERR lyrc = LY_SUCCESS;
+    char *data_path = NULL;
     uint32_t idx = 0;
     int rc;
 
-    if (!strlen(SR_INT_MOD_DATA)) {
-        /* no data to set */
-        goto cleanup;
+    /*
+     * parse and validate data:
+     *  - first look for /etc/sysrepo/factory-default.[xml,json]
+     *  - then look for any compile-time data as fallback
+     */
+    sr_path_factory_default(&data_path);
+    if (data_path) {
+        lyrc = lyd_parse_data_path(ly_ctx, data_path, 0, 0, LYD_VALIDATE_NO_STATE, &data);
+        free(data_path);
+    } else {
+        if (!strlen(SR_INT_MOD_DATA)) {
+            goto cleanup;
+        }
+        lyrc = lyd_parse_data_mem(ly_ctx, SR_INT_MOD_DATA, SR_INT_MOD_DATA_FORMAT, 0, LYD_VALIDATE_NO_STATE, &data);
     }
-
-    /* parse and validate the data */
-    if (lyd_parse_data_mem(ly_ctx, SR_INT_MOD_DATA, SR_INT_MOD_DATA_FORMAT, 0, LYD_VALIDATE_NO_STATE, &data)) {
+    if (lyrc) {
         sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
         goto cleanup;
     }
