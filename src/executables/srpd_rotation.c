@@ -202,12 +202,14 @@ srpd_rotation_loop(void *arg)
                     if (asprintf(&arg1, "%s%s.tar.gz", (char *)ATOMIC_PTR_LOAD_RELAXED(data->output_folder), dir->d_name) == -1) {
                         goto cleanup;
                     }
-                    if (asprintf(&arg2, "%s%s", notif_dir_name, dir->d_name) == -1) {
+
+                    /* skip the leading slash */
+                    if (asprintf(&arg2, "%s%s", notif_dir_name + 1, dir->d_name) == -1) {
                         goto cleanup;
                     }
 
                     /* compress a file with tar in output folder */
-                    if ((rc = srpd_exec(SRPD_PLUGIN_NAME, SRPD_TAR_BINARY, 4, SRPD_TAR_BINARY, "-czvf", arg1, arg2))) {
+                    if ((rc = srpd_exec(SRPD_PLUGIN_NAME, SRPD_TAR_BINARY, 6, SRPD_TAR_BINARY, "-czf", arg1, "-C", "/", arg2))) {
                         SRPLG_LOG_ERR(SRPD_PLUGIN_NAME, "Compressing a file %s failed.", arg2);
                     } else {
                         ATOMIC_INC_RELAXED(data->rotated_files_count);
