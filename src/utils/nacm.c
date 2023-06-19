@@ -1157,12 +1157,12 @@ sr_nacm_getpwnam(const char *user, uid_t *uid, gid_t *gid, int *found)
         /* user -> UID & GID */
         r = getpwnam_r(user, &pwd, buf, buflen, &pwd_p);
     } while (r && (r == ERANGE));
-    if (r) {
+    if ((!r || (r == ENOENT) || (r == ESRCH) || (r == EBADF) || (r == EPERM)) && !pwd_p) {
+        /* not found */
+        goto cleanup;
+    } else if (r) {
         sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Retrieving user \"%s\" passwd entry failed (%s).",
                 user, strerror(r));
-        goto cleanup;
-    } else if (!pwd_p) {
-        /* not found */
         goto cleanup;
     }
 

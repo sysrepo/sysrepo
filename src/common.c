@@ -795,11 +795,11 @@ sr_get_gid(const char *group, gid_t *gid)
         /* group -> GID */
         r = getgrnam_r(group, &grp, buf, buflen, &grp_p);
     } while (r && (r == ERANGE));
-    if (r) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Retrieving group \"%s\" grp entry failed (%s).", group, strerror(r));
-        goto cleanup;
-    } else if (!grp_p) {
+    if ((!r || (r == ENOENT) || (r == ESRCH) || (r == EBADF) || (r == EPERM)) && !grp_p) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Retrieving group \"%s\" grp entry failed (No such group).", group);
+        goto cleanup;
+    } else if (r) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Retrieving group \"%s\" grp entry failed (%s).", group, strerror(r));
         goto cleanup;
     }
 
@@ -1387,22 +1387,22 @@ sr_get_pwd(uid_t *uid, char **user)
             r = getpwuid_r(*uid, &pwd, buf, buflen, &pwd_p);
         }
     } while (r && (r == ERANGE));
-    if (r) {
-        if (*user) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Retrieving user \"%s\" passwd entry failed (%s).",
-                    *user, strerror(r));
-        } else {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Retrieving UID \"%lu\" passwd entry failed (%s).",
-                    (unsigned long)*uid, strerror(r));
-        }
-        goto cleanup;
-    } else if (!pwd_p) {
+    if ((!r || (r == ENOENT) || (r == ESRCH) || (r == EBADF) || (r == EPERM)) && !pwd_p) {
         if (*user) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Retrieving user \"%s\" passwd entry failed (No such user).",
                     *user);
         } else {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Retrieving UID \"%lu\" passwd entry failed (No such UID).",
                     (unsigned long)*uid);
+        }
+        goto cleanup;
+    } else if (r) {
+        if (*user) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Retrieving user \"%s\" passwd entry failed (%s).",
+                    *user, strerror(r));
+        } else {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Retrieving UID \"%lu\" passwd entry failed (%s).",
+                    (unsigned long)*uid, strerror(r));
         }
         goto cleanup;
     }
