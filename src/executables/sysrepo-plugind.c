@@ -373,6 +373,7 @@ static int
 publish_loaded_plugins(sr_session_ctx_t *sess, struct srpd_plugin_s *plugins, int plugin_count)
 {
     int rc = SR_ERR_OK, i;
+    char *xpath;
 
     /* switch to operational */
     sr_session_switch_ds(sess, SR_DS_OPERATIONAL);
@@ -380,8 +381,13 @@ publish_loaded_plugins(sr_session_ctx_t *sess, struct srpd_plugin_s *plugins, in
     for (i = 0; i < plugin_count; ++i) {
         if (plugins[i].initialized) {
             /* add a plugin */
-            if ((rc = sr_set_item_str(sess, "/sysrepo-plugind:sysrepo-plugind/loaded-plugins/plugin",
-                    plugins[i].plugin_name, NULL, 0))) {
+            if (asprintf(&xpath, "/sysrepo-plugind:sysrepo-plugind/loaded-plugins/plugin[%d]", i + 1) == -1) {
+                rc = SR_ERR_NO_MEMORY;
+                goto cleanup;
+            }
+            rc = sr_set_item_str(sess, xpath, plugins[i].plugin_name, NULL, 0);
+            free(xpath);
+            if (rc) {
                 goto cleanup;
             }
         }

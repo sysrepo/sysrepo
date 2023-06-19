@@ -4819,6 +4819,25 @@ sr_xpath_next_qname(const char *xpath, const char **mod, int *mod_len, const cha
     return ptr;
 }
 
+const char *
+sr_xpath_skip_predicate(const char *xpath)
+{
+    int quot = 0;
+
+    assert(xpath[0] == '[');
+
+    do {
+        ++xpath;
+        if (xpath[0] == quot) {
+            quot = 0;
+        } else if ((xpath[0] == '\'') || (xpath[0] == '\"')) {
+            quot = xpath[0];
+        }
+    } while (quot || (xpath[0] != ']'));
+
+    return xpath + 1;
+}
+
 /**
  * @brief Comparison callback for lyd_node pointers.
  *

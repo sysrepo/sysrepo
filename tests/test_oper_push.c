@@ -867,9 +867,9 @@ test_state_list(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/mixed-config:test-state/l[2]/l1", "val2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val1", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[1]", "val1", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val2", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[2]", "val2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -934,11 +934,11 @@ test_state_list(void **state)
     free(str1);
 
     /* create some new oper data */
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val3", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[2]", "val3", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val2", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[3]", "val2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val3", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[4]", "val3", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1021,7 +1021,7 @@ test_state_list2(void **state)
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* read the operational data */
+    /* read the operational data #1 */
     ret = sr_get_data(st->sess, "/alarms:active-alarm-list", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
@@ -1055,26 +1055,16 @@ test_state_list2(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
-    /* add another list instance */
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/fault-id", "9", NULL, 0);
+    /* modify existing list instance */
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/fault-id", "2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/fault-source", "fm", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/affected-objects[name='obj3']",
-            NULL, NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/fault-severity", "MINOR", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/is-cleared", "false", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/event-time",
-            "2023-05-20T01:17:35-00:00", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[1]/fault-source", "fm2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* read the operational data */
+    /* read the operational data #2 */
     ret = sr_get_data(st->sess, "/alarms:active-alarm-list", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
@@ -1084,8 +1074,61 @@ test_state_list2(void **state)
     str2 =
             "<active-alarm-list xmlns=\"urn:alarms\">\n"
             "  <active-alarms>\n"
-            "    <fault-id>1</fault-id>\n"
-            "    <fault-source>fm</fault-source>\n"
+            "    <fault-id>2</fault-id>\n"
+            "    <fault-source>fm2</fault-source>\n"
+            "    <affected-objects>\n"
+            "      <name>obj</name>\n"
+            "    </affected-objects>\n"
+            "    <fault-severity>MAJOR</fault-severity>\n"
+            "    <is-cleared>false</is-cleared>\n"
+            "    <event-time>2023-05-17T13:18:21-00:00</event-time>\n"
+            "  </active-alarms>\n"
+            "  <active-alarms>\n"
+            "    <fault-id>4</fault-id>\n"
+            "    <fault-source>fan</fault-source>\n"
+            "    <affected-objects>\n"
+            "      <name>obj2</name>\n"
+            "    </affected-objects>\n"
+            "    <fault-severity>CRITICAL</fault-severity>\n"
+            "    <is-cleared>false</is-cleared>\n"
+            "    <event-time>2023-05-18T20:08:55-00:00</event-time>\n"
+            "  </active-alarms>\n"
+            "</active-alarm-list>\n";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* add another list instance */
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[3]/fault-id", "9", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[3]/fault-source", "fm", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[3]/affected-objects[name='obj3']",
+            NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[3]/fault-severity", "MINOR", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[3]/is-cleared", "false", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/alarms:active-alarm-list/active-alarms[3]/event-time",
+            "2023-05-20T01:17:35-00:00", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the operational data #3 */
+    ret = sr_get_data(st->sess, "/alarms:active-alarm-list", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+
+    str2 =
+            "<active-alarm-list xmlns=\"urn:alarms\">\n"
+            "  <active-alarms>\n"
+            "    <fault-id>2</fault-id>\n"
+            "    <fault-source>fm2</fault-source>\n"
             "    <affected-objects>\n"
             "      <name>obj</name>\n"
             "    </affected-objects>\n"

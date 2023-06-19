@@ -1222,6 +1222,14 @@ size_t sr_xpath_len_no_predicates(const char *xpath);
 const char *sr_xpath_next_qname(const char *xpath, const char **mod, int *mod_len, const char **name, int *len);
 
 /**
+ * @brief Move XPath after the current predicate.
+ *
+ * @param[in] xpath XPath predicate.
+ * @return Pointer right after the predicate.
+ */
+const char *sr_xpath_skip_predicate(const char *xpath);
+
+/**
  * @brief Filter out the results that are descendants of another result. In case the results represent selected
  * subtrees, the filtered out results are redundant.
  *

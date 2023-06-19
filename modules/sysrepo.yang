@@ -27,6 +27,11 @@ module sysrepo {
     description
         "Sysrepo YANG datastore internal attributes and information.";
 
+    revision "2023-06-16" {
+        description
+            "Added metadata for dup inst list positions when merging into a stored edit.";
+    }
+
     revision "2023-02-16" {
         description
             "Import and use ietf-datastores for enabled extending supported datastores.";
@@ -113,6 +118,12 @@ module sysrepo {
             "Additional proprietary <edit-config> operations used internally.";
         reference
             "RFC 6241 section 7.2.";
+    }
+
+    md:annotation dup-inst-list-position {
+        type uint32;
+        description
+            "Absolute position of the list instance with duplicate instances to uniquely identify a stored instance.";
     }
 
     md:annotation cid {

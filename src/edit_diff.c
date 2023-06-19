@@ -1079,7 +1079,10 @@ sr_edit_find_match(const struct lyd_node *data_sibling, const struct lyd_node *e
     sr_error_info_t *err_info = NULL;
     const struct lysc_node *schema = NULL;
     const struct lys_module *mod = NULL;
-    LY_ERR lyrc;
+    struct lyd_meta *m1, *m2;
+    uint32_t inst_pos;
+    LY_ERR lyrc = LY_SUCCESS;
+    int found = 0;
 
     if (!edit_node->schema) {
         /* opaque node, find target module first */
@@ -1096,9 +1099,37 @@ sr_edit_find_match(const struct lyd_node *data_sibling, const struct lyd_node *e
             lyrc = LY_ENOTFOUND;
         }
     } else if (lysc_is_dup_inst_list(edit_node->schema)) {
-        /* never matches */
-        *match_p = NULL;
-        lyrc = LY_ENOTFOUND;
+        /* absolute position on the edit node */
+        m1 = lyd_find_meta(edit_node->meta, NULL, "sysrepo:dup-inst-list-position");
+        assert(m1);
+
+        /* iterate over all the instances */
+        lyd_find_sibling_val(data_sibling, edit_node->schema, NULL, 0, match_p);
+        inst_pos = 1;
+        while (*match_p && ((*match_p)->schema == edit_node->schema)) {
+            m2 = lyd_find_meta(data_sibling->meta, NULL, "sysrepo:dup-inst-list-position");
+            if (m2) {
+                /* actually merging edits, try to find an instance with the same position */
+                if (m1->value.uint32 == m2->value.uint32) {
+                    found = 1;
+                    break;
+                }
+            } else {
+                /* find instance on this position */
+                if (m1->value.uint32 == inst_pos) {
+                    found = 1;
+                    break;
+                }
+            }
+
+            *match_p = (*match_p)->next;
+            ++inst_pos;
+        }
+
+        if (!found) {
+            *match_p = NULL;
+            lyrc = LY_ENOTFOUND;
+        }
     } else if (edit_node->schema->nodetype & (LYS_LIST | LYS_LEAFLIST)) {
         /* exact (leaf-)list instance */
         lyrc = lyd_find_sibling_first(data_sibling, edit_node, match_p);
@@ -3102,6 +3133,214 @@ sr_edit_add_update_op(struct lyd_node *node, const char *def_operation)
     return NULL;
 }
 
+/**
+ * @brief Update XPath of a new operational data edit for dup-inst lists to be correctly created.
+ *
+ * @param[in] ly_ctx Context to use.
+ * @param[in] tree Existing edit tree, may be NULL.
+ * @param[in] xpath XPath to create.
+ * @param[out] rel_xpath Relative edit XPath to actually create, needs to be freed.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_edit_add_oper_xpath(const struct ly_ctx *ly_ctx, const struct lyd_node *tree, const char *xpath, char **rel_xpath)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *mod_name, *name, *xp, *pred, *pred_end;
+    char *mname, buf[23];
+    const struct lyd_node *siblings;
+    struct lyd_node *match;
+    const struct lysc_node *schema, *siter;
+    const struct lys_module *mod;
+    struct ly_ctx *sm_ctx = NULL;
+    struct lyd_meta *m;
+    int mlen, len, pos, inst_pos, found, rxpath_len;
+    void *mem;
+
+    *rel_xpath = NULL;
+    rxpath_len = 0;
+
+    /* validate xpath */
+    if (!lys_find_path(ly_ctx, NULL, xpath, 0)) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid XPath.");
+        goto cleanup;
+    }
+
+    xp = xpath;
+    siblings = tree;
+    schema = NULL;
+    do {
+        /* next xpath segment */
+        xp = sr_xpath_next_qname(xp + 1, &mod_name, &mlen, &name, &len);
+
+        if (!schema) {
+            /* get top-level node */
+            assert(mod_name);
+            mname = strndup(mod_name, mlen);
+            mod = ly_ctx_get_module_implemented(ly_ctx, mname);
+            free(mname);
+
+            siter = NULL;
+            while ((siter = lys_getnext(siter, NULL, mod->compiled, 0))) {
+                if (strncmp(siter->name, name, len) || (siter->name[len] != '\0')) {
+                    continue;
+                }
+
+                break;
+            }
+            assert(siter);
+            schema = siter;
+        } else {
+            /* get child */
+            siter = NULL;
+            while ((siter = lys_getnext(siter, schema, NULL, LYS_GETNEXT_WITHSCHEMAMOUNT))) {
+                if (mlen && (strncmp(siter->module->name, mod_name, mlen) || (siter->module->name[mlen] != '\0'))) {
+                    continue;
+                }
+                if (strncmp(siter->name, name, len) || (siter->name[len] != '\0')) {
+                    continue;
+                }
+
+                break;
+            }
+            assert(siter);
+            if (siter->module->ctx != schema->module->ctx) {
+                /* schema-mount context, needs to be freed */
+                if (sm_ctx) {
+                    ly_ctx_destroy(sm_ctx);
+                }
+                sm_ctx = siter->module->ctx;
+            }
+            schema = siter;
+        }
+
+        /* skip predicates */
+        pred = xp;
+        pos = 0;
+        while (xp[0] == '[') {
+            /* get position from a position predicate, otherwise 0 */
+            pos = atoi(xp + 1);
+
+            xp = sr_xpath_skip_predicate(xp);
+        }
+        if (lysc_is_dup_inst_list(schema) && !pos) {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Node \"%s\" is missing its positional predicate.", schema->name);
+            goto cleanup;
+        }
+        pred_end = xp;
+
+        /* append the node */
+        mem = realloc(*rel_xpath, rxpath_len + 1 + (mlen ? mlen + 1 : 0) + len + 1);
+        SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
+        *rel_xpath = mem;
+
+        if (mlen) {
+            rxpath_len += sprintf(*rel_xpath + rxpath_len, "/%.*s:%.*s", mlen, mod_name, len, name);
+        } else {
+            rxpath_len += sprintf(*rel_xpath + rxpath_len, "/%.*s", len, name);
+        }
+
+        /* find the next (first) data node */
+        lyd_find_sibling_val(siblings, schema, NULL, 0, &match);
+        inst_pos = 1;
+
+        if (pos) {
+            /* find dup-inst list with this position, if exists */
+            found = 0;
+            while (match && (match->schema == schema)) {
+                m = lyd_find_meta(match->meta, NULL, "sysrepo:dup-inst-list-position");
+                assert(m);
+                if (m->value.uint32 == (unsigned)pos) {
+                    /* instance exists */
+                    found = 1;
+                    break;
+                }
+
+                match = match->next;
+                ++inst_pos;
+            }
+
+            if (found) {
+                /* use this instance */
+                sprintf(buf, "%d", inst_pos);
+                mem = realloc(*rel_xpath, rxpath_len + 1 + strlen(buf) + 2);
+                SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
+                *rel_xpath = mem;
+
+                rxpath_len += sprintf(*rel_xpath + rxpath_len, "[%s]", buf);
+            } /* else create a new instance, use no predicate */
+        } else if (pred != pred_end) {
+            /* append the original predicate */
+            mem = realloc(*rel_xpath, rxpath_len + (pred_end - pred) + 1);
+            SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
+            *rel_xpath = mem;
+
+            rxpath_len += sprintf(*rel_xpath + rxpath_len, "%.*s", (int)(pred_end - pred), pred);
+        }
+
+        /* update siblings */
+        siblings = match ? lyd_child(match) : NULL;
+    } while (xp[0]);
+
+cleanup:
+    ly_ctx_destroy(sm_ctx);
+    if (err_info) {
+        free(*rel_xpath);
+        *rel_xpath = NULL;
+    }
+    return err_info;
+}
+
+/**
+ * @brief Store absolute positions of created dup-inst list instances in them as metadata.
+ *
+ * @param[in] parent First created parent.
+ * @param[in] xpath Used XPath.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_edit_add_dup_inst_list_pos(struct lyd_node *parent, const char *xpath)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *mod_name, *name, *xp;
+    int mlen, len, pos;
+    char buf[23];
+
+    assert(parent);
+
+    xp = xpath;
+    while (parent) {
+        /* get parent xpath segment */
+        do {
+            xp = sr_xpath_next_qname(xp + 1, &mod_name, &mlen, &name, &len);
+
+            pos = 0;
+            while (xp[0] == '[') {
+                /* get position from a position predicate, otherwise 0 */
+                pos = atoi(xp + 1);
+
+                xp = sr_xpath_skip_predicate(xp);
+            }
+        } while ((strlen(LYD_NAME(parent)) != (unsigned)len) || strncmp(LYD_NAME(parent), name, len));
+
+        if (lysc_is_dup_inst_list(parent->schema)) {
+            assert(pos);
+
+            /* store the instance position */
+            sprintf(buf, "%d", pos);
+            if (lyd_new_meta(LYD_CTX(parent), parent, NULL, "sysrepo:dup-inst-list-position", buf, 0, NULL)) {
+                sr_errinfo_new_ly(&err_info, LYD_CTX(parent), NULL);
+                return err_info;
+            }
+        }
+
+        parent = lyd_child_no_keys(parent);
+    }
+    assert(!xp[0]);
+
+    return NULL;
+}
+
 sr_error_info_t *
 sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, const char *operation,
         const char *def_operation, const sr_move_position_t *position, const char *keys, const char *val,
@@ -3110,6 +3349,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     sr_error_info_t *err_info = NULL;
     struct lyd_node *node = NULL, *p, *parent = NULL;
     const char *meta_val = NULL, *def_origin;
+    char *rel_xpath = NULL;
     enum edit_op op;
     int opts, own_oper;
     LY_ERR lyrc;
@@ -3121,9 +3361,20 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         opts |= LYD_NEW_PATH_OPAQ;
     }
 
-    /* merge the change into existing edit */
-    lyrc = lyd_new_path2(isolate ? NULL : session->dt[session->ds].edit->tree, session->conn->ly_ctx, xpath,
-            (void *)value, value ? strlen(value) : 0, LYD_ANYDATA_STRING, opts, &parent, &node);
+    if (!isolate && (session->ds == SR_DS_OPERATIONAL)) {
+        if ((err_info = sr_edit_add_oper_xpath(session->conn->ly_ctx, session->dt[session->ds].edit->tree, xpath, &rel_xpath))) {
+            goto error_safe;
+        }
+
+        /* use the xpath relative to the current edit */
+        lyrc = lyd_new_path2(session->dt[session->ds].edit->tree, session->conn->ly_ctx, rel_xpath, (void *)value,
+                value ? strlen(value) : 0, LYD_ANYDATA_STRING, opts, &parent, &node);
+    } else {
+        /* merge the change into existing edit normally */
+        lyrc = lyd_new_path2(isolate ? NULL : session->dt[session->ds].edit->tree, session->conn->ly_ctx, xpath,
+                (void *)value, value ? strlen(value) : 0, LYD_ANYDATA_STRING, opts, &parent, &node);
+    }
+
     if (!lyrc && !node) {
         /* NP container existed already (and is always default) */
         lyrc = LY_EEXIST;
@@ -3134,7 +3385,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
             goto error_safe;
         }
         /* node with the same operation already exists, silently ignore */
-        return NULL;
+        goto success;
     } else if (lysc_is_key(node->schema)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Editing list keys is not supported, edit list instances instead.");
         goto error_safe;
@@ -3143,6 +3394,11 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
 
     /* check all the created nodes for forbidden ones */
     if ((err_info = sr_edit_add_check(parent, node))) {
+        goto error_safe;
+    }
+
+    /* store absolute duplicate-instance list positions if any created */
+    if ((session->ds == SR_DS_OPERATIONAL) && (err_info = sr_edit_add_dup_inst_list_pos(parent, xpath))) {
         goto error_safe;
     }
 
@@ -3227,9 +3483,12 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         }
     }
 
+success:
+    free(rel_xpath);
     return NULL;
 
 error:
+    free(rel_xpath);
     if (!isolate) {
         /* completely free the current edit because it could have already been modified */
         sr_release_data(session->dt[session->ds].edit);
