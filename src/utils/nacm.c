@@ -2166,24 +2166,30 @@ sr_nacm_check_diff_r(const struct lyd_node *diff, const char *user, const char *
             return NULL;
         }
 
-        /* check access for the node, none operation is always allowed, and partial access is relevant only for
-         * read operation */
+        /* check access for the node, none operation is always allowed */
         if (oper) {
             if ((err_info = sr_nacm_allowed_node(diff, NULL, NULL, oper, groups, group_count, user, &access))) {
                 return err_info;
             }
 
-            if (!SR_NACM_ACCESS_IS_NODE_PERMIT(access)) {
+            if (access == SR_NACM_ACCESS_PERMIT) {
+                /* whole subtree permitted, continue with sibling subtrees */
+                continue;
+            } else if (access == SR_NACM_ACCESS_DENY) {
+                /* node denied explicitly, access denied */
                 *denied_node = diff;
+                break;
             }
-            break;
         }
 
         /* go recursively */
-        if (lyd_child(diff)) {
-            if ((err_info = sr_nacm_check_diff_r(lyd_child(diff), user, op, groups, group_count, denied_node))) {
-                return err_info;
-            }
+        if ((err_info = sr_nacm_check_diff_r(lyd_child(diff), user, op, groups, group_count, denied_node))) {
+            return err_info;
+        }
+
+        if (*denied_node) {
+            /* access denied */
+            break;
         }
     }
 
