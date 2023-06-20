@@ -436,7 +436,7 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
     const char *ptr, *err_msg, *err_format, *err_data;
     sr_sub_event_t last_event;
     uint32_t last_request_id;
-    int ret;
+    int ret, write_lock = 0;
 
     assert((expected_ev == SR_SUB_EV_NONE) || (expected_ev == SR_SUB_EV_SUCCESS) || (expected_ev == SR_SUB_EV_ERROR));
     assert(shm_data_sub->fd > -1);
@@ -466,6 +466,7 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
                 /* event timeout */
                 sr_errinfo_new(cb_err_info, SR_ERR_TIME_OUT, "EV ORIGIN: \"%s\" ID %" PRIu32 " processing timed out.",
                         sr_ev2str(event), request_id);
+                write_lock = 1;
             }
         } else {
             /* other error */
@@ -481,7 +482,9 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
             }
         }
 
-        if (sub_shm->lock.readers[0] || sub_shm->lock.writer) {
+        if (write_lock) {
+            /* we already have the write lock */
+        } else if (sub_shm->lock.readers[0] || sub_shm->lock.writer) {
             /* UNLOCK mutex, we do not really have the lock */
             sr_munlock(&sub_shm->lock.mutex);
         } else {
