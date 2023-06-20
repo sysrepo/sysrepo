@@ -2279,11 +2279,13 @@ sr_mlock(pthread_mutex_t *lock, int timeout_ms, const char *func, sr_lock_recove
 void
 sr_munlock(pthread_mutex_t *lock)
 {
+    sr_error_info_t *err_info = NULL;
     int ret;
 
     ret = pthread_mutex_unlock(lock);
     if (ret) {
-        SR_LOG_WRN("Unlocking a mutex failed (%s).", strerror(ret));
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(ret));
+        sr_errinfo_free(&err_info);
     }
 }
 
@@ -2365,7 +2367,11 @@ sr_rwlock_reader_add(sr_rwlock_t *rwlock, sr_cid_t cid)
 unlock:
     if (!ret) {
         /* READ MUTEX UNLOCK */
-        pthread_mutex_unlock(&rwlock->r_mutex);
+        ret = pthread_mutex_unlock(&rwlock->r_mutex);
+        if (ret) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(ret));
+            sr_errinfo_free(&err_info);
+        }
     }
 }
 
@@ -2434,7 +2440,11 @@ sr_rwlock_reader_del(sr_rwlock_t *rwlock, sr_cid_t cid)
 unlock:
     if (!ret) {
         /* READ MUTEX UNLOCK */
-        pthread_mutex_unlock(&rwlock->r_mutex);
+        ret = pthread_mutex_unlock(&rwlock->r_mutex);
+        if (ret) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(ret));
+            sr_errinfo_free(&err_info);
+        }
     }
 }
 
@@ -2514,7 +2524,7 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
         sr_lock_recover_cb cb, void *cb_data, int has_mutex)
 {
     sr_error_info_t *err_info = NULL;
-    int ret = 0, wr_urged;
+    int ret = 0, r, wr_urged;
 
     assert(mode && timeout_abs && cid);
 
@@ -2643,7 +2653,10 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
         sr_rwlock_reader_add(rwlock, cid);
 
         /* MUTEX UNLOCK */
-        pthread_mutex_unlock(&rwlock->mutex);
+        r = pthread_mutex_unlock(&rwlock->mutex);
+        if (r) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(r));
+        }
 
     } else {
         /* READ lock */
@@ -2674,10 +2687,13 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
         sr_rwlock_reader_add(rwlock, cid);
 
         /* MUTEX UNLOCK */
-        pthread_mutex_unlock(&rwlock->mutex);
+        r = pthread_mutex_unlock(&rwlock->mutex);
+        if (r) {
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(r));
+        }
     }
 
-    return NULL;
+    return err_info;
 
 error_cond_unlock:
     if (!has_mutex) {
@@ -2925,7 +2941,11 @@ sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
     }
 
     /* MUTEX UNLOCK */
-    pthread_mutex_unlock(&rwlock->mutex);
+    ret = pthread_mutex_unlock(&rwlock->mutex);
+    if (ret) {
+        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(ret));
+        sr_errinfo_free(&err_info);
+    }
 }
 
 int
