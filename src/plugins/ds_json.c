@@ -764,9 +764,11 @@ srpds_json_access_get(const struct lys_module *mod, sr_datastore_t ds, char **ow
 error:
     if (owner) {
         free(*owner);
+        *owner = NULL;
     }
     if (group) {
         free(*group);
+        *group = NULL;
     }
     return rc;
 }
