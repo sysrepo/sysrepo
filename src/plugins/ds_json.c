@@ -150,9 +150,7 @@ srpds_json_store_(const struct lys_module *mod, sr_datastore_t ds, const struct 
     times[0].tv_nsec = UTIME_OMIT;
     clock_gettime(CLOCK_REALTIME, &times[1]);
     if (futimens(fd, times) == -1) {
-        SRPLG_LOG_ERR(srpds_name, "Failed to update file \"%s\" modification time (%s).", path, strerror(errno));
-        rc = SR_ERR_SYS;
-        goto cleanup;
+        SRPLG_LOG_WRN(srpds_name, "Failed to update file \"%s\" modification time (%s).", path, strerror(errno));
     }
 
 cleanup:
