@@ -3479,6 +3479,11 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
                     sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Opaque node \"%s\" is not allowed for operational "
                             "datastore changes.", LYD_NAME(elem));
                     goto cleanup_unlock;
+                } else if (lysc_is_dup_inst_list(elem->schema) &&
+                        !lyd_find_meta(elem->meta, NULL, "sysrepo:dup-inst-list-position")) {
+                    sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Duplicate-instance node \"%s\" without "
+                            "\"dup-inst-list-position\" metadata with the instance position.", LYD_NAME(elem));
+                    goto cleanup_unlock;
                 }
 
                 op = sr_edit_diff_find_oper(elem, 0, NULL);

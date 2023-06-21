@@ -761,25 +761,7 @@ stored_state_list_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const ch
         assert_string_equal(node->schema->name, "l1");
         assert_null(prev_value);
 
-        /* no more changes */
-        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
-        assert_int_equal(ret, SR_ERR_NOT_FOUND);
-
-        sr_free_change_iter(iter);
-        break;
-    case 4:
-    case 5:
-        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 4) {
-            assert_int_equal(event, SR_EV_CHANGE);
-        } else {
-            assert_int_equal(event, SR_EV_DONE);
-        }
-
-        /* get changes iter */
-        ret = sr_get_changes_iter(session, "/mixed-config:*//.", &iter);
-        assert_int_equal(ret, SR_ERR_OK);
-
-        /* 1st change */
+        /* 2nd change */
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -793,9 +775,9 @@ stored_state_list_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const ch
 
         sr_free_change_iter(iter);
         break;
-    case 6:
-    case 7:
-        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 6) {
+    case 4:
+    case 5:
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 4) {
             assert_int_equal(event, SR_EV_CHANGE);
         } else {
             assert_int_equal(event, SR_EV_DONE);
@@ -867,9 +849,9 @@ test_state_list(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/mixed-config:test-state/l[2]/l1", "val2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[1]", "val1", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val1", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[2]", "val2", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -903,13 +885,15 @@ test_state_list(void **state)
     free(str1);
 
     /* remove some oper data */
-    ret = sr_discard_oper_changes(st->conn, st->sess, "/mixed-config:test-state/l[2]/l1", 0);
+    ret = sr_discard_items(st->sess, "/mixed-config:test-state/l[2]/l1");
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_discard_oper_changes(st->conn, st->sess, "/mixed-config:test-state/ll[2]", 0);
+    ret = sr_discard_items(st->sess, "/mixed-config:test-state/ll[2]");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* callback called */
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 6);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
     /* read the data */
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
@@ -934,17 +918,17 @@ test_state_list(void **state)
     free(str1);
 
     /* create some new oper data */
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[2]", "val3", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val3", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[3]", "val2", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[4]", "val3", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val3", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* callback called */
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 8);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 6);
 
     /* read the data */
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);

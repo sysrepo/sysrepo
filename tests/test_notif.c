@@ -1785,7 +1785,7 @@ test_schema_mount(void **state)
     ret = sr_set_item_str(st->sess, "/ietf-yang-schema-mount:schema-mounts/namespace[prefix='ops']/uri", "urn:ops", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess,
-            "/ietf-yang-schema-mount:schema-mounts/mount-point[module='sm'][label='root']/shared-schema/parent-reference[1]",
+            "/ietf-yang-schema-mount:schema-mounts/mount-point[module='sm'][label='root']/shared-schema/parent-reference",
             "/ops:cont", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);

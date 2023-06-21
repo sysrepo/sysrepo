@@ -239,7 +239,7 @@ sr_edit_find_cid(struct lyd_node *edit, sr_cid_t *cid, int *meta_own)
 
                 /* found */
                 if (cid) {
-                    *cid = atoi(attr->value);
+                    *cid = strtoul(attr->value, NULL, 10);
                 }
                 if (meta_own && (parent == edit)) {
                     *meta_own = 1;
@@ -1035,7 +1035,7 @@ sr_edit_find_userord_predicate(const struct lyd_node *sibling, const struct lyd_
     LY_ERR lyrc;
 
     if (lysc_is_dup_inst_list(llist->schema)) {
-        pos = atoi(userord_anchor);
+        pos = strtoul(userord_anchor, NULL, 10);
         cur_pos = 1;
         LYD_LIST_FOR_INST(sibling, llist->schema, iter) {
             if (cur_pos == pos) {
@@ -1080,7 +1080,7 @@ sr_edit_find_match(const struct lyd_node *data_sibling, const struct lyd_node *e
     const struct lysc_node *schema = NULL;
     const struct lys_module *mod = NULL;
     struct lyd_meta *m1, *m2;
-    uint32_t inst_pos;
+    uint32_t inst_pos, pos;
     LY_ERR lyrc = LY_SUCCESS;
     int found = 0;
 
@@ -1102,21 +1102,22 @@ sr_edit_find_match(const struct lyd_node *data_sibling, const struct lyd_node *e
         /* absolute position on the edit node */
         m1 = lyd_find_meta(edit_node->meta, NULL, "sysrepo:dup-inst-list-position");
         assert(m1);
+        pos = strtoul(lyd_get_meta_value(m1), NULL, 10);
 
         /* iterate over all the instances */
         lyd_find_sibling_val(data_sibling, edit_node->schema, NULL, 0, match_p);
         inst_pos = 1;
-        while (*match_p && ((*match_p)->schema == edit_node->schema)) {
+        while (pos && *match_p && ((*match_p)->schema == edit_node->schema)) {
             m2 = lyd_find_meta(data_sibling->meta, NULL, "sysrepo:dup-inst-list-position");
             if (m2) {
                 /* actually merging edits, try to find an instance with the same position */
-                if (m1->value.uint32 == m2->value.uint32) {
+                if (pos == strtoul(lyd_get_meta_value(m2), NULL, 10)) {
                     found = 1;
                     break;
                 }
             } else {
                 /* find instance on this position */
-                if (m1->value.uint32 == inst_pos) {
+                if (pos == inst_pos) {
                     found = 1;
                     break;
                 }
@@ -3154,7 +3155,8 @@ sr_edit_add_oper_xpath(const struct ly_ctx *ly_ctx, const struct lyd_node *tree,
     const struct lys_module *mod;
     struct ly_ctx *sm_ctx = NULL;
     struct lyd_meta *m;
-    int mlen, len, pos, inst_pos, found, rxpath_len;
+    int mlen, len, found, rxpath_len;
+    uint32_t inst_pos, pos, cur_pos;
     void *mem;
 
     *rel_xpath = NULL;
@@ -3219,13 +3221,9 @@ sr_edit_add_oper_xpath(const struct ly_ctx *ly_ctx, const struct lyd_node *tree,
         pos = 0;
         while (xp[0] == '[') {
             /* get position from a position predicate, otherwise 0 */
-            pos = atoi(xp + 1);
+            pos = strtoul(xp + 1, NULL, 10);
 
             xp = sr_xpath_skip_predicate(xp);
-        }
-        if (lysc_is_dup_inst_list(schema) && !pos) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Node \"%s\" is missing its positional predicate.", schema->name);
-            goto cleanup;
         }
         pred_end = xp;
 
@@ -3250,7 +3248,8 @@ sr_edit_add_oper_xpath(const struct ly_ctx *ly_ctx, const struct lyd_node *tree,
             while (match && (match->schema == schema)) {
                 m = lyd_find_meta(match->meta, NULL, "sysrepo:dup-inst-list-position");
                 assert(m);
-                if (m->value.uint32 == (unsigned)pos) {
+                cur_pos = strtoul(lyd_get_meta_value(m), NULL, 10);
+                if (cur_pos && (cur_pos == pos)) {
                     /* instance exists */
                     found = 1;
                     break;
@@ -3262,7 +3261,7 @@ sr_edit_add_oper_xpath(const struct ly_ctx *ly_ctx, const struct lyd_node *tree,
 
             if (found) {
                 /* use this instance */
-                sprintf(buf, "%d", inst_pos);
+                sprintf(buf, "%" PRIu32, inst_pos);
                 mem = realloc(*rel_xpath, rxpath_len + 1 + strlen(buf) + 2);
                 SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
                 *rel_xpath = mem;
@@ -3303,7 +3302,8 @@ sr_edit_add_dup_inst_list_pos(struct lyd_node *parent, const char *xpath)
 {
     sr_error_info_t *err_info = NULL;
     const char *mod_name, *name, *xp;
-    int mlen, len, pos;
+    int mlen, len;
+    uint32_t pos;
     char buf[23];
 
     assert(parent);
@@ -3317,17 +3317,19 @@ sr_edit_add_dup_inst_list_pos(struct lyd_node *parent, const char *xpath)
             pos = 0;
             while (xp[0] == '[') {
                 /* get position from a position predicate, otherwise 0 */
-                pos = atoi(xp + 1);
+                pos = strtoul(xp + 1, NULL, 10);
 
                 xp = sr_xpath_skip_predicate(xp);
             }
         } while ((strlen(LYD_NAME(parent)) != (unsigned)len) || strncmp(LYD_NAME(parent), name, len));
 
         if (lysc_is_dup_inst_list(parent->schema)) {
-            assert(pos);
-
             /* store the instance position */
-            sprintf(buf, "%d", pos);
+            if (pos) {
+                sprintf(buf, "%d", pos);
+            } else {
+                strcpy(buf, "");
+            }
             if (lyd_new_meta(LYD_CTX(parent), parent, NULL, "sysrepo:dup-inst-list-position", buf, 0, NULL)) {
                 sr_errinfo_new_ly(&err_info, LYD_CTX(parent), NULL);
                 return err_info;

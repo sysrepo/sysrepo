@@ -121,9 +121,13 @@ module sysrepo {
     }
 
     md:annotation dup-inst-list-position {
-        type uint32;
+        type union {
+            type empty;
+            type uint32;
+        }
         description
-            "Absolute position of the list instance with duplicate instances to uniquely identify a stored instance.";
+            "Absolute position of the list instance starting at 1 with duplicate instances to uniquely identify a
+             stored instance. Empty value means the instance should always be created.";
     }
 
     md:annotation cid {

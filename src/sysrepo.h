@@ -878,10 +878,10 @@ void sr_free_values(sr_val_t *values, size_t count);
  * for ::SR_DS_OPERATIONAL.
  *
  * To create a list use @p path with key values included in predicates, @p value will be ignored.
- * When creating key-less lists, use positional predicates such as `[1]` to refer to the instances.
+ * When creating key-less lists and state leaf-lists, use positional predicates such as `[1]` to refer to the instances.
+ * Using no predicate means the instance should be created.
  *
- * Setting of a leaf-list value appends the value at the end of the leaf-list.
- * A value of leaf-list can be specified either by predicate in xpath or by value argument.
+ * The value of a leaf-list can be specified either by predicate in xpath or by value argument.
  * If both are present, value argument is ignored and xpath predicate is used.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
