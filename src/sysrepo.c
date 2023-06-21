@@ -3481,9 +3481,11 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
                     goto cleanup_unlock;
                 } else if (lysc_is_dup_inst_list(elem->schema) &&
                         !lyd_find_meta(elem->meta, NULL, "sysrepo:dup-inst-list-position")) {
-                    sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Duplicate-instance node \"%s\" without "
-                            "\"dup-inst-list-position\" metadata with the instance position.", LYD_NAME(elem));
-                    goto cleanup_unlock;
+                    /* fine, just create the metadata with empty value so that the instance is created */
+                    if (lyd_new_meta(NULL, elem, NULL, "sysrepo:dup-inst-list-position", "", 0, NULL)) {
+                        sr_errinfo_new_ly(&err_info, LYD_CTX(elem), elem);
+                        goto cleanup_unlock;
+                    }
                 }
 
                 op = sr_edit_diff_find_oper(elem, 0, NULL);
