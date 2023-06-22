@@ -637,6 +637,9 @@ sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_ev_no
                 cur_mode = SR_LOCK_WRITE;
             }
 
+            /* we need the write lock to prevent 1) ignoring a notification and then processing it and
+             * 2) processing a standard notification after signalling subscription termination */
+
             multi_sub_shm = (sr_multi_sub_shm_t *)notif_sub->sub_shm.addr;
             if ((ATOMIC_LOAD_RELAXED(multi_sub_shm->event) == SR_SUB_EV_NOTIF) &&
                     (ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id) != ATOMIC_LOAD_RELAXED(notif_sub->request_id))) {
@@ -647,14 +650,6 @@ sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_ev_no
                 }
             }
 
-            /* SUBS WRITE LOCK DOWNGRADE */
-            if ((err_info = sr_rwrelock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, subscr->conn->cid,
-                    __func__, NULL, NULL))) {
-                sr_errinfo_free(&err_info);
-            } else {
-                cur_mode = SR_LOCK_READ_UPGR;
-            }
-
             if (ev_sess) {
                 /* send special last notification */
                 sr_realtime_get(&cur_time);
@@ -662,14 +657,6 @@ sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_ev_no
                         sub->sub_id, NULL, &cur_time))) {
                     sr_errinfo_free(&err_info);
                 }
-            }
-
-            /* SUBS WRITE LOCK UPGRADE */
-            if ((err_info = sr_rwrelock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscr->conn->cid,
-                    __func__, NULL, NULL))) {
-                sr_errinfo_free(&err_info);
-            } else {
-                cur_mode = SR_LOCK_WRITE;
             }
 
             /* replace the subscription with the last */
