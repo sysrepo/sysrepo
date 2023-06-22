@@ -31,7 +31,7 @@ main(int argc, char **argv)
     sr_conn_ctx_t *connection = NULL;
     sr_session_ctx_t *session = NULL;
     int rc = SR_ERR_OK;
-    struct lyd_node *notif = NULL;
+    struct lyd_node *tree = NULL, *notif;
     const struct ly_ctx *ctx = NULL;
     const char *path, *node_path = NULL, *node_val;
 
@@ -64,15 +64,15 @@ main(int argc, char **argv)
     }
 
     /* create the notification */
-    if (lyd_new_path(NULL, ctx, path, NULL, 0, &notif)) {
-        printf("Creating notification \"%s\" failed.\n", path);
+    if (lyd_new_path2(NULL, ctx, path, NULL, 0, 0, 0, &tree, &notif)) {
+        printf("Creating notification \"%s\" failed (%s).\n", path, ly_last_errmsg());
         goto cleanup;
     }
 
     /* add the input value */
     if (node_path) {
         if (lyd_new_path(notif, NULL, node_path, node_val, 0, NULL)) {
-            printf("Creating value \"%s\" failed.\n", node_path);
+            printf("Creating value \"%s\" failed (%s).\n", node_path, ly_last_errmsg());
             goto cleanup;
         }
     }
@@ -80,11 +80,12 @@ main(int argc, char **argv)
     /* send the notification */
     rc = sr_notif_send_tree(session, notif, 0, 0);
     if (rc != SR_ERR_OK) {
+        printf("Failed to send the notification.\n");
         goto cleanup;
     }
 
 cleanup:
-    lyd_free_all(notif);
+    lyd_free_tree(tree);
     if (ctx) {
         sr_release_context(connection);
     }
