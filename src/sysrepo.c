@@ -5803,23 +5803,23 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
         _sr_subscription_thread_suspend(*subscription);
     }
 
-    /* SUBS WRITE LOCK */
-    if ((err_info = sr_rwlock(&(*subscription)->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-            __func__, NULL, NULL))) {
-        goto cleanup;
-    }
-
     /* RPC SUB WRITE LOCK */
     if (is_ext) {
         if ((err_info = sr_rwlock(&shm_mod->rpc_ext_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
                 NULL, NULL))) {
-            goto cleanup_unlock1;
+            goto cleanup;
         }
     } else {
         if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
                 NULL, NULL))) {
-            goto cleanup_unlock1;
+            goto cleanup;
         }
+    }
+
+    /* SUBS WRITE LOCK */
+    if ((err_info = sr_rwlock(&(*subscription)->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+            __func__, NULL, NULL))) {
+        goto cleanup_unlock1;
     }
 
     /* add RPC/action subscription into ext SHM and create separate specific SHM segment */
@@ -5864,16 +5864,16 @@ error1:
     }
 
 cleanup_unlock2:
+    /* SUBS WRITE UNLOCK */
+    sr_rwunlock(&(*subscription)->subs_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+
+cleanup_unlock1:
     /* RPC SUB WRITE UNLOCK */
     if (is_ext) {
         sr_rwunlock(&shm_mod->rpc_ext_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
     } else {
         sr_rwunlock(&shm_rpc->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
     }
-
-cleanup_unlock1:
-    /* SUBS WRITE UNLOCK */
-    sr_rwunlock(&(*subscription)->subs_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
 cleanup:
     /* CONTEXT UNLOCK */
@@ -6450,15 +6450,15 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
-    /* SUBS WRITE LOCK */
-    if ((err_info = sr_rwlock(&(*subscription)->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-            __func__, NULL, NULL))) {
-        goto cleanup;
-    }
-
     /* NOTIF SUB WRITE LOCK */
     if ((err_info = sr_rwlock(&shm_mod->notif_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
             NULL, NULL))) {
+        goto cleanup;
+    }
+
+    /* SUBS WRITE LOCK */
+    if ((err_info = sr_rwlock(&(*subscription)->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+            __func__, NULL, NULL))) {
         goto cleanup_unlock1;
     }
 
@@ -6501,12 +6501,12 @@ error1:
     }
 
 cleanup_unlock2:
-    /* NOTIF SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->notif_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
-
-cleanup_unlock1:
     /* SUBS WRITE UNLOCK */
     sr_rwunlock(&(*subscription)->subs_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+
+cleanup_unlock1:
+    /* NOTIF SUB WRITE UNLOCK */
+    sr_rwunlock(&shm_mod->notif_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
 cleanup:
     /* CONTEXT UNLOCK */
@@ -6950,15 +6950,15 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
-    /* SUBS WRITE LOCK */
-    if ((err_info = sr_rwlock(&(*subscription)->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-            __func__, NULL, NULL))) {
-        goto cleanup;
-    }
-
     /* OPER GET SUB WRITE LOCK */
     if ((err_info = sr_rwlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL,
             NULL))) {
+        goto cleanup;
+    }
+
+    /* SUBS WRITE LOCK */
+    if ((err_info = sr_rwlock(&(*subscription)->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+            __func__, NULL, NULL))) {
         goto cleanup_unlock1;
     }
 
@@ -7002,12 +7002,12 @@ error1:
     }
 
 cleanup_unlock2:
-    /* OPER GET SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->oper_get_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
-
-cleanup_unlock1:
     /* SUBS WRITE UNLOCK */
     sr_rwunlock(&(*subscription)->subs_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+
+cleanup_unlock1:
+    /* OPER GET SUB WRITE UNLOCK */
+    sr_rwunlock(&shm_mod->oper_get_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
 cleanup:
     /* CONTEXT UNLOCK */
