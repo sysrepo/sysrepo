@@ -588,7 +588,8 @@ error:
 }
 
 void
-sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock)
+sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_ev_notif_type_t notif_ev,
+        sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
@@ -657,8 +658,8 @@ sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_
             if (ev_sess) {
                 /* send special last notification */
                 sr_realtime_get(&cur_time);
-                if ((err_info = sr_notif_call_callback(ev_sess, sub->cb, sub->tree_cb, sub->private_data,
-                        SR_EV_NOTIF_TERMINATED, sub->sub_id, NULL, &cur_time))) {
+                if ((err_info = sr_notif_call_callback(ev_sess, sub->cb, sub->tree_cb, sub->private_data, notif_ev,
+                        sub->sub_id, NULL, &cur_time))) {
                     sr_errinfo_free(&err_info);
                 }
             }
@@ -1281,14 +1282,15 @@ cleanup:
  * NOTIF SUB lock should not be held.
  *
  * @param[in,out] subscr Subscription structure to modify.
- * @param[in] notif_sub Notif subscription in ext SHM.
+ * @param[in] notif_sub Notif subscription in @p subscr.
  * @param[in] idx Index of the subscription in @p notif_sub to remove.
+ * @param[in] notif_ev Generated notification event.
  * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_notif_sub_del(sr_subscription_ctx_t *subscr, struct modsub_notif_s *notif_sub, uint32_t idx,
-        sr_lock_mode_t has_subs_lock)
+        sr_ev_notif_type_t notif_ev, sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
@@ -1313,7 +1315,7 @@ sr_notif_sub_del(sr_subscription_ctx_t *subscr, struct modsub_notif_s *notif_sub
     }
 
     /* remove the subscription from the subscription structure */
-    sr_subscr_notif_sub_del(subscr, notif_sub->subs[idx].sub_id, has_subs_lock);
+    sr_subscr_notif_sub_del(subscr, notif_sub->subs[idx].sub_id, notif_ev, has_subs_lock);
 
 cleanup_unlock:
     /* NOTIF SUB WRITE UNLOCK */
@@ -1422,7 +1424,7 @@ sr_subscr_session_del(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, sr_
         for (j = 0; j < notif_sub->sub_count; ++j) {
             if (notif_sub->subs[j].sess == sess) {
                 /* remove */
-                if ((err_info = sr_notif_sub_del(subscr, notif_sub, j, SR_LOCK_READ_UPGR))) {
+                if ((err_info = sr_notif_sub_del(subscr, notif_sub, j, SR_EV_NOTIF_TERMINATED, SR_LOCK_READ_UPGR))) {
                     goto cleanup_subs_unlock;
                 }
                 del = 1;
@@ -1584,7 +1586,7 @@ subs_del:
                 if (notif_sub->subs[j].sub_id == sub_id) {
                     /* found it */
                     del_sub_sess = notif_sub->subs[j].sess;
-                    if ((err_info = sr_notif_sub_del(subscr, notif_sub, j, SR_LOCK_READ_UPGR))) {
+                    if ((err_info = sr_notif_sub_del(subscr, notif_sub, j, SR_EV_NOTIF_TERMINATED, SR_LOCK_READ_UPGR))) {
                         goto cleanup;
                     }
                     goto finish;
@@ -1648,6 +1650,35 @@ cleanup:
         sr_rwunlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, subscr->conn->cid, __func__);
     }
 
+    return err_info;
+}
+
+sr_error_info_t *
+sr_subscr_notif_del_stop_time(sr_subscription_ctx_t *subscr, struct modsub_notif_s *notif_sub, uint32_t idx,
+        sr_lock_mode_t has_subs_lock)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_session_ctx_t *del_sub_sess;
+
+    assert(has_subs_lock == SR_LOCK_READ_UPGR);
+    (void)has_subs_lock;
+
+    del_sub_sess = notif_sub->subs[idx].sess;
+
+    /* remove */
+    if ((err_info = sr_notif_sub_del(subscr, notif_sub, idx, SR_EV_NOTIF_STOP_TIME, has_subs_lock))) {
+        goto cleanup;
+    }
+
+    /* remove the subscription from the session if the only subscription */
+    if (!sr_subscr_session_count(subscr, del_sub_sess, has_subs_lock)) {
+        if ((err_info = sr_ptr_del(&del_sub_sess->ptr_lock, (void ***)&del_sub_sess->subscriptions,
+                &del_sub_sess->subscription_count, subscr))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
     return err_info;
 }
 

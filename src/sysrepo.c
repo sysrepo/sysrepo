@@ -6493,7 +6493,7 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
     goto cleanup_unlock2;
 
 error2:
-    sr_subscr_notif_sub_del(*subscription, sub_id, SR_LOCK_WRITE);
+    sr_subscr_notif_sub_del(*subscription, sub_id, SR_EV_NOTIF_TERMINATED, SR_LOCK_WRITE);
 
 error1:
     if ((tmp_err = sr_shmext_notif_sub_del(conn, shm_mod, sub_id))) {

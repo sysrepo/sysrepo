@@ -586,7 +586,7 @@ notif_stop_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type
         assert_null(notif);
         break;
     case 1:
-        assert_int_equal(notif_type, SR_EV_NOTIF_TERMINATED);
+        assert_int_equal(notif_type, SR_EV_NOTIF_STOP_TIME);
         assert_null(notif);
         break;
     default:
@@ -595,7 +595,7 @@ notif_stop_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type
 
     /* signal that we were called */
     ATOMIC_INC_RELAXED(st->cb_called);
-    if (notif_type == SR_EV_NOTIF_TERMINATED) {
+    if (notif_type == SR_EV_NOTIF_STOP_TIME) {
         pthread_barrier_wait(&st->barrier);
     }
 }
@@ -656,7 +656,7 @@ notif_replay_simple_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_n
         assert_null(notif);
         break;
     case 4:
-        assert_int_equal(notif_type, SR_EV_NOTIF_TERMINATED);
+        assert_int_equal(notif_type, SR_EV_NOTIF_STOP_TIME);
         assert_null(notif);
         break;
     default:
@@ -792,7 +792,7 @@ notif_replay_interval_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev
         assert_null(notif);
         break;
     case 9:
-        assert_int_equal(notif_type, SR_EV_NOTIF_TERMINATED);
+        assert_int_equal(notif_type, SR_EV_NOTIF_STOP_TIME);
         assert_null(notif);
         break;
     case 10:
@@ -815,7 +815,7 @@ notif_replay_interval_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev
         assert_null(notif);
         break;
     case 14:
-        assert_int_equal(notif_type, SR_EV_NOTIF_TERMINATED);
+        assert_int_equal(notif_type, SR_EV_NOTIF_STOP_TIME);
         assert_null(notif);
         break;
     case 15:
@@ -853,7 +853,7 @@ notif_replay_interval_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev
         assert_null(notif);
         break;
     case 22:
-        assert_int_equal(notif_type, SR_EV_NOTIF_TERMINATED);
+        assert_int_equal(notif_type, SR_EV_NOTIF_STOP_TIME);
         assert_null(notif);
         break;
     default:

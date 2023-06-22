@@ -4659,7 +4659,7 @@ sr_shmsub_notif_listen_module_stop_time(uint32_t notif_subs_idx, sr_lock_mode_t 
             }
 
             /* remove the subscription */
-            if ((err_info = sr_subscr_del(subscr, notif_subs->subs[i].sub_id, lock_mode))) {
+            if ((err_info = sr_subscr_notif_del_stop_time(subscr, notif_subs, i, lock_mode))) {
                 goto cleanup;
             }
 

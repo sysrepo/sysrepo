@@ -131,9 +131,11 @@ sr_error_info_t *sr_subscr_notif_sub_add(sr_subscription_ctx_t *subscr, uint32_t
  *
  * @param[in,out] subscr Subscription structure.
  * @param[in] sub_id Unique sub ID.
+ * @param[in] notif_ev Generated notification event.
  * @param[in] has_subs_lock What kind of SUBS lock is held.
  */
-void sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock);
+void sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_ev_notif_type_t notif_ev,
+        sr_lock_mode_t has_subs_lock);
 
 /**
  * @brief Add an RPC subscription into a subscription structure.
@@ -240,14 +242,26 @@ int sr_subscr_session_count(sr_subscription_ctx_t *subscr, sr_session_ctx_t *ses
 sr_error_info_t *sr_subscr_session_del(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock);
 
 /**
- * @brief Delete a specific or all subscriptions in \p subscr of all the sessions.
+ * @brief Delete a specific or all subscriptions in @p subscr of all the sessions.
  *
- * @param[in,out] subs Subscription structure.
+ * @param[in,out] subscr Subscription structure.
  * @param[in] sub_id Subscription ID of the subscription to remove, 0 for all the subscriptions.
  * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_subscr_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock);
+
+/**
+ * @brief Delete a notification subscription from @p subscr because it's stop-time has been reached.
+ *
+ * @param[in,out] subscr Subscription structure.
+ * @param[in] notif_sub Specific notification subscriptions to delete from.
+ * @param[in] idx Index of the subscription in @p notif_sub to delete.
+ * @param[in] has_subs_lock What kind of SUBS lock is held.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_subscr_notif_del_stop_time(sr_subscription_ctx_t *subscr, struct modsub_notif_s *notif_sub,
+        uint32_t idx, sr_lock_mode_t has_subs_lock);
 
 /**
  * @brief Find notifications subscribers for a module.
