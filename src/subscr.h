@@ -220,7 +220,7 @@ struct modsub_notifsub_s *sr_subscr_notif_sub_find(const sr_subscription_ctx_t *
 struct opsub_rpcsub_s *sr_subscr_rpc_sub_find(const sr_subscription_ctx_t *subscr, uint32_t sub_id, const char **path);
 
 /**
- * @brief Count subscriptions of session \p sess in subscriptions structure \p subscr.
+ * @brief Count subscriptions of session @p sess in subscriptions structure @p subscr.
  *
  * @param[in] subscr Session subscription.
  * @param[in] sess Subscription session.
@@ -230,7 +230,7 @@ struct opsub_rpcsub_s *sr_subscr_rpc_sub_find(const sr_subscription_ctx_t *subsc
 int sr_subscr_session_count(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock);
 
 /**
- * @brief Delete all subscriptions in \p subscr of session \p sess.
+ * @brief Delete all subscriptions in @p subscr of session @p sess.
  *
  * @param[in,out] subscr Session subscription.
  * @param[in] sess Subscription session.
