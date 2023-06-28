@@ -68,6 +68,10 @@ help_print(void)
             "                               Send a notification in a file or using a text editor.\n"
             "  -C, --copy-from <path>/<source-datastore>\n"
             "                               Perform a copy-config from a file or a datastore.\n"
+            "  -S, --set <xpath>            Set the value of a node on the XPath. It is read from STDIN unless '--value'\n"
+            "                               parameter is used.\n"
+            "  -G, --get <xpath>            Get the value of a node on the XPath. It is written to STDOUT unless '--value'\n"
+            "                               parameter is used.\n"
             "\n"
             "       When both a <path> and <editor>/<source-datastore> can be specified, it is always first checked\n"
             "       that the file exists. If not, then it is interpreted as the other parameter.\n"
@@ -94,6 +98,7 @@ help_print(void)
             "  -e, --defaults <wd-mode>     Print the default values, which are trimmed by default (\"report-all\",\n"
             "                               \"report-all-tagged\", \"trim\", \"explicit\", \"implicit-tagged\").\n"
             "                               Accepted by export, edit, rpc op.\n"
+            "  -u, --value <value>/<path>   Node value to read or the file to write the value into. Accepted by set/get op.\n"
             "  -v, --verbosity <level>      Change verbosity to a level (none, error, warning, info, debug) or\n"
             "                               number (0, 1, 2, 3, 4).\n"
             "\n");
@@ -631,6 +636,84 @@ op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds,
 }
 
 static int
+op_set(sr_session_ctx_t *sess, const char *xpath, const char *value, int timeout_s)
+{
+    char *mem = NULL;
+    int r;
+
+    /* get the value */
+    if (!value) {
+        /* we need to load the data into memory first */
+        if (step_read_file(stdin, &mem)) {
+            return EXIT_FAILURE;
+        }
+        value = mem;
+    }
+
+    /* set the node value */
+    r = sr_set_item_str(sess, xpath, value, NULL, 0);
+    if (r != SR_ERR_OK) {
+        error_print(r, "Setting the data failed");
+        free(mem);
+        return EXIT_FAILURE;
+    }
+
+    /* apply changes */
+    r = sr_apply_changes(sess, timeout_s * 1000);
+    if (r != SR_ERR_OK) {
+        error_print(r, "Applying the changes failed");
+        free(mem);
+        return EXIT_FAILURE;
+    }
+
+    /* cleanup */
+    free(mem);
+    return EXIT_SUCCESS;
+}
+
+static int
+op_get(sr_session_ctx_t *sess, const char *xpath, const char *file_path, int timeout_s)
+{
+    sr_data_t *node;
+    FILE *file = NULL;
+    const char *value;
+    int r;
+
+    if (file_path) {
+        file = fopen(file_path, "w");
+        if (!file) {
+            error_print(0, "Failed to open \"%s\" for writing (%s)", file_path, strerror(errno));
+            return EXIT_FAILURE;
+        }
+    }
+
+    /* get the node value */
+    r = sr_get_node(sess, xpath, timeout_s * 1000, &node);
+    if (r != SR_ERR_OK) {
+        error_print(r, "Getting data failed");
+        if (file) {
+            fclose(file);
+        }
+        return EXIT_FAILURE;
+    }
+
+    /* print the value */
+    value = lyd_get_value(node->tree);
+    if (file) {
+        fprintf(file, "%s", value ? value : "");
+    } else if (value) {
+        fprintf(stdout, "%s\n", value);
+    }
+    sr_release_data(node);
+
+    /* cleanup */
+    if (file) {
+        fclose(file);
+    }
+    return EXIT_SUCCESS;
+}
+
+static int
 arg_is_file(const char *optarg)
 {
     return !access(optarg, F_OK);
@@ -664,7 +747,7 @@ main(int argc, char **argv)
     sr_session_ctx_t *sess = NULL;
     sr_datastore_t ds = SR_DS_RUNNING, source_ds;
     LYD_FORMAT format = LYD_UNKNOWN;
-    const char *module_name = NULL, *editor = NULL, *file_path = NULL, *xpath = NULL, *op_str;
+    const char *module_name = NULL, *editor = NULL, *file_path = NULL, *xpath = NULL, *op_str, *value = NULL;
     char *ptr;
     int r, rc = EXIT_FAILURE, opt, operation = 0, lock = 0, not_strict = 0, opaq = 0, timeout = 0, wd_opt = 0;
     uint32_t max_depth = 0;
@@ -677,6 +760,8 @@ main(int argc, char **argv)
         {"rpc",             optional_argument, NULL, 'R'},
         {"notification",    optional_argument, NULL, 'N'},
         {"copy-from",       required_argument, NULL, 'C'},
+        {"set",             required_argument, NULL, 'S'},
+        {"get",             required_argument, NULL, 'G'},
         {"datastore",       required_argument, NULL, 'd'},
         {"module",          required_argument, NULL, 'm'},
         {"xpath",           required_argument, NULL, 'x'},
@@ -687,6 +772,7 @@ main(int argc, char **argv)
         {"depth",           required_argument, NULL, 'p'},
         {"timeout",         required_argument, NULL, 't'},
         {"defaults",        required_argument, NULL, 'e'},
+        {"value",           required_argument, NULL, 'u'},
         {"verbosity",       required_argument, NULL, 'v'},
         {NULL,              0,                 NULL, 0},
     };
@@ -698,7 +784,7 @@ main(int argc, char **argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:d:m:x:f:lnop:t:e:v:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:S:G:d:m:x:f:lnop:t:e:u:v:", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             version_print();
@@ -785,6 +871,22 @@ main(int argc, char **argv)
             }
             operation = opt;
             break;
+        case 'S':
+            if (operation) {
+                error_print(0, "Operation already specified");
+                goto cleanup;
+            }
+            xpath = optarg;
+            operation = opt;
+            break;
+        case 'G':
+            if (operation) {
+                error_print(0, "Operation already specified");
+                goto cleanup;
+            }
+            xpath = optarg;
+            operation = opt;
+            break;
         case 'd':
             if (arg_get_ds(optarg, &ds)) {
                 goto cleanup;
@@ -861,6 +963,9 @@ main(int argc, char **argv)
                 goto cleanup;
             }
             break;
+        case 'u':
+            value = optarg;
+            break;
         case 'v':
             if (!strcmp(optarg, "none")) {
                 log_level = SR_LL_NONE;
@@ -902,6 +1007,9 @@ main(int argc, char **argv)
             break;
         case 'C':
             op_str = "Copy-config";
+            break;
+        case 'S':
+            op_str = "Set";
             break;
         default:
             op_str = NULL;
@@ -948,6 +1056,12 @@ main(int argc, char **argv)
         break;
     case 'C':
         rc = op_copy(sess, file_path, source_ds, module_name, format, not_strict, timeout);
+        break;
+    case 'S':
+        rc = op_set(sess, xpath, value, timeout);
+        break;
+    case 'G':
+        rc = op_get(sess, xpath, value, timeout);
         break;
     case 0:
         error_print(0, "No operation specified");

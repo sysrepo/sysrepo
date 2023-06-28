@@ -3,7 +3,7 @@
 .\" groff -man -Tascii sysrepocfg.1
 .\"
 
-.TH SYSREPOCFG 1 "2023-06-13" "sysrepo"
+.TH SYSREPOCFG 1 "2023-06-28" "sysrepo"
 .SH NAME
 sysrepocfg \- sysrepo configuration manipulation tool
 .
@@ -44,6 +44,12 @@ Send a notification in a file or using a text editor.
 .TP
 .BR "\-C\fR,\fP \-\^\-copy\-from \fIPATH\fP/\fISOURCE-DATASTORE\fP"
 Perform a copy-config from a file or a datastore.
+.LP
+.BR "\-S\fR,\fP \-\^\-set \fIXPATH\fP"
+Set the value of a node on the XPath. It is read from STDIN unless '--value' parameter is used.
+.LP
+.BR "\-G\fR,\fP \-\^\-get \fIXPATH\fP"
+Get the value of a node on the XPath. It is written to STDOUT unless '--value' parameter is used.
 .LP
 When both a \fIPATH\fP and \fIEDITOR\fP/\fISOURCE-DATASTORE\fP can be specified,
 it is always first checked that the file exists. If not, then it is interpreted as
@@ -103,6 +109,9 @@ Accepted by \fBexport\fP, \fBedit\fP, \fBrpc\fP op.
  \[bu] \fBreport-all-tagged\fP
  \[bu] \fBexplicit\fP
  \[bu] \fBimplicit-tagged\fP
+.TP
+.BR "\-u\fR,\fP \-\^\-value \fIVALUE/PATH\fP"
+Node value to read or the file to write the value into. Accepted by set/get op.
 .TP
 .BR "\-v\fR,\fP \-\^\-verbosity \fILEVEL\fP"
 Change verbosity to a level. Accepted by \fBall\fP op. \fILEVEL\fP can be a string or a number:
