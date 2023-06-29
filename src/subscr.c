@@ -1464,7 +1464,7 @@ cleanup_subs_unlock:
 }
 
 sr_error_info_t *
-sr_subscr_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock)
+sr_subscr_del(sr_subscription_ctx_t *subscr, uint32_t sub_id)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
@@ -1475,14 +1475,10 @@ sr_subscr_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has
     struct modsub_notif_s *notif_sub;
     struct opsub_rpc_s *rpc_sub;
 
-    assert((has_subs_lock == SR_LOCK_NONE) || (has_subs_lock == SR_LOCK_READ_UPGR));
-
-    if (has_subs_lock == SR_LOCK_NONE) {
-        /* SUBS READ UPGR LOCK */
-        if ((err_info = sr_rwlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, subscr->conn->cid,
-                __func__, NULL, NULL))) {
-            return err_info;
-        }
+    /* SUBS READ UPGR LOCK */
+    if ((err_info = sr_rwlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, subscr->conn->cid,
+            __func__, NULL, NULL))) {
+        return err_info;
     }
 
 subs_del:
@@ -1632,10 +1628,8 @@ finish:
     }
 
 cleanup:
-    if (has_subs_lock == SR_LOCK_NONE) {
-        /* SUBS READ UPGR UNLOCK */
-        sr_rwunlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, subscr->conn->cid, __func__);
-    }
+    /* SUBS READ UPGR UNLOCK */
+    sr_rwunlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, subscr->conn->cid, __func__);
 
     return err_info;
 }

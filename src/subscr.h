@@ -246,10 +246,9 @@ sr_error_info_t *sr_subscr_session_del(sr_subscription_ctx_t *subscr, sr_session
  *
  * @param[in,out] subscr Subscription structure.
  * @param[in] sub_id Subscription ID of the subscription to remove, 0 for all the subscriptions.
- * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_subscr_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock);
+sr_error_info_t *sr_subscr_del(sr_subscription_ctx_t *subscr, uint32_t sub_id);
 
 /**
  * @brief Delete a notification subscription from @p subscr because it's stop-time has been reached.

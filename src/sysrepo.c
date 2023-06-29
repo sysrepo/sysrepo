@@ -4744,7 +4744,7 @@ sr_unsubscribe_sub(sr_subscription_ctx_t *subscription, uint32_t sub_id)
         return sr_api_ret(NULL, err_info);
     }
 
-    err_info = sr_subscr_del(subscription, sub_id, SR_LOCK_NONE);
+    err_info = sr_subscr_del(subscription, sub_id);
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(subscription->conn, SR_LOCK_READ, 0, __func__);
@@ -4851,7 +4851,7 @@ _sr_unsubscribe(sr_subscription_ctx_t *subscription)
     }
 
     /* delete a specific subscription or delete all subscriptions which also removes this subscription from all the sessions */
-    err_info = sr_subscr_del(subscription, 0, SR_LOCK_NONE);
+    err_info = sr_subscr_del(subscription, 0);
 
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(subscription->conn, SR_LOCK_READ, 0, __func__);
