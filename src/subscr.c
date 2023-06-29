@@ -1312,7 +1312,7 @@ cleanup_unlock:
 }
 
 sr_error_info_t *
-sr_subscr_session_del(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock)
+sr_subscr_del_session(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
@@ -1464,7 +1464,7 @@ cleanup_subs_unlock:
 }
 
 sr_error_info_t *
-sr_subscr_del(sr_subscription_ctx_t *subscr, uint32_t sub_id)
+sr_subscr_del_id(sr_subscription_ctx_t *subscr, uint32_t sub_id)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
@@ -1481,27 +1481,146 @@ sr_subscr_del(sr_subscription_ctx_t *subscr, uint32_t sub_id)
         return err_info;
     }
 
-subs_del:
     /* change subscriptions */
     for (i = 0; i < subscr->change_sub_count; ++i) {
         change_sub = &subscr->change_subs[i];
         for (j = 0; j < change_sub->sub_count; ++j) {
-            if (sub_id) {
-                /* removing a specific subscription */
-                if (change_sub->subs[j].sub_id == sub_id) {
-                    /* found it */
-                    del_sub_sess = change_sub->subs[j].sess;
-                    if ((err_info = sr_change_sub_del(subscr, change_sub, j, SR_LOCK_READ_UPGR))) {
-                        goto cleanup;
-                    }
-                    goto finish;
-                } else {
-                    continue;
+            /* removing a specific subscription */
+            if (change_sub->subs[j].sub_id == sub_id) {
+                /* found it */
+                del_sub_sess = change_sub->subs[j].sess;
+                if ((err_info = sr_change_sub_del(subscr, change_sub, j, SR_LOCK_READ_UPGR))) {
+                    goto cleanup;
                 }
+                goto finish;
+            } else {
+                continue;
             }
+        }
+    }
 
+    /* operational get subscriptions */
+    for (i = 0; i < subscr->oper_get_sub_count; ++i) {
+        oper_get_sub = &subscr->oper_get_subs[i];
+        for (j = 0; j < oper_get_sub->sub_count; ++j) {
+            /* removing a specific subscription */
+            if (oper_get_sub->subs[j].sub_id == sub_id) {
+                /* found it */
+                del_sub_sess = oper_get_sub->subs[j].sess;
+                if ((err_info = sr_oper_get_sub_del(subscr, oper_get_sub, j, SR_LOCK_READ_UPGR))) {
+                    goto cleanup;
+                }
+                goto finish;
+            } else {
+                continue;
+            }
+        }
+    }
+
+    /* operational poll subscriptions */
+    for (i = 0; i < subscr->oper_poll_sub_count; ++i) {
+        oper_poll_sub = &subscr->oper_poll_subs[i];
+        for (j = 0; j < oper_poll_sub->sub_count; ++j) {
+            /* removing a specific subscription */
+            if (oper_poll_sub->subs[j].sub_id == sub_id) {
+                /* found it */
+                del_sub_sess = oper_poll_sub->subs[j].sess;
+                if ((err_info = sr_oper_poll_sub_del(subscr, oper_poll_sub, j, SR_LOCK_READ_UPGR))) {
+                    goto cleanup;
+                }
+                goto finish;
+            } else {
+                continue;
+            }
+        }
+    }
+
+    /* notification subscriptions */
+    for (i = 0; i < subscr->notif_sub_count; ++i) {
+        notif_sub = &subscr->notif_subs[i];
+        for (j = 0; j < notif_sub->sub_count; ++j) {
+            /* removing a specific subscription */
+            if (notif_sub->subs[j].sub_id == sub_id) {
+                /* found it */
+                del_sub_sess = notif_sub->subs[j].sess;
+                if ((err_info = sr_notif_sub_del(subscr, notif_sub, j, SR_EV_NOTIF_TERMINATED, SR_LOCK_READ_UPGR))) {
+                    goto cleanup;
+                }
+                goto finish;
+            } else {
+                continue;
+            }
+        }
+    }
+
+    /* RPC/action subscriptions */
+    for (i = 0; i < subscr->rpc_sub_count; ++i) {
+        rpc_sub = &subscr->rpc_subs[i];
+        for (j = 0; j < rpc_sub->sub_count; ++j) {
+            /* removing a specific subscription */
+            if (rpc_sub->subs[j].sub_id == sub_id) {
+                /* found it */
+                del_sub_sess = rpc_sub->subs[j].sess;
+                if ((err_info = sr_rpc_sub_del(subscr, rpc_sub, j, SR_LOCK_READ_UPGR))) {
+                    goto cleanup;
+                }
+                goto finish;
+            } else {
+                continue;
+            }
+        }
+    }
+
+finish:
+    if (del_sub_sess) {
+        /* remove the subscription from the session if the only subscription */
+        if (!sr_subscr_session_count(subscr, del_sub_sess, SR_LOCK_READ_UPGR)) {
+            if ((err_info = sr_ptr_del(&del_sub_sess->ptr_lock, (void ***)&del_sub_sess->subscriptions,
+                    &del_sub_sess->subscription_count, subscr))) {
+                goto cleanup;
+            }
+        }
+    } else {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Subscription with ID %" PRIu32 " was not found.", sub_id);
+    }
+
+cleanup:
+    /* SUBS READ UPGR UNLOCK */
+    sr_rwunlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, subscr->conn->cid, __func__);
+
+    return err_info;
+}
+
+sr_error_info_t *
+sr_subscr_del_all(sr_subscription_ctx_t *subscr)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i, j;
+    sr_session_ctx_t *sess;
+    struct modsub_change_s *change_sub;
+    struct modsub_operget_s *oper_get_sub;
+    struct modsub_operpoll_s *oper_poll_sub;
+    struct modsub_notif_s *notif_sub;
+    struct opsub_rpc_s *rpc_sub;
+
+subs_del:
+    /* SUBS READ LOCK */
+    if ((err_info = sr_rwlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscr->conn->cid,
+            __func__, NULL, NULL))) {
+        return err_info;
+    }
+
+    /* change subscriptions */
+    for (i = 0; i < subscr->change_sub_count; ++i) {
+        change_sub = &subscr->change_subs[i];
+        for (j = 0; j < change_sub->sub_count; ++j) {
             /* remove all subscriptions in subscr from the session */
-            if ((err_info = sr_subscr_session_del(subscr, change_sub->subs[j].sess, SR_LOCK_READ_UPGR))) {
+            sess = change_sub->subs[j].sess;
+
+            /* SUBS READ UNLOCK */
+            sr_rwunlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscr->conn->cid, __func__);
+
+            if ((err_info = sr_subscr_del_session(subscr, sess, SR_LOCK_NONE))) {
                 goto cleanup;
             }
             goto subs_del;
@@ -1512,22 +1631,13 @@ subs_del:
     for (i = 0; i < subscr->oper_get_sub_count; ++i) {
         oper_get_sub = &subscr->oper_get_subs[i];
         for (j = 0; j < oper_get_sub->sub_count; ++j) {
-            if (sub_id) {
-                /* removing a specific subscription */
-                if (oper_get_sub->subs[j].sub_id == sub_id) {
-                    /* found it */
-                    del_sub_sess = oper_get_sub->subs[j].sess;
-                    if ((err_info = sr_oper_get_sub_del(subscr, oper_get_sub, j, SR_LOCK_READ_UPGR))) {
-                        goto cleanup;
-                    }
-                    goto finish;
-                } else {
-                    continue;
-                }
-            }
-
             /* remove all subscriptions in subscr from the session */
-            if ((err_info = sr_subscr_session_del(subscr, oper_get_sub->subs[j].sess, SR_LOCK_READ_UPGR))) {
+            sess = oper_get_sub->subs[j].sess;
+
+            /* SUBS READ UNLOCK */
+            sr_rwunlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscr->conn->cid, __func__);
+
+            if ((err_info = sr_subscr_del_session(subscr, sess, SR_LOCK_NONE))) {
                 goto cleanup;
             }
             goto subs_del;
@@ -1538,22 +1648,13 @@ subs_del:
     for (i = 0; i < subscr->oper_poll_sub_count; ++i) {
         oper_poll_sub = &subscr->oper_poll_subs[i];
         for (j = 0; j < oper_poll_sub->sub_count; ++j) {
-            if (sub_id) {
-                /* removing a specific subscription */
-                if (oper_poll_sub->subs[j].sub_id == sub_id) {
-                    /* found it */
-                    del_sub_sess = oper_poll_sub->subs[j].sess;
-                    if ((err_info = sr_oper_poll_sub_del(subscr, oper_poll_sub, j, SR_LOCK_READ_UPGR))) {
-                        goto cleanup;
-                    }
-                    goto finish;
-                } else {
-                    continue;
-                }
-            }
-
             /* remove all subscriptions in subscr from the session */
-            if ((err_info = sr_subscr_session_del(subscr, oper_poll_sub->subs[j].sess, SR_LOCK_READ_UPGR))) {
+            sess = oper_poll_sub->subs[j].sess;
+
+            /* SUBS READ UNLOCK */
+            sr_rwunlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscr->conn->cid, __func__);
+
+            if ((err_info = sr_subscr_del_session(subscr, sess, SR_LOCK_NONE))) {
                 goto cleanup;
             }
             goto subs_del;
@@ -1564,22 +1665,13 @@ subs_del:
     for (i = 0; i < subscr->notif_sub_count; ++i) {
         notif_sub = &subscr->notif_subs[i];
         for (j = 0; j < notif_sub->sub_count; ++j) {
-            if (sub_id) {
-                /* removing a specific subscription */
-                if (notif_sub->subs[j].sub_id == sub_id) {
-                    /* found it */
-                    del_sub_sess = notif_sub->subs[j].sess;
-                    if ((err_info = sr_notif_sub_del(subscr, notif_sub, j, SR_EV_NOTIF_TERMINATED, SR_LOCK_READ_UPGR))) {
-                        goto cleanup;
-                    }
-                    goto finish;
-                } else {
-                    continue;
-                }
-            }
-
             /* remove all subscriptions in subscr from the session */
-            if ((err_info = sr_subscr_session_del(subscr, notif_sub->subs[j].sess, SR_LOCK_READ_UPGR))) {
+            sess = notif_sub->subs[j].sess;
+
+            /* SUBS READ UNLOCK */
+            sr_rwunlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscr->conn->cid, __func__);
+
+            if ((err_info = sr_subscr_del_session(subscr, sess, SR_LOCK_NONE))) {
                 goto cleanup;
             }
             goto subs_del;
@@ -1590,46 +1682,22 @@ subs_del:
     for (i = 0; i < subscr->rpc_sub_count; ++i) {
         rpc_sub = &subscr->rpc_subs[i];
         for (j = 0; j < rpc_sub->sub_count; ++j) {
-            if (sub_id) {
-                /* removing a specific subscription */
-                if (rpc_sub->subs[j].sub_id == sub_id) {
-                    /* found it */
-                    del_sub_sess = rpc_sub->subs[j].sess;
-                    if ((err_info = sr_rpc_sub_del(subscr, rpc_sub, j, SR_LOCK_READ_UPGR))) {
-                        goto cleanup;
-                    }
-                    goto finish;
-                } else {
-                    continue;
-                }
-            }
-
             /* remove all subscriptions in subscr from the session */
-            if ((err_info = sr_subscr_session_del(subscr, rpc_sub->subs[i].sess, SR_LOCK_READ_UPGR))) {
+            sess = rpc_sub->subs[i].sess;
+
+            /* SUBS READ UNLOCK */
+            sr_rwunlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscr->conn->cid, __func__);
+
+            if ((err_info = sr_subscr_del_session(subscr, sess, SR_LOCK_NONE))) {
                 goto cleanup;
             }
             goto subs_del;
         }
     }
 
-finish:
-    if (sub_id) {
-        if (del_sub_sess) {
-            /* remove the subscription from the session if the only subscription */
-            if (!sr_subscr_session_count(subscr, del_sub_sess, SR_LOCK_READ_UPGR)) {
-                if ((err_info = sr_ptr_del(&del_sub_sess->ptr_lock, (void ***)&del_sub_sess->subscriptions,
-                        &del_sub_sess->subscription_count, subscr))) {
-                    goto cleanup;
-                }
-            }
-        } else {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Subscription with ID %" PRIu32 " was not found.", sub_id);
-        }
-    }
-
 cleanup:
-    /* SUBS READ UPGR UNLOCK */
-    sr_rwunlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, subscr->conn->cid, __func__);
+    /* SUBS READ UNLOCK */
+    sr_rwunlock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ, subscr->conn->cid, __func__);
 
     return err_info;
 }

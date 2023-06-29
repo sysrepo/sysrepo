@@ -239,16 +239,24 @@ int sr_subscr_session_count(sr_subscription_ctx_t *subscr, sr_session_ctx_t *ses
  * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_subscr_session_del(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock);
+sr_error_info_t *sr_subscr_del_session(sr_subscription_ctx_t *subscr, sr_session_ctx_t *sess, sr_lock_mode_t has_subs_lock);
 
 /**
- * @brief Delete a specific or all subscriptions in @p subscr of all the sessions.
+ * @brief Delete a specific subscription in @p subscr.
  *
  * @param[in,out] subscr Subscription structure.
- * @param[in] sub_id Subscription ID of the subscription to remove, 0 for all the subscriptions.
+ * @param[in] sub_id Subscription ID of the subscription to remove.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_subscr_del(sr_subscription_ctx_t *subscr, uint32_t sub_id);
+sr_error_info_t *sr_subscr_del_id(sr_subscription_ctx_t *subscr, uint32_t sub_id);
+
+/**
+ * @brief Delete all subscriptions in @p subscr of all the sessions.
+ *
+ * @param[in,out] subscr Subscription structure.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_subscr_del_all(sr_subscription_ctx_t *subscr);
 
 /**
  * @brief Delete a notification subscription from @p subscr because it's stop-time has been reached.
