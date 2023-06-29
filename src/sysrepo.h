@@ -1304,7 +1304,7 @@ int sr_module_change_set_order(sr_conn_ctx_t *conn, const char *module_name, sr_
  * Required READ access.
  *
  * @param[in] conn Connection to use.
- * @param[in] module_name Name of the module whose order to change.
+ * @param[in] module_name Name of the module whose order to get.
  * @param[in] ds Affected datastore.
  * @param[out] priority Priority of the module.
  * @return Error code (::SR_ERR_OK on success).
