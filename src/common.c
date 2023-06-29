@@ -127,7 +127,6 @@ sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *d
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
-    int found = 0;
 
     /* PTR LOCK */
     if ((err_info = sr_mlock(ptr_lock, -1, __func__, NULL, NULL))) {
@@ -146,13 +145,8 @@ sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *d
                 free(*ptrs);
                 *ptrs = NULL;
             }
-            found = 1;
             break;
         }
-    }
-    if (!found) {
-        /* it is written at least */
-        SR_ERRINFO_INT(&err_info);
     }
 
     /* PTR UNLOCK */

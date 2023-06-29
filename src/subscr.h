@@ -261,14 +261,14 @@ sr_error_info_t *sr_subscr_del_all(sr_subscription_ctx_t *subscr);
 /**
  * @brief Delete a notification subscription from @p subscr because it's stop-time has been reached.
  *
- * @param[in,out] subscr Subscription structure.
- * @param[in] notif_sub Specific notification subscriptions to delete from.
- * @param[in] idx Index of the subscription in @p notif_sub to delete.
+ * @param[in,out] subscr Subscription structure to modify.
+ * @param[in] idx1 Notif subscription index in @p subscr.
+ * @param[in] idx2 Specific notif subscription index to remove.
  * @param[in] has_subs_lock What kind of SUBS lock is held.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_subscr_notif_del_stop_time(sr_subscription_ctx_t *subscr, struct modsub_notif_s *notif_sub,
-        uint32_t idx, sr_lock_mode_t has_subs_lock);
+sr_error_info_t *sr_subscr_notif_del_stop_time(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2,
+        sr_lock_mode_t has_subs_lock);
 
 /**
  * @brief Find notifications subscribers for a module.
