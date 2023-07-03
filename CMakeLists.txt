@@ -369,6 +369,7 @@ target_link_libraries(sysrepo-plugind sysrepo)
 
 # include repository files with highest priority
 include_directories("${PROJECT_SOURCE_DIR}/src")
+include_directories("${PROJECT_SOURCE_DIR}/src/plugins")
 include_directories(${PROJECT_BINARY_DIR})
 
 # dependencies
@@ -433,7 +434,6 @@ endif()
 
 # generate files
 configure_file("${PROJECT_SOURCE_DIR}/src/config.h.in" "${PROJECT_BINARY_DIR}/config.h" ESCAPE_QUOTES @ONLY)
-configure_file("${PROJECT_SOURCE_DIR}/src/plugins/common_json.h.in" "${PROJECT_BINARY_DIR}/common_json.h" ESCAPE_QUOTES @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/sysrepo.pc.in" "${PROJECT_BINARY_DIR}/sysrepo.pc" @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/bin_common.h.in" "${PROJECT_BINARY_DIR}/bin_common.h" ESCAPE_QUOTES @ONLY)
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/sysrepo-plugind.service.in" "${PROJECT_BINARY_DIR}/sysrepo-plugind.service" @ONLY)
