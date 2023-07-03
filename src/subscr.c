@@ -125,13 +125,10 @@ error:
 }
 
 void
-sr_subscr_change_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock)
+sr_subscr_change_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id)
 {
     uint32_t i, j;
     struct modsub_change_s *change_sub;
-
-    assert(has_subs_lock == SR_LOCK_WRITE);
-    (void)has_subs_lock;
 
     for (i = 0; i < subscr->change_sub_count; ++i) {
         change_sub = &subscr->change_subs[i];
@@ -260,13 +257,10 @@ error:
 }
 
 void
-sr_subscr_oper_get_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock)
+sr_subscr_oper_get_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id)
 {
     uint32_t i, j;
     struct modsub_operget_s *oper_get_sub;
-
-    assert(has_subs_lock == SR_LOCK_WRITE);
-    (void)has_subs_lock;
 
     for (i = 0; i < subscr->oper_get_sub_count; ++i) {
         oper_get_sub = &subscr->oper_get_subs[i];
@@ -387,13 +381,10 @@ error:
 }
 
 void
-sr_subscr_oper_poll_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock)
+sr_subscr_oper_poll_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id)
 {
     uint32_t i, j;
     struct modsub_operpoll_s *oper_poll_sub;
-
-    assert(has_subs_lock == SR_LOCK_WRITE);
-    (void)has_subs_lock;
 
     for (i = 0; i < subscr->oper_poll_sub_count; ++i) {
         oper_poll_sub = &subscr->oper_poll_subs[i];
@@ -534,31 +525,15 @@ error:
 }
 
 void
-sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_ev_notif_type_t notif_ev,
-        sr_lock_mode_t has_subs_lock)
+sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_ev_notif_type_t notif_ev)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, j;
     struct modsub_notif_s *notif_sub;
     struct modsub_notifsub_s *sub;
     sr_session_ctx_t *ev_sess = NULL;
-    sr_lock_mode_t cur_mode = has_subs_lock;
     struct timespec cur_time;
     sr_multi_sub_shm_t *multi_sub_shm;
-
-    assert(has_subs_lock == SR_LOCK_WRITE);
-    (void)has_subs_lock;
-
-    if (has_subs_lock == SR_LOCK_WRITE) {
-        /* SUBS READ UPGR LOCK DOWNGRADE */
-        if ((err_info = sr_rwrelock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_READ_UPGR, subscr->conn->cid,
-                __func__, NULL, NULL))) {
-            sr_errinfo_free(&err_info);
-        } else {
-            cur_mode = SR_LOCK_READ_UPGR;
-        }
-    }
-    /* we should always have READ UPGR lock now */
 
     /* create event session */
     if ((err_info = _sr_session_start(subscr->conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, NULL, &ev_sess))) {
@@ -576,15 +551,7 @@ sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_ev_no
                 continue;
             }
 
-            /* SUBS WRITE LOCK UPGRADE */
-            if ((err_info = sr_rwrelock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, subscr->conn->cid,
-                    __func__, NULL, NULL))) {
-                sr_errinfo_free(&err_info);
-            } else {
-                cur_mode = SR_LOCK_WRITE;
-            }
-
-            /* we need the write lock to prevent 1) ignoring a notification and then processing it and
+            /* we must be holding SUBS WRITE lock to prevent 1) ignoring a notification and then processing it and
              * 2) processing a standard notification after signalling subscription termination */
 
             multi_sub_shm = (sr_multi_sub_shm_t *)notif_sub->sub_shm.addr;
@@ -639,14 +606,6 @@ sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_ev_no
     assert(0);
 
 cleanup:
-    if (cur_mode != has_subs_lock) {
-        /* SUBS RELOCK */
-        if ((err_info = sr_rwrelock(&subscr->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, has_subs_lock, subscr->conn->cid,
-                __func__, NULL, NULL))) {
-            sr_errinfo_free(&err_info);
-        }
-    }
-
     sr_session_stop(ev_sess);
 }
 
@@ -745,13 +704,10 @@ error:
 }
 
 void
-sr_subscr_rpc_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock)
+sr_subscr_rpc_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id)
 {
     uint32_t i, j;
     struct opsub_rpc_s *rpc_sub;
-
-    assert(has_subs_lock == SR_LOCK_WRITE);
-    (void)has_subs_lock;
 
     for (i = 0; i < subscr->rpc_sub_count; ++i) {
         rpc_sub = &subscr->rpc_subs[i];
@@ -1028,7 +984,7 @@ sr_change_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2, s
     }
 
     /* remove the subscription from the subscription structure */
-    sr_subscr_change_sub_del(subscr, sub_id, subs_lock);
+    sr_subscr_change_sub_del(subscr, sub_id);
 
 cleanup_unlock:
     /* CHANGE SUB WRITE UNLOCK */
@@ -1129,7 +1085,7 @@ sr_oper_get_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2,
     }
 
     /* remove the subscription from the subscription structure */
-    sr_subscr_oper_get_sub_del(subscr, sub_id, subs_lock);
+    sr_subscr_oper_get_sub_del(subscr, sub_id);
 
 cleanup_unlock:
     /* OPER GET SUB WRITE UNLOCK */
@@ -1223,7 +1179,7 @@ sr_oper_poll_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2
     }
 
     /* remove the subscription from the subscription structure */
-    sr_subscr_oper_poll_sub_del(subscr, sub_id, subs_lock);
+    sr_subscr_oper_poll_sub_del(subscr, sub_id);
 
     /* remove the oper cache entry from the connection after the subscription was removed from the structure */
     sr_conn_oper_cache_del(subscr->conn, sub_id);
@@ -1321,7 +1277,7 @@ sr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2, sr
     }
 
     /* remove the subscription from the subscription structure */
-    sr_subscr_notif_sub_del(subscr, sub_id, notif_ev, subs_lock);
+    sr_subscr_notif_sub_del(subscr, sub_id, notif_ev);
 
 cleanup_unlock:
     /* NOTIF SUB WRITE UNLOCK */
@@ -1453,7 +1409,7 @@ sr_rpc_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2, sr_l
     }
 
     /* remove the subscription from the subscription structure */
-    sr_subscr_rpc_sub_del(subscr, sub_id, subs_lock);
+    sr_subscr_rpc_sub_del(subscr, sub_id);
 
 cleanup_unlock:
     /* RPC SUB WRITE UNLOCK */

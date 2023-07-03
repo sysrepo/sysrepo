@@ -5245,7 +5245,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
     goto cleanup_unlock2;
 
 error2:
-    sr_subscr_change_sub_del(*subscription, sub_id, SR_LOCK_WRITE);
+    sr_subscr_change_sub_del(*subscription, sub_id);
 
 error1:
     if ((tmp_err = sr_shmext_change_sub_del(conn, shm_mod, session->ds, sub_id))) {
@@ -5850,7 +5850,7 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     goto cleanup_unlock2;
 
 error2:
-    sr_subscr_rpc_sub_del(*subscription, sub_id, SR_LOCK_WRITE);
+    sr_subscr_rpc_sub_del(*subscription, sub_id);
 
 error1:
     if (is_ext) {
@@ -6493,7 +6493,7 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
     goto cleanup_unlock2;
 
 error2:
-    sr_subscr_notif_sub_del(*subscription, sub_id, SR_EV_NOTIF_TERMINATED, SR_LOCK_WRITE);
+    sr_subscr_notif_sub_del(*subscription, sub_id, SR_EV_NOTIF_TERMINATED);
 
 error1:
     if ((tmp_err = sr_shmext_notif_sub_del(conn, shm_mod, sub_id))) {
@@ -6994,7 +6994,7 @@ error3:
     }
 
 error2:
-    sr_subscr_oper_get_sub_del(*subscription, sub_id, SR_LOCK_WRITE);
+    sr_subscr_oper_get_sub_del(*subscription, sub_id);
 
 error1:
     if ((tmp_err = sr_shmext_oper_get_sub_del(conn, shm_mod, sub_id))) {
@@ -7125,7 +7125,7 @@ error4:
     }
 
 error3:
-    sr_subscr_oper_poll_sub_del(*subscription, sub_id, SR_LOCK_WRITE);
+    sr_subscr_oper_poll_sub_del(*subscription, sub_id);
 
 error2:
     if ((tmp_err = sr_shmext_oper_poll_sub_del(conn, shm_mod, sub_id))) {

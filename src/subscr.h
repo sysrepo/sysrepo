@@ -47,9 +47,8 @@ sr_error_info_t *sr_subscr_change_sub_add(sr_subscription_ctx_t *subscr, uint32_
  *
  * @param[in,out] subscr Subscription structure.
  * @param[in] sub_id Unique sub ID.
- * @param[in] has_subs_lock What kind of SUBS lock is held.
  */
-void sr_subscr_change_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock);
+void sr_subscr_change_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id);
 
 /**
  * @brief Add an operational get subscription into a subscription structure.
@@ -73,9 +72,8 @@ sr_error_info_t *sr_subscr_oper_get_sub_add(sr_subscription_ctx_t *subscr, uint3
  *
  * @param[in,out] subscr Subscription structure.
  * @param[in] sub_id Unique sub ID.
- * @param[in] has_subs_lock What kind of SUBS lock is held.
  */
-void sr_subscr_oper_get_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock);
+void sr_subscr_oper_get_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id);
 
 /**
  * @brief Add an operational poll subscription into a subscription structure.
@@ -99,9 +97,8 @@ sr_error_info_t *sr_subscr_oper_poll_sub_add(sr_subscription_ctx_t *subscr, uint
  *
  * @param[in,out] subscr Subscription structure.
  * @param[in] sub_id Unique sub ID.
- * @param[in] has_subs_lock What kind of SUBS lock is held.
  */
-void sr_subscr_oper_poll_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock);
+void sr_subscr_oper_poll_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id);
 
 /**
  * @brief Add a notification subscription into a subscription structure.
@@ -132,10 +129,8 @@ sr_error_info_t *sr_subscr_notif_sub_add(sr_subscription_ctx_t *subscr, uint32_t
  * @param[in,out] subscr Subscription structure.
  * @param[in] sub_id Unique sub ID.
  * @param[in] notif_ev Generated notification event.
- * @param[in] has_subs_lock What kind of SUBS lock is held.
  */
-void sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_ev_notif_type_t notif_ev,
-        sr_lock_mode_t has_subs_lock);
+void sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_ev_notif_type_t notif_ev);
 
 /**
  * @brief Add an RPC subscription into a subscription structure.
@@ -162,9 +157,8 @@ sr_error_info_t *sr_subscr_rpc_sub_add(sr_subscription_ctx_t *subscr, uint32_t s
  *
  * @param[in,out] subscr Subscription structure.
  * @param[in] sub_id Unique sub ID.
- * @param[in] has_subs_lock What kind of SUBS lock is held.
  */
-void sr_subscr_rpc_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_lock_mode_t has_subs_lock);
+void sr_subscr_rpc_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id);
 
 /**
  * @brief Find a specific change subscription in a subscription structure.
