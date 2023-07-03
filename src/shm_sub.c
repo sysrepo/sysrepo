@@ -2716,7 +2716,7 @@ sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, struct
     }
 
     /* check that there is a subscriber */
-    if ((err_info = sr_notif_find_subscriber(conn, ly_mod->name, &notif_subs, &notif_sub_count, &sub_cid))) {
+    if ((err_info = sr_notif_find_subscriber(conn, ly_mod->name, &notif_subs, &notif_sub_count, NULL))) {
         goto cleanup_ext_unlock;
     }
 
@@ -2747,10 +2747,26 @@ sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, struct
     }
     multi_sub_shm = (sr_multi_sub_shm_t *)shm_sub.addr;
 
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+    /* do not wait for previous events with EXT lock */
+
     /* SUB WRITE LOCK */
     if ((err_info = sr_shmsub_notify_new_wrlock((sr_sub_shm_t *)multi_sub_shm, ly_mod->name, 0, conn->cid))) {
+        goto cleanup;
+    }
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        goto cleanup_sub_unlock;
+    }
+
+    /* reacquire the pointer to notif_subs but they should not be changed (only moved) */
+    if ((err_info = sr_notif_find_subscriber(conn, ly_mod->name, &notif_subs, &notif_sub_count, &sub_cid))) {
         goto cleanup_ext_unlock;
     }
+    assert(notif_sub_count);
 
     /* open sub data SHM */
     if ((err_info = sr_shmsub_data_open_remap(ly_mod->name, "notif", -1, &shm_data_sub, 0))) {
