@@ -1445,6 +1445,15 @@ int sr_get_change_tree_next(sr_session_ctx_t *session, sr_change_iter_t *iter, s
  */
 void sr_free_change_iter(sr_change_iter_t *iter);
 
+/**
+ * @brief Get the changes directly in the form of a diff in module-change callbacks.
+ * It __cannot__ be used outside the callback.
+ *
+ * @param[in] session Implicit session provided in the callbacks (::sr_module_change_cb). Will not work with other sessions.
+ * @return Const diff data tree, must not be modified.
+ */
+const struct lyd_node *sr_get_change_diff(sr_session_ctx_t *session);
+
 /** @} datasubs */
 
 ////////////////////////////////////////////////////////////////////////////////

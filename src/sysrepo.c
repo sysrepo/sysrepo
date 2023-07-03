@@ -5722,6 +5722,20 @@ sr_free_change_iter(sr_change_iter_t *iter)
     free(iter);
 }
 
+API const struct lyd_node *
+sr_get_change_diff(sr_session_ctx_t *session)
+{
+    if (!session || !SR_IS_EVENT_SESS(session)) {
+        return NULL;
+    }
+
+    if ((session->ev != SR_SUB_EV_ENABLED) && (session->ev != SR_SUB_EV_DONE)) {
+        return NULL;
+    }
+
+    return session->dt[session->ds].diff;
+}
+
 /**
  * @brief Subscribe to an RPC/action.
  *
