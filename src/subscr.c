@@ -1673,7 +1673,6 @@ sr_error_info_t *
 sr_subscr_del_all(sr_subscription_ctx_t *subscr)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t i, j;
     struct modsub_change_s *change_sub;
     struct modsub_operget_s *oper_get_sub;
     struct modsub_operpoll_s *oper_poll_sub;
@@ -1686,64 +1685,54 @@ sr_subscr_del_all(sr_subscription_ctx_t *subscr)
         return err_info;
     }
 
-subs_del:
     /* change subscriptions */
-    for (i = 0; i < subscr->change_sub_count; ++i) {
-        change_sub = &subscr->change_subs[i];
-        for (j = 0; j < change_sub->sub_count; ++j) {
-            /* remove all subscriptions in subscr from the session */
-            if ((err_info = sr_subscr_del_session(subscr, change_sub->subs[j].sess, SR_LOCK_READ))) {
-                goto cleanup;
-            }
-            goto subs_del;
+    while (subscr->change_sub_count) {
+        change_sub = &subscr->change_subs[0];
+        assert(change_sub->sub_count);
+
+        /* remove all subscriptions in subscr from the session */
+        if ((err_info = sr_subscr_del_session(subscr, change_sub->subs[0].sess, SR_LOCK_READ))) {
+            goto cleanup;
         }
     }
 
     /* operational get subscriptions */
-    for (i = 0; i < subscr->oper_get_sub_count; ++i) {
-        oper_get_sub = &subscr->oper_get_subs[i];
-        for (j = 0; j < oper_get_sub->sub_count; ++j) {
-            /* remove all subscriptions in subscr from the session */
-            if ((err_info = sr_subscr_del_session(subscr, oper_get_sub->subs[j].sess, SR_LOCK_READ))) {
-                goto cleanup;
-            }
-            goto subs_del;
+    while (subscr->oper_get_sub_count) {
+        oper_get_sub = &subscr->oper_get_subs[0];
+        assert(oper_get_sub->sub_count);
+
+        if ((err_info = sr_subscr_del_session(subscr, oper_get_sub->subs[0].sess, SR_LOCK_READ))) {
+            goto cleanup;
         }
     }
 
     /* operational poll subscriptions */
-    for (i = 0; i < subscr->oper_poll_sub_count; ++i) {
-        oper_poll_sub = &subscr->oper_poll_subs[i];
-        for (j = 0; j < oper_poll_sub->sub_count; ++j) {
-            /* remove all subscriptions in subscr from the session */
-            if ((err_info = sr_subscr_del_session(subscr, oper_poll_sub->subs[j].sess, SR_LOCK_READ))) {
-                goto cleanup;
-            }
-            goto subs_del;
+    while (subscr->oper_poll_sub_count) {
+        oper_poll_sub = &subscr->oper_poll_subs[0];
+        assert(oper_poll_sub->sub_count);
+
+        if ((err_info = sr_subscr_del_session(subscr, oper_poll_sub->subs[0].sess, SR_LOCK_READ))) {
+            goto cleanup;
         }
     }
 
     /* notification subscriptions */
-    for (i = 0; i < subscr->notif_sub_count; ++i) {
-        notif_sub = &subscr->notif_subs[i];
-        for (j = 0; j < notif_sub->sub_count; ++j) {
-            /* remove all subscriptions in subscr from the session */
-            if ((err_info = sr_subscr_del_session(subscr, notif_sub->subs[j].sess, SR_LOCK_READ))) {
-                goto cleanup;
-            }
-            goto subs_del;
+    while (subscr->notif_sub_count) {
+        notif_sub = &subscr->notif_subs[0];
+        assert(notif_sub->sub_count);
+
+        if ((err_info = sr_subscr_del_session(subscr, notif_sub->subs[0].sess, SR_LOCK_READ))) {
+            goto cleanup;
         }
     }
 
     /* RPC/action subscriptions */
-    for (i = 0; i < subscr->rpc_sub_count; ++i) {
-        rpc_sub = &subscr->rpc_subs[i];
-        for (j = 0; j < rpc_sub->sub_count; ++j) {
-            /* remove all subscriptions in subscr from the session */
-            if ((err_info = sr_subscr_del_session(subscr, rpc_sub->subs[i].sess, SR_LOCK_READ))) {
-                goto cleanup;
-            }
-            goto subs_del;
+    while (subscr->rpc_sub_count) {
+        rpc_sub = &subscr->rpc_subs[0];
+        assert(rpc_sub->sub_count);
+
+        if ((err_info = sr_subscr_del_session(subscr, rpc_sub->subs[0].sess, SR_LOCK_READ))) {
+            goto cleanup;
         }
     }
 
