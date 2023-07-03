@@ -1202,11 +1202,9 @@ sr_path_sub_shm(const char *mod_name, const char *suffix1, int64_t suffix2, char
     }
 
     if (suffix2 > -1) {
-        ret = asprintf(path, "%s/%ssub_%s.%s.%08x", SR_SHM_DIR,
-                prefix, mod_name, suffix1, (uint32_t)suffix2);
+        ret = asprintf(path, "%s/%ssub_%s.%s.%08x", SR_SHM_DIR, prefix, mod_name, suffix1, (uint32_t)suffix2);
     } else {
-        ret = asprintf(path, "%s/%ssub_%s.%s", SR_SHM_DIR,
-                prefix, mod_name, suffix1);
+        ret = asprintf(path, "%s/%ssub_%s.%s", SR_SHM_DIR, prefix, mod_name, suffix1);
     }
 
     if (ret == -1) {
@@ -1228,11 +1226,9 @@ sr_path_sub_data_shm(const char *mod_name, const char *suffix1, int64_t suffix2,
     }
 
     if (suffix2 > -1) {
-        ret = asprintf(path, "%s/%ssub_data_%s.%s.%08x", SR_SHM_DIR,
-                prefix, mod_name, suffix1, (uint32_t)suffix2);
+        ret = asprintf(path, "%s/%ssub_data_%s.%s.%08x", SR_SHM_DIR, prefix, mod_name, suffix1, (uint32_t)suffix2);
     } else {
-        ret = asprintf(path, "%s/%ssub_data_%s.%s", SR_SHM_DIR,
-                prefix, mod_name, suffix1);
+        ret = asprintf(path, "%s/%ssub_data_%s.%s", SR_SHM_DIR, prefix, mod_name, suffix1);
     }
 
     if (ret == -1) {
