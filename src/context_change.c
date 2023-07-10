@@ -668,7 +668,7 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
     LY_ERR lyrc;
 
     while ((new_ly_mod = ly_ctx_get_module_iter(new_ctx, &idx))) {
-        if (!new_ly_mod->implemented || sr_is_module_internal(new_ly_mod)) {
+        if (!new_ly_mod->implemented || !strcmp(new_ly_mod->name, "sysrepo") || !sr_module_has_data(new_ly_mod, 0)) {
             continue;
         }
 
