@@ -184,7 +184,6 @@ static int
 srpds_json_install_persistent(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm)
 {
     int rc = SR_ERR_OK;
-    struct lyd_node *root = NULL;
     char *path = NULL;
 
     /* check whether the file does not exist */
@@ -197,21 +196,13 @@ srpds_json_install_persistent(const struct lys_module *mod, sr_datastore_t ds, c
         goto cleanup;
     }
 
-    /* get default values */
-    if (lyd_new_implicit_module(&root, mod, LYD_IMPLICIT_NO_STATE, NULL)) {
-        srpjson_log_err_ly(srpds_name, mod->ctx);
-        rc = SR_ERR_LY;
-        goto cleanup;
-    }
-
-    /* print them into the file */
-    if ((rc = srpds_json_store_(mod, ds, root, owner, group, perm, 0))) {
+    /* print empty file to store permissions */
+    if ((rc = srpds_json_store_(mod, ds, NULL, owner, group, perm, 0))) {
         goto cleanup;
     }
 
 cleanup:
     free(path);
-    lyd_free_siblings(root);
     return rc;
 }
 
