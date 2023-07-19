@@ -87,6 +87,7 @@ typedef int (*srds_init)(const struct lys_module *mod, sr_datastore_t ds);
  * @brief Store data for a module. Either a diff can be applied manually or full new data tree stored.
  *
  * If @p ds is ::SR_DS_OPERATIONAL, it is actually an edit data tree that is being stored.
+ * May be called simultanously but with unique @p mod and @p ds pairs.
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
@@ -110,7 +111,7 @@ typedef void (*srds_recover)(const struct lys_module *mod, sr_datastore_t ds);
  * @brief Load data of a module.
  *
  * This callback will be called with @p ds ::SR_DS_CANDIDATE only if the datastore is modified, otherwise
- * ::SR_DS_RUNNING is used directly.
+ * ::SR_DS_RUNNING is used directly. May be called simultanously but with unique @p mod and @p ds pairs.
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
