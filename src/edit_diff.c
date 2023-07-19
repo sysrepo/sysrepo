@@ -1348,7 +1348,11 @@ sr_edit_insert(struct lyd_node **data_root, struct lyd_node *data_parent, struct
             }
         } else {
             /* insert anywhere, there are no instances */
-            lyrc = lyd_insert_sibling(*data_root, new_node, data_parent ? NULL : data_root);
+            if (data_parent) {
+                lyrc = lyd_insert_child(data_parent, new_node);
+            } else {
+                lyrc = lyd_insert_sibling(*data_root, new_node, data_root);
+            }
         }
         goto cleanup;
     }
