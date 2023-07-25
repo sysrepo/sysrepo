@@ -98,7 +98,7 @@ struct sr_shmsub_many_info_oper_get_s {
 };
 
 sr_error_info_t *
-sr_shmsub_create(const char *name, const char *suffix1, int64_t suffix2, size_t shm_struct_size)
+sr_shmsub_create(sr_conn_ctx_t *conn, const char *name, const char *suffix1, int64_t suffix2, size_t shm_struct_size)
 {
     sr_error_info_t *err_info = NULL;
     char *path = NULL;
@@ -126,7 +126,7 @@ sr_shmsub_create(const char *name, const char *suffix1, int64_t suffix2, size_t 
 
     /* initialize */
     sub_shm = (sr_sub_shm_t *)shm.addr;
-    if ((err_info = sr_rwlock_init(&sub_shm->lock, 1))) {
+    if ((err_info = sr_rwlock_init(&sub_shm->lock, 1, SR_RWLOCK_NEW_ID(conn), path))) {
         goto cleanup;
     }
 

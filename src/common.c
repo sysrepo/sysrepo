@@ -61,6 +61,45 @@
 #include "shm_sub.h"
 #include "sysrepo.h"
 
+#define SR_RWLOCK_ID(rwlock_ptr) (~(1u<<31) & (rwlock_ptr)->id)
+#define _SR_LOG_RWLOCK(rwlock_ptr, mode, cid, func, str)                   \
+    SR_LOG_DBG("%s: %s rwlock %" PRIu32 " in mode %d by CID %" PRIu32, \
+            func, str, SR_RWLOCK_ID(rwlock_ptr), mode, cid)
+
+static int
+sr_log_rwlock_enabled(sr_rwlock_t *rwlock)
+{
+    /* if MSB is set for lock_id, enable debugging */
+    if (rwlock->id > (1u << 31)) {
+        return 1;
+    }
+    static int sr_log_rwlock_is_enabled = -1;
+
+    if (sr_log_rwlock_is_enabled >= 0) {
+        return sr_log_rwlock_is_enabled;
+    }
+    /* First time, initialize and return */
+    return sr_log_rwlock_is_enabled = (getenv("SR_LOG_RWLOCK") != NULL);
+}
+
+#define SR_LOG_RWLOCK(rwlock_ptr, ...) sr_log_rwlock_enabled(rwlock_ptr) ? sr_log_rwlock_details(rwlock_ptr, __VA_ARGS__) : (void)0
+
+static void
+sr_log_rwlock_details(sr_rwlock_t *rwlock, sr_lock_mode_t mode, sr_cid_t cid, const char *func_name, const char *msg)
+{
+    size_t i, cursor = 0;
+    char buf[512] = "";
+
+    /* ensure that all rwlocks are initialized with sr_rwlock_init */
+    assert(rwlock->id);
+
+    cursor = snprintf(buf, sizeof(buf), "%s CID wr %" PRIu32 " upgr %" PRIu32 " rd", msg, rwlock->writer, rwlock->upgr);
+    for (i = 0; SR_IS_READER_VALID(rwlock, i) && cursor < sizeof(buf); i++) {
+        cursor += snprintf(buf + cursor, sizeof(buf) - cursor, " %" PRIu32 " [%" PRIu32 "]", rwlock->readers[i], rwlock->read_count[i]);
+    }
+    _SR_LOG_RWLOCK(rwlock, mode, cid, func_name, buf);
+}
+
 /**
  * @brief Internal datastore plugin array.
  */
@@ -2274,8 +2313,58 @@ sr_munlock(pthread_mutex_t *lock)
     }
 }
 
+FILE *
+sr_get_log_file(void)
+{
+    char *logpath = NULL;
+    static FILE *logfile = NULL;
+    int logfd = -1;
+    struct stat fstats;
+
+    if (!logfile) {
+        asprintf(&logpath, "%s/rwlock_info", sr_get_repo_path());
+        logfd = sr_open(logpath, O_WRONLY | O_CREAT | O_APPEND, SR_SHM_PERM);
+        if (logfd < 0) {
+            SR_LOG_WRN("%s Unable to open logpath for writing errno %d", __func__, errno);
+            return NULL;
+        }
+        logfile = fdopen(logfd, "a");
+        free(logpath);
+        /* Create a header for the file */
+        fstat(logfd, &fstats);
+        if (fstats.st_size == 0) {
+            fputs("1 ly_ext_data\n"
+                    "2 mod_remap\n"
+                    "3 ext_remap\n"
+                    "4 run_cache\n"
+                    "5 oper_cache\n"
+                    "99 context\n"
+                    "[CLOCK_REALTIME] [getpid][gettid] [progname]   lock_id\tdescr\n", logfile);
+        }
+    }
+    return logfile;
+}
+
+static void
+sr_rwlock_create_debug_info(uint32_t id, const char *desc)
+{
+    FILE *logfile = NULL;
+    extern char *__progname;
+    struct timespec ts = {0};
+
+    clock_gettime(CLOCK_REALTIME, &ts);
+    logfile = sr_get_log_file();
+    if (!logfile) {
+        return;
+    }
+
+    fprintf(logfile, "[%ld.%03ld] [%u][%u] [%s] %u    %s\n", ts.tv_sec, ts.tv_nsec / 1000000,
+            getpid(), gettid(), __progname, id, desc ? desc : "");
+    fflush(logfile);
+}
+
 sr_error_info_t *
-sr_rwlock_init(sr_rwlock_t *rwlock, int shared)
+sr_rwlock_init(sr_rwlock_t *rwlock, int shared, uint32_t id, const char *desc)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -2286,11 +2375,15 @@ sr_rwlock_init(sr_rwlock_t *rwlock, int shared)
         pthread_mutex_destroy(&rwlock->mutex);
         return err_info;
     }
-
+    SR_LOG_INF("%s id %u %s", __func__, id, desc ? desc : "null");
+    assert(id);
     memset(rwlock->readers, 0, sizeof rwlock->readers);
     rwlock->upgr = 0;
     rwlock->writer = 0;
-
+    rwlock->id = id;
+    if (desc && (id > SR_RWLOCK_RESERVED_ID_MAX)) {
+        sr_rwlock_create_debug_info(id, desc);
+    }
     return NULL;
 }
 
@@ -2309,7 +2402,7 @@ sr_rwlock_destroy(sr_rwlock_t *rwlock)
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_rwlock_reader_add(sr_rwlock_t *rwlock, sr_cid_t cid)
+sr_rwlock_reader_add(sr_rwlock_t *rwlock, sr_cid_t cid, const char *func)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -2317,8 +2410,9 @@ sr_rwlock_reader_add(sr_rwlock_t *rwlock, sr_cid_t cid)
     /* find this connection or first free item */
     for (i = 0; (i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i] && (rwlock->readers[i] != cid); ++i) {}
     if (i == SR_RWLOCK_READ_LIMIT) {
-        sr_errinfo_new(&err_info, SR_ERR_LOCKED, "Concurrent reader limit %d reached, possibly because of missing unlocks.",
-                SR_RWLOCK_READ_LIMIT);
+        sr_errinfo_new(&err_info, SR_ERR_TIME_OUT, "reader limit reached for lock %" PRIu32
+                " cid %" PRIu32, SR_RWLOCK_ID(rwlock), cid);
+        sr_log_rwlock_details(rwlock, SR_LOCK_READ, cid, func, "reader limit");
         goto cleanup;
     }
 
@@ -2329,8 +2423,9 @@ sr_rwlock_reader_add(sr_rwlock_t *rwlock, sr_cid_t cid)
     } else {
         /* recursive read lock on the connection */
         if (rwlock->read_count[i] == UINT8_MAX) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Recursive reader limit %" PRIu8
-                    " reached, possibly because of missing unlocks.", UINT8_MAX);
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Recursive reader limit reached for lock %" PRIu32
+                    " cid %" PRIu32, SR_RWLOCK_ID(rwlock), cid);
+            sr_log_rwlock_details(rwlock, SR_LOCK_READ, cid, func, "reader recursive limit");
             goto cleanup;
         }
         ++rwlock->read_count[i];
@@ -2402,7 +2497,7 @@ sr_rwlock_reader_del(sr_rwlock_t *rwlock, sr_cid_t cid)
     uint32_t i;
 
     /* find a CID match */
-    for (i = 0; (i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i] && (rwlock->readers[i] != cid); ++i) {}
+    for (i = 0; SR_IS_READER_VALID(rwlock, i) && (rwlock->readers[i] != cid); ++i) {}
     if ((i == SR_RWLOCK_READ_LIMIT) || (rwlock->readers[i] != cid)) {
         /* CID not found */
         SR_ERRINFO_INT(&err_info);
@@ -2432,7 +2527,7 @@ sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_lock_recover_cb cb, 
     sr_cid_t cid;
 
     /* readers */
-    while ((i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i]) {
+    while (SR_IS_READER_VALID(rwlock, i)) {
         if (!sr_conn_is_alive(rwlock->readers[i])) {
             /* remove the dead reader */
             cid = rwlock->readers[i];
@@ -2491,6 +2586,7 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
         ret = pthread_mutex_clocklock(&rwlock->mutex, COMPAT_CLOCK_ID, timeout_abs);
     }
 
+    SR_LOG_RWLOCK(rwlock, mode, cid, func, "Locking");
     if (ret == EOWNERDEAD) {
         /* make it consistent */
         ret = pthread_mutex_consistent(&rwlock->mutex);
@@ -2608,12 +2704,12 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
         rwlock->upgr = cid;
 
         /* add a reader */
-        err_info = sr_rwlock_reader_add(rwlock, cid);
+        err_info = sr_rwlock_reader_add(rwlock, cid, func);
 
         /* MUTEX UNLOCK */
         r = pthread_mutex_unlock(&rwlock->mutex);
         if (r) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(r));
+            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", func, strerror(r));
         }
 
     } else {
@@ -2642,7 +2738,7 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
         }
 
         /* add a reader */
-        err_info = sr_rwlock_reader_add(rwlock, cid);
+        err_info = sr_rwlock_reader_add(rwlock, cid, func);
 
         /* MUTEX UNLOCK */
         r = pthread_mutex_unlock(&rwlock->mutex);
@@ -2650,7 +2746,11 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
             sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(r));
         }
     }
-
+    if (err_info) {
+        sr_log_rwlock_details(rwlock, mode, cid, func, "Failed");
+    } else {
+        SR_LOG_RWLOCK(rwlock, mode, cid, func, "Locked");
+    }
     return err_info;
 
 error_cond_unlock:
@@ -2720,7 +2820,7 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
 
     assert(mode && cid);
     assert(((mode != SR_LOCK_WRITE) && (mode != SR_LOCK_WRITE_URGE)) || (timeout_ms > 0));
-
+    SR_LOG_RWLOCK(rwlock, mode, cid, func, "ReLocking");
     if (mode == SR_LOCK_WRITE) {
         /*
          * upgrade from upgradeable read-lock to write-lock
@@ -2767,6 +2867,7 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
         }
         rwlock->upgr = 0;
         rwlock->writer = cid;
+        SR_LOG_RWLOCK(rwlock, mode, cid, func, "ReLocked");
 
         /* simply keep the lock */
         return NULL;
@@ -2840,6 +2941,7 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
             rwlock->writer = cid;
         }
 
+        SR_LOG_RWLOCK(rwlock, mode, cid, func, "ReLocked");
         /* simply keep the lock */
         return NULL;
     }
@@ -2870,7 +2972,7 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
     assert(!rwlock->readers[0] && !rwlock->upgr && (rwlock->writer == cid));
 
     /* add a reader */
-    if ((err_info = sr_rwlock_reader_add(rwlock, cid))) {
+    if ((err_info = sr_rwlock_reader_add(rwlock, cid, func))) {
         /* keep the WRITE lock on error */
         return err_info;
     }
@@ -2885,7 +2987,7 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
 
     /* redundant to broadcast on condition because we were holding write-lock, so something can only be
      * waiting on the mutex, never the condition */
-
+    SR_LOG_RWLOCK(rwlock, mode, cid, func, "ReLocked");
 cleanup_unlock:
     /* MUTEX UNLOCK */
     pthread_mutex_unlock(&rwlock->mutex);
@@ -2954,6 +3056,7 @@ sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
         sr_cond_broadcast(&rwlock->cond);
     }
 
+    SR_LOG_RWLOCK(rwlock, mode, cid, func, "UnLocked");
     /* MUTEX UNLOCK */
     ret = pthread_mutex_unlock(&rwlock->mutex);
     if (ret) {
@@ -3051,6 +3154,9 @@ sr_conn_oper_cache_add(sr_conn_ctx_t *conn, uint32_t sub_id, const char *module_
     void *mem;
     struct sr_oper_poll_cache_s *cache;
 
+    int rc;
+    char *lock_descr = NULL;
+
     /* CONN OPER CACHE WRITE LOCK */
     if ((err_info = sr_rwlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
             __func__, NULL, NULL))) {
@@ -3079,13 +3185,17 @@ sr_conn_oper_cache_add(sr_conn_ctx_t *conn, uint32_t sub_id, const char *module_
     SR_CHECK_MEM_GOTO(!cache->module_name, err_info, cleanup);
     cache->path = strdup(path);
     SR_CHECK_MEM_GOTO(!cache->path, err_info, cleanup);
-    if ((err_info = sr_rwlock_init(&cache->data_lock, 0))) {
+    rc = asprintf(&lock_descr, "oper_poll_cache %s", path);
+    if (rc < 0) {
+        lock_descr = NULL;
+    }
+    if ((err_info = sr_rwlock_init(&cache->data_lock, 0, SR_RWLOCK_NEW_ID(conn), lock_descr))) {
         goto cleanup;
     }
-
     ++conn->oper_cache_count;
 
 cleanup:
+    free(lock_descr);
     /* CONN OPER CACHE UNLOCK */
     sr_rwunlock(&conn->oper_cache_lock, SR_CONN_OPER_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
     return err_info;
@@ -5715,4 +5825,16 @@ sr_is_prod_env(void)
         sr_prod_env = !getenv("SR_ENV_RUN_TESTS");
     }
     return sr_prod_env;
+}
+
+void
+sr_rwlock_debug_set(sr_rwlock_t *rwlock, int enable)
+{
+    if (enable) {
+        /* Set the MSB to enable debug logs */
+        rwlock->id |= (1u << 31);
+    } else {
+        /* Clear the MSB to disable debug logs */
+        rwlock->id &= ~(1u << 31);
+    }
 }

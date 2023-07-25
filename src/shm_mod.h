@@ -62,11 +62,11 @@ sr_rpc_t *sr_shmmod_find_rpc(sr_mod_shm_t *mod_shm, const char *path);
  * @brief Remap mod SHM and store modules and all their static information (name, deps, ...) in it
  * overwriting any previous modules.
  *
- * @param[in] shm_mod Mod SHM structure.
+ * @param[in] conn Connection to use for shm_mod
  * @param[in] sr_mods SR internal module data to read from.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_store_modules(sr_shm_t *shm_mod, const struct lyd_node *sr_mods);
+sr_error_info_t *sr_shmmod_store_modules(sr_conn_ctx_t *conn, const struct lyd_node *sr_mods);
 
 /**
  * @brief Load modules stored in mod SHM into a context.

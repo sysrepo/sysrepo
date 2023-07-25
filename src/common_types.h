@@ -64,6 +64,7 @@ typedef struct {
     sr_cid_t upgr;                  /**< CID of the READ-UPGR lock owner if locked, 0 otherwise. */
     sr_cid_t writer;                /**< CID of the WRITE lock owner if locked, can be set if an WRITE-URGE lock
                                          is being waited on, 0 otherwise. */
+    uint32_t id;                    /**< system-wide unique ID of the lock */
 } sr_rwlock_t;
 
 /**

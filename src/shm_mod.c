@@ -138,43 +138,50 @@ sr_shmmod_find_rpc(sr_mod_shm_t *mod_shm, const char *path)
  * @brief Initialize locks of a new SHM module. Should be performed after the mod SHM has its final
  * size and address to prevent the static locks from being moved.
  *
- * @param[in] shm_mod Mod SHM structure to remap and add name/features at its end.
+ * @param[in] conn Connection to use.
  * @param[in] shm_mod_idx Mod SHM index to fill.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmmod_init(sr_shm_t *shm_mod, size_t shm_mod_idx)
+sr_shmmod_init(sr_conn_ctx_t *conn, size_t shm_mod_idx)
 {
+    sr_shm_t *shm_mod = &conn->mod_shm;
     sr_error_info_t *err_info = NULL;
-    sr_mod_t *smod;
     sr_datastore_t ds;
-
-    smod = SR_SHM_MOD_IDX(shm_mod->addr, shm_mod_idx);
+    char buf[256];
+    sr_mod_t *smod = SR_SHM_MOD_IDX(shm_mod->addr, shm_mod_idx);
+    const char *name = conn->mod_shm.addr + smod->name;
 
     /* init SHM module structure */
     for (ds = 0; ds < SR_DS_COUNT; ++ds) {
-        if ((err_info = sr_rwlock_init(&smod->data_lock_info[ds].data_lock, 1))) {
+        snprintf(buf, sizeof(buf), "mod data[ds=%u] %s", ds, name);
+        if ((err_info = sr_rwlock_init(&smod->data_lock_info[ds].data_lock, 1, SR_RWLOCK_NEW_ID(conn), buf))) {
             return err_info;
         }
         if ((err_info = sr_mutex_init(&smod->data_lock_info[ds].ds_lock, 1))) {
             return err_info;
         }
     }
-    if ((err_info = sr_rwlock_init(&smod->replay_lock, 1))) {
+    snprintf(buf, sizeof(buf), "mod replay %s", name);
+    if ((err_info = sr_rwlock_init(&smod->replay_lock, 1, SR_RWLOCK_NEW_ID(conn), buf))) {
         return err_info;
     }
     for (ds = 0; ds < SR_DS_COUNT; ++ds) {
-        if ((err_info = sr_rwlock_init(&smod->change_sub[ds].lock, 1))) {
+        snprintf(buf, sizeof(buf), "mod change_sub[ds=%u] %s", ds, name);
+        if ((err_info = sr_rwlock_init(&smod->change_sub[ds].lock, 1, SR_RWLOCK_NEW_ID(conn), buf))) {
             return err_info;
         }
     }
-    if ((err_info = sr_rwlock_init(&smod->oper_get_lock, 1))) {
+    snprintf(buf, sizeof(buf), "mod oper %s", name);
+    if ((err_info = sr_rwlock_init(&smod->oper_get_lock, 1, SR_RWLOCK_NEW_ID(conn), buf))) {
         return err_info;
     }
-    if ((err_info = sr_rwlock_init(&smod->oper_poll_lock, 1))) {
+    snprintf(buf, sizeof(buf), "mod oper_poll %s", name);
+    if ((err_info = sr_rwlock_init(&smod->oper_poll_lock, 1, SR_RWLOCK_NEW_ID(conn), buf))) {
         return err_info;
     }
-    if ((err_info = sr_rwlock_init(&smod->notif_lock, 1))) {
+    snprintf(buf, sizeof(buf), "mod notif %s", name);
+    if ((err_info = sr_rwlock_init(&smod->notif_lock, 1, SR_RWLOCK_NEW_ID(conn), buf))) {
         return err_info;
     }
 
@@ -231,6 +238,7 @@ sr_shmmod_fill(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_
             ds_plugin_names_len += sr_strshmlen(lyd_get_value(lyd_child(sr_child)->next));
         }
     }
+
     assert(name);
 
     /* remember mod SHM size */
@@ -522,15 +530,15 @@ sr_shmmod_add_deps(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node 
 /**
  * @brief Add module RPCs/actions with dependencies into mod SHM.
  *
- * @param[in] shm_mod Mod SHM structure to remap and append the data to.
  * @param[in] shm_mod_idx Mod SHM mod index of @p sr_mod.
  * @param[in] sr_mod Module to read the information from.
  * @param[in] shm_mod_old Optional previous mod SHM to copy all RPC subscriptions from.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmmod_add_rpcs(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_mod, char *shm_mod_old)
+sr_shmmod_add_rpcs(sr_conn_ctx_t *conn, size_t shm_mod_idx, const struct lyd_node *sr_mod, char *shm_mod_old)
 {
+    sr_shm_t *shm_mod = &conn->mod_shm;
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_child, *sr_dep, *sr_op, *sr_op_dep;
     sr_mod_t *smod;
@@ -539,6 +547,7 @@ sr_shmmod_add_rpcs(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node 
     sr_mod_shm_t *mod_shm;
     char *shm_end;
     size_t paths_len, in_out_deps_len, dep_i, rpc_i, old_shm_size;
+    const char *path_name = NULL;
 
     smod = SR_SHM_MOD_IDX(shm_mod->addr, shm_mod_idx);
 
@@ -555,7 +564,8 @@ sr_shmmod_add_rpcs(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node 
             LY_LIST_FOR(lyd_child(sr_child), sr_op_dep) {
                 if (!strcmp(sr_op_dep->schema->name, "path")) {
                     /* operation path (a string) */
-                    paths_len += sr_strshmlen(lyd_get_value(sr_op_dep));
+                    path_name = lyd_get_value(sr_op_dep);
+                    paths_len += sr_strshmlen(path_name);
                 } else if (!strcmp(sr_op_dep->schema->name, "in") || !strcmp(sr_op_dep->schema->name, "out")) {
                     dep_i = 0;
                     LY_LIST_FOR(lyd_child(sr_op_dep), sr_dep) {
@@ -592,17 +602,14 @@ sr_shmmod_add_rpcs(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node 
 
     LY_LIST_FOR(lyd_child(sr_mod), sr_child) {
         if (!strcmp(sr_child->schema->name, "rpc")) {
-            /* init lock */
-            if ((err_info = sr_rwlock_init(&shm_rpcs[rpc_i].lock, 1))) {
+            if ((err_info = sr_rwlock_init(&shm_rpcs[rpc_i].lock, 1, SR_RWLOCK_NEW_ID(conn), path_name))) {
                 return err_info;
             }
-
             old_shm_rpc = NULL;
             LY_LIST_FOR(lyd_child(sr_child), sr_op) {
                 if (!strcmp(sr_op->schema->name, "path")) {
                     /* copy path */
                     shm_rpcs[rpc_i].path = sr_shmstrcpy(shm_mod->addr, lyd_get_value(sr_op), &shm_end);
-
                     if (shm_mod_old) {
                         /* try to find the RPC in old RPCs */
                         old_shm_rpc = sr_shmmod_find_rpc((sr_mod_shm_t *)shm_mod_old, lyd_get_value(sr_op));
@@ -767,7 +774,7 @@ sr_shmmod_add_notifs(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_nod
 }
 
 sr_error_info_t *
-sr_shmmod_store_modules(sr_shm_t *shm_mod, const struct lyd_node *sr_mods)
+sr_shmmod_store_modules(sr_conn_ctx_t *conn, const struct lyd_node *sr_mods)
 {
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL;
@@ -775,6 +782,7 @@ sr_shmmod_store_modules(sr_shm_t *shm_mod, const struct lyd_node *sr_mods)
     sr_mod_t *smod;
     char *shm_mod_old = NULL;
     uint32_t i;
+    sr_shm_t *shm_mod = &conn->mod_shm;
 
     /* backup current SHM mod */
     shm_mod_old = malloc(shm_mod->size);
@@ -797,7 +805,7 @@ sr_shmmod_store_modules(sr_shm_t *shm_mod, const struct lyd_node *sr_mods)
     /* add all modules into SHM */
     for (i = 0; i < set->count; ++i) {
         sr_mod = set->dnodes[i];
-
+        SR_LOG_INF("checking %s", lyd_get_value(lyd_child(sr_mod)));
         /* find this module in the SHM mod backup (removed modules will not be found) */
         smod = sr_shmmod_find_module((sr_mod_shm_t *)shm_mod_old, lyd_get_value(lyd_child(sr_mod)));
 
@@ -822,7 +830,7 @@ sr_shmmod_store_modules(sr_shm_t *shm_mod, const struct lyd_node *sr_mods)
         if ((err_info = sr_shmmod_add_deps(shm_mod, i, sr_mod))) {
             goto cleanup;
         }
-        if ((err_info = sr_shmmod_add_rpcs(shm_mod, i, sr_mod, shm_mod_old))) {
+        if ((err_info = sr_shmmod_add_rpcs(conn, i, sr_mod, shm_mod_old))) {
             goto cleanup;
         }
         if ((err_info = sr_shmmod_add_notifs(shm_mod, i, sr_mod))) {
@@ -834,7 +842,7 @@ sr_shmmod_store_modules(sr_shm_t *shm_mod, const struct lyd_node *sr_mods)
     for (i = 0; i < set->count; ++i) {
         sr_mod = set->dnodes[i];
 
-        if ((err_info = sr_shmmod_init(shm_mod, i))) {
+        if ((err_info = sr_shmmod_init(conn, i))) {
             goto cleanup;
         }
     }

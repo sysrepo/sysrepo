@@ -63,6 +63,15 @@ struct srplg_ntf_s;
 /* macro for getting ext SHM from a connection */
 #define SR_CONN_EXT_SHM(conn) ((sr_ext_shm_t *)(conn)->ext_shm.addr)
 
+/* macro for getting next ID for rwlock from a connection using main_shm */
+#define SR_RWLOCK_NEW_ID(conn) ATOMIC_INC_RELAXED(SR_CONN_MAIN_SHM(conn)->new_rwlock_id)
+
+/* macro for checking whether a reader is valid */
+#define SR_IS_READER_VALID(rwlock, i) ((i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i])
+
+/* reserved lock ids to be used before main_shm is opened/created for process local locks */
+#define SR_RWLOCK_RESERVED_ID_MAX 100
+
 /** all ext SHM item sizes will be aligned to this number; also represents the allocation unit (B) */
 #define SR_SHM_MEM_ALIGN 8
 
@@ -789,7 +798,7 @@ void sr_munlock(pthread_mutex_t *lock);
  * @param[in] shared Whether the RW lock will be shared between processes or not.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_rwlock_init(sr_rwlock_t *rwlock, int shared);
+sr_error_info_t *sr_rwlock_init(sr_rwlock_t *rwlock, int shared, uint32_t id, const char *desc);
 
 /**
  * @brief Destroy a sysrepo RW lock.

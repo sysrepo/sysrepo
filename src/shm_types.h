@@ -183,6 +183,7 @@ typedef struct {
     pthread_mutex_t lydmods_lock;   /**< Process-shared lock for modifying SR internal module data. */
     uint32_t content_id;        /**< Context content ID of the latest context. */
 
+    ATOMIC_T new_rwlock_id;     /**< New rwlock ID to track sr_rwlock_t locks */
     ATOMIC_T new_sr_cid;        /**< Connection ID for a new connection. */
     ATOMIC_T new_sr_sid;        /**< SID for a new session. */
     ATOMIC_T new_sub_id;        /**< Subscription ID of a new subscription. */

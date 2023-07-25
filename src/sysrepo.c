@@ -69,6 +69,7 @@ static sr_error_info_t *_sr_unsubscribe(sr_subscription_ctx_t *subscription);
 static sr_error_info_t *
 sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 {
+    uint32_t lock_id = 0;
     sr_conn_ctx_t *conn;
     sr_error_info_t *err_info = NULL;
 
@@ -84,7 +85,7 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         goto error2;
     }
 
-    if ((err_info = sr_rwlock_init(&conn->ly_ext_data_lock, 0))) {
+    if ((err_info = sr_rwlock_init(&conn->ly_ext_data_lock, 0, ++lock_id, "ly_ext_data"))) {
         goto error3;
     }
 
@@ -93,12 +94,12 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     }
     conn->main_shm.fd = -1;
 
-    if ((err_info = sr_rwlock_init(&conn->mod_remap_lock, 0))) {
+    if ((err_info = sr_rwlock_init(&conn->mod_remap_lock, 0, ++lock_id, "mod_remap"))) {
         goto error5;
     }
     conn->mod_shm.fd = -1;
 
-    if ((err_info = sr_rwlock_init(&conn->ext_remap_lock, 0))) {
+    if ((err_info = sr_rwlock_init(&conn->ext_remap_lock, 0, ++lock_id, "ext_remap"))) {
         goto error6;
     }
     conn->ext_shm.fd = -1;
@@ -106,13 +107,13 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     if ((err_info = sr_ds_handle_init(&conn->ds_handles, &conn->ds_handle_count))) {
         goto error7;
     }
-    if ((err_info = sr_rwlock_init(&conn->run_cache_lock, 0))) {
+    if ((err_info = sr_rwlock_init(&conn->run_cache_lock, 0, ++lock_id, "run_cache"))) {
         goto error8;
     }
     if ((err_info = sr_ntf_handle_init(&conn->ntf_handles, &conn->ntf_handle_count))) {
         goto error9;
     }
-    if ((err_info = sr_rwlock_init(&conn->oper_cache_lock, 0))) {
+    if ((err_info = sr_rwlock_init(&conn->oper_cache_lock, 0, ++lock_id, "oper_cache"))) {
         goto error10;
     }
     if ((err_info = sr_mutex_init(&conn->oper_push_mod_lock, 0))) {
@@ -268,7 +269,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         sr_shmext_recover_sub_all(conn);
 
         /* add all the modules in lydmods data into mod SHM */
-        if ((err_info = sr_shmmod_store_modules(&conn->mod_shm, sr_mods))) {
+        if ((err_info = sr_shmmod_store_modules(conn, sr_mods))) {
             goto cleanup_unlock;
         }
 
@@ -722,7 +723,7 @@ _sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_sub_ev
     if ((err_info = sr_mutex_init(&(*session)->ptr_lock, 0))) {
         goto error;
     }
-    if ((err_info = sr_rwlock_init(&(*session)->notif_buf.lock, 0))) {
+    if ((err_info = sr_rwlock_init(&(*session)->notif_buf.lock, 0, SR_RWLOCK_NEW_ID(conn), NULL))) {
         goto error;
     }
 
@@ -1572,7 +1573,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     }
 
     /* update SHM modules */
-    if ((err_info = sr_shmmod_store_modules(&conn->mod_shm, sr_mods))) {
+    if ((err_info = sr_shmmod_store_modules(conn, sr_mods))) {
         goto error;
     }
     mod_shm_changed = 1;
@@ -1616,7 +1617,7 @@ error:
     lyd_free_siblings(sr_del_mods);
 
     /* revert SHM module changes */
-    if (mod_shm_changed && (tmp_err = sr_shmmod_store_modules(&conn->mod_shm, sr_mods))) {
+    if (mod_shm_changed && (tmp_err = sr_shmmod_store_modules(conn, sr_mods))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
 
@@ -1884,7 +1885,7 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     }
 
     /* update SHM modules */
-    if ((err_info = sr_shmmod_store_modules(&conn->mod_shm, sr_mods))) {
+    if ((err_info = sr_shmmod_store_modules(conn, sr_mods))) {
         goto cleanup;
     }
 
@@ -2129,7 +2130,7 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
     }
 
     /* update SHM modules */
-    if ((err_info = sr_shmmod_store_modules(&conn->mod_shm, sr_mods))) {
+    if ((err_info = sr_shmmod_store_modules(conn, sr_mods))) {
         goto cleanup;
     }
 
@@ -2636,7 +2637,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     /* update SHM modules */
-    if ((err_info = sr_shmmod_store_modules(&conn->mod_shm, sr_mods))) {
+    if ((err_info = sr_shmmod_store_modules(conn, sr_mods))) {
         goto cleanup;
     }
 
@@ -5350,7 +5351,7 @@ sr_subscr_new(sr_conn_ctx_t *conn, sr_subscr_options_t opts, sr_subscription_ctx
     /* allocate new subscription */
     *subs_p = calloc(1, sizeof **subs_p);
     SR_CHECK_MEM_RET(!*subs_p, err_info);
-    if ((err_info = sr_rwlock_init(&(*subs_p)->subs_lock, 0))) {
+    if ((err_info = sr_rwlock_init(&(*subs_p)->subs_lock, 0, SR_RWLOCK_NEW_ID(conn), "subscr"))) {
         goto error;
     }
     (*subs_p)->conn = conn;

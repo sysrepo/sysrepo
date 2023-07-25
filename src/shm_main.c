@@ -496,15 +496,17 @@ sr_shmmain_open(sr_shm_t *shm, int *created)
     if (creat) {
         /* init the memory */
         main_shm->shm_ver = SR_SHM_VER;
+
         if ((err_info = sr_mutex_init(&main_shm->ext_lock, 1))) {
             goto cleanup;
         }
-        if ((err_info = sr_rwlock_init(&main_shm->context_lock, 1))) {
+        if ((err_info = sr_rwlock_init(&main_shm->context_lock, 1, SR_RWLOCK_RESERVED_ID_MAX - 1, "context"))) {
             goto cleanup;
         }
         if ((err_info = sr_mutex_init(&main_shm->lydmods_lock, 1))) {
             goto cleanup;
         }
+        ATOMIC_STORE_RELAXED(main_shm->new_rwlock_id, SR_RWLOCK_RESERVED_ID_MAX);
         ATOMIC_STORE_RELAXED(main_shm->new_sr_cid, 1);
         ATOMIC_STORE_RELAXED(main_shm->new_sr_sid, 1);
         ATOMIC_STORE_RELAXED(main_shm->new_sub_id, 1);

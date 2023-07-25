@@ -47,7 +47,7 @@ struct sr_mod_info_s;
  * @param[in] shm_struct_size Size of the used subscription SHM structure.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmsub_create(const char *name, const char *suffix1, int64_t suffix2, size_t shm_struct_size);
+sr_error_info_t *sr_shmsub_create(sr_conn_ctx_t *conn, const char *name, const char *suffix1, int64_t suffix2, size_t shm_struct_size);
 
 /**
  * @brief Open and map an existing subscription SHM.
