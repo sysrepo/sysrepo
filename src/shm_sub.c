@@ -4805,6 +4805,8 @@ sr_shmsub_listen_thread(void *arg)
              * another event is generated, our event pipe will not get notified */
             continue;
         } else if (ret) {
+            sr_errinfo_new(&err_info, ret, "Processing subscription events failed (%s).", sr_strerror(ret));
+            sr_errinfo_free(&err_info);
             goto error;
         }
 
