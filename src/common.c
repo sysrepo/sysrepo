@@ -2186,15 +2186,23 @@ _sr_mutex_init(pthread_mutex_t *lock, int shared, int robust)
 
         if (shared && (ret = pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED))) {
             pthread_mutexattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Changing pthread attr failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Setting mutex shared failed (%s).", strerror(ret));
             return err_info;
         }
 
         if (robust && (ret = pthread_mutexattr_setrobust(&attr, PTHREAD_MUTEX_ROBUST))) {
             pthread_mutexattr_destroy(&attr);
-            sr_errinfo_new(&err_info, SR_ERR_SYS, "Changing pthread attr failed (%s).", strerror(ret));
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Setting mutex robust failed (%s).", strerror(ret));
             return err_info;
         }
+
+#ifndef NDEBUG
+        if ((ret = pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK))) {
+            pthread_mutexattr_destroy(&attr);
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Setting mutex error_check failed (%s).", strerror(ret));
+            return err_info;
+        }
+#endif
 
         if ((ret = pthread_mutex_init(lock, &attr))) {
             pthread_mutexattr_destroy(&attr);
