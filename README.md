@@ -257,6 +257,7 @@ More complex handling of XPath expressions that has lots of features at the cost
 It is possible to change the repository path by setting `SYSREPO_REPOSITORY_PATH` variable.
 Also, if `SYSREPO_SHM_PREFIX` is defined, it is used for all SHM files created. This way
 several *sysrepo* instances can effectively be run simultanously on one machine.
+It is also possible to relocate the `SHM_DIR` by setting `SYSREPO_SHM_DIR` variable.
 
 `SR_ENV_RUN_TESTS` can be used when building packages which run tests that use sysrepo.
 This will enable the package tests to run without having priviliges to chown files to `SYSREPO_GROUP`.

@@ -1379,4 +1379,10 @@ sr_error_info_t *sr_conn_push_oper_mod_del(sr_conn_ctx_t *conn, const char *mod_
  */
 int sr_is_prod_env(void);
 
+/**
+ * @brief Get the SHM dir as determined by SYSREPO_SHM_DIR env var else default SR_SHM_DIR
+ * @return Path to the current SHM directory.
+ */
+const char *sr_shm_dir_get(void);
+
 #endif /* _COMMON_H */

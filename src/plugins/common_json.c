@@ -663,7 +663,7 @@ srpjson_get_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, 
             return err_info;
         }
 
-        r = asprintf(path, "%s/%s_%s.%s", SR_SHM_DIR, prefix, mod_name, srpjson_ds2str(ds));
+        r = asprintf(path, "%s/%s_%s.%s", sr_shm_dir_get(), prefix, mod_name, srpjson_ds2str(ds));
         break;
     }
 
