@@ -4840,7 +4840,7 @@ sr_xpath_skip_predicate(const char *xpath)
         ++xpath;
         if (xpath[0] == quot) {
             quot = 0;
-        } else if ((xpath[0] == '\'') || (xpath[0] == '\"')) {
+        } else if (!quot && ((xpath[0] == '\'') || (xpath[0] == '\"'))) {
             quot = xpath[0];
         }
     } while (quot || (xpath[0] != ']'));
