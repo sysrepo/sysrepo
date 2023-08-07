@@ -1093,7 +1093,12 @@ sr_edit_find_match(const struct lyd_node *data_sibling, const struct lyd_node *e
                     ((struct lyd_node_opaq *)edit_node)->name.name, 0, 0, 0);
         }
         if (schema) {
+            /* try to find a data instance of the schema node */
             lyrc = lyd_find_sibling_val(data_sibling, schema, NULL, 0, match_p);
+            if (lyrc == LY_ENOTFOUND) {
+                /* it may still exist as an opaque node (when being removed, for example) */
+                lyrc = lyd_find_sibling_opaq_next(data_sibling, LYD_NAME(edit_node), match_p);
+            }
         } else {
             *match_p = NULL;
             lyrc = LY_ENOTFOUND;
@@ -3591,6 +3596,7 @@ sr_edit_oper_del_node(struct lyd_node *node, struct lyd_node **change_edit)
     sr_error_info_t *err_info = NULL;
     struct lyd_node *iter, *new_parent, *parent, *match, *to_free = NULL;
     enum edit_op op, cur_op;
+    LY_ERR lyrc = 0;
 
     if (!change_edit) {
         /* nothing to do */
@@ -3601,8 +3607,15 @@ sr_edit_oper_del_node(struct lyd_node *node, struct lyd_node **change_edit)
     if ((err_info = sr_edit_diff_create_parents(node, change_edit, &new_parent, &parent))) {
         goto cleanup;
     }
+    if (!new_parent) {
+        if (node->schema) {
+            lyrc = lyd_find_sibling_first(parent ? lyd_child(parent) : *change_edit, node, &match);
+        } else {
+            lyrc = lyd_find_sibling_opaq_next(parent ? lyd_child(parent) : *change_edit, LYD_NAME(node), &match);
+        }
+    }
 
-    if (new_parent || lyd_find_sibling_first(parent ? lyd_child(parent) : *change_edit, node, &match)) {
+    if (new_parent || lyrc) {
         /* set parent operation, if any new */
         if (new_parent && (err_info = sr_edit_set_oper(new_parent, "ether"))) {
             goto cleanup;

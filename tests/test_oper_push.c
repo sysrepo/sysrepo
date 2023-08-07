@@ -51,6 +51,7 @@ setup(void **state)
         TESTS_SRC_DIR "/files/ietf-if-aug.yang",
         TESTS_SRC_DIR "/files/ietf-interface-protection.yang",
         TESTS_SRC_DIR "/files/ietf-microwave-radio-link.yang",
+        TESTS_SRC_DIR "/files/ietf-interfaces-new.yang",
         TESTS_SRC_DIR "/files/mixed-config.yang",
         TESTS_SRC_DIR "/files/defaults.yang",
         TESTS_SRC_DIR "/files/ops-ref.yang",
@@ -63,6 +64,7 @@ setup(void **state)
     };
     const char *rd_feats[] = {"hw-line-9", NULL};
     const char **features[] = {
+        NULL,
         NULL,
         NULL,
         NULL,
@@ -115,6 +117,7 @@ teardown(void **state)
         "ops-ref",
         "defaults",
         "mixed-config",
+        "ietf-interfaces-new",
         "ietf-microwave-radio-link",
         "ietf-interface-protection",
         "ietf-if-aug",
@@ -442,6 +445,79 @@ test_conn_owner_same_data(void **state)
 
     assert_string_equal(str1, str2);
     free(str1);
+}
+
+/* TEST */
+static void
+test_delete(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_data_t *data = NULL;
+    int ret;
+    sr_conn_ctx_t *conn = NULL;
+
+    ret = sr_connect(0, &conn);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_start(st->conn, SR_DS_OPERATIONAL, &st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create an interface */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/enabled",
+            "false", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* deliberate redundant create of an interface */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/type",
+            "ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/oper-status",
+            "up", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/admin-status",
+            "up", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/speed", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/last-change", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check get */
+    ret = sr_get_data(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/type", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_release_data(data);
+    data = NULL;
+
+    /* create the interface again */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']",
+            NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/enabled",
+            "false", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/type",
+            "ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/speed", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check get */
+    ret = sr_get_data(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/type", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_release_data(data);
+    data = NULL;
+
+    /* cleanup */
+    sr_disconnect(conn);
 }
 
 /* TEST */
@@ -2964,6 +3040,7 @@ main(void)
         cmocka_unit_test_teardown(test_conn_owner1, clear_up),
         cmocka_unit_test_teardown(test_conn_owner2, clear_up),
         cmocka_unit_test_teardown(test_conn_owner_same_data, clear_up),
+        cmocka_unit_test_teardown(test_delete, clear_up),
         cmocka_unit_test_teardown(test_state, clear_up),
         cmocka_unit_test_teardown(test_state_list, clear_up),
         cmocka_unit_test_teardown(test_state_list2, clear_up),
