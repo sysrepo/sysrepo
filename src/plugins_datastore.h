@@ -87,7 +87,9 @@ typedef int (*srds_init)(const struct lys_module *mod, sr_datastore_t ds);
  * @brief Store data for a module. Either a diff can be applied manually or full new data tree stored.
  *
  * If @p ds is ::SR_DS_OPERATIONAL, it is actually an edit data tree that is being stored.
- * May be called simultanously but with unique @p mod and @p ds pairs.
+ * May be called simultaneously but with unique @p mod and @p ds pairs.
+ *
+ * Write access rights do not have to be checked, ::srds_access_check() is called before this callback.
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
@@ -113,6 +115,8 @@ typedef void (*srds_recover)(const struct lys_module *mod, sr_datastore_t ds);
  * This callback will be called with @p ds ::SR_DS_CANDIDATE only if the datastore is modified, otherwise
  * ::SR_DS_RUNNING is used directly. May be called simultanously but with unique @p mod and @p ds pairs.
  *
+ * Read access rights do not have to be checked, ::srds_access_check() is called before this callback.
+ *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
  * @param[in] xpaths Array of XPaths selecting the required data, NULL if all the module data are needed.
@@ -128,6 +132,8 @@ typedef int (*srds_load)(const struct lys_module *mod, sr_datastore_t ds, const 
  * @brief Copy data of a module from source datastore to the target datastore.
  *
  * Called only if this plugin is used for both datastores of a module.
+ *
+ * Read/write access rights do not have to be checked, ::srds_access_check() is called before this callback.
  *
  * @param[in] mod Specific module.
  * @param[in] trg_ds Target datastore.
