@@ -4,8 +4,8 @@
  * @brief routines for working with modinfo structure
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <stdarg.h>
@@ -1466,6 +1467,7 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
     sr_error_info_t *err_info = NULL;
     sr_cid_t cid, skip_read_upgr_cid = 0;
     uint32_t i;
+    int r;
 
 #define PATH_LEN 128
     char path[PATH_LEN];
@@ -1482,7 +1484,11 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
     }
 
     /* READ MUTEX LOCK */
-    if (pthread_mutex_lock(&rwlock->r_mutex)) {
+    r = pthread_mutex_lock(&rwlock->r_mutex);
+    if (r == EOWNERDEAD) {
+        r = pthread_mutex_consistent(&rwlock->r_mutex);
+    }
+    if (r) {
         SR_ERRINFO_INT(&err_info);
         return err_info;
     }
@@ -1535,7 +1541,7 @@ sr_modinfo_module_srmon_locks(sr_rwlock_t *rwlock, const char *list_name, struct
     sr_error_info_t *err_info = NULL;
     sr_cid_t cid;
     uint32_t i;
-    int ret;
+    int r;
 
 #define CID_STR_LEN 64
     char cid_str[CID_STR_LEN];
@@ -1565,8 +1571,11 @@ sr_modinfo_module_srmon_locks(sr_rwlock_t *rwlock, const char *list_name, struct
     }
 
     /* READ MUTEX LOCK */
-    ret = pthread_mutex_lock(&rwlock->r_mutex);
-    if (ret) {
+    r = pthread_mutex_lock(&rwlock->r_mutex);
+    if (r == EOWNERDEAD) {
+        r = pthread_mutex_consistent(&rwlock->r_mutex);
+    }
+    if (r) {
         SR_ERRINFO_INT(&err_info);
         return err_info;
     }

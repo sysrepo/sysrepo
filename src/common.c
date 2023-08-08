@@ -2292,7 +2292,7 @@ sr_rwlock_init(sr_rwlock_t *rwlock, int shared)
         return err_info;
     }
 
-    if ((err_info = _sr_mutex_init(&rwlock->r_mutex, shared, 0))) {
+    if ((err_info = _sr_mutex_init(&rwlock->r_mutex, shared, shared))) {
         pthread_mutex_destroy(&rwlock->mutex);
         sr_cond_destroy(&rwlock->cond);
         return err_info;
@@ -2328,6 +2328,9 @@ sr_rwlock_reader_add(sr_rwlock_t *rwlock, sr_cid_t cid)
 
     /* READ MUTEX LOCK */
     ret = pthread_mutex_lock(&rwlock->r_mutex);
+    if (ret == EOWNERDEAD) {
+        ret = pthread_mutex_consistent(&rwlock->r_mutex);
+    }
     if (ret) {
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Locking a mutex in %s() failed (%s).", __func__, strerror(ret));
         goto cleanup;
@@ -2414,6 +2417,9 @@ sr_rwlock_reader_del(sr_rwlock_t *rwlock, sr_cid_t cid)
 
     /* READ MUTEX LOCK */
     ret = pthread_mutex_lock(&rwlock->r_mutex);
+    if (ret == EOWNERDEAD) {
+        ret = pthread_mutex_consistent(&rwlock->r_mutex);
+    }
     if (ret) {
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Locking a mutex in %s() failed (%s).", __func__, strerror(ret));
         goto cleanup;
@@ -2457,13 +2463,18 @@ sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_lock_recover_cb cb, 
 {
     uint32_t i = 0;
     sr_cid_t cid;
+    int ret;
 
     /* readers */
     while ((i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i]) {
         if (!sr_conn_is_alive(rwlock->readers[i])) {
 
             /* READ MUTEX LOCK */
-            if (pthread_mutex_lock(&rwlock->r_mutex)) {
+            ret = pthread_mutex_lock(&rwlock->r_mutex);
+            if (ret == EOWNERDEAD) {
+                ret = pthread_mutex_consistent(&rwlock->r_mutex);
+            }
+            if (ret) {
                 /* ignore errors, should never occur */
                 continue;
             }
