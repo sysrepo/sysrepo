@@ -3816,7 +3816,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
         }
 
         /* get the data, API function */
-        get_opts = SR_OPER_NO_STORED | SR_OPER_NO_CACHED | SR_OPER_WITH_ORIGIN;
+        get_opts = SR_OPER_NO_STORED | SR_OPER_NO_POLL_CACHED | SR_OPER_WITH_ORIGIN;
         if (sr_get_data(ev_sess, oper_poll_sub->path, 0, 0, get_opts, &data)) {
             err_info = ev_sess->err_info;
             ev_sess->err_info = NULL;

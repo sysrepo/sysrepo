@@ -150,8 +150,8 @@ sr_nacm_oper_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
         leaf_name = "denied-notifications";
     }
 
-    /* get all partial data stats */
-    if ((rc = sr_get_data(session, get_path, 0, 0, 0, &data))) {
+    /* get all partial data stats, avoid dead lock by not using the cache */
+    if ((rc = sr_get_data(session, get_path, 0, 0, SR_OPER_NO_RUN_CACHED, &data))) {
         goto cleanup;
     }
 

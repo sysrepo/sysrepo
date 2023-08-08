@@ -299,8 +299,10 @@ typedef enum {
     SR_OPER_NO_STORED = 0x08,        /**< Do not merge with stored operational data (push). */
     SR_OPER_WITH_ORIGIN = 0x10,      /**< Return data with their [origin attributes](@ref datastores). Nodes without
                                           one inherit the origin from parents. */
-    SR_OPER_NO_CACHED = 0x20         /**< Do not use cached oper data from operational poll subscriptions even if
+    SR_OPER_NO_POLL_CACHED = 0x20,   /**< Do not use cached oper data from operational poll subscriptions even if
                                           available. */
+    SR_OPER_NO_RUN_CACHED = 0x40     /**< Do not use connection running datastore cache data even if the connection
+                                          supports it, may prevent some dead locks. */
 } sr_get_oper_flag_t;
 
 #define SR_OPER_MASK 0xFFFF          /**< Mask for all get oper data flags. */

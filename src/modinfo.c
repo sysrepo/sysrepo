@@ -1090,7 +1090,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
             goto cleanup_opergetsub_ext_unlock;
         }
 
-        if (!(get_oper_opts & SR_OPER_NO_CACHED)) {
+        if (!(get_oper_opts & SR_OPER_NO_POLL_CACHED)) {
             /* try to get data from the cache */
             if ((err_info = sr_module_oper_data_update_cached(mod, sub_xpath, conn, data, &merged))) {
                 goto cleanup_opergetsub_ext_unlock;
@@ -2434,6 +2434,7 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig
 
     /* cache may be useful only for some datastores */
     if (!mod_info->data_cached && cache && mod_info->mod_count && (conn->opts & SR_CONN_CACHE_RUNNING) &&
+            !(get_oper_opts & SR_OPER_NO_RUN_CACHED) &&
             ((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds == SR_DS_CANDIDATE) || (mod_info->ds2 == SR_DS_RUNNING))) {
 
         /* update the data in the cache */
