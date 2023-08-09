@@ -521,6 +521,54 @@ test_delete(void **state)
 }
 
 /* TEST */
+static void
+test_delete2(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_data_t *data = NULL;
+    int ret;
+    sr_conn_ctx_t *conn = NULL;
+
+    ret = sr_connect(0, &conn);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_start(st->conn, SR_DS_OPERATIONAL, &st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create an interface without speed */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/type",
+            "ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/speed", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* create speed */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/speed",
+            "0", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check get */
+    ret = sr_get_data(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/type", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_release_data(data);
+    data = NULL;
+
+    /* delete speed again */
+    ret = sr_delete_item(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/speed", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* cleanup */
+    sr_disconnect(conn);
+}
+
+/* TEST */
 static int
 state_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data)
@@ -3041,6 +3089,7 @@ main(void)
         cmocka_unit_test_teardown(test_conn_owner2, clear_up),
         cmocka_unit_test_teardown(test_conn_owner_same_data, clear_up),
         cmocka_unit_test_teardown(test_delete, clear_up),
+        cmocka_unit_test_teardown(test_delete2, clear_up),
         cmocka_unit_test_teardown(test_state, clear_up),
         cmocka_unit_test_teardown(test_state_list, clear_up),
         cmocka_unit_test_teardown(test_state_list2, clear_up),

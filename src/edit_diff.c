@@ -2601,51 +2601,87 @@ cleanup:
 /**
  * @brief Merge (update) the value of edit nodes.
  *
- * @param[in,out] trg_node Target edit tree node.
+ * @param[in,out] trg_node Target edit tree node, may be replaced.
+ * @param[in,out] trg_root Target edit tree root node, may be updated.
  * @param[in] src_node Source edit tree node.
  * @param[in] src_op Operation of @p src_node.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_merge_value(struct lyd_node *trg_node, const struct lyd_node *src_node, enum edit_op src_op)
+sr_edit_merge_value(struct lyd_node **trg_node, struct lyd_node **trg_root, const struct lyd_node *src_node,
+        enum edit_op src_op)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node_opaq *opaq_trg, *opaq_src;
+    struct lyd_node *src_dup, *to_free = NULL;
+    struct lyd_attr *a;
+    LY_ERR r;
 
     if (!src_node->schema && (src_op == EDIT_REMOVE)) {
         /* special case when the value has no meaning */
         goto cleanup;
     }
 
-    if (!trg_node->schema) {
-        /* update opaque node value */
-        opaq_trg = (struct lyd_node_opaq *)trg_node;
-        opaq_src = (struct lyd_node_opaq *)src_node;
+    if (!(*trg_node)->schema) {
+        if (!src_node->schema) {
+            /* update opaque node value */
+            opaq_trg = (struct lyd_node_opaq *)*trg_node;
+            opaq_src = (struct lyd_node_opaq *)src_node;
 
-        lydict_remove(LYD_CTX(opaq_trg), opaq_trg->value);
-        lydict_insert(LYD_CTX(opaq_src), opaq_src->value, 0, &opaq_trg->value);
-        opaq_trg->hints = opaq_src->hints;
+            lydict_remove(LYD_CTX(opaq_trg), opaq_trg->value);
+            lydict_insert(LYD_CTX(opaq_src), opaq_src->value, 0, &opaq_trg->value);
+            opaq_trg->hints = opaq_src->hints;
 
-        lyplg_type_prefix_data_free(opaq_trg->format, opaq_trg->val_prefix_data);
-        opaq_trg->format = opaq_src->format;
-        lyplg_type_prefix_data_dup(LYD_CTX(opaq_trg), opaq_src->format, opaq_src->val_prefix_data,
-                &opaq_trg->val_prefix_data);
-    } else if (trg_node->schema->nodetype == LYS_LEAF) {
+            lyplg_type_prefix_data_free(opaq_trg->format, opaq_trg->val_prefix_data);
+            opaq_trg->format = opaq_src->format;
+            lyplg_type_prefix_data_dup(LYD_CTX(opaq_trg), opaq_src->format, opaq_src->val_prefix_data,
+                    &opaq_trg->val_prefix_data);
+        } else {
+            /* replace opaque node with the data node */
+            if (lyd_dup_single(src_node, (*trg_node)->parent, LYD_DUP_NO_META | LYD_DUP_WITH_FLAGS, &src_dup)) {
+                sr_errinfo_new_ly(&err_info, LYD_CTX(src_node), NULL);
+                goto cleanup;
+            }
+            if (!(*trg_node)->parent) {
+                /* will always be inserted before trg_node, which is opaque */
+                if (lyd_insert_sibling(*trg_node, src_dup, trg_root)) {
+                    sr_errinfo_new_ly(&err_info, LYD_CTX(*trg_node), NULL);
+                    goto cleanup;
+                }
+            }
+            to_free = *trg_node;
+            *trg_node = src_dup;
+
+            /* copy all attributes as metadata */
+            LY_LIST_FOR(((struct lyd_node_opaq *)to_free)->attr, a) {
+                r = lyd_new_meta2(LYD_CTX(src_dup), src_dup, 0, a, NULL);
+                if (r == LY_ENOT) {
+                    sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to create metadata from an attribute \"%s\".",
+                            a->name);
+                    goto cleanup;
+                } else if (r) {
+                    sr_errinfo_new_ly(&err_info, LYD_CTX(*trg_node), NULL);
+                    goto cleanup;
+                }
+            }
+        }
+    } else if ((*trg_node)->schema->nodetype == LYS_LEAF) {
         /* change the leaf value */
-        if (lyd_change_term(trg_node, lyd_get_value(src_node))) {
+        if (lyd_change_term(*trg_node, lyd_get_value(src_node))) {
             sr_errinfo_new_ly(&err_info, LYD_CTX(src_node), NULL);
             goto cleanup;
         }
-    } else if (trg_node->schema->nodetype & LYS_ANYDATA) {
+    } else if ((*trg_node)->schema->nodetype & LYS_ANYDATA) {
         /* update any value */
-        if (lyd_any_copy_value(trg_node, &((struct lyd_node_any *)src_node)->value,
+        if (lyd_any_copy_value(*trg_node, &((struct lyd_node_any *)src_node)->value,
                 ((struct lyd_node_any *)src_node)->value_type)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(trg_node), NULL);
+            sr_errinfo_new_ly(&err_info, LYD_CTX(*trg_node), NULL);
             goto cleanup;
         }
     }
 
 cleanup:
+    lyd_free_tree(to_free);
     return err_info;
 }
 
@@ -2780,7 +2816,7 @@ sr_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_parent, const s
 
         if (!val_equal) {
             /* update value */
-            if ((err_info = sr_edit_merge_value(trg_node, src_node, src_op))) {
+            if ((err_info = sr_edit_merge_value(&trg_node, trg_root, src_node, src_op))) {
                 goto cleanup;
             }
         }
