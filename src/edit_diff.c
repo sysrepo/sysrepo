@@ -1519,6 +1519,9 @@ sr_edit_diff_get_origin(const struct lyd_node *node, char **origin, int *origin_
                     }
                 }
             }
+            if (meta) {
+                break;
+            }
         }
     }
 
