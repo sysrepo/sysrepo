@@ -29,6 +29,13 @@
  */
 #define API __attribute__((visibility("default")))
 
+/** printf compiler attribute */
+#ifdef __GNUC__
+# define _FORMAT_PRINTF(FORM, ARGS) __attribute__((format (printf, FORM, ARGS)))
+#else
+# define _FORMAT_PRINTF(FORM, ARGS)
+#endif
+
 /** use access() if eaccess() is not available (it may adversely affect access control, however) */
 #cmakedefine SR_HAVE_EACCESS
 #ifndef SR_HAVE_EACCESS

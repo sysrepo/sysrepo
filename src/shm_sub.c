@@ -307,7 +307,8 @@ sr_shmsub_recover(sr_sub_shm_t *sub_shm)
 {
     if (!sr_conn_is_alive(sub_shm->orig_cid)) {
         SR_LOG_WRN("EV ORIGIN: \"%s\" of CID %" PRIu32 " ID %" PRIu32 " recovered.",
-                sr_ev2str(ATOMIC_LOAD_RELAXED(sub_shm->event)), sub_shm->orig_cid, ATOMIC_LOAD_RELAXED(sub_shm->request_id));
+                sr_ev2str(ATOMIC_LOAD_RELAXED(sub_shm->event)), sub_shm->orig_cid,
+                (uint32_t)ATOMIC_LOAD_RELAXED(sub_shm->request_id));
 
         /* clear the event */
         ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
@@ -2974,8 +2975,8 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
     }
 
     SR_LOG_INF("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " %s (remaining %" PRIu32 " subscribers).",
-            event_desc, sr_ev2str(event), ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id),
-            ATOMIC_LOAD_RELAXED(multi_sub_shm->priority), result_str, multi_sub_shm->subscriber_count);
+            event_desc, sr_ev2str(event), (uint32_t)ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id),
+            (uint32_t)ATOMIC_LOAD_RELAXED(multi_sub_shm->priority), result_str, multi_sub_shm->subscriber_count);
     return NULL;
 }
 
@@ -3417,7 +3418,7 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, sr_error_t err_code, sr_shm_
     }
 
     SR_LOG_INF("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " processing %s.", event_desc, sr_ev2str(event),
-            ATOMIC_LOAD_RELAXED(sub_shm->request_id), result_str);
+            (uint32_t)ATOMIC_LOAD_RELAXED(sub_shm->request_id), result_str);
     return NULL;
 }
 
@@ -4315,7 +4316,8 @@ process_event:
                 /* processing was shelved, so interupt the whole RPC processing in order to get correct final output */
                 SR_LOG_INF("EV LISTEN: \"%s\" ID %" PRIu32 " priority %" PRIu32 " processing shelved.",
                         sr_ev2str(ATOMIC_LOAD_RELAXED(multi_sub_shm->event)),
-                        ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id), ATOMIC_LOAD_RELAXED(multi_sub_shm->priority));
+                        (uint32_t)ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id),
+                        (uint32_t)ATOMIC_LOAD_RELAXED(multi_sub_shm->priority));
                 goto cleanup;
             } else if (ret != SR_ERR_OK) {
                 /* whole event failed */

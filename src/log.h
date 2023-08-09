@@ -90,7 +90,7 @@ void sr_errinfo_add(sr_error_info_t **err_info, sr_error_t err_code, const char 
  * @param[in] msg_format Error message format.
  * @param[in] ... Error message format arguments.
  */
-void sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *msg_format, ...);
+void sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char *msg_format, ...) _FORMAT_PRINTF(3, 4);
 
 /**
  * @brief Log the error and add the error into an error info structure.
@@ -103,7 +103,7 @@ void sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char 
  * @param[in] ... Error message format arguments.
  */
 void sr_errinfo_new_data(sr_error_info_t **err_info, sr_error_t err_code, const char *err_format, const void *err_data,
-        const char *msg_format, ...);
+        const char *msg_format, ...) _FORMAT_PRINTF(5, 6);
 
 /**
  * @brief Log the error(s) from a libyang context and add them into an error info structure.
@@ -151,6 +151,6 @@ void sr_errinfo_merge(sr_error_info_t **err_info, sr_error_info_t *err_info2);
  * @param[in] format Message format.
  * @param[in] ... Format arguments.
  */
-void sr_log(sr_log_level_t ll, const char *format, ...);
+void sr_log(sr_log_level_t ll, const char *format, ...) _FORMAT_PRINTF(2, 3);
 
 #endif

@@ -23,6 +23,8 @@
 #include <libyang/libyang.h>
 #include <sysrepo.h>
 
+#include "config.h"
+
 #define SR_NACM_OP_CREATE 0x01 /**< NACM operation create */
 #define SR_NACM_OP_READ   0x02 /**< NACM operation read */
 #define SR_NACM_OP_UPDATE 0x04 /**< NACM operation update */
@@ -192,6 +194,6 @@ sr_error_info_t *sr_nacm_check_diff(const char *nacm_user, const struct lyd_node
  * @param[in] ... NETCONF error messsage format arguments.
  */
 void sr_errinfo_new_nacm(sr_error_info_t **err_info, const char *error_type, const char *error_tag,
-        const char *error_app_tag, const struct lyd_node *error_path_node, const char *error_message_fmt, ...);
+        const char *error_app_tag, const struct lyd_node *error_path_node, const char *error_message_fmt, ...) _FORMAT_PRINTF(6, 7);
 
 #endif /* SR_NACM_H_ */

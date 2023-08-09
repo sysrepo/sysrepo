@@ -1025,7 +1025,7 @@ int sr_vsprintf(char **str, int *str_len, int offset, const char *format, va_lis
  * @param[in] ... Format arguments.
  * @return Number of printed characters, -1 on error.
  */
-int sr_sprintf(char **str, int *str_len, int offset, const char *format, ...);
+int sr_sprintf(char **str, int *str_len, int offset, const char *format, ...) _FORMAT_PRINTF(4, 5);
 
 /**
  * @brief Get a file descriptor size.
