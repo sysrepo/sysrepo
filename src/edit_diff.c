@@ -2657,7 +2657,7 @@ sr_edit_merge_value(struct lyd_node **trg_node, struct lyd_node **trg_root, cons
                 r = lyd_new_meta2(LYD_CTX(src_dup), src_dup, 0, a, NULL);
                 if (r == LY_ENOT) {
                     sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to create metadata from an attribute \"%s\".",
-                            a->name);
+                            a->name.name);
                     goto cleanup;
                 } else if (r) {
                     sr_errinfo_new_ly(&err_info, LYD_CTX(*trg_node), NULL);
