@@ -537,6 +537,11 @@ sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const ch
 
     SR_CHECK_ARG_APIRET(!conn, NULL, err_info);
 
+    if (!conn->oper_push_mod_count) {
+        /* no data to discard */
+        return sr_api_ret(NULL, err_info);
+    }
+
     if (!timeout_ms) {
         timeout_ms = SR_CHANGE_CB_TIMEOUT;
     }
