@@ -7090,15 +7090,15 @@ sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, const
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), module_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
-    /* SUBS WRITE LOCK */
-    if ((err_info = sr_rwlock(&(*subscription)->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
-            __func__, NULL, NULL))) {
-        goto cleanup;
-    }
-
     /* OPER POLL SUB WRITE LOCK */
     if ((err_info = sr_rwlock(&shm_mod->oper_poll_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
             NULL, NULL))) {
+        goto cleanup;
+    }
+
+    /* SUBS WRITE LOCK */
+    if ((err_info = sr_rwlock(&(*subscription)->subs_lock, SR_SUBSCR_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid,
+            __func__, NULL, NULL))) {
         goto cleanup_unlock1;
     }
 
@@ -7155,12 +7155,12 @@ error1:
     sr_conn_oper_cache_del(conn, sub_id);
 
 cleanup_unlock2:
-    /* OPER POLL SUB WRITE UNLOCK */
-    sr_rwunlock(&shm_mod->oper_poll_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
-
-cleanup_unlock1:
     /* SUBS WRITE UNLOCK */
     sr_rwunlock(&(*subscription)->subs_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
+
+cleanup_unlock1:
+    /* OPER POLL SUB WRITE UNLOCK */
+    sr_rwunlock(&shm_mod->oper_poll_lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
 cleanup:
     /* CONTEXT UNLOCK */
