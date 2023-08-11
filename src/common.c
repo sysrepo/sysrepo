@@ -2575,14 +2575,14 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
 
         /* wait until there is no read-upgr lock */
         ret = 0;
-        while (!ret && (rwlock->upgr || rwlock->writer)) {
+        while (!ret && (rwlock->readers[SR_RWLOCK_READ_LIMIT - 1] || rwlock->upgr || rwlock->writer)) {
             /* COND WAIT */
             ret = sr_cond_clockwait(&rwlock->cond, &rwlock->mutex, COMPAT_CLOCK_ID, timeout_abs);
         }
         if (ret == ETIMEDOUT) {
             /* recover the lock again, the owner may have died while processing */
             sr_rwlock_recover(rwlock, func, cb, cb_data);
-            if (!rwlock->upgr && !rwlock->writer) {
+            if (!rwlock->readers[SR_RWLOCK_READ_LIMIT - 1] && !rwlock->upgr && !rwlock->writer) {
                 /* recovered */
                 ret = 0;
             }
@@ -2612,14 +2612,14 @@ sr_sub_rwlock(sr_rwlock_t *rwlock, struct timespec *timeout_abs, sr_lock_mode_t 
 
         /* wait until there is no writer waiting for lock */
         ret = 0;
-        while (!ret && rwlock->writer) {
+        while (!ret && (rwlock->readers[SR_RWLOCK_READ_LIMIT - 1] || rwlock->writer)) {
             /* COND WAIT */
             ret = sr_cond_clockwait(&rwlock->cond, &rwlock->mutex, COMPAT_CLOCK_ID, timeout_abs);
         }
         if (ret == ETIMEDOUT) {
             /* recover the lock again, the owner may have died while processing */
             sr_rwlock_recover(rwlock, func, cb, cb_data);
-            if (!rwlock->writer) {
+            if (!rwlock->readers[SR_RWLOCK_READ_LIMIT - 1] && !rwlock->writer) {
                 /* recovered */
                 ret = 0;
             }
