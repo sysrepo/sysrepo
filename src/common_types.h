@@ -61,7 +61,8 @@ typedef struct {
     sr_cid_t readers[SR_RWLOCK_READ_LIMIT]; /**< CIDs of all READ lock owners (including READ-UPGR), 0s otherwise. */
     uint8_t read_count[SR_RWLOCK_READ_LIMIT];   /**< Number of recursive read locks of the connection in readers. */
     sr_cid_t upgr;                  /**< CID of the READ-UPGR lock owner if locked, 0 otherwise. */
-    sr_cid_t writer;                /**< CID of the WRITE lock owner if locked, 0 otherwise. */
+    sr_cid_t writer;                /**< CID of the WRITE lock owner if locked, can be set if an WRITE-URGE lock
+                                         is being waited on, 0 otherwise. */
 } sr_rwlock_t;
 
 /**
