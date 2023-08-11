@@ -2354,6 +2354,10 @@ cleanup:
 static void
 sr_rwlock_reader_del_(sr_rwlock_t *rwlock, uint32_t i)
 {
+    uint32_t move_count;
+    sr_cid_t last_reader;
+    uint8_t last_read_count;
+
     /* decrease recursive read lock count */
     assert(rwlock->read_count[i]);
     --rwlock->read_count[i];
@@ -2363,16 +2367,30 @@ sr_rwlock_reader_del_(sr_rwlock_t *rwlock, uint32_t i)
         return;
     }
 
-    /* move all the following CIDs so that there are no holes */
-    while ((i < (SR_RWLOCK_READ_LIMIT - 1)) && rwlock->readers[i + 1]) {
-        rwlock->readers[i] = rwlock->readers[i + 1];
-        rwlock->read_count[i] = rwlock->read_count[i + 1];
-        ++i;
+    /* move all the readers to replace the deleted one, avoid duplicates and try to keep the arrays consistent for
+     * sysrepo monitoring */
+    move_count = 0;
+    while ((move_count < SR_RWLOCK_READ_LIMIT - i - 1) && rwlock->readers[i + move_count + 1]) {
+        ++move_count;
     }
 
-    /* remove the last CID */
-    rwlock->readers[i] = 0;
-    rwlock->read_count[i] = 0;
+    /* temporarily remove the last reader to avoid duplicating it */
+    last_reader = rwlock->readers[i + move_count];
+    last_read_count = rwlock->read_count[i + move_count];
+    rwlock->readers[i + move_count] = 0;
+    rwlock->read_count[i + move_count] = 0;
+
+    if (!move_count) {
+        /* no readers left */
+        return;
+    }
+
+    memmove(&rwlock->readers[i], &rwlock->readers[i + 1], move_count * sizeof *rwlock->readers);
+    memmove(&rwlock->read_count[i], &rwlock->read_count[i + 1], move_count * sizeof *rwlock->read_count);
+
+    /* restore the last reader */
+    rwlock->readers[i + move_count - 1] = last_reader;
+    rwlock->read_count[i + move_count - 1] = last_read_count;
 }
 
 /**
