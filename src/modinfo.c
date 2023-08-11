@@ -1456,7 +1456,7 @@ cleanup:
  *
  * @param[in] rwlock Lock to read CIDs from.
  * @param[in] skip_read_cid Sysrepo CID to skip a read lock once for, no skipped if 0.
- * @param[in] path_format Path string used for lyd_new_path() after printing specific CID into it.
+ * @param[in] path_format Path string used for lyd_new_path() after printing specific CID and lock mode into it.
  * @param[in] ctx_node Context node to use for lyd_new_path().
  * @return err_info, NULL on success.
  */
@@ -1477,8 +1477,8 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
     /* unlocked access to the lock, possible wrong/stale values should not matter */
 
     if ((cid = rwlock->upgr)) {
-        snprintf(path, PATH_LEN, path_format, cid);
-        SR_CHECK_LY_GOTO(lyd_new_path(ctx_node, NULL, path, "read-upgr", 0, NULL), ly_ctx, err_info, cleanup);
+        snprintf(path, PATH_LEN, path_format, cid, "read-upgr");
+        SR_CHECK_LY_GOTO(lyd_new_path(ctx_node, NULL, path, NULL, 0, NULL), ly_ctx, err_info, cleanup);
 
         /* read-upgr lock also holds a read lock, we need to skip it */
         skip_read_upgr_cid = cid;
@@ -1494,8 +1494,8 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
             continue;
         }
 
-        snprintf(path, PATH_LEN, path_format, cid);
-        if (lyd_new_path(ctx_node, NULL, path, "read", 0, NULL)) {
+        snprintf(path, PATH_LEN, path_format, cid, "read");
+        if (lyd_new_path(ctx_node, NULL, path, NULL, 0, NULL)) {
             sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
             goto cleanup;
         }
@@ -1503,8 +1503,8 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
 
     /* if there is a read-lock and the writer is set, it is just an urged write-lock being waited on, ignore it */
     if (!i && (cid = rwlock->writer)) {
-        snprintf(path, PATH_LEN, path_format, cid);
-        SR_CHECK_LY_GOTO(lyd_new_path(ctx_node, NULL, path, "write", 0, NULL), ly_ctx, err_info, cleanup);
+        snprintf(path, PATH_LEN, path_format, cid, "write");
+        SR_CHECK_LY_GOTO(lyd_new_path(ctx_node, NULL, path, NULL, 0, NULL), ly_ctx, err_info, cleanup);
     }
 
 cleanup:
@@ -1819,7 +1819,7 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
         shm_lock = &shm_mod->data_lock_info[ds];
 
         /* data-lock */
-        snprintf(buf, BUF_LEN, "data-lock[cid='%%" PRIu32 "'][datastore='%s']/mode", sr_ds2ident(ds));
+        snprintf(buf, BUF_LEN, "data-lock[cid='%%" PRIu32 "'][datastore='%s'][mode='%%s']", sr_ds2ident(ds));
         err_info = sr_modinfo_module_srmon_locks_ds(&shm_lock->data_lock, conn->cid, buf, sr_mod);
 
         if (err_info) {
@@ -1861,7 +1861,7 @@ ds_unlock:
 
     /* change-sub-lock */
     for (ds = 0; ds < SR_DS_COUNT; ++ds) {
-        snprintf(buf, BUF_LEN, "change-sub-lock[cid='%%" PRIu32 "'][datastore='%s']/mode", sr_ds2ident(ds));
+        snprintf(buf, BUF_LEN, "change-sub-lock[cid='%%" PRIu32 "'][datastore='%s'][mode='%%s']", sr_ds2ident(ds));
         if ((err_info = sr_modinfo_module_srmon_locks_ds(&shm_mod->change_sub[ds].lock, 0, buf, sr_mod))) {
             return err_info;
         }
