@@ -22,6 +22,11 @@ module sysrepo-monitoring {
     description
         "Sysrepo YANG datastore monitoring state information.";
 
+    revision "2023-08-11" {
+        description
+            "Make 'mode' a key because one connection may hold read and read-upgr lock simultanously.";
+    }
+
     revision "2022-08-19" {
         description
             "Added state information for operational poll subscriptions.";
@@ -100,7 +105,6 @@ module sysrepo-monitoring {
 
         leaf mode {
             type lock-mode;
-            mandatory true;
             description
                 "Lock mode.";
         }
@@ -160,7 +164,7 @@ module sysrepo-monitoring {
             }
 
             list data-lock {
-                key "cid datastore";
+                key "cid datastore mode";
                 description
                     "Held module data lock.";
 
@@ -196,7 +200,7 @@ module sysrepo-monitoring {
             }
 
             list change-sub-lock {
-                key "cid datastore";
+                key "cid datastore mode";
                 description
                     "Held module change subscriptions lock.";
 
