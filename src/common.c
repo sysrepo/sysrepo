@@ -2292,11 +2292,6 @@ sr_rwlock_init(sr_rwlock_t *rwlock, int shared)
         return err_info;
     }
 
-    if ((err_info = _sr_mutex_init(&rwlock->r_mutex, shared, shared))) {
-        pthread_mutex_destroy(&rwlock->mutex);
-        sr_cond_destroy(&rwlock->cond);
-        return err_info;
-    }
     memset(rwlock->readers, 0, sizeof rwlock->readers);
     rwlock->upgr = 0;
     rwlock->writer = 0;
@@ -2309,7 +2304,6 @@ sr_rwlock_destroy(sr_rwlock_t *rwlock)
 {
     pthread_mutex_destroy(&rwlock->mutex);
     sr_cond_destroy(&rwlock->cond);
-    pthread_mutex_destroy(&rwlock->r_mutex);
 }
 
 /**
@@ -2323,25 +2317,14 @@ static sr_error_info_t *
 sr_rwlock_reader_add(sr_rwlock_t *rwlock, sr_cid_t cid)
 {
     sr_error_info_t *err_info = NULL;
-    int ret;
     uint32_t i;
-
-    /* READ MUTEX LOCK */
-    ret = pthread_mutex_lock(&rwlock->r_mutex);
-    if (ret == EOWNERDEAD) {
-        ret = pthread_mutex_consistent(&rwlock->r_mutex);
-    }
-    if (ret) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Locking a mutex in %s() failed (%s).", __func__, strerror(ret));
-        goto cleanup;
-    }
 
     /* find this connection or first free item */
     for (i = 0; (i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i] && (rwlock->readers[i] != cid); ++i) {}
     if (i == SR_RWLOCK_READ_LIMIT) {
         sr_errinfo_new(&err_info, SR_ERR_LOCKED, "Concurrent reader limit %d reached, possibly because of missing unlocks.",
                 SR_RWLOCK_READ_LIMIT);
-        goto unlock;
+        goto cleanup;
     }
 
     if (!rwlock->readers[i]) {
@@ -2353,18 +2336,9 @@ sr_rwlock_reader_add(sr_rwlock_t *rwlock, sr_cid_t cid)
         if (rwlock->read_count[i] == UINT8_MAX) {
             sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Recursive reader limit %" PRIu8
                     " reached, possibly because of missing unlocks.", UINT8_MAX);
-            goto unlock;
+            goto cleanup;
         }
         ++rwlock->read_count[i];
-    }
-
-unlock:
-    if (!ret) {
-        /* READ MUTEX UNLOCK */
-        ret = pthread_mutex_unlock(&rwlock->r_mutex);
-        if (ret) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(ret));
-        }
     }
 
 cleanup:
@@ -2412,38 +2386,18 @@ static sr_error_info_t *
 sr_rwlock_reader_del(sr_rwlock_t *rwlock, sr_cid_t cid)
 {
     sr_error_info_t *err_info = NULL;
-    int ret;
     uint32_t i;
-
-    /* READ MUTEX LOCK */
-    ret = pthread_mutex_lock(&rwlock->r_mutex);
-    if (ret == EOWNERDEAD) {
-        ret = pthread_mutex_consistent(&rwlock->r_mutex);
-    }
-    if (ret) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Locking a mutex in %s() failed (%s).", __func__, strerror(ret));
-        goto cleanup;
-    }
 
     /* find a CID match */
     for (i = 0; (i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i] && (rwlock->readers[i] != cid); ++i) {}
     if ((i == SR_RWLOCK_READ_LIMIT) || (rwlock->readers[i] != cid)) {
         /* CID not found */
         SR_ERRINFO_INT(&err_info);
-        goto unlock;
+        goto cleanup;
     }
 
     /* remove the CID */
     sr_rwlock_reader_del_(rwlock, i);
-
-unlock:
-    if (!ret) {
-        /* READ MUTEX UNLOCK */
-        ret = pthread_mutex_unlock(&rwlock->r_mutex);
-        if (ret) {
-            sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unlocking a mutex in %s() failed (%s).", __func__, strerror(ret));
-        }
-    }
 
 cleanup:
     return err_info;
@@ -2463,28 +2417,13 @@ sr_rwlock_recover(sr_rwlock_t *rwlock, const char *func, sr_lock_recover_cb cb, 
 {
     uint32_t i = 0;
     sr_cid_t cid;
-    int ret;
 
     /* readers */
     while ((i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i]) {
         if (!sr_conn_is_alive(rwlock->readers[i])) {
-
-            /* READ MUTEX LOCK */
-            ret = pthread_mutex_lock(&rwlock->r_mutex);
-            if (ret == EOWNERDEAD) {
-                ret = pthread_mutex_consistent(&rwlock->r_mutex);
-            }
-            if (ret) {
-                /* ignore errors, should never occur */
-                continue;
-            }
-
             /* remove the dead reader */
             cid = rwlock->readers[i];
             sr_rwlock_reader_del_(rwlock, i);
-
-            /* READ MUTEX UNLOCK */
-            pthread_mutex_unlock(&rwlock->r_mutex);
 
             /* recover */
             if (cb) {

@@ -1467,7 +1467,6 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
     sr_error_info_t *err_info = NULL;
     sr_cid_t cid, skip_read_upgr_cid = 0;
     uint32_t i;
-    int r;
 
 #define PATH_LEN 128
     char path[PATH_LEN];
@@ -1475,22 +1474,14 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
 
     ly_ctx = (struct ly_ctx *)LYD_CTX(ctx_node);
 
+    /* unlocked access to the lock, possible wrong/stale values should not matter */
+
     if ((cid = rwlock->upgr)) {
         snprintf(path, PATH_LEN, path_format, cid);
-        SR_CHECK_LY_RET(lyd_new_path(ctx_node, NULL, path, "read-upgr", 0, NULL), ly_ctx, err_info);
+        SR_CHECK_LY_GOTO(lyd_new_path(ctx_node, NULL, path, "read-upgr", 0, NULL), ly_ctx, err_info, cleanup);
 
         /* read-upgr lock also holds a read lock, we need to skip it */
         skip_read_upgr_cid = cid;
-    }
-
-    /* READ MUTEX LOCK */
-    r = pthread_mutex_lock(&rwlock->r_mutex);
-    if (r == EOWNERDEAD) {
-        r = pthread_mutex_consistent(&rwlock->r_mutex);
-    }
-    if (r) {
-        SR_ERRINFO_INT(&err_info);
-        return err_info;
     }
 
     for (i = 0; (i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i]; ++i) {
@@ -1506,23 +1497,17 @@ sr_modinfo_module_srmon_locks_ds(sr_rwlock_t *rwlock, uint32_t skip_read_cid, co
         snprintf(path, PATH_LEN, path_format, cid);
         if (lyd_new_path(ctx_node, NULL, path, "read", 0, NULL)) {
             sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
-            break;
+            goto cleanup;
         }
-    }
-
-    /* READ MUTEX UNLOCK */
-    pthread_mutex_unlock(&rwlock->r_mutex);
-
-    if (err_info) {
-        return err_info;
     }
 
     /* if there is a read-lock and the writer is set, it is just an urged write-lock being waited on, ignore it */
     if (!i && (cid = rwlock->writer)) {
         snprintf(path, PATH_LEN, path_format, cid);
-        SR_CHECK_LY_RET(lyd_new_path(ctx_node, NULL, path, "write", 0, NULL), ly_ctx, err_info);
+        SR_CHECK_LY_GOTO(lyd_new_path(ctx_node, NULL, path, "write", 0, NULL), ly_ctx, err_info, cleanup);
     }
 
+cleanup:
     return NULL;
 #undef PATH_LEN
 }
@@ -1541,7 +1526,6 @@ sr_modinfo_module_srmon_locks(sr_rwlock_t *rwlock, const char *list_name, struct
     sr_error_info_t *err_info = NULL;
     sr_cid_t cid;
     uint32_t i;
-    int r;
 
 #define CID_STR_LEN 64
     char cid_str[CID_STR_LEN];
@@ -1549,6 +1533,8 @@ sr_modinfo_module_srmon_locks(sr_rwlock_t *rwlock, const char *list_name, struct
     struct ly_ctx *ly_ctx;
 
     ly_ctx = (struct ly_ctx *)LYD_CTX(parent);
+
+    /* unlocked access to the lock, possible wrong/stale values should not matter */
 
     if ((cid = rwlock->writer)) {
         /* list instance */
@@ -1570,16 +1556,6 @@ sr_modinfo_module_srmon_locks(sr_rwlock_t *rwlock, const char *list_name, struct
         SR_CHECK_LY_RET(lyd_new_term(list, NULL, "mode", "read-upgr", 0, NULL), ly_ctx, err_info);
     }
 
-    /* READ MUTEX LOCK */
-    r = pthread_mutex_lock(&rwlock->r_mutex);
-    if (r == EOWNERDEAD) {
-        r = pthread_mutex_consistent(&rwlock->r_mutex);
-    }
-    if (r) {
-        SR_ERRINFO_INT(&err_info);
-        return err_info;
-    }
-
     for (i = 0; (i < SR_RWLOCK_READ_LIMIT) && rwlock->readers[i]; ++i) {
         SR_CHECK_LY_GOTO(lyd_new_list(parent, NULL, list_name, 0, &list), ly_ctx, err_info, cleanup);
 
@@ -1590,9 +1566,6 @@ sr_modinfo_module_srmon_locks(sr_rwlock_t *rwlock, const char *list_name, struct
     }
 
 cleanup:
-    /* READ MUTEX UNLOCK */
-    pthread_mutex_unlock(&rwlock->r_mutex);
-
     return err_info;
 #undef CID_STR_LEN
 }

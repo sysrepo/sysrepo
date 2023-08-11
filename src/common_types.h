@@ -49,7 +49,7 @@ typedef enum {
 } sr_lock_mode_t;
 
 /** maximum number of system-wide concurrent connection owners of a read lock */
-#define SR_RWLOCK_READ_LIMIT 10
+#define SR_RWLOCK_READ_LIMIT 16
 
 /**
  * @brief Sysrepo read-write lock.
@@ -58,7 +58,6 @@ typedef struct {
     pthread_mutex_t mutex;          /**< Lock mutex. */
     sr_cond_t cond;                 /**< Lock condition variable. */
 
-    pthread_mutex_t r_mutex;        /**< Mutex for accessing readers, needed because of concurrent reading. */
     sr_cid_t readers[SR_RWLOCK_READ_LIMIT]; /**< CIDs of all READ lock owners (including READ-UPGR), 0s otherwise. */
     uint8_t read_count[SR_RWLOCK_READ_LIMIT];   /**< Number of recursive read locks of the connection in readers. */
     sr_cid_t upgr;                  /**< CID of the READ-UPGR lock owner if locked, 0 otherwise. */
