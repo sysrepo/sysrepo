@@ -1095,10 +1095,6 @@ sr_edit_find_match(const struct lyd_node *data_sibling, const struct lyd_node *e
         if (schema) {
             /* try to find a data instance of the schema node */
             lyrc = lyd_find_sibling_val(data_sibling, schema, NULL, 0, match_p);
-            if (lyrc == LY_ENOTFOUND) {
-                /* it may still exist as an opaque node (when being removed, for example) */
-                lyrc = lyd_find_sibling_opaq_next(data_sibling, LYD_NAME(edit_node), match_p);
-            }
         } else {
             *match_p = NULL;
             lyrc = LY_ENOTFOUND;
@@ -1142,6 +1138,11 @@ sr_edit_find_match(const struct lyd_node *data_sibling, const struct lyd_node *e
     } else {
         /* any existing instance */
         lyrc = lyd_find_sibling_val(data_sibling, edit_node->schema, NULL, 0, match_p);
+    }
+
+    if (lyrc == LY_ENOTFOUND) {
+        /* it may still exist as an opaque node (when being removed, for example) */
+        lyrc = lyd_find_sibling_opaq_next(data_sibling, LYD_NAME(edit_node), match_p);
     }
 
     /* check for errors */
