@@ -1,0 +1,25 @@
+module ietf-interfaces-aug-leaf {
+    namespace "urn:if-aug-leaf";
+    prefix ial;
+
+    yang-version 1.1;
+
+    import ietf-interfaces {
+        prefix if;
+    }
+
+    leaf test-leaf {
+        type uint8;
+    }
+
+    augment "/if:interfaces-state/if:interface" {
+        leaf new-test-leaf {
+            config false;
+            when "/if:interfaces-state/if:interface";
+            type leafref {
+                path "/ial:test-leaf";
+            }
+            mandatory true;
+        }
+    }
+}

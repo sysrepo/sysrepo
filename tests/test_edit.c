@@ -43,6 +43,7 @@ setup_f(void **state)
         TESTS_SRC_DIR "/files/ietf-interfaces.yang",
         TESTS_SRC_DIR "/files/iana-if-type.yang",
         TESTS_SRC_DIR "/files/ietf-ip.yang",
+        TESTS_SRC_DIR "/files/ietf-interfaces-aug-leaf.yang",
         TESTS_SRC_DIR "/files/decimal.yang",
         TESTS_SRC_DIR "/files/referenced-data.yang",
         TESTS_SRC_DIR "/files/test-module.yang",
@@ -80,6 +81,7 @@ teardown_f(void **state)
         "test-module",
         "referenced-data",
         "decimal",
+        "ietf-interfaces-aug-leaf",
         "ietf-ip",
         "iana-if-type",
         "ietf-interfaces",
@@ -830,6 +832,58 @@ test_isolate_oper(void **state)
 }
 
 static void
+test_isolate_oper2(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_data_t *data;
+    char *str;
+    int ret;
+
+    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+
+    /* set and delete an oper leaf */
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/ietf-interfaces-aug-leaf:new-test-leaf",
+            "7", NULL, SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/ietf-interfaces-aug-leaf:new-test-leaf",
+            SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* delete and set an oper leaf */
+    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/ietf-interfaces-aug-leaf:new-test-leaf",
+            SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/ietf-interfaces-aug-leaf:new-test-leaf",
+            "8", NULL, SR_EDIT_ISOLATE);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the oper data */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    sr_release_data(data);
+    assert_string_equal(str,
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <new-test-leaf xmlns=\"urn:if-aug-leaf\">8</new-test-leaf>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n");
+    free(str);
+}
+
+static void
 test_purge(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -1537,6 +1591,7 @@ main(void)
         cmocka_unit_test_teardown(test_none, clear_interfaces),
         cmocka_unit_test_teardown(test_isolate, clear_interfaces),
         cmocka_unit_test_teardown(test_isolate_oper, clear_mod),
+        cmocka_unit_test_teardown(test_isolate_oper2, clear_interfaces),
         cmocka_unit_test(test_purge),
         cmocka_unit_test(test_top_op),
         cmocka_unit_test_teardown(test_oper, clear_interfaces),
