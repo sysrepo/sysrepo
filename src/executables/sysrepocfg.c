@@ -785,6 +785,23 @@ main(int argc, char **argv)
     /* process options */
     opterr = 0;
     while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:S:G:d:m:x:f:lnop:t:e:u:v:", options, NULL)) != -1) {
+        /* parameters with optional arguments */
+        switch (opt) {
+        case 'I':
+        case 'X':
+        case 'E':
+        case 'R':
+        case 'N':
+            if (!optarg && (optind < argc) && (argv[optind][0] != '-')) {
+                /* assume the parameter is the optional argument */
+                optarg = argv[optind++];
+            }
+            break;
+        default:
+            /* handled correctly */
+            break;
+        }
+
         switch (opt) {
         case 'h':
             version_print();
