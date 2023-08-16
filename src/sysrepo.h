@@ -884,6 +884,9 @@ void sr_free_values(sr_val_t *values, size_t count);
  * The value of a leaf-list can be specified either by predicate in xpath or by value argument.
  * If both are present, value argument is ignored and xpath predicate is used.
  *
+ * Edits preserve their order only if ::SR_EDIT_ISOLATE is used and in some cases it may
+ * affect the result.
+ *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifier of the data element to be set.
  * @param[in] value Value to be set. `xpath` member of the ::sr_val_t structure can be NULL.
