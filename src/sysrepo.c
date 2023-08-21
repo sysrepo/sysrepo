@@ -3853,7 +3853,12 @@ sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
     }
 
     /* create diff */
-    if ((err_info = sr_modinfo_edit_apply(&mod_info, session->dt[session->ds].edit->tree, 1))) {
+    if (mod_info.ds == SR_DS_OPERATIONAL) {
+        err_info = sr_modinfo_edit_merge(&mod_info, session->dt[session->ds].edit->tree, 1);
+    } else {
+        err_info = sr_modinfo_edit_apply(&mod_info, session->dt[session->ds].edit->tree, 1);
+    }
+    if (err_info) {
         goto cleanup;
     }
 

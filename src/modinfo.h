@@ -160,6 +160,16 @@ struct sr_mod_info_mod_s *sr_modinfo_next_mod(struct sr_mod_info_mod_s *last, st
 sr_error_info_t *sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edit, int create_diff);
 
 /**
+ * @brief Merge sysrepo edit with mod info data that are actually an edit as well.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] edit Sysrepo edit to merge.
+ * @param[in] create_diff Whether to also create diff with the original data tree.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_modinfo_edit_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *edit, int create_diff);
+
+/**
  * @brief Merge sysrepo diff to mod info diff.
  *
  * @param[in] mod_info Mod info to use.
