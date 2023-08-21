@@ -587,7 +587,7 @@ test_create_delete(void **state)
         ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']",
                 NULL, NULL, 0);
         assert_int_equal(ret, SR_ERR_OK);
-       ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/enabled",
+        ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/enabled",
                 "false", NULL, 0);
         assert_int_equal(ret, SR_ERR_OK);
         ret = sr_set_item_str(st->sess, "/ietf-interfaces-new:interfaces/interface[name=\'mixed\']/type",
