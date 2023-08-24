@@ -25,7 +25,7 @@
 #include "common_types.h"
 #include "sysrepo_types.h"
 
-#define SR_SHM_VER 15   /**< Main, mod, and ext SHM version of their expected content structures. */
+#define SR_SHM_VER 16   /**< Main, mod, and ext SHM version of their expected content structures. */
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
 
 /**
@@ -120,6 +120,7 @@ typedef struct {
     off_t name;                 /**< Module name (offset in mod SHM). */
     char rev[11];               /**< Module revision. */
     int replay_supp;            /**< Whether module supports replay. */
+    uint32_t run_cache_id;      /**< Running cached data ID. */
     off_t plugins[SR_MOD_DS_PLUGIN_COUNT];  /**< Module plugin names (offsets in mod SHM). */
 
     off_t features;             /**< Array of enabled features (off_t *) (offset in mod SHM). */

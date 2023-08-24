@@ -129,7 +129,7 @@ struct sr_conn_ctx_s {
     struct lyd_node *run_cache_data;    /**< Cached running data of all the modules. */
     struct sr_run_cache_s {
         const struct lys_module *mod;   /**< Cached libyang module. */
-        struct timespec ts;         /**< Cached module data timestamp. */
+        uint32_t id;                    /**< Cached module data ID. */
     } *run_cache_mods;
     uint32_t run_cache_mod_count;
     sr_rwlock_t run_cache_lock;     /**< Session-shared lock for accessing running data cache. */

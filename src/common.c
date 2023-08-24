@@ -3180,7 +3180,7 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
 
             cmod = &conn->run_cache_mods[j];
             cmod->mod = mod->ly_mod;
-            memset(&cmod->ts, 0, sizeof cmod->ts);
+            cmod->id = UINT32_MAX;
 
             ++conn->run_cache_mod_count;
         }
@@ -3192,9 +3192,9 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
         }
 
         /* check whether the data are current */
-        if (!sr_time_cmp(&cmod->ts, &mtime)) {
+        if (cmod->id == mod->shm_mod->run_cache_id) {
             continue;
-        } /* older mtime can only mean an NTP change followed by data change */
+        }
 
         if (has_lock != SR_LOCK_WRITE) {
             /* CACHE READ UNLOCK */
@@ -3225,8 +3225,8 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
             lyd_insert_sibling(conn->run_cache_data, mod_data, &conn->run_cache_data);
         }
 
-        /* update the timestamp, be defensive and use the last_modif timestamp we got before */
-        cmod->ts = mtime;
+        /* update the cached data ID */
+        cmod->id = mod->shm_mod->run_cache_id;
     }
 
 cleanup:

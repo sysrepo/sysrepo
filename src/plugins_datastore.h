@@ -207,9 +207,6 @@ typedef int (*srds_access_check)(const struct lys_module *mod, sr_datastore_t ds
  *
  * The function succeedes even if the respective file does not exist. In such a case the @p mtime is set to 0.
  *
- * This function is used for implementing running data cache in connections. For that to work correctly,
- * **every** data change should result in changed @p mtime returned.
- *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
  * @param[out] mtime Time of last modification, or 0 when it is unknown.

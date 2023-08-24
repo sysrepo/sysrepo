@@ -51,7 +51,6 @@ srpds_json_store_(const struct lys_module *mod, sr_datastore_t ds, const struct 
 {
     int rc = SR_ERR_OK;
     struct stat st;
-    struct timespec times[2];
     char *path = NULL, *bck_path = NULL;
     int fd = -1, backup = 0, creat = 0;
     uint32_t print_opts;
@@ -143,14 +142,6 @@ srpds_json_store_(const struct lys_module *mod, sr_datastore_t ds, const struct 
         SRPLG_LOG_ERR(srpds_name, "Failed to truncate \"%s\" (%s).", path, strerror(errno));
         rc = SR_ERR_SYS;
         goto cleanup;
-    }
-
-    /* manually update modification time to get maximum supported frequency updates (by default, some cached timestamp
-     * is used that has a really poor update period) */
-    times[0].tv_nsec = UTIME_OMIT;
-    clock_gettime(CLOCK_REALTIME, &times[1]);
-    if (futimens(fd, times) == -1) {
-        SRPLG_LOG_WRN(srpds_name, "Failed to update file \"%s\" modification time (%s).", path, strerror(errno));
     }
 
 cleanup:
