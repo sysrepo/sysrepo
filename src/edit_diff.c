@@ -1086,7 +1086,7 @@ sr_edit_find_match(const struct lyd_node *data_sibling, const struct lyd_node *e
 
     if (!edit_node->schema) {
         /* opaque node, find target module first */
-        mod = lyd_owner_module(edit_node);
+        mod = lyd_node_module(edit_node);
         if (mod) {
             /* find target schema node */
             schema = lys_find_child(edit_node->parent ? edit_node->parent->schema : NULL, mod,
