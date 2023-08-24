@@ -629,11 +629,22 @@ sr_lycc_update_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, const str
     }
 
     /* fully validate complete startup, running, and factory-default datastore */
-    if (lyd_validate_all(&data_info->new.start, new_ctx, LYD_VALIDATE_NO_STATE, NULL) ||
-            lyd_validate_all(&data_info->new.run, new_ctx, LYD_VALIDATE_NO_STATE, NULL) ||
-            lyd_validate_all(&data_info->new.fdflt, new_ctx, LYD_VALIDATE_NO_STATE, NULL)) {
+    if (lyd_validate_all(&data_info->new.start, new_ctx, LYD_VALIDATE_NO_STATE, NULL)) {
         sr_errinfo_new_ly(&err_info, new_ctx, NULL);
         err_info->err[0].err_code = SR_ERR_VALIDATION_FAILED;
+        sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Invalid startup datastore data.");
+        goto cleanup;
+    }
+    if (lyd_validate_all(&data_info->new.run, new_ctx, LYD_VALIDATE_NO_STATE, NULL)) {
+        sr_errinfo_new_ly(&err_info, new_ctx, NULL);
+        err_info->err[0].err_code = SR_ERR_VALIDATION_FAILED;
+        sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Invalid running datastore data.");
+        goto cleanup;
+    }
+    if (lyd_validate_all(&data_info->new.fdflt, new_ctx, LYD_VALIDATE_NO_STATE, NULL)) {
+        sr_errinfo_new_ly(&err_info, new_ctx, NULL);
+        err_info->err[0].err_code = SR_ERR_VALIDATION_FAILED;
+        sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Invalid factory-default datastore data.");
         goto cleanup;
     }
 
