@@ -9,5 +9,5 @@ plugin directory, which is printed by `cmake` during the project configuration a
 
 There is full explanation of the example YANG module and instructions how to install and run the plugin in
 the documentation. Once built, it can be found at a separate page `sysrepo/Developer Guide/Plugin Example`,
-which is also hosted online [here](https://netopeer.liberouter.org/doc/sysrepo/master/html/example.html).
+which is also hosted online [here](https://netopeer.liberouter.org/doc/sysrepo/master/html/srpd_example.html).
 Note especially the section `Trying It Out` that is further down on the page.
