@@ -189,7 +189,7 @@ srpntf_open_file(const char *mod_name, time_t from_ts, time_t to_ts, int flags, 
         goto cleanup;
     }
 
-    *notif_fd = srpjson_open(path, flags, perm);
+    *notif_fd = srpjson_open(srpntf_name, path, flags, perm);
     if (*notif_fd == -1) {
         rc = srpjson_open_error(srpntf_name, path);
         goto cleanup;

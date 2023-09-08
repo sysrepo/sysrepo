@@ -187,9 +187,12 @@ srpjson_log_err_ly(const char *plg_name, const struct ly_ctx *ly_ctx)
 }
 
 int
-srpjson_open(const char *path, int flags, mode_t mode)
+srpjson_open(const char *plg_name, const char *path, int flags, mode_t mode)
 {
     int fd;
+    char *group = SR_GROUP;
+    struct stat st = {0};
+    gid_t gid = -1;
 
     assert(!(flags & O_CREAT) || mode);
 
@@ -209,11 +212,33 @@ srpjson_open(const char *path, int flags, mode_t mode)
         return -1;
     }
 
+    /* check permissions if the file could have been created */
     if (flags & O_CREAT) {
-        /* set correct permissions */
-        if (fchmod(fd, mode) == -1) {
+        /* stat the file */
+        if (fstat(fd, &st)) {
             close(fd);
             return -1;
+        }
+
+        /* set correct permissions if not already */
+        if (((st.st_mode & 00777) != mode) && (fchmod(fd, mode) == -1)) {
+            close(fd);
+            return -1;
+        }
+
+        /* set correct group if needed */
+        if (strlen(SR_GROUP)) {
+            /* get GID */
+            if (srpjson_get_grp(plg_name, &gid, &group)) {
+                close(fd);
+                return -1;
+            }
+
+            /* update if needed */
+            if ((st.st_gid != gid) && (fchown(fd, -1, gid) == -1)) {
+                close(fd);
+                return -1;
+            }
         }
     }
 
@@ -459,14 +484,14 @@ srpjson_cp_path(const char *plg_name, const char *to, const char *from)
     ssize_t nread, nwritten;
 
     /* open "from" file */
-    fd_from = srpjson_open(from, O_RDONLY, 0);
+    fd_from = srpjson_open(plg_name, from, O_RDONLY, 0);
     if (fd_from < 0) {
         rc = srpjson_open_error(plg_name, from);
         goto cleanup;
     }
 
     /* open "to" */
-    fd_to = srpjson_open(to, O_WRONLY | O_TRUNC, 0);
+    fd_to = srpjson_open(plg_name, to, O_WRONLY | O_TRUNC, 0);
     if (fd_to < 0) {
         rc = srpjson_open_error(plg_name, to);
         goto cleanup;

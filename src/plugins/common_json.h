@@ -98,13 +98,14 @@ void srpjson_log_err_ly(const char *plg_name, const struct ly_ctx *ly_ctx);
  *
  * Additionally sets umask.
  *
+ * @param[in] plg_name Plugin name.
  * @param[in] path Path of the file to open.
  * @param[in] flags Flags to use.
  * @param[in] mode Permissions for the file in case it is created.
  * @return Opened file descriptor.
  * @return -1 on error, errno set.
  */
-int srpjson_open(const char *path, int flags, mode_t mode);
+int srpjson_open(const char *plg_name, const char *path, int flags, mode_t mode);
 
 /**
  * @brief Generate plugin error on failed open.

@@ -83,7 +83,7 @@ srpds_json_store_(const struct lys_module *mod, sr_datastore_t ds, const struct 
 
         /* create backup file with same permissions (not owner/group because it may be different and this process
          * not has permissions to use that owner/group) */
-        if ((fd = srpjson_open(bck_path, O_WRONLY | O_CREAT | O_EXCL, st.st_mode)) == -1) {
+        if ((fd = srpjson_open(srpds_name, bck_path, O_WRONLY | O_CREAT | O_EXCL, st.st_mode)) == -1) {
             SRPLG_LOG_ERR(srpds_name, "Opening \"%s\" failed (%s).", bck_path, strerror(errno));
             rc = SR_ERR_SYS;
             goto cleanup;
@@ -102,14 +102,14 @@ srpds_json_store_(const struct lys_module *mod, sr_datastore_t ds, const struct 
 
     if (perm) {
         /* try to create the file */
-        fd = srpjson_open(path, O_WRONLY | O_CREAT | O_EXCL, perm);
+        fd = srpjson_open(srpds_name, path, O_WRONLY | O_CREAT | O_EXCL, perm);
         if (fd > 0) {
             creat = 1;
         }
     }
     if (fd == -1) {
         /* open existing file */
-        fd = srpjson_open(path, O_WRONLY, perm);
+        fd = srpjson_open(srpds_name, path, O_WRONLY, perm);
     }
     if (fd == -1) {
         rc = srpjson_open_error(srpds_name, path);
@@ -226,7 +226,7 @@ srpds_json_install(const struct lys_module *mod, sr_datastore_t ds, const char *
     }
 
     /* create the file with the correct permissions */
-    if ((fd = srpjson_open(path, O_RDONLY | O_CREAT | O_EXCL, perm)) == -1) {
+    if ((fd = srpjson_open(srpds_name, path, O_RDONLY | O_CREAT | O_EXCL, perm)) == -1) {
         rc = srpjson_open_error(srpds_name, path);
         goto cleanup;
     }
@@ -308,7 +308,7 @@ srpds_json_init(const struct lys_module *mod, sr_datastore_t ds)
     }
 
     /* create the file with the correct permissions */
-    if ((fd = srpjson_open(path, O_WRONLY | O_CREAT | O_EXCL, perm)) == -1) {
+    if ((fd = srpjson_open(srpds_name, path, O_WRONLY | O_CREAT | O_EXCL, perm)) == -1) {
         rc = srpjson_open_error(srpds_name, path);
         goto cleanup;
     }
@@ -462,7 +462,7 @@ srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, const char **UN
     }
 
     /* open fd */
-    fd = srpjson_open(path, O_RDONLY, 0);
+    fd = srpjson_open(srpds_name, path, O_RDONLY, 0);
     if (fd == -1) {
         if (errno == ENOENT) {
             switch (ds) {
@@ -546,7 +546,7 @@ srpds_json_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datastor
         }
 
         /* create the target file with the correct permissions */
-        if ((fd = srpjson_open(trg_path, O_WRONLY | O_CREAT | O_EXCL, perm)) == -1) {
+        if ((fd = srpjson_open(srpds_name, trg_path, O_WRONLY | O_CREAT | O_EXCL, perm)) == -1) {
             rc = srpjson_open_error(srpds_name, trg_path);
             goto cleanup;
         }
