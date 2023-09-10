@@ -361,6 +361,7 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
 
     if (!sub_shm->lock.readers[0]) {
         /* FAKE WRITE LOCK */
+        assert(!sub_shm->lock.writer);
         sub_shm->lock.writer = cid;
 
         if (ret == ETIMEDOUT) {
@@ -378,8 +379,10 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
     last_request_id = ATOMIC_LOAD_RELAXED(sub_shm->request_id);
 
     if (ret) {
-        if ((ret == ETIMEDOUT) && (!last_event || (last_event == lock_event)) && (request_id == last_request_id)) {
+        if ((ret == ETIMEDOUT) && (!sub_shm->lock.readers[0]) &&
+                (!last_event || (last_event == lock_event)) && (request_id == last_request_id)) {
             /* even though the timeout has elapsed, the event was handled so continue normally */
+            /* ensure that there are no readers left, otherwise we don't have the write lock */
             goto event_handled;
         } else if ((ret == ETIMEDOUT) && (last_event && (last_event != lock_event))) {
             /* timeout */
