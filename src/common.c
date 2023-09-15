@@ -3664,8 +3664,7 @@ sr_ident2mod_ds(const char *str)
         return SR_DS_OPERATIONAL;
     } else if (!strcmp(str, "ietf-factory-default:factory-default")) {
         return SR_DS_FACTORY_DEFAULT;
-    } else if (!strcmp(str, "notification")) {
-        /* local identity, no prefix */
+    } else if (!strcmp(str, "sysrepo:notification")) {
         return SR_MOD_DS_NOTIF;
     }
 

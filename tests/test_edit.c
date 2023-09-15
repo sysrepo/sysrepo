@@ -1270,7 +1270,7 @@ test_mutiple_types(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/test-module:main/id_ref", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_string_equal(lyd_get_value(subtree->tree), "id_1");
+    assert_string_equal(lyd_get_value(subtree->tree), "test-module:id_1");
     sr_release_data(subtree);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
