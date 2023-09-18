@@ -3132,6 +3132,40 @@ test_change_cb(void **state)
     sr_unsubscribe(subscr);
 }
 
+/* TEST */
+static void
+test_oper_set_del_leaflist(void **state)
+{
+    struct state *st = (struct state *)*state;
+    int ret;
+    sr_data_t *data = NULL;
+    const char *xp_base = "/ietf-interfaces-new:interfaces/interface[name=\'eth0\']";
+    const char *xp_attr = "/ietf-interfaces-new:interfaces/interface[name=\'eth0\']/attributes";
+
+    /* switch to operational DS */
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(st->sess, xp_base , "", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_delete_item(st->sess, xp_attr, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_get_data(st->sess, xp_base, 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_release_data(data);
+
+    ret = sr_delete_item(st->sess, xp_base, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 int
 main(void)
 {
@@ -3158,6 +3192,7 @@ main(void)
         cmocka_unit_test_teardown(test_purge, clear_up),
         cmocka_unit_test_teardown(test_schema_mount, clear_up),
         cmocka_unit_test_teardown(test_change_cb, clear_up),
+        cmocka_unit_test_teardown(test_oper_set_del_leaflist, clear_up),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

@@ -360,6 +360,11 @@ module ietf-interfaces-new {
           "RFC 2863: The Interfaces Group MIB - ifPhysAddress";
       }
 
+      leaf-list attributes {
+        description "Testing leaf-list.";
+        type uint32;
+      }
+
       leaf-list higher-layer-if {
         type interface-ref;
         config false;
