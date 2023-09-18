@@ -60,12 +60,12 @@ help_print(void)
             "  -I, --import[=<path>]        Import the configuration from a file or STDIN.\n"
             "  -X, --export[=<path>]        Export configuration to a file or STDOUT.\n"
             "  -E, --edit[=<path>/<editor>]\n"
-            "                               Edit configuration data by merging (applying) a configuration (edit) file or\n"
-            "                               by editing the current datastore content using a text editor.\n"
+            "                               Edit configuration data by merging (applying) configuration (edit) data from\n"
+            "                               STDIN or file or by editing the current datastore content using a text editor.\n"
             "  -R, --rpc[=<path>/<editor>]\n"
-            "                               Send a RPC/action in a file or using a text editor. Output is printed to STDOUT.\n"
+            "                               Send a RPC/action read from STDIN, file, or using a text editor. Output is printed to STDOUT.\n"
             "  -N, --notification[=<path>/<editor>]\n"
-            "                               Send a notification in a file or using a text editor.\n"
+            "                               Send a notification read from STDIN, file, or using a text editor.\n"
             "  -C, --copy-from <path>/<source-datastore>\n"
             "                               Perform a copy-config from a file or a datastore.\n"
             "  -S, --set <xpath>            Set the value of a node on the XPath. It is read from STDIN unless '--value'\n"
@@ -75,7 +75,6 @@ help_print(void)
             "\n"
             "       When both a <path> and <editor>/<source-datastore> can be specified, it is always first checked\n"
             "       that the file exists. If not, then it is interpreted as the other parameter.\n"
-            "       If no <path> and no <editor> is set, use text editor in $VISUAL or $EDITOR environment variables.\n"
             "\n"
             "Available options:\n"
             "  -d, --datastore <datastore>  Datastore to be operated on, \"running\" by default (\"running\", \"startup\",\n"
@@ -146,18 +145,6 @@ step_edit_input(const char *editor, const char *path)
 {
     int ret;
     pid_t pid, wait_pid;
-
-    /* learn what editor to use */
-    if (!editor) {
-        editor = getenv("VISUAL");
-    }
-    if (!editor) {
-        editor = getenv("EDITOR");
-    }
-    if (!editor) {
-        error_print(0, "Editor not specified nor read from the environment");
-        return EXIT_FAILURE;
-    }
 
     if ((pid = fork()) == -1) {
         error_print(0, "Fork failed (%s)", strerror(errno));
@@ -429,10 +416,10 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
     int r, rc = EXIT_FAILURE;
     struct lyd_node *data;
 
-    if (file_path) {
+    if (file_path || !editor) {
         ly_ctx = sr_acquire_context(sr_session_get_connection(sess));
 
-        /* just apply an edit from a file */
+        /* just apply an edit from STDIN/file */
         if (step_load_data(ly_ctx, file_path, format, DATA_EDIT, not_strict, opaq, &data)) {
             sr_release_context(sr_session_get_connection(sess));
             return EXIT_FAILURE;
@@ -506,7 +493,7 @@ op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FO
     struct lyd_node *input, *node;
     sr_data_t *output;
 
-    if (!file_path) {
+    if (!file_path && editor) {
         /* create temp file */
         if (step_create_input_file(format, tmp_file)) {
             return EXIT_FAILURE;
@@ -565,7 +552,7 @@ op_notif(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_
     int r;
     struct lyd_node *notif;
 
-    if (!file_path) {
+    if (!file_path && editor) {
         /* create temp file */
         if (step_create_input_file(format, tmp_file)) {
             return EXIT_FAILURE;

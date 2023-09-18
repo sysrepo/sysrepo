@@ -3,7 +3,7 @@
 .\" groff -man -Tascii sysrepocfg.1
 .\"
 
-.TH SYSREPOCFG 1 "2023-06-28" "sysrepo"
+.TH SYSREPOCFG 1 "2023-09-18" "sysrepo"
 .SH NAME
 sysrepocfg \- sysrepo configuration manipulation tool
 .
@@ -33,14 +33,14 @@ Import the configuration from a file or \fISTDIN\fP.
 Export configuration to a file or \fISTDOUT\fP.
 .TP
 .BR "\-E\fR,\fP \-\^\-edit[=\fIPATH\fP/\fIEDITOR\fP]"
-Edit configuration data by merging (applying) a configuration (edit) file or
-by editing the current datastore content using a text editor.
+Edit configuration data by merging (applying) configuration (edit) data from
+STDIN or file or by editing the current datastore content using a text editor.
 .TP
 .BR "\-R\fR,\fP \-\^\-rpc[=\fIPATH\fP/\fIEDITOR\fP]"
-Send a RPC/action in a file or using a text editor. Output is printed to \fISTDOUT\fP.
+Send a RPC/action read from STDIN, file, or using a text editor. Output is printed to STDOUT.
 .TP
 .BR "\-N\fR,\fP \-\^\-notification[=\fIPATH\fP/\fIEDITOR\fP]"
-Send a notification in a file or using a text editor.
+Send a notification read from STDIN, file, or using a text editor.
 .TP
 .BR "\-C\fR,\fP \-\^\-copy\-from \fIPATH\fP/\fISOURCE-DATASTORE\fP"
 Perform a copy-config from a file or a datastore.
@@ -53,8 +53,7 @@ Get the value of a node on the XPath. It is written to STDOUT unless '--value' p
 .LP
 When both a \fIPATH\fP and \fIEDITOR\fP/\fISOURCE-DATASTORE\fP can be specified,
 it is always first checked that the file exists. If not, then it is interpreted as
-the other parameter. If no \fIPATH\fP and no \fIEDITOR\fP is set, use text editor
-in $VISUAL or $EDITOR environment variables.
+the other parameter.
 .
 .SH OPTIONS
 .TP
