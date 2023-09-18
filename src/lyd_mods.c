@@ -1066,9 +1066,6 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
     /* install ietf-yang-library */
     SR_INSTALL_INT_MOD(ly_ctx, ietf_yang_library_yang, 0, new_mods, new_mod_count);
 
-    /* install ietf-netconf-acm */
-    SR_INSTALL_INT_MOD(ly_ctx, ietf_netconf_acm_yang, 0, new_mods, new_mod_count);
-
     /* install sysrepo-monitoring */
     SR_INSTALL_INT_MOD(ly_ctx, sysrepo_monitoring_yang, 0, new_mods, new_mod_count);
 
