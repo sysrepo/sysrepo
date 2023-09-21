@@ -37,8 +37,9 @@
 #define SRCTL_LIST_NAME "Module Name"
 #define SRCTL_LIST_REVISION "Revision"
 #define SRCTL_LIST_FLAGS "Flags"
-#define SRCTL_LIST_OWNER "Owner"
-#define SRCTL_LIST_PERMS "Startup Perms"
+#define SRCTL_LIST_OWNER "Startup Owner"
+#define SRCTL_LIST_START_PERMS "Startup Perms"
+#define SRCTL_LIST_RUN_PERMS "Running Perms"
 #define SRCTL_LIST_SUBMODS "Submodules"
 #define SRCTL_LIST_FEATURES "Features"
 
@@ -48,7 +49,8 @@ struct list_item {
     const char *impl_flag;
     int replay;
     char *owner;
-    mode_t perms;
+    mode_t start_perms;
+    mode_t run_perms;
     char *submodules;
     char *features;
 };
@@ -380,7 +382,11 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
             cur_item->impl_flag = "I";
 
             /* owner and permissions */
-            ret = sr_get_module_ds_access(conn, cur_item->name, SR_DS_STARTUP, &owner, &group, &cur_item->perms);
+            ret = sr_get_module_ds_access(conn, cur_item->name, SR_DS_STARTUP, &owner, &group, &cur_item->start_perms);
+            if (ret != SR_ERR_OK) {
+                return ret;
+            }
+            ret = sr_get_module_ds_access(conn, cur_item->name, SR_DS_RUNNING, NULL, NULL, &cur_item->run_perms);
             if (ret != SR_ERR_OK) {
                 return ret;
             }
@@ -393,7 +399,8 @@ srctl_list_collect(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, struct list
             cur_item->impl_flag = "i";
 
             /* owner and permissions */
-            cur_item->perms = 0;
+            cur_item->start_perms = 0;
+            cur_item->run_perms = 0;
             cur_item->owner = strdup("");
         }
 
@@ -428,11 +435,11 @@ srctl_list(sr_conn_ctx_t *conn)
 {
     int ret = SR_ERR_OK;
     const struct ly_ctx *ly_ctx;
-    char flags_str[5], perm_str[12];
+    char flags_str[5], s_perm_str[12], r_perm_str[12];
     struct list_item *list = NULL;
     size_t i, line_len, list_count = 0;
     int max_name_len, max_owner_len, max_submod_len, max_feat_len;
-    int rev_len, flag_len, perm_len;
+    int rev_len, flag_len, s_perm_len, r_perm_len;
 
     /* acquire context */
     ly_ctx = sr_acquire_context(conn);
@@ -450,7 +457,8 @@ srctl_list(sr_conn_ctx_t *conn)
     rev_len = 10;
     flag_len = strlen(SRCTL_LIST_FLAGS);
     max_owner_len = strlen(SRCTL_LIST_OWNER);
-    perm_len = strlen(SRCTL_LIST_PERMS);
+    s_perm_len = strlen(SRCTL_LIST_START_PERMS);
+    r_perm_len = strlen(SRCTL_LIST_RUN_PERMS);
     max_submod_len = strlen(SRCTL_LIST_SUBMODS);
     max_feat_len = strlen(SRCTL_LIST_FEATURES);
     for (i = 0; i < list_count; ++i) {
@@ -472,13 +480,14 @@ srctl_list(sr_conn_ctx_t *conn)
     printf("Sysrepo repository: %s\n\n", sr_get_repo_path());
 
     /* print header */
-    printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n", max_name_len, SRCTL_LIST_NAME, rev_len,
-            SRCTL_LIST_REVISION, flag_len, SRCTL_LIST_FLAGS, max_owner_len, SRCTL_LIST_OWNER, perm_len, SRCTL_LIST_PERMS,
+    printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n", max_name_len, SRCTL_LIST_NAME, rev_len,
+            SRCTL_LIST_REVISION, flag_len, SRCTL_LIST_FLAGS, max_owner_len, SRCTL_LIST_OWNER,
+            s_perm_len, SRCTL_LIST_START_PERMS, r_perm_len, SRCTL_LIST_RUN_PERMS,
             max_submod_len, SRCTL_LIST_SUBMODS, max_feat_len, SRCTL_LIST_FEATURES);
 
     /* print ruler */
-    line_len = max_name_len + 3 + rev_len + 3 + flag_len + 3 + max_owner_len + 3 + perm_len + 3 + max_submod_len + 3 +
-            max_feat_len;
+    line_len = max_name_len + 3 + rev_len + 3 + flag_len + 3 + max_owner_len + 3 + s_perm_len + 3 + r_perm_len + 3 +
+            max_submod_len + 3 + max_feat_len;
     for (i = 0; i < line_len; ++i) {
         printf("-");
     }
@@ -488,13 +497,15 @@ srctl_list(sr_conn_ctx_t *conn)
     for (i = 0; i < list_count; ++i) {
         sprintf(flags_str, "%s%s", list[i].impl_flag, list[i].replay ? "R" : " ");
         if (!strcmp(list[i].impl_flag, "I")) {
-            sprintf(perm_str, "%03o", list[i].perms);
+            sprintf(s_perm_str, "%03o", list[i].start_perms);
+            sprintf(r_perm_str, "%03o", list[i].run_perms);
         } else {
-            perm_str[0] = '\0';
+            s_perm_str[0] = '\0';
+            r_perm_str[0] = '\0';
         }
-        printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n", max_name_len, list[i].name, rev_len, list[i].revision,
-                flag_len, flags_str, max_owner_len, list[i].owner, perm_len, perm_str, max_submod_len, list[i].submodules,
-                max_feat_len, list[i].features);
+        printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n", max_name_len, list[i].name,
+                rev_len, list[i].revision, flag_len, flags_str, max_owner_len, list[i].owner, s_perm_len, s_perm_str,
+                r_perm_len, r_perm_str, max_submod_len, list[i].submodules, max_feat_len, list[i].features);
     }
 
     /* print flag legend */
