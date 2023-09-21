@@ -6255,6 +6255,7 @@ apply_change_userord_thread(void *arg)
 {
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
+    sr_data_t *data;
     int ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
@@ -6288,6 +6289,16 @@ apply_change_userord_thread(void *arg)
 
     /* signal that we have finished applying changes */
     pthread_barrier_wait(&st->barrier);
+
+    /* get data and reapply, the module change callback should not be called
+    else the test fails*/
+    ret = sr_get_data(sess, "/test:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_non_null(data);
+    sr_edit_batch(sess, data->tree, "replace");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    sr_release_data(data);
 
     /* wait for unsubscribe */
     pthread_barrier_wait(&st->barrier);
