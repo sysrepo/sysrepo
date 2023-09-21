@@ -960,7 +960,7 @@ sr_lyd_diff_apply_cb(const struct lyd_node *diff_node, struct lyd_node *data_nod
  *
  * @param[in] data_match Node instance in the data tree.
  * @param[in] insert Insert place.
- * @param[in] anchor_node Optional relative instance in the data tree.
+ * @param[in] anchor_node Optional relative instance in the data or edit tree.
  * @return 0 if not, non-zero if it was.
  */
 static int
@@ -979,7 +979,7 @@ sr_edit_userord_is_moved(const struct lyd_node *data_match, enum insert_val inse
     case INSERT_FIRST:
     case INSERT_AFTER:
         sibling = sr_edit_find_previous_instance(data_match);
-        if (sibling == anchor_node) {
+        if (!lyd_compare_single(sibling, anchor_node, 0)) {
             /* data_match is after the anchor node (or is the first) */
             return 0;
         }
@@ -1001,7 +1001,7 @@ sr_edit_userord_is_moved(const struct lyd_node *data_match, enum insert_val inse
                 }
             }
         }
-        if (sibling == anchor_node) {
+        if (!lyd_compare_single(sibling, anchor_node, 0)) {
             /* data_match is before the anchor node (or is the last) */
             return 0;
         }
