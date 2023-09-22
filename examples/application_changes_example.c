@@ -133,7 +133,14 @@ print_change(sr_change_oper_t op, sr_val_t *old_val, sr_val_t *new_val)
         print_val(new_val);
         break;
     case SR_OP_MOVED:
-        printf("MOVED: %s\n", new_val->xpath);
+        printf("MOVED: ");
+        print_val(new_val);
+        if (old_val) {
+            printf(" after ");
+            print_val(old_val);
+        } else {
+            printf(" to the beginning\n");
+        }
         break;
     }
 }
