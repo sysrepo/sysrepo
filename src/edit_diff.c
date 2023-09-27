@@ -1215,8 +1215,8 @@ sr_edit_find(const struct lyd_node *data_sibling, const struct lyd_node *edit_no
                 break;
             case LYS_LIST:
             case LYS_LEAFLIST:
-                if (dflt_ll_skip && (match->flags & LYD_DEFAULT)) {
-                    /* default leaf-list is not really considered to exist in data */
+                if (dflt_ll_skip && (match->flags & LYD_DEFAULT) && !(edit_node->flags & LYD_DEFAULT)) {
+                    /* default leaf-list is not really considered to exist in data if there is an explicit instance in the edit */
                     assert(match->schema->nodetype == LYS_LEAFLIST);
                     match = NULL;
                 } else if (lysc_is_userordered(match->schema)) {
