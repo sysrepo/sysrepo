@@ -6287,18 +6287,19 @@ apply_change_userord_thread(void *arg)
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* signal that we have finished applying changes */
-    pthread_barrier_wait(&st->barrier);
-
     /* get data and reapply, the module change callback should not be called
     else the test fails */
     ret = sr_get_data(sess, "/test:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     assert_non_null(data);
-    sr_edit_batch(sess, data->tree, "replace");
+    ret = sr_edit_batch(sess, data->tree, "replace");
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
     sr_release_data(data);
+
+    /* signal that we have finished applying changes */
+    pthread_barrier_wait(&st->barrier);
 
     /* wait for unsubscribe */
     pthread_barrier_wait(&st->barrier);
