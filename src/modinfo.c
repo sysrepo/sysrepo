@@ -764,12 +764,12 @@ sr_xpath_oper_data_text_atoms_required(const char *request_atom, const char *sub
         sub_ptr = sr_xpath_next_qname(sub_ptr + 1, &mod2, &mlen2, &name2, &len2);
 
         /* wildcards */
-        if ((len1 == 1) && (name1[0] == '*')) {
+        if (((len1 == 1) && (name1[0] == '*')) || ((len1 == 2) && !strncmp(name1, "/.", 2))) {
             wildc1 = 1;
         } else {
             wildc1 = 0;
         }
-        if ((len2 == 1) && (name2[0] == '*')) {
+        if (((len2 == 1) && (name2[0] == '*')) || ((len2 == 2) && !strncmp(name2, "/.", 2))) {
             wildc2 = 1;
         } else {
             wildc2 = 0;

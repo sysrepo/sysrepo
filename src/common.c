@@ -4742,7 +4742,7 @@ sr_xpath_len_no_predicates(const char *xpath)
 }
 
 /**
- * @brief Parse "..", "*", ".", or a YANG identifier.
+ * @brief Parse "..", "*", "/.", ".", or a YANG identifier.
  *
  * @param[in] id Identifier start.
  * @param[in] allow_special Whether to allow special paths or only YANG identifiers.
@@ -4751,7 +4751,7 @@ sr_xpath_len_no_predicates(const char *xpath)
 static const char *
 sr_xpath_next_identifier(const char *id, int allow_special)
 {
-    if (allow_special && !strncmp(id, "..", 2)) {
+    if (allow_special && (!strncmp(id, "..", 2) || !strncmp(id, "/.", 2))) {
         id += 2;
     } else if (allow_special && ((id[0] == '*') || (id[0] == '.'))) {
         id += 1;
