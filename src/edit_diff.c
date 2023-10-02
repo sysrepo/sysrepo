@@ -1102,7 +1102,11 @@ sr_edit_find_match(const struct lyd_node *data_sibling, const struct lyd_node *e
     } else if (lysc_is_dup_inst_list(edit_node->schema)) {
         /* absolute position on the edit node */
         m1 = lyd_find_meta(edit_node->meta, NULL, "sysrepo:dup-inst-list-position");
-        assert(m1);
+        if (!m1) {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED,
+                    "List \"%s\" with duplicate instances allowed found without required metadata.", LYD_NAME(edit_node));
+            return err_info;
+        }
         pos = strtoul(lyd_get_meta_value(m1), NULL, 10);
 
         /* iterate over all the instances */
