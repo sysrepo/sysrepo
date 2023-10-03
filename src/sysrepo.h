@@ -286,6 +286,10 @@ sr_datastore_t sr_session_get_ds(sr_session_ctx_t *session);
  * It can then be read from the implicit event session in the callbacks using ::sr_session_get_orig_name().
  * This name should be used for interpreting the data set by ::sr_session_push_orig_data().
  *
+ * The following originator names are well-known:
+ *
+ * - `netopeer2` for the [NETCONF server](https://github.com/CESNET/Netopeer2/#sysrepo-callbacks)
+ *
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] orig_name Arbitrary originator name.
  * @return Error code (::SR_ERR_OK on success).
