@@ -289,6 +289,8 @@ sr_datastore_t sr_session_get_ds(sr_session_ctx_t *session);
  * The following originator names are well-known:
  *
  * - `netopeer2` for the [NETCONF server](https://github.com/CESNET/Netopeer2/#sysrepo-callbacks)
+ * - `rousette` for the [RESTCONF server](https://github.com/CESNET/rousette)
+ * - `sysrepo-cli` for the direct sysrepo mode of the [interactive CLI](https://github.com/CESNET/netconf-cli)
  *
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] orig_name Arbitrary originator name.
