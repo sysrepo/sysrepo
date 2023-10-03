@@ -302,8 +302,9 @@ const char *sr_session_get_orig_name(sr_session_ctx_t *session);
 
 /**
  * @brief Push (add) another chunk of event originator data used for all events sent on this session.
- * Its meaning is specific to the originator name (which must be set prior to calling this function) and can be read
- * from the implicit event session in the callbacks using ::sr_session_get_orig_data().
+ * Its meaning is specific to the originator name (which must be [set](@ref sr_session_set_orig_name)
+ * prior to calling this function) and can be read from the implicit event session in the callbacks
+ * using ::sr_session_get_orig_data().
  *
  * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] size Size of the @p data chunk.
