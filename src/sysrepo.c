@@ -1484,15 +1484,17 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     if ((err_info = sr_lycc_check_add_modules(conn, new_ctx))) {
         goto cleanup;
     }
-    if ((err_info = sr_lycc_update_data(conn, new_ctx, mod_data, &data_info))) {
-        goto cleanup;
-    }
 
     /* CONTEXT UPGRADE */
     if ((err_info = sr_lycc_relock(conn, SR_LOCK_WRITE, __func__))) {
         goto cleanup;
     }
     ctx_mode = SR_LOCK_WRITE;
+
+    /* load all data and prepare their update */
+    if ((err_info = sr_lycc_update_data(conn, new_ctx, mod_data, &data_info))) {
+        goto cleanup;
+    }
 
     /* update lydmods data */
     if ((err_info = sr_lydmods_change_add_modules(new_ctx, new_mods, new_mod_count, &sr_mods))) {
@@ -1726,15 +1728,17 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     if ((err_info = sr_lycc_check_del_module(conn, new_ctx, &mod_set))) {
         goto cleanup;
     }
-    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, &data_info))) {
-        goto cleanup;
-    }
 
     /* CONTEXT UPGRADE */
     if ((err_info = sr_lycc_relock(conn, SR_LOCK_WRITE, __func__))) {
         goto cleanup;
     }
     ctx_mode = SR_LOCK_WRITE;
+
+    /* load all data and prepare their update */
+    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, &data_info))) {
+        goto cleanup;
+    }
 
     /* update lydmods data */
     if ((err_info = sr_lydmods_change_del_module(conn->ly_ctx, new_ctx, &mod_set, &sr_del_mods, &sr_mods))) {
@@ -1977,15 +1981,17 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
     if ((err_info = sr_lycc_check_upd_modules(conn, &old_mod_set, &upd_mod_set))) {
         goto cleanup;
     }
-    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, &data_info))) {
-        goto cleanup;
-    }
 
     /* CONTEXT UPGRADE */
     if ((err_info = sr_lycc_relock(conn, SR_LOCK_WRITE, __func__))) {
         goto cleanup;
     }
     ctx_mode = SR_LOCK_WRITE;
+
+    /* load all data and prepare their update */
+    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, &data_info))) {
+        goto cleanup;
+    }
 
     /* update lydmods data */
     if ((err_info = sr_lydmods_change_upd_modules(conn->ly_ctx, &upd_mod_set, &sr_mods))) {
@@ -2478,11 +2484,8 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
         goto cleanup;
     }
 
-    /* check the new context can be used */
+    /* check the subscriptions with the new context */
     if ((err_info = sr_lycc_check_chng_feature(conn, new_ctx))) {
-        goto cleanup;
-    }
-    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, &data_info))) {
         goto cleanup;
     }
 
@@ -2491,6 +2494,11 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
         goto cleanup;
     }
     ctx_mode = SR_LOCK_WRITE;
+
+    /* load all data and prepare their update */
+    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, &data_info))) {
+        goto cleanup;
+    }
 
     /* update lydmods data */
     if ((err_info = sr_lydmods_change_chng_feature(conn->ly_ctx, ly_mod, upd_ly_mod, feature_name, enable, &sr_mods))) {
