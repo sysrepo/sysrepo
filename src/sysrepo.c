@@ -239,8 +239,13 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 
     main_shm = SR_CONN_MAIN_SHM(conn);
 
-    /* allocate next unique Connection ID */
+    /* allocate next unique connection ID */
     conn->cid = ATOMIC_INC_RELAXED(main_shm->new_sr_cid);
+
+    /* track our connection */
+    if ((err_info = sr_shmmain_conn_list_add(conn->cid))) {
+        goto cleanup_unlock;
+    }
 
     if (created) {
         /* create new temporary context */
@@ -317,11 +322,6 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         if ((err_info = sr_shmmod_reboot_init(conn, initialized))) {
             goto cleanup_unlock;
         }
-    }
-
-    /* track our connections */
-    if ((err_info = sr_shmmain_conn_list_add(conn->cid))) {
-        goto cleanup_unlock;
     }
 
     SR_LOG_INF("Connection %" PRIu32 " created.", conn->cid);
