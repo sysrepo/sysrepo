@@ -714,7 +714,7 @@ sr_modinfo_changesub_rdlock(struct sr_mod_info_s *mod_info)
 
 error:
     for (j = 0; j < i; ++j) {
-        mod = &mod_info->mods[i];
+        mod = &mod_info->mods[j];
         if (mod->state & MOD_INFO_CHANGED) {
             /* CHANGE SUB READ UNLOCK */
             sr_rwunlock(&mod->shm_mod->change_sub[mod_info->ds].lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ,
