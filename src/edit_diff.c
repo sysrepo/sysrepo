@@ -2999,6 +2999,16 @@ op_error:
     return err_info;
 }
 
+/**
+ * @brief Check operations on the same node when it has already been in the edit and was added again.
+ *
+ * @param[in] session Session to use.
+ * @param[in] xpath XPath of the new edit.
+ * @param[in] value Value of the new edit.
+ * @param[in] op Operation of the new edit.
+ * @param[in] lyrc Libyang return value of adding the new node into the edit.
+ * @return err_info.
+ */
 static sr_error_info_t *
 sr_edit_add_check_same_node_op(sr_session_ctx_t *session, const char *xpath, const char *value, enum edit_op op,
         LY_ERR lyrc)
