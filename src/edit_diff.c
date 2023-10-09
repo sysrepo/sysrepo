@@ -3684,19 +3684,20 @@ success:
     return NULL;
 
 error:
-    free(rel_xpath);
     if (!isolate) {
         /* completely free the current edit because it could have already been modified */
         sr_release_data(session->dt[session->ds].edit);
         session->dt[session->ds].edit = NULL;
 
         sr_errinfo_new(&err_info, SR_ERR_OPERATION_FAILED, "Edit was discarded.");
+        free(rel_xpath);
         return err_info;
     }
     /* fallthrough */
 error_safe:
     /* free only the created subtree */
     sr_lyd_free_tree_safe(parent, &session->dt[session->ds].edit->tree);
+    free(rel_xpath);
     return err_info;
 }
 
