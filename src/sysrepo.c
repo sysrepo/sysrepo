@@ -3233,8 +3233,8 @@ sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *value, 
     sr_error_info_t *err_info = NULL;
     char str[22], *str_val;
 
-    SR_CHECK_ARG_APIRET(!session || (!path && (!value || !value->xpath)) || !SR_IS_STANDARD_DS(session->ds) ||
-            (!SR_IS_CONVENTIONAL_DS(session->ds) && (opts & (SR_EDIT_STRICT | SR_EDIT_NON_RECURSIVE))), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || (!path && (!value || !value->xpath)) || SR_EDIT_DS_API_CHECK(session->ds, opts),
+            session, err_info);
 
     if (!path) {
         path = value->xpath;
@@ -3261,8 +3261,7 @@ sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *value, 
     sr_error_info_t *err_info = NULL;
     char *pref_origin = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || !path || !SR_IS_STANDARD_DS(session->ds) || (!SR_IS_CONVENTIONAL_DS(session->ds) &&
-            (opts & (SR_EDIT_STRICT | SR_EDIT_NON_RECURSIVE))), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !path || SR_EDIT_DS_API_CHECK(session->ds, opts), session, err_info);
 
     /* we do not need any lock, ext SHM is not accessed */
 
@@ -3309,7 +3308,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     const struct lysc_node *snode;
     int ly_log_opts;
 
-    SR_CHECK_ARG_APIRET(!session || !path || !SR_IS_STANDARD_DS(session->ds), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !path || SR_EDIT_DS_API_CHECK(session->ds, opts), session, err_info);
 
     if (!session->dt[session->ds].edit) {
         /* CONTEXT LOCK */
@@ -3330,12 +3329,6 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
             !strcmp((path + strlen(path)) - strlen(snode->name), snode->name)) {
         operation = "purge";
     } else if (opts & SR_EDIT_STRICT) {
-        if (!SR_IS_CONVENTIONAL_DS(session->ds)) {
-            /* not allowed */
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Strict removal is forbidden for operational data edits.");
-            goto cleanup;
-        }
-
         operation = "delete";
     } else {
         operation = "remove";
@@ -3404,8 +3397,7 @@ sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position
     sr_error_info_t *err_info = NULL;
     char *pref_origin = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || !path || !SR_IS_STANDARD_DS(session->ds) || (!SR_IS_CONVENTIONAL_DS(session->ds) &&
-            (opts & (SR_EDIT_STRICT | SR_EDIT_NON_RECURSIVE))), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !path || SR_EDIT_DS_API_CHECK(session->ds, opts), session, err_info);
 
     if (origin) {
         if (!strchr(origin, ':')) {

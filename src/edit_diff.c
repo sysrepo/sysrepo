@@ -3006,12 +3006,10 @@ op_error:
  * @param[in] xpath XPath of the new edit.
  * @param[in] value Value of the new edit.
  * @param[in] op Operation of the new edit.
- * @param[in] lyrc Libyang return value of adding the new node into the edit.
- * @return err_info.
+ * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_add_check_same_node_op(sr_session_ctx_t *session, const char *xpath, const char *value, enum edit_op op,
-        LY_ERR lyrc)
+sr_edit_add_check_same_node_op(sr_session_ctx_t *session, const char *xpath, const char *value, enum edit_op op)
 {
     sr_error_info_t *err_info = NULL;
     char *uniq_xpath;
@@ -3019,45 +3017,42 @@ sr_edit_add_check_same_node_op(sr_session_ctx_t *session, const char *xpath, con
     struct ly_set *set;
     LY_ERR lr;
 
-    if (lyrc == LY_EEXIST) {
-        /* build an expression identifying a single node */
-        if (value && (xpath[strlen(xpath) - 1] != ']')) {
-            if (asprintf(&uniq_xpath, "%s[.='%s']", xpath, value) == -1) {
-                uniq_xpath = NULL;
-            }
-        } else {
-            uniq_xpath = strdup(xpath);
+    /* build an expression identifying a single node */
+    if (value && (xpath[strlen(xpath) - 1] != ']')) {
+        if (asprintf(&uniq_xpath, "%s[.='%s']", xpath, value) == -1) {
+            uniq_xpath = NULL;
         }
-        if (!uniq_xpath) {
-            SR_ERRINFO_MEM(&err_info);
-            return err_info;
-        }
-
-        /* find the node */
-        lr = lyd_find_xpath(session->dt[session->ds].edit->tree, uniq_xpath, &set);
-        free(uniq_xpath);
-        if (lr || (set->count > 1)) {
-            SR_ERRINFO_INT(&err_info);
-        } else if (set->count == 1) {
-            cur_op = sr_edit_diff_find_oper(set->dnodes[0], 1, NULL);
-            if (op == cur_op) {
-                /* same node with same operation, silently ignore and clear the error */
-                ly_set_free(set, NULL);
-                ly_err_clean(session->conn->ly_ctx, NULL);
-                return NULL;
-            } else {
-                ly_err_clean(session->conn->ly_ctx, NULL);
-                sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Node \"%s\" already in edit with \"%s\" operation "
-                        "(new operation \"%s\").", LYD_NAME(set->dnodes[0]), sr_edit_op2str(cur_op), sr_edit_op2str(op));
-            }
-        } /* else set->number == 0; it must be leaf and there already is one with another value, error */
-        ly_set_free(set, NULL);
+    } else {
+        uniq_xpath = strdup(xpath);
+    }
+    if (!uniq_xpath) {
+        SR_ERRINFO_MEM(&err_info);
+        return err_info;
     }
 
-    if (!err_info) {
+    /* find the node */
+    lr = lyd_find_xpath(session->dt[session->ds].edit->tree, uniq_xpath, &set);
+    free(uniq_xpath);
+    if (lr || (set->count > 1)) {
+        SR_ERRINFO_INT(&err_info);
+    } else if (set->count == 1) {
+        cur_op = sr_edit_diff_find_oper(set->dnodes[0], 1, NULL);
+        if (op == cur_op) {
+            /* same node with same operation, silently ignore and clear the error */
+            ly_set_free(set, NULL);
+            ly_err_clean(session->conn->ly_ctx, NULL);
+            return NULL;
+        } else {
+            ly_err_clean(session->conn->ly_ctx, NULL);
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Node \"%s\" already in edit with \"%s\" operation "
+                    "(new operation \"%s\").", LYD_NAME(set->dnodes[0]), sr_edit_op2str(cur_op), sr_edit_op2str(op));
+        }
+    } else {
+        /* set->number == 0; it must be leaf and there already is one with another value, error */
         sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
     }
-    sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid datastore edit.");
+
+    ly_set_free(set, NULL);
     return err_info;
 }
 
@@ -3426,7 +3421,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         opts |= LYD_NEW_PATH_OPAQ;
     }
 
-    if (!isolate && (session->ds == SR_DS_OPERATIONAL)) {
+    if (session->ds == SR_DS_OPERATIONAL) {
         if ((err_info = sr_edit_add_oper_xpath(session->conn->ly_ctx, session->dt[session->ds].edit->tree, xpath, &rel_xpath))) {
             goto error_safe;
         }
@@ -3445,12 +3440,14 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         lyrc = LY_EEXIST;
     }
     if (lyrc) {
-        /* check whether it is an error */
-        if ((err_info = sr_edit_add_check_same_node_op(session, xpath, value, sr_edit_str2op(operation), lyrc))) {
-            goto error_safe;
+        if ((lyrc == LY_EEXIST) && !(err_info = sr_edit_add_check_same_node_op(session, xpath, value, sr_edit_str2op(operation)))) {
+            /* node already exists but the operations could be merged */
+            goto success;
+        } else {
+            sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
         }
-        /* node with the same operation already exists, silently ignore */
-        goto success;
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid datastore edit.");
+        goto error_safe;
     } else if (lysc_is_key(node->schema)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Editing list keys is not supported, edit list instances instead.");
         goto error_safe;

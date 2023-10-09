@@ -156,6 +156,10 @@ struct srplg_ntf_s;
 /** check that a timespec struct is zeroed */
 #define SR_TS_IS_ZERO(ts) (!(ts).tv_sec && !(ts).tv_nsec)
 
+/** check for edit functions of allowed datastore/options */
+#define SR_EDIT_DS_API_CHECK(ds, opts) (!SR_IS_STANDARD_DS(ds) || \
+        (!SR_IS_CONVENTIONAL_DS(ds) && (opts & (SR_EDIT_STRICT | SR_EDIT_NON_RECURSIVE | SR_EDIT_ISOLATE))))
+
 /*
  * Internal declarations + definitions
  */
