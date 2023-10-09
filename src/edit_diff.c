@@ -768,7 +768,7 @@ sr_meta_edit2diff(struct lyd_node *node, enum edit_op set_op, const struct lyd_n
     }
 
     /* add all diff metadata */
-    assert((set_op == EDIT_CREATE) || (set_op == EDIT_DELETE) || (set_op == EDIT_NONE));
+    assert((set_op == EDIT_CREATE) || (set_op == EDIT_DELETE) || (set_op == EDIT_REPLACE) || (set_op == EDIT_NONE));
     if ((err_info = sr_diff_add_meta(node, sibling_before_val, NULL, set_op))) {
         goto cleanup;
     }
@@ -3000,59 +3000,153 @@ op_error:
 }
 
 /**
+ * @brief Check whether all siblings and descendants have no operation or a specific one.
+ *
+ * @param[in] sibling First sibling to check.
+ * @param[in] op Allowed operation for the descendants to have.
+ * @return Whether the descendants passed the check or not.
+ */
+static int
+sr_edit_add_descendant_have_own_op(const struct lyd_node *sibling, enum edit_op op)
+{
+    const struct lyd_node *node;
+    enum edit_op cur_op;
+
+    LY_LIST_FOR(sibling, sibling) {
+        LYD_TREE_DFS_BEGIN(sibling, node) {
+            cur_op = sr_edit_diff_find_oper(node, 0, NULL);
+            if (cur_op && (cur_op != op)) {
+                return 0;
+            }
+            LYD_TREE_DFS_END(sibling, node);
+        }
+    }
+
+    return 1;
+}
+
+/**
  * @brief Check operations on the same node when it has already been in the edit and was added again.
  *
- * @param[in] session Session to use.
- * @param[in] xpath XPath of the new edit.
+ * @param[in] match Found node, may be freed/replaced.
+ * @param[in,out] root Root node, may need to be adjusted after @p match changes.
  * @param[in] value Value of the new edit.
  * @param[in] op Operation of the new edit.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_add_check_same_node_op(sr_session_ctx_t *session, const char *xpath, const char *value, enum edit_op op)
+sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char *value, enum edit_op op)
 {
     sr_error_info_t *err_info = NULL;
-    char *uniq_xpath;
+    const struct lysc_node *schema;
+    struct lyd_node *parent = NULL, *sibling = NULL;
     enum edit_op cur_op;
-    struct ly_set *set;
-    LY_ERR lr;
+    int own_oper;
 
-    /* build an expression identifying a single node */
-    if (value && (xpath[strlen(xpath) - 1] != ']')) {
-        if (asprintf(&uniq_xpath, "%s[.='%s']", xpath, value) == -1) {
-            uniq_xpath = NULL;
-        }
-    } else {
-        uniq_xpath = strdup(xpath);
-    }
-    if (!uniq_xpath) {
-        SR_ERRINFO_MEM(&err_info);
-        return err_info;
+    cur_op = sr_edit_diff_find_oper(match, 1, &own_oper);
+    if (op == cur_op) {
+        /* same node with same operation, silently ignore */
+        goto cleanup;
     }
 
-    /* find the node */
-    lr = lyd_find_xpath(session->dt[session->ds].edit->tree, uniq_xpath, &set);
-    free(uniq_xpath);
-    if (lr || (set->count > 1)) {
-        SR_ERRINFO_INT(&err_info);
-    } else if (set->count == 1) {
-        cur_op = sr_edit_diff_find_oper(set->dnodes[0], 1, NULL);
-        if (op == cur_op) {
-            /* same node with same operation, silently ignore and clear the error */
-            ly_set_free(set, NULL);
-            ly_err_clean(session->conn->ly_ctx, NULL);
-            return NULL;
+    switch (cur_op) {
+    case EDIT_ETHER:
+    case EDIT_NONE:
+        if (sr_edit_add_descendant_have_own_op(lyd_child_no_keys(match), op)) {
+            /* same operation in descendants, just move it to this node */
+            if (own_oper) {
+                sr_edit_del_meta_attr(match, "operation");
+            }
+            if ((err_info = sr_edit_set_oper(match, sr_edit_op2str(op)))) {
+                goto cleanup;
+            }
         } else {
-            ly_err_clean(session->conn->ly_ctx, NULL);
             sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Node \"%s\" already in edit with \"%s\" operation "
-                    "(new operation \"%s\").", LYD_NAME(set->dnodes[0]), sr_edit_op2str(cur_op), sr_edit_op2str(op));
+                    "(new operation \"%s\").", LYD_NAME(match), sr_edit_op2str(cur_op), sr_edit_op2str(op));
         }
-    } else {
-        /* set->number == 0; it must be leaf and there already is one with another value, error */
-        sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
+        break;
+    case EDIT_MERGE:
+    case EDIT_CREATE:
+        if ((op == EDIT_REMOVE) || (op == EDIT_DELETE)) {
+            /* fine, revert the whole change */
+            if (*root == match) {
+                *root = (*root)->next;
+            }
+            lyd_free_tree(match);
+        } else {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Node \"%s\" already in edit with \"%s\" operation "
+                    "(new operation \"%s\").", LYD_NAME(match), sr_edit_op2str(cur_op), sr_edit_op2str(op));
+        }
+        break;
+    case EDIT_REPLACE:
+        if (own_oper || ((op != EDIT_MERGE) && (op != EDIT_CREATE))) {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Node \"%s\" already in edit with \"%s\" operation "
+                    "(new operation \"%s\").", LYD_NAME(match), sr_edit_op2str(cur_op), sr_edit_op2str(op));
+        } /* descendants of replace are always created so no change */
+        break;
+    case EDIT_REMOVE:
+    case EDIT_DELETE:
+        if ((op == EDIT_MERGE) || (op == EDIT_CREATE)) {
+            schema = lyd_node_schema(match);
+            if (schema->nodetype == LYS_LEAF) {
+                /* update value and use merge for leaves to avoid problems with previous value on replace (in oper edit) */
+                if (schema->nodetype == LYS_LEAF) {
+                    if (match->schema) {
+                        if (own_oper) {
+                            sr_edit_del_meta_attr(match, "operation");
+                        }
+                        if (lyd_change_term(match, value)) {
+                            sr_errinfo_new_ly(&err_info, LYD_CTX(match), NULL);
+                            goto cleanup;
+                        }
+                    } else {
+                        /* need to create a valid node instead */
+                        parent = lyd_parent(match);
+                        sibling = match->prev;
+
+                        if (*root == match) {
+                            *root = (*root)->next;
+                        }
+                        lyd_free_tree(match);
+
+                        if (lyd_new_term(parent, schema->module, schema->name, value, 0, &match)) {
+                            sr_errinfo_new_ly(&err_info, schema->module->ctx, NULL);
+                            goto cleanup;
+                        }
+                        if (!parent) {
+                            lyd_insert_sibling(sibling, match, root);
+                        }
+                    }
+                    if ((err_info = sr_edit_set_oper(match, "merge"))) {
+                        goto cleanup;
+                    }
+                }
+            } else {
+                /* remove all descendants and change into replace */
+                lyd_free_siblings(lyd_child_no_keys(match));
+                if (own_oper) {
+                    sr_edit_del_meta_attr(match, "operation");
+                }
+                if ((err_info = sr_edit_set_oper(match, "replace"))) {
+                    goto cleanup;
+                }
+            }
+        } else {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Node \"%s\" already in edit with \"%s\" operation "
+                    "(new operation \"%s\").", LYD_NAME(match), sr_edit_op2str(cur_op), sr_edit_op2str(op));
+        }
+        break;
+    case EDIT_PURGE:
+        /* no operation can be merged */
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Node \"%s\" already in edit with \"%s\" operation "
+                "(new operation \"%s\").", LYD_NAME(match), sr_edit_op2str(cur_op), sr_edit_op2str(op));
+        break;
+    default:
+        SR_ERRINFO_INT(&err_info);
+        break;
     }
 
-    ly_set_free(set, NULL);
+cleanup:
     return err_info;
 }
 
@@ -3193,27 +3287,31 @@ sr_edit_add_update_op(struct lyd_node *node, const char *def_operation)
 }
 
 /**
- * @brief Update XPath of a new operational data edit for dup-inst lists to be correctly created.
+ * @brief Find the node and update XPath of a new operational data edit for dup-inst lists to be correctly created.
  *
  * @param[in] ly_ctx Context to use.
  * @param[in] tree Existing edit tree, may be NULL.
  * @param[in] xpath XPath to create.
- * @param[out] rel_xpath Relative edit XPath to actually create, needs to be freed.
+ * @param[in] value Value to set.
+ * @param[in] is_oper Whether the XPath is for operational datastore or not.
+ * @param[out] match Existing matching node, if any.
+ * @param[out] rel_xpath Relative oper edit XPath to actually create, needs to be freed.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_add_oper_xpath(const struct ly_ctx *ly_ctx, const struct lyd_node *tree, const char *xpath, char **rel_xpath)
+sr_edit_add_xpath(const struct ly_ctx *ly_ctx, const struct lyd_node *tree, const char *xpath, const char *value,
+        int is_oper, struct lyd_node **match, char **rel_xpath)
 {
     sr_error_info_t *err_info = NULL;
     const char *mod_name, *name, *xp, *pred, *pred_end;
-    char *mname, buf[23];
+    char *mname, *dpred = NULL, buf[23];
     const struct lyd_node *siblings;
-    struct lyd_node *match;
+    struct lyd_node *iter;
     const struct lysc_node *schema, *siter;
     const struct lys_module *mod;
     struct ly_ctx *sm_ctx = NULL;
     struct lyd_meta *m;
-    int mlen, len, found, rxpath_len;
+    int mlen, len, rxpath_len;
     uint32_t inst_pos, pos, cur_pos;
     void *mem;
 
@@ -3274,7 +3372,6 @@ sr_edit_add_oper_xpath(const struct ly_ctx *ly_ctx, const struct lyd_node *tree,
             schema = siter;
         }
 
-        /* skip predicates */
         pred = xp;
         pos = 0;
         while (xp[0] == '[') {
@@ -3285,39 +3382,37 @@ sr_edit_add_oper_xpath(const struct ly_ctx *ly_ctx, const struct lyd_node *tree,
         }
         pred_end = xp;
 
-        /* append the node */
-        mem = realloc(*rel_xpath, rxpath_len + 1 + (mlen ? mlen + 1 : 0) + len + 1);
-        SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
-        *rel_xpath = mem;
+        if (is_oper) {
+            /* append the node */
+            mem = realloc(*rel_xpath, rxpath_len + 1 + (mlen ? mlen + 1 : 0) + len + 1);
+            SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
+            *rel_xpath = mem;
 
-        if (mlen) {
-            rxpath_len += sprintf(*rel_xpath + rxpath_len, "/%.*s:%.*s", mlen, mod_name, len, name);
-        } else {
-            rxpath_len += sprintf(*rel_xpath + rxpath_len, "/%.*s", len, name);
+            if (mlen) {
+                rxpath_len += sprintf(*rel_xpath + rxpath_len, "/%.*s:%.*s", mlen, mod_name, len, name);
+            } else {
+                rxpath_len += sprintf(*rel_xpath + rxpath_len, "/%.*s", len, name);
+            }
         }
 
-        /* find the next (first) data node */
-        lyd_find_sibling_val(siblings, schema, NULL, 0, &match);
-        inst_pos = 1;
-
-        if (pos) {
+        if (is_oper && (pos || lysc_is_dup_inst_list(schema))) {
             /* find dup-inst list with this position, if exists */
-            found = 0;
-            while (match && (match->schema == schema)) {
-                m = lyd_find_meta(match->meta, NULL, "sysrepo:dup-inst-list-position");
+            inst_pos = 1;
+            *match = NULL;
+            LYD_LIST_FOR_INST(siblings, schema, iter) {
+                m = lyd_find_meta(iter->meta, NULL, "sysrepo:dup-inst-list-position");
                 assert(m);
                 cur_pos = strtoul(lyd_get_meta_value(m), NULL, 10);
                 if (cur_pos && (cur_pos == pos)) {
                     /* instance exists */
-                    found = 1;
+                    *match = iter;
                     break;
                 }
 
-                match = match->next;
                 ++inst_pos;
             }
 
-            if (found) {
+            if (*match) {
                 /* use this instance */
                 sprintf(buf, "%" PRIu32, inst_pos);
                 mem = realloc(*rel_xpath, rxpath_len + 1 + strlen(buf) + 2);
@@ -3326,17 +3421,54 @@ sr_edit_add_oper_xpath(const struct ly_ctx *ly_ctx, const struct lyd_node *tree,
 
                 rxpath_len += sprintf(*rel_xpath + rxpath_len, "[%s]", buf);
             } /* else create a new instance, use no predicate */
-        } else if (pred != pred_end) {
-            /* append the original predicate */
-            mem = realloc(*rel_xpath, rxpath_len + (pred_end - pred) + 1);
-            SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
-            *rel_xpath = mem;
+        } else {
+            switch (schema->nodetype) {
+            case LYS_LEAF:
+                /* find the next (first) data or even an opaque node (deleted leaf) */
+                if (lyd_find_sibling_val(siblings, schema, NULL, 0, match)) {
+                    if (!lyd_find_sibling_opaq_next(siblings, schema->name, match) && (lyd_node_module(*match) != schema->module)) {
+                        /* not the searched node */
+                        *match = NULL;
+                    }
+                }
+                break;
+            case LYS_LEAFLIST:
+                /* find the (specific) leaf-list instance */
+                if (pred != pred_end) {
+                    assert(!strncmp(pred, "[.=", 3) && ((pred[3] == '\'') || (pred[3] == '\"')));
+                    dpred = strndup(pred + 4, (pred_end - 2) - (pred + 4));
+                } else if (!xp[0] && value) {
+                    dpred = strdup(value);
+                }
+                lyd_find_sibling_val(siblings, schema, dpred, 0, match);
+                break;
+            case LYS_LIST:
+                /* find the (specific) list instance */
+                if (pred != pred_end) {
+                    dpred = strndup(pred, pred_end - pred);
+                }
+                lyd_find_sibling_val(siblings, schema, dpred, 0, match);
+                break;
+            default:
+                /* find the data instance */
+                lyd_find_sibling_val(siblings, schema, NULL, 0, match);
+                break;
+            }
+            free(dpred);
+            dpred = NULL;
 
-            rxpath_len += sprintf(*rel_xpath + rxpath_len, "%.*s", (int)(pred_end - pred), pred);
+            if (is_oper) {
+                /* append the original predicate */
+                mem = realloc(*rel_xpath, rxpath_len + (pred_end - pred) + 1);
+                SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
+                *rel_xpath = mem;
+
+                rxpath_len += sprintf(*rel_xpath + rxpath_len, "%.*s", (int)(pred_end - pred), pred);
+            }
         }
 
         /* update siblings */
-        siblings = match ? lyd_child(match) : NULL;
+        siblings = *match ? lyd_child(*match) : NULL;
     } while (xp[0]);
 
 cleanup:
@@ -3407,7 +3539,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         const char *origin, int isolate)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *node = NULL, *p, *parent = NULL;
+    struct lyd_node *node = NULL, *p, *parent = NULL, *match = NULL;
     const char *meta_val = NULL, *def_origin;
     char *rel_xpath = NULL;
     enum edit_op op;
@@ -3416,16 +3548,28 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
 
     assert(!origin || strchr(origin, ':'));
 
-    opts = 0;
+    opts = LYD_NEW_PATH_WITH_OPAQ;
     if (!strcmp(operation, "remove") || !strcmp(operation, "delete") || !strcmp(operation, "purge")) {
         opts |= LYD_NEW_PATH_OPAQ;
     }
 
-    if (session->ds == SR_DS_OPERATIONAL) {
-        if ((err_info = sr_edit_add_oper_xpath(session->conn->ly_ctx, session->dt[session->ds].edit->tree, xpath, &rel_xpath))) {
+    if (!isolate) {
+        /* find an existing node and prepare xpath for oper edit */
+        if ((err_info = sr_edit_add_xpath(session->conn->ly_ctx, session->dt[session->ds].edit->tree, xpath, value,
+                (session->ds == SR_DS_OPERATIONAL), &match, &rel_xpath))) {
             goto error_safe;
         }
+        if (match) {
+            /* node exists, nothing to create, just merge operations if possible */
+            if ((err_info = sr_edit_add_merge_op(match, &session->dt[session->ds].edit->tree, value, sr_edit_str2op(operation)))) {
+                goto error_safe;
+            }
+            goto success;
+        }
+    }
 
+    if (session->ds == SR_DS_OPERATIONAL) {
+        assert(!isolate);
         /* use the xpath relative to the current edit */
         lyrc = lyd_new_path2(session->dt[session->ds].edit->tree, session->conn->ly_ctx, rel_xpath, (void *)value,
                 value ? strlen(value) : 0, LYD_ANYDATA_STRING, opts, &parent, &node);
@@ -3434,18 +3578,8 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         lyrc = lyd_new_path2(isolate ? NULL : session->dt[session->ds].edit->tree, session->conn->ly_ctx, xpath,
                 (void *)value, value ? strlen(value) : 0, LYD_ANYDATA_STRING, opts, &parent, &node);
     }
-
-    if (!lyrc && !node) {
-        /* NP container existed already (and is always default) */
-        lyrc = LY_EEXIST;
-    }
     if (lyrc) {
-        if ((lyrc == LY_EEXIST) && !(err_info = sr_edit_add_check_same_node_op(session, xpath, value, sr_edit_str2op(operation)))) {
-            /* node already exists but the operations could be merged */
-            goto success;
-        } else {
-            sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
-        }
+        sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid datastore edit.");
         goto error_safe;
     } else if (lysc_is_key(node->schema)) {

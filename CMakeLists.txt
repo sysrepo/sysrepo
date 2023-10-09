@@ -78,8 +78,8 @@ set(SYSREPO_SOVERSION_FULL ${SYSREPO_MAJOR_SOVERSION}.${SYSREPO_MINOR_SOVERSION}
 set(SYSREPO_SOVERSION ${SYSREPO_MAJOR_SOVERSION})
 
 # Version of libyang library that this sysrepo depends on
-set(LIBYANG_DEP_VERSION 2.1.122)
-set(LIBYANG_DEP_SOVERSION 2.40.2)
+set(LIBYANG_DEP_VERSION 2.1.127)
+set(LIBYANG_DEP_SOVERSION 2.41.0)
 set(LIBYANG_DEP_SOVERSION_MAJOR 2)
 
 # generate only version header, it is needed for docs

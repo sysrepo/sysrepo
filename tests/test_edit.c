@@ -125,21 +125,6 @@ clear_test(void **state)
     return 0;
 }
 
-static int
-clear_mod(void **state)
-{
-    struct state *st = (struct state *)*state;
-
-    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
-
-    sr_discard_items(st->sess, "/mod:container");
-    sr_apply_changes(st->sess, 0);
-
-    sr_session_switch_ds(st->sess, SR_DS_RUNNING);
-
-    return 0;
-}
-
 static void
 test_edit_item(void **state)
 {
@@ -201,8 +186,10 @@ test_edit_item(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/test:cont/ll2[.='16']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
+
+    /* delete reverts the previous set */
     ret = sr_delete_item(st->sess, "/test:cont/ll2[.='16']", 0);
-    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_discard_changes(st->sess);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -802,37 +789,7 @@ test_isolate(void **state)
 }
 
 static void
-test_isolate_oper(void **state)
-{
-    struct state *st = (struct state *)*state;
-    sr_data_t *data;
-    char *str;
-    int ret;
-
-    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
-
-    /* create edit */
-    ret = sr_delete_item(st->sess, "/mod:container/list-entry", SR_EDIT_ISOLATE);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_delete_item(st->sess, "/mod:container/pres-cont", SR_EDIT_ISOLATE);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_delete_item(st->sess, "/mod:container/pres-cont2", SR_EDIT_ISOLATE);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_delete_item(st->sess, "/mod:container/list-enh", SR_EDIT_ISOLATE);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* check datastore contents */
-    ret = sr_get_data(st->sess, "/mod:container", 0, 0, 0, &data);
-    assert_int_equal(ret, SR_ERR_OK);
-    lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
-    sr_release_data(data);
-    assert_null(str);
-}
-
-static void
-test_isolate_oper2(void **state)
+test_oper_merge(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_data_t *data;
@@ -843,23 +800,23 @@ test_isolate_oper2(void **state)
 
     /* set and delete an oper leaf */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
-            "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_ISOLATE);
+            "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/ietf-interfaces-aug-leaf:new-test-leaf",
-            "7", NULL, SR_EDIT_ISOLATE);
+            "7", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/ietf-interfaces-aug-leaf:new-test-leaf",
-            SR_EDIT_ISOLATE);
+            0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* delete and set an oper leaf */
     ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/ietf-interfaces-aug-leaf:new-test-leaf",
-            SR_EDIT_ISOLATE);
+            0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/ietf-interfaces-aug-leaf:new-test-leaf",
-            "8", NULL, SR_EDIT_ISOLATE);
+            "8", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1590,8 +1547,7 @@ main(void)
         cmocka_unit_test_teardown(test_replace_userord, clear_test),
         cmocka_unit_test_teardown(test_none, clear_interfaces),
         cmocka_unit_test_teardown(test_isolate, clear_interfaces),
-        cmocka_unit_test_teardown(test_isolate_oper, clear_mod),
-        cmocka_unit_test_teardown(test_isolate_oper2, clear_interfaces),
+        cmocka_unit_test_teardown(test_oper_merge, clear_interfaces),
         cmocka_unit_test(test_purge),
         cmocka_unit_test(test_top_op),
         cmocka_unit_test_teardown(test_oper, clear_interfaces),
