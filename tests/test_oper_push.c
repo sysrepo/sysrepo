@@ -1130,6 +1130,12 @@ test_state_list(void **state)
     assert_string_equal(str1, str2);
     free(str1);
 
+    /* invalid predicate type */
+    ret = sr_delete_item(st->sess, "/mixed-config:test-state/ll[.='val3']", 0);
+    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    ret = sr_discard_changes(st->sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
     sr_unsubscribe(subscr);
 }
 

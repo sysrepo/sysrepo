@@ -3399,17 +3399,24 @@ sr_edit_add_xpath(const struct ly_ctx *ly_ctx, const struct lyd_node *tree, cons
             /* find dup-inst list with this position, if exists */
             inst_pos = 1;
             *match = NULL;
-            LYD_LIST_FOR_INST(siblings, schema, iter) {
-                m = lyd_find_meta(iter->meta, NULL, "sysrepo:dup-inst-list-position");
-                assert(m);
-                cur_pos = strtoul(lyd_get_meta_value(m), NULL, 10);
-                if (cur_pos && (cur_pos == pos)) {
-                    /* instance exists */
-                    *match = iter;
-                    break;
-                }
+            if (pos) {
+                LYD_LIST_FOR_INST(siblings, schema, iter) {
+                    m = lyd_find_meta(iter->meta, NULL, "sysrepo:dup-inst-list-position");
+                    assert(m);
+                    cur_pos = strtoul(lyd_get_meta_value(m), NULL, 10);
+                    if (cur_pos && (cur_pos == pos)) {
+                        /* instance exists */
+                        *match = iter;
+                        break;
+                    }
 
-                ++inst_pos;
+                    ++inst_pos;
+                }
+            } else if (pred != pred_end) {
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid predicate \"%.*s\" of duplicate-instance %s \"%s\", "
+                        "expected a positional predicate.", (int)(pred_end - pred), pred,
+                        lys_nodetype2str(schema->nodetype), schema->name);
+                goto cleanup;
             }
 
             if (*match) {
