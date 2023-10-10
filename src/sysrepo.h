@@ -475,7 +475,7 @@ const char *sr_get_repo_path(void);
  * @param[in] conn Connection to use.
  * @param[in] schema_path Path to the new schema. Can have either YANG or YIN extension/format.
  * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
- * @param[in] features Optional array of enabled features ended with NULL.
+ * @param[in] features Optional array of enabled features ended with NULL. Feature '*' enables them all.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs, const char **features);
@@ -488,7 +488,8 @@ int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *
  * @param[in] conn Connection to use.
  * @param[in] schema_path Path to the new schema. Can have either YANG or YIN extension/format.
  * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
- * @param[in] features Optional array of enabled features ended with NULL, all disabled by default.
+ * @param[in] features Optional array of enabled features ended with NULL, all disabled by default. Feature '*' enables
+ * them all.
  * @param[in] module_ds Optional datastore implementation plugin names for each datastore, NULL for all defaults.
  * The default datastore is also used for any unset plugin names.
  * @param[in] owner Optional initial owner of the module data, process user by default.

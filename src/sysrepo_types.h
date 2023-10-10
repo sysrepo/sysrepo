@@ -176,7 +176,7 @@ typedef struct {
  */
 typedef struct {
     const char *schema_path;        /**< Path to the schema file. */
-    const char **features;          /**< Optional array of features to enable terminated by NULL. */
+    const char **features;          /**< Optional array of features to enable ('*' enables all) terminated by NULL. */
     sr_module_ds_t module_ds;       /**< Optional datastore implementation plugin names for each datastore. */
     const char *owner;              /**< Optional module data owner, process user by default. */
     const char *group;              /**< Optional module data group, process group by default. */

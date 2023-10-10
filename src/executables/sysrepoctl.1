@@ -3,7 +3,7 @@
 .\" groff -man -Tascii sysrepoctl.1
 .\"
 
-.TH SYSREPOCTL 1 "2021-10-20" "sysrepo"
+.TH SYSREPOCTL 1 "2023-10-10" "sysrepo"
 .SH NAME
 sysrepoctl \- sysrepo YANG schema manipulation tool
 .
@@ -60,7 +60,8 @@ Directories to search for include/import modules. Directory with already-install
 modules is always searched. Accepted by \fBinstall\fP, \fBupdate\fP op.
 .TP
 .BR "\-e\fR,\fP \-\^\-enable\-feature \fIFEATURE\fP"
-Enabled specific feature. Can be specified multiple times Accepted by \fBinstall\fP, \fBchange\fP op.
+Enabled specific feature or use '*' for all the features.
+Can be specified multiple times Accepted by \fBinstall\fP, \fBchange\fP op.
 .TP
 .BR "\-d\fR,\fP \-\^\-disable\-feature \fIFEATURE\fP"
 Disable specific feature. Can be specified multiple times. Accepted by \fBchange\fP op.
