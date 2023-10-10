@@ -992,6 +992,31 @@ stored_state_list_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const ch
 
         sr_free_change_iter(iter);
         break;
+    case 6:
+    case 7:
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 6) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/mixed-config:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "ll");
+
+        /* no more changes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
     default:
         fail();
     }
@@ -1123,6 +1148,39 @@ test_state_list(void **state)
             "  <l or:origin=\"or:unknown\"/>\n"
             "  <ll or:origin=\"or:unknown\">val1</ll>\n"
             "  <ll or:origin=\"or:unknown\">val3</ll>\n"
+            "  <ll or:origin=\"or:unknown\">val2</ll>\n"
+            "  <ll or:origin=\"or:unknown\">val3</ll>\n"
+            "</test-state>\n";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* add some oper data actually removing previously set value */
+    ret = sr_delete_item(st->sess, "/mixed-config:test-state/ll[2]", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* callback called */
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 8);
+
+    /* read the data */
+    ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+
+    sr_release_data(data);
+
+    str2 =
+            "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\""
+            " or:origin=\"or:intended\">\n"
+            "  <l or:origin=\"or:unknown\">\n"
+            "    <l1>val1</l1>\n"
+            "  </l>\n"
+            "  <l or:origin=\"or:unknown\"/>\n"
+            "  <ll or:origin=\"or:unknown\">val1</ll>\n"
             "  <ll or:origin=\"or:unknown\">val2</ll>\n"
             "  <ll or:origin=\"or:unknown\">val3</ll>\n"
             "</test-state>\n";
