@@ -1271,7 +1271,8 @@ sr_install_modules_check_features(const struct lys_module *ly_mod, const char **
     uint32_t i = 0, j;
     const char *feature;
 
-    if (!strcmp(features[0], "*")) {
+    if (features && !strcmp(features[0], "*")) {
+        /* enables all the features, always allow */
         return NULL;
     }
 
