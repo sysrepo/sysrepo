@@ -3590,7 +3590,8 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid datastore edit.");
         goto error_safe;
     } else if (lysc_is_key(node->schema)) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Editing list keys is not supported, edit list instances instead.");
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Editing list key \"%s\" is not supported, edit list instances instead.",
+                LYD_NAME(node));
         goto error_safe;
     }
     session->dt[session->ds].edit->tree = lyd_first_sibling(session->dt[session->ds].edit->tree);
