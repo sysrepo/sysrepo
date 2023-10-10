@@ -1271,6 +1271,10 @@ sr_install_modules_check_features(const struct lys_module *ly_mod, const char **
     uint32_t i = 0, j;
     const char *feature;
 
+    if (!strcmp(features[0], "*")) {
+        return NULL;
+    }
+
     /* first check feature existence */
     for (j = 0; features && features[j]; ++j) {
         if (lys_feature_value(ly_mod, features[j]) == LY_ENOTFOUND) {
