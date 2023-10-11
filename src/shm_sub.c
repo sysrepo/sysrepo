@@ -23,10 +23,10 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <poll.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
-#include <sys/select.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
@@ -4710,10 +4710,9 @@ sr_shmsub_listen_thread(void *arg)
 {
     sr_error_info_t *err_info = NULL;
     sr_subscription_ctx_t *subscr = (sr_subscription_ctx_t *)arg;
-    fd_set rfds;
-    struct timeval tv;
+    struct pollfd fds;
     struct timespec wake_up_in = {0};
-    int ret;
+    int ret, timeout_ms;
 
     /* start event loop */
     goto wait_for_event;
@@ -4742,21 +4741,21 @@ sr_shmsub_listen_thread(void *arg)
 wait_for_event:
         /* wait an arbitrary long time or until a stop time is elapsed */
         if (!SR_TS_IS_ZERO(wake_up_in)) {
-            tv.tv_sec = wake_up_in.tv_sec;
-            tv.tv_usec = wake_up_in.tv_nsec / 1000;
+            timeout_ms = wake_up_in.tv_sec * 1000;
+            timeout_ms += wake_up_in.tv_nsec / 1000000;
         } else {
-            tv.tv_sec = 10;
-            tv.tv_usec = 0;
+            /* 10 s */
+            timeout_ms = 10 * 1000;
         }
 
-        FD_ZERO(&rfds);
-        FD_SET(subscr->evpipe, &rfds);
+        fds.fd = subscr->evpipe;
+        fds.events = POLLIN;
 
-        /* use select() to wait for a new event */
-        ret = select(subscr->evpipe + 1, &rfds, NULL, NULL, &tv);
+        /* wait for a new event */
+        ret = poll(&fds, 1, timeout_ms);
         if ((ret == -1) && (errno != EINTR)) {
             /* error */
-            SR_ERRINFO_SYSERRNO(&err_info, "select");
+            SR_ERRINFO_SYSERRNO(&err_info, "poll");
             sr_errinfo_free(&err_info);
             goto error;
         } else if (SR_TS_IS_ZERO(wake_up_in) && (!ret || ((ret == -1) && (errno == EINTR)))) {
