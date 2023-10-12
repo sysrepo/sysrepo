@@ -3178,7 +3178,7 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
             SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
             conn->run_cache_mods = mem;
 
-            cmod = &conn->run_cache_mods[j];
+            cmod = &conn->run_cache_mods[conn->run_cache_mod_count];
             cmod->mod = mod->ly_mod;
             cmod->id = UINT32_MAX;
 
