@@ -4880,8 +4880,8 @@ sr_xpath_set_filter_subtrees(struct ly_set *set)
             }
         }
         if (parent) {
-            /* this result is redundant */
-            ly_set_rm_index(set, i, NULL);
+            /* this result is redundant, but keep the order of the nodes in the set */
+            ly_set_rm_index_ordered(set, i, NULL);
             continue;
         }
 
