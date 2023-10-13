@@ -540,7 +540,7 @@ sr_modinfo_edit_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
     const struct lys_module *ly_mod;
     struct sr_mod_info_mod_s *mod;
     const struct lyd_node *node, *iter;
-    struct lyd_node *change_edit;
+    struct lyd_node *change_edit = NULL, *diff = NULL;
     uint32_t *aux = NULL, i;
     const char *xpath;
     int change;
@@ -571,7 +571,6 @@ sr_modinfo_edit_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
         if (xpath && !xpath[0]) {
             xpath = NULL;
         }
-        change_edit = NULL;
         if ((err_info = sr_edit_oper_del(&mod_info->data, mod_info->conn->cid, xpath, &change_edit))) {
             goto cleanup;
         }
@@ -590,15 +589,26 @@ sr_modinfo_edit_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
             }
         }
 
-        /* append diff */
         if (create_diff) {
-            err_info = sr_edit2diff(change_edit, &mod_info->diff);
+            /* create and merge diffs */
+            if ((err_info = sr_edit2diff(change_edit, &diff))) {
+                goto cleanup;
+            }
+            if (!mod_info->diff) {
+                mod_info->diff = diff;
+                diff = NULL;
+            } else {
+                if (lyd_diff_merge_tree(&mod_info->diff, NULL, diff, NULL, NULL, 0)) {
+                    sr_errinfo_new_ly(&err_info, LYD_CTX(edit), mod_info->diff);
+                    goto cleanup;
+                }
+                lyd_free_siblings(diff);
+                diff = NULL;
+            }
         }
 
         lyd_free_siblings(change_edit);
-        if (err_info) {
-            goto cleanup;
-        }
+        change_edit = NULL;
     }
 
     mod = NULL;
@@ -618,6 +628,8 @@ sr_modinfo_edit_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
     }
 
 cleanup:
+    lyd_free_siblings(change_edit);
+    lyd_free_siblings(diff);
     free(aux);
     return err_info;
 }
