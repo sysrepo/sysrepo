@@ -3320,7 +3320,7 @@ sr_edit_add_xpath(const struct ly_ctx *ly_ctx, const struct lyd_node *tree, cons
 
     /* validate xpath */
     if (!lys_find_path(ly_ctx, NULL, xpath, 0)) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid XPath.");
+        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
         goto cleanup;
     }
 
