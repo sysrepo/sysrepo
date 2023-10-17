@@ -93,7 +93,7 @@ typedef int (*srds_init)(const struct lys_module *mod, sr_datastore_t ds);
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
- * @param[in] mod_diff Diff of currently stored module data and the new @p mod_data.
+ * @param[in] mod_diff Diff of currently stored module data and the new @p mod_data. __Not always available.__
  * @param[in] mod_data New module data tree to store.
  * @return ::SR_ERR_OK on success;
  * @return Sysrepo error value on error.

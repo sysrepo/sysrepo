@@ -674,8 +674,8 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
     const struct srplg_ds_s *ds_plg;
     struct ly_set *set;
     char *xpath;
-    uint32_t idx = 0;
-    int rc;
+    uint32_t idx = 0, ly_log_opts = 0;
+    int rc, diff;
     LY_ERR lyrc;
 
     while ((new_ly_mod = ly_ctx_get_module_iter(new_ctx, &idx))) {
@@ -723,12 +723,19 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
 
         /* generate a diff of old and new data */
         lyd_free_siblings(mod_diff);
+        diff = 0;
+        ly_temp_log_options(&ly_log_opts);
         if (lyd_diff_siblings(old_mod_data, new_mod_data, LYD_DIFF_DEFAULTS, &mod_diff)) {
-            sr_errinfo_new_ly(&err_info, conn->ly_ctx, new_mod_data);
-            break;
+            /* assume it is because a schema node was not found in a context but there is a diff,
+             * this can always happen because nodes can be added wtih default values/removed, even in a single
+             * module so neither old nor new context can be used for all the cases */
+            diff = 1;
+        } else if (mod_diff) {
+            diff = 1;
         }
+        ly_temp_log_options(NULL);
 
-        if (mod_diff) {
+        if (diff) {
             /* store new data */
             if ((rc = ds_plg->store_cb(new_ly_mod, ds, mod_diff, new_mod_data))) {
                 SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", ds_plg->name, new_ly_mod->name);
