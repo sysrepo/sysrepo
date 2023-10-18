@@ -1595,12 +1595,28 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief qsort(3) compar callback implementation.
+ */
+static int
+sr_shmmod_prio_cmp(const void *i1, const void *i2)
+{
+    const sr_mod_t *smod1 = *(sr_mod_t **)i1, *smod2 = *(sr_mod_t **)i2;
+
+    if (smod1->data_lock_info[SR_DS_RUNNING].prio > smod2->data_lock_info[SR_DS_RUNNING].prio) {
+        return 1;
+    } else if (smod1->data_lock_info[SR_DS_RUNNING].prio < smod2->data_lock_info[SR_DS_RUNNING].prio) {
+        return -1;
+    }
+    return 0;
+}
+
 sr_error_info_t *
 sr_shmmod_reboot_init(sr_conn_ctx_t *conn, int initialized)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_shm_t *mod_shm;
-    sr_mod_t *smod;
+    sr_mod_t **smods = NULL;
     const struct lys_module *ly_mod;
     const struct srplg_ds_s *ds_plg[SR_DS_READ_COUNT];
     sr_datastore_t ds;
@@ -1608,22 +1624,30 @@ sr_shmmod_reboot_init(sr_conn_ctx_t *conn, int initialized)
     int rc;
 
     mod_shm = SR_CONN_MOD_SHM(conn);
+    smods = malloc(mod_shm->mod_count * sizeof *smods);
+    SR_CHECK_MEM_GOTO(!smods, err_info, cleanup);
+
+    /* prepare SHM mod array */
+    for (i = 0; i < mod_shm->mod_count; ++i) {
+        smods[i] = SR_SHM_MOD_IDX(mod_shm, i);
+    }
+
+    /* sort it based on the change priority */
+    qsort(smods, mod_shm->mod_count, sizeof *smods, sr_shmmod_prio_cmp);
 
     for (i = 0; i < mod_shm->mod_count; ++i) {
-        smod = SR_SHM_MOD_IDX(mod_shm, i);
-
         /* find LY module */
-        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, ((char *)mod_shm) + smod->name);
+        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, ((char *)mod_shm) + smods[i]->name);
         assert(ly_mod);
 
         /* find DS plugins and init them */
         for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
-            if ((err_info = sr_ds_plugin_find(((char *)mod_shm) + smod->plugins[ds], conn, &ds_plg[ds]))) {
-                return err_info;
+            if ((err_info = sr_ds_plugin_find(((char *)mod_shm) + smods[i]->plugins[ds], conn, &ds_plg[ds]))) {
+                goto cleanup;
             }
             if (!initialized && (rc = ds_plg[ds]->init_cb(ly_mod, ds))) {
                 SR_ERRINFO_DSPLUGIN(&err_info, rc, "init", ds_plg[ds]->name, ly_mod->name);
-                return err_info;
+                goto cleanup;
             }
         }
 
@@ -1633,14 +1657,18 @@ sr_shmmod_reboot_init(sr_conn_ctx_t *conn, int initialized)
         }
 
         /* copy startup to running */
+        SR_LOG_WRN("Mod \"%s\"", ly_mod->name);
         if ((err_info = sr_shmmod_copy_mod(ly_mod, ds_plg[SR_DS_STARTUP], SR_DS_STARTUP, ds_plg[SR_DS_RUNNING],
                 SR_DS_RUNNING))) {
-            return err_info;
+            goto cleanup;
         }
     }
 
     SR_LOG_INF("Datastore copied from <startup> to <running>.");
-    return NULL;
+
+cleanup:
+    free(smods);
+    return err_info;
 }
 
 sr_error_info_t *

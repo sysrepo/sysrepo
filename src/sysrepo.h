@@ -1299,6 +1299,9 @@ int sr_unsubscribe(sr_subscription_ctx_t *subscription);
  * As soon as a callback fails, its batch of callbacks is the last to be notified. Also note that the callbacks may
  * not actually be executed concurrently in case they are handled by a single subscription (thread).
  *
+ * This order (of `running` datastore) is also used when initializing and copying data from `startup` to `running`
+ * on SHM creation.
+ *
  * Required WRITE access.
  *
  * @param[in] conn Connection to use.
