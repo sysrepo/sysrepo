@@ -2867,7 +2867,7 @@ sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
-    int ret;
+    int ret = 0;
 
     assert(mode && cid);
 
@@ -2908,6 +2908,11 @@ sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
         if ((err_info = sr_rwlock_reader_del(rwlock, cid))) {
             sr_errinfo_free(&err_info);
         }
+    }
+
+    if (ret) {
+        /* lock not held, cannot broadcast nor unlock it */
+        return;
     }
 
     /* write-unlock/last read-unlock, last read-unlock with read-upgr lock waiting for an upgrade,
