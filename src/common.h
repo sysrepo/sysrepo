@@ -1003,9 +1003,8 @@ const char *sr_ds2ident(sr_datastore_t ds);
  * @brief Sleep for specified milliseconds.
  *
  * @param[in] msec Number of ms to sleep for.
- * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_msleep(uint32_t msec);
+void sr_msleep(uint32_t msec);
 
 /**
  * @brief Print a message into a newly allocated buffer.

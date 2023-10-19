@@ -3705,7 +3705,7 @@ sr_ds2ident(sr_datastore_t ds)
     return sr_mod_ds2ident(ds);
 }
 
-sr_error_info_t *
+void
 sr_msleep(uint32_t msec)
 {
     sr_error_info_t *err_info = NULL;
@@ -3722,10 +3722,8 @@ sr_msleep(uint32_t msec)
 
     if (ret == -1) {
         SR_ERRINFO_SYSERRNO(&err_info, "nanosleep");
-        return err_info;
+        sr_errinfo_free(&err_info);
     }
-
-    return NULL;
 }
 
 int

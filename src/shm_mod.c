@@ -1236,9 +1236,7 @@ revert_lock:
     if (ds_timeout_ms) {
         /* sleep for the step/whatever is left and retry */
         sleep_ms = (ds_timeout_ms >= SR_DS_LOCK_TIMEOUT_STEP) ? SR_DS_LOCK_TIMEOUT_STEP : ds_timeout_ms;
-        if ((err_info = sr_msleep(sleep_ms))) {
-            goto cleanup;
-        }
+        sr_msleep(sleep_ms);
         ds_timeout_ms -= sleep_ms;
         goto ds_lock_retry;
     } else {
