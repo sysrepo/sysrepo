@@ -325,6 +325,11 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), mod_name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
+    /* create event session */
+    if ((err_info = _sr_session_start(conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, NULL, &ev_sess))) {
+        goto cleanup;
+    }
+
     if (!shm_mod->replay_supp) {
         SR_LOG_WRN("Module \"%s\" does not support notification replay.", mod_name);
         goto replay_complete;
@@ -336,11 +341,6 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
 
     /* find handle */
     if ((err_info = sr_ntf_handle_find(conn->mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_handle))) {
-        goto cleanup;
-    }
-
-    /* create event session */
-    if ((err_info = _sr_session_start(conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, NULL, &ev_sess))) {
         goto cleanup;
     }
 

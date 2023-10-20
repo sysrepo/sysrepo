@@ -306,7 +306,7 @@ static void
 sr_shmsub_recover(sr_sub_shm_t *sub_shm)
 {
     if (!sr_conn_is_alive(sub_shm->orig_cid)) {
-        SR_LOG_WRN("EV ORIGIN: \"%s\" of CID %" PRIu32 " ID %" PRIu32 " recovered.",
+        SR_LOG_WRN("EV ORIGIN: SHM event \"%s\" of CID %" PRIu32 " ID %" PRIu32 " recovered.",
                 sr_ev2str(ATOMIC_LOAD_RELAXED(sub_shm->event)), sub_shm->orig_cid,
                 (uint32_t)ATOMIC_LOAD_RELAXED(sub_shm->request_id));
 
@@ -470,7 +470,7 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
             /* WRITE LOCK, chances are we will get it if we ignore the event */
             if (!(err_info = sr_sub_rwlock(&sub_shm->lock, timeout_abs, SR_LOCK_WRITE, cid, __func__, NULL, NULL, 1))) {
                 /* event timeout */
-                sr_errinfo_new(cb_err_info, SR_ERR_TIME_OUT, "EV ORIGIN: \"%s\" ID %" PRIu32 " processing timed out.",
+                sr_errinfo_new(cb_err_info, SR_ERR_TIME_OUT, "EV ORIGIN: SHM event \"%s\" ID %" PRIu32 " processing timed out.",
                         sr_ev2str(event), request_id);
                 write_lock = 1;
             }

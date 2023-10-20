@@ -237,15 +237,18 @@ set(LIB_SRC
     src/utils/values.c
     src/utils/xpath.c
     src/utils/error_format.c
-    src/utils/nacm.c)
+    src/utils/nacm.c
+    src/utils/subscribed_notifications.c
+    src/utils/sn_common.c
+    src/utils/sn_yang_push.c)
 
-set (SYSREPOCTL_SRC
+set(SYSREPOCTL_SRC
     src/executables/sysrepoctl.c)
 
-set (SYSREPOCFG_SRC
+set(SYSREPOCFG_SRC
     src/executables/sysrepocfg.c)
 
-set (SYSREPOPLUGIND_SRC
+set(SYSREPOPLUGIND_SRC
     src/executables/srpd_rotation.c
     src/executables/srpd_oper_poll_diff.c
     src/executables/srpd_common.c
@@ -258,7 +261,8 @@ set(LIB_HEADERS
     src/utils/values.h
     src/utils/xpath.h
     src/utils/error_format.h
-    src/utils/netconf_acm.h)
+    src/utils/netconf_acm.h
+    src/utils/subscribed_notifications.h)
 
 # files to generate doxygen from
 set(DOXY_FILES
@@ -439,7 +443,10 @@ configure_file("${PROJECT_SOURCE_DIR}/src/executables/bin_common.h.in" "${PROJEC
 configure_file("${PROJECT_SOURCE_DIR}/src/executables/sysrepo-plugind.service.in" "${PROJECT_BINARY_DIR}/sysrepo-plugind.service" @ONLY)
 
 # installation
-install(DIRECTORY "${PROJECT_SOURCE_DIR}/modules/" DESTINATION ${YANG_MODULE_DIR} FILES_MATCHING PATTERN "*.yang")
+file(GLOB yangs "${PROJECT_SOURCE_DIR}/modules/*.yang")
+install(FILES ${yangs} DESTINATION ${YANG_MODULE_DIR})
+file(GLOB sn_yangs "${PROJECT_SOURCE_DIR}/modules/subscribed_notifications/*.yang")
+install(FILES ${sn_yangs} DESTINATION ${YANG_MODULE_DIR})
 
 install(TARGETS sysrepo DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(FILES ${PROJECT_SOURCE_DIR}/src/sysrepo.h ${PROJECT_SOURCE_DIR}/src/sysrepo_types.h
@@ -447,6 +454,7 @@ install(FILES ${PROJECT_SOURCE_DIR}/src/sysrepo.h ${PROJECT_SOURCE_DIR}/src/sysr
 install(FILES ${PROJECT_SOURCE_DIR}/src/plugins_datastore.h ${PROJECT_BINARY_DIR}/version.h
             ${PROJECT_SOURCE_DIR}/src/utils/values.h ${PROJECT_SOURCE_DIR}/src/utils/xpath.h
             ${PROJECT_SOURCE_DIR}/src/utils/error_format.h ${PROJECT_SOURCE_DIR}/src/utils/netconf_acm.h
+            ${PROJECT_SOURCE_DIR}/src/utils/subscribed_notifications.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sysrepo)
 install(FILES ${PROJECT_BINARY_DIR}/sysrepo.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 
