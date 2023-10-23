@@ -2889,31 +2889,33 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
     uint32_t i;
     int is_oper_ds = (session->ds == SR_DS_OPERATIONAL) ? 1 : 0;
 
-    /* collect edit/diff to be applied based on the handled event */
-    switch (session->ev) {
-    case SR_SUB_EV_CHANGE:
-    case SR_SUB_EV_UPDATE:
-        diff = session->dt[session->ds].diff;
-        if (session->ev != SR_SUB_EV_UPDATE) {
+    if (session->ds < SR_DS_COUNT) {
+        /* collect edit/diff to be applied based on the handled event */
+        switch (session->ev) {
+        case SR_SUB_EV_CHANGE:
+        case SR_SUB_EV_UPDATE:
+            diff = session->dt[session->ds].diff;
+            if (session->ev != SR_SUB_EV_UPDATE) {
+                break;
+            }
+        /* fallthrough */
+        case SR_SUB_EV_NONE:
+            if (session->dt[session->ds].edit) {
+                edit = session->dt[session->ds].edit->tree;
+            }
             break;
+        case SR_SUB_EV_ENABLED:
+        case SR_SUB_EV_DONE:
+        case SR_SUB_EV_ABORT:
+        case SR_SUB_EV_OPER:
+        case SR_SUB_EV_RPC:
+        case SR_SUB_EV_NOTIF:
+            /* no changes to apply for these events */
+            break;
+        default:
+            SR_ERRINFO_INT(&err_info);
+            goto cleanup;
         }
-    /* fallthrough */
-    case SR_SUB_EV_NONE:
-        if (session->dt[session->ds].edit) {
-            edit = session->dt[session->ds].edit->tree;
-        }
-        break;
-    case SR_SUB_EV_ENABLED:
-    case SR_SUB_EV_DONE:
-    case SR_SUB_EV_ABORT:
-    case SR_SUB_EV_OPER:
-    case SR_SUB_EV_RPC:
-    case SR_SUB_EV_NOTIF:
-        /* no changes to apply for these events */
-        break;
-    default:
-        SR_ERRINFO_INT(&err_info);
-        goto cleanup;
     }
 
     if (diff || edit) {
