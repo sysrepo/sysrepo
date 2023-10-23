@@ -2885,61 +2885,60 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
-    struct lyd_node *edit, *diff;
+    struct lyd_node *edit = NULL, *diff = NULL;
     uint32_t i;
     int is_oper_ds = (session->ds == SR_DS_OPERATIONAL) ? 1 : 0;
 
-    for (i = 0; (i < mod_info->mod_count) && (session->ds < SR_DS_COUNT); ++i) {
-        mod = &mod_info->mods[i];
-        if (mod->state & MOD_INFO_REQ) {
-            edit = NULL;
-            diff = NULL;
+    /* collect edit/diff to be applied based on the handled event */
+    switch (session->ev) {
+    case SR_SUB_EV_CHANGE:
+    case SR_SUB_EV_UPDATE:
+        diff = session->dt[session->ds].diff;
+        if (session->ev != SR_SUB_EV_UPDATE) {
+            break;
+        }
+    /* fallthrough */
+    case SR_SUB_EV_NONE:
+        if (session->dt[session->ds].edit) {
+            edit = session->dt[session->ds].edit->tree;
+        }
+        break;
+    case SR_SUB_EV_ENABLED:
+    case SR_SUB_EV_DONE:
+    case SR_SUB_EV_ABORT:
+    case SR_SUB_EV_OPER:
+    case SR_SUB_EV_RPC:
+    case SR_SUB_EV_NOTIF:
+        /* no changes to apply for these events */
+        break;
+    default:
+        SR_ERRINFO_INT(&err_info);
+        goto cleanup;
+    }
 
-            /* collect edit/diff to be applied based on the handled event */
-            switch (session->ev) {
-            case SR_SUB_EV_CHANGE:
-            case SR_SUB_EV_UPDATE:
-                diff = session->dt[session->ds].diff;
-                if (session->ev != SR_SUB_EV_UPDATE) {
-                    break;
+    if (diff || edit) {
+        if (mod_info->data_cached) {
+            /* data will be changed, we cannot use the cache anymore */
+            lyd_dup_siblings(mod_info->data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &mod_info->data);
+            mod_info->data_cached = 0;
+
+            /* CACHE READ UNLOCK */
+            sr_rwunlock(&mod_info->conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
+                    mod_info->conn->cid, __func__);
+        }
+
+        for (i = 0; (i < mod_info->mod_count) && (session->ds < SR_DS_COUNT); ++i) {
+            mod = &mod_info->mods[i];
+            if (mod->state & MOD_INFO_REQ) {
+                /* apply any currently handled changes (diff) or additional performed ones (edit) to get
+                 * the session-specific data tree */
+                if (lyd_diff_apply_module(&mod_info->data, diff, mod->ly_mod, is_oper_ds ? sr_lyd_diff_apply_cb : NULL, NULL)) {
+                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
+                    goto cleanup;
                 }
-            /* fallthrough */
-            case SR_SUB_EV_NONE:
-                if (session->dt[session->ds].edit) {
-                    edit = session->dt[session->ds].edit->tree;
+                if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, NULL, NULL))) {
+                    goto cleanup;
                 }
-                break;
-            case SR_SUB_EV_ENABLED:
-            case SR_SUB_EV_DONE:
-            case SR_SUB_EV_ABORT:
-            case SR_SUB_EV_OPER:
-            case SR_SUB_EV_RPC:
-            case SR_SUB_EV_NOTIF:
-                /* no changes to apply for these events */
-                break;
-            default:
-                SR_ERRINFO_INT(&err_info);
-                goto cleanup;
-            }
-
-            if (mod_info->data_cached && ((session->ds == SR_DS_RUNNING) && (edit || diff))) {
-                /* data will be changed, we cannot use the cache anymore */
-                lyd_dup_siblings(mod_info->data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &mod_info->data);
-                mod_info->data_cached = 0;
-
-                /* CACHE READ UNLOCK */
-                sr_rwunlock(&mod_info->conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
-                        mod_info->conn->cid, __func__);
-            }
-
-            /* apply any currently handled changes (diff) or additional performed ones (edit) to get
-             * the session-specific data tree */
-            if (lyd_diff_apply_module(&mod_info->data, diff, mod->ly_mod, is_oper_ds ? sr_lyd_diff_apply_cb : NULL, NULL)) {
-                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
-                goto cleanup;
-            }
-            if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, NULL, NULL))) {
-                goto cleanup;
             }
         }
     }
