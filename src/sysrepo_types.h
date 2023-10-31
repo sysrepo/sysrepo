@@ -380,7 +380,8 @@ typedef enum {
      * - the subscriber is the "owner" of the subscribed data tree and it will appear in the operational
      *   datastore while this subscription is alive (if not already, can be changed using ::SR_SUBSCR_PASSIVE flag),
      * - the callback will be called twice, once with ::SR_EV_CHANGE event and once with ::SR_EV_DONE / ::SR_EV_ABORT
-     *   event passed in (can be changed with ::SR_SUBSCR_DONE_ONLY flag).
+     *   event passed in (can be changed with ::SR_SUBSCR_DONE_ONLY flag). The callback that failed will not get
+     *   ::SR_EV_ABORT and therefore be called only once.
      */
     SR_SUBSCR_DEFAULT = 0x00,
 
