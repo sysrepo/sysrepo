@@ -1655,7 +1655,6 @@ sr_shmmod_reboot_init(sr_conn_ctx_t *conn, int initialized)
         }
 
         /* copy startup to running */
-        SR_LOG_WRN("Mod \"%s\"", ly_mod->name);
         if ((err_info = sr_shmmod_copy_mod(ly_mod, ds_plg[SR_DS_STARTUP], SR_DS_STARTUP, ds_plg[SR_DS_RUNNING],
                 SR_DS_RUNNING))) {
             goto cleanup;
