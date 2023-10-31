@@ -3498,27 +3498,38 @@ static sr_error_info_t *
 sr_edit_add_dup_inst_list_pos(struct lyd_node *parent, const char *xpath)
 {
     sr_error_info_t *err_info = NULL;
+    struct lyd_node *node;
     const char *mod_name, *name, *xp;
-    int mlen, len;
+    int mlen, len, depth;
     uint32_t pos;
     char buf[23];
 
     assert(parent);
 
+    /* start with top-level node to kepp track of the (existing) nodes in the path */
+    depth = 0;
+    for (node = parent; node->parent; node = lyd_parent(node)) {
+        ++depth;
+    }
+
     xp = xpath;
     while (parent) {
         /* get parent xpath segment */
-        do {
-            xp = sr_xpath_next_qname(xp + 1, &mod_name, &mlen, &name, &len);
+        xp = sr_xpath_next_qname(xp + 1, &mod_name, &mlen, &name, &len);
 
-            pos = 0;
-            while (xp[0] == '[') {
-                /* get position from a position predicate, otherwise 0 */
-                pos = strtoul(xp + 1, NULL, 10);
+        pos = 0;
+        while (xp[0] == '[') {
+            /* get position from a position predicate, otherwise 0 */
+            pos = strtoul(xp + 1, NULL, 10);
 
-                xp = sr_xpath_skip_predicate(xp);
-            }
-        } while ((strlen(LYD_NAME(parent)) != (unsigned)len) || strncmp(LYD_NAME(parent), name, len));
+            xp = sr_xpath_skip_predicate(xp);
+        }
+
+        if (depth-- > 0) {
+            /* no created nodes yet */
+            continue;
+        }
+        assert(parent && (strlen(LYD_NAME(parent)) == (unsigned)len) && !strncmp(LYD_NAME(parent), name, len));
 
         if (lysc_is_dup_inst_list(parent->schema)) {
             /* store the instance position */
