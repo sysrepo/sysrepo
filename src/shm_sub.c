@@ -1792,7 +1792,11 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
         notify_subs[notify_count].shm_data_sub.fd = -1;
         ++notify_count;
     }
-    assert(notify_count);
+
+    if (!notify_count) {
+        /* nothing to do , likely because subscriber died recently */
+        goto cleanup;
+    }
 
     for (i = 0; i < notify_count; ++i) {
         nsub = &notify_subs[i];
