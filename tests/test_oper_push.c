@@ -716,12 +716,15 @@ state_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_n
         ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
         assert_int_equal(ret, SR_ERR_OK);
 
-        assert_int_equal(op, SR_OP_CREATED);
-        assert_null(old_val);
+        assert_int_equal(op, SR_OP_MODIFIED);
+        assert_non_null(old_val);
+        assert_string_equal(old_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type");
+        assert_string_equal(old_val->data.string_val, "iana-if-type:ethernetCsmacd");
         assert_non_null(new_val);
         assert_string_equal(new_val->xpath, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type");
         assert_string_equal(new_val->data.string_val, "iana-if-type:softwareLoopback");
 
+        sr_free_val(old_val);
         sr_free_val(new_val);
 
         /* no more changes */
@@ -771,12 +774,9 @@ test_state(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-
     ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
-
     sr_release_data(data);
-
     str2 =
             "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
             " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
@@ -785,7 +785,6 @@ test_state(void **state)
             "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
             "  </interface>\n"
             "</interfaces-state>\n";
-
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -802,12 +801,9 @@ test_state(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-
     ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
-
     sr_release_data(data);
-
     str2 =
             "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
             " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
@@ -816,7 +812,6 @@ test_state(void **state)
             "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:softwareLoopback</type>\n"
             "  </interface>\n"
             "</interfaces-state>\n";
-
     assert_string_equal(str1, str2);
     free(str1);
 

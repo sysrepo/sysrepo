@@ -730,17 +730,18 @@ sr_edit_create_userord_predicate(const struct lyd_node *llist)
  *
  * @param[in] node Node to transform.
  * @param[in] set_op Set this diff op, if 0 inherit or transform edit op to diff op if there is an explicit operation.
+ * @param[in] prev_val Previous value of a leaf, if applicable.
  * @param[in] orig_node Original @p node linked into the full edit.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_meta_edit2diff(struct lyd_node *node, enum edit_op set_op, const struct lyd_node *orig_node)
+sr_meta_edit2diff(struct lyd_node *node, enum edit_op set_op, const char *prev_val, const struct lyd_node *orig_node)
 {
     sr_error_info_t *err_info = NULL;
     enum edit_op eop;
     struct lyd_meta *meta;
     const struct lyd_node *sibling_before;
-    char *sibling_before_val = NULL;
+    char *meta_val = NULL;
     int op_own;
 
     /* check if there is an operation */
@@ -763,18 +764,18 @@ sr_meta_edit2diff(struct lyd_node *node, enum edit_op set_op, const struct lyd_n
         /* find previous instance */
         sibling_before = sr_edit_find_previous_instance(orig_node);
         if (sibling_before) {
-            sibling_before_val = sr_edit_create_userord_predicate(sibling_before);
+            prev_val = meta_val = sr_edit_create_userord_predicate(sibling_before);
         }
     }
 
     /* add all diff metadata */
     assert((set_op == EDIT_CREATE) || (set_op == EDIT_DELETE) || (set_op == EDIT_REPLACE) || (set_op == EDIT_NONE));
-    if ((err_info = sr_diff_add_meta(node, sibling_before_val, NULL, set_op))) {
+    if ((err_info = sr_diff_add_meta(node, prev_val, NULL, set_op))) {
         goto cleanup;
     }
 
 cleanup:
-    free(sibling_before_val);
+    free(meta_val);
     return err_info;
 }
 
@@ -848,12 +849,14 @@ cleanup:
  *
  * @param[in] edit Edit node to transform into diff.
  * @param[in] op Diff operation to set.
+ * @param[in] prev_val Previous value of a leaf, if applicable.
  * @param[in] recursive Whether to append @p edit with descendants or not.
  * @param[in,out] diff Diff to append to, do nothing if NULL.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_diff_append(const struct lyd_node *edit, enum edit_op op, int recursive, struct lyd_node **diff)
+sr_edit_diff_append(const struct lyd_node *edit, enum edit_op op, const char *prev_val, int recursive,
+        struct lyd_node **diff)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *diff_parent, *new_diff_parent, *diff_subtree, *elem;
@@ -879,15 +882,21 @@ sr_edit_diff_append(const struct lyd_node *edit, enum edit_op op, int recursive,
         goto cleanup;
     }
 
+    if (op == EDIT_REPLACE) {
+        /* store the previous value */
+        assert(prev_val);
+
+    }
+
     /* switch all edit metadata for best-effort diff metadata */
     LYD_TREE_DFS_BEGIN(diff_subtree, elem) {
         if (!lysc_is_key(elem->schema)) {
             if (elem == diff_subtree) {
                 /* set specific operation for the root, use original node from the edit to learn positions */
-                err_info = sr_meta_edit2diff(elem, op, edit);
+                err_info = sr_meta_edit2diff(elem, op, prev_val, edit);
             } else {
                 /* inherit and transform op, descendats were fully duplicated so we can use the node normally */
-                err_info = sr_meta_edit2diff(elem, 0, elem);
+                err_info = sr_meta_edit2diff(elem, 0, NULL, elem);
             }
             if (err_info) {
                 goto cleanup;
@@ -927,7 +936,7 @@ sr_edit2diff(const struct lyd_node *edit, struct lyd_node **diff)
         op = sr_edit_diff_find_oper(root, 0, NULL);
         assert(op);
 
-        if ((err_info = sr_edit_diff_append(root, sr_op_edit2diff(op), 1, diff))) {
+        if ((err_info = sr_edit_diff_append(root, sr_op_edit2diff(op), NULL, 1, diff))) {
             return err_info;
         }
     }
@@ -2741,9 +2750,10 @@ sr_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_parent, const s
     sr_error_info_t *err_info = NULL;
     struct lyd_node *trg_node = NULL, *trg_sibling, *child_src, *child, *next;
     struct ly_set *set = NULL;
-    enum edit_op src_op, trg_op;
+    enum edit_op src_op, trg_op, diff_op;
     int val_equal, meta_changed = 0, trg_op_own;
     char *path = NULL;
+    const char *prev_val;
     uint32_t i;
     LY_ERR lyrc;
 
@@ -2797,9 +2807,18 @@ sr_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_parent, const s
             *change = 1;
             if ((src_op == EDIT_REMOVE) && (trg_op == EDIT_MERGE)) {
                 /* add the whole tree-to-merge into the diff, it was removed now */
-                err_info = sr_edit_diff_append(trg_node, sr_op_edit2diff(src_op), 1, diff_root);
+                err_info = sr_edit_diff_append(trg_node, sr_op_edit2diff(EDIT_REMOVE), NULL, 1, diff_root);
             } else {
-                err_info = sr_edit_diff_append(src_node, sr_op_edit2diff(src_op), 0, diff_root);
+                if ((src_op == EDIT_MERGE) && (trg_op == EDIT_MERGE) && !val_equal) {
+                    /* only the value was changed */
+                    diff_op = EDIT_REPLACE;
+                    prev_val = (trg_node->schema->nodetype == LYS_LEAF) ? lyd_get_value(trg_node) : NULL;
+                } else {
+                    /* report the same operation */
+                    diff_op = src_op;
+                    prev_val = NULL;
+                }
+                err_info = sr_edit_diff_append(src_node, sr_op_edit2diff(diff_op), prev_val, 0, diff_root);
             }
             if (err_info) {
                 goto cleanup;
@@ -2864,7 +2883,7 @@ sr_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_parent, const s
 
         /* append to diff */
         *change = 1;
-        if ((err_info = sr_edit_diff_append(trg_node, sr_op_edit2diff(src_op), 1, diff_root))) {
+        if ((err_info = sr_edit_diff_append(trg_node, sr_op_edit2diff(src_op), NULL, 1, diff_root))) {
             goto cleanup;
         }
 
