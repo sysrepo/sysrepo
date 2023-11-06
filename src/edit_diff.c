@@ -3450,13 +3450,8 @@ sr_edit_add_xpath(const struct ly_ctx *ly_ctx, const struct lyd_node *tree, cons
         } else {
             switch (schema->nodetype) {
             case LYS_LEAF:
-                /* find the next (first) data or even an opaque node (deleted leaf) */
-                if (lyd_find_sibling_val(siblings, schema, NULL, 0, match)) {
-                    if (!lyd_find_sibling_opaq_next(siblings, schema->name, match) && (lyd_node_module(*match) != schema->module)) {
-                        /* not the searched node */
-                        *match = NULL;
-                    }
-                }
+                /* find the next (first) data node */
+                lyd_find_sibling_val(siblings, schema, NULL, 0, match);
                 break;
             case LYS_LEAFLIST:
                 /* find the (specific) leaf-list instance */
@@ -3482,6 +3477,13 @@ sr_edit_add_xpath(const struct ly_ctx *ly_ctx, const struct lyd_node *tree, cons
             }
             free(dpred);
             dpred = NULL;
+
+            /* use opaque (deleted or purged) nodes if no data node matches */
+            if (!*match && !lyd_find_sibling_opaq_next(siblings, schema->name, match) &&
+                    (lyd_node_module(*match) != schema->module)) {
+                /* not the searched node */
+                *match = NULL;
+            }
 
             if (is_oper) {
                 /* append the original predicate */

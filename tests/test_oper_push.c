@@ -3205,12 +3205,19 @@ test_oper_set_del_leaflist(void **state)
     ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
     assert_int_equal(ret, SR_ERR_OK);
 
+    /* unsupported */
     ret = sr_set_item_str(st->sess, xp_base, "", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-
     ret = sr_delete_item(st->sess, xp_attr, 0);
     assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, xp_attr, "1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_UNSUPPORTED);
+    sr_discard_changes(st->sess);
 
+    ret = sr_set_item_str(st->sess, xp_base, "", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_delete_item(st->sess, xp_attr, 0);
+    assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
@@ -3220,7 +3227,6 @@ test_oper_set_del_leaflist(void **state)
 
     ret = sr_delete_item(st->sess, xp_base, 0);
     assert_int_equal(ret, SR_ERR_OK);
-
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 }
