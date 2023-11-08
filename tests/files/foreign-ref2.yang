@@ -1,0 +1,13 @@
+module foreign-ref2 {
+    namespace "urn:foreign-ref2";
+    prefix fr2;
+
+    leaf l2 {
+        when "/l3";
+        type string;
+    }
+
+    leaf l3 {
+        type uint32;
+    }
+}

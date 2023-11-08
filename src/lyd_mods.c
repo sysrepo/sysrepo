@@ -901,6 +901,86 @@ cleanup:
 }
 
 /**
+ * @brief qsort compare function to make sure a module depending on another is before the other.
+ */
+static int
+sr_lydmods_sort_cmp(const void *ptr1, const void *ptr2)
+{
+    struct lyd_node *mod1, *mod2, *node;
+    const struct lysc_node *snode;
+
+    mod1 = *(struct lyd_node **)ptr1;
+    mod2 = *(struct lyd_node **)ptr2;
+    snode = lys_find_path(LYD_CTX(mod1), NULL, "/sysrepo:sysrepo-modules/module/inverse-deps", 0);
+
+    LYD_LIST_FOR_INST(lyd_child(mod1), snode, node) {
+        if (lyd_get_value(node) == lyd_get_value(lyd_child(mod2))) {
+            /* mod2 depends on mod1 */
+            return -1;
+        }
+    }
+
+    LYD_LIST_FOR_INST(lyd_child(mod2), snode, node) {
+        if (lyd_get_value(node) == lyd_get_value(lyd_child(mod1))) {
+            /* mod1 depends on mod2 */
+            return 1;
+        }
+    }
+
+    /* the relative order does not matter */
+    return 0;
+}
+
+/**
+ * @brief Sort the modules so that dependencies are always before the modules that depend on them.
+ *
+ * This makes sure that when validating modules in this order, all 'when' conditions are evaluated on nodes
+ * that other nodes depend on, for example.
+ *
+ * @param[in] sr_mods SR internal module data to sort.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_lydmods_dep_sort(struct lyd_node *sr_mods)
+{
+    sr_error_info_t *err_info = NULL;
+    struct ly_set *set = NULL;
+    struct lyd_node *first, *prev = NULL;
+    uint32_t i;
+
+    /* get all the modules */
+    if (lyd_find_xpath(sr_mods, "/sysrepo:sysrepo-modules/module", &set)) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(sr_mods), NULL);
+        goto cleanup;
+    }
+    first = set->dnodes[0];
+
+    /* sort them */
+    qsort(set->dnodes, set->count, sizeof *set->dnodes, sr_lydmods_sort_cmp);
+
+    /* relink the modules in the correct order */
+    for (i = 0; i < set->count; ++i) {
+        if (!prev) {
+            /* first */
+            if (first != set->dnodes[i]) {
+                lyd_insert_before(first, set->dnodes[i]);
+            }
+        } else {
+            /* next */
+            if (prev != set->dnodes[i]) {
+                lyd_insert_after(prev, set->dnodes[i]);
+            }
+        }
+
+        prev = set->dnodes[i];
+    }
+
+cleanup:
+    ly_set_free(set, NULL);
+    return err_info;
+}
+
+/**
  * @brief Store (print) sysrepo module data.
  *
  * @param[in,out] sr_mods Data to store, are validated so could (in theory) be modified.
@@ -1093,6 +1173,8 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
         goto cleanup;
     }
 
+    /* no need to sort, were added in the correct order */
+
     /* finish installing all the modules (default DS plugins, so connection not needed) */
     if ((err_info = sr_lycc_add_modules(NULL, new_mods, new_mod_count))) {
         goto cleanup;
@@ -1218,6 +1300,11 @@ sr_lydmods_change_add_modules(const struct ly_ctx *ly_ctx, sr_int_install_mod_t 
         goto cleanup;
     }
 
+    /* sort the modules */
+    if ((err_info = sr_lydmods_dep_sort(*sr_mods))) {
+        goto cleanup;
+    }
+
     /* store updated SR internal module data */
     if ((err_info = sr_lydmods_print(sr_mods))) {
         goto cleanup;
@@ -1281,6 +1368,11 @@ sr_lydmods_change_del_module(const struct ly_ctx *ly_ctx, const struct ly_ctx *n
 
     /* add new dependencies for all the modules */
     if ((err_info = sr_lydmods_add_deps_all(new_ctx, *sr_mods))) {
+        goto cleanup;
+    }
+
+    /* sort the modules */
+    if ((err_info = sr_lydmods_dep_sort(*sr_mods))) {
         goto cleanup;
     }
 
@@ -1349,6 +1441,11 @@ sr_lydmods_change_upd_modules(const struct ly_ctx *ly_ctx, const struct ly_set *
 
     /* add new dependencies for all the modules */
     if ((err_info = sr_lydmods_add_deps_all(upd_mod->ctx, *sr_mods))) {
+        goto cleanup;
+    }
+
+    /* sort the modules */
+    if ((err_info = sr_lydmods_dep_sort(*sr_mods))) {
         goto cleanup;
     }
 
@@ -1422,6 +1519,11 @@ sr_lydmods_change_chng_feature(const struct ly_ctx *ly_ctx, const struct lys_mod
 
     /* add new dependencies for all the modules */
     if ((err_info = sr_lydmods_add_deps_all(new_mod->ctx, *sr_mods))) {
+        goto cleanup;
+    }
+
+    /* sort the modules */
+    if ((err_info = sr_lydmods_dep_sort(*sr_mods))) {
         goto cleanup;
     }
 
