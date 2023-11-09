@@ -650,7 +650,7 @@ sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *new
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
-        if (mod->state & MOD_INFO_REQ) {
+        if (mod->state & (MOD_INFO_REQ | MOD_INFO_INV_DEP)) {
             /* merge relevant diff part */
             if (lyd_diff_merge_module(&mod_info->diff, new_diff, mod->ly_mod, NULL, NULL, 0)) {
                 sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
