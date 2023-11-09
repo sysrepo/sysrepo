@@ -27,11 +27,6 @@ module sysrepo {
     description
         "Sysrepo YANG datastore internal attributes and information.";
 
-    revision "2023-08-11" {
-        description
-            "User-ordered modules so that their order is preserved.";
-    }
-
     revision "2023-06-16" {
         description
             "Added metadata for dup inst list positions when merging into a stored edit.";
@@ -40,6 +35,52 @@ module sysrepo {
     revision "2023-02-16" {
         description
             "Import and use ietf-datastores for enabled extending supported datastores.";
+    }
+
+    revision "2021-10-08" {
+        description
+            "Removed nodes for scheduling changes.";
+    }
+
+    revision "2021-09-07" {
+        description
+            "Added module datastore plugins, increased replay-support type precision,
+             and added details to dependencies.";
+    }
+
+    revision "2021-03-31" {
+        description
+            "Add content-id yang-library data identifier.";
+    }
+
+    revision "2021-01-18" {
+        description
+            "Reorganized dependencies.";
+    }
+
+    revision "2020-01-15" {
+        description
+            "Added a new purge operation.";
+    }
+
+    revision "2019-11-26" {
+        description
+            "startup-data renamed to data; it is used for running datastore as well.";
+    }
+
+    revision "2019-10-25" {
+        description
+            "Added attributes for storing operational data owners.";
+    }
+
+    revision "2019-09-25" {
+        description
+            "Added initial startup data for newly installed modules.";
+    }
+
+    revision "2019-09-17" {
+        description
+            "Added list of scheduled installed modules.";
     }
 
     revision "2019-07-10" {
@@ -200,20 +241,19 @@ module sysrepo {
     }
 
     container sysrepo-modules {
+        config false;
         description
             "All installed Sysrepo modules.";
 
         leaf content-id {
             type uint32;
             mandatory true;
-            config false;
             description
                 "Sysrepo module-set content-id to be used for its generated yang-library data.";
         }
 
         list module {
             key "name";
-            ordered-by user;
             description
                 "Sysrepo module.";
 
@@ -227,7 +267,6 @@ module sysrepo {
             }
 
             container deps {
-                config false;
                 description
                     "Module data dependencies on other modules.";
                 uses deps-grp;
@@ -235,14 +274,12 @@ module sysrepo {
 
             leaf-list inverse-deps {
                 type module-ref;
-                config false;
                 description
                     "List of modules that depend on this module.";
             }
 
             list rpc {
                 key "path";
-                config false;
                 description
                     "Module RPC/actions.";
 
@@ -267,7 +304,6 @@ module sysrepo {
 
             list notification {
                 key "path";
-                config false;
                 description
                     "Module notifications.";
 

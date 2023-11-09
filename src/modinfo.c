@@ -2627,7 +2627,8 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, uint32_t mod_state, int fini
         mod = &mod_info->mods[i];
         if (mod->state & mod_state) {
             /* validate this module */
-            if (lyd_validate_module(&mod_info->data, mod->ly_mod, val_opts, finish_diff ? &diff : NULL)) {
+            if (lyd_validate_module(&mod_info->data, mod->ly_mod, val_opts | LYD_VALIDATE_NOT_FINAL,
+                    finish_diff ? &diff : NULL)) {
                 sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
                 SR_ERRINFO_VALID(&err_info);
                 goto cleanup;
@@ -2655,6 +2656,18 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, uint32_t mod_state, int fini
                     /* the previous changes have actually been reverted */
                     mod->state &= ~MOD_INFO_CHANGED;
                 }
+            }
+        }
+    }
+
+    /* finish each module validation now */
+    for (i = 0; i < mod_info->mod_count; ++i) {
+        mod = &mod_info->mods[i];
+        if (mod->state & mod_state) {
+            if (lyd_validate_module_final(mod_info->data, mod->ly_mod, val_opts)) {
+                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
+                SR_ERRINFO_VALID(&err_info);
+                goto cleanup;
             }
         }
     }

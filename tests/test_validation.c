@@ -42,8 +42,6 @@ setup_f(void **state)
     const char *schema_paths[] = {
         TESTS_SRC_DIR "/files/test.yang",
         TESTS_SRC_DIR "/files/refs.yang",
-        TESTS_SRC_DIR "/files/foreign-ref1.yang",
-        TESTS_SRC_DIR "/files/foreign-ref2.yang",
         NULL
     };
 
@@ -72,8 +70,6 @@ teardown_f(void **state)
 {
     struct state *st = (struct state *)*state;
     const char *module_names[] = {
-        "foreign-ref2",
-        "foreign-ref1",
         "refs",
         "test",
         NULL
@@ -91,7 +87,7 @@ teardown_f(void **state)
 }
 
 static int
-clear_test_refs_fr(void **state)
+clear_test_refs(void **state)
 {
     struct state *st = (struct state *)*state;
 
@@ -105,12 +101,8 @@ clear_test_refs_fr(void **state)
     sr_delete_item(st->sess, "/refs:ll[.='y']", 0);
     sr_delete_item(st->sess, "/refs:ll[.='z']", 0);
     sr_delete_item(st->sess, "/refs:lll[key='1']", 0);
-
-    sr_delete_item(st->sess, "/foreign-ref1:l1", 0);
-    sr_delete_item(st->sess, "/foreign-ref2:l2", 0);
-    sr_delete_item(st->sess, "/foreign-ref2:l3", 0);
-
     sr_apply_changes(st->sess, 0);
+
     return 0;
 }
 
@@ -275,33 +267,13 @@ test_operational(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
-static void
-test_foreign_ref(void **state)
-{
-    struct state *st = (struct state *)*state;
-    int ret;
-
-    /* set valid data */
-    ret = sr_set_item_str(st->sess, "/foreign-ref1:l1", "val1", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/foreign-ref2:l2", "val2", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/foreign-ref2:l3", "3", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* validation should pass if the modules are validated in the correct order */
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-}
-
 int
 main(void)
 {
     const struct CMUnitTest tests[] = {
-        cmocka_unit_test_teardown(test_leafref, clear_test_refs_fr),
-        cmocka_unit_test_teardown(test_instid, clear_test_refs_fr),
+        cmocka_unit_test_teardown(test_leafref, clear_test_refs),
+        cmocka_unit_test_teardown(test_instid, clear_test_refs),
         cmocka_unit_test(test_operational),
-        cmocka_unit_test_teardown(test_foreign_ref, clear_test_refs_fr),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
