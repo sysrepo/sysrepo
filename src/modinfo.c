@@ -634,7 +634,14 @@ cleanup:
     return err_info;
 }
 
-sr_error_info_t *
+/**
+ * @brief Merge sysrepo diff to mod info diff.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] new_diff New diff to merge into existing diff in mod_info.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
 sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *new_diff)
 {
     sr_error_info_t *err_info = NULL;

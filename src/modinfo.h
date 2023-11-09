@@ -170,15 +170,6 @@ sr_error_info_t *sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const str
 sr_error_info_t *sr_modinfo_edit_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *edit, int create_diff);
 
 /**
- * @brief Merge sysrepo diff to mod info diff.
- *
- * @param[in] mod_info Mod info to use.
- * @param[in] new_diff New diff to merge into existing diff in mod_info.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *new_diff);
-
-/**
  * @brief Replace mod info data with new data.
  *
  * @param[in] mod_info Mod info to use.
