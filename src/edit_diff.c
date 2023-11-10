@@ -2526,7 +2526,7 @@ sr_edit_mod_apply(const struct lyd_node *edit, const struct lys_module *ly_mod, 
                 *diff = mod_diff;
                 mod_diff = NULL;
             } else {
-                if (lyd_diff_merge_tree(diff, NULL, mod_diff, NULL, NULL, 0)) {
+                if (lyd_diff_merge_all(diff, mod_diff, 0)) {
                     goto cleanup;
                 }
                 lyd_free_siblings(mod_diff);
