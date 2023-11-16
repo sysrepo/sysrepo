@@ -47,7 +47,7 @@ extern "C" {
  *
  * Install is called once for every new installed module for each datastore. Right after that ::srds_init
  * is called. Afterwards, the data of the module must be valid meaning any following ::srds_load
- * __must return valid data__.
+ * __must return valid data__ and ::srds_last_modif should return a valid timestamp (unless the module has no data).
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
