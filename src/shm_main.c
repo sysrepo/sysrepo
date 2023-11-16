@@ -489,6 +489,10 @@ sr_shmmain_open(sr_shm_t *shm, int *created)
     }
 
     main_shm = (sr_main_shm_t *)shm->addr;
+
+    /* main_shm can never be NULL */
+    assert(main_shm);
+
     if (creat) {
         /* init the memory */
         main_shm->shm_ver = SR_SHM_VER;
@@ -519,6 +523,10 @@ sr_shmmain_open(sr_shm_t *shm, int *created)
 
 cleanup:
     if (err_info) {
+        if (creat) {
+            /* tried to create but could not setup fully, remove improper shm file */
+            unlink(shm_name);
+        }
         sr_shm_clear(shm);
     } else if (created) {
         *created = creat;
