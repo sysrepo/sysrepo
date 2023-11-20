@@ -146,7 +146,7 @@ sr_error_info_t *sr_shmmod_collect_deps(sr_mod_shm_t *mod_shm, sr_dep_t *shm_dep
 struct sr_shmmod_recover_cb_s {
     struct ly_ctx **ly_ctx_p;   /**< Pointer to context to get sysrepo module from, may be changed. */
     sr_datastore_t ds;          /**< Datastore being recovered. */
-    const struct srplg_ds_s *ds_plg;    /**< Datastore plugin of the module being recovered. */
+    const struct sr_ds_handle_s *ds_handle; /**< Datastore plugin handle of the module being recovered. */
 };
 
 /**
@@ -234,14 +234,14 @@ sr_error_info_t *sr_shmmod_update_replay_support(sr_mod_shm_t *mod_shm, const st
  * @brief Copy data of a module.
  *
  * @param[in] ly_mod Module.
- * @param[in] sds_plg Source data plugin.
+ * @param[in] sds_handle Source data plugin handle.
  * @param[in] sds Source datastore.
- * @param[in] tds_plg Target data plugin.
+ * @param[in] tds_handle Target data plugin handle.
  * @param[in] tds Target datastore.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmmod_copy_mod(const struct lys_module *ly_mod, const struct srplg_ds_s *sds_plg,
-        sr_datastore_t sds, const struct srplg_ds_s *tds_plg, sr_datastore_t tds);
+sr_error_info_t *sr_shmmod_copy_mod(const struct lys_module *ly_mod, const struct sr_ds_handle_s *sds_handle,
+        sr_datastore_t sds, const struct sr_ds_handle_s *tds_handle, sr_datastore_t tds);
 
 /**
  * @brief Initialize datastores after a reboot. Includes calling init callbacks and copying startup DS to running DS.

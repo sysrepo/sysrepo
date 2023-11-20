@@ -171,7 +171,6 @@ extern char ietf_factory_default_yang[];
 extern char sysrepo_factory_default_yang[];
 
 extern const struct srplg_ds_s *sr_internal_ds_plugins[];
-
 extern const struct srplg_ntf_s *sr_internal_ntf_plugins[];
 
 extern const sr_module_ds_t sr_default_module_ds;
@@ -283,14 +282,14 @@ void sr_ds_handle_free(struct sr_ds_handle_s *ds_handles, uint32_t ds_handle_cou
 uint32_t sr_ds_plugin_int_count(void);
 
 /**
- * @brief Find DS plugin with a specific name.
+ * @brief Find DS plugin handle with a specific name.
  *
  * @param[in] ds_plugin_name Datastore plugin name.
- * @param[in] conn Connection with dynamic DS plugins.
- * @param[out] ds_plugin Optional found DS plugin.
+ * @param[in] conn Connection with dynamic DS plugin handles.
+ * @param[out] ds_handle Optional found DS handle.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_ds_plugin_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, const struct srplg_ds_s **ds_plugin);
+sr_error_info_t *sr_ds_handle_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, const struct sr_ds_handle_s **ds_handle);
 
 /**
  * @brief Initialize all dynamic notif handles.
@@ -321,10 +320,11 @@ uint32_t sr_ntf_plugin_int_count(void);
  *
  * @param[in] ntf_plugin_name Notification plugin name.
  * @param[in] conn Connection with dynamic notif plugins.
- * @param[out] ntf_plugin Optional found notif plugin.
+ * @param[out] ntf_handle Optional found notif plugin handle.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, const struct srplg_ntf_s **ntf_plugin);
+sr_error_info_t *sr_ntf_handle_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn,
+        const struct sr_ntf_handle_s **ntf_handle);
 
 /**
  * @brief Remove all unused module YANG file(s) and all of its includes/imports recursively.
@@ -366,10 +366,11 @@ sr_error_info_t *sr_store_module_yang_r(const struct lys_module *ly_mod);
  * @brief Collect all dependent modules of a module that are making it implemented.
  *
  * @param[in] ly_mod Module to process.
+ * @param[in] conn Connection to use for DS handles.
  * @param[in,out] mod_set Set of dependent modules including @p ly_mod.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_collect_module_impl_deps(const struct lys_module *ly_mod, struct ly_set *mod_set);
+sr_error_info_t *sr_collect_module_impl_deps(const struct lys_module *ly_mod, sr_conn_ctx_t *conn, struct ly_set *mod_set);
 
 /**
  * @brief Get default file mode for DS files of a module.
@@ -897,6 +898,21 @@ void sr_conn_run_cache_flush(sr_conn_ctx_t *conn);
 void sr_conn_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx **new_ctx, struct ly_ctx **old_ctx);
 
 /**
+ * @brief Initialize all used DS plugins not yet initialized.
+ *
+ * @param[in] conn Connection to use.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_conn_ds_init(sr_conn_ctx_t *conn);
+
+/**
+ * @brief Destroy all initialized DS plugins.
+ *
+ * @param[in] conn Connection to use.
+ */
+void sr_conn_ds_destroy(sr_conn_ctx_t *conn);
+
+/**
  * @brief Wrapper to realloc() that frees memory on failure.
  *
  * @param[in] ptr Pointer to the current memory.
@@ -1306,14 +1322,14 @@ struct lyd_node *sr_module_data_unlink(struct lyd_node **data, const struct lys_
  * @brief Append stored module data to a data tree.
  *
  * @param[in] ly_mod libyang module.
- * @param[in] ds_plg Datastore plugins of @p ly_mod.
+ * @param[in] ds_handle Datastore plugin handles of @p ly_mod.
  * @param[in] ds Datastore of the data.
  * @param[in] xpaths Array of XPaths selecting the required data, NULL for all module data.
  * @param[in] xpath_count Number of @p xpaths.
  * @param[in,out] data Data tree to append to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, const struct srplg_ds_s *ds_plg[],
+sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, const struct sr_ds_handle_s *ds_handle[],
         sr_datastore_t ds, const char **xpaths, uint32_t xpath_count, struct lyd_node **data);
 
 /**

@@ -53,11 +53,11 @@ static sr_error_info_t *
 sr_notif_write(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct lyd_node *notif, struct timespec notif_ts)
 {
     sr_error_info_t *err_info = NULL;
-    const struct srplg_ntf_s *ntf_plg;
+    const struct sr_ntf_handle_s *ntf_handle;
     int rc;
 
-    /* find plugin */
-    if ((err_info = sr_ntf_plugin_find(conn->mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_plg))) {
+    /* find handle */
+    if ((err_info = sr_ntf_handle_find(conn->mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_handle))) {
         goto cleanup;
     }
 
@@ -67,12 +67,10 @@ sr_notif_write(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct lyd_node *no
     }
 
     /* store the notification */
-    if ((rc = ntf_plg->store_cb(lyd_owner_module(notif), notif, &notif_ts))) {
-        SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", ntf_plg->name, lyd_owner_module(notif)->name);
+    if ((rc = ntf_handle->plugin->store_cb(lyd_owner_module(notif), notif, &notif_ts))) {
+        SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", ntf_handle->plugin->name, lyd_owner_module(notif)->name);
         goto cleanup_unlock;
     }
-
-    /* success */
 
 cleanup_unlock:
     /* REPLAY WRITE UNLOCK */
@@ -306,7 +304,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
         sr_event_notif_cb cb, sr_event_notif_tree_cb tree_cb, void *private_data)
 {
     sr_error_info_t *err_info = NULL;
-    const struct srplg_ntf_s *ntf_plg;
+    const struct sr_ntf_handle_s *ntf_handle;
     const struct lys_module *ly_mod;
     sr_mod_t *shm_mod;
     struct timespec notif_ts, stop_ts;
@@ -336,8 +334,8 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, mod_name);
     assert(ly_mod);
 
-    /* find plugin */
-    if ((err_info = sr_ntf_plugin_find(conn->mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_plg))) {
+    /* find handle */
+    if ((err_info = sr_ntf_handle_find(conn->mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_handle))) {
         goto cleanup;
     }
 
@@ -347,7 +345,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     }
 
     /* replay all notifications */
-    while (!(rc = ntf_plg->replay_next_cb(ly_mod, start_time, &stop_ts, &notif, &notif_ts, &state))) {
+    while (!(rc = ntf_handle->plugin->replay_next_cb(ly_mod, start_time, &stop_ts, &notif, &notif_ts, &state))) {
         /* make sure the XPath filter matches something */
         if (xpath) {
             ly_set_free(set, NULL);
@@ -374,7 +372,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
         notif = NULL;
     }
     if (rc != SR_ERR_NOT_FOUND) {
-        SR_ERRINFO_DSPLUGIN(&err_info, rc, "replay_next", ntf_plg->name, mod_name);
+        SR_ERRINFO_DSPLUGIN(&err_info, rc, "replay_next", ntf_handle->plugin->name, mod_name);
         goto cleanup;
     }
 

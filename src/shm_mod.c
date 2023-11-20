@@ -1138,7 +1138,7 @@ sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data)
     assert(ly_mod);
 
     /* recovery specific for the plugin */
-    cb_data->ds_plg->recover_cb(ly_mod, cb_data->ds);
+    cb_data->ds_handle->plugin->recover_cb(ly_mod, cb_data->ds, cb_data->ds_handle->plg_data);
 }
 
 /**
@@ -1152,12 +1152,13 @@ sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data)
  * @param[in] ds_timeout_ms Timeout in ms for DS-lock in case it is required and locked, if 0 no waiting is performed.
  * @param[in] cid Connection ID.
  * @param[in] sid Sysrepo session ID to store.
- * @param[in] ds_plg DS plugin.
+ * @param[in] ds_handle DS plugin handle.
  * @param[in] relock Whether some lock is already held or not.
  */
 static sr_error_info_t *
 sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod_lock_s *shm_lock, uint32_t timeout_ms,
-        sr_lock_mode_t mode, uint32_t ds_timeout_ms, sr_cid_t cid, uint32_t sid, const struct srplg_ds_s *ds_plg, int relock)
+        sr_lock_mode_t mode, uint32_t ds_timeout_ms, sr_cid_t cid, uint32_t sid, const struct sr_ds_handle_s *ds_handle,
+        int relock)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     struct sr_shmmod_recover_cb_s cb_data;
@@ -1172,7 +1173,7 @@ sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod
     /* fill recovery callback information, context cannot be changed */
     cb_data.ly_ctx_p = (struct ly_ctx **)&ly_mod->ctx;
     cb_data.ds = ds;
-    cb_data.ds_plg = ds_plg;
+    cb_data.ds_handle = ds_handle;
 
 ds_lock_retry:
     ds_locked = 0;
@@ -1290,7 +1291,7 @@ sr_shmmod_modinfo_lock(struct sr_mod_info_s *mod_info, sr_datastore_t ds, sr_loc
 
         /* MOD LOCK */
         if ((err_info = sr_shmmod_lock(mod->ly_mod, ds, shm_lock, timeout_ms, mode, ds_timeout_ms,
-                mod_info->conn->cid, sid, mod->ds_plg[ds], 0))) {
+                mod_info->conn->cid, sid, mod->ds_handle[ds], 0))) {
             return err_info;
         }
 
@@ -1370,7 +1371,7 @@ sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, uint32_t sid, u
         if ((mod->state & (MOD_INFO_RLOCK_UPGR | MOD_INFO_REQ)) == (MOD_INFO_RLOCK_UPGR | MOD_INFO_REQ)) {
             /* MOD WRITE UPGRADE */
             if ((err_info = sr_shmmod_lock(mod->ly_mod, mod_info->ds, shm_lock, timeout_ms, SR_LOCK_WRITE_URGE,
-                    ds_timeout_ms, mod_info->conn->cid, sid, mod->ds_plg[mod_info->ds], 1))) {
+                    ds_timeout_ms, mod_info->conn->cid, sid, mod->ds_handle[mod_info->ds], 1))) {
                 return err_info;
             }
 
@@ -1399,7 +1400,7 @@ sr_shmmod_modinfo_wrlock_downgrade(struct sr_mod_info_s *mod_info, uint32_t sid,
         if (mod->state & MOD_INFO_WLOCK) {
             /* MOD READ DOWNGRADE */
             if ((err_info = sr_shmmod_lock(mod->ly_mod, mod_info->ds, shm_lock, timeout_ms, SR_LOCK_READ_UPGR,
-                    0, mod_info->conn->cid, sid, mod->ds_plg[mod_info->ds], 1))) {
+                    0, mod_info->conn->cid, sid, mod->ds_handle[mod_info->ds], 1))) {
                 return err_info;
             }
 
@@ -1460,7 +1461,7 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid)
     sr_mod_t *smod;
     const struct lys_module *ly_mod;
     struct sr_mod_lock_s *shm_lock;
-    const struct srplg_ds_s *ds_plg;
+    const struct sr_ds_handle_s *ds_handle;
     sr_datastore_t ds;
     int ds_locked, rc;
     uint32_t i;
@@ -1493,19 +1494,19 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid)
 
             if (ds_locked && (ds == SR_DS_CANDIDATE)) {
                 /* find DS plugin */
-                if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + smod->plugins[ds], conn, &ds_plg))) {
+                if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + smod->plugins[ds], conn, &ds_handle))) {
                     sr_errinfo_free(&err_info);
                     continue;
                 }
 
                 /* MOD WRITE LOCK */
                 if ((err_info = sr_shmmod_lock(ly_mod, ds, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE, 0, conn->cid,
-                        sid, ds_plg, 0))) {
+                        sid, ds_handle, 0))) {
                     sr_errinfo_free(&err_info);
                 } else {
                     /* reset candidate */
-                    if ((rc = ds_plg->candidate_reset_cb(ly_mod))) {
-                        SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_reset", ds_plg->name, ly_mod->name);
+                    if ((rc = ds_handle->plugin->candidate_reset_cb(ly_mod, ds_handle->plg_data))) {
+                        SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_reset", ds_handle->plugin->name, ly_mod->name);
                         sr_errinfo_free(&err_info);
                     }
 
@@ -1540,29 +1541,29 @@ sr_shmmod_update_replay_support(sr_mod_shm_t *mod_shm, const struct ly_set *mod_
 }
 
 sr_error_info_t *
-sr_shmmod_copy_mod(const struct lys_module *ly_mod, const struct srplg_ds_s *sds_plg, sr_datastore_t sds,
-        const struct srplg_ds_s *tds_plg, sr_datastore_t tds)
+sr_shmmod_copy_mod(const struct lys_module *ly_mod, const struct sr_ds_handle_s *sds_handle, sr_datastore_t sds,
+        const struct sr_ds_handle_s *tds_handle, sr_datastore_t tds)
 {
     sr_error_info_t *err_info = NULL;
     int rc = SR_ERR_OK;
     LY_ERR lyrc;
     struct lyd_node *s_mod_data = NULL, *r_mod_data = NULL, *mod_diff = NULL;
 
-    if (sds_plg == tds_plg) {
+    if (sds_handle == tds_handle) {
         /* same plugin, we can use the copy callback */
-        rc = sds_plg->copy_cb(ly_mod, tds, sds);
+        rc = sds_handle->plugin->copy_cb(ly_mod, tds, sds, sds_handle->plg_data);
         goto cleanup;
     }
 
     /* load source data */
     assert(sds != SR_DS_CANDIDATE);
-    if ((rc = sds_plg->load_cb(ly_mod, sds, NULL, 0, &s_mod_data))) {
+    if ((rc = sds_handle->plugin->load_cb(ly_mod, sds, NULL, 0, sds_handle->plg_data, &s_mod_data))) {
         goto cleanup;
     }
 
     /* load also current target data */
     assert(tds != SR_DS_CANDIDATE);
-    if ((rc = tds_plg->load_cb(ly_mod, tds, NULL, 0, &r_mod_data))) {
+    if ((rc = tds_handle->plugin->load_cb(ly_mod, tds, NULL, 0, tds_handle->plg_data, &r_mod_data))) {
         goto cleanup;
     }
 
@@ -1578,7 +1579,7 @@ sr_shmmod_copy_mod(const struct lys_module *ly_mod, const struct srplg_ds_s *sds
     }
 
     /* write data to target */
-    if ((rc = tds_plg->store_cb(ly_mod, tds, mod_diff, s_mod_data))) {
+    if ((rc = tds_handle->plugin->store_cb(ly_mod, tds, mod_diff, s_mod_data, tds_handle->plg_data))) {
         goto cleanup;
     }
 
@@ -1616,7 +1617,7 @@ sr_shmmod_reboot_init(sr_conn_ctx_t *conn, int initialized)
     sr_mod_shm_t *mod_shm;
     sr_mod_t **smods = NULL;
     const struct lys_module *ly_mod;
-    const struct srplg_ds_s *ds_plg[SR_DS_READ_COUNT];
+    const struct sr_ds_handle_s *ds_handle[SR_DS_READ_COUNT];
     sr_datastore_t ds;
     uint32_t i;
     int rc;
@@ -1640,11 +1641,11 @@ sr_shmmod_reboot_init(sr_conn_ctx_t *conn, int initialized)
 
         /* find DS plugins and init them */
         for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
-            if ((err_info = sr_ds_plugin_find(((char *)mod_shm) + smods[i]->plugins[ds], conn, &ds_plg[ds]))) {
+            if ((err_info = sr_ds_handle_find(((char *)mod_shm) + smods[i]->plugins[ds], conn, &ds_handle[ds]))) {
                 goto cleanup;
             }
-            if (!initialized && (rc = ds_plg[ds]->init_cb(ly_mod, ds))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "init", ds_plg[ds]->name, ly_mod->name);
+            if (!initialized && (rc = ds_handle[ds]->plugin->init_cb(ly_mod, ds, ds_handle[ds]->plg_data))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "init", ds_handle[ds]->plugin->name, ly_mod->name);
                 goto cleanup;
             }
         }
@@ -1655,7 +1656,7 @@ sr_shmmod_reboot_init(sr_conn_ctx_t *conn, int initialized)
         }
 
         /* copy startup to running */
-        if ((err_info = sr_shmmod_copy_mod(ly_mod, ds_plg[SR_DS_STARTUP], SR_DS_STARTUP, ds_plg[SR_DS_RUNNING],
+        if ((err_info = sr_shmmod_copy_mod(ly_mod, ds_handle[SR_DS_STARTUP], SR_DS_STARTUP, ds_handle[SR_DS_RUNNING],
                 SR_DS_RUNNING))) {
             goto cleanup;
         }
@@ -1674,7 +1675,7 @@ sr_shmmod_change_prio(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_d
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
-    const struct srplg_ds_s *ds_plg;
+    const struct sr_ds_handle_s *ds_handle;
     struct sr_mod_lock_s *shm_lock;
 
     assert((!prio && prio_p) || !prio_p);
@@ -1683,8 +1684,8 @@ sr_shmmod_change_prio(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_d
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    /* get DS plugin */
-    if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_plg))) {
+    /* get DS plugin handle */
+    if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle))) {
         return err_info;
     }
 
@@ -1693,7 +1694,7 @@ sr_shmmod_change_prio(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_d
 
     /* SHM MOD LOCK */
     if ((err_info = sr_shmmod_lock(ly_mod, ds, shm_lock, SR_CHANGE_CB_TIMEOUT, prio_p ? SR_LOCK_READ : SR_LOCK_WRITE,
-            SR_CHANGE_CB_TIMEOUT, conn->cid, 0, ds_plg, 0))) {
+            SR_CHANGE_CB_TIMEOUT, conn->cid, 0, ds_handle, 0))) {
         return err_info;
     }
 

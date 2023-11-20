@@ -103,6 +103,11 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
         /* use the new context */
         sr_conn_ctx_switch(conn, &new_ctx, NULL);
 
+        /* initialize new DS plugins */
+        if ((err_info = sr_conn_ds_init(conn))) {
+            goto cleanup_unlock;
+        }
+
         /* MOD REMAP DOWNGRADE */
         if ((err_info = sr_rwrelock(&conn->mod_remap_lock, SR_CONN_REMAP_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, func,
                 NULL, NULL))) {
@@ -212,7 +217,7 @@ sr_lycc_add_modules(sr_conn_ctx_t *conn, const sr_int_install_mod_t *new_mods, u
     const struct lys_module *ly_mod;
     uint32_t i;
     sr_datastore_t ds;
-    const struct srplg_ds_s *ds_plg;
+    struct sr_ds_handle_s *ds_handle;
     int rc;
 
     for (i = 0; i < new_mod_count; ++i) {
@@ -221,19 +226,31 @@ sr_lycc_add_modules(sr_conn_ctx_t *conn, const sr_int_install_mod_t *new_mods, u
         /* init module for all DS plugins */
         for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
             /* find plugin */
-            if ((err_info = sr_ds_plugin_find(new_mods[i].module_ds.plugin_name[ds], conn, &ds_plg))) {
+            if ((err_info = sr_ds_handle_find(new_mods[i].module_ds.plugin_name[ds], conn,
+                    (const struct sr_ds_handle_s **)&ds_handle))) {
                 return err_info;
             }
 
+            if (!ds_handle->init) {
+                /* call conn_init */
+                if ((rc = ds_handle->plugin->conn_init_cb(conn, &ds_handle->plg_data))) {
+                    sr_errinfo_new(&err_info, rc, "Callback \"%s\" of plugin \"%s\" failed.", "conn_init",
+                            ds_handle->plugin->name);
+                    return err_info;
+                }
+                ds_handle->init = 1;
+            }
+
             /* call install */
-            if ((rc = ds_plg->install_cb(ly_mod, ds, new_mods[i].owner, new_mods[i].group, new_mods[i].perm))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "install", ds_plg->name, ly_mod->name);
+            if ((rc = ds_handle->plugin->install_cb(ly_mod, ds, new_mods[i].owner, new_mods[i].group, new_mods[i].perm,
+                    ds_handle->plg_data))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "install", ds_handle->plugin->name, ly_mod->name);
                 return err_info;
             }
 
             /* call init */
-            if ((rc = ds_plg->init_cb(ly_mod, ds))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "init", ds_plg->name, ly_mod->name);
+            if ((rc = ds_handle->plugin->init_cb(ly_mod, ds, ds_handle->plg_data))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "init", ds_handle->plugin->name, ly_mod->name);
                 return err_info;
             }
         }
@@ -286,8 +303,8 @@ sr_lycc_del_module(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const struc
     char *path;
     uint32_t i;
     sr_datastore_t ds;
-    const struct srplg_ds_s *ds_plg;
-    const struct srplg_ntf_s *ntf_plg;
+    const struct sr_ds_handle_s *ds_handle;
+    const struct sr_ntf_handle_s *ntf_handle;
     int rc;
     LY_ERR lyrc;
 
@@ -308,13 +325,13 @@ sr_lycc_del_module(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const struc
             lyrc = lyd_find_path(sr_mod, path, 0, &sr_plg_name);
             free(path);
             SR_CHECK_INT_GOTO(lyrc, err_info, cleanup);
-            if ((err_info = sr_ds_plugin_find(lyd_get_value(sr_plg_name), conn, &ds_plg))) {
+            if ((err_info = sr_ds_handle_find(lyd_get_value(sr_plg_name), conn, &ds_handle))) {
                 goto cleanup;
             }
 
             /* call uninstall */
-            if ((rc = ds_plg->uninstall_cb(ly_mod, ds))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "uninstall", ds_plg->name, ly_mod->name);
+            if ((rc = ds_handle->plugin->uninstall_cb(ly_mod, ds, ds_handle->plg_data))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "uninstall", ds_handle->plugin->name, ly_mod->name);
                 goto cleanup;
             }
         }
@@ -327,13 +344,13 @@ sr_lycc_del_module(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const struc
             lyrc = lyd_find_path(sr_mod, path, 0, &sr_plg_name);
             free(path);
             SR_CHECK_INT_GOTO(lyrc, err_info, cleanup);
-            if ((err_info = sr_ntf_plugin_find(lyd_get_value(sr_plg_name), conn, &ntf_plg))) {
+            if ((err_info = sr_ntf_handle_find(lyd_get_value(sr_plg_name), conn, &ntf_handle))) {
                 goto cleanup;
             }
 
             /* call disable */
-            if ((rc = ntf_plg->disable_cb(ly_mod))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "disable", ntf_plg->name, ly_mod->name);
+            if ((rc = ntf_handle->plugin->disable_cb(ly_mod))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "disable", ntf_handle->plugin->name, ly_mod->name);
                 goto cleanup;
             }
         }
@@ -436,7 +453,7 @@ sr_lycc_set_replay_support(sr_conn_ctx_t *conn, const struct ly_set *mod_set, in
     const struct lys_module *ly_mod;
     char *path;
     struct lyd_node *sr_ntf_name;
-    const struct srplg_ntf_s *ntf_plg;
+    const struct sr_ntf_handle_s *ntf_handle;
     uint32_t i;
     int rc;
     LY_ERR lyrc;
@@ -457,20 +474,20 @@ sr_lycc_set_replay_support(sr_conn_ctx_t *conn, const struct ly_set *mod_set, in
         }
 
         /* find plugin */
-        if ((err_info = sr_ntf_plugin_find(lyd_get_value(sr_ntf_name), conn, &ntf_plg))) {
+        if ((err_info = sr_ntf_handle_find(lyd_get_value(sr_ntf_name), conn, &ntf_handle))) {
             goto cleanup;
         }
 
         if (enable) {
             /* call enable */
-            if ((rc = ntf_plg->enable_cb(ly_mod))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "enable", ntf_plg->name, ly_mod->name);
+            if ((rc = ntf_handle->plugin->enable_cb(ly_mod))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "enable", ntf_handle->plugin->name, ly_mod->name);
                 goto cleanup;
             }
         } else {
             /* call disable */
-            if ((rc = ntf_plg->disable_cb(ly_mod))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "disable", ntf_plg->name, ly_mod->name);
+            if ((rc = ntf_handle->plugin->disable_cb(ly_mod))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "disable", ntf_handle->plugin->name, ly_mod->name);
                 goto cleanup;
             }
         }
@@ -494,7 +511,7 @@ sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, struct sr
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
     sr_mod_t *shm_mod;
-    const struct srplg_ds_s *ds_plg[SR_DS_READ_COUNT] = {0};
+    const struct sr_ds_handle_s *ds_handle[SR_DS_READ_COUNT] = {0};
     sr_datastore_t ds;
     uint32_t idx = 0;
 
@@ -510,37 +527,37 @@ sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, struct sr
 
         /* find startup plugin and append data */
         ds = SR_DS_STARTUP;
-        if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_plg[ds]))) {
+        if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle[ds]))) {
             goto cleanup;
         }
-        if ((err_info = sr_module_file_data_append(ly_mod, ds_plg, ds, NULL, 0, &data->start))) {
+        if ((err_info = sr_module_file_data_append(ly_mod, ds_handle, ds, NULL, 0, &data->start))) {
             goto cleanup;
         }
 
         /* find running plugin and append data */
         ds = SR_DS_RUNNING;
-        if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_plg[ds]))) {
+        if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle[ds]))) {
             goto cleanup;
         }
-        if ((err_info = sr_module_file_data_append(ly_mod, ds_plg, ds, NULL, 0, &data->run))) {
+        if ((err_info = sr_module_file_data_append(ly_mod, ds_handle, ds, NULL, 0, &data->run))) {
             goto cleanup;
         }
 
         /* find operational plugin and append data */
         ds = SR_DS_OPERATIONAL;
-        if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_plg[ds]))) {
+        if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle[ds]))) {
             goto cleanup;
         }
-        if ((err_info = sr_module_file_data_append(ly_mod, ds_plg, ds, NULL, 0, &data->oper))) {
+        if ((err_info = sr_module_file_data_append(ly_mod, ds_handle, ds, NULL, 0, &data->oper))) {
             goto cleanup;
         }
 
         /* find factory-default plugin and append data */
         ds = SR_DS_FACTORY_DEFAULT;
-        if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_plg[ds]))) {
+        if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle[ds]))) {
             goto cleanup;
         }
-        if ((err_info = sr_module_file_data_append(ly_mod, ds_plg, ds, NULL, 0, &data->fdflt))) {
+        if ((err_info = sr_module_file_data_append(ly_mod, ds_handle, ds, NULL, 0, &data->fdflt))) {
             goto cleanup;
         }
     }
@@ -671,7 +688,7 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
     sr_error_info_t *err_info = NULL;
     const struct lys_module *new_ly_mod, *old_ly_mod;
     struct lyd_node *new_mod_data = NULL, *old_mod_data = NULL, *mod_diff = NULL;
-    const struct srplg_ds_s *ds_plg;
+    const struct sr_ds_handle_s *ds_handle;
     struct ly_set *set;
     char *xpath;
     uint32_t idx = 0, ly_log_opts = 0;
@@ -715,7 +732,7 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
         }
 
         /* get plugin */
-        err_info = sr_ds_plugin_find(lyd_get_value(set->dnodes[0]), conn, &ds_plg);
+        err_info = sr_ds_handle_find(lyd_get_value(set->dnodes[0]), conn, &ds_handle);
         ly_set_free(set, NULL);
         if (err_info) {
             break;
@@ -737,8 +754,8 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
 
         if (diff) {
             /* store new data */
-            if ((rc = ds_plg->store_cb(new_ly_mod, ds, mod_diff, new_mod_data))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", ds_plg->name, new_ly_mod->name);
+            if ((rc = ds_handle->plugin->store_cb(new_ly_mod, ds, mod_diff, new_mod_data, ds_handle->plg_data))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", ds_handle->plugin->name, new_ly_mod->name);
                 break;
             }
         }

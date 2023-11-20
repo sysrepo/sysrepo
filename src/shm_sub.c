@@ -2157,7 +2157,7 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *child;
     const struct lys_module *ly_mod;
-    const struct srplg_ds_s *ds_plg[SR_DS_READ_COUNT];
+    const struct sr_ds_handle_s *ds_handle[SR_DS_READ_COUNT];
     sr_mod_t *shm_mod;
     sr_datastore_t ds;
     int rc;
@@ -2191,23 +2191,23 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
                 continue;
             }
 
-            if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_plg[ds]))) {
+            if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle[ds]))) {
                 goto cleanup;
             }
         }
 
         /* perform all the copies */
         ds = SR_DS_FACTORY_DEFAULT;
-        if ((err_info = sr_shmmod_copy_mod(ly_mod, ds_plg[ds], ds, ds_plg[SR_DS_STARTUP], SR_DS_STARTUP))) {
+        if ((err_info = sr_shmmod_copy_mod(ly_mod, ds_handle[ds], ds, ds_handle[SR_DS_STARTUP], SR_DS_STARTUP))) {
             goto cleanup;
         }
-        if ((err_info = sr_shmmod_copy_mod(ly_mod, ds_plg[ds], ds, ds_plg[SR_DS_RUNNING], SR_DS_RUNNING))) {
+        if ((err_info = sr_shmmod_copy_mod(ly_mod, ds_handle[ds], ds, ds_handle[SR_DS_RUNNING], SR_DS_RUNNING))) {
             goto cleanup;
         }
 
         /* reset candidate */
-        if ((rc = ds_plg[SR_DS_CANDIDATE]->candidate_reset_cb(ly_mod))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_reset", ds_plg[SR_DS_CANDIDATE]->name, ly_mod->name);
+        if ((rc = ds_handle[SR_DS_CANDIDATE]->plugin->candidate_reset_cb(ly_mod, ds_handle[SR_DS_CANDIDATE]->plg_data))) {
+            SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_reset", ds_handle[SR_DS_CANDIDATE]->plugin->name, ly_mod->name);
             goto cleanup;
         }
     }

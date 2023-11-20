@@ -935,7 +935,7 @@ sr_lydmods_print(struct lyd_node **sr_mods)
     lyd_change_term_bin(node, &hash, sizeof hash);
 
     /* store the data using the internal JSON plugin */
-    if ((rc = srpds_json.store_cb(sr_ly_mod, SR_DS_STARTUP, NULL, *sr_mods))) {
+    if ((rc = srpds_json.store_cb(sr_ly_mod, SR_DS_STARTUP, NULL, *sr_mods, NULL))) {
         sr_errinfo_new(&err_info, rc, "Storing \"sysrepo\" data failed.");
         return err_info;
     }
@@ -990,11 +990,11 @@ sr_lydmods_create_data(const struct ly_ctx *ly_ctx)
         assert(mod_diff);
 
         /* store the data using the internal JSON plugin */
-        if ((rc = srpds_json.store_cb(ly_mod, SR_DS_STARTUP, mod_diff, mod_data))) {
+        if ((rc = srpds_json.store_cb(ly_mod, SR_DS_STARTUP, mod_diff, mod_data, NULL))) {
             SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", srpds_json.name, ly_mod->name);
             goto cleanup;
         }
-        if ((rc = srpds_json.store_cb(ly_mod, SR_DS_FACTORY_DEFAULT, mod_diff, mod_data))) {
+        if ((rc = srpds_json.store_cb(ly_mod, SR_DS_FACTORY_DEFAULT, mod_diff, mod_data, NULL))) {
             SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", srpds_json.name, ly_mod->name);
             goto cleanup;
         }
@@ -1012,12 +1012,13 @@ cleanup:
  * are installed into sysrepo. Sysrepo internal modules ietf-netconf, ietf-netconf-with-defaults,
  * and ietf-netconf-notifications are also installed.
  *
+ * @param[in] conn Connection to use for DS handles.
  * @param[in,out] ly_ctx Context for parsing @p sr_mods_p and is initialize according to the default created sr_mods.
  * @param[out] sr_mods_p Created default sysrepo module data.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
+sr_lydmods_create(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
 {
     sr_error_info_t *err_info = NULL;
     struct lys_module *ly_mod;
@@ -1093,8 +1094,8 @@ sr_lydmods_create(struct ly_ctx *ly_ctx, struct lyd_node **sr_mods_p)
         goto cleanup;
     }
 
-    /* finish installing all the modules (default DS plugins, so connection not needed) */
-    if ((err_info = sr_lycc_add_modules(NULL, new_mods, new_mod_count))) {
+    /* finish installing all the modules */
+    if ((err_info = sr_lycc_add_modules(conn, new_mods, new_mod_count))) {
         goto cleanup;
     }
 
@@ -1121,7 +1122,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_lydmods_parse(const struct ly_ctx *ly_ctx, int *initialized, struct lyd_node **sr_mods_p)
+sr_lydmods_parse(const struct ly_ctx *ly_ctx, sr_conn_ctx_t *conn, int *initialized, struct lyd_node **sr_mods_p)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mods = NULL;
@@ -1146,14 +1147,14 @@ sr_lydmods_parse(const struct ly_ctx *ly_ctx, int *initialized, struct lyd_node 
     }
     if (srpjson_file_exists(NULL, path)) {
         /* load the data using the internal JSON plugin */
-        if ((rc = srpds_json.load_cb(ly_mod, SR_DS_STARTUP, NULL, 0, &sr_mods))) {
+        if ((rc = srpds_json.load_cb(ly_mod, SR_DS_STARTUP, NULL, 0, NULL, &sr_mods))) {
             sr_errinfo_new(&err_info, rc, "Loading \"sysrepo\" data failed.");
             goto cleanup;
         }
     } else if (initialized) {
         /* install the "sysrepo" module */
         if ((rc = srpds_json.install_cb(ly_mod, SR_DS_STARTUP, NULL, strlen(SR_GROUP) ? SR_GROUP : NULL,
-                SR_INTMOD_MAIN_FILE_PERM))) {
+                SR_INTMOD_MAIN_FILE_PERM, NULL))) {
             sr_errinfo_new(&err_info, rc, "Initializing \"sysrepo\" data failed.");
             goto cleanup;
         }
@@ -1162,7 +1163,7 @@ sr_lydmods_parse(const struct ly_ctx *ly_ctx, int *initialized, struct lyd_node 
         }
 
         /* no data, create default */
-        if ((err_info = sr_lydmods_create((struct ly_ctx *)ly_ctx, &sr_mods))) {
+        if ((err_info = sr_lydmods_create(conn, (struct ly_ctx *)ly_ctx, &sr_mods))) {
             goto cleanup;
         }
         *initialized = 1;
@@ -1182,8 +1183,8 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_lydmods_change_add_modules(const struct ly_ctx *ly_ctx, sr_int_install_mod_t **new_mods, uint32_t *new_mod_count,
-        struct lyd_node **sr_mods)
+sr_lydmods_change_add_modules(const struct ly_ctx *ly_ctx, sr_conn_ctx_t *conn, sr_int_install_mod_t **new_mods,
+        uint32_t *new_mod_count, struct lyd_node **sr_mods)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i, orig_mod_count = *new_mod_count;
@@ -1191,7 +1192,7 @@ sr_lydmods_change_add_modules(const struct ly_ctx *ly_ctx, sr_int_install_mod_t 
     *sr_mods = NULL;
 
     /* parse current module information */
-    if ((err_info = sr_lydmods_parse(ly_ctx, NULL, sr_mods))) {
+    if ((err_info = sr_lydmods_parse(ly_ctx, conn, NULL, sr_mods))) {
         goto cleanup;
     }
 
@@ -1233,7 +1234,7 @@ cleanup:
 
 sr_error_info_t *
 sr_lydmods_change_del_module(const struct ly_ctx *ly_ctx, const struct ly_ctx *new_ctx, const struct ly_set *mod_set,
-        struct lyd_node **sr_del_mods, struct lyd_node **sr_mods)
+        sr_conn_ctx_t *conn, struct lyd_node **sr_del_mods, struct lyd_node **sr_mods)
 {
     sr_error_info_t *err_info = NULL;
     struct lys_module *ly_mod;
@@ -1245,7 +1246,7 @@ sr_lydmods_change_del_module(const struct ly_ctx *ly_ctx, const struct ly_ctx *n
     *sr_mods = NULL;
 
     /* parse current module information */
-    if ((err_info = sr_lydmods_parse(ly_ctx, NULL, sr_mods))) {
+    if ((err_info = sr_lydmods_parse(ly_ctx, conn, NULL, sr_mods))) {
         goto cleanup;
     }
 
@@ -1301,7 +1302,8 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_lydmods_change_upd_modules(const struct ly_ctx *ly_ctx, const struct ly_set *upd_mod_set, struct lyd_node **sr_mods)
+sr_lydmods_change_upd_modules(const struct ly_ctx *ly_ctx, const struct ly_set *upd_mod_set, sr_conn_ctx_t *conn,
+        struct lyd_node **sr_mods)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *upd_mod = NULL;
@@ -1312,7 +1314,7 @@ sr_lydmods_change_upd_modules(const struct ly_ctx *ly_ctx, const struct ly_set *
     *sr_mods = NULL;
 
     /* parse current module information */
-    if ((err_info = sr_lydmods_parse(ly_ctx, NULL, sr_mods))) {
+    if ((err_info = sr_lydmods_parse(ly_ctx, conn, NULL, sr_mods))) {
         goto cleanup;
     }
 
@@ -1368,7 +1370,7 @@ cleanup:
 
 sr_error_info_t *
 sr_lydmods_change_chng_feature(const struct ly_ctx *ly_ctx, const struct lys_module *old_mod,
-        const struct lys_module *new_mod, const char *feat_name, int enable, struct lyd_node **sr_mods)
+        const struct lys_module *new_mod, const char *feat_name, int enable, sr_conn_ctx_t *conn, struct lyd_node **sr_mods)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mod, *node;
@@ -1377,7 +1379,7 @@ sr_lydmods_change_chng_feature(const struct ly_ctx *ly_ctx, const struct lys_mod
     *sr_mods = NULL;
 
     /* parse current module information */
-    if ((err_info = sr_lydmods_parse(ly_ctx, NULL, sr_mods))) {
+    if ((err_info = sr_lydmods_parse(ly_ctx, conn, NULL, sr_mods))) {
         goto cleanup;
     }
 
@@ -1442,21 +1444,21 @@ cleanup:
 /**
  * @brief Update replay support of a module.
  *
- * @param[in] conn Connection to use.
  * @param[in] ly_mod libyang module.
  * @param[in,out] sr_mod Module to update.
  * @param[in] enable Whether replay should be enabled or disabled.
  * @param[in,out] mod_set Set of changed modules, is added to.
+ * @param[in] conn Connection to use for NTF handles.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lydmods_update_replay_support_module(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, struct lyd_node *sr_mod,
-        int enable, struct ly_set *mod_set)
+sr_lydmods_update_replay_support_module(const struct lys_module *ly_mod, struct lyd_node *sr_mod, int enable,
+        struct ly_set *mod_set, sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_replay, *sr_plg_name;
     struct timespec ts;
-    const struct srplg_ntf_s *ntf_plg;
+    const struct sr_ntf_handle_s *ntf_handle;
     int rc;
     LY_ERR lyrc;
     char *buf = NULL;
@@ -1479,13 +1481,13 @@ sr_lydmods_update_replay_support_module(sr_conn_ctx_t *conn, const struct lys_mo
             sr_errinfo_new_ly(&err_info, conn->ly_ctx, NULL);
             return err_info;
         }
-        if ((err_info = sr_ntf_plugin_find(lyd_get_value(sr_plg_name), conn, &ntf_plg))) {
+        if ((err_info = sr_ntf_handle_find(lyd_get_value(sr_plg_name), conn, &ntf_handle))) {
             return err_info;
         }
 
         /* use earliest stored notification timestamp or use current time */
-        if ((rc = ntf_plg->earliest_get_cb(ly_mod, &ts))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "earliest_get", ntf_plg->name, ly_mod->name);
+        if ((rc = ntf_handle->plugin->earliest_get_cb(ly_mod, &ts))) {
+            SR_ERRINFO_DSPLUGIN(&err_info, rc, "earliest_get", ntf_handle->plugin->name, ly_mod->name);
             return err_info;
         }
         if (SR_TS_IS_ZERO(ts)) {
@@ -1514,15 +1516,15 @@ sr_lydmods_update_replay_support_module(sr_conn_ctx_t *conn, const struct lys_mo
 }
 
 sr_error_info_t *
-sr_lydmods_change_chng_replay_support(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, int enable,
-        struct ly_set *mod_set, struct lyd_node **sr_mods)
+sr_lydmods_change_chng_replay_support(const struct lys_module *ly_mod, int enable, struct ly_set *mod_set,
+        sr_conn_ctx_t *conn, struct lyd_node **sr_mods)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mod;
     char *path = NULL;
 
     /* parse current module information */
-    if ((err_info = sr_lydmods_parse(conn->ly_ctx, NULL, sr_mods))) {
+    if ((err_info = sr_lydmods_parse(conn->ly_ctx, conn, NULL, sr_mods))) {
         goto cleanup;
     }
 
@@ -1538,7 +1540,7 @@ sr_lydmods_change_chng_replay_support(sr_conn_ctx_t *conn, const struct lys_modu
         assert(sr_mod);
 
         /* set replay support */
-        if ((err_info = sr_lydmods_update_replay_support_module(conn, ly_mod, sr_mod, enable, mod_set))) {
+        if ((err_info = sr_lydmods_update_replay_support_module(ly_mod, sr_mod, enable, mod_set, conn))) {
             goto cleanup;
         }
     } else {
@@ -1552,7 +1554,7 @@ sr_lydmods_change_chng_replay_support(sr_conn_ctx_t *conn, const struct lys_modu
             assert(ly_mod);
 
             /* set replay support */
-            if ((err_info = sr_lydmods_update_replay_support_module(conn, ly_mod, sr_mod, enable, mod_set))) {
+            if ((err_info = sr_lydmods_update_replay_support_module(ly_mod, sr_mod, enable, mod_set, conn))) {
                 goto cleanup;
             }
         }

@@ -40,9 +40,9 @@
 #define srpds_name "JSON DS file"  /**< plugin name */
 
 static int srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, const char **xpaths, uint32_t xpath_count,
-        struct lyd_node **mod_data);
+        void *plg_data, struct lyd_node **mod_data);
 
-static int srpds_json_access_get(const struct lys_module *mod, sr_datastore_t ds, char **owner, char **group,
+static int srpds_json_access_get(const struct lys_module *mod, sr_datastore_t ds, void *plg_data, char **owner, char **group,
         mode_t *perm);
 
 static int
@@ -169,10 +169,12 @@ cleanup:
  * @param[in] owner Owner of the data, may be NULL.
  * @param[in] group Group of the data, may be NULL.
  * @param[in] perm Permissions of the data.
+ * @param[in] plg_data Plugin data.
  * @return SR_ERR value.
  */
 static int
-srpds_json_install_persistent(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm)
+srpds_json_install_persistent(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group,
+        mode_t perm, void *UNUSED(plg_data))
 {
     int rc = SR_ERR_OK;
     char *path = NULL;
@@ -198,7 +200,8 @@ cleanup:
 }
 
 static int
-srpds_json_install(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm)
+srpds_json_install(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm,
+        void *UNUSED(plg_data))
 {
     int rc = SR_ERR_OK, fd = -1;
     char *path = NULL;
@@ -215,7 +218,7 @@ srpds_json_install(const struct lys_module *mod, sr_datastore_t ds, const char *
 
     if ((ds == SR_DS_STARTUP) || (ds == SR_DS_FACTORY_DEFAULT)) {
         /* persistent DS file install */
-        rc = srpds_json_install_persistent(mod, ds, owner, group, perm);
+        rc = srpds_json_install_persistent(mod, ds, owner, group, perm, NULL);
         goto cleanup;
     }
 
@@ -247,7 +250,7 @@ cleanup:
 }
 
 static int
-srpds_json_uninstall(const struct lys_module *mod, sr_datastore_t ds)
+srpds_json_uninstall(const struct lys_module *mod, sr_datastore_t ds, void *UNUSED(plg_data))
 {
     int rc = SR_ERR_OK;
     char *path = NULL;
@@ -281,7 +284,7 @@ cleanup:
 }
 
 static int
-srpds_json_init(const struct lys_module *mod, sr_datastore_t ds)
+srpds_json_init(const struct lys_module *mod, sr_datastore_t ds, void *UNUSED(plg_data))
 {
     int rc = SR_ERR_OK, fd = -1;
     char *owner = NULL, *group = NULL, *path = NULL;
@@ -298,7 +301,7 @@ srpds_json_init(const struct lys_module *mod, sr_datastore_t ds)
     }
 
     /* get owner/group/perms of the datastore file */
-    if ((rc = srpds_json_access_get(mod, ds, &owner, &group, &perm))) {
+    if ((rc = srpds_json_access_get(mod, ds, NULL, &owner, &group, &perm))) {
         goto cleanup;
     }
 
@@ -335,8 +338,19 @@ cleanup:
 }
 
 static int
+srpds_json_conn_init(sr_conn_ctx_t *UNUSED(conn), void **UNUSED(plg_data))
+{
+    return SR_ERR_OK;
+}
+
+static void
+srpds_json_conn_destroy(sr_conn_ctx_t *UNUSED(conn), void *UNUSED(plg_data))
+{
+}
+
+static int
 srpds_json_store(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *UNUSED(mod_diff),
-        const struct lyd_node *mod_data)
+        const struct lyd_node *mod_data, void *UNUSED(plg_data))
 {
     mode_t perm = 0;
     int rc;
@@ -363,7 +377,7 @@ srpds_json_store(const struct lys_module *mod, sr_datastore_t ds, const struct l
         }
 
         /* get the correct permissions to set for the new file (not owner/group because we may not have permissions to set them) */
-        if ((rc = srpds_json_access_get(mod, ds, NULL, NULL, &perm))) {
+        if ((rc = srpds_json_access_get(mod, ds, NULL, NULL, NULL, &perm))) {
             goto cleanup;
         }
         break;
@@ -380,7 +394,7 @@ cleanup:
 }
 
 static void
-srpds_json_recover(const struct lys_module *mod, sr_datastore_t ds)
+srpds_json_recover(const struct lys_module *mod, sr_datastore_t ds, void *UNUSED(plg_data))
 {
     char *path = NULL, *bck_path = NULL;
     struct lyd_node *mod_data = NULL;
@@ -391,7 +405,7 @@ srpds_json_recover(const struct lys_module *mod, sr_datastore_t ds)
     }
 
     /* check whether the file is valid */
-    if (!srpds_json_load(mod, ds, NULL, 0, &mod_data)) {
+    if (!srpds_json_load(mod, ds, NULL, 0, NULL, &mod_data)) {
         /* data are valid, nothing to do */
         goto cleanup;
     }
@@ -448,7 +462,7 @@ cleanup:
 
 static int
 srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, const char **UNUSED(xpaths), uint32_t UNUSED(xpath_count),
-        struct lyd_node **mod_data)
+        void *UNUSED(plg_data), struct lyd_node **mod_data)
 {
     int rc = SR_ERR_OK, fd = -1;
     char *path = NULL;
@@ -516,7 +530,7 @@ cleanup:
 }
 
 static int
-srpds_json_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datastore_t src_ds)
+srpds_json_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datastore_t src_ds, void *UNUSED(plg_data))
 {
     int rc = SR_ERR_OK, fd = -1;
     char *src_path = NULL, *trg_path = NULL, *owner = NULL, *group = NULL;
@@ -541,7 +555,7 @@ srpds_json_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datastor
         }
 
         /* get the correct permissions to set for the new file */
-        if ((rc = srpds_json_access_get(mod, trg_ds, &owner, &group, &perm))) {
+        if ((rc = srpds_json_access_get(mod, trg_ds, NULL, &owner, &group, &perm))) {
             goto cleanup;
         }
 
@@ -580,7 +594,7 @@ cleanup:
 }
 
 static int
-srpds_json_candidate_modified(const struct lys_module *mod, int *modified)
+srpds_json_candidate_modified(const struct lys_module *mod, void *UNUSED(plg_data), int *modified)
 {
     int rc = SR_ERR_OK;
     char *path = NULL;
@@ -603,7 +617,7 @@ cleanup:
 }
 
 static int
-srpds_json_candidate_reset(const struct lys_module *mod)
+srpds_json_candidate_reset(const struct lys_module *mod, void *UNUSED(plg_data))
 {
     int rc = SR_ERR_OK;
     char *path;
@@ -621,7 +635,8 @@ srpds_json_candidate_reset(const struct lys_module *mod)
 }
 
 static int
-srpds_json_access_set(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm)
+srpds_json_access_set(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group,
+        mode_t perm, void *UNUSED(plg_data))
 {
     int rc = SR_ERR_OK, file_exists = 0;
     char *path = NULL;
@@ -679,7 +694,8 @@ cleanup:
 }
 
 static int
-srpds_json_access_get(const struct lys_module *mod, sr_datastore_t ds, char **owner, char **group, mode_t *perm)
+srpds_json_access_get(const struct lys_module *mod, sr_datastore_t ds, void *UNUSED(plg_data), char **owner, char **group,
+        mode_t *perm)
 {
     int rc = SR_ERR_OK, r;
     struct stat st;
@@ -754,7 +770,7 @@ error:
 }
 
 static int
-srpds_json_access_check(const struct lys_module *mod, sr_datastore_t ds, int *read, int *write)
+srpds_json_access_check(const struct lys_module *mod, sr_datastore_t ds, void *UNUSED(plg_data), int *read, int *write)
 {
     int rc = SR_ERR_OK;
     char *path;
@@ -812,7 +828,7 @@ cleanup:
 }
 
 static int
-srpds_json_last_modif(const struct lys_module *mod, sr_datastore_t ds, struct timespec *mtime)
+srpds_json_last_modif(const struct lys_module *mod, sr_datastore_t ds, void *UNUSED(plg_data), struct timespec *mtime)
 {
     int rc = SR_ERR_OK;
     char *path = NULL;
@@ -843,6 +859,8 @@ const struct srplg_ds_s srpds_json = {
     .install_cb = srpds_json_install,
     .uninstall_cb = srpds_json_uninstall,
     .init_cb = srpds_json_init,
+    .conn_init_cb = srpds_json_conn_init,
+    .conn_destroy_cb = srpds_json_conn_destroy,
     .store_cb = srpds_json_store,
     .recover_cb = srpds_json_recover,
     .load_cb = srpds_json_load,

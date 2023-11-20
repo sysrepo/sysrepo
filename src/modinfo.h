@@ -51,7 +51,7 @@ struct sr_mod_info_s {
     struct sr_mod_info_mod_s {
         sr_mod_t *shm_mod;      /**< Module SHM structure. */
         const struct lys_module *ly_mod;    /**< Module libyang structure. */
-        const struct srplg_ds_s *ds_plg[SR_DS_READ_COUNT];  /**< Module DS plugins, only the required ones are set. */
+        const struct sr_ds_handle_s *ds_handle[SR_DS_READ_COUNT];  /**< Module DS plugin handles, only the required ones are set. */
         const char **xpaths;    /**< XPaths selecting the required data from the module, all data if NULL. */
         uint32_t xpath_count;   /**< Count of XPaths. */
         uint32_t state;         /**< Module state (flags). */

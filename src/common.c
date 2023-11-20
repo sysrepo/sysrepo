@@ -57,7 +57,7 @@
 #include "sysrepo.h"
 
 /**
- * @brief Internal DS plugin array.
+ * @brief Internal datastore plugin array.
  */
 const struct srplg_ds_s *sr_internal_ds_plugins[] = {
     &srpds_json,    /**< default */
@@ -285,11 +285,19 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
     const char *plugins_dir;
     char *path = NULL;
     void *dlhandle = NULL, *mem;
-    uint32_t *ver;
+    uint32_t *ver, i;
     const struct srplg_ds_s *srpds;
 
     *ds_handles = NULL;
     *ds_handle_count = 0;
+
+    /* add internal plugins */
+    *ds_handles = calloc(sr_ds_plugin_int_count(), sizeof **ds_handles);
+    SR_CHECK_MEM_GOTO(!*ds_handles, err_info, next_file);
+    for (i = 0; i < sr_ds_plugin_int_count(); ++i) {
+        (*ds_handles)[i].plugin = sr_internal_ds_plugins[i];
+        ++(*ds_handle_count);
+    }
 
     /* get plugins dir from environment variable, or use default one */
     plugins_dir = getenv("SR_PLUGINS_PATH");
@@ -388,7 +396,9 @@ sr_ds_handle_free(struct sr_ds_handle_s *ds_handles, uint32_t ds_handle_count)
     uint32_t i;
 
     for (i = 0; i < ds_handle_count; ++i) {
-        dlclose(ds_handles[i].dl_handle);
+        if (ds_handles[i].dl_handle) {
+            dlclose(ds_handles[i].dl_handle);
+        }
     }
 
     free(ds_handles);
@@ -401,7 +411,7 @@ sr_ds_plugin_int_count(void)
 }
 
 sr_error_info_t *
-sr_ds_plugin_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, const struct srplg_ds_s **ds_plugin)
+sr_ds_handle_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, const struct sr_ds_handle_s **ds_handle)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -411,26 +421,12 @@ sr_ds_plugin_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, const struct 
         return err_info;
     }
 
-    /* search internal DS plugins */
-    for (i = 0; i < sr_ds_plugin_int_count(); ++i) {
-        if ((sr_internal_ds_plugins[i]->name == ds_plugin_name) ||
-                !strcmp(sr_internal_ds_plugins[i]->name, ds_plugin_name)) {
-            if (ds_plugin) {
-                *ds_plugin = (struct srplg_ds_s *)sr_internal_ds_plugins[i];
+    for (i = 0; i < conn->ds_handle_count; ++i) {
+        if (!strcmp(conn->ds_handles[i].plugin->name, ds_plugin_name)) {
+            if (ds_handle) {
+                *ds_handle = &conn->ds_handles[i];
             }
             return NULL;
-        }
-    }
-
-    if (conn) {
-        /* search dynamic plugins */
-        for (i = 0; i < conn->ds_handle_count; ++i) {
-            if (!strcmp(conn->ds_handles[i].plugin->name, ds_plugin_name)) {
-                if (ds_plugin) {
-                    *ds_plugin = (struct srplg_ds_s *)conn->ds_handles[i].plugin;
-                }
-                return NULL;
-            }
         }
     }
 
@@ -449,11 +445,19 @@ sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32_t *ntf_handle_co
     const char *plugins_dir;
     char *path = NULL;
     void *dlhandle = NULL, *mem;
-    uint32_t *ver;
+    uint32_t *ver, i;
     const struct srplg_ntf_s *srpntf;
 
     *ntf_handles = NULL;
     *ntf_handle_count = 0;
+
+    /* add internal plugins */
+    *ntf_handles = calloc(sr_ntf_plugin_int_count(), sizeof **ntf_handles);
+    SR_CHECK_MEM_GOTO(!*ntf_handles, err_info, next_file);
+    for (i = 0; i < sr_ntf_plugin_int_count(); ++i) {
+        (*ntf_handles)[i].plugin = sr_internal_ntf_plugins[i];
+        ++(*ntf_handle_count);
+    }
 
     /* get plugins dir from environment variable, or use default one */
     plugins_dir = getenv("SR_PLUGINS_PATH");
@@ -550,7 +554,9 @@ sr_ntf_handle_free(struct sr_ntf_handle_s *ntf_handles, uint32_t ntf_handle_coun
     uint32_t i;
 
     for (i = 0; i < ntf_handle_count; ++i) {
-        dlclose(ntf_handles[i].dl_handle);
+        if (ntf_handles[i].dl_handle) {
+            dlclose(ntf_handles[i].dl_handle);
+        }
     }
 
     free(ntf_handles);
@@ -563,7 +569,7 @@ sr_ntf_plugin_int_count(void)
 }
 
 sr_error_info_t *
-sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, const struct srplg_ntf_s **ntf_plugin)
+sr_ntf_handle_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, const struct sr_ntf_handle_s **ntf_handle)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -573,21 +579,10 @@ sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, const struc
         return err_info;
     }
 
-    /* search internal notif plugins */
-    for (i = 0; i < sr_ntf_plugin_int_count(); ++i) {
-        if (!strcmp(sr_internal_ntf_plugins[i]->name, ntf_plugin_name)) {
-            if (ntf_plugin) {
-                *ntf_plugin = (struct srplg_ntf_s *)sr_internal_ntf_plugins[i];
-            }
-            return NULL;
-        }
-    }
-
-    /* search dynamic plugins */
     for (i = 0; i < conn->ntf_handle_count; ++i) {
         if (!strcmp(conn->ntf_handles[i].plugin->name, ntf_plugin_name)) {
-            if (ntf_plugin) {
-                *ntf_plugin = (struct srplg_ntf_s *)conn->ntf_handles[i].plugin;
+            if (ntf_handle) {
+                *ntf_handle = &conn->ntf_handles[i];
             }
             return NULL;
         }
@@ -1005,13 +1000,13 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_collect_module_impl_deps(const struct lys_module *ly_mod, struct ly_set *mod_set)
+sr_collect_module_impl_deps(const struct lys_module *ly_mod, sr_conn_ctx_t *conn, struct ly_set *mod_set)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mods = NULL;
 
     /* parse SR mod data for the dependencies */
-    if ((err_info = sr_lydmods_parse(ly_mod->ctx, NULL, &sr_mods))) {
+    if ((err_info = sr_lydmods_parse(ly_mod->ctx, conn, NULL, &sr_mods))) {
         goto cleanup;
     }
 
@@ -1416,7 +1411,7 @@ sr_perm_check(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
-    const struct srplg_ds_s *plg;
+    const struct sr_ds_handle_s *handle;
     int rc, r, w;
 
     /* find the module in SHM */
@@ -1424,13 +1419,13 @@ sr_perm_check(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* find the DS plugin for startup */
-    if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &plg))) {
+    if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &handle))) {
         goto cleanup;
     }
 
     /* check access for the current user */
-    if ((rc = plg->access_check_cb(ly_mod, ds, &r, &w))) {
-        SR_ERRINFO_DSPLUGIN(&err_info, rc, "access_check", plg->name, ly_mod->name);
+    if ((rc = handle->plugin->access_check_cb(ly_mod, ds, handle->plg_data, &r, &w))) {
+        SR_ERRINFO_DSPLUGIN(&err_info, rc, "access_check", handle->plugin->name, ly_mod->name);
         goto cleanup;
     }
 
@@ -3191,8 +3186,9 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
         }
 
         /* get last_modif timestamp of module running data */
-        if ((r = mod->ds_plg[SR_DS_RUNNING]->last_modif_cb(mod->ly_mod, SR_DS_RUNNING, &mtime))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, r, "last_modif", mod->ds_plg[SR_DS_RUNNING]->name, mod->ly_mod->name);
+        if ((r = mod->ds_handle[SR_DS_RUNNING]->plugin->last_modif_cb(mod->ly_mod, SR_DS_RUNNING,
+                mod->ds_handle[SR_DS_RUNNING]->plg_data, &mtime))) {
+            SR_ERRINFO_DSPLUGIN(&err_info, r, "last_modif", mod->ds_handle[SR_DS_RUNNING]->plugin->name, mod->ly_mod->name);
             goto cleanup;
         }
 
@@ -3222,8 +3218,9 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
         lyd_free_siblings(mod_data);
 
         /* replace with loaded current data */
-        if ((r = mod->ds_plg[SR_DS_RUNNING]->load_cb(mod->ly_mod, SR_DS_RUNNING, NULL, 0, &mod_data))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, r, "load", mod->ds_plg[SR_DS_RUNNING]->name, mod->ly_mod->name);
+        if ((r = mod->ds_handle[SR_DS_RUNNING]->plugin->load_cb(mod->ly_mod, SR_DS_RUNNING, NULL, 0,
+                mod->ds_handle[SR_DS_RUNNING]->plg_data, &mod_data))) {
+            SR_ERRINFO_DSPLUGIN(&err_info, r, "load", mod->ds_handle[SR_DS_RUNNING]->plugin->name, mod->ly_mod->name);
             goto cleanup;
         }
         if (mod_data) {
@@ -3359,6 +3356,59 @@ sr_conn_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx **new_ctx, struct ly_ctx *
     /* new ctx */
     conn->ly_ctx = *new_ctx;
     *new_ctx = NULL;
+}
+
+sr_error_info_t *
+sr_conn_ds_init(sr_conn_ctx_t *conn)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_shm_t *mod_shm;
+    sr_mod_t *mod;
+    struct sr_ds_handle_s *ds_handle;
+    sr_datastore_t ds;
+    uint32_t i;
+    int rc;
+
+    mod_shm = SR_CONN_MOD_SHM(conn);
+
+    /* go through all the SHM modules */
+    for (i = 0; i < mod_shm->mod_count; ++i) {
+        mod = SR_SHM_MOD_IDX(mod_shm, i);
+
+        /* find DS plugins and init them if required */
+        for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
+            if ((err_info = sr_ds_handle_find(((char *)mod_shm) + mod->plugins[ds], conn,
+                    (const struct sr_ds_handle_s **)&ds_handle))) {
+                goto cleanup;
+            }
+            if (ds_handle->init) {
+                continue;
+            }
+
+            if ((rc = ds_handle->plugin->conn_init_cb(conn, &ds_handle->plg_data))) {
+                sr_errinfo_new(&err_info, rc, "Callback \"%s\" of plugin \"%s\" failed.", "conn_init",
+                        ds_handle->plugin->name);
+                goto cleanup;
+            }
+            ds_handle->init = 1;
+        }
+    }
+
+cleanup:
+    return err_info;
+}
+
+void
+sr_conn_ds_destroy(sr_conn_ctx_t *conn)
+{
+    uint32_t i;
+
+    /* destroy all initialized plugin data */
+    for (i = 0; i < conn->ds_handle_count; ++i) {
+        if (conn->ds_handles[i].init) {
+            conn->ds_handles[i].plugin->conn_destroy_cb(conn, conn->ds_handles[i].plg_data);
+        }
+    }
 }
 
 void *
@@ -5339,7 +5389,7 @@ sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod)
 }
 
 sr_error_info_t *
-sr_module_file_data_append(const struct lys_module *ly_mod, const struct srplg_ds_s *ds_plg[], sr_datastore_t ds,
+sr_module_file_data_append(const struct lys_module *ly_mod, const struct sr_ds_handle_s *ds_handle[], sr_datastore_t ds,
         const char **xpaths, uint32_t xpath_count, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
@@ -5347,8 +5397,8 @@ sr_module_file_data_append(const struct lys_module *ly_mod, const struct srplg_d
     int rc, modified;
 
     if (ds == SR_DS_CANDIDATE) {
-        if ((rc = ds_plg[ds]->candidate_modified_cb(ly_mod, &modified))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_modified", ds_plg[ds]->name, ly_mod->name);
+        if ((rc = ds_handle[ds]->plugin->candidate_modified_cb(ly_mod, ds_handle[ds]->plg_data, &modified))) {
+            SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_modified", ds_handle[ds]->plugin->name, ly_mod->name);
             return err_info;
         }
 
@@ -5359,8 +5409,8 @@ sr_module_file_data_append(const struct lys_module *ly_mod, const struct srplg_d
     }
 
     /* get the data */
-    if ((rc = ds_plg[ds]->load_cb(ly_mod, ds, xpaths, xpath_count, &mod_data))) {
-        SR_ERRINFO_DSPLUGIN(&err_info, rc, "load", ds_plg[ds]->name, ly_mod->name);
+    if ((rc = ds_handle[ds]->plugin->load_cb(ly_mod, ds, xpaths, xpath_count, ds_handle[ds]->plg_data, &mod_data))) {
+        SR_ERRINFO_DSPLUGIN(&err_info, rc, "load", ds_handle[ds]->plugin->name, ly_mod->name);
         return err_info;
     }
 
@@ -5384,8 +5434,9 @@ sr_module_file_oper_data_load(struct sr_mod_info_mod_s *mod, struct lyd_node **e
     assert(!*edit);
 
     /* load the operational data (edit) */
-    if ((rc = mod->ds_plg[SR_DS_OPERATIONAL]->load_cb(mod->ly_mod, SR_DS_OPERATIONAL, NULL, 0, edit))) {
-        SR_ERRINFO_DSPLUGIN(&err_info, rc, "load", mod->ds_plg[SR_DS_OPERATIONAL]->name, mod->ly_mod->name);
+    if ((rc = mod->ds_handle[SR_DS_OPERATIONAL]->plugin->load_cb(mod->ly_mod, SR_DS_OPERATIONAL, NULL, 0,
+            mod->ds_handle[SR_DS_OPERATIONAL]->plg_data, edit))) {
+        SR_ERRINFO_DSPLUGIN(&err_info, rc, "load", mod->ds_handle[SR_DS_OPERATIONAL]->plugin->name, mod->ly_mod->name);
         return err_info;
     }
 
