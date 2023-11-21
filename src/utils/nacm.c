@@ -1911,9 +1911,6 @@ sr_nacm_check_data_read_filter(const char *nacm_user, const struct lyd_node *tre
         tree_top = lyd_parent(tree_top);
     }
 
-    /* NACM LOCK */
-    pthread_mutex_lock(&nacm.lock);
-
     /* collect user groups */
     if ((err_info = sr_nacm_collect_groups(nacm_user, &groups, &group_count))) {
         goto cleanup;
@@ -1932,9 +1929,6 @@ sr_nacm_check_data_read_filter(const char *nacm_user, const struct lyd_node *tre
     }
 
 cleanup:
-    /* NACM UNLOCK */
-    pthread_mutex_unlock(&nacm.lock);
-
     sr_nacm_free_groups(groups, group_count);
     return err_info;
 }
@@ -1949,8 +1943,11 @@ sr_nacm_get_node_set_read_filter(sr_session_ctx_t *session, struct ly_set *set)
 
     if (!session->nacm_user) {
         /* nothing to do */
-        goto cleanup;
+        return NULL;
     }
+
+    /* NACM LOCK */
+    pthread_mutex_lock(&nacm.lock);
 
     i = 0;
     while (i < set->count) {
@@ -1977,6 +1974,9 @@ sr_nacm_get_node_set_read_filter(sr_session_ctx_t *session, struct ly_set *set)
     }
 
 cleanup:
+    /* NACM UNLOCK */
+    pthread_mutex_unlock(&nacm.lock);
+
     ly_set_erase(&denied_set, NULL);
     return err_info;
 }
@@ -1993,13 +1993,22 @@ sr_nacm_get_subtree_read_filter(sr_session_ctx_t *session, struct lyd_node *subt
 
     if (!session->nacm_user || !subtree) {
         /* nothing to do */
+        return NULL;
+    }
+
+    /* NACM LOCK */
+    pthread_mutex_lock(&nacm.lock);
+
+    /* apply NACM on the subtree */
+    err_info = sr_nacm_check_data_read_filter(session->nacm_user, subtree, &denied_set);
+
+    /* NACM UNLOCK */
+    pthread_mutex_unlock(&nacm.lock);
+
+    if (err_info) {
         goto cleanup;
     }
 
-    /* apply NACM on the subtree */
-    if ((err_info = sr_nacm_check_data_read_filter(session->nacm_user, subtree, &denied_set))) {
-        goto cleanup;
-    }
     for (i = 0; i < denied_set.count; ++i) {
         /* any parent could have been denied instead of the subtree */
         for (node = subtree; node; node = lyd_parent(node)) {
@@ -2034,8 +2043,11 @@ sr_nacm_check_push_update_notif(const char *nacm_user, struct lyd_node *notif, c
 
     /* first check NACM just like for a standard notification */
     if ((err_info = sr_nacm_check_operation(nacm_user, notif, denied_node)) || *denied_node) {
-        goto cleanup;
+        return err_info;
     }
+
+    /* NACM LOCK */
+    pthread_mutex_lock(&nacm.lock);
 
     if ((err_info = sr_nacm_collect_groups(nacm_user, &groups, &group_count))) {
         goto cleanup;
@@ -2100,6 +2112,9 @@ sr_nacm_check_push_update_notif(const char *nacm_user, struct lyd_node *notif, c
     }
 
 cleanup:
+    /* NACM UNLOCK */
+    pthread_mutex_unlock(&nacm.lock);
+
     sr_nacm_free_groups(groups, group_count);
     ly_set_free(set, NULL);
     ly_set_erase(&denied, NULL);
