@@ -78,8 +78,8 @@ help_print(void)
             "\n"
             "Available options:\n"
             "  -d, --datastore <datastore>  Datastore to be operated on, \"running\" by default (\"running\", \"startup\",\n"
-            "                               \"candidate\", \"operational\", or \"factory-default\"). Accepted by\n"
-            "                               import, export, edit, copy-from op.\n"
+            "                               \"candidate\", \"operational\", or \"factory-default\") or use initials ('r', 's',\n"
+            "                               'c', 'o', or 'f') respectively. Accepted by import, export, edit, copy-from op.\n"
             "  -m, --module <module-name>   Module to be operated on, otherwise it is operated on full datastore.\n"
             "                               Accepted by import, export, edit, copy-from op.\n"
             "  -x, --xpath <xpath>          XPath to select. Accepted by export op.\n"
@@ -709,15 +709,15 @@ arg_is_file(const char *optarg)
 static int
 arg_get_ds(const char *optarg, sr_datastore_t *ds)
 {
-    if (!strcmp(optarg, "running")) {
+    if (!strcmp(optarg, "r") || !strcmp(optarg, "running")) {
         *ds = SR_DS_RUNNING;
-    } else if (!strcmp(optarg, "startup")) {
+    } else if (!strcmp(optarg, "s") || !strcmp(optarg, "startup")) {
         *ds = SR_DS_STARTUP;
-    } else if (!strcmp(optarg, "candidate")) {
+    } else if (!strcmp(optarg, "c") || !strcmp(optarg, "candidate")) {
         *ds = SR_DS_CANDIDATE;
-    } else if (!strcmp(optarg, "operational")) {
+    } else if (!strcmp(optarg, "o") || !strcmp(optarg, "operational")) {
         *ds = SR_DS_OPERATIONAL;
-    } else if (!strcmp(optarg, "factory-default")) {
+    } else if (!strcmp(optarg, "f") || !strcmp(optarg, "factory-default")) {
         *ds = SR_DS_FACTORY_DEFAULT;
     } else {
         error_print(0, "Unknown datastore \"%s\"", optarg);
