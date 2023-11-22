@@ -1012,6 +1012,183 @@ stored_state_list_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const ch
 
         sr_free_change_iter(iter);
         break;
+    case 8:
+    case 9:
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 8) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/mixed-config:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "test-state");
+
+        /* 2nd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "l");
+
+        /* 3rd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "l1");
+
+        /* 4th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "l");
+
+        /* 5th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "ll");
+
+        /* 6th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "ll");
+
+        /* 7th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "ll");
+
+        /* 8th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "ll");
+
+        /* 9th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "ll");
+
+        /* no more changes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    case 10:
+    case 11:
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) % 2 == 0) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/mixed-config:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "test-state");
+
+        /* 2nd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "ll");
+        assert_string_equal(prev_value, "");
+
+        /* 3rd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "ll");
+        assert_string_equal(prev_value, "1");
+
+        /* 4th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "ll");
+        assert_string_equal(prev_value, "2");
+
+        /* 5th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "ll");
+        assert_string_equal(prev_value, "3");
+
+        /* no more changes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    case 12:
+    case 13:
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) % 2 == 0) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/mixed-config:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "ll");
+
+        /* 2nd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "ll");
+
+        /* 3rd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "ll");
+
+        /* no more changes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
     default:
         fail();
     }
@@ -1057,12 +1234,9 @@ test_state_list(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-
     ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
-
     sr_release_data(data);
-
     str2 =
             "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\""
             " or:origin=\"or:intended\">\n"
@@ -1075,7 +1249,6 @@ test_state_list(void **state)
             "  <ll or:origin=\"or:unknown\">val1</ll>\n"
             "  <ll or:origin=\"or:unknown\">val2</ll>\n"
             "</test-state>\n";
-
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -1093,12 +1266,9 @@ test_state_list(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-
     ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
-
     sr_release_data(data);
-
     str2 =
             "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\""
             " or:origin=\"or:intended\">\n"
@@ -1108,7 +1278,6 @@ test_state_list(void **state)
             "  <l or:origin=\"or:unknown\"/>\n"
             "  <ll or:origin=\"or:unknown\">val1</ll>\n"
             "</test-state>\n";
-
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -1128,12 +1297,9 @@ test_state_list(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-
     ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
-
     sr_release_data(data);
-
     str2 =
             "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\""
             " or:origin=\"or:intended\">\n"
@@ -1146,7 +1312,6 @@ test_state_list(void **state)
             "  <ll or:origin=\"or:unknown\">val2</ll>\n"
             "  <ll or:origin=\"or:unknown\">val3</ll>\n"
             "</test-state>\n";
-
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -1162,12 +1327,9 @@ test_state_list(void **state)
     /* read the data */
     ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
     assert_int_equal(ret, SR_ERR_OK);
-
     ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
-
     sr_release_data(data);
-
     str2 =
             "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\""
             " or:origin=\"or:intended\">\n"
@@ -1179,7 +1341,65 @@ test_state_list(void **state)
             "  <ll or:origin=\"or:unknown\">val2</ll>\n"
             "  <ll or:origin=\"or:unknown\">val3</ll>\n"
             "</test-state>\n";
+    assert_string_equal(str1, str2);
+    free(str1);
 
+    /* discard everything */
+    ret = sr_discard_items(st->sess, "/mixed-config:test-state");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* callback called */
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 10);
+
+    /* read the data */
+    ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+    assert_null(str1);
+
+    /* create only leaf-lists */
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll", "val2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* callback called */
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 12);
+
+    /* discard 3 leaf-lists */
+    ret = sr_discard_items(st->sess, "/mixed-config:test-state/ll[4]");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_discard_items(st->sess, "/mixed-config:test-state/ll[3]");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_discard_items(st->sess, "/mixed-config:test-state/ll[2]");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* callback called */
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 14);
+
+    /* read the data */
+    ret = sr_get_data(st->sess, "/mixed-config:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+    str2 =
+            "<test-state xmlns=\"urn:sysrepo:mixed-config\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\""
+            " or:origin=\"or:intended\">\n"
+            "  <ll or:origin=\"or:unknown\">val1</ll>\n"
+            "</test-state>\n";
     assert_string_equal(str1, str2);
     free(str1);
 

@@ -543,7 +543,7 @@ sr_error_info_t *
 sr_modinfo_edit_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *edit, int create_diff)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
+    const struct lys_module *ly_mod, *prev_mod;
     struct sr_mod_info_mod_s *mod;
     const struct lyd_node *node, *iter;
     struct lyd_node *change_edit = NULL, *diff = NULL;
@@ -580,15 +580,21 @@ sr_modinfo_edit_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
         if ((err_info = sr_edit_oper_del(&mod_info->data, mod_info->conn->cid, xpath, &change_edit))) {
             goto cleanup;
         }
-        if (!change_edit) {
-            continue;
-        }
+    }
 
+    if (change_edit) {
         /* set changed flags */
-        for (i = 0; i < mod_info->mod_count; ++i) {
-            mod = &mod_info->mods[i];
-            LY_LIST_FOR(change_edit, iter) {
-                if (lyd_owner_module(iter) == mod->ly_mod) {
+        prev_mod = NULL;
+        LY_LIST_FOR(change_edit, iter) {
+            ly_mod = lyd_owner_module(iter);
+            if (ly_mod == prev_mod) {
+                continue;
+            }
+            prev_mod = ly_mod;
+
+            for (i = 0; i < mod_info->mod_count; ++i) {
+                mod = &mod_info->mods[i];
+                if (ly_mod == mod->ly_mod) {
                     mod->state |= MOD_INFO_CHANGED;
                     break;
                 }
@@ -600,21 +606,10 @@ sr_modinfo_edit_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
             if ((err_info = sr_edit2diff(change_edit, &diff))) {
                 goto cleanup;
             }
-            if (!mod_info->diff) {
-                mod_info->diff = diff;
-                diff = NULL;
-            } else {
-                if (lyd_diff_merge_tree(&mod_info->diff, NULL, diff, NULL, NULL, 0)) {
-                    sr_errinfo_new_ly(&err_info, LYD_CTX(edit), mod_info->diff);
-                    goto cleanup;
-                }
-                lyd_free_siblings(diff);
-                diff = NULL;
-            }
+            assert(!mod_info->diff);
+            mod_info->diff = diff;
+            diff = NULL;
         }
-
-        lyd_free_siblings(change_edit);
-        change_edit = NULL;
     }
 
     mod = NULL;
