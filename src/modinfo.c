@@ -208,11 +208,17 @@ sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_data
     struct ly_set *set = NULL;
     struct ly_ctx *sm_ctx = NULL;
     uint32_t i;
+    LY_ERR r;
 
     /* learn what nodes are needed for evaluation */
-    if (lys_find_xpath_atoms(ly_ctx, NULL, xpath, LYS_FIND_NO_MATCH_ERROR | LYS_FIND_SCHEMAMOUNT, &set)) {
-        /* no error message */
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL);
+    if ((r = lys_find_xpath_atoms(ly_ctx, NULL, xpath, LYS_FIND_NO_MATCH_ERROR | LYS_FIND_SCHEMAMOUNT, &set))) {
+        if (r == LY_ENOTFOUND) {
+            /* no error message */
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL);
+        } else {
+            sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+            sr_errinfo_new(&err_info, SR_ERR_LY, "Invalid XPath \"%s\".", xpath);
+        }
         goto cleanup;
     }
 
