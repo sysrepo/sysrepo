@@ -237,7 +237,7 @@ should be granted *read* and *execute* permissions unless the access was modifie
 
 The `factory-default` datastore contents of a module are automatically populated by the initial data used
 when installing the specific module and **cannot** be changed (unless the module is reinstalled). There is
-an internal subscription to the `/factory-default:factory-reset` RPC which performs the copying of
+an internal subscription to the `/ietf-factory-default:factory-reset` RPC which performs the copying of
 `factory-default` data into all the other datastores. This RPC has a priority 10 so applications are
 able to subscribe to it with higher or lower priority and perform any other tasks required for a device
 to be rest to its factory settings.
