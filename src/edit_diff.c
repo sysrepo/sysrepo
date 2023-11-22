@@ -3835,8 +3835,15 @@ sr_edit_oper_del_node(struct lyd_node *node, struct lyd_node **change_edit)
     }
     if (!new_parent) {
         if (node->schema) {
-            lyrc = lyd_find_sibling_first(parent ? lyd_child(parent) : *change_edit, node, &match);
+            if (lysc_is_dup_inst_list(node->schema)) {
+                /* we cannot uniquely identify the node based on its value, assume it is always unique */
+                lyrc = LY_ENOTFOUND;
+            } else {
+                /* find the same data node */
+                lyrc = lyd_find_sibling_first(parent ? lyd_child(parent) : *change_edit, node, &match);
+            }
         } else {
+            /* find the data node based on an opaque node */
             lyrc = lyd_find_sibling_opaq_next(parent ? lyd_child(parent) : *change_edit, LYD_NAME(node), &match);
         }
     }
