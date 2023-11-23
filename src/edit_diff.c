@@ -885,7 +885,6 @@ sr_edit_diff_append(const struct lyd_node *edit, enum edit_op op, const char *pr
     if (op == EDIT_REPLACE) {
         /* store the previous value */
         assert(prev_val);
-
     }
 
     /* switch all edit metadata for best-effort diff metadata */
