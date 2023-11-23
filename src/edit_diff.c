@@ -2751,7 +2751,7 @@ sr_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_parent, const s
     struct ly_set *set = NULL;
     enum edit_op src_op, trg_op, diff_op;
     int val_equal, meta_changed = 0, trg_op_own;
-    char *path = NULL;
+    char *path = NULL, *any_val = NULL;
     const char *prev_val;
     uint32_t i;
     LY_ERR lyrc;
@@ -2811,7 +2811,22 @@ sr_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_parent, const s
                 if ((src_op == EDIT_MERGE) && (trg_op == EDIT_MERGE) && !val_equal) {
                     /* only the value was changed */
                     diff_op = EDIT_REPLACE;
-                    prev_val = (trg_node->schema->nodetype == LYS_LEAF) ? lyd_get_value(trg_node) : NULL;
+                    switch (trg_node->schema->nodetype) {
+                    case LYS_LEAF:
+                        prev_val = lyd_get_value(trg_node);
+                        break;
+                    case LYS_ANYXML:
+                    case LYS_ANYDATA:
+                        if (lyd_any_value_str(trg_node, &any_val)) {
+                            sr_errinfo_new_ly(&err_info, LYD_CTX(trg_node), NULL);
+                            goto cleanup;
+                        }
+                        prev_val = any_val;
+                        break;
+                    default:
+                        SR_ERRINFO_INT(&err_info);
+                        goto cleanup;
+                    }
                 } else {
                     /* report the same operation */
                     diff_op = src_op;
@@ -2892,6 +2907,7 @@ sr_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_parent, const s
 
 cleanup:
     free(path);
+    free(any_val);
     ly_set_free(set, NULL);
     return err_info;
 }
