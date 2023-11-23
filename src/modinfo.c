@@ -3307,7 +3307,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_CHANGED) {
             /* separate diff and data of this module */
-            mod_diff = sr_module_data_unlink(&mod_info->diff, mod->ly_mod);
+            mod_diff = (mod_info->ds == SR_DS_OPERATIONAL) ? NULL : sr_module_data_unlink(&mod_info->diff, mod->ly_mod);
             mod_data = sr_module_data_unlink(&mod_info->data, mod->ly_mod);
 
             /* store the new data */
@@ -3321,7 +3321,9 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
             mod->shm_mod->run_cache_id++;
 
             /* connect them back */
-            lyd_insert_sibling(mod_info->diff, mod_diff, &mod_info->diff);
+            if (mod_diff) {
+                lyd_insert_sibling(mod_info->diff, mod_diff, &mod_info->diff);
+            }
             if (mod_data) {
                 lyd_insert_sibling(mod_info->data, mod_data, &mod_info->data);
             }

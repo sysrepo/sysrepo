@@ -113,7 +113,10 @@ typedef void (*srds_conn_destroy)(sr_conn_ctx_t *conn, void *plg_data);
 /**
  * @brief Store data for a module. Either a diff can be applied manually or full new data tree stored.
  *
- * If @p ds is ::SR_DS_OPERATIONAL, it is actually an edit data tree that is being stored.
+ * If @p ds is ::SR_DS_OPERATIONAL, it is actually an **edit** data tree that is being stored. That means that data
+ * nodes with their **operations** (metadata) need to be stored and even **opaque nodes** with attributes. For this
+ * datastore @p mod_diff is **never** provided.
+ *
  * May be called simultaneously but with unique @p mod and @p ds pairs.
  *
  * Write access rights do not have to be checked, ::srds_access_check() is called before this callback.
