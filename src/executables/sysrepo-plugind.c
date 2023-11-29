@@ -589,15 +589,15 @@ main(int argc, char **argv)
         goto cleanup;
     }
 
-#ifdef SR_HAVE_SYSTEMD
-    /* notify systemd */
-    sd_notify(0, "READY=1");
-#endif
-
     /* update pid file */
     if (pidfile && (write_pidfile(pidfd) < 0)) {
         goto cleanup;
     }
+
+#ifdef SR_HAVE_SYSTEMD
+    /* notify systemd */
+    sd_notify(0, "READY=1");
+#endif
 
     /* wait for a terminating signal */
     pthread_mutex_lock(&lock);
@@ -611,29 +611,27 @@ main(int argc, char **argv)
     sd_notify(0, "STOPPING=1");
 #endif
 
-    /* cleanup plugins */
-    for (i = 0; i < plugin_count; ++i) {
-        if (plugins[i].initialized) {
-            plugins[i].cleanup_cb(sess, plugins[i].private_data);
-        }
-    }
-
     /* success */
     rc = EXIT_SUCCESS;
 
 cleanup:
-    if (pidfd >= 0) {
-        close(pidfd);
-        unlink(pidfile);
-    }
-
     for (i = 0; i < plugin_count; ++i) {
+        /* plugin cleanup */
+        if (plugins[i].initialized) {
+            plugins[i].cleanup_cb(sess, plugins[i].private_data);
+        }
+
         if (plugins[i].handle) {
             dlclose(plugins[i].handle);
         }
         free(plugins[i].plugin_name);
     }
     free(plugins);
+
+    if (pidfd >= 0) {
+        close(pidfd);
+        unlink(pidfile);
+    }
 
     sr_disconnect(conn);
     return rc;
