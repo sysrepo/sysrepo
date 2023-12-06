@@ -1676,6 +1676,11 @@ sr_modinfo_module_srmon_module_subs(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, stru
 
         change_subs = (sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs);
         for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
+            /* ignore dead subscriptions */
+            if (!sr_conn_is_alive(change_subs[i].cid)) {
+                continue;
+            }
+
             /* change-sub */
             SR_CHECK_LY_GOTO(lyd_new_list(sr_subs, NULL, "change-sub", 0, &sr_sub), ly_ctx, err_info, change_ext_sub_unlock);
 
@@ -1739,6 +1744,11 @@ change_sub_unlock:
         for (j = 0; j < oper_get_subs[i].xpath_sub_count; ++j) {
             xpath_sub = &((sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + oper_get_subs[i].xpath_subs))[j];
 
+            /* ignore dead subscriptions */
+            if (!sr_conn_is_alive(xpath_sub->cid)) {
+                continue;
+            }
+
             SR_CHECK_LY_GOTO(lyd_new_list(sr_xpath_sub, NULL, "xpath-sub", 0, &sr_sub), ly_ctx, err_info, operget_ext_sub_unlock);
 
             /* cid */
@@ -1780,6 +1790,11 @@ operget_sub_unlock:
 
     oper_poll_subs = (sr_mod_oper_poll_sub_t *)(conn->ext_shm.addr + shm_mod->oper_poll_subs);
     for (i = 0; i < shm_mod->oper_poll_sub_count; ++i) {
+        /* ignore dead subscriptions */
+        if (!sr_conn_is_alive(oper_poll_subs[i].cid)) {
+            continue;
+        }
+
         /* operational-poll-sub with xpath */
         SR_CHECK_LY_GOTO(lyd_new_list(sr_subs, NULL, "operational-poll-sub", 0, &sr_sub,
                 conn->ext_shm.addr + oper_poll_subs[i].xpath), ly_ctx, err_info, operpoll_ext_sub_unlock);
@@ -1822,6 +1837,11 @@ operpoll_sub_unlock:
 
     notif_subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
     for (i = 0; i < shm_mod->notif_sub_count; ++i) {
+        /* ignore dead subscriptions */
+        if (!sr_conn_is_alive(notif_subs[i].cid)) {
+            continue;
+        }
+
         /* notification-sub */
         SR_CHECK_LY_GOTO(lyd_new_list(sr_subs, NULL, "notification-sub", 0, &sr_sub), ly_ctx, err_info, notif_ext_sub_unlock);
 
@@ -1982,6 +2002,11 @@ sr_modinfo_module_srmon_rpc(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, struct lyd_n
 
     rpc_sub = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + shm_rpc->subs);
     for (i = 0; i < shm_rpc->sub_count; ++i) {
+        /* ignore dead subscriptions */
+        if (rpc_sub[i].cid && !sr_conn_is_alive(rpc_sub[i].cid)) {
+            continue;
+        }
+
         /* rpc-sub */
         SR_CHECK_LY_RET(lyd_new_list(sr_rpc, NULL, "rpc-sub", 0, &sr_sub), ly_ctx, err_info);
 
