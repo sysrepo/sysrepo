@@ -4,8 +4,8 @@
  * @brief API for datastore plugins
  *
  * @copyright
- * Copyright (c) 2021 - 2022 Deutsche Telekom AG.
- * Copyright (c) 2021 - 2022 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2023 Deutsche Telekom AG.
+ * Copyright (c) 2021 - 2023 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -116,6 +116,9 @@ typedef void (*srds_conn_destroy)(sr_conn_ctx_t *conn, void *plg_data);
  * If @p ds is ::SR_DS_OPERATIONAL, it is actually an **edit** data tree that is being stored. That means that data
  * nodes with their **operations** (metadata) need to be stored and even **opaque nodes** with attributes. For this
  * datastore @p mod_diff is **never** provided.
+ *
+ * If @p ds is ::SR_DS_CANDIDATE and it has not been modified (::srds_candidate_modified() returns 0) then @p mod_diff
+ * is actually the difference between previous ::SR_DS_RUNNING contents and the new ::SR_DS_CANDIDATE contents.
  *
  * May be called simultaneously but with unique @p mod and @p ds pairs.
  *
