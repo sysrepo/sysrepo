@@ -3358,7 +3358,7 @@ sr_edit_add_xpath(const struct ly_ctx *ly_ctx, const struct lyd_node *tree, cons
         goto cleanup;
     }
 
-    xp = xpath;
+    for (xp = xpath; isspace(xp[0]);  ++xp) {}
     siblings = tree;
     schema = NULL;
     do {
@@ -3512,6 +3512,11 @@ sr_edit_add_xpath(const struct ly_ctx *ly_ctx, const struct lyd_node *tree, cons
 
         /* update siblings */
         siblings = *match ? lyd_child(*match) : NULL;
+
+        /* skip WS */
+        while (isspace(xp[0])) {
+            ++xp;
+        }
     } while (xp[0]);
 
 cleanup:
