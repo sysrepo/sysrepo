@@ -3358,7 +3358,7 @@ sr_edit_add_xpath(const struct ly_ctx *ly_ctx, const struct lyd_node *tree, cons
         goto cleanup;
     }
 
-    for (xp = xpath; isspace(xp[0]);  ++xp) {}
+    for (xp = xpath; isspace(xp[0]); ++xp) {}
     siblings = tree;
     schema = NULL;
     do {
