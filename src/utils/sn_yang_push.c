@@ -772,9 +772,6 @@ srsn_yp_on_change_modify(struct srsn_sub *sub, uint32_t dampening_period_ms)
     sr_error_info_t *err_info = NULL;
     struct timespec next_notif;
 
-    /* TIMER LOCK */
-    pthread_mutex_lock(&sub->damp_sntimer.lock);
-
     if (dampening_period_ms != sub->dampening_period_ms) {
         if (!dampening_period_ms) {
             /* stop the timer */
@@ -797,8 +794,5 @@ srsn_yp_on_change_modify(struct srsn_sub *sub, uint32_t dampening_period_ms)
     }
 
 cleanup:
-    /* TIMER UNLOCK */
-    pthread_mutex_unlock(&sub->damp_sntimer.lock);
-
     return err_info;
 }
