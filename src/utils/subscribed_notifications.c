@@ -198,7 +198,7 @@ srsn_yang_push_periodic(sr_session_ctx_t *session, sr_datastore_t ds, const char
 
 cleanup:
     if (err_info) {
-        if (s->rfd > -1) {
+        if (s && (s->rfd > -1)) {
             close(s->rfd);
         }
         srsn_sub_free(s);
@@ -269,7 +269,7 @@ srsn_yang_push_on_change(sr_session_ctx_t *session, sr_datastore_t ds, const cha
 
 cleanup:
     if (err_info) {
-        if (s->rfd > -1) {
+        if (s && (s->rfd > -1)) {
             close(s->rfd);
         }
         srsn_sub_free(s);
