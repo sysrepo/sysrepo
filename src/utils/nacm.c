@@ -2349,7 +2349,7 @@ sr_errinfo_new_nacm(sr_error_info_t **err_info, const char *sr_err_msg, const ch
     }
 
     /* create err_info */
-    sr_errinfo_new_data(err_info, SR_ERR_UNAUTHORIZED, "NETCONF", err_data, sr_err_msg);
+    sr_errinfo_new_data(err_info, SR_ERR_UNAUTHORIZED, "NETCONF", err_data, "%s", sr_err_msg);
 
 cleanup:
     va_end(vargs);

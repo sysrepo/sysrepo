@@ -357,7 +357,7 @@ srsn_yp_ntf_change_edit_append(struct lyd_node *ly_yp, srsn_yp_change_t yp_op, c
     }
 
     /* generate new edit ID */
-    edit_id = ATOMIC_INC_RELAXED(sub->edit_id);
+    edit_id = sub->edit_id++;
 
     /* edit with edit-id */
     sprintf(buf, "edit-%" PRIu32, edit_id);
@@ -488,7 +488,7 @@ srsn_yp_on_change_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
         yp_op = srsn_yp_op_sr2yp(op, node);
         if (sub->excluded_changes[yp_op]) {
             /* excluded */
-            ATOMIC_INC_RELAXED(sub->excluded_change_count);
+            ++sub->excluded_change_count;
             continue;
         }
 
@@ -511,7 +511,7 @@ srsn_yp_on_change_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
             }
 
             /* generate a new patch-id */
-            patch_id = ATOMIC_INC_RELAXED(sub->patch_id);
+            patch_id = sub->patch_id++;
             sprintf(buf, "patch-%" PRIu32, patch_id);
             if (lyd_new_path(sub->change_ntf->tree, NULL, "datastore-changes/yang-patch/patch-id", buf, 0, NULL)) {
                 sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
@@ -519,7 +519,7 @@ srsn_yp_on_change_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
             }
 
             /* initialize edit-id */
-            ATOMIC_STORE_RELAXED(sub->edit_id, 1);
+            sub->edit_id = 1;
         }
         if (!ly_yp) {
             ly_yp = lyd_child(lyd_child(sub->change_ntf->tree)->next);
@@ -601,7 +601,7 @@ srsn_yp_sr_subscribe_mod(const struct lys_module *ly_mod, sr_session_ctx_t *sess
     sub->sr_sub_ids[sub->sr_sub_id_count] = sr_subscription_get_last_sub_id(sub->sr_sub);
     ++sub->sr_sub_id_count;
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
 static int
