@@ -3682,6 +3682,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     uint32_t sid = 0;
     char *orig_name = NULL, *str;
     void *orig_data = NULL;
+    int r;
 
     *cb_err_info = NULL;
 
@@ -3706,11 +3707,15 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
         if (denied.denied) {
             /* access denied */
             if (denied.rule_name) {
-                asprintf(&str, "NACM access denied by the rule \"%s\".", denied.rule_name);
+                r = asprintf(&str, "NACM access denied by the rule \"%s\".", denied.rule_name);
             } else if (denied.def) {
-                asprintf(&str, "NACM access denied by \"%s\" node extension \"%s\".", LYD_NAME(denied.node), denied.def->name);
+                r = asprintf(&str, "NACM access denied by \"%s\" node extension \"%s\".", LYD_NAME(denied.node),
+                        denied.def->name);
             } else {
-                asprintf(&str, "NACM access denied by the default NACM permissions.");
+                r = asprintf(&str, "NACM access denied by the default NACM permissions.");
+            }
+            if (r == -1) {
+                str = NULL;
             }
             sr_errinfo_new_nacm(&err_info, str, "protocol", "access-denied", NULL, denied.node,
                     "Access to the data model \"%s\" is denied because \"%s\" NACM authorization failed.",
@@ -6314,6 +6319,7 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     struct lyd_node *input_top, *input_op, *ext_parent = NULL;
     char *path = NULL, *str, *parent_path = NULL;
     struct sr_denied denied = {0};
+    int r;
 
     SR_CHECK_ARG_APIRET(!session || !input || !output, session, err_info);
 
@@ -6370,11 +6376,14 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
         if (denied.denied) {
             /* access denied */
             if (denied.rule_name) {
-                asprintf(&str, "NACM access denied by the rule \"%s\".", denied.rule_name);
+                r = asprintf(&str, "NACM access denied by the rule \"%s\".", denied.rule_name);
             } else if (denied.def) {
-                asprintf(&str, "NACM access denied by \"%s\" node extension \"%s\".", LYD_NAME(denied.node), denied.def->name);
+                r = asprintf(&str, "NACM access denied by \"%s\" node extension \"%s\".", LYD_NAME(denied.node), denied.def->name);
             } else {
-                asprintf(&str, "NACM access denied by the default NACM permissions.");
+                r = asprintf(&str, "NACM access denied by the default NACM permissions.");
+            }
+            if (r == -1) {
+                str = NULL;
             }
             sr_errinfo_new_nacm(&err_info, str, "protocol", "access-denied", NULL, denied.node,
                     "Executing the operation is denied because \"%s\" NACM authorization failed.", session->nacm_user);
