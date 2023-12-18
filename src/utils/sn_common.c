@@ -1200,7 +1200,9 @@ srsn_create_timer(void (*cb)(void *arg, int *freed), void *arg, const struct tim
 void
 srsn_update_timer(const struct timespec *trigger, const struct timespec *interval, struct srsn_timer *sntimer)
 {
+    sr_error_info_t *err_info = NULL;
     pthread_t tid = 0;
+    int r;
 
     /* TIMER LOCK */
     pthread_mutex_lock(&sntimer->lock);
@@ -1238,7 +1240,10 @@ srsn_update_timer(const struct timespec *trigger, const struct timespec *interva
 
     if (tid) {
         /* wait until the thread finishes */
-        pthread_join(tid, NULL);
+        if ((r = pthread_join(tid, NULL))) {
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to join a thread (%s).", strerror(r));
+            sr_errinfo_free(&err_info);
+        }
     }
 }
 
