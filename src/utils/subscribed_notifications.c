@@ -731,7 +731,7 @@ srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp,
 
     /* 1) read the timestamp */
     if ((r = read(fd, timestamp, sizeof *timestamp)) != sizeof *timestamp) {
-        if ((r == -1) && ((errno == EAGAIN) || (errno = EWOULDBLOCK))) {
+        if ((r == -1) && ((errno == EAGAIN) || (errno == EWOULDBLOCK))) {
             /* timed out */
             rc = SR_ERR_TIME_OUT;
         } else if (!r) {
