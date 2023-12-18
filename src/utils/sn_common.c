@@ -1526,7 +1526,7 @@ srsn_sn_sr_subscribe(sr_session_ctx_t *sess, struct srsn_sub *sub, int sub_no_th
         }
 
         /* allocate all sub IDs */
-        sub->sr_sub_ids = malloc(mod_set.count * sizeof *sub->sr_sub_ids);
+        sub->sr_sub_ids = calloc(mod_set.count, sizeof *sub->sr_sub_ids);
         SR_CHECK_MEM_GOTO(!sub->sr_sub_ids, err_info, error);
 
         /* set subscription and replayed count */
@@ -1560,7 +1560,7 @@ srsn_sn_sr_subscribe(sr_session_ctx_t *sess, struct srsn_sub *sub, int sub_no_th
         }
     } else {
         /* allocate a new single sub ID */
-        sub->sr_sub_ids = malloc(sizeof *sub->sr_sub_ids);
+        sub->sr_sub_ids = calloc(1, sizeof *sub->sr_sub_ids);
         SR_CHECK_MEM_GOTO(!sub->sr_sub_ids, err_info, error);
 
         /* set subscription and replayed count */
