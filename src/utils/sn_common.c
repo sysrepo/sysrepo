@@ -1431,6 +1431,7 @@ srsn_sn_rpc_subscribe_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), con
         ATOMIC_INC_RELAXED(sub->replay_complete_count);
         break;
     case SR_EV_NOTIF_REALTIME:
+        assert(notif);
         if (ATOMIC_LOAD_RELAXED(sub->replay_complete_count) < ATOMIC_LOAD_RELAXED(sub->sr_sub_id_count)) {
             /* realtime notification received before replay has been completed, store in buffer */
             srsn_ntf_add_dup(notif, timestamp, &sub->rt_notifs, &sub->rt_notif_count);
@@ -1442,6 +1443,8 @@ srsn_sn_rpc_subscribe_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), con
         }
         break;
     case SR_EV_NOTIF_REPLAY:
+        assert(notif);
+
         /* send the replayed notification */
         if ((err_info = srsn_ntf_send(sub, timestamp, notif))) {
             sr_errinfo_free(&err_info);
