@@ -4433,7 +4433,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     sr_error_info_t *err_info = NULL;
     uint32_t i, request_id, valid_subscr_count;
     struct lyd_node *orig_notif = NULL, *notif_dup = NULL, *notif, *notif_op;
-    const struct lyd_node *denied_node;
+    struct sr_denied denied;
     struct ly_in *in = NULL;
     struct timespec notif_ts_mono, notif_ts_real;
     char *shm_data_ptr;
@@ -4497,7 +4497,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     valid_subscr_count = 0;
     for (i = 0; i < notif_subs->sub_count; ++i) {
         sub = &notif_subs->subs[i];
-        denied_node = NULL;
+        memset(&denied, 0, sizeof denied);
 
         if (sr_time_cmp(&sub->listen_since_mono, &notif_ts_mono) > 0) {
             /* generated before this subscription has been made */
@@ -4523,7 +4523,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
             }
 
             /* push-change-update notif is filtered specially by NACM */
-            if ((err_info = sr_nacm_check_push_update_notif(sub->sess->nacm_user, notif, &denied_node))) {
+            if ((err_info = sr_nacm_check_push_update_notif(sub->sess->nacm_user, notif, &denied))) {
                 goto cleanup;
             }
         } else {
@@ -4531,7 +4531,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
             notif = orig_notif;
 
             /* check NACM */
-            if (sub->sess->nacm_user && (err_info = sr_nacm_check_operation(sub->sess->nacm_user, notif, &denied_node))) {
+            if (sub->sess->nacm_user && (err_info = sr_nacm_check_operation(sub->sess->nacm_user, notif, &denied))) {
                 goto cleanup;
             }
         }
@@ -4543,7 +4543,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
         }
 
         /* NACM and xpath filter */
-        if (!denied_node && sr_shmsub_notif_listen_filter_is_valid(notif_op, sub->xpath)) {
+        if (!denied.denied && sr_shmsub_notif_listen_filter_is_valid(notif_op, sub->xpath)) {
             /* call callback */
             if ((err_info = sr_notif_call_callback(ev_sess, sub->cb, sub->tree_cb, sub->private_data,
                     SR_EV_NOTIF_REALTIME, sub->sub_id, notif_op, &notif_ts_real))) {
@@ -4557,7 +4557,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
         /* processed */
         ++valid_subscr_count;
 
-        if (!denied_node) {
+        if (!denied.denied) {
             /* may have been modified and is useless now */
             lyd_free_all(notif_dup);
             notif_dup = NULL;

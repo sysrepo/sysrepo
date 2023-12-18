@@ -103,6 +103,18 @@ enum sr_nacm_access {
 };
 
 /**
+ * @brief NACM access denied details.
+ *
+ * If @p denied and both @p rule_name and @p def are NULL, the default permissions are set to deny.
+ */
+struct sr_denied {
+    int denied;                         /**< set if access denied */
+    const struct lyd_node *node;        /**< node that has denied access */
+    char *rule_name;                    /**< offending rule name, if denied */
+    const struct lysc_ext *def;         /**< offending NACM extension, if denied */
+};
+
+/**
  * @brief Check whether a node is (partially) permitted.
  *
  * @param[in] x Access for the node.
@@ -130,11 +142,11 @@ enum sr_nacm_access {
  *
  * @param[in] nacm_user NACM username to use.
  * @param[in] data Top-level node of the operation.
- * @param[out] denied_node NULL if access allowed, otherwise the denied access data node.
+ * @param[in,out] denied Deny details, if applicable.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_nacm_check_operation(const char *nacm_user, const struct lyd_node *data,
-        const struct lyd_node **denied_node);
+        struct sr_denied *denied);
 
 /**
  * @brief Filter out result nodes that do not have R access to.
@@ -161,12 +173,11 @@ sr_error_info_t *sr_nacm_get_subtree_read_filter(sr_session_ctx_t *session, stru
  *
  * @param[in] nacm_user NACM username to use.
  * @param[in,out] notif Top-level node of the notification tree to filter.
- * @param[out] denied_node NULL if access allowed, otherwise the denied access data node. If set, @p notif was
- * not modified.
+ * @param[in,out] denied Deny details, if applicable. If allowed, @p notif was not modified.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_nacm_check_push_update_notif(const char *nacm_user, struct lyd_node *notif,
-        const struct lyd_node **denied_node);
+        struct sr_denied *denied);
 
 /**
  * @brief Check whether a diff (simplified edit-config tree) can be applied by a user.
@@ -177,15 +188,16 @@ sr_error_info_t *sr_nacm_check_push_update_notif(const char *nacm_user, struct l
  *
  * @param[in] nacm_user NACM username to use.
  * @param[in] diff Diff tree to check.
- * @param[out] denied_node NULL if access allowed, otherwise the denied access data node.
+ * @param[in,out] denied Deny details, if applicable.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_nacm_check_diff(const char *nacm_user, const struct lyd_node *diff, const struct lyd_node **denied_node);
+sr_error_info_t *sr_nacm_check_diff(const char *nacm_user, const struct lyd_node *diff, struct sr_denied *denied);
 
 /**
  * @brief Create a NETCONF error info structure for a NACM error.
  *
  * @param[out] err_info Created error info.
+ * @param[in] sr_err_msg Generic sysrepo error message.
  * @param[in] error_type NETCONF error type.
  * @param[in] error_tag NETCONF error tag.
  * @param[in] error_app_tag Optional NETCONF error app tag.
@@ -193,7 +205,7 @@ sr_error_info_t *sr_nacm_check_diff(const char *nacm_user, const struct lyd_node
  * @param[in] error_message_fmt NETCONF error message format.
  * @param[in] ... NETCONF error messsage format arguments.
  */
-void sr_errinfo_new_nacm(sr_error_info_t **err_info, const char *error_type, const char *error_tag,
-        const char *error_app_tag, const struct lyd_node *error_path_node, const char *error_message_fmt, ...) _FORMAT_PRINTF(6, 7);
+void sr_errinfo_new_nacm(sr_error_info_t **err_info, const char *sr_err_msg, const char *error_type, const char *error_tag,
+        const char *error_app_tag, const struct lyd_node *error_path_node, const char *error_message_fmt, ...) _FORMAT_PRINTF(7, 8);
 
 #endif /* SR_NACM_H_ */
