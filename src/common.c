@@ -1411,7 +1411,7 @@ sr_perm_check(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
-    const struct sr_ds_handle_s *handle;
+    const struct sr_ds_handle_s *handle = NULL;
     int rc, r, w;
 
     /* find the module in SHM */
@@ -3364,7 +3364,7 @@ sr_conn_ds_init(sr_conn_ctx_t *conn)
     sr_error_info_t *err_info = NULL;
     sr_mod_shm_t *mod_shm;
     sr_mod_t *mod;
-    struct sr_ds_handle_s *ds_handle;
+    struct sr_ds_handle_s *ds_handle = NULL;
     sr_datastore_t ds;
     uint32_t i;
     int rc;

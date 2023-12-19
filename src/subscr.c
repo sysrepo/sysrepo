@@ -1321,8 +1321,8 @@ sr_rpc_sub_del(sr_subscription_ctx_t *subscr, uint32_t idx1, uint32_t idx2, sr_l
     sr_error_info_t *err_info = NULL, *tmp_err;
     struct opsub_rpc_s *rpc_sub;
     char *mod_name = NULL;
-    sr_mod_t *shm_mod;
-    sr_rpc_t *shm_rpc;
+    sr_mod_t *shm_mod = NULL;
+    sr_rpc_t *shm_rpc = NULL;
     sr_lock_mode_t subs_lock = has_subs_lock;
     int is_ext;
     uint32_t sub_id;
