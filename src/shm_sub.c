@@ -3211,7 +3211,7 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
     sr_error_info_t *err_info = NULL;
     uint32_t i, data_len = 0, valid_subscr_count;
     char *data = NULL, *shm_data_ptr;
-    int ret = SR_ERR_OK;
+    int ret = SR_ERR_OK, filter_orig;
     sr_lock_mode_t sub_lock = SR_LOCK_NONE;
     struct lyd_node *diff;
     sr_data_t *edit_data;
@@ -3299,9 +3299,13 @@ process_event:
         sub_lock = SR_LOCK_NONE;
 
         /* call callback if there are some changes */
+        filter_orig = 0;
         if (sr_shmsub_change_filter_is_valid(change_sub->xpath, diff)) {
             ret = change_sub->cb(ev_sess, change_sub->sub_id, change_subs->module_name, change_sub->xpath,
                     sr_ev2api(sub_info.event), sub_info.request_id, change_sub->private_data);
+        } else if (change_sub->opts & SR_SUBSCR_FILTER_ORIG) {
+            /* filtered by originator */
+            filter_orig = 1;
         } else {
             /* filtered out */
             ATOMIC_INC_RELAXED(change_sub->filtered_out);
@@ -3313,6 +3317,11 @@ process_event:
             goto cleanup;
         }
         sub_lock = SR_LOCK_READ;
+
+        if (filter_orig) {
+            /* not a valid event for this subscription */
+            continue;
+        }
 
         if ((sub_info.event == SR_SUB_EV_UPDATE) || (sub_info.event == SR_SUB_EV_CHANGE)) {
             if (ret == SR_ERR_CALLBACK_SHELVE) {
