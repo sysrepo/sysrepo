@@ -888,18 +888,63 @@ sr_shmsub_change_listen_event_is_valid(sr_sub_event_t ev, sr_subscr_options_t su
 }
 
 /**
+ * @brief Check whether there is a change (some diff) for the subscription based on the used XPath filter.
+ *
+ * @param[in] xpath Used XPath filter.
+ * @param[in] diff Full diff for the module.
+ * @return 0 if not, non-zero if there is.
+ */
+static int
+sr_shmsub_change_filter_is_valid(const char *xpath, const struct lyd_node *diff)
+{
+    struct ly_set *set;
+    const struct lyd_node *elem;
+    uint32_t i;
+    enum edit_op op;
+    int ret = 0;
+    LY_ERR lyrc;
+
+    if (!xpath) {
+        return 1;
+    }
+
+    lyrc = lyd_find_xpath(diff, xpath, &set);
+    assert(!lyrc);
+    (void)lyrc;
+
+    for (i = 0; i < set->count; ++i) {
+        LYD_TREE_DFS_BEGIN(set->dnodes[i], elem) {
+            op = sr_edit_diff_find_oper(elem, 1, NULL);
+            assert(op);
+            if (op != EDIT_NONE) {
+                ret = 1;
+                break;
+            }
+            LYD_TREE_DFS_END(set->dnodes[i], elem);
+        }
+        if (ret) {
+            break;
+        }
+    }
+    ly_set_free(set, NULL);
+
+    return ret;
+}
+
+/**
  * @brief Learn whether there is a subscription for a change event.
  *
  * @param[in] conn Connection to use.
  * @param[in] mod Mod info module to use.
  * @param[in] ds Datastore.
+ * @param[in] diff Event diff.
  * @param[in] ev Event.
  * @param[out] max_priority_p Highest priority among the valid subscribers.
  * @return 0 if not, non-zero if there is.
  */
 static int
 sr_shmsub_change_notify_has_subscription(sr_conn_ctx_t *conn, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
-        sr_sub_event_t ev, uint32_t *max_priority_p)
+        const struct lyd_node *diff, sr_sub_event_t ev, uint32_t *max_priority_p)
 {
     sr_error_info_t *err_info = NULL;
     int has_sub = 0;
@@ -931,6 +976,13 @@ sr_shmsub_change_notify_has_subscription(sr_conn_ctx_t *conn, struct sr_mod_info
             continue;
         }
 
+        /* skip subscriptions that filter-out all the changes */
+        if ((shm_sub[i].opts & SR_SUBSCR_FILTER_ORIG) &&
+                !sr_shmsub_change_filter_is_valid(conn->ext_shm.addr + shm_sub[i].xpath, diff)) {
+            ++i;
+            continue;
+        }
+
         /* check whether the event is valid for the specific subscription or will be ignored */
         if (sr_shmsub_change_listen_event_is_valid(ev, shm_sub[i].opts)) {
             has_sub = 1;
@@ -954,6 +1006,7 @@ sr_shmsub_change_notify_has_subscription(sr_conn_ctx_t *conn, struct sr_mod_info
  * @param[in] conn Connection to use.
  * @param[in] mod Mod info module to use.
  * @param[in] ds Datastore.
+ * @param[in] diff Event diff.
  * @param[in] ev Change event.
  * @param[in] last_priority Last priorty of a subscriber.
  * @param[out] next_priorty_p Next priorty of a subsciber(s).
@@ -963,7 +1016,8 @@ sr_shmsub_change_notify_has_subscription(sr_conn_ctx_t *conn, struct sr_mod_info
  */
 static sr_error_info_t *
 sr_shmsub_change_notify_next_subscription(sr_conn_ctx_t *conn, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
-        sr_sub_event_t ev, uint32_t last_priority, uint32_t *next_priority_p, uint32_t *sub_count_p, int *opts_p)
+        const struct lyd_node *diff, sr_sub_event_t ev, uint32_t last_priority, uint32_t *next_priority_p,
+        uint32_t *sub_count_p, int *opts_p)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -990,6 +1044,13 @@ sr_shmsub_change_notify_next_subscription(sr_conn_ctx_t *conn, struct sr_mod_inf
 
         /* skip suspended subscriptions */
         if (ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
+            ++i;
+            continue;
+        }
+
+        /* skip subscriptions that filter-out all the changes */
+        if ((shm_sub[i].opts & SR_SUBSCR_FILTER_ORIG) &&
+                !sr_shmsub_change_filter_is_valid(conn->ext_shm.addr + shm_sub[i].xpath, diff)) {
             ++i;
             continue;
         }
@@ -1072,13 +1133,14 @@ cleanup:
  * @param[in] conn Connection to use.
  * @param[in] mod Mod info module to use.
  * @param[in] ds Datastore.
+ * @param[in] diff Event diff.
  * @param[in] ev Change event.
  * @param[in] priority Priority of the subscribers with new event.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmsub_change_notify_evpipe(sr_conn_ctx_t *conn, struct sr_mod_info_mod_s *mod, sr_datastore_t ds, sr_sub_event_t ev,
-        uint32_t priority)
+sr_shmsub_change_notify_evpipe(sr_conn_ctx_t *conn, struct sr_mod_info_mod_s *mod, sr_datastore_t ds,
+        const struct lyd_node *diff, sr_sub_event_t ev, uint32_t priority)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_change_sub_t *shm_sub;
@@ -1097,6 +1159,12 @@ sr_shmsub_change_notify_evpipe(sr_conn_ctx_t *conn, struct sr_mod_info_mod_s *mo
 
         /* skip suspended subscriptions */
         if (ATOMIC_LOAD_RELAXED(shm_sub[i].suspended)) {
+            continue;
+        }
+
+        /* skip subscriptions that filter-out all the changes */
+        if ((shm_sub[i].opts & SR_SUBSCR_FILTER_ORIG) &&
+                !sr_shmsub_change_filter_is_valid(conn->ext_shm.addr + shm_sub[i].xpath, diff)) {
             continue;
         }
 
@@ -1174,13 +1242,14 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, const char *orig_
         }
 
         /* just find out whether there are any subscriptions and if so, what is the highest priority */
-        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_UPDATE, &cur_priority)) {
+        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, mod_info->diff,
+                SR_SUB_EV_UPDATE, &cur_priority)) {
             continue;
         }
 
         /* correctly start the loop, with fake last priority 1 higher than the actual highest */
-        if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_UPDATE,
-                cur_priority + 1, &cur_priority, &subscriber_count, NULL))) {
+        if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, mod_info->diff,
+                SR_SUB_EV_UPDATE, cur_priority + 1, &cur_priority, &subscriber_count, NULL))) {
             goto cleanup;
         }
 
@@ -1228,8 +1297,8 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, const char *orig_
             }
 
             /* notify using event pipe and wait until all the subscribers have processed the event */
-            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_UPDATE,
-                    cur_priority))) {
+            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn, mod, mod_info->ds, mod_info->diff,
+                    SR_SUB_EV_UPDATE, cur_priority))) {
                 goto cleanup_wrunlock;
             }
 
@@ -1277,8 +1346,8 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, const char *orig_
             }
 
             /* find out what is the next priority and how many subscribers have it */
-            if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_UPDATE,
-                    cur_priority, &cur_priority, &subscriber_count, NULL))) {
+            if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, mod, mod_info->ds, mod_info->diff,
+                    SR_SUB_EV_UPDATE, cur_priority, &cur_priority, &subscriber_count, NULL))) {
                 goto cleanup_wrunlock;
             }
         } while (subscriber_count);
@@ -1435,9 +1504,10 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
         }
 
         /* find out whether there are any subscriptions and if so, what is the highest priority */
-        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_CHANGE, &max_priority)) {
-            if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_DONE,
-                    &max_priority)) {
+        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, mod_info->diff,
+                SR_SUB_EV_CHANGE, &max_priority)) {
+            if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, mod_info->diff,
+                    SR_SUB_EV_DONE, &max_priority)) {
                 if (mod_info->ds == SR_DS_RUNNING) {
                     SR_LOG_INF("There are no subscribers for changes of the module \"%s\" in %s DS.",
                             mod->ly_mod->name, sr_ds2str(mod_info->ds));
@@ -1482,7 +1552,7 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
 
             /* get next subscriber(s) priority and subscriber count */
             if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, nsub->mod, mod_info->ds,
-                    SR_SUB_EV_CHANGE, nsub->cur_priority, &nsub->cur_priority, &subscriber_count, &opts))) {
+                    mod_info->diff, SR_SUB_EV_CHANGE, nsub->cur_priority, &nsub->cur_priority, &subscriber_count, &opts))) {
                 goto cleanup;
             }
 
@@ -1522,8 +1592,8 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
             }
 
             /* notify the subscribers using an event pipe */
-            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn, nsub->mod, mod_info->ds, SR_SUB_EV_CHANGE,
-                    nsub->cur_priority))) {
+            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn, nsub->mod, mod_info->ds, mod_info->diff,
+                    SR_SUB_EV_CHANGE, nsub->cur_priority))) {
                 goto cleanup;
             }
         }
@@ -1611,7 +1681,8 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
             continue;
         }
 
-        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_DONE, &max_priority)) {
+        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, mod_info->diff, SR_SUB_EV_DONE,
+                &max_priority)) {
             /* no subscriptions interested in this event */
             continue;
         }
@@ -1652,7 +1723,7 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
 
             /* get next subscriber(s) priority and subscriber count */
             if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, nsub->mod, mod_info->ds,
-                    SR_SUB_EV_DONE, nsub->cur_priority, &nsub->cur_priority, &subscriber_count, &opts))) {
+                    mod_info->diff, SR_SUB_EV_DONE, nsub->cur_priority, &nsub->cur_priority, &subscriber_count, &opts))) {
                 goto cleanup;
             }
 
@@ -1691,8 +1762,8 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
             }
 
             /* notify the subscribers using an event pipe */
-            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn, nsub->mod, mod_info->ds, SR_SUB_EV_DONE,
-                    nsub->cur_priority))) {
+            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn, nsub->mod, mod_info->ds, mod_info->diff,
+                    SR_SUB_EV_DONE, nsub->cur_priority))) {
                 goto cleanup;
             }
         }
@@ -1773,13 +1844,15 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
             continue;
         }
 
-        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_CHANGE, &max_priority)) {
+        if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, mod_info->diff,
+                SR_SUB_EV_CHANGE, &max_priority)) {
             /* no subscriptions whatsoever */
             continue;
         }
 
         /* whether there are some "abort" subscriptions or not, create the notify_sub */
-        sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, SR_SUB_EV_ABORT, &max_priority);
+        sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, mod_info->diff, SR_SUB_EV_ABORT,
+                &max_priority);
 
         notify_subs = sr_realloc(notify_subs, (notify_count + 1) * sizeof *notify_subs);
         SR_CHECK_MEM_GOTO(!notify_subs, err_info, cleanup);
@@ -1866,7 +1939,7 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
 
             /* get next subscriber(s) priority and subscriber count */
             if ((err_info = sr_shmsub_change_notify_next_subscription(mod_info->conn, nsub->mod, mod_info->ds,
-                    SR_SUB_EV_ABORT, nsub->cur_priority, &nsub->cur_priority, &subscriber_count, NULL))) {
+                    mod_info->diff, SR_SUB_EV_ABORT, nsub->cur_priority, &nsub->cur_priority, &subscriber_count, NULL))) {
                 goto cleanup;
             }
 
@@ -1907,8 +1980,8 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
             }
 
             /* notify the subscribers using an event pipe */
-            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn, nsub->mod, mod_info->ds, SR_SUB_EV_ABORT,
-                    nsub->cur_priority))) {
+            if ((err_info = sr_shmsub_change_notify_evpipe(mod_info->conn, nsub->mod, mod_info->ds, mod_info->diff,
+                    SR_SUB_EV_ABORT, nsub->cur_priority))) {
                 goto cleanup;
             }
         }
@@ -2893,50 +2966,6 @@ sr_shmsub_change_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct m
     return 1;
 }
 
-/**
- * @brief Whether there is a change (some diff) for the subscription.
- *
- * @param[in] sub Change subscription.
- * @param[in] diff Full diff for the module.
- * @return 0 if not, non-zero if there is.
- */
-static int
-sr_shmsub_change_listen_filter_is_valid(struct modsub_changesub_s *sub, const struct lyd_node *diff)
-{
-    struct ly_set *set;
-    const struct lyd_node *elem;
-    uint32_t i;
-    enum edit_op op;
-    int ret = 0;
-    LY_ERR lyrc;
-
-    if (!sub->xpath) {
-        return 1;
-    }
-
-    lyrc = lyd_find_xpath(diff, sub->xpath, &set);
-    assert(!lyrc);
-    (void)lyrc;
-
-    for (i = 0; i < set->count; ++i) {
-        LYD_TREE_DFS_BEGIN(set->dnodes[i], elem) {
-            op = sr_edit_diff_find_oper(elem, 1, NULL);
-            assert(op);
-            if (op != EDIT_NONE) {
-                ret = 1;
-                break;
-            }
-            LYD_TREE_DFS_END(set->dnodes[i], elem);
-        }
-        if (ret) {
-            break;
-        }
-    }
-    ly_set_free(set, NULL);
-
-    return ret;
-}
-
 sr_error_info_t *
 sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t valid_subscr_count, sr_error_t err_code,
         sr_shm_t *shm_data_sub, const char *data, uint32_t data_len, const char *event_desc, const char *result_str)
@@ -3270,7 +3299,7 @@ process_event:
         sub_lock = SR_LOCK_NONE;
 
         /* call callback if there are some changes */
-        if (sr_shmsub_change_listen_filter_is_valid(change_sub, diff)) {
+        if (sr_shmsub_change_filter_is_valid(change_sub->xpath, diff)) {
             ret = change_sub->cb(ev_sess, change_sub->sub_id, change_subs->module_name, change_sub->xpath,
                     sr_ev2api(sub_info.event), sub_info.request_id, change_sub->private_data);
         } else {

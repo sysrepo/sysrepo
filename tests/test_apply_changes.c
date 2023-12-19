@@ -5786,6 +5786,183 @@ test_done_timeout(void **state)
 }
 
 /* TEST */
+static void *
+apply_filter_orig_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for subscription before applying changes */
+    pthread_barrier_wait(&st->barrier);
+
+    /* perform 1st changes */
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* prepare for 2nd changes */
+    pthread_barrier_wait(&st->barrier);
+
+    /* perform 2nd changes */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/description", "some-desc", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* prepare for 3rd changes */
+    pthread_barrier_wait(&st->barrier);
+
+    /* perform 3rd changes */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/description", "other-desc", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* prepare for cleanup */
+    pthread_barrier_wait(&st->barrier);
+
+    /* cleanup */
+    ret = sr_delete_item(sess, "/ietf-interfaces:interfaces", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_session_stop(sess);
+    return NULL;
+}
+
+static void *
+subscribe_filter_orig_thread(void *arg)
+{
+    struct state *st = (struct state *)arg;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *sub1 = NULL, *sub2 = NULL;
+    int ret, fd1, fd2, i;
+    struct pollfd pfd = {.events = POLLIN};
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface[name='eth0']",
+            dummy_change_cb, NULL, 0, SR_SUBSCR_NO_THREAD | SR_SUBSCR_FILTER_ORIG, &sub1);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_get_event_pipe(sub1, &fd1);
+
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", "/ietf-interfaces:interfaces/interface[name='eth1']",
+            dummy_change_cb, NULL, 0, SR_SUBSCR_NO_THREAD | SR_SUBSCR_FILTER_ORIG, &sub2);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_get_event_pipe(sub2, &fd2);
+
+    /* signal that subscriptions were created */
+    pthread_barrier_wait(&st->barrier);
+
+    /* 2 events */
+    for (i = 0; i < 2; ++i) {
+        /* poll, sub1 data, sub2 no data */
+        pfd.fd = fd1;
+        ret = poll(&pfd, 1, 1000);
+        assert_int_equal(ret, 1);
+        pfd.fd = fd2;
+        ret = poll(&pfd, 1, 50);
+        assert_int_equal(ret, 0);
+
+        /* process events */
+        ret = sr_subscription_process_events(sub1, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    /* safety poll */
+    pfd.fd = fd1;
+    ret = poll(&pfd, 1, 0);
+    assert_int_equal(ret, 0);
+    pfd.fd = fd2;
+    ret = poll(&pfd, 1, 0);
+    assert_int_equal(ret, 0);
+
+    /* wait for 2nd changes */
+    pthread_barrier_wait(&st->barrier);
+
+    for (i = 0; i < 2; ++i) {
+        /* poll, sub1 data, sub2 data */
+        pfd.fd = fd1;
+        ret = poll(&pfd, 1, 1000);
+        assert_int_equal(ret, 1);
+        pfd.fd = fd2;
+        ret = poll(&pfd, 1, 1000);
+        assert_int_equal(ret, 1);
+
+        /* process events */
+        ret = sr_subscription_process_events(sub1, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_subscription_process_events(sub2, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    /* safety poll */
+    pfd.fd = fd1;
+    ret = poll(&pfd, 1, 0);
+    assert_int_equal(ret, 0);
+    pfd.fd = fd2;
+    ret = poll(&pfd, 1, 0);
+    assert_int_equal(ret, 0);
+
+    /* wait for 3rd changes */
+    pthread_barrier_wait(&st->barrier);
+
+    for (i = 0; i < 2; ++i) {
+        /* poll, sub1 no data, sub2 data */
+        pfd.fd = fd1;
+        ret = poll(&pfd, 1, 50);
+        assert_int_equal(ret, 0);
+        pfd.fd = fd2;
+        ret = poll(&pfd, 1, 1000);
+        assert_int_equal(ret, 1);
+
+        /* process events */
+        ret = sr_subscription_process_events(sub2, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    /* safety poll */
+    pfd.fd = fd1;
+    ret = poll(&pfd, 1, 0);
+    assert_int_equal(ret, 0);
+    pfd.fd = fd2;
+    ret = poll(&pfd, 1, 0);
+    assert_int_equal(ret, 0);
+
+    /* unsubscribe */
+    sr_unsubscribe(sub1);
+    sr_unsubscribe(sub2);
+    sr_session_stop(sess);
+
+    /* wait for cleanup */
+    pthread_barrier_wait(&st->barrier);
+
+    return NULL;
+}
+
+static void
+test_filter_orig(void **state)
+{
+    pthread_t tid[2];
+
+    pthread_create(&tid[0], NULL, apply_filter_orig_thread, *state);
+    pthread_create(&tid[1], NULL, subscribe_filter_orig_thread, *state);
+
+    pthread_join(tid[0], NULL);
+    pthread_join(tid[1], NULL);
+}
+
+/* TEST */
 static int
 module_change_order_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data)
@@ -7011,6 +7188,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_change_unlocked, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_timeout, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_done_timeout, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_filter_orig, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_order, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_userord, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_change_enabled, setup_f, teardown_f),

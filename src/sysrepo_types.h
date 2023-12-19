@@ -442,7 +442,15 @@ typedef enum {
      * @brief On every data retrieval additionally compute diff with the previous data and report the changes to any
      * operational data module change subscriptions. Accepted only for ::sr_oper_poll_subscribe().
      */
-    SR_SUBSCR_OPER_POLL_DIFF = 0x80
+    SR_SUBSCR_OPER_POLL_DIFF = 0x80,
+
+    /**
+     * @brief Normally, XPath filter is applied by the listener (subscriber) for counting its statistics of filtered-out
+     * events. Using this option the event originator performs the filtering to unburden the subscriber of unnecessary
+     * event handling but results in 0 filtered-out changes returned by ::sr_module_change_sub_get_info(). Accepted
+     * only for ::sr_module_change_subscribe().
+     */
+    SR_SUBSCR_FILTER_ORIG = 0x100
 
 } sr_subscr_flag_t;
 
