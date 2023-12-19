@@ -181,11 +181,12 @@ test_sub_delete(void **state)
     /* read (no poll, pipe closed) and check the notif */
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
     lyd_print_mem(&str, notif, LYD_XML, 0);
-    asprintf(&exp,
+    ret = asprintf(&exp,
             "<subscription-terminated xmlns=\"urn:ietf:params:xml:ns:yang:ietf-subscribed-notifications\">\n"
             "  <id>%" PRIu32 "</id>\n"
             "  <reason>no-such-subscription</reason>\n"
             "</subscription-terminated>\n", sub_id);
+    assert_int_not_equal(ret, -1);
     assert_string_equal(str, exp);
     free(str);
     free(exp);
@@ -215,11 +216,12 @@ test_sub_delete(void **state)
     /* read (no poll, pipe closed) and check the notif */
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
     lyd_print_mem(&str, notif, LYD_XML, 0);
-    asprintf(&exp,
+    ret = asprintf(&exp,
             "<subscription-terminated xmlns=\"urn:ietf:params:xml:ns:yang:ietf-subscribed-notifications\">\n"
             "  <id>%" PRIu32 "</id>\n"
             "  <reason>no-such-subscription</reason>\n"
             "</subscription-terminated>\n", sub_id);
+    assert_int_not_equal(ret, -1);
     assert_string_equal(str, exp);
     free(str);
     free(exp);
@@ -244,7 +246,7 @@ test_stop_time(void **state)
 {
     struct state *st = (struct state *)*state;
     struct lyd_node *notif;
-    int fd;
+    int ret, fd;
     char *str, *exp;
     uint32_t sub_id;
     struct timespec ts;
@@ -264,11 +266,12 @@ test_stop_time(void **state)
     assert_int_equal(SR_ERR_OK, srsn_poll(fd, 1000));
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
     lyd_print_mem(&str, notif, LYD_XML, 0);
-    asprintf(&exp,
+    ret = asprintf(&exp,
             "<subscription-terminated xmlns=\"urn:ietf:params:xml:ns:yang:ietf-subscribed-notifications\">\n"
             "  <id>%" PRIu32 "</id>\n"
             "  <reason>no-such-subscription</reason>\n"
             "</subscription-terminated>\n", sub_id);
+    assert_int_not_equal(ret, -1);
     assert_string_equal(str, exp);
     free(str);
     free(exp);
@@ -287,7 +290,7 @@ test_replay(void **state)
 {
     struct state *st = (struct state *)*state;
     struct lyd_node *notif;
-    int fd;
+    int ret, fd;
     char *str, *exp;
     uint32_t sub_id;
     struct timespec ts;
@@ -313,10 +316,11 @@ test_replay(void **state)
     assert_int_equal(SR_ERR_OK, srsn_poll(fd, 1000));
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
     lyd_print_mem(&str, notif, LYD_XML, 0);
-    asprintf(&exp,
+    ret = asprintf(&exp,
             "<replay-completed xmlns=\"urn:ietf:params:xml:ns:yang:ietf-subscribed-notifications\">\n"
             "  <id>%" PRIu32 "</id>\n"
             "</replay-completed>\n", sub_id);
+    assert_int_not_equal(ret, -1);
     assert_string_equal(str, exp);
     free(str);
     free(exp);
@@ -328,11 +332,12 @@ test_replay(void **state)
     /* read (no poll, pipe closed) and check the notif */
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
     lyd_print_mem(&str, notif, LYD_XML, 0);
-    asprintf(&exp,
+    ret = asprintf(&exp,
             "<subscription-terminated xmlns=\"urn:ietf:params:xml:ns:yang:ietf-subscribed-notifications\">\n"
             "  <id>%" PRIu32 "</id>\n"
             "  <reason>no-such-subscription</reason>\n"
             "</subscription-terminated>\n", sub_id);
+    assert_int_not_equal(ret, -1);
     assert_string_equal(str, exp);
     free(str);
     free(exp);
@@ -398,11 +403,12 @@ test_suspend(void **state)
     /* read (no poll, pipe closed) and check the notif */
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
     lyd_print_mem(&str, notif, LYD_XML, 0);
-    asprintf(&exp,
+    ret = asprintf(&exp,
             "<subscription-terminated xmlns=\"urn:ietf:params:xml:ns:yang:ietf-subscribed-notifications\">\n"
             "  <id>%" PRIu32 "</id>\n"
             "  <reason>no-such-subscription</reason>\n"
             "</subscription-terminated>\n", sub_id);
+    assert_int_not_equal(ret, -1);
     assert_string_equal(str, exp);
     free(str);
     free(exp);
@@ -436,7 +442,7 @@ test_yp_periodic(void **state)
     assert_int_equal(SR_ERR_OK, srsn_poll(fd, 500));
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
     lyd_print_mem(&str, notif, LYD_XML, 0);
-    asprintf(&exp,
+    ret = asprintf(&exp,
             "<push-update xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-push\">\n"
             "  <id>%" PRIu32 "</id>\n"
             "  <datastore-contents>\n"
@@ -448,6 +454,7 @@ test_yp_periodic(void **state)
             "    </interfaces>\n"
             "  </datastore-contents>\n"
             "</push-update>\n", sub_id);
+    assert_int_not_equal(ret, -1);
     assert_string_equal(str, exp);
     free(str);
     free(exp);
@@ -463,7 +470,7 @@ test_yp_periodic(void **state)
     assert_int_equal(SR_ERR_OK, srsn_poll(fd, 500));
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
     lyd_print_mem(&str, notif, LYD_XML, 0);
-    asprintf(&exp,
+    ret = asprintf(&exp,
             "<push-update xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-push\">\n"
             "  <id>%" PRIu32 "</id>\n"
             "  <datastore-contents>\n"
@@ -479,6 +486,7 @@ test_yp_periodic(void **state)
             "    </interfaces>\n"
             "  </datastore-contents>\n"
             "</push-update>\n", sub_id);
+    assert_int_not_equal(ret, -1);
     assert_string_equal(str, exp);
     free(str);
     free(exp);
@@ -490,11 +498,12 @@ test_yp_periodic(void **state)
     /* read (no poll, pipe closed) and check the notif */
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
     lyd_print_mem(&str, notif, LYD_XML, 0);
-    asprintf(&exp,
+    ret = asprintf(&exp,
             "<subscription-terminated xmlns=\"urn:ietf:params:xml:ns:yang:ietf-subscribed-notifications\">\n"
             "  <id>%" PRIu32 "</id>\n"
             "  <reason>no-such-subscription</reason>\n"
             "</subscription-terminated>\n", sub_id);
+    assert_int_not_equal(ret, -1);
     assert_string_equal(str, exp);
     free(str);
     free(exp);
@@ -531,7 +540,7 @@ test_yp_on_change(void **state)
     assert_int_equal(SR_ERR_OK, srsn_poll(fd, 500));
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
     lyd_print_mem(&str, notif, LYD_XML, 0);
-    asprintf(&exp,
+    ret = asprintf(&exp,
             "<push-change-update xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-push\">\n"
             "  <id>%" PRIu32 "</id>\n"
             "  <datastore-changes>\n"
@@ -576,6 +585,7 @@ test_yp_on_change(void **state)
             "    </yang-patch>\n"
             "  </datastore-changes>\n"
             "</push-change-update>\n", sub_id);
+    assert_int_not_equal(ret, -1);
     assert_string_equal(str, exp);
     free(str);
     free(exp);
@@ -590,7 +600,7 @@ test_yp_on_change(void **state)
     assert_int_equal(SR_ERR_OK, srsn_poll(fd, 500));
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
     lyd_print_mem(&str, notif, LYD_XML, 0);
-    asprintf(&exp,
+    ret = asprintf(&exp,
             "<push-change-update xmlns=\"urn:ietf:params:xml:ns:yang:ietf-yang-push\">\n"
             "  <id>%" PRIu32 "</id>\n"
             "  <datastore-changes>\n"
@@ -619,6 +629,7 @@ test_yp_on_change(void **state)
             "    </yang-patch>\n"
             "  </datastore-changes>\n"
             "</push-change-update>\n", sub_id);
+    assert_int_not_equal(ret, -1);
     assert_string_equal(str, exp);
     free(str);
     free(exp);
@@ -630,11 +641,12 @@ test_yp_on_change(void **state)
     /* read (no poll, pipe closed) and check the notif */
     assert_int_equal(SR_ERR_OK, srsn_read_notif(fd, st->ly_ctx, &ts, &notif));
     lyd_print_mem(&str, notif, LYD_XML, 0);
-    asprintf(&exp,
+    ret = asprintf(&exp,
             "<subscription-terminated xmlns=\"urn:ietf:params:xml:ns:yang:ietf-subscribed-notifications\">\n"
             "  <id>%" PRIu32 "</id>\n"
             "  <reason>no-such-subscription</reason>\n"
             "</subscription-terminated>\n", sub_id);
+    assert_int_not_equal(ret, -1);
     assert_string_equal(str, exp);
     free(str);
     free(exp);
