@@ -24,12 +24,13 @@
 #include "sysrepo_types.h"
 
 /**
- * @brief Structure for holding old and new when when being updated.
+ * @brief Structure for holding old and new data when being updated.
  */
 struct sr_data_update_s {
     struct sr_data_update_set_s {
         struct lyd_node *start;
         struct lyd_node *run;
+        int run_disabled;
         struct lyd_node *oper;
         struct lyd_node *fdflt;
     } old;

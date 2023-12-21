@@ -1329,10 +1329,12 @@ sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_i
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
+    const sr_module_ds_t sr_empty_module_ds = {0};
     struct ly_in *in = NULL;
     char *mod_name = NULL;
     LYS_INFORMAT format;
     sr_datastore_t ds;
+    int mod_ds;
 
     *installed = 0;
 
@@ -1352,22 +1354,26 @@ sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_i
         goto cleanup;
     }
 
-    /* check plugin existence */
-    for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
-        if (!new_mod->module_ds.plugin_name[ds]) {
-            /* use default plugin */
-            new_mod->module_ds.plugin_name[ds] = sr_default_module_ds.plugin_name[ds];
+    if (!memcmp(&new_mod->module_ds, &sr_empty_module_ds, sizeof sr_empty_module_ds)) {
+        /* use default plugins if none are set */
+        for (mod_ds = 0; mod_ds < SR_MOD_DS_PLUGIN_COUNT; ++mod_ds) {
+            new_mod->module_ds.plugin_name[mod_ds] = sr_default_module_ds.plugin_name[mod_ds];
         }
-        if ((err_info = sr_ds_handle_find(new_mod->module_ds.plugin_name[ds], conn, NULL))) {
+    } else {
+        /* check plugin existence */
+        for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
+            if ((ds == SR_DS_RUNNING) && !new_mod->module_ds.plugin_name[ds]) {
+                /* disabled 'running' datastore, effectively mirroring 'startup' */
+                continue;
+            }
+
+            if ((err_info = sr_ds_handle_find(new_mod->module_ds.plugin_name[ds], conn, NULL))) {
+                goto cleanup;
+            }
+        }
+        if ((err_info = sr_ntf_handle_find(new_mod->module_ds.plugin_name[SR_MOD_DS_NOTIF], conn, NULL))) {
             goto cleanup;
         }
-    }
-    if (!new_mod->module_ds.plugin_name[SR_MOD_DS_NOTIF]) {
-        /* use default plugin */
-        new_mod->module_ds.plugin_name[SR_MOD_DS_NOTIF] = sr_default_module_ds.plugin_name[SR_MOD_DS_NOTIF];
-    }
-    if ((err_info = sr_ntf_handle_find(new_mod->module_ds.plugin_name[SR_MOD_DS_NOTIF], conn, NULL))) {
-        goto cleanup;
     }
 
     /* parse the module with the features */
@@ -2171,6 +2177,11 @@ _sr_set_module_ds_access(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, s
             goto cleanup;
         }
     } else {
+        if ((mod_ds == SR_DS_RUNNING) && !shm_mod->plugins[mod_ds]) {
+            /* 'running' disabled, use 'startup' instead */
+            mod_ds = SR_DS_STARTUP;
+        }
+
         if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ds_handle))) {
             goto cleanup;
         }
@@ -2289,6 +2300,11 @@ sr_get_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
             goto cleanup;
         }
     } else {
+        if ((mod_ds == SR_DS_RUNNING) && !shm_mod->plugins[mod_ds]) {
+            /* 'running' disabled, use 'startup' instead */
+            mod_ds = SR_DS_STARTUP;
+        }
+
         if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ds_handle))) {
             goto cleanup;
         }
@@ -2336,6 +2352,11 @@ sr_check_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_
             goto cleanup;
         }
     } else {
+        if ((mod_ds == SR_DS_RUNNING) && !shm_mod->plugins[mod_ds]) {
+            /* 'running' disabled, use 'startup' instead */
+            mod_ds = SR_DS_STARTUP;
+        }
+
         if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ds_handle))) {
             goto cleanup;
         }

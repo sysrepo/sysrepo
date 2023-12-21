@@ -152,7 +152,7 @@ sr_shmmod_fill(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_
     off_t *shm_features;
     const char *name;
     char *shm_end;
-    size_t feat_i, ds_plugin_i, feat_names_len, ds_plugin_names_len, old_shm_size;
+    size_t feat_i, feat_names_len, ds_plugin_names_len, old_shm_size;
     sr_datastore_t ds;
 
     smod = SR_SHM_MOD_IDX(shm_mod->addr, shm_mod_idx);
@@ -230,7 +230,6 @@ sr_shmmod_fill(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_
     /* store feature and datastore plugin names */
     shm_features = (off_t *)(shm_mod->addr + smod->features);
     feat_i = 0;
-    ds_plugin_i = 0;
     LY_LIST_FOR(lyd_child(sr_mod), sr_child) {
         if (!strcmp(sr_child->schema->name, "enabled-feature")) {
             /* copy feature name */
@@ -243,12 +242,10 @@ sr_shmmod_fill(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_
 
             /* copy DS plugin name */
             smod->plugins[ds] = sr_shmstrcpy(shm_mod->addr, lyd_get_value(lyd_child(sr_child)->next), &shm_end);
-
-            ++ds_plugin_i;
         }
     }
     SR_CHECK_INT_RET(feat_i != smod->feat_count, err_info);
-    SR_CHECK_INT_RET(ds_plugin_i != SR_MOD_DS_PLUGIN_COUNT, err_info);
+    /* not all DS plugins must be set, 'running' may be disabled and without a plugin */
 
     /* mod SHM size must be exactly what we allocated */
     assert(shm_end == shm_mod->addr + shm_mod->size);
@@ -1641,6 +1638,11 @@ sr_shmmod_reboot_init(sr_conn_ctx_t *conn, int initialized)
 
         /* find DS plugins and init them */
         for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
+            if ((ds == SR_DS_RUNNING) && !smods[i]->plugins[ds]) {
+                /* disabled */
+                continue;
+            }
+
             if ((err_info = sr_ds_handle_find(((char *)mod_shm) + smods[i]->plugins[ds], conn, &ds_handle[ds]))) {
                 goto cleanup;
             }
@@ -1650,8 +1652,8 @@ sr_shmmod_reboot_init(sr_conn_ctx_t *conn, int initialized)
             }
         }
 
-        if (!sr_module_has_data(ly_mod, 0)) {
-            /* skip copying for modules without configuration data */
+        if (!sr_module_has_data(ly_mod, 0) || !ds_handle[SR_DS_RUNNING]) {
+            /* skip copying for modules without configuration data or with 'running' disabled */
             continue;
         }
 

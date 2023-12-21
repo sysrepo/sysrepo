@@ -2350,7 +2350,7 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
                 mod->state |= mod_type;
             }
             if (new) {
-                /* new module, needs it members filled */
+                /* new module, needs its members filled */
                 break;
             }
             return NULL;
@@ -2361,10 +2361,18 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(mod_info->conn), ly_mod->name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    /* find DS handle */
-    if ((err_info = sr_ds_handle_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[mod_info->ds],
-            mod_info->conn, &ds_handle[mod_info->ds]))) {
-        return err_info;
+    /* find main DS handle */
+    if ((mod_info->ds == SR_DS_RUNNING) && !shm_mod->plugins[mod_info->ds]) {
+        /* 'running' is disabled, we will be using the 'startup' plugin */
+        if ((err_info = sr_ds_handle_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[SR_DS_STARTUP], mod_info->conn,
+                &ds_handle[SR_DS_STARTUP]))) {
+            return err_info;
+        }
+    } else {
+        if ((err_info = sr_ds_handle_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[mod_info->ds], mod_info->conn,
+                &ds_handle[mod_info->ds]))) {
+            return err_info;
+        }
     }
     switch (mod_info->ds) {
     case SR_DS_STARTUP:
@@ -3323,6 +3331,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
     struct lyd_node *mod_diff, *mod_data;
+    sr_datastore_t store_ds;
     uint32_t i;
     int rc;
 
@@ -3335,10 +3344,17 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
             mod_diff = (mod_info->ds == SR_DS_OPERATIONAL) ? NULL : sr_module_data_unlink(&mod_info->diff, mod->ly_mod);
             mod_data = sr_module_data_unlink(&mod_info->data, mod->ly_mod);
 
+            if ((mod_info->ds == SR_DS_RUNNING) && !mod->ds_handle[mod_info->ds]) {
+                /* 'running' disabled, use 'startup' */
+                store_ds = SR_DS_STARTUP;
+            } else {
+                store_ds = mod_info->ds;
+            }
+
             /* store the new data */
-            if ((rc = mod->ds_handle[mod_info->ds]->plugin->store_cb(mod->ly_mod, mod_info->ds, mod_diff, mod_data,
-                    mod->ds_handle[mod_info->ds]->plg_data))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", mod->ds_handle[mod_info->ds]->plugin->name, mod->ly_mod->name);
+            if ((rc = mod->ds_handle[store_ds]->plugin->store_cb(mod->ly_mod, store_ds, mod_diff, mod_data,
+                    mod->ds_handle[store_ds]->plg_data))) {
+                SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", mod->ds_handle[store_ds]->plugin->name, mod->ly_mod->name);
                 goto cleanup;
             }
 

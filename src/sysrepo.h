@@ -491,7 +491,7 @@ int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *
  * @param[in] features Optional array of enabled features ended with NULL, all disabled by default. Feature '*' enables
  * them all.
  * @param[in] module_ds Optional datastore implementation plugin names for each datastore, NULL for all defaults.
- * The default datastore is also used for any unset plugin names.
+ * If only ::SR_DS_RUNNING plugin name is NULL, it is disabled and effectively always mirrors ::SR_DS_STARTUP.
  * @param[in] owner Optional initial owner of the module data, process user by default.
  * @param[in] group Optional initial group of the module data, process group by default.
  * @param[in] perm Optional initial permissions of the module data, otherwise system defaults are applied.

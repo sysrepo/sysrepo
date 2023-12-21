@@ -177,7 +177,8 @@ typedef struct {
 typedef struct {
     const char *schema_path;        /**< Path to the schema file. */
     const char **features;          /**< Optional array of features to enable ('*' enables all) terminated by NULL. */
-    sr_module_ds_t module_ds;       /**< Optional datastore implementation plugin names for each datastore. */
+    sr_module_ds_t module_ds;       /**< Optional datastore implementation plugin names for each datastore. If NULL
+                                         is used for ::SR_DS_RUNNING, it means it is disabled (mirrors ::SR_DS_STARTUP). */
     const char *owner;              /**< Optional module data owner, process user by default. */
     const char *group;              /**< Optional module data group, process group by default. */
     mode_t perm;                    /**< Optional module data permissions. */

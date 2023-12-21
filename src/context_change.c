@@ -225,6 +225,11 @@ sr_lycc_add_modules(sr_conn_ctx_t *conn, const sr_int_install_mod_t *new_mods, u
 
         /* init module for all DS plugins */
         for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
+            if ((ds == SR_DS_RUNNING) && !new_mods[i].module_ds.plugin_name[ds]) {
+                /* disabled */
+                continue;
+            }
+
             /* find plugin */
             if ((err_info = sr_ds_handle_find(new_mods[i].module_ds.plugin_name[ds], conn,
                     (const struct sr_ds_handle_s **)&ds_handle))) {
@@ -319,12 +324,18 @@ sr_lycc_del_module(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const struc
 
         /* destroy module for all DS plugins */
         for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
-            /* find plugin */
+            /* get plugin name */
             rc = asprintf(&path, "plugin[datastore='%s']/name", sr_mod_ds2ident(ds));
             SR_CHECK_MEM_GOTO(rc == -1, err_info, cleanup);
             lyrc = lyd_find_path(sr_mod, path, 0, &sr_plg_name);
             free(path);
+            if ((ds == SR_DS_RUNNING) && lyrc) {
+                /* 'running' disabled */
+                continue;
+            }
             SR_CHECK_INT_GOTO(lyrc, err_info, cleanup);
+
+            /* find plugin */
             if ((err_info = sr_ds_handle_find(lyd_get_value(sr_plg_name), conn, &ds_handle))) {
                 goto cleanup;
             }
@@ -534,13 +545,17 @@ sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, struct sr
             goto cleanup;
         }
 
-        /* find running plugin and append data */
+        /* find running plugin and append data, if not disabled */
         ds = SR_DS_RUNNING;
-        if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle[ds]))) {
-            goto cleanup;
-        }
-        if ((err_info = sr_module_file_data_append(ly_mod, ds_handle, ds, NULL, 0, &data->run))) {
-            goto cleanup;
+        if (shm_mod->plugins[ds]) {
+            if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle[ds]))) {
+                goto cleanup;
+            }
+            if ((err_info = sr_module_file_data_append(ly_mod, ds_handle, ds, NULL, 0, &data->run))) {
+                goto cleanup;
+            }
+        } else {
+            data->run_disabled = 1;
         }
 
         /* find operational plugin and append data */
@@ -634,8 +649,12 @@ sr_lycc_update_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, const str
     if ((err_info = sr_lycc_update_data_tree(data_info->old.start, parse_opts, new_ctx, mod_data, &data_info->new.start))) {
         goto cleanup;
     }
-    if ((err_info = sr_lycc_update_data_tree(data_info->old.run, parse_opts, new_ctx, mod_data, &data_info->new.run))) {
-        goto cleanup;
+    if (data_info->old.run_disabled) {
+        data_info->new.run_disabled = 1;
+    } else {
+        if ((err_info = sr_lycc_update_data_tree(data_info->old.run, parse_opts, new_ctx, mod_data, &data_info->new.run))) {
+            goto cleanup;
+        }
     }
     if ((err_info = sr_lycc_update_data_tree(data_info->old.fdflt, parse_opts, new_ctx, mod_data, &data_info->new.fdflt))) {
         goto cleanup;
@@ -652,7 +671,7 @@ sr_lycc_update_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, const str
         sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Invalid startup datastore data.");
         goto cleanup;
     }
-    if (lyd_validate_all(&data_info->new.run, new_ctx, LYD_VALIDATE_NO_STATE, NULL)) {
+    if (!data_info->new.run_disabled && lyd_validate_all(&data_info->new.run, new_ctx, LYD_VALIDATE_NO_STATE, NULL)) {
         sr_errinfo_new_ly(&err_info, new_ctx, NULL);
         err_info->err[0].err_code = SR_ERR_VALIDATION_FAILED;
         sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Invalid running datastore data.");
@@ -726,6 +745,10 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
         if (lyrc) {
             sr_errinfo_new_ly(&err_info, conn->ly_ctx, NULL);
             break;
+        } else if (!set->count && (ds == SR_DS_RUNNING)) {
+            /* 'running' disabled */
+            ly_set_free(set, NULL);
+            continue;
         } else if (set->count != 1) {
             SR_ERRINFO_INT(&err_info);
             break;

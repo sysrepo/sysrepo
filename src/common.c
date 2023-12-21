@@ -1418,7 +1418,12 @@ sr_perm_check(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
-    /* find the DS plugin for startup */
+    if ((ds == SR_DS_RUNNING) && !shm_mod->plugins[ds]) {
+        /* 'running' disabled, use 'startup' */
+        ds = SR_DS_STARTUP;
+    }
+
+    /* find the DS plugin */
     if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &handle))) {
         goto cleanup;
     }
@@ -5406,6 +5411,11 @@ sr_module_file_data_append(const struct lys_module *ly_mod, const struct sr_ds_h
             /* use running datastore instead */
             ds = SR_DS_RUNNING;
         }
+    }
+
+    if ((ds == SR_DS_RUNNING) && !ds_handle[ds]) {
+        /* disabled 'running', using 'startup' */
+        ds = SR_DS_STARTUP;
     }
 
     /* get the data */

@@ -104,6 +104,12 @@ sr_lydmods_add_module(struct lyd_node *sr_mods, const struct lys_module *ly_mod,
 
     /* set datastore plugin names */
     for (i = 0; i < SR_MOD_DS_PLUGIN_COUNT; ++i) {
+        if ((i == SR_DS_RUNNING) && !module_ds.plugin_name[i]) {
+            /* disabled */
+            continue;
+        }
+        assert(module_ds.plugin_name[i]);
+
         if (lyd_new_list(sr_mod, NULL, "plugin", 0, &sr_plugin, sr_mod_ds2ident(i))) {
             sr_errinfo_new_ly(&err_info, ly_mod->ctx, NULL);
             goto cleanup;

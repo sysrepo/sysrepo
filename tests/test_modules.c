@@ -44,8 +44,7 @@ setup_f(void **state)
     st = calloc(1, sizeof *st);
     *state = st;
 
-    /* just test using the option */
-    if (sr_connect(SR_CONN_CTX_SET_PRIV_PARSED, &st->conn) != SR_ERR_OK) {
+    if (sr_connect(0, &st->conn)) {
         return 1;
     }
 
@@ -1513,6 +1512,54 @@ test_update_data_no_write_perm(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 }
 
+static void
+test_running_disabled(void **state)
+{
+    struct state *st = (struct state *)*state;
+    const sr_module_ds_t mod_ds = {"JSON DS file", NULL, "JSON DS file", "JSON DS file", "JSON DS file", "JSON notif"};
+    sr_session_ctx_t *sess;
+    sr_data_t *data;
+    int ret;
+
+    /* install a module with 'running' disabled */
+    ret = sr_install_module2(st->conn, TESTS_SRC_DIR "/files/simple.yang", TESTS_SRC_DIR "/files", NULL, &mod_ds, NULL,
+            NULL, 0, NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* check current internal data */
+    cmp_int_data(st->conn, "simple",
+            "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
+            "<name>simple</name>"
+            "<plugin><datastore>ds:startup</datastore><name>JSON DS file</name></plugin>"
+            "<plugin><datastore>ds:candidate</datastore><name>JSON DS file</name></plugin>"
+            "<plugin><datastore>ds:operational</datastore><name>JSON DS file</name></plugin>"
+            "<plugin><datastore>fd:factory-default</datastore><name>JSON DS file</name></plugin>"
+            "<plugin><datastore>notification</datastore><name>JSON notif</name></plugin>"
+            "</module>");
+
+    /* start a session */
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* store some 'running' data */
+    ret = sr_set_item_str(sess, "/simple:ac1/acd1", "false", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* load the same data from 'startup' */
+    sr_session_switch_ds(sess, SR_DS_STARTUP);
+    ret = sr_get_data(sess, "/simple:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(lyd_get_value(lyd_child(data->tree)), "false");
+    sr_release_data(data);
+
+    /* cleanup */
+    sr_session_stop(sess);
+    ret = sr_remove_module(st->conn, "simple", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+}
+
 int
 main(void)
 {
@@ -1535,9 +1582,9 @@ main(void)
         cmocka_unit_test_setup_teardown(test_feature_deps2, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_update_data_deviation, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_update_data_no_write_perm, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_running_disabled, setup_f, teardown_f),
     };
 
-    setenv("CMOCKA_TEST_ABORT", "1", 1);
     test_log_init();
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
