@@ -3382,6 +3382,11 @@ sr_conn_ds_init(sr_conn_ctx_t *conn)
 
         /* find DS plugins and init them if required */
         for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
+            if ((ds == SR_DS_RUNNING) && !mod->plugins[ds]) {
+                /* disabled */
+                continue;
+            }
+
             if ((err_info = sr_ds_handle_find(((char *)mod_shm) + mod->plugins[ds], conn,
                     (const struct sr_ds_handle_s **)&ds_handle))) {
                 goto cleanup;
