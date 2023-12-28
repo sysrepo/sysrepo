@@ -1516,7 +1516,7 @@ static void
 test_running_disabled(void **state)
 {
     struct state *st = (struct state *)*state;
-    const sr_module_ds_t mod_ds = {"JSON DS file", NULL, "JSON DS file", "JSON DS file", "JSON DS file", "JSON notif"};
+    const sr_module_ds_t mod_ds = {{"JSON DS file", NULL, "JSON DS file", "JSON DS file", "JSON DS file", "JSON notif"}};
     sr_session_ctx_t *sess;
     sr_data_t *data;
     int ret;
