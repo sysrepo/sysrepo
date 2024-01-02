@@ -1394,16 +1394,17 @@ sr_shmmod_modinfo_wrlock_downgrade(struct sr_mod_info_s *mod_info, uint32_t sid,
         shm_lock = &mod->shm_mod->data_lock_info[mod_info->ds];
 
         /* downgrade only write-locked modules */
-        if (mod->state & MOD_INFO_WLOCK) {
+        if (mod->state & MOD_INFO_WLOCK || mod->state & MOD_INFO_RLOCK_UPGR) {
             /* MOD READ DOWNGRADE */
-            if ((err_info = sr_shmmod_lock(mod->ly_mod, mod_info->ds, shm_lock, timeout_ms, SR_LOCK_READ_UPGR,
+            if ((err_info = sr_shmmod_lock(mod->ly_mod, mod_info->ds, shm_lock, timeout_ms, SR_LOCK_READ,
                     0, mod_info->conn->cid, sid, mod->ds_handle[mod_info->ds], 1))) {
                 return err_info;
             }
 
             /* update the flag for unlocking */
             mod->state &= ~MOD_INFO_WLOCK;
-            mod->state |= MOD_INFO_RLOCK_UPGR;
+            mod->state &= ~MOD_INFO_RLOCK_UPGR;
+            mod->state |= MOD_INFO_RLOCK;
         }
     }
 

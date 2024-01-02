@@ -305,13 +305,14 @@ cleanup:
 static void
 sr_shmsub_recover(sr_sub_shm_t *sub_shm)
 {
-    if (!sr_conn_is_alive(sub_shm->orig_cid)) {
+    if (sub_shm->orig_cid && !sr_conn_is_alive(sub_shm->orig_cid)) {
         SR_LOG_WRN("EV ORIGIN: SHM event \"%s\" of CID %" PRIu32 " ID %" PRIu32 " recovered.",
                 sr_ev2str(ATOMIC_LOAD_RELAXED(sub_shm->event)), sub_shm->orig_cid,
                 (uint32_t)ATOMIC_LOAD_RELAXED(sub_shm->request_id));
 
         /* clear the event */
         ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
+        sub_shm->orig_cid = 0;
     }
 }
 
@@ -338,7 +339,7 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
         return err_info;
     }
 
-    if (ATOMIC_LOAD_RELAXED(sub_shm->event) && (ATOMIC_LOAD_RELAXED(sub_shm->event) != lock_event)) {
+    if (sub_shm->orig_cid || (ATOMIC_LOAD_RELAXED(sub_shm->event) && (ATOMIC_LOAD_RELAXED(sub_shm->event) != lock_event))) {
         /* instead of wating, try to recover the event immediately */
         sr_shmsub_recover(sub_shm);
     }
@@ -353,7 +354,7 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
     /* wait until there is no event and there are no readers (just like write lock) */
     sr_timeouttime_get(&timeout_abs, SR_SUBSHM_LOCK_TIMEOUT);
     ret = 0;
-    while (!ret && (sub_shm->lock.readers[0] || (ATOMIC_LOAD_RELAXED(sub_shm->event) &&
+    while (!ret && (sub_shm->orig_cid || sub_shm->lock.readers[0] || (ATOMIC_LOAD_RELAXED(sub_shm->event) &&
             (ATOMIC_LOAD_RELAXED(sub_shm->event) != lock_event)))) {
         /* COND WAIT */
         ret = sr_cond_clockwait(&sub_shm->lock.cond, &sub_shm->lock.mutex, COMPAT_CLOCK_ID, &timeout_abs);
@@ -365,7 +366,6 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
         sub_shm->lock.writer = cid;
 
         if (ret == ETIMEDOUT) {
-            assert(ATOMIC_LOAD_RELAXED(sub_shm->event));
             /* try to recover the event again in case the originator crashed later */
             sr_shmsub_recover(sub_shm);
             if (!ATOMIC_LOAD_RELAXED(sub_shm->event)) {
@@ -406,6 +406,7 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
 
 event_handled:
     /* we have write lock and the expected event */
+    assert(!sub_shm->orig_cid);
     return NULL;
 }
 
@@ -462,6 +463,11 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
 
     last_event = ATOMIC_LOAD_RELAXED(sub_shm->event);
     last_request_id = ATOMIC_LOAD_RELAXED(sub_shm->request_id);
+
+    /* orig_cid is mainly used to recover the shm if the originator has crashed after a fake write unlock.
+     * We can clear it here, as we will not fake write unlock beyond this point. */
+    sub_shm->orig_cid = 0;
+
     if (ret) {
         if ((ret == ETIMEDOUT) && SR_IS_NOTIFY_EVENT(last_event) && (request_id == last_request_id)) {
             /* even though the timeout has elapsed, the event was handled so continue normally */
@@ -2899,6 +2905,7 @@ sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, struct
     }
 
 cleanup_sub_unlock:
+    multi_sub_shm->orig_cid = 0;
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
@@ -2906,6 +2913,7 @@ cleanup_sub_unlock:
     goto cleanup;
 
 cleanup_ext_sub_unlock:
+    multi_sub_shm->orig_cid = 0;
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 

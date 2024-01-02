@@ -2831,6 +2831,15 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
         return NULL;
     }
 
+    if (!rwlock->writer) {
+        /* downgrade from upgr lock to read lock */
+        assert(rwlock->upgr == cid);
+        rwlock->upgr = 0;
+        /* broadcast on condition so waiters can grab upgr lock */
+        sr_cond_broadcast(&rwlock->cond);
+        goto cleanup_unlock;
+    }
+
     /*
      * downgrade from write-lock to read-lock (optionally with upgrade capability)
      */
