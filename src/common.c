@@ -363,6 +363,7 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
         mem = realloc(*ds_handles, (*ds_handle_count + 1) * sizeof **ds_handles);
         SR_CHECK_MEM_GOTO(!mem, err_info, next_file);
         *ds_handles = mem;
+        memset(&(*ds_handles)[*ds_handle_count], 0, sizeof **ds_handles);
 
         (*ds_handles)[*ds_handle_count].dl_handle = dlhandle;
         dlhandle = NULL;
