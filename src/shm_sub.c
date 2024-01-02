@@ -3121,6 +3121,7 @@ struct info_sub_s {
  * @param[in] sub Current change subscription.
  * @param[in] module_name Subscription module name.
  * @param[in] err_code Error code of the callback.
+ * @param[in] filter_valid Whether the event is valid for the subscription based on its XPath filter.
  * @param[in] ev_sess Temporary event session to use.
  * @param[out] err_info Optional error info on error.
  * @return 0 if SHM content is as expected.
@@ -3129,8 +3130,8 @@ struct info_sub_s {
  */
 static int
 sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t mode, struct info_sub_s *sub_info,
-        struct modsub_changesub_s *sub, const char *module_name, sr_error_t err_code, sr_session_ctx_t *ev_sess,
-        sr_error_info_t **err_info)
+        struct modsub_changesub_s *sub, const char *module_name, sr_error_t err_code, int filter_valid,
+        sr_session_ctx_t *ev_sess, sr_error_info_t **err_info)
 {
     struct lyd_node *abort_diff;
 
@@ -3152,7 +3153,7 @@ sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t
                 module_name, sr_ev2str(sub_info->event), sub_info->request_id, sub_info->priority, err_code ? "fail" : "success");
 
         /* self-generate abort event in case the change was applied successfully */
-        if ((sub_info->event == SR_SUB_EV_CHANGE) && (err_code == SR_ERR_OK) &&
+        if ((sub_info->event == SR_SUB_EV_CHANGE) && (err_code == SR_ERR_OK) && filter_valid &&
                 sr_shmsub_change_listen_event_is_valid(SR_SUB_EV_ABORT, sub->opts)) {
             /* update session */
             ev_sess->ev = SR_SUB_EV_ABORT;
@@ -3219,7 +3220,7 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
     sr_error_info_t *err_info = NULL;
     uint32_t i, data_len = 0, valid_subscr_count;
     char *data = NULL, *shm_data_ptr;
-    int ret = SR_ERR_OK, filter_orig;
+    int ret = SR_ERR_OK, filter_valid;
     sr_lock_mode_t sub_lock = SR_LOCK_NONE;
     struct lyd_node *diff;
     sr_data_t *edit_data;
@@ -3307,26 +3308,23 @@ process_event:
         sub_lock = SR_LOCK_NONE;
 
         /* call callback if there are some changes */
-        filter_orig = 0;
-        if (sr_shmsub_change_filter_is_valid(change_sub->xpath, diff)) {
+        filter_valid = sr_shmsub_change_filter_is_valid(change_sub->xpath, diff);
+        if (filter_valid) {
             ret = change_sub->cb(ev_sess, change_sub->sub_id, change_subs->module_name, change_sub->xpath,
                     sr_ev2api(sub_info.event), sub_info.request_id, change_sub->private_data);
-        } else if (change_sub->opts & SR_SUBSCR_FILTER_ORIG) {
-            /* filtered by originator */
-            filter_orig = 1;
-        } else {
-            /* filtered out */
+        } else if (!(change_sub->opts & SR_SUBSCR_FILTER_ORIG)) {
+            /* filtered out (not by originator) */
             ATOMIC_INC_RELAXED(change_sub->filtered_out);
         }
 
         /* SUB READ LOCK */
         if (sr_shmsub_change_listen_relock(multi_sub_shm, SR_LOCK_READ, &sub_info, change_sub,
-                change_subs->module_name, ret, ev_sess, &err_info)) {
+                change_subs->module_name, ret, filter_valid, ev_sess, &err_info)) {
             goto cleanup;
         }
         sub_lock = SR_LOCK_READ;
 
-        if (filter_orig) {
+        if (!filter_valid && (change_sub->opts & SR_SUBSCR_FILTER_ORIG)) {
             /* not a valid event for this subscription */
             continue;
         }
@@ -3407,7 +3405,7 @@ process_event:
 
     /* SUB WRITE URGE LOCK */
     if (sr_shmsub_change_listen_relock(multi_sub_shm, SR_LOCK_WRITE_URGE, &sub_info, change_sub, change_subs->module_name,
-            ret, ev_sess, &err_info)) {
+            ret, filter_valid, ev_sess, &err_info)) {
         goto cleanup;
     }
     sub_lock = SR_LOCK_WRITE_URGE;
