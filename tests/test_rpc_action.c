@@ -38,6 +38,7 @@ struct state {
     const struct ly_ctx *ly_ctx;
     sr_session_ctx_t *sess;
     ATOMIC_T cb_called;
+    ATOMIC_T cb2_called;
     pthread_barrier_t barrier;
 };
 
@@ -63,6 +64,7 @@ setup(void **state)
     *state = st;
 
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
+    ATOMIC_STORE_RELAXED(st->cb2_called, 0);
     pthread_barrier_init(&st->barrier, NULL, 2);
 
     if (sr_connect(0, &(st->conn))) {
@@ -1734,6 +1736,127 @@ rpc_factory_reset_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_
     return SR_ERR_OK;
 }
 
+static int
+factory_reset_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    sr_change_oper_t op;
+    sr_change_iter_t *iter;
+    const struct lyd_node *node;
+    int ret;
+
+    (void)sub_id;
+    (void)xpath;
+    (void)request_id;
+
+    switch (ATOMIC_LOAD_RELAXED(st->cb2_called)) {
+    case 0:
+    case 2:
+    case 4:
+    case 6:
+        assert_string_equal(module_name, "ietf-interfaces");
+        if (ATOMIC_LOAD_RELAXED(st->cb2_called) % 4 == 0) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/ietf-interfaces:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, NULL, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "interface");
+
+        /* 2nd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, NULL, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "name");
+
+        /* 3rd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, NULL, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "type");
+
+        /* 4th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, NULL, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "enabled");
+
+        /* no more changes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, NULL, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    case 1:
+    case 3:
+    case 5:
+    case 7:
+        assert_string_equal(module_name, "test");
+        if (ATOMIC_LOAD_RELAXED(st->cb2_called) % 4 == 1) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/test:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, NULL, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "test-leaf");
+
+        /* 2nd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, NULL, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "l2");
+
+        /* 3rd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, NULL, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "k");
+
+        /* 4th change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, NULL, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "v");
+
+        /* no more changes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, NULL, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    default:
+        fail();
+    }
+
+    ATOMIC_INC_RELAXED(st->cb2_called);
+    return SR_ERR_OK;
+}
+
 static void
 test_factory_reset(void **state)
 {
@@ -1743,6 +1866,7 @@ test_factory_reset(void **state)
     sr_data_t *data, *output;
     char *str;
     const char *xml;
+    sr_datastore_t ds;
     int ret;
 
     /* clear startup DS */
@@ -1803,15 +1927,27 @@ test_factory_reset(void **state)
             "<cont xmlns=\"urn:test\"><l2><k>cand</k><v>0</v></l2></cont>");
     free(str);
 
+    /* subscribe to changes as well */
+    for (ds = SR_DS_STARTUP; ds <= SR_DS_RUNNING; ++ds) {
+        sr_session_switch_ds(st->sess, ds);
+
+        ret = sr_module_change_subscribe(st->sess, "ietf-interfaces", NULL, factory_reset_change_cb, st, 0, 0, &subscr);
+        assert_int_equal(ret, SR_ERR_OK);
+        ret = sr_module_change_subscribe(st->sess, "test", NULL, factory_reset_change_cb, st, 0, 0, &subscr);
+        assert_int_equal(ret, SR_ERR_OK);
+    }
+
     /* execute */
     ret = lyd_new_path(NULL, st->ly_ctx, "/ietf-factory-default:factory-reset", NULL, 0, &input);
     assert_int_equal(ret, SR_ERR_OK);
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
+    ATOMIC_STORE_RELAXED(st->cb2_called, 0);
     ret = sr_rpc_send_tree(st->sess, input, 0, &output);
     lyd_free_tree(input);
     assert_int_equal(ret, SR_ERR_OK);
     sr_release_data(output);
     assert_int_equal(2, ATOMIC_LOAD_RELAXED(st->cb_called));
+    assert_int_equal(8, ATOMIC_LOAD_RELAXED(st->cb2_called));
 
     /* check DS contents */
     xml = "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"

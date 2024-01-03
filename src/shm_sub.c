@@ -33,6 +33,7 @@
 #include <unistd.h>
 
 #include "common.h"
+#include "context_change.h"
 #include "edit_diff.h"
 #include "log.h"
 #include "modinfo.h"
@@ -2233,16 +2234,24 @@ cleanup:
 static sr_error_info_t *
 sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node *input, struct lyd_node **output)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
+    struct sr_mod_info_s mod_info;
+    struct lyd_node *data[2] = {NULL};
     const struct lyd_node *child;
     const struct lys_module *ly_mod;
-    const struct sr_ds_handle_s *ds_handle[SR_DS_READ_COUNT];
-    sr_mod_t *shm_mod;
     sr_datastore_t ds;
-    int rc;
+    uint32_t i;
 
     assert(input->schema->nodetype & (LYS_RPC | LYS_ACTION));
 
+    SR_MODINFO_INIT(mod_info, conn, SR_DS_FACTORY_DEFAULT, SR_DS_FACTORY_DEFAULT);
+
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        return err_info;
+    }
+
+    /* collect all required modules */
     LY_LIST_FOR(lyd_child(input), child) {
         /* get LY module */
         ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, lyd_get_value(child));
@@ -2250,7 +2259,8 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", lyd_get_value(child));
             goto cleanup;
         } else if (!strcmp(ly_mod->name, "sysrepo")) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Internal module \"%s\" cannot be reset to factory-default.", lyd_get_value(child));
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Internal module \"%s\" cannot be reset to factory-default.",
+                    lyd_get_value(child));
             goto cleanup;
         }
 
@@ -2259,36 +2269,61 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
             continue;
         }
 
-        /* find the module in SHM */
-        shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
-        SR_CHECK_INT_RET(!shm_mod, err_info);
+        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
+            goto cleanup;
+        }
+    }
 
-        /* find the plugins */
-        for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
-            if (ds == SR_DS_OPERATIONAL) {
-                /* not needed */
-                continue;
-            }
+    /* add modules into mod_info, READ lock */
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, 0, NULL, NULL, 0, 0, 0))) {
+        goto cleanup;
+    }
 
-            if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle[ds]))) {
+    /* MODULES UNLOCK */
+    sr_shmmod_modinfo_unlock(&mod_info);
+
+    /* keep the data for both DS */
+    lyd_dup_siblings(mod_info.data, NULL, LYD_DUP_RECURSIVE, &data[0]);
+    data[1] = mod_info.data;
+    mod_info.data = NULL;
+
+    for (ds = SR_DS_STARTUP; ds <= SR_DS_RUNNING; ++ds) {
+        /* re-init mod_info manually */
+        mod_info.ds = ds;
+        mod_info.ds2 = ds;
+        lyd_free_siblings(mod_info.diff);
+        mod_info.diff = NULL;
+        lyd_free_siblings(mod_info.data);
+        mod_info.data = NULL;
+        for (i = 0; i < mod_info.mod_count; ++i) {
+            mod_info.mods[i].state = MOD_INFO_NEW;
+        }
+
+        /* add modules with dependencies into mod_info */
+        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_INV_DEPS | SR_MI_LOCK_UPGRADEABLE | SR_MI_PERM_NO,
+                0, NULL, NULL, 0, 0, 0))) {
+            goto cleanup;
+        }
+
+        /* update affected data and create corresponding diff, data are spent */
+        if ((err_info = sr_modinfo_replace(&mod_info, &data[ds]))) {
+            goto cleanup;
+        }
+
+        /* notify all the subscribers and store the changes */
+        if ((err_info = sr_changes_notify_store(&mod_info, NULL, SR_CHANGE_CB_TIMEOUT, &cb_err_info)) || cb_err_info) {
+            goto cleanup;
+        }
+
+        if (ds == SR_DS_RUNNING) {
+            /* reset candidate after running was changed */
+            if ((err_info = sr_modinfo_candidate_reset(&mod_info))) {
                 goto cleanup;
             }
         }
 
-        /* perform all the copies */
-        ds = SR_DS_FACTORY_DEFAULT;
-        if ((err_info = sr_shmmod_copy_mod(ly_mod, ds_handle[ds], ds, ds_handle[SR_DS_STARTUP], SR_DS_STARTUP))) {
-            goto cleanup;
-        }
-        if ((err_info = sr_shmmod_copy_mod(ly_mod, ds_handle[ds], ds, ds_handle[SR_DS_RUNNING], SR_DS_RUNNING))) {
-            goto cleanup;
-        }
-
-        /* reset candidate */
-        if ((rc = ds_handle[SR_DS_CANDIDATE]->plugin->candidate_reset_cb(ly_mod, ds_handle[SR_DS_CANDIDATE]->plg_data))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_reset", ds_handle[SR_DS_CANDIDATE]->plugin->name, ly_mod->name);
-            goto cleanup;
-        }
+        /* MODULES UNLOCK */
+        sr_shmmod_modinfo_unlock(&mod_info);
     }
 
     /* generate output */
@@ -2298,6 +2333,21 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     }
 
 cleanup:
+    /* MODULES UNLOCK */
+    sr_shmmod_modinfo_unlock(&mod_info);
+
+    sr_modinfo_erase(&mod_info);
+    for (i = 0; i < 2; ++i) {
+        lyd_free_siblings(data[i]);
+    }
+
+    /* CONTEXT UNLOCK */
+    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+    if (cb_err_info) {
+        /* return callback error if some was generated */
+        sr_errinfo_merge(&err_info, cb_err_info);
+    }
     if (err_info) {
         SR_LOG_WRN("EV ORIGIN: Internal \"%s\" \"%s\" priority %" PRIu32 " failed (%s).", SR_RPC_FACTORY_RESET_PATH,
                 sr_ev2str(SR_SUB_EV_RPC), SR_RPC_FACTORY_RESET_INT_PRIO, sr_strerror(err_info->err[0].err_code));
