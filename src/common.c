@@ -2680,6 +2680,42 @@ sr_rwlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_cid_
     return sr_sub_rwlock(rwlock, &timeout_abs, mode, cid, func, cb, cb_data, 0);
 }
 
+/**
+ * @brief Lock a rwlock mutex.
+ *
+ * @param[in] rwlock RW lock to lock.
+ * @param[in] timeout_ms Timeout in ms for locking.
+ * @param[in] func Name of the calling function for logging.
+ * @param[in] cb Optional callback called when recovering locks. When calling it, WRITE lock is always held.
+ * @param[in] cb_data Arbitrary user data for @p cb.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_rwlock_mutex_lock(sr_rwlock_t *rwlock, uint32_t timeout_ms, const char *func, sr_lock_recover_cb cb, void *cb_data)
+{
+    sr_error_info_t *err_info = NULL;
+    struct timespec timeout_abs;
+    int ret;
+
+    sr_timeouttime_get(&timeout_abs, timeout_ms);
+
+    /* MUTEX LOCK */
+    ret = pthread_mutex_clocklock(&rwlock->mutex, COMPAT_CLOCK_ID, &timeout_abs);
+    if (ret == EOWNERDEAD) {
+        /* make it consistent */
+        ret = pthread_mutex_consistent(&rwlock->mutex);
+
+        /* recover the lock */
+        sr_rwlock_recover(rwlock, func, cb, cb_data);
+        SR_CHECK_INT_RET(ret, err_info);
+    } else if (ret) {
+        SR_ERRINFO_LOCK(&err_info, func, ret);
+        return err_info;
+    }
+
+    return NULL;
+}
+
 sr_error_info_t *
 sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
         sr_lock_recover_cb cb, void *cb_data)
@@ -2695,19 +2731,9 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
         /*
          * upgrade from upgradeable read-lock to write-lock
          */
-        sr_timeouttime_get(&timeout_abs, timeout_ms);
 
         /* MUTEX LOCK */
-        ret = pthread_mutex_clocklock(&rwlock->mutex, COMPAT_CLOCK_ID, &timeout_abs);
-        if (ret == EOWNERDEAD) {
-            /* make it consistent */
-            ret = pthread_mutex_consistent(&rwlock->mutex);
-
-            /* recover the lock */
-            sr_rwlock_recover(rwlock, func, cb, cb_data);
-            SR_CHECK_INT_RET(ret, err_info);
-        } else if (ret) {
-            SR_ERRINFO_LOCK(&err_info, func, ret);
+        if ((err_info = sr_rwlock_mutex_lock(rwlock, timeout_ms, func, cb, cb_data))) {
             return err_info;
         }
 
@@ -2720,6 +2746,7 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
         }
 
         /* wait until there are no readers except for this one */
+        sr_timeouttime_get(&timeout_abs, timeout_ms);
         ret = 0;
         while (!ret && (rwlock->readers[1] || (rwlock->read_count[0] > 1) || rwlock->writer)) {
             /* COND WAIT */
@@ -2754,19 +2781,9 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
         /*
          * upgrade from upgradeable read-lock to write-lock, urged
          */
-        sr_timeouttime_get(&timeout_abs, timeout_ms);
 
         /* MUTEX LOCK */
-        ret = pthread_mutex_clocklock(&rwlock->mutex, COMPAT_CLOCK_ID, &timeout_abs);
-        if (ret == EOWNERDEAD) {
-            /* make it consistent */
-            ret = pthread_mutex_consistent(&rwlock->mutex);
-
-            /* recover the lock */
-            sr_rwlock_recover(rwlock, func, cb, cb_data);
-            SR_CHECK_INT_RET(ret, err_info);
-        } else if (ret) {
-            SR_ERRINFO_LOCK(&err_info, func, ret);
+        if ((err_info = sr_rwlock_mutex_lock(rwlock, timeout_ms, func, cb, cb_data))) {
             return err_info;
         }
 
@@ -2782,6 +2799,7 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
         }
 
         /* wait until there are no readers except for this one */
+        sr_timeouttime_get(&timeout_abs, timeout_ms);
         wr_urged = 0;
         ret = 0;
         while (!ret && (rwlock->readers[1] || (rwlock->read_count[0] > 1) || (rwlock->writer && !wr_urged))) {
@@ -2833,10 +2851,19 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
     }
 
     if (!rwlock->writer) {
-        /* downgrade from upgr lock to read lock */
+        /*
+         * downgrade from read-upgr lock to read lock
+         */
+
+        /* MUTEX LOCK */
+        if ((err_info = sr_rwlock_mutex_lock(rwlock, timeout_ms, func, cb, cb_data))) {
+            return err_info;
+        }
+
         assert(rwlock->upgr == cid);
         rwlock->upgr = 0;
-        /* broadcast on condition so waiters can grab upgr lock */
+
+        /* broadcast on condition so waiters can grab read-upgr lock */
         sr_cond_broadcast(&rwlock->cond);
         goto cleanup_unlock;
     }

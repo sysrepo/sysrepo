@@ -825,6 +825,7 @@ sr_error_info_t *sr_rwlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mod
  *
  * If @p mode is ::SR_LOCK_WRITE, the @p rwlock must be locked with ::SR_LOCK_READ_UPGR.
  * If @p mode is ::SR_LOCK_READ or ::SR_LOCK_READ_UPGR, the @p rwlock must be locked with ::SR_LOCK_WRITE.
+ * If @p mode is ::SR_LOCK_READ, the @p rwlock may even be locked with ::SR_LOCK_READ_UPGR.
  *
  * @param[in] rwlock RW lock to lock.
  * @param[in] timeout_ms Timeout in ms for locking. Only needed for lock upgrade (if @p mode is ::SR_LOCK_WRITE).
