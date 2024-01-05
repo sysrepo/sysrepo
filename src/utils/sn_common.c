@@ -432,7 +432,7 @@ srsn_filter_xpath_buf_add_r(const struct lyd_node *node, const struct lys_module
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *child;
-    int only_content_match, selection;
+    int only_content_match, selection, s;
 
     /* containment node or selection node */
     if ((err_info = srsn_filter_xpath_buf_append_node(node, top_mod, buf, &size))) {
@@ -473,11 +473,13 @@ srsn_filter_xpath_buf_add_r(const struct lyd_node *node, const struct lys_module
                 return err_info;
             }
         } else {
-            /* child selection node or content node (both should be included in the output) */
-            if ((err_info = srsn_filter_xpath_buf_append_node(child, NULL, buf, &size))) {
+            /* child selection node or content node (both should be included in the output), keep the current size
+             * because buf will be reused */
+            s = size;
+            if ((err_info = srsn_filter_xpath_buf_append_node(child, NULL, buf, &s))) {
                 return err_info;
             }
-            if (!size) {
+            if (!s) {
                 continue;
             }
 
