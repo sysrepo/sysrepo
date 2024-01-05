@@ -368,6 +368,7 @@ srsn_filter_xpath_buf_append_content(const struct lyd_node *node, char **buf, in
 
     /* append */
     sprintf((*buf) + (*size - 1), "=%c%s%c]", quot, val_str, quot);
+    *size = new_size;
 
 cleanup:
     if (dynamic) {
