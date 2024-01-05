@@ -77,10 +77,11 @@ typedef struct {
  * @brief Transform a subtree filter into an XPath filter.
  *
  * @param[in] subtree Subtree of the filter itself.
+ * @param[in] session Optional session for storing errors.
  * @param[out] xpath_filter Generated XPath filter.
  * @return Error code (::SR_ERR_OK on success).
  */
-int srsn_filter_subtree2xpath(const struct lyd_node *subtree, char **xpath_filter);
+int srsn_filter_subtree2xpath(const struct lyd_node *subtree, sr_session_ctx_t *session, char **xpath_filter);
 
 /**
  * @brief Increase the sent-notifications counter in case of additional manually-generated notifications

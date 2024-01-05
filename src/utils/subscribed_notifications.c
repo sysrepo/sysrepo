@@ -34,7 +34,7 @@
 #include "sn_yang_push.h"
 
 API int
-srsn_filter_subtree2xpath(const struct lyd_node *subtree, char **xpath_filter)
+srsn_filter_subtree2xpath(const struct lyd_node *subtree, sr_session_ctx_t *session, char **xpath_filter)
 {
     sr_error_info_t *err_info = NULL;
     struct srsn_filter filter = {0};
@@ -53,7 +53,7 @@ srsn_filter_subtree2xpath(const struct lyd_node *subtree, char **xpath_filter)
 
 cleanup:
     srsn_filter_erase(&filter);
-    return sr_api_ret(NULL, err_info);
+    return sr_api_ret(session, err_info);
 }
 
 API int
