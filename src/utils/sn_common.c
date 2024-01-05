@@ -117,20 +117,22 @@ srsn_filter_xpath_buf_append_attrs(const struct lyd_node *node, char **buf, int 
     int new_size;
     char *buf_new;
 
-    if (!node->schema) {
-        /* TODO unsupported */
-        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Cannot filter based on unknown attributes.");
-        return err_info;
-    }
-
-    LY_LIST_FOR(node->meta, next) {
-        new_size = *size + 2 + strlen(next->annotation->module->name) + 1 + strlen(next->name) + 2 +
-                strlen(lyd_get_meta_value(next)) + 2;
-        buf_new = realloc(*buf, new_size);
-        SR_CHECK_MEM_RET(!buf_new, err_info);
-        *buf = buf_new;
-        sprintf((*buf) + (*size - 1), "[@%s:%s='%s']", next->annotation->module->name, next->name, lyd_get_meta_value(next));
-        *size = new_size;
+    if (node->schema) {
+        LY_LIST_FOR(node->meta, next) {
+            new_size = *size + 2 + strlen(next->annotation->module->name) + 1 + strlen(next->name) + 2 +
+                    strlen(lyd_get_meta_value(next)) + 2;
+            buf_new = realloc(*buf, new_size);
+            SR_CHECK_MEM_RET(!buf_new, err_info);
+            *buf = buf_new;
+            sprintf((*buf) + (*size - 1), "[@%s:%s='%s']", next->annotation->module->name, next->name, lyd_get_meta_value(next));
+            *size = new_size;
+        }
+    } else {
+        if (((struct lyd_node_opaq *)node)->attr) {
+            /* TODO unsupported */
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Cannot filter based on unknown attributes.");
+            return err_info;
+        }
     }
 
     return NULL;
