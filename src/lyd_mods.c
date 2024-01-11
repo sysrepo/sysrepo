@@ -1129,6 +1129,7 @@ sr_lydmods_parse(const struct ly_ctx *ly_ctx, sr_conn_ctx_t *conn, int *initiali
     struct lyd_node *sr_mods = NULL;
     const struct lys_module *ly_mod;
     char *path = NULL;
+    int created = 0;
 
     assert(ly_ctx && sr_mods_p);
 
@@ -1150,12 +1151,17 @@ sr_lydmods_parse(const struct ly_ctx *ly_ctx, sr_conn_ctx_t *conn, int *initiali
         if ((err_info = srpds_json.load_cb(ly_mod, SR_DS_STARTUP, NULL, 0, NULL, &sr_mods))) {
             goto cleanup;
         }
+        if (!sr_mods) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Empty \"sysrepo\" startup data file.");
+            goto cleanup;
+        }
     } else if (initialized) {
         /* install the "sysrepo" module */
         if ((err_info = srpds_json.install_cb(ly_mod, SR_DS_STARTUP, NULL, strlen(SR_GROUP) ? SR_GROUP : NULL,
                 SR_INTMOD_MAIN_FILE_PERM, NULL))) {
             goto cleanup;
         }
+        created = 1;
         if ((err_info = sr_store_module_yang_r(ly_mod))) {
             goto cleanup;
         }
@@ -1173,6 +1179,9 @@ sr_lydmods_parse(const struct ly_ctx *ly_ctx, sr_conn_ctx_t *conn, int *initiali
 cleanup:
     if (err_info) {
         lyd_free_all(sr_mods);
+        if (created) {
+            srpds_json.uninstall_cb(ly_mod, SR_DS_STARTUP, NULL);
+        }
     } else {
         *sr_mods_p = sr_mods;
     }
