@@ -918,7 +918,6 @@ sr_lydmods_print(struct lyd_node **sr_mods)
     sr_error_info_t *err_info = NULL;
     const struct lys_module *sr_ly_mod;
     struct lyd_node *node;
-    int rc;
     uint32_t hash;
 
     assert(sr_mods && *sr_mods && !strcmp((*sr_mods)->schema->module->name, "sysrepo"));
@@ -941,8 +940,7 @@ sr_lydmods_print(struct lyd_node **sr_mods)
     lyd_change_term_bin(node, &hash, sizeof hash);
 
     /* store the data using the internal JSON plugin */
-    if ((rc = srpds_json.store_cb(sr_ly_mod, SR_DS_STARTUP, NULL, *sr_mods, NULL))) {
-        sr_errinfo_new(&err_info, rc, "Storing \"sysrepo\" data failed.");
+    if ((err_info = srpds_json.store_cb(sr_ly_mod, SR_DS_STARTUP, NULL, *sr_mods, NULL))) {
         return err_info;
     }
 
@@ -962,7 +960,6 @@ sr_lydmods_create_data(const struct ly_ctx *ly_ctx)
     const struct lys_module *ly_mod;
     struct lyd_node *data = NULL, *mod_data = NULL, *mod_diff = NULL;
     uint32_t idx = 0;
-    int rc;
 
     if (!strlen(SR_INT_MOD_DATA)) {
         /* no data to set */
@@ -996,12 +993,10 @@ sr_lydmods_create_data(const struct ly_ctx *ly_ctx)
         assert(mod_diff);
 
         /* store the data using the internal JSON plugin */
-        if ((rc = srpds_json.store_cb(ly_mod, SR_DS_STARTUP, mod_diff, mod_data, NULL))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", srpds_json.name, ly_mod->name);
+        if ((err_info = srpds_json.store_cb(ly_mod, SR_DS_STARTUP, mod_diff, mod_data, NULL))) {
             goto cleanup;
         }
-        if ((rc = srpds_json.store_cb(ly_mod, SR_DS_FACTORY_DEFAULT, mod_diff, mod_data, NULL))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", srpds_json.name, ly_mod->name);
+        if ((err_info = srpds_json.store_cb(ly_mod, SR_DS_FACTORY_DEFAULT, mod_diff, mod_data, NULL))) {
             goto cleanup;
         }
     }
@@ -1134,7 +1129,6 @@ sr_lydmods_parse(const struct ly_ctx *ly_ctx, sr_conn_ctx_t *conn, int *initiali
     struct lyd_node *sr_mods = NULL;
     const struct lys_module *ly_mod;
     char *path = NULL;
-    int rc;
 
     assert(ly_ctx && sr_mods_p);
 
@@ -1153,15 +1147,13 @@ sr_lydmods_parse(const struct ly_ctx *ly_ctx, sr_conn_ctx_t *conn, int *initiali
     }
     if (srpjson_file_exists(NULL, path)) {
         /* load the data using the internal JSON plugin */
-        if ((rc = srpds_json.load_cb(ly_mod, SR_DS_STARTUP, NULL, 0, NULL, &sr_mods))) {
-            sr_errinfo_new(&err_info, rc, "Loading \"sysrepo\" data failed.");
+        if ((err_info = srpds_json.load_cb(ly_mod, SR_DS_STARTUP, NULL, 0, NULL, &sr_mods))) {
             goto cleanup;
         }
     } else if (initialized) {
         /* install the "sysrepo" module */
-        if ((rc = srpds_json.install_cb(ly_mod, SR_DS_STARTUP, NULL, strlen(SR_GROUP) ? SR_GROUP : NULL,
+        if ((err_info = srpds_json.install_cb(ly_mod, SR_DS_STARTUP, NULL, strlen(SR_GROUP) ? SR_GROUP : NULL,
                 SR_INTMOD_MAIN_FILE_PERM, NULL))) {
-            sr_errinfo_new(&err_info, rc, "Initializing \"sysrepo\" data failed.");
             goto cleanup;
         }
         if ((err_info = sr_store_module_yang_r(ly_mod))) {
@@ -1465,7 +1457,6 @@ sr_lydmods_update_replay_support_module(const struct lys_module *ly_mod, struct 
     struct lyd_node *sr_replay, *sr_plg_name;
     struct timespec ts;
     const struct sr_ntf_handle_s *ntf_handle;
-    int rc;
     LY_ERR lyrc;
     char *buf = NULL;
 
@@ -1492,8 +1483,7 @@ sr_lydmods_update_replay_support_module(const struct lys_module *ly_mod, struct 
         }
 
         /* use earliest stored notification timestamp or use current time */
-        if ((rc = ntf_handle->plugin->earliest_get_cb(ly_mod, &ts))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "earliest_get", ntf_handle->plugin->name, ly_mod->name);
+        if ((err_info = ntf_handle->plugin->earliest_get_cb(ly_mod, &ts))) {
             return err_info;
         }
         if (SR_TS_IS_ZERO(ts)) {

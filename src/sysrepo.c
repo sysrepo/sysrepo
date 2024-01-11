@@ -2099,7 +2099,6 @@ sr_get_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, struc
     sr_mod_t *shm_mod;
     const struct lys_module *ly_mod;
     const struct sr_ntf_handle_s *ntf_handle;
-    int rc;
 
     SR_CHECK_ARG_APIRET(!conn || !module_name || !enabled, NULL, err_info);
 
@@ -2129,8 +2128,7 @@ sr_get_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, struc
         }
 
         /* get earliest notif timestamp */
-        if ((rc = ntf_handle->plugin->earliest_get_cb(ly_mod, earliest_notif))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "earliest_get", ntf_handle->plugin->name, ly_mod->name);
+        if ((err_info = ntf_handle->plugin->earliest_get_cb(ly_mod, earliest_notif))) {
             goto cleanup;
         }
     }
@@ -2159,7 +2157,6 @@ _sr_set_module_ds_access(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, s
         const char *owner, const char *group, mode_t perm)
 {
     sr_error_info_t *err_info = NULL;
-    int rc;
     const struct sr_ds_handle_s *ds_handle;
     const struct sr_ntf_handle_s *ntf_handle;
 
@@ -2170,8 +2167,7 @@ _sr_set_module_ds_access(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, s
         if ((err_info = sr_ntf_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ntf_handle))) {
             goto cleanup;
         }
-        if ((rc = ntf_handle->plugin->access_set_cb(ly_mod, owner, group, perm))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "set_access", ntf_handle->plugin->name, ly_mod->name);
+        if ((err_info = ntf_handle->plugin->access_set_cb(ly_mod, owner, group, perm))) {
             goto cleanup;
         }
     } else {
@@ -2183,8 +2179,7 @@ _sr_set_module_ds_access(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, s
         if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ds_handle))) {
             goto cleanup;
         }
-        if ((rc = ds_handle->plugin->access_set_cb(ly_mod, mod_ds, owner, group, perm, ds_handle->plg_data))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "set_access", ds_handle->plugin->name, ly_mod->name);
+        if ((err_info = ds_handle->plugin->access_set_cb(ly_mod, mod_ds, owner, group, perm, ds_handle->plg_data))) {
             goto cleanup;
         }
     }
@@ -2272,7 +2267,6 @@ sr_get_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
     const struct lys_module *ly_mod;
     const struct sr_ds_handle_s *ds_handle;
     const struct sr_ntf_handle_s *ntf_handle;
-    int rc;
 
     SR_CHECK_ARG_APIRET(!conn || !module_name || (mod_ds >= SR_MOD_DS_PLUGIN_COUNT) || (mod_ds < 0) ||
             (!owner && !group && !perm), NULL, err_info);
@@ -2293,8 +2287,7 @@ sr_get_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
         if ((err_info = sr_ntf_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ntf_handle))) {
             goto cleanup;
         }
-        if ((rc = ntf_handle->plugin->access_get_cb(ly_mod, owner, group, perm))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "get_access", ntf_handle->plugin->name, ly_mod->name);
+        if ((err_info = ntf_handle->plugin->access_get_cb(ly_mod, owner, group, perm))) {
             goto cleanup;
         }
     } else {
@@ -2306,8 +2299,7 @@ sr_get_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
         if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ds_handle))) {
             goto cleanup;
         }
-        if ((rc = ds_handle->plugin->access_get_cb(ly_mod, mod_ds, ds_handle->plg_data, owner, group, perm))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "get_access", ds_handle->plugin->name, ly_mod->name);
+        if ((err_info = ds_handle->plugin->access_get_cb(ly_mod, mod_ds, ds_handle->plg_data, owner, group, perm))) {
             goto cleanup;
         }
     }
@@ -2324,7 +2316,6 @@ sr_check_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_
     const struct lys_module *ly_mod;
     const struct sr_ds_handle_s *ds_handle;
     const struct sr_ntf_handle_s *ntf_handle;
-    int rc;
 
     SR_CHECK_ARG_APIRET(!conn || !module_name || (mod_ds >= SR_MOD_DS_PLUGIN_COUNT) || (mod_ds < 0) || (!read && !write),
             NULL, err_info);
@@ -2345,8 +2336,7 @@ sr_check_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_
         if ((err_info = sr_ntf_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ntf_handle))) {
             goto cleanup;
         }
-        if ((rc = ntf_handle->plugin->access_check_cb(ly_mod, read, write))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "access_check", ntf_handle->plugin->name, ly_mod->name);
+        if ((err_info = ntf_handle->plugin->access_check_cb(ly_mod, read, write))) {
             goto cleanup;
         }
     } else {
@@ -2358,8 +2348,7 @@ sr_check_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_
         if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ds_handle))) {
             goto cleanup;
         }
-        if ((rc = ds_handle->plugin->access_check_cb(ly_mod, mod_ds, ds_handle->plg_data, read, write))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "access_check", ds_handle->plugin->name, ly_mod->name);
+        if ((err_info = ds_handle->plugin->access_check_cb(ly_mod, mod_ds, ds_handle->plg_data, read, write))) {
             goto cleanup;
         }
     }
@@ -4185,7 +4174,7 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, uint32_t sid, int lock)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     uint32_t i, j;
-    int rc, ds_lock = 0, modified;
+    int ds_lock = 0, modified;
     struct sr_mod_info_mod_s *mod;
     struct sr_mod_lock_s *shm_lock;
 
@@ -4213,10 +4202,8 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, uint32_t sid, int lock)
             goto error;
         } else if (lock && (mod_info->ds == SR_DS_CANDIDATE)) {
             /* learn whether candidate was modified */
-            if ((rc = mod->ds_handle[SR_DS_CANDIDATE]->plugin->candidate_modified_cb(mod->ly_mod,
+            if ((err_info = mod->ds_handle[SR_DS_CANDIDATE]->plugin->candidate_modified_cb(mod->ly_mod,
                     mod->ds_handle[SR_DS_CANDIDATE]->plg_data, &modified))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_modified", mod->ds_handle[SR_DS_CANDIDATE]->plugin->name,
-                        mod->ly_mod->name);
                 goto error;
             }
 

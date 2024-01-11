@@ -218,7 +218,6 @@ sr_lycc_add_modules(sr_conn_ctx_t *conn, const sr_int_install_mod_t *new_mods, u
     uint32_t i;
     sr_datastore_t ds;
     struct sr_ds_handle_s *ds_handle;
-    int rc;
 
     for (i = 0; i < new_mod_count; ++i) {
         ly_mod = new_mods[i].ly_mod;
@@ -238,24 +237,20 @@ sr_lycc_add_modules(sr_conn_ctx_t *conn, const sr_int_install_mod_t *new_mods, u
 
             if (!ds_handle->init) {
                 /* call conn_init */
-                if ((rc = ds_handle->plugin->conn_init_cb(conn, &ds_handle->plg_data))) {
-                    sr_errinfo_new(&err_info, rc, "Callback \"%s\" of plugin \"%s\" failed.", "conn_init",
-                            ds_handle->plugin->name);
+                if ((err_info = ds_handle->plugin->conn_init_cb(conn, &ds_handle->plg_data))) {
                     return err_info;
                 }
                 ds_handle->init = 1;
             }
 
             /* call install */
-            if ((rc = ds_handle->plugin->install_cb(ly_mod, ds, new_mods[i].owner, new_mods[i].group, new_mods[i].perm,
-                    ds_handle->plg_data))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "install", ds_handle->plugin->name, ly_mod->name);
+            if ((err_info = ds_handle->plugin->install_cb(ly_mod, ds, new_mods[i].owner, new_mods[i].group,
+                    new_mods[i].perm, ds_handle->plg_data))) {
                 return err_info;
             }
 
             /* call init */
-            if ((rc = ds_handle->plugin->init_cb(ly_mod, ds, ds_handle->plg_data))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "init", ds_handle->plugin->name, ly_mod->name);
+            if ((err_info = ds_handle->plugin->init_cb(ly_mod, ds, ds_handle->plg_data))) {
                 return err_info;
             }
         }
@@ -310,8 +305,8 @@ sr_lycc_del_module(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const struc
     sr_datastore_t ds;
     const struct sr_ds_handle_s *ds_handle;
     const struct sr_ntf_handle_s *ntf_handle;
-    int rc;
     LY_ERR lyrc;
+    int r;
 
     for (i = 0; i < mod_set->count; ++i) {
         ly_mod = mod_set->objs[i];
@@ -325,8 +320,8 @@ sr_lycc_del_module(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const struc
         /* destroy module for all DS plugins */
         for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
             /* get plugin name */
-            rc = asprintf(&path, "plugin[datastore='%s']/name", sr_mod_ds2ident(ds));
-            SR_CHECK_MEM_GOTO(rc == -1, err_info, cleanup);
+            r = asprintf(&path, "plugin[datastore='%s']/name", sr_mod_ds2ident(ds));
+            SR_CHECK_MEM_GOTO(r == -1, err_info, cleanup);
             lyrc = lyd_find_path(sr_mod, path, 0, &sr_plg_name);
             free(path);
             if ((ds == SR_DS_RUNNING) && lyrc) {
@@ -341,8 +336,7 @@ sr_lycc_del_module(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const struc
             }
 
             /* call uninstall */
-            if ((rc = ds_handle->plugin->uninstall_cb(ly_mod, ds, ds_handle->plg_data))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "uninstall", ds_handle->plugin->name, ly_mod->name);
+            if ((err_info = ds_handle->plugin->uninstall_cb(ly_mod, ds, ds_handle->plg_data))) {
                 goto cleanup;
             }
         }
@@ -350,8 +344,8 @@ sr_lycc_del_module(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const struc
         /* destroy notifications if replay support was enabled */
         if (!lyd_find_path(sr_mod, "replay-support", 0, NULL)) {
             /* find plugin */
-            rc = asprintf(&path, "plugin[datastore='%s']/name", sr_mod_ds2ident(SR_MOD_DS_NOTIF));
-            SR_CHECK_MEM_GOTO(rc == -1, err_info, cleanup);
+            r = asprintf(&path, "plugin[datastore='%s']/name", sr_mod_ds2ident(SR_MOD_DS_NOTIF));
+            SR_CHECK_MEM_GOTO(r == -1, err_info, cleanup);
             lyrc = lyd_find_path(sr_mod, path, 0, &sr_plg_name);
             free(path);
             SR_CHECK_INT_GOTO(lyrc, err_info, cleanup);
@@ -360,8 +354,7 @@ sr_lycc_del_module(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const struc
             }
 
             /* call disable */
-            if ((rc = ntf_handle->plugin->disable_cb(ly_mod))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "disable", ntf_handle->plugin->name, ly_mod->name);
+            if ((err_info = ntf_handle->plugin->disable_cb(ly_mod))) {
                 goto cleanup;
             }
         }
@@ -466,7 +459,6 @@ sr_lycc_set_replay_support(sr_conn_ctx_t *conn, const struct ly_set *mod_set, in
     struct lyd_node *sr_ntf_name;
     const struct sr_ntf_handle_s *ntf_handle;
     uint32_t i;
-    int rc;
     LY_ERR lyrc;
 
     for (i = 0; i < mod_set->count; ++i) {
@@ -491,14 +483,12 @@ sr_lycc_set_replay_support(sr_conn_ctx_t *conn, const struct ly_set *mod_set, in
 
         if (enable) {
             /* call enable */
-            if ((rc = ntf_handle->plugin->enable_cb(ly_mod))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "enable", ntf_handle->plugin->name, ly_mod->name);
+            if ((err_info = ntf_handle->plugin->enable_cb(ly_mod))) {
                 goto cleanup;
             }
         } else {
             /* call disable */
-            if ((rc = ntf_handle->plugin->disable_cb(ly_mod))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "disable", ntf_handle->plugin->name, ly_mod->name);
+            if ((err_info = ntf_handle->plugin->disable_cb(ly_mod))) {
                 goto cleanup;
             }
         }
@@ -711,7 +701,7 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
     struct ly_set *set;
     char *xpath;
     uint32_t idx = 0, ly_log_opts = 0;
-    int rc, diff;
+    int diff;
     LY_ERR lyrc;
 
     while ((new_ly_mod = ly_ctx_get_module_iter(new_ctx, &idx))) {
@@ -777,8 +767,7 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
 
         if (diff) {
             /* store new data */
-            if ((rc = ds_handle->plugin->store_cb(new_ly_mod, ds, mod_diff, new_mod_data, ds_handle->plg_data))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", ds_handle->plugin->name, new_ly_mod->name);
+            if ((err_info = ds_handle->plugin->store_cb(new_ly_mod, ds, mod_diff, new_mod_data, ds_handle->plg_data))) {
                 break;
             }
         }

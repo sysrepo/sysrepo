@@ -54,7 +54,6 @@ sr_notif_write(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct lyd_node *no
 {
     sr_error_info_t *err_info = NULL;
     const struct sr_ntf_handle_s *ntf_handle;
-    int rc;
 
     /* find handle */
     if ((err_info = sr_ntf_handle_find(conn->mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_handle))) {
@@ -67,8 +66,7 @@ sr_notif_write(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const struct lyd_node *no
     }
 
     /* store the notification */
-    if ((rc = ntf_handle->plugin->store_cb(lyd_owner_module(notif), notif, &notif_ts))) {
-        SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", ntf_handle->plugin->name, lyd_owner_module(notif)->name);
+    if ((err_info = ntf_handle->plugin->store_cb(lyd_owner_module(notif), notif, &notif_ts))) {
         goto cleanup_unlock;
     }
 
@@ -312,7 +310,6 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     struct lyd_node *notif = NULL, *notif_op;
     sr_session_ctx_t *ev_sess = NULL;
     void *state = NULL;
-    int rc;
 
     /* get the stop timestamp - only notifications with smaller timestamp can be replayed */
     if (!SR_TS_IS_ZERO(*stop_time) && (sr_time_cmp(stop_time, listen_since) < 1)) {
@@ -345,7 +342,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
     }
 
     /* replay all notifications */
-    while (!(rc = ntf_handle->plugin->replay_next_cb(ly_mod, start_time, &stop_ts, &notif, &notif_ts, &state))) {
+    while (!(err_info = ntf_handle->plugin->replay_next_cb(ly_mod, start_time, &stop_ts, &notif, &notif_ts, &state)) && state) {
         /* make sure the XPath filter matches something */
         if (xpath) {
             ly_set_free(set, NULL);
@@ -371,8 +368,7 @@ sr_replay_notify(sr_conn_ctx_t *conn, const char *mod_name, uint32_t sub_id, con
         lyd_free_siblings(notif);
         notif = NULL;
     }
-    if (rc != SR_ERR_NOT_FOUND) {
-        SR_ERRINFO_DSPLUGIN(&err_info, rc, "replay_next", ntf_handle->plugin->name, mod_name);
+    if (err_info) {
         goto cleanup;
     }
 

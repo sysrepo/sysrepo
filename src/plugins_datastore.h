@@ -4,8 +4,8 @@
  * @brief API for datastore plugins
  *
  * @copyright
- * Copyright (c) 2021 - 2023 Deutsche Telekom AG.
- * Copyright (c) 2021 - 2023 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2024 Deutsche Telekom AG.
+ * Copyright (c) 2021 - 2024 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ extern "C" {
 /**
  * @brief Datastore plugin API version
  */
-#define SRPLG_DS_API_VERSION 9
+#define SRPLG_DS_API_VERSION 10
 
 /**
  * @brief Setup datastore of a newly installed module.
@@ -55,11 +55,11 @@ extern "C" {
  * @param[in] group Optional initial group of the module data, process group by default.
  * @param[in] perm Initial permissions of the module data, execute bits are never set.
  * @param[in] plg_data Plugin data.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srds_install)(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group,
-        mode_t perm, void *plg_data);
+typedef sr_error_info_t *(*srds_install)(const struct lys_module *mod, sr_datastore_t ds, const char *owner,
+        const char *group, mode_t perm, void *plg_data);
 
 /**
  * @brief Destroy data of an uninstalled module.
@@ -67,10 +67,10 @@ typedef int (*srds_install)(const struct lys_module *mod, sr_datastore_t ds, con
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
  * @param[in] plg_data Plugin data.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srds_uninstall)(const struct lys_module *mod, sr_datastore_t ds, void *plg_data);
+typedef sr_error_info_t *(*srds_uninstall)(const struct lys_module *mod, sr_datastore_t ds, void *plg_data);
 
 /**
  * @brief Initialize data of a newly installed module.
@@ -81,10 +81,10 @@ typedef int (*srds_uninstall)(const struct lys_module *mod, sr_datastore_t ds, v
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
  * @param[in] plg_data Plugin data.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srds_init)(const struct lys_module *mod, sr_datastore_t ds, void *plg_data);
+typedef sr_error_info_t *(*srds_init)(const struct lys_module *mod, sr_datastore_t ds, void *plg_data);
 
 /**
  * @brief Initialize per-connection plugin data.
@@ -95,10 +95,10 @@ typedef int (*srds_init)(const struct lys_module *mod, sr_datastore_t ds, void *
  *
  * @param[in] conn New connection.
  * @param[out] plg_data Arbitrary DS plugin data.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srds_conn_init)(sr_conn_ctx_t *conn, void **plg_data);
+typedef sr_error_info_t *(*srds_conn_init)(sr_conn_ctx_t *conn, void **plg_data);
 
 /**
  * @brief Destroy (free) per-connection plugin data.
@@ -107,8 +107,9 @@ typedef int (*srds_conn_init)(sr_conn_ctx_t *conn, void **plg_data);
  *
  * @param[in] conn Connection.
  * @param[in] plg_data Plugin data to free.
+ * @return NULL, if not freed and ignored.
  */
-typedef void (*srds_conn_destroy)(sr_conn_ctx_t *conn, void *plg_data);
+typedef sr_error_info_t *(*srds_conn_destroy)(sr_conn_ctx_t *conn, void *plg_data);
 
 /**
  * @brief Store data for a module. Either a diff can be applied manually or full new data tree stored.
@@ -129,10 +130,10 @@ typedef void (*srds_conn_destroy)(sr_conn_ctx_t *conn, void *plg_data);
  * @param[in] mod_diff Diff of currently stored module data and the new @p mod_data. __Not always available.__
  * @param[in] mod_data New module data tree to store.
  * @param[in] plg_data Plugin data.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srds_store)(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *mod_diff,
+typedef sr_error_info_t *(*srds_store)(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *mod_diff,
         const struct lyd_node *mod_data, void *plg_data);
 
 /**
@@ -141,8 +142,9 @@ typedef int (*srds_store)(const struct lys_module *mod, sr_datastore_t ds, const
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
  * @param[in] plg_data Plugin data.
+ * @return NULL, if not freed and ignored.
  */
-typedef void (*srds_recover)(const struct lys_module *mod, sr_datastore_t ds, void *plg_data);
+typedef sr_error_info_t *(*srds_recover)(const struct lys_module *mod, sr_datastore_t ds, void *plg_data);
 
 /**
  * @brief Load data of a module.
@@ -158,11 +160,11 @@ typedef void (*srds_recover)(const struct lys_module *mod, sr_datastore_t ds, vo
  * @param[in] xpath_count Number of @p xpaths.
  * @param[in] plg_data Plugin data.
  * @param[out] mod_data Loaded module data.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srds_load)(const struct lys_module *mod, sr_datastore_t ds, const char **xpaths, uint32_t xpath_count,
-        void *plg_data, struct lyd_node **mod_data);
+typedef sr_error_info_t *(*srds_load)(const struct lys_module *mod, sr_datastore_t ds, const char **xpaths,
+        uint32_t xpath_count, void *plg_data, struct lyd_node **mod_data);
 
 /**
  * @brief Copy data of a module from source datastore to the target datastore.
@@ -175,10 +177,11 @@ typedef int (*srds_load)(const struct lys_module *mod, sr_datastore_t ds, const 
  * @param[in] trg_ds Target datastore.
  * @param[in] src_ds Source datastore.
  * @param[in] plg_data Plugin data.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srds_copy)(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datastore_t src_ds, void *plg_data);
+typedef sr_error_info_t *(*srds_copy)(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datastore_t src_ds,
+        void *plg_data);
 
 /**
  * @brief Learn whether the candidate datastore was modified and is different from running.
@@ -186,20 +189,20 @@ typedef int (*srds_copy)(const struct lys_module *mod, sr_datastore_t trg_ds, sr
  * @param[in] mod Specific module.
  * @param[in] plg_data Plugin data.
  * @param[out] modified Whether the candidate datastore data were modified or not.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srds_candidate_modified)(const struct lys_module *mod, void *plg_data, int *modified);
+typedef sr_error_info_t *(*srds_candidate_modified)(const struct lys_module *mod, void *plg_data, int *modified);
 
 /**
  * @brief Reset candidate datastore to "no changes" - mirroring running.
  *
  * @param[in] mod Specific module.
  * @param[in] plg_data Plugin data.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srds_candidate_reset)(const struct lys_module *mod, void *plg_data);
+typedef sr_error_info_t *(*srds_candidate_reset)(const struct lys_module *mod, void *plg_data);
 
 /**
  * @brief Set access permissions for datastore data of a module.
@@ -210,11 +213,11 @@ typedef int (*srds_candidate_reset)(const struct lys_module *mod, void *plg_data
  * @param[in] group Optional new group of the module data.
  * @param[in] perm Optional new permissions of the module data, execute bits are never set.
  * @param[in] plg_data Plugin data.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srds_access_set)(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group,
-        mode_t perm, void *plg_data);
+typedef sr_error_info_t *(*srds_access_set)(const struct lys_module *mod, sr_datastore_t ds, const char *owner,
+        const char *group, mode_t perm, void *plg_data);
 
 /**
  * @brief Get access permissions for datastore data of a module. This function is also used for sysrepo access
@@ -226,10 +229,10 @@ typedef int (*srds_access_set)(const struct lys_module *mod, sr_datastore_t ds, 
  * @param[out] owner Optional owner of the module data.
  * @param[out] group Optional group of the module data.
  * @param[out] perm Optional permissions of the module data.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srds_access_get)(const struct lys_module *mod, sr_datastore_t ds, void *plg_data, char **owner,
+typedef sr_error_info_t *(*srds_access_get)(const struct lys_module *mod, sr_datastore_t ds, void *plg_data, char **owner,
         char **group, mode_t *perm);
 
 /**
@@ -240,10 +243,11 @@ typedef int (*srds_access_get)(const struct lys_module *mod, sr_datastore_t ds, 
  * @param[in] plg_data Plugin data.
  * @param[out] read Optional, whether the read permission was granted or not.
  * @param[out] write Optional, whether the write permission was granted or not.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srds_access_check)(const struct lys_module *mod, sr_datastore_t ds, void *plg_data, int *read, int *write);
+typedef sr_error_info_t *(*srds_access_check)(const struct lys_module *mod, sr_datastore_t ds, void *plg_data, int *read,
+        int *write);
 
 /**
  * @brief Get the time when the datastore data of the module were last modified.
@@ -254,10 +258,11 @@ typedef int (*srds_access_check)(const struct lys_module *mod, sr_datastore_t ds
  * @param[in] ds Specific datastore.
  * @param[in] plg_data Plugin data.
  * @param[out] mtime Time of last modification, or 0 when it is unknown.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srds_last_modif)(const struct lys_module *mod, sr_datastore_t ds, void *plg_data, struct timespec *mtime);
+typedef sr_error_info_t *(*srds_last_modif)(const struct lys_module *mod, sr_datastore_t ds, void *plg_data,
+        struct timespec *mtime);
 
 /**
  * @brief Datastore plugin structure

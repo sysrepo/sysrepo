@@ -38,9 +38,10 @@
 #include "config.h"
 #include "sysrepo.h"
 
-int
+sr_error_info_t *
 srpjson_writev(const char *plg_name, int fd, struct iovec *iov, int iovcnt)
 {
+    sr_error_info_t *err_info = NULL;
     ssize_t ret;
     size_t written;
 
@@ -51,8 +52,8 @@ srpjson_writev(const char *plg_name, int fd, struct iovec *iov, int iovcnt)
             /* it is fine */
             ret = 0;
         } else if (errno) {
-            SRPLG_LOG_ERR(plg_name, "Writev failed (%s).", strerror(errno));
-            return SR_ERR_SYS;
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_SYS, "Writev failed (%s).", strerror(errno));
+            return err_info;
         }
         assert(ret > -1);
         written = ret;
@@ -74,12 +75,13 @@ srpjson_writev(const char *plg_name, int fd, struct iovec *iov, int iovcnt)
         }
     } while (iovcnt);
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-int
+sr_error_info_t *
 srpjson_read(const char *plg_name, int fd, void *buf, size_t count)
 {
+    sr_error_info_t *err_info = NULL;
     ssize_t ret;
     size_t have_read;
 
@@ -92,14 +94,14 @@ srpjson_read(const char *plg_name, int fd, void *buf, size_t count)
             return SR_ERR_OK;
         }
         if ((ret == -1) || ((ret < (signed)(count - have_read)) && errno && (errno != EINTR))) {
-            SRPLG_LOG_ERR(plg_name, "Read failed (%s).", strerror(errno));
-            return SR_ERR_SYS;
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_SYS, "Read failed (%s).", strerror(errno));
+            return err_info;
         }
 
         have_read += ret;
     } while (have_read < count);
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
 int
@@ -121,21 +123,21 @@ srpjson_file_exists(const char *plg_name, const char *path)
     return 1;
 }
 
-int
+sr_error_info_t *
 srpjson_shm_prefix(const char *plg_name, const char **prefix)
 {
-    int rc = SR_ERR_OK;
+    sr_error_info_t *err_info = NULL;
 
     *prefix = getenv(SR_SHM_PREFIX_ENV);
     if (*prefix == NULL) {
         *prefix = SR_SHM_PREFIX_DEFAULT;
     } else if (strchr(*prefix, '/')) {
         *prefix = NULL;
-        SRPLG_LOG_ERR(plg_name, "%s cannot contain slashes.", SR_SHM_PREFIX_ENV);
-        rc = SR_ERR_INVAL_ARG;
+        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INVAL_ARG, "%s cannot contain slashes.", SR_SHM_PREFIX_ENV);
+        return err_info;
     }
 
-    return rc;
+    return NULL;
 }
 
 const char *
@@ -157,19 +159,16 @@ srpjson_ds2str(sr_datastore_t ds)
     return NULL;
 }
 
-void
+sr_error_info_t *
 srpjson_log_err_ly(const char *plg_name, const struct ly_ctx *ly_ctx)
 {
+    sr_error_info_t *err_info = NULL;
     struct ly_err_item *e;
 
     e = ly_err_first(ly_ctx);
-
-    /* this function is called only when an error is expected, but it is still possible there
-     * will be none -> libyang problem or simply the error was externally processed, sysrepo is
-     * unable to detect that */
     if (!e) {
-        SRPLG_LOG_ERR(plg_name, "Unknown libyang error.");
-        return;
+        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_LY, "%s", ly_last_errmsg());
+        return err_info;
     }
 
     do {
@@ -177,13 +176,14 @@ srpjson_log_err_ly(const char *plg_name, const struct ly_ctx *ly_ctx)
             SRPLG_LOG_WRN(plg_name, "%s", e->msg);
         } else {
             assert(e->level == LY_LLERR);
-            SRPLG_LOG_ERR(plg_name, "%s", e->msg);
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_LY, "%s", e->msg);
         }
 
         e = e->next;
     } while (e);
 
     ly_err_clean((struct ly_ctx *)ly_ctx, NULL);
+    return err_info;
 }
 
 int
@@ -245,13 +245,14 @@ srpjson_open(const char *plg_name, const char *path, int flags, mode_t mode)
     return fd;
 }
 
-int
+sr_error_info_t *
 srpjson_open_error(const char *plg_name, const char *path)
 {
+    sr_error_info_t *err_info = NULL;
     FILE *f;
     char buf[8], *ret = NULL;
 
-    SRPLG_LOG_ERR(plg_name, "Opening \"%s\" failed (%s).", path, strerror(errno));
+    srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_SYS, "Opening \"%s\" failed (%s).", path, strerror(errno));
     if ((errno == EACCES) && !geteuid()) {
         /* check kernel parameter value of fs.protected_regular */
         f = fopen("/proc/sys/fs/protected_regular", "r");
@@ -261,17 +262,18 @@ srpjson_open_error(const char *plg_name, const char *path)
         }
     }
     if (ret && (atoi(buf) != 0)) {
-        SRPLG_LOG_ERR(plg_name, "Caused by kernel parameter \"fs.protected_regular\", which must be \"0\" "
-                "(currently \"%d\").", atoi(buf));
+        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_SYS, "Caused by kernel parameter \"fs.protected_regular\", "
+                "which must be \"0\" (currently \"%d\").", atoi(buf));
     }
 
-    return SR_ERR_SYS;
+    return err_info;
 }
 
-int
+sr_error_info_t *
 srpjson_get_pwd(const char *plg_name, uid_t *uid, char **user)
 {
-    int rc = SR_ERR_OK, r;
+    sr_error_info_t *err_info = NULL;
+    int r;
     struct passwd pwd, *pwd_p;
     char *buf = NULL, *mem;
     ssize_t buflen = 0;
@@ -293,8 +295,7 @@ srpjson_get_pwd(const char *plg_name, uid_t *uid, char **user)
         /* allocate some buffer */
         mem = realloc(buf, buflen);
         if (!mem) {
-            SRPLG_LOG_ERR(plg_name, "Memory allocation failed.");
-            rc = SR_ERR_NO_MEMORY;
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
             goto cleanup;
         }
         buf = mem;
@@ -309,19 +310,21 @@ srpjson_get_pwd(const char *plg_name, uid_t *uid, char **user)
     } while (r && (r == ERANGE));
     if (r) {
         if (*user) {
-            SRPLG_LOG_ERR(plg_name, "Retrieving user \"%s\" passwd entry failed (%s).", *user, strerror(r));
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INTERNAL, "Retrieving user \"%s\" passwd entry failed (%s).",
+                    *user, strerror(r));
         } else {
-            SRPLG_LOG_ERR(plg_name, "Retrieving UID \"%lu\" passwd entry failed (%s).", (unsigned long int)*uid, strerror(r));
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INTERNAL, "Retrieving UID \"%lu\" passwd entry failed (%s).",
+                    (unsigned long int)*uid, strerror(r));
         }
-        rc = SR_ERR_INTERNAL;
         goto cleanup;
     } else if (!pwd_p) {
         if (*user) {
-            SRPLG_LOG_ERR(plg_name, "Retrieving user \"%s\" passwd entry failed (No such user).", *user);
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NOT_FOUND,
+                    "Retrieving user \"%s\" passwd entry failed (No such user).", *user);
         } else {
-            SRPLG_LOG_ERR(plg_name, "Retrieving UID \"%lu\" passwd entry failed (No such UID).", (unsigned long int)*uid);
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NOT_FOUND,
+                    "Retrieving UID \"%lu\" passwd entry failed (No such UID).", (unsigned long int)*uid);
         }
-        rc = SR_ERR_NOT_FOUND;
         goto cleanup;
     }
 
@@ -332,23 +335,21 @@ srpjson_get_pwd(const char *plg_name, uid_t *uid, char **user)
         /* assign user */
         *user = strdup(pwd.pw_name);
         if (!*user) {
-            SRPLG_LOG_ERR(plg_name, "Memory allocation failed.");
-            rc = SR_ERR_NO_MEMORY;
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
             goto cleanup;
         }
     }
 
-    /* success */
-
 cleanup:
     free(buf);
-    return rc;
+    return err_info;
 }
 
-int
+sr_error_info_t *
 srpjson_get_grp(const char *plg_name, gid_t *gid, char **group)
 {
-    int rc = SR_ERR_OK, r;
+    sr_error_info_t *err_info = NULL;
+    int r;
     struct group grp, *grp_p;
     char *buf = NULL, *mem;
     ssize_t buflen = 0;
@@ -370,8 +371,7 @@ srpjson_get_grp(const char *plg_name, gid_t *gid, char **group)
         /* allocate some buffer */
         mem = realloc(buf, buflen);
         if (!mem) {
-            SRPLG_LOG_ERR(plg_name, "Memory allocation failed.");
-            rc = SR_ERR_NO_MEMORY;
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
             goto cleanup;
         }
         buf = mem;
@@ -386,19 +386,21 @@ srpjson_get_grp(const char *plg_name, gid_t *gid, char **group)
     } while (r && (r == ERANGE));
     if (r) {
         if (*group) {
-            SRPLG_LOG_ERR(plg_name, "Retrieving group \"%s\" grp entry failed (%s).", *group, strerror(r));
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INTERNAL, "Retrieving group \"%s\" grp entry failed (%s).",
+                    *group, strerror(r));
         } else {
-            SRPLG_LOG_ERR(plg_name, "Retrieving GID \"%lu\" grp entry failed (%s).", (unsigned long int)*gid, strerror(r));
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INTERNAL, "Retrieving GID \"%lu\" grp entry failed (%s).",
+                    (unsigned long int)*gid, strerror(r));
         }
-        rc = SR_ERR_INTERNAL;
         goto cleanup;
     } else if (!grp_p) {
         if (*group) {
-            SRPLG_LOG_ERR(plg_name, "Retrieving group \"%s\" grp entry failed (No such group).", *group);
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NOT_FOUND,
+                    "Retrieving group \"%s\" grp entry failed (No such group).", *group);
         } else {
-            SRPLG_LOG_ERR(plg_name, "Retrieving GID \"%lu\" grp entry failed (No such GID).", (unsigned long int)*gid);
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NOT_FOUND,
+                    "Retrieving GID \"%lu\" grp entry failed (No such GID).", (unsigned long int)*gid);
         }
-        rc = SR_ERR_NOT_FOUND;
         goto cleanup;
     }
 
@@ -409,91 +411,83 @@ srpjson_get_grp(const char *plg_name, gid_t *gid, char **group)
         /* assign group */
         *group = strdup(grp.gr_name);
         if (!*group) {
-            SRPLG_LOG_ERR(plg_name, "Memory allocation failed.");
-            rc = SR_ERR_NO_MEMORY;
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
             goto cleanup;
         }
     }
 
-    /* success */
-
 cleanup:
     free(buf);
-    return rc;
+    return err_info;
 }
 
-int
+sr_error_info_t *
 srpjson_chmodown(const char *plg_name, const char *path, const char *owner, const char *group, mode_t perm)
 {
-    int rc;
+    sr_error_info_t *err_info = NULL;
     uid_t uid = -1;
     gid_t gid = -1;
+    int r;
 
     assert(path);
 
     if (perm) {
         if (perm > 00777) {
-            SRPLG_LOG_ERR(plg_name, "Invalid permissions 0%.3o.", perm);
-            return SR_ERR_INVAL_ARG;
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INVAL_ARG, "Invalid permissions 0%.3o.", perm);
+            return err_info;
         } else if (perm & 00111) {
-            SRPLG_LOG_ERR(plg_name, "Setting execute permissions has no effect.");
-            return SR_ERR_INVAL_ARG;
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INVAL_ARG, "Setting execute permissions has no effect.");
+            return err_info;
         }
     }
 
     /* we are going to change the owner */
-    if (owner && (rc = srpjson_get_pwd(plg_name, &uid, (char **)&owner))) {
-        return rc;
+    if (owner && (err_info = srpjson_get_pwd(plg_name, &uid, (char **)&owner))) {
+        return err_info;
     }
 
     /* we are going to change the group */
-    if (group && (rc = srpjson_get_grp(plg_name, &gid, (char **)&group))) {
-        return rc;
+    if (group && (err_info = srpjson_get_grp(plg_name, &gid, (char **)&group))) {
+        return err_info;
     }
 
     /* apply owner changes, if any */
     if (chown(path, uid, gid) == -1) {
-        SRPLG_LOG_ERR(plg_name, "Changing owner of \"%s\" failed (%s).", path, strerror(errno));
-        if ((errno == EACCES) || (errno == EPERM)) {
-            rc = SR_ERR_UNAUTHORIZED;
-        } else {
-            rc = SR_ERR_INTERNAL;
-        }
-        return rc;
+        r = ((errno == EACCES) || (errno == EPERM)) ? SR_ERR_UNAUTHORIZED : SR_ERR_INTERNAL;
+        srplg_log_errinfo(&err_info, plg_name, NULL, r, "Changing owner of \"%s\" failed (%s).", path, strerror(errno));
+        return err_info;
     }
 
     /* apply permission changes, if any */
     if (perm && (chmod(path, perm) == -1)) {
-        SRPLG_LOG_ERR(plg_name, "Changing permissions (mode) of \"%s\" failed (%s).", path, strerror(errno));
-        if ((errno == EACCES) || (errno == EPERM)) {
-            rc = SR_ERR_UNAUTHORIZED;
-        } else {
-            rc = SR_ERR_INTERNAL;
-        }
-        return rc;
+        r = ((errno == EACCES) || (errno == EPERM)) ? SR_ERR_UNAUTHORIZED : SR_ERR_INTERNAL;
+        srplg_log_errinfo(&err_info, plg_name, NULL, r, "Changing permissions (mode) of \"%s\" failed (%s).", path,
+                strerror(errno));
+        return err_info;
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-int
+sr_error_info_t *
 srpjson_cp_path(const char *plg_name, const char *to, const char *from)
 {
-    int rc = SR_ERR_OK, fd_to = -1, fd_from = -1;
+    sr_error_info_t *err_info = NULL;
+    int fd_to = -1, fd_from = -1;
     char *out_ptr, buf[4096];
     ssize_t nread, nwritten;
 
     /* open "from" file */
     fd_from = srpjson_open(plg_name, from, O_RDONLY, 0);
     if (fd_from < 0) {
-        rc = srpjson_open_error(plg_name, from);
+        err_info = srpjson_open_error(plg_name, from);
         goto cleanup;
     }
 
     /* open "to" */
     fd_to = srpjson_open(plg_name, to, O_WRONLY | O_TRUNC, 0);
     if (fd_to < 0) {
-        rc = srpjson_open_error(plg_name, to);
+        err_info = srpjson_open_error(plg_name, to);
         goto cleanup;
     }
 
@@ -505,15 +499,13 @@ srpjson_cp_path(const char *plg_name, const char *to, const char *from)
                 nread -= nwritten;
                 out_ptr += nwritten;
             } else if (errno != EINTR) {
-                SRPLG_LOG_ERR(plg_name, "Writing data failed (%s).", strerror(errno));
-                rc = SR_ERR_SYS;
+                srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_SYS, "Writing data failed (%s).", strerror(errno));
                 goto cleanup;
             }
         } while (nread > 0);
     }
     if (nread == -1) {
-        SRPLG_LOG_ERR(plg_name, "Reading data failed (%s).", strerror(errno));
-        rc = SR_ERR_SYS;
+        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_SYS, "Reading data failed (%s).", strerror(errno));
         goto cleanup;
     }
 
@@ -524,13 +516,14 @@ cleanup:
     if (fd_to > -1) {
         close(fd_to);
     }
-    return rc;
+    return err_info;
 }
 
-int
+sr_error_info_t *
 srpjson_mkpath(const char *plg_name, char *path, mode_t mode)
 {
-    int rc = SR_ERR_OK, r;
+    sr_error_info_t *err_info = NULL;
+    int r;
     char *p = NULL;
     const char *group = SR_GROUP;
     gid_t gid;
@@ -541,7 +534,7 @@ srpjson_mkpath(const char *plg_name, char *path, mode_t mode)
     mode &= ~SR_UMASK;
 
     /* get GID of the group */
-    if (strlen(SR_GROUP) && (rc = srpjson_get_grp(plg_name, &gid, (char **)&group))) {
+    if (strlen(SR_GROUP) && (err_info = srpjson_get_grp(plg_name, &gid, (char **)&group))) {
         goto cleanup;
     }
 
@@ -549,21 +542,21 @@ srpjson_mkpath(const char *plg_name, char *path, mode_t mode)
     for (p = strchr(path + 1, '/'); p; p = strchr(p + 1, '/')) {
         *p = '\0';
         if (((r = mkdir(path, mode)) == -1) && (errno != EEXIST)) {
-            SRPLG_LOG_ERR(plg_name, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
-            rc = SR_ERR_SYS;
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_SYS, "Creating directory \"%s\" failed (%s).", path,
+                    strerror(errno));
             goto cleanup;
         }
 
         /* update perms and group */
         if (!r) {
             if (chmod(path, mode) == -1) {
-                SRPLG_LOG_ERR(plg_name, "Changing permissions of directory \"%s\" failed (%s).", path, strerror(errno));
-                rc = SR_ERR_SYS;
+                srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_SYS, "Changing permissions of directory \"%s\" failed (%s).",
+                        path, strerror(errno));
                 goto cleanup;
             }
             if (strlen(SR_GROUP) && (chown(path, -1, gid) == -1)) {
-                SRPLG_LOG_ERR(plg_name, "Changing group of directory \"%s\" failed (%s).", path, strerror(errno));
-                rc = SR_ERR_SYS;
+                srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_SYS, "Changing group of directory \"%s\" failed (%s).",
+                        path, strerror(errno));
                 goto cleanup;
             }
         }
@@ -573,21 +566,21 @@ srpjson_mkpath(const char *plg_name, char *path, mode_t mode)
 
     /* create the last directory in the path */
     if (((r = mkdir(path, mode)) == -1) && (errno != EEXIST)) {
-        SRPLG_LOG_ERR(plg_name, "Creating directory \"%s\" failed (%s).", path, strerror(errno));
-        rc = SR_ERR_SYS;
+        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_SYS, "Creating directory \"%s\" failed (%s).", path,
+                strerror(errno));
         goto cleanup;
     }
 
     /* update perms and group */
     if (!r) {
         if (chmod(path, mode) == -1) {
-            SRPLG_LOG_ERR(plg_name, "Changing permissions of directory \"%s\" failed (%s).", path, strerror(errno));
-            rc = SR_ERR_SYS;
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_SYS, "Changing permissions of directory \"%s\" failed (%s).",
+                    path, strerror(errno));
             goto cleanup;
         }
         if (strlen(SR_GROUP) && (chown(path, -1, gid) == -1)) {
-            SRPLG_LOG_ERR(plg_name, "Changing group of directory \"%s\" failed (%s).", path, strerror(errno));
-            rc = SR_ERR_SYS;
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_SYS, "Changing group of directory \"%s\" failed (%s).",
+                    path, strerror(errno));
             goto cleanup;
         }
     }
@@ -596,7 +589,7 @@ cleanup:
     if (p) {
         *p = '/';
     }
-    return rc;
+    return err_info;
 }
 
 int
@@ -619,9 +612,11 @@ srpjson_time_cmp(const struct timespec *ts1, const struct timespec *ts2)
     return 0;
 }
 
-int
+sr_error_info_t *
 srpjson_get_startup_dir(const char *plg_name, char **path)
 {
+    sr_error_info_t *err_info = NULL;
+
     if (SR_STARTUP_PATH[0]) {
         *path = strdup(SR_STARTUP_PATH);
     } else {
@@ -631,16 +626,18 @@ srpjson_get_startup_dir(const char *plg_name, char **path)
     }
 
     if (!*path) {
-        SRPLG_LOG_ERR(plg_name, "Memory allocation failed.");
-        return SR_ERR_NO_MEMORY;
+        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
+        return err_info;
     }
-    return SR_ERR_OK;
+
+    return NULL;
 }
 
-int
+sr_error_info_t *
 srpjson_get_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, char **path)
 {
-    int r = 0, rc;
+    sr_error_info_t *err_info = NULL;
+    int r = 0;
     const char *prefix;
 
     *path = NULL;
@@ -663,8 +660,8 @@ srpjson_get_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, 
     case SR_DS_RUNNING:
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
-        if ((rc = srpjson_shm_prefix(plg_name, &prefix))) {
-            return rc;
+        if ((err_info = srpjson_shm_prefix(plg_name, &prefix))) {
+            return err_info;
         }
 
         r = asprintf(path, "%s/%s_%s.%s", SR_SHM_DIR, prefix, mod_name, srpjson_ds2str(ds));
@@ -673,16 +670,17 @@ srpjson_get_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, 
 
     if (r == -1) {
         *path = NULL;
-        SRPLG_LOG_ERR(plg_name, "Memory allocation failed.");
-        return SR_ERR_NO_MEMORY;
+        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
+        return err_info;
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-int
+sr_error_info_t *
 srpjson_get_perm_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, char **path)
 {
+    sr_error_info_t *err_info = NULL;
     int r = 0;
 
     *path = NULL;
@@ -690,7 +688,8 @@ srpjson_get_perm_path(const char *plg_name, const char *mod_name, sr_datastore_t
     switch (ds) {
     case SR_DS_STARTUP:
     case SR_DS_FACTORY_DEFAULT:
-        return SR_ERR_INTERNAL;
+        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INTERNAL, "Internal error.");
+        return err_info;
     case SR_DS_RUNNING:
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
@@ -704,16 +703,18 @@ srpjson_get_perm_path(const char *plg_name, const char *mod_name, sr_datastore_t
 
     if (r == -1) {
         *path = NULL;
-        SRPLG_LOG_ERR(plg_name, "Memory allocation failed.");
-        return SR_ERR_NO_MEMORY;
+        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
+        return err_info;
     }
 
-    return SR_ERR_OK;
+    return NULL;
 }
 
-int
+sr_error_info_t *
 srpjson_get_notif_dir(const char *plg_name, char **path)
 {
+    sr_error_info_t *err_info = NULL;
+
     if (SR_NOTIFICATION_PATH[0]) {
         *path = strdup(SR_NOTIFICATION_PATH);
     } else {
@@ -723,15 +724,16 @@ srpjson_get_notif_dir(const char *plg_name, char **path)
     }
 
     if (!*path) {
-        SRPLG_LOG_ERR(plg_name, "Memory allocation failed.");
-        return SR_ERR_NO_MEMORY;
+        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
+        return err_info;
     }
-    return SR_ERR_OK;
+    return NULL;
 }
 
-int
+sr_error_info_t *
 srpjson_get_notif_path(const char *plg_name, const char *mod_name, time_t from_ts, time_t to_ts, char **path)
 {
+    sr_error_info_t *err_info = NULL;
     int r;
 
     if (SR_NOTIFICATION_PATH[0]) {
@@ -741,10 +743,10 @@ srpjson_get_notif_path(const char *plg_name, const char *mod_name, time_t from_t
     }
 
     if (r == -1) {
-        SRPLG_LOG_ERR(plg_name, "Memory allocation failed.");
-        return SR_ERR_NO_MEMORY;
+        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
+        return err_info;
     }
-    return SR_ERR_OK;
+    return NULL;
 }
 
 int

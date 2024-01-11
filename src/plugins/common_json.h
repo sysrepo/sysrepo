@@ -44,9 +44,9 @@
  * @param[in] fd File desriptor.
  * @param[in] iov Buffer vectors to write.
  * @param[in] iovcnt Number of vector buffers.
- * @return SR err value.
+ * @return err_info, NULL on success.
  */
-int srpjson_writev(const char *plg_name, int fd, struct iovec *iov, int iovcnt);
+sr_error_info_t *srpjson_writev(const char *plg_name, int fd, struct iovec *iov, int iovcnt);
 
 /**
  * @brief Wrapper for read().
@@ -55,9 +55,9 @@ int srpjson_writev(const char *plg_name, int fd, struct iovec *iov, int iovcnt);
  * @param[in] fd File desriptor.
  * @param[out] buf Read memory.
  * @param[in] count Number of bytes to read.
- * @return SR err value.
+ * @return err_info, NULL on success.
  */
-int srpjson_read(const char *plg_name, int fd, void *buf, size_t count);
+sr_error_info_t *srpjson_read(const char *plg_name, int fd, void *buf, size_t count);
 
 /**
  * @brief Check file existence.
@@ -73,9 +73,9 @@ int srpjson_file_exists(const char *plg_name, const char *path);
  *
  * @param[in] plg_name Plugin name.
  * @param[out] prefix SHM prefix to use.
- * @return SR err value.
+ * @return err_info, NULL on success.
  */
-int srpjson_shm_prefix(const char *plg_name, const char **prefix);
+sr_error_info_t *srpjson_shm_prefix(const char *plg_name, const char **prefix);
 
 /**
  * @brief Get datastore string name.
@@ -90,8 +90,9 @@ const char *srpjson_ds2str(sr_datastore_t ds);
  *
  * @param[in] plg_name Plugin name.
  * @param[in] ly_ctx libyang context to get the error from.
+ * @return err_info.
  */
-void srpjson_log_err_ly(const char *plg_name, const struct ly_ctx *ly_ctx);
+sr_error_info_t *srpjson_log_err_ly(const char *plg_name, const struct ly_ctx *ly_ctx);
 
 /**
  * @brief Wrapper for open(2).
@@ -112,9 +113,9 @@ int srpjson_open(const char *plg_name, const char *path, int flags, mode_t mode)
  *
  * @param[in] plg_name Plugin name.
  * @param[in] path Path of the file to open.
- * @return SR err value to return.
+ * @return err_info.
  */
-int srpjson_open_error(const char *plg_name, const char *path);
+sr_error_info_t *srpjson_open_error(const char *plg_name, const char *path);
 
 /**
  * @brief Get the UID of a user or vice versa.
@@ -122,9 +123,9 @@ int srpjson_open_error(const char *plg_name, const char *path);
  * @param[in] plg_name Plugin name.
  * @param[in,out] uid UID.
  * @param[in,out] user User name.
- * @return SR err value.
+ * @return err_info, NULL on success.
  */
-int srpjson_get_pwd(const char *plg_name, uid_t *uid, char **user);
+sr_error_info_t *srpjson_get_pwd(const char *plg_name, uid_t *uid, char **user);
 
 /**
  * @brief Get GID from group name or vice versa.
@@ -132,9 +133,9 @@ int srpjson_get_pwd(const char *plg_name, uid_t *uid, char **user);
  * @param[in] plg_name Plugin name.
  * @param[in,out] gid GID.
  * @param[in,out] group Group name.
- * @return SR err value.
+ * @return err_info, NULL on success.
  */
-int srpjson_get_grp(const char *plg_name, gid_t *gid, char **group);
+sr_error_info_t *srpjson_get_grp(const char *plg_name, gid_t *gid, char **group);
 
 /**
  * @brief Change mode (permissions) and/or owner and group of a file.
@@ -144,9 +145,9 @@ int srpjson_get_grp(const char *plg_name, gid_t *gid, char **group);
  * @param[in] owner New owner if not NULL.
  * @param[in] group New group if not NULL.
  * @param[in] perm New permissions if not 0.
- * @return SR err value.
+ * @return err_info, NULL on success.
  */
-int srpjson_chmodown(const char *plg_name, const char *path, const char *owner, const char *group, mode_t perm);
+sr_error_info_t *srpjson_chmodown(const char *plg_name, const char *path, const char *owner, const char *group, mode_t perm);
 
 /**
  * @brief Copy file contents to another file.
@@ -154,9 +155,9 @@ int srpjson_chmodown(const char *plg_name, const char *path, const char *owner, 
  * @param[in] plg_name Plugin name.
  * @param[in] to Destination file path, must exist.
  * @param[in] from Source file path.
- * @return SR err value.
+ * @return err_info, NULL on success.
  */
-int srpjson_cp_path(const char *plg_name, const char *to, const char *from);
+sr_error_info_t *srpjson_cp_path(const char *plg_name, const char *to, const char *from);
 
 /**
  * @brief Create all directories in the path, wrapper for mkdir(2).
@@ -166,9 +167,9 @@ int srpjson_cp_path(const char *plg_name, const char *to, const char *from);
  * @param[in] plg_name Plugin name.
  * @param[in] path Full path, is temporarily modified.
  * @param[in] mode Mode (permissions) of the directories.
- * @return SR err value.
+ * @return err_info, NULL on success.
  */
-int srpjson_mkpath(const char *plg_name, char *path, mode_t mode);
+sr_error_info_t *srpjson_mkpath(const char *plg_name, char *path, mode_t mode);
 
 /**
  * @brief Compare 2 timespec structures.
@@ -186,9 +187,9 @@ int srpjson_time_cmp(const struct timespec *ts1, const struct timespec *ts2);
  *
  * @param[in] plg_name Plugin name.
  * @param[out] path Created path.
- * @return SR err value.
+ * @return err_info, NULL on success.
  */
-int srpjson_get_startup_dir(const char *plg_name, char **path);
+sr_error_info_t *srpjson_get_startup_dir(const char *plg_name, char **path);
 
 /**
  * @brief Get path to a datastore file of a module.
@@ -197,9 +198,9 @@ int srpjson_get_startup_dir(const char *plg_name, char **path);
  * @param[in] mod_name Module name.
  * @param[in] ds Specific datastore.
  * @param[out] path Generated file path.
- * @return SR err value.
+ * @return err_info, NULL on success.
  */
-int srpjson_get_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, char **path);
+sr_error_info_t *srpjson_get_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, char **path);
 
 /**
  * @brief Get path to a datastore permission file of a module.
@@ -208,18 +209,18 @@ int srpjson_get_path(const char *plg_name, const char *mod_name, sr_datastore_t 
  * @param[in] mod_name Module name.
  * @param[in] ds Specific volatile datastore.
  * @param[out] path Generated file path.
- * @return SR err value.
+ * @return err_info, NULL on success.
  */
-int srpjson_get_perm_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, char **path);
+sr_error_info_t *srpjson_get_perm_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, char **path);
 
 /**
  * @brief Get the path to notification files directory.
  *
  * @param[in] plg_name Plugin name.
  * @param[out] path Created path.
- * @return SR err value.
+ * @return err_info, NULL on success.
  */
-int srpjson_get_notif_dir(const char *plg_name, char **path);
+sr_error_info_t *srpjson_get_notif_dir(const char *plg_name, char **path);
 
 /**
  * @brief Get the path to a module notification file.
@@ -229,9 +230,9 @@ int srpjson_get_notif_dir(const char *plg_name, char **path);
  * @param[in] from_ts Timestamp of the first stored notification.
  * @param[in] to_ts Timestamp of the last stored notification.
  * @param[out] path Created path.
- * @return SR err value.
+ * @return err_info, NULL on success.
  */
-int srpjson_get_notif_path(const char *plg_name, const char *mod_name, time_t from_ts, time_t to_ts, char **path);
+sr_error_info_t *srpjson_get_notif_path(const char *plg_name, const char *mod_name, time_t from_ts, time_t to_ts, char **path);
 
 /**
  * @brief Check whether a module defines any instantiable data nodes (ignoring operations).

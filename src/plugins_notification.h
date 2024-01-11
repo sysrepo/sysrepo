@@ -4,8 +4,8 @@
  * @brief API for notification plugins
  *
  * @copyright
- * Copyright (c) 2021 - 2022 Deutsche Telekom AG.
- * Copyright (c) 2021 - 2022 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2024 Deutsche Telekom AG.
+ * Copyright (c) 2021 - 2024 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ extern "C" {
 /**
  * @brief Notification plugin API version
  */
-#define SRPLG_NTF_API_VERSION 2
+#define SRPLG_NTF_API_VERSION 3
 
 /**
  * @brief Initialize notification storage for a specific module.
@@ -48,10 +48,10 @@ extern "C" {
  * Install is called once for every module on enabled replay.
  *
  * @param[in] mod Specific module.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srntf_enable)(const struct lys_module *mod);
+typedef sr_error_info_t *(*srntf_enable)(const struct lys_module *mod);
 
 /**
  * @brief Destroy notification storage of a specific module.
@@ -59,10 +59,10 @@ typedef int (*srntf_enable)(const struct lys_module *mod);
  * Stored notifications may be kept and usable once ::srntf_enable is called again for the module.
  *
  * @param[in] mod Specific module.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srntf_disable)(const struct lys_module *mod);
+typedef sr_error_info_t *(*srntf_disable)(const struct lys_module *mod);
 
 /**
  * @brief Store a notification for replay.
@@ -70,10 +70,11 @@ typedef int (*srntf_disable)(const struct lys_module *mod);
  * @param[in] mod Specific module.
  * @param[in] notif Notification data tree.
  * @param[in] notif_ts Notification timestamp.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srntf_store)(const struct lys_module *mod, const struct lyd_node *notif, const struct timespec *notif_ts);
+typedef sr_error_info_t *(*srntf_store)(const struct lys_module *mod, const struct lyd_node *notif,
+        const struct timespec *notif_ts);
 
 /**
  * @brief Replay the next notification of a module.
@@ -84,12 +85,12 @@ typedef int (*srntf_store)(const struct lys_module *mod, const struct lyd_node *
  * @param[out] notif Notification data tree.
  * @param[out] notif_ts Notification timestamp.
  * @param[in,out] state Arbitrary state to keep track of returned notifications, is NULL on first call.
- * @return ::SR_ERR_OK on success;
- * @return ::SR_ERR_NOT_FOUND if there are no more notifications, @p state was freed.
- * @return Sysrepo error value on error, @p state was freed.
+ * When NULL on return, there are no more notifications.
+ * @return NULL on success;
+ * @return Sysrepo error info on error, @p state was freed.
  */
-typedef int (*srntf_replay_next)(const struct lys_module *mod, const struct timespec *start, const struct timespec *stop,
-        struct lyd_node **notif, struct timespec *notif_ts, void *state);
+typedef sr_error_info_t *(*srntf_replay_next)(const struct lys_module *mod, const struct timespec *start,
+        const struct timespec *stop, struct lyd_node **notif, struct timespec *notif_ts, void *state);
 
 /**
  * @brief Get the timestamp of the earliest stored notification of the module.
@@ -98,10 +99,10 @@ typedef int (*srntf_replay_next)(const struct lys_module *mod, const struct time
  *
  * @param[in] mod Specific module.
  * @param[out] ts Timestamp of the earliest notification, zeroed if there are none.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srntf_earliest_get)(const struct lys_module *mod, struct timespec *ts);
+typedef sr_error_info_t *(*srntf_earliest_get)(const struct lys_module *mod, struct timespec *ts);
 
 /**
  * @brief Set access permissions for notification data of a module.
@@ -110,10 +111,11 @@ typedef int (*srntf_earliest_get)(const struct lys_module *mod, struct timespec 
  * @param[in] owner Optional, new owner of the module notification data.
  * @param[in] group Optional, new group of the module notification data.
  * @param[in] perm Optional not 0, new permissions of the module notification data.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srntf_access_set)(const struct lys_module *mod, const char *owner, const char *group, mode_t perm);
+typedef sr_error_info_t *(*srntf_access_set)(const struct lys_module *mod, const char *owner, const char *group,
+        mode_t perm);
 
 /**
  * @brief Get access permissions for notification data of a module.
@@ -122,10 +124,10 @@ typedef int (*srntf_access_set)(const struct lys_module *mod, const char *owner,
  * @param[out] owner Optional, owner of the module data.
  * @param[out] group Optional, group of the module data.
  * @param[out] perm Optional, permissions of the module data.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srntf_access_get)(const struct lys_module *mod, char **owner, char **group, mode_t *perm);
+typedef sr_error_info_t *(*srntf_access_get)(const struct lys_module *mod, char **owner, char **group, mode_t *perm);
 
 /**
  * @brief Check whether the current user has the required access to notification data.
@@ -133,10 +135,10 @@ typedef int (*srntf_access_get)(const struct lys_module *mod, char **owner, char
  * @param[in] mod Specific module.
  * @param[out] read Optional, whether the read permission was granted or not.
  * @param[out] write Optional, whether the write permission was granted or not.
- * @return ::SR_ERR_OK on success;
- * @return Sysrepo error value on error.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
  */
-typedef int (*srntf_access_check)(const struct lys_module *mod, int *read, int *write);
+typedef sr_error_info_t *(*srntf_access_check)(const struct lys_module *mod, int *read, int *write);
 
 /**
  * @brief Notification plugin structure

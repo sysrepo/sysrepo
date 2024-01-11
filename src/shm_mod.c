@@ -1120,6 +1120,7 @@ cleanup:
 void
 sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data)
 {
+    sr_error_info_t *err_info = NULL;
     struct sr_shmmod_recover_cb_s *cb_data = data;
     const struct lys_module *ly_mod;
 
@@ -1135,7 +1136,8 @@ sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data)
     assert(ly_mod);
 
     /* recovery specific for the plugin */
-    cb_data->ds_handle->plugin->recover_cb(ly_mod, cb_data->ds, cb_data->ds_handle->plg_data);
+    err_info = cb_data->ds_handle->plugin->recover_cb(ly_mod, cb_data->ds, cb_data->ds_handle->plg_data);
+    sr_errinfo_free(&err_info);
 }
 
 /**
@@ -1460,7 +1462,7 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid)
     struct sr_mod_lock_s *shm_lock;
     const struct sr_ds_handle_s *ds_handle;
     sr_datastore_t ds;
-    int ds_locked, rc;
+    int ds_locked;
     uint32_t i;
 
     for (i = 0; i < SR_CONN_MOD_SHM(conn)->mod_count; ++i) {
@@ -1502,8 +1504,7 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid)
                     sr_errinfo_free(&err_info);
                 } else {
                     /* reset candidate */
-                    if ((rc = ds_handle->plugin->candidate_reset_cb(ly_mod, ds_handle->plg_data))) {
-                        SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_reset", ds_handle->plugin->name, ly_mod->name);
+                    if ((err_info = ds_handle->plugin->candidate_reset_cb(ly_mod, ds_handle->plg_data))) {
                         sr_errinfo_free(&err_info);
                     }
 
@@ -1552,25 +1553,24 @@ sr_shmmod_copy_mod(const struct lys_module *ly_mod, const struct sr_ds_handle_s 
         const struct sr_ds_handle_s *tds_handle, sr_datastore_t tds)
 {
     sr_error_info_t *err_info = NULL;
-    int rc = SR_ERR_OK;
     LY_ERR lyrc;
     struct lyd_node *s_mod_data = NULL, *r_mod_data = NULL, *mod_diff = NULL;
 
     if (sds_handle == tds_handle) {
         /* same plugin, we can use the copy callback */
-        rc = sds_handle->plugin->copy_cb(ly_mod, tds, sds, sds_handle->plg_data);
+        err_info = sds_handle->plugin->copy_cb(ly_mod, tds, sds, sds_handle->plg_data);
         goto cleanup;
     }
 
     /* load source data */
     assert(sds != SR_DS_CANDIDATE);
-    if ((rc = sds_handle->plugin->load_cb(ly_mod, sds, NULL, 0, sds_handle->plg_data, &s_mod_data))) {
+    if ((err_info = sds_handle->plugin->load_cb(ly_mod, sds, NULL, 0, sds_handle->plg_data, &s_mod_data))) {
         goto cleanup;
     }
 
     /* load also current target data */
     assert(tds != SR_DS_CANDIDATE);
-    if ((rc = tds_handle->plugin->load_cb(ly_mod, tds, NULL, 0, tds_handle->plg_data, &r_mod_data))) {
+    if ((err_info = tds_handle->plugin->load_cb(ly_mod, tds, NULL, 0, tds_handle->plg_data, &r_mod_data))) {
         goto cleanup;
     }
 
@@ -1578,7 +1578,6 @@ sr_shmmod_copy_mod(const struct lys_module *ly_mod, const struct sr_ds_handle_s 
     lyrc = lyd_diff_siblings(r_mod_data, s_mod_data, LYD_DIFF_DEFAULTS, &mod_diff);
     if (lyrc) {
         sr_errinfo_new_ly(&err_info, LYD_CTX(r_mod_data), NULL);
-        rc = SR_ERR_LY;
         goto cleanup;
     } else if (!mod_diff) {
         /* no data changes */
@@ -1586,7 +1585,7 @@ sr_shmmod_copy_mod(const struct lys_module *ly_mod, const struct sr_ds_handle_s 
     }
 
     /* write data to target */
-    if ((rc = tds_handle->plugin->store_cb(ly_mod, tds, mod_diff, s_mod_data, tds_handle->plg_data))) {
+    if ((err_info = tds_handle->plugin->store_cb(ly_mod, tds, mod_diff, s_mod_data, tds_handle->plg_data))) {
         goto cleanup;
     }
 
@@ -1594,10 +1593,6 @@ cleanup:
     lyd_free_siblings(s_mod_data);
     lyd_free_siblings(r_mod_data);
     lyd_free_siblings(mod_diff);
-    if (rc) {
-        sr_errinfo_new(&err_info, rc, "Copying module \"%s\" data from <%s> to <%s> failed.",
-                ly_mod->name, sr_ds2str(sds), sr_ds2str(tds));
-    }
     return err_info;
 }
 
@@ -1627,7 +1622,6 @@ sr_shmmod_reboot_init(sr_conn_ctx_t *conn, int initialized)
     const struct sr_ds_handle_s *ds_handle[SR_DS_READ_COUNT];
     sr_datastore_t ds;
     uint32_t i;
-    int rc;
 
     mod_shm = SR_CONN_MOD_SHM(conn);
     smods = malloc(mod_shm->mod_count * sizeof *smods);
@@ -1656,8 +1650,7 @@ sr_shmmod_reboot_init(sr_conn_ctx_t *conn, int initialized)
             if ((err_info = sr_ds_handle_find(((char *)mod_shm) + smods[i]->plugins[ds], conn, &ds_handle[ds]))) {
                 goto cleanup;
             }
-            if (!initialized && (rc = ds_handle[ds]->plugin->init_cb(ly_mod, ds, ds_handle[ds]->plg_data))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "init", ds_handle[ds]->plugin->name, ly_mod->name);
+            if (!initialized && (err_info = ds_handle[ds]->plugin->init_cb(ly_mod, ds, ds_handle[ds]->plg_data))) {
                 goto cleanup;
             }
         }

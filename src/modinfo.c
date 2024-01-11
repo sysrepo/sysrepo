@@ -2227,7 +2227,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn = mod_info->conn;
     struct lyd_node *mod_data = NULL;
-    int r, modified;
+    int modified;
 
     assert(!mod_info->data_cached);
     assert((mod_info->ds != SR_DS_OPERATIONAL) || (mod_info->ds2 != SR_DS_OPERATIONAL));
@@ -2241,10 +2241,8 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             run_cached_data_cur = 0;
             break;
         case SR_DS_CANDIDATE:
-            if ((r = mod->ds_handle[mod_info->ds]->plugin->candidate_modified_cb(mod->ly_mod,
+            if ((err_info = mod->ds_handle[mod_info->ds]->plugin->candidate_modified_cb(mod->ly_mod,
                     mod->ds_handle[mod_info->ds]->plg_data, &modified))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, r, "candidate_modified", mod->ds_handle[mod_info->ds]->plugin->name,
-                        mod->ly_mod->name);
                 break;
             } else if (modified) {
                 /* running data are of no use */
@@ -3333,7 +3331,6 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
     struct lyd_node *mod_diff, *mod_data;
     sr_datastore_t store_ds;
     uint32_t i;
-    int rc;
 
     assert(!mod_info->data_cached);
 
@@ -3352,9 +3349,8 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
             }
 
             /* store the new data */
-            if ((rc = mod->ds_handle[store_ds]->plugin->store_cb(mod->ly_mod, store_ds, mod_diff, mod_data,
+            if ((err_info = mod->ds_handle[store_ds]->plugin->store_cb(mod->ly_mod, store_ds, mod_diff, mod_data,
                     mod->ds_handle[store_ds]->plg_data))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", mod->ds_handle[store_ds]->plugin->name, mod->ly_mod->name);
                 goto cleanup;
             }
 
@@ -3395,16 +3391,13 @@ sr_modinfo_candidate_reset(struct sr_mod_info_s *mod_info)
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
     uint32_t i;
-    int rc;
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_REQ) {
             /* reset candidate */
-            if ((rc = mod->ds_handle[SR_DS_CANDIDATE]->plugin->candidate_reset_cb(mod->ly_mod,
+            if ((err_info = mod->ds_handle[SR_DS_CANDIDATE]->plugin->candidate_reset_cb(mod->ly_mod,
                     mod->ds_handle[SR_DS_CANDIDATE]->plg_data))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_reset", mod->ds_handle[SR_DS_CANDIDATE]->plugin->name,
-                        mod->ly_mod->name);
                 return err_info;
             }
         }
