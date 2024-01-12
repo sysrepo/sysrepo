@@ -107,9 +107,8 @@ typedef sr_error_info_t *(*srds_conn_init)(sr_conn_ctx_t *conn, void **plg_data)
  *
  * @param[in] conn Connection.
  * @param[in] plg_data Plugin data to free.
- * @return NULL, if not freed and ignored.
  */
-typedef sr_error_info_t *(*srds_conn_destroy)(sr_conn_ctx_t *conn, void *plg_data);
+typedef void (*srds_conn_destroy)(sr_conn_ctx_t *conn, void *plg_data);
 
 /**
  * @brief Store data for a module. Either a diff can be applied manually or full new data tree stored.
@@ -142,9 +141,8 @@ typedef sr_error_info_t *(*srds_store)(const struct lys_module *mod, sr_datastor
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
  * @param[in] plg_data Plugin data.
- * @return NULL, if not freed and ignored.
  */
-typedef sr_error_info_t *(*srds_recover)(const struct lys_module *mod, sr_datastore_t ds, void *plg_data);
+typedef void (*srds_recover)(const struct lys_module *mod, sr_datastore_t ds, void *plg_data);
 
 /**
  * @brief Load data of a module.

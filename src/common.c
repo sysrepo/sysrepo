@@ -3441,14 +3441,12 @@ cleanup:
 void
 sr_conn_ds_destroy(sr_conn_ctx_t *conn)
 {
-    sr_error_info_t *err_info = NULL;
     uint32_t i;
 
     /* destroy all initialized plugin data */
     for (i = 0; i < conn->ds_handle_count; ++i) {
         if (conn->ds_handles[i].init) {
-            err_info = conn->ds_handles[i].plugin->conn_destroy_cb(conn, conn->ds_handles[i].plg_data);
-            sr_errinfo_free(&err_info);
+            conn->ds_handles[i].plugin->conn_destroy_cb(conn, conn->ds_handles[i].plg_data);
         }
     }
 }

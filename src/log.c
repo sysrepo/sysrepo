@@ -459,6 +459,12 @@ srplg_errinfo_push_error_data(sr_error_info_t *err_info, uint32_t size, const vo
 }
 
 API void
+srplg_errinfo_free(sr_error_info_t **err_info)
+{
+    sr_errinfo_free(err_info);
+}
+
+API void
 srplg_log(const char *plg_name, sr_log_level_t ll, const char *format, ...)
 {
     va_list ap;

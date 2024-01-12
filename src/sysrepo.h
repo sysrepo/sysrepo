@@ -1807,6 +1807,13 @@ void srplg_log_errinfo(sr_error_info_t **err_info, const char *plg_name, const c
 int srplg_errinfo_push_error_data(sr_error_info_t *err_info, uint32_t size, const void *data);
 
 /**
+ * @brief Free a superfluous error info.
+ *
+ * @param[in,out] err_info Error info to free, is set to NULL.
+ */
+void srplg_errinfo_free(sr_error_info_t **err_info);
+
+/**
  * @brief Deprecated, use ::srplg_log_errinfo() instead.
  */
 #define SRPLG_LOG_ERR(plg_name, ...) srplg_log(plg_name, SR_LL_ERR, __VA_ARGS__)

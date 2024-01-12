@@ -340,10 +340,9 @@ srpds_json_conn_init(sr_conn_ctx_t *UNUSED(conn), void **UNUSED(plg_data))
     return NULL;
 }
 
-static sr_error_info_t *
+static void
 srpds_json_conn_destroy(sr_conn_ctx_t *UNUSED(conn), void *UNUSED(plg_data))
 {
-    return NULL;
 }
 
 static sr_error_info_t *
@@ -391,7 +390,7 @@ cleanup:
     return err_info;
 }
 
-static sr_error_info_t *
+static void
 srpds_json_recover(const struct lys_module *mod, sr_datastore_t ds, void *UNUSED(plg_data))
 {
     sr_error_info_t *err_info = NULL;
@@ -408,6 +407,7 @@ srpds_json_recover(const struct lys_module *mod, sr_datastore_t ds, void *UNUSED
         /* data are valid, nothing to do */
         goto cleanup;
     }
+    srplg_errinfo_free(&err_info);
 
     if (ds == SR_DS_STARTUP) {
         /* there must be a backup file for startup data */
@@ -458,7 +458,7 @@ cleanup:
     free(path);
     free(bck_path);
     lyd_free_all(mod_data);
-    return err_info;
+    srplg_errinfo_free(&err_info);
 }
 
 static sr_error_info_t *

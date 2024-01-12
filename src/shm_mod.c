@@ -1120,7 +1120,6 @@ cleanup:
 void
 sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data)
 {
-    sr_error_info_t *err_info = NULL;
     struct sr_shmmod_recover_cb_s *cb_data = data;
     const struct lys_module *ly_mod;
 
@@ -1136,8 +1135,7 @@ sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data)
     assert(ly_mod);
 
     /* recovery specific for the plugin */
-    err_info = cb_data->ds_handle->plugin->recover_cb(ly_mod, cb_data->ds, cb_data->ds_handle->plg_data);
-    sr_errinfo_free(&err_info);
+    cb_data->ds_handle->plugin->recover_cb(ly_mod, cb_data->ds, cb_data->ds_handle->plg_data);
 }
 
 /**
