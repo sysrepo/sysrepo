@@ -475,7 +475,7 @@ const char *sr_get_repo_path(void);
  * @param[in] conn Connection to use.
  * @param[in] schema_path Path to the new schema. Can have either YANG or YIN extension/format.
  * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
- * @param[in] features Optional array of enabled features ended with NULL.
+ * @param[in] features Optional array of enabled features ended with NULL. Feature '*' enables them all.
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs, const char **features);
@@ -488,9 +488,10 @@ int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *
  * @param[in] conn Connection to use.
  * @param[in] schema_path Path to the new schema. Can have either YANG or YIN extension/format.
  * @param[in] search_dirs Optional search directories for import schemas, supports the format `<dir>[:<dir>]*`.
- * @param[in] features Optional array of enabled features ended with NULL, all disabled by default.
+ * @param[in] features Optional array of enabled features ended with NULL, all disabled by default. Feature '*' enables
+ * them all.
  * @param[in] module_ds Optional datastore implementation plugin names for each datastore, NULL for all defaults.
- * The default datastore is also used for any unset plugin names.
+ * If only ::SR_DS_RUNNING plugin name is NULL, it is disabled and effectively always mirrors ::SR_DS_STARTUP.
  * @param[in] owner Optional initial owner of the module data, process user by default.
  * @param[in] group Optional initial group of the module data, process group by default.
  * @param[in] perm Optional initial permissions of the module data, otherwise system defaults are applied.
@@ -1298,6 +1299,9 @@ int sr_unsubscribe(sr_subscription_ctx_t *subscription);
  * As soon as a callback fails, its batch of callbacks is the last to be notified. Also note that the callbacks may
  * not actually be executed concurrently in case they are handled by a single subscription (thread).
  *
+ * This order (of `running` datastore) is also used when initializing and copying data from `startup` to `running`
+ * on SHM creation.
+ *
  * Required WRITE access.
  *
  * @param[in] conn Connection to use.
@@ -1776,10 +1780,41 @@ int sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, c
 #define SRP_CLEANUP_CB  "sr_plugin_cleanup_cb"
 
 /**
- * @brief Log a plugin error message with format arguments.
+ * @brief Log a plugin error message and add the error into an error info structure.
  *
+ * @param[in,out] err_info Empty or an exisiting error info to add to.
  * @param[in] plg_name Plugin name to print.
- * @param[in] ... Format string and arguments.
+ * @param[in] error_format Optional arbitrary error format identifier, set its error data using
+ * ::srplg_errinfo_push_error_data(). More details in ::sr_session_set_error_format().
+ * @param[in] err_code Error code of the error.
+ * @param[in] format Error message format.
+ * @param[in] ... Error message format arguments.
+ */
+void srplg_log_errinfo(sr_error_info_t **err_info, const char *plg_name, const char *err_format_name,
+        sr_error_t err_code, const char *format, ...) _FORMAT_PRINTF(5, 6);
+
+/**
+ * @brief Push (add) another chunk of error data for a failed plugin callback. Its meaning is specific to the error
+ * data format name (which must be set prior to calling this function) identifier and can be read from the error
+ * structure by the originator using ::sr_get_error_data().
+ *
+ * @param[in] err_info Error info created by ::srplg_log_errinfo() with a specific error format name set. The __last__
+ * created error is being modified.
+ * @param[in] size Size of the error @p data chunk.
+ * @param[in] data Pointer to an opaque error data chunk.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int srplg_errinfo_push_error_data(sr_error_info_t *err_info, uint32_t size, const void *data);
+
+/**
+ * @brief Free a superfluous error info.
+ *
+ * @param[in,out] err_info Error info to free, is set to NULL.
+ */
+void srplg_errinfo_free(sr_error_info_t **err_info);
+
+/**
+ * @brief Deprecated, use ::srplg_log_errinfo() instead.
  */
 #define SRPLG_LOG_ERR(plg_name, ...) srplg_log(plg_name, SR_LL_ERR, __VA_ARGS__)
 
@@ -1818,7 +1853,7 @@ int sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, c
  * @param[in] format Message format.
  * @param[in] ... Format arguments.
  */
-void srplg_log(const char *plg_name, sr_log_level_t ll, const char *format, ...);
+void srplg_log(const char *plg_name, sr_log_level_t ll, const char *format, ...) _FORMAT_PRINTF(3, 4);
 
 #ifdef __cplusplus
 }

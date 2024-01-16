@@ -56,8 +56,6 @@
 
 static sr_error_info_t *sr_session_notif_buf_stop(sr_session_ctx_t *session);
 static sr_error_info_t *_sr_session_stop(sr_session_ctx_t *session);
-static sr_error_info_t *sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session,
-        uint32_t timeout_ms, sr_error_info_t **cb_err_info);
 static sr_error_info_t *_sr_unsubscribe(sr_subscription_ctx_t *subscription);
 
 /**
@@ -157,6 +155,9 @@ sr_conn_free(sr_conn_ctx_t *conn)
         return;
     }
 
+    /* destroy DS plugin data */
+    sr_conn_ds_destroy(conn);
+
     assert(!conn->oper_caches);
 
     /* unlocked data destroy */
@@ -254,7 +255,7 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         }
 
         /* parse SR mods */
-        if ((err_info = sr_lydmods_parse(tmp_ly_ctx, &initialized, &sr_mods))) {
+        if ((err_info = sr_lydmods_parse(tmp_ly_ctx, conn, &initialized, &sr_mods))) {
             goto cleanup_unlock;
         }
 
@@ -1271,6 +1272,11 @@ sr_install_modules_check_features(const struct lys_module *ly_mod, const char **
     uint32_t i = 0, j;
     const char *feature;
 
+    if (features && features[0] && !strcmp(features[0], "*")) {
+        /* enables all the features, always allow */
+        return NULL;
+    }
+
     /* first check feature existence */
     for (j = 0; features && features[j]; ++j) {
         if (lys_feature_value(ly_mod, features[j]) == LY_ENOTFOUND) {
@@ -1321,10 +1327,12 @@ sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_i
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
+    const sr_module_ds_t sr_empty_module_ds = {0};
     struct ly_in *in = NULL;
     char *mod_name = NULL;
     LYS_INFORMAT format;
     sr_datastore_t ds;
+    int mod_ds;
 
     *installed = 0;
 
@@ -1344,22 +1352,26 @@ sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_i
         goto cleanup;
     }
 
-    /* check plugin existence */
-    for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
-        if (!new_mod->module_ds.plugin_name[ds]) {
-            /* use default plugin */
-            new_mod->module_ds.plugin_name[ds] = sr_default_module_ds.plugin_name[ds];
+    if (!memcmp(&new_mod->module_ds, &sr_empty_module_ds, sizeof sr_empty_module_ds)) {
+        /* use default plugins if none are set */
+        for (mod_ds = 0; mod_ds < SR_MOD_DS_PLUGIN_COUNT; ++mod_ds) {
+            new_mod->module_ds.plugin_name[mod_ds] = sr_default_module_ds.plugin_name[mod_ds];
         }
-        if ((err_info = sr_ds_plugin_find(new_mod->module_ds.plugin_name[ds], conn, NULL))) {
+    } else {
+        /* check plugin existence */
+        for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
+            if ((ds == SR_DS_RUNNING) && !new_mod->module_ds.plugin_name[ds]) {
+                /* disabled 'running' datastore, effectively mirroring 'startup' */
+                continue;
+            }
+
+            if ((err_info = sr_ds_handle_find(new_mod->module_ds.plugin_name[ds], conn, NULL))) {
+                goto cleanup;
+            }
+        }
+        if ((err_info = sr_ntf_handle_find(new_mod->module_ds.plugin_name[SR_MOD_DS_NOTIF], conn, NULL))) {
             goto cleanup;
         }
-    }
-    if (!new_mod->module_ds.plugin_name[SR_MOD_DS_NOTIF]) {
-        /* use default plugin */
-        new_mod->module_ds.plugin_name[SR_MOD_DS_NOTIF] = sr_default_module_ds.plugin_name[SR_MOD_DS_NOTIF];
-    }
-    if ((err_info = sr_ntf_plugin_find(new_mod->module_ds.plugin_name[SR_MOD_DS_NOTIF], conn, NULL))) {
-        goto cleanup;
     }
 
     /* parse the module with the features */
@@ -1497,7 +1509,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     }
 
     /* update lydmods data */
-    if ((err_info = sr_lydmods_change_add_modules(new_ctx, new_mods, new_mod_count, &sr_mods))) {
+    if ((err_info = sr_lydmods_change_add_modules(new_ctx, conn, new_mods, new_mod_count, &sr_mods))) {
         goto cleanup;
     }
 
@@ -1697,7 +1709,7 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
 
         if (force) {
             /* collect all the removed modules for this module to be deleted */
-            if ((err_info = sr_collect_module_impl_deps(ly_mod, &mod_set))) {
+            if ((err_info = sr_collect_module_impl_deps(ly_mod, conn, &mod_set))) {
                 goto cleanup;
             }
         } else {
@@ -1741,7 +1753,7 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     }
 
     /* update lydmods data */
-    if ((err_info = sr_lydmods_change_del_module(conn->ly_ctx, new_ctx, &mod_set, &sr_del_mods, &sr_mods))) {
+    if ((err_info = sr_lydmods_change_del_module(conn->ly_ctx, new_ctx, &mod_set, conn, &sr_del_mods, &sr_mods))) {
         goto cleanup;
     }
 
@@ -1994,7 +2006,7 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
     }
 
     /* update lydmods data */
-    if ((err_info = sr_lydmods_change_upd_modules(conn->ly_ctx, &upd_mod_set, &sr_mods))) {
+    if ((err_info = sr_lydmods_change_upd_modules(conn->ly_ctx, &upd_mod_set, conn, &sr_mods))) {
         goto cleanup;
     }
 
@@ -2056,7 +2068,7 @@ sr_set_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, int e
     }
 
     /* update lydmods data */
-    if ((err_info = sr_lydmods_change_chng_replay_support(conn, ly_mod, enable, &mod_set, &sr_mods))) {
+    if ((err_info = sr_lydmods_change_chng_replay_support(ly_mod, enable, &mod_set, conn, &sr_mods))) {
         goto cleanup;
     }
 
@@ -2086,8 +2098,7 @@ sr_get_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, struc
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
     const struct lys_module *ly_mod;
-    const struct srplg_ntf_s *ntf_plg;
-    int rc;
+    const struct sr_ntf_handle_s *ntf_handle;
 
     SR_CHECK_ARG_APIRET(!conn || !module_name || !enabled, NULL, err_info);
 
@@ -2111,14 +2122,13 @@ sr_get_module_replay_support(sr_conn_ctx_t *conn, const char *module_name, struc
         ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
         assert(ly_mod);
 
-        /* find NTF plugin */
-        if ((err_info = sr_ntf_plugin_find(conn->mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_plg))) {
+        /* find NTF plugin handle */
+        if ((err_info = sr_ntf_handle_find(conn->mod_shm.addr + shm_mod->plugins[SR_MOD_DS_NOTIF], conn, &ntf_handle))) {
             goto cleanup;
         }
 
         /* get earliest notif timestamp */
-        if ((rc = ntf_plg->earliest_get_cb(ly_mod, earliest_notif))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "earliest_get", ntf_plg->name, ly_mod->name);
+        if ((err_info = ntf_handle->plugin->earliest_get_cb(ly_mod, earliest_notif))) {
             goto cleanup;
         }
     }
@@ -2147,27 +2157,29 @@ _sr_set_module_ds_access(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, s
         const char *owner, const char *group, mode_t perm)
 {
     sr_error_info_t *err_info = NULL;
-    int rc;
-    const struct srplg_ds_s *ds_plg;
-    const struct srplg_ntf_s *ntf_plg;
+    const struct sr_ds_handle_s *ds_handle;
+    const struct sr_ntf_handle_s *ntf_handle;
 
     assert(owner || group || perm);
 
     /* set owner and permissions of the DS */
     if (mod_ds == SR_MOD_DS_NOTIF) {
-        if ((err_info = sr_ntf_plugin_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ntf_plg))) {
+        if ((err_info = sr_ntf_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ntf_handle))) {
             goto cleanup;
         }
-        if ((rc = ntf_plg->access_set_cb(ly_mod, owner, group, perm))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "set_access", ntf_plg->name, ly_mod->name);
+        if ((err_info = ntf_handle->plugin->access_set_cb(ly_mod, owner, group, perm))) {
             goto cleanup;
         }
     } else {
-        if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ds_plg))) {
+        if ((mod_ds == SR_DS_RUNNING) && !shm_mod->plugins[mod_ds]) {
+            /* 'running' disabled, use 'startup' instead */
+            mod_ds = SR_DS_STARTUP;
+        }
+
+        if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ds_handle))) {
             goto cleanup;
         }
-        if ((rc = ds_plg->access_set_cb(ly_mod, mod_ds, owner, group, perm))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "set_access", ds_plg->name, ly_mod->name);
+        if ((err_info = ds_handle->plugin->access_set_cb(ly_mod, mod_ds, owner, group, perm, ds_handle->plg_data))) {
             goto cleanup;
         }
     }
@@ -2253,9 +2265,8 @@ sr_get_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
     const struct lys_module *ly_mod;
-    const struct srplg_ds_s *ds_plg;
-    const struct srplg_ntf_s *ntf_plg;
-    int rc;
+    const struct sr_ds_handle_s *ds_handle;
+    const struct sr_ntf_handle_s *ntf_handle;
 
     SR_CHECK_ARG_APIRET(!conn || !module_name || (mod_ds >= SR_MOD_DS_PLUGIN_COUNT) || (mod_ds < 0) ||
             (!owner && !group && !perm), NULL, err_info);
@@ -2273,19 +2284,22 @@ sr_get_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
 
     /* learn owner and permissions of the DS */
     if (mod_ds == SR_MOD_DS_NOTIF) {
-        if ((err_info = sr_ntf_plugin_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ntf_plg))) {
+        if ((err_info = sr_ntf_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ntf_handle))) {
             goto cleanup;
         }
-        if ((rc = ntf_plg->access_get_cb(ly_mod, owner, group, perm))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "get_access", ntf_plg->name, ly_mod->name);
+        if ((err_info = ntf_handle->plugin->access_get_cb(ly_mod, owner, group, perm))) {
             goto cleanup;
         }
     } else {
-        if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ds_plg))) {
+        if ((mod_ds == SR_DS_RUNNING) && !shm_mod->plugins[mod_ds]) {
+            /* 'running' disabled, use 'startup' instead */
+            mod_ds = SR_DS_STARTUP;
+        }
+
+        if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ds_handle))) {
             goto cleanup;
         }
-        if ((rc = ds_plg->access_get_cb(ly_mod, mod_ds, owner, group, perm))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "get_access", ds_plg->name, ly_mod->name);
+        if ((err_info = ds_handle->plugin->access_get_cb(ly_mod, mod_ds, ds_handle->plg_data, owner, group, perm))) {
             goto cleanup;
         }
     }
@@ -2300,9 +2314,8 @@ sr_check_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
     const struct lys_module *ly_mod;
-    const struct srplg_ds_s *ds_plg;
-    const struct srplg_ntf_s *ntf_plg;
-    int rc;
+    const struct sr_ds_handle_s *ds_handle;
+    const struct sr_ntf_handle_s *ntf_handle;
 
     SR_CHECK_ARG_APIRET(!conn || !module_name || (mod_ds >= SR_MOD_DS_PLUGIN_COUNT) || (mod_ds < 0) || (!read && !write),
             NULL, err_info);
@@ -2320,19 +2333,22 @@ sr_check_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_
 
     /* check access for the DS */
     if (mod_ds == SR_MOD_DS_NOTIF) {
-        if ((err_info = sr_ntf_plugin_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ntf_plg))) {
+        if ((err_info = sr_ntf_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ntf_handle))) {
             goto cleanup;
         }
-        if ((rc = ntf_plg->access_check_cb(ly_mod, read, write))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "access_check", ntf_plg->name, ly_mod->name);
+        if ((err_info = ntf_handle->plugin->access_check_cb(ly_mod, read, write))) {
             goto cleanup;
         }
     } else {
-        if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ds_plg))) {
+        if ((mod_ds == SR_DS_RUNNING) && !shm_mod->plugins[mod_ds]) {
+            /* 'running' disabled, use 'startup' instead */
+            mod_ds = SR_DS_STARTUP;
+        }
+
+        if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[mod_ds], conn, &ds_handle))) {
             goto cleanup;
         }
-        if ((rc = ds_plg->access_check_cb(ly_mod, mod_ds, read, write))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "access_check", ds_plg->name, ly_mod->name);
+        if ((err_info = ds_handle->plugin->access_check_cb(ly_mod, mod_ds, ds_handle->plg_data, read, write))) {
             goto cleanup;
         }
     }
@@ -2501,7 +2517,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     /* update lydmods data */
-    if ((err_info = sr_lydmods_change_chng_feature(conn->ly_ctx, ly_mod, upd_ly_mod, feature_name, enable, &sr_mods))) {
+    if ((err_info = sr_lydmods_change_chng_feature(conn->ly_ctx, ly_mod, upd_ly_mod, feature_name, enable, conn, &sr_mods))) {
         goto cleanup;
     }
 
@@ -2605,7 +2621,7 @@ sr_get_module_info(sr_conn_ctx_t *conn, sr_data_t **sysrepo_data)
     }
 
     /* get internal sysrepo data */
-    if ((err_info = sr_lydmods_parse(conn->ly_ctx, NULL, &(*sysrepo_data)->tree))) {
+    if ((err_info = sr_lydmods_parse(conn->ly_ctx, conn, NULL, &(*sysrepo_data)->tree))) {
         goto cleanup;
     }
 
@@ -3654,26 +3670,17 @@ cleanup:
     return sr_api_ret(session, err_info);
 }
 
-/**
- * @brief Notify subscribers about the changes in diff and store the data in mod info.
- * Mod info modules are expected to be READ-locked with the ability to upgrade to WRITE-lock!
- *
- * @param[in] mod_info Read-locked mod info with diff and data.
- * @param[in] session Optional originator session.
- * @param[in] timeout_ms Timeout in milliseconds.
- * @param[out] cb_err_info Callback error information generated by a subscriber, if any.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
+sr_error_info_t *
 sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session, uint32_t timeout_ms,
         sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lyd_node *denied_node;
+    struct sr_denied denied = {0};
     sr_lock_mode_t change_sub_lock = SR_LOCK_NONE;
     uint32_t sid = 0;
-    char *orig_name = NULL;
+    char *orig_name = NULL, *str;
     void *orig_data = NULL;
+    int r;
 
     *cb_err_info = NULL;
 
@@ -3685,21 +3692,33 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     }
 
     if (!mod_info->diff) {
-        SR_LOG_INF("No datastore changes to apply.");
+        SR_LOG_INF("No \"%s\" datastore changes to apply.", sr_ds2str(mod_info->ds));
         goto store;
     }
 
     if (session && session->nacm_user) {
         /* check NACM */
-        if ((err_info = sr_nacm_check_diff(session->nacm_user, mod_info->diff, &denied_node))) {
+        if ((err_info = sr_nacm_check_diff(session->nacm_user, mod_info->diff, &denied))) {
             goto cleanup;
         }
 
-        if (denied_node) {
+        if (denied.denied) {
             /* access denied */
-            sr_errinfo_new_nacm(&err_info, "protocol", "access-denied", NULL, denied_node,
+            if (denied.rule_name) {
+                r = asprintf(&str, "NACM access denied by the rule \"%s\".", denied.rule_name);
+            } else if (denied.def) {
+                r = asprintf(&str, "NACM access denied by \"%s\" node extension \"%s\".", LYD_NAME(denied.node),
+                        denied.def->name);
+            } else {
+                r = asprintf(&str, "NACM access denied by the default NACM permissions.");
+            }
+            if (r == -1) {
+                str = NULL;
+            }
+            sr_errinfo_new_nacm(&err_info, str, "protocol", "access-denied", NULL, denied.node,
                     "Access to the data model \"%s\" is denied because \"%s\" NACM authorization failed.",
-                    denied_node->schema->module->name, session->nacm_user);
+                    denied.node->schema->module->name, session->nacm_user);
+            free(str);
             goto cleanup;
         }
     }
@@ -3740,7 +3759,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
 
     if (!mod_info->diff) {
         /* diff can disappear after validation */
-        SR_LOG_INF("No datastore changes to apply.");
+        SR_LOG_INF("No \"%s\" datastore changes to apply.", sr_ds2str(mod_info->ds));
         goto store;
     }
 
@@ -3762,7 +3781,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     }
 
     if (!mod_info->diff) {
-        SR_LOG_INF("No datastore changes to apply.");
+        SR_LOG_INF("No \"%s\" datastore changes to apply.", sr_ds2str(mod_info->ds));
         goto store;
     }
 
@@ -3814,6 +3833,8 @@ cleanup:
         /* CHANGE SUB READ UNLOCK */
         sr_modinfo_changesub_rdunlock(mod_info);
     }
+
+    free(denied.rule_name);
     return err_info;
 }
 
@@ -4153,7 +4174,7 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, uint32_t sid, int lock)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
     uint32_t i, j;
-    int rc, ds_lock = 0, modified;
+    int ds_lock = 0, modified;
     struct sr_mod_info_mod_s *mod;
     struct sr_mod_lock_s *shm_lock;
 
@@ -4181,9 +4202,8 @@ sr_change_dslock(struct sr_mod_info_s *mod_info, uint32_t sid, int lock)
             goto error;
         } else if (lock && (mod_info->ds == SR_DS_CANDIDATE)) {
             /* learn whether candidate was modified */
-            if ((rc = mod->ds_plg[SR_DS_CANDIDATE]->candidate_modified_cb(mod->ly_mod, &modified))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_modified", mod->ds_plg[SR_DS_CANDIDATE]->name,
-                        mod->ly_mod->name);
+            if ((err_info = mod->ds_handle[SR_DS_CANDIDATE]->plugin->candidate_modified_cb(mod->ly_mod,
+                    mod->ds_handle[SR_DS_CANDIDATE]->plg_data, &modified))) {
                 goto error;
             }
 
@@ -5170,7 +5190,7 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
 
     conn = session->conn;
     /* only these options are relevant outside this function and will be stored */
-    sub_opts = opts & (SR_SUBSCR_DONE_ONLY | SR_SUBSCR_PASSIVE | SR_SUBSCR_UPDATE);
+    sub_opts = opts & (SR_SUBSCR_DONE_ONLY | SR_SUBSCR_PASSIVE | SR_SUBSCR_UPDATE | SR_SUBSCR_FILTER_ORIG);
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
@@ -6294,7 +6314,8 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     struct sr_mod_info_s mod_info;
     struct lyd_node *input_top, *input_op, *ext_parent = NULL;
     char *path = NULL, *str, *parent_path = NULL;
-    const struct lyd_node *denied_node;
+    struct sr_denied denied = {0};
+    int r;
 
     SR_CHECK_ARG_APIRET(!session || !input || !output, session, err_info);
 
@@ -6344,14 +6365,25 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
 
     if (session->nacm_user) {
         /* check NACM */
-        if ((err_info = sr_nacm_check_operation(session->nacm_user, input_top, &denied_node))) {
+        if ((err_info = sr_nacm_check_operation(session->nacm_user, input_top, &denied))) {
             goto cleanup;
         }
 
-        if (denied_node) {
+        if (denied.denied) {
             /* access denied */
-            sr_errinfo_new_nacm(&err_info, "protocol", "access-denied", NULL, denied_node,
+            if (denied.rule_name) {
+                r = asprintf(&str, "NACM access denied by the rule \"%s\".", denied.rule_name);
+            } else if (denied.def) {
+                r = asprintf(&str, "NACM access denied by \"%s\" node extension \"%s\".", LYD_NAME(denied.node), denied.def->name);
+            } else {
+                r = asprintf(&str, "NACM access denied by the default NACM permissions.");
+            }
+            if (r == -1) {
+                str = NULL;
+            }
+            sr_errinfo_new_nacm(&err_info, str, "protocol", "access-denied", NULL, denied.node,
                     "Executing the operation is denied because \"%s\" NACM authorization failed.", session->nacm_user);
+            free(str);
             goto cleanup;
         }
     }
@@ -6396,6 +6428,7 @@ cleanup:
     free(parent_path);
     free(path);
     sr_modinfo_erase(&mod_info);
+    free(denied.rule_name);
     return sr_api_ret(session, err_info);
 }
 

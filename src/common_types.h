@@ -123,6 +123,8 @@ struct sr_conn_ctx_s {
     struct sr_ds_handle_s {
         void *dl_handle;            /**< Handle from dlopen(3) call. */
         const struct srplg_ds_s *plugin;    /**< Datastore plugin. */
+        int init;                   /**< Whether the plugin is initialized. */
+        void *plg_data;             /**< Plugin connection data. */
     } *ds_handles;                  /**< Datastore implementation handles. */
     uint32_t ds_handle_count;       /**< Datastore implementaion handle count. */
 

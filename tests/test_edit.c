@@ -133,11 +133,11 @@ test_edit_item(void **state)
 
     /* invalid xpath */
     ret = sr_set_item_str(st->sess, "//test:cont/ll2", "15", NULL, SR_EDIT_STRICT);
-    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    assert_int_equal(ret, SR_ERR_LY);
 
     /* non-existing xpath */
     ret = sr_set_item_str(st->sess, "/test:cont/no", "15", NULL, SR_EDIT_STRICT);
-    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    assert_int_equal(ret, SR_ERR_LY);
 
     /* key edit */
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces/interface[name='val']/name", "val", NULL, SR_EDIT_STRICT);
@@ -1419,7 +1419,7 @@ test_edit_forbid_node_types(void **state)
 
     /* notification node cannot be created */
     ret = sr_set_item_str(st->sess, "/ops:notif3/list2[k='k']", NULL, NULL, SR_EDIT_STRICT);
-    assert_int_equal(ret, SR_ERR_INVAL_ARG);
+    assert_int_equal(ret, SR_ERR_LY);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_get_subtree(st->sess, "/ops:notif3/list2[k='k']", 0, &subtree);

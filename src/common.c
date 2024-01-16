@@ -57,7 +57,7 @@
 #include "sysrepo.h"
 
 /**
- * @brief Internal DS plugin array.
+ * @brief Internal datastore plugin array.
  */
 const struct srplg_ds_s *sr_internal_ds_plugins[] = {
     &srpds_json,    /**< default */
@@ -285,11 +285,19 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
     const char *plugins_dir;
     char *path = NULL;
     void *dlhandle = NULL, *mem;
-    uint32_t *ver;
+    uint32_t *ver, i;
     const struct srplg_ds_s *srpds;
 
     *ds_handles = NULL;
     *ds_handle_count = 0;
+
+    /* add internal plugins */
+    *ds_handles = calloc(sr_ds_plugin_int_count(), sizeof **ds_handles);
+    SR_CHECK_MEM_GOTO(!*ds_handles, err_info, next_file);
+    for (i = 0; i < sr_ds_plugin_int_count(); ++i) {
+        (*ds_handles)[i].plugin = sr_internal_ds_plugins[i];
+        ++(*ds_handle_count);
+    }
 
     /* get plugins dir from environment variable, or use default one */
     plugins_dir = getenv("SR_PLUGINS_PATH");
@@ -355,6 +363,7 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
         mem = realloc(*ds_handles, (*ds_handle_count + 1) * sizeof **ds_handles);
         SR_CHECK_MEM_GOTO(!mem, err_info, next_file);
         *ds_handles = mem;
+        memset(&(*ds_handles)[*ds_handle_count], 0, sizeof **ds_handles);
 
         (*ds_handles)[*ds_handle_count].dl_handle = dlhandle;
         dlhandle = NULL;
@@ -388,7 +397,9 @@ sr_ds_handle_free(struct sr_ds_handle_s *ds_handles, uint32_t ds_handle_count)
     uint32_t i;
 
     for (i = 0; i < ds_handle_count; ++i) {
-        dlclose(ds_handles[i].dl_handle);
+        if (ds_handles[i].dl_handle) {
+            dlclose(ds_handles[i].dl_handle);
+        }
     }
 
     free(ds_handles);
@@ -401,7 +412,7 @@ sr_ds_plugin_int_count(void)
 }
 
 sr_error_info_t *
-sr_ds_plugin_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, const struct srplg_ds_s **ds_plugin)
+sr_ds_handle_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, const struct sr_ds_handle_s **ds_handle)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -411,26 +422,12 @@ sr_ds_plugin_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, const struct 
         return err_info;
     }
 
-    /* search internal DS plugins */
-    for (i = 0; i < sr_ds_plugin_int_count(); ++i) {
-        if ((sr_internal_ds_plugins[i]->name == ds_plugin_name) ||
-                !strcmp(sr_internal_ds_plugins[i]->name, ds_plugin_name)) {
-            if (ds_plugin) {
-                *ds_plugin = (struct srplg_ds_s *)sr_internal_ds_plugins[i];
+    for (i = 0; i < conn->ds_handle_count; ++i) {
+        if (!strcmp(conn->ds_handles[i].plugin->name, ds_plugin_name)) {
+            if (ds_handle) {
+                *ds_handle = &conn->ds_handles[i];
             }
             return NULL;
-        }
-    }
-
-    if (conn) {
-        /* search dynamic plugins */
-        for (i = 0; i < conn->ds_handle_count; ++i) {
-            if (!strcmp(conn->ds_handles[i].plugin->name, ds_plugin_name)) {
-                if (ds_plugin) {
-                    *ds_plugin = (struct srplg_ds_s *)conn->ds_handles[i].plugin;
-                }
-                return NULL;
-            }
         }
     }
 
@@ -449,11 +446,19 @@ sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32_t *ntf_handle_co
     const char *plugins_dir;
     char *path = NULL;
     void *dlhandle = NULL, *mem;
-    uint32_t *ver;
+    uint32_t *ver, i;
     const struct srplg_ntf_s *srpntf;
 
     *ntf_handles = NULL;
     *ntf_handle_count = 0;
+
+    /* add internal plugins */
+    *ntf_handles = calloc(sr_ntf_plugin_int_count(), sizeof **ntf_handles);
+    SR_CHECK_MEM_GOTO(!*ntf_handles, err_info, next_file);
+    for (i = 0; i < sr_ntf_plugin_int_count(); ++i) {
+        (*ntf_handles)[i].plugin = sr_internal_ntf_plugins[i];
+        ++(*ntf_handle_count);
+    }
 
     /* get plugins dir from environment variable, or use default one */
     plugins_dir = getenv("SR_PLUGINS_PATH");
@@ -550,7 +555,9 @@ sr_ntf_handle_free(struct sr_ntf_handle_s *ntf_handles, uint32_t ntf_handle_coun
     uint32_t i;
 
     for (i = 0; i < ntf_handle_count; ++i) {
-        dlclose(ntf_handles[i].dl_handle);
+        if (ntf_handles[i].dl_handle) {
+            dlclose(ntf_handles[i].dl_handle);
+        }
     }
 
     free(ntf_handles);
@@ -563,7 +570,7 @@ sr_ntf_plugin_int_count(void)
 }
 
 sr_error_info_t *
-sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, const struct srplg_ntf_s **ntf_plugin)
+sr_ntf_handle_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, const struct sr_ntf_handle_s **ntf_handle)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
@@ -573,21 +580,10 @@ sr_ntf_plugin_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, const struc
         return err_info;
     }
 
-    /* search internal notif plugins */
-    for (i = 0; i < sr_ntf_plugin_int_count(); ++i) {
-        if (!strcmp(sr_internal_ntf_plugins[i]->name, ntf_plugin_name)) {
-            if (ntf_plugin) {
-                *ntf_plugin = (struct srplg_ntf_s *)sr_internal_ntf_plugins[i];
-            }
-            return NULL;
-        }
-    }
-
-    /* search dynamic plugins */
     for (i = 0; i < conn->ntf_handle_count; ++i) {
         if (!strcmp(conn->ntf_handles[i].plugin->name, ntf_plugin_name)) {
-            if (ntf_plugin) {
-                *ntf_plugin = (struct srplg_ntf_s *)conn->ntf_handles[i].plugin;
+            if (ntf_handle) {
+                *ntf_handle = &conn->ntf_handles[i];
             }
             return NULL;
         }
@@ -1005,13 +1001,13 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_collect_module_impl_deps(const struct lys_module *ly_mod, struct ly_set *mod_set)
+sr_collect_module_impl_deps(const struct lys_module *ly_mod, sr_conn_ctx_t *conn, struct ly_set *mod_set)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mods = NULL;
 
     /* parse SR mod data for the dependencies */
-    if ((err_info = sr_lydmods_parse(ly_mod->ctx, NULL, &sr_mods))) {
+    if ((err_info = sr_lydmods_parse(ly_mod->ctx, conn, NULL, &sr_mods))) {
         goto cleanup;
     }
 
@@ -1416,21 +1412,25 @@ sr_perm_check(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
-    const struct srplg_ds_s *plg;
-    int rc, r, w;
+    const struct sr_ds_handle_s *handle = NULL;
+    int r, w;
 
     /* find the module in SHM */
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
-    /* find the DS plugin for startup */
-    if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &plg))) {
+    if ((ds == SR_DS_RUNNING) && !shm_mod->plugins[ds]) {
+        /* 'running' disabled, use 'startup' */
+        ds = SR_DS_STARTUP;
+    }
+
+    /* find the DS plugin */
+    if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &handle))) {
         goto cleanup;
     }
 
     /* check access for the current user */
-    if ((rc = plg->access_check_cb(ly_mod, ds, &r, &w))) {
-        SR_ERRINFO_DSPLUGIN(&err_info, rc, "access_check", plg->name, ly_mod->name);
+    if ((err_info = handle->plugin->access_check_cb(ly_mod, ds, handle->plg_data, &r, &w))) {
         goto cleanup;
     }
 
@@ -2679,6 +2679,42 @@ sr_rwlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_cid_
     return sr_sub_rwlock(rwlock, &timeout_abs, mode, cid, func, cb, cb_data, 0);
 }
 
+/**
+ * @brief Lock a rwlock mutex.
+ *
+ * @param[in] rwlock RW lock to lock.
+ * @param[in] timeout_ms Timeout in ms for locking.
+ * @param[in] func Name of the calling function for logging.
+ * @param[in] cb Optional callback called when recovering locks. When calling it, WRITE lock is always held.
+ * @param[in] cb_data Arbitrary user data for @p cb.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_rwlock_mutex_lock(sr_rwlock_t *rwlock, uint32_t timeout_ms, const char *func, sr_lock_recover_cb cb, void *cb_data)
+{
+    sr_error_info_t *err_info = NULL;
+    struct timespec timeout_abs;
+    int ret;
+
+    sr_timeouttime_get(&timeout_abs, timeout_ms);
+
+    /* MUTEX LOCK */
+    ret = pthread_mutex_clocklock(&rwlock->mutex, COMPAT_CLOCK_ID, &timeout_abs);
+    if (ret == EOWNERDEAD) {
+        /* make it consistent */
+        ret = pthread_mutex_consistent(&rwlock->mutex);
+
+        /* recover the lock */
+        sr_rwlock_recover(rwlock, func, cb, cb_data);
+        SR_CHECK_INT_RET(ret, err_info);
+    } else if (ret) {
+        SR_ERRINFO_LOCK(&err_info, func, ret);
+        return err_info;
+    }
+
+    return NULL;
+}
+
 sr_error_info_t *
 sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_cid_t cid, const char *func,
         sr_lock_recover_cb cb, void *cb_data)
@@ -2694,19 +2730,9 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
         /*
          * upgrade from upgradeable read-lock to write-lock
          */
-        sr_timeouttime_get(&timeout_abs, timeout_ms);
 
         /* MUTEX LOCK */
-        ret = pthread_mutex_clocklock(&rwlock->mutex, COMPAT_CLOCK_ID, &timeout_abs);
-        if (ret == EOWNERDEAD) {
-            /* make it consistent */
-            ret = pthread_mutex_consistent(&rwlock->mutex);
-
-            /* recover the lock */
-            sr_rwlock_recover(rwlock, func, cb, cb_data);
-            SR_CHECK_INT_RET(ret, err_info);
-        } else if (ret) {
-            SR_ERRINFO_LOCK(&err_info, func, ret);
+        if ((err_info = sr_rwlock_mutex_lock(rwlock, timeout_ms, func, cb, cb_data))) {
             return err_info;
         }
 
@@ -2719,6 +2745,7 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
         }
 
         /* wait until there are no readers except for this one */
+        sr_timeouttime_get(&timeout_abs, timeout_ms);
         ret = 0;
         while (!ret && (rwlock->readers[1] || (rwlock->read_count[0] > 1) || rwlock->writer)) {
             /* COND WAIT */
@@ -2753,19 +2780,9 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
         /*
          * upgrade from upgradeable read-lock to write-lock, urged
          */
-        sr_timeouttime_get(&timeout_abs, timeout_ms);
 
         /* MUTEX LOCK */
-        ret = pthread_mutex_clocklock(&rwlock->mutex, COMPAT_CLOCK_ID, &timeout_abs);
-        if (ret == EOWNERDEAD) {
-            /* make it consistent */
-            ret = pthread_mutex_consistent(&rwlock->mutex);
-
-            /* recover the lock */
-            sr_rwlock_recover(rwlock, func, cb, cb_data);
-            SR_CHECK_INT_RET(ret, err_info);
-        } else if (ret) {
-            SR_ERRINFO_LOCK(&err_info, func, ret);
+        if ((err_info = sr_rwlock_mutex_lock(rwlock, timeout_ms, func, cb, cb_data))) {
             return err_info;
         }
 
@@ -2781,6 +2798,7 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
         }
 
         /* wait until there are no readers except for this one */
+        sr_timeouttime_get(&timeout_abs, timeout_ms);
         wr_urged = 0;
         ret = 0;
         while (!ret && (rwlock->readers[1] || (rwlock->read_count[0] > 1) || (rwlock->writer && !wr_urged))) {
@@ -2831,6 +2849,24 @@ sr_rwrelock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
         return NULL;
     }
 
+    if (!rwlock->writer) {
+        /*
+         * downgrade from read-upgr lock to read lock
+         */
+
+        /* MUTEX LOCK */
+        if ((err_info = sr_rwlock_mutex_lock(rwlock, timeout_ms, func, cb, cb_data))) {
+            return err_info;
+        }
+
+        assert(rwlock->upgr == cid);
+        rwlock->upgr = 0;
+
+        /* broadcast on condition so waiters can grab read-upgr lock */
+        sr_cond_broadcast(&rwlock->cond);
+        goto cleanup_unlock;
+    }
+
     /*
      * downgrade from write-lock to read-lock (optionally with upgrade capability)
      */
@@ -2867,7 +2903,7 @@ sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
 {
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_ts;
-    int ret;
+    int ret = 0;
 
     assert(mode && cid);
 
@@ -2908,6 +2944,11 @@ sr_rwunlock(sr_rwlock_t *rwlock, uint32_t timeout_ms, sr_lock_mode_t mode, sr_ci
         if ((err_info = sr_rwlock_reader_del(rwlock, cid))) {
             sr_errinfo_free(&err_info);
         }
+    }
+
+    if (ret) {
+        /* lock not held, cannot broadcast nor unlock it */
+        return;
     }
 
     /* write-unlock/last read-unlock, last read-unlock with read-upgr lock waiting for an upgrade,
@@ -3143,7 +3184,6 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
     struct lyd_node *mod_data;
     uint32_t i, j;
     void *mem;
-    int r;
 
     assert(has_lock == SR_LOCK_READ);
 
@@ -3178,7 +3218,7 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
             SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
             conn->run_cache_mods = mem;
 
-            cmod = &conn->run_cache_mods[j];
+            cmod = &conn->run_cache_mods[conn->run_cache_mod_count];
             cmod->mod = mod->ly_mod;
             cmod->id = UINT32_MAX;
 
@@ -3186,8 +3226,8 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
         }
 
         /* get last_modif timestamp of module running data */
-        if ((r = mod->ds_plg[SR_DS_RUNNING]->last_modif_cb(mod->ly_mod, SR_DS_RUNNING, &mtime))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, r, "last_modif", mod->ds_plg[SR_DS_RUNNING]->name, mod->ly_mod->name);
+        if ((err_info = mod->ds_handle[SR_DS_RUNNING]->plugin->last_modif_cb(mod->ly_mod, SR_DS_RUNNING,
+                mod->ds_handle[SR_DS_RUNNING]->plg_data, &mtime))) {
             goto cleanup;
         }
 
@@ -3217,8 +3257,8 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
         lyd_free_siblings(mod_data);
 
         /* replace with loaded current data */
-        if ((r = mod->ds_plg[SR_DS_RUNNING]->load_cb(mod->ly_mod, SR_DS_RUNNING, NULL, 0, &mod_data))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, r, "load", mod->ds_plg[SR_DS_RUNNING]->name, mod->ly_mod->name);
+        if ((err_info = mod->ds_handle[SR_DS_RUNNING]->plugin->load_cb(mod->ly_mod, SR_DS_RUNNING, NULL, 0,
+                mod->ds_handle[SR_DS_RUNNING]->plg_data, &mod_data))) {
             goto cleanup;
         }
         if (mod_data) {
@@ -3354,6 +3394,61 @@ sr_conn_ctx_switch(sr_conn_ctx_t *conn, struct ly_ctx **new_ctx, struct ly_ctx *
     /* new ctx */
     conn->ly_ctx = *new_ctx;
     *new_ctx = NULL;
+}
+
+sr_error_info_t *
+sr_conn_ds_init(sr_conn_ctx_t *conn)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_shm_t *mod_shm;
+    sr_mod_t *mod;
+    struct sr_ds_handle_s *ds_handle = NULL;
+    sr_datastore_t ds;
+    uint32_t i;
+
+    mod_shm = SR_CONN_MOD_SHM(conn);
+
+    /* go through all the SHM modules */
+    for (i = 0; i < mod_shm->mod_count; ++i) {
+        mod = SR_SHM_MOD_IDX(mod_shm, i);
+
+        /* find DS plugins and init them if required */
+        for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
+            if ((ds == SR_DS_RUNNING) && !mod->plugins[ds]) {
+                /* disabled */
+                continue;
+            }
+
+            if ((err_info = sr_ds_handle_find(((char *)mod_shm) + mod->plugins[ds], conn,
+                    (const struct sr_ds_handle_s **)&ds_handle))) {
+                goto cleanup;
+            }
+            if (ds_handle->init) {
+                continue;
+            }
+
+            if ((err_info = ds_handle->plugin->conn_init_cb(conn, &ds_handle->plg_data))) {
+                goto cleanup;
+            }
+            ds_handle->init = 1;
+        }
+    }
+
+cleanup:
+    return err_info;
+}
+
+void
+sr_conn_ds_destroy(sr_conn_ctx_t *conn)
+{
+    uint32_t i;
+
+    /* destroy all initialized plugin data */
+    for (i = 0; i < conn->ds_handle_count; ++i) {
+        if (conn->ds_handles[i].init) {
+            conn->ds_handles[i].plugin->conn_destroy_cb(conn, conn->ds_handles[i].plg_data);
+        }
+    }
 }
 
 void *
@@ -3700,7 +3795,7 @@ sr_ds2ident(sr_datastore_t ds)
     return sr_mod_ds2ident(ds);
 }
 
-sr_error_info_t *
+void
 sr_msleep(uint32_t msec)
 {
     sr_error_info_t *err_info = NULL;
@@ -3717,10 +3812,8 @@ sr_msleep(uint32_t msec)
 
     if (ret == -1) {
         SR_ERRINFO_SYSERRNO(&err_info, "nanosleep");
-        return err_info;
+        sr_errinfo_free(&err_info);
     }
-
-    return NULL;
 }
 
 int
@@ -4880,8 +4973,8 @@ sr_xpath_set_filter_subtrees(struct ly_set *set)
             }
         }
         if (parent) {
-            /* this result is redundant */
-            ly_set_rm_index(set, i, NULL);
+            /* this result is redundant, but keep the order of the nodes in the set */
+            ly_set_rm_index_ordered(set, i, NULL);
             continue;
         }
 
@@ -5336,16 +5429,15 @@ sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod)
 }
 
 sr_error_info_t *
-sr_module_file_data_append(const struct lys_module *ly_mod, const struct srplg_ds_s *ds_plg[], sr_datastore_t ds,
+sr_module_file_data_append(const struct lys_module *ly_mod, const struct sr_ds_handle_s *ds_handle[], sr_datastore_t ds,
         const char **xpaths, uint32_t xpath_count, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *mod_data;
-    int rc, modified;
+    int modified;
 
     if (ds == SR_DS_CANDIDATE) {
-        if ((rc = ds_plg[ds]->candidate_modified_cb(ly_mod, &modified))) {
-            SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_modified", ds_plg[ds]->name, ly_mod->name);
+        if ((err_info = ds_handle[ds]->plugin->candidate_modified_cb(ly_mod, ds_handle[ds]->plg_data, &modified))) {
             return err_info;
         }
 
@@ -5355,9 +5447,13 @@ sr_module_file_data_append(const struct lys_module *ly_mod, const struct srplg_d
         }
     }
 
+    if ((ds == SR_DS_RUNNING) && !ds_handle[ds]) {
+        /* disabled 'running', using 'startup' */
+        ds = SR_DS_STARTUP;
+    }
+
     /* get the data */
-    if ((rc = ds_plg[ds]->load_cb(ly_mod, ds, xpaths, xpath_count, &mod_data))) {
-        SR_ERRINFO_DSPLUGIN(&err_info, rc, "load", ds_plg[ds]->name, ly_mod->name);
+    if ((err_info = ds_handle[ds]->plugin->load_cb(ly_mod, ds, xpaths, xpath_count, ds_handle[ds]->plg_data, &mod_data))) {
         return err_info;
     }
 
@@ -5376,13 +5472,12 @@ sr_module_file_oper_data_load(struct sr_mod_info_mod_s *mod, struct lyd_node **e
     struct lyd_node *root, *elem;
     struct lyd_meta *meta;
     sr_cid_t dead_cid = 0;
-    int rc;
 
     assert(!*edit);
 
     /* load the operational data (edit) */
-    if ((rc = mod->ds_plg[SR_DS_OPERATIONAL]->load_cb(mod->ly_mod, SR_DS_OPERATIONAL, NULL, 0, edit))) {
-        SR_ERRINFO_DSPLUGIN(&err_info, rc, "load", mod->ds_plg[SR_DS_OPERATIONAL]->name, mod->ly_mod->name);
+    if ((err_info = mod->ds_handle[SR_DS_OPERATIONAL]->plugin->load_cb(mod->ly_mod, SR_DS_OPERATIONAL, NULL, 0,
+            mod->ds_handle[SR_DS_OPERATIONAL]->plg_data, edit))) {
         return err_info;
     }
 

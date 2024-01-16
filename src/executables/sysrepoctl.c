@@ -110,8 +110,8 @@ help_print(void)
             "                       Directories to search for include/import modules. Directory with already-installed\n"
             "                       modules is always searched. Accepted by install, update op.\n"
             "  -e, --enable-feature <feature-name>\n"
-            "                       Enabled specific feature. Can be specified multiple times. Accepted by install,\n"
-            "                       change op.\n"
+            "                       Enabled specific feature or use '*' for all the features. Can be specified multiple\n"
+            "                       times. Accepted by install, change op.\n"
             "  -d, --disable-feature <feature-name>\n"
             "                       Disable specific feature. Can be specified multiple times. Accepted by change op.\n"
             "  -r, --replay <state> Change replay support (storing notifications) for this module to on/off or 1/0.\n"
@@ -127,8 +127,8 @@ help_print(void)
             "                       if permissions are being changed.\n"
             "  -m, --module-plugin <mod-datastore>:<plugin-name>\n"
             "                       Set specific module datastore plugin for a module datastore (startup, running,\n"
-            "                       candidate, operational, or notification), can be specified multiple times for\n"
-            "                       different module datastores. Accepted by install op.\n"
+            "                       candidate, operational, factory-default, or notification), can be specified multiple\n"
+            "                       times for different module datastores. Accepted by install op.\n"
             "  -I, --init-data <path>\n"
             "                       Initial data in a file with XML or JSON extension to be set for module(s),\n"
             "                       useful when there are mandatory top-level nodes. Accepted by install op.\n"
@@ -278,6 +278,8 @@ set_datastore(const char *optarg, int *mod_ds)
         *mod_ds = SR_DS_CANDIDATE;
     } else if (!strcmp(optarg, "operational")) {
         *mod_ds = SR_DS_OPERATIONAL;
+    } else if (!strcmp(optarg, "factory-default")) {
+        *mod_ds = SR_DS_FACTORY_DEFAULT;
     } else if (!strcmp(optarg, "notification")) {
         *mod_ds = SR_MOD_DS_NOTIF;
     } else if (strcmp(optarg, ":ALL")) {
@@ -306,6 +308,8 @@ set_module_ds(const char *optarg, sr_module_ds_t *module_ds)
         module_ds_idx = SR_DS_CANDIDATE;
     } else if (!strncmp(optarg, "operational", ptr - optarg)) {
         module_ds_idx = SR_DS_OPERATIONAL;
+    } else if (!strncmp(optarg, "factory-default", ptr - optarg)) {
+        module_ds_idx = SR_DS_FACTORY_DEFAULT;
     } else if (!strncmp(optarg, "notification", ptr - optarg)) {
         module_ds_idx = SR_MOD_DS_NOTIF;
     } else {

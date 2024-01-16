@@ -4,8 +4,8 @@
  * @brief logging routines
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -416,6 +416,52 @@ sr_log(sr_log_level_t ll, const char *format, ...)
 
     sr_log_msg(0, ll, msg);
     free(msg);
+}
+
+API void
+srplg_log_errinfo(sr_error_info_t **err_info, const char *plg_name, const char *err_format_name, sr_error_t err_code,
+        const char *format, ...)
+{
+    va_list vargs;
+    char *msg;
+    int idx;
+
+    if (!plg_name) {
+        return;
+    }
+
+    /* add plugin name first */
+    if (asprintf(&msg, "%s: %s", plg_name, format) == -1) {
+        *err_info = &sr_errinfo_mem;
+    } else {
+        /* add err_info */
+        va_start(vargs, format);
+        sr_errinfo_add(err_info, err_code, err_format_name, NULL, msg, &vargs);
+        va_end(vargs);
+    }
+
+    /* print it */
+    idx = (*err_info)->err_count - 1;
+    sr_log_msg(1, SR_LL_ERR, (*err_info)->err[idx].message);
+    free(msg);
+}
+
+API int
+srplg_errinfo_push_error_data(sr_error_info_t *err_info, uint32_t size, const void *data)
+{
+    sr_error_info_t *einfo = NULL;
+
+    SR_CHECK_ARG_APIRET(!err_info || !err_info->err_count || !err_info->err[err_info->err_count - 1].error_format ||
+            !size || !data, NULL, einfo);
+
+    einfo = sr_ev_data_push(&err_info->err[err_info->err_count - 1].error_data, size, data);
+    return sr_api_ret(NULL, einfo);
+}
+
+API void
+srplg_errinfo_free(sr_error_info_t **err_info)
+{
+    sr_errinfo_free(err_info);
 }
 
 API void

@@ -552,9 +552,9 @@ test_oper_dep(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
     ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(err_info->err_count, 2);
-    assert_string_equal(err_info->err[1].message, "Invalid instance-identifier \"/ops-ref:l101\" value - semantic error. "
-            "(Schema location \"/ops:cont/cont3/notif2/l13\".)");
+    assert_int_equal(err_info->err_count, 1);
+    assert_string_equal(err_info->err[0].message, "Invalid instance-identifier \"/ops-ref:l101\" value - semantic error: "
+            "Not found node \"l101\" in path. (Schema location \"/ops:cont/cont3/notif2/l13\".)");
 
     /* correct the instance-identifier */
     input[0].data.string_val = "/ops-ref:l2";

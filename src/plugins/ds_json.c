@@ -39,17 +39,17 @@
 
 #define srpds_name "JSON DS file"  /**< plugin name */
 
-static int srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, const char **xpaths, uint32_t xpath_count,
-        struct lyd_node **mod_data);
+static sr_error_info_t *srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, const char **xpaths,
+        uint32_t xpath_count, void *plg_data, struct lyd_node **mod_data);
 
-static int srpds_json_access_get(const struct lys_module *mod, sr_datastore_t ds, char **owner, char **group,
-        mode_t *perm);
+static sr_error_info_t * srpds_json_access_get(const struct lys_module *mod, sr_datastore_t ds, void *plg_data,
+        char **owner, char **group, mode_t *perm);
 
-static int
+static sr_error_info_t *
 srpds_json_store_(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *mod_data, const char *owner,
         const char *group, mode_t perm, int make_backup)
 {
-    int rc = SR_ERR_OK;
+    sr_error_info_t *err_info = NULL;
     struct stat st;
     char *path = NULL, *bck_path = NULL;
     int fd = -1, backup = 0, creat = 0;
@@ -57,7 +57,7 @@ srpds_json_store_(const struct lys_module *mod, sr_datastore_t ds, const struct 
     off_t size;
 
     /* get path */
-    if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
+    if ((err_info = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
 
@@ -65,27 +65,26 @@ srpds_json_store_(const struct lys_module *mod, sr_datastore_t ds, const struct 
         /* get original file perms */
         if (stat(path, &st) == -1) {
             if (errno == EACCES) {
-                SRPLG_LOG_ERR(srpds_name, "Learning \"%s\" permissions failed.", mod->name);
-                rc = SR_ERR_UNAUTHORIZED;
+                srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_UNAUTHORIZED, "Learning \"%s\" permissions failed.",
+                        mod->name);
             } else {
-                SRPLG_LOG_ERR(srpds_name, "Stat of \"%s\" failed (%s).", path, strerror(errno));
-                rc = SR_ERR_SYS;
+                srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Stat of \"%s\" failed (%s).", path,
+                        strerror(errno));
             }
             goto cleanup;
         }
 
         /* generate the backup path */
         if (asprintf(&bck_path, "%s%s", path, SRPJSON_FILE_BACKUP_SUFFIX) == -1) {
-            SRPLG_LOG_ERR(srpds_name, "Memory allocation failed.");
-            rc = SR_ERR_NO_MEMORY;
+            srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
             goto cleanup;
         }
 
         /* create backup file with same permissions (not owner/group because it may be different and this process
          * not has permissions to use that owner/group) */
         if ((fd = srpjson_open(srpds_name, bck_path, O_WRONLY | O_CREAT | O_EXCL, st.st_mode)) == -1) {
-            SRPLG_LOG_ERR(srpds_name, "Opening \"%s\" failed (%s).", bck_path, strerror(errno));
-            rc = SR_ERR_SYS;
+            srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Opening \"%s\" failed (%s).", bck_path,
+                    strerror(errno));
             goto cleanup;
         }
         backup = 1;
@@ -95,7 +94,7 @@ srpds_json_store_(const struct lys_module *mod, sr_datastore_t ds, const struct 
         fd = -1;
 
         /* back up any existing file */
-        if ((rc = srpjson_cp_path(srpds_name, bck_path, path))) {
+        if ((err_info = srpjson_cp_path(srpds_name, bck_path, path))) {
             goto cleanup;
         }
     }
@@ -112,13 +111,13 @@ srpds_json_store_(const struct lys_module *mod, sr_datastore_t ds, const struct 
         fd = srpjson_open(srpds_name, path, O_WRONLY, perm);
     }
     if (fd == -1) {
-        rc = srpjson_open_error(srpds_name, path);
+        err_info = srpjson_open_error(srpds_name, path);
         goto cleanup;
     }
 
     if (creat && (owner || group)) {
         /* change the owner of the created file */
-        if ((rc = srpjson_chmodown(srpds_name, path, owner, group, 0))) {
+        if ((err_info = srpjson_chmodown(srpds_name, path, owner, group, 0))) {
             goto cleanup;
         }
     }
@@ -126,31 +125,28 @@ srpds_json_store_(const struct lys_module *mod, sr_datastore_t ds, const struct 
     /* print data */
     print_opts = LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS | LYD_PRINT_KEEPEMPTYCONT | LYD_PRINT_WD_IMPL_TAG;
     if (lyd_print_fd(fd, mod_data, LYD_JSON, print_opts)) {
-        srpjson_log_err_ly(srpds_name, LYD_CTX(mod_data));
-        SRPLG_LOG_ERR(srpds_name, "Failed to store data into \"%s\".", path);
-        rc = SR_ERR_INTERNAL;
+        err_info = srpjson_log_err_ly(srpds_name, LYD_CTX(mod_data));
+        srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_INTERNAL, "Failed to store data into \"%s\".", path);
         goto cleanup;
     }
 
     /* truncate the file to the exact size (to get rid of possible following old data) */
     if ((size = lseek(fd, 0, SEEK_CUR)) == -1) {
-        SRPLG_LOG_ERR(srpds_name, "Failed to get the size of \"%s\" (%s).", path, strerror(errno));
-        rc = SR_ERR_SYS;
+        srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Failed to get the size of \"%s\" (%s).", path,
+                strerror(errno));
         goto cleanup;
     }
     if (ftruncate(fd, size) == -1) {
-        SRPLG_LOG_ERR(srpds_name, "Failed to truncate \"%s\" (%s).", path, strerror(errno));
-        rc = SR_ERR_SYS;
+        srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Failed to truncate \"%s\" (%s).", path,
+                strerror(errno));
         goto cleanup;
     }
 
 cleanup:
     /* delete the backup file */
     if (backup && (unlink(bck_path) == -1)) {
-        SRPLG_LOG_ERR(srpds_name, "Failed to remove backup \"%s\" (%s).", bck_path, strerror(errno));
-        if (!rc) {
-            rc = SR_ERR_SYS;
-        }
+        srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Failed to remove backup \"%s\" (%s).", bck_path,
+                strerror(errno));
     }
 
     if (fd > -1) {
@@ -158,7 +154,7 @@ cleanup:
     }
     free(path);
     free(bck_path);
-    return rc;
+    return err_info;
 }
 
 /**
@@ -169,71 +165,74 @@ cleanup:
  * @param[in] owner Owner of the data, may be NULL.
  * @param[in] group Group of the data, may be NULL.
  * @param[in] perm Permissions of the data.
+ * @param[in] plg_data Plugin data.
  * @return SR_ERR value.
  */
-static int
-srpds_json_install_persistent(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm)
+static sr_error_info_t *
+srpds_json_install_persistent(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group,
+        mode_t perm, void *UNUSED(plg_data))
 {
-    int rc = SR_ERR_OK;
+    sr_error_info_t *err_info = NULL;
     char *path = NULL;
 
     /* check whether the file does not exist */
-    if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
+    if ((err_info = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
     if (srpjson_file_exists(srpds_name, path)) {
-        SRPLG_LOG_ERR(srpds_name, "File \"%s\" already exists.", path);
-        rc = SR_ERR_EXISTS;
+        srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_EXISTS, "File \"%s\" already exists.", path);
         goto cleanup;
     }
 
     /* print empty file to store permissions */
-    if ((rc = srpds_json_store_(mod, ds, NULL, owner, group, perm, 0))) {
+    if ((err_info = srpds_json_store_(mod, ds, NULL, owner, group, perm, 0))) {
         goto cleanup;
     }
 
 cleanup:
     free(path);
-    return rc;
+    return err_info;
 }
 
-static int
-srpds_json_install(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm)
+static sr_error_info_t *
+srpds_json_install(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm,
+        void *UNUSED(plg_data))
 {
-    int rc = SR_ERR_OK, fd = -1;
+    sr_error_info_t *err_info = NULL;
+    int fd = -1;
     char *path = NULL;
 
     assert(perm);
 
     /* startup data dir */
-    if ((rc = srpjson_get_startup_dir(srpds_name, &path))) {
-        return rc;
+    if ((err_info = srpjson_get_startup_dir(srpds_name, &path))) {
+        return err_info;
     }
-    if (!srpjson_file_exists(srpds_name, path) && (rc = srpjson_mkpath(srpds_name, path, SRPJSON_DIR_PERM))) {
+    if (!srpjson_file_exists(srpds_name, path) && (err_info = srpjson_mkpath(srpds_name, path, SRPJSON_DIR_PERM))) {
         goto cleanup;
     }
 
     if ((ds == SR_DS_STARTUP) || (ds == SR_DS_FACTORY_DEFAULT)) {
         /* persistent DS file install */
-        rc = srpds_json_install_persistent(mod, ds, owner, group, perm);
+        err_info = srpds_json_install_persistent(mod, ds, owner, group, perm, NULL);
         goto cleanup;
     }
 
     /* get path to the perm file */
     free(path);
-    if ((rc = srpjson_get_perm_path(srpds_name, mod->name, ds, &path))) {
+    if ((err_info = srpjson_get_perm_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
 
     /* create the file with the correct permissions */
     if ((fd = srpjson_open(srpds_name, path, O_RDONLY | O_CREAT | O_EXCL, perm)) == -1) {
-        rc = srpjson_open_error(srpds_name, path);
+        err_info = srpjson_open_error(srpds_name, path);
         goto cleanup;
     }
 
     /* update the owner/group of the file */
     if (owner || group) {
-        if ((rc = srpjson_chmodown(srpds_name, path, owner, group, 0))) {
+        if ((err_info = srpjson_chmodown(srpds_name, path, owner, group, 0))) {
             goto cleanup;
         }
     }
@@ -243,17 +242,17 @@ cleanup:
         close(fd);
     }
     free(path);
-    return rc;
+    return err_info;
 }
 
-static int
-srpds_json_uninstall(const struct lys_module *mod, sr_datastore_t ds)
+static sr_error_info_t *
+srpds_json_uninstall(const struct lys_module *mod, sr_datastore_t ds, void *UNUSED(plg_data))
 {
-    int rc = SR_ERR_OK;
+    sr_error_info_t *err_info = NULL;
     char *path = NULL;
 
     /* unlink data file */
-    if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
+    if ((err_info = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
     if ((unlink(path) == -1) && ((errno != ENOENT) || (ds == SR_DS_STARTUP) || (ds == SR_DS_FACTORY_DEFAULT))) {
@@ -268,7 +267,7 @@ srpds_json_uninstall(const struct lys_module *mod, sr_datastore_t ds)
 
     /* unlink perm file */
     free(path);
-    if ((rc = srpjson_get_perm_path(srpds_name, mod->name, ds, &path))) {
+    if ((err_info = srpjson_get_perm_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
     if (unlink(path) == -1) {
@@ -277,50 +276,51 @@ srpds_json_uninstall(const struct lys_module *mod, sr_datastore_t ds)
 
 cleanup:
     free(path);
-    return rc;
+    return err_info;
 }
 
-static int
-srpds_json_init(const struct lys_module *mod, sr_datastore_t ds)
+static sr_error_info_t *
+srpds_json_init(const struct lys_module *mod, sr_datastore_t ds, void *UNUSED(plg_data))
 {
-    int rc = SR_ERR_OK, fd = -1;
+    sr_error_info_t *err_info = NULL;
+    int fd = -1;
     char *owner = NULL, *group = NULL, *path = NULL;
     mode_t perm;
 
     if (ds != SR_DS_RUNNING) {
         /* startup and factory-default are persistent and candidate with operational exists only if modified */
-        return SR_ERR_OK;
+        return NULL;
     }
 
     if (!srpjson_module_has_data(mod, 0)) {
         /* no data, do not create the file */
-        return SR_ERR_OK;
+        return NULL;
     }
 
     /* get owner/group/perms of the datastore file */
-    if ((rc = srpds_json_access_get(mod, ds, &owner, &group, &perm))) {
+    if ((err_info = srpds_json_access_get(mod, ds, NULL, &owner, &group, &perm))) {
         goto cleanup;
     }
 
     /* get path to the file */
-    if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
+    if ((err_info = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
 
     /* create the file with the correct permissions */
     if ((fd = srpjson_open(srpds_name, path, O_WRONLY | O_CREAT | O_EXCL, perm)) == -1) {
-        rc = srpjson_open_error(srpds_name, path);
+        err_info = srpjson_open_error(srpds_name, path);
         goto cleanup;
     }
 
     /* print empty JSON file */
     if (lyd_print_fd(fd, NULL, LYD_JSON, LYD_PRINT_SHRINK)) {
-        rc = SR_ERR_LY;
+        err_info = srpjson_log_err_ly(srpds_name, NULL);
         goto cleanup;
     }
 
     /* update the owner/group of the file */
-    if ((rc = srpjson_chmodown(srpds_name, path, owner, group, 0))) {
+    if ((err_info = srpjson_chmodown(srpds_name, path, owner, group, 0))) {
         goto cleanup;
     }
 
@@ -331,15 +331,26 @@ cleanup:
     free(owner);
     free(group);
     free(path);
-    return rc;
+    return err_info;
 }
 
-static int
-srpds_json_store(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *UNUSED(mod_diff),
-        const struct lyd_node *mod_data)
+static sr_error_info_t *
+srpds_json_conn_init(sr_conn_ctx_t *UNUSED(conn), void **UNUSED(plg_data))
 {
+    return NULL;
+}
+
+static void
+srpds_json_conn_destroy(sr_conn_ctx_t *UNUSED(conn), void *UNUSED(plg_data))
+{
+}
+
+static sr_error_info_t *
+srpds_json_store(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *UNUSED(mod_diff),
+        const struct lyd_node *mod_data, void *UNUSED(plg_data))
+{
+    sr_error_info_t *err_info = NULL;
     mode_t perm = 0;
-    int rc;
     char *path = NULL;
 
     switch (ds) {
@@ -353,7 +364,7 @@ srpds_json_store(const struct lys_module *mod, sr_datastore_t ds, const struct l
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
         /* get data file path */
-        if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
+        if ((err_info = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
             goto cleanup;
         }
 
@@ -363,38 +374,40 @@ srpds_json_store(const struct lys_module *mod, sr_datastore_t ds, const struct l
         }
 
         /* get the correct permissions to set for the new file (not owner/group because we may not have permissions to set them) */
-        if ((rc = srpds_json_access_get(mod, ds, NULL, NULL, &perm))) {
+        if ((err_info = srpds_json_access_get(mod, ds, NULL, NULL, NULL, &perm))) {
             goto cleanup;
         }
         break;
     }
 
     /* store */
-    if ((rc = srpds_json_store_(mod, ds, mod_data, NULL, NULL, perm, 1))) {
+    if ((err_info = srpds_json_store_(mod, ds, mod_data, NULL, NULL, perm, 1))) {
         goto cleanup;
     }
 
 cleanup:
     free(path);
-    return rc;
+    return err_info;
 }
 
 static void
-srpds_json_recover(const struct lys_module *mod, sr_datastore_t ds)
+srpds_json_recover(const struct lys_module *mod, sr_datastore_t ds, void *UNUSED(plg_data))
 {
+    sr_error_info_t *err_info = NULL;
     char *path = NULL, *bck_path = NULL;
     struct lyd_node *mod_data = NULL;
 
     /* get path */
-    if (srpjson_get_path(srpds_name, mod->name, ds, &path)) {
+    if ((err_info = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
 
     /* check whether the file is valid */
-    if (!srpds_json_load(mod, ds, NULL, 0, &mod_data)) {
+    if (!(err_info = srpds_json_load(mod, ds, NULL, 0, NULL, &mod_data))) {
         /* data are valid, nothing to do */
         goto cleanup;
     }
+    srplg_errinfo_free(&err_info);
 
     if (ds == SR_DS_STARTUP) {
         /* there must be a backup file for startup data */
@@ -402,18 +415,18 @@ srpds_json_recover(const struct lys_module *mod, sr_datastore_t ds)
 
         /* generate the backup path */
         if (asprintf(&bck_path, "%s%s", path, SRPJSON_FILE_BACKUP_SUFFIX) == -1) {
-            SRPLG_LOG_ERR(srpds_name, "Memory allocation failed.");
+            srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
             goto cleanup;
         }
 
         /* restore the backup data, avoid changing permissions of the target file */
-        if (srpjson_cp_path(srpds_name, path, bck_path)) {
+        if ((err_info = srpjson_cp_path(srpds_name, path, bck_path))) {
             goto cleanup;
         }
 
         /* remove the backup file */
         if (unlink(bck_path) == -1) {
-            SRPLG_LOG_ERR(srpds_name, "Unlinking \"%s\" failed (%s).", bck_path, strerror(errno));
+            srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Unlinking \"%s\" failed (%s).", bck_path, strerror(errno));
             goto cleanup;
         }
     } else if (ds == SR_DS_RUNNING) {
@@ -421,12 +434,12 @@ srpds_json_recover(const struct lys_module *mod, sr_datastore_t ds)
         SRPLG_LOG_WRN(srpds_name, "Recovering \"%s\" running data from the startup data.", mod->name);
 
         /* generate the startup data file path */
-        if (srpjson_get_path(srpds_name, mod->name, SR_DS_STARTUP, &bck_path)) {
+        if ((err_info = srpjson_get_path(srpds_name, mod->name, SR_DS_STARTUP, &bck_path))) {
             goto cleanup;
         }
 
         /* copy startup data to running */
-        if (srpjson_cp_path(srpds_name, path, bck_path)) {
+        if ((err_info = srpjson_cp_path(srpds_name, path, bck_path))) {
             goto cleanup;
         }
     } else {
@@ -435,7 +448,8 @@ srpds_json_recover(const struct lys_module *mod, sr_datastore_t ds)
                 srpjson_ds2str(ds));
 
         if (unlink(path) == -1) {
-            SRPLG_LOG_ERR(srpds_name, "Unlinking \"%s\" failed (%s).", path, strerror(errno));
+            srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Unlinking \"%s\" failed (%s).", path,
+                    strerror(errno));
             goto cleanup;
         }
     }
@@ -444,20 +458,22 @@ cleanup:
     free(path);
     free(bck_path);
     lyd_free_all(mod_data);
+    srplg_errinfo_free(&err_info);
 }
 
-static int
+static sr_error_info_t *
 srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, const char **UNUSED(xpaths), uint32_t UNUSED(xpath_count),
-        struct lyd_node **mod_data)
+        void *UNUSED(plg_data), struct lyd_node **mod_data)
 {
-    int rc = SR_ERR_OK, fd = -1;
+    sr_error_info_t *err_info = NULL;
+    int fd = -1;
     char *path = NULL;
     uint32_t parse_opts;
 
     *mod_data = NULL;
 
     /* prepare correct file path */
-    if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
+    if ((err_info = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
 
@@ -483,7 +499,7 @@ srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, const char **UN
             }
         }
 
-        rc = srpjson_open_error(srpds_name, path);
+        err_info = srpjson_open_error(srpds_name, path);
         goto cleanup;
     }
 
@@ -502,8 +518,7 @@ srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, const char **UN
 
     /* load the data */
     if (lyd_parse_data_fd(mod->ctx, fd, LYD_JSON, parse_opts, 0, mod_data)) {
-        srpjson_log_err_ly(srpds_name, mod->ctx);
-        rc = SR_ERR_LY;
+        err_info = srpjson_log_err_ly(srpds_name, mod->ctx);
         goto cleanup;
     }
 
@@ -512,18 +527,19 @@ cleanup:
         close(fd);
     }
     free(path);
-    return rc;
+    return err_info;
 }
 
-static int
-srpds_json_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datastore_t src_ds)
+static sr_error_info_t *
+srpds_json_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datastore_t src_ds, void *UNUSED(plg_data))
 {
-    int rc = SR_ERR_OK, fd = -1;
+    sr_error_info_t *err_info = NULL;
+    int fd = -1;
     char *src_path = NULL, *trg_path = NULL, *owner = NULL, *group = NULL;
     mode_t perm = 0;
 
     /* target path */
-    if ((rc = srpjson_get_path(srpds_name, mod->name, trg_ds, &trg_path))) {
+    if ((err_info = srpjson_get_path(srpds_name, mod->name, trg_ds, &trg_path))) {
         goto cleanup;
     }
 
@@ -541,30 +557,30 @@ srpds_json_copy(const struct lys_module *mod, sr_datastore_t trg_ds, sr_datastor
         }
 
         /* get the correct permissions to set for the new file */
-        if ((rc = srpds_json_access_get(mod, trg_ds, &owner, &group, &perm))) {
+        if ((err_info = srpds_json_access_get(mod, trg_ds, NULL, &owner, &group, &perm))) {
             goto cleanup;
         }
 
         /* create the target file with the correct permissions */
         if ((fd = srpjson_open(srpds_name, trg_path, O_WRONLY | O_CREAT | O_EXCL, perm)) == -1) {
-            rc = srpjson_open_error(srpds_name, trg_path);
+            err_info = srpjson_open_error(srpds_name, trg_path);
             goto cleanup;
         }
 
         /* change the owner/group of the new file */
-        if ((rc = srpjson_chmodown(srpds_name, trg_path, owner, group, 0))) {
+        if ((err_info = srpjson_chmodown(srpds_name, trg_path, owner, group, 0))) {
             goto cleanup;
         }
         break;
     }
 
     /* source path */
-    if ((rc = srpjson_get_path(srpds_name, mod->name, src_ds, &src_path))) {
+    if ((err_info = srpjson_get_path(srpds_name, mod->name, src_ds, &src_path))) {
         goto cleanup;
     }
 
     /* copy contents of source to target */
-    if ((rc = srpjson_cp_path(srpds_name, trg_path, src_path))) {
+    if ((err_info = srpjson_cp_path(srpds_name, trg_path, src_path))) {
         goto cleanup;
     }
 
@@ -576,17 +592,17 @@ cleanup:
     free(owner);
     free(group);
     free(src_path);
-    return rc;
+    return err_info;
 }
 
-static int
-srpds_json_candidate_modified(const struct lys_module *mod, int *modified)
+static sr_error_info_t *
+srpds_json_candidate_modified(const struct lys_module *mod, void *UNUSED(plg_data), int *modified)
 {
-    int rc = SR_ERR_OK;
+    sr_error_info_t *err_info = NULL;
     char *path = NULL;
 
     /* candidate DS file cannot exist */
-    if ((rc = srpjson_get_path(srpds_name, mod->name, SR_DS_CANDIDATE, &path))) {
+    if ((err_info = srpjson_get_path(srpds_name, mod->name, SR_DS_CANDIDATE, &path))) {
         goto cleanup;
     }
 
@@ -599,17 +615,17 @@ srpds_json_candidate_modified(const struct lys_module *mod, int *modified)
 
 cleanup:
     free(path);
-    return rc;
+    return err_info;
 }
 
-static int
-srpds_json_candidate_reset(const struct lys_module *mod)
+static sr_error_info_t *
+srpds_json_candidate_reset(const struct lys_module *mod, void *UNUSED(plg_data))
 {
-    int rc = SR_ERR_OK;
+    sr_error_info_t *err_info = NULL;
     char *path;
 
-    if ((rc = srpjson_get_path(srpds_name, mod->name, SR_DS_CANDIDATE, &path))) {
-        return rc;
+    if ((err_info = srpjson_get_path(srpds_name, mod->name, SR_DS_CANDIDATE, &path))) {
+        return err_info;
     }
 
     if ((unlink(path) == -1) && (errno != ENOENT)) {
@@ -617,19 +633,21 @@ srpds_json_candidate_reset(const struct lys_module *mod)
     }
     free(path);
 
-    return rc;
+    return NULL;
 }
 
-static int
-srpds_json_access_set(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group, mode_t perm)
+static sr_error_info_t *
+srpds_json_access_set(const struct lys_module *mod, sr_datastore_t ds, const char *owner, const char *group,
+        mode_t perm, void *UNUSED(plg_data))
 {
-    int rc = SR_ERR_OK, file_exists = 0;
+    sr_error_info_t *err_info = NULL;
+    int file_exists = 0;
     char *path = NULL;
 
     assert(mod && (owner || group || perm));
 
     /* get correct path to the datastore file */
-    if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
+    if ((err_info = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
 
@@ -648,7 +666,7 @@ srpds_json_access_set(const struct lys_module *mod, sr_datastore_t ds, const cha
     }
 
     /* update file permissions and owner */
-    if (file_exists && (rc = srpjson_chmodown(srpds_name, path, owner, group, perm))) {
+    if (file_exists && (err_info = srpjson_chmodown(srpds_name, path, owner, group, perm))) {
         goto cleanup;
     }
 
@@ -662,12 +680,12 @@ srpds_json_access_set(const struct lys_module *mod, sr_datastore_t ds, const cha
     case SR_DS_OPERATIONAL:
         /* volatile datastore permission file */
         free(path);
-        if ((rc = srpjson_get_perm_path(srpds_name, mod->name, ds, &path))) {
+        if ((err_info = srpjson_get_perm_path(srpds_name, mod->name, ds, &path))) {
             goto cleanup;
         }
 
         /* update file permissions and owner */
-        if ((rc = srpjson_chmodown(srpds_name, path, owner, group, perm))) {
+        if ((err_info = srpjson_chmodown(srpds_name, path, owner, group, perm))) {
             goto cleanup;
         }
         break;
@@ -675,13 +693,15 @@ srpds_json_access_set(const struct lys_module *mod, sr_datastore_t ds, const cha
 
 cleanup:
     free(path);
-    return rc;
+    return err_info;
 }
 
-static int
-srpds_json_access_get(const struct lys_module *mod, sr_datastore_t ds, char **owner, char **group, mode_t *perm)
+static sr_error_info_t *
+srpds_json_access_get(const struct lys_module *mod, sr_datastore_t ds, void *UNUSED(plg_data), char **owner, char **group,
+        mode_t *perm)
 {
-    int rc = SR_ERR_OK, r;
+    sr_error_info_t *err_info = NULL;
+    int r;
     struct stat st;
     char *path;
 
@@ -696,15 +716,15 @@ srpds_json_access_get(const struct lys_module *mod, sr_datastore_t ds, char **ow
     switch (ds) {
     case SR_DS_STARTUP:
     case SR_DS_FACTORY_DEFAULT:
-        if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
-            return rc;
+        if ((err_info = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
+            return err_info;
         }
         break;
     case SR_DS_RUNNING:
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
-        if ((rc = srpjson_get_perm_path(srpds_name, mod->name, ds, &path))) {
-            return rc;
+        if ((err_info = srpjson_get_perm_path(srpds_name, mod->name, ds, &path))) {
+            return err_info;
         }
         break;
     }
@@ -713,24 +733,23 @@ srpds_json_access_get(const struct lys_module *mod, sr_datastore_t ds, char **ow
     r = stat(path, &st);
     if (r == -1) {
         if (errno == EACCES) {
-            SRPLG_LOG_ERR(srpds_name, "Learning \"%s\" permissions failed.", mod->name);
-            rc = SR_ERR_UNAUTHORIZED;
+            srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_UNAUTHORIZED, "Learning \"%s\" permissions failed.",
+                    mod->name);
         } else {
-            SRPLG_LOG_ERR(srpds_name, "Stat of \"%s\" failed (%s).", path, strerror(errno));
-            rc = SR_ERR_SYS;
+            srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Stat of \"%s\" failed (%s).", path, strerror(errno));
         }
         free(path);
-        return rc;
+        return err_info;
     }
     free(path);
 
     /* get owner */
-    if (owner && (rc = srpjson_get_pwd(srpds_name, &st.st_uid, owner))) {
+    if (owner && (err_info = srpjson_get_pwd(srpds_name, &st.st_uid, owner))) {
         goto error;
     }
 
     /* get group */
-    if (group && (rc = srpjson_get_grp(srpds_name, &st.st_gid, group))) {
+    if (group && (err_info = srpjson_get_grp(srpds_name, &st.st_gid, group))) {
         goto error;
     }
 
@@ -739,7 +758,7 @@ srpds_json_access_get(const struct lys_module *mod, sr_datastore_t ds, char **ow
         *perm = st.st_mode & 0007777;
     }
 
-    return rc;
+    return NULL;
 
 error:
     if (owner) {
@@ -750,27 +769,27 @@ error:
         free(*group);
         *group = NULL;
     }
-    return rc;
+    return err_info;
 }
 
-static int
-srpds_json_access_check(const struct lys_module *mod, sr_datastore_t ds, int *read, int *write)
+static sr_error_info_t *
+srpds_json_access_check(const struct lys_module *mod, sr_datastore_t ds, void *UNUSED(plg_data), int *read, int *write)
 {
-    int rc = SR_ERR_OK;
+    sr_error_info_t *err_info = NULL;
     char *path;
 
     /* get correct path */
     switch (ds) {
     case SR_DS_STARTUP:
     case SR_DS_FACTORY_DEFAULT:
-        if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
+        if ((err_info = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
             goto cleanup;
         }
         break;
     case SR_DS_RUNNING:
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
-        if ((rc = srpjson_get_perm_path(srpds_name, mod->name, ds, &path))) {
+        if ((err_info = srpjson_get_perm_path(srpds_name, mod->name, ds, &path))) {
             goto cleanup;
         }
         break;
@@ -782,8 +801,8 @@ srpds_json_access_check(const struct lys_module *mod, sr_datastore_t ds, int *re
             if (errno == EACCES) {
                 *read = 0;
             } else {
-                SRPLG_LOG_ERR(srpds_name, "Eaccess of \"%s\" failed (%s).", path, strerror(errno));
-                rc = SR_ERR_SYS;
+                srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Eaccess of \"%s\" failed (%s).", path,
+                        strerror(errno));
                 goto cleanup;
             }
         } else {
@@ -797,8 +816,8 @@ srpds_json_access_check(const struct lys_module *mod, sr_datastore_t ds, int *re
             if (errno == EACCES) {
                 *write = 0;
             } else {
-                SRPLG_LOG_ERR(srpds_name, "Eaccess of \"%s\" failed (%s).", path, strerror(errno));
-                rc = SR_ERR_SYS;
+                srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Eaccess of \"%s\" failed (%s).", path,
+                        strerror(errno));
                 goto cleanup;
             }
         } else {
@@ -808,17 +827,17 @@ srpds_json_access_check(const struct lys_module *mod, sr_datastore_t ds, int *re
 
 cleanup:
     free(path);
-    return rc;
+    return err_info;
 }
 
-static int
-srpds_json_last_modif(const struct lys_module *mod, sr_datastore_t ds, struct timespec *mtime)
+static sr_error_info_t *
+srpds_json_last_modif(const struct lys_module *mod, sr_datastore_t ds, void *UNUSED(plg_data), struct timespec *mtime)
 {
-    int rc = SR_ERR_OK;
+    sr_error_info_t *err_info = NULL;
     char *path = NULL;
     struct stat st;
 
-    if ((rc = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
+    if ((err_info = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
         goto cleanup;
     }
 
@@ -829,13 +848,12 @@ srpds_json_last_modif(const struct lys_module *mod, sr_datastore_t ds, struct ti
         mtime->tv_sec = 0;
         mtime->tv_nsec = 0;
     } else {
-        SRPLG_LOG_ERR(srpds_name, "Stat of \"%s\" failed (%s).", path, strerror(errno));
-        rc = SR_ERR_SYS;
+        srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Stat of \"%s\" failed (%s).", path, strerror(errno));
     }
 
 cleanup:
     free(path);
-    return rc;
+    return err_info;
 }
 
 const struct srplg_ds_s srpds_json = {
@@ -843,6 +861,8 @@ const struct srplg_ds_s srpds_json = {
     .install_cb = srpds_json_install,
     .uninstall_cb = srpds_json_uninstall,
     .init_cb = srpds_json_init,
+    .conn_init_cb = srpds_json_conn_init,
+    .conn_destroy_cb = srpds_json_conn_destroy,
     .store_cb = srpds_json_store,
     .recover_cb = srpds_json_recover,
     .load_cb = srpds_json_load,

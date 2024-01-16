@@ -208,11 +208,17 @@ sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_data
     struct ly_set *set = NULL;
     struct ly_ctx *sm_ctx = NULL;
     uint32_t i;
+    LY_ERR r;
 
     /* learn what nodes are needed for evaluation */
-    if (lys_find_xpath_atoms(ly_ctx, NULL, xpath, LYS_FIND_NO_MATCH_ERROR | LYS_FIND_SCHEMAMOUNT, &set)) {
-        /* no error message */
-        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL);
+    if ((r = lys_find_xpath_atoms(ly_ctx, NULL, xpath, LYS_FIND_NO_MATCH_ERROR | LYS_FIND_SCHEMAMOUNT, &set))) {
+        if (r == LY_ENOTFOUND) {
+            /* no error message */
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL);
+        } else {
+            sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+            sr_errinfo_new(&err_info, SR_ERR_LY, "Invalid XPath \"%s\".", xpath);
+        }
         goto cleanup;
     }
 
@@ -537,10 +543,10 @@ sr_error_info_t *
 sr_modinfo_edit_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *edit, int create_diff)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
+    const struct lys_module *ly_mod, *prev_mod;
     struct sr_mod_info_mod_s *mod;
     const struct lyd_node *node, *iter;
-    struct lyd_node *change_edit;
+    struct lyd_node *change_edit = NULL, *diff = NULL;
     uint32_t *aux = NULL, i;
     const char *xpath;
     int change;
@@ -571,33 +577,38 @@ sr_modinfo_edit_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
         if (xpath && !xpath[0]) {
             xpath = NULL;
         }
-        change_edit = NULL;
         if ((err_info = sr_edit_oper_del(&mod_info->data, mod_info->conn->cid, xpath, &change_edit))) {
             goto cleanup;
         }
-        if (!change_edit) {
-            continue;
-        }
+    }
 
+    if (change_edit) {
         /* set changed flags */
-        for (i = 0; i < mod_info->mod_count; ++i) {
-            mod = &mod_info->mods[i];
-            LY_LIST_FOR(change_edit, iter) {
-                if (lyd_owner_module(iter) == mod->ly_mod) {
+        prev_mod = NULL;
+        LY_LIST_FOR(change_edit, iter) {
+            ly_mod = lyd_owner_module(iter);
+            if (ly_mod == prev_mod) {
+                continue;
+            }
+            prev_mod = ly_mod;
+
+            for (i = 0; i < mod_info->mod_count; ++i) {
+                mod = &mod_info->mods[i];
+                if (ly_mod == mod->ly_mod) {
                     mod->state |= MOD_INFO_CHANGED;
                     break;
                 }
             }
         }
 
-        /* append diff */
         if (create_diff) {
-            err_info = sr_edit2diff(change_edit, &mod_info->diff);
-        }
-
-        lyd_free_siblings(change_edit);
-        if (err_info) {
-            goto cleanup;
+            /* create and merge diffs */
+            if ((err_info = sr_edit2diff(change_edit, &diff))) {
+                goto cleanup;
+            }
+            assert(!mod_info->diff);
+            mod_info->diff = diff;
+            diff = NULL;
         }
     }
 
@@ -618,11 +629,20 @@ sr_modinfo_edit_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
     }
 
 cleanup:
+    lyd_free_siblings(change_edit);
+    lyd_free_siblings(diff);
     free(aux);
     return err_info;
 }
 
-sr_error_info_t *
+/**
+ * @brief Merge sysrepo diff to mod info diff.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] new_diff New diff to merge into existing diff in mod_info.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
 sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *new_diff)
 {
     sr_error_info_t *err_info = NULL;
@@ -631,7 +651,7 @@ sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *new
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
-        if (mod->state & MOD_INFO_REQ) {
+        if (mod->state & (MOD_INFO_REQ | MOD_INFO_INV_DEP)) {
             /* merge relevant diff part */
             if (lyd_diff_merge_module(&mod_info->diff, new_diff, mod->ly_mod, NULL, NULL, 0)) {
                 sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
@@ -1460,7 +1480,7 @@ sr_modinfo_module_srmon_datastore(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_dat
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
-    const struct srplg_ds_s *ds_plg;
+    const struct sr_ds_handle_s *ds_handle;
     struct lyd_node *sr_store;
     struct timespec mtime;
     char *buf = NULL;
@@ -1474,11 +1494,11 @@ sr_modinfo_module_srmon_datastore(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_dat
         goto cleanup;
     }
 
-    if ((err_info = sr_ds_plugin_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_plg))) {
+    if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle))) {
         goto cleanup;
     }
 
-    if ((ds_plg->last_modif_cb(ly_mod, ds, &mtime) == 0) && (mtime.tv_sec > 0)) {
+    if ((ds_handle->plugin->last_modif_cb(ly_mod, ds, ds_handle->plg_data, &mtime) == 0) && (mtime.tv_sec > 0)) {
         /* datastore with name */
         SR_CHECK_LY_RET(lyd_new_list(sr_state, NULL, "datastore", 0, &sr_store, sr_ds2ident(ds)), conn->ly_ctx,
                 err_info);
@@ -1656,6 +1676,11 @@ sr_modinfo_module_srmon_module_subs(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, stru
 
         change_subs = (sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs);
         for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
+            /* ignore dead subscriptions */
+            if (!sr_conn_is_alive(change_subs[i].cid)) {
+                continue;
+            }
+
             /* change-sub */
             SR_CHECK_LY_GOTO(lyd_new_list(sr_subs, NULL, "change-sub", 0, &sr_sub), ly_ctx, err_info, change_ext_sub_unlock);
 
@@ -1719,6 +1744,11 @@ change_sub_unlock:
         for (j = 0; j < oper_get_subs[i].xpath_sub_count; ++j) {
             xpath_sub = &((sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + oper_get_subs[i].xpath_subs))[j];
 
+            /* ignore dead subscriptions */
+            if (!sr_conn_is_alive(xpath_sub->cid)) {
+                continue;
+            }
+
             SR_CHECK_LY_GOTO(lyd_new_list(sr_xpath_sub, NULL, "xpath-sub", 0, &sr_sub), ly_ctx, err_info, operget_ext_sub_unlock);
 
             /* cid */
@@ -1760,6 +1790,11 @@ operget_sub_unlock:
 
     oper_poll_subs = (sr_mod_oper_poll_sub_t *)(conn->ext_shm.addr + shm_mod->oper_poll_subs);
     for (i = 0; i < shm_mod->oper_poll_sub_count; ++i) {
+        /* ignore dead subscriptions */
+        if (!sr_conn_is_alive(oper_poll_subs[i].cid)) {
+            continue;
+        }
+
         /* operational-poll-sub with xpath */
         SR_CHECK_LY_GOTO(lyd_new_list(sr_subs, NULL, "operational-poll-sub", 0, &sr_sub,
                 conn->ext_shm.addr + oper_poll_subs[i].xpath), ly_ctx, err_info, operpoll_ext_sub_unlock);
@@ -1802,6 +1837,11 @@ operpoll_sub_unlock:
 
     notif_subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
     for (i = 0; i < shm_mod->notif_sub_count; ++i) {
+        /* ignore dead subscriptions */
+        if (!sr_conn_is_alive(notif_subs[i].cid)) {
+            continue;
+        }
+
         /* notification-sub */
         SR_CHECK_LY_GOTO(lyd_new_list(sr_subs, NULL, "notification-sub", 0, &sr_sub), ly_ctx, err_info, notif_ext_sub_unlock);
 
@@ -1962,6 +2002,11 @@ sr_modinfo_module_srmon_rpc(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, struct lyd_n
 
     rpc_sub = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + shm_rpc->subs);
     for (i = 0; i < shm_rpc->sub_count; ++i) {
+        /* ignore dead subscriptions */
+        if (rpc_sub[i].cid && !sr_conn_is_alive(rpc_sub[i].cid)) {
+            continue;
+        }
+
         /* rpc-sub */
         SR_CHECK_LY_RET(lyd_new_list(sr_rpc, NULL, "rpc-sub", 0, &sr_sub), ly_ctx, err_info);
 
@@ -2182,7 +2227,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn = mod_info->conn;
     struct lyd_node *mod_data = NULL;
-    int r, modified;
+    int modified;
 
     assert(!mod_info->data_cached);
     assert((mod_info->ds != SR_DS_OPERATIONAL) || (mod_info->ds2 != SR_DS_OPERATIONAL));
@@ -2196,8 +2241,8 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
             run_cached_data_cur = 0;
             break;
         case SR_DS_CANDIDATE:
-            if ((r = mod->ds_plg[mod_info->ds]->candidate_modified_cb(mod->ly_mod, &modified))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, r, "candidate_modified", mod->ds_plg[mod_info->ds]->name, mod->ly_mod->name);
+            if ((err_info = mod->ds_handle[mod_info->ds]->plugin->candidate_modified_cb(mod->ly_mod,
+                    mod->ds_handle[mod_info->ds]->plg_data, &modified))) {
                 break;
             } else if (modified) {
                 /* running data are of no use */
@@ -2227,7 +2272,7 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
         /* no cached data or unusable */
 
         /* get current DS data (ds2 is running when getting operational data) */
-        if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_plg, mod_info->ds2, mod->xpaths,
+        if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_handle, mod_info->ds2, mod->xpaths,
                 mod->xpath_count, &mod_info->data))) {
             return err_info;
         }
@@ -2283,7 +2328,7 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
-    const struct srplg_ds_s *ds_plg[SR_DS_READ_COUNT] = {0};
+    const struct sr_ds_handle_s *ds_handle[SR_DS_READ_COUNT] = {0};
     struct sr_mod_info_mod_s *mod = NULL;
     uint32_t i;
     int new = 0;
@@ -2303,7 +2348,7 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
                 mod->state |= mod_type;
             }
             if (new) {
-                /* new module, needs it members filled */
+                /* new module, needs its members filled */
                 break;
             }
             return NULL;
@@ -2314,10 +2359,18 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(mod_info->conn), ly_mod->name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    /* find DS plugin */
-    if ((err_info = sr_ds_plugin_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[mod_info->ds],
-            mod_info->conn, &ds_plg[mod_info->ds]))) {
-        return err_info;
+    /* find main DS handle */
+    if ((mod_info->ds == SR_DS_RUNNING) && !shm_mod->plugins[mod_info->ds]) {
+        /* 'running' is disabled, we will be using the 'startup' plugin */
+        if ((err_info = sr_ds_handle_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[SR_DS_STARTUP], mod_info->conn,
+                &ds_handle[SR_DS_STARTUP]))) {
+            return err_info;
+        }
+    } else {
+        if ((err_info = sr_ds_handle_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[mod_info->ds], mod_info->conn,
+                &ds_handle[mod_info->ds]))) {
+            return err_info;
+        }
     }
     switch (mod_info->ds) {
     case SR_DS_STARTUP:
@@ -2326,16 +2379,16 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
         break;
     case SR_DS_RUNNING:
         /* get candidate as well if we need to reset it */
-        if ((err_info = sr_ds_plugin_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[SR_DS_CANDIDATE],
-                mod_info->conn, &ds_plg[SR_DS_CANDIDATE]))) {
+        if ((err_info = sr_ds_handle_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[SR_DS_CANDIDATE],
+                mod_info->conn, &ds_handle[SR_DS_CANDIDATE]))) {
             return err_info;
         }
         break;
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
         /* get running plugin as well */
-        if ((err_info = sr_ds_plugin_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[SR_DS_RUNNING],
-                mod_info->conn, &ds_plg[SR_DS_RUNNING]))) {
+        if ((err_info = sr_ds_handle_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[SR_DS_RUNNING],
+                mod_info->conn, &ds_handle[SR_DS_RUNNING]))) {
             return err_info;
         }
         break;
@@ -2354,7 +2407,7 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
     /* fill basic attributes */
     mod->shm_mod = shm_mod;
     mod->ly_mod = ly_mod;
-    memcpy(&mod->ds_plg, &ds_plg, sizeof ds_plg);
+    memcpy(&mod->ds_handle, &ds_handle, sizeof ds_handle);
     mod->state &= ~MOD_INFO_TYPE_MASK;
     mod->state |= mod_type;
 
@@ -2480,7 +2533,7 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig
         if ((mod_info->ds == SR_DS_OPERATIONAL) && (mod_info->ds2 == SR_DS_OPERATIONAL)) {
             /* special case when we are not working with data but with edit */
             assert(!mod->xpath_count);
-            if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_plg, SR_DS_OPERATIONAL, NULL, 0,
+            if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_handle, SR_DS_OPERATIONAL, NULL, 0,
                     &mod_info->data))) {
                 goto cleanup;
             }
@@ -2615,7 +2668,8 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, uint32_t mod_state, int fini
         mod = &mod_info->mods[i];
         if (mod->state & mod_state) {
             /* validate this module */
-            if (lyd_validate_module(&mod_info->data, mod->ly_mod, val_opts, finish_diff ? &diff : NULL)) {
+            if (lyd_validate_module(&mod_info->data, mod->ly_mod, val_opts | LYD_VALIDATE_NOT_FINAL,
+                    finish_diff ? &diff : NULL)) {
                 sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
                 SR_ERRINFO_VALID(&err_info);
                 goto cleanup;
@@ -2643,6 +2697,18 @@ sr_modinfo_validate(struct sr_mod_info_s *mod_info, uint32_t mod_state, int fini
                     /* the previous changes have actually been reverted */
                     mod->state &= ~MOD_INFO_CHANGED;
                 }
+            }
+        }
+    }
+
+    /* finish each module validation now */
+    for (i = 0; i < mod_info->mod_count; ++i) {
+        mod = &mod_info->mods[i];
+        if (mod->state & mod_state) {
+            if (lyd_validate_module_final(mod_info->data, mod->ly_mod, val_opts)) {
+                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
+                SR_ERRINFO_VALID(&err_info);
+                goto cleanup;
             }
         }
     }
@@ -2873,61 +2939,62 @@ sr_modinfo_get_filter(struct sr_mod_info_s *mod_info, const char *xpath, sr_sess
 {
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
-    struct lyd_node *edit, *diff;
+    struct lyd_node *edit = NULL, *diff = NULL;
     uint32_t i;
     int is_oper_ds = (session->ds == SR_DS_OPERATIONAL) ? 1 : 0;
 
-    for (i = 0; (i < mod_info->mod_count) && (session->ds < SR_DS_COUNT); ++i) {
-        mod = &mod_info->mods[i];
-        if (mod->state & MOD_INFO_REQ) {
-            edit = NULL;
-            diff = NULL;
-
-            /* collect edit/diff to be applied based on the handled event */
-            switch (session->ev) {
-            case SR_SUB_EV_CHANGE:
-            case SR_SUB_EV_UPDATE:
-                diff = session->dt[session->ds].diff;
-                if (session->ev != SR_SUB_EV_UPDATE) {
-                    break;
-                }
-            /* fallthrough */
-            case SR_SUB_EV_NONE:
-                if (session->dt[session->ds].edit) {
-                    edit = session->dt[session->ds].edit->tree;
-                }
+    if (session->ds < SR_DS_COUNT) {
+        /* collect edit/diff to be applied based on the handled event */
+        switch (session->ev) {
+        case SR_SUB_EV_CHANGE:
+        case SR_SUB_EV_UPDATE:
+            diff = session->dt[session->ds].diff;
+            if (session->ev != SR_SUB_EV_UPDATE) {
                 break;
-            case SR_SUB_EV_ENABLED:
-            case SR_SUB_EV_DONE:
-            case SR_SUB_EV_ABORT:
-            case SR_SUB_EV_OPER:
-            case SR_SUB_EV_RPC:
-            case SR_SUB_EV_NOTIF:
-                /* no changes to apply for these events */
-                break;
-            default:
-                SR_ERRINFO_INT(&err_info);
-                goto cleanup;
             }
-
-            if (mod_info->data_cached && ((session->ds == SR_DS_RUNNING) && (edit || diff))) {
-                /* data will be changed, we cannot use the cache anymore */
-                lyd_dup_siblings(mod_info->data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &mod_info->data);
-                mod_info->data_cached = 0;
-
-                /* CACHE READ UNLOCK */
-                sr_rwunlock(&mod_info->conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
-                        mod_info->conn->cid, __func__);
+        /* fallthrough */
+        case SR_SUB_EV_NONE:
+            if (session->dt[session->ds].edit) {
+                edit = session->dt[session->ds].edit->tree;
             }
+            break;
+        case SR_SUB_EV_ENABLED:
+        case SR_SUB_EV_DONE:
+        case SR_SUB_EV_ABORT:
+        case SR_SUB_EV_OPER:
+        case SR_SUB_EV_RPC:
+        case SR_SUB_EV_NOTIF:
+            /* no changes to apply for these events */
+            break;
+        default:
+            SR_ERRINFO_INT(&err_info);
+            goto cleanup;
+        }
+    }
 
-            /* apply any currently handled changes (diff) or additional performed ones (edit) to get
-             * the session-specific data tree */
-            if (lyd_diff_apply_module(&mod_info->data, diff, mod->ly_mod, is_oper_ds ? sr_lyd_diff_apply_cb : NULL, NULL)) {
-                sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
-                goto cleanup;
-            }
-            if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, NULL, NULL))) {
-                goto cleanup;
+    if (diff || edit) {
+        if (mod_info->data_cached) {
+            /* data will be changed, we cannot use the cache anymore */
+            lyd_dup_siblings(mod_info->data, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &mod_info->data);
+            mod_info->data_cached = 0;
+
+            /* CACHE READ UNLOCK */
+            sr_rwunlock(&mod_info->conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_READ,
+                    mod_info->conn->cid, __func__);
+        }
+
+        for (i = 0; (i < mod_info->mod_count) && (session->ds < SR_DS_COUNT); ++i) {
+            mod = &mod_info->mods[i];
+            if (mod->state & MOD_INFO_REQ) {
+                /* apply any currently handled changes (diff) or additional performed ones (edit) to get
+                 * the session-specific data tree */
+                if (lyd_diff_apply_module(&mod_info->data, diff, mod->ly_mod, is_oper_ds ? sr_lyd_diff_apply_cb : NULL, NULL)) {
+                    sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
+                    goto cleanup;
+                }
+                if ((err_info = sr_edit_mod_apply(edit, mod->ly_mod, &mod_info->data, NULL, NULL))) {
+                    goto cleanup;
+                }
             }
         }
     }
@@ -3262,8 +3329,8 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
     struct lyd_node *mod_diff, *mod_data;
+    sr_datastore_t store_ds;
     uint32_t i;
-    int rc;
 
     assert(!mod_info->data_cached);
 
@@ -3271,12 +3338,19 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_CHANGED) {
             /* separate diff and data of this module */
-            mod_diff = sr_module_data_unlink(&mod_info->diff, mod->ly_mod);
+            mod_diff = (mod_info->ds == SR_DS_OPERATIONAL) ? NULL : sr_module_data_unlink(&mod_info->diff, mod->ly_mod);
             mod_data = sr_module_data_unlink(&mod_info->data, mod->ly_mod);
 
+            if ((mod_info->ds == SR_DS_RUNNING) && !mod->ds_handle[mod_info->ds]) {
+                /* 'running' disabled, use 'startup' */
+                store_ds = SR_DS_STARTUP;
+            } else {
+                store_ds = mod_info->ds;
+            }
+
             /* store the new data */
-            if ((rc = mod->ds_plg[mod_info->ds]->store_cb(mod->ly_mod, mod_info->ds, mod_diff, mod_data))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "store", mod->ds_plg[mod_info->ds]->name, mod->ly_mod->name);
+            if ((err_info = mod->ds_handle[store_ds]->plugin->store_cb(mod->ly_mod, store_ds, mod_diff, mod_data,
+                    mod->ds_handle[store_ds]->plg_data))) {
                 goto cleanup;
             }
 
@@ -3284,7 +3358,9 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
             mod->shm_mod->run_cache_id++;
 
             /* connect them back */
-            lyd_insert_sibling(mod_info->diff, mod_diff, &mod_info->diff);
+            if (mod_diff) {
+                lyd_insert_sibling(mod_info->diff, mod_diff, &mod_info->diff);
+            }
             if (mod_data) {
                 lyd_insert_sibling(mod_info->data, mod_data, &mod_info->data);
             }
@@ -3315,14 +3391,13 @@ sr_modinfo_candidate_reset(struct sr_mod_info_s *mod_info)
     sr_error_info_t *err_info = NULL;
     struct sr_mod_info_mod_s *mod;
     uint32_t i;
-    int rc;
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
         if (mod->state & MOD_INFO_REQ) {
             /* reset candidate */
-            if ((rc = mod->ds_plg[SR_DS_CANDIDATE]->candidate_reset_cb(mod->ly_mod))) {
-                SR_ERRINFO_DSPLUGIN(&err_info, rc, "candidate_reset", mod->ds_plg[SR_DS_CANDIDATE]->name, mod->ly_mod->name);
+            if ((err_info = mod->ds_handle[SR_DS_CANDIDATE]->plugin->candidate_reset_cb(mod->ly_mod,
+                    mod->ds_handle[SR_DS_CANDIDATE]->plg_data))) {
                 return err_info;
             }
         }

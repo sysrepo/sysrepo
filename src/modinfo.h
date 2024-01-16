@@ -51,7 +51,7 @@ struct sr_mod_info_s {
     struct sr_mod_info_mod_s {
         sr_mod_t *shm_mod;      /**< Module SHM structure. */
         const struct lys_module *ly_mod;    /**< Module libyang structure. */
-        const struct srplg_ds_s *ds_plg[SR_DS_READ_COUNT];  /**< Module DS plugins, only the required ones are set. */
+        const struct sr_ds_handle_s *ds_handle[SR_DS_READ_COUNT];  /**< Module DS plugin handles, only the required ones are set. */
         const char **xpaths;    /**< XPaths selecting the required data from the module, all data if NULL. */
         uint32_t xpath_count;   /**< Count of XPaths. */
         uint32_t state;         /**< Module state (flags). */
@@ -168,15 +168,6 @@ sr_error_info_t *sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const str
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_edit_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *edit, int create_diff);
-
-/**
- * @brief Merge sysrepo diff to mod info diff.
- *
- * @param[in] mod_info Mod info to use.
- * @param[in] new_diff New diff to merge into existing diff in mod_info.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_modinfo_diff_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *new_diff);
 
 /**
  * @brief Replace mod info data with new data.

@@ -176,8 +176,9 @@ typedef struct {
  */
 typedef struct {
     const char *schema_path;        /**< Path to the schema file. */
-    const char **features;          /**< Optional array of features to enable terminated by NULL. */
-    sr_module_ds_t module_ds;       /**< Optional datastore implementation plugin names for each datastore. */
+    const char **features;          /**< Optional array of features to enable ('*' enables all) terminated by NULL. */
+    sr_module_ds_t module_ds;       /**< Optional datastore implementation plugin names for each datastore. If NULL
+                                         is used for ::SR_DS_RUNNING, it means it is disabled (mirrors ::SR_DS_STARTUP). */
     const char *owner;              /**< Optional module data owner, process user by default. */
     const char *group;              /**< Optional module data group, process group by default. */
     mode_t perm;                    /**< Optional module data permissions. */
@@ -379,8 +380,10 @@ typedef enum {
      *   with ::SR_SUBSCR_NO_THREAD flag),
      * - the subscriber is the "owner" of the subscribed data tree and it will appear in the operational
      *   datastore while this subscription is alive (if not already, can be changed using ::SR_SUBSCR_PASSIVE flag),
-     * - the callback will be called twice, once with ::SR_EV_CHANGE event and once with ::SR_EV_DONE / ::SR_EV_ABORT
-     *   event passed in (can be changed with ::SR_SUBSCR_DONE_ONLY flag).
+     * - the callback will normally be called twice, once with ::SR_EV_CHANGE event and once with ::SR_EV_DONE
+     *   event passed in (can be changed with ::SR_SUBSCR_DONE_ONLY flag),
+     * - if a callback fails on ::SR_EV_CHANGE, all the previously succeeded callbacks will be called with ::SR_EV_ABORT
+     *   (excluding the failed callback itself).
      */
     SR_SUBSCR_DEFAULT = 0x00,
 
@@ -440,7 +443,15 @@ typedef enum {
      * @brief On every data retrieval additionally compute diff with the previous data and report the changes to any
      * operational data module change subscriptions. Accepted only for ::sr_oper_poll_subscribe().
      */
-    SR_SUBSCR_OPER_POLL_DIFF = 0x80
+    SR_SUBSCR_OPER_POLL_DIFF = 0x80,
+
+    /**
+     * @brief Normally, XPath filter is applied by the listener (subscriber) for counting its statistics of filtered-out
+     * events. Using this option the event originator performs the filtering to unburden the subscriber of unnecessary
+     * event handling but results in 0 filtered-out changes returned by ::sr_module_change_sub_get_info(). Accepted
+     * only for ::sr_module_change_subscribe().
+     */
+    SR_SUBSCR_FILTER_ORIG = 0x100
 
 } sr_subscr_flag_t;
 
