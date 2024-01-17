@@ -2763,14 +2763,16 @@ sr_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_parent, const s
 
     trg_sibling = trg_parent ? lyd_child(trg_parent) : *trg_root;
     if (src_op == EDIT_PURGE) {
-        /* remove any operations (instances) of the node */
-        path = lyd_path(src_node, LYD_PATH_STD, NULL, 0);
-        if (trg_sibling && lyd_find_xpath(trg_sibling, path, &set)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(trg_sibling), trg_sibling);
-            goto cleanup;
-        }
-        for (i = 0; i < set->count; ++i) {
-            lyd_free_tree(set->dnodes[i]);
+        if (trg_sibling) {
+            /* remove any operations (instances) of the node */
+            path = lyd_path(src_node, LYD_PATH_STD, NULL, 0);
+            if (lyd_find_xpath(trg_sibling, path, &set)) {
+                sr_errinfo_new_ly(&err_info, LYD_CTX(trg_sibling), trg_sibling);
+                goto cleanup;
+            }
+            for (i = 0; i < set->count; ++i) {
+                lyd_free_tree(set->dnodes[i]);
+            }
         }
     } else {
         /* find an equal node in the current data */
