@@ -91,7 +91,7 @@ srpjson_read(const char *plg_name, int fd, void *buf, size_t count)
         ret = read(fd, ((char *)buf) + have_read, count - have_read);
         if (!ret) {
             /* EOF */
-            return SR_ERR_OK;
+            return NULL;
         }
         if ((ret == -1) || ((ret < (signed)(count - have_read)) && errno && (errno != EINTR))) {
             srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_SYS, "Read failed (%s).", strerror(errno));
