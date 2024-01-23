@@ -3180,7 +3180,6 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
     sr_error_info_t *err_info = NULL, *tmp_err;
     struct sr_mod_info_mod_s *mod;
     struct sr_run_cache_s *cmod;
-    struct timespec mtime;
     struct lyd_node *mod_data;
     uint32_t i, j;
     void *mem;
@@ -3223,12 +3222,6 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
             cmod->id = UINT32_MAX;
 
             ++conn->run_cache_mod_count;
-        }
-
-        /* get last_modif timestamp of module running data */
-        if ((err_info = mod->ds_handle[SR_DS_RUNNING]->plugin->last_modif_cb(mod->ly_mod, SR_DS_RUNNING,
-                mod->ds_handle[SR_DS_RUNNING]->plg_data, &mtime))) {
-            goto cleanup;
         }
 
         /* check whether the data are current */
