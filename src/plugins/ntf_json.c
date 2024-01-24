@@ -331,9 +331,10 @@ srpntf_rename_file(const char *mod_name, time_t old_from_ts, time_t old_to_ts, t
     sr_error_info_t *err_info = NULL;
     char *old_path = NULL, *new_path = NULL;
 
-    assert(old_to_ts <= new_to_ts);
-
-    if (old_to_ts == new_to_ts) {
+    /* If the notification timestamp is older than the notification file
+     * don't rename the file. It can happen when there is a jump in realtime,
+     * because of NTP, for example. */
+    if (old_to_ts >= new_to_ts) {
         /* nothing to do */
         goto cleanup;
     }
