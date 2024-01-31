@@ -7191,6 +7191,71 @@ test_mult_update(void **state)
     sr_session_stop(sess);
 }
 
+static int
+module_timeout_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)module_name;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+    switch (ATOMIC_INC_RELAXED(st->cb_called)) {
+    case 0:
+        break;
+    case 1:
+        usleep(150000);
+        break;
+    case 2:
+        usleep(200000);
+        break;
+    default:
+        fail();
+    }
+    /* yield to make any race conditions more evident */
+    sched_yield();
+    return SR_ERR_OK;
+}
+
+static void
+test_done_timeout_priority(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr1 = NULL, *subscr2 = NULL;
+    sr_session_ctx_t *sess;
+    int ret;
+
+    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_module_change_subscribe(sess, "test", NULL, module_timeout_cb, st, 100, SR_SUBSCR_DONE_ONLY, &subscr1);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "test", NULL, module_timeout_cb, st, 100, SR_SUBSCR_DONE_ONLY, &subscr1);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_module_change_subscribe(sess, "test", NULL, module_timeout_cb, st, 0, SR_SUBSCR_DONE_ONLY, &subscr2);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(sess, "/test:l1[k='key1']/v", "1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(sess, 100);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_unsubscribe(subscr1);
+    sr_unsubscribe(subscr2);
+
+    ret = sr_delete_item(sess, "/test:l1[k='key1']", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_apply_changes(sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_session_stop(sess);
+}
+
 /* MAIN */
 int
 main(void)
@@ -7221,6 +7286,7 @@ main(void)
         cmocka_unit_test_setup_teardown(test_change_schema_mount, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_write_starve, setup_f, teardown_f),
         cmocka_unit_test_setup_teardown(test_mult_update, setup_f, teardown_f),
+        cmocka_unit_test_setup_teardown(test_done_timeout_priority, setup_f, teardown_f),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
