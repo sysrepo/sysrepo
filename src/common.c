@@ -3818,7 +3818,6 @@ sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val)
     const struct lyd_value *val;
     struct lyd_node_any *any;
     struct lyd_node *tree;
-    ly_bool dyn_val = 0;
 
     sr_val->xpath = lyd_path(node, LYD_PATH_STD, NULL, 0);
     SR_CHECK_MEM_GOTO(!sr_val->xpath, err_info, error);
@@ -3836,13 +3835,11 @@ store_value:
             sr_val->type = SR_BINARY_T;
             sr_val->data.binary_val = strdup(lyd_value_get_canonical(LYD_CTX(node), val));
             SR_CHECK_MEM_GOTO(!sr_val->data.binary_val, err_info, error);
-            dyn_val = 1;
             break;
         case LY_TYPE_BITS:
             sr_val->type = SR_BITS_T;
             sr_val->data.bits_val = strdup(lyd_value_get_canonical(LYD_CTX(node), val));
             SR_CHECK_MEM_GOTO(!sr_val->data.bits_val, err_info, error);
-            dyn_val = 1;
             break;
         case LY_TYPE_BOOL:
             sr_val->type = SR_BOOL_T;
@@ -3865,19 +3862,16 @@ store_value:
             sr_val->type = SR_ENUM_T;
             sr_val->data.enum_val = strdup(lyd_value_get_canonical(LYD_CTX(node), val));
             SR_CHECK_MEM_GOTO(!sr_val->data.enum_val, err_info, error);
-            dyn_val = 1;
             break;
         case LY_TYPE_IDENT:
             sr_val->type = SR_IDENTITYREF_T;
             sr_val->data.identityref_val = strdup(lyd_value_get_canonical(LYD_CTX(node), val));
             SR_CHECK_MEM_GOTO(!sr_val->data.identityref_val, err_info, error);
-            dyn_val = 1;
             break;
         case LY_TYPE_INST:
             sr_val->type = SR_INSTANCEID_T;
             sr_val->data.instanceid_val = strdup(lyd_value_get_canonical(LYD_CTX(node), val));
             SR_CHECK_MEM_GOTO(!sr_val->data.instanceid_val, err_info, error);
-            dyn_val = 1;
             break;
         case LY_TYPE_INT8:
             sr_val->type = SR_INT8_T;
@@ -3899,7 +3893,6 @@ store_value:
             sr_val->type = SR_STRING_T;
             sr_val->data.string_val = strdup(lyd_value_get_canonical(LYD_CTX(node), val));
             SR_CHECK_MEM_GOTO(!sr_val->data.string_val, err_info, error);
-            dyn_val = 1;
             break;
         case LY_TYPE_UINT8:
             sr_val->type = SR_UINT8_T;
@@ -3977,7 +3970,6 @@ store_value:
             sr_val->type = SR_ANYDATA_T;
             sr_val->data.anydata_val = ptr;
         }
-        dyn_val = 1;
         break;
     default:
         SR_ERRINFO_INT(&err_info);
@@ -3992,9 +3984,6 @@ store_value:
 
 error:
     free(sr_val->xpath);
-    if (dyn_val) {
-        free(sr_val->data.string_val);
-    }
     return err_info;
 }
 
