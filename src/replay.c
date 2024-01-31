@@ -35,6 +35,7 @@
 #include "config.h"
 #include "context_change.h"
 #include "log.h"
+#include "ly_wrap.h"
 #include "plugins_notification.h"
 #include "shm_mod.h"
 #include "subscr.h"
@@ -95,8 +96,7 @@ sr_notif_buf_store(sr_session_ctx_t *sess, const struct lyd_node *notif, struct 
     /* create a new node while we do not have any lock */
     node = malloc(sizeof *node);
     SR_CHECK_MEM_GOTO(!node, err_info, cleanup);
-    if (lyd_dup_siblings(notif, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &node->notif)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(notif), NULL);
+    if ((err_info = sr_lyd_dup(notif, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, 1, &node->notif))) {
         goto cleanup;
     }
     node->notif_ts = notif_ts;

@@ -262,15 +262,6 @@ sr_error_info_t *sr_ptr_add(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *p
 sr_error_info_t *sr_ptr_del(pthread_mutex_t *ptr_lock, void ***ptrs, uint32_t *ptr_count, void *del_ptr);
 
 /**
- * @brief Create a new libyang context.
- *
- * @param[in] conn Connection to read opts from and use for the LY ext data callback.
- * @param[out] ly_ctx libyang context.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_ly_ctx_init(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx);
-
-/**
  * @brief Initialize all dynamic DS handles.
  *
  * @param[out] ds_handles Array of DS handles.
@@ -1121,14 +1112,14 @@ sr_error_info_t *sr_val_sr2ly(struct ly_ctx *ctx, const char *xpath, const char 
         struct lyd_node **root);
 
 /**
- * @brief Duplicate nodes to the specified depth.
+ * @brief Duplicate nodes recursively to the specified depth.
  *
  * @param[in] src_parent Source parent.
  * @param[in] depth Depth to duplicate.
  * @param[in,out] trg_parent Target parent to add children to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lyd_dup(const struct lyd_node *src_parent, uint32_t depth, struct lyd_node *trg_parent);
+sr_error_info_t *sr_lyd_dup_r(const struct lyd_node *src_parent, uint32_t depth, struct lyd_node *trg_parent);
 
 /**
  * @brief Trim subtree to the specified depth.
@@ -1187,27 +1178,6 @@ sr_error_info_t *sr_lyd_get_enabled_xpath(struct lyd_node **data, char **xpaths,
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lyd_xpath_complement(struct lyd_node **data, const char *xpath);
-
-/**
- * @brief Safely free a subtree when there is also a pointer that may point to it.
- *
- * @param[in] tree Tree to free.
- * @param[in,out] first Pointer to the first top-level node that may actually be @p tree.
- */
-void sr_lyd_free_tree_safe(struct lyd_node *tree, struct lyd_node **first);
-
-/**
- * @brief Parse initial data of new module(s), if any.
- *
- * @param[in] new_ctx New libyang context for parsing the data.
- * @param[in] data Optional initial data in @p format to set.
- * @param[in] data_path Optional path to a data file in @p format to set.
- * @param[in] format Format of @p data or @p data_path file.
- * @param[out] mod_data Initial module(s) data.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_lyd_parse_module_data(const struct ly_ctx *ly_ctx, const char *data, const char *data_path,
-        LYD_FORMAT format, struct lyd_node **mod_data);
 
 /**
  * @brief Get a hash of a string value.
@@ -1304,16 +1274,6 @@ struct lys_module *sr_ly_atom_is_foreign(const struct lysc_node *atom, const str
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_ly_find_last_parent(struct lyd_node **parent, int nodetype);
-
-/**
- * @brief Print data into LYB memory chunk.
- *
- * @param[in] data Data to print.
- * @param[in,out] str String to allocate and print to.
- * @param[out] len Length of the printed chunk.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_lyd_print_lyb(const struct lyd_node *data, char **str, uint32_t *len);
 
 /**
  * @brief Get metadata name of the anchor value of user-ordered nodes.

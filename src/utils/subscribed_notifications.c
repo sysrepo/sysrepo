@@ -30,6 +30,7 @@
 #include "compat.h"
 #include "config.h"
 #include "log.h"
+#include "ly_wrap.h"
 #include "sn_common.h"
 #include "sn_yang_push.h"
 
@@ -434,11 +435,12 @@ srsn_suspend(uint32_t sub_id, const char *reason)
         /* send the subscription-suspended notification */
         ly_ctx = sr_acquire_context(sub->conn);
         sprintf(buf, "%" PRIu32, sub->id);
-        if (lyd_new_path(NULL, ly_ctx, "/ietf-subscribed-notifications:subscription-suspended/id", buf, 0, &ly_ntf)) {
-            sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+        if ((err_info = sr_lyd_new_path(NULL, ly_ctx, "/ietf-subscribed-notifications:subscription-suspended/id", buf,
+                0, &ly_ntf, NULL))) {
+            goto cleanup;
         }
-        if (lyd_new_path(ly_ntf, NULL, "reason", reason, 0, NULL)) {
-            sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+        if ((err_info = sr_lyd_new_path(ly_ntf, NULL, "reason", reason, 0, NULL, NULL))) {
+            goto cleanup;
         }
         sr_realtime_get(&ts);
         if ((err_info = srsn_ntf_send(sub, &ts, ly_ntf))) {
@@ -509,8 +511,8 @@ srsn_resume(uint32_t sub_id)
     /* send the subscription-resumed notification */
     ly_ctx = sr_acquire_context(sub->conn);
     sprintf(buf, "%" PRIu32, sub->id);
-    if (lyd_new_path(NULL, ly_ctx, "/ietf-subscribed-notifications:subscription-resumed/id", buf, 0, &ly_ntf)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+    if ((err_info = sr_lyd_new_path(NULL, ly_ctx, "/ietf-subscribed-notifications:subscription-resumed/id", buf, 0,
+            &ly_ntf, NULL))) {
         goto cleanup;
     }
     sr_realtime_get(&ts);
@@ -583,24 +585,21 @@ srsn_oper_data_streams_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), co
     ly_ctx = sr_acquire_context(conn);
     sr_release_context(conn);
 
-    if (lyd_new_path(NULL, ly_ctx, "/ietf-subscribed-notifications:streams", NULL, 0, &root)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+    if ((err_info = sr_lyd_new_path(NULL, ly_ctx, "/ietf-subscribed-notifications:streams", NULL, 0, &root, NULL))) {
         goto cleanup;
     }
 
     /* generic stream */
-    if (lyd_new_path(root, NULL, "/ietf-subscribed-notifications:streams/stream[name='NETCONF']", NULL, 0, &stream)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+    if ((err_info = sr_lyd_new_path(root, NULL, "/ietf-subscribed-notifications:streams/stream[name='NETCONF']", NULL,
+            0, &stream, NULL))) {
         goto cleanup;
     }
-    if (lyd_new_term(stream, stream->schema->module, "description",
+    if ((err_info = sr_lyd_new_term(stream, stream->schema->module, "description",
             "Default NETCONF stream containing notifications from all the modules."
-            " Replays only notifications for modules that support replay.", 0, NULL)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+            " Replays only notifications for modules that support replay."))) {
         goto cleanup;
     }
-    if (lyd_new_term(stream, stream->schema->module, "replay-support", NULL, 0, NULL)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+    if ((err_info = sr_lyd_new_term(stream, stream->schema->module, "replay-support", NULL))) {
         goto cleanup;
     }
 
@@ -612,29 +611,25 @@ srsn_oper_data_streams_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), co
         }
 
         /* generate information about the stream/module */
-        if (lyd_new_list(root, NULL, "stream", 0, &stream, ly_mod->name)) {
-            sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+        if ((err_info = sr_lyd_new_list(root, "stream", ly_mod->name, &stream))) {
             goto cleanup;
         }
-        if (lyd_new_term(stream, NULL, "description", "Stream with all notifications of a module.", 0, NULL)) {
-            sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+        if ((err_info = sr_lyd_new_term(stream, NULL, "description", "Stream with all notifications of a module."))) {
             goto cleanup;
         }
 
         /* learn whether replay is supported */
         if (sr_get_module_replay_support(conn, ly_mod->name, &earliest_notif, &enabled)) {
-            sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+            SR_ERRINFO_INT(&err_info);
             goto cleanup;
         }
         if (enabled) {
-            if (lyd_new_term(stream, NULL, "replay-support", NULL, 0, NULL)) {
-                sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+            if ((err_info = sr_lyd_new_term(stream, NULL, "replay-support", NULL))) {
                 goto cleanup;
             }
             ly_time_ts2str(&earliest_notif, &buf);
-            if (lyd_new_term(stream, NULL, "replay-log-creation-time", buf, 0, NULL)) {
+            if ((err_info = sr_lyd_new_term(stream, NULL, "replay-log-creation-time", buf))) {
                 free(buf);
-                sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
                 goto cleanup;
             }
             free(buf);
@@ -722,7 +717,6 @@ srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp,
 {
     sr_error_info_t *err_info = NULL;
     int rc = SR_ERR_OK;
-    struct ly_in *in = NULL;
     uint32_t size;
     char *buf = NULL;
     ssize_t r;
@@ -760,18 +754,12 @@ srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp,
     }
 
     /* parse the notification */
-    if (ly_in_new_memory(buf, &in)) {
-        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_errmsg());
-        goto cleanup;
-    }
-    if (lyd_parse_op(ly_ctx, NULL, in, LYD_LYB, LYD_TYPE_NOTIF_YANG, notif, NULL)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+    if ((err_info = sr_lyd_parse_op(ly_ctx, buf, LYD_LYB, LYD_TYPE_NOTIF_YANG, notif))) {
         goto cleanup;
     }
 
 cleanup:
     free(buf);
-    ly_in_free(in, 0);
     return err_info ? sr_api_ret(NULL, err_info) : rc;
 }
 

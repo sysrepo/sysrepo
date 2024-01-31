@@ -27,6 +27,7 @@
 #include "common.h"
 #include "config.h"
 #include "log.h"
+#include "ly_wrap.h"
 
 /** get the larger item */
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -924,8 +925,7 @@ sr_tree_to_val(const struct lyd_node *data, const char *path, sr_val_t **value)
 
     *value = NULL;
 
-    if (lyd_find_xpath(data, path, &set)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(data), NULL);
+    if ((err_info = sr_lyd_find_xpath(data, path, &set))) {
         goto cleanup;
     } else if (!set->count) {
         /* Not building err_info to avoid error logs when no item found */
@@ -944,7 +944,6 @@ sr_tree_to_val(const struct lyd_node *data, const char *path, sr_val_t **value)
         goto cleanup;
     }
 
-    /* success */
 cleanup:
     ly_set_free(set, NULL);
     return sr_api_ret(NULL, err_info);
@@ -962,8 +961,7 @@ sr_tree_to_values(const struct lyd_node *data, const char *xpath, sr_val_t **val
     *values = NULL;
     *value_cnt = 0;
 
-    if (lyd_find_xpath(data, xpath, &set)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(data), NULL);
+    if ((err_info = sr_lyd_find_xpath(data, xpath, &set))) {
         goto cleanup;
     } else if (!set->count) {
         /* Not building err_info to avoid error logs when no item found */
@@ -985,7 +983,6 @@ sr_tree_to_values(const struct lyd_node *data, const char *xpath, sr_val_t **val
         }
     }
 
-    /* success */
 cleanup:
     ly_set_free(set, NULL);
     if (err_info) {

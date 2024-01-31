@@ -56,9 +56,6 @@ const char *sr_strerror(int err_code);
  * other than ::SR_LL_NONE enables the logging to stderr. Setting log level
  * back to ::SR_LL_NONE disables the logging to stderr.
  *
- * @note Please note that this will overwrite your libyang logging settings.
- * Also, only libyang errors are printed, if enabled.
- *
  * @param[in] log_level Requested log level (verbosity).
  */
 void sr_log_stderr(sr_log_level_t log_level);
@@ -81,8 +78,7 @@ sr_log_level_t sr_log_get_stderr(void);
  * logged with LOG_DAEMON facility.
  *
  * @note Please note that enabling logging into syslog will overwrite your syslog
- * connection settings (calls openlog), if you are connected to syslog already and
- * also libyang logging settings.
+ * connection settings (calls openlog), if you are connected to syslog already.
  *
  * @param[in] app_name Name of the application. If not set, "sysrepo" will be used.
  * @param[in] log_level Requested log level (verbosity).

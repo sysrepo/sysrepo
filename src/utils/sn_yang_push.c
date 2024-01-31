@@ -31,6 +31,7 @@
 #include "common.h"
 #include "compat.h"
 #include "log.h"
+#include "ly_wrap.h"
 #include "sn_common.h"
 #include "subscribed_notifications.h"
 #include "sysrepo.h"
@@ -67,14 +68,12 @@ srsn_yp_ntf_update_send(struct srsn_sub *sub)
 
     /* create the notification */
     sprintf(buf, "%" PRIu32, sub->id);
-    if (lyd_new_path(NULL, sub->conn->ly_ctx, "/ietf-yang-push:push-update/id", buf, 0, &ly_ntf)) {
-        sr_errinfo_new_ly(&err_info, sub->conn->ly_ctx, NULL);
+    if ((err_info = sr_lyd_new_path(NULL, sub->conn->ly_ctx, "/ietf-yang-push:push-update/id", buf, 0, &ly_ntf, NULL))) {
         goto cleanup;
     }
 
     /* datastore-contents */
-    if (lyd_new_any(ly_ntf, NULL, "datastore-contents", data ? data->tree : NULL, 1, LYD_ANYDATA_DATATREE, 0, NULL)) {
-        sr_errinfo_new_ly(&err_info, sub->conn->ly_ctx, NULL);
+    if ((err_info = sr_lyd_new_any(ly_ntf, "datastore-contents", data ? data->tree : NULL, LYD_ANYDATA_DATATREE))) {
         goto cleanup;
     }
     if (data) {
@@ -310,8 +309,7 @@ srsn_yp_ntf_change_edit_clear_target(struct lyd_node *ly_yp, const char *target)
         SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }
-    if (lyd_find_xpath(ly_yp, xpath, &set)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(ly_yp), NULL);
+    if ((err_info = sr_lyd_find_xpath(ly_yp, xpath, &set))) {
         goto cleanup;
     }
     assert((set->count == 0) || (set->count == 1));
@@ -343,7 +341,7 @@ srsn_yp_ntf_change_edit_append(struct lyd_node *ly_yp, srsn_yp_change_t yp_op, c
         const char *prev_value, const char *prev_list, struct srsn_sub *sub)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *ly_edit, *ly_target, *value_tree = NULL;
+    struct lyd_node *ly_edit, *value_tree = NULL;
     char buf[26], *path = NULL, *point = NULL, quot, *xml;
     uint32_t edit_id;
 
@@ -361,20 +359,17 @@ srsn_yp_ntf_change_edit_append(struct lyd_node *ly_yp, srsn_yp_change_t yp_op, c
 
     /* edit with edit-id */
     sprintf(buf, "edit-%" PRIu32, edit_id);
-    if (lyd_new_list(ly_yp, NULL, "edit", 0, &ly_edit, buf)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(ly_yp), NULL);
+    if ((err_info = sr_lyd_new_list(ly_yp, "edit", buf, &ly_edit))) {
         goto cleanup;
     }
 
     /* operation */
-    if (lyd_new_term(ly_edit, NULL, "operation", srsn_yp_op2str(yp_op), 0, NULL)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(ly_edit), NULL);
+    if ((err_info = sr_lyd_new_term(ly_edit, NULL, "operation", srsn_yp_op2str(yp_op)))) {
         goto cleanup;
     }
 
     /* target */
-    if (lyd_new_term(ly_edit, NULL, "target", path, 0, &ly_target)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(ly_edit), NULL);
+    if ((err_info = sr_lyd_new_term(ly_edit, NULL, "target", path))) {
         goto cleanup;
     }
 
@@ -397,21 +392,18 @@ srsn_yp_ntf_change_edit_append(struct lyd_node *ly_yp, srsn_yp_change_t yp_op, c
                 }
             }
         }
-        if (point && lyd_new_term(ly_edit, NULL, "point", point, 0, NULL)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(ly_edit), NULL);
+        if (point && (err_info = sr_lyd_new_term(ly_edit, NULL, "point", point))) {
             goto cleanup;
         }
 
         /* where */
         if (((node->schema->nodetype == LYS_LEAFLIST) && !prev_value[0]) ||
                 ((node->schema->nodetype == LYS_LIST) && !prev_list[0])) {
-            if (lyd_new_term(ly_edit, NULL, "where", "first", 0, NULL)) {
-                sr_errinfo_new_ly(&err_info, LYD_CTX(ly_edit), NULL);
+            if ((err_info = sr_lyd_new_term(ly_edit, NULL, "where", "first"))) {
                 goto cleanup;
             }
         } else {
-            if (lyd_new_term(ly_edit, NULL, "where", "after", 0, NULL)) {
-                sr_errinfo_new_ly(&err_info, LYD_CTX(ly_edit), NULL);
+            if ((err_info = sr_lyd_new_term(ly_edit, NULL, "where", "after"))) {
                 goto cleanup;
             }
         }
@@ -419,19 +411,16 @@ srsn_yp_ntf_change_edit_append(struct lyd_node *ly_yp, srsn_yp_change_t yp_op, c
 
     if ((yp_op == SRSN_YP_CHANGE_INSERT) || (yp_op == SRSN_YP_CHANGE_CREATE) || (yp_op == SRSN_YP_CHANGE_REPLACE)) {
         /* duplicate value tree without metadata */
-        if (lyd_dup_single(node, NULL, LYD_DUP_RECURSIVE | LYD_DUP_NO_META | LYD_DUP_WITH_FLAGS, &value_tree)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL);
+        if ((err_info = sr_lyd_dup(node, NULL, LYD_DUP_RECURSIVE | LYD_DUP_NO_META | LYD_DUP_WITH_FLAGS, 0, &value_tree))) {
             goto cleanup;
         }
 
         /* value, add as an XML subtree so that it can be printed in LYB */
-        if (lyd_print_mem(&xml, value_tree, LYD_XML, LYD_PRINT_SHRINK | LYD_PRINT_WD_ALL)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL);
+        if ((err_info = sr_lyd_print_data(value_tree, LYD_XML, LYD_PRINT_SHRINK | LYD_PRINT_WD_ALL, -1, &xml, NULL))) {
             goto cleanup;
         }
         assert(xml);
-        if (lyd_new_any(ly_edit, NULL, "value", xml, 1, LYD_ANYDATA_XML, 0, NULL)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(ly_edit), NULL);
+        if ((err_info = sr_lyd_new_any(ly_edit, "value", xml, LYD_ANYDATA_XML))) {
             goto cleanup;
         }
     }
@@ -505,16 +494,16 @@ srsn_yp_on_change_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
 
             /* create basic structure for push-change-update notification */
             sprintf(buf, "%" PRIu32, sub->id);
-            if (lyd_new_path(NULL, ly_ctx, "/ietf-yang-push:push-change-update/id", buf, 0, &sub->change_ntf->tree)) {
-                sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+            if ((err_info = sr_lyd_new_path(NULL, ly_ctx, "/ietf-yang-push:push-change-update/id", buf, 0,
+                    &sub->change_ntf->tree, NULL))) {
                 goto cleanup_unlock;
             }
 
             /* generate a new patch-id */
             patch_id = sub->patch_id++;
             sprintf(buf, "patch-%" PRIu32, patch_id);
-            if (lyd_new_path(sub->change_ntf->tree, NULL, "datastore-changes/yang-patch/patch-id", buf, 0, NULL)) {
-                sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+            if ((err_info = sr_lyd_new_path(sub->change_ntf->tree, NULL, "datastore-changes/yang-patch/patch-id", buf,
+                    0, NULL, NULL))) {
                 goto cleanup_unlock;
             }
 
@@ -642,14 +631,12 @@ srsn_yp_sr_subscribe_filter_collect_mods(const struct ly_ctx *ly_ctx, const char
     uint32_t i;
 
     /* learn what nodes are needed for evaluation */
-    if (lys_find_xpath_atoms(ly_ctx, NULL, xpath, 0, &set)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+    if ((err_info = sr_lys_find_xpath_atoms(ly_ctx, xpath, 0, NULL, &set))) {
         goto cleanup;
     }
 
     /* allocate new set */
-    if (ly_set_new(mod_set)) {
-        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_errmsg(ly_ctx));
+    if ((err_info = sr_ly_set_new(mod_set))) {
         goto cleanup;
     }
 

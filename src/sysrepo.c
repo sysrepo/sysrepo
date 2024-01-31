@@ -42,6 +42,7 @@
 #include "context_change.h"
 #include "edit_diff.h"
 #include "log.h"
+#include "ly_wrap.h"
 #include "lyd_mods.h"
 #include "modinfo.h"
 #include "plugins_datastore.h"
@@ -1328,7 +1329,6 @@ sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_i
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
     const sr_module_ds_t sr_empty_module_ds = {0};
-    struct ly_in *in = NULL;
     char *mod_name = NULL;
     LYS_INFORMAT format;
     sr_datastore_t ds;
@@ -1375,13 +1375,8 @@ sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_i
     }
 
     /* parse the module with the features */
-    if (ly_in_new_filepath(new_mod->schema_path, 0, &in)) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to create input handler for \"%s\".",
-                new_mod->schema_path);
-        goto cleanup;
-    }
-    if (lys_parse(new_ctx, in, format, new_mod->features, (struct lys_module **)&new_mod->ly_mod)) {
-        sr_errinfo_new_ly(&err_info, new_ctx, NULL);
+    if ((err_info = sr_lys_parse(new_ctx, NULL, new_mod->schema_path, format, new_mod->features,
+            (struct lys_module **)&new_mod->ly_mod))) {
         goto cleanup;
     }
 
@@ -1404,7 +1399,6 @@ sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_i
     }
 
 cleanup:
-    ly_in_free(in, 0);
     free(mod_name);
     return err_info;
 }
@@ -1479,8 +1473,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     }
 
     /* compile the final context */
-    if (ly_ctx_compile(new_ctx)) {
-        sr_errinfo_new_ly(&err_info, new_ctx, NULL);
+    if ((err_info = sr_ly_ctx_compile(new_ctx))) {
         goto cleanup;
     }
 
@@ -1488,7 +1481,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     ly_ctx_unset_searchdir_last(new_ctx, search_dir_count);
 
     /* parse modules data, if any */
-    if ((err_info = sr_lyd_parse_module_data(new_ctx, data, data_path, format, &mod_data))) {
+    if ((err_info = sr_lyd_parse_data(new_ctx, data, data_path, format, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &mod_data))) {
         goto cleanup;
     }
 
@@ -1851,7 +1844,6 @@ sr_update_modules_prepare(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, const cha
     sr_int_update_mod_t *upd_mods = NULL;
     const struct lys_module *old_mod, *upd_mod;
     const char **features = NULL, *no_features[] = {NULL};
-    struct ly_in *in = NULL;
     struct lysp_feature *f = NULL;
     uint32_t i, j, schema_path_count = 0, feat_count = 0;
 
@@ -1914,12 +1906,8 @@ sr_update_modules_prepare(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, const cha
         }
 
         /* try to parse the updated module, if already an import, at least implement it and set the features */
-        if (ly_in_new_filepath(upd_mods[i].schema_path, 0, &in)) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Failed to parse \"%s\".", upd_mods[i].schema_path);
-            goto cleanup;
-        }
-        if (lys_parse(new_ctx, in, upd_mods[i].format, features ? features : no_features, (struct lys_module **)&upd_mod)) {
-            sr_errinfo_new_ly(&err_info, new_ctx, NULL);
+        if ((err_info = sr_lys_parse(new_ctx, NULL, upd_mods[i].schema_path, upd_mods[i].format,
+                features ? features : no_features, (struct lys_module **)&upd_mod))) {
             goto cleanup;
         }
 
@@ -1932,8 +1920,6 @@ sr_update_modules_prepare(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, const cha
         free(features);
         features = NULL;
         feat_count = 0;
-        ly_in_free(in, 0);
-        in = NULL;
     }
 
 cleanup:
@@ -1942,7 +1928,6 @@ cleanup:
     }
     free(upd_mods);
     free(features);
-    ly_in_free(in, 0);
     return err_info;
 }
 
@@ -1981,8 +1966,7 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
     }
 
     /* compile the final context */
-    if (ly_ctx_compile(new_ctx)) {
-        sr_errinfo_new_ly(&err_info, new_ctx, NULL);
+    if ((err_info = sr_ly_ctx_compile(new_ctx))) {
         goto cleanup;
     }
 
@@ -2385,15 +2369,13 @@ sr_load_module(struct ly_ctx *ly_ctx, const struct lys_module *old_mod, const ch
         if (f->flags & LYS_FENABLED) {
             /* skip the disabled feature */
             if (enable || strcmp(f->name, feature_name)) {
-                if (ly_set_add(&feat_set, (void *)f->name, 1, NULL)) {
-                    sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+                if ((err_info = sr_ly_set_add(&feat_set, (void *)f->name))) {
                     goto cleanup;
                 }
             }
         } else if (enable && !strcmp(f->name, feature_name)) {
             /* add newly enabled feature */
-            if (ly_set_add(&feat_set, (void *)f->name, 1, NULL)) {
-                sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+            if ((err_info = sr_ly_set_add(&feat_set, (void *)f->name))) {
                 goto cleanup;
             }
         }
@@ -2409,14 +2391,12 @@ sr_load_module(struct ly_ctx *ly_ctx, const struct lys_module *old_mod, const ch
     }
 
     /* load the module */
-    if (!(*new_mod = ly_ctx_load_module(ly_ctx, old_mod->name, old_mod->revision, features))) {
-        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+    if ((err_info = sr_ly_ctx_load_module(ly_ctx, old_mod->name, old_mod->revision, features, new_mod))) {
         goto cleanup;
     }
 
     /* compile */
-    if (ly_ctx_compile(ly_ctx)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+    if ((err_info = sr_ly_ctx_compile(ly_ctx))) {
         goto cleanup;
     }
 
@@ -2899,8 +2879,7 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
     }
 
     /* set result */
-    if (lyd_dup_single(set->dnodes[0], NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS, &(*subtree)->tree)) {
-        sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
+    if ((err_info = sr_lyd_dup(set->dnodes[0], NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS, 0, &(*subtree)->tree))) {
         goto cleanup;
     }
 
@@ -3018,8 +2997,7 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
 
         /* duplicate subtree and connect it to an existing parent, if any */
         dup_opts = (max_depth ? 0 : LYD_DUP_RECURSIVE) | LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS;
-        if (lyd_dup_single(set->dnodes[i], (struct lyd_node_inner *)parent, dup_opts, &node)) {
-            sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
+        if ((err_info = sr_lyd_dup(set->dnodes[i], parent, dup_opts, 0, &node))) {
             goto cleanup;
         }
 
@@ -3027,7 +3005,7 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
         for (node_parent = node; lyd_parent(node_parent) != parent; node_parent = lyd_parent(node_parent)) {}
 
         /* duplicate only to the specified depth */
-        if (max_depth && (err_info = sr_lyd_dup(set->dnodes[i], max_depth, node))) {
+        if (max_depth && (err_info = sr_lyd_dup_r(set->dnodes[i], max_depth, node))) {
             lyd_free_tree(node_parent);
             goto cleanup;
         }
@@ -3044,8 +3022,7 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
 
         if (!parent) {
             /* connect to the result */
-            if (lyd_insert_sibling((*data)->tree, node_parent, &(*data)->tree)) {
-                sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
+            if ((err_info = sr_lyd_insert_sibling((*data)->tree, node_parent, &(*data)->tree))) {
                 lyd_free_tree(node);
                 goto cleanup;
             }
@@ -3058,8 +3035,7 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
             rec.input_parent = input_node;
             rec.result_parent = node;
             assert(rec.input_parent->schema == rec.result_parent->schema);
-            if (lyht_insert(ht, &rec, hash, NULL)) {
-                sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_errmsg());
+            if ((err_info = sr_lyht_insert(ht, &rec, hash))) {
                 goto cleanup;
             }
 
@@ -3140,8 +3116,7 @@ sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* return found node */
-    if (lyd_dup_single(set->dnodes[0], NULL, LYD_DUP_WITH_FLAGS, &n)) {
-        sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
+    if ((err_info = sr_lyd_dup(set->dnodes[0], NULL, LYD_DUP_WITH_FLAGS, 0, &n))) {
         goto cleanup;
     }
     (*node)->tree = n;
@@ -3322,7 +3297,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     sr_error_info_t *err_info = NULL;
     const char *operation;
     const struct lysc_node *snode;
-    int ly_log_opts;
+    uint32_t temp_lo = 0;
 
     SR_CHECK_ARG_APIRET(!session || !path || SR_EDIT_DS_API_CHECK(session->ds, opts), session, err_info);
 
@@ -3339,7 +3314,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     }
 
     /* turn off logging */
-    ly_log_opts = ly_log_options(0);
+    ly_temp_log_options(&temp_lo);
     if ((path[strlen(path) - 1] != ']') && (snode = lys_find_path(session->conn->ly_ctx, NULL, path, 0)) &&
             (snode->nodetype & (LYS_LEAFLIST | LYS_LIST)) &&
             !strcmp((path + strlen(path)) - strlen(snode->name), snode->name)) {
@@ -3349,7 +3324,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     } else {
         operation = "remove";
     }
-    ly_log_options(ly_log_opts);
+    ly_temp_log_options(NULL);
 
     /* add the operation into edit */
     err_info = sr_edit_add(session, path, NULL, operation, opts & SR_EDIT_STRICT ? "none" : "ether", NULL, NULL, NULL,
@@ -3392,11 +3367,13 @@ sr_discard_items(sr_session_ctx_t *session, const char *xpath)
     }
 
     /* add the operation into edit */
-    if (lyd_new_opaq(NULL, session->conn->ly_ctx, "discard-items", xpath, "sysrepo", "sysrepo", &node)) {
-        sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
+    if ((err_info = sr_lyd_new_opaq(session->conn->ly_ctx, "discard-items", xpath, "sysrepo", "sysrepo", &node))) {
         goto cleanup;
     }
-    lyd_insert_sibling(session->dt[session->ds].edit->tree, node, &session->dt[session->ds].edit->tree);
+    if ((err_info = sr_lyd_insert_sibling(session->dt[session->ds].edit->tree, node, &session->dt[session->ds].edit->tree))) {
+        lyd_free_tree(node);
+        goto cleanup;
+    }
 
 cleanup:
     if (session->dt[session->ds].edit && !session->dt[session->ds].edit->tree) {
@@ -3478,8 +3455,7 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
         goto cleanup_unlock;
     }
 
-    if (lyd_dup_siblings(edit, NULL, LYD_DUP_RECURSIVE, &dup_edit)) {
-        sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
+    if ((err_info = sr_lyd_dup(edit, NULL, LYD_DUP_RECURSIVE, 1, &dup_edit))) {
         goto cleanup_unlock;
     }
 
@@ -3503,8 +3479,7 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
                 } else if (lysc_is_dup_inst_list(elem->schema) &&
                         !lyd_find_meta(elem->meta, NULL, "sysrepo:dup-inst-list-position")) {
                     /* fine, just create the metadata with empty value so that the instance is created */
-                    if (lyd_new_meta(NULL, elem, NULL, "sysrepo:dup-inst-list-position", "", 0, NULL)) {
-                        sr_errinfo_new_ly(&err_info, LYD_CTX(elem), elem);
+                    if ((err_info = sr_lyd_new_meta(elem, NULL, "sysrepo:dup-inst-list-position", ""))) {
                         goto cleanup_unlock;
                     }
                 }
@@ -5421,13 +5396,11 @@ _sr_get_changes_iter(sr_session_ctx_t *session, const char *xpath, int dup, sr_c
 
     if (session->dt[session->ds].diff) {
         if (dup) {
-            if (lyd_dup_siblings(session->dt[session->ds].diff, NULL, LYD_DUP_RECURSIVE, &(*iter)->diff)) {
-                sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
+            if ((err_info = sr_lyd_dup(session->dt[session->ds].diff, NULL, LYD_DUP_RECURSIVE, 1, &(*iter)->diff))) {
                 goto error;
             }
         }
-        if (lyd_find_xpath(session->dt[session->ds].diff, xpath, &(*iter)->set)) {
-            sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
+        if ((err_info = sr_lyd_find_xpath(session->dt[session->ds].diff, xpath, &(*iter)->set))) {
             goto error;
         }
     } else {
@@ -5474,7 +5447,6 @@ sr_change_ly2sr(const struct lyd_node *node, const char *value_str, const char *
     sr_val_t *sr_val;
     struct lyd_node *node_dup = NULL;
     const struct lyd_node *node_ptr;
-    LY_ERR lyrc;
 
     sr_val = calloc(1, sizeof *sr_val);
     SR_CHECK_MEM_GOTO(!sr_val, err_info, cleanup);
@@ -5482,19 +5454,14 @@ sr_change_ly2sr(const struct lyd_node *node, const char *value_str, const char *
     if (value_str) {
         /* replace the value in a node copy so that this specific one is stored */
         assert(node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST));
-        lyrc = lyd_dup_single(node, NULL, 0, &node_dup);
-        if (lyrc) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL);
+        if ((err_info = sr_lyd_dup(node, NULL, 0, 0, &node_dup))) {
             goto cleanup;
         }
 
-        lyrc = lyd_change_term(node_dup, value_str);
-        if (lyrc && (lyrc != LY_EEXIST) && (lyrc != LY_ENOT)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL);
+        if ((err_info = sr_lyd_change_term(node_dup, value_str, 1))) {
             goto cleanup;
         }
-        if (node->parent && lyd_insert_child(lyd_parent(node), node_dup)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL);
+        if (node->parent && (err_info = sr_lyd_insert_child(lyd_parent(node), node_dup))) {
             goto cleanup;
         }
         node_dup->flags |= node->flags & LYD_DEFAULT;
@@ -6056,8 +6023,7 @@ sr_rpc_internal_input_update(sr_conn_ctx_t *conn, struct lyd_node *input_op)
             continue;
         }
 
-        if (lyd_new_term(input_op, ly_srfd_mod, "module", ly_mod->name, 0, NULL)) {
-            sr_errinfo_new_ly(&err_info, conn->ly_ctx, NULL);
+        if ((err_info = sr_lyd_new_term(input_op, ly_srfd_mod, "module", ly_mod->name))) {
             return err_info;
         }
     }

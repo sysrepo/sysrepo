@@ -27,6 +27,7 @@
 #include "config.h"
 #include "edit_diff.h"
 #include "log.h"
+#include "ly_wrap.h"
 #include "lyd_mods.h"
 #include "modinfo.h"
 #include "shm_ext.h"
@@ -1882,12 +1883,9 @@ sr_subscr_change_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, int
     struct ly_set *set = NULL;
 
     /* parse the xpath on schema */
-    if (lys_find_xpath(ly_ctx, NULL, xpath, 0, &set)) {
-        if (valid) {
-            *valid = 0;
-        } else {
-            sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
-        }
+    if ((err_info = sr_lys_find_xpath(ly_ctx, xpath, 0, valid, &set))) {
+        goto cleanup;
+    } else if (valid && !*valid) {
         goto cleanup;
     }
 
@@ -1920,12 +1918,7 @@ sr_subscr_oper_path_check(const struct ly_ctx *ly_ctx, const char *path, sr_mod_
     struct ly_set *set = NULL;
     uint32_t i;
 
-    if (lys_find_xpath(ly_ctx, NULL, path, LYS_FIND_NO_MATCH_ERROR, &set)) {
-        if (valid) {
-            *valid = 0;
-        } else {
-            sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
-        }
+    if ((err_info = sr_lys_find_xpath(ly_ctx, path, LYS_FIND_NO_MATCH_ERROR, valid, &set)) || (valid && !*valid)) {
         goto cleanup;
     } else if (!set->count) {
         if (valid) {
@@ -2046,12 +2039,8 @@ sr_subscr_notif_xpath_check(const struct lys_module *ly_mod, const char *xpath, 
 
     if (xpath) {
         /* find atoms selected by the xpath */
-        if (lys_find_xpath_atoms(ly_mod->ctx, NULL, xpath, LYS_FIND_NO_MATCH_ERROR, &set)) {
-            if (valid) {
-                *valid = 0;
-            } else {
-                sr_errinfo_new_ly(&err_info, ly_mod->ctx, NULL);
-            }
+        if ((err_info = sr_lys_find_xpath_atoms(ly_mod->ctx, xpath, LYS_FIND_NO_MATCH_ERROR, valid, &set)) ||
+                (valid && !*valid)) {
             goto cleanup;
         }
 
@@ -2107,12 +2096,7 @@ sr_subscr_rpc_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, char *
     }
 
     /* find the RPC/action */
-    if (!(op = lys_find_path(ly_ctx, NULL, p, 0))) {
-        if (valid) {
-            *valid = 0;
-        } else {
-            sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
-        }
+    if ((err_info = sr_lys_find_path(ly_ctx, p, valid, &op)) || (valid && !*valid)) {
         goto cleanup;
     }
     if (!(op->nodetype & (LYS_RPC | LYS_ACTION))) {

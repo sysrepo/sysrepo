@@ -35,6 +35,7 @@
 
 #include "common.h"
 #include "log.h"
+#include "ly_wrap.h"
 #include "sysrepo.h"
 
 enum insert_val {
@@ -110,6 +111,7 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
     enum insert_val ins = INSERT_DEFAULT;
     const char *meta_name = NULL, *meta_anchor = NULL, *val_str;
     int user_order_list = 0;
+    uint32_t *prev_lo, temp_lo = 0;
 
     if (op) {
         *op = parent_op;
@@ -155,7 +157,7 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
         LY_LIST_FOR(((struct lyd_node_opaq *)edit_node)->attr, attr) {
             if (!strcmp(attr->name.name, "operation")) {
                 /* try to create a metadata instance and use that */
-                uint32_t prev_lo = ly_log_options(0);
+                prev_lo = ly_temp_log_options(&temp_lo);
 
                 if (!lyd_new_meta2(LYD_CTX(edit_node), NULL, 0, attr, &meta)) {
                     if (!strcmp(meta->annotation->module->name, "sysrepo") ||
@@ -164,7 +166,7 @@ sr_edit_op(const struct lyd_node *edit_node, enum edit_op parent_op, enum edit_o
                     }
                     lyd_free_meta_single(meta);
                 }
-                ly_log_options(prev_lo);
+                ly_temp_log_options(prev_lo);
             }
         }
     }
@@ -331,14 +333,12 @@ sr_edit_create_meta_attr(struct lyd_node *edit_node, const char *mod_name, const
 
     if (edit_node->schema) {
         /* create a new meta */
-        if (lyd_new_meta(NULL, edit_node, mod, name, value, 0, NULL)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(edit_node), NULL);
+        if ((err_info = sr_lyd_new_meta(edit_node, mod, name, value))) {
             return err_info;
         }
     } else {
         /* create a new attribute */
-        if (lyd_new_attr(edit_node, mod->name, name, value, NULL)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(edit_node), NULL);
+        if ((err_info = sr_lyd_new_attr(edit_node, mod->name, name, value))) {
             return err_info;
         }
     }
@@ -502,8 +502,7 @@ sr_edit_copy_meta(const struct lyd_node *src_node, struct lyd_node *trg_node, in
         insert_str = "after";
         break;
     }
-    if (insert_str && lyd_new_meta(NULL, trg_node, yang_mod, "insert", insert_str, 0, NULL)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(trg_node), NULL);
+    if (insert_str && (err_info = sr_lyd_new_meta(trg_node, yang_mod, "insert", insert_str))) {
         goto cleanup;
     }
     if ((insert_str && !orig_insert) || (!insert_str && orig_insert) ||
@@ -581,8 +580,8 @@ sr_diff_add_meta(struct lyd_node *diff_node, const char *meta_val, const char *p
     case EDIT_NONE:
         /* add attributes for the special dflt-only change */
         if (diff_node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)) {
-            if (lyd_new_meta(NULL, diff_node, NULL, "yang:orig-default", prev_meta_val ? "true" : "false", 0, NULL)) {
-                goto ly_error;
+            if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-default", prev_meta_val ? "true" : "false"))) {
+                return err_info;
             }
         }
         break;
@@ -592,11 +591,11 @@ sr_diff_add_meta(struct lyd_node *diff_node, const char *meta_val, const char *p
             assert(!prev_meta_val || (diff_node->schema->nodetype == LYS_LEAF));
 
             /* add info about previous value and default state as an attribute */
-            if (lyd_new_meta(NULL, diff_node, NULL, "yang:orig-value", meta_val, 0, NULL)) {
-                goto ly_error;
+            if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-value", meta_val))) {
+                return err_info;
             }
-            if (lyd_new_meta(NULL, diff_node, NULL, "yang:orig-default", prev_meta_val ? "true" : "false", 0, NULL)) {
-                goto ly_error;
+            if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-default", prev_meta_val ? "true" : "false"))) {
+                return err_info;
             }
             break;
         }
@@ -605,24 +604,24 @@ sr_diff_add_meta(struct lyd_node *diff_node, const char *meta_val, const char *p
 
         /* add info about current place for abort */
         if (lysc_is_dup_inst_list(diff_node->schema)) {
-            if (lyd_new_meta(NULL, diff_node, NULL, "yang:orig-position", prev_meta_val, 0, NULL)) {
-                goto ly_error;
+            if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-position", prev_meta_val))) {
+                return err_info;
             }
         } else if (diff_node->schema->nodetype == LYS_LIST) {
-            if (lyd_new_meta(NULL, diff_node, NULL, "yang:orig-key", prev_meta_val, 0, NULL)) {
-                goto ly_error;
+            if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-key", prev_meta_val))) {
+                return err_info;
             }
         } else {
-            if (lyd_new_meta(NULL, diff_node, NULL, "yang:orig-value", prev_meta_val, 0, NULL)) {
-                goto ly_error;
+            if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-value", prev_meta_val))) {
+                return err_info;
             }
         }
     /* fallthrough */
     case EDIT_CREATE:
         if (lysc_is_userordered(diff_node->schema)) {
             /* add info about inserted place as a metadata (meta_val can be NULL, inserted on the first place) */
-            if (lyd_new_meta(NULL, diff_node, NULL, sr_userord_anchor_meta_name(diff_node->schema), meta_val, 0, NULL)) {
-                goto ly_error;
+            if ((err_info = sr_lyd_new_meta(diff_node, NULL, sr_userord_anchor_meta_name(diff_node->schema), meta_val))) {
+                return err_info;
             }
         }
         break;
@@ -630,16 +629,16 @@ sr_diff_add_meta(struct lyd_node *diff_node, const char *meta_val, const char *p
         if (lysc_is_userordered(diff_node->schema)) {
             /* add info about current place for abort */
             if (lysc_is_dup_inst_list(diff_node->schema)) {
-                if (lyd_new_meta(NULL, diff_node, NULL, "yang:orig-position", prev_meta_val, 0, NULL)) {
-                    goto ly_error;
+                if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-position", prev_meta_val))) {
+                    return err_info;
                 }
             } else if (diff_node->schema->nodetype == LYS_LIST) {
-                if (lyd_new_meta(NULL, diff_node, NULL, "yang:orig-key", prev_meta_val, 0, NULL)) {
-                    goto ly_error;
+                if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-key", prev_meta_val))) {
+                    return err_info;
                 }
             } else {
-                if (lyd_new_meta(NULL, diff_node, NULL, "yang:orig-value", prev_meta_val, 0, NULL)) {
-                    goto ly_error;
+                if ((err_info = sr_lyd_new_meta(diff_node, NULL, "yang:orig-value", prev_meta_val))) {
+                    return err_info;
                 }
             }
         }
@@ -650,10 +649,6 @@ sr_diff_add_meta(struct lyd_node *diff_node, const char *meta_val, const char *p
     }
 
     return NULL;
-
-ly_error:
-    sr_errinfo_new_ly(&err_info, LYD_CTX(diff_node), NULL);
-    return err_info;
 }
 
 /**
@@ -794,7 +789,6 @@ sr_edit_diff_create_parents(const struct lyd_node *node, struct lyd_node **tree,
 {
     sr_error_info_t *err_info = NULL;
     char *path_str = NULL;
-    LY_ERR lyrc;
     struct lyd_node *tree_parent;
 
     if (!lyd_parent(node)) {
@@ -809,15 +803,14 @@ sr_edit_diff_create_parents(const struct lyd_node *node, struct lyd_node **tree,
         /* find first existing parent */
         if (!*tree) {
             tree_parent = NULL;
-            lyrc = LY_ENOTFOUND;
         } else {
-            lyrc = lyd_find_path(*tree, path_str, 0, &tree_parent);
+            if ((err_info = sr_lyd_find_path(*tree, path_str, &tree_parent))) {
+                goto cleanup;
+            }
         }
-        if ((lyrc == LY_EINCOMPLETE) || (lyrc == LY_ENOTFOUND)) {
+        if (!tree_parent) {
             /* create the missing parents */
-            if (lyd_dup_single(lyd_parent(node), (struct lyd_node_inner *)tree_parent,
-                    LYD_DUP_NO_META | LYD_DUP_WITH_PARENTS, node_parent)) {
-                sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL);
+            if ((err_info = sr_lyd_dup(lyd_parent(node), tree_parent, LYD_DUP_NO_META | LYD_DUP_WITH_PARENTS, 0, node_parent))) {
                 goto cleanup;
             }
 
@@ -828,14 +821,10 @@ sr_edit_diff_create_parents(const struct lyd_node *node, struct lyd_node **tree,
             if (!tree_parent) {
                 lyd_insert_sibling(*tree, *top_parent, tree);
             }
-        } else if (!lyrc) {
+        } else {
             /* parent already exists */
             *top_parent = NULL;
             *node_parent = tree_parent;
-        } else {
-            /* error */
-            sr_errinfo_new_ly(&err_info, LYD_CTX(*tree), NULL);
-            goto cleanup;
         }
     }
 
@@ -877,8 +866,7 @@ sr_edit_diff_append(const struct lyd_node *edit, enum edit_op op, const char *pr
     }
 
     /* make a copy of the edit node/subtree */
-    if (lyd_dup_single(edit, NULL, recursive ? LYD_DUP_RECURSIVE : 0, &diff_subtree)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(edit), NULL);
+    if ((err_info = sr_lyd_dup(edit, NULL, recursive ? LYD_DUP_RECURSIVE : 0, 0, &diff_subtree))) {
         goto cleanup;
     }
 
@@ -1040,7 +1028,6 @@ sr_edit_find_userord_predicate(const struct lyd_node *sibling, const struct lyd_
     struct lyd_node *iter;
     uint32_t cur_pos, pos;
     int found = 0;
-    LY_ERR lyrc;
 
     if (lysc_is_dup_inst_list(llist->schema)) {
         pos = strtoul(userord_anchor, NULL, 10);
@@ -1059,13 +1046,11 @@ sr_edit_find_userord_predicate(const struct lyd_node *sibling, const struct lyd_
         }
         *match = iter;
     } else {
-        lyrc = lyd_find_sibling_val(sibling, llist->schema, userord_anchor, strlen(userord_anchor), match);
-        if (lyrc == LY_ENOTFOUND) {
+        if ((err_info = sr_lyd_find_sibling_val(sibling, llist->schema, userord_anchor, match))) {
+            return err_info;
+        } else if (!*match) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Node \"%s\" instance to insert next to not found.",
                     llist->schema->name);
-            return err_info;
-        } else if (lyrc) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(llist), NULL);
             return err_info;
         }
     }
@@ -1089,7 +1074,6 @@ sr_edit_find_match(const struct lyd_node *data_sibling, const struct lyd_node *e
     const struct lys_module *mod = NULL;
     struct lyd_meta *m1, *m2;
     uint32_t inst_pos, pos;
-    LY_ERR lyrc = LY_SUCCESS;
     int found = 0;
 
     if (!edit_node->schema) {
@@ -1102,10 +1086,9 @@ sr_edit_find_match(const struct lyd_node *data_sibling, const struct lyd_node *e
         }
         if (schema) {
             /* try to find a data instance of the schema node */
-            lyrc = lyd_find_sibling_val(data_sibling, schema, NULL, 0, match_p);
+            err_info = sr_lyd_find_sibling_val(data_sibling, schema, NULL, match_p);
         } else {
             *match_p = NULL;
-            lyrc = LY_ENOTFOUND;
         }
     } else if (lysc_is_dup_inst_list(edit_node->schema)) {
         /* absolute position on the edit node */
@@ -1142,28 +1125,24 @@ sr_edit_find_match(const struct lyd_node *data_sibling, const struct lyd_node *e
 
         if (!found) {
             *match_p = NULL;
-            lyrc = LY_ENOTFOUND;
         }
     } else if (edit_node->schema->nodetype & (LYS_LIST | LYS_LEAFLIST)) {
         /* exact (leaf-)list instance */
-        lyrc = lyd_find_sibling_first(data_sibling, edit_node, match_p);
+        err_info = sr_lyd_find_sibling_first(data_sibling, edit_node, match_p);
     } else {
         /* any existing instance */
-        lyrc = lyd_find_sibling_val(data_sibling, edit_node->schema, NULL, 0, match_p);
+        err_info = sr_lyd_find_sibling_val(data_sibling, edit_node->schema, NULL, match_p);
     }
-
-    if (lyrc == LY_ENOTFOUND) {
-        /* it may still exist as an opaque node (when being removed, for example) */
-        lyrc = lyd_find_sibling_opaq_next(data_sibling, LYD_NAME(edit_node), match_p);
-    }
-
-    /* check for errors */
-    if (lyrc && (lyrc != LY_ENOTFOUND)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(edit_node), NULL);
+    if (err_info) {
         return err_info;
     }
 
-    return NULL;
+    if (!*match_p) {
+        /* it may still exist as an opaque node (when being removed, for example) */
+        err_info = sr_lyd_find_sibling_opaq_next(data_sibling, LYD_NAME(edit_node), match_p);
+    }
+
+    return err_info;
 }
 
 #define EDIT_APPLY_REPLACE_R    0x01    /**< There was a replace operation in a parent, change behavior accordingly. */
@@ -1191,13 +1170,10 @@ sr_edit_find(const struct lyd_node *data_sibling, const struct lyd_node *edit_no
     struct lyd_node *anchor_node;
     const struct lyd_node *match = NULL;
     int val_equal = 0;
-    LY_ERR lyrc;
 
     if ((op == EDIT_PURGE) && edit_node->schema && (edit_node->schema->nodetype & (LYS_LIST | LYS_LEAFLIST))) {
         /* find first instance */
-        lyrc = lyd_find_sibling_val(data_sibling, edit_node->schema, NULL, 0, (struct lyd_node **)&match);
-        if (lyrc && (lyrc != LY_ENOTFOUND)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(edit_node), NULL);
+        if ((err_info = sr_lyd_find_sibling_val(data_sibling, edit_node->schema, NULL, (struct lyd_node **)&match))) {
             return err_info;
         }
         if (match) {
@@ -1321,19 +1297,9 @@ sr_edit_insert(struct lyd_node **data_root, struct lyd_node *data_parent, struct
         enum insert_val insert, const char *userord_anchor)
 {
     sr_error_info_t *err_info = NULL;
-    const struct ly_ctx *ly_ctx;
     struct lyd_node *anchor;
-    LY_ERR lyrc = 0;
 
     assert(new_node);
-
-    if (data_parent) {
-        ly_ctx = LYD_CTX(data_parent);
-    } else if (*data_root) {
-        ly_ctx = LYD_CTX(*data_root);
-    } else {
-        ly_ctx = LYD_CTX(new_node);
-    }
 
     /* unlink properly first to avoid unwanted behavior (first node equals new_node or new_node is the first sibling) */
     if (new_node == *data_root) {
@@ -1346,12 +1312,16 @@ sr_edit_insert(struct lyd_node **data_root, struct lyd_node *data_parent, struct
         /* default insert is at the last position */
         if (data_parent) {
             if (new_node->flags & LYD_EXT) {
-                lyrc = lyplg_ext_insert(data_parent, new_node);
+                lyplg_ext_insert(data_parent, new_node);
             } else {
-                lyrc = lyd_insert_child(data_parent, new_node);
+                if ((err_info = sr_lyd_insert_child(data_parent, new_node))) {
+                    goto cleanup;
+                }
             }
         } else {
-            lyrc = lyd_insert_sibling(*data_root, new_node, data_root);
+            if ((err_info = sr_lyd_insert_sibling(*data_root, new_node, data_root))) {
+                goto cleanup;
+            }
         }
         goto cleanup;
     } else if (insert == INSERT_FIRST) {
@@ -1359,7 +1329,7 @@ sr_edit_insert(struct lyd_node **data_root, struct lyd_node *data_parent, struct
         lyd_find_sibling_val(data_parent ? lyd_child(data_parent) : *data_root, new_node->schema, NULL, 0, &anchor);
         if (anchor) {
             /* insert before the first instance */
-            lyrc = lyd_insert_before(anchor, new_node);
+            lyd_insert_before(anchor, new_node);
             if (anchor == *data_root) {
                 assert((*data_root)->prev == new_node);
                 *data_root = new_node;
@@ -1367,9 +1337,9 @@ sr_edit_insert(struct lyd_node **data_root, struct lyd_node *data_parent, struct
         } else {
             /* insert anywhere, there are no instances */
             if (data_parent) {
-                lyrc = lyd_insert_child(data_parent, new_node);
+                err_info = sr_lyd_insert_child(data_parent, new_node);
             } else {
-                lyrc = lyd_insert_sibling(*data_root, new_node, data_root);
+                err_info = sr_lyd_insert_sibling(*data_root, new_node, data_root);
             }
         }
         goto cleanup;
@@ -1385,13 +1355,13 @@ sr_edit_insert(struct lyd_node **data_root, struct lyd_node *data_parent, struct
 
     /* insert before or after */
     if (insert == INSERT_BEFORE) {
-        lyrc = lyd_insert_before(anchor, new_node);
+        lyd_insert_before(anchor, new_node);
         assert(anchor->prev == new_node);
         if (*data_root == anchor) {
             *data_root = new_node;
         }
     } else if (insert == INSERT_AFTER) {
-        lyrc = lyd_insert_after(anchor, new_node);
+        lyd_insert_after(anchor, new_node);
         assert(new_node->prev == anchor);
         if (*data_root == new_node) {
             *data_root = anchor;
@@ -1399,9 +1369,6 @@ sr_edit_insert(struct lyd_node **data_root, struct lyd_node *data_parent, struct
     }
 
 cleanup:
-    if (lyrc) {
-        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
-    }
     return err_info;
 }
 
@@ -1411,18 +1378,12 @@ sr_diff_set_oper(struct lyd_node *diff, const char *op)
     sr_error_info_t *err_info = NULL;
 
     if (diff->schema) {
-        if (lyd_new_meta(NULL, diff, NULL, "yang:operation", op, 0, NULL)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(diff), NULL);
-            return err_info;
-        }
+        err_info = sr_lyd_new_meta(diff, NULL, "yang:operation", op);
     } else {
-        if (lyd_new_attr2(diff, "urn:ietf:params:xml:ns:yang:1", "operation", op, NULL)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(diff), NULL);
-            return err_info;
-        }
+        err_info = sr_lyd_new_attr2(diff, "urn:ietf:params:xml:ns:yang:1", "operation", op);
     }
 
-    return NULL;
+    return err_info;
 }
 
 enum edit_op
@@ -1432,6 +1393,7 @@ sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper
     struct lyd_meta *meta;
     struct lyd_attr *attr;
     enum edit_op op;
+    uint32_t *prev_lo, temp_lo = 0;
 
     if (!edit) {
         return 0;
@@ -1460,7 +1422,7 @@ sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper
             LY_LIST_FOR(((struct lyd_node_opaq *)parent)->attr, attr) {
                 if (!strcmp(attr->name.name, "operation")) {
                     /* try to create a metadata instance and use that */
-                    uint32_t prev_lo = ly_log_options(0);
+                    prev_lo = ly_temp_log_options(&temp_lo);
 
                     if (!lyd_new_meta2(LYD_CTX(parent), NULL, 0, attr, &meta)) {
                         if (!strcmp(meta->annotation->module->name, "sysrepo") ||
@@ -1469,7 +1431,7 @@ sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper
                         }
                         lyd_free_meta_single(meta);
                     }
-                    ly_log_options(prev_lo);
+                    ly_temp_log_options(prev_lo);
 
                     if (op) {
                         if (own_oper && (edit == parent)) {
@@ -1498,7 +1460,6 @@ sr_edit_diff_get_origin(const struct lyd_node *node, char **origin, int *origin_
     struct lyd_meta *meta = NULL, *attr_meta = NULL;
     struct lyd_attr *a;
     const struct lyd_node *parent;
-    LY_ERR lyrc;
 
     *origin = NULL;
     if (origin_own) {
@@ -1515,13 +1476,11 @@ sr_edit_diff_get_origin(const struct lyd_node *node, char **origin, int *origin_
             LY_LIST_FOR(((struct lyd_node_opaq *)parent)->attr, a) {
                 /* try to parse into metadata */
                 if (!strcmp(a->name.name, "origin")) {
-                    lyrc = lyd_new_meta2(LYD_CTX(node), NULL, 0, a, &attr_meta);
-                    if (lyrc && (lyrc != LY_ENOT)) {
-                        sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL);
+                    if ((err_info = sr_lyd_new_meta2(LYD_CTX(node), NULL, a, &attr_meta))) {
                         sr_errinfo_free(&err_info);
                         return;
                     }
-                    if (!lyrc) {
+                    if (attr_meta) {
                         if (!strcmp(attr_meta->annotation->module->name, "ietf-origin")) {
                             meta = attr_meta;
                             break;
@@ -1611,8 +1570,7 @@ sr_edit_diff_add(const struct lyd_node *node, const char *meta_val, const char *
     }
 
     /* duplicate node */
-    if (lyd_dup_single(node, NULL, LYD_DUP_NO_META | (subtree ? LYD_DUP_RECURSIVE : 0), &node_dup)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL);
+    if ((err_info = sr_lyd_dup(node, NULL, LYD_DUP_NO_META | (subtree ? LYD_DUP_RECURSIVE : 0), 0, &node_dup))) {
         goto cleanup;
     }
 
@@ -1653,15 +1611,13 @@ sr_edit_diff_add(const struct lyd_node *node, const char *meta_val, const char *
     if ((node_dup->schema->nodetype == LYS_LEAFLIST) && ((struct lysc_node_leaflist *)node_dup->schema)->dflts &&
             (op == EDIT_CREATE)) {
         /* default leaf-list with the same value may have been removed, so we need to merge these 2 diffs */
-        if (lyd_diff_merge_tree(diff_root, diff_parent, node_dup, NULL, NULL, 0)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL);
+        if ((err_info = sr_lyd_diff_merge_tree(diff_root, diff_parent, node_dup))) {
             goto cleanup;
         }
 
         if (diff_node) {
             /* find the merged node in the diff */
-            if (lyd_find_sibling_first(diff_parent ? lyd_child(diff_parent) : *diff_root, node_dup, diff_node)) {
-                sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL);
+            if ((err_info = sr_lyd_find_sibling_first(diff_parent ? lyd_child(diff_parent) : *diff_root, node_dup, diff_node))) {
                 goto cleanup;
             }
         }
@@ -1906,8 +1862,7 @@ sr_edit_apply_move(struct lyd_node **data_root, struct lyd_node *data_parent, co
 
     if (!*data_match) {
         /* new instance */
-        if (lyd_dup_single(edit_node, NULL, LYD_DUP_NO_META, data_match)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(edit_node), NULL);
+        if ((err_info = sr_lyd_dup(edit_node, NULL, LYD_DUP_NO_META, 0, data_match))) {
             return err_info;
         }
         diff_op = EDIT_CREATE;
@@ -1967,24 +1922,21 @@ sr_edit_created_subtree_apply_move(struct lyd_node *match_subtree)
             }
 
             if (elem->schema->nodetype == LYS_LIST) {
-                if (lyd_new_meta(NULL, elem, NULL, "yang:key", sibling_before_val, 0, NULL)) {
-                    sr_errinfo_new_ly(&err_info, LYD_CTX(elem), NULL);
+                if ((err_info = sr_lyd_new_meta(elem, NULL, "yang:key", sibling_before_val))) {
+                    return err_info;
                 }
             } else {
-                if (lyd_new_meta(NULL, elem, NULL, "yang:value", sibling_before_val, 0, NULL)) {
-                    sr_errinfo_new_ly(&err_info, LYD_CTX(elem), NULL);
+                if ((err_info = sr_lyd_new_meta(elem, NULL, "yang:value", sibling_before_val))) {
+                    return err_info;
                 }
             }
             free(sibling_before_val);
-            if (err_info) {
-                break;
-            }
         }
 
         LYD_TREE_DFS_END(match_subtree, elem);
     }
 
-    return err_info;
+    return NULL;
 }
 
 /**
@@ -2007,14 +1959,11 @@ sr_edit_apply_replace(struct lyd_node *data_match, int val_equal, const struct l
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node_any *any;
-    LY_ERR lyrc;
     char *prev_val;
     uintptr_t prev_dflt;
 
     if (!edit_node->schema) {
-        lyd_parse_opaq_error(edit_node);
-        sr_errinfo_new_ly(&err_info, LYD_CTX(edit_node), NULL);
-        return err_info;
+        return sr_lyd_parse_opaq_error(edit_node);
     }
 
     if (!data_match) {
@@ -2037,10 +1986,8 @@ sr_edit_apply_replace(struct lyd_node *data_match, int val_equal, const struct l
             prev_dflt = data_match->flags & LYD_DEFAULT;
 
             /* modify the node */
-            lyrc = lyd_change_term(data_match, lyd_get_value(edit_node));
-            if (lyrc && (lyrc != LY_EEXIST)) {
+            if ((err_info = sr_lyd_change_term(data_match, lyd_get_value(edit_node), 1))) {
                 free(prev_val);
-                sr_errinfo_new_ly(&err_info, LYD_CTX(data_match), NULL);
                 return err_info;
             }
 
@@ -2060,16 +2007,14 @@ sr_edit_apply_replace(struct lyd_node *data_match, int val_equal, const struct l
         case LYS_ANYXML:
         case LYS_ANYDATA:
             /* remember previous value */
-            if (lyd_any_value_str(data_match, &prev_val)) {
-                sr_errinfo_new_ly(&err_info, LYD_CTX(data_match), NULL);
+            if ((err_info = sr_lyd_any_value_str(data_match, &prev_val))) {
                 return err_info;
             }
 
             /* modify the node */
             any = (struct lyd_node_any *)edit_node;
-            if (lyd_any_copy_value(data_match, &any->value, any->value_type)) {
+            if ((err_info = sr_lyd_any_copy_value(data_match, &any->value, any->value_type))) {
                 free(prev_val);
-                sr_errinfo_new_ly(&err_info, LYD_CTX(data_match), NULL);
                 return err_info;
             }
 
@@ -2119,9 +2064,7 @@ sr_edit_apply_create(struct lyd_node **data_root, struct lyd_node *data_parent, 
     sr_error_info_t *err_info = NULL;
 
     if (!edit_node->schema) {
-        lyd_parse_opaq_error(edit_node);
-        sr_errinfo_new_ly(&err_info, LYD_CTX(edit_node), NULL);
-        return err_info;
+        return sr_lyd_parse_opaq_error(edit_node);
     }
 
     if (*data_match) {
@@ -2153,8 +2096,7 @@ sr_edit_apply_create(struct lyd_node **data_root, struct lyd_node *data_parent, 
     }
 
     /* create and insert the node at the correct place */
-    if (lyd_dup_single(edit_node, NULL, LYD_DUP_NO_META, data_match)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(edit_node), NULL);
+    if ((err_info = sr_lyd_dup(edit_node, NULL, LYD_DUP_NO_META, 0, data_match))) {
         return err_info;
     }
 
@@ -2628,7 +2570,7 @@ sr_edit_merge_value(struct lyd_node **trg_node, struct lyd_node **trg_root, cons
     struct lyd_node_opaq *opaq_trg, *opaq_src;
     struct lyd_node *src_dup, *to_free = NULL;
     struct lyd_attr *a;
-    LY_ERR r;
+    struct lyd_meta *m;
 
     if (!src_node->schema && (src_op == EDIT_REMOVE)) {
         /* special case when the value has no meaning */
@@ -2651,14 +2593,12 @@ sr_edit_merge_value(struct lyd_node **trg_node, struct lyd_node **trg_root, cons
                     &opaq_trg->val_prefix_data);
         } else {
             /* replace opaque node with the data node */
-            if (lyd_dup_single(src_node, (*trg_node)->parent, LYD_DUP_NO_META | LYD_DUP_WITH_FLAGS, &src_dup)) {
-                sr_errinfo_new_ly(&err_info, LYD_CTX(src_node), NULL);
+            if ((err_info = sr_lyd_dup(src_node, lyd_parent(*trg_node), LYD_DUP_NO_META | LYD_DUP_WITH_FLAGS, 0, &src_dup))) {
                 goto cleanup;
             }
             if (!(*trg_node)->parent) {
                 /* will always be inserted before trg_node, which is opaque */
-                if (lyd_insert_sibling(*trg_node, src_dup, trg_root)) {
-                    sr_errinfo_new_ly(&err_info, LYD_CTX(*trg_node), NULL);
+                if ((err_info = sr_lyd_insert_sibling(*trg_node, src_dup, trg_root))) {
                     goto cleanup;
                 }
             }
@@ -2667,28 +2607,24 @@ sr_edit_merge_value(struct lyd_node **trg_node, struct lyd_node **trg_root, cons
 
             /* copy all attributes as metadata */
             LY_LIST_FOR(((struct lyd_node_opaq *)to_free)->attr, a) {
-                r = lyd_new_meta2(LYD_CTX(src_dup), src_dup, 0, a, NULL);
-                if (r == LY_ENOT) {
+                if ((err_info = sr_lyd_new_meta2(LYD_CTX(src_dup), src_dup, a, &m))) {
+                    goto cleanup;
+                } else if (!m) {
                     sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to create metadata from an attribute \"%s\".",
                             a->name.name);
-                    goto cleanup;
-                } else if (r) {
-                    sr_errinfo_new_ly(&err_info, LYD_CTX(*trg_node), NULL);
                     goto cleanup;
                 }
             }
         }
     } else if ((*trg_node)->schema->nodetype == LYS_LEAF) {
         /* change the leaf value */
-        if (lyd_change_term(*trg_node, lyd_get_value(src_node))) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(src_node), NULL);
+        if ((err_info = sr_lyd_change_term(*trg_node, lyd_get_value(src_node), 0))) {
             goto cleanup;
         }
     } else if ((*trg_node)->schema->nodetype & LYS_ANYDATA) {
         /* update any value */
-        if (lyd_any_copy_value(*trg_node, &((struct lyd_node_any *)src_node)->value,
-                ((struct lyd_node_any *)src_node)->value_type)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(*trg_node), NULL);
+        if ((err_info = sr_lyd_any_copy_value(*trg_node, &((struct lyd_node_any *)src_node)->value,
+                ((struct lyd_node_any *)src_node)->value_type))) {
             goto cleanup;
         }
     }
@@ -2754,7 +2690,6 @@ sr_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_parent, const s
     char *path = NULL, *any_val = NULL;
     const char *prev_val;
     uint32_t i;
-    LY_ERR lyrc;
 
     /* get this node operation */
     if ((err_info = sr_edit_op(src_node, parent_op, &src_op, NULL, NULL))) {
@@ -2766,8 +2701,7 @@ sr_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_parent, const s
         if (trg_sibling) {
             /* remove any operations (instances) of the node */
             path = lyd_path(src_node, LYD_PATH_STD, NULL, 0);
-            if (lyd_find_xpath(trg_sibling, path, &set)) {
-                sr_errinfo_new_ly(&err_info, LYD_CTX(trg_sibling), trg_sibling);
+            if ((err_info = sr_lyd_find_xpath(trg_sibling, path, &set))) {
                 goto cleanup;
             }
             for (i = 0; i < set->count; ++i) {
@@ -2819,8 +2753,7 @@ sr_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_parent, const s
                         break;
                     case LYS_ANYXML:
                     case LYS_ANYDATA:
-                        if (lyd_any_value_str(trg_node, &any_val)) {
-                            sr_errinfo_new_ly(&err_info, LYD_CTX(trg_node), NULL);
+                        if ((err_info = sr_lyd_any_value_str(trg_node, &any_val))) {
                             goto cleanup;
                         }
                         prev_val = any_val;
@@ -2876,19 +2809,17 @@ sr_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_parent, const s
         }
     } else {
         /* node not found, merge it */
-        if (lyd_dup_single(src_node, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, &trg_node)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(src_node), NULL);
+        if ((err_info = sr_lyd_dup(src_node, NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_FLAGS, 0, &trg_node))) {
             goto cleanup;
         }
 
         /* insert */
         if (trg_parent) {
-            lyrc = lyd_insert_child(trg_parent, trg_node);
+            err_info = sr_lyd_insert_child(trg_parent, trg_node);
         } else {
-            lyrc = lyd_insert_sibling(*trg_root, trg_node, trg_root);
+            err_info = sr_lyd_insert_sibling(*trg_root, trg_node, trg_root);
         }
-        if (lyrc) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(*trg_root), NULL);
+        if (err_info) {
             goto cleanup;
         }
 
@@ -2943,8 +2874,7 @@ sr_edit_mod_merge(const struct lyd_node *edit, uint32_t cid, const struct lys_mo
                 *diff = mod_diff;
                 mod_diff = NULL;
             } else {
-                if (lyd_diff_merge_tree(diff, NULL, mod_diff, NULL, NULL, 0)) {
-                    sr_errinfo_new_ly(&err_info, LYD_CTX(*diff), *diff);
+                if ((err_info = sr_lyd_diff_merge_tree(diff, NULL, mod_diff))) {
                     goto cleanup;
                 }
                 lyd_free_siblings(mod_diff);
@@ -3131,8 +3061,7 @@ sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char 
                         if (own_oper) {
                             sr_edit_del_meta_attr(match, "operation");
                         }
-                        if (lyd_change_term(match, value)) {
-                            sr_errinfo_new_ly(&err_info, LYD_CTX(match), NULL);
+                        if ((err_info = sr_lyd_change_term(match, value, 0))) {
                             goto cleanup;
                         }
                     } else {
@@ -3145,8 +3074,7 @@ sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char 
                         }
                         lyd_free_tree(match);
 
-                        if (lyd_new_term(parent, schema->module, schema->name, value, 0, &match)) {
-                            sr_errinfo_new_ly(&err_info, schema->module->ctx, NULL);
+                        if ((err_info = sr_lyd_new_term2(parent, schema->module, schema->name, value, &match))) {
                             goto cleanup;
                         }
                         if (!parent) {
@@ -3355,8 +3283,7 @@ sr_edit_add_xpath(const struct ly_ctx *ly_ctx, const struct lyd_node *tree, cons
     rxpath_len = 0;
 
     /* validate xpath */
-    if (!lys_find_path(ly_ctx, NULL, xpath, 0)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+    if ((err_info = sr_lys_find_path(ly_ctx, xpath, NULL, NULL))) {
         goto cleanup;
     }
 
@@ -3581,8 +3508,7 @@ sr_edit_add_dup_inst_list_pos(struct lyd_node *parent, const char *xpath)
             } else {
                 strcpy(buf, "");
             }
-            if (lyd_new_meta(LYD_CTX(parent), parent, NULL, "sysrepo:dup-inst-list-position", buf, 0, NULL)) {
-                sr_errinfo_new_ly(&err_info, LYD_CTX(parent), NULL);
+            if ((err_info = sr_lyd_new_meta(parent, NULL, "sysrepo:dup-inst-list-position", buf))) {
                 return err_info;
             }
         }
@@ -3605,7 +3531,6 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     char *rel_xpath = NULL;
     enum edit_op op;
     int opts, own_oper;
-    LY_ERR lyrc;
 
     assert(!origin || strchr(origin, ':'));
 
@@ -3632,15 +3557,14 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
     if (session->ds == SR_DS_OPERATIONAL) {
         assert(!isolate);
         /* use the xpath relative to the current edit */
-        lyrc = lyd_new_path2(session->dt[session->ds].edit->tree, session->conn->ly_ctx, rel_xpath, (void *)value,
-                value ? strlen(value) : 0, LYD_ANYDATA_STRING, opts, &parent, &node);
+        err_info = sr_lyd_new_path(session->dt[session->ds].edit->tree, session->conn->ly_ctx, rel_xpath, (void *)value,
+                opts, &parent, &node);
     } else {
         /* merge the change into existing edit normally */
-        lyrc = lyd_new_path2(isolate ? NULL : session->dt[session->ds].edit->tree, session->conn->ly_ctx, xpath,
-                (void *)value, value ? strlen(value) : 0, LYD_ANYDATA_STRING, opts, &parent, &node);
+        err_info = sr_lyd_new_path(isolate ? NULL : session->dt[session->ds].edit->tree, session->conn->ly_ctx, xpath,
+                (void *)value, opts, &parent, &node);
     }
-    if (lyrc) {
-        sr_errinfo_new_ly(&err_info, session->conn->ly_ctx, NULL);
+    if (err_info) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid datastore edit.");
         goto error_safe;
     } else if (lysc_is_key(node->schema)) {
@@ -3710,13 +3634,11 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         goto error;
     }
     if (position) {
-        if (lyd_new_meta(NULL, node, NULL, "yang:insert", sr_edit_pos2str(*position), 0, NULL)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL);
+        if ((err_info = sr_lyd_new_meta(node, NULL, "yang:insert", sr_edit_pos2str(*position)))) {
             goto error;
         }
-        if (((*position == SR_MOVE_BEFORE) || (*position == SR_MOVE_AFTER)) && lyd_new_meta(NULL, node, NULL,
-                (node->schema->nodetype == LYS_LIST) ? "yang:key" : "yang:value", meta_val, 0, NULL)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL);
+        if (((*position == SR_MOVE_BEFORE) || (*position == SR_MOVE_AFTER)) && (err_info = sr_lyd_new_meta(node, NULL,
+                (node->schema->nodetype == LYS_LIST) ? "yang:key" : "yang:value", meta_val))) {
             goto error;
         }
     }
@@ -3844,7 +3766,6 @@ sr_edit_oper_del_node(struct lyd_node *node, struct lyd_node **change_edit)
     sr_error_info_t *err_info = NULL;
     struct lyd_node *iter, *new_parent, *parent, *match, *to_free = NULL;
     enum edit_op op, cur_op;
-    LY_ERR lyrc = 0;
 
     if (!change_edit) {
         /* nothing to do */
@@ -3859,18 +3780,22 @@ sr_edit_oper_del_node(struct lyd_node *node, struct lyd_node **change_edit)
         if (node->schema) {
             if (lysc_is_dup_inst_list(node->schema)) {
                 /* we cannot uniquely identify the node based on its value, assume it is always unique */
-                lyrc = LY_ENOTFOUND;
+                match = NULL;
             } else {
                 /* find the same data node */
-                lyrc = lyd_find_sibling_first(parent ? lyd_child(parent) : *change_edit, node, &match);
+                if ((err_info = sr_lyd_find_sibling_first(parent ? lyd_child(parent) : *change_edit, node, &match))) {
+                    goto cleanup;
+                }
             }
         } else {
             /* find the data node based on an opaque node */
-            lyrc = lyd_find_sibling_opaq_next(parent ? lyd_child(parent) : *change_edit, LYD_NAME(node), &match);
+            if ((err_info = sr_lyd_find_sibling_opaq_next(parent ? lyd_child(parent) : *change_edit, LYD_NAME(node), &match))) {
+                goto cleanup;
+            }
         }
     }
 
-    if (new_parent || lyrc) {
+    if (new_parent || !match) {
         /* set parent operation, if any new */
         if (new_parent && (err_info = sr_edit_set_oper(new_parent, "ether"))) {
             goto cleanup;
@@ -3907,14 +3832,16 @@ sr_edit_oper_del_node(struct lyd_node *node, struct lyd_node **change_edit)
         }
         sr_lyd_free_tree_safe(to_free, &node);
 
-        /* link to the change edit */
-        lyd_unlink_tree(node);
-        if (parent) {
-            lyd_insert_child(parent, node);
-        } else {
-            lyd_insert_sibling(*change_edit, node, change_edit);
+        if (node) {
+            /* link to the change edit */
+            lyd_unlink_tree(node);
+            if (parent) {
+                lyd_insert_child(parent, node);
+            } else {
+                lyd_insert_sibling(*change_edit, node, change_edit);
+            }
+            node = NULL;
         }
-        node = NULL;
     } else {
         /* learn the operation */
         op = sr_edit_diff_find_oper(node, 1, NULL);
@@ -4031,8 +3958,7 @@ sr_edit_oper_del(struct lyd_node **edit, sr_cid_t cid, const char *xpath, struct
     }
 
     if (xpath) {
-        if (lyd_find_xpath(*edit, xpath, &set)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(*edit), NULL);
+        if ((err_info = sr_lyd_find_xpath(*edit, xpath, &set))) {
             goto cleanup;
         }
         if (!set->count) {

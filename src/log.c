@@ -262,102 +262,6 @@ sr_errinfo_new_data(sr_error_info_t **err_info, sr_error_t err_code, const char 
 }
 
 void
-sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx, const struct lyd_node *data)
-{
-    struct ly_err_item *e = NULL;
-    const struct lyd_node *node;
-
-    if (ly_ctx) {
-        e = ly_err_first(ly_ctx);
-    }
-    if (!e && data) {
-        if (ly_ctx != LYD_CTX(data)) {
-            e = ly_err_first(LYD_CTX(data));
-        } else {
-            LYD_TREE_DFS_BEGIN(data, node) {
-                if (node->flags & LYD_EXT) {
-                    e = ly_err_first(LYD_CTX(node));
-                    break;
-                }
-                LYD_TREE_DFS_END(data, node);
-            }
-        }
-    }
-
-    if (!e) {
-        /* this function is called only when an error is expected, but it is still possible there
-         * will be none in a context, try to use the last */
-        sr_errinfo_new(err_info, SR_ERR_LY, "%s", ly_last_errmsg());
-        return;
-    }
-
-    do {
-        if (e->level == LY_LLWRN) {
-            /* just print it */
-            sr_log_msg(0, SR_LL_WRN, e->msg);
-        } else {
-            assert(e->level == LY_LLERR);
-            /* store it and print it */
-            if (e->path) {
-                sr_errinfo_new(err_info, SR_ERR_LY, "%s (%s)", e->msg, e->path);
-            } else {
-                sr_errinfo_new(err_info, SR_ERR_LY, "%s", e->msg);
-            }
-        }
-
-        e = e->next;
-    } while (e);
-
-    if (ly_ctx) {
-        ly_err_clean((struct ly_ctx *)ly_ctx, NULL);
-    }
-}
-
-void
-sr_errinfo_new_ly_first(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx)
-{
-    struct ly_err_item *e;
-
-    e = ly_err_first(ly_ctx);
-    /* this function is called only when an error is expected */
-    assert(e);
-
-    if (e->level == LY_LLWRN) {
-        /* just print it */
-        sr_log_msg(0, SR_LL_WRN, e->msg);
-    } else {
-        assert(e->level == LY_LLERR);
-        /* store it and print it */
-        if (e->path) {
-            sr_errinfo_new(err_info, SR_ERR_LY, "%s (%s)", e->msg, e->path);
-        } else {
-            sr_errinfo_new(err_info, SR_ERR_LY, "%s", e->msg);
-        }
-    }
-
-    ly_err_clean((struct ly_ctx *)ly_ctx, NULL);
-}
-
-void
-sr_log_wrn_ly(const struct ly_ctx *ly_ctx)
-{
-    struct ly_err_item *e;
-
-    e = ly_err_first(ly_ctx);
-    /* this function is called only when an error is expected */
-    assert(e);
-
-    do {
-        /* print everything as warnings */
-        sr_log_msg(0, SR_LL_WRN, e->msg);
-
-        e = e->next;
-    } while (e);
-
-    ly_err_clean((struct ly_ctx *)ly_ctx, NULL);
-}
-
-void
 sr_errinfo_free(sr_error_info_t **err_info)
 {
     size_t i;
@@ -500,9 +404,6 @@ sr_strerror(int err_code)
 API void
 sr_log_stderr(sr_log_level_t log_level)
 {
-    /* initializes libyang logging for our purposes */
-    ly_log_options(LY_LOSTORE);
-
     sr_stderr_ll = log_level;
 }
 
@@ -515,9 +416,6 @@ sr_log_get_stderr(void)
 API void
 sr_log_syslog(const char *app_name, sr_log_level_t log_level)
 {
-    /* initializes libyang logging for our purposes */
-    ly_log_options(LY_LOSTORE);
-
     sr_syslog_ll = log_level;
 
     if ((log_level > SR_LL_NONE) && !syslog_open) {
@@ -540,8 +438,5 @@ sr_log_get_syslog(void)
 API void
 sr_log_set_cb(sr_log_cb log_callback)
 {
-    /* initializes libyang logging for our purposes */
-    ly_log_options(LY_LOSTORE);
-
     sr_lcb = log_callback;
 }

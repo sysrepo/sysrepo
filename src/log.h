@@ -38,8 +38,6 @@
 #define SR_CHECK_MEM_RET(cond, err_info) if (cond) { SR_ERRINFO_MEM(&(err_info)); return err_info; }
 #define SR_CHECK_INT_GOTO(cond, err_info, go) if (cond) { SR_ERRINFO_INT(&(err_info)); goto go; }
 #define SR_CHECK_INT_RET(cond, err_info) if (cond) { SR_ERRINFO_INT(&(err_info)); return err_info; }
-#define SR_CHECK_LY_GOTO(cond, ly_ctx, err_info, go) if (cond) { sr_errinfo_new_ly(&(err_info), ly_ctx, NULL); goto go; }
-#define SR_CHECK_LY_RET(cond, ly_ctx, err_info) if (cond) { sr_errinfo_new_ly(&(err_info), ly_ctx, NULL); return err_info; }
 
 #define SR_CHECK_ARG_APIRET(cond, session, err_info) if (cond) { sr_errinfo_new(&(err_info), SR_ERR_INVAL_ARG, \
         "Invalid arguments for function \"%s\".", __func__); return sr_api_ret(session, err_info); }
@@ -101,30 +99,6 @@ void sr_errinfo_new(sr_error_info_t **err_info, sr_error_t err_code, const char 
  */
 void sr_errinfo_new_data(sr_error_info_t **err_info, sr_error_t err_code, const char *err_format, const void *err_data,
         const char *msg_format, ...) _FORMAT_PRINTF(5, 6);
-
-/**
- * @brief Log the error(s) from a libyang context and add them into an error info structure.
- *
- * @param[in,out] err_info Existing error info.
- * @param[in] ly_ctx libyang context to use.
- * @param[in] data Optional data tree to look for another extension context that may have the error.
- */
-void sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx, const struct lyd_node *data);
-
-/**
- * @brief Log the first error from a libyang context and add it into an error info structure.
- *
- * @param[in,out] err_info Existing error info.
- * @param[in] ly_ctx libyang context to use.
- */
-void sr_errinfo_new_ly_first(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx);
-
-/**
- * @brief Log the errors from a libyang context as warnings.
- *
- * @param[in] ly_ctx libyang context to use.
- */
-void sr_log_wrn_ly(const struct ly_ctx *ly_ctx);
 
 /**
  * @brief Free an error info structure.

@@ -36,6 +36,7 @@
 #include "common.h"
 #include "config.h"
 #include "log.h"
+#include "ly_wrap.h"
 #include "modinfo.h"
 #include "plugins_datastore.h"
 
@@ -340,8 +341,7 @@ sr_shmmod_fill_deps(sr_mod_shm_t *mod_shm, struct lyd_node *sr_dep_parent, sr_de
             shm_deps[*dep_i].xpath.expr = sr_shmstrcpy((char *)mod_shm, lyd_get_value(node), shm_end);
 
             /* get all target modules */
-            if (lyd_find_xpath(sr_dep, "target-module", &tmods)) {
-                sr_errinfo_new_ly(&err_info, LYD_CTX(sr_dep), NULL);
+            if ((err_info = sr_lyd_find_xpath(sr_dep, "target-module", &tmods))) {
                 goto cleanup;
             }
 
@@ -386,8 +386,7 @@ sr_shmmod_add_dep_size(const struct lyd_node *sr_dep, size_t *shm_size)
     uint32_t i;
 
     /* get all the strings */
-    if (lyd_find_xpath(sr_dep, "target-path | source-path | default-target-path | expression", &set)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(sr_dep), NULL);
+    if ((err_info = sr_lyd_find_xpath(sr_dep, "target-path | source-path | default-target-path | expression", &set))) {
         goto cleanup;
     }
 
@@ -399,8 +398,7 @@ sr_shmmod_add_dep_size(const struct lyd_node *sr_dep, size_t *shm_size)
     /* find all target modules */
     if (!strcmp(sr_dep->schema->name, "xpath")) {
         ly_set_free(set, NULL);
-        if (lyd_find_xpath(sr_dep, "target-module", &set)) {
-            sr_errinfo_new_ly(&err_info, LYD_CTX(sr_dep), NULL);
+        if ((err_info = sr_lyd_find_xpath(sr_dep, "target-module", &set))) {
             goto cleanup;
         }
 
@@ -890,17 +888,15 @@ sr_shmmod_ctx_load_modules(sr_mod_shm_t *mod_shm, struct ly_ctx *ly_ctx, const s
         }
 
         /* load the module */
-        ly_mod = ly_ctx_load_module(ly_ctx, mod_name, smod->rev[0] ? smod->rev : NULL, features);
+        err_info = sr_ly_ctx_load_module(ly_ctx, mod_name, smod->rev[0] ? smod->rev : NULL, features, &ly_mod);
         free(features);
-        if (!ly_mod) {
-            sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+        if (err_info) {
             return err_info;
         }
     }
 
     /* compile */
-    if (ly_ctx_compile(ly_ctx)) {
-        sr_errinfo_new_ly(&err_info, ly_ctx, NULL);
+    if ((err_info = sr_ly_ctx_compile(ly_ctx))) {
         return err_info;
     }
 
@@ -988,16 +984,14 @@ sr_shmmod_collect_deps_instid(const char *source_path, const char *default_targe
     const char *val_str;
     char *str;
     uint32_t i;
-    LY_ERR lyrc;
 
     if (data) {
-        lyrc = lyd_find_xpath(data, source_path, &set);
+        err_info = sr_lyd_find_xpath(data, source_path, &set);
     } else {
         /* no data, just fake empty set */
-        lyrc = ly_set_new(&set);
+        err_info = sr_ly_set_new(&set);
     }
-    if (lyrc) {
-        sr_errinfo_new_ly(&err_info, mod_info->conn->ly_ctx, NULL);
+    if (err_info) {
         goto cleanup;
     }
 
@@ -1551,7 +1545,6 @@ sr_shmmod_copy_mod(const struct lys_module *ly_mod, const struct sr_ds_handle_s 
         const struct sr_ds_handle_s *tds_handle, sr_datastore_t tds)
 {
     sr_error_info_t *err_info = NULL;
-    LY_ERR lyrc;
     struct lyd_node *s_mod_data = NULL, *r_mod_data = NULL, *mod_diff = NULL;
 
     if (sds_handle == tds_handle) {
@@ -1573,9 +1566,7 @@ sr_shmmod_copy_mod(const struct lys_module *ly_mod, const struct sr_ds_handle_s 
     }
 
     /* get data diff */
-    lyrc = lyd_diff_siblings(r_mod_data, s_mod_data, LYD_DIFF_DEFAULTS, &mod_diff);
-    if (lyrc) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(r_mod_data), NULL);
+    if ((err_info = sr_lyd_diff_siblings(r_mod_data, s_mod_data, LYD_DIFF_DEFAULTS, &mod_diff))) {
         goto cleanup;
     } else if (!mod_diff) {
         /* no data changes */

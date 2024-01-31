@@ -34,6 +34,7 @@
 #include "../sysrepo.h"
 #include "config.h"
 #include "log.h"
+#include "ly_wrap.h"
 
 static struct sr_nacm nacm;
 
@@ -128,6 +129,7 @@ static int
 sr_nacm_oper_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *UNUSED(module_name), const char *path,
         const char *UNUSED(request_xpath), uint32_t UNUSED(request_id), struct lyd_node **parent, void *UNUSED(private_data))
 {
+    sr_error_info_t *err_info = NULL;
     int rc = SR_ERR_OK;
     struct ly_set *set = NULL;
     const char *get_path, *leaf_name;
@@ -157,8 +159,7 @@ sr_nacm_oper_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
 
     /* collect all the counters */
     if (data) {
-        if (lyd_find_xpath(data->tree, get_path, &set)) {
-            rc = SR_ERR_INTERNAL;
+        if ((err_info = sr_lyd_find_xpath(data->tree, get_path, &set))) {
             goto cleanup;
         }
         for (i = 0; i < set->count; ++i) {
@@ -169,14 +170,18 @@ sr_nacm_oper_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const char *
 
     /* print */
     sprintf(num_str, "%" PRIu32, counter);
-    if (lyd_new_path(*parent, NULL, leaf_name, num_str, 0, NULL)) {
-        rc = SR_ERR_INTERNAL;
+    if ((err_info = sr_lyd_new_term(*parent, NULL, leaf_name, num_str))) {
         goto cleanup;
     }
 
 cleanup:
     sr_release_data(data);
     ly_set_free(set, NULL);
+
+    if (err_info) {
+        rc = err_info->err[0].err_code;
+        sr_errinfo_free(&err_info);
+    }
     return rc;
 }
 
@@ -186,7 +191,8 @@ sr_nacm_srmon_oper_cb(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id)
         const char *UNUSED(path), const char *UNUSED(request_xpath), uint32_t UNUSED(request_id), struct lyd_node **parent,
         void *UNUSED(private_data))
 {
-    LY_ERR lyrc = LY_SUCCESS;
+    sr_error_info_t *err_info = NULL;
+    int rc = SR_ERR_OK;
     struct lyd_node *cont;
     char num_str[11];
 
@@ -195,25 +201,25 @@ sr_nacm_srmon_oper_cb(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id)
     /* NACM LOCK */
     pthread_mutex_lock(&nacm.lock);
 
-    if ((lyrc = lyd_new_inner(*parent, NULL, "nacm-stats", 0, &cont))) {
+    if ((err_info = sr_lyd_new_inner(*parent, NULL, "nacm-stats", &cont))) {
         goto cleanup_unlock;
     }
 
     /* denied-operations */
     sprintf(num_str, "%" PRIu32, nacm.denied_operations);
-    if ((lyrc = lyd_new_path(cont, NULL, "denied-operations", num_str, 0, NULL))) {
+    if ((err_info = sr_lyd_new_term(cont, NULL, "denied-operations", num_str))) {
         goto cleanup_unlock;
     }
 
     /* denied-data-writes */
     sprintf(num_str, "%" PRIu32, nacm.denied_data_writes);
-    if ((lyrc = lyd_new_path(cont, NULL, "denied-data-writes", num_str, 0, NULL))) {
+    if ((err_info = sr_lyd_new_term(cont, NULL, "denied-data-writes", num_str))) {
         goto cleanup_unlock;
     }
 
     /* denied-notifications */
     sprintf(num_str, "%" PRIu32, nacm.denied_notifications);
-    if ((lyrc = lyd_new_path(cont, NULL, "denied-notifications", num_str, 0, NULL))) {
+    if ((err_info = sr_lyd_new_term(cont, NULL, "denied-notifications", num_str))) {
         goto cleanup_unlock;
     }
 
@@ -221,7 +227,11 @@ cleanup_unlock:
     /* NACM UNLOCK */
     pthread_mutex_unlock(&nacm.lock);
 
-    return lyrc ? SR_ERR_INTERNAL : SR_ERR_OK;
+    if (err_info) {
+        rc = err_info->err[0].err_code;
+        sr_errinfo_free(&err_info);
+    }
+    return rc;
 }
 
 static struct sr_nacm_group *
@@ -2080,8 +2090,7 @@ sr_nacm_check_push_update_notif(const char *nacm_user, struct lyd_node *notif, s
     }
 
     /* collect all edits */
-    if (lyd_find_xpath(notif, "/ietf-yang-push:push-change-update/datastore-changes/yang-patch/edit", &set)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(notif), NULL);
+    if ((err_info = sr_lyd_find_xpath(notif, "/ietf-yang-push:push-change-update/datastore-changes/yang-patch/edit", &set))) {
         goto cleanup;
     }
 
