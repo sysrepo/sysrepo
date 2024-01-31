@@ -1389,11 +1389,11 @@ sr_diff_set_oper(struct lyd_node *diff, const char *op)
 enum edit_op
 sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, int *own_oper)
 {
+    uint32_t *prev_lo, temp_lo = 0;
     const struct lyd_node *parent;
     struct lyd_meta *meta;
     struct lyd_attr *attr;
     enum edit_op op;
-    uint32_t *prev_lo, temp_lo = 0;
 
     if (!edit) {
         return 0;

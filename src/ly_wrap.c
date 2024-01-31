@@ -16,8 +16,8 @@
 
 #define _GNU_SOURCE
 
-#include "ly_wrap.h"
 #include "compat.h"
+#include "ly_wrap.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -270,7 +270,7 @@ sr_lys_print(const char *path, const struct lys_module *mod, const struct lysp_s
         lyrc = lys_print_module(out, mod, LYS_OUT_YANG, 0, 0);
     }
     if (lyrc) {
-        sr_errinfo_new_ly(&err_info, mod? mod->ctx : submod->mod->ctx, NULL, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, mod ? mod->ctx : submod->mod->ctx, NULL, SR_ERR_LY);
         goto cleanup;
     }
 
