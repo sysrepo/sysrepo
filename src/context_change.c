@@ -212,9 +212,9 @@ sr_lycc_check_add_modules(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx)
 }
 
 sr_error_info_t *
-sr_lycc_add_modules(sr_conn_ctx_t *conn, const sr_int_install_mod_t *new_mods, uint32_t new_mod_count)
+sr_lycc_add_modules(sr_conn_ctx_t *conn, sr_int_install_mod_t *new_mods, uint32_t new_mod_count)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *tmp_err;
     const struct lys_module *ly_mod;
     uint32_t i;
     sr_datastore_t ds;
@@ -233,13 +233,13 @@ sr_lycc_add_modules(sr_conn_ctx_t *conn, const sr_int_install_mod_t *new_mods, u
             /* find plugin */
             if ((err_info = sr_ds_handle_find(new_mods[i].module_ds.plugin_name[ds], conn,
                     (const struct sr_ds_handle_s **)&ds_handle))) {
-                return err_info;
+                goto cleanup;
             }
 
             if (!ds_handle->init) {
                 /* call conn_init */
                 if ((err_info = ds_handle->plugin->conn_init_cb(conn, &ds_handle->plg_data))) {
-                    return err_info;
+                    goto cleanup;
                 }
                 ds_handle->init = 1;
             }
@@ -247,22 +247,75 @@ sr_lycc_add_modules(sr_conn_ctx_t *conn, const sr_int_install_mod_t *new_mods, u
             /* call install */
             if ((err_info = ds_handle->plugin->install_cb(ly_mod, ds, new_mods[i].owner, new_mods[i].group,
                     new_mods[i].perm, ds_handle->plg_data))) {
-                return err_info;
+                goto cleanup;
             }
 
             /* call init */
             if ((err_info = ds_handle->plugin->init_cb(ly_mod, ds, ds_handle->plg_data))) {
-                return err_info;
+                goto cleanup;
             }
         }
 
         /* store module YANG with all submodules and imports */
         if ((err_info = sr_store_module_yang_r(ly_mod))) {
-            return err_info;
+            goto cleanup;
+        }
+
+        new_mods[i].installed = 1;
+    }
+
+cleanup:
+    if (err_info && (tmp_err = sr_lycc_add_modules_revert(conn, new_mods, new_mod_count))) {
+        sr_errinfo_merge(&err_info, tmp_err);
+    }
+    return err_info;
+}
+
+sr_error_info_t *
+sr_lycc_add_modules_revert(sr_conn_ctx_t *conn, const sr_int_install_mod_t *new_mods, uint32_t new_mod_count)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+    uint32_t i;
+    sr_datastore_t ds;
+    struct sr_ds_handle_s *ds_handle;
+    struct ly_set del_set = {0};
+
+    for (i = 0; i < new_mod_count; ++i) {
+        ly_mod = new_mods[i].ly_mod;
+
+        if (!new_mods[i].installed) {
+            continue;
+        }
+
+        /* init module for all DS plugins */
+        for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
+            if ((ds == SR_DS_RUNNING) && !new_mods[i].module_ds.plugin_name[ds]) {
+                /* disabled */
+                continue;
+            }
+
+            /* find plugin */
+            if ((err_info = sr_ds_handle_find(new_mods[i].module_ds.plugin_name[ds], conn,
+                    (const struct sr_ds_handle_s **)&ds_handle))) {
+                goto cleanup;
+            }
+
+            /* call uninstall */
+            if ((err_info = ds_handle->plugin->uninstall_cb(ly_mod, ds, ds_handle->plg_data))) {
+                goto cleanup;
+            }
+        }
+
+        /* remove YANG module(s) */
+        if ((err_info = sr_remove_module_yang_r(ly_mod, conn->ly_ctx, &del_set))) {
+            goto cleanup;
         }
     }
 
-    return NULL;
+cleanup:
+    ly_set_erase(&del_set, NULL);
+    return err_info;
 }
 
 sr_error_info_t *

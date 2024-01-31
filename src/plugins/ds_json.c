@@ -152,6 +152,9 @@ cleanup:
     if (fd > -1) {
         close(fd);
     }
+    if (err_info && creat) {
+        unlink(path);
+    }
     free(path);
     free(bck_path);
     return err_info;

@@ -4,8 +4,8 @@
  * @brief sysrepo API routines
  *
  * @copyright
- * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -1419,14 +1419,15 @@ static int
 _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *data, const char *data_path,
         LYD_FORMAT format, sr_int_install_mod_t **new_mods, uint32_t *new_mod_count)
 {
-    sr_error_info_t *err_info = NULL;
+    sr_error_info_t *err_info = NULL, *tmp_err;
     struct ly_ctx *new_ctx = NULL, *old_ctx = NULL;
-    struct lyd_node *mod_data = NULL, *sr_mods = NULL;
+    struct lyd_node *mod_data = NULL, *sr_mods = NULL, *sr_del_mods = NULL;
     sr_int_install_mod_t *nmod;
     struct sr_data_update_s data_info = {0};
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
     uint32_t i, search_dir_count = 0;
-    int installed;
+    int installed, mod_shm_changed = 0;
+    struct ly_set mod_set = {0};
 
     /* create new temporary context */
     if ((err_info = sr_ly_ctx_init(conn, &new_ctx))) {
@@ -1508,22 +1509,48 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
 
     /* update SHM modules */
     if ((err_info = sr_shmmod_store_modules(&conn->mod_shm, sr_mods))) {
-        goto cleanup;
+        goto error1;
     }
+    mod_shm_changed = 1;
 
     /* finish adding the modules */
     if ((err_info = sr_lycc_add_modules(conn, *new_mods, *new_mod_count))) {
-        goto cleanup;
+        goto error1;
     }
 
     /* store new data if they differ */
     if ((err_info = sr_lycc_store_data_if_differ(conn, new_ctx, sr_mods, &data_info))) {
-        goto cleanup;
+        goto error2;
     }
 
     /* update content ID and safely switch the context */
     SR_CONN_MAIN_SHM(conn)->content_id = ly_ctx_get_modules_hash(new_ctx);
     sr_conn_ctx_switch(conn, &new_ctx, &old_ctx);
+
+    goto cleanup;
+
+error2:
+    /* revert adding the modules */
+    if ((tmp_err = sr_lycc_add_modules_revert(conn, *new_mods, *new_mod_count))) {
+        sr_errinfo_merge(&err_info, tmp_err);
+    }
+
+error1:
+    /* revert lydmods data */
+    for (i = 0; i < *new_mod_count; ++i) {
+        ly_set_add(&mod_set, (*new_mods)[i].ly_mod, 1, NULL);
+    }
+    lyd_free_siblings(sr_mods);
+    if ((tmp_err = sr_lydmods_change_del_module(conn->ly_ctx, new_ctx, &mod_set, conn, &sr_del_mods, &sr_mods))) {
+        sr_errinfo_merge(&err_info, tmp_err);
+    }
+    ly_set_erase(&mod_set, NULL);
+    lyd_free_siblings(sr_del_mods);
+
+    /* revert SHM module changes */
+    if (mod_shm_changed && (tmp_err = sr_shmmod_store_modules(&conn->mod_shm, sr_mods))) {
+        sr_errinfo_merge(&err_info, tmp_err);
+    }
 
 cleanup:
     sr_lycc_update_data_clear(&data_info);

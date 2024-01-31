@@ -85,7 +85,18 @@ sr_error_info_t *sr_lycc_check_add_modules(sr_conn_ctx_t *conn, const struct ly_
  * @param[in] new_mod_count Count of @p new_mods.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lycc_add_modules(sr_conn_ctx_t *conn, const sr_int_install_mod_t *new_mods, uint32_t new_mod_count);
+sr_error_info_t *sr_lycc_add_modules(sr_conn_ctx_t *conn, sr_int_install_mod_t *new_mods, uint32_t new_mod_count);
+
+/**
+ * @brief Revert adding new modules.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] new_mods Array of new modules.
+ * @param[in] new_mod_count Count of @p new_mods.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lycc_add_modules_revert(sr_conn_ctx_t *conn, const sr_int_install_mod_t *new_mods,
+        uint32_t new_mod_count);
 
 /**
  * @brief Check that modules can be removed.

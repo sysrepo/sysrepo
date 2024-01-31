@@ -195,6 +195,7 @@ typedef struct {
 
     /* additional members */
     const struct lys_module *ly_mod;
+    int installed;
 } sr_int_install_mod_t;
 
 /**
