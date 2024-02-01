@@ -3180,7 +3180,8 @@ sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t
 
     /* check that SHM is still valid even after the lock was released and re-acquired */
     if ((sub_info->event != ATOMIC_LOAD_RELAXED(multi_sub_shm->event)) ||
-            (sub_info->request_id != ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id))) {
+            (sub_info->request_id != ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id)) ||
+            (sub_info->priority != ATOMIC_LOAD_RELAXED(multi_sub_shm->priority))) {
         /* SUB READ/WRITE UNLOCK */
         sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, ev_sess->conn->cid, __func__);
 
@@ -4244,7 +4245,8 @@ sr_shmsub_rpc_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t mo
 
     /* check that SHM is still valid even after the lock was released and re-acquired */
     if ((sub_info->event != ATOMIC_LOAD_RELAXED(multi_sub_shm->event)) ||
-            (sub_info->request_id != ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id))) {
+            (sub_info->request_id != ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id)) ||
+            (sub_info->priority != ATOMIC_LOAD_RELAXED(multi_sub_shm->priority))) {
         /* SUB READ/WRITE UNLOCK */
         sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, mode, ev_sess->conn->cid, __func__);
 
