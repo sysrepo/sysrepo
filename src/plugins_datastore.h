@@ -40,7 +40,7 @@ extern "C" {
 /**
  * @brief Datastore plugin API version
  */
-#define SRPLG_DS_API_VERSION 10
+#define SRPLG_DS_API_VERSION 11
 
 /**
  * @brief Setup datastore of a newly installed module.
@@ -263,6 +263,28 @@ typedef sr_error_info_t *(*srds_last_modif)(const struct lys_module *mod, sr_dat
         struct timespec *mtime);
 
 /**
+ * @brief Get the current datastore data version, optional callback.
+ *
+ * The function must return a higher @p version (number) than previously in case the data has changed in the meantime.
+ * This callback needs to be defined in case the data can be changed by other sources than *sysrepo*, to make sure
+ * any cached data are invalidated and current data loaded instead.
+ *
+ * @note The ::srds_last_modif callback could be used to implement this callback but the reason it is not used directly
+ * is that, in general, the (file) system does not guarantee that file modification time is updated on every file change.
+ * Specifically, the timestamp for this purpose may be cached and if a change happens right after a previous change,
+ * the timestamp written may be the same, which is a CRITICAL problem because the old data would be considered current.
+ *
+ * @param[in] mod Specific module.
+ * @param[in] ds Specific datastore, set always to ::SR_DS_RUNNING.
+ * @param[in] plg_data Plugin data.
+ * @param[out] version Current data version, different than the previous if data changed since then.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+typedef sr_error_info_t *(*srds_data_version)(const struct lys_module *mod, sr_datastore_t ds, void *plg_data,
+        uint32_t *version);
+
+/**
  * @brief Datastore plugin structure
  */
 struct srplg_ds_s {
@@ -282,6 +304,7 @@ struct srplg_ds_s {
     srds_access_get access_get_cb;  /**< callback for getting access rights for module data */
     srds_access_check access_check_cb;  /**< callback for checking user access to module data */
     srds_last_modif last_modif_cb;  /**< callback for getting the time of last modification */
+    srds_data_version data_version_cb;  /**< optional callback for checking data version */
 };
 
 /**

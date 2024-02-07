@@ -3046,7 +3046,7 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
     struct sr_mod_info_mod_s *mod;
     struct sr_run_cache_s *cmod;
     struct lyd_node *mod_data;
-    uint32_t i, j;
+    uint32_t i, j, cur_id;
     void *mem;
 
     assert(has_lock == SR_LOCK_READ);
@@ -3090,7 +3090,15 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
         }
 
         /* check whether the data are current */
-        if (cmod->id == mod->shm_mod->run_cache_id) {
+        if (mod->ds_handle[SR_DS_RUNNING]->plugin->data_version_cb) {
+            if ((err_info = mod->ds_handle[SR_DS_RUNNING]->plugin->data_version_cb(mod->ly_mod, SR_DS_RUNNING,
+                    mod->ds_handle[SR_DS_RUNNING]->plg_data, &cur_id))) {
+                goto cleanup;
+            }
+        } else {
+            cur_id = mod->shm_mod->run_cache_id;
+        }
+        if (cmod->id == cur_id) {
             continue;
         }
 
@@ -3124,7 +3132,7 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
         }
 
         /* update the cached data ID */
-        cmod->id = mod->shm_mod->run_cache_id;
+        cmod->id = cur_id;
     }
 
 cleanup:

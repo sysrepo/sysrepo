@@ -3379,7 +3379,7 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                 goto cleanup;
             }
 
-            /* update the cache ID because data were modified */
+            /* update the cache ID because data were modified, ignored if data_version callback is used instead */
             mod->shm_mod->run_cache_id++;
 
             /* connect them back */
