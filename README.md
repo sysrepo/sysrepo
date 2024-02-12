@@ -258,6 +258,14 @@ It is possible to change the repository path by setting `SYSREPO_REPOSITORY_PATH
 Also, if `SYSREPO_SHM_PREFIX` is defined, it is used for all SHM files created. This way
 everal *sysrepo* instances can effectively be run simultanously on one machine.
 
+## CLI
+
+There are 2 simple binaries `sysrepoctl(1)` and `sysrepocfg(1)` included that can execute commands related to
+managed YANG modules and stored YANG data, respectively. Full CLI is available only as separate projects such as:
+
+* [onm-cli](https://github.com/okda-networks/onm-cli) (`C`)
+* [netconf-cli](https://github.com/CESNET/netconf-cli) (`C++`) - includes `sysrepo-cli`
+
 ## Factory Default
 
 The `factory-default` datastore contents of a module are automatically populated by the initial data used
