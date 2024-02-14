@@ -50,9 +50,28 @@ module alarms {
     }
   }
   container active-alarm-list {
-    config false;
     list active-alarms {
+      config false;
       uses alarm;
+    }
+
+    container alarm-inventory {
+      config false;
+      list alarm-type {
+        key "alarm-type-id alarm-type-qualifier";
+
+        leaf alarm-type-id {
+          type string;
+        }
+        leaf alarm-type-qualifier {
+          type string;
+        }
+        leaf-list resource {
+          type instance-identifier {
+            require-instance false;
+          }
+        }
+      }
     }
   }
   notification alarm-notif {

@@ -1601,6 +1601,419 @@ test_state_list2(void **state)
 }
 
 /* TEST */
+static int
+state_leaflist_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        sr_event_t event, uint32_t request_id, void *private_data)
+{
+    struct state *st = (struct state *)private_data;
+    sr_change_oper_t op;
+    sr_change_iter_t *iter;
+    const struct lyd_node *node;
+    const char *prev_value;
+    int ret;
+
+    (void)sub_id;
+    (void)request_id;
+
+    assert_string_equal(module_name, "alarms");
+    assert_null(xpath);
+
+    switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
+    case 0:
+    case 1:
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) % 2 == 0) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/alarms:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "active-alarm-list");
+        assert_null(prev_value);
+
+        /* 2nd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "alarm-inventory");
+        assert_null(prev_value);
+
+        /* 1st list instance */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "alarm-type");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "alarm-type-id");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "alarm-type-qualifier");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "resource");
+        assert_string_equal(prev_value, "");
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "resource");
+        assert_string_equal(prev_value, "1");
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "resource");
+        assert_string_equal(prev_value, "2");
+
+        /* 2nd list instance */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "alarm-type");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "alarm-type-id");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "alarm-type-qualifier");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "resource");
+        assert_string_equal(prev_value, "");
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "resource");
+        assert_string_equal(prev_value, "1");
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "resource");
+        assert_string_equal(prev_value, "2");
+
+        /* 3rd list instance */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "alarm-type");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "alarm-type-id");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "alarm-type-qualifier");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "resource");
+        assert_string_equal(prev_value, "");
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "resource");
+        assert_string_equal(prev_value, "1");
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "resource");
+        assert_string_equal(prev_value, "2");
+
+        /* 4th list instance */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "alarm-type");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "alarm-type-id");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "alarm-type-qualifier");
+        assert_null(prev_value);
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "resource");
+        assert_string_equal(prev_value, "");
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "resource");
+        assert_string_equal(prev_value, "1");
+
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(node->schema->name, "resource");
+        assert_string_equal(prev_value, "2");
+
+        /* no more changes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    default:
+        fail();
+    }
+
+    ATOMIC_INC_RELAXED(st->cb_called);
+    return SR_ERR_OK;
+}
+
+static void
+test_state_leaflist(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr = NULL;
+    const struct ly_ctx *ctx;
+    struct lyd_node *edit;
+    sr_data_t *data;
+    char *str1;
+    const char *json, *str2;
+    int ret;
+
+    json = "{\n"
+            "  \"alarms:active-alarm-list\": {\n"
+            "    \"@\": {\n"
+            "      \"ietf-netconf:operation\": \"merge\",\n"
+            "      \"ietf-origin:origin\": \"ietf-origin:intended\"\n"
+            "    },\n"
+            "    \"alarm-inventory\": {\n"
+            "      \"@\": {\n"
+            "        \"ietf-origin:origin\": \"ietf-origin:unknown\"\n"
+            "      },\n"
+            "      \"alarm-type\": [\n"
+            "        {\n"
+            "          \"@\": {\n"
+            "            \"ietf-origin:origin\": \"ietf-origin:unknown\"\n"
+            "          },\n"
+            "          \"alarm-type-id\": \"sensor-high-value-alarm\",\n"
+            "          \"alarm-type-qualifier\": \"\",\n"
+            "          \"resource\": [\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='eth0']\",\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='eth1']\",\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='lo0']\"\n"
+            "          ],\n"
+            "          \"@resource\": [\n"
+            "            {\n"
+            "              \"sysrepo:dup-inst-list-position\": [null],\n"
+            "              \"ietf-netconf:operation\": \"merge\"\n"
+            "            },\n"
+            "            {\n"
+            "              \"sysrepo:dup-inst-list-position\": [null],\n"
+            "              \"ietf-netconf:operation\": \"merge\"\n"
+            "            },\n"
+            "            {\n"
+            "              \"sysrepo:dup-inst-list-position\": [null],\n"
+            "              \"ietf-netconf:operation\": \"merge\"\n"
+            "            }\n"
+            "          ]\n"
+            "        },\n"
+            "        {\n"
+            "          \"alarm-type-id\": \"sensor-low-value-alarm\",\n"
+            "          \"alarm-type-qualifier\": \"\",\n"
+            "          \"resource\": [\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='eth0']\",\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='eth1']\",\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='lo0']\"\n"
+            "          ],\n"
+            "          \"@resource\": [\n"
+            "            {\n"
+            "              \"sysrepo:dup-inst-list-position\": [null],\n"
+            "              \"ietf-netconf:operation\": \"merge\"\n"
+            "            },\n"
+            "            {\n"
+            "              \"sysrepo:dup-inst-list-position\": [null],\n"
+            "              \"ietf-netconf:operation\": \"merge\"\n"
+            "            },\n"
+            "            {\n"
+            "              \"sysrepo:dup-inst-list-position\": [null],\n"
+            "              \"ietf-netconf:operation\": \"merge\"\n"
+            "            }\n"
+            "          ]\n"
+            "        },\n"
+            "        {\n"
+            "          \"alarm-type-id\": \"sensor-missing-alarm\",\n"
+            "          \"alarm-type-qualifier\": \"\",\n"
+            "          \"resource\": [\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='eth0']\",\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='eth1']\",\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='lo0']\"\n"
+            "          ],\n"
+            "          \"@resource\": [\n"
+            "            {\n"
+            "              \"sysrepo:dup-inst-list-position\": [null],\n"
+            "              \"ietf-netconf:operation\": \"merge\"\n"
+            "            },\n"
+            "            {\n"
+            "              \"sysrepo:dup-inst-list-position\": [null],\n"
+            "              \"ietf-netconf:operation\": \"merge\"\n"
+            "            },\n"
+            "            {\n"
+            "              \"sysrepo:dup-inst-list-position\": [null],\n"
+            "              \"ietf-netconf:operation\": \"merge\"\n"
+            "            }\n"
+            "          ]\n"
+            "        },\n"
+            "        {\n"
+            "          \"alarm-type-id\": \"sensor-nonoperational\",\n"
+            "          \"alarm-type-qualifier\": \"\",\n"
+            "          \"resource\": [\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='eth0']\",\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='eth1']\",\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='lo0']\"\n"
+            "          ],\n"
+            "          \"@resource\": [\n"
+            "            {\n"
+            "              \"sysrepo:dup-inst-list-position\": [null],\n"
+            "              \"ietf-netconf:operation\": \"merge\"\n"
+            "            },\n"
+            "            {\n"
+            "              \"sysrepo:dup-inst-list-position\": [null],\n"
+            "              \"ietf-netconf:operation\": \"merge\"\n"
+            "            },\n"
+            "            {\n"
+            "              \"sysrepo:dup-inst-list-position\": [null],\n"
+            "              \"ietf-netconf:operation\": \"merge\"\n"
+            "            }\n"
+            "          ]\n"
+            "        }\n"
+            "      ]\n"
+            "    }\n"
+            "  }\n"
+            "}\n";
+
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe */
+    ATOMIC_STORE_RELAXED(st->cb_called, 0);
+    ret = sr_module_change_subscribe(st->sess, "alarms", NULL, state_leaflist_change_cb, st, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set oper data */
+    ctx = sr_acquire_context(st->conn);
+    sr_release_context(st->conn);
+    ret = lyd_parse_data_mem(ctx, json, LYD_JSON, LYD_PARSE_ONLY, 0, &edit);
+    assert_int_equal(ret, LY_SUCCESS);
+    ret = sr_edit_batch(st->sess, edit, "merge");
+    assert_int_equal(ret, SR_ERR_OK);
+    lyd_free_siblings(edit);
+
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    ATOMIC_STORE_RELAXED(st->cb_called, 2);
+
+    /* read the operational data #1 */
+    ret = sr_get_data(st->sess, "/alarms:active-alarm-list", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_JSON, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+
+    str2 =
+            "{\n"
+            "  \"alarms:active-alarm-list\": {\n"
+            "    \"alarm-inventory\": {\n"
+            "      \"alarm-type\": [\n"
+            "        {\n"
+            "          \"alarm-type-id\": \"sensor-high-value-alarm\",\n"
+            "          \"alarm-type-qualifier\": \"\",\n"
+            "          \"resource\": [\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='eth0']\",\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='eth1']\",\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='lo0']\"\n"
+            "          ]\n"
+            "        },\n"
+            "        {\n"
+            "          \"alarm-type-id\": \"sensor-low-value-alarm\",\n"
+            "          \"alarm-type-qualifier\": \"\",\n"
+            "          \"resource\": [\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='eth0']\",\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='eth1']\",\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='lo0']\"\n"
+            "          ]\n"
+            "        },\n"
+            "        {\n"
+            "          \"alarm-type-id\": \"sensor-missing-alarm\",\n"
+            "          \"alarm-type-qualifier\": \"\",\n"
+            "          \"resource\": [\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='eth0']\",\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='eth1']\",\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='lo0']\"\n"
+            "          ]\n"
+            "        },\n"
+            "        {\n"
+            "          \"alarm-type-id\": \"sensor-nonoperational\",\n"
+            "          \"alarm-type-qualifier\": \"\",\n"
+            "          \"resource\": [\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='eth0']\",\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='eth1']\",\n"
+            "            \"/ietf-interfaces:interfaces/interface[name='lo0']\"\n"
+            "          ]\n"
+            "        }\n"
+            "      ]\n"
+            "    }\n"
+            "  }\n"
+            "}\n";
+
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    sr_unsubscribe(subscr);
+}
+
+/* TEST */
 static void
 test_config(void **state)
 {
@@ -3464,6 +3877,7 @@ main(void)
         cmocka_unit_test_teardown(test_state, clear_up),
         cmocka_unit_test_teardown(test_state_list, clear_up),
         cmocka_unit_test_teardown(test_state_list2, clear_up),
+        cmocka_unit_test_teardown(test_state_leaflist, clear_up),
         cmocka_unit_test_teardown(test_config, clear_up),
         cmocka_unit_test_teardown(test_top_list, clear_up),
         cmocka_unit_test_teardown(test_top_leaf, clear_up),
