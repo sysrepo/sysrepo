@@ -1721,79 +1721,113 @@ state_leaflist_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char 
         assert_string_equal(node->schema->name, "resource");
         assert_string_equal(prev_value, "2");
 
-        /* 3rd list instance */
+        /* no more changes */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_NOT_FOUND);
+
+        sr_free_change_iter(iter);
+        break;
+    case 2:
+    case 3:
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) % 2 == 0) {
+            assert_int_equal(event, SR_EV_CHANGE);
+        } else {
+            assert_int_equal(event, SR_EV_DONE);
+        }
+
+        /* get changes iter */
+        ret = sr_get_changes_iter(session, "/alarms:*//.", &iter);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        /* 1st change */
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
-        assert_int_equal(op, SR_OP_CREATED);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "active-alarm-list");
+        assert_null(prev_value);
+
+        /* 2nd change */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+
+        assert_int_equal(op, SR_OP_DELETED);
+        assert_string_equal(node->schema->name, "alarm-inventory");
+        assert_null(prev_value);
+
+        /* 1st list instance */
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
+        assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_DELETED);
         assert_string_equal(node->schema->name, "alarm-type");
         assert_null(prev_value);
 
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
-        assert_int_equal(op, SR_OP_CREATED);
+        assert_int_equal(op, SR_OP_DELETED);
         assert_string_equal(node->schema->name, "alarm-type-id");
         assert_null(prev_value);
 
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
-        assert_int_equal(op, SR_OP_CREATED);
+        assert_int_equal(op, SR_OP_DELETED);
         assert_string_equal(node->schema->name, "alarm-type-qualifier");
         assert_null(prev_value);
 
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
-        assert_int_equal(op, SR_OP_CREATED);
+        assert_int_equal(op, SR_OP_DELETED);
         assert_string_equal(node->schema->name, "resource");
-        assert_string_equal(prev_value, "");
+        assert_null(prev_value);
 
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
-        assert_int_equal(op, SR_OP_CREATED);
+        assert_int_equal(op, SR_OP_DELETED);
         assert_string_equal(node->schema->name, "resource");
-        assert_string_equal(prev_value, "1");
+        assert_null(prev_value);
 
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
-        assert_int_equal(op, SR_OP_CREATED);
+        assert_int_equal(op, SR_OP_DELETED);
         assert_string_equal(node->schema->name, "resource");
-        assert_string_equal(prev_value, "2");
+        assert_null(prev_value);
 
-        /* 4th list instance */
+        /* 2nd list instance */
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
-        assert_int_equal(op, SR_OP_CREATED);
+        assert_int_equal(op, SR_OP_DELETED);
         assert_string_equal(node->schema->name, "alarm-type");
         assert_null(prev_value);
 
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
-        assert_int_equal(op, SR_OP_CREATED);
+        assert_int_equal(op, SR_OP_DELETED);
         assert_string_equal(node->schema->name, "alarm-type-id");
         assert_null(prev_value);
 
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
-        assert_int_equal(op, SR_OP_CREATED);
+        assert_int_equal(op, SR_OP_DELETED);
         assert_string_equal(node->schema->name, "alarm-type-qualifier");
         assert_null(prev_value);
 
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
-        assert_int_equal(op, SR_OP_CREATED);
+        assert_int_equal(op, SR_OP_DELETED);
         assert_string_equal(node->schema->name, "resource");
-        assert_string_equal(prev_value, "");
+        assert_null(prev_value);
 
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
-        assert_int_equal(op, SR_OP_CREATED);
+        assert_int_equal(op, SR_OP_DELETED);
         assert_string_equal(node->schema->name, "resource");
-        assert_string_equal(prev_value, "1");
+        assert_null(prev_value);
 
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
-        assert_int_equal(op, SR_OP_CREATED);
+        assert_int_equal(op, SR_OP_DELETED);
         assert_string_equal(node->schema->name, "resource");
-        assert_string_equal(prev_value, "2");
+        assert_null(prev_value);
 
         /* no more changes */
         ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
@@ -1880,52 +1914,6 @@ test_state_leaflist(void **state)
             "              \"ietf-netconf:operation\": \"merge\"\n"
             "            }\n"
             "          ]\n"
-            "        },\n"
-            "        {\n"
-            "          \"alarm-type-id\": \"sensor-missing-alarm\",\n"
-            "          \"alarm-type-qualifier\": \"\",\n"
-            "          \"resource\": [\n"
-            "            \"/ietf-interfaces:interfaces/interface[name='eth0']\",\n"
-            "            \"/ietf-interfaces:interfaces/interface[name='eth1']\",\n"
-            "            \"/ietf-interfaces:interfaces/interface[name='lo0']\"\n"
-            "          ],\n"
-            "          \"@resource\": [\n"
-            "            {\n"
-            "              \"sysrepo:dup-inst-list-position\": [null],\n"
-            "              \"ietf-netconf:operation\": \"merge\"\n"
-            "            },\n"
-            "            {\n"
-            "              \"sysrepo:dup-inst-list-position\": [null],\n"
-            "              \"ietf-netconf:operation\": \"merge\"\n"
-            "            },\n"
-            "            {\n"
-            "              \"sysrepo:dup-inst-list-position\": [null],\n"
-            "              \"ietf-netconf:operation\": \"merge\"\n"
-            "            }\n"
-            "          ]\n"
-            "        },\n"
-            "        {\n"
-            "          \"alarm-type-id\": \"sensor-nonoperational\",\n"
-            "          \"alarm-type-qualifier\": \"\",\n"
-            "          \"resource\": [\n"
-            "            \"/ietf-interfaces:interfaces/interface[name='eth0']\",\n"
-            "            \"/ietf-interfaces:interfaces/interface[name='eth1']\",\n"
-            "            \"/ietf-interfaces:interfaces/interface[name='lo0']\"\n"
-            "          ],\n"
-            "          \"@resource\": [\n"
-            "            {\n"
-            "              \"sysrepo:dup-inst-list-position\": [null],\n"
-            "              \"ietf-netconf:operation\": \"merge\"\n"
-            "            },\n"
-            "            {\n"
-            "              \"sysrepo:dup-inst-list-position\": [null],\n"
-            "              \"ietf-netconf:operation\": \"merge\"\n"
-            "            },\n"
-            "            {\n"
-            "              \"sysrepo:dup-inst-list-position\": [null],\n"
-            "              \"ietf-netconf:operation\": \"merge\"\n"
-            "            }\n"
-            "          ]\n"
             "        }\n"
             "      ]\n"
             "    }\n"
@@ -1951,7 +1939,6 @@ test_state_leaflist(void **state)
 
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
-
     ATOMIC_STORE_RELAXED(st->cb_called, 2);
 
     /* read the operational data #1 */
@@ -1983,24 +1970,6 @@ test_state_leaflist(void **state)
             "            \"/ietf-interfaces:interfaces/interface[name='eth1']\",\n"
             "            \"/ietf-interfaces:interfaces/interface[name='lo0']\"\n"
             "          ]\n"
-            "        },\n"
-            "        {\n"
-            "          \"alarm-type-id\": \"sensor-missing-alarm\",\n"
-            "          \"alarm-type-qualifier\": \"\",\n"
-            "          \"resource\": [\n"
-            "            \"/ietf-interfaces:interfaces/interface[name='eth0']\",\n"
-            "            \"/ietf-interfaces:interfaces/interface[name='eth1']\",\n"
-            "            \"/ietf-interfaces:interfaces/interface[name='lo0']\"\n"
-            "          ]\n"
-            "        },\n"
-            "        {\n"
-            "          \"alarm-type-id\": \"sensor-nonoperational\",\n"
-            "          \"alarm-type-qualifier\": \"\",\n"
-            "          \"resource\": [\n"
-            "            \"/ietf-interfaces:interfaces/interface[name='eth0']\",\n"
-            "            \"/ietf-interfaces:interfaces/interface[name='eth1']\",\n"
-            "            \"/ietf-interfaces:interfaces/interface[name='lo0']\"\n"
-            "          ]\n"
             "        }\n"
             "      ]\n"
             "    }\n"
@@ -2009,6 +1978,13 @@ test_state_leaflist(void **state)
 
     assert_string_equal(str1, str2);
     free(str1);
+
+    /* delete oper data */
+    ret = sr_discard_items(st->sess, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ATOMIC_STORE_RELAXED(st->cb_called, 4);
 
     sr_unsubscribe(subscr);
 }

@@ -804,11 +804,11 @@ sr_edit_diff_create_parents(const struct lyd_node *node, struct lyd_node **tree,
         if (!*tree) {
             tree_parent = NULL;
         } else {
-            if ((err_info = sr_lyd_find_path(*tree, path_str, &tree_parent))) {
+            if ((err_info = sr_lyd_find_path(*tree, path_str, 1, &tree_parent))) {
                 goto cleanup;
             }
         }
-        if (!tree_parent) {
+        if (!tree_parent || (lyd_parent(node)->schema != tree_parent->schema)) {
             /* create the missing parents */
             if ((err_info = sr_lyd_dup(lyd_parent(node), tree_parent, LYD_DUP_NO_META | LYD_DUP_WITH_PARENTS, 0, node_parent))) {
                 goto cleanup;
