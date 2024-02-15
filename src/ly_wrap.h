@@ -449,10 +449,12 @@ sr_error_info_t *sr_lyd_find_xpath_root(const struct lyd_node *tree, const char 
  *
  * @param[in] tree Data tree to search.
  * @param[in] path Path expression in JSON format.
+ * @param[in] with_incomplete Whether an intermediare parent should be returned or NULL in this case.
  * @param[out] match Found node.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lyd_find_path(const struct lyd_node *tree, const char *path, struct lyd_node **match);
+sr_error_info_t *sr_lyd_find_path(const struct lyd_node *tree, const char *path, int with_incomplete,
+        struct lyd_node **match);
 
 /**
  * @brief Find the first matching sibling.

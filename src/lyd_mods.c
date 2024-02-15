@@ -838,7 +838,7 @@ sr_lydmods_add_deps_all(const struct ly_ctx *ly_ctx, struct lyd_node *sr_mods)
             }
 
             /* find the dependent module */
-            err_info = sr_lyd_find_path(lyd_parent(sr_mod), xpath, &sr_mod2);
+            err_info = sr_lyd_find_path(lyd_parent(sr_mod), xpath, 0, &sr_mod2);
             free(xpath);
             if (err_info) {
                 goto cleanup;
@@ -883,7 +883,7 @@ sr_lydmods_print(struct lyd_node **sr_mods)
     }
 
     /* update content-id */
-    if ((err_info = sr_lyd_find_path(*sr_mods, "/sysrepo:sysrepo-modules/content-id", &node))) {
+    if ((err_info = sr_lyd_find_path(*sr_mods, "/sysrepo:sysrepo-modules/content-id", 0, &node))) {
         return err_info;
     }
     hash = ly_ctx_get_modules_hash(sr_ly_mod->ctx);
@@ -1343,9 +1343,10 @@ sr_lydmods_change_chng_feature(const struct ly_ctx *ly_ctx, const struct lys_mod
         SR_ERRINFO_MEM(&err_info);
         goto cleanup;
     }
-    if ((err_info = sr_lyd_find_path(*sr_mods, path, &sr_mod))) {
+    if ((err_info = sr_lyd_find_path(*sr_mods, path, 0, &sr_mod))) {
         goto cleanup;
     }
+    SR_CHECK_INT_GOTO(!sr_mod, err_info, cleanup);
 
     if (enable) {
         /* add enabled feature */
@@ -1361,9 +1362,10 @@ sr_lydmods_change_chng_feature(const struct ly_ctx *ly_ctx, const struct lys_mod
             SR_ERRINFO_MEM(&err_info);
             goto cleanup;
         }
-        if ((err_info = sr_lyd_find_path(sr_mod, path, &node))) {
+        if ((err_info = sr_lyd_find_path(sr_mod, path, 0, &node))) {
             goto cleanup;
         }
+        SR_CHECK_INT_GOTO(!node, err_info, cleanup);
         lyd_free_tree(node);
 
         SR_LOG_INF("Module \"%s\" feature \"%s\" disabled.", old_mod->name, feat_name);
@@ -1413,7 +1415,10 @@ sr_lydmods_update_replay_support_module(const struct lys_module *ly_mod, struct 
     const struct sr_ntf_handle_s *ntf_handle;
     char *buf = NULL;
 
-    lyd_find_path(sr_mod, "replay-support", 0, &sr_replay);
+    if ((err_info = sr_lyd_find_path(sr_mod, "replay-support", 0, &sr_replay))) {
+        return err_info;
+    }
+
     if (!enable && sr_replay) {
         /* remove replay support */
         lyd_free_tree(sr_replay);
@@ -1427,9 +1432,10 @@ sr_lydmods_update_replay_support_module(const struct lys_module *ly_mod, struct 
         SR_LOG_INF("Module \"%s\" replay support disabled.", ly_mod->name);
     } else if (enable && !sr_replay) {
         /* find NTF plugin */
-        if ((err_info = sr_lyd_find_path(sr_mod, "plugin[datastore='notification']/name", &sr_plg_name))) {
+        if ((err_info = sr_lyd_find_path(sr_mod, "plugin[datastore='notification']/name", 0, &sr_plg_name))) {
             return err_info;
         }
+        SR_CHECK_INT_RET(!sr_plg_name, err_info);
         if ((err_info = sr_ntf_handle_find(lyd_get_value(sr_plg_name), conn, &ntf_handle))) {
             return err_info;
         }
@@ -1484,7 +1490,9 @@ sr_lydmods_change_chng_replay_support(const struct lys_module *ly_mod, int enabl
         }
 
         /* we expect the module to exist */
-        lyd_find_path(*sr_mods, path, 0, &sr_mod);
+        if ((err_info = sr_lyd_find_path(*sr_mods, path, 0, &sr_mod))) {
+            goto cleanup;
+        }
         assert(sr_mod);
 
         /* set replay support */

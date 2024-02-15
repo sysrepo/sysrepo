@@ -819,7 +819,9 @@ sr_edit_diff_create_parents(const struct lyd_node *node, struct lyd_node **tree,
 
             /* append to tree if no parent existed */
             if (!tree_parent) {
-                lyd_insert_sibling(*tree, *top_parent, tree);
+                if ((err_info = sr_lyd_insert_sibling(*tree, *top_parent, tree))) {
+                    goto cleanup;
+                }
             }
         } else {
             /* parent already exists */

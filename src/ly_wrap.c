@@ -986,7 +986,7 @@ cleanup:
 }
 
 sr_error_info_t *
-sr_lyd_find_path(const struct lyd_node *tree, const char *path, struct lyd_node **match)
+sr_lyd_find_path(const struct lyd_node *tree, const char *path, int with_incomplete, struct lyd_node **match)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t temp_lo = LY_LOSTORE;
@@ -996,7 +996,9 @@ sr_lyd_find_path(const struct lyd_node *tree, const char *path, struct lyd_node 
 
     lyrc = lyd_find_path(tree, path, 0, match);
     if (lyrc == LY_EINCOMPLETE) {
-        *match = NULL;
+        if (!with_incomplete) {
+            *match = NULL;
+        }
     } else if (lyrc && (lyrc != LY_ENOTFOUND)) {
         sr_errinfo_new_ly(&err_info, LYD_CTX(tree), NULL, SR_ERR_LY);
         goto cleanup;

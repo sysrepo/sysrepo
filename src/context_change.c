@@ -352,14 +352,13 @@ sr_lycc_del_module(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const struc
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
     const struct lyd_node *sr_mod = NULL;
-    struct lyd_node *sr_plg_name;
+    struct lyd_node *sr_plg_name, *sr_rpl_sup;
     struct ly_set del_set = {0};
     char *path;
     uint32_t i;
     sr_datastore_t ds;
     const struct sr_ds_handle_s *ds_handle;
     const struct sr_ntf_handle_s *ntf_handle;
-    LY_ERR lyrc;
     int r;
 
     for (i = 0; i < mod_set->count; ++i) {
@@ -376,13 +375,17 @@ sr_lycc_del_module(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const struc
             /* get plugin name */
             r = asprintf(&path, "plugin[datastore='%s']/name", sr_mod_ds2ident(ds));
             SR_CHECK_MEM_GOTO(r == -1, err_info, cleanup);
-            lyrc = lyd_find_path(sr_mod, path, 0, &sr_plg_name);
+            err_info = sr_lyd_find_path(sr_mod, path, 0, &sr_plg_name);
             free(path);
-            if ((ds == SR_DS_RUNNING) && lyrc) {
+            if (err_info) {
+                goto cleanup;
+            }
+
+            if ((ds == SR_DS_RUNNING) && !sr_plg_name) {
                 /* 'running' disabled */
                 continue;
             }
-            SR_CHECK_INT_GOTO(lyrc, err_info, cleanup);
+            SR_CHECK_INT_GOTO(!sr_plg_name, err_info, cleanup);
 
             /* find plugin */
             if ((err_info = sr_ds_handle_find(lyd_get_value(sr_plg_name), conn, &ds_handle))) {
@@ -396,15 +399,20 @@ sr_lycc_del_module(sr_conn_ctx_t *conn, const struct ly_ctx *ly_ctx, const struc
         }
 
         /* destroy notifications if replay support was enabled */
-        if (!lyd_find_path(sr_mod, "replay-support", 0, NULL)) {
+        if ((err_info = sr_lyd_find_path(sr_mod, "replay-support", 0, &sr_rpl_sup))) {
+            goto cleanup;
+        }
+        if (sr_rpl_sup) {
             /* find plugin */
             r = asprintf(&path, "plugin[datastore='%s']/name", sr_mod_ds2ident(SR_MOD_DS_NOTIF));
             SR_CHECK_MEM_GOTO(r == -1, err_info, cleanup);
-            err_info = sr_lyd_find_path(sr_mod, path, &sr_plg_name);
+            err_info = sr_lyd_find_path(sr_mod, path, 0, &sr_plg_name);
             free(path);
             if (err_info) {
                 goto cleanup;
             }
+
+            SR_CHECK_INT_GOTO(!sr_plg_name, err_info, cleanup);
             if ((err_info = sr_ntf_handle_find(lyd_get_value(sr_plg_name), conn, &ntf_handle))) {
                 goto cleanup;
             }
@@ -524,11 +532,12 @@ sr_lycc_set_replay_support(sr_conn_ctx_t *conn, const struct ly_set *mod_set, in
             SR_ERRINFO_MEM(&err_info);
             goto cleanup;
         }
-        err_info = sr_lyd_find_path(sr_mods, path, &sr_ntf_name);
+        err_info = sr_lyd_find_path(sr_mods, path, 0, &sr_ntf_name);
         free(path);
         if (err_info) {
             goto cleanup;
         }
+        SR_CHECK_INT_GOTO(!sr_ntf_name, err_info, cleanup);
 
         /* find plugin */
         if ((err_info = sr_ntf_handle_find(lyd_get_value(sr_ntf_name), conn, &ntf_handle))) {
