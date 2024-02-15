@@ -45,9 +45,8 @@ extern "C" {
 /**
  * @brief Setup datastore of a newly installed module.
  *
- * Install is called once for every new installed module for each datastore. Right after that ::srds_init
- * is called. Afterwards, the data of the module must be valid meaning any following ::srds_load
- * __must return valid data__ and ::srds_last_modif should return a valid timestamp (unless the module has no data).
+ * Install is called once for every new installed module for each enabled datastore. Right after that ::srds_init
+ * is called.
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
@@ -76,7 +75,8 @@ typedef sr_error_info_t *(*srds_uninstall)(const struct lys_module *mod, sr_data
  * @brief Initialize data of a newly installed module.
  *
  * Init is called after fresh reboot of the system for every module for each datastore.
- * Also, right after ::srds_install is called.
+ * Also, right after ::srds_install is called and afterwards the data of the module must be valid meaning any
+ * following ::srds_load __must return the stored data__ (may be empty).
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
@@ -248,12 +248,12 @@ typedef sr_error_info_t *(*srds_access_check)(const struct lys_module *mod, sr_d
         int *write);
 
 /**
- * @brief Get the time when the datastore data of the module were last modified.
- *
- * The function succeedes even if the respective file does not exist. In such a case the @p mtime is set to 0.
+ * @brief Get the time when the datastore data of the module were last modified or 0 if the datastore data
+ * are not modified (see @p ds).
  *
  * @param[in] mod Specific module.
- * @param[in] ds Specific datastore.
+ * @param[in] ds Specific datastore. For ::SR_DS_CANDIDATE and ::SR_DS_OPERATIONAL, in case there and no data/changes
+ * stored, @p mtime should be set to 0.
  * @param[in] plg_data Plugin data.
  * @param[out] mtime Time of last modification, or 0 when it is unknown.
  * @return NULL on success;
