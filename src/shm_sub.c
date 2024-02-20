@@ -3312,8 +3312,8 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
     }
 
     /* parse event diff */
-    if ((err_info = sr_lyd_parse_data(conn->ly_ctx, shm_data_ptr, NULL, LYD_LYB, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0,
-            &diff))) {
+    if ((err_info = sr_lyd_parse_data(conn->ly_ctx, shm_data_ptr, NULL, LYD_LYB,
+            LYD_PARSE_ONLY | LYD_PARSE_STRICT | LYD_PARSE_ORDERED, 0, &diff))) {
         SR_ERRINFO_INT(&err_info);
         goto cleanup;
     }

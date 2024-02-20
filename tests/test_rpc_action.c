@@ -1711,7 +1711,7 @@ rpc_factory_reset_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_
         sr_event_t event, uint32_t request_id, struct lyd_node *output, void *private_data)
 {
     struct state *st = private_data;
-    const char *modules[] = {"ietf-netconf-acm", "sysrepo-plugind", "test", "ietf-interfaces", "ops-ref", "ops", "act", "sm"};
+    const char *modules[] = {"act", "ietf-interfaces", "ietf-netconf-acm", "ops", "ops-ref", "sm", "sysrepo-plugind", "test"};
     struct ly_set *set;
     uint32_t i;
     int ret;
