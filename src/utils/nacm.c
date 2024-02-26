@@ -1848,7 +1848,7 @@ sr_nacm_check_data_read_filter_r(const struct lyd_node *subtree, const char *use
     if (node_access == SR_NACM_ACCESS_DENY) {
         /* never deny keys */
         if (!lysc_is_key(subtree->schema) && ly_set_add(denied, subtree, 1, NULL)) {
-            sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_errmsg());
+            sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
             return err_info;
         }
         return NULL;
@@ -1894,7 +1894,7 @@ sr_nacm_check_data_read_filter_select_r(const struct lyd_node *subtree, const ch
                     parent = lyd_parent(parent);
                 }
                 if (ly_set_add(denied, parent, 1, NULL)) {
-                    sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_errmsg());
+                    sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
                     return err_info;
                 }
                 return NULL;

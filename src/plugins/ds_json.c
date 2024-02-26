@@ -507,7 +507,7 @@ srpds_json_load(const struct lys_module *mod, sr_datastore_t ds, const char **UN
     }
 
     /* set parse options */
-    parse_opts = LYD_PARSE_ONLY | LYD_PARSE_ORDERED;
+    parse_opts = LYD_PARSE_STORE_ONLY | LYD_PARSE_ORDERED;
     if (ds == SR_DS_OPERATIONAL) {
         /* edit may include opaque nodes */
         parse_opts |= LYD_PARSE_OPAQ;

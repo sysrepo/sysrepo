@@ -358,7 +358,7 @@ test_rpc(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
     assert_string_equal(err_info->err[0].message, "Invalid leafref value \"l1-val\" - no target instance \"/or:l1\" with the same value. "
-            "(Data location \"/ops:rpc1/l1\".)");
+            "(path \"/ops:rpc1/l1\")");
     assert_null(err_info->err[0].error_format);
     assert_string_equal(err_info->err[1].message, "RPC input validation failed.");
     assert_null(err_info->err[1].error_format);
@@ -388,7 +388,7 @@ test_rpc(void **state)
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
     assert_string_equal(err_info->err[0].message, "Invalid leafref value \"inval-ref\" - no target instance \"/or:l2\" "
-            "with the same value. (Data location \"/ops:rpc2/cont/l3\".)");
+            "with the same value. (path \"/ops:rpc2/cont/l3\")");
     assert_null(err_info->err[0].error_format);
     assert_string_equal(err_info->err[1].message, "RPC output validation failed.");
     assert_null(err_info->err[1].error_format);
@@ -468,7 +468,7 @@ rpc_action_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, c
         free(str1);
 
         /* create output data */
-        assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "l9", "l12-val", LYD_NEW_PATH_OUTPUT, &node));
+        assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "l9", "l12-val", LYD_NEW_VAL_OUTPUT, &node));
     } else if (!strcmp(op_path, "/ops:cont/list1/act2")) {
         /* check input data */
         ret = lyd_print_mem(&str1, input, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_SHRINK);
@@ -478,7 +478,7 @@ rpc_action_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, c
         free(str1);
 
         /* create output data */
-        assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "l11", "-65536", LYD_NEW_PATH_OUTPUT, &node));
+        assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "l11", "-65536", LYD_NEW_VAL_OUTPUT, &node));
     } else {
         fail();
     }
@@ -811,7 +811,7 @@ rpc_multi_fail0_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_pa
     ATOMIC_INC_RELAXED(st->cb_called);
 
     /* create output data in all cases, it should always be freed */
-    assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "l5", "0", LYD_NEW_PATH_OUTPUT, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "l5", "0", LYD_NEW_VAL_OUTPUT, NULL));
 
     switch (call_no) {
     case 1:
@@ -850,7 +850,7 @@ rpc_multi_fail1_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_pa
     ATOMIC_INC_RELAXED(st->cb_called);
 
     /* create output data in all cases, it should always be freed */
-    assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "l5", "1", LYD_NEW_PATH_OUTPUT, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "l5", "1", LYD_NEW_VAL_OUTPUT, NULL));
 
     switch (call_no) {
     case 1:
@@ -898,7 +898,7 @@ rpc_multi_fail2_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_pa
     ATOMIC_INC_RELAXED(st->cb_called);
 
     /* create output data in all cases, it should always be freed */
-    assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "l5", "2", LYD_NEW_PATH_OUTPUT, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "l5", "2", LYD_NEW_VAL_OUTPUT, NULL));
 
     switch (call_no) {
     case 1:
@@ -1218,7 +1218,7 @@ rpc_shelve_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, c
     }
 
     /* create output data */
-    assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "l5", "256", LYD_NEW_PATH_OUTPUT, NULL));
+    assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "l5", "256", LYD_NEW_VAL_OUTPUT, NULL));
 
     return SR_ERR_OK;
 }
@@ -1526,7 +1526,7 @@ rpc_rpc_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path,
     ATOMIC_INC_RELAXED(st->cb_called);
 
     /* create output data */
-    lyd_new_path(output, NULL, "l5", "256", LYD_NEW_PATH_OUTPUT, &node);
+    lyd_new_path(output, NULL, "l5", "256", LYD_NEW_VAL_OUTPUT, &node);
     assert_non_null(node);
 
     return SR_ERR_OK;
@@ -1583,11 +1583,11 @@ rpc_schema_mount_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_p
         break;
     case 1:
         assert_string_equal(op_path, "/sm:root/ops:rpc2");
-        assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "cont/l3", "val2", LYD_NEW_PATH_OUTPUT, NULL));
+        assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "cont/l3", "val2", LYD_NEW_VAL_OUTPUT, NULL));
         break;
     case 2:
         assert_string_equal(op_path, "/sm:root/ops:cont/list1/cont2/act1");
-        assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "l9", "val12", LYD_NEW_PATH_OUTPUT, NULL));
+        assert_int_equal(LY_SUCCESS, lyd_new_path(output, NULL, "l9", "val12", LYD_NEW_VAL_OUTPUT, NULL));
         break;
     default:
         fail();

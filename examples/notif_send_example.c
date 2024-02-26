@@ -65,14 +65,14 @@ main(int argc, char **argv)
 
     /* create the notification */
     if (lyd_new_path2(NULL, ctx, path, NULL, 0, 0, 0, &tree, &notif)) {
-        printf("Creating notification \"%s\" failed (%s).\n", path, ly_last_errmsg());
+        printf("Creating notification \"%s\" failed (%s).\n", path, ly_last_logmsg());
         goto cleanup;
     }
 
     /* add the input value */
     if (node_path) {
         if (lyd_new_path(notif, NULL, node_path, node_val, 0, NULL)) {
-            printf("Creating value \"%s\" failed (%s).\n", node_path, ly_last_errmsg());
+            printf("Creating value \"%s\" failed (%s).\n", node_path, ly_last_logmsg());
             goto cleanup;
         }
     }

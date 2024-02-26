@@ -46,7 +46,7 @@ static void
 sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx, const struct lyd_node *data,
         sr_error_t err_code)
 {
-    struct ly_err_item *e = NULL;
+    const struct ly_err_item *e = NULL;
     const struct lyd_node *node;
 
     if (ly_ctx) {
@@ -69,7 +69,7 @@ sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx, const
     if (!e) {
         /* this function is called only when an error is expected, but it is still possible there
          * will be none in a context, try to use the last */
-        sr_errinfo_new(err_info, err_code, "%s", ly_last_errmsg());
+        sr_errinfo_new(err_info, err_code, "%s", ly_last_logmsg());
         return;
     }
 
@@ -80,8 +80,8 @@ sr_errinfo_new_ly(sr_error_info_t **err_info, const struct ly_ctx *ly_ctx, const
         } else {
             assert(e->level == LY_LLERR);
             /* store it and print it */
-            if (e->path) {
-                sr_errinfo_new(err_info, err_code, "%s (%s)", e->msg, e->path);
+            if (e->data_path || e->schema_path) {
+                sr_errinfo_new(err_info, err_code, "%s (path \"%s\")", e->msg, e->data_path ? e->data_path : e->schema_path);
             } else {
                 sr_errinfo_new(err_info, err_code, "%s", e->msg);
             }
@@ -166,7 +166,7 @@ sr_ly_ctx_init(sr_conn_ctx_t *conn, struct ly_ctx **ly_ctx)
     lyrc = ly_ctx_new(yang_dir, ctx_opts, ly_ctx);
     free(yang_dir);
     if (lyrc) {
-        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_errmsg());
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
         sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Failed to create a new libyang context.");
         goto cleanup;
     }
@@ -231,12 +231,12 @@ sr_lys_parse(struct ly_ctx *ctx, const char *data, const char *path, LYS_INFORMA
 
     if (path) {
         if (ly_in_new_filepath(path, 0, &in)) {
-            sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_errmsg());
+            sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
             goto cleanup;
         }
     } else {
         if (ly_in_new_memory(data, &in)) {
-            sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_errmsg());
+            sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
             goto cleanup;
         }
     }
@@ -487,7 +487,7 @@ sr_lyd_parse_op(const struct ly_ctx *ctx, const char *data, LYD_FORMAT format, e
     ly_temp_log_options(&temp_lo);
 
     if (ly_in_new_memory(data, &in)) {
-        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_errmsg());
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
         goto cleanup;
     }
 
@@ -710,7 +710,7 @@ sr_lyd_new_any(struct lyd_node *parent, const char *name, void *value, LYD_ANYDA
 
     ly_temp_log_options(&temp_lo);
 
-    if (lyd_new_any(parent, NULL, name, value, 1, value_type, 0, NULL)) {
+    if (lyd_new_any(parent, NULL, name, value, value_type, LYD_NEW_ANY_USE_VALUE, NULL)) {
         sr_errinfo_new_ly(&err_info, LYD_CTX(parent), NULL, SR_ERR_LY);
         goto cleanup;
     }
@@ -1282,7 +1282,7 @@ sr_ly_set_new(struct ly_set **set)
     ly_temp_log_options(&temp_lo);
 
     if (ly_set_new(set)) {
-        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_errmsg());
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
         goto cleanup;
     }
 
@@ -1300,7 +1300,7 @@ sr_ly_set_add(struct ly_set *set, void *item)
     ly_temp_log_options(&temp_lo);
 
     if (ly_set_add(set, item, 1, NULL)) {
-        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_errmsg());
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
         goto cleanup;
     }
 
@@ -1318,7 +1318,7 @@ sr_ly_set_merge(struct ly_set *target, const struct ly_set *source)
     ly_temp_log_options(&temp_lo);
 
     if (ly_set_merge(target, source, 0, NULL)) {
-        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_errmsg());
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
         goto cleanup;
     }
 
@@ -1336,7 +1336,7 @@ sr_lyht_insert(struct ly_ht *ht, void *val_p, uint32_t hash)
     ly_temp_log_options(&temp_lo);
 
     if (lyht_insert(ht, val_p, hash, NULL)) {
-        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_errmsg());
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
         goto cleanup;
     }
 
@@ -1419,7 +1419,7 @@ sr_ly_time_ts2str(const struct timespec *ts, char **str)
     ly_temp_log_options(&temp_lo);
 
     if (ly_time_ts2str(ts, str)) {
-        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_errmsg());
+        sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
         goto cleanup;
     }
 

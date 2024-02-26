@@ -86,7 +86,7 @@ main(int argc, const char **argv)
         ly_ctx = sr_session_acquire_context(session);
         rc = lyd_parse_data_path(ly_ctx, filepath, LYD_UNKNOWN, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &edit);
         if (rc != LY_SUCCESS) {
-            printf("LY ERR: %s\n", ly_last_errmsg());
+            printf("LY ERR: %s\n", ly_last_logmsg());
             goto cleanup;
         }
 

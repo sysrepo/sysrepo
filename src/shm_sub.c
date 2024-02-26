@@ -1335,7 +1335,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, const char *orig_
 
             /* parse updated edit */
             if ((err_info = sr_lyd_parse_data(ly_ctx, shm_data_sub.addr, NULL, LYD_LYB,
-                    LYD_PARSE_STRICT | LYD_PARSE_OPAQ | LYD_PARSE_ONLY, 0, &edit))) {
+                    LYD_PARSE_STRICT | LYD_PARSE_OPAQ | LYD_PARSE_STORE_ONLY, 0, &edit))) {
                 sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Failed to parse \"update\" edit.");
                 goto cleanup_wrunlock;
             }
@@ -2181,7 +2181,7 @@ sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, cons
 
         /* parse returned data */
         if ((err_info = sr_lyd_parse_data(mod->ly_mod->ctx, nsub->shm_data_sub.addr, NULL, LYD_LYB,
-                LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &oper_data))) {
+                LYD_PARSE_STORE_ONLY | LYD_PARSE_STRICT, 0, &oper_data))) {
             sr_errinfo_new(&err_info, SR_ERR_VALIDATION_FAILED, "Failed to parse returned \"operational\" data.");
             goto cleanup;
         }
@@ -3313,7 +3313,7 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
 
     /* parse event diff */
     if ((err_info = sr_lyd_parse_data(conn->ly_ctx, shm_data_ptr, NULL, LYD_LYB,
-            LYD_PARSE_ONLY | LYD_PARSE_STRICT | LYD_PARSE_ORDERED, 0, &diff))) {
+            LYD_PARSE_STORE_ONLY | LYD_PARSE_STRICT | LYD_PARSE_ORDERED, 0, &diff))) {
         SR_ERRINFO_INT(&err_info);
         goto cleanup;
     }
@@ -3610,7 +3610,7 @@ sr_shmsub_oper_get_listen_process_module_events(struct modsub_operget_s *oper_ge
         shm_data_ptr += sr_strshmlen(request_xpath);
 
         /* parse data parent */
-        if ((err_info = sr_lyd_parse_data(conn->ly_ctx, shm_data_ptr, NULL, LYD_LYB, LYD_PARSE_ONLY | LYD_PARSE_STRICT,
+        if ((err_info = sr_lyd_parse_data(conn->ly_ctx, shm_data_ptr, NULL, LYD_LYB, LYD_PARSE_STORE_ONLY | LYD_PARSE_STRICT,
                 0, &parent))) {
             SR_ERRINFO_INT(&err_info);
             goto error_rdunlock;

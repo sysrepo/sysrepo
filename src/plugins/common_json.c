@@ -163,11 +163,11 @@ sr_error_info_t *
 srpjson_log_err_ly(const char *plg_name, const struct ly_ctx *ly_ctx)
 {
     sr_error_info_t *err_info = NULL;
-    struct ly_err_item *e;
+    const struct ly_err_item *e;
 
     e = ly_err_first(ly_ctx);
     if (!e) {
-        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_LY, "%s", ly_last_errmsg());
+        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_LY, "%s", ly_last_logmsg());
         return err_info;
     }
 

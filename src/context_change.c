@@ -694,7 +694,7 @@ sr_lycc_update_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, const str
     }
 
     /* update data for the new context */
-    parse_opts = LYD_PARSE_NO_STATE | LYD_PARSE_ONLY;
+    parse_opts = LYD_PARSE_NO_STATE | LYD_PARSE_STORE_ONLY;
     if ((err_info = sr_lycc_update_data_tree(data_info->old.start, parse_opts, new_ctx, mod_data, &data_info->new.start))) {
         goto cleanup;
     }

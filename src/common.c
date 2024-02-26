@@ -4081,7 +4081,7 @@ sr_val_sr2ly(struct ly_ctx *ctx, const char *xpath, const char *val_str, int dfl
     struct lyd_node *node, *parent;
     int opts;
 
-    opts = LYD_NEW_PATH_UPDATE | (output ? LYD_NEW_PATH_OUTPUT : 0);
+    opts = LYD_NEW_PATH_UPDATE | (output ? LYD_NEW_VAL_OUTPUT : 0);
 
     if ((err_info = sr_lyd_new_path(*root, ctx, xpath, val_str, opts, &parent, &node))) {
         return err_info;
@@ -4763,7 +4763,7 @@ sr_xpath_set_filter_subtrees(struct ly_set *set)
         /* store the result in the hash table */
         hash = lyht_hash((void *)&node, sizeof node);
         if (lyht_insert(ht, &node, hash, NULL)) {
-            sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_errmsg());
+            sr_errinfo_new(&err_info, SR_ERR_LY, "%s", ly_last_logmsg());
             goto cleanup;
         }
 
