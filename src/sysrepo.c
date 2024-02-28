@@ -115,10 +115,15 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     if ((err_info = sr_rwlock_init(&conn->oper_cache_lock, 0))) {
         goto error10;
     }
+    if ((err_info = sr_mutex_init(&conn->oper_push_mod_lock, 0))) {
+        goto error11;
+    }
 
     *conn_p = conn;
     return NULL;
 
+error11:
+    pthread_mutex_destroy(&conn->oper_push_mod_lock);
 error10:
     sr_ntf_handle_free(conn->ntf_handles, conn->ntf_handle_count);
 error9:
@@ -190,6 +195,7 @@ sr_conn_free(sr_conn_ctx_t *conn)
         free(conn->oper_push_mods[i]);
     }
     free(conn->oper_push_mods);
+    pthread_mutex_destroy(&conn->oper_push_mod_lock);
 
     free(conn);
 }

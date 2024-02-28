@@ -5383,6 +5383,11 @@ sr_conn_push_oper_mod_add(sr_conn_ctx_t *conn, const char *mod_name)
     uint32_t i;
     void *mem;
 
+    /* OPER PUSH MOD LOCK */
+    if ((err_info = sr_mlock(&conn->oper_push_mod_lock, -1, __func__, NULL, NULL))) {
+        return err_info;
+    }
+
     for (i = 0; i < conn->oper_push_mod_count; ++i) {
         if (!strcmp(conn->oper_push_mods[i], mod_name)) {
             /* already added */
@@ -5400,6 +5405,9 @@ sr_conn_push_oper_mod_add(sr_conn_ctx_t *conn, const char *mod_name)
     ++conn->oper_push_mod_count;
 
 cleanup:
+    /* OPER PUSH MOD UNLOCK */
+    sr_munlock(&conn->oper_push_mod_lock);
+
     return err_info;
 }
 
@@ -5408,6 +5416,11 @@ sr_conn_push_oper_mod_del(sr_conn_ctx_t *conn, const char *mod_name)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
+
+    /* OPER PUSH MOD LOCK */
+    if ((err_info = sr_mlock(&conn->oper_push_mod_lock, -1, __func__, NULL, NULL))) {
+        return err_info;
+    }
 
     for (i = 0; i < conn->oper_push_mod_count; ++i) {
         if (!strcmp(conn->oper_push_mods[i], mod_name)) {
@@ -5431,5 +5444,8 @@ sr_conn_push_oper_mod_del(sr_conn_ctx_t *conn, const char *mod_name)
     }
 
 cleanup:
+    /* OPER PUSH MOD UNLOCK */
+    sr_munlock(&conn->oper_push_mod_lock);
+
     return err_info;
 }
