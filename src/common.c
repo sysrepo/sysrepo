@@ -4981,8 +4981,8 @@ parse_name:
                 }
             }
 
-            /* add new atom */
-            if ((err_info = sr_xpath_text_atom_add(&cur_atom, atoms, atom_count))) {
+            /* add new atom if a new one */
+            if ((strlen(prev_atom) < strlen(cur_atom)) && (err_info = sr_xpath_text_atom_add(&cur_atom, atoms, atom_count))) {
                 goto cleanup;
             }
 
