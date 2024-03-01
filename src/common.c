@@ -4944,9 +4944,9 @@ parse_name:
     }
 
     if ((!end_chars && !next[0]) || (end_chars && next[0] && strchr(end_chars, next[0]))) {
-        /* finished with this (sub)expression, add new atom */
+        /* finished with this (sub)expression, add new atom if any found (parsed) */
         parsed = 1;
-        if ((err_info = sr_xpath_text_atom_add(&cur_atom, atoms, atom_count))) {
+        if ((strlen(prev_atom) < strlen(cur_atom)) && (err_info = sr_xpath_text_atom_add(&cur_atom, atoms, atom_count))) {
             goto cleanup;
         }
     } else {
