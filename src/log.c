@@ -267,8 +267,8 @@ sr_errinfo_free(sr_error_info_t **err_info)
     size_t i;
 
     if (err_info && *err_info) {
-        /* NO_MEM is always a static error info structure */
-        if (((*err_info)->err_count != 1) || ((*err_info)->err[0].err_code != SR_ERR_NO_MEMORY)) {
+        /* NO_MEM is a static error info structure */
+        if (*err_info != &sr_errinfo_mem) {
             for (i = 0; i < (*err_info)->err_count; ++i) {
                 free((*err_info)->err[i].message);
                 free((*err_info)->err[i].error_format);
