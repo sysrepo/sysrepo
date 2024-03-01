@@ -4848,7 +4848,11 @@ sr_xpath_text_atoms_expr(const char *xpath, const char *prev_atom, const char *e
         ++next;
     }
 
-    if ((next[0] == '\'') || (next[0] == '\"')) {
+    if (end_chars && next[0] && strchr(end_chars, next[0])) {
+        /* empty expression, perhaps a function call without any arguments */
+        parsed = 1;
+        goto cleanup;
+    } else if ((next[0] == '\'') || (next[0] == '\"')) {
         /* literal, skip it */
         for (next2 = next + 1; next2[0] != next[0]; ++next2) {}
         next = next2 + 1;
@@ -4908,7 +4912,7 @@ parse_name:
             next2 = next + 1;
             if ((err_info = sr_xpath_text_atoms_expr(next2, cur_atom, ",)", atoms, atom_count, &next))) {
                 goto cleanup;
-            } else if (next2 == next) {
+            } else if ((next2 == next) && !strchr(",)", next[0])) {
                 /* unknown expr */
                 goto cleanup;
             }
@@ -4922,7 +4926,7 @@ parse_name:
             next2 = next + 1;
             if ((err_info = sr_xpath_text_atoms_expr(next2, cur_atom, "]", atoms, atom_count, &next))) {
                 goto cleanup;
-            } else if (next2 == next) {
+            } else if ((next2 == next) && (next[0] != ']')) {
                 /* unknown expr */
                 goto cleanup;
             }

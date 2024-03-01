@@ -2090,7 +2090,6 @@ test_xpath_check(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 0);
 
     /* read all from operational, callback called */
-    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_get_data(st->sess, "/ietf-interfaces:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     sr_release_data(data);
@@ -2114,7 +2113,6 @@ test_xpath_check(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 0);
 
     /* read all from operational, callback called */
-    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth0']/type", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     sr_release_data(data);
@@ -2141,8 +2139,14 @@ test_xpath_check(void **state)
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* read interfaces from operational, callback not called */
+    /* read interface from operational with a predicate #1, callback not called */
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/interface[position()='1']/oper-status", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_release_data(data);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 0);
+
+    /* read interface from operational with a predicate #2, callback not called */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/"
             "interface[not(derived-from-or-self(type, 'iana-if-type:softwareLoopback'))]/oper-status", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2150,7 +2154,6 @@ test_xpath_check(void **state)
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 0);
 
     /* read all from operational, callback called */
-    ATOMIC_STORE_RELAXED(st->cb_called, 0);
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth0']", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     sr_release_data(data);
