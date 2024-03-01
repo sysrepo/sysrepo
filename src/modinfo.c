@@ -3376,6 +3376,8 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
             /* store the new data */
             if ((err_info = mod->ds_handle[store_ds]->plugin->store_cb(mod->ly_mod, store_ds, mod_diff, mod_data,
                     mod->ds_handle[store_ds]->plg_data))) {
+                lyd_free_siblings(mod_diff);
+                lyd_free_siblings(mod_data);
                 goto cleanup;
             }
 
