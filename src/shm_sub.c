@@ -442,7 +442,7 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
     sr_error_t err_code;
     const char *ptr, *err_msg, *err_format, *err_data;
     sr_sub_event_t last_event;
-    uint32_t last_request_id;
+    uint32_t last_request_id, i, err_count;
     int ret, write_lock = 0;
 
     assert((expected_ev == SR_SUB_EV_NONE) || (expected_ev == SR_SUB_EV_SUCCESS) || (expected_ev == SR_SUB_EV_ERROR));
@@ -532,30 +532,36 @@ event_handled:
             /* create error structure from the information in data SHM */
             ptr = shm_data_sub->addr;
 
-            /* error code */
-            err_code = *((sr_error_t *)ptr);
-            ptr += SR_SHM_SIZE(sizeof err_code);
+            /* error count */
+            err_count = *((uint32_t *)ptr);
+            ptr += SR_SHM_SIZE(sizeof err_count);
 
-            /* error message */
-            err_msg = ptr;
-            ptr += sr_strshmlen(err_msg);
+            for (i = 0; i < err_count; ++i) {
+                /* error code */
+                err_code = *((sr_error_t *)ptr);
+                ptr += SR_SHM_SIZE(sizeof err_code);
 
-            /* error data format */
-            err_format = ptr;
-            ptr += sr_strshmlen(err_format);
-            if (!err_format[0]) {
-                err_format = NULL;
+                /* error message */
+                err_msg = ptr;
+                ptr += sr_strshmlen(err_msg);
+
+                /* error data format */
+                err_format = ptr;
+                ptr += sr_strshmlen(err_format);
+                if (!err_format[0]) {
+                    err_format = NULL;
+                }
+
+                /* error data */
+                err_data = ptr;
+                ptr += SR_SHM_SIZE(sr_ev_data_size(err_data));
+                if (!err_format) {
+                    err_data = NULL;
+                }
+
+                /* add into err_info structure */
+                sr_errinfo_add(cb_err_info, err_code, err_format, err_data, err_msg, NULL);
             }
-
-            /* error data */
-            err_data = ptr;
-            ptr += SR_SHM_SIZE(sr_ev_data_size(err_data));
-            if (!err_format) {
-                err_data = NULL;
-            }
-
-            /* create the full error structure */
-            sr_errinfo_new_data(cb_err_info, err_code, err_format, err_data, "%s", err_msg);
 
             if (clear_ev_on_err) {
                 /* clear the error */
@@ -3067,7 +3073,7 @@ sr_shmsub_multi_listen_write_event(sr_multi_sub_shm_t *multi_sub_shm, uint32_t v
 /**
  * @brief Prepare error that will be written after subscription structure into SHM.
  *
- * @param[in] err_code Error code.
+ * @param[in] err_code Error code, used only if there is no ev_err_info in @p ev_sess.
  * @param[in] ev_sess Callback event session with the error.
  * @param[out] data_p Additional data to be written.
  * @param[out] data_len_p Additional data length.
@@ -3077,62 +3083,78 @@ static sr_error_info_t *
 sr_shmsub_prepare_error(sr_error_t err_code, sr_session_ctx_t *ev_sess, char **data_p, uint32_t *data_len_p)
 {
     sr_error_info_t *err_info = NULL;
-    char *data;
+    char *data = NULL;
     const char *err_msg, *err_format;
     const void *err_data;
-    uint32_t cur_data_len, data_len;
+    uint32_t i, cur_data_len, data_len;
+    sr_error_info_err_t *err;
     const uint32_t empty_data[] = {0};
 
-    assert(err_code != SR_ERR_OK);
+    if (!ev_sess->ev_err_info) {
+        /* generate error info */
+        sr_errinfo_add(&ev_sess->ev_err_info, err_code, NULL, NULL, NULL, NULL);
+    }
 
     cur_data_len = 0;
 
-    /* error code */
-    data_len = SR_SHM_SIZE(sizeof err_code);
-    data = malloc(data_len);
-    SR_CHECK_MEM_RET(!data, err_info);
-
-    memcpy(data + cur_data_len, &err_code, sizeof err_code);
-    cur_data_len += SR_SHM_SIZE(sizeof err_code);
-
-    /* error message */
-    if (ev_sess->ev_error.message) {
-        err_msg = ev_sess->ev_error.message;
-    } else {
-        err_msg = sr_strerror(err_code);
-    }
-    data_len += sr_strshmlen(err_msg);
+    /* error count */
+    data_len = SR_SHM_SIZE(sizeof ev_sess->ev_err_info->err_count);
     data = sr_realloc(data, data_len);
     SR_CHECK_MEM_RET(!data, err_info);
 
-    strcpy(data + cur_data_len, err_msg);
-    cur_data_len += sr_strshmlen(err_msg);
+    memcpy(data + cur_data_len, &ev_sess->ev_err_info->err_count, sizeof ev_sess->ev_err_info->err_count);
+    cur_data_len += SR_SHM_SIZE(sizeof ev_sess->ev_err_info->err_count);
 
-    /* error format */
-    if (ev_sess->ev_error.format) {
-        err_format = ev_sess->ev_error.format;
-    } else {
-        err_format = "";
+    for (i = 0; i < ev_sess->ev_err_info->err_count; ++i) {
+        err = &ev_sess->ev_err_info->err[i];
+
+        /* error code */
+        data_len += SR_SHM_SIZE(sizeof err->err_code);
+        data = sr_realloc(data, data_len);
+        SR_CHECK_MEM_RET(!data, err_info);
+
+        memcpy(data + cur_data_len, &err->err_code, sizeof err->err_code);
+        cur_data_len += SR_SHM_SIZE(sizeof err->err_code);
+
+        /* error message */
+        if (err->message) {
+            err_msg = err->message;
+        } else {
+            err_msg = sr_strerror(err_code);
+        }
+        data_len += sr_strshmlen(err_msg);
+        data = sr_realloc(data, data_len);
+        SR_CHECK_MEM_RET(!data, err_info);
+
+        strcpy(data + cur_data_len, err_msg);
+        cur_data_len += sr_strshmlen(err_msg);
+
+        /* error format */
+        if (err->error_format) {
+            err_format = err->error_format;
+        } else {
+            err_format = "";
+        }
+        data_len += sr_strshmlen(err_format);
+        data = sr_realloc(data, data_len);
+        SR_CHECK_MEM_RET(!data, err_info);
+
+        strcpy(data + cur_data_len, err_format);
+        cur_data_len += sr_strshmlen(err_format);
+
+        /* error data */
+        if (err->error_data) {
+            err_data = err->error_data;
+        } else {
+            err_data = empty_data;
+        }
+        data_len += SR_SHM_SIZE(sr_ev_data_size(err_data));
+        data = sr_realloc(data, data_len);
+        SR_CHECK_MEM_RET(!data, err_info);
+
+        memcpy(data + cur_data_len, err_data, sr_ev_data_size(err_data));
+        cur_data_len += SR_SHM_SIZE(sr_ev_data_size(err_data));
     }
-    data_len += sr_strshmlen(err_format);
-    data = sr_realloc(data, data_len);
-    SR_CHECK_MEM_RET(!data, err_info);
-
-    strcpy(data + cur_data_len, err_format);
-    cur_data_len += sr_strshmlen(err_format);
-
-    /* error data */
-    if (ev_sess->ev_error.data) {
-        err_data = ev_sess->ev_error.data;
-    } else {
-        err_data = empty_data;
-    }
-    data_len += SR_SHM_SIZE(sr_ev_data_size(err_data));
-    data = sr_realloc(data, data_len);
-    SR_CHECK_MEM_RET(!data, err_info);
-
-    memcpy(data + cur_data_len, err_data, sr_ev_data_size(err_data));
-    cur_data_len += SR_SHM_SIZE(sr_ev_data_size(err_data));
 
     /* success */
     *data_p = data;

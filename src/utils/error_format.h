@@ -86,7 +86,7 @@ int sr_session_set_netconf_error2(sr_session_ctx_t *session, const char *error_t
         const char **error_info_elems, const char **error_info_values);
 
 /**
- * @brief Get first NETCONF callback error.
+ * @brief Get NETCONF callback error.
  *
  * @param[in] err NETCONF error to read.
  * @param[out] error_type NETCONF error type.
@@ -104,19 +104,7 @@ int sr_err_get_netconf_error(const sr_error_info_err_t *err, const char **error_
         const char ***error_info_elements, const char ***error_info_values, uint32_t *error_info_count);
 
 /**
- * @brief Get NETCONF callback error at a specific index.
- *
- * @param[in] err NETCONF error to read.
- * @param[in] idx Index of the error to read.
- * @param[out] error_type NETCONF error type.
- * @param[out] error_tag NETCONF error tag.
- * @param[out] error_app_tag NETCONF error app tag, set to NULL if none.
- * @param[out] error_path NETCONF error path, set to NULL if none.
- * @param[out] error_message NETCONF error message.
- * @param[out] error_info_elements Array of NETCONF error info elements, set to NULL if none.
- * @param[out] error_info_values Array of NETCONF error info values, set to NULL if none.
- * @param[out] error_info_count NETCONF error info count of both @p error_info_elements and @p error_info_values.
- * @return Error code (::SR_ERR_NOT_FOUND if index is larger than error count, ::SR_ERR_OK on success).
+ * @brief Deprecated, every NETCONF error has its own @p err, use ::sr_err_get_netconf_error().
  */
 int sr_err_get_netconf_error_idx(const sr_error_info_err_t *err, uint32_t idx, const char **error_type, const char **error_tag,
         const char **error_app_tag, const char **error_path, const char **error_message,

@@ -194,7 +194,7 @@ rpc_fail_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *xpath, const
     free(str1);
 
     /* error */
-    sr_session_set_error_message(session, "RPC FAIL");
+    sr_session_set_error(session, NULL, SR_ERR_SYS, "RPC FAIL");
     return SR_ERR_SYS;
 }
 

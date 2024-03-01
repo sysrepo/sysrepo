@@ -179,11 +179,7 @@ struct sr_session_ctx_s {
         char *orig_name;            /**< Set originator name by the event originator. */
         void *orig_data;            /**< Set originator data by the event originator. */
     } ev_data;                      /**< Event data from the originator. Valid only if ev is not ::SR_SUB_EV_NONE. */
-    struct {
-        char *message;              /**< Event error message. */
-        char *format;               /**< Event error data format. */
-        void *data;                 /**< Event error data. */
-    } ev_error;                     /**< Event error for the originator. Valid only if ev is not ::SR_SUB_EV_NONE. */
+    sr_error_info_t *ev_err_info;   /**< Event error info for the originator. */
 
     pthread_mutex_t ptr_lock;       /**< Lock for accessing pointers to subscriptions. */
     sr_subscription_ctx_t **subscriptions;  /**< Array of subscriptions of this session. */

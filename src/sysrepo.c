@@ -872,9 +872,7 @@ _sr_session_stop(sr_session_ctx_t *session)
     free(session->orig_data);
     free(session->ev_data.orig_name);
     free(session->ev_data.orig_data);
-    free(session->ev_error.message);
-    free(session->ev_error.format);
-    free(session->ev_error.data);
+    sr_errinfo_free(&session->ev_err_info);
     pthread_mutex_destroy(&session->ptr_lock);
     for (ds = 0; ds < SR_DS_COUNT; ++ds) {
         sr_release_data(session->dt[ds].edit);
@@ -1051,36 +1049,23 @@ API int
 sr_session_dup_error(sr_session_ctx_t *src_session, sr_session_ctx_t *trg_session)
 {
     sr_error_info_t *err_info = NULL;
-    const void *err_data;
-    int ret;
+    uint32_t i;
 
     SR_CHECK_ARG_APIRET(!src_session || !trg_session, NULL, err_info);
 
     if (!src_session->err_info) {
         /* no error info to duplicate */
-        return sr_api_ret(trg_session, NULL);
+        goto cleanup;
     }
 
-    /* message */
-    ret = sr_session_set_error_message(trg_session, "%s", src_session->err_info->err[0].message);
-    if (ret) {
-        return ret;
-    }
+    /* free any previous even error */
+    sr_errinfo_free(&src_session->ev_err_info);
 
-    /* format */
-    ret = sr_session_set_error_format(trg_session, src_session->err_info->err[0].error_format);
-    if (ret) {
-        return ret;
-    }
-
-    /* data */
-    free(trg_session->ev_error.data);
-    trg_session->ev_error.data = NULL;
-    err_data = src_session->err_info->err[0].error_data;
-    if (err_data) {
-        trg_session->ev_error.data = malloc(sr_ev_data_size(err_data));
-        SR_CHECK_MEM_GOTO(!trg_session->ev_error.data, err_info, cleanup);
-        memcpy(trg_session->ev_error.data, err_data, sr_ev_data_size(err_data));
+    /* duplicate all src errors */
+    for (i = 0; i < src_session->err_info->err_count; ++i) {
+        sr_errinfo_add(&trg_session->ev_err_info, src_session->err_info->err[i].err_code,
+                src_session->err_info->err[i].error_format, src_session->err_info->err[i].error_data,
+                src_session->err_info->err[i].message, NULL);
     }
 
 cleanup:
@@ -1088,22 +1073,34 @@ cleanup:
 }
 
 API int
+sr_session_set_error(sr_session_ctx_t *session, const char *err_format_name, sr_error_t err_code,
+        const char *err_msg_format, ...)
+{
+    sr_error_info_t *err_info = NULL;
+    va_list vargs;
+
+    SR_CHECK_ARG_APIRET(!session || ((session->ev != SR_SUB_EV_CHANGE) && (session->ev != SR_SUB_EV_UPDATE) &&
+            (session->ev != SR_SUB_EV_OPER) && (session->ev != SR_SUB_EV_RPC)) || !err_code || !err_msg_format,
+            session, err_info);
+
+    va_start(vargs, err_msg_format);
+    sr_errinfo_add(&session->ev_err_info, err_code, err_format_name, NULL, err_msg_format, &vargs);
+    va_end(vargs);
+
+    return sr_api_ret(session, err_info);
+}
+
+API int
 sr_session_set_error_message(sr_session_ctx_t *session, const char *format, ...)
 {
     sr_error_info_t *err_info = NULL;
     va_list vargs;
-    char *err_msg;
 
     SR_CHECK_ARG_APIRET(!session || ((session->ev != SR_SUB_EV_CHANGE) && (session->ev != SR_SUB_EV_UPDATE) &&
             (session->ev != SR_SUB_EV_OPER) && (session->ev != SR_SUB_EV_RPC)) || !format, session, err_info);
 
     va_start(vargs, format);
-    if (vasprintf(&err_msg, format, vargs) == -1) {
-        SR_ERRINFO_MEM(&err_info);
-    } else {
-        free(session->ev_error.message);
-        session->ev_error.message = err_msg;
-    }
+    sr_errinfo_add(&session->ev_err_info, SR_ERR_OPERATION_FAILED, NULL, NULL, format, &vargs);
     va_end(vargs);
 
     return sr_api_ret(session, err_info);
@@ -1116,7 +1113,7 @@ sr_session_set_error_format(sr_session_ctx_t *session, const char *error_format)
     char *err_format;
 
     SR_CHECK_ARG_APIRET(!session || ((session->ev != SR_SUB_EV_CHANGE) && (session->ev != SR_SUB_EV_UPDATE) &&
-            (session->ev != SR_SUB_EV_OPER) && (session->ev != SR_SUB_EV_RPC)), session, err_info);
+            (session->ev != SR_SUB_EV_OPER) && (session->ev != SR_SUB_EV_RPC)) || !session->ev_err_info, session, err_info);
 
     if (error_format) {
         if (!(err_format = strdup(error_format))) {
@@ -1127,8 +1124,8 @@ sr_session_set_error_format(sr_session_ctx_t *session, const char *error_format)
         err_format = NULL;
     }
 
-    free(session->ev_error.format);
-    session->ev_error.format = err_format;
+    free(session->ev_err_info->err[session->ev_err_info->err_count - 1].error_format);
+    session->ev_err_info->err[session->ev_err_info->err_count - 1].error_format = err_format;
 
     return sr_api_ret(session, NULL);
 }
@@ -1139,10 +1136,10 @@ sr_session_push_error_data(sr_session_ctx_t *session, uint32_t size, const void 
     sr_error_info_t *err_info = NULL;
 
     SR_CHECK_ARG_APIRET(!session || ((session->ev != SR_SUB_EV_CHANGE) && (session->ev != SR_SUB_EV_UPDATE) &&
-            (session->ev != SR_SUB_EV_OPER) && (session->ev != SR_SUB_EV_RPC)) || !session->ev_error.format || !size ||
-            !data, session, err_info);
+            (session->ev != SR_SUB_EV_OPER) && (session->ev != SR_SUB_EV_RPC)) || !session->ev_err_info ||
+            !session->ev_err_info->err[session->ev_err_info->err_count - 1].error_format || !size || !data, session, err_info);
 
-    err_info = sr_ev_data_push(&session->ev_error.data, size, data);
+    err_info = sr_ev_data_push(&session->ev_err_info->err[session->ev_err_info->err_count - 1].error_data, size, data);
     return sr_api_ret(session, err_info);
 }
 
@@ -3686,9 +3683,8 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     struct sr_denied denied = {0};
     sr_lock_mode_t change_sub_lock = SR_LOCK_NONE;
     uint32_t sid = 0;
-    char *orig_name = NULL, *str;
+    char *orig_name = NULL;
     void *orig_data = NULL;
-    int r;
 
     *cb_err_info = NULL;
 
@@ -3711,22 +3707,19 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
         }
 
         if (denied.denied) {
-            /* access denied */
+            /* access denied, print detailed reason and generate more generic NETCONF error */
             if (denied.rule_name) {
-                r = asprintf(&str, "NACM access denied by the rule \"%s\".", denied.rule_name);
+                sr_log(SR_LL_ERR, "NACM access denied by the rule \"%s\".", denied.rule_name);
             } else if (denied.def) {
-                r = asprintf(&str, "NACM access denied by \"%s\" node extension \"%s\".", LYD_NAME(denied.node),
+                sr_log(SR_LL_ERR, "NACM access denied by \"%s\" node extension \"%s\".", LYD_NAME(denied.node),
                         denied.def->name);
             } else {
-                r = asprintf(&str, "NACM access denied by the default NACM permissions.");
+                sr_log(SR_LL_ERR, "NACM access denied by the default NACM permissions.");
             }
-            if (r == -1) {
-                str = NULL;
-            }
-            sr_errinfo_new_nacm(&err_info, str, "protocol", "access-denied", NULL, denied.node,
+
+            sr_errinfo_new_nacm(&err_info, "protocol", "access-denied", NULL, denied.node,
                     "Access to the data model \"%s\" is denied because \"%s\" NACM authorization failed.",
                     denied.node->schema->module->name, session->nacm_user);
-            free(str);
             goto cleanup;
         }
     }
@@ -5080,10 +5073,10 @@ sr_module_change_subscribe_enable(sr_session_ctx_t *session, struct sr_mod_info_
         err_code = callback(ev_sess, sub_id, ly_mod->name, xpath, sr_ev2api(ev_sess->ev), 0, private_data);
         if (err_code != SR_ERR_OK) {
             /* callback failed but it is the only one so no "abort" event is necessary */
-            if (ev_sess->ev_error.message || ev_sess->ev_error.format) {
+            if (ev_sess->ev_err_info) {
                 /* remember callback error info */
-                sr_errinfo_new_data(&err_info, err_code, ev_sess->ev_error.format, ev_sess->ev_error.data, "%s",
-                        ev_sess->ev_error.message ? ev_sess->ev_error.message : sr_strerror(err_code));
+                sr_errinfo_merge(&err_info, ev_sess->ev_err_info);
+                ev_sess->ev_err_info = NULL;
             }
             sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, "Subscribing to \"%s\" changes failed.", ly_mod->name);
             goto cleanup;
@@ -6314,7 +6307,6 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
     struct lyd_node *input_top, *input_op, *ext_parent = NULL;
     char *path = NULL, *str, *parent_path = NULL;
     struct sr_denied denied = {0};
-    int r;
 
     SR_CHECK_ARG_APIRET(!session || !input || !output, session, err_info);
 
@@ -6371,18 +6363,15 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
         if (denied.denied) {
             /* access denied */
             if (denied.rule_name) {
-                r = asprintf(&str, "NACM access denied by the rule \"%s\".", denied.rule_name);
+                sr_log(SR_LL_ERR, "NACM access denied by the rule \"%s\".", denied.rule_name);
             } else if (denied.def) {
-                r = asprintf(&str, "NACM access denied by \"%s\" node extension \"%s\".", LYD_NAME(denied.node), denied.def->name);
+                sr_log(SR_LL_ERR, "NACM access denied by \"%s\" node extension \"%s\".", LYD_NAME(denied.node), denied.def->name);
             } else {
-                r = asprintf(&str, "NACM access denied by the default NACM permissions.");
+                sr_log(SR_LL_ERR, "NACM access denied by the default NACM permissions.");
             }
-            if (r == -1) {
-                str = NULL;
-            }
-            sr_errinfo_new_nacm(&err_info, str, "protocol", "access-denied", NULL, denied.node,
+
+            sr_errinfo_new_nacm(&err_info, "protocol", "access-denied", NULL, denied.node,
                     "Executing the operation is denied because \"%s\" NACM authorization failed.", session->nacm_user);
-            free(str);
             goto cleanup;
         }
     }

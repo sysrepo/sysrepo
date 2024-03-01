@@ -2291,7 +2291,7 @@ cleanup:
 }
 
 void
-sr_errinfo_new_nacm(sr_error_info_t **err_info, const char *sr_err_msg, const char *error_type, const char *error_tag,
+sr_errinfo_new_nacm(sr_error_info_t **err_info, const char *error_type, const char *error_tag,
         const char *error_app_tag, const struct lyd_node *error_path_node, const char *error_message_fmt, ...)
 {
     va_list vargs;
@@ -2305,12 +2305,6 @@ sr_errinfo_new_nacm(sr_error_info_t **err_info, const char *sr_err_msg, const ch
     va_start(vargs, error_message_fmt);
     if (vasprintf(&error_message, error_message_fmt, vargs) == -1) {
         sr_errinfo_new(err_info, SR_ERR_NO_MEMORY, NULL);
-        goto cleanup;
-    }
-
-    /* number of NETCONF errors */
-    count = 1;
-    if ((*err_info = sr_ev_data_push(&err_data, sizeof count, &count))) {
         goto cleanup;
     }
 
@@ -2329,11 +2323,6 @@ sr_errinfo_new_nacm(sr_error_info_t **err_info, const char *sr_err_msg, const ch
         error_app_tag = "";
     }
     if ((*err_info = sr_ev_data_push(&err_data, strlen(error_app_tag) + 1, error_app_tag))) {
-        goto cleanup;
-    }
-
-    /* error-message */
-    if ((*err_info = sr_ev_data_push(&err_data, strlen(error_message) + 1, error_message))) {
         goto cleanup;
     }
 
@@ -2358,7 +2347,7 @@ sr_errinfo_new_nacm(sr_error_info_t **err_info, const char *sr_err_msg, const ch
     }
 
     /* create err_info */
-    sr_errinfo_new_data(err_info, SR_ERR_UNAUTHORIZED, "NETCONF", err_data, "%s", sr_err_msg);
+    sr_errinfo_new_data(err_info, SR_ERR_UNAUTHORIZED, "NETCONF", err_data, "%s", error_message);
 
 cleanup:
     va_end(vargs);

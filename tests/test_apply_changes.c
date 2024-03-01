@@ -1272,7 +1272,7 @@ module_update_fail_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
         /* update fails */
-        sr_session_set_error_message(session, "%s", "Custom user callback error.%s");
+        sr_session_set_error(session, NULL, SR_ERR_UNSUPPORTED, "%s", "Custom user callback error.%s");
         ret = SR_ERR_UNSUPPORTED;
         break;
     default:
@@ -1686,7 +1686,7 @@ module_when1_change_fail_cb(sr_session_ctx_t *session, uint32_t sub_id, const ch
 
         /* fail */
         rc = SR_ERR_UNSUPPORTED;
-        sr_session_set_error_format(session, "error1");
+        sr_session_set_error(session, "error1", rc, "msg");
         sr_session_push_error_data(session, 6, "empty");
         break;
     case 1:
@@ -1778,7 +1778,7 @@ apply_change_fail_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
     assert_int_equal(err_info->err[0].err_code, SR_ERR_UNSUPPORTED);
-    assert_string_equal(err_info->err[0].message, "Operation not supported");
+    assert_string_equal(err_info->err[0].message, "msg");
     assert_string_equal(err_info->err[0].error_format, "error1");
     assert_int_equal(sr_get_error_data(&err_info->err[0], 0, &size, (const void **)&str1), SR_ERR_OK);
     assert_int_equal(size, 6);
@@ -1948,7 +1948,7 @@ test_change_fail2_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mod
         sr_free_val(new_value);
 
         if (op == SR_OP_MODIFIED) {
-            sr_session_set_error_message(session, "Modifications are not supported for %s", xpath);
+            sr_session_set_error(session, NULL, SR_ERR_OPERATION_FAILED, "Modifications are not supported for %s", xpath);
             ret = SR_ERR_OPERATION_FAILED;
             break;
         }

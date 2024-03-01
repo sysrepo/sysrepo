@@ -197,7 +197,6 @@ sr_error_info_t *sr_nacm_check_diff(const char *nacm_user, const struct lyd_node
  * @brief Create a NETCONF error info structure for a NACM error.
  *
  * @param[out] err_info Created error info.
- * @param[in] sr_err_msg Generic sysrepo error message.
  * @param[in] error_type NETCONF error type.
  * @param[in] error_tag NETCONF error tag.
  * @param[in] error_app_tag Optional NETCONF error app tag.
@@ -205,7 +204,7 @@ sr_error_info_t *sr_nacm_check_diff(const char *nacm_user, const struct lyd_node
  * @param[in] error_message_fmt NETCONF error message format.
  * @param[in] ... NETCONF error messsage format arguments.
  */
-void sr_errinfo_new_nacm(sr_error_info_t **err_info, const char *sr_err_msg, const char *error_type, const char *error_tag,
-        const char *error_app_tag, const struct lyd_node *error_path_node, const char *error_message_fmt, ...) _FORMAT_PRINTF(7, 8);
+void sr_errinfo_new_nacm(sr_error_info_t **err_info, const char *error_type, const char *error_tag,
+        const char *error_app_tag, const struct lyd_node *error_path_node, const char *error_message_fmt, ...) _FORMAT_PRINTF(6, 7);
 
 #endif /* SR_NACM_H_ */

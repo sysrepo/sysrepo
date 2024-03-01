@@ -41,7 +41,6 @@ _sr_session_set_netconf_error(sr_session_ctx_t *session, const char *error_type,
         const char *error_app_tag, const char *error_path, const char *error_message)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t size, *val;
 
     if (!session || !session->ev || !error_type || !error_tag || !error_message) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid arguments for function \"%s\".", __func__);
@@ -69,24 +68,8 @@ _sr_session_set_netconf_error(sr_session_ctx_t *session, const char *error_type,
         return err_info;
     }
 
-    if (session->ev_error.format && !strcmp(session->ev_error.format, "NETCONF")) {
-        /* another NETCONF error */
-        if (sr_ev_data_get(session->ev_error.data, 0, &size, (void **)&val) || (size != sizeof *val)) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid NETCONF error format, unable to add another.");
-            return err_info;
-        }
-        ++(*val);
-    } else {
-        /* generic error message */
-        sr_session_set_error_message(session, "NETCONF error occurred.");
-
-        /* error format */
-        sr_session_set_error_format(session, "NETCONF");
-
-        /* number of NETCONF errors */
-        size = 1;
-        sr_session_push_error_data(session, sizeof size, &size);
-    }
+    /* create a new NETCONF error */
+    sr_errinfo_add(&session->ev_err_info, SR_ERR_OPERATION_FAILED, "NETCONF", NULL, error_message, NULL);
 
     /* error-type */
     sr_session_push_error_data(session, strlen(error_type) + 1, error_type);
@@ -99,9 +82,6 @@ _sr_session_set_netconf_error(sr_session_ctx_t *session, const char *error_type,
         error_app_tag = "";
     }
     sr_session_push_error_data(session, strlen(error_app_tag) + 1, error_app_tag);
-
-    /* error-message */
-    sr_session_push_error_data(session, strlen(error_message) + 1, error_message);
 
     /* error-path */
     if (!error_path) {
@@ -194,17 +174,8 @@ sr_err_get_netconf_error(const sr_error_info_err_t *err, const char **error_type
         const char **error_app_tag, const char **error_path, const char **error_message,
         const char ***error_info_elements, const char ***error_info_values, uint32_t *error_info_count)
 {
-    return sr_err_get_netconf_error_idx(err, 0, error_type, error_tag, error_app_tag, error_path, error_message,
-            error_info_elements, error_info_values, error_info_count);
-}
-
-API int
-sr_err_get_netconf_error_idx(const sr_error_info_err_t *err, uint32_t idx, const char **error_type, const char **error_tag,
-        const char **error_app_tag, const char **error_path, const char **error_message,
-        const char ***error_info_elements, const char ***error_info_values, uint32_t *error_info_count)
-{
     sr_error_info_t *err_info = NULL;
-    uint32_t err_idx = 0, err_count, size, val, i;
+    uint32_t data_idx = 0, val, i;
     const char *arg, *arg2;
     const void *ptr;
     int rc = SR_ERR_OK;
@@ -216,49 +187,31 @@ sr_err_get_netconf_error_idx(const sr_error_info_err_t *err, uint32_t idx, const
         return SR_ERR_INVAL_ARG;
     }
 
-    /* error count */
-    if (sr_get_error_data(err, err_idx++, NULL, &ptr)) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Missing NETCONF error count.");
-        goto cleanup;
-    }
-    memcpy(&val, ptr, sizeof val);
-    err_count = val;
-    if (idx >= err_count) {
-        return SR_ERR_NOT_FOUND;
-    }
-
-    /* skip previous errors */
-    for (i = 0; i < idx; ++i) {
-        /* read error-info-count */
-        err_idx += 5;
-        if (sr_get_error_data(err, err_idx++, &size, &ptr) || (size != sizeof val)) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Missing NETCONF \"error-info\" count.");
-            goto cleanup;
-        }
-        memcpy(&val, ptr, sizeof val);
-
-        /* skip error-info */
-        err_idx += val * 2;
-    }
-
+    *error_tag = NULL;
+    *error_app_tag = NULL;
+    *error_path = NULL;
+    *error_message = NULL;
     *error_info_elements = NULL;
     *error_info_values = NULL;
     *error_info_count = 0;
 
+    /* error-message */
+    *error_message = err->message;
+
     /* error-type */
-    if (sr_get_error_data(err, err_idx++, NULL, (const void **)error_type)) {
+    if (sr_get_error_data(err, data_idx++, NULL, (const void **)error_type)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Missing NETCONF \"error-type\".");
         goto cleanup;
     }
 
     /* error-tag */
-    if (sr_get_error_data(err, err_idx++, NULL, (const void **)error_tag)) {
+    if (sr_get_error_data(err, data_idx++, NULL, (const void **)error_tag)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Missing NETCONF \"error-tag\".");
         goto cleanup;
     }
 
     /* error-app-tag */
-    if (sr_get_error_data(err, err_idx++, NULL, (const void **)error_app_tag)) {
+    if (sr_get_error_data(err, data_idx++, NULL, (const void **)error_app_tag)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Missing NETCONF \"error-app-tag\".");
         goto cleanup;
     }
@@ -266,14 +219,8 @@ sr_err_get_netconf_error_idx(const sr_error_info_err_t *err, uint32_t idx, const
         *error_app_tag = NULL;
     }
 
-    /* error-message */
-    if (sr_get_error_data(err, err_idx++, NULL, (const void **)error_message)) {
-        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Missing NETCONF \"error-message\".");
-        goto cleanup;
-    }
-
     /* error-path */
-    if (sr_get_error_data(err, err_idx++, NULL, (const void **)error_path)) {
+    if (sr_get_error_data(err, data_idx++, NULL, (const void **)error_path)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Missing NETCONF \"error-path\".");
         goto cleanup;
     }
@@ -282,7 +229,7 @@ sr_err_get_netconf_error_idx(const sr_error_info_err_t *err, uint32_t idx, const
     }
 
     /* error-info count */
-    if (sr_get_error_data(err, err_idx++, NULL, &ptr)) {
+    if (sr_get_error_data(err, data_idx++, NULL, &ptr)) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Missing NETCONF \"error-info\" count.");
         goto cleanup;
     }
@@ -296,13 +243,13 @@ sr_err_get_netconf_error_idx(const sr_error_info_err_t *err, uint32_t idx, const
 
     for (i = 0; i < val; ++i) {
         /* error-info element */
-        if (sr_get_error_data(err, err_idx++, NULL, (const void **)&arg)) {
+        if (sr_get_error_data(err, data_idx++, NULL, (const void **)&arg)) {
             sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Missing NETCONF \"error-info\" element.");
             goto cleanup;
         }
 
         /* error-info value */
-        if (sr_get_error_data(err, err_idx++, NULL, (const void **)&arg2)) {
+        if (sr_get_error_data(err, data_idx++, NULL, (const void **)&arg2)) {
             sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Missing NETCONF \"error-info\" value.");
             goto cleanup;
         }
@@ -322,4 +269,21 @@ cleanup:
         free(*error_info_values);
     }
     return rc;
+}
+
+API int
+sr_err_get_netconf_error_idx(const sr_error_info_err_t *err, uint32_t idx, const char **error_type, const char **error_tag,
+        const char **error_app_tag, const char **error_path, const char **error_message,
+        const char ***error_info_elements, const char ***error_info_values, uint32_t *error_info_count)
+{
+    sr_error_info_t *err_info = NULL;
+
+    if (idx) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid arguments for function \"%s\".", __func__);
+        sr_errinfo_free(&err_info);
+        return SR_ERR_INVAL_ARG;
+    }
+
+    return sr_err_get_netconf_error(err, error_type, error_tag, error_app_tag, error_path, error_message,
+            error_info_elements, error_info_values, error_info_count);
 }
