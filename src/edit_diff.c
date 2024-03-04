@@ -3000,10 +3000,11 @@ sr_edit_add_descendant_have_own_op(const struct lyd_node *sibling, enum edit_op 
  * @param[in,out] root Root node, may need to be adjusted after @p match changes.
  * @param[in] value Value of the new edit.
  * @param[in] op Operation of the new edit.
+ * @param[in] oper_ds Whether we are working with ::SR_DS_OPERATIONAL datastore.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char *value, enum edit_op op)
+sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char *value, enum edit_op op, int oper_ds)
 {
     sr_error_info_t *err_info = NULL;
     const struct lysc_node *schema;
@@ -3084,9 +3085,6 @@ sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char 
                         lyd_insert_sibling(sibling, match, root);
                     }
                 }
-                if ((err_info = sr_edit_set_oper(match, "merge"))) {
-                    goto cleanup;
-                }
                 break;
             case LYS_ANYXML:
             case LYS_ANYDATA:
@@ -3098,11 +3096,6 @@ sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char 
                 if ((err_info = sr_lyd_any_copy_value(match, &any_val, LYD_ANYDATA_STRING))) {
                     goto cleanup;
                 }
-
-                /* use merge (instead of replace) to prevent problems with previous value in oper edit */
-                if ((err_info = sr_edit_set_oper(match, "merge"))) {
-                    goto cleanup;
-                }
                 break;
             default:
                 /* remove all descendants and assume the operation should be replaced */
@@ -3110,10 +3103,12 @@ sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char 
                 if (own_oper) {
                     sr_edit_del_meta_attr(match, "operation");
                 }
-                if ((err_info = sr_edit_set_oper(match, "replace"))) {
-                    goto cleanup;
-                }
                 break;
+            }
+
+            /* remove/merge combined with merge/create results in replace (but that is not accepted for oper DS) */
+            if ((err_info = sr_edit_set_oper(match, oper_ds ? "merge" : "replace"))) {
+                goto cleanup;
             }
         } else {
             sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Node \"%s\" already in edit with \"%s\" operation "
@@ -3567,7 +3562,8 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
         }
         if (match) {
             /* node exists, nothing to create, just merge operations if possible */
-            if ((err_info = sr_edit_add_merge_op(match, &session->dt[session->ds].edit->tree, value, sr_edit_str2op(operation)))) {
+            if ((err_info = sr_edit_add_merge_op(match, &session->dt[session->ds].edit->tree, value,
+                    sr_edit_str2op(operation), (session->ds == SR_DS_OPERATIONAL)))) {
                 goto error_safe;
             }
             goto success;
