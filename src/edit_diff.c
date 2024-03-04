@@ -683,7 +683,7 @@ sr_edit_find_previous_instance(const struct lyd_node *llist)
 static char *
 sr_edit_create_userord_predicate(const struct lyd_node *llist)
 {
-    char *pred;
+    char *pred, quot;
     uint32_t pred_len, key_len;
     struct lyd_node *key;
 
@@ -713,7 +713,8 @@ sr_edit_create_userord_predicate(const struct lyd_node *llist)
             return NULL;
         }
 
-        sprintf(pred + pred_len, "[%s='%s']", key->schema->name, lyd_get_value(key));
+        quot = strchr(lyd_get_value(key), '\'') ? '\"' : '\'';
+        sprintf(pred + pred_len, "[%s=%c%s%c]", key->schema->name, quot, lyd_get_value(key), quot);
         pred_len += key_len;
     }
 
