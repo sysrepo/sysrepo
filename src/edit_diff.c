@@ -3058,34 +3058,32 @@ sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char 
             schema = lyd_node_schema(match);
             if (schema->nodetype == LYS_LEAF) {
                 /* update value and use merge for leaves to avoid problems with previous value on replace (in oper edit) */
-                if (schema->nodetype == LYS_LEAF) {
-                    if (match->schema) {
-                        if (own_oper) {
-                            sr_edit_del_meta_attr(match, "operation");
-                        }
-                        if ((err_info = sr_lyd_change_term(match, value, 0))) {
-                            goto cleanup;
-                        }
-                    } else {
-                        /* need to create a valid node instead */
-                        parent = lyd_parent(match);
-                        sibling = match->prev;
-
-                        if (*root == match) {
-                            *root = (*root)->next;
-                        }
-                        lyd_free_tree(match);
-
-                        if ((err_info = sr_lyd_new_term2(parent, schema->module, schema->name, value, &match))) {
-                            goto cleanup;
-                        }
-                        if (!parent) {
-                            lyd_insert_sibling(sibling, match, root);
-                        }
+                if (match->schema) {
+                    if (own_oper) {
+                        sr_edit_del_meta_attr(match, "operation");
                     }
-                    if ((err_info = sr_edit_set_oper(match, "merge"))) {
+                    if ((err_info = sr_lyd_change_term(match, value, 0))) {
                         goto cleanup;
                     }
+                } else {
+                    /* need to create a valid node instead */
+                    parent = lyd_parent(match);
+                    sibling = match->prev;
+
+                    if (*root == match) {
+                        *root = (*root)->next;
+                    }
+                    lyd_free_tree(match);
+
+                    if ((err_info = sr_lyd_new_term2(parent, schema->module, schema->name, value, &match))) {
+                        goto cleanup;
+                    }
+                    if (!parent) {
+                        lyd_insert_sibling(sibling, match, root);
+                    }
+                }
+                if ((err_info = sr_edit_set_oper(match, "merge"))) {
+                    goto cleanup;
                 }
             } else {
                 /* remove all descendants and change into replace */
