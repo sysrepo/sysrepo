@@ -3008,6 +3008,7 @@ sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char 
     sr_error_info_t *err_info = NULL;
     const struct lysc_node *schema;
     struct lyd_node *parent = NULL, *sibling = NULL;
+    union lyd_any_value any_val;
     enum edit_op cur_op;
     int own_oper;
 
@@ -3056,8 +3057,9 @@ sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char 
     case EDIT_DELETE:
         if ((op == EDIT_MERGE) || (op == EDIT_CREATE)) {
             schema = lyd_node_schema(match);
-            if (schema->nodetype == LYS_LEAF) {
-                /* update value and use merge for leaves to avoid problems with previous value on replace (in oper edit) */
+            switch (schema->nodetype) {
+            case LYS_LEAF:
+                /* update value */
                 if (match->schema) {
                     if (own_oper) {
                         sr_edit_del_meta_attr(match, "operation");
@@ -3085,8 +3087,25 @@ sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char 
                 if ((err_info = sr_edit_set_oper(match, "merge"))) {
                     goto cleanup;
                 }
-            } else {
-                /* remove all descendants and change into replace */
+                break;
+            case LYS_ANYXML:
+            case LYS_ANYDATA:
+                /* update value */
+                if (own_oper) {
+                    sr_edit_del_meta_attr(match, "operation");
+                }
+                any_val.str = value;
+                if ((err_info = sr_lyd_any_copy_value(match, &any_val, LYD_ANYDATA_STRING))) {
+                    goto cleanup;
+                }
+
+                /* use merge (instead of replace) to prevent problems with previous value in oper edit */
+                if ((err_info = sr_edit_set_oper(match, "merge"))) {
+                    goto cleanup;
+                }
+                break;
+            default:
+                /* remove all descendants and assume the operation should be replaced */
                 lyd_free_siblings(lyd_child_no_keys(match));
                 if (own_oper) {
                     sr_edit_del_meta_attr(match, "operation");
@@ -3094,6 +3113,7 @@ sr_edit_add_merge_op(struct lyd_node *match, struct lyd_node **root, const char 
                 if ((err_info = sr_edit_set_oper(match, "replace"))) {
                     goto cleanup;
                 }
+                break;
             }
         } else {
             sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Node \"%s\" already in edit with \"%s\" operation "
