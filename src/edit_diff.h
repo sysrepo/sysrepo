@@ -156,6 +156,17 @@ sr_error_info_t *sr_edit_mod_merge(const struct lyd_node *edit, uint32_t cid, co
         struct lyd_node **data, struct lyd_node **diff, int *change);
 
 /**
+ * @brief Merge missing nodes in a diff from an edit and use 'none' operation for them.
+ *
+ * @param[in,out] diff Diff to merge into.
+ * @param[in] ly_mod Edit data tree module.
+ * @param[in] edit Edit data tree to merge.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_edit_mod_diff_edit_merge(struct lyd_node **diff, const struct lys_module *ly_mod,
+        const struct lyd_node *edit);
+
+/**
  * @brief Add change into sysrepo edit.
  *
  * @param[in] session Session to use.

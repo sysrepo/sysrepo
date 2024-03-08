@@ -2892,6 +2892,81 @@ cleanup:
 }
 
 /**
+ * @brief Merge sysrepo edit subtrees, recursively. Optionally, sysrepo diff is being also created/updated.
+ *
+ * @param[in,out] trg_root First top-level sibling of the target diff tree.
+ * @param[in] trg_parent Target diff tree node parent.
+ * @param[in] src_node Source edit tree node.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_edit_diff_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_parent, const struct lyd_node *src_node)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *trg_node = NULL, *trg_sibling, *child_src;
+
+    /* find an equal node in the current data */
+    trg_sibling = trg_parent ? lyd_child(trg_parent) : *trg_root;
+    if ((err_info = sr_edit_find_match(trg_sibling, src_node, &trg_node))) {
+        goto cleanup;
+    }
+
+    if (trg_node) {
+        /* merge descendants, recursively */
+        LY_LIST_FOR(lyd_child_no_keys(src_node), child_src) {
+            if ((err_info = sr_edit_diff_edit_merge_r(trg_root, trg_node, child_src))) {
+                goto cleanup;
+            }
+        }
+    } else {
+        /* node not found, merge it */
+        if ((err_info = sr_lyd_dup(src_node, NULL, LYD_DUP_RECURSIVE | LYD_DUP_NO_META, 0, &trg_node))) {
+            goto cleanup;
+        }
+
+        /* set 'none' operation */
+        if ((err_info = sr_diff_set_oper(trg_node, "none"))) {
+            goto cleanup;
+        }
+
+        /* insert */
+        if (trg_parent) {
+            err_info = sr_lyd_insert_child(trg_parent, trg_node);
+        } else {
+            err_info = sr_lyd_insert_sibling(*trg_root, trg_node, trg_root);
+        }
+        if (err_info) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    return err_info;
+}
+
+sr_error_info_t *
+sr_edit_mod_diff_edit_merge(struct lyd_node **diff, const struct lys_module *ly_mod, const struct lyd_node *edit)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lyd_node *root;
+
+    LY_LIST_FOR(edit, root) {
+        if (lyd_owner_module(root) != ly_mod) {
+            /* skip data nodes from different modules */
+            continue;
+        }
+
+        /* merge relevant nodes from the edit datatree */
+        if ((err_info = sr_edit_diff_edit_merge_r(diff, NULL, edit))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    return err_info;
+}
+
+/**
  * @brief Check whether a descendant operation should replace a parent operation (is superior to).
  * Also, check whether the operation is even allowed.
  *

@@ -606,6 +606,11 @@ sr_modinfo_edit_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *edi
         if (change) {
             /* there is a diff for this module */
             mod->state |= MOD_INFO_CHANGED;
+
+            /* merge the whole stored edit and set 'none' operation (for filters using non-changed nodes to work) */
+            if (create_diff && (err_info = sr_edit_mod_diff_edit_merge(&mod_info->diff, mod->ly_mod, mod_info->data))) {
+                goto cleanup;
+            }
         }
     }
 
