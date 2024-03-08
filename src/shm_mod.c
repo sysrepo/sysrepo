@@ -1633,6 +1633,7 @@ sr_shmmod_reboot_init(sr_conn_ctx_t *conn, int initialized)
         for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
             if ((ds == SR_DS_RUNNING) && !smods[i]->plugins[ds]) {
                 /* disabled */
+                ds_handle[ds] = NULL;
                 continue;
             }
 
