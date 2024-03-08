@@ -14,14 +14,14 @@ if different data are stored in each configuration. Datastore plugin essentially
 directly into Sysrepo so all the Sysrepo datastore operations such as load or store will be performed using the app
 configuration.
 
-Secondly, the performance. The default datastore implementation is using *libyang* LYB files that are completely generic
+Secondly, the performance. The default datastore implementation is using *libyang* JSON files that are completely generic
 and can store any YANG data but some operations may take much longer than necessary and even require more space than
-a specialized datastore would. The main disadvantage of LYB files in terms of efficiency is performing small changes
+a specialized datastore would. The main disadvantage of JSON files in terms of efficiency is performing small changes
 on large data. In this case the whole data must be parsed, the change performed, and the whole updated data written
 back. Instead, another datastore may be able to store the change directly without parsing and printing all the other
 stored data. As for the space required, if implementing a datastore for a specific YANG module, the data structure can
 fully depend on the schema nodes defined in the module and hence avoid storing any redundant information. Finally,
-note that the internal LYB datastore is also implemented as a datastore plugin so it can be used as an example
+note that the internal JSON datastore is also implemented as a datastore plugin so it can be used as an example
 implementation.
 
 @ref dsplg_api
