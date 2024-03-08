@@ -317,7 +317,11 @@ set_module_ds(const char *optarg, sr_module_ds_t *module_ds)
         return 1;
     }
 
-    module_ds->plugin_name[module_ds_idx] = ptr + 1;
+    if (strlen(ptr) == 1) {
+        module_ds->plugin_name[module_ds_idx] = NULL;
+    } else {
+        module_ds->plugin_name[module_ds_idx] = ptr + 1;
+    }
     return 0;
 }
 
