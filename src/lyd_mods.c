@@ -958,6 +958,30 @@ cleanup:
 }
 
 /**
+ * @brief Get module DS for an internal module.
+ *
+ * @param[in] name Mdoule name.
+ * @return Module DS structure ofr the module.
+ */
+static sr_module_ds_t
+sr_lydmods_int_mod_ds(const char *name)
+{
+    const char *ptr, *int_mod_str = SR_INT_MOD_DISABLED_RUNNING;
+    int run_disabled = 0;
+
+    if (!strcmp(int_mod_str, "*")) {
+        /* all internal module running disabled */
+        run_disabled = 1;
+    } else if ((ptr = strstr(int_mod_str, name)) && ((ptr == int_mod_str) || (ptr[-1] == ' ')) &&
+            ((ptr[strlen(name)] == '\0') || (ptr[strlen(name)] == ' '))) {
+        /* running disabled */
+        run_disabled = 1;
+    }
+
+    return run_disabled ? sr_module_ds_disabled_run : sr_module_ds_default;
+}
+
+/**
  * @brief Create default sysrepo module data. All libyang internal implemented modules
  * are installed into sysrepo. Sysrepo internal modules ietf-netconf, ietf-netconf-with-defaults,
  * and ietf-netconf-notifications are also installed.
@@ -981,7 +1005,7 @@ sr_lydmods_create(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, struct lyd_node **
     if ((err_info = sr_lys_parse(ctx, yang_mod, NULL, LYS_IN_YANG, NULL, &ly_mod))) { \
         goto cleanup; \
     } \
-    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, sr_default_module_ds, NULL, \
+    if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, sr_lydmods_int_mod_ds(ly_mod->name), NULL, \
             strlen(SR_GROUP) ? SR_GROUP : NULL, sr_module_default_mode(ly_mod), &(new_mods), &(new_mod_count)))) { \
         goto cleanup; \
     } \
@@ -1008,7 +1032,7 @@ sr_lydmods_create(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, struct lyd_node **
             continue;
         }
 
-        if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, sr_default_module_ds, NULL,
+        if ((err_info = sr_lydmods_add_module_with_imps_r(sr_mods, ly_mod, sr_lydmods_int_mod_ds(ly_mod->name), NULL,
                 strlen(SR_GROUP) ? SR_GROUP : NULL, sr_module_default_mode(ly_mod), &new_mods, &new_mod_count))) {
             goto cleanup;
         }

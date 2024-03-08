@@ -123,6 +123,7 @@ else()
     # empty data but the code needs a format
     set(INTERNAL_MODULE_DATA_FORMAT LYD_XML)
 endif()
+set(INTERNAL_MODULE_DISABLED_RUNNING "" CACHE STRING "List of internal sysrepo or libyang modules that will have their 'running' datastores disabled (always mirroring 'startup'), separated by space. Use '*' for all the modules.")
 
 # ietf-yang-library revision
 set(YANGLIB_REVISION "2019-01-04" CACHE STRING

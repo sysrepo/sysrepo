@@ -87,6 +87,9 @@
 #define SR_INT_MOD_DATA "@INTERNAL_MODULE_DATA@"
 #define SR_INT_MOD_DATA_FORMAT @INTERNAL_MODULE_DATA_FORMAT@
 
+/** internal modules with disabled running datastore, '*' for all the modules */
+#define SR_INT_MOD_DISABLED_RUNNING "@INTERNAL_MODULE_DISABLED_RUNNING@"
+
 /** where SHM files are stored */
 #define SR_SHM_DIR "@SHM_DIR@"
 

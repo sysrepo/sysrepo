@@ -74,9 +74,21 @@ const struct srplg_ntf_s *sr_internal_ntf_plugins[] = {
 /**
  * @brief Default module DS plugins.
  */
-const sr_module_ds_t sr_default_module_ds = {{
+const sr_module_ds_t sr_module_ds_default = {{
         "JSON DS file", /**< startup */
         "JSON DS file", /**< running */
+        "JSON DS file", /**< candidate */
+        "JSON DS file", /**< operational */
+        "JSON DS file", /**< factory-default */
+        "JSON notif"    /**< notification */
+    }};
+
+/**
+ * @brief Default module DS plugins with 'running' DS disbaled.
+ */
+const sr_module_ds_t sr_module_ds_disabled_run = {{
+        "JSON DS file", /**< startup */
+        NULL,           /**< running */
         "JSON DS file", /**< candidate */
         "JSON DS file", /**< operational */
         "JSON DS file", /**< factory-default */

@@ -1358,7 +1358,7 @@ sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_i
     if (!memcmp(&new_mod->module_ds, &sr_empty_module_ds, sizeof sr_empty_module_ds)) {
         /* use default plugins if none are set */
         for (mod_ds = 0; mod_ds < SR_MOD_DS_PLUGIN_COUNT; ++mod_ds) {
-            new_mod->module_ds.plugin_name[mod_ds] = sr_default_module_ds.plugin_name[mod_ds];
+            new_mod->module_ds.plugin_name[mod_ds] = sr_module_ds_default.plugin_name[mod_ds];
         }
     } else {
         /* check plugin existence */
