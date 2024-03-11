@@ -307,14 +307,19 @@ cleanup:
 static void
 sr_shmsub_recover(sr_sub_shm_t *sub_shm)
 {
+    sr_sub_event_t ev = ATOMIC_LOAD_RELAXED(sub_shm->event);
+
     if (sub_shm->orig_cid && !sr_conn_is_alive(sub_shm->orig_cid)) {
         SR_LOG_WRN("EV ORIGIN: SHM event \"%s\" of CID %" PRIu32 " ID %" PRIu32 " recovered.",
-                sr_ev2str(ATOMIC_LOAD_RELAXED(sub_shm->event)), sub_shm->orig_cid,
+                sr_ev2str(ev), sub_shm->orig_cid,
                 (uint32_t)ATOMIC_LOAD_RELAXED(sub_shm->request_id));
 
         /* clear the event */
         ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
         sub_shm->orig_cid = 0;
+    } else if (ev && (ev != SR_SUB_EV_NOTIF)) {
+        /* if there is an event except SR_SUB_EV_NOTIF, orig_cid must always exist */
+        assert(sub_shm->orig_cid);
     }
 }
 
@@ -342,7 +347,7 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
     }
 
     if (ATOMIC_LOAD_RELAXED(sub_shm->event) && (ATOMIC_LOAD_RELAXED(sub_shm->event) != lock_event)) {
-        /* instead of wating, try to recover the event immediately */
+        /* instead of waiting, try to recover the event immediately */
         sr_shmsub_recover(sub_shm);
     }
 
@@ -407,8 +412,8 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
     }
 
 event_handled:
-    /* we have write lock and the expected event */
-    assert(!sub_shm->orig_cid);
+    /* we have write lock and the expected event, remove any left over orig_cid */
+    sub_shm->orig_cid = 0;
     return NULL;
 }
 
