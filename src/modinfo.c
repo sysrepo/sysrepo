@@ -2380,6 +2380,7 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
     const struct sr_ds_handle_s *ds_handle[SR_DS_READ_COUNT] = {0};
+    sr_datastore_t ds;
     struct sr_mod_info_mod_s *mod = NULL;
     uint32_t i;
     int new = 0;
@@ -2413,16 +2414,14 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
     /* find main DS handle */
     if ((mod_info->ds == SR_DS_RUNNING) && !shm_mod->plugins[mod_info->ds]) {
         /* 'running' is disabled, we will be using the 'startup' plugin */
-        if ((err_info = sr_ds_handle_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[SR_DS_STARTUP], mod_info->conn,
-                &ds_handle[SR_DS_STARTUP]))) {
-            return err_info;
-        }
+        ds = SR_DS_STARTUP;
     } else {
-        if ((err_info = sr_ds_handle_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[mod_info->ds], mod_info->conn,
-                &ds_handle[mod_info->ds]))) {
-            return err_info;
-        }
+        ds = mod_info->ds;
     }
+    if ((err_info = sr_ds_handle_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[ds], mod_info->conn, &ds_handle[ds]))) {
+        return err_info;
+    }
+
     switch (mod_info->ds) {
     case SR_DS_STARTUP:
     case SR_DS_FACTORY_DEFAULT:
@@ -2437,9 +2436,14 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
         break;
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
-        /* get running plugin as well */
-        if ((err_info = sr_ds_handle_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[SR_DS_RUNNING],
-                mod_info->conn, &ds_handle[SR_DS_RUNNING]))) {
+        /* get running plugin as well (if not disabled) */
+        if (!shm_mod->plugins[SR_DS_RUNNING]) {
+            ds = SR_DS_STARTUP;
+        } else {
+            ds = SR_DS_RUNNING;
+        }
+        if ((err_info = sr_ds_handle_find(mod_info->conn->mod_shm.addr + shm_mod->plugins[ds], mod_info->conn,
+                &ds_handle[ds]))) {
             return err_info;
         }
         break;
