@@ -1926,6 +1926,11 @@ sr_modinfo_module_srmon_module(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, struct ly
 
     /* last-modified */
     for (ds = 0; ds < SR_DS_COUNT; ++ds) {
+        if ((ds == SR_DS_RUNNING) && !shm_mod->plugins[ds]) {
+            /* runnig disabled */
+            continue;
+        }
+
         if ((err_info = sr_modinfo_module_srmon_datastore(conn, shm_mod, ds, sr_mod))) {
             return err_info;
         }
