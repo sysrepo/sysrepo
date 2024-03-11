@@ -69,9 +69,15 @@ typedef struct {
  * @brief Subscription event.
  */
 typedef enum {
-    SR_SUB_EV_NONE = 0,         /**< No event. */
+    SR_SUB_EV_NONE = 0,         /**< No event. The last event was cleared by the notifier
+                                     and the shm is ready for the next event. */
     SR_SUB_EV_SUCCESS,          /**< Event processed successfully by subscribers. */
     SR_SUB_EV_ERROR,            /**< Event failed to be processed by a subscriber. */
+    SR_SUB_EV_FINISHED,         /**< Done and abort event processing finished by subscribers.
+                                     Notifier will wait for subscribers to finish (set event to SR_SUB_EV_FINISHED)
+                                     and then clear the event (by setting event to SR_SUB_EV_NONE).
+                                     If subscribers set event to SR_SUB_EV_NONE, a new event can be published before
+                                     the previous notifier sees the event was finished. */
 
     SR_SUB_EV_UPDATE,           /**< New update event ready. */
     SR_SUB_EV_CHANGE,           /**< New change event ready. */
