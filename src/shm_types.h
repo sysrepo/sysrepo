@@ -41,7 +41,7 @@
         || (ev == SR_SUB_EV_NOTIF))
 
 /** Whether an event is one to be processed by the originators. */
-#define SR_IS_NOTIFY_EVENT(ev) ((ev == SR_SUB_EV_SUCCESS) || (ev == SR_SUB_EV_ERROR))
+#define SR_IS_NOTIFY_EVENT(ev) ((ev == SR_SUB_EV_SUCCESS) || (ev == SR_SUB_EV_ERROR) || (ev == SR_SUB_EV_FINISHED))
 
 /**
  * @brief Mod SHM dependency type.

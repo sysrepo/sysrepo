@@ -3904,6 +3904,8 @@ sr_ev2str(sr_sub_event_t ev)
         return "success";
     case SR_SUB_EV_ERROR:
         return "error";
+    case SR_SUB_EV_FINISHED:
+        return "finished";
     case SR_SUB_EV_UPDATE:
         return "update";
     case SR_SUB_EV_CHANGE:
