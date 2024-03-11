@@ -32,7 +32,7 @@
 #include <libyang/libyang.h>
 
 #include "bin_common.h"
-// #include "common.h"
+#include "common.h"
 #include "sysrepo.h"
 
 #define SRCTL_LIST_NAME "Module Name"
@@ -172,15 +172,6 @@ error_operation(int operation, int opt)
     }
 }
 
-const sr_module_ds_t sr_module_ds_default_2 = {{
-        "JSON DS file", /**< startup */
-        "JSON DS file", /**< running */
-        "JSON DS file", /**< candidate */
-        "JSON DS file", /**< operational */
-        "JSON DS file", /**< factory-default */
-        "JSON notif"    /**< notification */
-    }};
-
 static int
 new_iitem(const char *optarg, sr_install_mod_t **iitems, uint32_t *iitem_count)
 {
@@ -195,8 +186,7 @@ new_iitem(const char *optarg, sr_install_mod_t **iitems, uint32_t *iitem_count)
     ++(*iitem_count);
 
     iitem->schema_path = optarg;
-    /*memcpy(iitem->module_ds.plugin_name, sr_module_ds_default.plugin_name, sizeof(sr_module_ds_t));*/
-    memcpy(iitem->module_ds.plugin_name, sr_module_ds_default_2.plugin_name, sizeof(sr_module_ds_t));
+    memcpy(iitem->module_ds.plugin_name, sr_module_ds_default.plugin_name, sizeof(sr_module_ds_t));
     return 0;
 }
 
