@@ -464,6 +464,7 @@ install(TARGETS sysrepoctl sysrepocfg sysrepo-plugind DESTINATION ${CMAKE_INSTAL
 install(FILES ${PROJECT_SOURCE_DIR}/src/executables/sysrepoctl.1 ${PROJECT_SOURCE_DIR}/src/executables/sysrepocfg.1
         DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
 install(FILES ${PROJECT_SOURCE_DIR}/src/executables/sysrepo-plugind.8 DESTINATION ${CMAKE_INSTALL_MANDIR}/man8)
+install(DIRECTORY DESTINATION ${REPO_PATH})
 install(DIRECTORY DESTINATION ${SR_PLUGINS_PATH})
 install(DIRECTORY DESTINATION ${SRPD_PLUGINS_PATH})
 if(SR_HAVE_SYSTEMD)
