@@ -483,10 +483,10 @@ int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *
 /**
  * @brief Get structure for default datastore plugins.
  *
- * Installed modules will use the default datastore plugins in this structure. Use @ref sr_install_module2 to install a
- * module with a different set of datastore plugins.
+ * Installed modules will use the datastore plugins in this structure. Use @ref sr_install_module2 to install a module
+ * with a different set of datastore plugins.
  *
- * @return Const pointer to the default datastore structure.
+ * @return Default datastore structure pointer.
  */
 const sr_module_ds_t *sr_get_module_ds_default();
 
