@@ -310,6 +310,10 @@ sr_ds_handle_find(const char *ds_plugin_name, sr_conn_ctx_t *conn, const struct 
     sr_error_info_t *err_info = NULL;
     uint32_t i;
 
+    if (ds_handle) {
+        *ds_handle = NULL;
+    }
+
     if (!ds_plugin_name) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Datastore plugin without a name.");
         return err_info;
@@ -467,6 +471,10 @@ sr_ntf_handle_find(const char *ntf_plugin_name, sr_conn_ctx_t *conn, const struc
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
+
+    if (ntf_handle) {
+        *ntf_handle = NULL;
+    }
 
     if (!ntf_plugin_name) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Notification plugin without a name.");

@@ -2079,7 +2079,7 @@ sr_error_info_t *
 sr_subscr_rpc_xpath_check(const struct ly_ctx *ly_ctx, const char *xpath, char **path, int *is_ext, int *valid)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lysc_node *op;
+    const struct lysc_node *op = NULL;
     char *p = NULL;
 
     if (path) {

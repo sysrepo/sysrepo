@@ -45,7 +45,7 @@ sr_error_info_t *
 sr_shmext_conn_remap_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lock, const char *func)
 {
     sr_error_info_t *err_info = NULL;
-    size_t shm_file_size;
+    size_t shm_file_size = 0;
 
     if (ext_lock) {
         /* EXT LOCK */
@@ -132,7 +132,7 @@ sr_shmext_conn_remap_unlock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int ext_lo
     sr_error_info_t *err_info = NULL;
     sr_ext_hole_t *iter, *last = NULL;
     uint32_t last_size;
-    size_t shm_file_size;
+    size_t shm_file_size = 0;
 
     /* make ext SHM smaller if there is a memory hole at its end */
     if (((mode == SR_LOCK_WRITE) || (mode == SR_LOCK_WRITE_URGE)) && ext_lock) {
@@ -1270,6 +1270,7 @@ sr_shmext_oper_poll_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t de
     uint32_t evpipe_num;
 
     assert(has_locks == SR_LOCK_WRITE);
+    (void)has_locks;
 
     shm_subs = (sr_mod_oper_poll_sub_t *)(conn->ext_shm.addr + shm_mod->oper_poll_subs);
     if (recovery) {

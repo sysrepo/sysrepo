@@ -909,6 +909,9 @@ sr_shmmod_get_rpc_deps(sr_mod_shm_t *mod_shm, const char *path, int output, sr_d
     sr_error_info_t *err_info = NULL;
     sr_rpc_t *shm_rpc;
 
+    *shm_deps = NULL;
+    *shm_dep_count = 0;
+
     /* find the RPC in SHM */
     shm_rpc = sr_shmmod_find_rpc(mod_shm, path);
     SR_CHECK_INT_RET(!shm_rpc, err_info);
@@ -929,6 +932,9 @@ sr_shmmod_get_notif_deps(sr_mod_shm_t *mod_shm, const struct lys_module *notif_m
     sr_mod_t *smod;
     sr_notif_t *shm_notif;
     uint32_t i;
+
+    *shm_deps = NULL;
+    *shm_dep_count = 0;
 
     /* get the path */
     path = lysc_path(notif_op->schema, LYSC_PATH_DATA, NULL, 0);

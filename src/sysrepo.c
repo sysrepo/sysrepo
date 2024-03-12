@@ -6948,7 +6948,7 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
     uint32_t sub_id;
     sr_subscr_options_t sub_opts;
     sr_mod_t *shm_mod;
-    uint32_t prio;
+    uint32_t prio = 0;
 
     SR_CHECK_ARG_APIRET(!session || SR_IS_EVENT_SESS(session) || !module_name || !path || !callback || !subscription,
             session, err_info);

@@ -288,7 +288,7 @@ srpds_json_init(const struct lys_module *mod, sr_datastore_t ds, void *UNUSED(pl
     sr_error_info_t *err_info = NULL;
     int fd = -1;
     char *owner = NULL, *group = NULL, *path = NULL;
-    mode_t perm;
+    mode_t perm = 0;
 
     if (ds != SR_DS_RUNNING) {
         /* startup and factory-default are persistent and candidate with operational exists only if modified */
