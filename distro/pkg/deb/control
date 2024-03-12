@@ -6,14 +6,17 @@ Priority: optional
 Standards-Version: 4.5.0
 Build-Depends: cmake,
                debhelper (>= 10),
-               libyang2-dev,
+               libyang-dev,
                libsystemd-dev,
                pkg-config
 Vcs-Browser: https://github.com/sysrepo/sysrepo/tree/master
 Vcs-Git: https://github.com/sysrepo/sysrepo.git
 
 Package: libsysrepo7
-Depends: ${misc:Depends},
+Depends: addgroup,
+         chown,
+         chmod,
+         ${misc:Depends},
          ${shlibs:Depends}
 Architecture: any
 Description: YANG-based configuration and operational data store - runtime
@@ -26,7 +29,7 @@ Description: YANG-based configuration and operational data store - runtime
  to use for accessing sysrepo datastore.
 
 Package: libsysrepo-dev
-Depends: libyang2-dev,
+Depends: libyang-dev,
          libsysrepo7 (= ${binary:Version}),
          ${misc:Depends}
 Section: libdevel

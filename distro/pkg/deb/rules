@@ -9,4 +9,7 @@ include /usr/share/dpkg/default.mk
 
 override_dh_auto_configure:
 	dh_auto_configure -- \
-		-DCMAKE_BUILD_TYPE:String="Release"
+		-DCMAKE_BUILD_TYPE:String="Release" \
+		-DSYSREPO_UMASK=007 \
+		-DSYSREPO_GROUP=sysrepo \
+		-DNACM_SRMON_DATA_PERM=660
