@@ -173,7 +173,7 @@ extern char sysrepo_factory_default_yang[];
 extern const struct srplg_ds_s *sr_internal_ds_plugins[];
 extern const struct srplg_ntf_s *sr_internal_ntf_plugins[];
 
-API extern const sr_module_ds_t sr_module_ds_default;
+extern const sr_module_ds_t sr_module_ds_default;
 extern const sr_module_ds_t sr_module_ds_disabled_run;
 
 /** static initializer of the shared memory structure */

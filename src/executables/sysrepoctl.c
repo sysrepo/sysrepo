@@ -186,7 +186,7 @@ new_iitem(const char *optarg, sr_install_mod_t **iitems, uint32_t *iitem_count)
     ++(*iitem_count);
 
     iitem->schema_path = optarg;
-    memcpy(&iitem->module_ds, &sr_module_ds_default, sizeof iitem->module_ds);
+    memcpy(&iitem->module_ds, sr_get_module_ds_default(), sizeof iitem->module_ds);
     return 0;
 }
 
