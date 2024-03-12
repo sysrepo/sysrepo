@@ -32,7 +32,6 @@
 #include <libyang/libyang.h>
 
 #include "bin_common.h"
-#include "common.h"
 #include "sysrepo.h"
 
 #define SRCTL_LIST_NAME "Module Name"
