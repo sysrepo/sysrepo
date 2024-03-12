@@ -105,6 +105,7 @@ rm -rf /dev/shm/srsub_*
 %{_libdir}/libsysrepo.so.7*
 %{_datadir}/yang/modules/sysrepo/*.yang
 %dir %{_datadir}/yang/modules/sysrepo/
+%dir %{_sysconfdir}/sysrepo
 %dir %{_libdir}/sysrepo/plugins
 %attr(0770,root,sysrepo) %{_sysconfdir}/sysrepo
 
