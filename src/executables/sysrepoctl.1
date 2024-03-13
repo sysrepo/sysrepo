@@ -92,9 +92,10 @@ are being changed. \fIMOD-DATASTORE\fP can be:
  \[bu] \fB:ALL\fP (default)
 .TP
 .BR "\-m\fR,\fP \-\^\-module-plugin \fIMOD-DATASTORE\fP:\fIPLUGIN-NAME\fP"
-Set specific module datastore plugin for a module datastore, can be specified multiple
-times for different module datastores. If \fIPLUGIN-NAME\fP is an empty string, it is set to NULL. Accepted by
-\fBinstall\fP op.
+Set specific module datastore plugin for a module datastore. Can be specified multiple
+times for different module datastores. If \fIPLUGIN-NAME\fP is an empty string, it is
+set to NULL, which disables the datastore (\fBrunning\fP datastore only). Unspecified
+datastores use the default datastore plugins. Accepted by \fBinstall\fP op.
 .TP
 .BR "\-I\fR,\fP \-\^\-init-data \fIPATH\fP"
 Initial data in a file with XML or JSON extension to be set for a module,
