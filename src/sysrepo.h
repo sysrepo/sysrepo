@@ -488,7 +488,7 @@ int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *
  *
  * @return Default datastore structure pointer.
  */
-const sr_module_ds_t *sr_get_module_ds_default();
+const sr_module_ds_t *sr_get_module_ds_default(void);
 
 /**
  * @brief Install a new schema (module) into sysrepo with all the available options.
