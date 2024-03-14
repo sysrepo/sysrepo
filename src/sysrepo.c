@@ -1575,7 +1575,8 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
 }
 
 API const sr_module_ds_t *
-sr_get_module_ds_default(void) {
+sr_get_module_ds_default(void)
+{
     return &sr_module_ds_default;
 }
 
