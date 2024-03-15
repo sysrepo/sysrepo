@@ -1574,6 +1574,12 @@ sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *sear
     return sr_install_module2(conn, schema_path, search_dirs, features, NULL, NULL, NULL, 0, NULL, NULL, 0);
 }
 
+API const sr_module_ds_t *
+sr_get_module_ds_default(void)
+{
+    return &sr_module_ds_default;
+}
+
 API int
 sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs, const char **features,
         const sr_module_ds_t *module_ds, const char *owner, const char *group, mode_t perm, const char *data,

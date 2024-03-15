@@ -61,7 +61,7 @@ modules is always searched. Accepted by \fBinstall\fP, \fBupdate\fP op.
 .TP
 .BR "\-e\fR,\fP \-\^\-enable\-feature \fIFEATURE\fP"
 Enabled specific feature or use '*' for all the features.
-Can be specified multiple times Accepted by \fBinstall\fP, \fBchange\fP op.
+Can be specified multiple times. Accepted by \fBinstall\fP, \fBchange\fP op.
 .TP
 .BR "\-d\fR,\fP \-\^\-disable\-feature \fIFEATURE\fP"
 Disable specific feature. Can be specified multiple times. Accepted by \fBchange\fP op.
@@ -92,8 +92,10 @@ are being changed. \fIMOD-DATASTORE\fP can be:
  \[bu] \fB:ALL\fP (default)
 .TP
 .BR "\-m\fR,\fP \-\^\-module-plugin \fIMOD-DATASTORE\fP:\fIPLUGIN-NAME\fP"
-Set specific module datastore plugin for a module datastore, can be specified multiple
-times for different module datastores. Accepted by \fBinstall\fP op.
+Set specific module datastore plugin for a module datastore. Can be specified multiple
+times for different module datastores. If \fIPLUGIN-NAME\fP is an empty string, it is
+set to NULL, which disables the datastore (\fBrunning\fP datastore only). Unspecified
+datastores use the default datastore plugins. Accepted by \fBinstall\fP op.
 .TP
 .BR "\-I\fR,\fP \-\^\-init-data \fIPATH\fP"
 Initial data in a file with XML or JSON extension to be set for a module,

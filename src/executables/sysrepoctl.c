@@ -128,7 +128,9 @@ help_print(void)
             "  -m, --module-plugin <mod-datastore>:<plugin-name>\n"
             "                       Set specific module datastore plugin for a module datastore (startup, running,\n"
             "                       candidate, operational, factory-default, or notification), can be specified multiple\n"
-            "                       times for different module datastores. Accepted by install op.\n"
+            "                       times for different module datastores. If <plugin-name> is an empty string, it is\n"
+            "                       set to NULL, which disables the datastore (running datastore only). Unspecified\n"
+            "                       datastores use the default datastore plugins. Accepted by install op.\n"
             "  -I, --init-data <path>\n"
             "                       Initial data in a file with XML or JSON extension to be set for module(s),\n"
             "                       useful when there are mandatory top-level nodes. Accepted by install op.\n"
@@ -184,6 +186,7 @@ new_iitem(const char *optarg, sr_install_mod_t **iitems, uint32_t *iitem_count)
     ++(*iitem_count);
 
     iitem->schema_path = optarg;
+    memcpy(&iitem->module_ds, sr_get_module_ds_default(), sizeof iitem->module_ds);
     return 0;
 }
 
@@ -317,7 +320,11 @@ set_module_ds(const char *optarg, sr_module_ds_t *module_ds)
         return 1;
     }
 
-    module_ds->plugin_name[module_ds_idx] = ptr + 1;
+    if (strlen(ptr) == 1) {
+        module_ds->plugin_name[module_ds_idx] = NULL;
+    } else {
+        module_ds->plugin_name[module_ds_idx] = ptr + 1;
+    }
     return 0;
 }
 

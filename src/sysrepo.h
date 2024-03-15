@@ -481,6 +481,16 @@ const char *sr_get_repo_path(void);
 int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs, const char **features);
 
 /**
+ * @brief Get structure for default datastore plugins.
+ *
+ * Installed modules will use the datastore plugins in this structure. Use @ref sr_install_module2 to install a module
+ * with a different set of datastore plugins.
+ *
+ * @return Default datastore structure pointer.
+ */
+const sr_module_ds_t *sr_get_module_ds_default(void);
+
+/**
  * @brief Install a new schema (module) into sysrepo with all the available options.
  *
  * Any initial data are also used as factory-default datastore data.
