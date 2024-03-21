@@ -481,19 +481,21 @@ const char *sr_get_repo_path(void);
 int sr_install_module(sr_conn_ctx_t *conn, const char *schema_path, const char *search_dirs, const char **features);
 
 /**
- * @brief Get structure for default datastore plugins.
+ * @brief Get the default datastore plugins.
  *
- * Installed modules will use the datastore plugins in this structure. Use @ref sr_install_module2 to install a module
- * with a different set of datastore plugins.
+ * New modules without explicitly set DS plugins will use these plugins. Use ::sr_install_module2 to install a module
+ * with a custom set of datastore plugins.
  *
- * @return Default datastore structure pointer.
+ * @return Default datastore plugin structure.
  */
 const sr_module_ds_t *sr_get_module_ds_default(void);
 
 /**
  * @brief Install a new schema (module) into sysrepo with all the available options.
  *
- * Any initial data are also used as factory-default datastore data.
+ * Any initial data are used as `running`, `startup`, and `factory-default` datastore data. If not set,
+ * the datastore plugin will be used to get the initial data for each datastore, which should generally be empty
+ * but may not be for custom DS plugins.
  *
  * @param[in] conn Connection to use.
  * @param[in] schema_path Path to the new schema. Can have either YANG or YIN extension/format.
@@ -533,7 +535,7 @@ int sr_install_modules(sr_conn_ctx_t *conn, const char **schema_paths, const cha
 /**
  * @brief Install new schemas (modules) into sysrepo in a batch with all the available options.
  *
- * Any initial data are also used as factory-default datastore data.
+ * See ::sr_install_module2 for details.
  *
  * @param[in] conn Connection to use.
  * @param[in] modules Array of new modules to be installed with all their information.

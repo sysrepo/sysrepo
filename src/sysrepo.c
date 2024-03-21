@@ -1489,7 +1489,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
         goto cleanup;
     }
 
-    /* check the new context can be used, optionally with initial module data */
+    /* check the new context can be used */
     if ((err_info = sr_lycc_check_add_modules(conn, new_ctx))) {
         goto cleanup;
     }
@@ -1500,8 +1500,10 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     }
     ctx_mode = SR_LOCK_WRITE;
 
-    /* load all data and prepare their update */
-    if ((err_info = sr_lycc_update_data(conn, new_ctx, mod_data, &data_info))) {
+    /* load all data and prepare their update, initial data are spent */
+    err_info = sr_lycc_update_data(conn, new_ctx, mod_data, *new_mods, *new_mod_count, &data_info);
+    mod_data = NULL;
+    if (err_info) {
         goto cleanup;
     }
 
@@ -1512,18 +1514,18 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
 
     /* update SHM modules */
     if ((err_info = sr_shmmod_store_modules(&conn->mod_shm, sr_mods))) {
-        goto error1;
+        goto error;
     }
     mod_shm_changed = 1;
 
     /* finish adding the modules */
     if ((err_info = sr_lycc_add_modules(conn, *new_mods, *new_mod_count))) {
-        goto error1;
+        goto error;
     }
 
     /* store new data if they differ */
     if ((err_info = sr_lycc_store_data_if_differ(conn, new_ctx, sr_mods, &data_info))) {
-        goto error2;
+        goto error;
     }
 
     /* update content ID and safely switch the context */
@@ -1532,13 +1534,7 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
 
     goto cleanup;
 
-error2:
-    /* revert adding the modules */
-    if ((tmp_err = sr_lycc_add_modules_revert(conn, *new_mods, *new_mod_count))) {
-        sr_errinfo_merge(&err_info, tmp_err);
-    }
-
-error1:
+error:
     /* revert lydmods data */
     for (i = 0; i < *new_mod_count; ++i) {
         ly_set_add(&mod_set, (*new_mods)[i].ly_mod, 1, NULL);
@@ -1556,6 +1552,11 @@ error1:
     }
 
 cleanup:
+    /* revert adding the modules */
+    if (err_info && (tmp_err = sr_lycc_add_modules_revert(conn, *new_mods, *new_mod_count))) {
+        sr_errinfo_merge(&err_info, tmp_err);
+    }
+
     sr_lycc_update_data_clear(&data_info);
     lyd_free_siblings(mod_data);
     lyd_free_siblings(sr_mods);
@@ -1777,7 +1778,7 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
     ctx_mode = SR_LOCK_WRITE;
 
     /* load all data and prepare their update */
-    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, &data_info))) {
+    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, NULL, 0, &data_info))) {
         goto cleanup;
     }
 
@@ -2021,7 +2022,7 @@ sr_update_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *se
     ctx_mode = SR_LOCK_WRITE;
 
     /* load all data and prepare their update */
-    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, &data_info))) {
+    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, NULL, 0, &data_info))) {
         goto cleanup;
     }
 
@@ -2528,7 +2529,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     ctx_mode = SR_LOCK_WRITE;
 
     /* load all data and prepare their update */
-    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, &data_info))) {
+    if ((err_info = sr_lycc_update_data(conn, new_ctx, NULL, NULL, 0, &data_info))) {
         goto cleanup;
     }
 
