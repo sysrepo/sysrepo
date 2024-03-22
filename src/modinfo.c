@@ -2534,7 +2534,7 @@ sr_modinfo_qsort_cmp(const void *ptr1, const void *ptr2)
  * @brief Load data for modules in mod info.
  *
  * @param[in] mod_info Mod info to use.
- * @param[in] cache Whether it makes sense to use cached data, if available.
+ * @param[in] read_only Whether we will be only reading the data or modifying it as well, affects cache.
  * @param[in] orig_name Event originator name.
  * @param[in] orig_data Event originator data.
  * @param[in] timeout_ms Operational callback timeout in milliseconds.
@@ -2542,7 +2542,7 @@ sr_modinfo_qsort_cmp(const void *ptr1, const void *ptr2)
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig_name, const void *orig_data,
+sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int read_only, const char *orig_name, const void *orig_data,
         uint32_t timeout_ms, sr_get_oper_flag_t get_oper_opts)
 {
     sr_error_info_t *err_info = NULL;
@@ -2560,7 +2560,7 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig
     }
 
     /* cache may be useful only for some datastores */
-    if (!mod_info->data_cached && cache && mod_info->mod_count && (conn->opts & SR_CONN_CACHE_RUNNING) &&
+    if (!mod_info->data_cached && mod_info->mod_count && (conn->opts & SR_CONN_CACHE_RUNNING) &&
             !(get_oper_opts & SR_OPER_NO_RUN_CACHED) &&
             ((mod_info->ds == SR_DS_RUNNING) || (mod_info->ds == SR_DS_CANDIDATE) || (mod_info->ds2 == SR_DS_RUNNING))) {
 
@@ -2571,9 +2571,22 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int cache, const char *orig
         run_data_cache_cur = 1;
 
         if (mod_info->ds == SR_DS_RUNNING) {
-            /* we can use the cache directly only if we are working with the running datastore (as the main datastore) */
-            mod_info->data_cached = 1;
-            mod_info->data = conn->run_cache_data;
+            if (read_only) {
+                /* we can use the cache directly only if we are working with the running datastore (as the main datastore)
+                 * and not modifying the data */
+                mod_info->data_cached = 1;
+                mod_info->data = conn->run_cache_data;
+            } else {
+                /* duplicate data of all the modules, they will be modified */
+                for (i = 0; i < mod_info->mod_count; ++i) {
+                    mod = &mod_info->mods[i];
+                    if ((err_info = sr_lyd_get_module_data(&conn->run_cache_data, mod->ly_mod, 0, 1, &mod_info->data))) {
+                        goto cleanup;
+                    }
+                }
+            }
+
+            /* we have data fot all the modules */
             for (i = 0; i < mod_info->mod_count; ++i) {
                 mod = &mod_info->mods[i];
                 mod->state |= MOD_INFO_DATA;
@@ -2696,7 +2709,7 @@ sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, sr_lock_mode_t mod_lock, 
 
     if (!(mi_opts & SR_MI_DATA_NO)) {
         /* load all modules data */
-        if ((err_info = sr_modinfo_data_load(mod_info, mi_opts & SR_MI_DATA_CACHE, orig_name, orig_data, timeout_ms,
+        if ((err_info = sr_modinfo_data_load(mod_info, mi_opts & SR_MI_DATA_RO, orig_name, orig_data, timeout_ms,
                 get_oper_opts))) {
             goto cleanup;
         }

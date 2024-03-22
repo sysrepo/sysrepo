@@ -196,7 +196,7 @@ void sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info);
 #define SR_MI_NEW_DEPS          0x01    /**< new modules are not required (MOD_INFO_REQ) but only dpendencies (MOD_INFO_DEP) */
 #define SR_MI_INV_DEPS          0x02    /**< add inverse dependencies for added modules */
 #define SR_MI_LOCK_UPGRADEABLE  0x04    /**< only valid for a read lock, make it upgradeable into a write lock */
-#define SR_MI_DATA_CACHE        0x08    /**< enable cache when loading module data */
+#define SR_MI_DATA_RO           0x08    /**< read-only data */
 #define SR_MI_DATA_NO           0x10    /**< do not load module data */
 #define SR_MI_PERM_STRICT       0x20    /**< failed permission check causes an error instead of silent omission
                                              of the offending data */

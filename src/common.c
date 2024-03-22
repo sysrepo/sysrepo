@@ -2890,7 +2890,7 @@ sr_conn_ext_data_update(sr_conn_ctx_t *conn)
     if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 1, &mi))) {
         goto cleanup;
     }
-    if ((err_info = sr_modinfo_consolidate(&mi, SR_LOCK_READ, SR_MI_DATA_CACHE | SR_MI_PERM_READ, 0, NULL, NULL,
+    if ((err_info = sr_modinfo_consolidate(&mi, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_READ, 0, NULL, NULL,
             SR_OPER_CB_TIMEOUT, 0, 0))) {
         goto cleanup;
     }
