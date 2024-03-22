@@ -3811,12 +3811,16 @@ sr_diff_set_getnext(struct ly_set *set, uint32_t *idx, struct lyd_node **node, s
             /* skip the node */
             ++(*idx);
 
-            /* in case of lists we want to also skip all their keys */
+            /* in case of lists we want to also skip all their keys (but because of the XPath, there may be none selected) */
             if ((*node)->schema->nodetype == LYS_LIST) {
-                key = set->dnodes[*idx];
-                while ((*idx < set->count) && lysc_is_key(key->schema) && (lyd_parent(key) == *node)) {
-                    ++(*idx);
+                while (*idx < set->count) {
                     key = set->dnodes[*idx];
+
+                    if (lysc_is_key(key->schema) && (lyd_parent(key) == *node)) {
+                        ++(*idx);
+                    } else {
+                        break;
+                    }
                 }
             }
             continue;
