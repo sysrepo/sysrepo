@@ -597,12 +597,12 @@ cleanup:
  * @brief Append all stored DS data by implemented modules from context.
  *
  * @param[in] conn Connection to use.
- * @param[in] new_ctx New context to iterate over.
+ * @param[in] ctx Context to use.
  * @param[out] data Data of each datastore.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, struct sr_data_update_set_s *data)
+sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *ctx, struct sr_data_update_set_s *data)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod;
@@ -611,7 +611,7 @@ sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, struct sr
     sr_datastore_t ds;
     uint32_t idx = 0;
 
-    while ((ly_mod = ly_ctx_get_module_iter(new_ctx, &idx))) {
+    while ((ly_mod = ly_ctx_get_module_iter(ctx, &idx))) {
         if (!ly_mod->implemented || !strcmp(ly_mod->name, "sysrepo")) {
             /* we need data of only implemented modules and never from internal SR module */
             continue;
