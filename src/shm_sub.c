@@ -2301,10 +2301,14 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
 
-    /* keep the data for both DS */
-    lyd_dup_siblings(mod_info.data, NULL, LYD_DUP_RECURSIVE, &data[0]);
-    data[1] = mod_info.data;
-    mod_info.data = NULL;
+    if (mod_info.data) {
+        /* keep the data for both DS */
+        if ((err_info = sr_lyd_dup(mod_info.data, NULL, LYD_DUP_RECURSIVE, 1, &data[0]))) {
+            goto cleanup;
+        }
+        data[1] = mod_info.data;
+        mod_info.data = NULL;
+    }
 
     for (ds = SR_DS_STARTUP; ds <= SR_DS_RUNNING; ++ds) {
         /* re-init mod_info manually */
