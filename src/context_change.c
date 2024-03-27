@@ -711,22 +711,23 @@ cleanup:
 }
 
 /**
- * @brief Get initial data for a datastore using a custom DS plugin, leave empty if the default DS plugin is used.
+ * @brief Get initial data for a datastore using a DS plugin load() callback.
  *
  * @param[in] conn Connection to use.
  * @param[in] new_mods New modules with DS plugins.
  * @param[in] new_mod_count Count of @p new_mods.
  * @param[in] ds Datastore to handle.
  * @param[out] init_data Initial data for the datastore for all the @p new_mods.
+ * @param[in,out] old_data Current old data to add to, since we are technically loading old data.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_lycc_update_data_custom_ds_init(sr_conn_ctx_t *conn, sr_int_install_mod_t *new_mods, uint32_t new_mod_count,
-        sr_datastore_t ds, struct lyd_node **init_data)
+sr_lycc_update_data_init_ds_load(sr_conn_ctx_t *conn, sr_int_install_mod_t *new_mods, uint32_t new_mod_count,
+        sr_datastore_t ds, struct lyd_node **init_data, struct lyd_node **old_data)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_ds_handle_s *ds_handle;
-    struct lyd_node *mod_data;
+    struct lyd_node *mod_data, *dup_data;
     uint32_t i;
 
     *init_data = NULL;
@@ -749,6 +750,17 @@ sr_lycc_update_data_custom_ds_init(sr_conn_ctx_t *conn, sr_int_install_mod_t *ne
         }
         if (!mod_data) {
             continue;
+        }
+
+        /* copy into old data */
+        if ((err_info = sr_lyd_dup(mod_data, NULL, LYD_DUP_RECURSIVE, 1, &dup_data))) {
+            lyd_free_siblings(mod_data);
+            goto cleanup;
+        }
+        if (!(*old_data)) {
+            *old_data = dup_data;
+        } else if ((err_info = sr_lyd_merge(old_data, dup_data, 1, LYD_MERGE_DESTRUCT))) {
+            goto cleanup;
         }
 
         /* merge into the initial data */
@@ -783,20 +795,25 @@ sr_lycc_update_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, struct ly
         if ((err_info = sr_lyd_dup(init_data, NULL, LYD_DUP_RECURSIVE, 1, &start_init_data))) {
             goto cleanup;
         }
-    } else if ((err_info = sr_lycc_update_data_custom_ds_init(conn, new_mods, new_mod_count, SR_DS_STARTUP, &start_init_data))) {
+    } else if ((err_info = sr_lycc_update_data_init_ds_load(conn, new_mods, new_mod_count, SR_DS_STARTUP,
+            &start_init_data, &data_info->old.start))) {
         goto cleanup;
     }
-    if (init_data) {
-        if ((err_info = sr_lyd_dup(init_data, NULL, LYD_DUP_RECURSIVE, 1, &run_init_data))) {
+    if (!data_info->old.run_disabled) {
+        if (init_data) {
+            if ((err_info = sr_lyd_dup(init_data, NULL, LYD_DUP_RECURSIVE, 1, &run_init_data))) {
+                goto cleanup;
+            }
+        } else if ((err_info = sr_lycc_update_data_init_ds_load(conn, new_mods, new_mod_count, SR_DS_RUNNING,
+                &run_init_data, &data_info->old.run))) {
             goto cleanup;
         }
-    } else if ((err_info = sr_lycc_update_data_custom_ds_init(conn, new_mods, new_mod_count, SR_DS_RUNNING, &run_init_data))) {
-        goto cleanup;
     }
     if (init_data) {
         fdflt_init_data = init_data;
         init_data = NULL;
-    } else if ((err_info = sr_lycc_update_data_custom_ds_init(conn, new_mods, new_mod_count, SR_DS_FACTORY_DEFAULT, &fdflt_init_data))) {
+    } else if ((err_info = sr_lycc_update_data_init_ds_load(conn, new_mods, new_mod_count, SR_DS_FACTORY_DEFAULT,
+            &fdflt_init_data, &data_info->old.fdflt))) {
         goto cleanup;
     }
 
