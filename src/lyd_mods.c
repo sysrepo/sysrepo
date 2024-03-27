@@ -961,21 +961,27 @@ cleanup:
  * @brief Get module DS for an internal module.
  *
  * @param[in] name Mdoule name.
- * @return Module DS structure ofr the module.
+ * @return Module DS structure for the module.
  */
 static sr_module_ds_t
 sr_lydmods_int_mod_ds(const char *name)
 {
-    const char *ptr, *int_mod_str = SR_INT_MOD_DISABLED_RUNNING;
+    const char *int_mod_str = " "SR_INT_MOD_DISABLED_RUNNING" ";
+    char *needle;
     int run_disabled = 0;
 
     if (!strcmp(int_mod_str, "*")) {
         /* all internal module running disabled */
         run_disabled = 1;
-    } else if ((ptr = strstr(int_mod_str, name)) && ((ptr == int_mod_str) || (ptr[-1] == ' ')) &&
-            ((ptr[strlen(name)] == '\0') || (ptr[strlen(name)] == ' '))) {
-        /* running disabled */
-        run_disabled = 1;
+    } else {
+        if (asprintf(&needle, " %s ", name) == -1) {
+            return sr_module_ds_default;
+        }
+        if (strstr(int_mod_str, needle)) {
+            /* running disabled */
+            run_disabled = 1;
+        }
+        free(needle);
     }
 
     return run_disabled ? sr_module_ds_disabled_run : sr_module_ds_default;
