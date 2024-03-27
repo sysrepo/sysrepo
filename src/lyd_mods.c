@@ -966,7 +966,7 @@ cleanup:
 static sr_module_ds_t
 sr_lydmods_int_mod_ds(const char *name)
 {
-    const char *int_mod_str = " "SR_INT_MOD_DISABLED_RUNNING" ";
+    const char *int_mod_str = " "SR_INT_MOD_DISABLED_RUNNING " ";
     char *needle;
     int run_disabled = 0;
 
