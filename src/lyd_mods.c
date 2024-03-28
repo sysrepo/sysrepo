@@ -911,15 +911,17 @@ sr_lydmods_create_data(const struct ly_ctx *ly_ctx)
     struct lyd_node *data = NULL, *mod_data = NULL, *mod_diff = NULL;
     uint32_t idx = 0;
 
-    if (!strlen(SR_INT_MOD_DATA)) {
-        /* no data to set */
-        goto cleanup;
-    }
-
-    /* parse and validate the data */
-    if ((err_info = sr_lyd_parse_data(ly_ctx, SR_INT_MOD_DATA, NULL, SR_INT_MOD_DATA_FORMAT, 0, LYD_VALIDATE_NO_STATE,
-            &data))) {
-        goto cleanup;
+    if (strlen(SR_INT_MOD_DATA)) {
+        /* parse and validate the data */
+        if ((err_info = sr_lyd_parse_data(ly_ctx, SR_INT_MOD_DATA, NULL, SR_INT_MOD_DATA_FORMAT, 0, LYD_VALIDATE_NO_STATE,
+                &data))) {
+            goto cleanup;
+        }
+    } else {
+        /* use implicit data */
+        if ((err_info = sr_lyd_new_implicit_all(&data, ly_ctx, LYD_IMPLICIT_NO_STATE))) {
+            goto cleanup;
+        }
     }
 
     while ((ly_mod = ly_ctx_get_module_iter(ly_ctx, &idx))) {
@@ -1086,7 +1088,7 @@ sr_lydmods_create(sr_conn_ctx_t *conn, struct ly_ctx *ly_ctx, struct lyd_node **
         goto cleanup;
     }
 
-    /* set the startup and factory-default data, if any */
+    /* set the startup and factory-default data */
     if ((err_info = sr_lydmods_create_data(ly_ctx))) {
         goto cleanup;
     }

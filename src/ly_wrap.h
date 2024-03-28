@@ -360,6 +360,16 @@ sr_error_info_t *sr_lyd_new_attr(struct lyd_node *parent, const char *mod_name, 
 sr_error_info_t *sr_lyd_new_attr2(struct lyd_node *parent, const char *mod_ns, const char *name, const char *value);
 
 /**
+ * @brief Create implicit data for the whole context.
+ *
+ * @param[in,out] data Data to add to.
+ * @param[in] ctx Context to use.
+ * @param[in] options New implicit options.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_new_implicit_all(struct lyd_node **tree, const struct ly_ctx *ctx, uint32_t options);
+
+/**
  * @brief Create implicit data of a module.
  *
  * @param[in,out] data Data to add to.

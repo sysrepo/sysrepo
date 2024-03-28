@@ -814,6 +814,24 @@ cleanup:
 }
 
 sr_error_info_t *
+sr_lyd_new_implicit_all(struct lyd_node **tree, const struct ly_ctx *ctx, uint32_t options)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
+
+    ly_temp_log_options(&temp_lo);
+
+    if (lyd_new_implicit_all(tree, ctx, options, NULL)) {
+        sr_errinfo_new_ly(&err_info, *tree ? LYD_CTX(*tree) : ctx, NULL, SR_ERR_LY);
+        goto cleanup;
+    }
+
+cleanup:
+    ly_temp_log_options(NULL);
+    return err_info;
+}
+
+sr_error_info_t *
 sr_lyd_new_implicit_module(struct lyd_node **data, const struct lys_module *mod, uint32_t options, struct lyd_node **diff)
 {
     sr_error_info_t *err_info = NULL;
