@@ -1500,16 +1500,16 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     }
     ctx_mode = SR_LOCK_WRITE;
 
+    /* update lydmods data */
+    if ((err_info = sr_lydmods_change_add_modules(new_ctx, conn, new_mods, new_mod_count, &sr_mods))) {
+        goto cleanup;
+    }
+
     /* load all data and prepare their update, initial data are spent */
     err_info = sr_lycc_update_data(conn, new_ctx, mod_data, *new_mods, *new_mod_count, &data_info);
     mod_data = NULL;
     if (err_info) {
-        goto cleanup;
-    }
-
-    /* update lydmods data */
-    if ((err_info = sr_lydmods_change_add_modules(new_ctx, conn, new_mods, new_mod_count, &sr_mods))) {
-        goto cleanup;
+        goto error;
     }
 
     /* update SHM modules */
