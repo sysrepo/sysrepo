@@ -5191,11 +5191,15 @@ struct lyd_node *
 sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod)
 {
     struct lyd_node *next, *node, *mod_data = NULL;
+    const struct lys_module *cur_mod;
 
     assert(data && ly_mod);
 
     LY_LIST_FOR_SAFE(*data, next, node) {
-        if (lyd_owner_module(node) == ly_mod) {
+        cur_mod = lyd_owner_module(node);
+
+        if (((cur_mod->ctx == ly_mod->ctx) && (cur_mod == ly_mod)) ||
+                ((cur_mod->ctx != ly_mod->ctx) && !strcmp(cur_mod->name, ly_mod->name))) {
             /* properly unlink this node */
             if (node == *data) {
                 *data = next;
