@@ -1074,19 +1074,13 @@ sr_edit_find_match(const struct lyd_node *data_sibling, const struct lyd_node *e
 {
     sr_error_info_t *err_info = NULL;
     const struct lysc_node *schema = NULL;
-    const struct lys_module *mod = NULL;
     struct lyd_meta *m1, *m2;
     uint32_t inst_pos, pos;
     int found = 0;
 
     if (!edit_node->schema) {
-        /* opaque node, find target module first */
-        mod = lyd_node_module(edit_node);
-        if (mod) {
-            /* find target schema node */
-            schema = lys_find_child(edit_node->parent ? edit_node->parent->schema : NULL, mod,
-                    ((struct lyd_node_opaq *)edit_node)->name.name, 0, 0, 0);
-        }
+        /* opaque node, find the schema node first */
+        schema = lyd_node_schema(edit_node);
         if (schema) {
             /* try to find a data instance of the schema node */
             err_info = sr_lyd_find_sibling_val(data_sibling, schema, NULL, match_p);
