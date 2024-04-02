@@ -4017,16 +4017,20 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || !SR_IS_CONVENTIONAL_DS(session->ds), session, err_info);
+    /* SR_CHECK_ARG_APIRET but we need to free src_config */
+    if (!session || !SR_IS_CONVENTIONAL_DS(session->ds)) {
+        sr_errinfo_new(&(err_info), SR_ERR_INVAL_ARG, "Invalid arguments for function \"%s\".", __func__);
+        goto cleanup;
+    }
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
-        return sr_api_ret(session, err_info);
+        goto cleanup;
     }
 
     if (src_config && (session->conn->ly_ctx != LYD_CTX(src_config))) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Data trees must be created using the session connection libyang context.");
-        goto cleanup;
+        goto cleanup_unlock;
     }
 
     if (!timeout_ms) {
@@ -4041,22 +4045,23 @@ sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct lyd
         ly_mod = ly_ctx_get_module_implemented(session->conn->ly_ctx, module_name);
         if (!ly_mod) {
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
-            goto cleanup;
+            goto cleanup_unlock;
         } else if (!strcmp(ly_mod->name, "sysrepo")) {
             sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Data of internal module \"sysrepo\" cannot be modified.");
-            goto cleanup;
+            goto cleanup_unlock;
         }
     }
 
     /* replace the data */
     if ((err_info = _sr_replace_config(session, ly_mod, &src_config, timeout_ms))) {
-        goto cleanup;
+        goto cleanup_unlock;
     }
 
-cleanup:
+cleanup_unlock:
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
 
+cleanup:
     lyd_free_all(src_config);
     return sr_api_ret(session, err_info);
 }
