@@ -1183,58 +1183,63 @@ sr_edit_find(const struct lyd_node *data_sibling, const struct lyd_node *edit_no
         }
 
         if (match) {
-            switch (match->schema->nodetype) {
-            case LYS_CONTAINER:
-                val_equal = 1;
-                break;
-            case LYS_LEAF:
-            case LYS_ANYXML:
-            case LYS_ANYDATA:
-                if (lyd_compare_single(match, edit_node, 0) == LY_ENOT) {
-                    /* check whether the value is different (dflt flag may or may not differ) */
-                    val_equal = 0;
-                } else {
-                    /* canonical values are the same */
+            if (!match->schema) {
+                /* does not really matter but an opaque node should never match any value because the value is likely invalid */
+                val_equal = 0;
+            } else {
+                switch (match->schema->nodetype) {
+                case LYS_CONTAINER:
                     val_equal = 1;
-                }
-                break;
-            case LYS_LIST:
-            case LYS_LEAFLIST:
-                if (dflt_ll_skip && (match->flags & LYD_DEFAULT) && !(edit_node->flags & LYD_DEFAULT)) {
-                    /* default leaf-list is not really considered to exist in data if there is an explicit instance in the edit */
-                    assert(match->schema->nodetype == LYS_LEAFLIST);
-                    match = NULL;
-                } else if (lysc_is_userordered(match->schema)) {
-                    /* check if even the order matches for user-ordered (leaf-)lists */
-                    anchor_node = NULL;
-                    if (userord_anchor) {
-                        /* find the anchor node if set */
-                        if ((err_info = sr_edit_find_userord_predicate(data_sibling, match, userord_anchor, &anchor_node))) {
-                            return err_info;
-                        }
-                    } else if (flags & EDIT_APPLY_REPLACE_R) {
-                        /* take the order from the edit */
-                        anchor_node = (struct lyd_node *)sr_edit_find_previous_instance(edit_node);
-                        if (anchor_node) {
-                            insert = INSERT_AFTER;
-                        } else {
-                            insert = INSERT_FIRST;
-                        }
-                    }
-
-                    /* check for move */
-                    if (sr_edit_userord_is_moved(match, insert, anchor_node)) {
+                    break;
+                case LYS_LEAF:
+                case LYS_ANYXML:
+                case LYS_ANYDATA:
+                    if (lyd_compare_single(match, edit_node, 0) == LY_ENOT) {
+                        /* check whether the value is different (dflt flag may or may not differ) */
                         val_equal = 0;
+                    } else {
+                        /* canonical values are the same */
+                        val_equal = 1;
+                    }
+                    break;
+                case LYS_LIST:
+                case LYS_LEAFLIST:
+                    if (dflt_ll_skip && (match->flags & LYD_DEFAULT) && !(edit_node->flags & LYD_DEFAULT)) {
+                        /* default leaf-list is not really considered to exist in data if there is an explicit instance in the edit */
+                        assert(match->schema->nodetype == LYS_LEAFLIST);
+                        match = NULL;
+                    } else if (lysc_is_userordered(match->schema)) {
+                        /* check if even the order matches for user-ordered (leaf-)lists */
+                        anchor_node = NULL;
+                        if (userord_anchor) {
+                            /* find the anchor node if set */
+                            if ((err_info = sr_edit_find_userord_predicate(data_sibling, match, userord_anchor, &anchor_node))) {
+                                return err_info;
+                            }
+                        } else if (flags & EDIT_APPLY_REPLACE_R) {
+                            /* take the order from the edit */
+                            anchor_node = (struct lyd_node *)sr_edit_find_previous_instance(edit_node);
+                            if (anchor_node) {
+                                insert = INSERT_AFTER;
+                            } else {
+                                insert = INSERT_FIRST;
+                            }
+                        }
+
+                        /* check for move */
+                        if (sr_edit_userord_is_moved(match, insert, anchor_node)) {
+                            val_equal = 0;
+                        } else {
+                            val_equal = 1;
+                        }
                     } else {
                         val_equal = 1;
                     }
-                } else {
-                    val_equal = 1;
+                    break;
+                default:
+                    SR_ERRINFO_INT(&err_info);
+                    return err_info;
                 }
-                break;
-            default:
-                SR_ERRINFO_INT(&err_info);
-                return err_info;
             }
         }
     }
