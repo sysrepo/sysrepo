@@ -2283,6 +2283,8 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn = mod_info->conn;
     struct lyd_node *mod_data = NULL;
+    const char **xpaths;
+    uint32_t xpath_count;
     int modified;
 
     assert(!mod_info->data_cached);
@@ -2327,9 +2329,19 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
     if (!run_cached_data_cur) {
         /* no cached data or unusable */
 
+        if ((mod_info->ds == SR_DS_OPERATIONAL) && (mod_info->ds2 == SR_DS_RUNNING)) {
+            /* we need the whole runnign DS to avoid not getting parents of oper pull subscriptions and so considering
+             * them incorrectly as non-existent */
+            xpaths = NULL;
+            xpath_count = 0;
+        } else {
+            xpaths = mod->xpaths;
+            xpath_count = mod->xpath_count;
+        }
+
         /* get current DS data (ds2 is running when getting operational data) */
-        if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_handle, mod_info->ds2, mod->xpaths,
-                mod->xpath_count, &mod_info->data))) {
+        if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_handle, mod_info->ds2, xpaths, xpath_count,
+                &mod_info->data))) {
             return err_info;
         }
 
