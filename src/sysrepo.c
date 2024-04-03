@@ -2688,6 +2688,50 @@ sr_is_module_internal(const struct lys_module *ly_mod)
     return 0;
 }
 
+/**
+ * @brief Check that a session has some changes for the current DS based on the event.
+ *
+ * @param[in] session Session to use.
+ * @return Whether there are some changes or not.
+ */
+static int
+sr_session_has_data_changes(sr_session_ctx_t *session)
+{
+    if (session->ds >= SR_DS_COUNT) {
+        return 0;
+    }
+
+    /* check edit/diff to be applied based on the handled event */
+    switch (session->ev) {
+    case SR_SUB_EV_CHANGE:
+    case SR_SUB_EV_UPDATE:
+        if (session->dt[session->ds].diff) {
+            return 1;
+        }
+        if (session->ev != SR_SUB_EV_UPDATE) {
+            break;
+        }
+    /* fallthrough */
+    case SR_SUB_EV_NONE:
+        if (session->dt[session->ds].edit) {
+            return 1;
+        }
+        break;
+    case SR_SUB_EV_ENABLED:
+    case SR_SUB_EV_DONE:
+    case SR_SUB_EV_ABORT:
+    case SR_SUB_EV_OPER:
+    case SR_SUB_EV_RPC:
+    case SR_SUB_EV_NOTIF:
+        /* no changes to apply for these events */
+        break;
+    default:
+        break;
+    }
+
+    return 0;
+}
+
 API int
 sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr_val_t **value)
 {
@@ -2710,7 +2754,8 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* collect all required modules */
-    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, path, session->ds, 1, 0, &mod_info))) {
+    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, path, session->ds,
+            !sr_session_has_data_changes(session), 0, &mod_info))) {
         goto cleanup;
     }
 
@@ -2812,7 +2857,8 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
     }
 
     /* collect all required modules */
-    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, xpath, session->ds, 1, 0, &mod_info))) {
+    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, xpath, session->ds,
+            !sr_session_has_data_changes(session), 0, &mod_info))) {
         goto cleanup;
     }
 
@@ -2887,8 +2933,9 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
         goto cleanup;
     }
 
-    /* collect all required modules */
-    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, path, session->ds, 1, 0, &mod_info))) {
+    /* collect all the required modules, do not store xpaths if some changes will be applied (we need all the base data then) */
+    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, path, session->ds,
+            !sr_session_has_data_changes(session), 0, &mod_info))) {
         goto cleanup;
     }
 
@@ -2996,7 +3043,8 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
     }
 
     /* collect all required modules */
-    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, xpath, session->ds, 1, 0, &mod_info))) {
+    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, xpath, session->ds,
+            !sr_session_has_data_changes(session), 0, &mod_info))) {
         goto cleanup;
     }
 
@@ -3124,7 +3172,8 @@ sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* collect all required modules */
-    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, path, session->ds, 1, 0, &mod_info))) {
+    if ((err_info = sr_modinfo_collect_xpath(session->conn->ly_ctx, path, session->ds,
+            !sr_session_has_data_changes(session), 0, &mod_info))) {
         goto cleanup;
     }
 
