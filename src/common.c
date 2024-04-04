@@ -3172,6 +3172,51 @@ cleanup:
     return err_info;
 }
 
+sr_error_info_t *
+sr_conn_run_cache_update_mod(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, uint32_t mod_cache_id,
+        struct lyd_node *mod_data)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_run_cache_s *cmod = NULL;
+    struct lyd_node *old_data;
+    uint32_t i;
+
+    /* CACHE WRITE LOCK */
+    if ((err_info = sr_rwlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE_URGE,
+            conn->cid, __func__, NULL, NULL))) {
+        return err_info;
+    }
+
+    /* find the cache mod, it must have been cached for this operation, if not before */
+    for (i = 0; i < conn->run_cache_mod_count; ++i) {
+        if (ly_mod == conn->run_cache_mods[i].mod) {
+            cmod = &conn->run_cache_mods[i];
+            break;
+        }
+    }
+    assert(cmod);
+
+    /* the data are expected to be just modified, cannot yet be cached */
+    assert(cmod->id != mod_cache_id);
+
+    /* remove old data */
+    old_data = sr_module_data_unlink(&conn->run_cache_data, cmod->mod);
+    lyd_free_siblings(old_data);
+
+    /* replace with current data */
+    if (mod_data) {
+        lyd_insert_sibling(conn->run_cache_data, mod_data, &conn->run_cache_data);
+    }
+
+    /* update the cached data ID */
+    cmod->id = mod_cache_id;
+
+    /* CACHE WRITE UNLOCK */
+    sr_rwunlock(&conn->run_cache_lock, SR_CONN_RUN_CACHE_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+
+    return err_info;
+}
+
 void
 sr_conn_run_cache_flush(sr_conn_ctx_t *conn)
 {
