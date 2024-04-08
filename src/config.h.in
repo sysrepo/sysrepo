@@ -42,18 +42,23 @@
 # define eaccess access
 #endif
 
+#cmakedefine SR_HAVE_DLOPEN
+#ifdef SR_HAVE_DLOPEN
+
 /** directory with datastore and/or notification plugins */
-#define SR_PLG_PATH "@SR_PLUGINS_PATH@"
+# define SR_PLG_PATH "@SR_PLUGINS_PATH@"
 
 /** plugin extension */
-#if defined __linux__ || defined __unix__
-# define SR_PLG_SUFFIX ".so"
-# define SR_PLG_SUFFIX_LEN 3
-#elif defined __APPLE__
-# define SR_PLG_SUFFIX ".dylib"
-# define SR_PLG_SUFFIX_LEN 6
-#else
-# error "Unknown platform that is not *nix neither macOS"
+# if defined __linux__ || defined __unix__
+#  define SR_PLG_SUFFIX ".so"
+#  define SR_PLG_SUFFIX_LEN 3
+# elif defined __APPLE__
+#  define SR_PLG_SUFFIX ".dylib"
+#  define SR_PLG_SUFFIX_LEN 6
+# else
+#  error "Unknown platform that is not *nix neither macOS"
+# endif
+
 #endif
 
 /** UID of the superuser that can execute sensitive functions */

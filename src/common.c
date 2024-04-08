@@ -22,7 +22,9 @@
 #include <assert.h>
 #include <ctype.h>
 #include <dirent.h>
-#include <dlfcn.h>
+#ifdef SR_HAVE_DLOPEN
+# include <dlfcn.h>
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
@@ -173,25 +175,29 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
 {
     sr_error_info_t *err_info = NULL;
     DIR *dir = NULL;
+    uint32_t i;
+#ifdef SR_HAVE_DLOPEN
     struct dirent *file;
     size_t len;
     const char *plugins_dir;
     char *path = NULL;
     void *dlhandle = NULL, *mem;
-    uint32_t *ver, i;
+    uint32_t *ver;
     const struct srplg_ds_s *srpds;
+#endif
 
     *ds_handles = NULL;
     *ds_handle_count = 0;
 
     /* add internal plugins */
     *ds_handles = calloc(sr_ds_plugin_int_count(), sizeof **ds_handles);
-    SR_CHECK_MEM_GOTO(!*ds_handles, err_info, next_file);
+    SR_CHECK_MEM_GOTO(!*ds_handles, err_info, cleanup);
     for (i = 0; i < sr_ds_plugin_int_count(); ++i) {
         (*ds_handles)[i].plugin = sr_internal_ds_plugins[i];
         ++(*ds_handle_count);
     }
 
+#ifdef SR_HAVE_DLOPEN
     /* get plugins dir from environment variable, or use default one */
     plugins_dir = getenv("SR_PLUGINS_PATH");
     if (!plugins_dir) {
@@ -276,6 +282,7 @@ next_file:
             goto cleanup;
         }
     }
+#endif
 
 cleanup:
     if (dir) {
@@ -287,6 +294,7 @@ cleanup:
 void
 sr_ds_handle_free(struct sr_ds_handle_s *ds_handles, uint32_t ds_handle_count)
 {
+#ifdef SR_HAVE_DLOPEN
     uint32_t i;
 
     for (i = 0; i < ds_handle_count; ++i) {
@@ -294,7 +302,9 @@ sr_ds_handle_free(struct sr_ds_handle_s *ds_handles, uint32_t ds_handle_count)
             dlclose(ds_handles[i].dl_handle);
         }
     }
+#endif
 
+    (void)ds_handle_count;
     free(ds_handles);
 }
 
@@ -338,25 +348,29 @@ sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32_t *ntf_handle_co
 {
     sr_error_info_t *err_info = NULL;
     DIR *dir = NULL;
+    uint32_t i;
+#ifdef SR_HAVE_DLOPEN
     struct dirent *file;
     size_t len;
     const char *plugins_dir;
     char *path = NULL;
     void *dlhandle = NULL, *mem;
-    uint32_t *ver, i;
+    uint32_t *ver;
     const struct srplg_ntf_s *srpntf;
+#endif
 
     *ntf_handles = NULL;
     *ntf_handle_count = 0;
 
     /* add internal plugins */
     *ntf_handles = calloc(sr_ntf_plugin_int_count(), sizeof **ntf_handles);
-    SR_CHECK_MEM_GOTO(!*ntf_handles, err_info, next_file);
+    SR_CHECK_MEM_GOTO(!*ntf_handles, err_info, cleanup);
     for (i = 0; i < sr_ntf_plugin_int_count(); ++i) {
         (*ntf_handles)[i].plugin = sr_internal_ntf_plugins[i];
         ++(*ntf_handle_count);
     }
 
+#ifdef SR_HAVE_DLOPEN
     /* get plugins dir from environment variable, or use default one */
     plugins_dir = getenv("SR_PLUGINS_PATH");
     if (!plugins_dir) {
@@ -438,6 +452,7 @@ next_file:
             goto cleanup;
         }
     }
+#endif
 
 cleanup:
     if (dir) {
@@ -449,6 +464,7 @@ cleanup:
 void
 sr_ntf_handle_free(struct sr_ntf_handle_s *ntf_handles, uint32_t ntf_handle_count)
 {
+#ifdef SR_HAVE_DLOPEN
     uint32_t i;
 
     for (i = 0; i < ntf_handle_count; ++i) {
@@ -456,7 +472,9 @@ sr_ntf_handle_free(struct sr_ntf_handle_s *ntf_handles, uint32_t ntf_handle_coun
             dlclose(ntf_handles[i].dl_handle);
         }
     }
+#endif
 
+    (void)ntf_handle_count;
     free(ntf_handles);
 }
 

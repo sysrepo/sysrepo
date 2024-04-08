@@ -96,6 +96,9 @@ endif()
 option(ENABLE_EXAMPLES "Build examples." ON)
 option(ENABLE_COVERAGE "Build code coverage report from tests" OFF)
 option(ENABLE_COMMON_TARGETS "Define common custom target names such as 'doc' or 'uninstall', may cause conflicts when using add_subdirectory() to build this project" ON)
+option(ENABLE_SYSREPOCTL "Build binary tool 'sysrepoctl'" ON)
+option(ENABLE_SYSREPOCFG "Build binary tool 'sysrepocfg'" ON)
+option(ENABLE_SYSREPO_PLUGIND "Build binary daemon 'sysrepo-plugind'" ON)
 option(BUILD_SHARED_LIBS "By default, shared libs are enabled. Turn off for a static build." ON)
 option(INSTALL_SYSCTL_CONF "Install sysctl conf file to allow shared access to SHM files." OFF)
 set(YANG_MODULE_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/yang/modules/sysrepo" CACHE STRING "Directory where to copy the YANG modules to.")
@@ -352,6 +355,21 @@ endif()
 # use compat
 use_compat()
 
+# required functions
+set(CMAKE_REQUIRED_DEFINITIONS "-D_GNU_SOURCE;-D_DEFAULT_SOURCE")
+check_symbol_exists(eaccess "unistd.h" SR_HAVE_EACCESS)
+if(NOT SR_HAVE_EACCESS)
+    message(WARNING "Function eaccess() is not supported, using access() instead which may "
+        "change results of access control checks!")
+endif()
+check_symbol_exists(mkstemps "stdlib.h" SR_HAVE_MKSTEMPS)
+check_symbol_exists(dlopen "dlfcn.h" SR_HAVE_DLOPEN)
+if(NOT SR_HAVE_DLOPEN)
+    message(WARNING "Function dlopen() is not supported, disabling plugin support and 'sysrepo-plugind'.")
+    set(ENABLE_SYSREPO_PLUGIND OFF)
+endif()
+unset(CMAKE_REQUIRED_DEFINITIONS)
+
 # sysrepo
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 add_library(srobj OBJECT ${LIB_SRC} ${compatsrc})
@@ -359,17 +377,23 @@ set_target_properties(srobj PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
 add_library(sysrepo $<TARGET_OBJECTS:srobj>)
 set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_SOVERSION_FULL} SOVERSION ${SYSREPO_SOVERSION})
 
-# sysrepoctl tool
-add_executable(sysrepoctl ${SYSREPOCTL_SRC} ${compatsrc})
-target_link_libraries(sysrepoctl sysrepo)
+if(ENABLE_SYSREPOCTL)
+    # sysrepoctl tool
+    add_executable(sysrepoctl ${SYSREPOCTL_SRC} ${compatsrc})
+    target_link_libraries(sysrepoctl sysrepo)
+endif()
 
-# sysrepocfg tool
-add_executable(sysrepocfg ${SYSREPOCFG_SRC} ${compatsrc})
-target_link_libraries(sysrepocfg sysrepo)
+if(ENABLE_SYSREPOCFG)
+    # sysrepocfg tool
+    add_executable(sysrepocfg ${SYSREPOCFG_SRC} ${compatsrc})
+    target_link_libraries(sysrepocfg sysrepo)
+endif()
 
-# sysrepo-plugind daemon
-add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC} ${compatsrc})
-target_link_libraries(sysrepo-plugind sysrepo)
+if(ENABLE_SYSREPO_PLUGIND)
+    # sysrepo-plugind daemon
+    add_executable(sysrepo-plugind ${SYSREPOPLUGIND_SRC} ${compatsrc})
+    target_link_libraries(sysrepo-plugind sysrepo)
+endif()
 
 # include repository files with highest priority
 include_directories("${PROJECT_SOURCE_DIR}/src")
@@ -420,16 +444,6 @@ find_package(Threads REQUIRED)
 target_link_libraries(sysrepo ${CMAKE_THREAD_LIBS_INIT})
 set(CMAKE_REQUIRED_LIBRARIES pthread)
 
-# required functions
-set(CMAKE_REQUIRED_DEFINITIONS "-D_GNU_SOURCE;-D_DEFAULT_SOURCE")
-check_symbol_exists(eaccess "unistd.h" SR_HAVE_EACCESS)
-if(NOT SR_HAVE_EACCESS)
-    message(WARNING "Function eaccess() is not supported, using access() instead which may "
-        "change results of access control checks!")
-endif()
-check_symbol_exists(mkstemps "stdlib.h" SR_HAVE_MKSTEMPS)
-unset(CMAKE_REQUIRED_DEFINITIONS)
-
 # tar
 find_program(TAR_BINARY "tar")
 if(NOT TAR_BINARY)
@@ -457,15 +471,27 @@ install(FILES ${PROJECT_SOURCE_DIR}/src/plugins_datastore.h ${PROJECT_BINARY_DIR
             ${PROJECT_SOURCE_DIR}/src/utils/subscribed_notifications.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sysrepo)
 install(FILES ${PROJECT_BINARY_DIR}/sysrepo.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
-
-install(TARGETS sysrepoctl sysrepocfg sysrepo-plugind DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES ${PROJECT_SOURCE_DIR}/src/executables/sysrepoctl.1 ${PROJECT_SOURCE_DIR}/src/executables/sysrepocfg.1
-        DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
-install(FILES ${PROJECT_SOURCE_DIR}/src/executables/sysrepo-plugind.8 DESTINATION ${CMAKE_INSTALL_MANDIR}/man8)
 install(DIRECTORY DESTINATION ${REPO_PATH}
         DIRECTORY_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_WRITE GROUP_EXECUTE WORLD_READ WORLD_WRITE WORLD_EXECUTE)
-install(DIRECTORY DESTINATION ${SR_PLUGINS_PATH})
-install(DIRECTORY DESTINATION ${SRPD_PLUGINS_PATH})
+
+if(ENABLE_SYSREPOCTL)
+    install(TARGETS sysrepoctl DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(FILES ${PROJECT_SOURCE_DIR}/src/executables/sysrepoctl.1
+            DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
+endif()
+if(ENABLE_SYSREPOCFG)
+    install(TARGETS sysrepocfg DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(FILES ${PROJECT_SOURCE_DIR}/src/executables/sysrepocfg.1
+            DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
+endif()
+if(ENABLE_SYSREPO_PLUGIND)
+    install(TARGETS sysrepo-plugind DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(FILES ${PROJECT_SOURCE_DIR}/src/executables/sysrepo-plugind.8 DESTINATION ${CMAKE_INSTALL_MANDIR}/man8)
+    install(DIRECTORY DESTINATION ${SRPD_PLUGINS_PATH})
+endif()
+if(SR_HAVE_DLOPEN)
+    install(DIRECTORY DESTINATION ${SR_PLUGINS_PATH})
+endif()
 if(SR_HAVE_SYSTEMD)
     install(FILES ${PROJECT_BINARY_DIR}/sysrepo-plugind.service DESTINATION ${SYSTEMD_UNIT_DIR})
 endif()
