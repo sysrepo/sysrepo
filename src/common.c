@@ -176,6 +176,7 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
     sr_error_info_t *err_info = NULL;
     DIR *dir = NULL;
     uint32_t i;
+
 #ifdef SR_HAVE_DLOPEN
     struct dirent *file;
     size_t len;
@@ -349,6 +350,7 @@ sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32_t *ntf_handle_co
     sr_error_info_t *err_info = NULL;
     DIR *dir = NULL;
     uint32_t i;
+
 #ifdef SR_HAVE_DLOPEN
     struct dirent *file;
     size_t len;
