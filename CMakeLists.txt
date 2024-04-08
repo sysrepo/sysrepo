@@ -354,7 +354,7 @@ use_compat()
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 add_library(srobj OBJECT ${LIB_SRC} ${compatsrc})
 set_target_properties(srobj PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
-add_library(sysrepo SHARED $<TARGET_OBJECTS:srobj>)
+add_library(sysrepo $<TARGET_OBJECTS:srobj>)
 set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_SOVERSION_FULL} SOVERSION ${SYSREPO_SOVERSION})
 
 # sysrepoctl tool
