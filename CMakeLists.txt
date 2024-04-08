@@ -4,7 +4,7 @@ project(sysrepo)
 set(SYSREPO_DESC "YANG-based system repository for all-around configuration management.")
 
 # include custom Modules
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules/")
 
 include(GNUInstallDirs)
 include(CheckSymbolExists)
