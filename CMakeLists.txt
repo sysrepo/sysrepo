@@ -95,6 +95,7 @@ else()
 endif()
 option(ENABLE_EXAMPLES "Build examples." ON)
 option(ENABLE_COVERAGE "Build code coverage report from tests" OFF)
+option(ENABLE_COMMON_TARGETS "Define common custom target names such as 'doc' or 'uninstall', may cause conflicts when using add_subdirectory() to build this project" ON)
 option(BUILD_SHARED_LIBS "By default, shared libs are enabled. Turn off for a static build." ON)
 option(INSTALL_SYSCTL_CONF "Install sysctl conf file to allow shared access to SHM files." OFF)
 set(YANG_MODULE_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/yang/modules/sysrepo" CACHE STRING "Directory where to copy the YANG modules to.")
@@ -488,10 +489,12 @@ if(ENABLE_EXAMPLES)
 endif()
 
 # generate doxygen documentation
-gen_doc("${DOXY_FILES}" ${SYSREPO_VERSION} ${SYSREPO_DESC} ${PROJECT_LOGO})
+if(ENABLE_COMMON_TARGETS)
+    gen_doc("${DOXY_FILES}" ${SYSREPO_VERSION} ${SYSREPO_DESC} ${PROJECT_LOGO})
+endif()
 
 # generate API/ABI report
-if ("${BUILD_TYPE_UPPER}" STREQUAL "ABICHECK")
+if("${BUILD_TYPE_UPPER}" STREQUAL "ABICHECK")
     lib_abi_check(sysrepo "${LIB_HEADERS}" ${SYSREPO_SOVERSION_FULL} d5276ea67a657d8a39f0770a4e5b0993d53ddc5a)
 endif()
 
@@ -513,6 +516,8 @@ add_custom_target(sr_clean
 )
 
 # uninstall
-add_custom_target(uninstall "${CMAKE_COMMAND}" -P "${CMAKE_MODULE_PATH}/uninstall.cmake")
+if(ENABLE_COMMON_TARGETS)
+    add_custom_target(uninstall "${CMAKE_COMMAND}" -P "${CMAKE_MODULE_PATH}/uninstall.cmake")
+endif()
 add_custom_target(uninstall_with_repo "${CMAKE_COMMAND}" -P "${CMAKE_MODULE_PATH}/uninstall.cmake"
     COMMAND rm -rf ${REPO_PATH})
