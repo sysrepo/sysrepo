@@ -23,24 +23,28 @@ endif()
 
 macro(USE_COMPAT)
     # compatibility checks
-    set(CMAKE_REQUIRED_DEFINITIONS -D_POSIX_C_SOURCE=200809L)
+    list(APPEND CMAKE_REQUIRED_DEFINITIONS -D_POSIX_C_SOURCE=200809L)
     list(APPEND CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
     list(APPEND CMAKE_REQUIRED_DEFINITIONS -D__BSD_VISIBLE=1)
-    set(CMAKE_REQUIRED_LIBRARIES pthread)
 
-    check_symbol_exists(_POSIX_TIMERS "unistd.h" HAVE_CLOCK)
+    check_symbol_exists(clock_gettime "time.h" HAVE_CLOCK)
     if(NOT HAVE_CLOCK)
         message(FATAL_ERROR "Missing support for clock_gettime() and similar functions!")
     endif()
 
+    set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
+    find_package(Threads)
+    list(APPEND CMAKE_REQUIRED_LIBRARIES ${CMAKE_THREAD_LIBS_INIT})
     check_symbol_exists(pthread_mutex_timedlock "pthread.h" HAVE_PTHREAD_MUTEX_TIMEDLOCK)
     check_symbol_exists(pthread_mutex_clocklock "pthread.h" HAVE_PTHREAD_MUTEX_CLOCKLOCK)
     check_symbol_exists(pthread_rwlock_clockrdlock "pthread.h" HAVE_PTHREAD_RWLOCK_CLOCKRDLOCK)
     check_symbol_exists(pthread_rwlock_clockwrlock "pthread.h" HAVE_PTHREAD_RWLOCK_CLOCKWRLOCK)
     check_symbol_exists(pthread_cond_clockwait "pthread.h" HAVE_PTHREAD_COND_CLOCKWAIT)
+    list(REMOVE_ITEM CMAKE_REQUIRED_LIBRARIES ${CMAKE_THREAD_LIBS_INIT})
+
     if(HAVE_PTHREAD_MUTEX_CLOCKLOCK)
         # can use CLOCK_MONOTONIC only if we have pthread_mutex_clocklock()
-        check_symbol_exists(_POSIX_MONOTONIC_CLOCK "unistd.h" HAVE_CLOCK_MONOTONIC)
+        check_symbol_exists(CLOCK_MONOTONIC "time.h" HAVE_CLOCK_MONOTONIC)
     endif()
     if(HAVE_CLOCK_MONOTONIC)
         set(COMPAT_CLOCK_ID "CLOCK_MONOTONIC")
@@ -60,12 +64,14 @@ macro(USE_COMPAT)
 
     check_symbol_exists(get_current_dir_name "unistd.h" HAVE_GET_CURRENT_DIR_NAME)
 
-    TEST_BIG_ENDIAN(IS_BIG_ENDIAN)
+    test_big_endian(IS_BIG_ENDIAN)
 
     check_include_file("stdatomic.h" HAVE_STDATOMIC)
 
-    unset(CMAKE_REQUIRED_DEFINITIONS)
-    unset(CMAKE_REQUIRED_LIBRARIES)
+    list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_POSIX_C_SOURCE=200809L)
+    list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
+    list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D__BSD_VISIBLE=1)
+    list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_DEFAULT_SOURCE)
 
     # header and source file (adding the source directly allows for hiding its symbols)
     configure_file(${PROJECT_SOURCE_DIR}/compat/compat.h.in ${PROJECT_BINARY_DIR}/compat/compat.h @ONLY)
