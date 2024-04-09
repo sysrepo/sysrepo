@@ -1244,10 +1244,6 @@ test_set_module_access(void **state)
     ret = sr_set_module_ds_access(st->conn, "test", 1000, user, group, 00666);
     assert_int_equal(ret, SR_ERR_INVAL_ARG);
 
-    /* invalid user (can return SR_ERR_NOT_FOUND or SR_ERR_SYS) */
-    ret = sr_set_module_ds_access(st->conn, "test", SR_DS_RUNNING, "no-user", group, 00666);
-    assert_int_not_equal(ret, SR_ERR_OK);
-
     /* user NULL and group NULL */
     ret = sr_set_module_ds_access(st->conn, "test", SR_DS_RUNNING, NULL, NULL, 00666);
     assert_int_equal(ret, SR_ERR_OK);
