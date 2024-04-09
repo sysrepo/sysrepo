@@ -1,0 +1,129 @@
+module plugin {
+    yang-version 1.1;
+    namespace s;
+    prefix s;
+
+    container simple-cont {
+
+        container simple-cont1 {
+            presence "This is an example of a presence container.";
+        }
+
+        container simple-cont2 {
+            container ac1 {
+                list acl1 {
+                    key acs1;
+                    leaf acs1 {
+                        type string;
+                    }
+                    leaf acs2 {
+                        type string;
+                    }
+                    leaf acs3 {
+                        type string;
+                    }
+                    container inner {
+                        leaf inner-leaf {
+                            type string;
+                        }
+                    }
+                    anydata data;
+                }
+
+                list acl2 {
+                    key acs1;
+                    ordered-by user;
+                    leaf acs1 {
+                        type string;
+                    }
+                }
+
+                list acl3 {
+                    key "acs1 acs2 acs3";
+                    ordered-by user;
+                    leaf acs1 {
+                        type string;
+                    }
+                    leaf acs2 {
+                        type string;
+                    }
+                    leaf acs3 {
+                        type string;
+                    }
+                    container inner {
+                        leaf inner-leaf {
+                            type string;
+                        }
+                    }
+                }
+
+                list acl4 {
+                    config false;
+                    leaf acs1 {
+                        type string;
+                    }
+                    leaf acs2 {
+                        type string;
+                    }
+                    description
+                        "Keyless list.";
+                }
+
+                list acl5 {
+                    key "acs1 acs2 acs3";
+                    leaf acs1 {
+                        type string;
+                    }
+                    leaf acs2 {
+                        type string;
+                    }
+                    leaf acs3 {
+                        type string;
+                    }
+                }
+
+                leaf-list dup-keys {
+                    config false;
+                    type string;
+                    description
+                        "Leaf-list with duplicate keys.";
+                }
+            }
+        }
+
+        container simple-cont3 {
+            leaf-list user-list {
+                type string;
+                ordered-by user;
+                description
+                    "User ordered list.";
+            }
+            anyxml data;
+        }
+
+        container simple-cont4 {
+            choice rand-type {
+                default random;
+                case random {
+                    leaf random {
+                        type uint32;
+                    }
+                }
+            }
+        }
+
+        container simple-cont5 {
+            leaf-list user-list {
+                type string;
+                ordered-by user;
+                description
+                    "User ordered list 2.";
+            }
+            leaf-list system-list {
+                type string;
+                description
+                    "System ordered list.";
+            }
+        }
+    }
+}
