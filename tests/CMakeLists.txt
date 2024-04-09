@@ -53,7 +53,7 @@ if(ENABLE_TESTS)
     # lists of all the tests
     set(tests test_modules test_context_change test_validation test_edit test_candidate test_oper_pull test_oper_push
         test_lock test_apply_changes test_copy_config test_rpc_action test_notif test_get test_process
-        test_multi_connection test_nacm test_rotation test_sub_notif)
+        test_multi_connection test_nacm test_rotation test_sub_notif test_plugin)
 
     foreach(test_name IN LISTS tests)
         add_executable(${test_name} ${test_sources} ${test_name}.c)
@@ -62,10 +62,12 @@ if(ENABLE_TESTS)
     # set common attributes of all tests
     foreach(test_name IN LISTS tests)
         target_link_libraries(${test_name} ${CMOCKA_LIBRARIES} sysrepo)
+        if(${test_name} STREQUAL "test_plugin")
+            target_link_libraries(${test_name} srobj)
+        endif()
         add_test(NAME ${test_name} COMMAND $<TARGET_FILE:${test_name}>)
         set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
             "MALLOC_CHECK_=3"
-            "CMOCKA_TEST_ABORT=1"
             "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"
             "SYSREPO_SHM_PREFIX=_tests_sr_${test_name}"
         )
