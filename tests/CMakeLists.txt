@@ -94,7 +94,7 @@ endif()
 # valgrind tests
 if(ENABLE_VALGRIND_TESTS)
     foreach(test_name IN LISTS tests)
-        add_test(NAME ${test_name}_valgrind COMMAND valgrind --leak-check=full --show-leak-kinds=all --error-exitcode=1 ${CMAKE_BINARY_DIR}/tests/${test_name})
+        add_test(NAME ${test_name}_valgrind COMMAND valgrind --leak-check=full --show-leak-kinds=all --suppressions=${CMAKE_SOURCE_DIR}/tests/mongoc_init.supp --error-exitcode=1 ${CMAKE_BINARY_DIR}/tests/${test_name})
         set(test_name "${test_name}_valgrind")
         set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
             "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/${test_name}"

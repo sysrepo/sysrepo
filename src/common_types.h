@@ -1,11 +1,12 @@
 /**
  * @file common_types.h
  * @author Michal Vasko <mvasko@cesnet.cz>
+ * @author Ondrej Kusnirik <Ondrej.Kusnirik@cesnet.cz>
  * @brief common types header
  *
  * @copyright
- * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -341,6 +342,13 @@ typedef void (*sr_lock_recover_cb)(sr_lock_mode_t mode, sr_cid_t cid, void *data
  * @brief Internal DS plugin "JSON DS file".
  */
 extern const struct srplg_ds_s srpds_json;
+
+/**
+ * @brief Internal DS plugin "MONGO DS".
+ */
+#ifdef SR_ENABLED_DS_PLG_MONGO
+extern const struct srplg_ds_s srpds_mongo;
+#endif
 
 /**
  * @brief Internal notif plugin "JSON notif".
