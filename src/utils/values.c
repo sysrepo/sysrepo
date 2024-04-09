@@ -30,7 +30,9 @@
 #include "ly_wrap.h"
 
 /** get the larger item */
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#ifndef MAX
+# define MAX(a, b) ((a) > (b) ? (a) : (b))
+#endif
 
 /**
  * @brief Type of the destination for the print operation.
