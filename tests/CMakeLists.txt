@@ -85,10 +85,13 @@ endif()
 # sr_perf benchmark binary
 if(ENABLE_PERF_TESTS)
     add_executable(sr_perf ${CMAKE_CURRENT_SOURCE_DIR}/perf.c)
-    target_link_libraries(sr_perf sysrepo)
+    target_link_libraries(sr_perf sysrepo srobj)
 
-    add_test(NAME sr_perf_1000 COMMAND sr_perf 1000 10)
-    add_test(NAME sr_perf_100000 COMMAND sr_perf 100000 3)
+    add_test(NAME sr_perf_1000_10 COMMAND sr_perf 1000 10)
+
+    if(${CMAKE_VERSION} VERSION_GREATER "3.7")
+        set_tests_properties(sr_perf_1000_10 PROPERTIES FIXTURES_REQUIRED tests_cleanup)
+    endif()
 endif()
 
 # valgrind tests
