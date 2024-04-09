@@ -3594,7 +3594,7 @@ sr_edit_add_dup_inst_list_pos(struct lyd_node *parent, const char *xpath)
         if (lysc_is_dup_inst_list(parent->schema)) {
             /* store the instance position */
             if (pos) {
-                sprintf(buf, "%d", pos);
+                sprintf(buf, "%" PRIu32, pos);
             } else {
                 strcpy(buf, "");
             }

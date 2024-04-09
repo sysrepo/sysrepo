@@ -748,7 +748,7 @@ srsn_read_notif(int fd, const struct ly_ctx *ly_ctx, struct timespec *timestamp,
     SR_CHECK_MEM_GOTO(!buf, err_info, cleanup);
 
     /* 3) read the notification LYB */
-    if (read(fd, buf, size) != size) {
+    if (read(fd, buf, size) != (signed)size) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to read a notification (%s).", strerror(errno));
         goto cleanup;
     }

@@ -2371,10 +2371,10 @@ cleanup:
         sr_errinfo_merge(&err_info, cb_err_info);
     }
     if (err_info) {
-        SR_LOG_WRN("EV ORIGIN: Internal \"%s\" \"%s\" priority %" PRIu32 " failed (%s).", SR_RPC_FACTORY_RESET_PATH,
+        SR_LOG_WRN("EV ORIGIN: Internal \"%s\" \"%s\" priority %d failed (%s).", SR_RPC_FACTORY_RESET_PATH,
                 sr_ev2str(SR_SUB_EV_RPC), SR_RPC_FACTORY_RESET_INT_PRIO, sr_strerror(err_info->err[0].err_code));
     } else {
-        SR_LOG_INF("EV ORIGIN: Internal \"%s\" \"%s\" priority %" PRIu32 " succeeded.", SR_RPC_FACTORY_RESET_PATH,
+        SR_LOG_INF("EV ORIGIN: Internal \"%s\" \"%s\" priority %d succeeded.", SR_RPC_FACTORY_RESET_PATH,
                 sr_ev2str(SR_SUB_EV_RPC), SR_RPC_FACTORY_RESET_INT_PRIO);
     }
     return err_info;

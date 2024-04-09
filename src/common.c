@@ -1108,7 +1108,7 @@ sr_path_sub_shm(const char *mod_name, const char *suffix1, int64_t suffix2, char
     }
 
     if (suffix2 > -1) {
-        ret = asprintf(path, "%s/%ssub_%s.%s.%08x", SR_SHM_DIR, prefix, mod_name, suffix1, (uint32_t)suffix2);
+        ret = asprintf(path, "%s/%ssub_%s.%s.%08" PRIx32, SR_SHM_DIR, prefix, mod_name, suffix1, (uint32_t)suffix2);
     } else {
         ret = asprintf(path, "%s/%ssub_%s.%s", SR_SHM_DIR, prefix, mod_name, suffix1);
     }
@@ -1132,7 +1132,7 @@ sr_path_sub_data_shm(const char *mod_name, const char *suffix1, int64_t suffix2,
     }
 
     if (suffix2 > -1) {
-        ret = asprintf(path, "%s/%ssub_data_%s.%s.%08x", SR_SHM_DIR, prefix, mod_name, suffix1, (uint32_t)suffix2);
+        ret = asprintf(path, "%s/%ssub_data_%s.%s.%08" PRIx32, SR_SHM_DIR, prefix, mod_name, suffix1, (uint32_t)suffix2);
     } else {
         ret = asprintf(path, "%s/%ssub_data_%s.%s", SR_SHM_DIR, prefix, mod_name, suffix1);
     }
@@ -1538,10 +1538,10 @@ sr_ext_hole_find(sr_ext_shm_t *ext_shm, uint32_t off, uint32_t min_size)
 
     for (hole = sr_ext_hole_next(NULL, ext_shm); hole; hole = sr_ext_hole_next(hole, ext_shm)) {
         if (off) {
-            if (((char *)hole - (char *)ext_shm == off) && (hole->size >= min_size)) {
+            if (((char *)hole - (char *)ext_shm == (int)off) && (hole->size >= min_size)) {
                 return hole;
             }
-            if ((char *)hole - (char *)ext_shm > off) {
+            if ((char *)hole - (char *)ext_shm > (int)off) {
                 /* foo large offset, it cannot be found anymore */
                 break;
             }
@@ -1588,7 +1588,7 @@ sr_ext_hole_add(sr_ext_shm_t *ext_shm, uint32_t off, uint32_t size)
     }
 
     for (next = sr_ext_hole_next(NULL, ext_shm); next; next = sr_ext_hole_next(next, ext_shm)) {
-        if ((char *)next - (char *)ext_shm > off) {
+        if ((char *)next - (char *)ext_shm > (int)off) {
             /* found the next hole */
             break;
         }
@@ -1600,7 +1600,7 @@ sr_ext_hole_add(sr_ext_shm_t *ext_shm, uint32_t off, uint32_t size)
         /* connecting with prev */
         con_prev = 1;
     }
-    if (next && (off + size == (char *)next - (char *)ext_shm)) {
+    if (next && ((int)(off + size) == (char *)next - (char *)ext_shm)) {
         /* connecting with next */
         con_next = 1;
     }

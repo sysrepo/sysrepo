@@ -1388,7 +1388,7 @@ sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_i
         new_mod->perm = sr_module_default_mode(new_mod->ly_mod);
     } else {
         if (new_mod->perm & SR_UMASK) {
-            SR_LOG_WRN("Ignoring permission bits %03o forbidden by Sysrepo umask.", new_mod->perm & SR_UMASK);
+            SR_LOG_WRN("Ignoring permission bits %03o forbidden by Sysrepo umask.", (unsigned int)new_mod->perm & SR_UMASK);
             new_mod->perm &= ~SR_UMASK;
         }
 
@@ -2224,7 +2224,7 @@ sr_set_module_ds_access(sr_conn_ctx_t *conn, const char *module_name, int mod_ds
     mod_shm = SR_CONN_MOD_SHM(conn);
 
     if (perm & SR_UMASK) {
-        SR_LOG_WRN("Ignoring permission bits %03o forbidden by Sysrepo umask.", perm & SR_UMASK);
+        SR_LOG_WRN("Ignoring permission bits %03o forbidden by Sysrepo umask.", (unsigned int)perm & SR_UMASK);
         perm &= ~SR_UMASK;
     }
     if (group && strlen(SR_GROUP) && strcmp(group, SR_GROUP)) {

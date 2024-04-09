@@ -2117,7 +2117,7 @@ sr_modinfo_module_srmon_connections(struct lyd_node *sr_state)
         }
 
         /* pid */
-        sprintf(buf, "%" PRIu32, pids[i]);
+        sprintf(buf, "%d", (int)pids[i]);
         if ((err_info = sr_lyd_new_term(sr_conn, NULL, "pid", buf))) {
             goto cleanup;
         }

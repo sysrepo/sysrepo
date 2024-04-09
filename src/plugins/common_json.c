@@ -433,7 +433,7 @@ srpjson_chmodown(const char *plg_name, const char *path, const char *owner, cons
 
     if (perm) {
         if (perm > 00777) {
-            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INVAL_ARG, "Invalid permissions 0%.3o.", perm);
+            srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INVAL_ARG, "Invalid permissions 0%.3o.", (unsigned int)perm);
             return err_info;
         } else if (perm & 00111) {
             srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INVAL_ARG, "Setting execute permissions has no effect.");
@@ -737,9 +737,9 @@ srpjson_get_notif_path(const char *plg_name, const char *mod_name, time_t from_t
     int r;
 
     if (SR_NOTIFICATION_PATH[0]) {
-        r = asprintf(path, "%s/%s.notif.%lu-%lu", SR_NOTIFICATION_PATH, mod_name, from_ts, to_ts);
+        r = asprintf(path, "%s/%s.notif.%" PRId64 "-%" PRId64, SR_NOTIFICATION_PATH, mod_name, (int64_t)from_ts, (int64_t)to_ts);
     } else {
-        r = asprintf(path, "%s/data/notif/%s.notif.%lu-%lu", sr_get_repo_path(), mod_name, from_ts, to_ts);
+        r = asprintf(path, "%s/data/notif/%s.notif.%" PRId64 "-%" PRId64, sr_get_repo_path(), mod_name, (int64_t)from_ts, (int64_t)to_ts);
     }
 
     if (r == -1) {
