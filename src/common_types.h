@@ -350,6 +350,13 @@ extern const struct srplg_ds_s srpds_mongo;
 #endif
 
 /**
+ * @brief Internal DS plugin "REDIS DS".
+ */
+#ifdef SR_ENABLED_DS_PLG_REDIS
+extern const struct srplg_ds_s srpds_redis;
+#endif
+
+/**
  * @brief Internal notif plugin "JSON notif".
  */
 extern const struct srplg_ntf_s srpntf_json;

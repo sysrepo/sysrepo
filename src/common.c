@@ -69,6 +69,9 @@ const struct srplg_ds_s *sr_internal_ds_plugins[] = {
 #ifdef SR_ENABLED_DS_PLG_MONGO
     &srpds_mongo,   /**< MONGO DS */
 #endif
+#ifdef SR_ENABLED_DS_PLG_REDIS
+    &srpds_redis,   /**< REDIS DS */
+#endif
 };
 
 /**
