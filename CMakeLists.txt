@@ -141,6 +141,12 @@ set(MONGO_PASSWORD "" CACHE STRING "Password for all MongoDB clients in case Mon
 set(MONGO_HOST "127.0.0.1" CACHE STRING "Host for the MongoDB client to connect to.")
 set(MONGO_PORT 27017 CACHE STRING "Port for the MongoDB client to connect to.")
 
+# Redis username, password, host and port for the client
+set(REDIS_USERNAME "" CACHE STRING "Username for Redis user, all operations are done via this client in case Redis plugin is supported. If not provided, no authentication is done.")
+set(REDIS_PASSWORD "" CACHE STRING "Password for Redis user in case Redis plugin is supported.")
+set(REDIS_HOST "127.0.0.1" CACHE STRING "Host for the Redis client to connect to.")
+set(REDIS_PORT 6379 CACHE STRING "Port for the Redis client to connect to.")
+
 # ietf-yang-library revision
 set(YANGLIB_REVISION "2019-01-04" CACHE STRING
     "YANG module ietf-yang-library revision to implement. Only 2019-01-04 and 2016-06-21 are supported.")
@@ -411,6 +417,30 @@ else()
     message(STATUS "Datastore plugin ds_mongo not supported.")
 endif()
 
+# libhiredis - optional
+find_package(LibHiredis 1.1.0)
+if(LIBHIREDIS_FOUND)
+    # datastore plugin added if libraries exist
+    list(APPEND LIB_SRC src/plugins/ds_redis.c)
+    set(SR_ENABLED_DS_PLG_REDIS 1)
+    message(STATUS "Datastore plugin ds_redis supported.")
+
+    # try running a command in Redis database and check authentication
+    execute_process(COMMAND "echo" "ACL WHOAMI"
+            COMMAND "redis-cli -h ${REDIS_HOST} -p ${REDIS_PORT}"
+            OUTPUT_VARIABLE REDIS_STDOUT
+            ERROR_VARIABLE REDIS_STDERR)
+    if("${REDIS_STDOUT}" MATCHES "^NOAUTH.*")
+        message(STATUS "Redis authentication is supported!")
+    elseif("${REDIS_STDERR}" MATCHES "^Could not connect to Redis.*")
+        message(WARNING "Redis authentication cannot be checked - a request to Redis failed with: ${REDIS_STDERR}")
+    else()
+        message(WARNING "Redis authentication is NOT supported! Data stored by sysrepo in Redis will be accessible by anyone.")
+    endif()
+else()
+    message(STATUS "Datastore plugin ds_redis not supported.")
+endif()
+
 # sysrepo
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 add_library(srobj OBJECT ${LIB_SRC} ${compatsrc})
@@ -424,6 +454,11 @@ if(SR_ENABLED_DS_PLG_MONGO)
     get_target_property(MONGOC_INTERFACE_INCLUDE_DIR mongo::mongoc_shared INTERFACE_INCLUDE_DIRECTORIES)
     set_property(TARGET srobj APPEND PROPERTY INCLUDE_DIRECTORIES ${BSON_INTERFACE_INCLUDE_DIR} ${MONGOC_INTERFACE_INCLUDE_DIR})
     target_link_libraries(sysrepo mongo::mongoc_shared)
+endif()
+if (SR_ENABLED_DS_PLG_REDIS)
+    # to add include directories
+    target_link_libraries(sysrepo ${LIBHIREDIS_LIBRARIES})
+    include_directories(${LIBHIREDIS_INCLUDE_DIRS})
 endif()
 
 if(ENABLE_SYSREPOCTL)
@@ -608,6 +643,15 @@ if(SR_ENABLED_DS_PLG_MONGO)
                         "1>/dev/null"
     )
     add_dependencies(sr_clean sr_mongo_clean)
+endif()
+
+# flush all sysrepo related data from redis
+if(SR_ENABLED_DS_PLG_REDIS)
+    add_custom_target(sr_redis_clean
+        COMMAND "redis-cli" "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}" "--scan" "--pattern" "\"sr:*\"" "|" "xargs" "-d" "\"\\n\"" "-I," "redis-cli" "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}" "unlink" "\",\"" "1>/dev/null"
+        COMMAND "redis-cli" "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}" "--raw" "ft._list" "|" "grep" "-x" "-G" "\"^sr:.*\"" "|" "xargs" "-n" "1" "redis-cli" "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}" "ft.dropindex" "1>/dev/null"
+    )
+    add_dependencies(sr_clean sr_redis_clean)
 endif()
 
 # uninstall
