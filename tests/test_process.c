@@ -470,7 +470,7 @@ test_oper_crash_set2(int rp, int wp)
     sr_session_ctx_t *sess;
     sr_data_t *data;
     char *str1;
-    const char *str2;
+    const char *str2, *str3;
     int ret;
 
     /* wait for the other process */
@@ -527,7 +527,24 @@ test_oper_crash_set2(int rp, int wp)
             "  </interface>\n"
             "</interfaces-state>\n";
 
-    sr_assert_string_equal(str1, str2);
+    str3 =
+            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
+            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
+            "  <interface>\n"
+            "    <name>eth1</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <speed>1024</speed>\n"
+            "  </interface>\n"
+            "  <interface>\n"
+            "    <name>eth0</name>\n"
+            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
+            "    <speed>512</speed>\n"
+            "  </interface>\n"
+            "</interfaces-state>\n";
+
+    /* order of the operational state data might not be deterministic (e.g. system ordered lists)
+        across all datastore plugins, so check for both possibilities */
+    sr_assert_true(!strcmp(str1, str2) || !strcmp(str1, str3));
     free(str1);
 
     sr_disconnect(conn);
