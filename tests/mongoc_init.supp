@@ -1,0 +1,9 @@
+{
+   <mongoc_init leaking - known libmongoc leak>
+   Memcheck:Leak
+   ...
+   fun:_mongoc_do_init
+   ...
+   fun:srpds_mongo_conn_init
+   ...
+}

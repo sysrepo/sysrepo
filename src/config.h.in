@@ -1,11 +1,12 @@
 /**
  * @file config.h
  * @author Michal Vasko <mvasko@cesnet.cz>
+ * @author Ondrej Kusnirik <Ondrej.Kusnirik@cesnet.cz>
  * @brief configuration header
  *
  * @copyright
- * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -151,5 +152,23 @@
 
 /** default plugin for notification datastore */
 #define SR_DEFAULT_NOTIFICATION_DS "@DEFAULT_NOTIFICATION_DS_PLG@"
+
+/** compile MongoDB datastore plugin if libmongoc is available */
+#cmakedefine SR_ENABLED_DS_PLG_MONGO
+
+/** MongoDB database to authenticate against */
+#define SR_DS_PLG_MONGO_AUTHSOURCE    "@MONGO_AUTHSOURCE@"
+
+/** username for MongoDB database */
+#define SR_DS_PLG_MONGO_USERNAME      "@MONGO_USERNAME@"
+
+/** password for MongoDB database */
+#define SR_DS_PLG_MONGO_PASSWORD      "@MONGO_PASSWORD@"
+
+/** host for MongoDB database */
+#define SR_DS_PLG_MONGO_HOST          "@MONGO_HOST@"
+
+/** port for MongoDB database */
+#define SR_DS_PLG_MONGO_PORT          "@MONGO_PORT@"
 
 #endif /* _CONFIG_H */
