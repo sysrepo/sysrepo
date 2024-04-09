@@ -126,6 +126,14 @@ else()
 endif()
 set(INTERNAL_MODULE_DISABLED_RUNNING "" CACHE STRING "List of internal sysrepo or libyang modules that will have their 'running' datastores disabled (always mirroring 'startup'), separated by space. Use '*' for all the modules.")
 
+# default datastore plugins
+set(DEFAULT_STARTUP_DS_PLG "JSON DS file" CACHE STRING "Default datastore plugin for storing startup data.")
+set(DEFAULT_RUNNING_DS_PLG "JSON DS file" CACHE STRING "Default datastore plugin for storing running data.")
+set(DEFAULT_CANDIDATE_DS_PLG "JSON DS file" CACHE STRING "Default datastore plugin for storing candidate data.")
+set(DEFAULT_OPERATIONAL_DS_PLG "JSON DS file" CACHE STRING "Default datastore plugin for storing operational data.")
+set(DEFAULT_FACTORY_DEFAULT_DS_PLG "JSON DS file" CACHE STRING "Default datastore plugin for storing factory default data.")
+set(DEFAULT_NOTIFICATION_DS_PLG "JSON notif" CACHE STRING "Default datastore plugin for storing notifications.")
+
 # ietf-yang-library revision
 set(YANGLIB_REVISION "2019-01-04" CACHE STRING
     "YANG module ietf-yang-library revision to implement. Only 2019-01-04 and 2016-06-21 are supported.")
