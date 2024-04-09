@@ -1,6 +1,7 @@
 /**
  * @file config.h
  * @author Michal Vasko <mvasko@cesnet.cz>
+ * @author Ondrej Kusnirik <Ondrej.Kusnirik@cesnet.cz>
  * @brief configuration header
  *
  * @copyright
@@ -151,5 +152,20 @@
 
 /** default plugin for notification datastore */
 #define SR_DEFAULT_NOTIFICATION_DS "@DEFAULT_NOTIFICATION_DS_PLG@"
+
+/** compile MongoDB datastore plugin if libmongoc is available */
+#cmakedefine SR_ENABLED_DS_PLG_MONGO
+
+/** username for MongoDB database */
+#define SR_DS_PLG_MONGO_USERNAME      "@MONGO_USERNAME@"
+
+/** password for MongoDB database */
+#define SR_DS_PLG_MONGO_PASSWORD      "@MONGO_PASSWORD@"
+
+/** host for MongoDB database */
+#define SR_DS_PLG_MONGO_HOST          "@MONGO_HOST@"
+
+/** port for MongoDB database */
+#define SR_DS_PLG_MONGO_PORT          "@MONGO_PORT@"
 
 #endif /* _CONFIG_H */

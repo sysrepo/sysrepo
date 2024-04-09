@@ -343,6 +343,13 @@ typedef void (*sr_lock_recover_cb)(sr_lock_mode_t mode, sr_cid_t cid, void *data
 extern const struct srplg_ds_s srpds_json;
 
 /**
+ * @brief Internal DS plugin "MONGO DS".
+ */
+#ifdef SR_ENABLED_DS_PLG_MONGO
+extern const struct srplg_ds_s srpds_mongo;
+#endif
+
+/**
  * @brief Internal notif plugin "JSON notif".
  */
 extern const struct srplg_ntf_s srpntf_json;

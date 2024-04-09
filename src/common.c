@@ -45,6 +45,8 @@
 #include <libyang/hash_table.h>
 #include <libyang/plugins_exts.h>
 
+#include "common_types.h"
+#include "compat.h"
 #include "config.h"
 #include "edit_diff.h"
 #include "log.h"
@@ -63,7 +65,10 @@
  * @brief Internal datastore plugin array.
  */
 const struct srplg_ds_s *sr_internal_ds_plugins[] = {
-    &srpds_json,    /**< default */
+    &srpds_json,    /**< JSON DS file */
+#ifdef SR_ENABLED_DS_PLG_MONGO
+    &srpds_mongo,   /**< MONGO DS */
+#endif
 };
 
 /**

@@ -134,6 +134,12 @@ set(DEFAULT_OPERATIONAL_DS_PLG "JSON DS file" CACHE STRING "Default datastore pl
 set(DEFAULT_FACTORY_DEFAULT_DS_PLG "JSON DS file" CACHE STRING "Default datastore plugin for storing factory default data.")
 set(DEFAULT_NOTIFICATION_DS_PLG "JSON notif" CACHE STRING "Default datastore plugin for storing notifications.")
 
+# MongoDB username, password, host and port for the client
+set(MONGO_USERNAME "" CACHE STRING "Username for MongoDB administrator client, all operations are done via this client in case MongoDB plugin is supported. If not provided, no authentication is done.")
+set(MONGO_PASSWORD "" CACHE STRING "Password for all MongoDB clients in case MongoDB plugin is supported.")
+set(MONGO_HOST "127.0.0.1" CACHE STRING "Host for the MongoDB client to connect to.")
+set(MONGO_PORT 27017 CACHE STRING "Port for the MongoDB client to connect to.")
+
 # ietf-yang-library revision
 set(YANGLIB_REVISION "2019-01-04" CACHE STRING
     "YANG module ietf-yang-library revision to implement. Only 2019-01-04 and 2016-06-21 are supported.")
@@ -378,12 +384,46 @@ if(NOT SR_HAVE_DLOPEN)
 endif()
 unset(CMAKE_REQUIRED_DEFINITIONS)
 
+# libmongoc - optional
+find_package(mongoc-1.0 CONFIG)
+if(TARGET mongo::mongoc_shared)
+    # datastore plugin added if libraries exist
+    list(APPEND LIB_SRC src/plugins/ds_mongo.c)
+    set(SR_ENABLED_DS_PLG_MONGO 1)
+    message(STATUS "Datastore plugin ds_mongo supported.")
+
+    # try running a command in MongoDB admin database (should not be possible) and check authentication
+    execute_process(COMMAND "mongosh" "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}" "--eval" "use admin" "--eval" "db.runCommand({usersInfo: 1})"
+            RESULT_VARIABLE MONGO_RETURN_CODE
+            ERROR_VARIABLE MONGO_STDERR
+            OUTPUT_QUIET)
+    if(${MONGO_RETURN_CODE} EQUAL "0")
+        message(WARNING "MongoDB authentication is NOT supported! Data stored by sysrepo in MongoDB will be accessible by anyone.")
+    else()
+        if("${MONGO_STDERR}" MATCHES "^MongoServerError: .*auth.*")
+            message(STATUS "MongoDB authentication is supported!")
+        else()
+            message(WARNING "MongoDB authentication cannot be checked - a request to MongoDB failed with: ${MONGO_STDERR}")
+        endif()
+    endif()
+else()
+    message(STATUS "Datastore plugin ds_mongo not supported.")
+endif()
+
 # sysrepo
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 add_library(srobj OBJECT ${LIB_SRC} ${compatsrc})
 set_target_properties(srobj PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
 add_library(sysrepo $<TARGET_OBJECTS:srobj>)
 set_target_properties(sysrepo PROPERTIES VERSION ${SYSREPO_SOVERSION_FULL} SOVERSION ${SYSREPO_SOVERSION})
+if(SR_ENABLED_DS_PLG_MONGO)
+    # cannot separately include and link mongoc library, thus add include to srobj and link with sysrepo
+    # to add include directories
+    get_target_property(BSON_INTERFACE_INCLUDE_DIR mongo::bson_shared INTERFACE_INCLUDE_DIRECTORIES)
+    get_target_property(MONGOC_INTERFACE_INCLUDE_DIR mongo::mongoc_shared INTERFACE_INCLUDE_DIRECTORIES)
+    set_property(TARGET srobj APPEND PROPERTY INCLUDE_DIRECTORIES ${BSON_INTERFACE_INCLUDE_DIR} ${MONGOC_INTERFACE_INCLUDE_DIR})
+    target_link_libraries(sysrepo mongo::mongoc_shared)
+endif()
 
 if(ENABLE_SYSREPOCTL)
     # sysrepoctl tool
@@ -554,6 +594,20 @@ add_custom_target(sr_clean
     DEPENDS shm_clean
     COMMENT "Removing the whole persistent repository \"${REPO_PATH}\""
 )
+
+# flush all sysrepo related data from mongo
+if(SR_ENABLED_DS_PLG_MONGO)
+    add_custom_target(sr_mongo_clean
+        COMMAND "mongosh" "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}"
+                        "--eval" "use sr_startup" "--eval" "\"db.dropDatabase()\""
+                        "--eval" "use sr_running" "--eval" "\"db.dropDatabase()\""
+                        "--eval" "use sr_candidate" "--eval" "\"db.dropDatabase()\""
+                        "--eval" "use sr_operational" "--eval" "\"db.dropDatabase()\""
+                        "--eval" "use sr_factory-default" "--eval" "\"db.dropDatabase()\""
+                        "1>/dev/null"
+    )
+    add_dependencies(sr_clean sr_mongo_clean)
+endif()
 
 # uninstall
 if(ENABLE_COMMON_TARGETS)
