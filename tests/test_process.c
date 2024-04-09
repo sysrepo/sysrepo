@@ -25,6 +25,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "common_types.h"
+#include "plugins_datastore.h"
 #include "sysrepo.h"
 #include "tests/tcommon.h"
 
@@ -338,6 +340,11 @@ rpc_crash_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, co
     /* avoid leaks (valgrind probably cannot keep track of leafref attributes because they are shared) */
     ly_ctx_destroy((struct ly_ctx *)sr_acquire_context(sr_session_get_connection(session)));
     sr_release_context(sr_session_get_connection(session));
+    for (uint32_t i = 0; i < session->conn->ds_handle_count; ++i) {
+        if (session->conn->ds_handles[i].init) {
+            session->conn->ds_handles[i].plugin->conn_destroy_cb(session->conn, session->conn->ds_handles[i].plg_data);
+        }
+    }
 
     /* callback crashes */
     exit(0);
@@ -443,6 +450,11 @@ test_oper_crash_set1(int rp, int wp)
     /* avoid leaks (valgrind probably cannot keep track of leafref attributes because they are shared) */
     ly_ctx_destroy((struct ly_ctx *)sr_acquire_context(sr_session_get_connection(sess)));
     sr_release_context(sr_session_get_connection(sess));
+    for (uint32_t i = 0; i < sess->conn->ds_handle_count; ++i) {
+        if (sess->conn->ds_handles[i].init) {
+            sess->conn->ds_handles[i].plugin->conn_destroy_cb(sess->conn, sess->conn->ds_handles[i].plg_data);
+        }
+    }
 
     /* crash */
     exit(0);
