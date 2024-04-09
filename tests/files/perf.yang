@@ -19,5 +19,17 @@ module perf {
                 type string;
             }
         }
+        list usr-lst {
+            key k;
+            ordered-by user;
+
+            leaf k {
+                type uint32;
+            }
+
+            leaf l {
+                type string;
+            }
+        }
     }
 }
