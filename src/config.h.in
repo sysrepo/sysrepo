@@ -134,4 +134,22 @@
 /** default permission of data files of internal modules with some data or features */
 #define SR_INTMOD_WITHDATA_FILE_PERM 00644
 
+/** default plugin for startup datastore */
+#define SR_DEFAULT_STARTUP_DS "@DEFAULT_STARTUP_DS_PLG@"
+
+/** default plugin for running datastore */
+#define SR_DEFAULT_RUNNING_DS "@DEFAULT_RUNNING_DS_PLG@"
+
+/** default plugin for candidate datastore */
+#define SR_DEFAULT_CANDIDATE_DS "@DEFAULT_CANDIDATE_DS_PLG@"
+
+/** default plugin for operational datastore */
+#define SR_DEFAULT_OPERATIONAL_DS "@DEFAULT_OPERATIONAL_DS_PLG@"
+
+/** default plugin for factory default datastore */
+#define SR_DEFAULT_FACTORY_DEFAULT_DS "@DEFAULT_FACTORY_DEFAULT_DS_PLG@"
+
+/** default plugin for notification datastore */
+#define SR_DEFAULT_NOTIFICATION_DS "@DEFAULT_NOTIFICATION_DS_PLG@"
+
 #endif /* _CONFIG_H */

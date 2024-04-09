@@ -77,24 +77,24 @@ const struct srplg_ntf_s *sr_internal_ntf_plugins[] = {
  * @brief Default module DS plugins.
  */
 const sr_module_ds_t sr_module_ds_default = {{
-        "JSON DS file", /**< startup */
-        "JSON DS file", /**< running */
-        "JSON DS file", /**< candidate */
-        "JSON DS file", /**< operational */
-        "JSON DS file", /**< factory-default */
-        "JSON notif"    /**< notification */
+        SR_DEFAULT_STARTUP_DS,     /**< startup */
+        SR_DEFAULT_RUNNING_DS,     /**< running */
+        SR_DEFAULT_CANDIDATE_DS,   /**< candidate */
+        SR_DEFAULT_OPERATIONAL_DS, /**< operational */
+        SR_DEFAULT_FACTORY_DEFAULT_DS, /**< factory-default */
+        SR_DEFAULT_NOTIFICATION_DS /**< notification */
     }};
 
 /**
  * @brief Default module DS plugins with 'running' DS disbaled.
  */
 const sr_module_ds_t sr_module_ds_disabled_run = {{
-        "JSON DS file", /**< startup */
-        NULL,           /**< running */
-        "JSON DS file", /**< candidate */
-        "JSON DS file", /**< operational */
-        "JSON DS file", /**< factory-default */
-        "JSON notif"    /**< notification */
+        SR_DEFAULT_STARTUP_DS,     /**< startup */
+        NULL,                      /**< running */
+        SR_DEFAULT_CANDIDATE_DS,   /**< candidate */
+        SR_DEFAULT_OPERATIONAL_DS, /**< operational */
+        SR_DEFAULT_FACTORY_DEFAULT_DS, /**< factory-default */
+        SR_DEFAULT_NOTIFICATION_DS /**< notification */
     }};
 
 sr_error_info_t *
