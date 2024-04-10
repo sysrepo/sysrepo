@@ -3094,6 +3094,11 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
 
+        if (!mod->shm_mod->plugins[SR_DS_RUNNING]) {
+            /* disabled running, no cache */
+            continue;
+        }
+
         /* find the cache mod */
         cmod = NULL;
         for (j = 0; j < conn->run_cache_mod_count; ++j) {
