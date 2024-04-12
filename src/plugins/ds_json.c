@@ -51,10 +51,10 @@ srpds_json_store_(const struct lys_module *mod, sr_datastore_t ds, const struct 
 {
     sr_error_info_t *err_info = NULL;
     struct stat st;
+    struct ly_out *out = NULL;
     char *path = NULL, *bck_path = NULL;
     int fd = -1, backup = 0, creat = 0;
     uint32_t print_opts;
-    off_t size;
 
     /* get path */
     if ((err_info = srpjson_get_path(srpds_name, mod->name, ds, &path))) {
@@ -122,21 +122,22 @@ srpds_json_store_(const struct lys_module *mod, sr_datastore_t ds, const struct 
         }
     }
 
+    /* create out handler */
+    if (ly_out_new_fd(fd, &out)) {
+        err_info = srpjson_log_err_ly(srpds_name, NULL);
+        goto cleanup;
+    }
+
     /* print data */
-    print_opts = LYD_PRINT_SHRINK | LYD_PRINT_WITHSIBLINGS | LYD_PRINT_KEEPEMPTYCONT | LYD_PRINT_WD_IMPL_TAG;
-    if (lyd_print_fd(fd, mod_data, LYD_JSON, print_opts)) {
+    print_opts = LYD_PRINT_SHRINK | LYD_PRINT_KEEPEMPTYCONT | LYD_PRINT_WD_IMPL_TAG;
+    if (lyd_print_all(out, mod_data, LYD_JSON, print_opts)) {
         err_info = srpjson_log_err_ly(srpds_name, LYD_CTX(mod_data));
         srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_INTERNAL, "Failed to store data into \"%s\".", path);
         goto cleanup;
     }
 
     /* truncate the file to the exact size (to get rid of possible following old data) */
-    if ((size = lseek(fd, 0, SEEK_CUR)) == -1) {
-        srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Failed to get the size of \"%s\" (%s).", path,
-                strerror(errno));
-        goto cleanup;
-    }
-    if (ftruncate(fd, size) == -1) {
+    if (ftruncate(fd, ly_out_printed(out)) == -1) {
         srplg_log_errinfo(&err_info, srpds_name, NULL, SR_ERR_SYS, "Failed to truncate \"%s\" (%s).", path,
                 strerror(errno));
         goto cleanup;
@@ -149,6 +150,7 @@ cleanup:
                 strerror(errno));
     }
 
+    ly_out_free(out, NULL, 0);
     if (fd > -1) {
         close(fd);
     }
