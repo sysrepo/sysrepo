@@ -453,8 +453,8 @@ sr_shmext_print(sr_mod_shm_t *mod_shm, sr_shm_t *shm_ext)
     /* print it */
     printed = 0;
     for (i = 0; i < item_count; ++i) {
-        printed += sr_sprintf(&msg, &msg_len, printed, "%06jd-%06jd [%6zu]: %s\n",
-                (intmax_t)items[i].start, (intmax_t)(items[i].start + items[i].size), items[i].size, items[i].name);
+        printed += sr_sprintf(&msg, &msg_len, printed, "%06" PRIu64 "-%06" PRIu64 " [%6" PRIu64 "]: %s\n",
+                (uint64_t)items[i].start, (uint64_t)(items[i].start + items[i].size), (uint64_t)items[i].size, items[i].name);
     }
 
     /* print all the information about SHM */
