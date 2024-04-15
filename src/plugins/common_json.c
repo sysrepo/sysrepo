@@ -16,8 +16,8 @@
 
 #define _GNU_SOURCE
 
-#include "compat.h"
 #include "common_json.h"
+#include "compat.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -314,7 +314,7 @@ srpjson_get_pwd(const char *plg_name, uid_t *uid, char **user)
                     *user, strerror(r));
         } else {
             srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INTERNAL, "Retrieving UID \"%lu\" passwd entry failed (%s).",
-                    (unsigned long int)*uid, strerror(r));
+                    (unsigned long)*uid, strerror(r));
         }
         goto cleanup;
     } else if (!pwd_p) {
@@ -323,7 +323,7 @@ srpjson_get_pwd(const char *plg_name, uid_t *uid, char **user)
                     "Retrieving user \"%s\" passwd entry failed (No such user).", *user);
         } else {
             srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NOT_FOUND,
-                    "Retrieving UID \"%lu\" passwd entry failed (No such UID).", (unsigned long int)*uid);
+                    "Retrieving UID \"%lu\" passwd entry failed (No such UID).", (unsigned long)*uid);
         }
         goto cleanup;
     }
@@ -390,7 +390,7 @@ srpjson_get_grp(const char *plg_name, gid_t *gid, char **group)
                     *group, strerror(r));
         } else {
             srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INTERNAL, "Retrieving GID \"%lu\" grp entry failed (%s).",
-                    (unsigned long int)*gid, strerror(r));
+                    (unsigned long)*gid, strerror(r));
         }
         goto cleanup;
     } else if (!grp_p) {
@@ -399,7 +399,7 @@ srpjson_get_grp(const char *plg_name, gid_t *gid, char **group)
                     "Retrieving group \"%s\" grp entry failed (No such group).", *group);
         } else {
             srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NOT_FOUND,
-                    "Retrieving GID \"%lu\" grp entry failed (No such GID).", (unsigned long int)*gid);
+                    "Retrieving GID \"%lu\" grp entry failed (No such GID).", (unsigned long)*gid);
         }
         goto cleanup;
     }
