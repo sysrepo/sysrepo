@@ -2588,20 +2588,26 @@ sr_modinfo_data_load(struct sr_mod_info_s *mod_info, int read_only, const char *
                  * and not modifying the data */
                 mod_info->data_cached = 1;
                 mod_info->data = conn->run_cache_data;
+
+                for (i = 0; i < mod_info->mod_count; ++i) {
+                    mod = &mod_info->mods[i];
+                    assert(!(mod->state & MOD_INFO_CHANGED));
+                    mod->state |= MOD_INFO_DATA;
+                }
             } else {
                 /* duplicate data of all the modules, they will be modified */
                 for (i = 0; i < mod_info->mod_count; ++i) {
                     mod = &mod_info->mods[i];
+                    if (mod->state & MOD_INFO_DATA) {
+                        continue;
+                    }
+
                     if ((err_info = sr_lyd_get_module_data(&conn->run_cache_data, mod->ly_mod, 0, 1, &mod_info->data))) {
                         goto cleanup;
                     }
-                }
-            }
 
-            /* we have data fot all the modules */
-            for (i = 0; i < mod_info->mod_count; ++i) {
-                mod = &mod_info->mods[i];
-                mod->state |= MOD_INFO_DATA;
+                    mod->state |= MOD_INFO_DATA;
+                }
             }
             goto cleanup;
         }
