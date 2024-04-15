@@ -364,7 +364,7 @@ srpds_json_store(const struct lys_module *mod, sr_datastore_t ds, const struct l
         /* must exist */
         break;
     case SR_DS_RUNNING:
-        /* must exist except for case when all the data were disabled by a feature, which has just been enabled */
+    /* must exist except for case when all the data were disabled by a feature, which has just been enabled */
     /* fallthrough */
     case SR_DS_CANDIDATE:
     case SR_DS_OPERATIONAL:
