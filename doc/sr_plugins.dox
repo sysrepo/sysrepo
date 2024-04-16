@@ -28,4 +28,35 @@ implementation.
 
 @ref ntfplg_api
 
+@section sr_ds_plg_mongo MONGO DS plugin
+
+`MONGO DS` plugin works as a database client. It connects and sends necessary commands directly to the MongoDB database
+server. It connects via the **libmongoc** library API and uses its functions to further communicate with the server.
+In MongoDB database there is a hierarchy of data. All data are stored in records which are then stored in collections
+which are then stored in databases. Each datastore for which `MONGO DS` plugin was deployed has its own database.
+The name of the database consists of a `sr_` prefix and the name of the datastore, e.g. `sr_factory-default`. Data of each
+particular YANG module are then stored in a collection within the particular database. In order to avoid data
+conflicts the databases with the names `sr_startup`, `sr_running`, `sr_candidate`, `sr_operational` and `sr_factory-default`
+can only be used by the sysrepo library.
+
+In order for the authentication (see README) to work the configured user has to have a read and a write permission on
+following databases: `sr_startup`, `sr_running`, `sr_candidate`, `sr_operational` and `sr_factory-default`.
+
+@section sr_ds_plg_redis REDIS DS plugin
+
+`REDIS DS` plugin first connects to the Redis Stack database server via **hiredis** library API and then sends 
+commands to the server using its functions. In Redis database all data are stored together. In order to differentiate between them,
+the keys have to be prefixed. The prefix for all sysrepo data is `sr:` and in order to avoid data conflicts the keys and indexes
+starting with a `sr:` prefix can only be used by the sysrepo library.
+
+In Redis database there are certain limits with respect to data management which cannot be set to unlimited. The maximum amount
+of data which can be loaded from the database at once is set to one trillion. Some of these limits are enforced via the server
+configuration and since the sysrepo library does not have an access to the server's configuration file, it sets these limits
+via commands (more specifically the options MAXAGGREGATERESULTS and MAXEXPANSIONS).
+
+In order for the authentication (see README) to work the user has to have the right to operate on all keys and indexes with the prefix `sr:` and 
+at least the right to use these following commands: `AUTH`, `FT.CONFIG SET`, `FT.AGGREGATE`, `FT.CURSOR READ`, `FT.CREATE`,
+`FT.DROPINDEX`, `HSET`, `HGET`, `SET`, `GET`, `DEL`, `COPY`. Redis supports categories of commands, so to enable all of these commands
+at once you only have to enable a category containing all of them, e.g. `@all`.
+
 */
