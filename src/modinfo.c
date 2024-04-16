@@ -3426,19 +3426,21 @@ sr_modinfo_data_store(struct sr_mod_info_s *mod_info)
                 goto cleanup;
             }
 
-            /* update the cache ID because data were modified, ignored if data_version callback is used instead */
-            mod->shm_mod->run_cache_id++;
+            if (mod_info->ds == SR_DS_RUNNING) {
+                /* update the cache ID because data were modified, ignored if data_version callback is used instead */
+                mod->shm_mod->run_cache_id++;
 
-            if ((mod_info->ds == SR_DS_RUNNING) && (mod_info->conn->opts & SR_CONN_CACHE_RUNNING)) {
-                /* store the changed data in the cache */
-                if ((err_info = sr_conn_run_cache_update_mod(mod_info->conn, mod->ly_mod, mod->shm_mod->run_cache_id,
-                        mod_data))) {
-                    goto cleanup;
+                if (mod_info->conn->opts & SR_CONN_CACHE_RUNNING) {
+                    /* store the changed data in the cache */
+                    if ((err_info = sr_conn_run_cache_update_mod(mod_info->conn, mod->ly_mod, mod->shm_mod->run_cache_id,
+                            mod_data))) {
+                        goto cleanup;
+                    }
+
+                    /* mod data spent */
+                    mod_data = NULL;
+                    mod->state &= ~MOD_INFO_DATA;
                 }
-
-                /* mod data spent */
-                mod_data = NULL;
-                mod->state &= ~MOD_INFO_DATA;
             }
 
             /* connect them back */

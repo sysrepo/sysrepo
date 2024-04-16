@@ -3086,6 +3086,7 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
     struct sr_mod_info_mod_s *mod;
     struct sr_run_cache_s *cmod;
     struct lyd_node *mod_data;
+    sr_datastore_t cache_ds;
     uint32_t i, j, cur_id;
     void *mem;
 
@@ -3095,8 +3096,10 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
         mod = &mod_info->mods[i];
 
         if (!mod->shm_mod->plugins[SR_DS_RUNNING]) {
-            /* disabled running, no cache */
-            continue;
+            /* disabled running, use startup */
+            cache_ds = SR_DS_STARTUP;
+        } else {
+            cache_ds = SR_DS_RUNNING;
         }
 
         /* find the cache mod */
@@ -3135,9 +3138,9 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
         }
 
         /* check whether the data are current */
-        if (mod->ds_handle[SR_DS_RUNNING]->plugin->data_version_cb) {
-            if ((err_info = mod->ds_handle[SR_DS_RUNNING]->plugin->data_version_cb(mod->ly_mod, SR_DS_RUNNING,
-                    mod->ds_handle[SR_DS_RUNNING]->plg_data, &cur_id))) {
+        if (mod->ds_handle[cache_ds]->plugin->data_version_cb) {
+            if ((err_info = mod->ds_handle[cache_ds]->plugin->data_version_cb(mod->ly_mod, cache_ds,
+                    mod->ds_handle[cache_ds]->plg_data, &cur_id))) {
                 goto cleanup;
             }
         } else {
@@ -3168,8 +3171,8 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
         lyd_free_siblings(mod_data);
 
         /* replace with loaded current data */
-        if ((err_info = mod->ds_handle[SR_DS_RUNNING]->plugin->load_cb(mod->ly_mod, SR_DS_RUNNING, NULL, 0,
-                mod->ds_handle[SR_DS_RUNNING]->plg_data, &mod_data))) {
+        if ((err_info = mod->ds_handle[cache_ds]->plugin->load_cb(mod->ly_mod, cache_ds, NULL, 0,
+                mod->ds_handle[cache_ds]->plg_data, &mod_data))) {
             goto cleanup;
         }
         if (mod_data) {
