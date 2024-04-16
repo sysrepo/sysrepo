@@ -82,12 +82,12 @@ other users.
 #### Optional
 
 * pkg-config & libsystemd (to support `sysrepo-plugind` systemd service)
+* [mongodb-org](https://www.mongodb.com/docs/manual/installation/); [libmongoc](https://mongoc.org/libmongoc) >= 1.24.0; libbson >= 1.24.0 (for MONGO DS datastore plugin)
+* [redis-stack-server](https://redis.io/docs/latest/operate/oss_and_stack/install/install-stack/); [hiredis](https://github.com/redis/hiredis) >= 1.1.0 (for REDIS DS datastore plugin)
 * doxygen (for generating documentation)
 * cmocka >= 1.0.1 (for tests only, see [Tests](#Tests))
 * valgrind (for enhanced testing)
-* gcov (for code coverage)
-* lcov (for code coverage)
-* genhtml (for code coverage)
+* gcov; lcov; genhtml (for code coverage)
 
 ## Building
 
@@ -274,6 +274,42 @@ an internal subscription to the `/ietf-factory-default:factory-reset` RPC which 
 `factory-default` data into all the other datastores. This RPC has a priority 10 so applications are
 able to subscribe to it with higher or lower priority and perform any other tasks required for a device
 to be rest to its factory settings.
+
+## Datastore plugins
+
+In sysrepo there are three internal datastore plugins (`JSON DS file`, `MONGO DS` and `REDIS DS`). The default datastore
+plugin is `JSON DS file` which stores all the data to JSON files. `MONGO DS` and `REDIS DS` store data to a database and can be used
+as the default datastore plugins for various datastores after setting a few CMake
+variables. For every datastore a different default datastore plugin can be set. For example:
+
+`cmake -DDEFAULT_STARTUP_DS_PLG="MONGO DS" -DDEFAULT_RUNNING_DS_PLG="MONGO DS" -DDEFAULT_CANDIDATE_DS_PLG="REDIS DS" -DDEFAULT_OPERATIONAL_DS_PLG="JSON DS file" -DDEFAULT_FACTORY_DEFAULT_DS_PLG="JSON DS file" ..`
+
+The shared memory prefix set by `SYSREPO_SHM_PREFIX` is used by each plugin to isolate data between separate *sysrepo* "instances".
+`JSON DS file` includes it in the name of every file it creates, whereas `MONGO DS` includes it
+in the name of every collection and lastly `REDIS DS` includes it in the name of every key as a part of the prefix.
+For more information about plugins, see [plugin documentation](doc/sr_plugins.dox).
+
+### MONGO DS
+
+To use `MONGO DS` datastore plugin, **libmongoc** and **libbson** libraries have to be present
+on the system. Additionally a running MongoDB server has to be available to the system. By default
+sysrepo assumes that the server is available at the loopback address `127.0.0.1` and port `27017` with
+no authentication needed. For different IP address and port, set `MONGO_HOST` and `MONGO_PORT` CMake
+variables. For the authentication via username and password, set `MONGO_USERNAME` and `MONGO_PASSWORD`
+CMake variables. Please note that for sysrepo to correctly authenticate, an existing user with sufficient rights
+and with the configured username and password has to be available
+on the server. Also if the user is created on a different database than `admin`, provide the correct database name on which the user was created
+via the `MONGO_AUTHSOURCE` CMake variable. Lastly, for the authentication to work, authentication has to be enabled in the server configuration (see [Official MongoDB documentation](https://www.mongodb.com/docs/manual/administration/security-checklist/#std-label-checklist-auth)).
+For more information on how the plugin works, please refer to the [plugin documentation](doc/sr_plugins.dox).
+
+### REDIS DS
+
+Similarly to `MONGO DS`, to use `REDIS DS` datastore plugin, **libhiredis** client library and Redis Stack server have to be available to the system.
+The default server address `127.0.0.1` and port `6379` are assumed with
+no authentication needed. For different IP address and port, set `REDIS_HOST` and `REDIS_PORT` CMake variables. 
+To enable authentication via a username and password, set `REDIS_USERNAME` and `REDIS_PASSWORD` CMake variables,
+create a corresponding user with sufficient rights, and do not forget to enforce the authentication on the server (see [official Redis documentation](https://redis.io/docs/latest/commands/auth/)).
+For more information on how the plugin works, please refer to the [plugin documentation](doc/sr_plugins.dox).
 
 ## Examples
 
