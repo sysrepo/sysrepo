@@ -706,7 +706,7 @@ sr_edit_create_userord_predicate(const struct lyd_node *llist)
     /* create list predicate consisting of all the keys */
     pred_len = 0;
     pred = NULL;
-    for (key = lyd_child(llist); key && (key->schema->flags & LYS_KEY); key = key->next) {
+    for (key = lyd_child(llist); key && key->schema && (key->schema->flags & LYS_KEY); key = key->next) {
         key_len = 1 + strlen(key->schema->name) + 2 + strlen(lyd_get_value(key)) + 2;
         pred = sr_realloc(pred, pred_len + key_len + 1);
         if (!pred) {
