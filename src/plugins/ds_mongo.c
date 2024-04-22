@@ -34,6 +34,7 @@
 #include <libyang/libyang.h>
 #include <mongoc/mongoc.h>
 
+#include "compat.h"
 #include "config.h"
 #include "plugins_datastore.h"
 #include "sysrepo.h"
