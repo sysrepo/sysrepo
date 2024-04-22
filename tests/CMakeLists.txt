@@ -17,7 +17,11 @@ include_directories(${PROJECT_BINARY_DIR}/tests)
 
 # headers test for including compat.h
 add_test(NAME headers
-    COMMAND ${CMAKE_SOURCE_DIR}/compat/check_includes.sh ${CMAKE_SOURCE_DIR}/src/ ${CMAKE_SOURCE_DIR}/src/executables/ ${CMAKE_SOURCE_DIR}/src/utils/)
+    COMMAND ${CMAKE_SOURCE_DIR}/compat/check_includes.sh
+        ${CMAKE_SOURCE_DIR}/src/
+        ${CMAKE_SOURCE_DIR}/src/executables/
+        ${CMAKE_SOURCE_DIR}/src/plugins/
+        ${CMAKE_SOURCE_DIR}/src/utils/)
 
 set(test_sources "tcommon.c")
 
