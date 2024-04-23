@@ -94,19 +94,25 @@ sr_error_info_t *sr_modinfo_add_all_modules_with_data(const struct ly_ctx *ly_ct
  */
 sr_error_info_t *sr_modinfo_collect_edit(const struct lyd_node *edit, struct sr_mod_info_s *mod_info);
 
+#define MOD_INFO_XPATH_STORE_SESSION_CHANGES    0x01    /**< do not store XPath in mod info for modules with changes
+                                                             in the session (so that all their oper data are retrieved
+                                                             and the changes can be applied) */
+#define MOD_INFO_XPATH_STORE_ALL                0x02    /**< store all XPath in mod info */
+#define MOD_INFO_XPATH_STORE_DUP                0x04    /**< any stored XPath is first duplicated */
+
 /**
  * @brief Collect required modules for evaluating XPath and getting selected data in mod info.
  *
  * @param[in] ly_ctx libyang context.
  * @param[in] xpath XPath to be evaluated.
  * @param[in] ds Target datastore where the @p xpath will be evaluated.
- * @param[in] store_xpath Whether to store @p xpath as module xpath (filtering required data).
- * @param[in] dup_xpath Whether to duplicate @p xpath if it is being stored.
+ * @param[in] session Optional session to get the changes from if @p xpath_opts include #MOD_INFO_XPATH_STORE_SESSION_CHANGES.
+ * @param[in] xpath_opts Options for specific XPath processing in mod info.
  * @param[in,out] mod_info Mod info to add to.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds,
-        int store_xpath, int dup_xpath, struct sr_mod_info_s *mod_info);
+        sr_session_ctx_t *session, uint32_t xpath_opts, struct sr_mod_info_s *mod_info);
 
 /**
  * @brief Collect required modules of (MOD_INFO_REQ & MOD_INFO_CHANGED) | MOD_INFO_INV_DEP modules in mod info.

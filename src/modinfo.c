@@ -168,7 +168,8 @@ sr_modinfo_collect_edit(const struct lyd_node *edit, struct sr_mod_info_s *mod_i
             xpath = lyd_get_value(root);
             if (xpath && xpath[0]) {
                 /* collect xpath to discard */
-                if ((err_info = sr_modinfo_collect_xpath(mod_info->conn->ly_ctx, xpath, SR_DS_OPERATIONAL, 0, 0, mod_info))) {
+                if ((err_info = sr_modinfo_collect_xpath(mod_info->conn->ly_ctx, xpath, SR_DS_OPERATIONAL, NULL, 0,
+                        mod_info))) {
                     return err_info;
                 }
             } else {
@@ -199,9 +200,65 @@ sr_modinfo_collect_edit(const struct lyd_node *edit, struct sr_mod_info_s *mod_i
     return NULL;
 }
 
+/**
+ * @brief Check that a session has some changes for a module for the current DS based on the event.
+ *
+ * @param[in] session Session to use.
+ * @param[in] ly_mod Specific module to check.
+ * @return Whether there are some changes or not.
+ */
+static int
+sr_modinfo_session_has_data_changes(sr_session_ctx_t *session, const struct lys_module *ly_mod)
+{
+    const struct lyd_node *root;
+
+    assert(session);
+
+    if (session->ds >= SR_DS_COUNT) {
+        /* factory-default DS */
+        return 0;
+    }
+
+    /* check edit/diff to be applied based on the handled event */
+    switch (session->ev) {
+    case SR_SUB_EV_CHANGE:
+    case SR_SUB_EV_UPDATE:
+        LY_LIST_FOR(session->dt[session->ds].diff, root) {
+            if (lyd_owner_module(root) == ly_mod) {
+                return 1;
+            }
+        }
+        if (session->ev != SR_SUB_EV_UPDATE) {
+            break;
+        }
+    /* fallthrough */
+    case SR_SUB_EV_NONE:
+        if (session->dt[session->ds].edit) {
+            LY_LIST_FOR(session->dt[session->ds].edit->tree, root) {
+                if (lyd_owner_module(root) == ly_mod) {
+                    return 1;
+                }
+            }
+        }
+        break;
+    case SR_SUB_EV_ENABLED:
+    case SR_SUB_EV_DONE:
+    case SR_SUB_EV_ABORT:
+    case SR_SUB_EV_OPER:
+    case SR_SUB_EV_RPC:
+    case SR_SUB_EV_NOTIF:
+        /* no changes to apply for these events */
+        break;
+    default:
+        break;
+    }
+
+    return 0;
+}
+
 sr_error_info_t *
-sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds, int store_xpath,
-        int dup_xpath, struct sr_mod_info_s *mod_info)
+sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_datastore_t ds,
+        sr_session_ctx_t *session, uint32_t xpath_opts, struct sr_mod_info_s *mod_info)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *prev_ly_mod, *ly_mod;
@@ -209,6 +266,19 @@ sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_data
     struct ly_set *set = NULL;
     struct ly_ctx *sm_ctx = NULL;
     uint32_t i;
+    int store_xpath, dup_xpath;
+
+    /* process (simple) xpath options */
+    if (xpath_opts & MOD_INFO_XPATH_STORE_ALL) {
+        store_xpath = 1;
+    } else {
+        store_xpath = 0;
+    }
+    if (xpath_opts & MOD_INFO_XPATH_STORE_DUP) {
+        dup_xpath = 1;
+    } else {
+        dup_xpath = 0;
+    }
 
     /* learn what nodes are needed for evaluation */
     if (((err_info = sr_lys_find_xpath_atoms(ly_ctx, xpath, LYS_FIND_NO_MATCH_ERROR | LYS_FIND_SCHEMAMOUNT, NULL, &set)))) {
@@ -239,6 +309,11 @@ sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const char *xpath, sr_data
         if (!ly_mod->implemented || !strcmp(ly_mod->name, "sysrepo") || !strcmp(ly_mod->name, "ietf-netconf")) {
             /* skip import-only modules, the internal sysrepo module, and ietf-netconf (as it has no data, only in libyang) */
             continue;
+        }
+
+        if (xpath_opts & MOD_INFO_XPATH_STORE_SESSION_CHANGES) {
+            /* decide for each module */
+            store_xpath = !sr_modinfo_session_has_data_changes(session, ly_mod);
         }
 
         if ((err_info = sr_modinfo_add(ly_mod, store_xpath ? xpath : NULL, dup_xpath, 0, mod_info))) {
@@ -321,7 +396,8 @@ sr_modinfo_collect_ext_deps(const struct lysc_node *mp_node, struct sr_mod_info_
     path = lysc_path(mp_node, LYSC_PATH_DATA, NULL, 0);
 
     /* collect all the mounted data */
-    if ((err_info = sr_modinfo_collect_xpath(mod_info->conn->ly_ctx, path, mod_info->ds, 1, 1, mod_info))) {
+    if ((err_info = sr_modinfo_collect_xpath(mod_info->conn->ly_ctx, path, mod_info->ds, NULL,
+            MOD_INFO_XPATH_STORE_ALL | MOD_INFO_XPATH_STORE_DUP, mod_info))) {
         goto cleanup;
     }
 
