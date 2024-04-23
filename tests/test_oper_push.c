@@ -2377,7 +2377,11 @@ test_top_leaf(void **state)
     ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
-    assert_null(str1);
+    assert_string_equal(str1,
+            "<cont xmlns=\"urn:test\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <dflt-leaf or:origin=\"or:default\">default-value</dflt-leaf>\n"
+            "</cont>\n");
+    free(str1);
 
     /* discard the oper change */
     ret = sr_discard_oper_changes(st->conn, st->sess, "/test:test-leaf", 0);
@@ -2393,7 +2397,10 @@ test_top_leaf(void **state)
 
     str2 =
             "<test-leaf xmlns=\"urn:test\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\""
-            " or:origin=\"or:intended\">20</test-leaf>\n";
+            " or:origin=\"or:intended\">20</test-leaf>\n"
+            "<cont xmlns=\"urn:test\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:intended\">\n"
+            "  <dflt-leaf or:origin=\"or:default\">default-value</dflt-leaf>\n"
+            "</cont>\n";
     assert_string_equal(str1, str2);
     free(str1);
 
@@ -3322,6 +3329,7 @@ test_diff_merge_userord(void **state)
             "    <k>key3</k>\n"
             "    <v or:origin=\"or:unknown\">27</v>\n"
             "  </l2>\n"
+            "  <dflt-leaf or:origin=\"or:default\">default-value</dflt-leaf>\n"
             "</cont>\n";
     assert_string_equal(str1, str2);
     free(str1);
@@ -3355,6 +3363,7 @@ test_diff_merge_userord(void **state)
             "    <k>key3</k>\n"
             "    <v or:origin=\"or:unknown\">27</v>\n"
             "  </l2>\n"
+            "  <dflt-leaf or:origin=\"or:default\">default-value</dflt-leaf>\n"
             "</cont>\n";
     assert_string_equal(str1, str2);
     free(str1);
@@ -3417,6 +3426,7 @@ test_diff_merge_userord(void **state)
             "    <k>key1</k>\n"
             "    <v>25</v>\n"
             "  </l2>\n"
+            "  <dflt-leaf or:origin=\"or:default\">default-value</dflt-leaf>\n"
             "</cont>\n";
     assert_string_equal(str1, str2);
     free(str1);

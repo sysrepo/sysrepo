@@ -1422,6 +1422,9 @@ replace_userord_thread(void *arg)
     sr_release_data(data);
 
     str2 =
+            "<cont xmlns=\"urn:test\">\n"
+            "  <dflt-leaf xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">default-value</dflt-leaf>\n"
+            "</cont>\n"
             "<l3 xmlns=\"urn:test\">\n"
             "  <k>k1</k>\n"
             "  <ll3 xmlns:ncwd=\"urn:ietf:params:xml:ns:yang:ietf-netconf-with-defaults\" ncwd:default=\"true\">5</ll3>\n"

@@ -243,6 +243,13 @@ test_delete(void **state)
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
+    /* delete a default leaf */
+    ret = sr_delete_item(st->sess, "/test:cont/dflt-leaf", SR_EDIT_STRICT);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
+    sr_discard_changes(st->sess);
+
     /* check final datastore contents */
     ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);

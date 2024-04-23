@@ -69,6 +69,11 @@ module test {
             type inet:host;
         }
 
+        leaf dflt-leaf {
+            type string;
+            default "default-value";
+        }
+
         anyxml anyx;
 
         anydata anyd;
