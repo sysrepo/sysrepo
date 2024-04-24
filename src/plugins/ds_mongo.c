@@ -657,13 +657,13 @@ srpds_process_load_paths(struct ly_ctx *ctx, const char **xpaths, uint32_t xpath
 
         /* start regex */
         if (i == 0) {
-            if (asprintf(&tmp, "^(%s.*)", path) == -1) {
+            if (asprintf(&tmp, "^%s", path) == -1) {
                 ERRINFO(&err_info, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno))
                 goto cleanup;
             }
             /* continue regex */
         } else {
-            if (asprintf(&tmp, "%s|(%s.*)", *out, path) == -1) {
+            if (asprintf(&tmp, "%s|%s", *out, path) == -1) {
                 ERRINFO(&err_info, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno))
                 goto cleanup;
             }
