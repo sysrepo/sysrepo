@@ -2322,7 +2322,6 @@ srpds_store_all(mongoc_collection_t *module, const struct lyd_node *mod_diff)
 {
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
-    bson_t *del_query = NULL, *opts = NULL;
     struct mongo_diff_data diff_data;
     uint32_t i;
 
@@ -2336,7 +2335,7 @@ srpds_store_all(mongoc_collection_t *module, const struct lyd_node *mod_diff)
 
     if (diff_data.cre.idx) {
         if (!mongoc_collection_insert_many(module, (const bson_t **)diff_data.cre.docs,
-                diff_data.cre.idx, opts, NULL, &error)) {
+                diff_data.cre.idx, NULL, NULL, &error)) {
             ERRINFO(&err_info, SR_ERR_OPERATION_FAILED, "mongoc_collection_insert_many()", error.message)
             goto cleanup;
         }
@@ -2344,7 +2343,7 @@ srpds_store_all(mongoc_collection_t *module, const struct lyd_node *mod_diff)
 
     for (i = 0; i < diff_data.rep.idx; ++i) {
         if (!mongoc_collection_update_one(module, (const bson_t *)(diff_data.rep_keys.docs)[i],
-                (const bson_t *)(diff_data.rep.docs)[i], opts, NULL, &error)) {
+                (const bson_t *)(diff_data.rep.docs)[i], NULL, NULL, &error)) {
             ERRINFO(&err_info, SR_ERR_OPERATION_FAILED, "mongoc_collection_update_one()", error.message)
             goto cleanup;
         }
@@ -2352,16 +2351,14 @@ srpds_store_all(mongoc_collection_t *module, const struct lyd_node *mod_diff)
 
     for (i = 0; i < diff_data.del.idx; ++i) {
         if (!mongoc_collection_delete_one(module, (const bson_t *)(diff_data.del.docs)[i],
-                opts, NULL, &error)) {
+                NULL, NULL, &error)) {
             ERRINFO(&err_info, SR_ERR_OPERATION_FAILED, "mongoc_collection_delete_one()", error.message)
             goto cleanup;
         }
     }
 
 cleanup:
-    bson_destroy(del_query);
     srpds_diff_data_destroy(&diff_data);
-    bson_destroy(opts);
     return err_info;
 }
 
