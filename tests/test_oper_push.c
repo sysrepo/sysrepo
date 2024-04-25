@@ -3996,13 +3996,14 @@ test_change_filter(void **state)
 }
 
 static int
-change_fake_move_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+oper_list_enabled_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
     sr_change_oper_t op;
     sr_change_iter_t *iter;
-    sr_val_t *old_val, *new_val;
+    const struct lyd_node *node;
+    const char *prev_value;
     int ret;
 
     (void)sub_id;
@@ -4014,22 +4015,24 @@ change_fake_move_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *modu
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
     case 0:
     case 1:
-        if (ATOMIC_LOAD_RELAXED(st->cb_called) == 0) {
+        if (ATOMIC_LOAD_RELAXED(st->cb_called) % 2 == 0) {
             assert_int_equal(event, SR_EV_ENABLED);
         } else {
-            assert_int_equal(event, SR_EV_CHANGE);
+            assert_int_equal(event, SR_EV_DONE);
         }
 
         /* get changes iter */
         ret = sr_get_changes_iter(session, "/mixed-config:test-state/ll//.", &iter);
         assert_int_equal(ret, SR_ERR_OK);
 
-        /* 1st change */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_OK);
+        assert_int_equal(op, SR_OP_CREATED);
+        assert_string_equal(prev_value, "");
+        assert_string_equal(node->schema->name, "ll");
 
         /* no more changes */
-        ret = sr_get_change_next(session, iter, &op, &old_val, &new_val);
+        ret = sr_get_change_tree_next(session, iter, &op, &node, &prev_value, NULL, NULL);
         assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
         sr_free_change_iter(iter);
@@ -4043,7 +4046,7 @@ change_fake_move_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *modu
 }
 
 static void
-test_oper_list_fake_move(void **state)
+test_oper_list_enabled(void **state)
 {
     struct state *st = (struct state *)*state;
     sr_subscription_ctx_t *subscr = NULL;
@@ -4054,29 +4057,25 @@ test_oper_list_fake_move(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* set some operational data */
-    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[1]",
-            "a1", NULL, 0);
+    ret = sr_set_item_str(st->sess, "/mixed-config:test-state/ll[1]", "a1", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
-
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe to operational data changes */
     ATOMIC_STORE_RELAXED(st->cb_called, 0);
-    ret = sr_module_change_subscribe(st->sess, "mixed-config",
-            "/mixed-config:test-state/ll",
-            change_fake_move_cb, st, 0, SR_SUBSCR_ENABLED, &subscr);
+    ret = sr_module_change_subscribe(st->sess, "mixed-config", "/mixed-config:test-state/ll",
+            oper_list_enabled_change_cb, st, 0, SR_SUBSCR_ENABLED, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
+    ATOMIC_STORE_RELAXED(st->cb_called, 2);
 
     sr_unsubscribe(subscr);
 }
-
 
 int
 main(void)
 {
     const struct CMUnitTest tests[] = {
-        cmocka_unit_test_teardown(test_oper_list_fake_move, clear_up),
         cmocka_unit_test_teardown(test_conn_owner1, clear_up),
         cmocka_unit_test_teardown(test_conn_owner2, clear_up),
         cmocka_unit_test_teardown(test_conn_owner_same_data, clear_up),
@@ -4102,6 +4101,7 @@ main(void)
         cmocka_unit_test_teardown(test_change_cb, clear_up),
         cmocka_unit_test_teardown(test_oper_set_del_leaflist, clear_up),
         cmocka_unit_test_teardown(test_change_filter, clear_up),
+        cmocka_unit_test_teardown(test_oper_list_enabled, clear_up),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);

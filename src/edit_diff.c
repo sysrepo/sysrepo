@@ -1923,14 +1923,8 @@ sr_edit_created_subtree_apply_move(struct lyd_node *match_subtree)
                 sibling_before_val = sr_edit_create_userord_predicate(sibling_before);
             }
 
-            if (elem->schema->nodetype == LYS_LIST) {
-                if ((err_info = sr_lyd_new_meta(elem, NULL, "yang:key", sibling_before_val))) {
-                    return err_info;
-                }
-            } else {
-                if ((err_info = sr_lyd_new_meta(elem, NULL, "yang:value", sibling_before_val))) {
-                    return err_info;
-                }
+            if ((err_info = sr_lyd_new_meta(elem, NULL, sr_userord_anchor_meta_name(elem->schema), sibling_before_val))) {
+                return err_info;
             }
             free(sibling_before_val);
         }
@@ -3735,7 +3729,7 @@ sr_edit_add(sr_session_ctx_t *session, const char *xpath, const char *value, con
             goto error;
         }
         if (((*position == SR_MOVE_BEFORE) || (*position == SR_MOVE_AFTER)) && (err_info = sr_lyd_new_meta(node, NULL,
-                (node->schema->nodetype == LYS_LIST) ? "yang:key" : "yang:value", meta_val))) {
+                sr_userord_anchor_meta_name(node->schema), meta_val))) {
             goto error;
         }
     }
