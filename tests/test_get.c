@@ -31,6 +31,7 @@
 
 #include "sysrepo.h"
 #include "tests/tcommon.h"
+#include "utils/subscribed_notifications.h"
 
 struct state {
     sr_conn_ctx_t *conn;
@@ -47,6 +48,7 @@ setup(void **state)
         TESTS_SRC_DIR "/files/simple.yang",
         TESTS_SRC_DIR "/files/simple-aug.yang",
         TESTS_SRC_DIR "/files/defaults.yang",
+        TESTS_SRC_DIR "/files/mod.yang",
         NULL
     };
 
@@ -82,6 +84,7 @@ teardown(void **state)
         "simple-aug",
         "simple",
         "defaults",
+        "mod",
         NULL
     };
 
@@ -627,6 +630,80 @@ test_factory_default(void **state)
     sr_remove_module(st->conn, "example-module", 0);
 }
 
+static void
+test_subtree2xpath(void **state)
+{
+    struct state *st = (struct state *)*state;
+    char *filter_str, *get_str;
+    const char *str, *exp;
+    int ret;
+    const struct ly_ctx *ly_ctx = sr_acquire_context(st->conn);
+    struct lyd_node *filter_tree, *edit_tree;
+    sr_data_t *get_tree;
+
+    /* load some data */
+    str =
+            "<container xmlns=\"urn:mod\">\n"
+            "  <list-entry>\n"
+            "    <leaf-bool>true</leaf-bool>\n"
+            "    <name>k1</name>\n"
+            "  </list-entry>\n"
+            "  <list-entry>\n"
+            "    <leaf-bool>false</leaf-bool>\n"
+            "    <name>k2</name>\n"
+            "  </list-entry>\n"
+            "</container>\n";
+    ret = lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY, 0, &edit_tree);
+    assert_int_equal(ret, LY_SUCCESS);
+    ret = sr_edit_batch(st->sess, edit_tree, "replace");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* prepare subtree filter */
+    str =
+            "<container xmlns=\"urn:mod\">\n"
+            "  <list-entry>\n"
+            "    <leaf-bool/>\n"
+            "    <name>k1</name>\n"
+            "  </list-entry>\n"
+            "  <list-entry>\n"
+            "    <leaf-bool>true</leaf-bool>\n"
+            "    <name>k2</name>\n"
+            "  </list-entry>\n"
+            "</container>\n";
+    ret = lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_OPAQ, 0, &filter_tree);
+    assert_int_equal(ret, LY_SUCCESS);
+
+    /* convert subtree filter to xpath */
+    ret = srsn_filter_subtree2xpath(filter_tree, NULL, &filter_str);
+    assert_int_equal(SR_ERR_OK, ret);
+    exp = "(/mod:container/list-entry[name='k1']/name | /mod:container/list-entry[name='k1']/leaf-bool | "
+            "/mod:container/list-entry[name='k2'][leaf-bool='true'])";
+    assert_string_equal(exp, filter_str);
+
+    /* get data by xpath */
+    ret = sr_get_data(st->sess, filter_str, 0, 0, 0, &get_tree);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&get_str, get_tree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    exp =
+            "<container xmlns=\"urn:mod\">\n"
+            "  <list-entry>\n"
+            "    <name>k1</name>\n"
+            "    <leaf-bool>true</leaf-bool>\n"
+            "  </list-entry>\n"
+            "</container>\n";
+    assert_string_equal(exp, get_str);
+
+    /* cleanup */
+    free(filter_str);
+    free(get_str);
+    sr_release_data(get_tree);
+    lyd_free_all(filter_tree);
+    lyd_free_all(edit_tree);
+}
+
 int
 main(void)
 {
@@ -641,6 +718,7 @@ main(void)
         cmocka_unit_test(test_union),
         cmocka_unit_test(test_key),
         cmocka_unit_test(test_factory_default),
+        cmocka_unit_test(test_subtree2xpath),
     };
 
     setenv("CMOCKA_TEST_ABORT", "1", 1);
