@@ -120,13 +120,16 @@ srsn_filter_xpath_buf_append_attrs(const struct lyd_node *node, char **buf, int 
 
     if (node->schema) {
         LY_LIST_FOR(node->meta, next) {
+            if (!lyd_metadata_should_print(next)) {
+                continue;
+            }
             new_size = *size + 2 + strlen(next->annotation->module->name) + 1 + strlen(next->name) + 2 +
                     strlen(lyd_get_meta_value(next)) + 2;
             buf_new = realloc(*buf, new_size);
             SR_CHECK_MEM_RET(!buf_new, err_info);
             *buf = buf_new;
             quot = strchr(lyd_get_meta_value(next), '\'') ? '\"' : '\'';
-            sprintf((*buf) + (*size - 1), "[@%s:%s%c%s%c]", next->annotation->module->name, next->name, quot,
+            sprintf((*buf) + (*size - 1), "[@%s:%s=%c%s%c]", next->annotation->module->name, next->name, quot,
                     lyd_get_meta_value(next), quot);
             *size = new_size;
         }
