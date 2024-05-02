@@ -335,7 +335,7 @@ srsn_filter_xpath_buf_append_content(const struct lyd_node *node, char **buf, in
     sr_error_info_t *err_info = NULL;
     const struct lys_module *mod = NULL;
     int new_size, dynamic = 0;
-    char *buf_new, *val_str, quot;
+    char *buf_new, *val_str = NULL, quot;
 
     assert(!node->schema || (node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST)));
 
