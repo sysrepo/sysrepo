@@ -2242,6 +2242,20 @@ cleanup:
     return err_info;
 }
 
+static int
+str2ds(const char *str, sr_datastore_t *ds)
+{
+    if (!strcmp(str, "running")) {
+        *ds = SR_DS_RUNNING;
+    } else if (!strcmp(str, "startup")) {
+        *ds = SR_DS_STARTUP;
+    } else {
+        return 1;
+    }
+
+    return 0;
+}
+
 /**
  * @brief Call internal RPC/action "callback".
  *
@@ -2259,6 +2273,7 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     const struct lyd_node *child;
     const struct lys_module *ly_mod;
     sr_datastore_t ds;
+    uint8_t datastores = 0;
     uint32_t i;
 
     assert(input->schema->nodetype & (LYS_RPC | LYS_ACTION));
@@ -2272,24 +2287,34 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
 
     /* collect all required modules */
     LY_LIST_FOR(lyd_child(input), child) {
-        /* get LY module */
-        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, lyd_get_value(child));
-        if (!ly_mod) {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", lyd_get_value(child));
-            goto cleanup;
-        } else if (!strcmp(ly_mod->name, "sysrepo")) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Internal module \"%s\" cannot be reset to factory-default.",
-                    lyd_get_value(child));
-            goto cleanup;
-        }
+        if (!strcmp(LYD_NAME(child), "module"))
+        {
+            /* get LY module */
+            ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, lyd_get_value(child));
+            if (!ly_mod) {
+                sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", lyd_get_value(child));
+                goto cleanup;
+            } else if (!strcmp(ly_mod->name, "sysrepo")) {
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Internal module \"%s\" cannot be reset to factory-default.",
+                        lyd_get_value(child));
+                goto cleanup;
+            }
 
-        if (!sr_module_has_data(ly_mod, 0)) {
-            /* skip copying for modules without configuration data */
-            continue;
-        }
+            if (!sr_module_has_data(ly_mod, 0)) {
+                /* skip copying for modules without configuration data */
+                continue;
+            }
 
-        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
-            goto cleanup;
+            if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
+                goto cleanup;
+            }
+        } else if (!strcmp(LYD_NAME(child), "datastore")) {
+            if (!str2ds(lyd_get_value(child), &ds)) {
+                datastores |= (1 << ds);
+            } else {
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid datastore for factory reset: %s", lyd_get_value(child));
+                goto cleanup;
+            }
         }
     }
 
@@ -2311,6 +2336,11 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     }
 
     for (ds = SR_DS_STARTUP; ds <= SR_DS_RUNNING; ++ds) {
+        if (!(datastores & (1 << ds))) {
+            /* datastore should be skipped */
+            continue;
+        }
+
         /* re-init mod_info manually */
         mod_info.ds = ds;
         mod_info.ds2 = ds;

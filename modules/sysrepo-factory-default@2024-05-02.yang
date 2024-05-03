@@ -18,6 +18,11 @@ module sysrepo-factory-default {
     description
         "Sysrepo YANG augment of the factory-reset RPC.";
 
+    revision "2024-05-02" {
+        description
+            "Add datastore leaf-list parameter.";
+    }
+
     revision "2023-02-23" {
         description
             "Initial revision.";
@@ -25,12 +30,19 @@ module sysrepo-factory-default {
 
     augment /fd:factory-reset/fd:input {
         description
-            "Adds leaf-list of modules that are reset to the default factory state. If there are none, sysrepo
-             automatically populates the leaf-list with all the modules being reset.";
+            "Adds leaf-list of modules and datastores that are reset to the default factory state. If there are none, sysrepo
+             automatically populates the leaf-lists with all the modules/datastores being reset.";
+
         leaf-list module {
             type string;
             description
                 "Module that will be reset to its default factory state.";
+        }
+
+        leaf-list datastore {
+            type string;
+            description
+                "Datastore in which given modules will be reset to default factory state.";
         }
     }
 }

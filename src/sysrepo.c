@@ -20,6 +20,7 @@
 #include "sysrepo.h"
 
 #include <assert.h>
+#include <stdbool.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -6084,11 +6085,21 @@ sr_rpc_internal_input_update(sr_conn_ctx_t *conn, struct lyd_node *input_op)
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod, *ly_srfd_mod;
     uint32_t i = 0;
+    bool module_present = false, datastore_present = false;
+    const struct lyd_node *child;
 
     assert(!strcmp(LYD_NAME(input_op), "factory-reset"));
 
-    if (lyd_child(input_op)) {
-        /* explicit modules specified */
+    LY_LIST_FOR(lyd_child(input_op), child) {
+        if (!strcmp(LYD_NAME(child), "module")) {
+            module_present = true;
+        } else if (!strcmp(LYD_NAME(child), "datastore")) {
+            datastore_present = true;
+        }
+    }
+
+    if (module_present && datastore_present) {
+        /* explicit module & datastore present */
         return NULL;
     }
 
@@ -6096,21 +6107,32 @@ sr_rpc_internal_input_update(sr_conn_ctx_t *conn, struct lyd_node *input_op)
     ly_srfd_mod = ly_ctx_get_module_implemented(conn->ly_ctx, "sysrepo-factory-default");
     assert(ly_srfd_mod);
 
-    while ((ly_mod = ly_ctx_get_module_iter(conn->ly_ctx, &i))) {
-        if (!ly_mod->implemented) {
-            continue;
-        } else if (!strcmp(ly_mod->name, "sysrepo")) {
-            /* sysrepo internal data will not be reset */
-            continue;
-        } else if (!strcmp(ly_mod->name, "ietf-netconf")) {
-            /* ietf-netconf defines data but only internal that should be ignored */
-            continue;
-        } else if (!sr_module_has_data(ly_mod, 0)) {
-            /* no configuration data */
-            continue;
-        }
+    if (!module_present) {
+        while ((ly_mod = ly_ctx_get_module_iter(conn->ly_ctx, &i))) {
+            if (!ly_mod->implemented) {
+                continue;
+            } else if (!strcmp(ly_mod->name, "sysrepo")) {
+                /* sysrepo internal data will not be reset */
+                continue;
+            } else if (!strcmp(ly_mod->name, "ietf-netconf")) {
+                /* ietf-netconf defines data but only internal that should be ignored */
+                continue;
+            } else if (!sr_module_has_data(ly_mod, 0)) {
+                /* no configuration data */
+                continue;
+            }
 
-        if ((err_info = sr_lyd_new_term(input_op, ly_srfd_mod, "module", ly_mod->name))) {
+            if ((err_info = sr_lyd_new_term(input_op, ly_srfd_mod, "module", ly_mod->name))) {
+                return err_info;
+            }
+        }
+    }
+
+    if (!datastore_present) {
+        if ((err_info = sr_lyd_new_term(input_op, ly_srfd_mod, "datastore", "startup"))) {
+            return err_info;
+        }
+        if ((err_info = sr_lyd_new_term(input_op, ly_srfd_mod, "datastore", "running"))) {
             return err_info;
         }
     }
