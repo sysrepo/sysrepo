@@ -6122,23 +6122,6 @@ sr_rpc_internal_input_update(sr_conn_ctx_t *conn, struct lyd_node *input_op)
             }
         }
     }
-    ly_set_free(set, NULL);
-
-    /* check for explicitly defined datastores */
-    if ((err_info = sr_lyd_find_xpath(input_op, "datastores/datastore", &set))) {
-        goto cleanup;
-    }
-    if (set->size == 0) {
-        if ((err_info = sr_lyd_new_inner(input_op, ly_srfd_mod, "datastores", &node))) {
-            goto cleanup;
-        }
-        if ((err_info = sr_lyd_new_term(node, ly_srfd_mod, "datastore", "ietf-datastores:startup"))) {
-            goto cleanup;
-        }
-        if ((err_info = sr_lyd_new_term(node, ly_srfd_mod, "datastore", "ietf-datastores:running"))) {
-            goto cleanup;
-        }
-    }
 
 cleanup:
     ly_set_free(set, NULL);

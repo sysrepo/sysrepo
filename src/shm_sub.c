@@ -2242,20 +2242,6 @@ cleanup:
     return err_info;
 }
 
-static int
-str2ds(const char *str, sr_datastore_t *ds)
-{
-    if (!strcmp(str, "ietf-datastores:running")) {
-        *ds = SR_DS_RUNNING;
-    } else if (!strcmp(str, "ietf-datastores:startup")) {
-        *ds = SR_DS_STARTUP;
-    } else {
-        return 1;
-    }
-
-    return 0;
-}
-
 /**
  * @brief Call internal RPC/action "callback".
  *
@@ -2273,7 +2259,7 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     const struct lys_module *ly_mod;
     struct ly_set *set = NULL;
     sr_datastore_t ds;
-    uint8_t datastores = 0;
+    int reset_ds[8] = {0};
     uint32_t i;
 
     assert(input->schema->nodetype & (LYS_RPC | LYS_ACTION));
@@ -2316,12 +2302,13 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     if ((err_info = sr_lyd_find_xpath(input, "datastores/datastore", &set))) {
         goto cleanup;
     }
-    for (i = 0; i < set->count; ++i) {
-        if (!str2ds(lyd_get_value(set->dnodes[i]), &ds)) {
-            datastores |= (1 << ds);
-        } else {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid datastore for factory reset: %s", lyd_get_value(set->dnodes[i]));
-            goto cleanup;
+
+    if (set->count == 0) {
+        reset_ds[SR_DS_STARTUP] = 1;
+        reset_ds[SR_DS_RUNNING] = 1;
+    } else {
+        for (i = 0; i < set->count; ++i) {
+            reset_ds[sr_ident2mod_ds(lyd_get_value(set->dnodes[i]))] = 1;
         }
     }
 
@@ -2343,7 +2330,7 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     }
 
     for (ds = SR_DS_STARTUP; ds <= SR_DS_RUNNING; ++ds) {
-        if (!(datastores & (1 << ds))) {
+        if (!reset_ds[ds]) {
             /* datastore should be skipped */
             continue;
         }
