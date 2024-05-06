@@ -20,7 +20,6 @@
 #include "sysrepo.h"
 
 #include <assert.h>
-#include <stdbool.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
