@@ -8,6 +8,10 @@ module sysrepo-factory-default {
         prefix fd;
     }
 
+    import ietf-datastores {
+        prefix ds;
+    }
+
     organization
         "CESNET";
 
@@ -31,18 +35,24 @@ module sysrepo-factory-default {
     augment /fd:factory-reset/fd:input {
         description
             "Adds leaf-list of modules and datastores that are reset to the default factory state. If there are none, sysrepo
-             automatically populates the leaf-lists with all the modules/datastores being reset.";
+             automatically populates the leaf-lists with all the modules and datastores (running, startup and candidate) being reset.";
 
-        leaf-list module {
-            type string;
-            description
-                "Module that will be reset to its default factory state.";
+        container modules {
+            leaf-list module {
+                type string;
+                description
+                    "Module that will be reset to its default factory state.";
+            }
         }
 
-        leaf-list datastore {
-            type string;
-            description
-                "Datastore in which given modules will be reset to default factory state.";
+        container datastores {
+            leaf-list datastore {
+                type identityref {
+                    base ds:conventional;
+                }
+                description
+                    "Datastore in which given modules will be reset to default factory state.";
+            }
         }
     }
 }

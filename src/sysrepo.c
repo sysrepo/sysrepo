@@ -6084,30 +6084,25 @@ sr_rpc_internal_input_update(sr_conn_ctx_t *conn, struct lyd_node *input_op)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod, *ly_srfd_mod;
+    struct ly_set *set = NULL;
     uint32_t i = 0;
-    bool module_present = false, datastore_present = false;
-    const struct lyd_node *child;
+    struct lyd_node *node;
 
     assert(!strcmp(LYD_NAME(input_op), "factory-reset"));
-
-    LY_LIST_FOR(lyd_child(input_op), child) {
-        if (!strcmp(LYD_NAME(child), "module")) {
-            module_present = true;
-        } else if (!strcmp(LYD_NAME(child), "datastore")) {
-            datastore_present = true;
-        }
-    }
-
-    if (module_present && datastore_present) {
-        /* explicit module & datastore present */
-        return NULL;
-    }
 
     /* find sysrepo-factory-default module */
     ly_srfd_mod = ly_ctx_get_module_implemented(conn->ly_ctx, "sysrepo-factory-default");
     assert(ly_srfd_mod);
 
-    if (!module_present) {
+    /* check for explicitly defined modules */
+    if ((err_info = sr_lyd_find_xpath(input_op, "modules/module", &set))) {
+        goto cleanup;
+    }
+    if (set->size == 0) {
+        if ((err_info = sr_lyd_new_inner(input_op, ly_srfd_mod, "modules", &node))) {
+            goto cleanup;
+        }
+
         while ((ly_mod = ly_ctx_get_module_iter(conn->ly_ctx, &i))) {
             if (!ly_mod->implemented) {
                 continue;
@@ -6122,21 +6117,31 @@ sr_rpc_internal_input_update(sr_conn_ctx_t *conn, struct lyd_node *input_op)
                 continue;
             }
 
-            if ((err_info = sr_lyd_new_term(input_op, ly_srfd_mod, "module", ly_mod->name))) {
-                return err_info;
+            if ((err_info = sr_lyd_new_term(node, ly_srfd_mod, "module", ly_mod->name))) {
+                goto cleanup;
             }
         }
     }
+    ly_set_free(set, NULL);
 
-    if (!datastore_present) {
-        if ((err_info = sr_lyd_new_term(input_op, ly_srfd_mod, "datastore", "startup"))) {
-            return err_info;
+    /* check for explicitly defined datastores */
+    if ((err_info = sr_lyd_find_xpath(input_op, "datastores/datastore", &set))) {
+        goto cleanup;
+    }
+    if (set->size == 0) {
+        if ((err_info = sr_lyd_new_inner(input_op, ly_srfd_mod, "datastores", &node))) {
+            goto cleanup;
         }
-        if ((err_info = sr_lyd_new_term(input_op, ly_srfd_mod, "datastore", "running"))) {
-            return err_info;
+        if ((err_info = sr_lyd_new_term(node, ly_srfd_mod, "datastore", "ietf-datastores:startup"))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_lyd_new_term(node, ly_srfd_mod, "datastore", "ietf-datastores:running"))) {
+            goto cleanup;
         }
     }
 
+cleanup:
+    ly_set_free(set, NULL);
     return err_info;
 }
 

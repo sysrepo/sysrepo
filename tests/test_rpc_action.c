@@ -1724,7 +1724,7 @@ rpc_factory_reset_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_
     (void)output;
 
     /* check the modules being reset */
-    ret = lyd_find_xpath(input, "sysrepo-factory-default:module", &set);
+    ret = lyd_find_xpath(input, "modules/module", &set);
     assert_int_equal(ret, LY_SUCCESS);
     assert_int_equal(set->count, 8);
     for (i = 0; i < set->count; ++i) {
