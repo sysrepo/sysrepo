@@ -2256,8 +2256,8 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
     struct lyd_node *data[2] = {NULL};
+    const struct lyd_node *child, *inner_child;
     const struct lys_module *ly_mod;
-    struct ly_set *set = NULL;
     sr_datastore_t ds;
     int reset_ds[2] = {0};
     uint32_t i;
@@ -2271,54 +2271,51 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
         return err_info;
     }
 
-    /* get modules which should be resetted */
-    if ((err_info = sr_lyd_find_xpath(input, "modules/module", &set))) {
-        goto cleanup;
-    }
-    for (i = 0; i < set->count; ++i) {
-        /* get LY module */
-        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, lyd_get_value(set->dnodes[i]));
-        if (!ly_mod) {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", lyd_get_value(set->dnodes[i]));
-            goto cleanup;
-        } else if (!strcmp(ly_mod->name, "sysrepo")) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Internal module \"%s\" cannot be reset to factory-default.",
-                    lyd_get_value(set->dnodes[i]));
-            goto cleanup;
-        }
+    LY_LIST_FOR(lyd_child(input), child) {
+        if (!strcmp(LYD_NAME(child), "modules")) {
+            /* get modules which should be resetted */
+            LY_LIST_FOR(lyd_child(child), inner_child) {
+                /* get LY module */
+                ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, lyd_get_value(inner_child));
+                if (!ly_mod) {
+                    sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", lyd_get_value(inner_child));
+                    goto cleanup;
+                } else if (!strcmp(ly_mod->name, "sysrepo")) {
+                    sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Internal module \"%s\" cannot be reset to factory-default.",
+                            lyd_get_value(inner_child));
+                    goto cleanup;
+                }
 
-        if (!sr_module_has_data(ly_mod, 0)) {
-            /* skip copying for modules without configuration data */
-            continue;
-        }
+                if (!sr_module_has_data(ly_mod, 0)) {
+                    /* skip copying for modules without configuration data */
+                    continue;
+                }
 
-        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
-            goto cleanup;
-        }
-    }
-    ly_set_free(set, NULL);
-
-    /* get datastores which should be used for reset */
-    if ((err_info = sr_lyd_find_xpath(input, "datastores/datastore", &set))) {
-        goto cleanup;
-    }
-
-    if (set->count == 0) {
-        reset_ds[SR_DS_STARTUP] = 1;
-        reset_ds[SR_DS_RUNNING] = 1;
-    } else {
-        for (i = 0; i < set->count; ++i) {
-            if (!strcmp(lyd_get_value(set->dnodes[i]), "ietf-datastores:candidate")) {
-                /* done implicitly */
+                if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
+                    goto cleanup;
+                }
+            }
+        } else if(!strcmp(LYD_NAME(child), "datastores")) {
+            if (!lyd_child(child)) {
+                reset_ds[SR_DS_STARTUP] = 1;
+                reset_ds[SR_DS_RUNNING] = 1;
                 continue;
             }
 
-            if (!strcmp(lyd_get_value(set->dnodes[i]), "ietf-datastores:startup")
-                || !strcmp(lyd_get_value(set->dnodes[i]), "ietf-datastores:running")) {
-                reset_ds[sr_ident2mod_ds(lyd_get_value(set->dnodes[i]))] = 1;
-            } else {
-                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Datastore not supported for reset: \"%s\".", lyd_get_value(set->dnodes[i]));
-                goto cleanup;
+            /* get datastores which should be resetted */
+            LY_LIST_FOR(lyd_child(child), inner_child) {
+                if (!strcmp(lyd_get_value(inner_child), "ietf-datastores:candidate")) {
+                    /* done implicitly */
+                    continue;
+                }
+
+                if (!strcmp(lyd_get_value(inner_child), "ietf-datastores:startup")
+                    || !strcmp(lyd_get_value(inner_child), "ietf-datastores:running")) {
+                    reset_ds[sr_ident2mod_ds(lyd_get_value(inner_child))] = 1;
+                } else {
+                    sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Datastore not supported for reset: \"%s\".", lyd_get_value(inner_child));
+                    goto cleanup;
+                }
             }
         }
     }
@@ -2390,7 +2387,6 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     }
 
 cleanup:
-    ly_set_free(set, NULL);
 
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
