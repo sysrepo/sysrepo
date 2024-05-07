@@ -2259,7 +2259,7 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     const struct lys_module *ly_mod;
     struct ly_set *set = NULL;
     sr_datastore_t ds;
-    int reset_ds[8] = {0};
+    int reset_ds[2] = {0};
     uint32_t i;
 
     assert(input->schema->nodetype & (LYS_RPC | LYS_ACTION));
@@ -2308,7 +2308,18 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
         reset_ds[SR_DS_RUNNING] = 1;
     } else {
         for (i = 0; i < set->count; ++i) {
-            reset_ds[sr_ident2mod_ds(lyd_get_value(set->dnodes[i]))] = 1;
+            if (!strcmp(lyd_get_value(set->dnodes[i]), "ietf-datastores:candidate")) {
+                /* done implicitly */
+                continue;
+            }
+
+            if (!strcmp(lyd_get_value(set->dnodes[i]), "ietf-datastores:startup")
+                || !strcmp(lyd_get_value(set->dnodes[i]), "ietf-datastores:running")) {
+                reset_ds[sr_ident2mod_ds(lyd_get_value(set->dnodes[i]))] = 1;
+            } else {
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Datastore not supported for reset: \"%s\".", lyd_get_value(set->dnodes[i]));
+                goto cleanup;
+            }
         }
     }
 
