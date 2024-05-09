@@ -4,8 +4,8 @@
  * @brief Functions for simplified manipulation with callback errors.
  *
  * @copyright
- * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -82,6 +82,46 @@ int sr_session_set_netconf_error(sr_session_ctx_t *session, const char *error_ty
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_session_set_netconf_error2(sr_session_ctx_t *session, const char *error_type, const char *error_tag,
+        const char *error_app_tag, const char *error_path, const char *error_message, uint32_t error_info_count,
+        const char **error_info_elems, const char **error_info_values);
+
+/**
+ * @brief Set NETCONF plugin callback error or add another if a NETCONF error has already been set.
+ *
+ * Similar functionality to ::sr_session_set_netconf_error().
+ *
+ * @param[in] session Implicit session provided in a callback.
+ * @param[in] error_type NETCONF error type.
+ * @param[in] error_tag NETCONF error tag.
+ * @param[in] error_app_tag Optional NETCONF error app tag.
+ * @param[in] error_path Optional NETCONF error path.
+ * @param[in] error_message NETCONF error message.
+ * @param[in] error_info_count Optional count of elements in NETCONF error info.
+ * @param[in] ... Optional NETCONF error info elements. There must be 2x @p error_info_count parameters. They create
+ * pairs of element-name and element-value to be set for the NETCONF error.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int srplg_errinfo_set_netconf_error(sr_error_info_t **err_info, const char *error_type, const char *error_tag,
+        const char *error_app_tag, const char *error_path, const char *error_message, uint32_t error_info_count, ...);
+
+/**
+ * @brief Set NETCONF plugin callback error or add another if a NETCONF error has already been set.
+ *
+ * Similar functionality to ::srplg_errinfo_set_netconf_error().
+ *
+ * @param[in,out] err_info Error info to create or add to.
+ * @param[in] error_type NETCONF error type.
+ * @param[in] error_tag NETCONF error tag.
+ * @param[in] error_app_tag Optional NETCONF error app tag.
+ * @param[in] error_path Optional NETCONF error path.
+ * @param[in] error_message NETCONF error message.
+ * @param[in] error_info_count Optional count of elements in NETCONF error info. Also the sizes of @p error_info_elems
+ * and @p error_info_values.
+ * @param[in] error_info_elems Optional array of NETCONF error info elements.
+ * @param[in] error_info_values Optional array of NETCONF error info values to set for @p error_info_elems.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int srplg_errinfo_set_netconf_error2(sr_error_info_t **err_info, const char *error_type, const char *error_tag,
         const char *error_app_tag, const char *error_path, const char *error_message, uint32_t error_info_count,
         const char **error_info_elems, const char **error_info_values);
 
