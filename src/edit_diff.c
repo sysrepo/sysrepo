@@ -1858,15 +1858,17 @@ sr_edit_apply_move(struct lyd_node **data_root, struct lyd_node *data_parent, co
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *old_sibling_before, *sibling_before;
     char *old_sibling_before_val = NULL, *sibling_before_val = NULL;
+    struct lyd_node *data_dup = NULL;
     enum edit_op diff_op;
 
     assert(lysc_is_userordered(edit_node->schema));
 
     if (!*data_match) {
         /* new instance */
-        if ((err_info = sr_lyd_dup(edit_node, NULL, LYD_DUP_NO_META, 0, data_match))) {
+        if ((err_info = sr_lyd_dup(edit_node, NULL, LYD_DUP_NO_META, 0, &data_dup))) {
             return err_info;
         }
+        *data_match = data_dup;
         diff_op = EDIT_CREATE;
     } else {
         /* in the data tree, being replaced */
@@ -1878,7 +1880,7 @@ sr_edit_apply_move(struct lyd_node **data_root, struct lyd_node *data_parent, co
 
     /* move the node */
     if ((err_info = sr_edit_insert(data_root, data_parent, *data_match, insert, key_or_value))) {
-        return err_info;
+        goto error;
     }
 
     /* get previous instance after move */
@@ -1897,7 +1899,7 @@ sr_edit_apply_move(struct lyd_node **data_root, struct lyd_node *data_parent, co
     free(old_sibling_before_val);
     free(sibling_before_val);
     if (err_info) {
-        return err_info;
+        goto error;
     }
 
     *next_op = EDIT_CONTINUE;
@@ -1905,6 +1907,10 @@ sr_edit_apply_move(struct lyd_node **data_root, struct lyd_node *data_parent, co
         *change = 1;
     }
     return NULL;
+
+error:
+    lyd_free_tree(data_dup);
+    return err_info;
 }
 
 sr_error_info_t *
