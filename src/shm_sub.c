@@ -2272,7 +2272,7 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     }
 
     /* get modules which should be resetted */
-    if (!sr_lyd_find_path(input, "sysrepo-factory-default:modules", 0, &child)) {
+    if (!(err_info = sr_lyd_find_path(input, "sysrepo-factory-default:modules", 0, &child))) {
         LY_LIST_FOR(lyd_child(child), child) {
             /* get LY module */
             ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, lyd_get_value(child));
@@ -2294,10 +2294,12 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
                 goto cleanup;
             }
         }
+    } else {
+        goto cleanup;
     }
 
     /* get datastores which should be resetted */
-    if (!sr_lyd_find_path(input, "sysrepo-factory-default:datastores", 0, &child)) {
+    if (!(err_info = sr_lyd_find_path(input, "sysrepo-factory-default:datastores", 0, &child))) {
         if (!lyd_child(child)) {
             reset_ds[SR_DS_STARTUP] = 1;
             reset_ds[SR_DS_RUNNING] = 1;
@@ -2317,6 +2319,8 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
                 }
             }
         }
+    } else {
+        goto cleanup;
     }
 
     /* add modules into mod_info, READ lock */
