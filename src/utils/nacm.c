@@ -1089,6 +1089,10 @@ sr_nacm_destroy(void)
     struct sr_nacm_rule_list *rule_list, *tmp;
     uint32_t i, j;
 
+    if (!nacm.initialized) {
+        return;
+    }
+
     for (i = 0; i < nacm.group_count; ++i) {
         group = &nacm.groups[i];
         free(group->name);
