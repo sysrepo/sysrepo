@@ -6049,25 +6049,28 @@ sr_rpc_internal_input_update(sr_conn_ctx_t *conn, struct lyd_node *input_op)
     assert(ly_srfd_mod);
 
     /* check for explicitly defined modules */
-    if (!(err_info = sr_lyd_find_path(input_op, "sysrepo-factory-default:modules", 0, &node))) {
-        if (!lyd_child(node)) {
-            while ((ly_mod = ly_ctx_get_module_iter(conn->ly_ctx, &i))) {
-                if (!ly_mod->implemented) {
-                    continue;
-                } else if (!strcmp(ly_mod->name, "sysrepo")) {
-                    /* sysrepo internal data will not be reset */
-                    continue;
-                } else if (!strcmp(ly_mod->name, "ietf-netconf")) {
-                    /* ietf-netconf defines data but only internal that should be ignored */
-                    continue;
-                } else if (!sr_module_has_data(ly_mod, 0)) {
-                    /* no configuration data */
-                    continue;
-                }
+    if ((err_info = sr_lyd_find_path(input_op, "sysrepo-factory-default:modules", 0, &node))) {
+        goto cleanup;
+    }
 
-                if ((err_info = sr_lyd_new_term(node, ly_srfd_mod, "module", ly_mod->name))) {
-                    goto cleanup;
-                }
+    if (!lyd_child(node)) {
+        /* no explicit modules, all should be reset */
+        while ((ly_mod = ly_ctx_get_module_iter(conn->ly_ctx, &i))) {
+            if (!ly_mod->implemented) {
+                continue;
+            } else if (!strcmp(ly_mod->name, "sysrepo")) {
+                /* sysrepo internal data will not be reset */
+                continue;
+            } else if (!strcmp(ly_mod->name, "ietf-netconf")) {
+                /* ietf-netconf defines data but only internal that should be ignored */
+                continue;
+            } else if (!sr_module_has_data(ly_mod, 0)) {
+                /* no configuration data */
+                continue;
+            }
+
+            if ((err_info = sr_lyd_new_term(node, ly_srfd_mod, "module", ly_mod->name))) {
+                goto cleanup;
             }
         }
     }
