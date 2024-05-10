@@ -2273,8 +2273,7 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
 
     /* get modules which should be resetted */
     if (!sr_lyd_find_path(input, "sysrepo-factory-default:modules", 0, &child)) {
-        // TODO: why is "->next" needed?
-        LY_LIST_FOR(lyd_child(child->next), child) {
+        LY_LIST_FOR(lyd_child(child), child) {
             /* get LY module */
             ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, lyd_get_value(child));
             if (!ly_mod) {

@@ -6083,7 +6083,6 @@ sr_rpc_internal_input_update(sr_conn_ctx_t *conn, struct lyd_node *input_op)
 {
     sr_error_info_t *err_info = NULL;
     const struct lys_module *ly_mod, *ly_srfd_mod;
-    struct ly_set *set = NULL;
     uint32_t i = 0;
     struct lyd_node *node;
 
@@ -6094,36 +6093,30 @@ sr_rpc_internal_input_update(sr_conn_ctx_t *conn, struct lyd_node *input_op)
     assert(ly_srfd_mod);
 
     /* check for explicitly defined modules */
-    if ((err_info = sr_lyd_find_xpath(input_op, "modules/module", &set))) {
-        goto cleanup;
-    }
-    if (set->size == 0) {
-        if ((err_info = sr_lyd_new_inner(input_op, ly_srfd_mod, "modules", &node))) {
-            goto cleanup;
-        }
+    if (!(err_info = sr_lyd_find_path(input_op, "sysrepo-factory-default:modules", 0, &node))) {
+        if (!lyd_child(node)) {
+            while ((ly_mod = ly_ctx_get_module_iter(conn->ly_ctx, &i))) {
+                if (!ly_mod->implemented) {
+                    continue;
+                } else if (!strcmp(ly_mod->name, "sysrepo")) {
+                    /* sysrepo internal data will not be reset */
+                    continue;
+                } else if (!strcmp(ly_mod->name, "ietf-netconf")) {
+                    /* ietf-netconf defines data but only internal that should be ignored */
+                    continue;
+                } else if (!sr_module_has_data(ly_mod, 0)) {
+                    /* no configuration data */
+                    continue;
+                }
 
-        while ((ly_mod = ly_ctx_get_module_iter(conn->ly_ctx, &i))) {
-            if (!ly_mod->implemented) {
-                continue;
-            } else if (!strcmp(ly_mod->name, "sysrepo")) {
-                /* sysrepo internal data will not be reset */
-                continue;
-            } else if (!strcmp(ly_mod->name, "ietf-netconf")) {
-                /* ietf-netconf defines data but only internal that should be ignored */
-                continue;
-            } else if (!sr_module_has_data(ly_mod, 0)) {
-                /* no configuration data */
-                continue;
-            }
-
-            if ((err_info = sr_lyd_new_term(node, ly_srfd_mod, "module", ly_mod->name))) {
-                goto cleanup;
+                if ((err_info = sr_lyd_new_term(node, ly_srfd_mod, "module", ly_mod->name))) {
+                    goto cleanup;
+                }
             }
         }
     }
 
 cleanup:
-    ly_set_free(set, NULL);
     return err_info;
 }
 
