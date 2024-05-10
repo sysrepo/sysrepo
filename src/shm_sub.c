@@ -2256,9 +2256,10 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
     struct lyd_node *data[2] = {NULL};
-    const struct lyd_node *child;
+    struct lyd_node *child;
     const struct lys_module *ly_mod;
     sr_datastore_t ds;
+    int reset_ds[2] = {0};
     uint32_t i;
 
     assert(input->schema->nodetype & (LYS_RPC | LYS_ACTION));
@@ -2270,27 +2271,56 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
         return err_info;
     }
 
-    /* collect all required modules */
-    LY_LIST_FOR(lyd_child(input), child) {
-        /* get LY module */
-        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, lyd_get_value(child));
-        if (!ly_mod) {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", lyd_get_value(child));
-            goto cleanup;
-        } else if (!strcmp(ly_mod->name, "sysrepo")) {
-            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Internal module \"%s\" cannot be reset to factory-default.",
-                    lyd_get_value(child));
-            goto cleanup;
-        }
+    /* get modules which should be resetted */
+    if (!(err_info = sr_lyd_find_path(input, "sysrepo-factory-default:modules", 0, &child))) {
+        LY_LIST_FOR(lyd_child(child), child) {
+            /* get LY module */
+            ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, lyd_get_value(child));
+            if (!ly_mod) {
+                sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", lyd_get_value(child));
+                goto cleanup;
+            } else if (!strcmp(ly_mod->name, "sysrepo")) {
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Internal module \"%s\" cannot be reset to factory-default.",
+                        lyd_get_value(child));
+                goto cleanup;
+            }
 
-        if (!sr_module_has_data(ly_mod, 0)) {
-            /* skip copying for modules without configuration data */
-            continue;
-        }
+            if (!sr_module_has_data(ly_mod, 0)) {
+                /* skip copying for modules without configuration data */
+                continue;
+            }
 
-        if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
-            goto cleanup;
+            if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
+                goto cleanup;
+            }
         }
+    } else {
+        goto cleanup;
+    }
+
+    /* get datastores which should be resetted */
+    if (!(err_info = sr_lyd_find_path(input, "sysrepo-factory-default:datastores", 0, &child))) {
+        if (!lyd_child(child)) {
+            reset_ds[SR_DS_STARTUP] = 1;
+            reset_ds[SR_DS_RUNNING] = 1;
+        } else {
+            LY_LIST_FOR(lyd_child(child), child) {
+                if (!strcmp(lyd_get_value(child), "ietf-datastores:candidate")) {
+                    /* done implicitly */
+                    continue;
+                }
+
+                if (!strcmp(lyd_get_value(child), "ietf-datastores:startup")
+                    || !strcmp(lyd_get_value(child), "ietf-datastores:running")) {
+                    reset_ds[sr_ident2mod_ds(lyd_get_value(child))] = 1;
+                } else {
+                    sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Datastore not supported for reset: \"%s\".", lyd_get_value(child));
+                    goto cleanup;
+                }
+            }
+        }
+    } else {
+        goto cleanup;
     }
 
     /* add modules into mod_info, READ lock */
@@ -2311,6 +2341,11 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     }
 
     for (ds = SR_DS_STARTUP; ds <= SR_DS_RUNNING; ++ds) {
+        if (!reset_ds[ds]) {
+            /* datastore should be skipped */
+            continue;
+        }
+
         /* re-init mod_info manually */
         mod_info.ds = ds;
         mod_info.ds2 = ds;
@@ -2355,6 +2390,7 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     }
 
 cleanup:
+
     /* MODULES UNLOCK */
     sr_shmmod_modinfo_unlock(&mod_info);
 

@@ -1,0 +1,58 @@
+module sysrepo-factory-default {
+    namespace "urn:sysrepo:yang:sysrepo-factory-default";
+    prefix srm;
+
+    yang-version 1.1;
+
+    import ietf-factory-default {
+        prefix fd;
+    }
+
+    import ietf-datastores {
+        prefix ds;
+    }
+
+    organization
+        "CESNET";
+
+    contact
+        "Author: Michal Vasko
+                 <mvasko@cesnet.cz>";
+
+    description
+        "Sysrepo YANG augment of the factory-reset RPC.";
+
+    revision "2024-05-02" {
+        description
+            "Add datastore leaf-list parameter.";
+    }
+
+    revision "2023-02-23" {
+        description
+            "Initial revision.";
+    }
+
+    augment /fd:factory-reset/fd:input {
+        description
+            "Adds leaf-list of modules and datastores that are reset to the default factory state. If there are none, sysrepo
+             automatically populates the leaf-lists with all the modules and datastores (running, startup and candidate) being reset.";
+
+        container modules {
+            leaf-list module {
+                type string;
+                description
+                    "Module that will be reset to its default factory state.";
+            }
+        }
+
+        container datastores {
+            leaf-list datastore {
+                type identityref {
+                    base ds:conventional;
+                }
+                description
+                    "Datastore in which given modules will be reset to default factory state.";
+            }
+        }
+    }
+}
