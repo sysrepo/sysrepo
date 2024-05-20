@@ -221,7 +221,7 @@ sr_edit_find_cid(struct lyd_node *edit, sr_cid_t *cid, int *meta_own)
                 if (cid) {
                     *cid = cid_meta->value.uint32;
                 }
-                if (meta_own && (parent == edit) && cid_meta) {
+                if (meta_own && (parent == edit)) {
                     *meta_own = 1;
                 }
                 break;
