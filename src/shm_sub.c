@@ -2972,7 +2972,7 @@ sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, struct
     }
 
     /* notify all subscribers using event pipe */
-    for (i = 0; i < notif_sub_count; ) {
+    for (i = 0; i < notif_sub_count; i++) {
         if (ATOMIC_LOAD_RELAXED(notif_subs[i].suspended)) {
             /* skip suspended subscribers */
             continue;
@@ -2981,8 +2981,6 @@ sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, struct
         if ((err_info = sr_shmsub_notify_evpipe(notif_subs[i].evpipe_num))) {
             goto cleanup_ext_sub_unlock;
         }
-
-        ++i;
     }
 
     /* EXT READ UNLOCK */
@@ -4663,16 +4661,18 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
     /* process event */
-    SR_LOG_INF("EV LISTEN: \"%s\" \"notif\" ID %" PRIu32 " processing.", notif_subs->module_name, request_id);
-
     valid_subscr_count = 0;
     for (i = 0; i < notif_subs->sub_count; ++i) {
         sub = &notif_subs->subs[i];
-        memset(&denied, 0, sizeof denied);
 
-        /* do not process events for suspended subscriptions */
         if (ATOMIC_LOAD_RELAXED(sub->suspended)) {
-            goto cleanup;
+            /* do not process events for suspended subscriptions */
+            continue;
+        }
+
+        if (!valid_subscr_count) {
+            /* Print a message only the first time we get here */
+            SR_LOG_INF("EV LISTEN: \"%s\" \"notif\" ID %" PRIu32 " processing.", notif_subs->module_name, request_id);
         }
 
         if (sr_time_cmp(&sub->listen_since_mono, &notif_ts_mono) > 0) {
@@ -4682,6 +4682,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
             continue;
         }
 
+        memset(&denied, 0, sizeof denied);
         if (sub->sess->nacm_user && !strcmp(orig_notif->schema->module->name, "ietf-yang-push") &&
                 !strcmp(LYD_NAME(orig_notif), "push-change-update")) {
             if (i == notif_subs->sub_count) {
