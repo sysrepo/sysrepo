@@ -4671,6 +4671,10 @@ _sr_subscription_suspend_change(sr_subscription_ctx_t *subscription, uint32_t su
     sr_error_info_t *err_info = NULL;
     struct modsub_notifsub_s *notif_sub = NULL;
     struct modsub_opergetsub_s *oper_get_sub;
+    struct modsub_changesub_s *change_sub = NULL;
+    struct modsub_operpollsub_s *operpoll_sub = NULL;
+    struct opsub_rpcsub_s *rpc_sub = NULL;
+
     const char *module_name, *path;
     sr_datastore_t ds;
     sr_session_ctx_t *ev_sess = NULL;
@@ -4679,11 +4683,13 @@ _sr_subscription_suspend_change(sr_subscription_ctx_t *subscription, uint32_t su
     assert(subscription && sub_id);
 
     /* find the subscription in the subscription context and read its suspended from ext SHM */
-    if (sr_subscr_change_sub_find(subscription, sub_id, &module_name, &ds)) {
+    if ((change_sub = sr_subscr_change_sub_find(subscription, sub_id, &module_name, &ds))) {
         /* change sub */
         if ((err_info = sr_shmext_change_sub_suspended(subscription->conn, module_name, ds, sub_id, suspend, NULL))) {
             goto cleanup;
         }
+        /* mark this as suspended in the subscription context as well to prevent stealing events */
+        ATOMIC_STORE_RELAXED(change_sub->suspended, suspend);
     } else if ((oper_get_sub = sr_subscr_oper_get_sub_find(subscription, sub_id, &module_name))) {
         /* oper get sub */
         if ((err_info = sr_shmext_oper_get_sub_suspended(subscription->conn, module_name, sub_id, suspend, NULL))) {
@@ -4695,21 +4701,27 @@ _sr_subscription_suspend_change(sr_subscription_ctx_t *subscription, uint32_t su
                 oper_get_sub->path))) {
             goto cleanup;
         }
-    } else if (sr_subscr_oper_poll_sub_find(subscription, sub_id, &module_name)) {
+        /* mark this as suspended in the subscription context as well to prevent stealing events */
+        ATOMIC_STORE_RELAXED(oper_get_sub->suspended, suspend);
+    } else if ((operpoll_sub = sr_subscr_oper_poll_sub_find(subscription, sub_id, &module_name))) {
         /* oper poll sub */
         if ((err_info = sr_shmext_oper_poll_sub_suspended(subscription->conn, module_name, sub_id, suspend, NULL))) {
             goto cleanup;
         }
+        /* mark this as suspended in the subscription context as well to prevent stealing events */
+        ATOMIC_STORE_RELAXED(operpoll_sub->suspended, suspend);
     } else if ((notif_sub = sr_subscr_notif_sub_find(subscription, sub_id, &module_name))) {
         /* notif sub */
         if ((err_info = sr_shmext_notif_sub_suspended(subscription->conn, module_name, sub_id, suspend, NULL))) {
             goto cleanup;
         }
-    } else if (sr_subscr_rpc_sub_find(subscription, sub_id, &path)) {
+    } else if ((rpc_sub = sr_subscr_rpc_sub_find(subscription, sub_id, &path))) {
         /* RPC/action sub */
         if ((err_info = sr_shmext_rpc_sub_suspended(subscription->conn, path, sub_id, suspend, NULL))) {
             goto cleanup;
         }
+        /* mark this as suspended in the subscription context as well to prevent stealing events */
+        ATOMIC_STORE_RELAXED(rpc_sub->suspended, suspend);
     } else {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Subscription with ID %" PRIu32 " was not found.", sub_id);
         goto cleanup;
@@ -4727,6 +4739,8 @@ _sr_subscription_suspend_change(sr_subscription_ctx_t *subscription, uint32_t su
                 suspend ? SR_EV_NOTIF_SUSPENDED : SR_EV_NOTIF_RESUMED, sub_id, NULL, &cur_time))) {
             goto cleanup;
         }
+        /* mark this as suspended in the subscription context as well to prevent stealing events */
+        ATOMIC_STORE_RELAXED(notif_sub->suspended, suspend);
     }
 
 cleanup:

@@ -238,6 +238,7 @@ struct sr_subscription_ctx_s {
 
             ATOMIC_T request_id;    /**< Request ID of the last processed request. */
             ATOMIC_T event;         /**< Type of the last processed event. */
+            ATOMIC_T suspended;     /**< Whether the subscription is suspended. */
         } *subs;                    /**< Configuration change subscriptions for each XPath. */
         uint32_t sub_count;         /**< Configuration change module XPath subscription count. */
 
@@ -257,6 +258,7 @@ struct sr_subscription_ctx_s {
 
             ATOMIC_T request_id;    /**< Request ID of the last processed request. */
             sr_shm_t sub_shm;       /**< Subscription SHM. */
+            ATOMIC_T suspended;     /**< Whether the subscription is suspended. */
         } *subs;                    /**< Operational subscriptions for each XPath. */
         uint32_t sub_count;         /**< Operational module XPath subscription count. */
     } *oper_get_subs;               /**< Operational get subscriptions for each module. */
@@ -270,6 +272,7 @@ struct sr_subscription_ctx_s {
             uint32_t valid_ms;      /**< Cached operational data validity interval in ms. */
             sr_subscr_options_t opts;   /**< Subscription options. */
             sr_session_ctx_t *sess; /**< Subscription session. */
+            ATOMIC_T suspended;     /**< Whether the subscription is suspended. */
         } *subs;                    /**< Operational subscriptions for each XPath. */
         uint32_t sub_count;         /**< Operational module XPath subscription count. */
     } *oper_poll_subs;              /**< Operational poll subscriptions for each module. */
@@ -290,6 +293,7 @@ struct sr_subscription_ctx_s {
             void *private_data;     /**< Subscription callback private data. */
             sr_session_ctx_t *sess; /**< Subscription session. */
             ATOMIC_T filtered_out;  /**< Number of notifications that were filtered out. */
+            ATOMIC_T suspended;     /**< Whether the subscription is suspended. */
         } *subs;                    /**< Notification subscriptions for each XPath. */
         uint32_t sub_count;         /**< Notification module XPath subscription count. */
 
@@ -312,6 +316,7 @@ struct sr_subscription_ctx_s {
 
             ATOMIC_T request_id;    /**< Request ID of the last processed request. */
             ATOMIC_T event;         /**< Type of the last processed event. */
+            ATOMIC_T suspended;     /**< Whether the subscription is suspended. */
         } *subs;                    /**< RPC/action subscription for each XPath. */
         uint32_t sub_count;         /**< RPC/action XPath subscription count. */
 
