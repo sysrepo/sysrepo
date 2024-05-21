@@ -3070,6 +3070,11 @@ sr_shmsub_change_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct m
         return 0;
     }
 
+    /* do not process events for suspended subscriptions */
+    if (ATOMIC_LOAD_RELAXED(sub->suspended)) {
+        return 0;
+    }
+
     return 1;
 }
 
@@ -3655,6 +3660,11 @@ sr_shmsub_oper_get_listen_process_module_events(struct modsub_operget_s *oper_ge
         oper_get_sub = &oper_get_subs->subs[i];
         sub_shm = (sr_sub_shm_t *)oper_get_sub->sub_shm.addr;
 
+        /* do not process events for suspended subscriptions */
+        if (ATOMIC_LOAD_RELAXED(oper_get_sub->suspended)) {
+            continue;
+        }
+
         /* no new event */
         if ((ATOMIC_LOAD_RELAXED(sub_shm->event) != SR_SUB_EV_OPER) ||
                 (ATOMIC_LOAD_RELAXED(sub_shm->request_id) == ATOMIC_LOAD_RELAXED(oper_get_sub->request_id))) {
@@ -3945,6 +3955,11 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
 
     for (i = 0; i < oper_poll_subs->sub_count; ++i) {
         oper_poll_sub = &oper_poll_subs->subs[i];
+
+        /* do not process events for suspended subscriptions */
+        if (ATOMIC_LOAD_RELAXED(oper_poll_sub->suspended)) {
+            continue;
+        }
 
         /* find the oper cache entry */
         cache = NULL;
@@ -4289,6 +4304,11 @@ sr_shmsub_rpc_listen_is_new_event(sr_multi_sub_shm_t *multi_sub_shm, struct opsu
 
     /* priority */
     if (priority != sub->priority) {
+        return 0;
+    }
+
+    /* do not process events for suspended subscriptions */
+    if (ATOMIC_LOAD_RELAXED(sub->suspended)) {
         return 0;
     }
 
@@ -4649,6 +4669,11 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     for (i = 0; i < notif_subs->sub_count; ++i) {
         sub = &notif_subs->subs[i];
         memset(&denied, 0, sizeof denied);
+
+        /* do not process events for suspended subscriptions */
+        if (ATOMIC_LOAD_RELAXED(sub->suspended)) {
+            goto cleanup;
+        }
 
         if (sr_time_cmp(&sub->listen_since_mono, &notif_ts_mono) > 0) {
             /* generated before this subscription has been made */
