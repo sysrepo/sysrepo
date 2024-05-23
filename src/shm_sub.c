@@ -3327,7 +3327,7 @@ sr_shmsub_change_listen_check_update_edit(sr_session_ctx_t *ev_sess, const char 
             sr_session_set_error_message(ev_sess, "Updated edit with data from another module \"%s\".",
                     lyd_owner_module(iter)->name);
             free(path);
-            sr_log_msg(0, SR_LL_ERR, ev_sess->err_info->err[0].message);
+            sr_log_msg(0, SR_LL_ERR, ev_sess->ev_err_info->err[0].message);
 
             /* set error code */
             *err_code = SR_ERR_INVAL_ARG;
