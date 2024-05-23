@@ -2120,6 +2120,17 @@ sr_modinfo_module_srmon_rpc(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, struct lyd_n
         return err_info;
     }
 
+    /* RPC SUB READ LOCK */
+    if ((err_info = sr_rwlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid,
+            __func__, NULL, NULL))) {
+        return err_info;
+    }
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        goto rpc_sub_unlock;
+    }
+
     rpc_sub = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + shm_rpc->subs);
     for (i = 0; i < shm_rpc->sub_count; ++i) {
         /* ignore dead subscriptions */
@@ -2129,30 +2140,30 @@ sr_modinfo_module_srmon_rpc(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, struct lyd_n
 
         /* rpc-sub */
         if ((err_info = sr_lyd_new_list(sr_rpc, "rpc-sub", NULL, &sr_sub))) {
-            return err_info;
+            goto ext_sub_unlock;
         }
 
         /* xpath */
         if ((err_info = sr_lyd_new_term(sr_sub, NULL, "xpath", conn->ext_shm.addr + rpc_sub[i].xpath))) {
-            return err_info;
+            goto ext_sub_unlock;
         }
 
         /* priority */
         sprintf(buf, "%" PRIu32, rpc_sub[i].priority);
         if ((err_info = sr_lyd_new_term(sr_sub, NULL, "priority", buf))) {
-            return err_info;
+            goto ext_sub_unlock;
         }
 
         /* cid */
         sprintf(buf, "%" PRIu32, rpc_sub[i].cid);
         if ((err_info = sr_lyd_new_term(sr_sub, NULL, "cid", buf))) {
-            return err_info;
+            goto ext_sub_unlock;
         }
 
         /* suspended */
         sprintf(buf, "%s", ATOMIC_LOAD_RELAXED(rpc_sub[i].suspended) ? "true" : "false");
         if ((err_info = sr_lyd_new_term(sr_sub, NULL, "suspended", buf))) {
-            return err_info;
+            goto ext_sub_unlock;
         }
     }
 
@@ -2160,6 +2171,14 @@ sr_modinfo_module_srmon_rpc(sr_conn_ctx_t *conn, sr_rpc_t *shm_rpc, struct lyd_n
         /* there are no locks or subscriptions for the RPC, redundant */
         lyd_free_tree(sr_rpc);
     }
+
+ext_sub_unlock:
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 0, __func__);
+
+rpc_sub_unlock:
+    /* RPC SUB READ UNLOCK */
+    sr_rwunlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
     return NULL;
 }
