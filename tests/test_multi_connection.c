@@ -380,7 +380,7 @@ test_sub_suspend(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* for oper get */
-    for (i = i; i < 10; i++) {
+    for (i = 0; i < 10; i++) {
         ret = sr_get_data(st->sess3, "/ietf-interfaces:*", 0, 0, 0, &data);
         assert_int_equal(ret, SR_ERR_OK);
         assert_non_null(data);
