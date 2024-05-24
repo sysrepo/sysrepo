@@ -2180,7 +2180,7 @@ rpc_sub_unlock:
     /* RPC SUB READ UNLOCK */
     sr_rwunlock(&shm_rpc->lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
-    return NULL;
+    return err_info;
 }
 
 /**
