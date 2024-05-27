@@ -3303,39 +3303,6 @@ sr_shmsub_change_listen_relock(sr_multi_sub_shm_t *multi_sub_shm, sr_lock_mode_t
     return 0;
 }
 
-/**
- * @brief Check edit obtained from the update event.
- *
- * @param[in] ev_sess Update event session with the edit.
- * @param[in] module_name Subscription module name.
- * @param[out] err_code Error code in case the edit is invalid.
- */
-static void
-sr_shmsub_change_listen_check_update_edit(sr_session_ctx_t *ev_sess, const char *module_name, sr_error_t *err_code)
-{
-    char *path;
-    struct lyd_node *iter;
-
-    if (!ev_sess->dt[ev_sess->ds].edit) {
-        return;
-    }
-
-    LY_LIST_FOR(ev_sess->dt[ev_sess->ds].edit->tree, iter) {
-        if (strcmp(lyd_owner_module(iter)->name, module_name)) {
-            /* generate an error */
-            path = lyd_path(iter, LYD_PATH_STD, NULL, 0);
-            sr_session_set_error_message(ev_sess, "Updated edit with data from another module \"%s\".",
-                    lyd_owner_module(iter)->name);
-            free(path);
-            sr_log_msg(0, SR_LL_ERR, ev_sess->ev_err_info->err[0].message);
-
-            /* set error code */
-            *err_code = SR_ERR_INVAL_ARG;
-            break;
-        }
-    }
-}
-
 sr_error_info_t *
 sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_subs, sr_conn_ctx_t *conn)
 {
@@ -3483,19 +3450,10 @@ process_event:
     switch (ATOMIC_LOAD_RELAXED(multi_sub_shm->event)) {
     case SR_SUB_EV_UPDATE:
         if (!err_code) {
-            /* we may have an updated edit (empty is fine), check it */
-            sr_shmsub_change_listen_check_update_edit(ev_sess, change_subs->module_name, &err_code);
-            if (err_code) {
-                /* prepare the error */
-                if ((err_info = sr_shmsub_prepare_error(err_code, ev_sess, &data, &data_len))) {
-                    goto cleanup;
-                }
-            } else {
-                /* print edit into LYB */
-                edit_data = ev_sess->dt[ev_sess->ds].edit;
-                if ((err_info = sr_lyd_print_data(edit_data ? edit_data->tree : NULL, LYD_LYB, 0, -1, &data, &data_len))) {
-                    goto cleanup;
-                }
+            /* print edit into LYB */
+            edit_data = ev_sess->dt[ev_sess->ds].edit;
+            if ((err_info = sr_lyd_print_data(edit_data ? edit_data->tree : NULL, LYD_LYB, 0, -1, &data, &data_len))) {
+                goto cleanup;
             }
         }
     /* fallthrough */

@@ -3190,6 +3190,46 @@ cleanup:
     return err_info;
 }
 
+/**
+ * @brief Check whether an updated edit includes data from modules not in mod info.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @param[in] update_edit Updated edit to check.
+ * @return 0 if there are no foreign module data.
+ * @return non-zero if there are foreign module data.
+ */
+static int
+sr_modinfo_update_is_foreign(const struct sr_mod_info_s *mod_info, const struct lyd_node *update_edit)
+{
+    struct sr_mod_info_mod_s *mod;
+    const struct lyd_node *iter;
+    const struct lys_module *ly_mod = NULL;
+    uint32_t i;
+
+    LY_LIST_FOR(update_edit, iter) {
+        if (lyd_owner_module(iter) == ly_mod) {
+            /* still the same module */
+            continue;
+        }
+        ly_mod = lyd_owner_module(iter);
+
+        /* check this node */
+        for (i = 0; i < mod_info->mod_count; ++i) {
+            mod = &mod_info->mods[i];
+            if (mod->ly_mod == ly_mod) {
+                break;
+            }
+        }
+
+        if (i == mod_info->mod_count) {
+            /* foreign module data */
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 sr_error_info_t *
 sr_modinfo_change_notify_update(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session, uint32_t timeout_ms,
         sr_lock_mode_t *change_sub_lock, sr_error_info_t **cb_err_info)
@@ -3199,6 +3239,7 @@ sr_modinfo_change_notify_update(struct sr_mod_info_s *mod_info, sr_session_ctx_t
     uint32_t sid = 0;
     char *orig_name = NULL;
     void *orig_data = NULL;
+    uint32_t mi_opts;
 
     assert(mod_info->diff);
     assert(*change_sub_lock == SR_LOCK_READ);
@@ -3224,6 +3265,29 @@ sr_modinfo_change_notify_update(struct sr_mod_info_s *mod_info, sr_session_ctx_t
 
     /* create new diff if we have an update edit */
     if (update_edit) {
+        /* unlock so that we can lock after additonal modules were marked as changed */
+
+        /* CHANGE SUB READ UNLOCK */
+        sr_modinfo_changesub_rdunlock(mod_info);
+        *change_sub_lock = SR_LOCK_NONE;
+
+        if (sr_modinfo_update_is_foreign(mod_info, update_edit)) {
+            /* data of a foreign module, update mod info */
+            if ((err_info = sr_modinfo_collect_edit(update_edit, mod_info))) {
+                goto cleanup;
+            }
+
+            mi_opts = SR_MI_LOCK_UPGRADEABLE | SR_MI_PERM_NO;
+            if ((mod_info->ds != SR_DS_OPERATIONAL) && (mod_info->ds != SR_DS_CANDIDATE)) {
+                mi_opts |= SR_MI_INV_DEPS;
+            } /* else stored oper edit or candidate data are not validated so we do not need data from other modules */
+
+            /* add modules into mod_info with deps, locking, and their data */
+            if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, mi_opts, sid, orig_name, orig_data, 0, 0, 0))) {
+                goto cleanup;
+            }
+        }
+
         /* backup the old diff */
         old_diff = mod_info->diff;
         mod_info->diff = NULL;
@@ -3238,17 +3302,11 @@ sr_modinfo_change_notify_update(struct sr_mod_info_s *mod_info, sr_session_ctx_t
             goto cleanup;
         }
 
-        /* unlock so that we can lock after additonal modules were marked as changed */
-
-        /* CHANGE SUB READ UNLOCK */
-        sr_modinfo_changesub_rdunlock(mod_info);
-        *change_sub_lock = SR_LOCK_NONE;
-
         /* validate updated data trees and finish new diff */
         switch (mod_info->ds) {
         case SR_DS_STARTUP:
         case SR_DS_RUNNING:
-            /* add new modules */
+            /* update the modules */
             if ((err_info = sr_modinfo_collect_deps(mod_info))) {
                 goto cleanup;
             }
