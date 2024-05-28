@@ -637,9 +637,12 @@ test_subtree2xpath(void **state)
     char *filter_str, *get_str;
     const char *str, *exp;
     int ret;
-    const struct ly_ctx *ly_ctx = sr_acquire_context(st->conn);
+    const struct ly_ctx *ly_ctx;
     struct lyd_node *filter_tree, *edit_tree;
     sr_data_t *get_tree;
+
+    ly_ctx = sr_acquire_context(st->conn);
+    sr_release_context(st->conn);
 
     /* load some data */
     str =
