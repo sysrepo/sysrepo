@@ -716,7 +716,6 @@ main(void)
         cmocka_unit_test(test_cached_thread),
         cmocka_unit_test(test_enable_cached_get),
         cmocka_unit_test(test_no_read_access),
-        cmocka_unit_test(test_no_read_access),
         cmocka_unit_test(test_explicit_default),
         cmocka_unit_test(test_union),
         cmocka_unit_test(test_key),
