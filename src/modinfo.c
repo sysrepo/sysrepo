@@ -1480,14 +1480,15 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *mod_data;
-    uint32_t content_id;
+    uint32_t content_id, i;
+    struct ly_set *set = NULL;
 
     /* get content-id */
     content_id = SR_CONN_MAIN_SHM(mod_info->conn)->content_id;
 
     /* get the data from libyang */
     if ((err_info = sr_ly_ctx_get_yanglib_data(mod_info->conn->ly_ctx, &mod_data, content_id))) {
-        return err_info;
+        goto cleanup;
     }
 
     if (!strcmp(mod->ly_mod->revision, "2019-01-04")) {
@@ -1496,19 +1497,19 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
         /* add supported datastores */
         if ((err_info = sr_lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:running']/schema", "complete",
                 0, NULL, NULL))) {
-            return err_info;
+            goto cleanup;
         }
         if ((err_info = sr_lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:candidate']/schema", "complete",
                 0, NULL, NULL))) {
-            return err_info;
+            goto cleanup;
         }
         if ((err_info = sr_lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:startup']/schema", "complete",
                 0, NULL, NULL))) {
-            return err_info;
+            goto cleanup;
         }
         if ((err_info = sr_lyd_new_path(mod_data, NULL, "datastore[name='ietf-datastores:operational']/schema", "complete",
                 0, NULL, NULL))) {
-            return err_info;
+            goto cleanup;
         }
     } else if (!strcmp(mod->ly_mod->revision, "2016-06-21")) {
         assert(!strcmp(mod_data->schema->name, "modules-state"));
@@ -1517,15 +1518,37 @@ sr_modinfo_module_data_load_yanglib(struct sr_mod_info_s *mod_info, struct sr_mo
     } else {
         /* no other revision is supported */
         SR_ERRINFO_INT(&err_info);
-        return err_info;
+        goto cleanup;
+    }
+
+    /* add missing 'location' and 'schema' nodes */
+    if ((err_info = sr_lyd_find_xpath(mod_data, "/ietf-yang-library:yang-library/module-set/module[not(location)] | "
+            "/ietf-yang-library:yang-library/module-set/import-only-module[not(location)]", &set))) {
+        goto cleanup;
+    }
+    for (i = 0; i < set->count; ++i) {
+        if ((err_info = sr_lyd_new_term(set->dnodes[i], NULL, "location", "file://@internal"))) {
+            goto cleanup;
+        }
+    }
+    ly_set_free(set, NULL);
+    if ((err_info = sr_lyd_find_xpath(mod_data, "/ietf-yang-library:modules-state/module[not(schema)]", &set))) {
+        goto cleanup;
+    }
+    for (i = 0; i < set->count; ++i) {
+        if ((err_info = sr_lyd_new_term(set->dnodes[i], NULL, "schema", "file://@internal"))) {
+            goto cleanup;
+        }
     }
 
     /* connect to the rest of data */
     if ((err_info = sr_lyd_merge(&mod_info->data, mod_data, 1, LYD_MERGE_DESTRUCT))) {
-        return err_info;
+        goto cleanup;
     }
 
-    return NULL;
+cleanup:
+    ly_set_free(set, NULL);
+    return err_info;
 }
 
 /**
