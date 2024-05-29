@@ -1400,7 +1400,7 @@ module_update_foreign_cb(sr_session_ctx_t *session, uint32_t sub_id, const char 
     (void)sub_id;
     (void)request_id;
 
-    assert_string_equal(module_name, "ietf-interfaces");
+    assert_string_equal(module_name, "when1");
     assert_null(xpath);
 
     switch (ATOMIC_LOAD_RELAXED(st->cb_called)) {
@@ -1408,8 +1408,7 @@ module_update_foreign_cb(sr_session_ctx_t *session, uint32_t sub_id, const char 
         assert_int_equal(event, SR_EV_UPDATE);
 
         /* change the data of another module */
-        ret = sr_set_item_str(session, "/test:cont/anyx", "<some-xml xmlns=\"urn:test\"><elem>value</elem></some-xml>",
-                NULL, 0);
+        ret = sr_set_item_str(session, "/when2:cont/l", "val", NULL, 0);
         assert_int_equal(ret, SR_ERR_OK);
         break;
     case 1:
@@ -1439,45 +1438,35 @@ test_update_foreign(void **state)
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe */
-    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_update_foreign_cb, st, 0, SR_SUBSCR_UPDATE, &subscr);
+    ret = sr_module_change_subscribe(sess, "when1", NULL, module_update_foreign_cb, st, 0, SR_SUBSCR_UPDATE, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* perform a change */
-    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type", "iana-if-type:ethernetCsmacd",
-            NULL, 0);
+    ret = sr_set_item_str(sess, "/when1:l1", "str", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
 
     /* check current data tree */
-    ret = sr_get_data(sess, "/ietf-interfaces:interfaces | /test:cont", 0, 0, 0, &data);
+    ret = sr_get_data(sess, "/when1:* | /when2:*", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
     assert_int_equal(ret, 0);
     sr_release_data(data);
 
     str2 =
-            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
-            "  <interface>\n"
-            "    <name>eth0</name>\n"
-            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
-            "  </interface>\n"
-            "</interfaces>\n"
-            "<cont xmlns=\"urn:test\">\n"
-            "  <anyx>\n"
-            "    <some-xml>\n"
-            "      <elem>value</elem>\n"
-            "    </some-xml>\n"
-            "  </anyx>\n"
+            "<l1 xmlns=\"urn:when1\">str</l1>\n"
+            "<cont xmlns=\"urn:when2\">\n"
+            "  <l>val</l>\n"
             "</cont>\n";
     assert_string_equal(str1, str2);
     free(str1);
 
     /* cleanup */
     sr_unsubscribe(subscr);
-    sr_delete_item(sess, "/ietf-interfaces:interfaces", 0);
-    sr_delete_item(sess, "/test:cont", 0);
+    sr_delete_item(sess, "/when1:l1", 0);
+    sr_delete_item(sess, "/when2:cont", 0);
     sr_apply_changes(sess, 0);
     sr_session_stop(sess);
 }

@@ -82,6 +82,10 @@ sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int dup_xpath
 
         mod->ly_mod = ly_mod;
         mod->state |= MOD_INFO_NEW;
+    } else if (!(mod->state & MOD_INFO_REQ)) {
+        /* different type, re-add */
+        mod->state &= ~MOD_INFO_TYPE_MASK;
+        mod->state |= MOD_INFO_NEW;
     } else if (!mod->xpath_count) {
         /* mod is present with no xpaths (full data tree), nothing to add */
         return NULL;
@@ -3239,6 +3243,11 @@ sr_modinfo_update_is_foreign(const struct sr_mod_info_s *mod_info, const struct 
         /* check this node */
         for (i = 0; i < mod_info->mod_count; ++i) {
             mod = &mod_info->mods[i];
+            if (!(mod->state & MOD_INFO_REQ)) {
+                /* skip dependency modules */
+                continue;
+            }
+
             if (mod->ly_mod == ly_mod) {
                 break;
             }
