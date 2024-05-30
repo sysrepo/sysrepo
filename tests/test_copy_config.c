@@ -112,7 +112,11 @@ teardown_f(void **state)
     struct state *st = (struct state *)*state;
     sr_session_ctx_t *sess;
 
-    sr_session_start(st->conn, SR_DS_RUNNING, &sess);
+    sr_session_start(st->conn, SR_DS_CANDIDATE, &sess);
+
+    sr_copy_config(sess, NULL, SR_DS_RUNNING, 0);
+
+    sr_session_switch_ds(sess, SR_DS_RUNNING);
 
     sr_delete_item(sess, "/ietf-interfaces:interfaces", 0);
     sr_delete_item(sess, "/test:l1", 0);
