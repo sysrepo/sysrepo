@@ -1370,9 +1370,7 @@ sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_i
     /* try to find the module */
     if ((new_mod->ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, mod_name))) {
         /* module installed, check whether with all the features */
-        if ((err_info = sr_install_modules_check_features((struct lys_module *)new_mod->ly_mod, new_mod, no_changes))) {
-            goto cleanup;
-        }
+        err_info = sr_install_modules_check_features((struct lys_module *)new_mod->ly_mod, new_mod, no_changes);
         goto cleanup;
     }
 
