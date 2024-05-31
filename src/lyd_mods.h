@@ -79,7 +79,7 @@ sr_error_info_t *sr_lydmods_change_upd_modules(const struct ly_ctx *ly_ctx, cons
  *
  * @param[in] ly_ctx Context to use for parsing SR data.
  * @param[in] old_mod Module with the previous (current) state of features.
- * @param[in] new_mod Module with the features updated.
+ * @param[in] new_ctx Context with the new state of features.
  * @param[in] feat_name Feature name.
  * @param[in] enable Whether the feature was enabled or disabled.
  * @param[in] conn Connection to use for DS handles.
@@ -87,7 +87,7 @@ sr_error_info_t *sr_lydmods_change_upd_modules(const struct ly_ctx *ly_ctx, cons
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lydmods_change_chng_feature(const struct ly_ctx *ly_ctx, const struct lys_module *old_mod,
-        const struct lys_module *new_mod, const char *feat_name, int enable, sr_conn_ctx_t *conn, struct lyd_node **sr_mods);
+        const struct ly_ctx *new_ctx, const char *feat_name, int enable, sr_conn_ctx_t *conn, struct lyd_node **sr_mods);
 
 /**
  * @brief Change replay support of a module in SR internal module data.

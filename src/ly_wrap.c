@@ -253,6 +253,24 @@ cleanup:
 }
 
 sr_error_info_t *
+sr_lys_set_implemented(struct lys_module *mod, const char **features)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
+
+    ly_temp_log_options(&temp_lo);
+
+    if (lys_set_implemented(mod, features)) {
+        sr_errinfo_new_ly(&err_info, mod->ctx, NULL, SR_ERR_LY);
+        goto cleanup;
+    }
+
+cleanup:
+    ly_temp_log_options(NULL);
+    return err_info;
+}
+
+sr_error_info_t *
 sr_lys_print(const char *path, const struct lys_module *mod, const struct lysp_submodule *submod)
 {
     sr_error_info_t *err_info = NULL;

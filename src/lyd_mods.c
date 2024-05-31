@@ -1139,7 +1139,9 @@ sr_lydmods_change_add_modules(const struct ly_ctx *ly_ctx, sr_conn_ctx_t *conn, 
         uint32_t *new_mod_count, struct lyd_node **sr_mods)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t i, orig_mod_count = *new_mod_count;
+    uint32_t i, j, orig_mod_count = *new_mod_count;
+    struct lyd_node *sr_mod;
+    char *path = NULL;
 
     *sr_mods = NULL;
 
@@ -1148,13 +1150,38 @@ sr_lydmods_change_add_modules(const struct ly_ctx *ly_ctx, sr_conn_ctx_t *conn, 
         goto cleanup;
     }
 
-    /* add new modules with all implemented dependencies to SR data, the latter are added to new_mods as well */
+    /* add new modules with all implemented dependencies/enable module features to SR data, the dependencies are added
+     * to new_mods as well */
     for (i = 0; i < orig_mod_count; ++i) {
-        if ((err_info = sr_lydmods_add_module_with_imps(*sr_mods, (*new_mods)[i].ly_mod, (*new_mods)[i].module_ds,
-                (*new_mods)[i].owner, (*new_mods)[i].group, (*new_mods)[i].perm, new_mods, new_mod_count))) {
-            goto cleanup;
+        if ((*new_mods)[i].enable_features) {
+            /* find this module */
+            if (asprintf(&path, "module[name='%s']", (*new_mods)[i].ly_mod->name) == -1) {
+                SR_ERRINFO_MEM(&err_info);
+                goto cleanup;
+            }
+            if ((err_info = sr_lyd_find_path(*sr_mods, path, 0, &sr_mod))) {
+                goto cleanup;
+            }
+            free(path);
+            path = NULL;
+            SR_CHECK_INT_GOTO(!sr_mod, err_info, cleanup);
+
+            /* add all enabled features */
+            for (j = 0; (*new_mods)[i].enable_features[j]; ++j) {
+                if ((err_info = sr_lyd_new_term(sr_mod, NULL, "enabled-feature", (*new_mods)[i].enable_features[j]))) {
+                    goto cleanup;
+                }
+                SR_LOG_INF("Module \"%s\" feature \"%s\" enabled.", (*new_mods)[i].ly_mod->name,
+                        (*new_mods)[i].enable_features[j]);
+            }
+        } else {
+            /* install the module */
+            if ((err_info = sr_lydmods_add_module_with_imps(*sr_mods, (*new_mods)[i].ly_mod, (*new_mods)[i].module_ds,
+                    (*new_mods)[i].owner, (*new_mods)[i].group, (*new_mods)[i].perm, new_mods, new_mod_count))) {
+                goto cleanup;
+            }
+            SR_LOG_INF("Module \"%s\" was installed.", (*new_mods)[i].ly_mod->name);
         }
-        SR_LOG_INF("Module \"%s\" was installed.", (*new_mods)[i].ly_mod->name);
     }
     for ( ; i < *new_mod_count; ++i) {
         /* all dependencies already installed */
@@ -1177,6 +1204,7 @@ sr_lydmods_change_add_modules(const struct ly_ctx *ly_ctx, sr_conn_ctx_t *conn, 
     }
 
 cleanup:
+    free(path);
     if (err_info) {
         lyd_free_all(*sr_mods);
         *sr_mods = NULL;
@@ -1319,7 +1347,7 @@ cleanup:
 
 sr_error_info_t *
 sr_lydmods_change_chng_feature(const struct ly_ctx *ly_ctx, const struct lys_module *old_mod,
-        const struct lys_module *new_mod, const char *feat_name, int enable, sr_conn_ctx_t *conn, struct lyd_node **sr_mods)
+        const struct ly_ctx *new_ctx, const char *feat_name, int enable, sr_conn_ctx_t *conn, struct lyd_node **sr_mods)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sr_mod, *node;
@@ -1371,7 +1399,7 @@ sr_lydmods_change_chng_feature(const struct ly_ctx *ly_ctx, const struct lys_mod
     }
 
     /* add new dependencies for all the modules */
-    if ((err_info = sr_lydmods_add_deps_all(new_mod->ctx, *sr_mods))) {
+    if ((err_info = sr_lydmods_add_deps_all(new_ctx, *sr_mods))) {
         goto cleanup;
     }
 

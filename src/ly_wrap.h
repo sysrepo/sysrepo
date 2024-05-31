@@ -49,6 +49,15 @@ sr_error_info_t *sr_lys_parse(struct ly_ctx *ctx, const char *data, const char *
         const char **features, struct lys_module **ly_mod);
 
 /**
+ * @brief Implement a YANG module or change its features.
+ *
+ * @param[in] mod Module to implement/change.
+ * @param[in] features Optional array of enabled features.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lys_set_implemented(struct lys_module *mod, const char **features);
+
+/**
  * @brief Print a YANG module or submodule.
  *
  * @param[in] path Path of the printed module.

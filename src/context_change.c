@@ -276,6 +276,11 @@ sr_lycc_add_modules(sr_conn_ctx_t *conn, sr_int_install_mod_t *new_mods, uint32_
     sr_datastore_t ds;
 
     for (i = 0; i < new_mod_count; ++i) {
+        if (new_mods[i].enable_features) {
+            /* only enabling new features */
+            continue;
+        }
+
         /* init module for all DS plugins */
         for (ds = 0; ds < SR_DS_READ_COUNT; ++ds) {
             if ((ds == SR_DS_RUNNING) && !new_mods[i].module_ds.plugin_name[ds]) {

@@ -196,8 +196,9 @@ typedef struct {
 
     /* additional members */
     const struct lys_module *ly_mod;
-    int installed[SR_DS_READ_COUNT];
-    int yangs_stored;
+    const char **enable_features;       /**< set if module is installed and only some of its features should be enabled */
+    int installed[SR_DS_READ_COUNT];    /**< install_cb was called for the DS */
+    int yangs_stored;                   /**< YANG module files were stored */
 } sr_int_install_mod_t;
 
 /**

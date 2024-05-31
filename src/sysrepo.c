@@ -1264,57 +1264,81 @@ cleanup:
 /**
  * @brief Check whether enabled features of a module match those specified.
  *
- * @param[in] ly_mod Module to check.
- * @param[in] features Array of expected enabled features, NULL if none are enabled.
+ * @param[in,out] ly_mod Module to check and update if needed.
+ * @param[in,out] new_mod New module to update.
+ * @param[out] no_changes Set if all @p new_mod features are enabled.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_install_modules_check_features(const struct lys_module *ly_mod, const char **features)
+sr_install_modules_check_features(struct lys_module *ly_mod, sr_int_install_mod_t *new_mod, int *no_changes)
 {
     sr_error_info_t *err_info = NULL;
     const struct lysp_feature *f = NULL;
-    uint32_t i = 0, j;
-    const char *feature;
+    uint32_t i = 0, j, nm_feat_count = 0, en_feat_count = 0;
+    const char *feature, **enabled_features = NULL;
 
-    if (features && features[0] && !strcmp(features[0], "*")) {
-        /* enables all the features, always allow */
-        return NULL;
+    assert(!new_mod->enable_features);
+
+    *no_changes = 1;
+
+    if (!new_mod->features || !new_mod->features[0]) {
+        /* no features to check/enable */
+        goto cleanup;
     }
 
-    /* first check feature existence */
-    for (j = 0; features && features[j]; ++j) {
-        if (lys_feature_value(ly_mod, features[j]) == LY_ENOTFOUND) {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Feature \"%s\" was not found in module \"%s\".",
-                    features[j], ly_mod->name);
-            return err_info;
+    if (strcmp(new_mod->features[0], "*")) {
+        /* check feature existence */
+        for (j = 0; new_mod->features[j]; ++j) {
+            if (lys_feature_value(ly_mod, new_mod->features[j]) == LY_ENOTFOUND) {
+                sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Feature \"%s\" was not found in module \"%s\".",
+                        new_mod->features[j], ly_mod->name);
+                goto cleanup;
+            }
         }
     }
 
-    /* then make sure all the enabled features are enabled and the rest is disabled */
+    /* check that all (selected) features are enabled */
     while ((f = lysp_feature_next(f, ly_mod->parsed, &i))) {
         feature = NULL;
-        j = 0;
-        while (features && features[j]) {
-            if (!strcmp(f->name, features[j])) {
-                feature = features[j];
+        for (j = 0; new_mod->features[j]; ++j) {
+            if (!strcmp(f->name, new_mod->features[j])) {
+                feature = new_mod->features[j];
                 break;
             }
-
-            ++j;
         }
 
-        if ((f->flags & LYS_FENABLED) && !feature) {
-            sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Module \"%s\" is already in sysrepo with feature \"%s\" enabled.",
-                    ly_mod->name, f->name);
-            return err_info;
-        } else if (!(f->flags & LYS_FENABLED) && feature) {
-            sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Module \"%s\" is already in sysrepo with feature \"%s\" disabled.",
-                    ly_mod->name, feature);
-            return err_info;
+        if ((f->flags & LYS_FENABLED) || feature) {
+            /* enabled feature or a disabled one to be enabled */
+            enabled_features = sr_realloc(enabled_features, (en_feat_count + 2) * sizeof *enabled_features);
+            SR_CHECK_MEM_GOTO(!enabled_features, err_info, cleanup);
+            enabled_features[en_feat_count] = feature;
+            ++en_feat_count;
+            enabled_features[en_feat_count] = NULL;
+        }
+
+        if (!(f->flags & LYS_FENABLED) && feature) {
+            /* disabled feature to enable */
+            new_mod->enable_features = sr_realloc(new_mod->enable_features, (nm_feat_count + 2) * sizeof *new_mod->enable_features);
+            SR_CHECK_MEM_GOTO(!new_mod->enable_features, err_info, cleanup);
+            new_mod->enable_features[nm_feat_count] = feature;
+            ++nm_feat_count;
+            new_mod->enable_features[nm_feat_count] = NULL;
         }
     }
 
-    return NULL;
+    if (new_mod->enable_features) {
+        /* features to enable */
+        *no_changes = 0;
+
+        /* use enabled_features with all the previously enabled and newly enabled features */
+        if ((err_info = sr_lys_set_implemented(ly_mod, enabled_features))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    free(enabled_features);
+    return err_info;
 }
 
 /**
@@ -1323,21 +1347,20 @@ sr_install_modules_check_features(const struct lys_module *ly_mod, const char **
  * @param[in] new_ctx New context to use for parsing.
  * @param[in] conn Connection to use.
  * @param[in,out] new_mod New module to update.
- * @param[out] installed Set if the module has already been installed.
+ * @param[out] no_changes Set if the module is installed with the selected features enabled so no context changes needed.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_int_install_mod_t *new_mod, int *installed)
+sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_int_install_mod_t *new_mod, int *no_changes)
 {
     sr_error_info_t *err_info = NULL;
-    const struct lys_module *ly_mod;
     const sr_module_ds_t sr_empty_module_ds = {0};
     char *mod_name = NULL;
     LYS_INFORMAT format;
     sr_datastore_t ds;
     int mod_ds;
 
-    *installed = 0;
+    *no_changes = 0;
 
     /* learn module name and format */
     if ((err_info = sr_get_schema_name_format(new_mod->schema_path, &mod_name, &format))) {
@@ -1345,13 +1368,11 @@ sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_i
     }
 
     /* try to find the module */
-    if ((ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, mod_name))) {
-        if ((err_info = sr_install_modules_check_features(ly_mod, new_mod->features))) {
-            /* module installed with different features */
+    if ((new_mod->ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, mod_name))) {
+        /* module installed, check whether with all the features */
+        if ((err_info = sr_install_modules_check_features((struct lys_module *)new_mod->ly_mod, new_mod, no_changes))) {
             goto cleanup;
         }
-        SR_LOG_WRN("Module \"%s\" is already in sysrepo.", mod_name);
-        *installed = 1;
         goto cleanup;
     }
 
@@ -1428,8 +1449,8 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
     sr_int_install_mod_t *nmod;
     struct sr_data_update_s data_info = {0};
     sr_lock_mode_t ctx_mode = SR_LOCK_NONE;
-    uint32_t i, search_dir_count = 0;
-    int installed, mod_shm_changed = 0;
+    uint32_t i, j, search_dir_count = 0;
+    int no_changes, mod_shm_changed = 0;
     struct ly_set mod_set = {0};
 
     /* create new temporary context */
@@ -1458,11 +1479,11 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
         nmod = &(*new_mods)[i];
 
         /* process every new module and check/fill its info */
-        if ((err_info = sr_install_modules_prepare_mod(new_ctx, conn, nmod, &installed))) {
+        if ((err_info = sr_install_modules_prepare_mod(new_ctx, conn, nmod, &no_changes))) {
             goto cleanup;
         }
-        if (installed) {
-            /* module already installed, remove it from the array */
+        if (no_changes) {
+            /* module already installed with the features, remove it from the array */
             if (i < (*new_mod_count) - 1) {
                 memmove(nmod, nmod + 1, (*new_mod_count - i - 1) * sizeof *nmod);
             }
@@ -1536,10 +1557,20 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
 
 error:
     /* revert lydmods data */
-    for (i = 0; i < *new_mod_count; ++i) {
-        ly_set_add(&mod_set, (*new_mods)[i].ly_mod, 1, NULL);
-    }
     lyd_free_siblings(sr_mods);
+    for (i = 0; i < *new_mod_count; ++i) {
+        if ((*new_mods)[i].enable_features) {
+            for (j = 0; (*new_mods)[i].enable_features[j]; ++j) {
+                if ((tmp_err = sr_lydmods_change_chng_feature(conn->ly_ctx, (*new_mods)[i].ly_mod, new_ctx,
+                        (*new_mods)[i].enable_features[j], 0, conn, &sr_mods))) {
+                    sr_errinfo_merge(&err_info, tmp_err);
+                }
+                lyd_free_siblings(sr_mods);
+            }
+        } else {
+            ly_set_add(&mod_set, (*new_mods)[i].ly_mod, 1, NULL);
+        }
+    }
     if ((tmp_err = sr_lydmods_change_del_module(conn->ly_ctx, new_ctx, &mod_set, conn, &sr_del_mods, &sr_mods))) {
         sr_errinfo_merge(&err_info, tmp_err);
     }
@@ -1567,6 +1598,27 @@ cleanup:
     sr_lycc_unlock(conn, ctx_mode, 1, __func__);
 
     return sr_api_ret(NULL, err_info);
+}
+
+/**
+ * @brief Free internal install_module modules.
+ *
+ * @param[in] new_mods Module array to free.
+ * @param[in] new_mod_count Count of @p new_mods.
+ */
+static void
+sr_free_int_install_mods(sr_int_install_mod_t *new_mods, uint32_t new_mod_count)
+{
+    uint32_t i;
+
+    if (!new_mods || !new_mod_count) {
+        return;
+    }
+
+    for (i = 0; i < new_mod_count; ++i) {
+        free(new_mods->enable_features);
+    }
+    free(new_mods);
 }
 
 API int
@@ -1610,7 +1662,7 @@ sr_install_module2(sr_conn_ctx_t *conn, const char *schema_path, const char *sea
     new_mod->perm = perm;
 
     rc = _sr_install_modules(conn, search_dirs, data, data_path, format, &new_mod, &new_mod_count);
-    free(new_mod);
+    sr_free_int_install_mods(new_mod, new_mod_count);
     return rc;
 }
 
@@ -1642,7 +1694,7 @@ sr_install_modules(sr_conn_ctx_t *conn, const char **schema_paths, const char *s
     rc = _sr_install_modules(conn, search_dirs, NULL, NULL, 0, &new_mods, &new_mod_count);
 
 cleanup:
-    free(new_mods);
+    sr_free_int_install_mods(new_mods, new_mod_count);
     if (err_info) {
         return sr_api_ret(NULL, err_info);
     } else {
@@ -1675,7 +1727,7 @@ sr_install_modules2(sr_conn_ctx_t *conn, const sr_install_mod_t *modules, uint32
     rc = _sr_install_modules(conn, search_dirs, data, data_path, format, &new_mods, &new_mod_count);
 
 cleanup:
-    free(new_mods);
+    sr_free_int_install_mods(new_mods, new_mod_count);
     if (err_info) {
         return sr_api_ret(NULL, err_info);
     } else {
@@ -2534,7 +2586,7 @@ sr_change_module_feature(sr_conn_ctx_t *conn, const char *module_name, const cha
     }
 
     /* update lydmods data */
-    if ((err_info = sr_lydmods_change_chng_feature(conn->ly_ctx, ly_mod, upd_ly_mod, feature_name, enable, conn, &sr_mods))) {
+    if ((err_info = sr_lydmods_change_chng_feature(conn->ly_ctx, ly_mod, new_ctx, feature_name, enable, conn, &sr_mods))) {
         goto cleanup;
     }
 
