@@ -88,7 +88,7 @@ struct srplg_ntf_s;
 #define SR_CONN_RUN_CACHE_LOCK_TIMEOUT 1000
 
 /** timeout for write-locking connection oper cache (ms) */
-#define SR_CONN_OPER_CACHE_LOCK_TIMEOUT 10
+#define SR_CONN_OPER_CACHE_LOCK_TIMEOUT 50
 
 /** timeout for write-locking connection subscription oper cache data (ms) */
 #define SR_CONN_OPER_CACHE_DATA_LOCK_TIMEOUT 1000
