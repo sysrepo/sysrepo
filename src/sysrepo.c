@@ -1614,7 +1614,7 @@ sr_free_int_install_mods(sr_int_install_mod_t *new_mods, uint32_t new_mod_count)
     }
 
     for (i = 0; i < new_mod_count; ++i) {
-        free(new_mods->enable_features);
+        free(new_mods[i].enable_features);
     }
     free(new_mods);
 }
