@@ -762,7 +762,7 @@ sr_lydmods_del_deps_all(struct lyd_node *sr_mods)
     uint32_t i;
 
     /* find all the containers */
-    if ((err_info = sr_lyd_find_xpath(sr_mods, "module/deps | module/rpcs | module/notifications | module/inverse-deps",
+    if ((err_info = sr_lyd_find_xpath(sr_mods, "module/deps | module/inverse-deps | module/rpc | module/notification",
             &set))) {
         goto cleanup;
     }
@@ -801,7 +801,7 @@ sr_lydmods_add_deps_all(const struct ly_ctx *ly_ctx, struct lyd_node *sr_mods)
         }
 
         /* there can be no dependencies yet (but inverse ones yes) */
-        assert(!lyd_find_xpath(sr_mod, "deps | rpcs | notifications", &set));
+        assert(!lyd_find_xpath(sr_mod, "deps | rpc | notification", &set));
         assert(!set->count || ((set->count == 1) && (set->dnodes[0]->flags & LYD_DEFAULT)));
         ly_set_free(set, NULL);
         set = NULL;
