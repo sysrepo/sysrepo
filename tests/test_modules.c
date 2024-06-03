@@ -117,7 +117,10 @@ test_install_module(void **state)
 {
     struct state *st = (struct state *)*state;
     int ret;
-    const char *en_feats[] = {"feat", NULL};
+    const char *nc_feats[] = {
+        "writable-running", "candidate", "rollback-on-error", "validate", "startup", "url",
+        "xpath", "confirmed-commit", NULL
+    };
 
     /* install test-module */
     ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/test-module.yang", TESTS_SRC_DIR "/files", NULL);
@@ -151,21 +154,43 @@ test_install_module(void **state)
     ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/test.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* enable feature in main-mod */
-    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/main-mod.yang", TESTS_SRC_DIR "/files", en_feats);
+    /* enable features in ietf-netconf */
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/../modules/ietf-netconf@2013-09-29.yang",
+            TESTS_SRC_DIR "/../modules", nc_feats);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* check current internal data */
-    cmp_int_data(st->conn, "main-mod",
+    cmp_int_data(st->conn, "ietf-netconf",
             "<module xmlns=\"http://www.sysrepo.org/yang/sysrepo\">"
-            "<name>main-mod</name>"
-            "<enabled-feature>feat</enabled-feature>"
+            "<name>ietf-netconf</name>"
+            "<revision>2013-09-29</revision>"
+            "<enabled-feature>writable-running</enabled-feature>"
+            "<enabled-feature>candidate</enabled-feature>"
+            "<enabled-feature>confirmed-commit</enabled-feature>"
+            "<enabled-feature>rollback-on-error</enabled-feature>"
+            "<enabled-feature>validate</enabled-feature>"
+            "<enabled-feature>startup</enabled-feature>"
+            "<enabled-feature>url</enabled-feature>"
+            "<enabled-feature>xpath</enabled-feature>"
             "<plugin><datastore>ds:startup</datastore><name>" SR_DEFAULT_STARTUP_DS "</name></plugin>"
             "<plugin><datastore>ds:running</datastore><name>" SR_DEFAULT_RUNNING_DS "</name></plugin>"
             "<plugin><datastore>ds:candidate</datastore><name>" SR_DEFAULT_CANDIDATE_DS "</name></plugin>"
             "<plugin><datastore>ds:operational</datastore><name>" SR_DEFAULT_OPERATIONAL_DS "</name></plugin>"
             "<plugin><datastore>fd:factory-default</datastore><name>" SR_DEFAULT_FACTORY_DEFAULT_DS "</name></plugin>"
             "<plugin><datastore>notification</datastore><name>" SR_DEFAULT_NOTIFICATION_DS "</name></plugin>"
+            "<rpc><path xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\">/nc:get-config</path></rpc>"
+            "<rpc><path xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\">/nc:edit-config</path></rpc>"
+            "<rpc><path xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\">/nc:copy-config</path></rpc>"
+            "<rpc><path xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\">/nc:delete-config</path></rpc>"
+            "<rpc><path xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\">/nc:lock</path></rpc>"
+            "<rpc><path xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\">/nc:unlock</path></rpc>"
+            "<rpc><path xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\">/nc:get</path></rpc>"
+            "<rpc><path xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\">/nc:close-session</path></rpc>"
+            "<rpc><path xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\">/nc:kill-session</path></rpc>"
+            "<rpc><path xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\">/nc:commit</path></rpc>"
+            "<rpc><path xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\">/nc:discard-changes</path></rpc>"
+            "<rpc><path xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\">/nc:cancel-commit</path></rpc>"
+            "<rpc><path xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\">/nc:validate</path></rpc>"
             "</module>");
 
     ret = sr_remove_module(st->conn, "main-mod", 0);
