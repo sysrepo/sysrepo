@@ -101,6 +101,50 @@ jobs:
             snaps: "core universal-ctags",
             make-target: "abi-check"
           }
+          - {
+            name: "MONGO DS plugin",
+            os: "ubuntu-22.04",
+            build-type: "Debug",
+            dep-build-type: "Debug",
+            cc: "gcc",
+            options: "-DDEFAULT_STARTUP_DS_PLG=\"MONGO DS\" -DDEFAULT_RUNNING_DS_PLG=\"MONGO DS\" -DDEFAULT_CANDIDATE_DS_PLG=\"MONGO DS\" -DDEFAULT_OPERATIONAL_DS_PLG=\"MONGO DS\" -DDEFAULT_FACTORY_DEFAULT_DS_PLG=\"MONGO DS\"",
+            packages: "libcmocka-dev valgrind",
+            snaps: "",
+            make-target: ""
+          }
+          - {
+            name: "MONGO DS plugin latest",
+            os: "ubuntu-22.04",
+            build-type: "Debug",
+            dep-build-type: "Debug",
+            cc: "gcc",
+            options: "-DDEFAULT_STARTUP_DS_PLG=\"MONGO DS\" -DDEFAULT_RUNNING_DS_PLG=\"MONGO DS\" -DDEFAULT_CANDIDATE_DS_PLG=\"MONGO DS\" -DDEFAULT_OPERATIONAL_DS_PLG=\"MONGO DS\" -DDEFAULT_FACTORY_DEFAULT_DS_PLG=\"MONGO DS\"",
+            packages: "libcmocka-dev valgrind",
+            snaps: "",
+            make-target: ""
+          }
+          - {
+            name: "REDIS DS plugin",
+            os: "ubuntu-22.04",
+            build-type: "Debug",
+            dep-build-type: "Debug",
+            cc: "gcc",
+            options: "-DDEFAULT_STARTUP_DS_PLG=\"REDIS DS\" -DDEFAULT_RUNNING_DS_PLG=\"REDIS DS\" -DDEFAULT_CANDIDATE_DS_PLG=\"REDIS DS\" -DDEFAULT_OPERATIONAL_DS_PLG=\"REDIS DS\" -DDEFAULT_FACTORY_DEFAULT_DS_PLG=\"REDIS DS\"",
+            packages: "libcmocka-dev valgrind",
+            snaps: "",
+            make-target: ""
+          }
+          - {
+            name: "REDIS DS plugin latest",
+            os: "ubuntu-22.04",
+            build-type: "Debug",
+            dep-build-type: "Debug",
+            cc: "gcc",
+            options: "-DDEFAULT_STARTUP_DS_PLG=\"REDIS DS\" -DDEFAULT_RUNNING_DS_PLG=\"REDIS DS\" -DDEFAULT_CANDIDATE_DS_PLG=\"REDIS DS\" -DDEFAULT_OPERATIONAL_DS_PLG=\"REDIS DS\" -DDEFAULT_FACTORY_DEFAULT_DS_PLG=\"REDIS DS\"",
+            packages: "libcmocka-dev valgrind",
+            snaps: "",
+            make-target: ""
+          }
     env:
       UBSAN_OPTIONS: ${{ matrix.config.ubsan-options }}
 
@@ -141,6 +185,69 @@ jobs:
           CC=${{ matrix.config.cc }} cmake -DCMAKE_BUILD_TYPE=${{ matrix.config.dep-build-type }} -DENABLE_TESTS=OFF ..
           make -j2
           sudo make install
+
+      - name: Deps-MongoDB
+        shell: bash
+        run: |
+          curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
+          echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+          sudo apt-get update
+          sudo apt-get install -y mongodb-org
+          sudo service mongod start
+        if: ${{ matrix.config.name == 'MONGO DS plugin' ||  matrix.config.name == 'MONGO DS plugin latest' }}
+
+      - name: Deps-libmongoc
+        shell: bash
+        run: |
+          wget https://github.com/mongodb/mongo-c-driver/releases/download/1.24.0/mongo-c-driver-1.24.0.tar.gz
+          tar xzf mongo-c-driver-1.24.0.tar.gz
+          cd mongo-c-driver-1.24.0
+          mkdir cmake-build
+          cd cmake-build
+          cmake -DENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF ..
+          cmake --build .
+          sudo cmake --build . --target install
+        if: ${{ matrix.config.name == 'MONGO DS plugin' }}
+
+      - name: Deps-libmongoc-latest
+        shell: bash
+        run: |
+          git clone https://github.com/mongodb/mongo-c-driver.git
+          cd mongo-c-driver
+          cmake -S . -B ./_build -D ENABLE_EXTRA_ALIGNMENT=OFF -D ENABLE_AUTOMATIC_INIT_AND_CLEANUP=OFF -D CMAKE_BUILD_TYPE=RelWithDebInfo -D ENABLE_MONGOC=ON
+          cmake --build ./_build --config RelWithDebInfo --parallel
+          sudo cmake --install "./_build" --prefix "/usr/local"
+        if: ${{ matrix.config.name == 'MONGO DS plugin latest' }}
+
+      - name: Deps-RedisDB
+        shell: bash
+        run: |
+          curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+          sudo chmod 644 /usr/share/keyrings/redis-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
+          sudo apt-get update
+          sudo apt-get install redis-stack-server
+          sudo service redis-stack-server start
+        if: ${{ matrix.config.name == 'REDIS DS plugin' || matrix.config.name == 'REDIS DS plugin latest' }}
+
+      - name: Deps-libhiredis
+        shell: bash
+        run: |
+          wget https://github.com/redis/hiredis/archive/refs/tags/v1.1.0.tar.gz
+          tar xzf v1.1.0.tar.gz
+          cd hiredis-1.1.0
+          make
+          sudo make install
+        if: ${{ matrix.config.name == 'REDIS DS plugin' }}
+
+      - name: Deps-libhiredis-latest
+        shell: bash
+        run: |
+          git clone https://github.com/redis/hiredis.git
+          cd hiredis
+          make
+          sudo make install
+        if: ${{ matrix.config.name == 'REDIS DS plugin latest' }}
 
       - name: Configure
         shell: bash
