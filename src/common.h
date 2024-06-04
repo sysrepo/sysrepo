@@ -187,7 +187,10 @@ extern const sr_module_ds_t sr_module_ds_disabled_run;
  */
 typedef struct {
     /* compatible with sr_install_mod_t */
-    const char *schema_path;
+    union {
+        const char *schema_path;
+        const char *schema_yang;
+    };
     const char **features;
     sr_module_ds_t module_ds;
     const char *owner;
@@ -195,6 +198,7 @@ typedef struct {
     mode_t perm;
 
     /* additional members */
+    int is_schema_yang;
     const struct lys_module *ly_mod;
     const char **enable_features;       /**< set if module is installed and only some of its features should be enabled */
     int installed[SR_DS_READ_COUNT];    /**< install_cb was called for the DS */
@@ -998,11 +1002,12 @@ sr_error_info_t *sr_get_trim_predicates(const char *expr, char **expr2);
  * @brief Learn schema file module name and format.
  *
  * @param[in] schema_path Path to the module file.
+ * @param[in] is_schema_yang Set when @p schema_path are actually YANG module data.
  * @param[out] module_name Name of the module.
  * @param[out] format Module format.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_get_schema_name_format(const char *schema_path, char **module_name, LYS_INFORMAT *format);
+sr_error_info_t *sr_get_schema_name_format(const char *schema_path, int is_schema_yang, char **module_name, LYS_INFORMAT *format);
 
 /**
  * @brief Get datastore string name.

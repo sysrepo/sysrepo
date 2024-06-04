@@ -1264,13 +1264,12 @@ cleanup:
 /**
  * @brief Check whether enabled features of a module match those specified.
  *
- * @param[in,out] ly_mod Module to check and update if needed.
  * @param[in,out] new_mod New module to update.
  * @param[out] no_changes Set if all @p new_mod features are enabled.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_install_modules_check_features(struct lys_module *ly_mod, sr_int_install_mod_t *new_mod, int *no_changes)
+sr_install_modules_check_features(sr_int_install_mod_t *new_mod, int *no_changes)
 {
     sr_error_info_t *err_info = NULL;
     const struct lysp_feature *f = NULL;
@@ -1289,16 +1288,16 @@ sr_install_modules_check_features(struct lys_module *ly_mod, sr_int_install_mod_
     if (strcmp(new_mod->features[0], "*")) {
         /* check feature existence */
         for (j = 0; new_mod->features[j]; ++j) {
-            if (lys_feature_value(ly_mod, new_mod->features[j]) == LY_ENOTFOUND) {
+            if (lys_feature_value(new_mod->ly_mod, new_mod->features[j]) == LY_ENOTFOUND) {
                 sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Feature \"%s\" was not found in module \"%s\".",
-                        new_mod->features[j], ly_mod->name);
+                        new_mod->features[j], new_mod->ly_mod->name);
                 goto cleanup;
             }
         }
     }
 
     /* check that all (selected) features are enabled */
-    while ((f = lysp_feature_next(f, ly_mod->parsed, &i))) {
+    while ((f = lysp_feature_next(f, new_mod->ly_mod->parsed, &i))) {
         feature = NULL;
         for (j = 0; new_mod->features[j]; ++j) {
             if (!strcmp(f->name, new_mod->features[j])) {
@@ -1331,7 +1330,7 @@ sr_install_modules_check_features(struct lys_module *ly_mod, sr_int_install_mod_
         *no_changes = 0;
 
         /* use enabled_features with all the previously enabled and newly enabled features */
-        if ((err_info = sr_lys_set_implemented(ly_mod, enabled_features))) {
+        if ((err_info = sr_lys_set_implemented((struct lys_module *)new_mod->ly_mod, enabled_features))) {
             goto cleanup;
         }
     }
@@ -1363,14 +1362,14 @@ sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_i
     *no_changes = 0;
 
     /* learn module name and format */
-    if ((err_info = sr_get_schema_name_format(new_mod->schema_path, &mod_name, &format))) {
+    if ((err_info = sr_get_schema_name_format(new_mod->schema_path, new_mod->is_schema_yang, &mod_name, &format))) {
         goto cleanup;
     }
 
     /* try to find the module */
     if ((new_mod->ly_mod = ly_ctx_get_module_implemented(new_ctx, mod_name))) {
         /* module installed, check whether with all the features */
-        err_info = sr_install_modules_check_features((struct lys_module *)new_mod->ly_mod, new_mod, no_changes);
+        err_info = sr_install_modules_check_features(new_mod, no_changes);
         goto cleanup;
     }
 
@@ -1397,9 +1396,16 @@ sr_install_modules_prepare_mod(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, sr_i
     }
 
     /* parse the module with the features */
-    if ((err_info = sr_lys_parse(new_ctx, NULL, new_mod->schema_path, format, new_mod->features,
-            (struct lys_module **)&new_mod->ly_mod))) {
-        goto cleanup;
+    if (new_mod->is_schema_yang) {
+        if ((err_info = sr_lys_parse(new_ctx, new_mod->schema_yang, NULL, format, new_mod->features,
+                (struct lys_module **)&new_mod->ly_mod))) {
+            goto cleanup;
+        }
+    } else {
+        if ((err_info = sr_lys_parse(new_ctx, NULL, new_mod->schema_path, format, new_mod->features,
+                (struct lys_module **)&new_mod->ly_mod))) {
+            goto cleanup;
+        }
     }
 
     if (!new_mod->perm) {
@@ -1719,6 +1725,11 @@ sr_install_modules2(sr_conn_ctx_t *conn, const sr_install_mod_t *modules, uint32
     /* copy all the items */
     for (i = 0; i < module_count; ++i) {
         memcpy(&new_mods[i], &modules[i], sizeof *modules);
+
+        /* detect schema format */
+        if (strchr(modules[i].schema_yang, '{')) {
+            new_mods[i].is_schema_yang = 1;
+        }
     }
 
     /* install */
@@ -1946,7 +1957,7 @@ sr_update_modules_prepare(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, const cha
     for (i = 0; i < schema_path_count; ++i) {
         /* learn about the module */
         upd_mods[i].schema_path = schema_paths[i];
-        if ((err_info = sr_get_schema_name_format(upd_mods[i].schema_path, &upd_mods[i].name, &upd_mods[i].format))) {
+        if ((err_info = sr_get_schema_name_format(upd_mods[i].schema_path, 0, &upd_mods[i].name, &upd_mods[i].format))) {
             goto cleanup;
         }
 

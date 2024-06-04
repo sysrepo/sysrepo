@@ -116,14 +116,29 @@ static void
 test_install_module(void **state)
 {
     struct state *st = (struct state *)*state;
-    int ret;
+    int ret, fd;
+    size_t size;
+    char *data;
+    sr_install_mod_t mod = {0};
     const char *nc_feats[] = {
         "writable-running", "candidate", "rollback-on-error", "validate", "startup", "url",
         "xpath", "confirmed-commit", NULL
     };
 
-    /* install test-module */
-    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/test-module.yang", TESTS_SRC_DIR "/files", NULL);
+    /* install test-module, from YANG data */
+    fd = open(TESTS_SRC_DIR "/files/test-module.yang", O_RDONLY);
+    assert_int_not_equal(fd, -1);
+    size = lseek(fd, 0, SEEK_END);
+    lseek(fd, 0, SEEK_SET);
+    data = malloc(size + 1);
+    assert_non_null(data);
+    read(fd, data, size);
+    close(fd);
+    data[size] = '\0';
+
+    mod.schema_yang = data;
+    ret = sr_install_modules2(st->conn, &mod, 1, TESTS_SRC_DIR "/files", NULL, NULL, 0);
+    free(data);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* module should be installed with its dependency */

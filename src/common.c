@@ -3657,11 +3657,61 @@ sr_get_trim_predicates(const char *expr, char **expr2)
 }
 
 sr_error_info_t *
-sr_get_schema_name_format(const char *schema_path, char **module_name, LYS_INFORMAT *format)
+sr_get_schema_name_format(const char *schema_path, int is_schema_yang, char **module_name, LYS_INFORMAT *format)
 {
     sr_error_info_t *err_info = NULL;
     const char *ptr;
     int index;
+    char quot;
+
+    if (is_schema_yang) {
+        ptr = schema_path;
+
+        /* skip leading spaces */
+        while (isspace(ptr[0])) {
+            ++ptr;
+        }
+
+        if (strncmp(ptr, "module", 6)) {
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Invalid YANG module data (\"%.20s\").", schema_path);
+            return err_info;
+        }
+        ptr += 6;
+
+        /* skip more spaces */
+        while (isspace(ptr[0])) {
+            ++ptr;
+        }
+
+        /* optional quotes */
+        if ((ptr[0] == '\'') || (ptr[0] == '\"')) {
+            quot = ptr[0];
+            ++ptr;
+        } else {
+            quot = 0;
+        }
+
+        /* parse module name */
+        index = 0;
+        if (quot) {
+            /* quoted */
+            do {
+                ++index;
+            } while (ptr[index] != quot);
+        } else {
+            /* unquoted */
+            do {
+                ++index;
+            } while (!isspace(ptr[index]) && (ptr[index] != '{'));
+        }
+
+        /* out params */
+        *module_name = strndup(ptr, index);
+        SR_CHECK_MEM_RET(!*module_name, err_info);
+        *format = LYS_IN_YANG;
+
+        return NULL;
+    }
 
     /* learn the format */
     if ((strlen(schema_path) > 4) && !strcmp(schema_path + strlen(schema_path) - 4, ".yin")) {
