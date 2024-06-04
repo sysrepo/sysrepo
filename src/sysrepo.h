@@ -493,6 +493,8 @@ const sr_module_ds_t *sr_get_module_ds_default(void);
 /**
  * @brief Install a new schema (module) into sysrepo with all the available options.
  *
+ * If a libyang import callback is set for @p conn context, it will be used when installing the modules.
+ *
  * Any initial data are used as `running`, `startup`, and `factory-default` datastore data. If not set,
  * the datastore plugin will be used to get the initial data for each datastore, which should generally be empty
  * but may not be for custom DS plugins.
