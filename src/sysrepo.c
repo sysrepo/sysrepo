@@ -1987,6 +1987,7 @@ sr_update_modules_prepare(struct ly_ctx *new_ctx, sr_conn_ctx_t *conn, const cha
     if ((err_info = sr_shmmod_ctx_load_modules(SR_CONN_MOD_SHM(conn), new_ctx, old_mod_set))) {
         goto cleanup;
     }
+    ly_ctx_set_module_imp_clb(new_ctx, NULL, NULL);
 
     for (i = 0; i < schema_path_count; ++i) {
         old_mod = old_mod_set->objs[i];
