@@ -84,7 +84,6 @@ sr_modinfo_add(const struct lys_module *ly_mod, const char *xpath, int dup_xpath
         mod->state |= MOD_INFO_NEW;
     } else if (!(mod->state & MOD_INFO_REQ)) {
         /* different type, re-add */
-        mod->state &= ~MOD_INFO_TYPE_MASK;
         mod->state |= MOD_INFO_NEW;
     } else if (!mod->xpath_count) {
         /* mod is present with no xpaths (full data tree), nothing to add */
@@ -2522,7 +2521,6 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
     sr_datastore_t ds;
     struct sr_mod_info_mod_s *mod = NULL;
     uint32_t i;
-    int new = 0;
 
     assert((mod_type == MOD_INFO_REQ) || (mod_type == MOD_INFO_DEP) || (mod_type == MOD_INFO_INV_DEP));
 
@@ -2531,15 +2529,11 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
         if (mod_info->mods[i].ly_mod == ly_mod) {
             /* already there, update module type if needed */
             mod = &mod_info->mods[i];
+            mod->state |= mod_type;
+
             if (mod->state & MOD_INFO_NEW) {
-                new = 1;
-            }
-            if ((mod->state & MOD_INFO_TYPE_MASK) < mod_type) {
-                mod->state &= ~MOD_INFO_TYPE_MASK;
-                mod->state |= mod_type;
-            }
-            if (new) {
                 /* new module, needs its members filled */
+                mod->state &= ~MOD_INFO_NEW;
                 break;
             }
             return NULL;
@@ -2602,7 +2596,6 @@ sr_modinfo_mod_new(const struct lys_module *ly_mod, uint32_t mod_type, struct sr
     mod->shm_mod = shm_mod;
     mod->ly_mod = ly_mod;
     memcpy(&mod->ds_handle, &ds_handle, sizeof ds_handle);
-    mod->state &= ~MOD_INFO_TYPE_MASK;
     mod->state |= mod_type;
 
     return NULL;

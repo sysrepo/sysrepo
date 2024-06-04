@@ -4,8 +4,8 @@
  * @brief header for modinfo routines
  *
  * @copyright
- * Copyright (c) 2018 - 2021 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2021 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -22,6 +22,8 @@
 #include "shm_types.h"
 #include "sysrepo_types.h"
 
+/* several mod types can be set for a single module because they affect validation (only CHANGED REQ modules are
+ * validated but all INV_DEP modules are validated) */
 #define MOD_INFO_NEW        0x0001 /* module was added (or an xpath) to mod info and needs to be consolidated */
 #define MOD_INFO_DEP        0x0002 /* dependency module, its data cannot be changed, but are required for validation */
 #define MOD_INFO_INV_DEP    0x0004 /* inverse dependency module, its data cannot be changed, but will be validated */
