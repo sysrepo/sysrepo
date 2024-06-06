@@ -309,18 +309,25 @@ sr_shmsub_recover(sr_sub_shm_t *sub_shm)
 {
     sr_sub_event_t ev = ATOMIC_LOAD_RELAXED(sub_shm->event);
 
-    if (sub_shm->orig_cid && !sr_conn_is_alive(sub_shm->orig_cid)) {
-        SR_LOG_WRN("EV ORIGIN: SHM event \"%s\" of CID %" PRIu32 " ID %" PRIu32 " recovered.",
-                sr_ev2str(ev), sub_shm->orig_cid,
-                (uint32_t)ATOMIC_LOAD_RELAXED(sub_shm->request_id));
-
-        /* clear the event */
-        ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
-        sub_shm->orig_cid = 0;
-    } else if (ev && (ev != SR_SUB_EV_NOTIF)) {
-        /* if there is an event except SR_SUB_EV_NOTIF, orig_cid must always exist */
-        assert(sub_shm->orig_cid);
+    /* if orig_cid is set, the connection must be alive*/
+    if (sub_shm->orig_cid) {
+        if (sr_conn_is_alive(sub_shm->orig_cid)) {
+            return;
+        }
+    } else {
+        /* if there is no orig_cid, there should be no event, except a notif event */
+        if (!ev || (ev == SR_SUB_EV_NOTIF)) {
+            return;
+        }
     }
+
+    SR_LOG_WRN("EV ORIGIN: SHM event \"%s\" of CID %" PRIu32 " ID %" PRIu32 " recovered.",
+            sr_ev2str(ev), sub_shm->orig_cid,
+            (uint32_t)ATOMIC_LOAD_RELAXED(sub_shm->request_id));
+
+    /* clear the event */
+    ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
+    sub_shm->orig_cid = 0;
 }
 
 /**
@@ -338,8 +345,11 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
     sr_error_info_t *err_info = NULL;
     struct timespec timeout_abs;
     sr_sub_event_t last_event;
-    uint32_t request_id, last_request_id;
+    uint32_t last_request_id;
     int ret;
+
+    /* it is only possible to lock with none or error */
+    assert(!lock_event || (SR_SUB_EV_ERROR == lock_event));
 
     /* WRITE LOCK */
     if ((err_info = sr_rwlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_WRITE, cid, __func__, NULL, NULL))) {
@@ -350,9 +360,6 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
         /* instead of waiting, try to recover the event immediately */
         sr_shmsub_recover(sub_shm);
     }
-
-    /* remember current request_id */
-    request_id = ATOMIC_LOAD_RELAXED(sub_shm->request_id);
 
     assert(sub_shm->lock.writer == cid);
     /* FAKE WRITE UNLOCK */
@@ -387,7 +394,7 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
 
     if (ret) {
         if ((ret == ETIMEDOUT) && (!sub_shm->lock.readers[0]) &&
-                (!last_event || (last_event == lock_event)) && (request_id == last_request_id)) {
+                (!last_event || (last_event == lock_event))) {
             /* even though the timeout has elapsed, the event was handled so continue normally */
             /* ensure that there are no readers left, otherwise we don't have the write lock */
             goto event_handled;
@@ -413,7 +420,11 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
 
 event_handled:
     /* we have write lock and the expected event, remove any left over orig_cid */
-    sub_shm->orig_cid = 0;
+    if (sub_shm->orig_cid) {
+        SR_LOG_WRN("Recovered \"%s\" previous event \"%s\" ID %" PRIu32 " abandoned by CID %" PRIu32,
+                shm_name, sr_ev2str(last_event), last_request_id, sub_shm->orig_cid);
+        sub_shm->orig_cid = 0;
+    }
     return NULL;
 }
 
@@ -476,15 +487,18 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
     last_event = ATOMIC_LOAD_RELAXED(sub_shm->event);
     last_request_id = ATOMIC_LOAD_RELAXED(sub_shm->request_id);
 
+    /* request_id cannot have changed while we were waiting */
+    assert(request_id == last_request_id);
+
     /* orig_cid is mainly used to recover the shm if the originator has crashed after a fake write unlock.
      * We can clear it here, as we will not fake write unlock beyond this point. */
     sub_shm->orig_cid = 0;
 
     if (ret) {
-        if ((ret == ETIMEDOUT) && SR_IS_NOTIFY_EVENT(last_event) && (request_id == last_request_id)) {
+        if ((ret == ETIMEDOUT) && SR_IS_NOTIFY_EVENT(last_event)) {
             /* even though the timeout has elapsed, the event was handled so continue normally */
             goto event_handled;
-        } else if ((ret == ETIMEDOUT) && (last_event && !SR_IS_NOTIFY_EVENT(last_event))) {
+        } else if ((ret == ETIMEDOUT) && (event == last_event)) { /* our publised event remains untouched in SHM */
             /* WRITE LOCK, chances are we will get it if we ignore the event */
             timeout_abs2 = sr_time_ts_add(timeout_abs, SR_EVENT_TIMEOUT_LOCK_TIMEOUT);
             if (!(err_info = sr_sub_rwlock(&sub_shm->lock, &timeout_abs2, SR_LOCK_WRITE, cid, __func__, NULL, NULL, 1))) {
@@ -494,7 +508,12 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
                 write_lock = 1;
             }
         } else {
-            /* other error */
+            /* other error - not ETIMEDOUT or shm event has changed incorrectly */
+            if (event != last_event) {
+                SR_LOG_WRN("EV ORIGIN: SHM event \"%s\" ID %" PRIu32 " changed to \"%s\" unexpectedly",
+                        sr_ev2str(event), request_id, sr_ev2str(last_event));
+
+            }
             SR_ERRINFO_COND(&err_info, __func__, ret);
         }
 
@@ -509,7 +528,7 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
             sub_shm->lock.writer = cid;
         }
 
-        if ((event == last_event) && (request_id == last_request_id)) {
+        if ((event == last_event)) {
             /* event failed */
             if (clear_ev_on_err) {
                 ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
