@@ -391,14 +391,15 @@ unset(CMAKE_REQUIRED_DEFINITIONS)
 
 # libmongoc - optional
 find_package(mongoc-1.0 1.24.0 CONFIG)
-if(TARGET mongo::mongoc_shared)
+find_program(MONGOSH mongosh)
+if(TARGET mongo::mongoc_shared AND MONGOSH)
     # datastore plugin added if libraries exist
     list(APPEND LIB_SRC src/plugins/ds_mongo.c)
     set(SR_ENABLED_DS_PLG_MONGO 1)
     message(STATUS "Datastore plugin ds_mongo supported.")
 
     # try running a command in MongoDB database (should not be possible) and check authentication
-    execute_process(COMMAND "mongosh" "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}" "--eval" "use sr_running" "--eval" "db.runCommand({usersInfo: 1})"
+    execute_process(COMMAND ${MONGOSH} "--host" "${MONGO_HOST}" "--port" "${MONGO_PORT}" "--eval" "use sr_running" "--eval" "db.runCommand({usersInfo: 1})"
             RESULT_VARIABLE MONGO_RETURN_CODE
             ERROR_VARIABLE MONGO_STDERR
             OUTPUT_QUIET)
@@ -417,7 +418,8 @@ endif()
 
 # libhiredis - optional
 find_package(LibHiredis 1.1.0)
-if(LIBHIREDIS_FOUND)
+find_program(REDIS_CLI redis-cli)
+if(LIBHIREDIS_FOUND AND REDIS_CLI)
     # datastore plugin added if libraries exist
     list(APPEND LIB_SRC src/plugins/ds_redis.c)
     set(SR_ENABLED_DS_PLG_REDIS 1)
@@ -425,7 +427,7 @@ if(LIBHIREDIS_FOUND)
 
     # try running a command in Redis database and check authentication
     execute_process(COMMAND "echo" "ACL WHOAMI"
-            COMMAND "redis-cli -h ${REDIS_HOST} -p ${REDIS_PORT}"
+            COMMAND "${REDIS_CLI} -h ${REDIS_HOST} -p ${REDIS_PORT}"
             OUTPUT_VARIABLE REDIS_STDOUT
             ERROR_VARIABLE REDIS_STDERR)
     if("${REDIS_STDOUT}" MATCHES "^NOAUTH.*")
