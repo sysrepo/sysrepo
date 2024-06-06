@@ -1798,7 +1798,7 @@ int sr_oper_poll_subscribe(sr_session_ctx_t *session, const char *module_name, c
  *
  * @param[in,out] err_info Empty or an exisiting error info to add to.
  * @param[in] plg_name Plugin name to print.
- * @param[in] error_format Optional arbitrary error format identifier, set its error data using
+ * @param[in] err_format_name Optional arbitrary error format identifier, set its error data using
  * ::srplg_errinfo_push_error_data(). More details in ::sr_session_set_error_format().
  * @param[in] err_code Error code of the error.
  * @param[in] format Error message format.
