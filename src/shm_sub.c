@@ -453,6 +453,7 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
     sr_sub_event_t last_event;
     uint32_t last_request_id, i, err_count;
     int ret, write_lock = 0;
+    struct timespec timeout_abs2;
 
     assert((expected_ev == SR_SUB_EV_NONE) || SR_IS_NOTIFY_EVENT(expected_ev));
     assert(shm_data_sub->fd > -1);
@@ -485,7 +486,8 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
             goto event_handled;
         } else if ((ret == ETIMEDOUT) && (last_event && !SR_IS_NOTIFY_EVENT(last_event))) {
             /* WRITE LOCK, chances are we will get it if we ignore the event */
-            if (!(err_info = sr_sub_rwlock(&sub_shm->lock, timeout_abs, SR_LOCK_WRITE, cid, __func__, NULL, NULL, 1))) {
+            timeout_abs2 = sr_time_ts_add(timeout_abs, SR_EVENT_TIMEOUT_LOCK_TIMEOUT);
+            if (!(err_info = sr_sub_rwlock(&sub_shm->lock, &timeout_abs2, SR_LOCK_WRITE, cid, __func__, NULL, NULL, 1))) {
                 /* event timeout */
                 sr_errinfo_new(cb_err_info, SR_ERR_TIME_OUT, "EV ORIGIN: SHM event \"%s\" ID %" PRIu32 " processing timed out.",
                         sr_ev2str(event), request_id);
