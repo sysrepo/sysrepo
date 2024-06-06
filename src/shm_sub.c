@@ -498,15 +498,6 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
             SR_ERRINFO_COND(&err_info, __func__, ret);
         }
 
-        if ((event == last_event) && (request_id == last_request_id)) {
-            /* event failed */
-            if (clear_ev_on_err) {
-                ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
-            } else if ((expected_ev == SR_SUB_EV_SUCCESS) || (expected_ev == SR_SUB_EV_ERROR)) {
-                ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_ERROR);
-            }
-        }
-
         if (write_lock) {
             /* we already have the write lock */
         } else if (sub_shm->lock.readers[0] || sub_shm->lock.writer) {
@@ -517,6 +508,17 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
             /* set the WRITE lock back */
             sub_shm->lock.writer = cid;
         }
+
+        if ((event == last_event) && (request_id == last_request_id)) {
+            /* event failed */
+            if (clear_ev_on_err) {
+                ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
+            } else if ((expected_ev == SR_SUB_EV_SUCCESS) || (expected_ev == SR_SUB_EV_ERROR)) {
+                /* do not store SR_SUB_EV_ERROR if abort event is not generated (it is not on lock_lost) */
+                ATOMIC_STORE_RELAXED(sub_shm->event, *lock_lost ? SR_SUB_EV_NONE : SR_SUB_EV_ERROR);
+            }
+        }
+
         return err_info;
     }
 
