@@ -25,7 +25,7 @@
 #include "common_types.h"
 #include "sysrepo_types.h"
 
-#define SR_SHM_VER 17   /**< Main, mod, and ext SHM version of their expected content structures. */
+#define SR_SHM_VER 18   /**< Main, mod, and ext SHM version of their expected content structures. */
 #define SR_MAIN_SHM_LOCK "sr_main_lock"     /**< Main SHM file lock name. */
 
 /**
@@ -90,6 +90,7 @@ typedef struct {
                                      RPC/action subscriptions. */
     off_t subs;                 /**< Array of RPC/action subscriptions (offset in ext SHM). */
     uint32_t sub_count;         /**< Number of RPC/action subscriptions. */
+    uint8_t scraps;             /**< Number of scrapped RPC/action subscriptions. */
 } sr_rpc_t;
 
 /**
@@ -140,27 +141,32 @@ typedef struct {
                                      change subscriptions. */
         off_t subs;             /**< Array of change subscriptions (offset in ext SHM). */
         uint32_t sub_count;     /**< Number of change subscriptions. */
+        uint8_t scraps;         /**< Whether there are any scrapped subscriptions. */
     } change_sub[SR_DS_COUNT];  /**< Change subscriptions for each datastore. */
 
     sr_rwlock_t oper_get_lock;  /**< Process-shared lock for reading or preventing changes (READ) or modifying (WRITE)
                                      operational get subscriptions. */
     off_t oper_get_subs;        /**< Array of operational get subscriptions (offset in ext SHM). */
     uint32_t oper_get_sub_count; /**< Number of operational get subscriptions. */
+    uint8_t oper_get_scraps;     /**< Whether there are any scrapped operational get subscriptions. */
 
     sr_rwlock_t oper_poll_lock; /**< Process-shared lock for reading or preventing changes (READ) or modifying (WRITE)
                                      operational poll subscriptions. */
     off_t oper_poll_subs;       /**< Array of operational poll subscriptions (offset in ext SHM). */
     uint32_t oper_poll_sub_count; /**< Number of operational poll subscriptions. */
+    uint8_t oper_poll_scraps;     /**< Whether there are any scrapped operational poll subscriptions. */
 
     sr_rwlock_t notif_lock;     /**< Process-shared lock for reading or preventing changes (READ) or modifying (WRITE)
                                      notification subscriptions. */
     off_t notif_subs;           /**< Array of notification subscriptions (offset in ext SHM). */
     uint32_t notif_sub_count;   /**< Number of notification subscriptions. */
+    uint8_t notif_sub_scraps;   /**< Whether there are any scrapped notification subscriptions. */
 
     sr_rwlock_t rpc_ext_lock;   /**< Process-shared lock for reading or preventing changes (READ) or modifying (WRITE)
                                      ext RPC subscriptions. */
     off_t rpc_ext_subs;         /**< Array of ext RPC subscriptions (offset in ext SHM). */
     uint32_t rpc_ext_sub_count; /**< Number of ext RPC subscriptions. */
+    uint8_t rpc_ext_sub_scraps; /**< Whether there are any scrapped ext RPC subscriptions. */
 } sr_mod_t;
 
 /**
