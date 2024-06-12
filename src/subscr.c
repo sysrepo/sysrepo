@@ -1793,17 +1793,17 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
     *notif_sub_count = 0;
     i = 0;
     while (i < shm_mod->notif_sub_count) {
-        /* check subscription aliveness */
-        if (!sr_conn_is_alive((*notif_subs)[i].cid)) {
-            /* recover the subscription */
-            if ((err_info = sr_shmext_notif_sub_stop(conn, shm_mod, i, 1, SR_LOCK_READ, 1))) {
-                sr_errinfo_free(&err_info);
-            }
+        /* skip suspended subscriptions */
+        if (ATOMIC_LOAD_RELAXED((*notif_subs)[i].suspended)) {
+            ++i;
             continue;
         }
 
-        /* skip suspended subscriptions */
-        if (ATOMIC_LOAD_RELAXED((*notif_subs)[i].suspended)) {
+        /* check subscription aliveness */
+        if (!sr_conn_is_alive((*notif_subs)[i].cid)) {
+            /* scrap the subscription to prevent future aliveness checks */
+            SR_SHMEXT_SCRAP_SUBSCR(&((*notif_subs)[i]));
+            shm_mod->notif_sub_scraps = 1;
             ++i;
             continue;
         }
