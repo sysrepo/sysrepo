@@ -740,8 +740,8 @@ sr_lycc_update_data_init_ds_load(sr_conn_ctx_t *conn, sr_int_install_mod_t *new_
     *init_data = NULL;
 
     for (i = 0; i < new_mod_count; ++i) {
-        if (!new_mods[i].module_ds.plugin_name[ds]) {
-            /* disabled */
+        if (!new_mods[i].module_ds.plugin_name[ds] || new_mods[i].enable_features) {
+            /* disabled or only new features enabled */
             continue;
         }
 
