@@ -48,8 +48,12 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
     struct ly_ctx *new_ctx = NULL;
     char *path;
 
+    /* fill the cb_data for recovery */
     cb_data.ly_ctx_p = &conn->ly_ctx;
     cb_data.ds = SR_DS_STARTUP;
+    if ((err_info = sr_ds_handle_find(srpds_json.name, conn, &cb_data.ds_handle))) {
+        return err_info;
+    }
 
     /* CONTEXT LOCK */
     if ((err_info = sr_rwlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func,
