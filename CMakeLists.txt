@@ -427,7 +427,7 @@ if(LIBHIREDIS_FOUND AND REDIS_CLI)
 
     # try running a command in Redis database and check authentication
     execute_process(COMMAND "echo" "ACL WHOAMI"
-            COMMAND "${REDIS_CLI} -h ${REDIS_HOST} -p ${REDIS_PORT}"
+            COMMAND "${REDIS_CLI}" "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}"
             OUTPUT_VARIABLE REDIS_STDOUT
             ERROR_VARIABLE REDIS_STDERR)
     if("${REDIS_STDOUT}" MATCHES "^NOAUTH.*")
