@@ -1704,6 +1704,11 @@ srsn_read_dispatch_thread(void *UNUSED(arg))
             --r;
         }
 
+        if (!snstate.valid_pfds) {
+            /* no more FDs to poll */
+            break;
+        }
+
         /* DISPATCH UNLOCK */
         pthread_mutex_unlock(&snstate.dispatch_lock);
         locked = 0;
