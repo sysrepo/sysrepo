@@ -1622,7 +1622,7 @@ cleanup:
 }
 
 sr_error_info_t *
-srsn_dispatch_init(int fd, void *cb_data)
+srsn_dispatch_init(sr_conn_ctx_t *conn, srsn_notif_cb cb)
 {
     sr_error_info_t *err_info = NULL;
     int r;
@@ -1633,120 +1633,21 @@ srsn_dispatch_init(int fd, void *cb_data)
         return err_info;
     }
 
-    if (snstate.pfds) {
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Subscription read dispatch thread is already running.");
-        goto cleanup;
-    }
-
-    /* set FD to non-blocking mode */
-    if (fcntl(fd, F_SETFL, O_NONBLOCK) == -1) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Setting non-blocking mode failed (%s).", strerror(errno));
-        goto cleanup;
-    }
-
-    /* prepare the poll structure */
-    snstate.pfds = calloc(1, sizeof *snstate.pfds);
-    snstate.cb_data = calloc(1, sizeof *snstate.cb_data);
-    SR_CHECK_MEM_GOTO(!snstate.pfds || !snstate.cb_data, err_info, cleanup);
-
-    snstate.pfds[0].fd = fd;
-    snstate.pfds[0].events = POLLIN;
-    snstate.cb_data[0] = cb_data;
-
-    snstate.pfd_count = 1;
-    snstate.valid_pfds = 1;
-
-cleanup:
-    /* DISPATCH UNLOCK */
-    pthread_mutex_unlock(&snstate.dispatch_lock);
-
-    return err_info;
-}
-
-sr_error_info_t *
-srsn_dispatch_add(int fd, void *cb_data)
-{
-    sr_error_info_t *err_info = NULL;
-    uint32_t i;
-    void *mem;
-    int r;
-
-    /* DISPATCH LOCK */
-    if ((r = pthread_mutex_lock(&snstate.dispatch_lock))) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Locking failed (%s: %s).", __func__, strerror(r));
-        return err_info;
-    }
-
-    if (!snstate.pfds) {
-        sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Subscription read dispatch thread is not running.");
-        goto cleanup;
-    }
-
-    /* set FD to non-blocking mode */
-    if (fcntl(fd, F_SETFL, O_NONBLOCK) == -1) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Setting non-blocking mode failed (%s).", strerror(errno));
-        goto cleanup;
-    }
-
-    if (snstate.valid_pfds < snstate.pfd_count) {
-        /* move the invalid PFDs, keep the order */
-        for (i = 0; i < snstate.valid_pfds; ++i) {
-            if (snstate.pfds[i].fd == -1) {
-                memmove(&snstate.pfds[i], &snstate.pfds[i + 1], (snstate.pfd_count - i) * sizeof *snstate.pfds);
-            }
-        }
-    }
-
-    /* realloc arrays */
-    mem = realloc(snstate.pfds, (snstate.valid_pfds + 1) * sizeof *snstate.pfds);
-    SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
-    snstate.pfds = mem;
-    mem = realloc(snstate.cb_data, (snstate.valid_pfds + 1) * sizeof *snstate.cb_data);
-    SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
-    snstate.cb_data = mem;
-
-    /* add the new items */
-    snstate.pfds[snstate.valid_pfds].fd = fd;
-    snstate.pfds[snstate.valid_pfds].events = POLLIN;
-    snstate.cb_data[snstate.valid_pfds] = cb_data;
-
-    ++snstate.valid_pfds;
-    snstate.pfd_count = snstate.valid_pfds;
-
-cleanup:
-    /* DISPATCH UNLOCK */
-    pthread_mutex_unlock(&snstate.dispatch_lock);
-
-    return err_info;
-}
-
-uint32_t
-srsn_dispatch_count(void)
-{
-    sr_error_info_t *err_info = NULL;
-    int r;
-    uint32_t count = 0;
-
-    /* DISPATCH LOCK */
-    if ((r = pthread_mutex_lock(&snstate.dispatch_lock))) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Locking failed (%s: %s).", __func__, strerror(r));
-        goto cleanup;
-    }
-
-    count = snstate.valid_pfds;
+    snstate.conn = conn;
+    snstate.cb = cb;
 
     /* DISPATCH UNLOCK */
     pthread_mutex_unlock(&snstate.dispatch_lock);
 
-cleanup:
-    sr_errinfo_free(&err_info);
-    return count;
+    return NULL;
 }
 
-void *
-srsn_read_dispatch_thread(void *arg)
+/**
+ * @brief Thread reading notifications from subscriptions.
+ */
+static void *
+srsn_read_dispatch_thread(void *UNUSED(arg))
 {
-    struct srsn_dispatch_arg *data = arg;
     sr_error_info_t *err_info = NULL;
     const struct ly_ctx *ly_ctx;
     struct timespec ts;
@@ -1780,16 +1681,16 @@ srsn_read_dispatch_thread(void *arg)
 
             if (snstate.pfds[i].revents & POLLIN) {
                 /* lock the context */
-                ly_ctx = sr_acquire_context(data->conn);
+                ly_ctx = sr_acquire_context(snstate.conn);
 
                 /* read all notifs and call the callback */
                 while (!srsn_read_notif(snstate.pfds[i].fd, ly_ctx, &ts, &notif)) {
-                    data->cb(notif, &ts, snstate.cb_data[i]);
+                    snstate.cb(notif, &ts, snstate.cb_data[i]);
                     lyd_free_tree(notif);
                 }
 
                 /* release the context */
-                sr_release_context(data->conn);
+                sr_release_context(snstate.conn);
             }
 
             if (snstate.pfds[i].revents & POLLHUP) {
@@ -1836,7 +1737,95 @@ cleanup:
         pthread_mutex_unlock(&snstate.dispatch_lock);
     }
 
-    free(data);
     sr_errinfo_free(&err_info);
     return NULL;
+}
+
+sr_error_info_t *
+srsn_dispatch_add(int fd, void *cb_data)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i;
+    void *mem;
+    pthread_t tid;
+    int r;
+
+    /* DISPATCH LOCK */
+    if ((r = pthread_mutex_lock(&snstate.dispatch_lock))) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Locking failed (%s: %s).", __func__, strerror(r));
+        return err_info;
+    }
+
+    if (!snstate.conn || !snstate.cb) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Subscribed-notifications read dispatch not initialized.");
+        goto cleanup;
+    }
+
+    /* set FD to non-blocking mode */
+    if (fcntl(fd, F_SETFL, O_NONBLOCK) == -1) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Setting non-blocking mode failed (%s).", strerror(errno));
+        goto cleanup;
+    }
+
+    if (snstate.valid_pfds < snstate.pfd_count) {
+        /* move the invalid PFDs, keep the order */
+        for (i = 0; i < snstate.valid_pfds; ++i) {
+            if (snstate.pfds[i].fd == -1) {
+                memmove(&snstate.pfds[i], &snstate.pfds[i + 1], (snstate.pfd_count - i) * sizeof *snstate.pfds);
+            }
+        }
+    }
+
+    /* realloc arrays */
+    mem = realloc(snstate.pfds, (snstate.valid_pfds + 1) * sizeof *snstate.pfds);
+    SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
+    snstate.pfds = mem;
+    mem = realloc(snstate.cb_data, (snstate.valid_pfds + 1) * sizeof *snstate.cb_data);
+    SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
+    snstate.cb_data = mem;
+
+    /* add the new items */
+    snstate.pfds[snstate.valid_pfds].fd = fd;
+    snstate.pfds[snstate.valid_pfds].events = POLLIN;
+    snstate.cb_data[snstate.valid_pfds] = cb_data;
+
+    ++snstate.valid_pfds;
+    ++snstate.pfd_count;
+
+    if (snstate.pfd_count == 1) {
+        /* thread is not running, create it */
+        if ((r = pthread_create(&tid, NULL, srsn_read_dispatch_thread, NULL))) {
+            sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to create a thread (%s).", strerror(r));
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    /* DISPATCH UNLOCK */
+    pthread_mutex_unlock(&snstate.dispatch_lock);
+
+    return err_info;
+}
+
+uint32_t
+srsn_dispatch_count(void)
+{
+    sr_error_info_t *err_info = NULL;
+    int r;
+    uint32_t count = 0;
+
+    /* DISPATCH LOCK */
+    if ((r = pthread_mutex_lock(&snstate.dispatch_lock))) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Locking failed (%s: %s).", __func__, strerror(r));
+        goto cleanup;
+    }
+
+    count = snstate.valid_pfds;
+
+    /* DISPATCH UNLOCK */
+    pthread_mutex_unlock(&snstate.dispatch_lock);
+
+cleanup:
+    sr_errinfo_free(&err_info);
+    return count;
 }

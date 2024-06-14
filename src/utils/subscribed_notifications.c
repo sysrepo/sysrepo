@@ -4,8 +4,8 @@
  * @brief multi-module notification subscription functions
  *
  * @copyright
- * Copyright (c) 2023 Deutsche Telekom AG.
- * Copyright (c) 2023 CESNET, z.s.p.o.
+ * Copyright (c) 2023 - 2024 Deutsche Telekom AG.
+ * Copyright (c) 2023 - 2024 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -788,39 +788,34 @@ srsn_poll(int fd, uint32_t timeout_ms)
 }
 
 API int
-srsn_read_dispatch_start(int fd, sr_conn_ctx_t *conn, srsn_notif_cb cb, void *cb_data)
+srsn_read_dispatch_init(sr_conn_ctx_t *conn, srsn_notif_cb cb)
 {
     sr_error_info_t *err_info = NULL;
-    struct srsn_dispatch_arg *arg = NULL;
-    int r;
-    pthread_t tid;
 
-    SR_CHECK_ARG_APIRET(!fd || !conn || !cb, NULL, err_info);
+    SR_CHECK_ARG_APIRET(!conn || !cb, NULL, err_info);
 
-    /* prepare the pollfd structure */
-    if ((err_info = srsn_dispatch_init(fd, cb_data))) {
-        goto cleanup;
-    }
+    /* store conn and cb */
+    err_info = srsn_dispatch_init(conn, cb);
 
-    /* prepare the argument */
-    arg = malloc(sizeof *arg);
-    SR_CHECK_MEM_GOTO(!arg, err_info, cleanup);
-
-    arg->conn = conn;
-    arg->cb = cb;
-
-    /* create the thread */
-    if ((r = pthread_create(&tid, NULL, srsn_read_dispatch_thread, arg))) {
-        sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to create a thread (%s).", strerror(r));
-        goto cleanup;
-    }
-
-    /* arg is freed by the thread */
-    arg = NULL;
-
-cleanup:
-    free(arg);
     return sr_api_ret(NULL, err_info);
+}
+
+API int
+srsn_read_dispatch_start(int fd, sr_conn_ctx_t *conn, srsn_notif_cb cb, void *cb_data)
+{
+    int rc;
+
+    /* init */
+    if ((rc = srsn_read_dispatch_init(conn, cb))) {
+        return rc;
+    }
+
+    /* add */
+    if ((rc = srsn_read_dispatch_add(fd, cb_data))) {
+        return rc;
+    }
+
+    return SR_ERR_OK;
 }
 
 API int

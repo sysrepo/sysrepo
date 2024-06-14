@@ -127,6 +127,8 @@ struct srsn_state {
 
     /* notification dispatch */
     pthread_mutex_t dispatch_lock;
+    sr_conn_ctx_t *conn;
+    srsn_notif_cb cb;
     struct pollfd *pfds;
     void **cb_data;
     uint32_t pfd_count;
@@ -336,13 +338,13 @@ sr_error_info_t *srsn_sn_sr_subscribe(sr_session_ctx_t *sess, struct srsn_sub *s
         struct timespec *replay_start);
 
 /**
- * @brief Initialize notification dispatch with a single FD.
+ * @brief Initialize notification dispatch.
  *
- * @param[in] fd Subscription FD.
- * @param[in] cb_data Callback data for @p fd.
+ * @param[in] conn Connection to use.
+ * @param[in] cb SN read dispatch callback.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *srsn_dispatch_init(int fd, void *cb_data);
+sr_error_info_t *srsn_dispatch_init(sr_conn_ctx_t *conn, srsn_notif_cb cb);
 
 /**
  * @brief Add another FD handled by notification dispatch.
@@ -359,10 +361,5 @@ sr_error_info_t *srsn_dispatch_add(int fd, void *cb_data);
  * @return Subscription count.
  */
 uint32_t srsn_dispatch_count(void);
-
-/**
- * @brief Thread reading notifications from subscriptions.
- */
-void *srsn_read_dispatch_thread(void *arg);
 
 #endif /* SN_COMMON_H_ */

@@ -306,21 +306,24 @@ int srsn_poll(int fd, uint32_t timeout_ms);
 typedef void (*srsn_notif_cb)(const struct lyd_node *notif, const struct timespec *timestamp, void *cb_data);
 
 /**
- * @brief Dispatch a per-process thread for reading notifications.
+ * @brief Init read dispatch for notifications, overwrites any previous parameters.
  *
- * Thread automatically terminates after all the @p fd subscriptions terminate by closing their pipes (more can be
- * added using ::srsn_read_dispatch_add()). In that case all the FD read ends are also automatically closed.
- *
- * @param[in] fd File descriptor to read from.
  * @param[in] conn Connection that must not be terminated while the notifications are being processed.
  * @param[in] cb Callback to be called for each notification.
- * @param[in] cb_data User @p cb callback data for the @p fd.
  * @return Error code (::SR_ERR_OK on success).
+ */
+int srsn_read_dispatch_init(sr_conn_ctx_t *conn, srsn_notif_cb cb);
+
+/**
+ * @brief Deprecated, came functionality as calling ::srsn_read_dispatch_init() and ::srsn_read_dispatch_add().
  */
 int srsn_read_dispatch_start(int fd, sr_conn_ctx_t *conn, srsn_notif_cb cb, void *cb_data);
 
 /**
  * @brief Add another subscription to be handled by the dispatched thread.
+ *
+ * The thread is automatically started on the first @p fd and terminated when the last
+ * one is closed.
  *
  * @param[in] fd Subscription file descriptor to read from.
  * @param[in] cb_data User @p cb callback data for the @p fd.
