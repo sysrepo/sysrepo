@@ -127,11 +127,11 @@ struct srsn_state {
 
     /* notification dispatch */
     pthread_mutex_t dispatch_lock;
-    pthread_t tid;
+    pthread_t tid;          /**< set only if the dispatch thread is running */
     sr_conn_ctx_t *conn;
     srsn_notif_cb cb;
-    struct pollfd *pfds;
-    void **cb_data;
+    struct pollfd *pfds;    /**< array of sub-ntf FDs to read notifications from */
+    void **cb_data;         /**< array connected with pfds providing cb_data for each sub-ntf */
     uint32_t pfd_count;
     uint32_t valid_pfds;    /**< count of current valid (fd > -1) pfd items */
 };
