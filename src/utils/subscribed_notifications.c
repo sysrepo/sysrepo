@@ -836,3 +836,14 @@ srsn_read_dispatch_count(void)
 {
     return srsn_dispatch_count();
 }
+
+API int
+srsn_read_dispatch_destroy(void)
+{
+    sr_error_info_t *err_info = NULL;
+
+    /* destroy the dispatch thread and the user variables */
+    err_info = srsn_dispatch_destroy();
+
+    return sr_api_ret(NULL, err_info);
+}

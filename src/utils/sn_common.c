@@ -1655,9 +1655,6 @@ srsn_read_dispatch_thread(void *UNUSED(arg))
     uint32_t i;
     int r, locked = 0;
 
-    /* no need to call join */
-    pthread_detach(pthread_self());
-
     /* DISPATCH LOCK */
     if ((r = pthread_mutex_lock(&snstate.dispatch_lock))) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, "Locking failed (%s: %s).", __func__, strerror(r));
@@ -1665,9 +1662,13 @@ srsn_read_dispatch_thread(void *UNUSED(arg))
     }
     locked = 1;
 
-    while (snstate.valid_pfds) {
+    while (snstate.tid) {
         /* poll */
-        r = poll(snstate.pfds, snstate.pfd_count, 490);
+        if (snstate.valid_pfds) {
+            r = poll(snstate.pfds, snstate.pfd_count, 90);
+        } else {
+            r = 0;
+        }
         if (r == -1) {
             sr_errinfo_new(&err_info, SR_ERR_SYS, "Poll failed (%s).", strerror(errno));
             goto cleanup;
@@ -1704,11 +1705,6 @@ srsn_read_dispatch_thread(void *UNUSED(arg))
             --r;
         }
 
-        if (!snstate.valid_pfds) {
-            /* no more FDs to poll */
-            break;
-        }
-
         /* DISPATCH UNLOCK */
         pthread_mutex_unlock(&snstate.dispatch_lock);
         locked = 0;
@@ -1725,18 +1721,6 @@ srsn_read_dispatch_thread(void *UNUSED(arg))
     }
 
 cleanup:
-    for (i = 0; i < snstate.pfd_count; ++i) {
-        if (snstate.pfds[i].fd > -1) {
-            close(snstate.pfds[i].fd);
-        }
-    }
-    free(snstate.pfds);
-    snstate.pfds = NULL;
-    free(snstate.cb_data);
-    snstate.cb_data = NULL;
-    snstate.pfd_count = 0;
-    snstate.valid_pfds = 0;
-
     if (locked) {
         /* DISPATCH UNLOCK */
         pthread_mutex_unlock(&snstate.dispatch_lock);
@@ -1752,7 +1736,6 @@ srsn_dispatch_add(int fd, void *cb_data)
     sr_error_info_t *err_info = NULL;
     uint32_t i;
     void *mem;
-    pthread_t tid;
     int r;
 
     /* DISPATCH LOCK */
@@ -1795,11 +1778,11 @@ srsn_dispatch_add(int fd, void *cb_data)
     snstate.cb_data[snstate.valid_pfds] = cb_data;
 
     ++snstate.valid_pfds;
-    ++snstate.pfd_count;
+    snstate.pfd_count = snstate.valid_pfds;
 
-    if (snstate.pfd_count == 1) {
-        /* thread is not running, create it */
-        if ((r = pthread_create(&tid, NULL, srsn_read_dispatch_thread, NULL))) {
+    if (!snstate.tid) {
+        /* create the thread */
+        if ((r = pthread_create(&snstate.tid, NULL, srsn_read_dispatch_thread, NULL))) {
             sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to create a thread (%s).", strerror(r));
             goto cleanup;
         }
@@ -1833,4 +1816,47 @@ srsn_dispatch_count(void)
 cleanup:
     sr_errinfo_free(&err_info);
     return count;
+}
+
+sr_error_info_t *
+srsn_dispatch_destroy(void)
+{
+    sr_error_info_t *err_info = NULL;
+    pthread_t tid;
+    uint32_t i;
+    int r;
+
+    /* DISPATCH LOCK */
+    if ((r = pthread_mutex_lock(&snstate.dispatch_lock))) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Locking failed (%s: %s).", __func__, strerror(r));
+        goto cleanup;
+    }
+
+    tid = snstate.tid;
+    snstate.tid = 0;
+
+    /* DISPATCH UNLOCK */
+    pthread_mutex_unlock(&snstate.dispatch_lock);
+
+    /* join the thread */
+    if (tid && (r = pthread_join(tid, NULL))) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Joining a thread failed (%s: %s).", __func__, strerror(r));
+        goto cleanup;
+    }
+
+    /* free vars */
+    for (i = 0; i < snstate.pfd_count; ++i) {
+        if (snstate.pfds[i].fd > -1) {
+            close(snstate.pfds[i].fd);
+        }
+    }
+    free(snstate.pfds);
+    snstate.pfds = NULL;
+    free(snstate.cb_data);
+    snstate.cb_data = NULL;
+    snstate.pfd_count = 0;
+    snstate.valid_pfds = 0;
+
+cleanup:
+    return err_info;
 }

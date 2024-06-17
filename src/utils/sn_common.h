@@ -127,6 +127,7 @@ struct srsn_state {
 
     /* notification dispatch */
     pthread_mutex_t dispatch_lock;
+    pthread_t tid;
     sr_conn_ctx_t *conn;
     srsn_notif_cb cb;
     struct pollfd *pfds;
@@ -361,5 +362,12 @@ sr_error_info_t *srsn_dispatch_add(int fd, void *cb_data);
  * @return Subscription count.
  */
 uint32_t srsn_dispatch_count(void);
+
+/**
+ * @brief Stop the thread and free all the used vars.
+ *
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *srsn_dispatch_destroy(void);
 
 #endif /* SN_COMMON_H_ */

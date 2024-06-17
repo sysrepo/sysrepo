@@ -4,8 +4,8 @@
  * @brief multi-module notification subscription functions header
  *
  * @copyright
- * Copyright (c) 2023 Deutsche Telekom AG.
- * Copyright (c) 2023 CESNET, z.s.p.o.
+ * Copyright (c) 2023 - 2024 Deutsche Telekom AG.
+ * Copyright (c) 2023 - 2024 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -337,6 +337,13 @@ int srsn_read_dispatch_add(int fd, void *cb_data);
  * @return Number of handled subscriptions, 0 means the dispatch thread is not running.
  */
 uint32_t srsn_read_dispatch_count(void);
+
+/**
+ * @brief Stop the dispatched thread and clear all the used resources.
+ *
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int srsn_read_dispatch_destroy(void);
 
 #ifdef __cplusplus
 }
