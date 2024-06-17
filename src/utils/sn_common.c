@@ -1756,10 +1756,11 @@ srsn_dispatch_add(int fd, void *cb_data)
     }
 
     if (snstate.valid_pfds < snstate.pfd_count) {
-        /* move the invalid PFDs, keep the order */
+        /* move the invalid PFDs and their cb_data, keep the order */
         for (i = 0; i < snstate.valid_pfds; ++i) {
             if (snstate.pfds[i].fd == -1) {
                 memmove(&snstate.pfds[i], &snstate.pfds[i + 1], (snstate.pfd_count - i) * sizeof *snstate.pfds);
+                memmove(&snstate.cb_data[i], &snstate.cb_data[i + 1], (snstate.pfd_count - i) * sizeof *snstate.cb_data);
             }
         }
     }
