@@ -1692,7 +1692,7 @@ srsn_read_dispatch_thread(void *UNUSED(arg))
     while (snstate.tid) {
         /* poll */
         if (snstate.valid_pfds) {
-            r = poll(snstate.pfds, snstate.pfd_count, 90);
+            r = poll(snstate.pfds, snstate.pfd_count, 10);
         } else {
             r = 0;
         }
@@ -1784,10 +1784,15 @@ srsn_dispatch_add(int fd, void *cb_data)
 
     if (snstate.valid_pfds < snstate.pfd_count) {
         /* move the invalid PFDs and their cb_data, keep the order */
-        for (i = 0; i < snstate.valid_pfds; ++i) {
+        i = 0;
+        while (i < snstate.pfd_count) {
             if (snstate.pfds[i].fd == -1) {
-                memmove(&snstate.pfds[i], &snstate.pfds[i + 1], (snstate.pfd_count - i) * sizeof *snstate.pfds);
-                memmove(&snstate.cb_data[i], &snstate.cb_data[i + 1], (snstate.pfd_count - i) * sizeof *snstate.cb_data);
+                memmove(&snstate.pfds[i], &snstate.pfds[i + 1], (snstate.pfd_count - (i + 1)) * sizeof *snstate.pfds);
+                memmove(&snstate.cb_data[i], &snstate.cb_data[i + 1], (snstate.pfd_count - (i + 1)) * sizeof *snstate.cb_data);
+
+                --snstate.pfd_count;
+            } else {
+                ++i;
             }
         }
     }
