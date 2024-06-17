@@ -228,7 +228,9 @@ int srsn_resume(uint32_t sub_id);
 /**
  * @brief Terminate a subscribed-notifications subscription.
  *
- * Generates the 'subscription-terminated' notification.
+ * Generates the 'subscription-terminated' notification. After this function returns,
+ * in case the dispatch thread is running, ::srsn_notif_cb() will not be called for
+ * notifications on this subscription.
  *
  * @param[in] sub_id Subscription ID of the subscription to terminate.
  * @param[in] reason Reason for the termination as an identityref value. If not set, no notification is generated.
