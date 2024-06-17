@@ -753,6 +753,8 @@ void
 srsn_sub_free(struct srsn_sub *sub)
 {
     sr_error_info_t *err_info = NULL;
+    struct pollfd pfd = {0};
+    struct timespec timeout_ts, cur_ts;
     uint32_t i;
     int r;
 
@@ -801,6 +803,31 @@ srsn_sub_free(struct srsn_sub *sub)
     /* close the pipe as last, poll can be waiting for it to signal the subscription fully terminated */
     if (sub->wfd > -1) {
         close(sub->wfd);
+
+        if (snstate.tid) {
+            /* wait until the dispatch thread closes the read end */
+            sr_timeouttime_get(&timeout_ts, SR_SN_READ_DISPATCH_CLOSE_TIMEOUT);
+            pfd.fd = sub->rfd;
+            while (1) {
+                poll(&pfd, 1, 0);
+                if (!(pfd.revents & POLLHUP)) {
+                    /* we expect POLLNVAL but the FD can have already been reused, but we know POLLHUP
+                     * is returned before the read end is closed */
+                    break;
+                }
+
+                /* check for timeout */
+                sr_timeouttime_get(&cur_ts, 0);
+                if (sr_time_cmp(&cur_ts, &timeout_ts) > 0) {
+                    sr_errinfo_new(&err_info, SR_ERR_SYS, "Waiting for SN read dispatch thread close failed (timed out).");
+                    sr_errinfo_free(&err_info);
+                    break;
+                }
+
+                /* sleep */
+                sr_msleep(20);
+            }
+        }
     }
     free(sub);
 

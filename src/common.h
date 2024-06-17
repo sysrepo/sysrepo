@@ -126,6 +126,9 @@ struct srplg_ntf_s;
 /** timeout step for parallel subscription active polling loop */
 #define SR_SHMSUB_MANY_EVENT_TIMEOUT_STEP_MS 1
 
+/** timeout for waiting until SRSN dispatch thread closes the read end of the notification pipe (ms) */
+#define SR_SN_READ_DISPATCH_CLOSE_TIMEOUT 1000
+
 /** permissions of main SHM lock file and main/mod/ext SHM */
 #define SR_SHM_PERM 00666
 
