@@ -756,7 +756,7 @@ srsn_sub_free(struct srsn_sub *sub)
     struct pollfd pfd = {0};
     struct timespec timeout_ts, cur_ts;
     uint32_t i;
-    int r;
+    int r, dispatch_thread;
 
     if (!sub) {
         return;
@@ -804,7 +804,15 @@ srsn_sub_free(struct srsn_sub *sub)
     if (sub->wfd > -1) {
         close(sub->wfd);
 
-        if (snstate.tid) {
+        /* DISPATCH LOCK */
+        pthread_mutex_lock(&snstate.dispatch_lock);
+
+        dispatch_thread = snstate.tid ? 1 : 0;
+
+        /* DISPATCH UNLOCK */
+        pthread_mutex_unlock(&snstate.dispatch_lock);
+
+        if (dispatch_thread) {
             /* wait until the dispatch thread closes the read end */
             sr_timeouttime_get(&timeout_ts, SR_SN_READ_DISPATCH_CLOSE_TIMEOUT);
             pfd.fd = sub->rfd;
