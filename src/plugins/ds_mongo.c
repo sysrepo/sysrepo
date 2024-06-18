@@ -885,7 +885,7 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
     bson_t *doc2 = NULL, *filter = NULL, *opts = NULL;
     mongoc_cursor_t *cursor = NULL;
     bson_iter_t iter;
-    struct lyd_node *meta_match = NULL, *last_node = NULL, *first_node = NULL;
+    struct lyd_node *last_node = NULL, *first_node = NULL;
     int dflt_flag = 0;
 
     if (paths_regex) {
@@ -1004,12 +1004,8 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
 
         /* for default nodes add a flag */
         if (dflt_flag) {
-            if (lyd_find_path(*mod_data, xpath, 0, &meta_match) != LY_SUCCESS) {
-                ERRINFO(&err_info, SR_ERR_LY, "lyd_find_path()", "")
-                goto cleanup;
-            }
-            meta_match->flags = meta_match->flags | LYD_DEFAULT;
-            srpds_cont_set_dflt(lyd_parent(meta_match));
+            last_node->flags = last_node->flags | LYD_DEFAULT;
+            srpds_cont_set_dflt(lyd_parent(last_node));
         }
 
         /* for 'when' nodes add a flag */
