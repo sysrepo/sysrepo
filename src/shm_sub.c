@@ -4587,7 +4587,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
     sr_error_info_t *err_info = NULL;
     uint32_t i, request_id, valid_subscr_count;
     struct lyd_node *orig_notif = NULL, *notif_dup = NULL, *notif, *notif_op;
-    struct sr_denied denied;
+    struct sr_denied denied = {0};
     struct timespec notif_ts_mono, notif_ts_real;
     char *shm_data_ptr;
     sr_multi_sub_shm_t *multi_sub_shm;
@@ -4664,6 +4664,7 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
             continue;
         }
 
+        free(denied.rule_name);
         memset(&denied, 0, sizeof denied);
         if (sub->sess->nacm_user && !strcmp(orig_notif->schema->module->name, "ietf-yang-push") &&
                 !strcmp(LYD_NAME(orig_notif), "push-change-update")) {
@@ -4754,6 +4755,7 @@ cleanup_rdunlock:
     sr_rwunlock(&multi_sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
 cleanup:
+    free(denied.rule_name);
     sr_session_stop(ev_sess);
     lyd_free_all(orig_notif);
     lyd_free_all(notif_dup);
