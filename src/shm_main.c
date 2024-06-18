@@ -509,14 +509,22 @@ sr_shmmain_open(sr_shm_t *shm, int *created)
         ATOMIC_STORE_RELAXED(main_shm->new_sr_sid, 1);
         ATOMIC_STORE_RELAXED(main_shm->new_sub_id, 1);
         ATOMIC_STORE_RELAXED(main_shm->new_evpipe_num, 1);
+        strncpy(main_shm->repo_path, sr_get_repo_path(), sizeof main_shm->repo_path);
 
         /* remove leftover event pipes */
         sr_remove_evpipes();
     } else {
-        /* check versions  */
+        /* check version */
         if (main_shm->shm_ver != SR_SHM_VER) {
             sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Shared memory version mismatch (%" PRIu32 ", expected %d),"
                     " remove the SHM to fix.", main_shm->shm_ver, SR_SHM_VER);
+            goto cleanup;
+        }
+
+        /* check repository path */
+        if (strcmp(main_shm->repo_path, sr_get_repo_path())) {
+            sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Shared memory repository path mismatch"
+                    " (in SHM \"%s\", current \"%s\"), remove the SHM to fix.", main_shm->repo_path, sr_get_repo_path());
             goto cleanup;
         }
     }
