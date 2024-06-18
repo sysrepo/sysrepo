@@ -489,6 +489,7 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
 
     /* request_id cannot have changed while we were waiting */
     assert(request_id == last_request_id);
+    (void)last_request_id;
 
     /* orig_cid is mainly used to recover the shm if the originator has crashed after a fake write unlock.
      * We can clear it here, as we will not fake write unlock beyond this point. */
@@ -528,7 +529,7 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
             sub_shm->lock.writer = cid;
         }
 
-        if ((event == last_event)) {
+        if (event == last_event) {
             /* event failed */
             if (clear_ev_on_err) {
                 ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);

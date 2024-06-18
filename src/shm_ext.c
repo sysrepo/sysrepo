@@ -488,6 +488,7 @@ sr_shmext_print(sr_mod_shm_t *mod_shm, sr_shm_t *shm_ext)
 
     /* check that no item exists after the mapped segment */
     assert((unsigned)cur_off == shm_ext->size);
+    (void)cur_off;
     return;
 
 error:
