@@ -2215,7 +2215,7 @@ srpds_load_conv(redisContext *ctx, const struct lys_module *mod, sr_datastore_t 
     uint64_t valtype = 0, is_dflt = 0;
     const char *xpath, *field_name;
     char *value = NULL;
-    struct lyd_node *meta_match = NULL, *last_node = NULL, *first_node = NULL;
+    struct lyd_node *last_node = NULL, *first_node = NULL;
     redisReply *reply = NULL, *partial = NULL;
     long long cursor;
     int argnum = 17;
@@ -2339,14 +2339,9 @@ srpds_load_conv(redisContext *ctx, const struct lys_module *mod, sr_datastore_t 
 
             /* handle default flag */
             if (is_dflt) {
-                if (lyd_find_path(*mod_data, xpath, 0, &meta_match) != LY_SUCCESS) {
-                    ERRINFO(&err_info, SR_ERR_LY, "lyd_find_path()", "")
-                    goto cleanup;
-                }
-
                 /* set the default flag */
-                meta_match->flags = meta_match->flags | LYD_DEFAULT;
-                srpds_cont_set_dflt(lyd_parent(meta_match));
+                last_node->flags = last_node->flags | LYD_DEFAULT;
+                srpds_cont_set_dflt(lyd_parent(last_node));
             }
 
             /* for 'when' nodes add a flag */
