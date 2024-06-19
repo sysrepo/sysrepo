@@ -718,6 +718,67 @@ cleanup:
 }
 
 /**
+ * @brief Update oper data parsed with old context to be parsed with a new context.
+ *
+ * @param[in] old_data Old data to update.
+ * @param[in] new_ctx New context to use.
+ * @param[out] new_data Data tree in @p new_ctx.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_lycc_update_oper_data_tree(const struct lyd_node *old_data, const struct ly_ctx *new_ctx, struct lyd_node **new_data)
+{
+    sr_error_info_t *err_info = NULL;
+    char *data_json = NULL;
+    struct lyd_node *root, *node, *to_free;
+
+    *new_data = NULL;
+
+    /* print the data of all the modules into JSON */
+    if ((err_info = sr_lyd_print_data(old_data, LYD_JSON, LYD_PRINT_SHRINK, -1, &data_json, NULL))) {
+        goto cleanup;
+    }
+
+    /* try to load it into the new updated context skipping any unknown nodes */
+    if ((err_info = sr_lyd_parse_data(new_ctx, data_json, NULL, LYD_JSON,
+            LYD_PARSE_OPAQ | LYD_PARSE_STORE_ONLY | LYD_PARSE_ORDERED, 0, new_data))) {
+        goto cleanup;
+    }
+
+    if (!*new_data) {
+        /* no data */
+        goto cleanup;
+    }
+
+    /* we need to manually trim any unknown nodes because we had to use LYD_PARSE_OPAQ flag */
+    to_free = NULL;
+    LY_LIST_FOR(*new_data, root) {
+        LYD_TREE_DFS_BEGIN(root, node) {
+            if (*new_data == to_free) {
+                *new_data = (*new_data)->next;
+            }
+            lyd_free_tree(to_free);
+            to_free = NULL;
+
+            if (!lyd_owner_module(node)) {
+                /* free this subtree */
+                to_free = node;
+                LYD_TREE_DFS_continue = 1;
+            }
+            LYD_TREE_DFS_END(root, node);
+        }
+    }
+    if (*new_data == to_free) {
+        *new_data = (*new_data)->next;
+    }
+    lyd_free_tree(to_free);
+
+cleanup:
+    free(data_json);
+    return err_info;
+}
+
+/**
  * @brief Get initial data for a datastore using a DS plugin load() callback.
  *
  * @param[in] conn Connection to use.
@@ -875,8 +936,7 @@ sr_lycc_update_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, struct ly
     if ((err_info = sr_lycc_update_data_tree(data_info->old.fdflt, parse_opts, new_ctx, &fdflt_init_data, &data_info->new.fdflt))) {
         goto cleanup;
     }
-    parse_opts &= ~LYD_PARSE_NO_STATE;
-    if ((err_info = sr_lycc_update_data_tree(data_info->old.oper, parse_opts, new_ctx, NULL, &data_info->new.oper))) {
+    if ((err_info = sr_lycc_update_oper_data_tree(data_info->old.oper, new_ctx, &data_info->new.oper))) {
         goto cleanup;
     }
 
