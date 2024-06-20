@@ -1101,7 +1101,7 @@ sr_edit_find_match(const struct lyd_node *data_sibling, const struct lyd_node *e
         lyd_find_sibling_val(data_sibling, edit_node->schema, NULL, 0, match_p);
         inst_pos = 1;
         while (pos && *match_p && ((*match_p)->schema == edit_node->schema)) {
-            m2 = lyd_find_meta(data_sibling->meta, NULL, "sysrepo:dup-inst-list-position");
+            m2 = lyd_find_meta((*match_p)->meta, NULL, "sysrepo:dup-inst-list-position");
             if (m2) {
                 /* actually merging edits, try to find an instance with the same position */
                 if (pos == strtoul(lyd_get_meta_value(m2), NULL, 10)) {
