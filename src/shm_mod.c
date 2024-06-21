@@ -748,49 +748,41 @@ sr_error_info_t *
 sr_shmmod_store_modules(sr_shm_t *shm_mod, const struct lyd_node *sr_mods)
 {
     sr_error_info_t *err_info = NULL;
+    struct ly_set *set = NULL;
     const struct lyd_node *sr_mod;
     sr_mod_t *smod;
     char *shm_mod_old = NULL;
-    uint32_t i, mod_count;
+    uint32_t i;
 
     /* backup current SHM mod */
     shm_mod_old = malloc(shm_mod->size);
     SR_CHECK_MEM_GOTO(!shm_mod_old, err_info, cleanup);
     memcpy(shm_mod_old, shm_mod->addr, shm_mod->size);
 
-    /* count how many modules are we going to store */
-    mod_count = 0;
-    LY_LIST_FOR(lyd_child(sr_mods), sr_mod) {
-        if (!strcmp(sr_mod->schema->name, "module")) {
-            ++mod_count;
-        }
+    /* get all the modules */
+    if ((err_info = sr_lyd_find_xpath(sr_mods, "/sysrepo:sysrepo-modules/module", &set))) {
+        goto cleanup;
     }
 
     /* enlarge mod SHM for all the modules */
-    if ((err_info = sr_shm_remap(shm_mod, SR_SHM_SIZE(sizeof(sr_mod_shm_t)) + mod_count * sizeof *smod))) {
+    if ((err_info = sr_shm_remap(shm_mod, SR_SHM_SIZE(sizeof(sr_mod_shm_t)) + set->count * sizeof *smod))) {
         goto cleanup;
     }
 
     /* set module count */
-    ((sr_mod_shm_t *)shm_mod->addr)->mod_count = mod_count;
+    ((sr_mod_shm_t *)shm_mod->addr)->mod_count = set->count;
 
     /* add all modules into SHM */
-    i = 0;
-    sr_mod = lyd_child(sr_mods);
-    while (i < mod_count) {
-        if (!strcmp(sr_mod->schema->name, "module")) {
-            /* find this module in the SHM mod backup (removed modules will not be found) */
-            smod = sr_shmmod_find_module((sr_mod_shm_t *)shm_mod_old, lyd_get_value(lyd_child(sr_mod)));
+    for (i = 0; i < set->count; ++i) {
+        sr_mod = set->dnodes[i];
 
-            /* fill the new module */
-            if ((err_info = sr_shmmod_fill(shm_mod, i, sr_mod, smod))) {
-                goto cleanup;
-            }
+        /* find this module in the SHM mod backup (removed modules will not be found) */
+        smod = sr_shmmod_find_module((sr_mod_shm_t *)shm_mod_old, lyd_get_value(lyd_child(sr_mod)));
 
-            ++i;
+        /* fill the new module */
+        if ((err_info = sr_shmmod_fill(shm_mod, i, sr_mod, smod))) {
+            goto cleanup;
         }
-
-        sr_mod = sr_mod->next;
     }
 
     /*
@@ -802,27 +794,22 @@ sr_shmmod_store_modules(sr_shm_t *shm_mod, const struct lyd_node *sr_mods)
 
     /* add all dependencies/operations with dependencies for all modules in SHM, in separate loop because
      * all modules must have their name set so that it can be referenced */
-    i = 0;
-    sr_mod = lyd_child(sr_mods);
-    while (i < mod_count) {
-        if (!strcmp(sr_mod->schema->name, "module")) {
-            if ((err_info = sr_shmmod_add_deps(shm_mod, i, sr_mod))) {
-                goto cleanup;
-            }
-            if ((err_info = sr_shmmod_add_rpcs(shm_mod, i, sr_mod, shm_mod_old))) {
-                goto cleanup;
-            }
-            if ((err_info = sr_shmmod_add_notifs(shm_mod, i, sr_mod))) {
-                goto cleanup;
-            }
+    for (i = 0; i < set->count; ++i) {
+        sr_mod = set->dnodes[i];
 
-            ++i;
+        if ((err_info = sr_shmmod_add_deps(shm_mod, i, sr_mod))) {
+            goto cleanup;
         }
-
-        sr_mod = sr_mod->next;
+        if ((err_info = sr_shmmod_add_rpcs(shm_mod, i, sr_mod, shm_mod_old))) {
+            goto cleanup;
+        }
+        if ((err_info = sr_shmmod_add_notifs(shm_mod, i, sr_mod))) {
+            goto cleanup;
+        }
     }
 
 cleanup:
+    ly_set_free(set, NULL);
     free(shm_mod_old);
     return err_info;
 }
