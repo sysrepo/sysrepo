@@ -2256,6 +2256,62 @@ sr_edit_apply_dflt_change(struct lyd_node *data_match, const struct lyd_node *ed
 }
 
 /**
+ * @brief Add recursive diff of a deleted subtree. Normally, it is processed recursively but in some cases,
+ * when the removal may be repeated, we need to do this manually.
+ *
+ * @param[in] data_del Deleted subtree from data.
+ * @param[in] diff_node Diff node for @p data_del without its descendants.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_edit_apply_remove_diff_subtree_add(struct lyd_node *data_del, struct lyd_node *diff_node)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *child, *next, *first;
+    const struct lyd_node *sibling_before;
+    char *sibling_before_val = NULL;
+
+    /* get all the descendants of the deleted node */
+    first = lyd_child_no_keys(data_del);
+    if (!first) {
+        goto cleanup;
+    }
+
+    /* unlink them */
+    lyd_unlink_siblings(first);
+
+    /* add diff metadata for all the new nodes */
+    LY_LIST_FOR(first, next) {
+        LYD_TREE_DFS_BEGIN(next, child) {
+            if (lysc_is_userordered(child->schema)) {
+                /* only add information about previous instance for userord lists, nothing else is needed */
+                sibling_before = sr_edit_find_previous_instance(child);
+                if (sibling_before) {
+                    sibling_before_val = sr_edit_create_userord_predicate(sibling_before);
+                }
+
+                /* add metadata */
+                if ((err_info = sr_diff_add_meta(child, NULL, sibling_before_val, EDIT_DELETE))) {
+                    goto cleanup;
+                }
+                free(sibling_before_val);
+                sibling_before_val = NULL;
+            }
+
+            LYD_TREE_DFS_END(next, child);
+        }
+    }
+
+    /* insert into diff */
+    if ((err_info = sr_lyd_insert_child(diff_node, first))) {
+        goto cleanup;
+    }
+
+cleanup:
+    return err_info;
+}
+
+/**
  * @brief Generate operation failed to be applied error.
  *
  * @param[in,out] err_info Error info to use.
@@ -2414,6 +2470,11 @@ reapply:
     }
 
     if ((prev_op == EDIT_AUTO_REMOVE) || ((prev_op == EDIT_PURGE) && data_del)) {
+        /* avoid recursive remove by manually adding all the descendants into the diff */
+        if (diff_root && (err_info = sr_edit_apply_remove_diff_subtree_add(data_del, diff_node))) {
+            goto cleanup;
+        }
+
         /* we have removed one subtree of data from another case/one default leaf-list instance/one purged instance,
          * try this whole edit again */
         prev_op = 0;
