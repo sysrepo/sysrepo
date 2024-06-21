@@ -135,31 +135,23 @@ sr_shmmod_find_rpc(sr_mod_shm_t *mod_shm, const char *path)
 }
 
 /**
- * @brief Fill a new SHM module and add its name and enabled features into mod SHM.
- * Does not add data/op/inverse dependencies.
+ * @brief Initialize locks of a new SHM module. Should be performed after the mod SHM has its final
+ * size and address to prevent the static locks from being moved.
  *
  * @param[in] shm_mod Mod SHM structure to remap and add name/features at its end.
  * @param[in] shm_mod_idx Mod SHM index to fill.
- * @param[in] sr_mod Module to read the information from.
- * @param[in] old_smod Optional previous SHM mod to copy all module subscriptions from.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_shmmod_fill(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_mod, const sr_mod_t *old_smod)
+sr_shmmod_init(sr_shm_t *shm_mod, size_t shm_mod_idx)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *smod;
-    struct lyd_node *sr_child;
-    off_t *shm_features;
-    const char *name;
-    char *shm_end;
-    size_t feat_i, feat_names_len, ds_plugin_names_len, old_shm_size;
     sr_datastore_t ds;
 
     smod = SR_SHM_MOD_IDX(shm_mod->addr, shm_mod_idx);
 
     /* init SHM module structure */
-    memset(smod, 0, sizeof *smod);
     for (ds = 0; ds < SR_DS_COUNT; ++ds) {
         if ((err_info = sr_rwlock_init(&smod->data_lock_info[ds].data_lock, 1))) {
             return err_info;
@@ -185,6 +177,36 @@ sr_shmmod_fill(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_
     if ((err_info = sr_rwlock_init(&smod->notif_lock, 1))) {
         return err_info;
     }
+
+    return NULL;
+}
+
+/**
+ * @brief Fill a new SHM module and add its name and enabled features into mod SHM.
+ * Does not add data/op/inverse dependencies.
+ *
+ * @param[in] shm_mod Mod SHM structure to remap and add name/features at its end.
+ * @param[in] shm_mod_idx Mod SHM index to fill.
+ * @param[in] sr_mod Module to read the information from.
+ * @param[in] old_smod Optional previous SHM mod to copy all module subscriptions from.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_shmmod_fill(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_mod, const sr_mod_t *old_smod)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_t *smod;
+    struct lyd_node *sr_child;
+    off_t *shm_features;
+    const char *name;
+    char *shm_end;
+    size_t feat_i, feat_names_len, ds_plugin_names_len, old_shm_size;
+    sr_datastore_t ds;
+
+    smod = SR_SHM_MOD_IDX(shm_mod->addr, shm_mod_idx);
+
+    /* zero SHM mod */
+    memset(smod, 0, sizeof *smod);
 
     /* remember name, set fields from sr_mod, and count enabled features */
     name = NULL;
@@ -804,6 +826,15 @@ sr_shmmod_store_modules(sr_shm_t *shm_mod, const struct lyd_node *sr_mods)
             goto cleanup;
         }
         if ((err_info = sr_shmmod_add_notifs(shm_mod, i, sr_mod))) {
+            goto cleanup;
+        }
+    }
+
+    /* finally initialize all the locks after mod SHM size and address are final */
+    for (i = 0; i < set->count; ++i) {
+        sr_mod = set->dnodes[i];
+
+        if ((err_info = sr_shmmod_init(shm_mod, i))) {
             goto cleanup;
         }
     }
