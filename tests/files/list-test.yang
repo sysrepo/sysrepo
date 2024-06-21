@@ -1,0 +1,30 @@
+module list-test {
+  namespace "urn:list-test";
+  prefix t;
+
+  container state {
+    config false;
+    container system {
+      container auth {
+        list user {
+          key "name";
+          leaf name {
+            type string;
+          }
+          leaf value {
+            type uint32;
+          }
+        }
+        list session {
+          key "name";
+          leaf name {
+            type string;
+          }
+          leaf value {
+            type string;
+          }
+        }
+      }
+    }
+  }
+}

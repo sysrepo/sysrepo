@@ -4,8 +4,8 @@
  * @brief test for stored data in operational datastore behavior
  *
  * @copyright
- * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -60,6 +60,7 @@ setup(void **state)
         TESTS_SRC_DIR "/files/oper-group-test.yang",
         TESTS_SRC_DIR "/files/sm.yang",
         TESTS_SRC_DIR "/files/alarms.yang",
+        TESTS_SRC_DIR "/files/list-test.yang",
         NULL
     };
     const char *rd_feats[] = {"hw-line-9", NULL};
@@ -76,6 +77,7 @@ setup(void **state)
         NULL,
         NULL,
         rd_feats,
+        NULL,
         NULL,
         NULL,
         NULL
@@ -109,6 +111,7 @@ teardown(void **state)
 {
     struct state *st = (struct state *)*state;
     const char *module_names[] = {
+        "list-test",
         "alarms",
         "sm",
         "oper-group-test",
@@ -1596,6 +1599,138 @@ test_state_list2(void **state)
             "  </active-alarms>\n"
             "</active-alarm-list>\n";
 
+    assert_string_equal(str1, str2);
+    free(str1);
+}
+
+/* TEST */
+static void
+test_state_list_merge(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_data_t *data;
+    char *str1;
+    const char *str2;
+    int ret;
+
+    ret = sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* set oper data #1 */
+    ret = sr_set_item_str(st->sess, "/list-test:state/system/auth/session[name='session1']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/list-test:state/system/auth/session[name='session2']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* merge more oper data but also discard them */
+    ret = sr_set_item_str(st->sess, "/list-test:state/system/auth/user[name='user1']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/list-test:state/system/auth/user[name='user2']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/list-test:state/system/auth/session[name='session1']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/list-test:state/system/auth/session[name='session2']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_discard_items(st->sess, "/list-test:state/system/auth/session");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the data #1 */
+    ret = sr_get_data(st->sess, "/list-test:state", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+
+    str2 =
+            "<state xmlns=\"urn:list-test\">\n"
+            "  <system>\n"
+            "    <auth>\n"
+            "      <user>\n"
+            "        <name>user1</name>\n"
+            "      </user>\n"
+            "      <user>\n"
+            "        <name>user2</name>\n"
+            "      </user>\n"
+            "      <session>\n"
+            "        <name>session1</name>\n"
+            "      </session>\n"
+            "      <session>\n"
+            "        <name>session2</name>\n"
+            "      </session>\n"
+            "    </auth>\n"
+            "  </system>\n"
+            "</state>\n";
+    assert_string_equal(str1, str2);
+    free(str1);
+
+    /* set oper data #2 */
+    ret = sr_set_item_str(st->sess, "/list-test:state/system/auth/user[name='user1']/value", "34", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/list-test:state/system/auth/user[name='user2']/value", "2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/list-test:state/system/auth/user[name='user3']/value", "7", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/list-test:state/system/auth/session[name='session1']/value", "value1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/list-test:state/system/auth/session[name='session2']/value", "value2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* merge more oper data but also discard them */
+    ret = sr_set_item_str(st->sess, "/list-test:state/system/auth/user[name='user1']/value", "0", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/list-test:state/system/auth/user[name='user2']/value", "0", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/list-test:state/system/auth/user[name='user3']/value", "0", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/list-test:state/system/auth/session[name='session1']/value", "value1", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/list-test:state/system/auth/session[name='session2']/value", "value2", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_discard_items(st->sess, "/list-test:state");
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read the data #2 */
+    ret = sr_get_data(st->sess, "/list-test:state", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
+    assert_int_equal(ret, 0);
+    sr_release_data(data);
+
+    str2 =
+            "<state xmlns=\"urn:list-test\">\n"
+            "  <system>\n"
+            "    <auth>\n"
+            "      <user>\n"
+            "        <name>user1</name>\n"
+            "        <value>0</value>\n"
+            "      </user>\n"
+            "      <user>\n"
+            "        <name>user2</name>\n"
+            "        <value>0</value>\n"
+            "      </user>\n"
+            "      <user>\n"
+            "        <name>user3</name>\n"
+            "        <value>0</value>\n"
+            "      </user>\n"
+            "      <session>\n"
+            "        <name>session1</name>\n"
+            "        <value>value1</value>\n"
+            "      </session>\n"
+            "      <session>\n"
+            "        <name>session2</name>\n"
+            "        <value>value2</value>\n"
+            "      </session>\n"
+            "    </auth>\n"
+            "  </system>\n"
+            "</state>\n";
     assert_string_equal(str1, str2);
     free(str1);
 }
@@ -4085,6 +4220,7 @@ main(void)
         cmocka_unit_test_teardown(test_state, clear_up),
         cmocka_unit_test_teardown(test_state_list, clear_up),
         cmocka_unit_test_teardown(test_state_list2, clear_up),
+        cmocka_unit_test_teardown(test_state_list_merge, clear_up),
         cmocka_unit_test_teardown(test_state_leaflist, clear_up),
         cmocka_unit_test_teardown(test_config, clear_up),
         cmocka_unit_test_teardown(test_top_list, clear_up),
