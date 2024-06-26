@@ -40,6 +40,8 @@ srsn_filter_subtree2xpath(const struct lyd_node *subtree, sr_session_ctx_t *sess
     sr_error_info_t *err_info = NULL;
     struct srsn_filter filter = {0};
 
+    SR_CHECK_ARG_APIRET(!subtree || !xpath_filter, session, err_info);
+
     *xpath_filter = NULL;
 
     /* create a filter structure first */
