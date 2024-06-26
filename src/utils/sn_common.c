@@ -1888,6 +1888,12 @@ srsn_dispatch_destroy(void)
         goto cleanup;
     }
 
+    /* DISPATCH LOCK */
+    if ((r = pthread_mutex_lock(&snstate.dispatch_lock))) {
+        sr_errinfo_new(&err_info, SR_ERR_SYS, "Locking failed (%s: %s).", __func__, strerror(r));
+        goto cleanup;
+    }
+
     /* free vars */
     for (i = 0; i < snstate.pfd_count; ++i) {
         if (snstate.pfds[i].fd > -1) {
@@ -1900,6 +1906,9 @@ srsn_dispatch_destroy(void)
     snstate.cb_data = NULL;
     snstate.pfd_count = 0;
     snstate.valid_pfds = 0;
+
+    /* DISPATCH UNLOCK */
+    pthread_mutex_unlock(&snstate.dispatch_lock);
 
 cleanup:
     return err_info;
