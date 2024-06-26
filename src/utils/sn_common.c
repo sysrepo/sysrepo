@@ -1572,58 +1572,44 @@ srsn_sn_sr_subscribe(sr_session_ctx_t *sess, struct srsn_sub *sub, int sub_no_th
                 }
             }
         }
-
-        /* allocate all sub IDs */
-        sub->sr_sub_ids = calloc(mod_set.count, sizeof *sub->sr_sub_ids);
-        SR_CHECK_MEM_GOTO(!sub->sr_sub_ids, err_info, error);
-
-        /* set subscription and replayed count */
-        sub->sr_sub_id_count = mod_set.count;
-        sub->replay_complete_count = sub->start_time.tv_sec ? 0 : mod_set.count;
-
-        for (idx = 0; idx < mod_set.count; ++idx) {
-            ly_mod = mod_set.objs[idx];
-
-            /* learn earliest stored notif */
-            if ((rc = sr_get_module_replay_support(sr_session_get_connection(sess), ly_mod->name, &ts, &enabled))) {
-                sr_session_get_error(sess, &tmp_err);
-                sr_errinfo_new(&err_info, tmp_err->err[0].err_code, "%s", tmp_err->err[0].message);
-                goto error;
-            }
-            if (sr_time_cmp(replay_start, &ts) > 0) {
-                *replay_start = ts;
-            }
-
-            /* subscribe to the module */
-            if ((rc = sr_notif_subscribe_tree(sess, ly_mod->name, sub->xpath_filter,
-                    sub->start_time.tv_sec ? &sub->start_time : NULL, NULL, srsn_sn_rpc_subscribe_cb, sub,
-                    sub_no_thread ? SR_SUBSCR_NO_THREAD : 0, &sub->sr_sub))) {
-                sr_session_get_error(sess, &tmp_err);
-                sr_errinfo_new(&err_info, tmp_err->err[0].err_code, "%s", tmp_err->err[0].message);
-                goto error;
-            }
-
-            /* add new sub ID */
-            sub->sr_sub_ids[idx] = sr_subscription_get_last_sub_id(sub->sr_sub);
-        }
     } else {
-        /* allocate a new single sub ID */
-        sub->sr_sub_ids = calloc(1, sizeof *sub->sr_sub_ids);
-        SR_CHECK_MEM_GOTO(!sub->sr_sub_ids, err_info, error);
+        /* subscribing to a specific module */
+        ly_mod = ly_ctx_get_module_implemented(ly_ctx, sub->stream);
+        if (!ly_mod) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Invalid stream \"%s\" to subscribe to (module not found).",
+                    sub->stream);
+            goto error;
+        }
 
-        /* set subscription and replayed count */
-        sub->sr_sub_id_count = 1;
-        sub->replay_complete_count = sub->start_time.tv_sec ? 0 : 1;
+        if (ly_set_add(&mod_set, (void *)ly_mod, 1, NULL)) {
+            SR_ERRINFO_INT(&err_info);
+            goto error;
+        }
+    }
+
+    /* allocate all sub IDs */
+    sub->sr_sub_ids = calloc(mod_set.count, sizeof *sub->sr_sub_ids);
+    SR_CHECK_MEM_GOTO(!sub->sr_sub_ids, err_info, error);
+
+    /* set subscription and replayed count */
+    sub->sr_sub_id_count = mod_set.count;
+    sub->replay_complete_count = sub->start_time.tv_sec ? 0 : mod_set.count;
+
+    for (idx = 0; idx < mod_set.count; ++idx) {
+        ly_mod = mod_set.objs[idx];
 
         /* learn earliest stored notif */
-        if ((rc = sr_get_module_replay_support(sr_session_get_connection(sess), sub->stream, replay_start, &enabled))) {
+        if ((rc = sr_get_module_replay_support(sr_session_get_connection(sess), ly_mod->name, &ts, &enabled))) {
             sr_session_get_error(sess, &tmp_err);
             sr_errinfo_new(&err_info, tmp_err->err[0].err_code, "%s", tmp_err->err[0].message);
             goto error;
         }
+        if (sr_time_cmp(replay_start, &ts) > 0) {
+            *replay_start = ts;
+        }
 
-        /* subscribe to the specific module (stream) */
-        if ((rc = sr_notif_subscribe_tree(sess, sub->stream, sub->xpath_filter,
+        /* subscribe to the module */
+        if ((rc = sr_notif_subscribe_tree(sess, ly_mod->name, sub->xpath_filter,
                 sub->start_time.tv_sec ? &sub->start_time : NULL, NULL, srsn_sn_rpc_subscribe_cb, sub,
                 sub_no_thread ? SR_SUBSCR_NO_THREAD : 0, &sub->sr_sub))) {
             sr_session_get_error(sess, &tmp_err);
@@ -1631,8 +1617,8 @@ srsn_sn_sr_subscribe(sr_session_ctx_t *sess, struct srsn_sub *sub, int sub_no_th
             goto error;
         }
 
-        /* add the sub ID */
-        sub->sr_sub_ids[0] = sr_subscription_get_last_sub_id(sub->sr_sub);
+        /* add new sub ID */
+        sub->sr_sub_ids[idx] = sr_subscription_get_last_sub_id(sub->sr_sub);
     }
 
     if (sub->start_time.tv_sec && (sr_time_cmp(replay_start, &sub->start_time) <= 0)) {
