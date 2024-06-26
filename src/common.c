@@ -4383,7 +4383,8 @@ sr_lyd_dup_module_np_cont(const struct lyd_node *data, const struct lys_module *
 
     if (add_state_np_conts) {
         /* add any state NP containers */
-        if ((err_info = sr_lyd_new_implicit_module(new_data, ly_mod, LYD_IMPLICIT_NO_CONFIG, NULL))) {
+        if ((err_info = sr_lyd_new_implicit_module(new_data, ly_mod, LYD_IMPLICIT_NO_CONFIG | LYD_IMPLICIT_NO_DEFAULTS,
+                NULL))) {
             return err_info;
         }
     }
