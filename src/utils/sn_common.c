@@ -817,8 +817,11 @@ srsn_sub_free(struct srsn_sub *sub)
             sr_timeouttime_get(&timeout_ts, SR_SN_READ_DISPATCH_CLOSE_TIMEOUT);
             pfd.fd = sub->rfd;
             while (1) {
-                poll(&pfd, 1, 0);
-                if (!(pfd.revents & POLLHUP)) {
+                if (poll(&pfd, 1, 0) == -1) {
+                    sr_errinfo_new(&err_info, SR_ERR_SYS, "Polling failed (%s).", strerror(errno));
+                    sr_errinfo_free(&err_info);
+                    break;
+                } else if (!(pfd.revents & POLLHUP)) {
                     /* we expect POLLNVAL but the FD can have already been reused, but we know POLLHUP
                      * is returned before the read end is closed */
                     break;
