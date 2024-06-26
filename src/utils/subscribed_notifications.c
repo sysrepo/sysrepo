@@ -57,6 +57,111 @@ cleanup:
     return sr_api_ret(session, err_info);
 }
 
+static LY_ERR
+srsn_lysc_has_notif_clb(struct lysc_node *node, void *UNUSED(data), ly_bool *UNUSED(dfs_continue))
+{
+    LY_ARRAY_COUNT_TYPE u;
+    const struct lysc_ext *ext;
+
+    if (node->nodetype == LYS_NOTIF) {
+        return LY_EEXIST;
+    } else {
+        LY_ARRAY_FOR(node->exts, u) {
+            ext = node->exts[u].def;
+            if (!strcmp(ext->name, "mount-point") && !strcmp(ext->module->name, "ietf-yang-schema-mount")) {
+                /* any data including notifications could be mounted */
+                return LY_EEXIST;
+            }
+        }
+    }
+
+    return LY_SUCCESS;
+}
+
+/**
+ * @brief Check whether a module defines any notifications.
+ *
+ * @param[in] mod Module to check.
+ * @return Whether the module defines any notifications.
+ */
+static int
+srsn_ly_mod_has_notif(const struct lys_module *mod)
+{
+    if (lysc_module_dfs_full(mod, srsn_lysc_has_notif_clb, NULL) == LY_EEXIST) {
+        return 1;
+    }
+    return 0;
+}
+
+API int
+srsn_stream_collect_mods(const char *stream, const char *xpath_filter, const struct ly_ctx *ly_ctx,
+        struct ly_set **mod_set)
+{
+    int rc = SR_ERR_OK;
+    const struct lys_module *ly_mod;
+    struct ly_set *set = NULL;
+    uint32_t idx;
+
+    if (!stream || !ly_ctx || !mod_set) {
+        return SR_ERR_INVAL_ARG;
+    }
+
+    if (ly_set_new(mod_set)) {
+        return SR_ERR_NO_MEMORY;
+    }
+
+    if (strcmp(stream, "NETCONF")) {
+        /* subscribing to a specific module */
+        ly_mod = ly_ctx_get_module_implemented(ly_ctx, stream);
+        if (!ly_mod) {
+            rc = SR_ERR_NOT_FOUND;
+            goto cleanup;
+        }
+
+        if (ly_set_add(*mod_set, (void *)ly_mod, 1, NULL)) {
+            rc = SR_ERR_INTERNAL;
+            goto cleanup;
+        }
+    } else if (xpath_filter) {
+        /* collect only modules selected by the filter */
+        if (lys_find_xpath_atoms(ly_ctx, NULL, xpath_filter, 0, &set)) {
+            rc = SR_ERR_LY;
+            goto cleanup;
+        }
+
+        for (idx = 0; idx < set->count; ++idx) {
+            /* handles duplicates */
+            if (ly_set_add(*mod_set, lysc_owner_module(set->snodes[idx]), 0, NULL)) {
+                rc = SR_ERR_INTERNAL;
+                goto cleanup;
+            }
+        }
+    } else {
+        /* collect all modules with notifications */
+        idx = 0;
+        while ((ly_mod = ly_ctx_get_module_iter(ly_ctx, &idx))) {
+            if (!ly_mod->implemented) {
+                continue;
+            }
+
+            if (srsn_ly_mod_has_notif(ly_mod)) {
+                if (ly_set_add(*mod_set, (void *)ly_mod, 1, NULL)) {
+                    rc = SR_ERR_INTERNAL;
+                    goto cleanup;
+                }
+            }
+        }
+    }
+
+cleanup:
+    ly_set_free(set, NULL);
+    if (rc) {
+        ly_set_free(*mod_set, NULL);
+        *mod_set = NULL;
+    }
+    return rc;
+}
+
 API int
 srsn_notif_sent(uint32_t sub_id)
 {

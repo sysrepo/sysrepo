@@ -319,14 +319,6 @@ sr_error_info_t *srsn_modify_xpath(struct srsn_sub *sub, const char *xpath_filte
 sr_error_info_t *srsn_modify_stop(struct srsn_sub *sub, const struct timespec *stop_time);
 
 /**
- * @brief Check whether a module defines any notifications.
- *
- * @param[in] mod Module to check.
- * @return Whether the module defines any notifications.
- */
-int srsn_ly_mod_has_notif(const struct lys_module *mod);
-
-/**
  * @brief Create all sysrepo subscriptions for a single sub-ntf subscription.
  *
  * @param[in] sess Session to use for sysrepo calls.

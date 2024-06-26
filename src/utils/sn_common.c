@@ -1512,36 +1512,6 @@ srsn_sn_rpc_subscribe_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), con
     }
 }
 
-static LY_ERR
-srsn_lysc_has_notif_clb(struct lysc_node *node, void *UNUSED(data), ly_bool *UNUSED(dfs_continue))
-{
-    LY_ARRAY_COUNT_TYPE u;
-    const struct lysc_ext *ext;
-
-    if (node->nodetype == LYS_NOTIF) {
-        return LY_EEXIST;
-    } else {
-        LY_ARRAY_FOR(node->exts, u) {
-            ext = node->exts[u].def;
-            if (!strcmp(ext->name, "mount-point") && !strcmp(ext->module->name, "ietf-yang-schema-mount")) {
-                /* any data including notifications could be mounted */
-                return LY_EEXIST;
-            }
-        }
-    }
-
-    return LY_SUCCESS;
-}
-
-int
-srsn_ly_mod_has_notif(const struct lys_module *mod)
-{
-    if (lysc_module_dfs_full(mod, srsn_lysc_has_notif_clb, NULL) == LY_EEXIST) {
-        return 1;
-    }
-    return 0;
-}
-
 sr_error_info_t *
 srsn_sn_sr_subscribe(sr_session_ctx_t *sess, struct srsn_sub *sub, int sub_no_thread, struct timespec *replay_start)
 {
@@ -1551,52 +1521,28 @@ srsn_sn_sr_subscribe(sr_session_ctx_t *sess, struct srsn_sub *sub, int sub_no_th
     const struct lys_module *ly_mod;
     int rc = SR_ERR_OK, enabled;
     struct timespec ts;
-    struct ly_set mod_set = {0};
+    struct ly_set *mod_set = NULL;
     uint32_t idx;
 
     memset(replay_start, 0, sizeof *replay_start);
     ly_ctx = sr_session_acquire_context(sess);
 
-    if (!strcmp(sub->stream, "NETCONF")) {
-        /* collect all modules with notifications */
-        idx = 0;
-        while ((ly_mod = ly_ctx_get_module_iter(ly_ctx, &idx))) {
-            if (!ly_mod->implemented) {
-                continue;
-            }
-
-            if (srsn_ly_mod_has_notif(ly_mod)) {
-                if (ly_set_add(&mod_set, (void *)ly_mod, 1, NULL)) {
-                    SR_ERRINFO_INT(&err_info);
-                    goto error;
-                }
-            }
-        }
-    } else {
-        /* subscribing to a specific module */
-        ly_mod = ly_ctx_get_module_implemented(ly_ctx, sub->stream);
-        if (!ly_mod) {
-            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Invalid stream \"%s\" to subscribe to (module not found).",
-                    sub->stream);
-            goto error;
-        }
-
-        if (ly_set_add(&mod_set, (void *)ly_mod, 1, NULL)) {
-            SR_ERRINFO_INT(&err_info);
-            goto error;
-        }
+    /* collect modules to subscribe to */
+    if ((rc = srsn_stream_collect_mods(sub->stream, sub->xpath_filter, ly_ctx, &mod_set))) {
+        sr_errinfo_new(&err_info, rc, "Failed to collect modules to subscribe to (%s).", sr_strerror(rc));
+        goto error;
     }
 
     /* allocate all sub IDs */
-    sub->sr_sub_ids = calloc(mod_set.count, sizeof *sub->sr_sub_ids);
+    sub->sr_sub_ids = calloc(mod_set->count, sizeof *sub->sr_sub_ids);
     SR_CHECK_MEM_GOTO(!sub->sr_sub_ids, err_info, error);
 
     /* set subscription and replayed count */
-    sub->sr_sub_id_count = mod_set.count;
-    sub->replay_complete_count = sub->start_time.tv_sec ? 0 : mod_set.count;
+    sub->sr_sub_id_count = mod_set->count;
+    sub->replay_complete_count = sub->start_time.tv_sec ? 0 : mod_set->count;
 
-    for (idx = 0; idx < mod_set.count; ++idx) {
-        ly_mod = mod_set.objs[idx];
+    for (idx = 0; idx < mod_set->count; ++idx) {
+        ly_mod = mod_set->objs[idx];
 
         /* learn earliest stored notif */
         if ((rc = sr_get_module_replay_support(sr_session_get_connection(sess), ly_mod->name, &ts, &enabled))) {
@@ -1641,7 +1587,7 @@ error:
 
 cleanup:
     sr_session_release_context(sess);
-    ly_set_erase(&mod_set, NULL);
+    ly_set_free(mod_set, NULL);
     return err_info;
 }
 

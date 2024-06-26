@@ -84,6 +84,18 @@ typedef struct {
 int srsn_filter_subtree2xpath(const struct lyd_node *subtree, sr_session_ctx_t *session, char **xpath_filter);
 
 /**
+ * @brief Collect modules to subscribe to.
+ *
+ * @param[in] stream Notification stream.
+ * @param[in] xpath_filter XPath filter, if any.
+ * @param[in] ly_ctx Context to use.
+ * @param[out] mod_set Set with modules to subscribe to.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int srsn_stream_collect_mods(const char *stream, const char *xpath_filter, const struct ly_ctx *ly_ctx,
+        struct ly_set **mod_set);
+
+/**
  * @brief Increase the sent-notifications counter in case of additional manually-generated notifications
  * (such as 'subscription-modified').
  *
