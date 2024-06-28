@@ -930,7 +930,7 @@ srsn_read_dispatch_add(int fd, void *cb_data)
 {
     sr_error_info_t *err_info = NULL;
 
-    SR_CHECK_ARG_APIRET(!fd, NULL, err_info);
+    SR_CHECK_ARG_APIRET(fd < 0, NULL, err_info);
 
     /* add into the pollfd structure */
     err_info = srsn_dispatch_add(fd, cb_data);
