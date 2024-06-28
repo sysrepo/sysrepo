@@ -38,7 +38,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@main
 
       - name: Deps-libyang
         shell: bash
@@ -58,7 +58,7 @@ jobs:
           cmake -DCMAKE_INCLUDE_PATH=$RUNNER_TEMP/include -DCMAKE_LIBRARY_PATH=$RUNNER_TEMP/lib ..
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v2
+        uses: github/codeql-action/init@main
         with:
           languages: ${{ matrix.language }}
           queries: +security-and-quality
@@ -69,6 +69,6 @@ jobs:
           make -j2
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v2
+        uses: github/codeql-action/analyze@main
         with:
           category: "/language:${{ matrix.language }}"
