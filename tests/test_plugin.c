@@ -414,6 +414,7 @@ store_and_load_example(test_data_t *tdata)
 {
     int rc;
     sr_data_t *data = NULL;
+    sr_val_t *val = NULL;
     struct lyd_node *node = NULL;
     char *str1 = NULL;
     const char *str2 =
@@ -425,7 +426,7 @@ store_and_load_example(test_data_t *tdata)
             "        <acs2>a</acs2>\n"
             "      </acl1>\n"
             "      <acl1>\n"
-            "        <acs1>b</acs1>\n"
+            "        <acs1>b/\"</acs1>\n"
             "        <acs3>a</acs3>\n"
             "        <inner>\n"
             "          <inner-leaf>a</inner-leaf>\n"
@@ -452,6 +453,14 @@ store_and_load_example(test_data_t *tdata)
     // compare
     assert_string_equal(str1, str2);
     free(str1);
+
+    // load specific node
+    rc = sr_get_item(tdata->sess, "/plugin:simple-cont/simple-cont2/ac1/acl1[acs1='b/\"']/acs1", 0, &val);
+    assert_int_equal(rc, SR_ERR_OK);
+
+    // compare
+    assert_string_equal(val->data.string_val, "b/\"");
+    sr_free_val(val);
 }
 
 /* TEST */
