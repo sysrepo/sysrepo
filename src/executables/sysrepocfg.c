@@ -140,6 +140,19 @@ error_ly_print(const struct ly_ctx *ctx)
     ly_err_clean((struct ly_ctx *)ctx, NULL);
 }
 
+static void
+error_sr_print(sr_session_ctx_t *sess)
+{
+    uint32_t i;
+    const sr_error_info_t *err_info = NULL;
+
+    if (!sr_session_get_error(sess, &err_info) && err_info) {
+        for (i = 0; i < err_info->err_count; i++) {
+            error_print(err_info->err[i].err_code, err_info->err[i].message);
+        }
+    }
+}
+
 static int
 step_edit_input(const char *editor, const char *path)
 {
@@ -344,6 +357,7 @@ op_import(sr_session_ctx_t *sess, const char *file_path, const char *module_name
     /* replace config (always spends data) */
     r = sr_replace_config(sess, module_name, data, timeout_s * 1000);
     if (r) {
+        error_sr_print(sess);
         error_print(r, "Replace config failed");
         rc = EXIT_FAILURE;
         goto cleanup;
@@ -389,6 +403,7 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
         r = sr_get_data(sess, "/*", max_depth, timeout_s * 1000, 0, &data);
     }
     if (r != SR_ERR_OK) {
+        error_sr_print(sess);
         error_print(r, "Getting data failed");
         if (file) {
             fclose(file);
@@ -435,12 +450,14 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
         lyd_free_all(data);
         sr_release_context(sr_session_get_connection(sess));
         if (r != SR_ERR_OK) {
+            error_sr_print(sess);
             error_print(r, "Failed to prepare edit");
             return EXIT_FAILURE;
         }
 
         r = sr_apply_changes(sess, timeout_s * 1000);
         if (r != SR_ERR_OK) {
+            error_sr_print(sess);
             error_print(r, "Failed to merge edit data");
             return EXIT_FAILURE;
         }
@@ -455,6 +472,7 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
 
     /* lock if requested */
     if (lock && ((r = sr_lock(sess, module_name, 2000)) != SR_ERR_OK)) {
+        error_sr_print(sess);
         error_print(r, "Lock failed");
         return EXIT_FAILURE;
     }
@@ -479,6 +497,7 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
 
 cleanup_unlock:
     if (lock && ((r = sr_unlock(sess, module_name)) != SR_ERR_OK)) {
+        error_sr_print(sess);
         error_print(r, "Unlock failed");
     }
     return rc;
@@ -519,6 +538,7 @@ op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FO
     r = sr_rpc_send_tree(sess, input, timeout_s * 1000, &output);
     lyd_free_all(input);
     if (r) {
+        error_sr_print(sess);
         error_print(r, "Sending RPC/action failed");
         rc = EXIT_FAILURE;
         goto release;
@@ -579,6 +599,7 @@ op_notif(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_
     lyd_free_all(notif);
     sr_release_context(sr_session_get_connection(sess));
     if (r) {
+        error_sr_print(sess);
         error_print(r, "Sending notification failed");
         return EXIT_FAILURE;
     }
@@ -607,6 +628,7 @@ op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds,
         r = sr_replace_config(sess, module_name, data, timeout_s * 1000);
         sr_release_context(sr_session_get_connection(sess));
         if (r) {
+            error_sr_print(sess);
             error_print(r, "Replace config failed");
             return EXIT_FAILURE;
         }
@@ -614,6 +636,7 @@ op_copy(sr_session_ctx_t *sess, const char *file_path, sr_datastore_t source_ds,
         /* copy config */
         r = sr_copy_config(sess, module_name, source_ds, timeout_s * 1000);
         if (r) {
+            error_sr_print(sess);
             error_print(r, "Copy config failed");
             return EXIT_FAILURE;
         }
@@ -640,6 +663,7 @@ op_set(sr_session_ctx_t *sess, const char *xpath, const char *value, int timeout
     /* set the node value */
     r = sr_set_item_str(sess, xpath, value, NULL, 0);
     if (r != SR_ERR_OK) {
+        error_sr_print(sess);
         error_print(r, "Setting the data failed");
         free(mem);
         return EXIT_FAILURE;
@@ -648,6 +672,7 @@ op_set(sr_session_ctx_t *sess, const char *xpath, const char *value, int timeout
     /* apply changes */
     r = sr_apply_changes(sess, timeout_s * 1000);
     if (r != SR_ERR_OK) {
+        error_sr_print(sess);
         error_print(r, "Applying the changes failed");
         free(mem);
         return EXIT_FAILURE;
@@ -677,6 +702,7 @@ op_get(sr_session_ctx_t *sess, const char *xpath, const char *file_path, int tim
     /* get the node value */
     r = sr_get_node(sess, xpath, timeout_s * 1000, &node);
     if (r != SR_ERR_OK) {
+        error_sr_print(sess);
         error_print(r, "Getting data failed");
         if (file) {
             fclose(file);
