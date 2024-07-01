@@ -53,9 +53,8 @@ srsn_yp_ntf_update_send(struct srsn_sub *sub)
     char buf[11];
     int r;
 
-    /* start a new session */
-    if ((r = sr_session_start(sub->conn, sub->ds, &sr_sess))) {
-        sr_errinfo_new(&err_info, r, "Failed to start a new SR session.");
+    /* start a new session (silently) */
+    if ((err_info = _sr_session_start(sub->conn, sub->ds, SR_SUB_EV_NOTIF, NULL, &sr_sess))) {
         goto cleanup;
     }
 
