@@ -43,6 +43,11 @@
 
 #define ERRINFO(err, type, func, message) srplg_log_errinfo(err, plugin_name, NULL, type, func " failed on %d in %s [%s].", __LINE__, __FILE__, message);
 
+#define MONGO_LIST_KEY_LEN_BYTES 2 /* MongoDB stores the length of a list key in two bytes */
+#define MONGO_LIST_KEY_LEN_BITS 7 /* MongoDB uses only 7 bits in a byte to store the length of a list key */
+#define MONGO_LIST_KEY_GET_LEN(first_byte, second_byte) ((uint32_t)(first_byte) << MONGO_LIST_KEY_LEN_BITS) | second_byte /* get length of a list key */
+#define MONGO_LIST_KEY_IS_END(first_byte, second_byte) (second_byte != '\0') || (first_byte != '\0')
+
 typedef struct mongo_data_s {
     mongoc_client_t *client; /* client that connects to the database and manages changes on the data */
     mongoc_database_t *datastore; /* specific database that is currently being managed (startup, running, ...) */
@@ -1022,6 +1027,58 @@ srpds_get_node_depth(const char *path)
 }
 
 /**
+ * @brief Goes through concatenated keys and separates them.
+ *
+ * @param[in] keys Concatenated keys and their respective lengths
+ *      (length is the first two bytes and then the key).
+ * @param[out] parsed Array of keys.
+ * @param[out] lengths Array of key lengths.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_parse_keys(const char *keys, char ***parsed, uint32_t **lengths)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t i = 0;
+    const char *key = keys;
+    void *mem;
+
+    *parsed = NULL;
+    *lengths = NULL;
+
+    /* collect all other remaining keys and put them into the array */
+    while (MONGO_LIST_KEY_IS_END(key[0], key[1])) {
+        mem = realloc(*parsed, (i + 1) * sizeof **parsed);
+        if (!mem) {
+            ERRINFO(&err_info, SR_ERR_NO_MEMORY, "realloc()", "")
+            goto cleanup;
+        }
+        *parsed = mem;
+
+        mem = realloc(*lengths, (i + 1) * sizeof **lengths);
+        if (!mem) {
+            ERRINFO(&err_info, SR_ERR_NO_MEMORY, "realloc()", "")
+            goto cleanup;
+        }
+        *lengths = mem;
+
+        /* get key (do not forget to skip length) */
+        (*parsed)[i] = ((char *)key) + MONGO_LIST_KEY_LEN_BYTES;
+
+        /* get length of the key from the first two bytes */
+        (*lengths)[i] = MONGO_LIST_KEY_GET_LEN(key[0], key[1]);
+
+        /* move onto the next key */
+        key += MONGO_LIST_KEY_LEN_BYTES + (*lengths)[i];
+        ++i;
+    }
+
+cleanup:
+    return err_info;
+}
+
+/**
  * @brief Load all data (only nodes (/)) and store them inside the lyd_node structure (for all datastores except oper).
  *
  * @param[in] module Given MongoDB collection.
@@ -1038,6 +1095,8 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
     const char *path, *name, *module_name, *value = NULL, *path_no_pred;
+    char **keys = NULL;
+    uint32_t *lengths = NULL;
     enum srpds_mongo_ly_types type;
     int32_t valtype;
     int64_t order;
@@ -1069,7 +1128,7 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
     *   |    Dataset [ path(_id) | name | type | module_name | path_modif ]
     *   |
     *   | 2) lists (LYS_LIST)
-    *   |    Dataset [ path(_id) | name | type | module_name | predicate | path_modif ]
+    *   |    Dataset [ path(_id) | name | type | module_name | keys | path_modif ]
     *   |
     *   | 3) leafs and leaf-lists (LYS_LEAF and LYS_LEAFLIST)
     *   |    Dataset [ path(_id) | name | type | module_name | dflt_flag | value | path_modif ]
@@ -1078,7 +1137,7 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
     *   |    Dataset [ path(_id) | name | type | module_name | dflt_flag | value | valtype | path_modif ]
     *   |
     *   | 5) user-ordered lists
-    *   |    Dataset [ path(_id) | name | type | module_name | predicate | order | path_no_pred | prev | path_modif ]
+    *   |    Dataset [ path(_id) | name | type | module_name | keys | order | path_no_pred | prev | path_modif ]
     *   |
     *   | 6) user-ordered leaf-lists
     *   |    Dataset [ path(_id) | name | type | module_name | dflt_flag | value | order | path_no_pred | prev | path_modif ]
@@ -1131,8 +1190,14 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
          * 1 - modified flag for candidate datastore
          * # - maximum load-order for list or leaf-list
          * 4 - owner, group and permissions */
-        if ((path[0] == '0') || (path[0] == '1') || (path[0] == '#') || (path[0] == '4')) {
+        switch (path[0]) {
+        case '0':
+        case '1':
+        case '#':
+        case '4':
             continue;
+        default:
+            break;
         }
 
         /* get name */
@@ -1164,7 +1229,7 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
             goto cleanup;
         }
 
-        /* get default flag or predicate based on type */
+        /* get default flag or keys based on type */
         switch (type) {
         case MONGO_LY_TERM:         /* leafs and leaf-lists */
         case MONGO_LY_ANY:          /* anydata and anyxml */
@@ -1182,8 +1247,7 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
                 goto cleanup;
             }
             value = bson_iter_utf8(&iter, NULL);
-            if (!bson_utf8_validate(value, strlen(value), 0)) {
-                ERRINFO(&err_info, SR_ERR_OPERATION_FAILED, "bson_iter_utf8()", "")
+            if ((err_info = srpds_parse_keys(value, &keys, &lengths))) {
                 goto cleanup;
             }
             break;
@@ -1285,20 +1349,27 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
             break;
         case MONGO_LY_LIST:     /* lists */
         case MONGO_LY_LIST_UO:  /* user-ordered lists */
-            if (lyd_new_list2(parent_node, node_module, name, value, 0, &new_node) != LY_SUCCESS) {
-                ERRINFO(&err_info, SR_ERR_LY, "lyd_new_list2()", "")
+            if (lyd_new_list3(parent_node, node_module, name, (const char **)keys, lengths, LYD_NEW_VAL_STORE_ONLY,
+                    &new_node) != LY_SUCCESS) {
+                ERRINFO(&err_info, SR_ERR_LY, "lyd_new_list3()", "")
                 goto cleanup;
             }
+            free(keys);
+            free(lengths);
+            keys = NULL;
+            lengths = NULL;
             break;
         case MONGO_LY_TERM:         /* leafs and leaf-lists */
         case MONGO_LY_LEAFLIST_UO:  /* user-ordered leaf-lists */
-            if (lyd_new_term(parent_node, node_module, name, value, 0, &new_node) != LY_SUCCESS) {
+            if (lyd_new_term(parent_node, node_module, name, value, LYD_NEW_VAL_STORE_ONLY,
+                    &new_node) != LY_SUCCESS) {
                 ERRINFO(&err_info, SR_ERR_LY, "lyd_new_term()", "")
                 goto cleanup;
             }
             break;
         case MONGO_LY_ANY:   /* anydata and anyxml */
-            if (lyd_new_any(parent_node, node_module, name, value, valtype ? LYD_ANYDATA_JSON : LYD_ANYDATA_XML, 0, &new_node) != LY_SUCCESS) {
+            if (lyd_new_any(parent_node, node_module, name, value, valtype ? LYD_ANYDATA_JSON : LYD_ANYDATA_XML,
+                    LYD_NEW_VAL_STORE_ONLY, &new_node) != LY_SUCCESS) {
                 ERRINFO(&err_info, SR_ERR_LY, "lyd_new_any()", "")
                 goto cleanup;
             }
@@ -1319,7 +1390,7 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
         parent_nodes[node_idx] = new_node;
         if (!node_idx) {
             if (lyd_insert_sibling(*mod_data, new_node, mod_data) != LY_SUCCESS) {
-                ERRINFO(&err_info, SR_ERR_LY, "lyd_insert_child()", "")
+                ERRINFO(&err_info, SR_ERR_LY, "lyd_insert_sibling()", "")
                 goto cleanup;
             }
         }
@@ -1422,6 +1493,8 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
     *mod_data = lyd_first_sibling(*mod_data);
 
 cleanup:
+    free(keys);
+    free(lengths);
     for (i = 0; i < uo_lists.size; ++i) {
         free(uo_lists.lists[i].name);
         free(uo_lists.lists[i].data);
@@ -2034,6 +2107,99 @@ cleanup:
 }
 
 /**
+ * @brief Concatenate the keys of a list instance into a single string.
+ *
+ * @param[in] node List instance.
+ * @param[out] keys String containing all of the keys and their respective lengths.
+ * @param[out] keys_length Length of the @p keys .
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_concat_key_values(struct lyd_node *node, char **keys, uint32_t *keys_length)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *child = lyd_child(node);
+    char *tmp = NULL;
+    const char *key;
+    uint16_t keylen;
+    uint32_t i, prev_keys_len = 0;
+
+    *keys = NULL;
+    *keys_length = 0;
+
+    while (child && lysc_is_key(child->schema)) {
+        key = lyd_get_value(child);
+        keylen = strlen(key);
+
+        /* we are only using 7 bits of two bytes for length,
+         * therefore length cannot be bigger than (UINT16_MAX >> 2) */
+        if (keylen > (UINT16_MAX >> 2)) {
+            ERRINFO(&err_info, SR_ERR_INTERNAL, "srpds_concat_key_values()", "Value is bigger than (UINT16_MAX >> 2)")
+            goto cleanup;
+        }
+
+        /* store length from previous iteration */
+        prev_keys_len = *keys_length;
+
+        /* length of a newly created string will increase by length of the next key and
+         * two bytes for storing length of the next key */
+        *keys_length += keylen + MONGO_LIST_KEY_LEN_BYTES;
+        tmp = malloc(*keys_length);
+        if (!tmp) {
+            ERRINFO(&err_info, SR_ERR_NO_MEMORY, "malloc()", strerror(errno))
+            goto cleanup;
+        }
+
+        /* copy contents of the previous string */
+        for (i = 0; i < prev_keys_len; ++i) {
+            tmp[i] = (*keys)[i];
+        }
+
+        /* store length of the next key */
+        tmp[prev_keys_len] = keylen >> MONGO_LIST_KEY_LEN_BITS; /* upper byte */
+        tmp[prev_keys_len + 1] = keylen & 0x007f; /* lower byte */
+
+        /* store the next key */
+        for (i = 0; i < keylen; ++i) {
+            tmp[prev_keys_len + 2 + i] = key[i];
+        }
+
+        free(*keys);
+        *keys = tmp;
+        tmp = NULL;
+        child = child->next;
+    }
+
+    /* store length from previous iteration */
+    prev_keys_len = *keys_length;
+
+    /* store the last two null bytes signaling the end of the string */
+    *keys_length += MONGO_LIST_KEY_LEN_BYTES;
+    tmp = malloc(*keys_length);
+    if (!tmp) {
+        ERRINFO(&err_info, SR_ERR_NO_MEMORY, "malloc()", strerror(errno))
+        goto cleanup;
+    }
+
+    /* copy contents of the previous string */
+    for (i = 0; i < prev_keys_len; ++i) {
+        tmp[i] = (*keys)[i];
+    }
+
+    /* store last two null bytes */
+    tmp[prev_keys_len] = '\0';
+    tmp[prev_keys_len + 1] = '\0';
+    free(*keys);
+    *keys = tmp;
+    tmp = NULL;
+
+cleanup:
+    free(tmp);
+    return err_info;
+}
+
+/**
  * @brief Insert a user-ordered element into a list or a leaf-list in the database.
  *
  * @param[in] module Given MongoDB collection.
@@ -2056,6 +2222,8 @@ srpds_create_uo_op(mongoc_collection_t *module, struct lyd_node *node, const cha
     bson_t *bson_query_uo_rep = NULL, *bson_query_uo_key = NULL,
             *bson_query_uo = NULL;
     uint64_t prev_order = 0, next_order = 0, order;
+    char *keys = NULL;
+    uint32_t keys_length = 0;
 
     /* there is a previous element */
     if (strcmp(prev, "")) {
@@ -2174,15 +2342,19 @@ srpds_create_uo_op(mongoc_collection_t *module, struct lyd_node *node, const cha
     /* insert an element */
     switch (node->schema->nodetype) {
     case LYS_LIST:
-        bson_query_uo = BCON_NEW("_id", BCON_UTF8(path),
-                "name", BCON_UTF8(node->schema->name),
-                "type", BCON_INT32(MONGO_LY_LIST_UO),
-                "module_name", BCON_UTF8(module_name),
-                "predicate", BCON_UTF8(predicate),
-                "order", BCON_INT64(order),
-                "path_no_pred", BCON_UTF8(path_no_pred),
-                "prev", BCON_UTF8(prev_pred),
-                "path_modif", BCON_UTF8(path_modif));
+        if ((err_info = srpds_concat_key_values(node, &keys, &keys_length))) {
+            goto cleanup;
+        }
+        bson_query_uo = bson_new();
+        bson_append_utf8(bson_query_uo, "_id", 3, path, -1);
+        bson_append_utf8(bson_query_uo, "name", 4, node->schema->name, -1);
+        bson_append_int32(bson_query_uo, "type", 4, MONGO_LY_LIST_UO);
+        bson_append_utf8(bson_query_uo, "module_name", 11, module_name, -1);
+        bson_append_utf8(bson_query_uo, "keys", 4, keys, keys_length);
+        bson_append_int64(bson_query_uo, "order", 5, order);
+        bson_append_utf8(bson_query_uo, "path_no_pred", 12, path_no_pred, -1);
+        bson_append_utf8(bson_query_uo, "prev", 4, prev, -1);
+        bson_append_utf8(bson_query_uo, "path_modif", 10, path_modif, -1);
         break;
     case LYS_LEAFLIST:
         bson_query_uo = BCON_NEW("_id", BCON_UTF8(path),
@@ -2203,6 +2375,7 @@ srpds_create_uo_op(mongoc_collection_t *module, struct lyd_node *node, const cha
     }
 
 cleanup:
+    free(keys);
     bson_destroy(bson_query_uo);
     bson_destroy(bson_query_uo_key);
     bson_destroy(bson_query_uo_rep);
@@ -2408,6 +2581,8 @@ srpds_create_op(mongoc_collection_t *module, struct lyd_node *node, const char *
 {
     sr_error_info_t *err_info = NULL;
     bson_t *bson_query = NULL;
+    char *keys = NULL;
+    uint32_t keys_length = 0;
 
     if (lysc_is_userordered(node->schema)) {
         /* insert a new element into the user-ordered list */
@@ -2421,8 +2596,16 @@ srpds_create_op(mongoc_collection_t *module, struct lyd_node *node, const char *
                     "module_name", BCON_UTF8(module_name), "path_modif", BCON_UTF8(path_modif));
             break;
         case LYS_LIST:
-            bson_query = BCON_NEW("_id", BCON_UTF8(path), "name", BCON_UTF8(node->schema->name), "type", BCON_INT32(MONGO_LY_LIST),
-                    "module_name", BCON_UTF8(module_name), "predicate", BCON_UTF8(predicate), "path_modif", BCON_UTF8(path_modif));
+            if ((err_info = srpds_concat_key_values(node, &keys, &keys_length))) {
+                goto cleanup;
+            }
+            bson_query = bson_new();
+            bson_append_utf8(bson_query, "_id", 3, path, -1);
+            bson_append_utf8(bson_query, "name", 4, node->schema->name, -1);
+            bson_append_int32(bson_query, "type", 4, MONGO_LY_LIST);
+            bson_append_utf8(bson_query, "module_name", 11, module_name, -1);
+            bson_append_utf8(bson_query, "keys", 4, keys, keys_length);
+            bson_append_utf8(bson_query, "path_modif", 10, path_modif, -1);
             break;
         case LYS_LEAF:
         case LYS_LEAFLIST:
@@ -2448,6 +2631,7 @@ srpds_create_op(mongoc_collection_t *module, struct lyd_node *node, const char *
     }
 
 cleanup:
+    free(keys);
     if (err_info) {
         bson_destroy(bson_query);
     }
