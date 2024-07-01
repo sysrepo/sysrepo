@@ -1191,15 +1191,6 @@ wait:
     } while (!r);
     assert(r == ETIMEDOUT);
 
-    /* prepare the next trigger ahead of the callback */
-    if (sntimer->interval.tv_sec || sntimer->interval.tv_nsec) {
-        interval_ms = sntimer->interval.tv_sec * 1000;
-        interval_ms += sntimer->interval.tv_nsec / 1000000;
-
-        /* add the interval */
-        sntimer->trigger = sr_time_ts_add(&sntimer->trigger, interval_ms);
-    }
-
     /* call the callback */
     sntimer->cb(sntimer->arg, &freed);
     if (freed) {
@@ -1207,7 +1198,17 @@ wait:
         return NULL;
     }
 
+    /* prepare the next trigger after the callback */
     if (sntimer->interval.tv_sec || sntimer->interval.tv_nsec) {
+        /* update the trigger to the current time */
+        sr_realtime_get(&sntimer->trigger);
+
+        interval_ms = sntimer->interval.tv_sec * 1000;
+        interval_ms += sntimer->interval.tv_nsec / 1000000;
+
+        /* add the interval */
+        sntimer->trigger = sr_time_ts_add(&sntimer->trigger, interval_ms);
+
         /* wait until the next trigger */
         goto wait;
     }
