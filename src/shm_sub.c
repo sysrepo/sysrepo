@@ -1353,6 +1353,11 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, const char *orig_
     goto cleanup;
 
 cleanup_wrunlock:
+    /* clear the event unless a subscriber reported an error, in which case further clean up will happen */
+    if (sub_shm->event != SR_SUB_EV_ERROR) {
+        ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
+        sub_shm->orig_cid = 0;
+    }
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&sub_shm->lock, 0, SR_LOCK_WRITE, cid, __func__);
 
@@ -1637,6 +1642,12 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
 cleanup:
     for (i = 0; i < notify_count; ++i) {
         if (notify_subs[i].lock) {
+            /* clear the event unless a subscriber reported an error and an abort will be sent */
+            if (notify_subs[i].sub_shm->event != SR_SUB_EV_ERROR) {
+                ATOMIC_STORE_RELAXED(notify_subs[i].sub_shm->event, SR_SUB_EV_NONE);
+                notify_subs[i].sub_shm->orig_cid = 0;
+            }
+
             /* SUB UNLOCK */
             sr_rwunlock(&notify_subs[i].sub_shm->lock, 0, notify_subs[i].lock, cid, __func__);
             notify_subs[i].lock = SR_LOCK_NONE;
@@ -1798,6 +1809,10 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
 cleanup:
     for (i = 0; i < notify_count; ++i) {
         if (notify_subs[i].lock) {
+            /* always clear the event */
+            ATOMIC_STORE_RELAXED(notify_subs[i].sub_shm->event, SR_SUB_EV_NONE);
+            notify_subs[i].sub_shm->orig_cid = 0;
+
             /* SUB UNLOCK */
             sr_rwunlock(&notify_subs[i].sub_shm->lock, 0, notify_subs[i].lock, cid, __func__);
             notify_subs[i].lock = SR_LOCK_NONE;
@@ -2021,6 +2036,10 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
 cleanup:
     for (i = 0; i < notify_count; ++i) {
         if (notify_subs[i].lock) {
+            /* always clear the event */
+            ATOMIC_STORE_RELAXED(notify_subs[i].sub_shm->event, SR_SUB_EV_NONE);
+            notify_subs[i].sub_shm->orig_cid = 0;
+
             /* SUB UNLOCK */
             sr_rwunlock(&notify_subs[i].sub_shm->lock, 0, notify_subs[i].lock, cid, __func__);
             notify_subs[i].lock = SR_LOCK_NONE;
@@ -2188,6 +2207,10 @@ sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, cons
 cleanup:
     for (i = 0; i < notify_count; ++i) {
         if (notify_subs[i].lock) {
+            /* clear any event left behind due to an error (eg. could not notify evpipe) */
+            ATOMIC_STORE_RELAXED(notify_subs[i].sub_shm->event, SR_SUB_EV_NONE);
+            notify_subs[i].sub_shm->orig_cid = 0;
+
             /* SUB UNLOCK */
             sr_rwunlock(&notify_subs[i].sub_shm->lock, 0, notify_subs[i].lock, cid, __func__);
             notify_subs[i].lock = SR_LOCK_NONE;
@@ -2701,6 +2724,12 @@ next_sub:
     } while (subscriber_count);
 
 cleanup_wrunlock:
+    /* clear the event unless a subscriber reported an error and an abort will be sent */
+    if (sub_shm->event != SR_SUB_EV_ERROR) {
+        sub_shm->event = SR_SUB_EV_NONE;
+        sub_shm->orig_cid = 0;
+    }
+
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&sub_shm->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
@@ -2830,6 +2859,10 @@ clear_shm:
     return err_info;
 
 cleanup_wrunlock:
+    /* always clear the event */
+    ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
+    sub_shm->orig_cid = 0;
+
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&sub_shm->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
@@ -2967,6 +3000,12 @@ cleanup_sub_unlock:
     goto cleanup;
 
 cleanup_ext_sub_unlock:
+    /* always clear the event if an error occurred */
+    if (err_info) {
+        ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
+        sub_shm->orig_cid = 0;
+    }
+
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&sub_shm->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
