@@ -1808,7 +1808,8 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
             continue;
         }
 
-        if (!cid) {
+        if (!cid || (cid == conn->cid)) {
+            /* prefer foreign CIDs */
             cid = (*notif_subs)[i].cid;
         }
         ++(*notif_sub_count);
