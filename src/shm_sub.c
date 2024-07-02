@@ -2918,9 +2918,9 @@ sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, struct
         goto cleanup_ext_sub_unlock;
     }
 
-    /* write the notification, use first subscriber CID - works better than the originator */
+    /* write the notification, use first subscriber CID if not waiting - depends on the subscriber, not originator */
     request_id = sub_shm->request_id + 1;
-    if ((err_info = sr_shmsub_notify_write_event(sub_shm, sub_cid, request_id, 0, SR_SUB_EV_NOTIF,
+    if ((err_info = sr_shmsub_notify_write_event(sub_shm, wait ? conn->cid : sub_cid, request_id, 0, SR_SUB_EV_NOTIF,
             orig_name, orig_data, notif_sub_count, &shm_data_sub, NULL, data, data_len, ly_mod->name))) {
         goto cleanup_ext_sub_unlock;
     }
@@ -2956,9 +2956,6 @@ sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, struct
     }
 
 cleanup_sub_unlock:
-    /* event processed */
-    sub_shm->orig_cid = 0;
-
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&sub_shm->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
@@ -2966,9 +2963,6 @@ cleanup_sub_unlock:
     goto cleanup;
 
 cleanup_ext_sub_unlock:
-    /* event processed */
-    sub_shm->orig_cid = 0;
-
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&sub_shm->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
