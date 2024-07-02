@@ -552,6 +552,130 @@ test_oper_crash_set2(int rp, int wp)
 }
 
 /* TEST */
+struct notif_nowait_crash_arg {
+    int rp;
+    int wp;
+    sr_session_ctx_t *sess;
+};
+
+static void
+notif_nowait_crash_cb1(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id), const sr_ev_notif_type_t UNUSED(notif_type),
+        const char *UNUSED(xpath), const sr_val_t *UNUSED(values), const size_t UNUSED(values_cnt),
+        struct timespec *UNUSED(timestamp), void *private_data)
+{
+    struct notif_nowait_crash_arg *arg = private_data;
+
+    /* avoid leaks (valgrind probably cannot keep track of leafref attributes because they are shared) */
+    ly_ctx_destroy((struct ly_ctx *)sr_session_acquire_context(arg->sess));
+    sr_session_release_context(arg->sess);
+    for (uint32_t i = 0; i < arg->sess->conn->ds_handle_count; ++i) {
+        if (arg->sess->conn->ds_handles[i].init) {
+            arg->sess->conn->ds_handles[i].plugin->conn_destroy_cb(arg->sess->conn, arg->sess->conn->ds_handles[i].plg_data);
+        }
+    }
+
+    /* signal the crash */
+    barrier(arg->rp, arg->wp);
+
+    exit(0);
+}
+
+static void
+notif_nowait_crash_cb2(sr_session_ctx_t *UNUSED(session), uint32_t UNUSED(sub_id), const sr_ev_notif_type_t UNUSED(notif_type),
+        const char *UNUSED(xpath), const sr_val_t *UNUSED(values), const size_t UNUSED(values_cnt),
+        struct timespec *UNUSED(timestamp), void *UNUSED(private_data))
+{
+
+}
+
+static int
+test_notif_nowait_crash1(int rp, int wp)
+{
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *sub = NULL;
+    struct notif_nowait_crash_arg arg;
+    int ret;
+
+    ret = sr_connect(0, &conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_start(conn, SR_DS_RUNNING, &sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to notif without a thread */
+    arg.rp = rp;
+    arg.wp = wp;
+    arg.sess = sess;
+    ret = sr_notif_subscribe(sess, "ops", NULL, NULL, NULL, notif_nowait_crash_cb1, &arg, SR_SUBSCR_NO_THREAD, &sub);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* wait for the other process */
+    barrier(rp, wp);
+
+    /* wait for the other process */
+    barrier(rp, wp);
+
+    /* process a notification, crashes */
+    ret = sr_subscription_process_events(sub, NULL, NULL);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* unreachable */
+    return 1;
+}
+
+#include <sched.h>
+
+static int
+test_notif_nowait_crash2(int rp, int wp)
+{
+    sr_conn_ctx_t *conn;
+    sr_session_ctx_t *sess;
+    sr_subscription_ctx_t *sub = NULL;
+    int ret;
+
+    ret = sr_connect(0, &conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_start(conn, SR_DS_RUNNING, &sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* subscribe to notif without a thread */
+    ret = sr_notif_subscribe(sess, "ops", NULL, NULL, NULL, notif_nowait_crash_cb2, NULL, SR_SUBSCR_NO_THREAD, &sub);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal subscription was created */
+    barrier(rp, wp);
+
+    /* send a notif without waiting */
+    ret = sr_notif_send(sess, "/ops:notif4", NULL, 0, 0, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* signal notif was sent */
+    barrier(rp, wp);
+
+    /* wait until the crash */
+    barrier(rp, wp);
+    usleep(50000);
+
+    /* process it */
+    ret = sr_subscription_process_events(sub, NULL, NULL);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* should have crashed, send a notif again */
+    ret = sr_notif_send(sess, "/ops:notif4", NULL, 0, 0, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    /* should be normally processed */
+    ret = sr_subscription_process_events(sub, NULL, NULL);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    sr_unsubscribe(sub);
+    sr_disconnect(conn);
+    return 0;
+}
+
+/* TEST */
 static void
 notif_instid_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *xpath,
         const sr_val_t *values, const size_t values_cnt, struct timespec *timestamp, void *private_data)
@@ -1072,6 +1196,7 @@ main(void)
         {"rpc sub", test_rpc_sub1, test_rpc_sub2, setup, teardown},
         {"rpc crash", test_rpc_crash1, test_rpc_crash2, setup, teardown},
         {"oper crash", test_oper_crash_set2, test_oper_crash_set1, setup, teardown},
+        {"notif nowait crash", test_notif_nowait_crash2, test_notif_nowait_crash1, setup, teardown},
         {"notif instid", test_notif_instid1, test_notif_instid2, setup, teardown},
         {"pull push oper data", test_pull_push_oper1, test_pull_push_oper2, setup, teardown},
         {"context change", test_context_change, test_context_change_sub, setup, teardown},
