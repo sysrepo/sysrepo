@@ -3026,7 +3026,9 @@ sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, struct
     }
 
 cleanup_sub_unlock:
+    /* event processed */
     multi_sub_shm->orig_cid = 0;
+
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
@@ -3034,7 +3036,9 @@ cleanup_sub_unlock:
     goto cleanup;
 
 cleanup_ext_sub_unlock:
+    /* event processed */
     multi_sub_shm->orig_cid = 0;
+
     /* SUB WRITE UNLOCK */
     sr_rwunlock(&multi_sub_shm->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
 
