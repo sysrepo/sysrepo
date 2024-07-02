@@ -361,8 +361,8 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
         sr_shmsub_recover(sub_shm);
     }
 
-    assert(sub_shm->lock.writer == cid);
     /* FAKE WRITE UNLOCK */
+    assert(sub_shm->lock.writer == cid);
     sub_shm->lock.writer = 0;
 
     /* wait until there is no event and there are no readers (just like write lock) */
@@ -471,8 +471,8 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
 
     *lock_lost = 0;
 
-    assert(sub_shm->lock.writer == cid);
     /* FAKE WRITE UNLOCK */
+    assert(sub_shm->lock.writer == cid);
     sub_shm->lock.writer = 0;
 
     /* wait until this event was processed and there are no readers or another writer (just like a write lock) */
