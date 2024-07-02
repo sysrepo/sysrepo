@@ -1042,6 +1042,10 @@ sr_xpath_oper_data_get(struct sr_mod_info_mod_s *mod, const char *xpath, const c
 cleanup:
     lyd_free_tree(parent_dup);
     free(parent_path);
+    if (err_info) {
+        lyd_free_all(*oper_data);
+        *oper_data = NULL;
+    }
     return err_info;
 }
 
