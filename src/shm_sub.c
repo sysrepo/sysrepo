@@ -393,10 +393,14 @@ sr_shmsub_notify_new_wrlock(sr_sub_shm_t *sub_shm, const char *shm_name, sr_sub_
     last_request_id = ATOMIC_LOAD_RELAXED(sub_shm->request_id);
 
     if (ret) {
-        if ((ret == ETIMEDOUT) && (!sub_shm->lock.readers[0]) &&
-                (!last_event || (last_event == lock_event))) {
-            /* even though the timeout has elapsed, the event was handled so continue normally */
-            /* ensure that there are no readers left, otherwise we don't have the write lock */
+        if ((ret == ETIMEDOUT) && !sub_shm->lock.readers[0] &&
+                (!last_event || (last_event == lock_event) || (last_event == SR_SUB_EV_NOTIF))) {
+            /* even though the timeout has elapsed, the event was handled so continue normally (if there are no readers) */
+            if (last_event == SR_SUB_EV_NOTIF) {
+                /* special case on notif event, assume its subscriber died */
+                SR_LOG_WRN("Waiting for subscription of \"%s\" failed, previous event \"%s\" ID %" PRIu32
+                        " was not processed and will be disarded.", shm_name, sr_ev2str(last_event), last_request_id);
+            }
             goto event_handled;
         } else if ((ret == ETIMEDOUT) && (last_event && (last_event != lock_event))) {
             /* timeout */
