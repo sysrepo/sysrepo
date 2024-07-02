@@ -289,7 +289,7 @@ typedef struct {
 } sr_ext_hole_t;
 
 /*
- * change data subscription SHM (multi)
+ * change data subscription SHM
  *
  * data SHM contents
  *
@@ -302,7 +302,7 @@ typedef struct {
  */
 
 /*
- * notification subscription SHM (multi)
+ * notification subscription SH
  *
  * data SHM contents
  *
@@ -312,7 +312,7 @@ typedef struct {
  */
 
 /*
- * operational subscription SHM (generic)
+ * operational subscription SHM
  *
  * data SHM contents
  *
@@ -327,7 +327,7 @@ typedef struct {
  */
 
 /*
- * RPC subscription SHM (generic)
+ * RPC subscription SHM
  *
  * data SHM contents
  *
@@ -342,18 +342,7 @@ typedef struct {
  */
 
 /**
- * @brief Generic (single-subscriber) subscription SHM structure.
- */
-typedef struct {
-    sr_rwlock_t lock;           /**< Process-shared lock for accessing the SHM structure. */
-
-    sr_cid_t orig_cid;          /**< Event originator CID. */
-    ATOMIC_T request_id;        /**< Request ID. */
-    ATOMIC_T event;             /**< Event. */
-} sr_sub_shm_t;
-
-/**
- * @brief Multi-subscriber subscription SHM structure.
+ * @brief Subscription SHM structure.
  */
 typedef struct {
     sr_rwlock_t lock;           /**< Process-shared lock for accessing the SHM structure. */
@@ -362,9 +351,8 @@ typedef struct {
     ATOMIC_T request_id;        /**< Request ID. */
     ATOMIC_T event;             /**< Event. */
 
-    /* specific fields */
     ATOMIC_T priority;          /**< Priority of the subscriber. */
     uint32_t subscriber_count;  /**< Number of subscribers to process this event. */
-} sr_multi_sub_shm_t;
+} sr_sub_shm_t;
 
 #endif /* _SHM_TYPES_H */

@@ -534,7 +534,7 @@ sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_ev_no
     struct modsub_notifsub_s *sub;
     sr_session_ctx_t *ev_sess = NULL;
     struct timespec cur_time;
-    sr_multi_sub_shm_t *multi_sub_shm;
+    sr_sub_shm_t *sub_shm;
 
     /* create event session */
     if ((err_info = _sr_session_start(subscr->conn, SR_DS_OPERATIONAL, SR_SUB_EV_NOTIF, NULL, &ev_sess))) {
@@ -555,12 +555,12 @@ sr_subscr_notif_sub_del(sr_subscription_ctx_t *subscr, uint32_t sub_id, sr_ev_no
             /* we must be holding SUBS WRITE lock to prevent 1) ignoring a notification and then processing it and
              * 2) processing a standard notification after signalling subscription termination */
 
-            multi_sub_shm = (sr_multi_sub_shm_t *)notif_sub->sub_shm.addr;
-            if ((ATOMIC_LOAD_RELAXED(multi_sub_shm->event) == SR_SUB_EV_NOTIF) &&
-                    (ATOMIC_LOAD_RELAXED(multi_sub_shm->request_id) != ATOMIC_LOAD_RELAXED(notif_sub->request_id))) {
+            sub_shm = (sr_sub_shm_t *)notif_sub->sub_shm.addr;
+            if ((ATOMIC_LOAD_RELAXED(sub_shm->event) == SR_SUB_EV_NOTIF) &&
+                    (ATOMIC_LOAD_RELAXED(sub_shm->request_id) != ATOMIC_LOAD_RELAXED(notif_sub->request_id))) {
                 /* there is an event we were supposed to process, too late now, just ignore it */
-                if ((err_info = sr_shmsub_multi_listen_write_event(multi_sub_shm, 1, 0, NULL, NULL, 0,
-                        notif_sub->module_name, "ignored"))) {
+                if ((err_info = sr_shmsub_listen_write_event(sub_shm, 1, 0, NULL, NULL, 0, notif_sub->module_name,
+                        "ignored"))) {
                     sr_errinfo_free(&err_info);
                 }
             }

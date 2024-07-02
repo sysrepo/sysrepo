@@ -564,7 +564,7 @@ sr_shmext_change_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t 
     if (shm_mod->change_sub[ds].sub_count == 1) {
         /* create the sub SHM while still holding the locks */
         if ((err_info = sr_shmsub_create(conn->mod_shm.addr + shm_mod->name, sr_ds2str(ds), -1,
-                sizeof(sr_multi_sub_shm_t)))) {
+                sizeof(sr_sub_shm_t)))) {
             goto cleanup_unlock;
         }
 
@@ -1336,7 +1336,7 @@ sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
 
     if (shm_mod->notif_sub_count == 1) {
         /* create the sub SHM while still holding the locks */
-        if ((err_info = sr_shmsub_create(conn->mod_shm.addr + shm_mod->name, "notif", -1, sizeof(sr_multi_sub_shm_t)))) {
+        if ((err_info = sr_shmsub_create(conn->mod_shm.addr + shm_mod->name, "notif", -1, sizeof(sr_sub_shm_t)))) {
             goto cleanup_unlock;
         }
 
@@ -1598,7 +1598,7 @@ sr_shmext_rpc_sub_add(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, u
     if (!path_found && sub_cid) {
         /* create the sub SHM while still holding the locks */
         mod_name = sr_get_first_ns(path);
-        if ((err_info = sr_shmsub_create(mod_name, "rpc", sr_str_hash(path, 0), sizeof(sr_multi_sub_shm_t)))) {
+        if ((err_info = sr_shmsub_create(mod_name, "rpc", sr_str_hash(path, 0), sizeof(sr_sub_shm_t)))) {
             goto cleanup_unlock;
         }
 
