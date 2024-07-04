@@ -6504,7 +6504,8 @@ apply_change_userord_thread(void *arg)
     sr_release_data(data);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
-    /* signal that we have finished applying changes */
+    /* signal that we have finished applying changes and wait for unsubscribe */
+    pthread_barrier_wait(&st->barrier);
     pthread_barrier_wait(&st->barrier);
 
     /* cleanup */
@@ -6538,6 +6539,9 @@ subscribe_change_userord_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     sr_unsubscribe(subscr);
+
+    /* signal that subscription was removed */
+    pthread_barrier_wait(&st->barrier);
 
     sr_session_stop(sess);
     return NULL;
