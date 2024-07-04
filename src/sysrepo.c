@@ -5572,20 +5572,29 @@ sr_change_ly2sr(const struct lyd_node *node, const char *value_str, const char *
     sr_val_t *sr_val;
     struct lyd_node *node_dup = NULL;
     const struct lyd_node *node_ptr;
+    union lyd_any_value aval;
 
     sr_val = calloc(1, sizeof *sr_val);
     SR_CHECK_MEM_GOTO(!sr_val, err_info, cleanup);
 
     if (value_str) {
-        /* replace the value in a node copy so that this specific one is stored */
-        assert(node->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST));
+        /* replace the value in a node copy so that this new value is stored */
         if ((err_info = sr_lyd_dup(node, NULL, 0, 0, &node_dup))) {
             goto cleanup;
         }
 
-        if ((err_info = sr_lyd_change_term(node_dup, value_str, 1))) {
-            goto cleanup;
+        if (node->schema->nodetype & LYD_NODE_TERM) {
+            if ((err_info = sr_lyd_change_term(node_dup, value_str, 1))) {
+                goto cleanup;
+            }
+        } else {
+            assert(node->schema->nodetype & LYD_NODE_ANY);
+            aval.str = value_str;
+            if ((err_info = sr_lyd_any_copy_value(node_dup, &aval, LYD_ANYDATA_STRING))) {
+                goto cleanup;
+            }
         }
+
         if (node->parent && (err_info = sr_lyd_insert_child(lyd_parent(node), node_dup))) {
             goto cleanup;
         }
