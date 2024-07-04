@@ -5985,20 +5985,14 @@ _sr_rpc_subscribe(sr_session_ctx_t *session, const char *xpath, sr_rpc_cb callba
     /* add RPC/action subscription into ext SHM and create separate specific SHM segment */
     if (is_ext) {
         /* Remove any SCRAPPED subscriptions */
-        if (shm_mod->rpc_ext_sub_scraps) {
-            sr_shmext_rpc_sub_remove_scraps(conn, &shm_mod->rpc_ext_subs, &shm_mod->rpc_ext_sub_count);
-            shm_mod->rpc_ext_sub_scraps = 0;
-        }
+        sr_shmext_rpc_sub_remove_scraps(conn, &shm_mod->rpc_ext_subs, &shm_mod->rpc_ext_sub_count);
         if ((err_info = sr_shmext_rpc_sub_add(conn, &shm_mod->rpc_ext_subs,
                 &shm_mod->rpc_ext_sub_count, path, sub_id, xpath, priority, 0, (*subscription)->evpipe_num, conn->cid))) {
             goto cleanup_unlock2;
         }
     } else {
         /* Remove any SCRAPPED subscriptions */
-        if (shm_rpc->scraps) {
-            sr_shmext_rpc_sub_remove_scraps(conn, &shm_rpc->subs, &shm_rpc->sub_count);
-            shm_rpc->scraps = 0;
-        }
+        sr_shmext_rpc_sub_remove_scraps(conn, &shm_rpc->subs, &shm_rpc->sub_count);
         if ((err_info = sr_shmext_rpc_sub_add(conn, &shm_rpc->subs, &shm_rpc->sub_count, path, sub_id,
                 xpath, priority, 0, (*subscription)->evpipe_num, conn->cid))) {
             goto cleanup_unlock2;
@@ -6269,14 +6263,14 @@ _sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, con
 
     /* publish RPC in an event and wait for a reply from the last subscriber */
     if ((err_info = sr_shmsub_rpc_notify(session->conn, &shm_rpc->subs, &shm_rpc->sub_count, path, input,
-            session->orig_name, session->orig_data, timeout_ms, &event_id, &(*output)->tree, &cb_err_info, &shm_rpc->scraps))) {
+            session->orig_name, session->orig_data, timeout_ms, &event_id, &(*output)->tree, &cb_err_info))) {
         goto cleanup_rpcsub_unlock;
     }
 
     if (cb_err_info) {
         /* "rpc" event failed, publish "abort" event and finish */
         err_info = sr_shmsub_rpc_notify_abort(session->conn, &shm_rpc->subs, &shm_rpc->sub_count, path,
-                input, session->orig_name, session->orig_data, timeout_ms, event_id, &shm_rpc->scraps);
+                input, session->orig_name, session->orig_data, timeout_ms, event_id);
         goto cleanup_rpcsub_unlock;
     }
 
@@ -6386,14 +6380,14 @@ _sr_rpc_ext_send_tree(sr_session_ctx_t *session, const struct lyd_node *ext_pare
     /* publish RPC in an event and wait for a reply from the last subscriber */
     if ((err_info = sr_shmsub_rpc_notify(session->conn, &shm_mod->rpc_ext_subs,
             &shm_mod->rpc_ext_sub_count, path, input, session->orig_name, session->orig_data, timeout_ms, &event_id,
-            &(*output)->tree, &cb_err_info, &shm_mod->rpc_ext_sub_scraps))) {
+            &(*output)->tree, &cb_err_info))) {
         goto cleanup_rpcsub_unlock;
     }
 
     if (cb_err_info) {
         /* "rpc" event failed, publish "abort" event and finish */
         err_info = sr_shmsub_rpc_notify_abort(session->conn, &shm_mod->rpc_ext_subs,
-                &shm_mod->rpc_ext_sub_count, path, input, session->orig_name, session->orig_data, timeout_ms, event_id, &shm_mod->rpc_ext_sub_scraps);
+                &shm_mod->rpc_ext_sub_count, path, input, session->orig_name, session->orig_data, timeout_ms, event_id);
         goto cleanup_rpcsub_unlock;
     }
 

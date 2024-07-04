@@ -1802,7 +1802,6 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
         if (!sr_conn_is_alive((*notif_subs)[i].cid)) {
             /* scrap the subscription to prevent future aliveness checks */
             SR_SHMEXT_SCRAP_SUBSCR(&((*notif_subs)[i]));
-            shm_mod->notif_sub_scraps = 1;
             continue;
         }
 

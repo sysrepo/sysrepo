@@ -199,7 +199,7 @@ sr_error_info_t *sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const 
  */
 sr_error_info_t *sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, const char *path,
         const struct lyd_node *input, const char *orig_name, const void *orig_data, uint32_t timeout_ms,
-        uint32_t *request_id, struct lyd_node **output, sr_error_info_t **cb_err_info, uint8_t *scraps);
+        uint32_t *request_id, struct lyd_node **output, sr_error_info_t **cb_err_info);
 
 /**
  * @brief Notify about (generate) an RPC/action abort event.
@@ -217,7 +217,7 @@ sr_error_info_t *sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, off_t *subs, uint32_t
  */
 sr_error_info_t *sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count,
         const char *path, const struct lyd_node *input, const char *orig_name, const void *orig_data, uint32_t timeout_ms,
-        uint32_t request_id, uint8_t *scraps);
+        uint32_t request_id);
 
 /**
  * @brief Notify about (generate) a notification event.

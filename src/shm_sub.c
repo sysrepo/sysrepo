@@ -974,7 +974,6 @@ sr_shmsub_change_notify_has_subscription(sr_conn_ctx_t *conn, struct sr_mod_info
         if (!sr_conn_is_alive(shm_sub[i].cid)) {
             /* scrap the subscription to prevent future aliveness checks */
             SR_SHMEXT_SCRAP_SUBSCR(&shm_sub[i]);
-            mod->shm_mod->change_sub[ds].scraps = 1;
             continue;
         }
 
@@ -1046,7 +1045,6 @@ sr_shmsub_change_notify_next_subscription(sr_conn_ctx_t *conn, struct sr_mod_inf
         if (!sr_conn_is_alive(shm_sub[i].cid)) {
             /* scrap the subscription to prevent future aliveness checks */
             SR_SHMEXT_SCRAP_SUBSCR(&shm_sub[i]);
-            mod->shm_mod->change_sub[ds].scraps = 1;
             continue;
         }
 
@@ -2095,7 +2093,6 @@ sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, cons
         if (!sr_conn_is_alive(xpath_sub->cid)) {
             /* scrap the subscription to prevent future aliveness checks */
             SR_SHMEXT_SCRAP_SUBSCR(xpath_sub);
-            mod->shm_mod->oper_get_scraps = 1;
             /* Notify any poll subs of oper get subscriptions change */
             if ((err_info = sr_shmsub_oper_poll_get_sub_change_notify_evpipe(conn, mod->ly_mod->name, xpath))) {
                 sr_errinfo_free(&err_info);
@@ -2442,12 +2439,11 @@ sr_shmsub_rpc_listen_filter_is_valid(const struct lyd_node *input, const char *x
  * @param[in,out] sub_count Ext SHM RPC sub count.
  * @param[in] input Operation input.
  * @param[out] max_priority_p Highest priority among the valid subscribers.
- * @param[out] scraps Flag if any subscriptions are scrapped (discovered to be dead).
  * @return 0 if not, non-zero if there is.
  */
 static int
 sr_shmsub_rpc_notify_has_subscription(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count,
-        const struct lyd_node *input, uint32_t *max_priority_p, uint8_t *scraps)
+        const struct lyd_node *input, uint32_t *max_priority_p)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_rpc_sub_t *shm_subs;
@@ -2474,7 +2470,6 @@ sr_shmsub_rpc_notify_has_subscription(sr_conn_ctx_t *conn, off_t *subs, uint32_t
         if (shm_subs[i].cid && !sr_conn_is_alive(shm_subs[i].cid)) {
             /* scrap the subscription to prevent future aliveness checks */
             SR_SHMEXT_SCRAP_SUBSCR(&shm_subs[i]);
-            *scraps = 1;
             continue;
         }
 
@@ -2510,13 +2505,12 @@ sr_shmsub_rpc_notify_has_subscription(sr_conn_ctx_t *conn, off_t *subs, uint32_t
  * @param[out] evpipes_p Array of evpipe numbers of all subscribers, needs to be freed.
  * @param[out] sub_count_p Number of subscribers with this priority.
  * @param[out] opts_p Optional options of all subscribers with this priority.
- * @param[out] scraps Flag if any subscriptions are scrapped (discovered to be dead).
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
 sr_shmsub_rpc_notify_next_subscription(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count,
         const struct lyd_node *input, uint32_t last_priority, uint32_t *next_priority_p,
-        uint32_t **evpipes_p, uint32_t *sub_count_p, int *opts_p, uint8_t *scraps)
+        uint32_t **evpipes_p, uint32_t *sub_count_p, int *opts_p)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_rpc_sub_t *shm_subs;
@@ -2542,7 +2536,6 @@ sr_shmsub_rpc_notify_next_subscription(sr_conn_ctx_t *conn, off_t *subs, uint32_
         if (shm_subs[i].cid && !sr_conn_is_alive(shm_subs[i].cid)) {
             /* scrap the subscription to prevent future aliveness checks */
             SR_SHMEXT_SCRAP_SUBSCR(&shm_subs[i]);
-            *scraps = 1;
             continue;
         }
 
@@ -2598,7 +2591,7 @@ cleanup:
 sr_error_info_t *
 sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, const char *path,
         const struct lyd_node *input, const char *orig_name, const void *orig_data, uint32_t timeout_ms,
-        uint32_t *request_id, struct lyd_node **output, sr_error_info_t **cb_err_info, uint8_t *scraps)
+        uint32_t *request_id, struct lyd_node **output, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
     char *input_lyb = NULL;
@@ -2611,7 +2604,7 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, cons
     *output = NULL;
 
     /* just find out whether there are any subscriptions and if so, what is the highest priority */
-    if (!sr_shmsub_rpc_notify_has_subscription(conn, subs, sub_count, input, &cur_priority, scraps)) {
+    if (!sr_shmsub_rpc_notify_has_subscription(conn, subs, sub_count, input, &cur_priority)) {
         sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "There are no matching subscribers for RPC/action \"%s\".",
                 path);
         goto cleanup;
@@ -2620,7 +2613,7 @@ sr_shmsub_rpc_notify(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, cons
 first_sub:
     /* correctly start the loop, with fake last priority 1 higher than the actual highest */
     if ((err_info = sr_shmsub_rpc_notify_next_subscription(conn, subs, sub_count, input, cur_priority + 1,
-            &cur_priority, &evpipes, &subscriber_count, &opts, scraps))) {
+            &cur_priority, &evpipes, &subscriber_count, &opts))) {
         goto cleanup;
     }
 
@@ -2729,7 +2722,7 @@ next_sub:
         /* find out what is the next priority and how many subscribers have it */
         free(evpipes);
         if ((err_info = sr_shmsub_rpc_notify_next_subscription(conn, subs, sub_count, input, cur_priority,
-                &cur_priority, &evpipes, &subscriber_count, &opts, scraps))) {
+                &cur_priority, &evpipes, &subscriber_count, &opts))) {
             goto cleanup_wrunlock;
         }
     } while (subscriber_count);
@@ -2759,7 +2752,7 @@ cleanup:
 sr_error_info_t *
 sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, const char *path,
         const struct lyd_node *input, const char *orig_name, const void *orig_data,
-        uint32_t timeout_ms, uint32_t request_id, uint8_t *scraps)
+        uint32_t timeout_ms, uint32_t request_id)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     char *input_lyb = NULL;
@@ -2786,7 +2779,7 @@ sr_shmsub_rpc_notify_abort(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count
         goto cleanup_wrunlock;
     }
 
-    if (!sr_shmsub_rpc_notify_has_subscription(conn, subs, sub_count, input, &cur_priority, scraps)) {
+    if (!sr_shmsub_rpc_notify_has_subscription(conn, subs, sub_count, input, &cur_priority)) {
         /* no subscriptions interested in this event, but we still want to clear the event */
 clear_shm:
         /* clear the SHM */
@@ -2817,7 +2810,7 @@ clear_shm:
         free(evpipes);
         /* find the next subscription */
         if ((err_info = sr_shmsub_rpc_notify_next_subscription(conn, subs, sub_count, input, cur_priority,
-                &cur_priority, &evpipes, &subscriber_count, NULL, scraps))) {
+                &cur_priority, &evpipes, &subscriber_count, NULL))) {
             goto cleanup_wrunlock;
         }
         if (subscriber_count && (err_priority == cur_priority)) {
@@ -4051,7 +4044,6 @@ sr_shmsub_oper_poll_get_sub_change_notify_evpipe(sr_conn_ctx_t *conn, const char
             if (!sr_conn_is_alive(shm_subs[i].cid)) {
                 /* scrap the subscription to prevent future aliveness checks */
                 SR_SHMEXT_SCRAP_SUBSCR(&shm_subs[i]);
-                shm_mod->oper_poll_scraps = 1;
                 continue;
             }
 

@@ -517,8 +517,6 @@ sr_shmext_change_sub_remove_scraps(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_da
             i++;
         }
     }
-    /* always unset scraps, because any errors above are not transient */
-    shm_mod->change_sub[ds].scraps = 0;
 }
 
 sr_error_info_t *
@@ -535,9 +533,7 @@ sr_shmext_change_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t 
         goto cleanup;
     }
 
-    if (shm_mod->change_sub[ds].scraps) {
-        sr_shmext_change_sub_remove_scraps(conn, shm_mod, ds);
-    }
+    sr_shmext_change_sub_remove_scraps(conn, shm_mod, ds);
 
     if (sub_opts & SR_SUBSCR_UPDATE) {
         /* check that there is not already an update subscription with the same priority */
@@ -814,7 +810,6 @@ sr_shmext_oper_get_sub_remove_scraps(sr_conn_ctx_t *conn, sr_mod_t *shm_mod)
         }
         ++i;
     }
-    shm_mod->oper_get_scraps = 0;
 }
 
 sr_error_info_t *
@@ -836,9 +831,7 @@ sr_shmext_oper_get_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_
         return err_info;
     }
 
-    if (shm_mod->oper_get_scraps) {
-        sr_shmext_oper_get_sub_remove_scraps(conn, shm_mod);
-    }
+    sr_shmext_oper_get_sub_remove_scraps(conn, shm_mod);
 
     /* check that this exact subscription does not exist yet while finding its position */
     new_len = sr_xpath_len_no_predicates(path);
@@ -1108,7 +1101,6 @@ sr_shmext_oper_poll_sub_remove_scraps(sr_conn_ctx_t *conn, sr_mod_t *shm_mod)
             i++;
         }
     }
-    shm_mod->oper_poll_scraps = 0;
 }
 
 sr_error_info_t *
@@ -1127,9 +1119,7 @@ sr_shmext_oper_poll_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub
         return err_info;
     }
 
-    if (shm_mod->oper_poll_scraps) {
-        sr_shmext_oper_poll_sub_remove_scraps(conn, shm_mod);
-    }
+    sr_shmext_oper_poll_sub_remove_scraps(conn, shm_mod);
 
     if (sub_opts & SR_SUBSCR_OPER_POLL_DIFF) {
         /* check globally that a subscription with the same path generating diff does not exist yet */
@@ -1297,7 +1287,6 @@ sr_shmext_notif_sub_remove_scraps(sr_conn_ctx_t *conn, sr_mod_t *shm_mod)
             i++;
         }
     }
-    shm_mod->notif_sub_scraps = 0;
 }
 
 sr_error_info_t *
@@ -1312,9 +1301,7 @@ sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
         return err_info;
     }
 
-    if (shm_mod->notif_sub_scraps) {
-        sr_shmext_notif_sub_remove_scraps(conn, shm_mod);
-    }
+    sr_shmext_notif_sub_remove_scraps(conn, shm_mod);
 
     SR_LOG_DBG("#SHM before (adding notif sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
