@@ -517,15 +517,11 @@ subscribe_change_done_thread(void *arg)
     ret = sr_subscription_process_events(subscr, NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
 
-    count = 0;
-    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 5) && (count < 1500)) {
-        usleep(10000);
-        ++count;
-    }
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 5);
-
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
+
+    /* final invocation count check */
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 5);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);
@@ -762,6 +758,7 @@ apply_update_thread(void *arg)
     /* perform 1st change */
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
 
     /* check current data tree */
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
@@ -792,6 +789,8 @@ apply_update_thread(void *arg)
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 6);
+
     /* check current data tree */
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
     assert_int_equal(ret, SR_ERR_OK);
@@ -815,7 +814,7 @@ subscribe_update_thread(void *arg)
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr = NULL;
-    int count, ret;
+    int ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -830,13 +829,6 @@ subscribe_update_thread(void *arg)
 
     /* signal that subscription was created */
     pthread_barrier_wait(&st->barrier);
-
-    count = 0;
-    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 6) && (count < 1500)) {
-        usleep(10000);
-        ++count;
-    }
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 6);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
@@ -1312,6 +1304,8 @@ apply_update_fail_thread(void *arg)
     /* perform the change (it should fail) */
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
+
     ret = sr_session_get_error(sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(err_info->err_count, 2);
@@ -1348,7 +1342,7 @@ subscribe_update_fail_thread(void *arg)
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr = NULL;
-    int count, ret;
+    int ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1360,13 +1354,6 @@ subscribe_update_fail_thread(void *arg)
 
     /* signal that subscription was created */
     pthread_barrier_wait(&st->barrier);
-
-    count = 0;
-    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 1) && (count < 1500)) {
-        usleep(10000);
-        ++count;
-    }
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
@@ -1856,6 +1843,10 @@ apply_change_fail_thread(void *arg)
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
 
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called2), 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called3), 1);
+
     /* no custom error message set */
     ret = sr_session_get_error(sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1883,10 +1874,6 @@ apply_change_fail_thread(void *arg)
     assert_null(str1);
     sr_release_data(subtree);
 
-    /* signal that we have finished applying changes #1 and wait for the cb_called check */
-    pthread_barrier_wait(&st->barrier);
-    pthread_barrier_wait(&st->barrier);
-
     /* perform another change (it should fail) */
     ret = sr_set_item_str(sess, "/when1:l2", "value2", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1894,6 +1881,10 @@ apply_change_fail_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called2), 3);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called3), 3);
 
     ret = sr_discard_changes(sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1907,12 +1898,11 @@ apply_change_fail_thread(void *arg)
 
     assert_null(str1);
     sr_release_data(subtree);
-
-    /* signal that we have finished applying changes #2 and wait for the cb_called check */
-    pthread_barrier_wait(&st->barrier);
-    pthread_barrier_wait(&st->barrier);
-
     sr_session_stop(sess);
+
+    /* signal we are done */
+    pthread_barrier_wait(&st->barrier);
+
     return NULL;
 }
 
@@ -1945,24 +1935,7 @@ subscribe_change_fail_thread(void *arg)
     /* signal that subscription was created */
     pthread_barrier_wait(&st->barrier);
 
-    /* wait for the other thread to signal #1 (all changes sent) */
-    pthread_barrier_wait(&st->barrier);
-
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called2), 2);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called3), 1);
-
-    /* cb_called checked */
-    pthread_barrier_wait(&st->barrier);
-
-    /* wait for the other thread to signal #2 (all changes sent) */
-    pthread_barrier_wait(&st->barrier);
-
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called2), 3);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called3), 3);
-
-    /* cb_called checked */
+    /* wait for apply_changes thread to finish */
     pthread_barrier_wait(&st->barrier);
 
     sr_unsubscribe(subscr);
@@ -2878,7 +2851,7 @@ subscribe_change_any_thread(void *arg)
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr = NULL;
-    int count, ret;
+    int ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2889,15 +2862,9 @@ subscribe_change_any_thread(void *arg)
     /* signal that subscription was created */
     pthread_barrier_wait(&st->barrier);
 
-    count = 0;
-    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 6) && (count < 1500)) {
-        usleep(10000);
-        ++count;
-    }
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 6);
-
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 6);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);
@@ -3512,6 +3479,9 @@ apply_change_dflt_leaf_thread(void *arg)
 
     /* cleanup */
     sr_session_stop(sess);
+
+    /* signal we are finished */
+    pthread_barrier_wait(&st->barrier);
     return NULL;
 }
 
@@ -3521,7 +3491,7 @@ subscribe_change_dflt_leaf_thread(void *arg)
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr = NULL;
-    int count, ret;
+    int ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -3532,11 +3502,8 @@ subscribe_change_dflt_leaf_thread(void *arg)
     /* signal that subscription was created */
     pthread_barrier_wait(&st->barrier);
 
-    count = 0;
-    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 10) && (count < 1500)) {
-        usleep(10000);
-        ++count;
-    }
+    /* wait for other thread to finish */
+    pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 10);
 
     sr_unsubscribe(subscr);
@@ -4227,6 +4194,10 @@ apply_change_dflt_leaflist_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     sr_session_stop(sess);
+
+    /* signal we are finished */
+    pthread_barrier_wait(&st->barrier);
+
     return NULL;
 }
 
@@ -4236,7 +4207,7 @@ subscribe_change_dflt_leaflist_thread(void *arg)
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr = NULL;
-    int count, ret;
+    int ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -4247,11 +4218,8 @@ subscribe_change_dflt_leaflist_thread(void *arg)
     /* signal that subscription was created */
     pthread_barrier_wait(&st->barrier);
 
-    count = 0;
-    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 10) && (count < 1500)) {
-        usleep(10000);
-        ++count;
-    }
+    /* wait for other thread to finish */
+    pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 10);
 
     sr_unsubscribe(subscr);
@@ -4472,6 +4440,10 @@ apply_change_dflt_choice_thread(void *arg)
 
     /* cleanup */
     sr_session_stop(sess);
+
+    /* signal we are finished */
+    pthread_barrier_wait(&st->barrier);
+
     return NULL;
 }
 
@@ -4481,7 +4453,7 @@ subscribe_change_dflt_choice_thread(void *arg)
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr = NULL;
-    int count, ret;
+    int ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -4492,11 +4464,8 @@ subscribe_change_dflt_choice_thread(void *arg)
     /* signal that subscription was created */
     pthread_barrier_wait(&st->barrier);
 
-    count = 0;
-    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 4) && (count < 1500)) {
-        usleep(10000);
-        ++count;
-    }
+    /* wait for other thread to finish */
+    pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
     sr_unsubscribe(subscr);
@@ -5017,7 +4986,7 @@ subscribe_change_done_when_thread(void *arg)
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr = NULL;
-    int count, ret;
+    int ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -5030,16 +4999,11 @@ subscribe_change_done_when_thread(void *arg)
     /* signal that subscription was created */
     pthread_barrier_wait(&st->barrier);
 
-    count = 0;
-    while (((ATOMIC_LOAD_RELAXED(st->cb_called) < 6) || (ATOMIC_LOAD_RELAXED(st->cb_called2) < 6)) && (count < 1500)) {
-        usleep(10000);
-        ++count;
-    }
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 6);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called2), 6);
-
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
+
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 6);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called2), 6);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);
@@ -5414,7 +5378,7 @@ subscribe_change_done_xpath_thread(void *arg)
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr = NULL;
-    int count, ret;
+    int ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -5429,16 +5393,10 @@ subscribe_change_done_xpath_thread(void *arg)
     /* signal that subscription was created */
     pthread_barrier_wait(&st->barrier);
 
-    count = 0;
-    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 8) && (count < 1500)) {
-        usleep(10000);
-        ++count;
-    }
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 8);
-
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 8);
     sr_unsubscribe(subscr);
     sr_session_stop(sess);
     return NULL;
@@ -5531,7 +5489,7 @@ subscribe_change_unlocked_thread(void *arg)
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr = NULL;
-    int count, ret;
+    int ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -5542,15 +5500,9 @@ subscribe_change_unlocked_thread(void *arg)
     /* signal that subscription was created */
     pthread_barrier_wait(&st->barrier);
 
-    count = 0;
-    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 2) && (count < 1500)) {
-        usleep(10000);
-        ++count;
-    }
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
-
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);
@@ -6117,8 +6069,7 @@ apply_change_order_thread(void *arg)
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    pthread_barrier_wait(&st->barrier);
-
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
     /* order: ietf-interfaces, test */
     sr_module_change_set_order(st->conn, "test", SR_DS_RUNNING, 0);
     sr_module_change_set_order(st->conn, "ietf-interfaces", SR_DS_RUNNING, 50);
@@ -6132,8 +6083,7 @@ apply_change_order_thread(void *arg)
     /* perform the second change */
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
-
-    pthread_barrier_wait(&st->barrier);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 8);
 
     /* cleanup edit */
     ret = sr_delete_item(sess, "/test:l1", 0);
@@ -6144,6 +6094,7 @@ apply_change_order_thread(void *arg)
     /* perform the third change */
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 12);
 
     /* signal that we have finished applying changes */
     pthread_barrier_wait(&st->barrier);
@@ -6174,17 +6125,8 @@ subscribe_change_order_thread(void *arg)
     /* signal that subscription was created */
     pthread_barrier_wait(&st->barrier);
 
-    /* wait for the first edit */
+    /* wait for the other thread */
     pthread_barrier_wait(&st->barrier);
-    assert_true(ATOMIC_LOAD_RELAXED(st->cb_called) >= 4);
-
-    /* wait for the second edit */
-    pthread_barrier_wait(&st->barrier);
-    assert_true(ATOMIC_LOAD_RELAXED(st->cb_called) >= 8);
-
-    /* wait for the third edit */
-    pthread_barrier_wait(&st->barrier);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 12);
 
     sr_unsubscribe(subscr);
     sr_session_stop(sess);
@@ -6539,6 +6481,8 @@ apply_change_userord_thread(void *arg)
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
+
     /* perform 2nd change */
     ret = sr_set_item_str(sess, "/test:l3[k='k1']/l4[k='k1']", NULL, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -6546,6 +6490,7 @@ apply_change_userord_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
     /* get data and reapply, the module change callback should not be called
     else the test fails */
@@ -6557,11 +6502,9 @@ apply_change_userord_thread(void *arg)
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
     sr_release_data(data);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
     /* signal that we have finished applying changes */
-    pthread_barrier_wait(&st->barrier);
-
-    /* wait for unsubscribe */
     pthread_barrier_wait(&st->barrier);
 
     /* cleanup */
@@ -6580,7 +6523,7 @@ subscribe_change_userord_thread(void *arg)
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr = NULL;
-    int count, ret;
+    int ret;
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -6591,20 +6534,10 @@ subscribe_change_userord_thread(void *arg)
     /* signal that subscription was created */
     pthread_barrier_wait(&st->barrier);
 
-    count = 0;
-    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 4) && (count < 1500)) {
-        usleep(10000);
-        ++count;
-    }
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
-
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
 
     sr_unsubscribe(subscr);
-
-    /* signal unsubscribe */
-    pthread_barrier_wait(&st->barrier);
 
     sr_session_stop(sess);
     return NULL;
@@ -7906,8 +7839,7 @@ apply_list_replace_thread(void *arg)
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* signal changes were applied #1 */
-    pthread_barrier_wait(&st->barrier);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     /* change data effectively replacing or creating some list instances */
     str2 = "{"
@@ -7936,8 +7868,7 @@ apply_list_replace_thread(void *arg)
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
-    /* signal changes were applied #2 */
-    pthread_barrier_wait(&st->barrier);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
     /* check current data tree */
     ret = sr_get_data(sess, "/ietf-interfaces:interfaces", 0, 0, 0, &data);
@@ -7986,16 +7917,6 @@ subscribe_list_replace_thread(void *arg)
 
     /* signal that subscription was created */
     pthread_barrier_wait(&st->barrier);
-
-    /* wait until changes are applied #1 */
-    pthread_barrier_wait(&st->barrier);
-
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
-
-    /* wait until changes are applied #2 */
-    pthread_barrier_wait(&st->barrier);
-
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
     /* wait for the other thread to finish */
     pthread_barrier_wait(&st->barrier);
