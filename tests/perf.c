@@ -18,6 +18,7 @@
 
 #include <assert.h>
 #include <inttypes.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <sys/time.h>
 #include <time.h>
