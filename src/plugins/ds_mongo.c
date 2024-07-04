@@ -1457,7 +1457,10 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
         }
 
         /* for 'when' nodes add a flag */
-        if ((ds == SR_DS_RUNNING) || (ds == SR_DS_STARTUP) || (ds == SR_DS_FACTORY_DEFAULT)) {
+        switch (ds) {
+        case SR_DS_STARTUP:
+        case SR_DS_RUNNING:
+        case SR_DS_FACTORY_DEFAULT:
             while (parent_nodes[0] != new_node) {
                 if (lysc_has_when(new_node->schema)) {
                     new_node->flags |= LYD_WHEN_TRUE;
@@ -1469,6 +1472,9 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
                 parent_nodes[0]->flags |= LYD_WHEN_TRUE;
             }
             parent_nodes[0]->flags &= ~LYD_NEW;
+            break;
+        default:
+            break;
         }
     }
 
