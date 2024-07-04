@@ -132,7 +132,8 @@ test_install_module(void **state)
     lseek(fd, 0, SEEK_SET);
     data = malloc(size + 1);
     assert_non_null(data);
-    read(fd, data, size);
+    ret = read(fd, data, size);
+    assert_int_not_equal(ret, -1);
     close(fd);
     data[size] = '\0';
 
