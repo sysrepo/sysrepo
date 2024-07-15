@@ -92,6 +92,7 @@ help_print(void)
             "  -o, --opaque                 Parse invalid nodes in the edit into opaque nodes. Accepted by edit op.\n"
             "  -p, --depth <depth>          Limit the depth of returned subtrees, 0 (unlimited) by default. Accepted by\n"
             "                               export op.\n"
+            "  -s, --no-subs                Do not request pull operational data (export op).\n"
             "  -t, --timeout <seconds>      Set the timeout for the operation, otherwise the default one is used.\n"
             "                               Accepted by all op.\n"
             "  -e, --defaults <wd-mode>     Print the default values, which are trimmed by default (\"report-all\",\n"
@@ -370,12 +371,17 @@ cleanup:
 
 static int
 op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name, const char *xpath, LYD_FORMAT format,
-        uint32_t max_depth, int wd_opt, int timeout_s)
+        uint32_t max_depth, int no_subs, int wd_opt, int timeout_s)
 {
     sr_data_t *data;
     FILE *file = NULL;
     char *str;
     int r;
+    sr_get_options_t opts = SR_OPER_DEFAULT;
+
+    if ((sr_session_get_ds(sess) == SR_DS_OPERATIONAL) && no_subs) {
+        opts |= SR_OPER_NO_SUBS;
+    }
 
     if (format == LYD_UNKNOWN) {
         format = LYD_XML;
@@ -394,13 +400,13 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
         if (asprintf(&str, "/%s:*", module_name) == -1) {
             r = SR_ERR_NO_MEMORY;
         } else {
-            r = sr_get_data(sess, str, max_depth, timeout_s * 1000, 0, &data);
+            r = sr_get_data(sess, str, max_depth, timeout_s * 1000, opts, &data);
             free(str);
         }
     } else if (xpath) {
-        r = sr_get_data(sess, xpath, max_depth, timeout_s * 1000, 0, &data);
+        r = sr_get_data(sess, xpath, max_depth, timeout_s * 1000, opts, &data);
     } else {
-        r = sr_get_data(sess, "/*", max_depth, timeout_s * 1000, 0, &data);
+        r = sr_get_data(sess, "/*", max_depth, timeout_s * 1000, opts, &data);
     }
     if (r != SR_ERR_OK) {
         error_sr_print(sess);
@@ -478,7 +484,7 @@ op_edit(sr_session_ctx_t *sess, const char *file_path, const char *editor, const
     }
 
     /* use export operation to get data to edit */
-    if (op_export(sess, tmp_file, module_name, NULL, format, 0, wd_opt, timeout_s)) {
+    if (op_export(sess, tmp_file, module_name, NULL, format, 0, 1, wd_opt, timeout_s)) {
         goto cleanup_unlock;
     }
 
@@ -764,6 +770,8 @@ main(int argc, char **argv)
     char *ptr;
     int r, rc = EXIT_FAILURE, opt, operation = 0, lock = 0, not_strict = 0, opaq = 0, timeout = 0, wd_opt = 0;
     uint32_t max_depth = 0;
+    int no_subs = 0;
+
     struct option options[] = {
         {"help",            no_argument,       NULL, 'h'},
         {"version",         no_argument,       NULL, 'V'},
@@ -783,6 +791,7 @@ main(int argc, char **argv)
         {"not-strict",      no_argument,       NULL, 'n'},
         {"opaque",          no_argument,       NULL, 'o'},
         {"depth",           required_argument, NULL, 'p'},
+        {"no-subs",         no_argument,       NULL, 's'},
         {"timeout",         required_argument, NULL, 't'},
         {"defaults",        required_argument, NULL, 'e'},
         {"value",           required_argument, NULL, 'u'},
@@ -797,7 +806,7 @@ main(int argc, char **argv)
 
     /* process options */
     opterr = 0;
-    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:S:G:d:m:x:f:lnop:t:e:u:v:", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hVI::X::E::R::N::C:S:G:d:m:x:f:lnop:st:e:u:v:", options, NULL)) != -1) {
         /* parameters with optional arguments */
         switch (opt) {
         case 'I':
@@ -970,6 +979,9 @@ main(int argc, char **argv)
                 goto cleanup;
             }
             break;
+        case 's':
+            no_subs = 1;
+            break;
         case 't':
             timeout = strtoul(optarg, &ptr, 10);
             if (ptr[0]) {
@@ -1073,7 +1085,7 @@ main(int argc, char **argv)
         rc = op_import(sess, file_path, module_name, format, not_strict, timeout);
         break;
     case 'X':
-        rc = op_export(sess, file_path, module_name, xpath, format, max_depth, wd_opt, timeout);
+        rc = op_export(sess, file_path, module_name, xpath, format, max_depth, no_subs, wd_opt, timeout);
         break;
     case 'E':
         rc = op_edit(sess, file_path, editor, module_name, format, lock, not_strict, opaq, wd_opt, timeout);
