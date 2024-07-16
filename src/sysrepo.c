@@ -6579,6 +6579,9 @@ _sr_notif_subscribe(sr_session_ctx_t *session, const char *mod_name, const char 
     if (!ly_mod) {
         sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", mod_name);
         goto cleanup;
+    } else if (!strcmp(ly_mod->name, "sysrepo")) {
+        sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Notifications of internal module \"sysrepo\" cannot be subscribed to.");
+        goto cleanup;
     }
 
     /* check write perm */
