@@ -228,6 +228,11 @@ if(NOT SRPD_PLUGINS_PATH)
 endif()
 message(STATUS "SRPD plugins path:  ${SRPD_PLUGINS_PATH}")
 
+if(NOT SYSREPOCFG_DEFAULT_LYD_FORMAT)
+    set(SYSREPOCFG_DEFAULT_LYD_FORMAT LYD_XML)
+endif()
+message(STATUS "sysrepocfg default data format: ${SYSREPOCFG_DEFAULT_LYD_FORMAT}")
+
 #
 # sources
 #

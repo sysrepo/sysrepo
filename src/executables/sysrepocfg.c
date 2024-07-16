@@ -234,26 +234,6 @@ step_load_data(const struct ly_ctx *ly_ctx, const char *file_path, LYD_FORMAT fo
     int parse_flags;
     LY_ERR lyrc = 0;
 
-    /* learn format */
-    if (format == LYD_UNKNOWN) {
-        if (!file_path) {
-            error_print(0, "When reading data from STDIN, format must be specified");
-            return EXIT_FAILURE;
-        }
-
-        ptr = strrchr(file_path, '.');
-        if (ptr && !strcmp(ptr, ".xml")) {
-            format = LYD_XML;
-        } else if (ptr && !strcmp(ptr, ".json")) {
-            format = LYD_JSON;
-        } else if (ptr && !strcmp(ptr, ".lyb")) {
-            format = LYD_LYB;
-        } else {
-            error_print(0, "Failed to detect format of \"%s\"", file_path);
-            return EXIT_FAILURE;
-        }
-    }
-
     /* get input */
     if (file_path) {
         lyrc = ly_in_new_filepath(file_path, 0, &in);
@@ -310,8 +290,6 @@ step_create_input_file(LYD_FORMAT format, char *tmp_file)
     if (format == LYD_LYB) {
         error_print(0, "LYB binary format cannot be opened in a text editor");
         return EXIT_FAILURE;
-    } else if (format == LYD_UNKNOWN) {
-        format = LYD_XML;
     }
 
 #ifdef SR_HAVE_MKSTEMPS
@@ -381,10 +359,6 @@ op_export(sr_session_ctx_t *sess, const char *file_path, const char *module_name
 
     if ((sr_session_get_ds(sess) == SR_DS_OPERATIONAL) && no_subs) {
         opts |= SR_OPER_NO_SUBS;
-    }
-
-    if (format == LYD_UNKNOWN) {
-        format = LYD_XML;
     }
 
     if (file_path) {
@@ -556,11 +530,8 @@ op_rpc(sr_session_ctx_t *sess, const char *file_path, const char *editor, LYD_FO
             break;
         }
     }
+
     if (node) {
-        if (format == LYD_UNKNOWN) {
-            /* use XML as the default */
-            format = LYD_XML;
-        }
         lyd_print_file(stdout, output->tree, format, wd_opt);
     }
     sr_release_data(output);
@@ -757,6 +728,29 @@ arg_get_ds(const char *optarg, sr_datastore_t *ds)
     }
 
     return 0;
+}
+
+static LYD_FORMAT
+learn_lyd_format(const char *file_path)
+{
+    char *ptr = NULL;
+    LYD_FORMAT format = SRCFG_DEFAULT_FORMAT;
+
+    /* learn format */
+    if (!file_path) {
+        return format;
+    }
+
+    ptr = strrchr(file_path, '.');
+    if (ptr && !strcmp(ptr, ".xml")) {
+        format = LYD_XML;
+    } else if (ptr && !strcmp(ptr, ".json")) {
+        format = LYD_JSON;
+    } else if (ptr && !strcmp(ptr, ".lyb")) {
+        format = LYD_LYB;
+    }
+
+    return format;
 }
 
 int
@@ -1077,6 +1071,10 @@ main(int argc, char **argv)
     if ((r = sr_session_start(conn, ds, &sess)) != SR_ERR_OK) {
         error_print(r, "Failed to start a session");
         goto cleanup;
+    }
+
+    if (format == LYD_UNKNOWN) {
+        format = learn_lyd_format(file_path);
     }
 
     /* perform the operation */

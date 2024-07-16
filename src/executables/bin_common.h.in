@@ -35,6 +35,9 @@
 /** path to tar executable */
 #define SRPD_TAR_BINARY "@TAR_BINARY@"
 
+/** default data format for sysrepocfg */
+#define SRCFG_DEFAULT_FORMAT @SYSREPOCFG_DEFAULT_LYD_FORMAT@
+
 /** whether mkstemps is found on the system */
 #cmakedefine SR_HAVE_MKSTEMPS
 
