@@ -724,11 +724,6 @@ _sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_sub_ev
         goto error;
     }
 
-    if (!event) {
-        SR_LOG_INF("Session %" PRIu32 " (user \"%s\", CID %" PRIu32 ") created.", (*session)->sid, (*session)->user,
-                conn->cid);
-    }
-
     return NULL;
 
 error:
