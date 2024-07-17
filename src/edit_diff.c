@@ -2706,13 +2706,14 @@ sr_edit_merge_value(struct lyd_node **trg_node, struct lyd_node **trg_root, cons
                 }
             }
         }
-    } else if ((*trg_node)->schema->nodetype == LYS_LEAF) {
-        /* change the leaf value */
+    } else if ((*trg_node)->schema->nodetype & LYD_NODE_TERM) {
+        /* change the leaf or state leaf-list value */
         if ((err_info = sr_lyd_change_term(*trg_node, lyd_get_value(src_node), 0))) {
             goto cleanup;
         }
-    } else if ((*trg_node)->schema->nodetype & LYS_ANYDATA) {
+    } else {
         /* update any value */
+        assert((*trg_node)->schema->nodetype & LYS_ANYDATA);
         if ((err_info = sr_lyd_any_copy_value(*trg_node, &((struct lyd_node_any *)src_node)->value,
                 ((struct lyd_node_any *)src_node)->value_type))) {
             goto cleanup;
@@ -2836,17 +2837,30 @@ sr_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_parent, const s
             } else {
                 if ((src_op == EDIT_MERGE) && (trg_op == EDIT_MERGE) && !val_equal) {
                     /* only the value was changed */
-                    diff_op = EDIT_REPLACE;
                     switch (trg_node->schema->nodetype) {
                     case LYS_LEAF:
+                        diff_op = EDIT_REPLACE;
                         prev_val = lyd_get_value(trg_node);
                         break;
                     case LYS_ANYXML:
                     case LYS_ANYDATA:
+                        diff_op = EDIT_REPLACE;
                         if ((err_info = sr_lyd_any_value_str(trg_node, &any_val))) {
                             goto cleanup;
                         }
                         prev_val = any_val;
+                        break;
+                    case LYS_LEAFLIST:
+                        /* state leaf-list being replaced */
+                        assert(lysc_is_dup_inst_list(trg_node->schema));
+
+                        /* generate "delete" for the current node */
+                        if ((err_info = sr_edit_diff_append(trg_node, EDIT_DELETE, NULL, 0, diff_root))) {
+                            goto cleanup;
+                        }
+
+                        diff_op = EDIT_CREATE;
+                        prev_val = NULL;
                         break;
                     default:
                         SR_ERRINFO_INT(&err_info);
