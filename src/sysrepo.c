@@ -411,6 +411,7 @@ sr_disconnect(sr_conn_ctx_t *conn)
         return sr_api_ret(NULL, err_info);
     }
 
+    SR_LOG_INF("Connection %" PRIu32 " destroyed", conn->cid);
     /* free attributes */
     sr_conn_free(conn);
 
