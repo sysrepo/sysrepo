@@ -7080,9 +7080,8 @@ test_write_starve(void **state)
 static void *
 apply_when1_thread(void *arg)
 {
+    struct state *st = (struct state *)arg;
     sr_conn_ctx_t *conn;
-
-    (void)arg;
     sr_session_ctx_t *sess;
     int ret;
 
@@ -7092,6 +7091,9 @@ apply_when1_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     for (int i = 0; i < APPLY_ITERATIONS; i++) {
+        /* let other thread also run */
+        pthread_barrier_wait(&st->barrier);
+
         ret = sr_set_item_str(sess, "/when1:l1", "val", NULL, 0);
         assert_int_equal(ret, SR_ERR_OK);
 
@@ -7120,9 +7122,8 @@ apply_when1_thread(void *arg)
 static void *
 apply_when2_thread(void *arg)
 {
+    struct state *st = (struct state *)arg;
     sr_conn_ctx_t *conn;
-
-    (void)arg;
     sr_session_ctx_t *sess;
     int ret;
 
@@ -7138,6 +7139,9 @@ apply_when2_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
 
     for (int i = 0; i < APPLY_ITERATIONS; i++) {
+        /* let other thread also run */
+        pthread_barrier_wait(&st->barrier);
+
         ret = sr_set_item_str(sess, "/when2:ll", "val", NULL, 0);
         assert_int_equal(ret, SR_ERR_OK);
 
