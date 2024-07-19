@@ -411,6 +411,7 @@ sr_disconnect(sr_conn_ctx_t *conn)
         return sr_api_ret(NULL, err_info);
     }
 
+    SR_LOG_INF("Connection %" PRIu32 " destroyed", conn->cid);
     /* free attributes */
     sr_conn_free(conn);
 
@@ -721,11 +722,6 @@ _sr_session_start(sr_conn_ctx_t *conn, const sr_datastore_t datastore, sr_sub_ev
     }
     if ((err_info = sr_rwlock_init(&(*session)->notif_buf.lock, 0))) {
         goto error;
-    }
-
-    if (!event) {
-        SR_LOG_INF("Session %" PRIu32 " (user \"%s\", CID %" PRIu32 ") created.", (*session)->sid, (*session)->user,
-                conn->cid);
     }
 
     return NULL;
