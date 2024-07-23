@@ -446,6 +446,12 @@ else()
     message(STATUS "Datastore plugin ds_redis not supported.")
 endif()
 
+# common database utility functions - optional
+if((TARGET mongo::mongoc_shared AND MONGOSH) OR (LIBHIREDIS_FOUND AND REDIS_CLI))
+    # common utilities added if at least one library exists
+    list(APPEND LIB_SRC src/plugins/common_db.c)
+endif()
+
 # sysrepo
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 add_library(srobj OBJECT ${LIB_SRC} ${compatsrc})
