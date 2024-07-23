@@ -3402,8 +3402,7 @@ srpds_load_oper_recursively(const struct lyd_node *mod_data, struct mongo_diff_d
     const struct lyd_node *sibling = mod_data;
     struct lyd_node *child = NULL;
     struct lyd_node_opaq *opaque = NULL; // for opaque nodes
-    const char *predicate = NULL;
-    char *path, *path_no_pred;
+    char *path = NULL;
     const char *value, *module_name;
     char *any_value = NULL;
     bson_t *bson_query = NULL;
@@ -3413,8 +3412,10 @@ srpds_load_oper_recursively(const struct lyd_node *mod_data, struct mongo_diff_d
 
     while (sibling) {
         /* get path */
-        if ((err_info = srpds_get_predicate(sibling, &predicate, &path, &path_no_pred))) {
-            goto cleanup;
+        path = lyd_path(sibling, LYD_PATH_STD, NULL, 0);
+        if (!path) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_LY, "lyd_path()", "")
+            return err_info;
         }
 
         /* get value */
