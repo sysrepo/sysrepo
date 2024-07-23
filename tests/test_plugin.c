@@ -1141,6 +1141,11 @@ test_access_get(void **state)
     char *username_out = NULL, *groupname_out = NULL;
     mode_t perm;
 
+    if (SR_UMASK) {
+        puts("Custom Sysrepo umask affects the test. Skipping.");
+        return;
+    }
+
     rc = testutil_uid2usr(getuid(), &username);
     assert_int_equal(rc, SR_ERR_OK);
 
@@ -1185,6 +1190,11 @@ test_access_setandget(void **state)
     char *username = NULL, *groupname = NULL;
     char *username_out = NULL, *groupname_out = NULL;
     mode_t perm;
+
+    if (SR_UMASK) {
+        puts("Custom Sysrepo umask affects the test. Skipping.");
+        return;
+    }
 
     rc = testutil_uid2usr(getuid(), &username);
     assert_int_equal(rc, SR_ERR_OK);
