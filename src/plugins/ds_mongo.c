@@ -546,7 +546,7 @@ srpds_load_oper(mongoc_collection_t *module, const struct lys_module *mod, bson_
     struct ly_set *meta_match_nodes = NULL;
 
     struct lyd_node **parent_nodes = NULL, **tmp_pnodes = NULL;
-    size_t pnodes_size = 1;
+    size_t pnodes_size = 0;
     uint32_t node_idx = 0;
 
     cursor = mongoc_collection_find_with_opts(module, xpath_filter, NULL, NULL);
@@ -587,12 +587,6 @@ srpds_load_oper(mongoc_collection_t *module, const struct lys_module *mod, bson_
     *
     *   [ !!! NOT LOADED ] data are only for internal use
     */
-
-    parent_nodes = calloc(1, sizeof *parent_nodes);
-    if (!parent_nodes) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "calloc()", "")
-        goto cleanup;
-    }
 
     while (mongoc_cursor_next(cursor, (const bson_t **) &doc2)) {
         if (!bson_iter_init(&iter, doc2)) {
@@ -894,7 +888,7 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
     struct lyd_node *new_node = NULL, *parent_node = NULL;
 
     struct lyd_node **parent_nodes = NULL, **tmp_pnodes = NULL;
-    size_t pnodes_size = 1;
+    size_t pnodes_size = 0;
     uint32_t node_idx = 0, i, j;
     struct lys_module *node_module = NULL;
 
@@ -942,12 +936,6 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
     *
     *   [ !!! NOT LOADED ] data are only for internal use
     */
-
-    parent_nodes = calloc(1, sizeof *parent_nodes);
-    if (!parent_nodes) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "calloc()", "")
-        goto cleanup;
-    }
 
     while (mongoc_cursor_next(cursor, (const bson_t **) &doc2)) {
         if (!bson_iter_init(&iter, doc2)) {
@@ -1196,28 +1184,19 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
             }
             if (!uo_found) {
                 size = uo_lists.size;
-                if (size) {
-                    list = realloc(uo_lists.lists, (size + 1) * sizeof *list);
-                    if (!list) {
-                        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "realloc()", "")
-                        goto cleanup;
-                    }
-                    uo_lists.lists = list;
-                    uo_lists.size = size + 1;
-                } else {
-                    list = calloc(1, sizeof *list);
-                    if (!list) {
-                        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "calloc()", "")
-                        goto cleanup;
-                    }
-                    uo_lists.lists = list;
-                    uo_lists.size = 1;
+                list = realloc(uo_lists.lists, (size + 1) * sizeof *list);
+                if (!list) {
+                    ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "realloc()", "")
+                    goto cleanup;
                 }
+                uo_lists.lists = list;
+                uo_lists.size = size + 1;
+
                 if (!(uo_lists.lists[size].name = strdup(path_no_pred))) {
                     ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "strdup()", strerror(errno))
                     goto cleanup;
                 }
-                uo_lists.lists[size].size = 1;
+
                 data = calloc(1, sizeof *data);
                 if (!data) {
                     ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "calloc()", "")

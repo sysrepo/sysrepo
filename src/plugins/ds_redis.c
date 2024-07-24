@@ -1911,7 +1911,7 @@ srpds_load_oper(redisContext *ctx, const struct lys_module *mod, const char *mod
     struct ly_set *meta_match_nodes = NULL;
 
     struct lyd_node **parent_nodes = NULL, **tmp_pnodes = NULL;
-    size_t pnodes_size = 1;
+    size_t pnodes_size = 0;
     uint32_t node_idx = 0;
 
     /*
@@ -1988,12 +1988,6 @@ srpds_load_oper(redisContext *ctx, const struct lys_module *mod, const char *mod
     }
     if (reply->type != REDIS_REPLY_ARRAY) {
         ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", "No reply array")
-        goto cleanup;
-    }
-
-    parent_nodes = calloc(1, sizeof *parent_nodes);
-    if (!parent_nodes) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "calloc()", "")
         goto cleanup;
     }
 
