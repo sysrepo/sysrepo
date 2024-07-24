@@ -2077,11 +2077,7 @@ srpds_load_oper(redisContext *ctx, const struct lys_module *mod, const char *mod
             }
 
             /* get module from module_name */
-            if (module_name) {
-                node_module = ly_ctx_get_module_implemented(mod->ctx, module_name);
-            } else {
-                node_module = NULL;
-            }
+            node_module = ly_ctx_get_module_implemented(mod->ctx, module_name);
 
             /* get index of the node in the parent_nodes array based on its height */
             if ((type != SRPDS_DB_LY_META) && (type != SRPDS_DB_LY_ATTR)) {
