@@ -43,6 +43,25 @@ enum srpds_db_ly_types {
     SRPDS_DB_LY_ATTR           /* attribute */
 };
 
+/* userordered element node with order */
+typedef struct srpds_db_userordered_data_s {
+    struct lyd_node *ptr;
+    int64_t order;
+} srpds_db_userordered_data_t;
+
+/* userordered list or leaflist with name and size */
+typedef struct srpds_db_userordered_list_s {
+    char *name;
+    size_t size;
+    srpds_db_userordered_data_t *data;
+} srpds_db_userordered_list_t;
+
+/* userordered lists and leaflists with size */
+typedef struct srpds_db_userordered_lists_s {
+    size_t size;
+    srpds_db_userordered_list_t *lists;
+} srpds_db_userordered_lists_t;
+
 /**
  * @brief Concatenate the keys of a list instance into a single string.
  *
@@ -93,6 +112,17 @@ uint32_t srpds_get_node_depth(const char *path);
  * @param[in] path Path of the current node.
  */
 void srpds_get_parent_path(char *path);
+
+/**
+ * @brief Change all '/' in the path for ' ', except in the predicate.
+ *
+ * @param[in] plg_name Plugin name.
+ * @param[in] path Path.
+ * @param[out] out Allocated result with ' '.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+sr_error_info_t *srpds_get_modif_path(const char *plg_name, const char *path, char **out);
 
 /**
  * @brief Set default flags for nodes and its parents.
@@ -146,5 +176,131 @@ sr_error_info_t *srpds_gid2grp(const char *plg_name, gid_t gid, char **group);
  * @return Sysrepo error info on error.
  */
 sr_error_info_t *srpds_escape_string(const char *plg_name, const char *string, char **escaped_string);
+
+/**
+ * @brief Compare function for qsort comparing elements of userordered lists and leaflists.
+ *
+ * @param[in] a First element of userordered list or leaflist.
+ * @param[in] b Second element of userordered list or leaflist.
+ * @return >1 if @p a is after @p b or <1 if @p a is before @p b .
+ */
+int srpds_uo_elem_comp(const void *a, const void *b);
+
+/**
+ * @brief Add @p new_node to @p uo_lists .
+ *
+ * @param[in] plg_name Plugin name.
+ * @param[in] new_node New node to add to @p uo_lists .
+ * @param[in] order Order of the node in the uo_list.
+ * @param[in] path_no_pred Path to the node without predicate (path to userordered list/leaflist).
+ * @param[in,out] uo_lists Structure containing userordered lists and leaflists.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+sr_error_info_t *srpds_add_uo_lists(const char *plg_name, struct lyd_node *new_node, int64_t order,
+        const char *path_no_pred, srpds_db_userordered_lists_t *uo_lists);
+
+/**
+ * @brief Order all userordered lists and leaflists in @p uo_lists .
+ *
+ * @param[in] plg_name Plugin name.
+ * @param[in,out] uo_lists Structure containing userordered lists and leaflists.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+sr_error_info_t *srpds_order_uo_lists(const char *plg_name, const srpds_db_userordered_lists_t *uo_lists);
+
+/**
+ * @brief Cleanup the structure containing userordered lists and leaflists.
+ *
+ * @param[in] uo_lists Structure containing userordered lists and leaflists.
+ */
+void srpds_cleanup_uo_lists(srpds_db_userordered_lists_t *uo_lists);
+
+/**
+ * @brief Add a new node to the data tree in conventional datastore.
+ *
+ * @param[in] plg_name Plugin name.
+ * @param[in] ds Datastore the data tree is in.
+ * @param[in] path Path to node.
+ * @param[in] name Name of the node.
+ * @param[in] type Type of the node.
+ * @param[in] node_module Module of the node.
+ * @param[in] value Value of the node.
+ * @param[in] valtype Type of the value (XML=0 or JSON=1).
+ * @param[in,out] dflt_flag Whether the node has default value.
+ * @param[in] keys Array of the keys of the node (list instance).
+ * @param[in] lengths Array of the lengths of the @p keys .
+ * @param[in] order Order of the node in the userordered list or leaflist.
+ * @param[in] path_no_pred Path to the node without predicate.
+ * @param[in,out] uo_lists Structure containing userordered lists and leaflists.
+ * @param[in,out] parent_nodes Potential parent nodes of the new node.
+ * @param[in,out] pnodes_size Size of the @p parent_nodes .
+ * @param[in,out] mod_data Data tree to insert the new node into.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+sr_error_info_t *srpds_add_conv_mod_data(const char *plg_name, sr_datastore_t ds, const char *path, const char *name,
+        enum srpds_db_ly_types type, struct lys_module *node_module, const char *value, int32_t valtype, int *dflt_flag,
+        const char **keys, uint32_t *lengths, int64_t order, const char *path_no_pred,
+        srpds_db_userordered_lists_t *uo_lists, struct lyd_node ***parent_nodes, size_t *pnodes_size,
+        struct lyd_node **mod_data);
+
+/**
+ * @brief Add a new node to the data tree in operational datastore.
+ *
+ * @param[in] plg_name Plugin name.
+ * @param[in] ctx Context of the new node.
+ * @param[in] path Path to node.
+ * @param[in] name Name of the node.
+ * @param[in] type Type of the node.
+ * @param[in] module_name Name of the node's module.
+ * @param[in] node_module Module of the node.
+ * @param[in] value Value of the node.
+ * @param[in] valtype Type of the value (XML=0 or JSON=1).
+ * @param[in,out] dflt_flag Whether the node has default value.
+ * @param[in] keys Array of the keys of the node (list instance).
+ * @param[in] lengths Array of the lengths of the @p keys .
+ * @param[in,out] parent_nodes Potential parent nodes of the new node.
+ * @param[in,out] pnodes_size Size of the @p parent_nodes .
+ * @param[in,out] mod_data Data tree to insert the new node into.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+sr_error_info_t *srpds_add_oper_mod_data(const char *plg_name, struct ly_ctx *ctx, const char *path, const char *name,
+        enum srpds_db_ly_types type, const char *module_name, struct lys_module *node_module, const char *value,
+        int32_t valtype, int *dflt_flag, const char **keys, uint32_t *lengths, struct lyd_node ***parent_nodes,
+        size_t *pnodes_size, struct lyd_node **mod_data);
+
+/**
+ * @brief Get all the values associated with the node.
+ *
+ * @param[in] plg_name Plugin name.
+ * @param[in] node Data node for which to get the values.
+ * @param[out] value Value of the node.
+ * @param[out] prev Value of the node before this node.
+ * @param[out] orig_prev Original value of the node before this node.
+ * @param[out] prev_pred Value of the node before this node in predicate.
+ * @param[out] orig_prev_pred Original value of the node before this node in predicate.
+ * @param[out] any_value Value of the type 'any value'.
+ * @param[out] valtype Type of the node's value (XML or JSON).
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+sr_error_info_t *srpds_get_values(const char *plg_name, struct lyd_node *node, const char **value, const char **prev,
+        const char **orig_prev, char **prev_pred, char **orig_prev_pred, char **any_value, int32_t *valtype);
+
+/**
+ * @brief Free all the memory allocated in srpds_get_values().
+ *
+ * @param[in] node Data node for which to free the values.
+ * @param[in] prev Value of the node before this node.
+ * @param[in] orig_prev Original value of the node before this node.
+ * @param[in,out] prev_pred Value of the node before this node in predicate.
+ * @param[in,out] orig_prev_pred Original value of the node before this node in predicate.
+ * @param[in,out] any_value Value of the type 'any value'.
+ */
+void srpds_cleanup_values(struct lyd_node *node, const char *prev, const char *orig_prev, char **prev_pred,
+        char **orig_prev_pred, char **any_value);
 
 #endif /* _COMMON_DB_H */
