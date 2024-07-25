@@ -1533,7 +1533,7 @@ srsn_sn_sr_subscribe(sr_session_ctx_t *sess, struct srsn_sub *sub, int sub_no_th
 
     /* collect modules to subscribe to */
     if ((rc = srsn_stream_collect_mods(sub->stream, sub->xpath_filter, ly_ctx, &mod_set))) {
-        sr_errinfo_new(&err_info, rc, "Failed to collect modules to subscribe to (%s).", sr_strerror(rc));
+        sr_errinfo_new(&err_info, rc, "Failed to collect modules to subscribe to, invalid stream and/or XPath filter (%s).", sr_strerror(rc));
         goto error;
     }
 
