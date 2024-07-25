@@ -439,12 +439,20 @@ sr_acquire_context(sr_conn_ctx_t *conn)
 API const struct ly_ctx *
 sr_session_acquire_context(sr_session_ctx_t *session)
 {
+    if (!session) {
+        return NULL;
+    }
+
     return sr_acquire_context(session->conn);
 }
 
 API void
 sr_release_context(sr_conn_ctx_t *conn)
 {
+    if (!conn) {
+        return;
+    }
+
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
 }
@@ -452,6 +460,10 @@ sr_release_context(sr_conn_ctx_t *conn)
 API void
 sr_session_release_context(sr_session_ctx_t *session)
 {
+    if (!session) {
+        return;
+    }
+
     sr_release_context(session->conn);
 }
 
