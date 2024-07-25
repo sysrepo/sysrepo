@@ -848,7 +848,10 @@ srsn_sub_free(struct srsn_sub *sub)
             break;
         }
     }
-    assert(i < snstate.count);
+    if (i == snstate.count) {
+        /* was not yet in the array, fine */
+        return;
+    }
 
     /* remove from the array */
     if (i < snstate.count - 1) {
