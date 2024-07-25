@@ -29,6 +29,7 @@
 #define SRPDS_DB_LIST_KEY_LEN_BYTES 2 /* databases store the length of a list key in two bytes */
 #define SRPDS_DB_LIST_KEY_LEN_BITS 7 /* databases use only 7 bits in a byte to store the length of a list key */
 #define SRPDS_DB_LIST_KEY_GET_LEN(first_byte, second_byte) ((uint32_t)(first_byte) << SRPDS_DB_LIST_KEY_LEN_BITS) | second_byte /* get length of a list key */
+#define SRPDS_DB_UO_ELEMS_GAP_SIZE 1024 /* initial gap between elements in user-ordered lists and leaf-lists */
 
 enum srpds_db_ly_types {
     SRPDS_DB_LY_NONE = 0,      /* none */

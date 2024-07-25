@@ -247,7 +247,7 @@ srpds_inc_maxord(uint64_t *out_max_order)
     /* new elements added at the end of the list
      * also have a large gap between them
      * so that the insertion is faster */
-    *out_max_order = *out_max_order + 1000;
+    *out_max_order = *out_max_order + SRPDS_DB_UO_ELEMS_GAP_SIZE;
 }
 
 /**
@@ -809,12 +809,12 @@ srpds_create_uo_op(redisContext *ctx, const char *mod_ns, struct lyd_node *node,
              * list were deleted */
 
             /* set max order for lists and leaf-lists */
-            if ((err_info = srpds_set_maxord(ctx, mod_ns, path_no_pred, 1000))) {
+            if ((err_info = srpds_set_maxord(ctx, mod_ns, path_no_pred, SRPDS_DB_UO_ELEMS_GAP_SIZE))) {
                 goto cleanup;
             }
 
             if ((err_info = srpds_insert_uo_element(ctx, mod_ns, node, module_name, path, value, prev, prev_pred,
-                    1000, path_no_pred, path_modif))) {
+                    SRPDS_DB_UO_ELEMS_GAP_SIZE, path_no_pred, path_modif))) {
                 goto cleanup;
             }
         } else if (next_order == 1) {

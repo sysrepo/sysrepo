@@ -1228,9 +1228,9 @@ srpds_set_maxord(mongoc_collection_t *module, const char *path_no_pred)
         goto cleanup;
     }
 
-    /* maximum order starts at 1000, so that a large gap in front of the first element is created
+    /* maximum order starts at 1024, so that a large gap in front of the first element is created
      * to easily insert elements here */
-    bson_query = BCON_NEW("_id", BCON_UTF8(final_path), "value", BCON_INT64(1000));
+    bson_query = BCON_NEW("_id", BCON_UTF8(final_path), "value", BCON_INT64(SRPDS_DB_UO_ELEMS_GAP_SIZE));
     if (!mongoc_collection_insert_one(module, bson_query, NULL, NULL, &error)) {
         ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_insert_one()", error.message)
         goto cleanup;
@@ -1254,7 +1254,7 @@ srpds_inc_maxord(uint64_t *out_max_order)
     /* new elements added at the end of the list
      * also have a large gap between them
      * so that the insertion is faster */
-    *out_max_order = *out_max_order + 1000;
+    *out_max_order = *out_max_order + SRPDS_DB_UO_ELEMS_GAP_SIZE;
 }
 
 /**
@@ -1696,7 +1696,7 @@ srpds_create_uo_op(mongoc_collection_t *module, struct lyd_node *node, const cha
             }
 
             /* calculate order */
-            order = 1000;
+            order = SRPDS_DB_UO_ELEMS_GAP_SIZE;
         } else if (next_order == 1) {
             /* shift next elements by one recursively */
             if ((err_info = srpds_shift_uo_list_recursively(module, path_no_pred, next_order, max_order))) {
