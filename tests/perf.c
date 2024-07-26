@@ -839,14 +839,6 @@ sysrepo_init(const char *plg_name, struct test_state *state, uint32_t count)
     }
     mod_ds.plugin_name[5] = "JSON notif";
 
-    /* setup env */
-    if ((ret = setenv("SYSREPO_REPOSITORY_PATH", TESTS_REPO_DIR "/test_repositories/sr_perf", 1))) {
-        return ret;
-    }
-    if ((ret = setenv("SYSREPO_SHM_PREFIX", "_tests_sr_sr_perf", 1))) {
-        return ret;
-    }
-
     /* turn on logging */
     sr_log_stderr(SR_LL_WRN);
 

@@ -100,6 +100,10 @@ if(ENABLE_PERF_TESTS)
     target_link_libraries(sr_perf sysrepo srobj)
 
     add_test(NAME sr_perf_1000_10 COMMAND sr_perf 1000 10)
+    set_property(TEST sr_perf_1000_10 APPEND PROPERTY ENVIRONMENT
+        "SYSREPO_REPOSITORY_PATH=${PROJECT_BINARY_DIR}/test_repositories/sr_perf"
+        "SYSREPO_SHM_PREFIX=_tests_sr_sr_perf"
+    )
 
     if(${CMAKE_VERSION} VERSION_GREATER "3.7")
         set_tests_properties(sr_perf_1000_10 PROPERTIES FIXTURES_REQUIRED tests_cleanup)
