@@ -1703,8 +1703,9 @@ srpds_load_and_exec(redisContext *ctx, const char *mod_ns, const char *index_typ
     sr_error_info_t *err_info = NULL;
     uint32_t i;
     redisReply *reply = NULL, *reply2 = NULL;
+    long long cursor;
 
-    reply = redisCommand(ctx, "FT.AGGREGATE %s:%s * LOAD 1 __key", mod_ns, index_type);
+    reply = redisCommand(ctx, "FT.AGGREGATE %s:%s * LOAD 1 __key LIMIT 0 1000000000000 WITHCURSOR COUNT 100", mod_ns, index_type);
     if (reply->type == REDIS_REPLY_ERROR) {
         ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", reply->str)
         goto cleanup;
@@ -1714,31 +1715,47 @@ srpds_load_and_exec(redisContext *ctx, const char *mod_ns, const char *index_typ
         goto cleanup;
     }
 
-    /* go through retrieved keys and execute a command on them */
-    switch (cmd_type) {
-    case RDS_CMD_DEL:
-        for (i = 1; i < reply->elements; ++i) {
-            reply2 = redisCommand(ctx, "DEL %s", reply->element[i]->element[1]->str);
-            if ((reply2->type == REDIS_REPLY_ERROR) || (reply2->integer == 0)) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Deleting", reply2->str)
-                goto cleanup;
+    while (1) {
+        for (i = 1; i < reply->element[0]->elements; ++i) {
+            /* go through retrieved keys and execute a command on them */
+            switch (cmd_type) {
+            case RDS_CMD_DEL:
+                reply2 = redisCommand(ctx, "DEL %s", reply->element[0]->element[i]->element[1]->str);
+                if ((reply2->type == REDIS_REPLY_ERROR) || (reply2->integer == 0)) {
+                    ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Deleting", reply2->str)
+                    goto cleanup;
+                }
+                freeReplyObject(reply2);
+                reply2 = NULL;
+                break;
+            case RDS_CMD_COPY:
+                reply2 = redisCommand(ctx, "COPY %s %s%s REPLACE", reply->element[0]->element[i]->element[1]->str,
+                        trg_ds, strchr(strchr(reply->element[0]->element[i]->element[1]->str, ':') + 1, ':'));
+                if ((reply2->type == REDIS_REPLY_ERROR) || (reply2->integer == 0)) {
+                    ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Copying", reply2->str)
+                    goto cleanup;
+                }
+                freeReplyObject(reply2);
+                reply2 = NULL;
+                break;
             }
-            freeReplyObject(reply2);
-            reply2 = NULL;
         }
-        break;
-    case RDS_CMD_COPY:
-        for (i = 1; i < reply->elements; ++i) {
-            reply2 = redisCommand(ctx, "COPY %s %s%s REPLACE", reply->element[i]->element[1]->str,
-                    trg_ds, strchr(strchr(reply->element[i]->element[1]->str, ':') + 1, ':'));
-            if ((reply2->type == REDIS_REPLY_ERROR) || (reply2->integer == 0)) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Copying", reply2->str)
-                goto cleanup;
-            }
-            freeReplyObject(reply2);
-            reply2 = NULL;
+
+        cursor = reply->element[1]->integer;
+        if (cursor == 0) {
+            break;
         }
-        break;
+        freeReplyObject(reply);
+
+        reply = redisCommand(ctx, "FT.CURSOR READ %s:%s %" PRIu64 " COUNT 100", mod_ns, index_type, cursor);
+        if (reply->type == REDIS_REPLY_ERROR) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", reply->str)
+            goto cleanup;
+        }
+        if (reply->type != REDIS_REPLY_ARRAY) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", "No reply array")
+            goto cleanup;
+        }
     }
 
 cleanup:
