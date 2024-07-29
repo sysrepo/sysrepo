@@ -17,6 +17,7 @@
 #define _GNU_SOURCE
 
 #include "common_db.h"
+#include "compat.h"
 
 #include <assert.h>
 #include <errno.h>
