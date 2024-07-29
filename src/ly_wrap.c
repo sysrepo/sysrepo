@@ -431,6 +431,8 @@ sr_lys_find_xpath_atoms(const struct ly_ctx *ctx, const char *xpath, uint32_t op
         } else if (lyrc == LY_ENOTFOUND) {
             /* no error message */
             sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, NULL);
+            /* free any errors which were generated */
+            ly_err_clean((struct ly_ctx *) ctx, NULL);
         } else {
             sr_errinfo_new_ly(&err_info, ctx, NULL, SR_ERR_LY);
         }
@@ -484,6 +486,9 @@ sr_lyd_parse_data(const struct ly_ctx *ctx, const char *data, const char *data_p
         sr_errinfo_new_ly(&err_info, ctx, NULL, SR_ERR_LY);
         goto cleanup;
     }
+
+    /* discard any suppressed errors */
+    ly_err_clean((struct ly_ctx *) ctx, NULL);
 
 cleanup:
     if (err_info) {
@@ -790,6 +795,9 @@ sr_lyd_new_meta2(const struct ly_ctx *ctx, struct lyd_node *parent, const struct
         goto cleanup;
     }
 
+    /* discard any suppressed errors */
+    ly_err_clean((struct ly_ctx *) ctx, NULL);
+
 cleanup:
     ly_temp_log_options(NULL);
     return err_info;
@@ -1027,6 +1035,7 @@ sr_lyd_find_path(const struct lyd_node *tree, const char *path, int with_incompl
     sr_error_info_t *err_info = NULL;
     uint32_t temp_lo = LY_LOSTORE;
     LY_ERR lyrc;
+    const struct ly_ctx *ctx = tree ? LYD_CTX(tree) : NULL;
 
     ly_temp_log_options(&temp_lo);
 
@@ -1036,8 +1045,13 @@ sr_lyd_find_path(const struct lyd_node *tree, const char *path, int with_incompl
             *match = NULL;
         }
     } else if (lyrc && (lyrc != LY_ENOTFOUND)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(tree), NULL, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ctx, NULL, SR_ERR_LY);
         goto cleanup;
+    }
+
+    /* discard any suppressed errors */
+    if (ctx) {
+        ly_err_clean((struct ly_ctx *) ctx, NULL);
     }
 
 cleanup:
@@ -1051,13 +1065,19 @@ sr_lyd_find_sibling_first(const struct lyd_node *sibling, const struct lyd_node 
     sr_error_info_t *err_info = NULL;
     uint32_t temp_lo = LY_LOSTORE;
     LY_ERR lyrc;
+    const struct ly_ctx *ctx = sibling ? LYD_CTX(sibling) : NULL;
 
     ly_temp_log_options(&temp_lo);
 
     lyrc = lyd_find_sibling_first(sibling, target, match);
     if (lyrc && (lyrc != LY_ENOTFOUND)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(sibling), NULL, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ctx, NULL, SR_ERR_LY);
         goto cleanup;
+    }
+
+    /* discard any suppressed errors */
+    if (ctx) {
+        ly_err_clean((struct ly_ctx *) ctx, NULL);
     }
 
 cleanup:
@@ -1072,13 +1092,19 @@ sr_lyd_find_sibling_val(const struct lyd_node *sibling, const struct lysc_node *
     sr_error_info_t *err_info = NULL;
     uint32_t temp_lo = LY_LOSTORE;
     LY_ERR lyrc;
+    const struct ly_ctx *ctx = sibling ? LYD_CTX(sibling) : NULL;
 
     ly_temp_log_options(&temp_lo);
 
     lyrc = lyd_find_sibling_val(sibling, schema, value, value ? strlen(value) : 0, match);
     if (lyrc && (lyrc != LY_ENOTFOUND)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(sibling), NULL, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ctx, NULL, SR_ERR_LY);
         goto cleanup;
+    }
+
+    /* discard any suppressed errors */
+    if (ctx) {
+        ly_err_clean((struct ly_ctx *) ctx, NULL);
     }
 
 cleanup:
@@ -1092,13 +1118,19 @@ sr_lyd_find_sibling_opaq_next(const struct lyd_node *sibling, const char *name, 
     sr_error_info_t *err_info = NULL;
     uint32_t temp_lo = LY_LOSTORE;
     LY_ERR lyrc;
+    const struct ly_ctx *ctx = sibling ? LYD_CTX(sibling) : NULL;
 
     ly_temp_log_options(&temp_lo);
 
     lyrc = lyd_find_sibling_opaq_next(sibling, name, match);
     if (lyrc && (lyrc != LY_ENOTFOUND)) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(sibling), NULL, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ctx, NULL, SR_ERR_LY);
         goto cleanup;
+    }
+
+    /* discard any suppressed errors */
+    if (ctx) {
+        ly_err_clean((struct ly_ctx *) ctx, NULL);
     }
 
 cleanup:
@@ -1148,13 +1180,19 @@ sr_lyd_change_term(struct lyd_node *node, const char *value, int ignore_fail)
     sr_error_info_t *err_info = NULL;
     uint32_t temp_lo = LY_LOSTORE;
     LY_ERR lyrc;
+    const struct ly_ctx *ctx = node ? LYD_CTX(node) : NULL;
 
     ly_temp_log_options(&temp_lo);
 
     lyrc = lyd_change_term(node, value);
     if (lyrc && (!ignore_fail || ((lyrc != LY_EEXIST) && (lyrc != LY_ENOT)))) {
-        sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL, SR_ERR_LY);
+        sr_errinfo_new_ly(&err_info, ctx, NULL, SR_ERR_LY);
         goto cleanup;
+    }
+
+    /* discard any suppressed errors */
+    if (ctx) {
+        ly_err_clean((struct ly_ctx *) ctx, NULL);
     }
 
 cleanup:
