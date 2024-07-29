@@ -420,7 +420,7 @@ setup_subscribe_oper(struct test_state *state)
     if ((r = sr_connect(SR_CONN_DEFAULT, &state->conn))) {
         return r;
     }
-    if ((r = sr_session_start(state->conn, SR_DS_RUNNING, &state->sess))) {
+    if ((r = sr_session_start(state->conn, SR_DS_OPERATIONAL, &state->sess))) {
         return r;
     }
     if ((r = sr_oper_get_subscribe(state->sess, "perf", "/perf:cont", oper_cb, state, 0, &state->sub))) {
