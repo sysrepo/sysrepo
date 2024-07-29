@@ -8,7 +8,10 @@ Build-Depends: cmake,
                debhelper (>= 10),
                libyang-dev,
                libsystemd-dev,
-               pkg-config
+               pkg-config,
+               libcmocka-dev,
+               valgrind
+
 Vcs-Browser: https://github.com/sysrepo/sysrepo/tree/master
 Vcs-Git: https://github.com/sysrepo/sysrepo.git
 
