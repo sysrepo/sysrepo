@@ -2133,6 +2133,10 @@ test_xpath_check(void **state)
             "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
+    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth0']/speed",
+            "1000", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
     ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth0']/oper-status",
             "down", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -2149,6 +2153,13 @@ test_xpath_check(void **state)
     /* read interface from operational with a predicate #2, callback not called */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/"
             "interface[not(derived-from-or-self(type, 'iana-if-type:softwareLoopback'))]/oper-status", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_release_data(data);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 0);
+
+    /* read interface from operational with an OR predicate #3, callback not called */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/"
+            "interface[speed='1000' or oper-status='down']/name", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     sr_release_data(data);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 0);
