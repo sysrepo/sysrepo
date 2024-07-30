@@ -4990,7 +4990,7 @@ sr_xpath_text_atoms_expr(const char *xpath, const char *prev_atom, const char *e
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
-    int parsed = 0, mod_len, name_len, op_len, last_is_node = 0;
+    int parsed = 0, mod_len, name_len, op_len, last_is_node = 0, len;
     const char *mod, *name, *next, *next2;
     char *tmp, *cur_atom = NULL;
 
@@ -5123,19 +5123,36 @@ parse_name:
                     ++next2;
                 }
                 if ((next2[0] == '\'') || (next2[0] == '\"')) {
-                    if (asprintf(&tmp, "%s[.=%.*s]", cur_atom, (int)(strchr(next2 + 1, next2[0]) - next2) + 1, next2) == -1) {
+                    /* parse and store the literal */
+                    len = (strchr(next2 + 1, next2[0]) - next2) + 1;
+                    if (asprintf(&tmp, "%s[.=%.*s]", cur_atom, len, next2) == -1) {
                         SR_ERRINFO_MEM(&err_info);
                         goto cleanup;
                     }
+                    next2 += len;
+
                     if ((err_info = sr_xpath_text_atom_add(&tmp, atoms, atom_count))) {
                         goto cleanup;
                     }
-                }
-            }
 
-            /* add new atom if a new one */
-            if ((strlen(prev_atom) < strlen(cur_atom)) && (err_info = sr_xpath_text_atom_add(&cur_atom, atoms, atom_count))) {
-                goto cleanup;
+                    /* there can be another (logical) operator */
+                    while (isspace(next2[0])) {
+                        ++next2;
+                    }
+                    op_len = 0;
+                    for (i = 0; i < sizeof xpath_ops / sizeof *xpath_ops; ++i) {
+                        if (!strncmp(next2, xpath_ops[i], strlen(xpath_ops[i]))) {
+                            op_len = strlen(xpath_ops[i]);
+                            break;
+                        }
+                    }
+                    next2 += op_len;
+                }
+            } else if (strlen(prev_atom) < strlen(cur_atom)) {
+                /* add a new atom if a new one */
+                if ((err_info = sr_xpath_text_atom_add(&cur_atom, atoms, atom_count))) {
+                    goto cleanup;
+                }
             }
 
             if (!end_chars && (next[0] == '|')) {
