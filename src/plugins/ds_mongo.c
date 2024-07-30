@@ -2320,6 +2320,10 @@ srpds_store_all(mongoc_collection_t *module, const struct lyd_node *mod_diff)
     bson_error_t error;
     struct mongo_diff_data diff_data;
     uint32_t i;
+    mongoc_bulk_operation_t *bulk = NULL;
+    bson_t *opts = NULL, reply;
+
+    bson_init(&reply);
 
     if ((err_info = srpds_diff_data_init(&diff_data))) {
         goto cleanup;
@@ -2329,40 +2333,55 @@ srpds_store_all(mongoc_collection_t *module, const struct lyd_node *mod_diff)
         goto cleanup;
     }
 
-    if (diff_data.cre.idx) {
-        if (!mongoc_collection_insert_many(module, (const bson_t **)diff_data.cre.docs,
-                diff_data.cre.idx, NULL, NULL, &error)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_insert_many()", error.message)
+    opts = BCON_NEW("ordered", BCON_BOOL(0));
+    bulk = mongoc_collection_create_bulk_operation_with_opts(module, opts);
+
+    for (i = 0; i < diff_data.cre.idx; ++i) {
+        if (!mongoc_bulk_operation_insert_with_opts(bulk, (const bson_t *)(diff_data.cre.docs)[i], NULL, &error)) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_bulk_operation_insert_with_opts()",
+                    error.message)
             goto cleanup;
         }
     }
 
     for (i = 0; i < diff_data.rep.idx; ++i) {
-        if (!mongoc_collection_update_one(module, (const bson_t *)(diff_data.rep_keys.docs)[i],
-                (const bson_t *)(diff_data.rep.docs)[i], NULL, NULL, &error)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_update_one()", error.message)
+        if (!mongoc_bulk_operation_update_one_with_opts(bulk, (const bson_t *)(diff_data.rep_keys.docs)[i],
+                (const bson_t *)(diff_data.rep.docs)[i], NULL, &error)) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_bulk_operation_update_one_with_opts()",
+                    error.message)
             goto cleanup;
         }
     }
 
     for (i = 0; i < diff_data.del.idx; ++i) {
-        if (!mongoc_collection_delete_one(module, (const bson_t *)(diff_data.del.docs)[i],
-                NULL, NULL, &error)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_delete_one()", error.message)
+        if (!mongoc_bulk_operation_remove_one_with_opts(bulk, (const bson_t *)(diff_data.del.docs)[i], NULL, &error)) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_bulk_operation_remove_one_with_opts()",
+                    error.message)
             goto cleanup;
         }
     }
 
     for (i = 0; i < diff_data.del_many.idx; ++i) {
-        if (!mongoc_collection_delete_many(module, (const bson_t *)(diff_data.del_many.docs)[i],
-                NULL, NULL, &error)) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_delete_many()", error.message)
+        if (!mongoc_bulk_operation_remove_many_with_opts(bulk, (const bson_t *)(diff_data.del_many.docs)[i], NULL,
+                &error)) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_bulk_operation_remove_many_with_opts()",
+                    error.message)
+            goto cleanup;
+        }
+    }
+
+    if (diff_data.cre.idx || diff_data.rep.idx || diff_data.del.idx || diff_data.del_many.idx) {
+        if (!mongoc_bulk_operation_execute(bulk, &reply, &error)) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_bulk_operation_execute()", error.message)
             goto cleanup;
         }
     }
 
 cleanup:
     srpds_diff_data_destroy(&diff_data);
+    mongoc_bulk_operation_destroy(bulk);
+    bson_destroy(opts);
+    bson_destroy(&reply);
     return err_info;
 }
 
