@@ -161,6 +161,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@main
+        with:
+          fetch-depth: 100
 
       - name: Deps-packages
         shell: bash
