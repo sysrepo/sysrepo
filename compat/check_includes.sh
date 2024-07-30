@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 RETVAL=0
 
 # params - paths to the source files to search

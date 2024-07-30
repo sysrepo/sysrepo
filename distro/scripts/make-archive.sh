@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # create archive from current source using git
 
 VERSION=$(git log --oneline -n1 --grep="^VERSION" | rev | cut -d' ' -f1 | rev)
