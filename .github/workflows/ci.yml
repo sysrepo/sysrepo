@@ -152,7 +152,7 @@ jobs:
             dep-build-type: "Release",
             cc: "gcc",
             options: "",
-            packages: "cmake debhelper libcmocka-dev valgrind python3-pip",
+            packages: "cmake debhelper libsystemd-dev libcmocka-dev valgrind python3-pip",
             snaps: "",
             make-target: ""
           }
