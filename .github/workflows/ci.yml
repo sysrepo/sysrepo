@@ -145,6 +145,17 @@ jobs:
             snaps: "",
             make-target: ""
           }
+          - {
+            name: "DEB Package",
+            os: "ubuntu-22.04",
+            build-type: "Release",
+            dep-build-type: "Release",
+            cc: "gcc",
+            options: "",
+            packages: "cmake debhelper libcmocka-dev python3-pip",
+            snaps: "",
+            make-target: ""
+          }
     env:
       UBSAN_OPTIONS: ${{ matrix.config.ubsan-options }}
 
@@ -160,6 +171,10 @@ jobs:
           fi
           if ${{ matrix.config.snaps != '' }}
             then sudo snap install ${{ matrix.config.snaps }}
+          fi
+          if ${{ matrix.config.name == 'DEB Package' }}; then
+            pip install apkg
+            apkg system-setup
           fi
 
       - name: Deps-uncrustify
@@ -180,11 +195,24 @@ jobs:
         run: |
           git clone -b ${{ needs.git-branch.outputs.branch-name }} https://github.com/CESNET/libyang.git
           cd libyang
-          mkdir build
-          cd build
-          CC=${{ matrix.config.cc }} cmake -DCMAKE_BUILD_TYPE=${{ matrix.config.dep-build-type }} -DENABLE_TESTS=OFF ..
-          make -j2
-          sudo make install
+          if ${{ matrix.config.name == 'DEB Package' }}; then
+            apkg build
+            apkg install
+          else
+            mkdir build
+            cd build
+            CC=${{ matrix.config.cc }} cmake -DCMAKE_BUILD_TYPE=${{ matrix.config.dep-build-type }} -DENABLE_TESTS=OFF ..
+            make -j2
+            sudo make install
+          fi
+
+      - name: Build-and-install-package
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          apkg build
+          apkg install
+        if: ${{ matrix.config.name == 'DEB Package' }}
 
       - name: Deps-MongoDB
         shell: bash
