@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # get latest upstream sysrepo version from github
 
 RLS_URL=https://api.github.com/repos/sysrepo/sysrepo/releases
