@@ -11,14 +11,12 @@ Build-Depends: cmake,
                pkg-config,
                libcmocka-dev,
                valgrind
-
 Vcs-Browser: https://github.com/sysrepo/sysrepo/tree/master
 Vcs-Git: https://github.com/sysrepo/sysrepo.git
 
 Package: libsysrepo7
-Depends: addgroup,
-         chown,
-         chmod,
+Depends: adduser,
+         coreutils,
          ${misc:Depends},
          ${shlibs:Depends}
 Architecture: any

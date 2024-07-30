@@ -18,7 +18,5 @@ override_dh_auto_configure:
 		-DNACM_SRMON_DATA_PERM=660
 
 override_dh_auto_test:
-ifeq ($(filter nocheck,$(DEB_BUILD_OPTIONS)),)
-    make -C obj-$(DEB_HOST_GNU_TYPE) test ARGS=' -j $(NPROCS) -V'
-    make -C obj-$(DEB_HOST_GNU_TYPE) test_clean
-endif
+	make -C obj-$(DEB_HOST_GNU_TYPE) test ARGS=' -j $(NPROCS) -V'
+	make -C obj-$(DEB_HOST_GNU_TYPE) test_clean
