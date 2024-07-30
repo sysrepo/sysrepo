@@ -4,6 +4,7 @@ module perf {
     prefix p;
 
     container cont {
+        presence cont;
         list lst {
             key "k1 k2";
 

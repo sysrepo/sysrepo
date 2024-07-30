@@ -726,6 +726,25 @@ test_items_remove(struct test_state *state, struct timespec *ts_start, struct ti
 }
 
 static int
+test_items_remove_subtree(struct test_state *state, struct timespec *ts_start, struct timespec *ts_end)
+{
+    int r;
+
+    TEST_START(ts_start);
+
+    if ((r = sr_delete_item(state->sess, "/perf:cont", 0))) {
+        return r;
+    }
+    if ((r = sr_apply_changes(state->sess, state->count * 100))) {
+        return r;
+    }
+
+    TEST_END(ts_end);
+
+    return SR_ERR_OK;
+}
+
+static int
 test_item_create(struct test_state *state, struct timespec *ts_start, struct timespec *ts_end)
 {
     int r;
@@ -910,6 +929,8 @@ struct test tests[] = {
     {"create all items oper", setup_empty_oper, test_items_create_oper, teardown_empty},
     {"remove all items", setup_running, test_items_remove, teardown_empty},
     {"remove all items cached", setup_running_cached, test_items_remove, teardown_empty},
+    {"remove whole subtree", setup_running, test_items_remove_subtree, teardown_empty},
+    {"remove whole subtree cached", setup_running_cached, test_items_remove_subtree, teardown_empty},
     {"create an item", setup_running, test_item_create, teardown_running},
     {"create an item cached", setup_running_cached, test_item_create, teardown_running},
     {"create an item oper", setup_oper, test_item_create_oper, teardown_oper},
