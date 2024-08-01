@@ -205,7 +205,6 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
 {
     sr_error_info_t *err_info = NULL;
     sr_conn_ctx_t *conn = NULL;
-    struct ly_ctx *tmp_ly_ctx = NULL;
     struct lyd_node *sr_mods = NULL;
     int created = 0, initialized = 0;
     sr_main_shm_t *main_shm;
@@ -256,13 +255,8 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     }
 
     if (created) {
-        /* create new temporary context */
-        if ((err_info = sr_ly_ctx_init(NULL, &tmp_ly_ctx))) {
-            goto cleanup_unlock;
-        }
-
         /* parse SR mods */
-        if ((err_info = sr_lydmods_parse(tmp_ly_ctx, conn, &initialized, &sr_mods))) {
+        if ((err_info = sr_lydmods_parse(conn->ly_ctx, conn, &initialized, &sr_mods))) {
             goto cleanup_unlock;
         }
 
@@ -277,6 +271,10 @@ sr_connect(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
         if ((err_info = sr_shmmod_store_modules(&conn->mod_shm, sr_mods))) {
             goto cleanup_unlock;
         }
+
+        /* free sr_mods, conn ly_ctx may be recompiled later */
+        lyd_free_all(sr_mods);
+        sr_mods = NULL;
 
         assert((conn->ext_shm.size == SR_SHM_SIZE(sizeof(sr_ext_shm_t))) || sr_ext_hole_next(NULL, SR_CONN_EXT_SHM(conn)));
         if ((hole = sr_ext_hole_next(NULL, SR_CONN_EXT_SHM(conn)))) {
@@ -340,7 +338,6 @@ cleanup_unlock:
 
 cleanup:
     lyd_free_all(sr_mods);
-    ly_ctx_destroy(tmp_ly_ctx);
     if (err_info) {
         sr_conn_free(conn);
         if (created) {
