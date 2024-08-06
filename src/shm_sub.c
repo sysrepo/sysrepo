@@ -837,7 +837,7 @@ sr_shmsub_notify_write_event(sr_sub_shm_t *sub_shm, sr_cid_t orig_cid, uint32_t 
     }
 
     if (event && event_desc) {
-        SR_LOG_INF("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " for %" PRIu32 " subscribers published.",
+        SR_LOG_DBG("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " for %" PRIu32 " subscribers published.",
                 event_desc, sr_ev2str(event), request_id, priority, subscriber_count);
     }
     return NULL;
@@ -1311,7 +1311,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, const char *orig_
                         sr_ev2str(SR_SUB_EV_UPDATE), mod->request_id, cur_priority, sr_strerror((*cb_err_info)->err[0].err_code));
                 goto cleanup_wrunlock;
             } else {
-                SR_LOG_INF("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " succeeded.", mod->ly_mod->name,
+                SR_LOG_DBG("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " succeeded.", mod->ly_mod->name,
                         sr_ev2str(SR_SUB_EV_UPDATE), mod->request_id, cur_priority);
             }
 
@@ -1504,7 +1504,7 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
             if (!sr_shmsub_change_notify_has_subscription(mod_info->conn, mod, mod_info->ds, mod_info->diff,
                     SR_SUB_EV_DONE, &max_priority)) {
                 if (mod_info->ds == SR_DS_RUNNING) {
-                    SR_LOG_INF("There are no subscribers for changes of the module \"%s\" in %s DS.",
+                    SR_LOG_DBG("There are no subscribers for changes of the module \"%s\" in %s DS.",
                             mod->ly_mod->name, sr_ds2str(mod_info->ds));
                 }
             }
@@ -1630,7 +1630,7 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
                 sr_errinfo_merge(cb_err_info, nsub->cb_err_info);
                 nsub->cb_err_info = NULL;
             } else {
-                SR_LOG_INF("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " succeeded.",
+                SR_LOG_DBG("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " succeeded.",
                         nsub->mod->ly_mod->name, sr_ev2str(SR_SUB_EV_CHANGE), nsub->mod->request_id, nsub->cur_priority);
             }
             nsub->pending_event = 0;
@@ -1799,7 +1799,7 @@ sr_shmsub_change_notify_change_done(struct sr_mod_info_s *mod_info, const char *
             /* we do not care about an error */
             sr_errinfo_free(&nsub->cb_err_info);
 
-            SR_LOG_INF("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " succeeded.",
+            SR_LOG_DBG("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " succeeded.",
                     nsub->mod->ly_mod->name, sr_ev2str(SR_SUB_EV_DONE), nsub->mod->request_id, nsub->cur_priority);
 
             nsub->pending_event = 0;
@@ -2026,7 +2026,7 @@ sr_shmsub_change_notify_change_abort(struct sr_mod_info_s *mod_info, const char 
             /* we do not care about an error */
             sr_errinfo_free(&nsub->cb_err_info);
 
-            SR_LOG_INF("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " succeeded.",
+            SR_LOG_DBG("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " succeeded.",
                     nsub->mod->ly_mod->name, sr_ev2str(SR_SUB_EV_ABORT), nsub->mod->request_id, nsub->cur_priority);
 
             nsub->pending_event = 0;
@@ -2142,7 +2142,7 @@ sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, cons
                 orig_data, 1, &nsub->shm_data_sub, request_xpath, parent_lyb, parent_lyb_len, NULL))) {
             goto cleanup;
         }
-        SR_LOG_INF("EV ORIGIN: \"%s\" \"%s\" index %" PRIu32 " ID %" PRIu32 " published.", xpath,
+        SR_LOG_DBG("EV ORIGIN: \"%s\" \"%s\" index %" PRIu32 " ID %" PRIu32 " published.", xpath,
                 sr_ev2str(SR_SUB_EV_OPER), i, request_id);
 
         /* notify using event pipe */
@@ -2176,7 +2176,7 @@ sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, cons
             nsub->pending_event = 0;
             continue;
         } else {
-            SR_LOG_INF("EV ORIGIN: \"%s\" \"%s\" index %" PRIu32 " ID %" PRIu32 " succeeded.", xpath,
+            SR_LOG_DBG("EV ORIGIN: \"%s\" \"%s\" index %" PRIu32 " ID %" PRIu32 " succeeded.", xpath,
                     sr_ev2str(SR_SUB_EV_OPER), i, nsub->request_id);
         }
 
@@ -2391,7 +2391,7 @@ cleanup:
         SR_LOG_WRN("EV ORIGIN: Internal \"%s\" \"%s\" priority %d failed (%s).", SR_RPC_FACTORY_RESET_PATH,
                 sr_ev2str(SR_SUB_EV_RPC), SR_RPC_FACTORY_RESET_INT_PRIO, sr_strerror(err_info->err[0].err_code));
     } else {
-        SR_LOG_INF("EV ORIGIN: Internal \"%s\" \"%s\" priority %d succeeded.", SR_RPC_FACTORY_RESET_PATH,
+        SR_LOG_DBG("EV ORIGIN: Internal \"%s\" \"%s\" priority %d succeeded.", SR_RPC_FACTORY_RESET_PATH,
                 sr_ev2str(SR_SUB_EV_RPC), SR_RPC_FACTORY_RESET_INT_PRIO);
     }
     return err_info;
@@ -2699,7 +2699,7 @@ first_sub:
                     sr_ev2str(SR_SUB_EV_RPC), *request_id, cur_priority, sr_strerror((*cb_err_info)->err[0].err_code));
             goto cleanup_wrunlock;
         } else {
-            SR_LOG_INF("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " succeeded.", path,
+            SR_LOG_DBG("EV ORIGIN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " succeeded.", path,
                     sr_ev2str(SR_SUB_EV_RPC), *request_id, cur_priority);
         }
 
@@ -2904,7 +2904,7 @@ sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, struct
 
     if (!notif_sub_count) {
         /* nothing to do */
-        SR_LOG_INF("There are no subscribers for \"%s\" notifications.", ly_mod->name);
+        SR_LOG_DBG("There are no subscribers for \"%s\" notifications.", ly_mod->name);
         goto cleanup_ext_unlock;
     }
 
@@ -3125,7 +3125,7 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, uint32_t valid_subscr_count,
         memcpy(shm_data_sub->addr, data, data_len);
     }
 
-    SR_LOG_INF("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " %s (remaining %" PRIu32 " subscribers).",
+    SR_LOG_DBG("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " %s (remaining %" PRIu32 " subscribers).",
             event_desc, sr_ev2str(event), (uint32_t)ATOMIC_LOAD_RELAXED(sub_shm->request_id),
             (uint32_t)ATOMIC_LOAD_RELAXED(sub_shm->priority), result_str, sub_shm->subscriber_count);
     return NULL;
@@ -3372,7 +3372,7 @@ sr_shmsub_change_listen_process_module_events(struct modsub_change_s *change_sub
     ev_sess->dt[ev_sess->ds].diff = diff;
 
     /* process event */
-    SR_LOG_INF("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " processing (remaining %" PRIu32 " subscribers).",
+    SR_LOG_DBG("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " processing (remaining %" PRIu32 " subscribers).",
             change_subs->module_name, sr_ev2str(sub_info.event), sub_info.request_id, sub_info.priority,
             sub_shm->subscriber_count);
 
@@ -3620,7 +3620,7 @@ sr_shmsub_oper_get_listen_process_module_events(struct modsub_operget_s *oper_ge
         sr_rwunlock(&sub_shm->lock, SR_SUBSHM_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
 
         /* process event */
-        SR_LOG_INF("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " processing.", oper_get_sub->path, sr_ev2str(SR_SUB_EV_OPER),
+        SR_LOG_DBG("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " processing.", oper_get_sub->path, sr_ev2str(SR_SUB_EV_OPER),
                 request_id);
 
         /* call callback */
@@ -3959,7 +3959,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
             *wake_up_in = invalid_in;
         }
 
-        SR_LOG_INF("Successful \"%s\" \"oper poll\" cache update.", oper_poll_sub->path);
+        SR_LOG_DBG("Successful \"%s\" \"oper poll\" cache update.", oper_poll_sub->path);
 
 finish_iter:
         /* CACHE DATA WRITE UNLOCK */
@@ -4366,7 +4366,7 @@ sr_shmsub_rpc_listen_process_rpc_events(struct opsub_rpc_s *rpc_subs, sr_conn_ct
     }
 
     /* process event */
-    SR_LOG_INF("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " processing (remaining %" PRIu32 " subscribers).",
+    SR_LOG_DBG("EV LISTEN: \"%s\" \"%s\" ID %" PRIu32 " priority %" PRIu32 " processing (remaining %" PRIu32 " subscribers).",
             rpc_subs->path, sr_ev2str(sub_info.event), sub_info.request_id, sub_info.priority,
             sub_shm->subscriber_count);
 
@@ -4576,12 +4576,12 @@ sr_shmsub_notif_listen_process_module_events(struct modsub_notif_s *notif_subs, 
 
         if (!valid_subscr_count) {
             /* Print a message only the first time we get here */
-            SR_LOG_INF("EV LISTEN: \"%s\" \"notif\" ID %" PRIu32 " processing.", notif_subs->module_name, request_id);
+            SR_LOG_DBG("EV LISTEN: \"%s\" \"notif\" ID %" PRIu32 " processing.", notif_subs->module_name, request_id);
         }
 
         if (sr_time_cmp(&sub->listen_since_mono, &notif_ts_mono) > 0) {
             /* generated before this subscription has been made */
-            SR_LOG_INF("EV LISTEN: \"%s\" \"notif\" ID %" PRIu32 " ignored, subscription created after the notification.",
+            SR_LOG_DBG("EV LISTEN: \"%s\" \"notif\" ID %" PRIu32 " ignored, subscription created after the notification.",
                     notif_subs->module_name, request_id);
             continue;
         }
