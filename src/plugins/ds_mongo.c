@@ -485,7 +485,7 @@ srpds_load_oper(mongoc_collection_t *module, const struct lys_module *mod, bson_
 {
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
-    const char *path, *name, *module_name, *path_to_node, *value;
+    const char *path, *name, *module_name = NULL, *path_to_node, *value = NULL;
     struct lys_module *node_module = NULL;
     enum srpds_db_ly_types type;
     int32_t valtype = 0;
@@ -731,12 +731,12 @@ srpds_load_conv(mongoc_collection_t *module, const struct lys_module *mod, sr_da
 {
     sr_error_info_t *err_info = NULL;
     bson_error_t error;
-    const char *path, *name, *module_name, *value = NULL, *path_no_pred;
+    const char *path, *name, *module_name, *value = NULL, *path_no_pred = NULL;
     char **keys = NULL;
     uint32_t *lengths = NULL;
     enum srpds_db_ly_types type;
-    int32_t valtype;
-    int64_t order;
+    int32_t valtype = 0;
+    int64_t order = 0;
     int dflt_flag = 0;
     struct lys_module *node_module = NULL;
     srpds_db_userordered_lists_t uo_lists = {0};

@@ -2251,7 +2251,7 @@ static sr_error_info_t *
 srpds_set_flags(redisContext *ctx, const char *mod_ns, sr_datastore_t ds, struct timespec *spec, int candidate_modified)
 {
     sr_error_info_t *err_info = NULL;
-    struct redis_bulk bulk;
+    struct redis_bulk bulk = {0};
 
     if ((err_info = srpds_bulk_init(3, &bulk))) {
         goto cleanup;
@@ -2356,7 +2356,7 @@ static sr_error_info_t *
 srpds_delete_glob_and_perm(redisContext *ctx, sr_datastore_t ds, const char *mod_ns)
 {
     sr_error_info_t *err_info = NULL;
-    struct redis_bulk bulk;
+    struct redis_bulk bulk = {0};
 
     if ((err_info = srpds_bulk_init(6, &bulk))) {
         goto cleanup;
@@ -2679,7 +2679,7 @@ static sr_error_info_t *
 srpds_load_oper(redisContext *ctx, const struct lys_module *mod, const char *mod_ns, const char *xpath_filter, struct lyd_node **mod_data)
 {
     sr_error_info_t *err_info = NULL;
-    const char *path, *name, *module_name, *value = NULL;
+    const char *path, *name, *module_name = NULL, *value = NULL;
     struct lys_module *node_module;
     uint32_t i, j;
     uint64_t type, valtype = 0;
@@ -2916,8 +2916,8 @@ srpds_load_conv(redisContext *ctx, const struct lys_module *mod, sr_datastore_t 
         struct lyd_node **mod_data)
 {
     sr_error_info_t *err_info = NULL;
-    uint64_t valtype = 0, order;
-    const char *path, *name, *module_name, *value = NULL, *path_no_pred;
+    uint64_t valtype = 0, order = 0;
+    const char *path, *name, *module_name = NULL, *value = NULL, *path_no_pred = NULL;
     enum srpds_db_ly_types type;
     int dflt_flag = 0;
     char **keys = NULL;
@@ -3459,7 +3459,7 @@ srpds_redis_store(const struct lys_module *mod, sr_datastore_t ds, const struct 
     int modified = 1;
     struct timespec spec = {0};
     uint64_t order = 0;
-    struct redis_bulk bulk;
+    struct redis_bulk bulk = {0};
 
     assert(mod);
 
@@ -3560,7 +3560,7 @@ srpds_redis_access_set(const struct lys_module *mod, sr_datastore_t ds, const ch
     redisContext *ctx = NULL;
     char *mod_ns = NULL;
     sr_error_info_t *err_info = NULL;
-    struct redis_bulk bulk;
+    struct redis_bulk bulk = {0};
 
     assert(mod);
 
