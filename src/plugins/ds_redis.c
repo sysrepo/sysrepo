@@ -37,6 +37,26 @@
 
 #define plugin_name "REDIS DS"
 
+/**
+ * IMPORTANT NOTE: While the client sends commands using pipelining, the server will be forced to queue the replies,
+ * using memory. So if you need to send a lot of commands with pipelining, it is better to send them as batches each
+ * containing a reasonable number, for instance 10k commands, read the replies, and then send another 10k commands
+ * again, and so forth. The speed will be nearly the same, but the additional memory used will be at most the amount
+ * needed to queue the replies for these 10k commands.
+ *
+ * source: https://redis.io/docs/latest/develop/use/pipelining/
+ *
+ */
+#define REDIS_MAX_BULK 10000
+
+/**
+ * Reply from Redis server containing 50000 elements will require only about 40MB of memory and 50000 elements is big
+ * enough to significantly speed up the loading process.
+ *
+ */
+#define REDIS_MAX_AGGREGATE_COUNT "50000"
+#define REDIS_MAX_AGGREGATE_LIMIT "1000000000000"
+
 /* context should be different for each thread */
 typedef struct redis_thread_data_s {
     redisContext *ctx;
@@ -50,11 +70,327 @@ typedef struct redis_plg_conn_data_s {
     uint32_t size;
 } redis_plg_conn_data_t;
 
-/* types of commands */
-typedef enum rds_command_s {
-    RDS_CMD_DEL,
-    RDS_CMD_COPY
-} rds_command_t;
+/* command's arguments in a bulk operation */
+struct redis_bulk_inner {
+    int argnum; /* number of arguments */
+    char **argv; /* array of arguments */
+    int *allocd; /* array of booleans indicating which arguments are dynamically allocated */
+    size_t *argvlen; /* array of argument's lengths */
+    uint32_t idx; /* indicates how many arguments have already been added */
+};
+
+/* commands of a bulk operation */
+struct redis_bulk {
+    struct redis_bulk_inner *data; /* array of commands containing the command's arguments. */
+    uint32_t size; /* size of the bulk */
+    uint32_t idx; /* indicates how many commands have already been added */
+};
+
+/**
+ * @brief Allocate and initialize resources for command's arguments.
+ *
+ * @param[in] argnum Number of command's arguments.
+ * @param[out] data Structure containing the command's arguments.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_docs_init(int argnum, struct redis_bulk_inner *data)
+{
+    sr_error_info_t *err_info = NULL;
+
+    data->argv = (char **)calloc(argnum, sizeof *(data->argv));
+    if (!(data->argv)) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "calloc()", "")
+        goto cleanup;
+    }
+
+    data->allocd = (int *)calloc(argnum, sizeof *(data->allocd));
+    if (!(data->allocd)) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "calloc()", "")
+        goto cleanup;
+    }
+
+    data->argvlen = (size_t *)calloc(argnum, sizeof *(data->argvlen));
+    if (!(data->argvlen)) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "calloc()", "")
+        goto cleanup;
+    }
+
+    data->argnum = argnum;
+    data->idx = 0;
+
+cleanup:
+    return err_info;
+}
+
+/**
+ * @brief Add an argument that does not require dynamic allocation.
+ *
+ * @param[in] argv Argument to add.
+ * @param[in] argvlen Argument's length.
+ * @param[out] data Structure containing the command's arguments.
+ */
+static void
+srpds_docs_add_const(const char *argv, size_t argvlen, struct redis_bulk_inner *data)
+{
+    data->argv[data->idx] = (char *)argv;
+    data->allocd[data->idx] = 0;
+    data->argvlen[data->idx] = argvlen;
+    ++(data->idx);
+}
+
+/**
+ * @brief Add an argument that requires dynamic allocation.
+ *
+ * @param[in] argv Argument to add.
+ * @param[in] argvlen Argument's length.
+ * @param[out] data Structure containing the command's arguments.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_docs_add_alloc(const char *argv, size_t argvlen, struct redis_bulk_inner *data)
+{
+    sr_error_info_t *err_info = NULL;
+    char *newstr = malloc(argvlen);
+
+    if (!newstr) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "malloc()", "")
+        goto cleanup;
+    }
+    memcpy(newstr, argv, argvlen);
+
+    data->argv[data->idx] = newstr;
+    data->allocd[data->idx] = 1;
+    data->argvlen[data->idx] = argvlen;
+    ++(data->idx);
+
+cleanup:
+    return err_info;
+}
+
+/**
+ * @brief Add an argument in form of an input for vasprintf function.
+ *
+ * @param[in] format Format string (input for vasprintf function).
+ * @param[in] args Arguments (input for vasprintf function).
+ * @param[out] data Structure containing the command's arguments.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_docs_add_format(const char *format, va_list args, struct redis_bulk_inner *data)
+{
+    sr_error_info_t *err_info = NULL;
+    char *newstr = NULL;
+
+    if (vasprintf(&newstr, format, args) == -1) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno))
+        goto cleanup;
+    }
+
+    data->argv[data->idx] = newstr;
+    data->allocd[data->idx] = 1;
+    data->argvlen[data->idx] = strlen(newstr);
+    ++(data->idx);
+
+cleanup:
+    return err_info;
+}
+
+/**
+ * @brief Deallocate command's arguments.
+ *
+ * @param[out] data Structure containing the command's arguments.
+ */
+static void
+srpds_docs_destroy(struct redis_bulk_inner *data)
+{
+    uint32_t i;
+
+    for (i = 0; i < data->idx; ++i) {
+        if (data->allocd[i]) {
+            free(data->argv[i]);
+        }
+    }
+    free(data->argv);
+    free(data->allocd);
+    free(data->argvlen);
+}
+
+/**
+ * @brief Initialize the bulk containing commands for bulk operation.
+ *
+ * @param[in] cmdnum Optional number of commands which are going to be added. If zero, allocation will start at 1000.
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_bulk_init(int cmdnum, struct redis_bulk *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+
+    bulk->data = (struct redis_bulk_inner *)calloc(cmdnum ? cmdnum : REDIS_MAX_BULK, sizeof *(bulk->data));
+    if (!(bulk->data)) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "calloc()", "")
+        goto cleanup;
+    }
+
+    bulk->size = cmdnum ? cmdnum : REDIS_MAX_BULK;
+    bulk->idx = 0;
+
+cleanup:
+    return err_info;
+}
+
+/**
+ * @brief Start adding a command.
+ *
+ * @param[in] argnum Number of command's arguments.
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_bulk_start(int argnum, struct redis_bulk *bulk)
+{
+    return srpds_docs_init(argnum, &(bulk->data[bulk->idx]));
+}
+
+/**
+ * @brief Add an argument that does not require dynamic allocation.
+ *
+ * @param[in] argv Argument to add.
+ * @param[in] argvlen Argument's length.
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ */
+static void
+srpds_bulk_add_const(const char *argv, size_t argvlen, struct redis_bulk *bulk)
+{
+    srpds_docs_add_const(argv, argvlen, &(bulk->data[bulk->idx]));
+}
+
+/**
+ * @brief Add an argument that requires dynamic allocation.
+ *
+ * @param[in] argv Argument to add.
+ * @param[in] argvlen Argument's length.
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_bulk_add_alloc(const char *argv, size_t argvlen, struct redis_bulk *bulk)
+{
+    return srpds_docs_add_alloc(argv, argvlen, &(bulk->data[bulk->idx]));
+}
+
+/**
+ * @brief Add an argument in form of an input for vasprintf function.
+ *
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @param[in] format Format string (input for vasprintf function).
+ * @param ... Arguments (input for vasprintf function).
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_bulk_add_format(struct redis_bulk *bulk, const char *format, ...)
+{
+    sr_error_info_t *err_info = NULL;
+    va_list args;
+
+    va_start(args, format);
+    err_info = srpds_docs_add_format(format, args, &(bulk->data[bulk->idx]));
+    va_end(args);
+
+    return err_info;
+}
+
+/**
+ * @brief Execute a bulk operation with added commands.
+ *
+ * @param[in] ctx Redis context.
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_bulk_exec(redisContext *ctx, struct redis_bulk *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+    redisReply *reply = NULL;
+    uint32_t i;
+
+    for (i = 0; i < bulk->idx; ++i) {
+        if (redisAppendCommandArgv(ctx, bulk->data[i].argnum, (const char **)bulk->data[i].argv, bulk->data[i].argvlen) !=
+                REDIS_OK) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "redisAppendCommandArgv()", "Wrong arguments")
+            goto cleanup;
+        }
+    }
+    for (i = 0; i < bulk->idx; ++i) {
+        if (redisGetReply(ctx, (void **)&reply) != REDIS_OK) {
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "redisGetReply()", reply->str)
+            goto cleanup;
+        }
+        freeReplyObject(reply);
+        reply = NULL;
+    }
+
+cleanup:
+    freeReplyObject(reply);
+    return err_info;
+}
+
+/**
+ * @brief Deallocate all resources linked with commands in bulk operation.
+ *
+ * @param[in,out] bulk Structure containing the commands for bulk operation.
+ */
+static void
+srpds_bulk_destroy(struct redis_bulk *bulk)
+{
+    uint32_t i;
+
+    for (i = 0; i < bulk->idx; ++i) {
+        srpds_docs_destroy(&(bulk->data[i]));
+    }
+    free(bulk->data);
+}
+
+/**
+ * @brief End adding a command.
+ *
+ * @param[in] ctx Redis context.
+ * @param[out] bulk Structure containing the commands for bulk operation.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_bulk_end(redisContext *ctx, struct redis_bulk *bulk)
+{
+    sr_error_info_t *err_info = NULL;
+
+    ++(bulk->idx);
+
+    /* bulk exceeded the limit of commands,
+     * initialize new bulk */
+    if (bulk->idx >= bulk->size) {
+        if ((err_info = srpds_bulk_exec(ctx, bulk))) {
+            goto cleanup;
+        }
+        srpds_bulk_destroy(bulk);
+        if ((err_info = srpds_bulk_init(0, bulk))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    return err_info;
+}
 
 /**
  * @brief Get the prefix for the given datastore.
@@ -168,7 +504,7 @@ srpds_data_init(redis_plg_conn_data_t *pdata, redisContext **ctx)
         }
         freeReplyObject(reply);
 
-        reply = redisCommand(*ctx, "FT.CONFIG SET MAXEXPANSIONS 1000000000000");
+        reply = redisCommand(*ctx, "FT.CONFIG SET MAXEXPANSIONS " REDIS_MAX_AGGREGATE_LIMIT);
         if (reply->type == REDIS_REPLY_ERROR) {
             ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Setting MAXEXPANSIONS option", reply->str)
             goto cleanup;
@@ -887,50 +1223,60 @@ cleanup:
  * @param[in] mod_ns Database prefix for the module.
  * @param[in] path Path to a data node.
  * @param[in] add_or_remove Whether the default flag should be added or removed.
+ * @param[out] bulk Structure containing the commands for bulk operation.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_change_default_flag(redisContext *ctx, const char *mod_ns, const char *path, int add_or_remove)
+srpds_change_default_flag(redisContext *ctx, const char *mod_ns, const char *path, int add_or_remove, struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
-    redisReply *reply = NULL;
 
-    reply = redisCommand(ctx, "HSET %s:data:%s dflt_flag %" PRIu32, mod_ns, path, add_or_remove);
-    if (reply->type == REDIS_REPLY_ERROR) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Setting default flag", reply->str)
+    if ((err_info = srpds_bulk_start(4, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("HSET", 4, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("dflt_flag", 9, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%d", add_or_remove))) {
+        goto cleanup;
+    }
+    if ((err_info = srpds_bulk_end(ctx, bulk))) {
         goto cleanup;
     }
 
 cleanup:
-    freeReplyObject(reply);
     return err_info;
 }
 
 /**
  * @brief Change the default flag of a node to the opposite.
  *
- * @param[in] node Data node.
  * @param[in] ctx Redis context.
+ * @param[in] node Data node.
  * @param[in] mod_ns Database prefix for the module.
  * @param[in] path Path to a data node.
+ * @param[out] bulk Structure containing the commands for bulk operation.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_update_default_flag(struct lyd_node *node, redisContext *ctx, const char *mod_ns, const char *path)
+srpds_update_default_flag(redisContext *ctx, struct lyd_node *node, const char *mod_ns, const char *path,
+        struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
 
     if (!strcmp(lyd_get_meta_value(lyd_find_meta(node->meta, NULL, "yang:orig-default")), "true")) {
         if (!(node->flags & LYD_DEFAULT)) {
             /* remove default flag */
-            err_info = srpds_change_default_flag(ctx, mod_ns, path, 0);
+            err_info = srpds_change_default_flag(ctx, mod_ns, path, 0, bulk);
         }
     } else {
         if (node->flags & LYD_DEFAULT) {
             /* add default flag */
-            err_info = srpds_change_default_flag(ctx, mod_ns, path, 1);
+            err_info = srpds_change_default_flag(ctx, mod_ns, path, 1, bulk);
         }
     }
 
@@ -940,15 +1286,17 @@ srpds_update_default_flag(struct lyd_node *node, redisContext *ctx, const char *
 /**
  * @brief Change the default flag of a node to true.
  *
- * @param[in] node Data node.
  * @param[in] ctx Redis context.
+ * @param[in] node Data node.
  * @param[in] mod_ns Database prefix for the module.
  * @param[in] path Path to a data node.
+ * @param[out] bulk Structure containing the commands for bulk operation.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_create_op_default_flag(struct lyd_node *node, redisContext *ctx, const char *mod_ns, const char *path)
+srpds_create_op_default_flag(redisContext *ctx, struct lyd_node *node, const char *mod_ns, const char *path,
+        struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -958,7 +1306,7 @@ srpds_create_op_default_flag(struct lyd_node *node, redisContext *ctx, const cha
 
     if (node->flags & LYD_DEFAULT) {
         /* add default flag */
-        err_info = srpds_change_default_flag(ctx, mod_ns, path, 1);
+        err_info = srpds_change_default_flag(ctx, mod_ns, path, 1, bulk);
     }
 
 cleanup:
@@ -968,15 +1316,17 @@ cleanup:
 /**
  * @brief Change the default flag of a node to the opposite.
  *
- * @param[in] node Data node.
  * @param[in] ctx Redis context.
+ * @param[in] node Data node.
  * @param[in] mod_ns Database prefix for the module.
  * @param[in] path Path to a data node.
+ * @param[out] bulk Structure containing the commands for bulk operation.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_none_op_default_flag(struct lyd_node *node, redisContext *ctx, const char *mod_ns, const char *path)
+srpds_none_op_default_flag(redisContext *ctx, struct lyd_node *node, const char *mod_ns, const char *path,
+        struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -984,7 +1334,7 @@ srpds_none_op_default_flag(struct lyd_node *node, redisContext *ctx, const char 
         goto cleanup;
     }
 
-    err_info = srpds_update_default_flag(node, ctx, mod_ns, path);
+    err_info = srpds_update_default_flag(ctx, node, mod_ns, path, bulk);
 
 cleanup:
     return err_info;
@@ -993,15 +1343,17 @@ cleanup:
 /**
  * @brief Change the default flag of a node to the opposite.
  *
- * @param[in] node Data node.
  * @param[in] ctx Redis context.
+ * @param[in] node Data node.
  * @param[in] mod_ns Database prefix for the module.
  * @param[in] path Path to a data node.
+ * @param[out] bulk Structure containing the commands for bulk operation.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_replace_op_default_flag(struct lyd_node *node, redisContext *ctx, const char *mod_ns, const char *path)
+srpds_replace_op_default_flag(redisContext *ctx, struct lyd_node *node, const char *mod_ns, const char *path,
+        struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
 
@@ -1011,7 +1363,7 @@ srpds_replace_op_default_flag(struct lyd_node *node, redisContext *ctx, const ch
         goto cleanup;
     }
 
-    err_info = srpds_update_default_flag(node, ctx, mod_ns, path);
+    err_info = srpds_update_default_flag(ctx, node, mod_ns, path, bulk);
 
 cleanup:
     return err_info;
@@ -1033,21 +1385,19 @@ cleanup:
  * @param[in] prev_pred Value of the node before this node in predicate.
  * @param[in] valtype Type of the node's value (XML or JSON).
  * @param[in,out] max_order Maximum order of the list or leaf-list.
+ * @param[out] bulk Structure containing the commands for bulk operation.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
 srpds_create_op(redisContext *ctx, const char *mod_ns, struct lyd_node *node, const char *module_name,
         const char *path, const char *path_no_pred, const char *predicate, const char *path_modif,
-        const char *value, const char *prev, const char *prev_pred, int32_t valtype, uint64_t *max_order)
+        const char *value, const char *prev, const char *prev_pred, int32_t valtype, uint64_t *max_order,
+        struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
-    redisReply *reply = NULL;
-    char *keys = NULL, *idx = NULL, *type = NULL;
+    char *keys = NULL;
     uint32_t keys_length = 0;
-    int argnum = 14;
-    size_t argvlen[argnum];
-    const char *argv[argnum];
 
     if (lysc_is_userordered(node->schema)) {
         /* insert a new element into the user-ordered list */
@@ -1058,90 +1408,178 @@ srpds_create_op(redisContext *ctx, const char *mod_ns, struct lyd_node *node, co
     } else {
         switch (node->schema->nodetype) {
         case LYS_CONTAINER:
-            reply = redisCommand(ctx, "HSET %s:data:%s path %s name %s type %d module_name %s path_modif %s", mod_ns,
-                    path, path, node->schema->name, SRPDS_DB_LY_CONTAINER, module_name, path_modif);
+            if ((err_info = srpds_bulk_start(12, bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("HSET", 4, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("path", 4, bulk);
+            if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("name", 4, bulk);
+            if ((err_info = srpds_bulk_add_alloc(node->schema->name, strlen(node->schema->name), bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("type", 4, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_CONTAINER))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("module_name", 11, bulk);
+            if ((err_info = srpds_bulk_add_alloc(module_name, strlen(module_name), bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("path_modif", 10, bulk);
+            if ((err_info = srpds_bulk_add_alloc(path_modif, strlen(path_modif), bulk))) {
+                goto cleanup;
+            }
+            if ((err_info = srpds_bulk_end(ctx, bulk))) {
+                goto cleanup;
+            }
             break;
         case LYS_LIST:
             if ((err_info = srpds_concat_key_values(plugin_name, node, &keys, &keys_length))) {
                 goto cleanup;
             }
 
-            argv[0] = "HSET";
-            argvlen[0] = 4;
-            if (asprintf(&idx, "%s:data:%s", mod_ns, path) == -1) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno))
+            if ((err_info = srpds_bulk_start(14, bulk))) {
                 goto cleanup;
             }
-            argv[1] = idx;
-            argvlen[1] = strlen(idx);
-            argv[2] = "path";
-            argvlen[2] = 4;
-            argv[3] = path;
-            argvlen[3] = strlen(path);
-            argv[4] = "name";
-            argvlen[4] = 4;
-            argv[5] = node->schema->name;
-            argvlen[5] = strlen(node->schema->name);
-            argv[6] = "type";
-            argvlen[6] = 4;
-            if (asprintf(&type, "%d", SRPDS_DB_LY_LIST) == -1) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno))
+            srpds_bulk_add_const("HSET", 4, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
                 goto cleanup;
             }
-            argv[7] = type; // SRPDS_DB_LY_LIST
-            argvlen[7] = 1;
-            argv[8] = "module_name";
-            argvlen[8] = 11;
-            argv[9] = module_name;
-            argvlen[9] = strlen(module_name);
-            argv[10] = "keys";
-            argvlen[10] = 4;
-            argv[11] = keys;
-            argvlen[11] = keys_length;
-            argv[12] = "path_modif";
-            argvlen[12] = 10;
-            argv[13] = path_modif;
-            argvlen[13] = strlen(path_modif);
-
-            reply = redisCommandArgv(ctx, argnum, argv, argvlen);
+            srpds_bulk_add_const("path", 4, bulk);
+            if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("name", 4, bulk);
+            if ((err_info = srpds_bulk_add_alloc(node->schema->name, strlen(node->schema->name), bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("type", 4, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_LIST))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("module_name", 11, bulk);
+            if ((err_info = srpds_bulk_add_alloc(module_name, strlen(module_name), bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("keys", 4, bulk);
+            if ((err_info = srpds_bulk_add_alloc(keys, keys_length, bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("path_modif", 10, bulk);
+            if ((err_info = srpds_bulk_add_alloc(path_modif, strlen(path_modif), bulk))) {
+                goto cleanup;
+            }
+            if ((err_info = srpds_bulk_end(ctx, bulk))) {
+                goto cleanup;
+            }
 
             free(keys);
             keys = NULL;
-            free(type);
-            type = NULL;
-            free(idx);
-            idx = NULL;
             break;
         case LYS_LEAF:
         case LYS_LEAFLIST:
-            reply = redisCommand(ctx, "HSET %s:data:%s path %s name %s type %d module_name %s dflt_flag %d value %s path_modif %s", mod_ns,
-                    path, path, node->schema->name, SRPDS_DB_LY_TERM, module_name, 0, value, path_modif);
+            if ((err_info = srpds_bulk_start(16, bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("HSET", 4, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("path", 4, bulk);
+            if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("name", 4, bulk);
+            if ((err_info = srpds_bulk_add_alloc(node->schema->name, strlen(node->schema->name), bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("type", 4, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_TERM))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("module_name", 11, bulk);
+            if ((err_info = srpds_bulk_add_alloc(module_name, strlen(module_name), bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("dflt_flag", 9, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%d", 0))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("value", 5, bulk);
+            if ((err_info = srpds_bulk_add_alloc(value, strlen(value), bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("path_modif", 10, bulk);
+            if ((err_info = srpds_bulk_add_alloc(path_modif, strlen(path_modif), bulk))) {
+                goto cleanup;
+            }
+            if ((err_info = srpds_bulk_end(ctx, bulk))) {
+                goto cleanup;
+            }
             break;
         case LYS_ANYDATA:
         case LYS_ANYXML:
-            reply = redisCommand(ctx, "HSET %s:data:%s path %s name %s type %d module_name %s dflt_flag %d value %s valtype %" PRId32 " path_modif %s", mod_ns,
-                    path, path, node->schema->name, SRPDS_DB_LY_ANY, module_name, 0, value, valtype, path_modif);
+            if ((err_info = srpds_bulk_start(18, bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("HSET", 4, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("path", 4, bulk);
+            if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("name", 4, bulk);
+            if ((err_info = srpds_bulk_add_alloc(node->schema->name, strlen(node->schema->name), bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("type", 4, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_ANY))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("module_name", 11, bulk);
+            if ((err_info = srpds_bulk_add_alloc(module_name, strlen(module_name), bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("dflt_flag", 9, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%d", 0))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("value", 5, bulk);
+            if ((err_info = srpds_bulk_add_alloc(value, strlen(value), bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("valtype", 7, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%" PRId32, valtype))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("path_modif", 10, bulk);
+            if ((err_info = srpds_bulk_add_alloc(path_modif, strlen(path_modif), bulk))) {
+                goto cleanup;
+            }
+            if ((err_info = srpds_bulk_end(ctx, bulk))) {
+                goto cleanup;
+            }
             break;
         default:
             break;
         }
-
-        if (reply->type == REDIS_REPLY_ERROR) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Creating data", reply->str)
-            goto cleanup;
-        }
     }
 
     /* default nodes */
-    if ((err_info = srpds_create_op_default_flag(node, ctx, mod_ns, path))) {
+    if ((err_info = srpds_create_op_default_flag(ctx, node, mod_ns, path, bulk))) {
         goto cleanup;
     }
 
 cleanup:
     free(keys);
-    free(type);
-    free(idx);
-    freeReplyObject(reply);
     return err_info;
 }
 
@@ -1155,15 +1593,15 @@ cleanup:
  * @param[in] path_no_pred Path without the predicate of the data node.
  * @param[in] predicate Predicate of the data node.
  * @param[in] orig_prev_pred Original value of the node in predicate.
+ * @param[out] bulk Structure containing the commands for bulk operation.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
 srpds_delete_op(redisContext *ctx, const char *mod_ns, struct lyd_node *node, const char *path, const char *path_no_pred,
-        const char *predicate, const char *orig_prev_pred)
+        const char *predicate, const char *orig_prev_pred, struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
-    redisReply *reply = NULL;
 
     if (lysc_is_userordered(node->schema)) {
         /* delete an element from the user-ordered list */
@@ -1172,15 +1610,19 @@ srpds_delete_op(redisContext *ctx, const char *mod_ns, struct lyd_node *node, co
         }
     } else {
         /* delete all fields within the key */
-        reply = redisCommand(ctx, "DEL %s:data:%s", mod_ns, path);
-        if (reply->type == REDIS_REPLY_ERROR) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Deleting data", reply->str)
+        if ((err_info = srpds_bulk_start(2, bulk))) {
+            goto cleanup;
+        }
+        srpds_bulk_add_const("DEL", 3, bulk);
+        if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
+            goto cleanup;
+        }
+        if ((err_info = srpds_bulk_end(ctx, bulk))) {
             goto cleanup;
         }
     }
 
 cleanup:
-    freeReplyObject(reply);
     return err_info;
 }
 
@@ -1200,16 +1642,16 @@ cleanup:
  * @param[in] orig_prev_pred Original value of the node in predicate.
  * @param[in] path_modif Modified path with ' ' instead of '/' for loading purposes.
  * @param[in,out] max_order Maximum order of the list or leaf-list.
+ * @param[out] bulk Structure containing the commands for bulk operation.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
 srpds_replace_op(redisContext *ctx, const char *mod_ns, struct lyd_node *node, const char *module_name, const char *path,
         const char *path_no_pred, const char *predicate, const char *value, const char *prev, const char *prev_pred,
-        const char *orig_prev_pred, const char *path_modif, uint64_t *max_order)
+        const char *orig_prev_pred, const char *path_modif, uint64_t *max_order, struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
-    redisReply *reply = NULL;
 
     if (lysc_is_userordered(node->schema)) {
         /* delete an element from the user-ordered list */
@@ -1218,24 +1660,33 @@ srpds_replace_op(redisContext *ctx, const char *mod_ns, struct lyd_node *node, c
         }
 
         /* insert a new element into the user-ordered list */
-        if ((err_info = srpds_create_uo_op(ctx, mod_ns, node, module_name, path, path_no_pred, predicate, value, prev, prev_pred, path_modif, max_order))) {
+        if ((err_info = srpds_create_uo_op(ctx, mod_ns, node, module_name, path, path_no_pred, predicate, value, prev,
+                prev_pred, path_modif, max_order))) {
             goto cleanup;
         }
     } else {
-        reply = redisCommand(ctx, "HSET %s:data:%s value %s", mod_ns, path, value);
-        if (reply->type == REDIS_REPLY_ERROR) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Replacing data", reply->str)
+        if ((err_info = srpds_bulk_start(4, bulk))) {
+            goto cleanup;
+        }
+        srpds_bulk_add_const("HSET", 4, bulk);
+        if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
+            goto cleanup;
+        }
+        srpds_bulk_add_const("value", 5, bulk);
+        if ((err_info = srpds_bulk_add_alloc(value, strlen(value), bulk))) {
+            goto cleanup;
+        }
+        if ((err_info = srpds_bulk_end(ctx, bulk))) {
             goto cleanup;
         }
     }
 
     /* default nodes */
-    if ((err_info = srpds_replace_op_default_flag(node, ctx, mod_ns, path))) {
+    if ((err_info = srpds_replace_op_default_flag(ctx, node, mod_ns, path, bulk))) {
         goto cleanup;
     }
 
 cleanup:
-    freeReplyObject(reply);
     return err_info;
 }
 
@@ -1246,11 +1697,13 @@ cleanup:
  * @param[in] node Current data node in the diff.
  * @param[in] mod_ns Database prefix for the module.
  * @param[in] parent_op Operation on the node's parent.
+ * @param[out] bulk Structure containing the commands for bulk operation.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_store_diff_recursively(redisContext *ctx, const struct lyd_node *node, const char *mod_ns, char parent_op)
+srpds_store_diff_recursively(redisContext *ctx, const struct lyd_node *node, const char *mod_ns, char parent_op,
+        struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
     struct lyd_node *sibling = (struct lyd_node *)node, *child = NULL;
@@ -1298,25 +1751,25 @@ srpds_store_diff_recursively(redisContext *ctx, const struct lyd_node *node, con
         switch (this_op) {
         case 'n':
             /* default nodes */
-            if ((err_info = srpds_none_op_default_flag(sibling, ctx, mod_ns, path))) {
+            if ((err_info = srpds_none_op_default_flag(ctx, sibling, mod_ns, path, bulk))) {
                 goto cleanup;
             }
             break;
         case 'c':
             if ((err_info = srpds_create_op(ctx, mod_ns, sibling, module_name, path, path_no_pred, predicate, path_modif,
-                    value, prev, prev_pred, valtype, &max_order))) {
+                    value, prev, prev_pred, valtype, &max_order, bulk))) {
                 goto cleanup;
             }
             break;
         case 'd':
             if ((err_info = srpds_delete_op(ctx, mod_ns, sibling, path, path_no_pred, predicate,
-                    orig_prev_pred ? orig_prev_pred : ""))) {
+                    orig_prev_pred ? orig_prev_pred : "", bulk))) {
                 goto cleanup;
             }
             break;
         case 'r':
             if ((err_info = srpds_replace_op(ctx, mod_ns, sibling, module_name, path, path_no_pred, predicate, value,
-                    prev, prev_pred, orig_prev_pred, path_modif, &max_order))) {
+                    prev, prev_pred, orig_prev_pred, path_modif, &max_order, bulk))) {
                 goto cleanup;
             }
             break;
@@ -1346,7 +1799,7 @@ srpds_store_diff_recursively(redisContext *ctx, const struct lyd_node *node, con
         srpds_cleanup_values(sibling, prev, orig_prev, &prev_pred, &orig_prev_pred, &any_value);
 
         if ((child = lyd_child_no_keys(sibling))) {
-            if ((err_info = srpds_store_diff_recursively(ctx, child, mod_ns, this_op))) {
+            if ((err_info = srpds_store_diff_recursively(ctx, child, mod_ns, this_op, bulk))) {
                 goto cleanup;
             }
         }
@@ -1370,14 +1823,15 @@ cleanup:
  * @param[in] mod_ns Database prefix for the module.
  * @param[in] path Path to the node with metadata.
  * @param[out] order Order of the nodes.
+ * @param[out] bulk Structure containing the commands for bulk operation.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_add_meta(redisContext *ctx, struct lyd_meta *meta, const char *mod_ns, const char *path, uint64_t *order)
+srpds_add_meta(redisContext *ctx, struct lyd_meta *meta, const char *mod_ns, const char *path, uint64_t *order,
+        struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
-    redisReply *reply = NULL;
     const char *meta_value;
 
     while (meta) {
@@ -1387,22 +1841,42 @@ srpds_add_meta(redisContext *ctx, struct lyd_meta *meta, const char *mod_ns, con
         /* skip yang:lyds_tree metadata, this is libyang specific data */
         if (strcmp(meta->annotation->module->name, "yang") || strcmp(meta->name, "lyds_tree")) {
             /* create new metadata */
-            reply = redisCommand(ctx, "HSET %s:data:%s:%s:%s path %s name %s:%s type %d order %" PRIu64 " value %s",
-                    mod_ns, path, meta->annotation->module->name, meta->name, path, meta->annotation->module->name, meta->name, SRPDS_DB_LY_META, *order, meta_value);
-            if (reply->type == REDIS_REPLY_ERROR) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Creating metadata", reply->str)
+            if ((err_info = srpds_bulk_start(12, bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("HSET", 4, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s:%s:%s", mod_ns, path, meta->annotation->module->name, meta->name))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("path", 4, bulk);
+            if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("name", 4, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%s:%s", meta->annotation->module->name, meta->name))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("type", 4, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_META))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("order", 5, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%" PRIu64, *order))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("value", 5, bulk);
+            if ((err_info = srpds_bulk_add_alloc(meta_value, strlen(meta_value), bulk))) {
+                goto cleanup;
+            }
+            if ((err_info = srpds_bulk_end(ctx, bulk))) {
                 goto cleanup;
             }
         }
 
         meta = meta->next;
-
-        freeReplyObject(reply);
-        reply = NULL;
     }
 
 cleanup:
-    freeReplyObject(reply);
     return err_info;
 }
 
@@ -1414,14 +1888,15 @@ cleanup:
  * @param[in] mod_ns Database prefix for the module.
  * @param[in] path Path to the node with attributes.
  * @param[out] order Order of the nodes.
+ * @param[out] bulk Structure containing the commands for bulk operation.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_add_attr(redisContext *ctx, struct lyd_attr *attr, const char *mod_ns, const char *path, uint64_t *order)
+srpds_add_attr(redisContext *ctx, struct lyd_attr *attr, const char *mod_ns, const char *path, uint64_t *order,
+        struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
-    redisReply *reply = NULL;
 
     while (attr) {
         ++*order;
@@ -1432,22 +1907,42 @@ srpds_add_attr(redisContext *ctx, struct lyd_attr *attr, const char *mod_ns, con
         /* skip yang:lyds_tree attributes, this is libyang specific data */
         if (strcmp(attr->name.module_name, "yang") || strcmp(attr->name.name, "lyds_tree")) {
             /* create new attribute */
-            reply = redisCommand(ctx, "HSET %s:data:%s:%s:%s path %s name %s:%s type %d order %" PRIu64 " value %s",
-                    mod_ns, path, attr->name.module_name, attr->name.name, path, attr->name.module_name, attr->name.name, SRPDS_DB_LY_ATTR, *order, attr->value);
-            if (reply->type == REDIS_REPLY_ERROR) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Creating attribute", reply->str)
+            if ((err_info = srpds_bulk_start(12, bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("HSET", 4, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s:%s:%s", mod_ns, path, attr->name.module_name, attr->name.name))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("path", 4, bulk);
+            if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("name", 4, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%s:%s", attr->name.module_name, attr->name.name))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("type", 4, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_ATTR))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("order", 5, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%" PRIu64, *order))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("value", 5, bulk);
+            if ((err_info = srpds_bulk_add_alloc(attr->value, strlen(attr->value), bulk))) {
+                goto cleanup;
+            }
+            if ((err_info = srpds_bulk_end(ctx, bulk))) {
                 goto cleanup;
             }
         }
 
         attr = attr->next;
-
-        freeReplyObject(reply);
-        reply = NULL;
     }
 
 cleanup:
-    freeReplyObject(reply);
     return err_info;
 }
 
@@ -1457,23 +1952,22 @@ cleanup:
  * @param[in] ctx Redis context.
  * @param[in] mod_data Whole data tree.
  * @param[in] mod_ns Database prefix for the module.
+ * @param[out] order Order of the nodes.
+ * @param[out] bulk Structure containing the commands for bulk operation.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_store_oper_recursively(redisContext *ctx, const struct lyd_node *mod_data, const char *mod_ns, uint64_t *order)
+srpds_store_oper_recursively(redisContext *ctx, const struct lyd_node *mod_data, const char *mod_ns, uint64_t *order,
+        struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *sibling = mod_data;
     struct lyd_node *child = NULL;
     struct lyd_node_opaq *opaque = NULL; // for opaque nodes
-    char *path = NULL, *any_value = NULL, *keys = NULL,
-            *idx = NULL, *order_str = NULL, *type = NULL;
+    char *path = NULL, *any_value = NULL, *keys = NULL;
     uint32_t keys_length = 0;
-    int argnum = 14;
-    size_t argvlen[argnum];
-    const char *module_name = NULL, *value = NULL, *argv[argnum];
-    redisReply *reply = NULL;
+    const char *module_name = NULL, *value = NULL;
 
     while (sibling) {
         ++*order;
@@ -1514,106 +2008,213 @@ srpds_store_oper_recursively(redisContext *ctx, const struct lyd_node *mod_data,
         if (sibling->schema) {
             switch (sibling->schema->nodetype) {
             case LYS_CONTAINER:
-                reply = redisCommand(ctx, "HSET %s:data:%s path %s name %s type %d order %" PRIu64 " module_name %s",
-                        mod_ns, path, path, sibling->schema->name, SRPDS_DB_LY_CONTAINER, *order, module_name);
+                if ((err_info = srpds_bulk_start(12, bulk))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("HSET", 4, bulk);
+                if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("path", 4, bulk);
+                if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("name", 4, bulk);
+                if ((err_info = srpds_bulk_add_alloc(sibling->schema->name, strlen(sibling->schema->name), bulk))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("type", 4, bulk);
+                if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_CONTAINER))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("order", 5, bulk);
+                if ((err_info = srpds_bulk_add_format(bulk, "%" PRIu64, *order))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("module_name", 11, bulk);
+                if ((err_info = srpds_bulk_add_alloc(module_name, strlen(module_name), bulk))) {
+                    goto cleanup;
+                }
+                if ((err_info = srpds_bulk_end(ctx, bulk))) {
+                    goto cleanup;
+                }
                 break;
             case LYS_LIST:     /* does not matter if this is user-ordered list or not */
                 if ((err_info = srpds_concat_key_values(plugin_name, sibling, &keys, &keys_length))) {
                     goto cleanup;
                 }
 
-                argv[0] = "HSET";
-                argvlen[0] = 4;
-                if (asprintf(&idx, "%s:data:%s", mod_ns, path) == -1) {
-                    ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno))
+                if ((err_info = srpds_bulk_start(14, bulk))) {
                     goto cleanup;
                 }
-                argv[1] = idx;
-                argvlen[1] = strlen(idx);
-                argv[2] = "path";
-                argvlen[2] = 4;
-                argv[3] = path;
-                argvlen[3] = strlen(path);
-                argv[4] = "name";
-                argvlen[4] = 4;
-                argv[5] = sibling->schema->name;
-                argvlen[5] = strlen(sibling->schema->name);
-                argv[6] = "type";
-                argvlen[6] = 4;
-                if (asprintf(&type, "%d", SRPDS_DB_LY_LIST) == -1) {
-                    ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno))
+                srpds_bulk_add_const("HSET", 4, bulk);
+                if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
                     goto cleanup;
                 }
-                argv[7] = type; // SRPDS_DB_LY_LIST
-                argvlen[7] = strlen(type);
-                argv[8] = "order";
-                argvlen[8] = 5;
-                if (asprintf(&order_str, "%" PRIu64, *order) == -1) {
-                    ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno))
+                srpds_bulk_add_const("path", 4, bulk);
+                if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
                     goto cleanup;
                 }
-                argv[9] = order_str;
-                argvlen[9] = strlen(order_str);
-                argv[10] = "module_name";
-                argvlen[10] = 11;
-                argv[11] = module_name;
-                argvlen[11] = strlen(module_name);
-                argv[12] = "keys";
-                argvlen[12] = 4;
-                argv[13] = keys;
-                argvlen[13] = keys_length;
-
-                reply = redisCommandArgv(ctx, argnum, argv, argvlen);
-
-                free(keys);
-                keys = NULL;
-                free(order_str);
-                order_str = NULL;
-                free(type);
-                type = NULL;
-                free(idx);
-                idx = NULL;
+                srpds_bulk_add_const("name", 4, bulk);
+                if ((err_info = srpds_bulk_add_alloc(sibling->schema->name, strlen(sibling->schema->name), bulk))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("type", 4, bulk);
+                if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_LIST))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("order", 5, bulk);
+                if ((err_info = srpds_bulk_add_format(bulk, "%" PRIu64, *order))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("module_name", 11, bulk);
+                if ((err_info = srpds_bulk_add_alloc(module_name, strlen(module_name), bulk))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("keys", 4, bulk);
+                if ((err_info = srpds_bulk_add_alloc(keys, keys_length, bulk))) {
+                    goto cleanup;
+                }
+                if ((err_info = srpds_bulk_end(ctx, bulk))) {
+                    goto cleanup;
+                }
                 break;
             case LYS_LEAF:
             case LYS_LEAFLIST:  /* does not matter if this is user-ordered leaf-list or not */
-                reply = redisCommand(ctx, "HSET %s:data:%s path %s name %s type %d order %" PRIu64 " module_name %s value %s dflt_flag %d",
-                        mod_ns, path, path, sibling->schema->name, SRPDS_DB_LY_TERM, *order, module_name, value, sibling->flags & LYD_DEFAULT);
+                if ((err_info = srpds_bulk_start(16, bulk))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("HSET", 4, bulk);
+                if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("path", 4, bulk);
+                if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("name", 4, bulk);
+                if ((err_info = srpds_bulk_add_alloc(sibling->schema->name, strlen(sibling->schema->name), bulk))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("type", 4, bulk);
+                if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_TERM))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("order", 5, bulk);
+                if ((err_info = srpds_bulk_add_format(bulk, "%" PRIu64, *order))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("module_name", 11, bulk);
+                if ((err_info = srpds_bulk_add_alloc(module_name, strlen(module_name), bulk))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("value", 5, bulk);
+                if ((err_info = srpds_bulk_add_alloc(value, strlen(value), bulk))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("dflt_flag", 9, bulk);
+                if ((err_info = srpds_bulk_add_format(bulk, "%d", sibling->flags & LYD_DEFAULT))) {
+                    goto cleanup;
+                }
+                if ((err_info = srpds_bulk_end(ctx, bulk))) {
+                    goto cleanup;
+                }
                 break;
             case LYS_ANYDATA:
             case LYS_ANYXML:
-                reply = redisCommand(ctx, "HSET %s:data:%s path %s name %s type %d order %" PRIu64 " module_name %s value %s dflt_flag %d valtype %" PRIu32,
-                        mod_ns, path, path, sibling->schema->name, SRPDS_DB_LY_ANY, *order, module_name, value, sibling->flags & LYD_DEFAULT,
-                        ((struct lyd_node_any *)sibling)->value_type == LYD_ANYDATA_JSON);
+                if ((err_info = srpds_bulk_start(18, bulk))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("HSET", 4, bulk);
+                if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("path", 4, bulk);
+                if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("name", 4, bulk);
+                if ((err_info = srpds_bulk_add_alloc(sibling->schema->name, strlen(sibling->schema->name), bulk))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("type", 4, bulk);
+                if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_ANY))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("order", 5, bulk);
+                if ((err_info = srpds_bulk_add_format(bulk, "%" PRIu64, *order))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("module_name", 11, bulk);
+                if ((err_info = srpds_bulk_add_alloc(module_name, strlen(module_name), bulk))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("value", 5, bulk);
+                if ((err_info = srpds_bulk_add_alloc(value, strlen(value), bulk))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("dflt_flag", 9, bulk);
+                if ((err_info = srpds_bulk_add_format(bulk, "%d", sibling->flags & LYD_DEFAULT))) {
+                    goto cleanup;
+                }
+                srpds_bulk_add_const("valtype", 7, bulk);
+                if ((err_info = srpds_bulk_add_format(bulk, "%" PRIu32, (((struct lyd_node_any *)sibling)->value_type == LYD_ANYDATA_JSON)))) {
+                    goto cleanup;
+                }
+                if ((err_info = srpds_bulk_end(ctx, bulk))) {
+                    goto cleanup;
+                }
                 break;
-            }
-            if (reply->type == REDIS_REPLY_ERROR) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Creating data", reply->str)
-                goto cleanup;
             }
 
             /* add metadata */
-            if ((err_info = srpds_add_meta(ctx, sibling->meta, mod_ns, path, order))) {
+            if ((err_info = srpds_add_meta(ctx, sibling->meta, mod_ns, path, order, bulk))) {
                 goto cleanup;
             }
         } else {
-            reply = redisCommand(ctx, "HSET %s:data:%s path %s name %s type %d order %" PRIu64 " module_name %s value %s",
-                    mod_ns, path, path, opaque->name.name, SRPDS_DB_LY_OPAQUE, *order, module_name, value);
-            if (reply->type == REDIS_REPLY_ERROR) {
-                ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Creating data", reply->str)
+            if ((err_info = srpds_bulk_start(14, bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("HSET", 4, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%s:data:%s", mod_ns, path))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("path", 4, bulk);
+            if ((err_info = srpds_bulk_add_alloc(path, strlen(path), bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("name", 4, bulk);
+            if ((err_info = srpds_bulk_add_alloc(opaque->name.name, strlen(opaque->name.name), bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("type", 4, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%d", SRPDS_DB_LY_OPAQUE))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("order", 5, bulk);
+            if ((err_info = srpds_bulk_add_format(bulk, "%" PRIu64, *order))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("module_name", 11, bulk);
+            if ((err_info = srpds_bulk_add_alloc(module_name, strlen(module_name), bulk))) {
+                goto cleanup;
+            }
+            srpds_bulk_add_const("value", 5, bulk);
+            if ((err_info = srpds_bulk_add_alloc(value, strlen(value), bulk))) {
+                goto cleanup;
+            }
+            if ((err_info = srpds_bulk_end(ctx, bulk))) {
                 goto cleanup;
             }
 
             /* add attributes */
-            if ((err_info = srpds_add_attr(ctx, opaque->attr, mod_ns, path, order))) {
+            if ((err_info = srpds_add_attr(ctx, opaque->attr, mod_ns, path, order, bulk))) {
                 goto cleanup;
             }
         }
 
-        freeReplyObject(reply);
-        reply = NULL;
-
         if ((child = lyd_child_no_keys(sibling))) {
-            if ((err_info = srpds_store_oper_recursively(ctx, child, mod_ns, order))) {
+            if ((err_info = srpds_store_oper_recursively(ctx, child, mod_ns, order, bulk))) {
                 goto cleanup;
             }
         }
@@ -1622,18 +2223,16 @@ srpds_store_oper_recursively(redisContext *ctx, const struct lyd_node *mod_data,
 
         free(path);
         free(any_value);
+        free(keys);
         path = NULL;
         any_value = NULL;
+        keys = NULL;
     }
 
 cleanup:
     free(path);
     free(any_value);
     free(keys);
-    free(order_str);
-    free(type);
-    free(idx);
-    freeReplyObject(reply);
     return err_info;
 }
 
@@ -1652,115 +2251,65 @@ static sr_error_info_t *
 srpds_set_flags(redisContext *ctx, const char *mod_ns, sr_datastore_t ds, struct timespec *spec, int candidate_modified)
 {
     sr_error_info_t *err_info = NULL;
-    redisReply *reply = NULL;
+    struct redis_bulk bulk;
+
+    if ((err_info = srpds_bulk_init(3, &bulk))) {
+        goto cleanup;
+    }
 
     /* set last-modified flag in seconds */
-    reply = redisCommand(ctx, "SET %s:glob:last-modified-sec %" PRId64, mod_ns, spec->tv_sec);
-    if (reply->type == REDIS_REPLY_ERROR) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Setting last-modified flag", reply->str)
+    if ((err_info = srpds_bulk_start(3, &bulk))) {
         goto cleanup;
     }
-    freeReplyObject(reply);
-    reply = NULL;
+    srpds_bulk_add_const("SET", 3, &bulk);
+    if ((err_info = srpds_bulk_add_format(&bulk, "%s:glob:last-modified-sec", mod_ns))) {
+        goto cleanup;
+    }
+    if ((err_info = srpds_bulk_add_format(&bulk, "%" PRId64, spec->tv_sec))) {
+        goto cleanup;
+    }
+    if ((err_info = srpds_bulk_end(ctx, &bulk))) {
+        goto cleanup;
+    }
 
     /* set last-modified flag in nanoseconds */
-    reply = redisCommand(ctx, "SET %s:glob:last-modified-nsec %" PRId64, mod_ns, spec->tv_nsec);
-    if (reply->type == REDIS_REPLY_ERROR) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Setting last-modified flag", reply->str)
+    if ((err_info = srpds_bulk_start(3, &bulk))) {
         goto cleanup;
     }
-    freeReplyObject(reply);
-    reply = NULL;
+    srpds_bulk_add_const("SET", 3, &bulk);
+    if ((err_info = srpds_bulk_add_format(&bulk, "%s:glob:last-modified-nsec", mod_ns))) {
+        goto cleanup;
+    }
+    if ((err_info = srpds_bulk_add_format(&bulk, "%" PRId64, spec->tv_nsec))) {
+        goto cleanup;
+    }
+    if ((err_info = srpds_bulk_end(ctx, &bulk))) {
+        goto cleanup;
+    }
 
     /* set candidate-modified flag */
     if (ds == SR_DS_CANDIDATE) {
-        reply = redisCommand(ctx, "SET %s:glob:candidate-modified %d", mod_ns, candidate_modified);
-        if (reply->type == REDIS_REPLY_ERROR) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Setting candidate-modified flag", reply->str)
+        if ((err_info = srpds_bulk_start(3, &bulk))) {
+            goto cleanup;
+        }
+        srpds_bulk_add_const("SET", 3, &bulk);
+        if ((err_info = srpds_bulk_add_format(&bulk, "%s:glob:candidate-modified", mod_ns))) {
+            goto cleanup;
+        }
+        if ((err_info = srpds_bulk_add_format(&bulk, "%d", candidate_modified))) {
+            goto cleanup;
+        }
+        if ((err_info = srpds_bulk_end(ctx, &bulk))) {
             goto cleanup;
         }
     }
 
-cleanup:
-    freeReplyObject(reply);
-    return err_info;
-}
-
-/**
- * @brief Load data from the database and execute a command on them.
- *
- * @param[in] ctx Redis context.
- * @param[in] mod_ns Database prefix for the module.
- * @param[in] index_type Type of the data to retrieve (meta or data).
- * @param[in] trg_ds Target datastore.
- * @param[in] cmd_type Type of the command.
- * @return NULL on success;
- * @return Sysrepo error info on error.
- */
-static sr_error_info_t *
-srpds_load_and_exec(redisContext *ctx, const char *mod_ns, const char *index_type, const char *trg_ds, rds_command_t cmd_type)
-{
-    sr_error_info_t *err_info = NULL;
-    uint32_t i;
-    redisReply *reply = NULL, *reply2 = NULL;
-    long long cursor;
-
-    reply = redisCommand(ctx, "FT.AGGREGATE %s:%s * LOAD 1 __key LIMIT 0 1000000000000 WITHCURSOR COUNT 100", mod_ns, index_type);
-    if (reply->type == REDIS_REPLY_ERROR) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", reply->str)
-        goto cleanup;
-    }
-    if (reply->type != REDIS_REPLY_ARRAY) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", "No reply array")
+    if ((err_info = srpds_bulk_exec(ctx, &bulk))) {
         goto cleanup;
     }
 
-    while (1) {
-        for (i = 1; i < reply->element[0]->elements; ++i) {
-            /* go through retrieved keys and execute a command on them */
-            switch (cmd_type) {
-            case RDS_CMD_DEL:
-                reply2 = redisCommand(ctx, "DEL %s", reply->element[0]->element[i]->element[1]->str);
-                if ((reply2->type == REDIS_REPLY_ERROR) || (reply2->integer == 0)) {
-                    ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Deleting", reply2->str)
-                    goto cleanup;
-                }
-                freeReplyObject(reply2);
-                reply2 = NULL;
-                break;
-            case RDS_CMD_COPY:
-                reply2 = redisCommand(ctx, "COPY %s %s%s REPLACE", reply->element[0]->element[i]->element[1]->str,
-                        trg_ds, strchr(strchr(reply->element[0]->element[i]->element[1]->str, ':') + 1, ':'));
-                if ((reply2->type == REDIS_REPLY_ERROR) || (reply2->integer == 0)) {
-                    ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Copying", reply2->str)
-                    goto cleanup;
-                }
-                freeReplyObject(reply2);
-                reply2 = NULL;
-                break;
-            }
-        }
-
-        cursor = reply->element[1]->integer;
-        if (cursor == 0) {
-            break;
-        }
-        freeReplyObject(reply);
-
-        reply = redisCommand(ctx, "FT.CURSOR READ %s:%s %" PRIu64 " COUNT 100", mod_ns, index_type, cursor);
-        if (reply->type == REDIS_REPLY_ERROR) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", reply->str)
-            goto cleanup;
-        }
-        if (reply->type != REDIS_REPLY_ARRAY) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", "No reply array")
-            goto cleanup;
-        }
-    }
-
 cleanup:
-    freeReplyObject(reply);
-    freeReplyObject(reply2);
+    srpds_bulk_destroy(&bulk);
     return err_info;
 }
 
@@ -1770,21 +2319,27 @@ cleanup:
  * @param[in] ctx Redis context.
  * @param[in] mod_ns Database prefix for the module.
  * @param[in] to_del Part after the prefix of the key to delete.
+ * @param[out] bulk Structure containing the commands for bulk operation.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_only_del(redisContext *ctx, const char *mod_ns, const char *to_del)
+srpds_delete_one(redisContext *ctx, const char *mod_ns, const char *to_del, struct redis_bulk *bulk)
 {
     sr_error_info_t *err_info = NULL;
-    redisReply *reply = NULL;
 
-    reply = redisCommand(ctx, "DEL %s:%s", mod_ns, to_del);
-    if ((reply->type == REDIS_REPLY_ERROR) || (reply->integer == 0)) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Deleting", reply->str)
+    if ((err_info = srpds_bulk_start(2, bulk))) {
+        goto cleanup;
+    }
+    srpds_bulk_add_const("DEL", 3, bulk);
+    if ((err_info = srpds_bulk_add_format(bulk, "%s:%s", mod_ns, to_del))) {
+        goto cleanup;
+    }
+    if ((err_info = srpds_bulk_end(ctx, bulk))) {
+        goto cleanup;
     }
 
-    freeReplyObject(reply);
+cleanup:
     return err_info;
 }
 
@@ -1798,34 +2353,86 @@ srpds_only_del(redisContext *ctx, const char *mod_ns, const char *to_del)
  * @return Sysrepo error info on error.
  */
 static sr_error_info_t *
-srpds_load_and_del_glob_and_perm(redisContext *ctx, sr_datastore_t ds, const char *mod_ns)
+srpds_delete_glob_and_perm(redisContext *ctx, sr_datastore_t ds, const char *mod_ns)
+{
+    sr_error_info_t *err_info = NULL;
+    struct redis_bulk bulk;
+
+    if ((err_info = srpds_bulk_init(6, &bulk))) {
+        goto cleanup;
+    }
+
+    if ((err_info = srpds_delete_one(ctx, mod_ns, "glob:last-modified-sec", &bulk))) {
+        goto cleanup;
+    }
+    if ((err_info = srpds_delete_one(ctx, mod_ns, "glob:last-modified-nsec", &bulk))) {
+        goto cleanup;
+    }
+    if (ds == SR_DS_CANDIDATE) {
+        if ((err_info = srpds_delete_one(ctx, mod_ns, "glob:candidate-modified", &bulk))) {
+            goto cleanup;
+        }
+    }
+    if ((err_info = srpds_delete_one(ctx, mod_ns, "perm:owner", &bulk))) {
+        goto cleanup;
+    }
+    if ((err_info = srpds_delete_one(ctx, mod_ns, "perm:group", &bulk))) {
+        goto cleanup;
+    }
+    if ((err_info = srpds_delete_one(ctx, mod_ns, "perm:perm", &bulk))) {
+        goto cleanup;
+    }
+
+    if ((err_info = srpds_bulk_exec(ctx, &bulk))) {
+        goto cleanup;
+    }
+
+cleanup:
+    srpds_bulk_destroy(&bulk);
+    return err_info;
+}
+
+/**
+ * @brief Load data from the database and execute a command on them.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[in] index_type Type of the data to retrieve (meta or data).
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_load_and_del(redisContext *ctx, const char *mod_ns, const char *index_type)
 {
     sr_error_info_t *err_info = NULL;
     redisReply *reply = NULL;
 
-    if ((err_info = srpds_only_del(ctx, mod_ns, "glob:last-modified-sec"))) {
-        goto cleanup;
-    }
+    reply = redisCommand(ctx, "EVAL %s 1 %s:%s",
+            "local reply = redis.pcall('FT.AGGREGATE', KEYS[1], '*', 'LOAD', '1', '__key', 'LIMIT', '0', '"
+            REDIS_MAX_AGGREGATE_LIMIT "', 'WITHCURSOR', 'COUNT', '" REDIS_MAX_AGGREGATE_COUNT "'); "
+            "if reply['err'] ~= nil then "
+            "return reply['err']; "
+            "end "
+            "while 1 do "
+            "local n = table.getn(reply[1]); "
+            "local reply2; "
+            "for i=2,n do "
+            "reply2 = redis.pcall('DEL', reply[1][i][2]); "
+            "if reply2 ~= 1 then "
+            "return reply['err']; "
+            "end "
+            "end "
+            "if reply[2] == 0 then break end "
+            "reply = redis.pcall('FT.CURSOR', 'READ', KEYS[1], reply[2], 'COUNT', '" REDIS_MAX_AGGREGATE_COUNT "'); "
+            "if reply['err'] ~= nil then "
+            "return reply['err']; "
+            "end "
+            "end "
+            "return 0; ",
+            mod_ns, index_type);
 
-    if ((err_info = srpds_only_del(ctx, mod_ns, "glob:last-modified-nsec"))) {
-        goto cleanup;
-    }
-
-    if (ds == SR_DS_CANDIDATE) {
-        if ((err_info = srpds_only_del(ctx, mod_ns, "glob:candidate-modified"))) {
-            goto cleanup;
-        }
-    }
-
-    if ((err_info = srpds_only_del(ctx, mod_ns, "perm:owner"))) {
-        goto cleanup;
-    }
-
-    if ((err_info = srpds_only_del(ctx, mod_ns, "perm:group"))) {
-        goto cleanup;
-    }
-
-    if ((err_info = srpds_only_del(ctx, mod_ns, "perm:perm"))) {
+    if ((reply->type == REDIS_REPLY_ERROR) || (reply->type == REDIS_REPLY_STRING)) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "EVAL", reply->str)
         goto cleanup;
     }
 
@@ -1838,6 +2445,7 @@ cleanup:
  * @brief Load data (only :data and :meta) from the database and delete them.
  *
  * @param[in] ctx Redis context.
+ * @param[in] ds Datastore in which to delete data.
  * @param[in] mod_ns Database prefix for the module.
  * @return NULL on success;
  * @return Sysrepo error info on error.
@@ -1849,16 +2457,69 @@ srpds_load_and_del_data(redisContext *ctx, sr_datastore_t ds, const char *mod_ns
 
     /* operational ds does not store max order */
     if (ds != SR_DS_OPERATIONAL) {
-        if ((err_info = srpds_load_and_exec(ctx, mod_ns, "meta", NULL, RDS_CMD_DEL))) {
+        if ((err_info = srpds_load_and_del(ctx, mod_ns, "meta"))) {
             goto cleanup;
         }
     }
 
-    if ((err_info = srpds_load_and_exec(ctx, mod_ns, "data", NULL, RDS_CMD_DEL))) {
+    if ((err_info = srpds_load_and_del(ctx, mod_ns, "data"))) {
         goto cleanup;
     }
 
 cleanup:
+    return err_info;
+}
+
+/**
+ * @brief Load data from the database and execute a command on them.
+ *
+ * @param[in] ctx Redis context.
+ * @param[in] mod_ns Database prefix for the module.
+ * @param[in] index_type Type of the data to retrieve (meta or data).
+ * @param[in] trg_ds Target datastore.
+ * @return NULL on success;
+ * @return Sysrepo error info on error.
+ */
+static sr_error_info_t *
+srpds_load_and_copy(redisContext *ctx, const char *mod_ns, const char *index_type, const char *trg_ds)
+{
+    sr_error_info_t *err_info = NULL;
+    redisReply *reply = NULL;
+
+    reply = redisCommand(ctx, "EVAL %s 1 %s:%s %s",
+            "local reply = redis.pcall('FT.AGGREGATE', KEYS[1], '*', 'LOAD', '1', '__key', 'LIMIT', '0', '"
+            REDIS_MAX_AGGREGATE_LIMIT "', 'WITHCURSOR', 'COUNT', '" REDIS_MAX_AGGREGATE_COUNT "'); "
+            "if reply['err'] ~= nil then "
+            "return reply['err']; "
+            "end "
+            "while 1 do "
+            "local n = table.getn(reply[1]); "
+            "local reply2; "
+            "for i=2,n do "
+            "local index; "
+            "index = string.find(reply[1][i][2],':',0); "
+            "index = string.find(reply[1][i][2],':',index+1); "
+            "reply2 = redis.pcall('COPY', reply[1][i][2], ARGV[1] .. string.sub(reply[1][i][2], index), 'REPLACE'); "
+            "if reply2 ~= 1 then "
+            "return reply['err']; "
+            "end "
+            "end "
+            "if reply[2] == 0 then break end "
+            "reply = redis.pcall('FT.CURSOR', 'READ', KEYS[1], reply[2], 'COUNT', '" REDIS_MAX_AGGREGATE_COUNT "'); "
+            "if reply['err'] ~= nil then "
+            "return reply['err']; "
+            "end "
+            "end "
+            "return 0; ",
+            mod_ns, index_type, trg_ds);
+
+    if ((reply->type == REDIS_REPLY_ERROR) || (reply->type == REDIS_REPLY_STRING)) {
+        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "EVAL", reply->str)
+        goto cleanup;
+    }
+
+cleanup:
+    freeReplyObject(reply);
     return err_info;
 }
 
@@ -1876,11 +2537,11 @@ srpds_load_and_copy_data(redisContext *ctx, const char *mod_ns_src, const char *
 {
     sr_error_info_t *err_info = NULL;
 
-    if ((err_info = srpds_load_and_exec(ctx, mod_ns_src, "meta", trg_ds, RDS_CMD_COPY))) {
+    if ((err_info = srpds_load_and_copy(ctx, mod_ns_src, "meta", trg_ds))) {
         goto cleanup;
     }
 
-    if ((err_info = srpds_load_and_exec(ctx, mod_ns_src, "data", trg_ds, RDS_CMD_COPY))) {
+    if ((err_info = srpds_load_and_copy(ctx, mod_ns_src, "data", trg_ds))) {
         goto cleanup;
     }
 
@@ -2099,10 +2760,10 @@ srpds_load_oper(redisContext *ctx, const struct lys_module *mod, const char *mod
     args_array[8] = "*";
     args_array[9] = "LIMIT";
     args_array[10] = "0";
-    args_array[11] = "1000000000000";
+    args_array[11] = REDIS_MAX_AGGREGATE_LIMIT;
     args_array[12] = "WITHCURSOR";
     args_array[13] = "COUNT";
-    args_array[14] = "100";
+    args_array[14] = REDIS_MAX_AGGREGATE_COUNT;
 
     reply = redisCommandArgv(ctx, argnum, (const char **)args_array, NULL);
     if (reply->type == REDIS_REPLY_ERROR) {
@@ -2213,7 +2874,7 @@ srpds_load_oper(redisContext *ctx, const struct lys_module *mod, const char *mod
         }
         freeReplyObject(reply);
 
-        reply = redisCommand(ctx, "FT.CURSOR READ %s:data %" PRIu64 " COUNT 100", mod_ns, cursor);
+        reply = redisCommand(ctx, "FT.CURSOR READ %s:data %" PRIu64 " COUNT " REDIS_MAX_AGGREGATE_COUNT, mod_ns, cursor);
         if (reply->type == REDIS_REPLY_ERROR) {
             ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", reply->str)
             goto cleanup;
@@ -2348,10 +3009,10 @@ srpds_load_conv(redisContext *ctx, const struct lys_module *mod, sr_datastore_t 
     args_array[18] = "@path_no_pred";
     args_array[19] = "LIMIT";
     args_array[20] = "0";
-    args_array[21] = "1000000000000";
+    args_array[21] = REDIS_MAX_AGGREGATE_LIMIT;
     args_array[22] = "WITHCURSOR";
     args_array[23] = "COUNT";
-    args_array[24] = "100";
+    args_array[24] = REDIS_MAX_AGGREGATE_COUNT;
 
     reply = redisCommandArgv(ctx, argnum, (const char **)args_array, NULL);
     if (reply->type == REDIS_REPLY_ERROR) {
@@ -2470,7 +3131,7 @@ srpds_load_conv(redisContext *ctx, const struct lys_module *mod, sr_datastore_t 
         }
         freeReplyObject(reply);
 
-        reply = redisCommand(ctx, "FT.CURSOR READ %s:data %" PRIu64 " COUNT 100", mod_ns, cursor);
+        reply = redisCommand(ctx, "FT.CURSOR READ %s:data %" PRIu64 " COUNT " REDIS_MAX_AGGREGATE_COUNT, mod_ns, cursor);
         if (reply->type == REDIS_REPLY_ERROR) {
             ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "FT.AGGREGATE", reply->str)
             goto cleanup;
@@ -2576,6 +3237,7 @@ cleanup:
  *
  * @param[in] ctx Redis context.
  * @param[in] mod_ns Database prefix for the module.
+ * @param[in] is_oper Whether the indices are destroyed in Operational datastore.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
@@ -2797,6 +3459,7 @@ srpds_redis_store(const struct lys_module *mod, sr_datastore_t ds, const struct 
     int modified = 1;
     struct timespec spec = {0};
     uint64_t order = 0;
+    struct redis_bulk bulk;
 
     assert(mod);
 
@@ -2818,6 +3481,10 @@ srpds_redis_store(const struct lys_module *mod, sr_datastore_t ds, const struct 
         goto cleanup;
     }
 
+    if ((err_info = srpds_bulk_init(0, &bulk))) {
+        goto cleanup;
+    }
+
     if ((err_info = srpds_get_mod_ns(ds, mod->name, &mod_ns))) {
         goto cleanup;
     }
@@ -2826,13 +3493,16 @@ srpds_redis_store(const struct lys_module *mod, sr_datastore_t ds, const struct 
         if ((err_info = srpds_load_and_del_data(ctx, ds, mod_ns))) {
             goto cleanup;
         }
-        if ((err_info = srpds_store_oper_recursively(ctx, mod_data, mod_ns, &order))) {
+        if ((err_info = srpds_store_oper_recursively(ctx, mod_data, mod_ns, &order, &bulk))) {
             goto cleanup;
         }
     } else if (mod_diff) {
-        if ((err_info = srpds_store_diff_recursively(ctx, mod_diff, mod_ns, 0))) {
+        if ((err_info = srpds_store_diff_recursively(ctx, mod_diff, mod_ns, 0, &bulk))) {
             goto cleanup;
         }
+    }
+    if ((err_info = srpds_bulk_exec(ctx, &bulk))) {
+        goto cleanup;
     }
 
     clock_gettime(CLOCK_REALTIME, &spec);
@@ -2844,6 +3514,7 @@ srpds_redis_store(const struct lys_module *mod, sr_datastore_t ds, const struct 
 
 cleanup:
     free(mod_ns);
+    srpds_bulk_destroy(&bulk);
     return err_info;
 }
 
@@ -2857,7 +3528,6 @@ srpds_redis_access_get(const struct lys_module *mod, sr_datastore_t ds, void *pl
     redis_plg_conn_data_t *pdata = (redis_plg_conn_data_t *)plg_data;
     redisContext *ctx = NULL;
     sr_error_info_t *err_info = NULL;
-    redisReply *reply = NULL;
     char *mod_ns = NULL;
 
     assert(mod);
@@ -2876,7 +3546,6 @@ srpds_redis_access_get(const struct lys_module *mod, sr_datastore_t ds, void *pl
 
 cleanup:
     free(mod_ns);
-    freeReplyObject(reply);
     return err_info;
 }
 
@@ -2891,11 +3560,15 @@ srpds_redis_access_set(const struct lys_module *mod, sr_datastore_t ds, const ch
     redisContext *ctx = NULL;
     char *mod_ns = NULL;
     sr_error_info_t *err_info = NULL;
-    redisReply *reply = NULL;
+    struct redis_bulk bulk;
 
     assert(mod);
 
     if ((err_info = srpds_data_init(pdata, &ctx))) {
+        goto cleanup;
+    }
+
+    if ((err_info = srpds_bulk_init(3, &bulk))) {
         goto cleanup;
     }
 
@@ -2907,38 +3580,62 @@ srpds_redis_access_set(const struct lys_module *mod, sr_datastore_t ds, const ch
     /* WARNING!!! Usernames should conform to this regex '^[a-z][_-a-z0-9]*\$',
      * other usernames could cause malfunction of the whole plugin */
     if (owner) {
-        reply = redisCommand(ctx, "SET %s:perm:owner %s", mod_ns, owner);
-        if (reply->type == REDIS_REPLY_ERROR) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Setting owner", reply->str)
+        if ((err_info = srpds_bulk_start(3, &bulk))) {
             goto cleanup;
         }
-        freeReplyObject(reply);
-        reply = NULL;
+        srpds_bulk_add_const("SET", 3, &bulk);
+        if ((err_info = srpds_bulk_add_format(&bulk, "%s:perm:owner", mod_ns))) {
+            goto cleanup;
+        }
+        if ((err_info = srpds_bulk_add_alloc(owner, strlen(owner), &bulk))) {
+            goto cleanup;
+        }
+        if ((err_info = srpds_bulk_end(ctx, &bulk))) {
+            goto cleanup;
+        }
     }
 
     /* set the group */
     if (group) {
-        reply = redisCommand(ctx, "SET %s:perm:group %s", mod_ns, group);
-        if (reply->type == REDIS_REPLY_ERROR) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Setting group", reply->str)
+        if ((err_info = srpds_bulk_start(3, &bulk))) {
             goto cleanup;
         }
-        freeReplyObject(reply);
-        reply = NULL;
+        srpds_bulk_add_const("SET", 3, &bulk);
+        if ((err_info = srpds_bulk_add_format(&bulk, "%s:perm:group", mod_ns))) {
+            goto cleanup;
+        }
+        if ((err_info = srpds_bulk_add_alloc(group, strlen(group), &bulk))) {
+            goto cleanup;
+        }
+        if ((err_info = srpds_bulk_end(ctx, &bulk))) {
+            goto cleanup;
+        }
     }
 
     /* set the permissions */
     if (perm) {
-        reply = redisCommand(ctx, "SET %s:perm:perm %u", mod_ns, perm);
-        if (reply->type == REDIS_REPLY_ERROR) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "Setting permissions", reply->str)
+        if ((err_info = srpds_bulk_start(3, &bulk))) {
+            goto cleanup;
+        }
+        srpds_bulk_add_const("SET", 3, &bulk);
+        if ((err_info = srpds_bulk_add_format(&bulk, "%s:perm:perm", mod_ns))) {
+            goto cleanup;
+        }
+        if ((err_info = srpds_bulk_add_format(&bulk, "%u", perm))) {
+            goto cleanup;
+        }
+        if ((err_info = srpds_bulk_end(ctx, &bulk))) {
             goto cleanup;
         }
     }
 
+    if ((err_info = srpds_bulk_exec(ctx, &bulk))) {
+        goto cleanup;
+    }
+
 cleanup:
     free(mod_ns);
-    freeReplyObject(reply);
+    srpds_bulk_destroy(&bulk);
     return err_info;
 }
 
@@ -3141,7 +3838,7 @@ srpds_redis_uninstall(const struct lys_module *mod, sr_datastore_t ds, void *plg
     }
 
     /* delete all global metadata and permissions (access rights, flags) */
-    if ((err_info = srpds_load_and_del_glob_and_perm(ctx, ds, mod_ns))) {
+    if ((err_info = srpds_delete_glob_and_perm(ctx, ds, mod_ns))) {
         goto cleanup;
     }
 
