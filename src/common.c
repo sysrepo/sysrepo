@@ -4989,8 +4989,8 @@ sr_xpath_text_atoms_expr(const char *xpath, const char *prev_atom, const char *e
         uint32_t *atom_count, const char **xpath_next)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t i;
-    int parsed = 0, mod_len, name_len, op_len, last_is_node = 0, len;
+    uint32_t i, prev_atom_count;
+    int parsed = 0, mod_len, name_len, op_len, last_is_node = 0, atom_stored, len;
     const char *mod, *name, *next, *next2;
     char *tmp, *cur_atom = NULL;
 
@@ -5033,6 +5033,8 @@ sr_xpath_text_atoms_expr(const char *xpath, const char *prev_atom, const char *e
     }
 
 parse_name:
+    atom_stored = 0;
+
     /* parse the name (node, function, ...), there should be some */
     next2 = sr_xpath_next_qname(next, &mod, &mod_len, &name, &name_len);
     if (next2 == next) {
@@ -5074,6 +5076,7 @@ parse_name:
         last_is_node = 0;
     } else if (next[0] == '[') {
         /* predicate(s), get atoms from it */
+        prev_atom_count = *atom_count;
         do {
             next2 = next + 1;
             if ((err_info = sr_xpath_text_atoms_expr(next2, cur_atom, "]", atoms, atom_count, &next))) {
@@ -5092,6 +5095,11 @@ parse_name:
         }
 
         last_is_node = 0;
+
+        if (prev_atom_count < *atom_count) {
+            /* this atom restricted by a predicate has been stored, do not store it without it */
+            atom_stored = 1;
+        }
     }
 
     /* skip whitespaces */
@@ -5102,7 +5110,8 @@ parse_name:
     if ((!end_chars && !next[0]) || (end_chars && next[0] && strchr(end_chars, next[0]))) {
         /* finished with this (sub)expression, add new atom if any found (parsed) */
         parsed = 1;
-        if ((strlen(prev_atom) < strlen(cur_atom)) && (err_info = sr_xpath_text_atom_add(&cur_atom, atoms, atom_count))) {
+        if (!atom_stored && (strlen(prev_atom) < strlen(cur_atom)) &&
+                (err_info = sr_xpath_text_atom_add(&cur_atom, atoms, atom_count))) {
             goto cleanup;
         }
     } else {
@@ -5118,14 +5127,15 @@ parse_name:
         if (op_len) {
             next2 = next + op_len;
             if (last_is_node && end_chars && !strcmp(end_chars, "]") && !strcmp(xpath_ops[i], "=")) {
-                /* check for literal and store it in a special atom */
+                /* check for literal and store it in a special restriction atom (with predicate) */
                 while (isspace(next2[0])) {
                     ++next2;
                 }
                 if ((next2[0] == '\'') || (next2[0] == '\"')) {
                     /* parse and store the literal */
+                    assert(strlen(prev_atom) < strlen(cur_atom));
                     len = (strchr(next2 + 1, next2[0]) - next2) + 1;
-                    if (asprintf(&tmp, "%s[.=%.*s]", cur_atom, len, next2) == -1) {
+                    if (asprintf(&tmp, "%s[%s=%.*s]", prev_atom, cur_atom + strlen(prev_atom) + 1, len, next2) == -1) {
                         SR_ERRINFO_MEM(&err_info);
                         goto cleanup;
                     }
@@ -5148,7 +5158,7 @@ parse_name:
                     }
                     next2 += op_len;
                 }
-            } else if (strlen(prev_atom) < strlen(cur_atom)) {
+            } else if (!atom_stored && (strlen(prev_atom) < strlen(cur_atom))) {
                 /* add a new atom if a new one */
                 if ((err_info = sr_xpath_text_atom_add(&cur_atom, atoms, atom_count))) {
                     goto cleanup;

@@ -824,7 +824,62 @@ sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info)
 }
 
 /**
- * @brief Check whether operational data are required based on single request and subscription atom.
+ * @brief Check whether operational data request and subscription predicate match.
+ *
+ * @param[in] request_pred Request predicate.
+ * @param[in] sub_pred Subscription predicate.
+ * @return 0 predicate for different nodes, not applicable;
+ * @return 1 predicate for the same nodes with the same value, matches;
+ * @return 2 predicate for the same nodes with different values, does not match.
+ */
+static int
+sr_xpath_oper_data_text_atom_pred_match(const char *request_pred, const char *sub_pred)
+{
+    const char *req_ptr, *sub_ptr, *mod1, *name1, *val1, *mod2, *name2, *val2;
+    int mlen1, mlen2, len1, len2;
+
+    req_ptr = request_pred;
+    sub_ptr = sub_pred;
+
+    do {
+        /* parse nodes */
+        req_ptr = sr_xpath_next_qname(req_ptr + 1, &mod1, &mlen1, &name1, &len1);
+        sub_ptr = sr_xpath_next_qname(sub_ptr + 1, &mod2, &mlen2, &name2, &len2);
+
+        /* module name */
+        if ((mlen1 && mlen2) && ((mlen1 != mlen2) || strncmp(mod1, mod2, mlen1))) {
+            /* different modules */
+            return 0;
+        }
+
+        /* node name */
+        if ((len1 != len2) || strncmp(name1, name2, len1)) {
+            /* different node names */
+            return 0;
+        }
+    } while ((req_ptr[0] != '=') && (sub_ptr[0] != '='));
+
+    if ((req_ptr[0] != '=') || (sub_ptr[0] != '=')) {
+        /* path continues */
+        return 0;
+    }
+
+    ++req_ptr;
+    ++sub_ptr;
+
+    /* compare values */
+    val1 = req_ptr + 1;
+    len1 = strchr(val1, req_ptr[0]) - val1;
+    val2 = sub_ptr + 1;
+    len2 = strchr(val2, sub_ptr[0]) - val2;
+    if (len1 != len2) {
+        return 2;
+    }
+    return strncmp(val1, val2, len1) ? 2 : 1;
+}
+
+/**
+ * @brief Check whether operational data are required based on a single request and subscription atom.
  *
  * @param[in] request_atom Request text atom.
  * @param[in] sub_atom Subscription text atom.
@@ -835,7 +890,7 @@ sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info)
 static int
 sr_xpath_oper_data_text_atoms_required(const char *request_atom, const char *sub_atom)
 {
-    const char *req_ptr, *sub_ptr, *mod1, *name1, *val1, *mod2, *name2, *val2;
+    const char *req_ptr, *sub_ptr, *mod1, *name1, *mod2, *name2;
     int mlen1, mlen2, len1, len2, wildc1, wildc2;
 
     req_ptr = request_atom;
@@ -870,16 +925,18 @@ sr_xpath_oper_data_text_atoms_required(const char *request_atom, const char *sub
             return 0;
         }
 
-        /* value */
+        /* predicate, always at the end and so decides the match */
         if ((req_ptr[0] == '[') && (sub_ptr[0] == '[')) {
-            val1 = req_ptr + 4;
-            len1 = strchr(val1, req_ptr[3]) - val1;
-            val2 = sub_ptr + 4;
-            len2 = strchr(val2, sub_ptr[3]) - val2;
-            if ((len1 != len2) || strncmp(val1, val2, len1)) {
-                /* different values, filtered out */
+            if (sr_xpath_oper_data_text_atom_pred_match(req_ptr + 1, sub_ptr + 1) == 2) {
+                /* filtered out */
                 return 2;
+            } else {
+                /* different nodes or the value matches */
+                return 1;
             }
+        } else if ((req_ptr[0] == '[') || (sub_ptr[0] == '[')) {
+            /* predicate only in one atom and it must end after the predicate */
+            break;
         }
 
         /* parse until the subscription path ends */
@@ -902,7 +959,7 @@ sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath, in
 {
     sr_error_info_t *err_info = NULL;
     sr_xp_atoms_t *req_atoms = NULL, *sub_atoms = NULL;
-    uint32_t i, j, k;
+    uint32_t i, j, k, l;
     int r;
 
     assert(sub_xpath);
@@ -921,31 +978,32 @@ sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath, in
     if ((err_info = sr_xpath_get_text_atoms(sub_xpath, &sub_atoms)) || !sub_atoms) {
         goto cleanup;
     }
-    assert(sub_atoms->union_count == 1);
 
     /* check whether any atoms match */
     *required = 0;
     for (i = 0; i < req_atoms->union_count; ++i) {
-        for (j = 0; j < req_atoms->unions[i].atom_count; ++j) {
-            for (k = 0; k < sub_atoms->unions[0].atom_count; ++k) {
-                r = sr_xpath_oper_data_text_atoms_required(req_atoms->unions[i].atoms[j], sub_atoms->unions[0].atoms[k]);
-                if (r == 1) {
-                    /* required but need to check all atoms */
-                    *required = 1;
-                } else if (r == 2) {
-                    /* not required for the union */
-                    *required = 0;
+        for (j = 0; j < sub_atoms->union_count; ++j) {
+            for (k = 0; k < req_atoms->unions[i].atom_count; ++k) {
+                for (l = 0; l < sub_atoms->unions[j].atom_count; ++l) {
+                    r = sr_xpath_oper_data_text_atoms_required(req_atoms->unions[i].atoms[k], sub_atoms->unions[j].atoms[l]);
+                    if (r == 1) {
+                        /* required but need to check all atoms */
+                        *required = 1;
+                    } else if ((r == 0) || (r == 2)) {
+                        /* not required for the union */
+                        *required = 0;
+                        break;
+                    }
+                }
+                if (l < sub_atoms->unions[j].atom_count) {
                     break;
                 }
             }
-            if (k < sub_atoms->unions[0].atom_count) {
-                break;
-            }
-        }
 
-        if (*required) {
-            /* required for a union */
-            goto cleanup;
+            if (*required) {
+                /* required for a union */
+                goto cleanup;
+            }
         }
     }
 
