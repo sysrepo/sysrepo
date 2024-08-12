@@ -52,7 +52,8 @@ srpds_concat_key_values(const char *plg_name, const struct lyd_node *node, char 
         iter = iter->next;
     }
     if (num_of_keys > (UINT8_MAX >> 1)) {
-        ERRINFO(&err_info, plg_name, SR_ERR_INTERNAL, "srpds_concat_key_values()", "Number of keys is bigger than (UINT8_MAX >> 1)")
+        ERRINFO(&err_info, plg_name, SR_ERR_INTERNAL, "srpds_concat_key_values()",
+                "Number of keys is bigger than (UINT8_MAX >> 1)")
         goto cleanup;
     }
 
@@ -73,7 +74,8 @@ srpds_concat_key_values(const char *plg_name, const struct lyd_node *node, char 
         /* we are only using 7 bits of two bytes for length,
          * therefore length cannot be bigger than (UINT16_MAX >> 2) */
         if (keylen > (UINT16_MAX >> 2)) {
-            ERRINFO(&err_info, plg_name, SR_ERR_INTERNAL, "srpds_concat_key_values()", "Key length is bigger than (UINT16_MAX >> 2)")
+            ERRINFO(&err_info, plg_name, SR_ERR_INTERNAL, "srpds_concat_key_values()",
+                    "Key length is bigger than (UINT16_MAX >> 2)")
             goto cleanup;
         }
 
@@ -324,7 +326,7 @@ srpds_uid2usr(const char *plg_name, uid_t uid, char **username)
         ERRINFO(&err_info, plg_name, SR_ERR_INTERNAL, "Retrieving UID passwd entry", strerror(r))
         goto cleanup;
     } else if (!pwd_p) {
-        ERRINFO(&err_info, plg_name, SR_ERR_NOT_FOUND, "Retrieving UID passwd entry (No such UID)", "")
+        ERRINFO(&err_info, plg_name, SR_ERR_NOT_FOUND, "Retrieving UID passwd entry", "No such UID")
         goto cleanup;
     }
 
@@ -378,7 +380,7 @@ srpds_gid2grp(const char *plg_name, gid_t gid, char **group)
         ERRINFO(&err_info, plg_name, SR_ERR_INTERNAL, "Retrieving GID grp entry", strerror(r))
         goto cleanup;
     } else if (!grp_p) {
-        ERRINFO(&err_info, plg_name, SR_ERR_NOT_FOUND, "Retrieving GID grp entry (No such GID)", "")
+        ERRINFO(&err_info, plg_name, SR_ERR_NOT_FOUND, "Retrieving GID grp entry", "No such GID")
         goto cleanup;
     }
 

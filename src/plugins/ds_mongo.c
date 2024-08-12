@@ -234,7 +234,8 @@ srpds_data_init(const struct lys_module *mod, sr_datastore_t ds, int installed, 
     } else {
         mdata->module = mongoc_database_create_collection(mdata->datastore, mdata->module_name, NULL, &error);
         if (!mdata->module) {
-            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_database_create_collection()", error.message)
+            ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_database_create_collection()",
+                    error.message)
             goto cleanup;
         }
     }
@@ -363,7 +364,8 @@ cleanup:
  * @param[in] ctx Libyang context.
  * @param[in] xpaths Array of XPaths.
  * @param[in] xpath_cnt XPath count.
- * @param[out] out Final regular expression.
+ * @param[out] is_valid Whether the @p xpath_filter is valid.
+ * @param[out] xpath_filter XPath filter for the database.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
@@ -468,10 +470,12 @@ cleanup:
 }
 
 /**
- * @brief Load all data (only nodes (/), metadata (2) and attributes (3)) from the database and store them inside the lyd_node structure (only for operational datastore).
+ * @brief Load all data (only nodes (/), metadata (2) and attributes (3)) from the database and store them
+ * inside the lyd_node structure (only for operational datastore).
  *
  * @param[in] module Given MongoDB collection.
  * @param[in] mod Given module.
+ * @param[in] xpath_filter XPath filter for the database.
  * @param[out] mod_data Retrieved module data from the database.
  * @return NULL on success;
  * @return Sysrepo error info on error.
@@ -717,7 +721,7 @@ cleanup:
  * @param[in] module Given MongoDB collection.
  * @param[in] mod Given module.
  * @param[in] ds Given datastore.
- * @param[in] paths_regex Regular expression composed of load XPaths to speed up the loading process.
+ * @param[in] xpath_filter XPath filter for the database.
  * @param[out] mod_data Retrieved module data from the database.
  * @return NULL on success;
  * @return Sysrepo error info on error.
@@ -3078,7 +3082,8 @@ srpds_mongo_install(const struct lys_module *mod, sr_datastore_t ds, const char 
         im[i] = mongoc_index_model_new(bson_index_keys[i], NULL /* opts */);
     }
     if (!mongoc_collection_create_indexes_with_opts(mdata.module, im, idx_cnt, NULL /* opts */, NULL /* reply */, &error)) {
-        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_create_indexes_with_opts", error.message)
+        ERRINFO(&err_info, plugin_name, SR_ERR_OPERATION_FAILED, "mongoc_collection_create_indexes_with_opts",
+                error.message)
         goto cleanup;
     }
 
