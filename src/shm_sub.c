@@ -537,9 +537,15 @@ _sr_shmsub_notify_wait_wr(sr_sub_shm_t *sub_shm, sr_sub_event_t event, uint32_t 
             /* event failed */
             if (clear_ev_on_err) {
                 ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
+                sub_shm->orig_cid = 0;
             } else if ((expected_ev == SR_SUB_EV_SUCCESS) || (expected_ev == SR_SUB_EV_ERROR)) {
                 /* do not store SR_SUB_EV_ERROR if abort event is not generated (it is not on lock_lost) */
-                ATOMIC_STORE_RELAXED(sub_shm->event, *lock_lost ? SR_SUB_EV_NONE : SR_SUB_EV_ERROR);
+                if (*lock_lost) {
+                    ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
+                    sub_shm->orig_cid = 0;
+                } else {
+                    ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_ERROR);
+                }
             }
         }
 
@@ -563,6 +569,7 @@ event_handled:
             if (expected_ev == SR_SUB_EV_SUCCESS) {
                 /* clear it */
                 ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
+                sub_shm->orig_cid = 0;
             }
             break;
         case SR_SUB_EV_ERROR:
@@ -603,6 +610,7 @@ event_handled:
             if (clear_ev_on_err) {
                 /* clear the error */
                 ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
+                sub_shm->orig_cid = 0;
             }
             break;
         default:
@@ -614,6 +622,7 @@ event_handled:
         /* we expect a finished or none event */
         if (ATOMIC_LOAD_RELAXED(sub_shm->event) == expected_ev) {
             ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
+            sub_shm->orig_cid = 0;
         } else {
             sr_errinfo_new(&err_info, SR_ERR_INTERNAL, "Unexpected sub SHM event \"%s\" (expected \"%s\").",
                     sr_ev2str(last_event), sr_ev2str(expected_ev));
@@ -733,6 +742,7 @@ sr_shmsub_notify_many_wait_wr(struct sr_shmsub_many_info_s *notify_subs, uint32_
                 /* event failed */
                 if (clear_ev_on_err) {
                     ATOMIC_STORE_RELAXED(nsub->sub_shm->event, SR_SUB_EV_NONE);
+                    nsub->sub_shm->orig_cid = 0;
                 } else if ((expected_ev == SR_SUB_EV_SUCCESS) || (expected_ev == SR_SUB_EV_ERROR)) {
                     ATOMIC_STORE_RELAXED(nsub->sub_shm->event, SR_SUB_EV_ERROR);
                 }
@@ -1326,6 +1336,7 @@ sr_shmsub_change_notify_update(struct sr_mod_info_s *mod_info, const char *orig_
 
             /* event fully processed */
             sub_shm->event = SR_SUB_EV_NONE;
+            sub_shm->orig_cid = 0;
 
             /* collect new edits (there may not be any) */
             if (!*update_edit) {
@@ -2191,6 +2202,7 @@ sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, cons
 
         /* event processed */
         ATOMIC_STORE_RELAXED(nsub->sub_shm->event, SR_SUB_EV_NONE);
+        nsub->sub_shm->orig_cid = 0;
 
         /* SUB WRITE UNLOCK */
         sr_rwunlock(&nsub->sub_shm->lock, 0, SR_LOCK_WRITE, cid, __func__);
@@ -2713,6 +2725,7 @@ first_sub:
 
         /* event processed */
         sub_shm->event = SR_SUB_EV_NONE;
+        sub_shm->orig_cid = 0;
 
 next_sub:
         /* find out what is the next priority and how many subscribers have it */
@@ -3106,6 +3119,7 @@ sr_shmsub_listen_write_event(sr_sub_shm_t *sub_shm, uint32_t valid_subscr_count,
             /* notifier does not wait for these events */
             assert(!err_code);
             ATOMIC_STORE_RELAXED(sub_shm->event, SR_SUB_EV_NONE);
+            sub_shm->orig_cid = 0;
             break;
         default:
             /* unreachable, it was checked before */
