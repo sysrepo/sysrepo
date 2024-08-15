@@ -205,6 +205,7 @@ typedef struct {
 
     /* additional members */
     int is_schema_yang;
+    LYS_INFORMAT format;
     const struct lys_module *ly_mod;
     const char **enable_features;       /**< set if module is installed and only some of its features should be enabled */
     int installed[SR_DS_READ_COUNT];    /**< install_cb was called for the DS */
