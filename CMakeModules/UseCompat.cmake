@@ -71,7 +71,6 @@ macro(USE_COMPAT)
     list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_POSIX_C_SOURCE=200809L)
     list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
     list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D__BSD_VISIBLE=1)
-    list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_DEFAULT_SOURCE)
 
     # header and source file (adding the source directly allows for hiding its symbols)
     configure_file(${PROJECT_SOURCE_DIR}/compat/compat.h.in ${PROJECT_BINARY_DIR}/compat/compat.h @ONLY)
