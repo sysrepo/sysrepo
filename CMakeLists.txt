@@ -662,8 +662,7 @@ endif()
 # flush all sysrepo related data from redis
 if(SR_ENABLED_DS_PLG_REDIS)
     add_custom_target(sr_redis_clean
-        COMMAND "redis-cli" "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}" "--scan" "--pattern" "\"sr:*\"" "|" "xargs" "-d" "\"\\n\"" "-I," "redis-cli" "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}" "unlink" "\",\"" "1>/dev/null"
-        COMMAND "redis-cli" "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}" "--raw" "ft._list" "|" "grep" "-x" "-G" "\"^sr:.*\"" "|" "xargs" "-n" "1" "redis-cli" "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}" "ft.dropindex" "1>/dev/null"
+        COMMAND "redis-cli" "-h" "${REDIS_HOST}" "-p" "${REDIS_PORT}" "--eval" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/deleteAllSysrepoDataInRedis.lua"
     )
     add_dependencies(sr_clean sr_redis_clean)
 endif()
