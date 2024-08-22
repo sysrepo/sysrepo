@@ -6,6 +6,10 @@ module refs {
         prefix t;
     }
 
+    import simple {
+        prefix s;
+    }
+
     container cont {
         presence "str";
         leaf def-inst-id {
@@ -26,6 +30,7 @@ module refs {
 
     leaf l {
         type empty;
+        must "/s:ac1/s:acd1='false'";
     }
 
     leaf-list ll {

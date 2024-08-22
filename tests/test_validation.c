@@ -41,6 +41,7 @@ setup_f(void **state)
     struct state *st;
     const char *schema_paths[] = {
         TESTS_SRC_DIR "/files/test.yang",
+        TESTS_SRC_DIR "/files/simple.yang",
         TESTS_SRC_DIR "/files/refs.yang",
         NULL
     };
@@ -71,6 +72,7 @@ teardown_f(void **state)
     struct state *st = (struct state *)*state;
     const char *module_names[] = {
         "refs",
+        "simple",
         "test",
         NULL
     };
@@ -101,6 +103,7 @@ clear_test_refs(void **state)
     sr_delete_item(st->sess, "/refs:ll[.='y']", 0);
     sr_delete_item(st->sess, "/refs:ll[.='z']", 0);
     sr_delete_item(st->sess, "/refs:lll[key='1']", 0);
+    sr_delete_item(st->sess, "/simple:ac1", 0);
     sr_apply_changes(st->sess, 0);
 
     return 0;
@@ -157,6 +160,8 @@ test_instid(void **state)
 
     /* inst-id target does not exist */
     ret = sr_set_item_str(st->sess, "/refs:inst-id", "/refs:l", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(st->sess, "/simple:ac1/acd1", "false", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(st->sess, 0);
     assert_int_equal(ret, SR_ERR_VALIDATION_FAILED);

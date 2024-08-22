@@ -339,27 +339,15 @@ sr_modinfo_collect_deps(struct sr_mod_info_s *mod_info)
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
-        switch (mod->state & MOD_INFO_TYPE_MASK) {
-        case MOD_INFO_REQ:
-            if (!(mod->state & MOD_INFO_CHANGED)) {
-                /* data were not changed so no reason to validate them */
-                break;
-            }
-        /* fallthrough */
-        case MOD_INFO_INV_DEP:
-            /* this module data will be validated */
+
+        /* validate only changed required modules or inverse dependency modules */
+        if (((mod->state & MOD_INFO_REQ) && (mod->state & MOD_INFO_CHANGED)) || (mod->state & MOD_INFO_INV_DEP)) {
             assert(mod->state & MOD_INFO_DATA);
             if ((err_info = sr_shmmod_collect_deps(SR_CONN_MOD_SHM(mod_info->conn),
                     (sr_dep_t *)(mod_info->conn->mod_shm.addr + mod->shm_mod->deps), mod->shm_mod->dep_count,
                     mod_info->data, mod_info))) {
                 return err_info;
             }
-            break;
-        case MOD_INFO_DEP:
-            /* this module will not be validated */
-            break;
-        default:
-            SR_CHECK_INT_RET(0, err_info);
         }
     }
 
@@ -2995,8 +2983,8 @@ sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff)
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
-        switch (mod->state & MOD_INFO_TYPE_MASK) {
-        case MOD_INFO_REQ:
+
+        if (mod->state & MOD_INFO_REQ) {
             /* add default values for this module */
             if ((err_info = sr_lyd_new_implicit_module(&mod_info->data, mod->ly_mod, LYD_IMPLICIT_NO_STATE,
                     finish_diff ? &diff : NULL))) {
@@ -3027,13 +3015,6 @@ sr_modinfo_add_defaults(struct sr_mod_info_s *mod_info, int finish_diff)
                     mod->state &= ~MOD_INFO_CHANGED;
                 }
             }
-            break;
-        case MOD_INFO_INV_DEP:
-        case MOD_INFO_DEP:
-            /* this module will not be validated */
-            break;
-        default:
-            SR_CHECK_INT_GOTO(0, err_info, cleanup);
         }
     }
 
@@ -3106,8 +3087,8 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int 
 
     for (i = 0; i < mod_info->mod_count; ++i) {
         mod = &mod_info->mods[i];
-        switch (mod->state & MOD_INFO_TYPE_MASK) {
-        case MOD_INFO_REQ:
+
+        if (mod->state & MOD_INFO_REQ) {
             /* this is the module of the nested operation and we need to check that operation's parent data node exists */
             assert((mod->ly_mod == lyd_owner_module(top_op)) && op->parent);
             free(parent_xpath);
@@ -3130,13 +3111,6 @@ sr_modinfo_op_validate(struct sr_mod_info_s *mod_info, struct lyd_node *op, int 
                         "Nested operation \"%s\" data parent does not exist in the operational datastore.", op->schema->name);
                 goto cleanup;
             }
-            break;
-        case MOD_INFO_DEP:
-            /* this module data are required because there are references to them, but they do not need to be revalidated */
-            break;
-        default:
-            SR_ERRINFO_INT(&err_info);
-            goto cleanup;
         }
     }
 
