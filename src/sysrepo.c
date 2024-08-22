@@ -1511,6 +1511,8 @@ _sr_install_modules(sr_conn_ctx_t *conn, const char *search_dirs, const char *da
             }
             if (!--(*new_mod_count)) {
                 /* no modules left to install */
+                free(*new_mods);
+                *new_mods = NULL;
                 goto cleanup;
             }
             continue;
