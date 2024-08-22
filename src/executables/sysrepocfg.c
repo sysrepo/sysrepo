@@ -1059,6 +1059,7 @@ main(int argc, char **argv)
     }
 
     /* set logging */
+    ly_log_options(LY_LOSTORE_LAST);
     sr_log_stderr(log_level);
 
     /* create connection */
