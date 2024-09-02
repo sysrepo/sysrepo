@@ -91,11 +91,19 @@ typedef enum {
 } sr_sub_event_t;
 
 /**
+ * @brief XPath expression atoms structure atom.
+ */
+typedef struct {
+    char *atom;
+    int selected;   /**< Whether the atom is an actually selected node or just in a predicate, function, ... */
+} sr_xp_atoms_atom_t;
+
+/**
  * @brief XPath expression atoms.
  */
 typedef struct {
     struct {
-        char **atoms;
+        sr_xp_atoms_atom_t *atoms;
         uint32_t atom_count;
     } *unions;
     uint32_t union_count;

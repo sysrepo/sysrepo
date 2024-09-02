@@ -4931,19 +4931,20 @@ cleanup:
  * @brief Add a new atom if not present.
  *
  * @param[in,out] atom Atom to add, is spent and set to NULL.
+ * @param[in] selected Whether @p atom is a selected node or just required for evaluation (in a predicate, function, ...).
  * @param[in,out] atoms Array of atoms to add to.
  * @param[in,out] atom_count Count of @p atoms, is updated.
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_xpath_text_atom_add(char **atom, char ***atoms, uint32_t *atom_count)
+sr_xpath_text_atom_add(char **atom, int selected, sr_xp_atoms_atom_t **atoms, uint32_t *atom_count)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
     void *mem;
 
     for (i = 0; i < *atom_count; ++i) {
-        if (!strcmp((*atoms)[i], *atom)) {
+        if (!strcmp((*atoms)[i].atom, *atom)) {
             break;
         }
     }
@@ -4958,7 +4959,8 @@ sr_xpath_text_atom_add(char **atom, char ***atoms, uint32_t *atom_count)
         SR_CHECK_MEM_RET(!mem, err_info);
         *atoms = mem;
 
-        (*atoms)[i] = *atom;
+        (*atoms)[i].atom = *atom;
+        (*atoms)[i].selected = selected;
         *atom = NULL;
         ++(*atom_count);
     }
@@ -4985,7 +4987,7 @@ static const char *xpath_ops[] = {"or ", "and ", "=", "!=", "<", ">", "<=", ">="
  * @return err_info, NULL on success.
  */
 static sr_error_info_t *
-sr_xpath_text_atoms_expr(const char *xpath, const char *prev_atom, const char *end_chars, char ***atoms,
+sr_xpath_text_atoms_expr(const char *xpath, const char *prev_atom, const char *end_chars, sr_xp_atoms_atom_t **atoms,
         uint32_t *atom_count, const char **xpath_next)
 {
     sr_error_info_t *err_info = NULL;
@@ -5111,7 +5113,7 @@ parse_name:
         /* finished with this (sub)expression, add new atom if any found (parsed) */
         parsed = 1;
         if (!atom_stored && (strlen(prev_atom) < strlen(cur_atom)) &&
-                (err_info = sr_xpath_text_atom_add(&cur_atom, atoms, atom_count))) {
+                (err_info = sr_xpath_text_atom_add(&cur_atom, !end_chars ? 1 : 0, atoms, atom_count))) {
             goto cleanup;
         }
     } else {
@@ -5141,7 +5143,7 @@ parse_name:
                     }
                     next2 += len;
 
-                    if ((err_info = sr_xpath_text_atom_add(&tmp, atoms, atom_count))) {
+                    if ((err_info = sr_xpath_text_atom_add(&tmp, 0, atoms, atom_count))) {
                         goto cleanup;
                     }
 
@@ -5160,7 +5162,7 @@ parse_name:
                 }
             } else if (!atom_stored && (strlen(prev_atom) < strlen(cur_atom))) {
                 /* add a new atom if a new one */
-                if ((err_info = sr_xpath_text_atom_add(&cur_atom, atoms, atom_count))) {
+                if ((err_info = sr_xpath_text_atom_add(&cur_atom, 0, atoms, atom_count))) {
                     goto cleanup;
                 }
             }
@@ -5190,7 +5192,7 @@ sr_xpath_get_text_atoms(const char *xpath, sr_xp_atoms_t **xp_atoms)
 {
     sr_error_info_t *err_info = NULL;
     const char *next;
-    char **atoms;
+    sr_xp_atoms_atom_t *atoms;
     uint32_t i, atom_count;
     void *mem;
 
@@ -5207,7 +5209,7 @@ sr_xpath_get_text_atoms(const char *xpath, sr_xp_atoms_t **xp_atoms)
         if (err_info || (xpath == next)) {
             /* error or unknown expr */
             for (i = 0; i < atom_count; ++i) {
-                free(atoms[i]);
+                free(atoms[i].atom);
             }
             free(atoms);
             goto cleanup;
@@ -5249,7 +5251,7 @@ sr_xpath_atoms_free(sr_xp_atoms_t *xp_atoms)
 
     for (i = 0; i < xp_atoms->union_count; ++i) {
         for (j = 0; j < xp_atoms->unions[i].atom_count; ++j) {
-            free(xp_atoms->unions[i].atoms[j]);
+            free(xp_atoms->unions[i].atoms[j].atom);
         }
         free(xp_atoms->unions[i].atoms);
     }
