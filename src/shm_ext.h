@@ -20,12 +20,6 @@
 #include "shm_types.h"
 #include "sysrepo_types.h"
 
-/* macro for scrapping subscriptions when subscr READ ext SHM lock is all we have */
-#define SR_SHMEXT_SCRAP_SUBSCR(subs_p) ATOMIC_STORE_RELAXED((subs_p)->suspended, 2)
-
-/* macro to check for scrapped subscriptions - used to perform cleanup */
-#define SR_SHMEXT_IS_SUBSCR_SCRAPPED(subs_p) (ATOMIC_LOAD_RELAXED((subs_p)->suspended) == 2)
-
 /**
  * @brief Lock ext SHM lock and connection remap lock, remap ext SHM if needed.
  *
@@ -285,13 +279,13 @@ sr_error_info_t *sr_shmext_rpc_sub_stop(sr_conn_ctx_t *conn, off_t *subs, uint32
         const char *path, uint32_t del_idx, int del_evpipe, int recovery);
 
 /**
- * @brief Remove SCRAPPED main SHM module RPC/action subscription
+ * @brief Remove dead main SHM module RPC/action subscription
  *
  * @param[in] conn Connection to use.
  * @param[in,out] subs Offset in ext SHM of RPC subs.
  * @param[in,out] sub_count Ext SHM RPC sub count.
 */
-void sr_shmext_rpc_sub_remove_scraps(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count);
+void sr_shmext_rpc_sub_remove_dead(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count);
 
 /**
  * @brief Recover all subscriptions in ext SHM, their connection must be dead.

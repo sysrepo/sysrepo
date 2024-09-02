@@ -1793,15 +1793,8 @@ sr_notif_find_subscriber(sr_conn_ctx_t *conn, const char *mod_name, sr_mod_notif
     *notif_sub_count = 0;
 
     for (i = 0; i < shm_mod->notif_sub_count; i++) {
-        /* skip scrapped subscriptions */
-        if (SR_SHMEXT_IS_SUBSCR_SCRAPPED(&((*notif_subs)[i]))) {
-            continue;
-        }
-
         /* check subscription aliveness */
         if (!sr_conn_is_alive((*notif_subs)[i].cid)) {
-            /* scrap the subscription to prevent future aliveness checks */
-            SR_SHMEXT_SCRAP_SUBSCR(&((*notif_subs)[i]));
             continue;
         }
 

@@ -499,19 +499,19 @@ error:
 }
 
 static void
-sr_shmext_change_sub_remove_scraps(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds)
+sr_shmext_change_sub_remove_dead(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds)
 {
     uint32_t i = 0;
     sr_error_info_t *err_info = NULL;
     sr_mod_change_sub_t *shm_sub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs);
 
     while (i < shm_mod->change_sub[ds].sub_count) {
-        if (!SR_SHMEXT_IS_SUBSCR_SCRAPPED(&shm_sub[i])) {
+        if (sr_conn_is_alive(shm_sub[i].cid)) {
             i++;
             continue;
         }
 
-        /* subscription was scrapped, remove it */
+        /* subscription is dead, remove it */
         if ((err_info = sr_shmext_change_sub_stop(conn, shm_mod, ds, i, 1, 1))) {
             sr_errinfo_free(&err_info);
             i++;
@@ -533,23 +533,13 @@ sr_shmext_change_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t 
         goto cleanup;
     }
 
-    sr_shmext_change_sub_remove_scraps(conn, shm_mod, ds);
+    sr_shmext_change_sub_remove_dead(conn, shm_mod, ds);
 
     if (sub_opts & SR_SUBSCR_UPDATE) {
         /* check that there is not already an update subscription with the same priority */
         shm_sub = (sr_mod_change_sub_t *)(conn->ext_shm.addr + shm_mod->change_sub[ds].subs);
         for (i = 0; i < shm_mod->change_sub[ds].sub_count; ++i) {
             if ((shm_sub[i].opts & SR_SUBSCR_UPDATE) && (shm_sub[i].priority == priority)) {
-                if (!sr_conn_is_alive(shm_sub[i].cid)) {
-                    /* subscription is dead, recover it */
-                    if ((err_info = sr_shmext_change_sub_stop(conn, shm_mod, ds, i, 1, 1))) {
-                        goto cleanup_unlock;
-                    }
-
-                    /* there could not be more of such subscriptions, we have the right index for insertion */
-                    break;
-                }
-
                 sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG,
                         "There already is an \"update\" subscription on module \"%s\" with priority %" PRIu32 " for %s DS.",
                         conn->mod_shm.addr + shm_mod->name, priority, sr_ds2str(ds));
@@ -785,7 +775,7 @@ sr_shmext_change_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t
 }
 
 static void
-sr_shmext_oper_get_sub_remove_scraps(sr_conn_ctx_t *conn, sr_mod_t *shm_mod)
+sr_shmext_oper_get_sub_remove_dead(sr_conn_ctx_t *conn, sr_mod_t *shm_mod)
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_oper_get_sub_t *shm_sub;
@@ -798,7 +788,7 @@ sr_shmext_oper_get_sub_remove_scraps(sr_conn_ctx_t *conn, sr_mod_t *shm_mod)
         j = 0;
         while (j < shm_sub->xpath_sub_count) {
             xpath_sub = &((sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + shm_sub->xpath_subs))[j];
-            if (SR_SHMEXT_IS_SUBSCR_SCRAPPED(xpath_sub)) {
+            if (!sr_conn_is_alive(xpath_sub->cid)) {
                 /* subscription is scrapped, recover it */
                 if ((err_info = sr_shmext_oper_get_sub_stop(conn, shm_mod, i, j, 1, 1))) {
                     sr_errinfo_free(&err_info);
@@ -831,7 +821,7 @@ sr_shmext_oper_get_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_
         return err_info;
     }
 
-    sr_shmext_oper_get_sub_remove_scraps(conn, shm_mod);
+    sr_shmext_oper_get_sub_remove_dead(conn, shm_mod);
 
     /* check that this exact subscription does not exist yet while finding its position */
     new_len = sr_xpath_len_no_predicates(path);
@@ -842,14 +832,7 @@ sr_shmext_oper_get_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_
         j = 0;
         while (j < shm_sub->xpath_sub_count) {
             xpath_sub = &((sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + shm_sub->xpath_subs))[j];
-            if (!sr_conn_is_alive(xpath_sub->cid)) {
-                /* subscription is dead, recover it */
-                if ((err_info = sr_shmext_oper_get_sub_stop(conn, shm_mod, i, j, 1, 1))) {
-                    goto cleanup_unlock;
-                }
-            } else {
-                ++j;
-            }
+            ++j;
         }
         if (!j) {
             /* all subscriptions for this XPath recovered, none left */
@@ -1083,7 +1066,7 @@ sr_shmext_oper_get_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del
 }
 
 static void
-sr_shmext_oper_poll_sub_remove_scraps(sr_conn_ctx_t *conn, sr_mod_t *shm_mod)
+sr_shmext_oper_poll_sub_remove_dead(sr_conn_ctx_t *conn, sr_mod_t *shm_mod)
 {
     uint32_t i = 0;
     sr_error_info_t *err_info = NULL;
@@ -1091,7 +1074,7 @@ sr_shmext_oper_poll_sub_remove_scraps(sr_conn_ctx_t *conn, sr_mod_t *shm_mod)
 
     while (i < shm_mod->oper_poll_sub_count) {
         shm_sub = &((sr_mod_oper_poll_sub_t *)(conn->ext_shm.addr + shm_mod->oper_poll_subs))[i];
-        if (!SR_SHMEXT_IS_SUBSCR_SCRAPPED(shm_sub)) {
+        if (sr_conn_is_alive(shm_sub->cid)) {
             i++;
             continue;
         }
@@ -1119,23 +1102,13 @@ sr_shmext_oper_poll_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub
         return err_info;
     }
 
-    sr_shmext_oper_poll_sub_remove_scraps(conn, shm_mod);
+    sr_shmext_oper_poll_sub_remove_dead(conn, shm_mod);
 
     if (sub_opts & SR_SUBSCR_OPER_POLL_DIFF) {
         /* check globally that a subscription with the same path generating diff does not exist yet */
         for (i = 0; i < shm_mod->oper_poll_sub_count; ++i) {
             shm_sub = &((sr_mod_oper_poll_sub_t *)(conn->ext_shm.addr + shm_mod->oper_poll_subs))[i];
             if ((shm_sub->opts & SR_SUBSCR_OPER_POLL_DIFF) && !strcmp(conn->ext_shm.addr + shm_sub->xpath, path)) {
-                if (!sr_conn_is_alive(shm_sub->cid)) {
-                    /* subscription is dead, recover it */
-                    if ((err_info = sr_shmext_oper_poll_sub_stop(conn, shm_mod, i, 1, 1))) {
-                        goto cleanup_unlock;
-                    }
-
-                    /* there could not be more of such subscriptions */
-                    break;
-                }
-
                 sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "Operational poll subscription for \"%s\" reporting changes "
                         "already exists.", conn->ext_shm.addr + shm_sub->xpath);
                 goto cleanup_unlock;
@@ -1270,14 +1243,14 @@ sr_shmext_oper_poll_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t de
 }
 
 static void
-sr_shmext_notif_sub_remove_scraps(sr_conn_ctx_t *conn, sr_mod_t *shm_mod)
+sr_shmext_notif_sub_remove_dead(sr_conn_ctx_t *conn, sr_mod_t *shm_mod)
 {
     uint32_t i = 0;
     sr_error_info_t *err_info = NULL, *tmp_err;
     sr_mod_notif_sub_t *notif_subs = (sr_mod_notif_sub_t *)(conn->ext_shm.addr + shm_mod->notif_subs);
 
     while (i < shm_mod->notif_sub_count) {
-        if (!SR_SHMEXT_IS_SUBSCR_SCRAPPED(&notif_subs[i])) {
+        if (sr_conn_is_alive(notif_subs[i].cid)) {
             i++;
             continue;
         }
@@ -1301,7 +1274,7 @@ sr_shmext_notif_sub_add(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t sub_id,
         return err_info;
     }
 
-    sr_shmext_notif_sub_remove_scraps(conn, shm_mod);
+    sr_shmext_notif_sub_remove_dead(conn, shm_mod);
 
     SR_LOG_DBG("#SHM before (adding notif sub)");
     sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
@@ -1463,7 +1436,7 @@ sr_shmext_notif_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_id
 }
 
 void
-sr_shmext_rpc_sub_remove_scraps(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count)
+sr_shmext_rpc_sub_remove_dead(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count)
 {
     uint32_t i = 0;
     sr_error_info_t *err_info = NULL, *tmp_err;
@@ -1478,7 +1451,7 @@ sr_shmext_rpc_sub_remove_scraps(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_
 
     shm_sub = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + *subs);
     while (i < *sub_count) {
-        if (!SR_SHMEXT_IS_SUBSCR_SCRAPPED(&shm_sub[i])) {
+        if (!shm_sub[i].cid || sr_conn_is_alive(shm_sub[i].cid)) {
             i++;
             continue;
         }
@@ -1537,17 +1510,6 @@ sr_shmext_rpc_sub_add(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count, con
         /* priority */
         if (shm_sub[i].priority != priority) {
             continue;
-        }
-
-        if (shm_sub[i].cid && !sr_conn_is_alive(shm_sub[i].cid)) {
-            /* subscription is dead, recover it */
-            if ((err_info = sr_shmext_rpc_sub_stop(conn, subs, sub_count, path, i, 1, 1))) {
-                goto cleanup_unlock;
-            }
-            --path_found;
-
-            /* there could not be several such subscriptions */
-            break;
         }
 
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "RPC subscription for \"%s\" with priority %" PRIu32

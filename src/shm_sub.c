@@ -965,15 +965,8 @@ sr_shmsub_change_notify_has_subscription(sr_conn_ctx_t *conn, struct sr_mod_info
     *max_priority_p = 0;
 
     for (i = 0; i < mod->shm_mod->change_sub[ds].sub_count; i++) {
-        /* skip scrapped subscriptions */
-        if (SR_SHMEXT_IS_SUBSCR_SCRAPPED(&shm_sub[i])) {
-            continue;
-        }
-
         /* check subscription aliveness */
         if (!sr_conn_is_alive(shm_sub[i].cid)) {
-            /* scrap the subscription to prevent future aliveness checks */
-            SR_SHMEXT_SCRAP_SUBSCR(&shm_sub[i]);
             continue;
         }
 
@@ -1036,15 +1029,8 @@ sr_shmsub_change_notify_next_subscription(sr_conn_ctx_t *conn, struct sr_mod_inf
     *sub_count_p = 0;
 
     for (i = 0; i < mod->shm_mod->change_sub[ds].sub_count; i++) {
-        /* skip scrapped subscriptions */
-        if (SR_SHMEXT_IS_SUBSCR_SCRAPPED(&shm_sub[i])) {
-            continue;
-        }
-
         /* check subscription aliveness */
         if (!sr_conn_is_alive(shm_sub[i].cid)) {
-            /* scrap the subscription to prevent future aliveness checks */
-            SR_SHMEXT_SCRAP_SUBSCR(&shm_sub[i]);
             continue;
         }
 
@@ -2084,15 +2070,8 @@ sr_shmsub_oper_get_notify(struct sr_mod_info_mod_s *mod, const char *xpath, cons
     for (i = 0; i < oper_get_subs[idx1].xpath_sub_count; i++) {
         xpath_sub = &((sr_mod_oper_get_xpath_sub_t *)(conn->ext_shm.addr + oper_get_subs[idx1].xpath_subs))[i];
 
-        /* skip scrapped subscriptions */
-        if (SR_SHMEXT_IS_SUBSCR_SCRAPPED(xpath_sub)) {
-            continue;
-        }
-
         /* check subscription aliveness */
         if (!sr_conn_is_alive(xpath_sub->cid)) {
-            /* scrap the subscription to prevent future aliveness checks */
-            SR_SHMEXT_SCRAP_SUBSCR(xpath_sub);
             /* Notify any poll subs of oper get subscriptions change */
             if ((err_info = sr_shmsub_oper_poll_get_sub_change_notify_evpipe(conn, mod->ly_mod->name, xpath))) {
                 sr_errinfo_free(&err_info);
@@ -2461,15 +2440,8 @@ sr_shmsub_rpc_notify_has_subscription(sr_conn_ctx_t *conn, off_t *subs, uint32_t
     *max_priority_p = 0;
 
     for (i = 0; i < *sub_count; i++) {
-        /* skip scrapped subscriptions */
-        if (SR_SHMEXT_IS_SUBSCR_SCRAPPED(&shm_subs[i])) {
-            continue;
-        }
-
         /* check subscription aliveness */
         if (shm_subs[i].cid && !sr_conn_is_alive(shm_subs[i].cid)) {
-            /* scrap the subscription to prevent future aliveness checks */
-            SR_SHMEXT_SCRAP_SUBSCR(&shm_subs[i]);
             continue;
         }
 
@@ -2527,15 +2499,8 @@ sr_shmsub_rpc_notify_next_subscription(sr_conn_ctx_t *conn, off_t *subs, uint32_
 
     shm_subs = (sr_mod_rpc_sub_t *)(conn->ext_shm.addr + *subs);
     for (i = 0; i < *sub_count; i++) {
-        /* skip scrapped subscriptions */
-        if (SR_SHMEXT_IS_SUBSCR_SCRAPPED(&shm_subs[i])) {
-            continue;
-        }
-
         /* check subscription aliveness */
         if (shm_subs[i].cid && !sr_conn_is_alive(shm_subs[i].cid)) {
-            /* scrap the subscription to prevent future aliveness checks */
-            SR_SHMEXT_SCRAP_SUBSCR(&shm_subs[i]);
             continue;
         }
 
@@ -4035,15 +4000,8 @@ sr_shmsub_oper_poll_get_sub_change_notify_evpipe(sr_conn_ctx_t *conn, const char
     shm_subs = (sr_mod_oper_poll_sub_t *)(conn->ext_shm.addr + shm_mod->oper_poll_subs);
     for (i = 0; i < shm_mod->oper_poll_sub_count; ++i) {
         if (!strcmp(oper_get_path, conn->ext_shm.addr + shm_subs[i].xpath)) {
-            /* skip scrapped subscriptions */
-            if (SR_SHMEXT_IS_SUBSCR_SCRAPPED(&shm_subs[i])) {
-                continue;
-            }
-
             /* check that the subscription is still alive */
             if (!sr_conn_is_alive(shm_subs[i].cid)) {
-                /* scrap the subscription to prevent future aliveness checks */
-                SR_SHMEXT_SCRAP_SUBSCR(&shm_subs[i]);
                 continue;
             }
 
