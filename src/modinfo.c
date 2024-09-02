@@ -948,6 +948,7 @@ sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath, in
     sr_error_info_t *err_info = NULL;
     sr_xp_atoms_t *req_atoms = NULL, *sub_atoms = NULL;
     uint32_t i, j, k, l;
+    sr_xp_atoms_atom_t *req_atom, *sub_atom;
     int r;
 
     assert(sub_xpath);
@@ -972,24 +973,33 @@ sr_xpath_oper_data_required(const char *request_xpath, const char *sub_xpath, in
     for (i = 0; i < req_atoms->union_count; ++i) {
         for (j = 0; j < sub_atoms->union_count; ++j) {
             for (k = 0; k < req_atoms->unions[i].atom_count; ++k) {
+                req_atom = &req_atoms->unions[i].atoms[k];
                 for (l = 0; l < sub_atoms->unions[j].atom_count; ++l) {
-                    r = sr_xpath_oper_data_text_atoms_required(req_atoms->unions[i].atoms[k], sub_atoms->unions[j].atoms[l]);
-                    if (r == 1) {
-                        /* required but need to check all atoms */
+                    sub_atom = &sub_atoms->unions[j].atoms[l];
+
+                    /* check atoms */
+                    r = sr_xpath_oper_data_text_atoms_required(req_atom->atom, sub_atom->atom);
+                    if ((r == 0) && req_atom->selected && sub_atom->selected) {
+                        /* specific selected nodes do not match, not required for the whole union */
+                        *required = 0;
+                        break;
+                    } else if (r == 1) {
+                        /* required but need to check all the atoms */
                         *required = 1;
-                    } else if ((r == 0) || (r == 2)) {
-                        /* not required for the union */
+                    } else if (r == 2) {
+                        /* values do not match, not required for the whole union */
                         *required = 0;
                         break;
                     }
                 }
                 if (l < sub_atoms->unions[j].atom_count) {
+                    /* not required for the whole union */
                     break;
                 }
             }
 
             if (*required) {
-                /* required for a union */
+                /* required for the union */
                 goto cleanup;
             }
         }

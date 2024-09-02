@@ -4,8 +4,8 @@
  * @brief test for operational datastore pull subsriptions behavior
  *
  * @copyright
- * Copyright (c) 2018 - 2022 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2022 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -2164,11 +2164,18 @@ test_xpath_check(void **state)
     sr_release_data(data);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 0);
 
+    /* read statistics with a predicate, callback called */
+    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/"
+            "interface[not(derived-from-or-self(type, 'iana-if-type:softwareLoopback'))]/statistics", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_release_data(data);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
+
     /* read all from operational, callback called */
     ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth0']", 0, 0, 0, &data);
     assert_int_equal(ret, SR_ERR_OK);
     sr_release_data(data);
-    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     sr_unsubscribe(subscr);
 }
