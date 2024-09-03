@@ -498,6 +498,13 @@ error:
     free(items);
 }
 
+/**
+ * @brief Removes any dead change subscribers from a module's ext SHM.
+ *
+ * @param conn Connection to use.
+ * @param shm_mod SHM module.
+ * @param ds Datastore.
+ */
 static void
 sr_shmext_change_sub_remove_dead(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds)
 {
@@ -774,6 +781,12 @@ sr_shmext_change_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t
     return err_info;
 }
 
+/**
+ * @brief Removes any oper get subscribers from a module's ext SHM.
+ *
+ * @param conn Connection to use.
+ * @param shm_mod SHM module.
+ */
 static void
 sr_shmext_oper_get_sub_remove_dead(sr_conn_ctx_t *conn, sr_mod_t *shm_mod)
 {
@@ -1065,6 +1078,12 @@ sr_shmext_oper_get_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del
     return err_info;
 }
 
+/**
+ * @brief Removes any oper poll subscribers from a module's ext SHM.
+ *
+ * @param conn Connection to use.
+ * @param shm_mod SHM module.
+ */
 static void
 sr_shmext_oper_poll_sub_remove_dead(sr_conn_ctx_t *conn, sr_mod_t *shm_mod)
 {
@@ -1242,6 +1261,12 @@ sr_shmext_oper_poll_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t de
     return err_info;
 }
 
+/**
+ * @brief Removes any notif subscribers from a module's ext SHM.
+ *
+ * @param conn Connection to use.
+ * @param shm_mod SHM module.
+ */
 static void
 sr_shmext_notif_sub_remove_dead(sr_conn_ctx_t *conn, sr_mod_t *shm_mod)
 {
