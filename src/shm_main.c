@@ -419,7 +419,7 @@ sr_shmmain_conn_list_del(sr_cid_t cid)
             }
 
             /* cleanup local resources */
-            if (ptr->lock_fd > 0) {
+            if (ptr->lock_fd > -1) {
                 /* closing ANY file descriptor to a locked file releases all the locks */
                 close(ptr->lock_fd);
             } else {
