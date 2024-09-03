@@ -2934,6 +2934,11 @@ sr_shmsub_notif_notify(sr_conn_ctx_t *conn, const struct lyd_node *notif, struct
 
     /* notify all subscribers using event pipe */
     for (i = 0; i < notif_sub_count; i++) {
+        /* check that the subscription is still alive */
+        if (!sr_conn_is_alive(notif_subs[i].cid)) {
+            continue;
+        }
+
         if (ATOMIC_LOAD_RELAXED(notif_subs[i].suspended)) {
             /* skip suspended subscribers */
             continue;
