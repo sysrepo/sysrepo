@@ -108,12 +108,11 @@ sr_error_info_t *sr_shmext_change_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod
  * @param[in] ds Subscription datastore.
  * @param[in] del_idx Index of the subscription to free.
  * @param[in] del_evpipe Whether to also remove the evpipe.
- * @param[in] has_locks Mode of held CHANGE SUB and EXT locks.
  * @param[in] recovery Whether to print subscription recovery warning.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmext_change_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, sr_datastore_t ds, uint32_t del_idx,
-        int del_evpipe, sr_lock_mode_t has_locks, int recovery);
+        int del_evpipe, int recovery);
 
 /**
  * @brief Add main SHM module operational get subscription, create sub SHM, notify oper poll subs.
@@ -150,12 +149,11 @@ sr_error_info_t *sr_shmext_oper_get_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_m
  * @param[in] del_idx1 Index of the list of subscriptions with the same XPath.
  * @param[in] del_idx2 Index of the XPath subscription to free.
  * @param[in] del_evpipe Whether to also remove the evpipe.
- * @param[in] has_locks Mode of held CHANGE SUB and EXT locks.
  * @param[in] recovery Whether to print subscription recovery warning.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmext_oper_get_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx1, uint32_t del_idx2,
-        int del_evpipe, sr_lock_mode_t has_locks, int recovery);
+        int del_evpipe, int recovery);
 
 /**
  * @brief Add main SHM module operational poll subscription.
@@ -189,12 +187,11 @@ sr_error_info_t *sr_shmext_oper_poll_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_
  * @param[in] shm_mod SHM module with subscriptions.
  * @param[in] del_idx Index of the subscription to free.
  * @param[in] del_evpipe Whether to also remove the evpipe.
- * @param[in] has_locks Mode of held CHANGE SUB and EXT locks.
  * @param[in] recovery Whether to print subscription recovery warning.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmext_oper_poll_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx,
-        int del_evpipe, sr_lock_mode_t has_locks, int recovery);
+        int del_evpipe, int recovery);
 
 /**
  * @brief Add main SHM module notification subscription and create sub SHM if the first subscription was added.
@@ -227,19 +224,17 @@ sr_error_info_t *sr_shmext_notif_sub_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod,
  * @param[in] shm_mod SHM module with subscriptions.
  * @param[in] del_idx Index of the subscription to free.
  * @param[in] del_evpipe Whether to also remove the evpipe.
- * @param[in] has_locks Mode of held CHANGE SUB and EXT locks.
  * @param[in] recovery Whether to print subscription recovery warning.
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmext_notif_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, uint32_t del_idx, int del_evpipe,
-        sr_lock_mode_t has_locks, int recovery);
+        int recovery);
 
 /**
  * @brief Add main SHM RPC/action subscription and create sub SHM if the first subscription was added.
  * Ext SHM may be remapped!
  *
  * @param[in] conn Connection to use.
- * @param[in] sub_lock SHM RPC subs lock.
  * @param[in,out] subs Offset in ext SHM of RPC subs.
  * @param[in,out] sub_count Ext SHM RPC sub count.
  * @param[in] path RPC path.
@@ -251,7 +246,7 @@ sr_error_info_t *sr_shmext_notif_sub_stop(sr_conn_ctx_t *conn, sr_mod_t *shm_mod
  * @param[in] sub_cid Subscription CID.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_rpc_sub_add(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, uint32_t *sub_count,
+sr_error_info_t *sr_shmext_rpc_sub_add(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count,
         const char *path, uint32_t sub_id, const char *xpath, uint32_t priority, int sub_opts, uint32_t evpipe_num,
         sr_cid_t sub_cid);
 
@@ -272,18 +267,25 @@ sr_error_info_t *sr_shmext_rpc_sub_del(sr_conn_ctx_t *conn, off_t *subs, uint32_
  * @brief Remove main SHM module RPC/action subscription with param-based cleanup.
  *
  * @param[in] conn Connection to use.
- * @param[in] sub_lock SHM RPC subs lock.
  * @param[in,out] subs Offset in ext SHM of RPC subs.
  * @param[in,out] sub_count Ext SHM RPC sub count.
  * @param[in] path RPC path.
  * @param[in] del_idx Index of the subscription to free.
  * @param[in] del_evpipe Whether to also remove the evpipe.
- * @param[in] has_locks Mode of held CHANGE SUB and EXT locks.
  * @param[in] recovery Whether to print subscription recovery warning.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_shmext_rpc_sub_stop(sr_conn_ctx_t *conn, sr_rwlock_t *sub_lock, off_t *subs, uint32_t *sub_count,
-        const char *path, uint32_t del_idx, int del_evpipe, sr_lock_mode_t has_locks, int recovery);
+sr_error_info_t *sr_shmext_rpc_sub_stop(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count,
+        const char *path, uint32_t del_idx, int del_evpipe, int recovery);
+
+/**
+ * @brief Remove dead main SHM module RPC/action subscription
+ *
+ * @param[in] conn Connection to use.
+ * @param[in,out] subs Offset in ext SHM of RPC subs.
+ * @param[in,out] sub_count Ext SHM RPC sub count.
+*/
+void sr_shmext_rpc_sub_remove_dead(sr_conn_ctx_t *conn, off_t *subs, uint32_t *sub_count);
 
 /**
  * @brief Recover all subscriptions in ext SHM, their connection must be dead.

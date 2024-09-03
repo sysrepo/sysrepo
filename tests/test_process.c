@@ -159,6 +159,7 @@ setup(void)
         TESTS_SRC_DIR "/files/ietf-interfaces.yang",
         TESTS_SRC_DIR "/files/iana-if-type.yang",
         TESTS_SRC_DIR "/files/mod1.yang",
+        TESTS_SRC_DIR "/files/test.yang",
         NULL
     };
     const char *ops_ref_feats[] = {"feat1", NULL};
@@ -168,7 +169,8 @@ setup(void)
         NULL,
         NULL,
         NULL,
-        mod1_feats
+        mod1_feats,
+        NULL
     };
 
     sr_assert(sr_connect(0, &conn) == SR_ERR_OK);
@@ -186,6 +188,7 @@ teardown(void)
         "iana-if-type",
         "ops",
         "ops-ref",
+        "test",
         NULL
     };
 
@@ -1189,6 +1192,550 @@ test_sub(int rp, int wp)
     return 0;
 }
 
+typedef enum test_sr_event_e {
+    SR_EV_OPER_GET = (SR_EV_RPC + 1),
+    SR_EV_NOTIF,
+    SR_EV_NONE,
+    SR_EV_ALL
+} test_sr_event_t;
+
+static const char *
+ev_to_str(uint32_t ev)
+{
+    switch (ev) {
+    case SR_EV_UPDATE:
+        return "update";
+    case SR_EV_CHANGE:
+        return "change";
+    case SR_EV_DONE:
+        return "done";
+    case SR_EV_ABORT:
+        return "abort";
+    case SR_EV_RPC:
+        return "rpc";
+    case SR_EV_OPER_GET:
+        return "oper-get";
+    case SR_EV_NOTIF:
+        return "notif";
+    case SR_EV_NONE:
+        return "none";
+    default:
+        return "all";
+    }
+}
+
+typedef enum {
+    CREATE_CHANGE_SUB,
+    CREATE_OPER_GET_SUB,
+    CREATE_OPER_POLL_SUB,
+    CREATE_NOTIF_SUB,
+    CREATE_RPC_SUB
+} subscr_type_t;
+
+static const char *subscr_type_strings[] = {
+    "change sub", "oper-get sub", "oper-poll sub", "notif sub", "rpc sub"
+};
+
+struct cb_data {
+    uint32_t exit_mask;
+    uint32_t exit_rc;
+};
+
+static void
+conditional_exit(struct cb_data *data, int ev, sr_session_ctx_t *session, struct lyd_node **parent)
+{
+    uint32_t event = (uint32_t)ev;
+    sr_conn_ctx_t *conn = NULL;
+
+    if (data->exit_mask & (1 << event)) {
+        if (parent && *parent) {
+            lyd_free_all(*parent);
+            *parent = NULL;
+        }
+        /* avoid leaks (valgrind probably cannot keep track of leafref attributes because they are shared) */
+        conn = sr_session_get_connection(session);
+        for (uint32_t i = 0; i < session->conn->ds_handle_count; ++i) {
+            if (session->conn->ds_handles[i].init) {
+                session->conn->ds_handles[i].plugin->conn_destroy_cb(session->conn, session->conn->ds_handles[i].plg_data);
+            }
+        }
+        sr_session_stop(session);
+        ly_ctx_destroy((struct ly_ctx *)sr_acquire_context(conn));
+        sr_release_context(conn);
+        /* exit_rc is set to EXIT_FAILURE if callback was not expected to be called */
+        TLOG_INF("Exiting with %d as event \"%s\" received", data->exit_rc, ev_to_str(event));
+        sr_assert(data->exit_rc == EXIT_SUCCESS);
+        exit(EXIT_SUCCESS);
+    }
+}
+
+static int
+wait_for_children()
+{
+    int ret = 0;
+    pid_t pid;
+
+    TLOG_INF("wait for spawned processes to finish");
+    while ((pid = wait(&ret)) > 0) {
+        sr_assert_true(WIFEXITED(ret));
+        TLOG_INF("pid %d exited status %d", pid, WEXITSTATUS(ret));
+        sr_assert_int_equal(WEXITSTATUS(ret), EXIT_SUCCESS);
+    }
+    return 0;
+}
+
+static int
+module_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath, sr_event_t event,
+        uint32_t request_id, void *private_data)
+{
+    struct cb_data *pvt_data = (struct cb_data *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)module_name;
+    (void)xpath;
+    (void)event;
+    (void)request_id;
+    conditional_exit(pvt_data, event, session, NULL);
+    return SR_ERR_OK;
+}
+
+static int
+cond_fail_oper_get_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
+        const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
+{
+    struct cb_data *pvt_data = (struct cb_data *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)module_name;
+    (void)xpath;
+    (void)request_xpath;
+    (void)request_id;
+    (void)parent;
+
+    conditional_exit(pvt_data, SR_EV_OPER_GET, session, parent);
+    return SR_ERR_OK;
+}
+
+static void
+cond_fail_notif_cb(sr_session_ctx_t *session, uint32_t sub_id, const sr_ev_notif_type_t notif_type, const char *path,
+        const sr_val_t *values, const size_t values_cnt, struct timespec *timestamp, void *private_data)
+{
+    struct cb_data *pvt_data = (struct cb_data *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)notif_type;
+    (void)path;
+    (void)values;
+    (void)values_cnt;
+    (void)timestamp;
+    switch (notif_type) {
+    case SR_EV_NOTIF_TERMINATED:
+    case SR_EV_NOTIF_SUSPENDED:
+        /* Ignore these events as they are not on the handler thread */
+        return;
+    default:
+        break;
+    }
+    conditional_exit(pvt_data, SR_EV_NOTIF, session, NULL);
+}
+
+static int
+cond_fail_rpc_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *op_path, const sr_val_t *input, const size_t input_cnt,
+        sr_event_t event, uint32_t request_id, sr_val_t **output, size_t *output_cnt, void *private_data)
+{
+    struct cb_data *pvt_data = (struct cb_data *)private_data;
+
+    (void)session;
+    (void)sub_id;
+    (void)op_path;
+    (void)input;
+    (void)input_cnt;
+    (void)event;
+    (void)request_id;
+    (void)output;
+    (void)output_cnt;
+    conditional_exit(pvt_data, event, session, NULL);
+    return SR_ERR_OK;
+}
+
+static int
+keep_subs_alive(sr_session_ctx_t *sess)
+{
+    int ret;
+
+    ret = sr_session_switch_ds(sess, SR_DS_OPERATIONAL);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(sess, "/test:test-leaf", "1", NULL, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    return 0;
+}
+
+static void
+fork_and_create_subs(subscr_type_t subscr_type, uint32_t priority, uint32_t fail_ev)
+{
+    struct cb_data pvt_data;
+    sr_subscription_ctx_t *subscr = NULL;
+    sr_conn_ctx_t *conn = NULL;
+    sr_session_ctx_t *sess = NULL;
+    char data[32] = "";
+    int ret, pipe_fds[2];
+    char xpath[512];
+    uint32_t opts = SR_SUBSCR_NO_THREAD;
+
+    pipe(pipe_fds);
+    sr_data_t *sr_data = NULL;
+
+    switch (fork()) {
+    case 0:
+        /* child */
+        break;
+    case -1:
+        /* fork failed */
+        sr_assert(0);
+    default:
+        /* parent */
+        close(pipe_fds[1]);
+        read(pipe_fds[0], &data, sizeof("sub-ready"));
+        close(pipe_fds[0]);
+        return;
+    }
+
+    pvt_data.exit_mask = 1 << fail_ev;
+    pvt_data.exit_rc = EXIT_SUCCESS;
+
+    sprintf(xpath, "/ietf-interfaces:interfaces-state/interface[name='eth%u']/statistics", priority);
+    ret = sr_connect(0, &conn);
+    sr_assert(ret == SR_ERR_OK);
+    ret = sr_session_start(conn, SR_DS_RUNNING, &sess);
+    sr_assert(ret == SR_ERR_OK);
+
+    TLOG_INF("Creating subscription %s failing for event %s priority %u", subscr_type_strings[subscr_type], ev_to_str(fail_ev), priority);
+    switch (subscr_type) {
+    case CREATE_CHANGE_SUB:
+        /* create a sub that fails during update event */
+        ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_change_cb, &pvt_data, priority, opts | SR_SUBSCR_UPDATE, &subscr);
+        sr_assert(ret == SR_ERR_OK);
+        break;
+    case CREATE_OPER_GET_SUB:
+        ret = sr_session_switch_ds(sess, SR_DS_OPERATIONAL);
+        sr_assert(ret == SR_ERR_OK);
+
+        ret = sr_oper_get_subscribe(sess, "ietf-interfaces", xpath, cond_fail_oper_get_cb,
+                &pvt_data, opts | SR_SUBSCR_OPER_MERGE, &subscr);
+        sr_assert(ret == SR_ERR_OK);
+        break;
+    case CREATE_OPER_POLL_SUB:
+        ret = sr_session_switch_ds(sess, SR_DS_OPERATIONAL);
+        sr_assert(ret == SR_ERR_OK);
+
+        ret = sr_oper_poll_subscribe(sess, "ietf-interfaces", xpath, 300, opts, &subscr);
+        sr_assert(ret == SR_ERR_OK);
+        if (fail_ev != SR_EV_NONE) {
+            write(pipe_fds[1], "sub-ready", sizeof("sub-ready"));
+            close(pipe_fds[1]);
+            conditional_exit(&pvt_data, fail_ev, sess, NULL);
+        }
+        break;
+    case CREATE_NOTIF_SUB:
+        ret = sr_notif_subscribe(sess, "ops", NULL, 0, 0, cond_fail_notif_cb, &pvt_data, opts, &subscr);
+        sr_assert(ret == SR_ERR_OK);
+        break;
+    case CREATE_RPC_SUB:
+        ret = sr_rpc_subscribe(sess, "/ops:rpc3", cond_fail_rpc_cb, &pvt_data, priority, opts, &subscr);
+        sr_assert(ret == SR_ERR_OK);
+        break;
+    default:
+        break;
+    }
+    write(pipe_fds[1], "sub-ready", sizeof("sub-ready"));
+    close(pipe_fds[1]);
+    TLOG_INF("Created subscription %s failing for event %s priority %u", subscr_type_strings[subscr_type], ev_to_str(fail_ev), priority);
+
+    ret = sr_session_switch_ds(sess, SR_DS_OPERATIONAL);
+    sr_assert(ret == SR_ERR_OK);
+    do {
+        sr_release_data(sr_data);
+        sr_data = NULL;
+        sr_subscription_process_events(subscr, NULL, NULL);
+        usleep(10000);
+        ret = sr_get_node(sess, "/test:test-leaf", 0, &sr_data);
+    } while (!ret && sr_data);
+
+    /* make sure we weren't supposed to crash */
+    sr_assert(fail_ev == SR_EV_NONE);
+    sr_disconnect(conn);
+    exit(EXIT_SUCCESS);
+}
+
+static int
+test_recover_change_sub_apply(int rp, int wp)
+{
+    sr_conn_ctx_t *conn = NULL;
+    sr_session_ctx_t *sess = NULL;
+    int i, ret;
+
+    ret = sr_connect(0, &conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_start(conn, SR_DS_OPERATIONAL, &sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = keep_subs_alive(sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_session_switch_ds(sess, SR_DS_RUNNING);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    barrier(rp, wp);
+    TLOG_INF("wait for subs to be ready");
+    barrier(rp, wp);
+    TLOG_INF("make changes that will cause the crashes");
+
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth0']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    for (i = 0, ret = 1; ret && i < 10; i++) {
+        ret = sr_apply_changes(sess, 500);
+    }
+
+    /* Few attempts above can fail because subscribers are dying */
+    ret = sr_apply_changes(sess, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_disconnect(conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    barrier(rp, wp);
+    return 0;
+}
+
+static int
+test_recover_change_sub(int rp, int wp)
+{
+    int ret;
+
+    barrier(rp, wp);
+
+    TLOG_INF("create subscriptions that don't crash at priority 1");
+    fork_and_create_subs(CREATE_CHANGE_SUB, 1, SR_EV_NONE);
+
+    TLOG_INF("create subscriptions crash at an appropriate event");
+    fork_and_create_subs(CREATE_CHANGE_SUB, 10, SR_EV_UPDATE);
+    fork_and_create_subs(CREATE_CHANGE_SUB, 11, SR_EV_UPDATE);
+    fork_and_create_subs(CREATE_CHANGE_SUB, 12, SR_EV_CHANGE);
+    fork_and_create_subs(CREATE_CHANGE_SUB, 13, SR_EV_DONE);
+    fork_and_create_subs(CREATE_CHANGE_SUB, 14, SR_EV_ABORT);
+
+    TLOG_INF("signal all subs setup");
+    barrier(rp, wp);
+    TLOG_INF("wait for crashes to happen");
+    barrier(rp, wp);
+    TLOG_INF("create subscription to recover the ext SHM");
+    fork_and_create_subs(CREATE_CHANGE_SUB, 0, SR_EV_NONE);
+    ret = wait_for_children();
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    return 0;
+}
+
+static int
+test_recover_oper_sub_get(int rp, int wp)
+{
+    sr_conn_ctx_t *conn = NULL;
+    sr_session_ctx_t *sess = NULL;
+    int i, ret;
+    sr_data_t *data = NULL;
+
+    ret = sr_connect(0, &conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_start(conn, SR_DS_OPERATIONAL, &sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = keep_subs_alive(sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth0']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
+            "iana-if-type:ethernetCsmacd", NULL, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    barrier(rp, wp);
+    TLOG_INF("wait for subs to be ready");
+    barrier(rp, wp);
+    TLOG_INF("read oper data to cause crashes");
+
+    /* for oper get */
+    for (i = 0; i < 3; i++) {
+        data = NULL;
+        ret = sr_get_data(sess, "/ietf-interfaces:*", 0, 100, 0, &data);
+        sr_release_data(data);
+    }
+
+    ret = sr_disconnect(conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    barrier(rp, wp);
+    return 0;
+}
+
+static int
+test_recover_oper_sub(int rp, int wp)
+{
+    int ret;
+
+    barrier(rp, wp);
+    /* now create the ones that would die for eth0 */
+    fork_and_create_subs(CREATE_OPER_GET_SUB, 0, SR_EV_OPER_GET);
+    fork_and_create_subs(CREATE_OPER_GET_SUB, 0, SR_EV_NONE);
+    fork_and_create_subs(CREATE_OPER_POLL_SUB, 0, SR_EV_ALL);
+
+    barrier(rp, wp);
+    barrier(rp, wp);
+
+    TLOG_INF("create subscriptions to recover the ext SHM");
+    fork_and_create_subs(CREATE_OPER_GET_SUB, 0, SR_EV_NONE);
+    fork_and_create_subs(CREATE_OPER_POLL_SUB, 0, SR_EV_NONE);
+
+    ret = wait_for_children();
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    return 0;
+}
+
+static int
+test_recover_rpc_sub_send(int rp, int wp)
+{
+    sr_conn_ctx_t *conn = NULL;
+    sr_session_ctx_t *sess = NULL;
+    int ret;
+    sr_val_t input, *output;
+    size_t output_count;
+
+    ret = sr_connect(0, &conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_start(conn, SR_DS_OPERATIONAL, &sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = keep_subs_alive(sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    barrier(rp, wp);
+    TLOG_INF("wait for subs to be ready");
+    barrier(rp, wp);
+    TLOG_INF("send rpc to cause crash");
+
+    /* rpc sub */
+    input.xpath = "/ops:rpc3/l4";
+    input.type = SR_STRING_T;
+    input.data.string_val = "dummy";
+    input.dflt = 0;
+
+    ret = sr_rpc_send(sess, "/ops:rpc3", &input, 1, 1000, &output, &output_count);
+    sr_assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+
+    ret = sr_rpc_send(sess, "/ops:rpc3", &input, 1, 0, &output, &output_count);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    sr_free_values(output, output_count);
+    ret = sr_disconnect(conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    barrier(rp, wp);
+    return 0;
+}
+
+static int
+test_recover_rpc_sub(int rp, int wp)
+{
+    int ret;
+
+    barrier(rp, wp);
+    /* now create the ones that can die */
+
+    fork_and_create_subs(CREATE_RPC_SUB, 10, SR_EV_RPC);
+    fork_and_create_subs(CREATE_RPC_SUB, 11, SR_EV_ABORT);
+
+    /* create subscriptions that don't crash at priority 0 */
+    fork_and_create_subs(CREATE_RPC_SUB, 0, SR_EV_NONE);
+
+    barrier(rp, wp);
+    barrier(rp, wp);
+
+    TLOG_INF("create subscriptions to recover the ext SHM");
+    fork_and_create_subs(CREATE_RPC_SUB, 1, SR_EV_NONE);
+
+    ret = wait_for_children();
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    return 0;
+}
+
+static int
+test_recover_notif_sub_send(int rp, int wp)
+{
+    sr_conn_ctx_t *conn = NULL;
+    sr_session_ctx_t *sess = NULL;
+    int ret, i;
+
+    ret = sr_connect(0, &conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_session_start(conn, SR_DS_OPERATIONAL, &sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    ret = keep_subs_alive(sess);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    barrier(rp, wp);
+    TLOG_INF("wait for subs to be ready");
+    barrier(rp, wp);
+    TLOG_INF("send rpc to cause crash");
+
+    /* notif sub */
+    for (i = 0; i < 3; i++) {
+        ret = sr_notif_send(sess, "/ops:notif4", NULL, 0, 100, 1);
+        sr_assert_int_equal(ret, SR_ERR_OK);
+    }
+
+    ret = sr_disconnect(conn);
+    sr_assert_int_equal(ret, SR_ERR_OK);
+
+    barrier(rp, wp);
+    return 0;
+}
+
+static int
+test_recover_notif_sub(int rp, int wp)
+{
+    int ret;
+
+    barrier(rp, wp);
+    /* now create the ones that can die */
+    fork_and_create_subs(CREATE_NOTIF_SUB, 10, SR_EV_NOTIF);
+    fork_and_create_subs(CREATE_NOTIF_SUB, 11, SR_EV_NONE);
+
+    /* create subscriptions that don't crash at priority 0 */
+    fork_and_create_subs(CREATE_RPC_SUB, 0, SR_EV_NONE);
+
+    barrier(rp, wp);
+    barrier(rp, wp);
+
+    TLOG_INF("create subscriptions to recover the ext SHM");
+    fork_and_create_subs(CREATE_NOTIF_SUB, 0, SR_EV_NONE);
+
+    ret = wait_for_children();
+    sr_assert_int_equal(ret, SR_ERR_OK);
+    return 0;
+}
+
 int
 main(void)
 {
@@ -1202,6 +1749,10 @@ main(void)
         {"context change", test_context_change, test_context_change_sub, setup, teardown},
         {"conn create", test_conn_create, test_conn_create, setup, teardown},
         {"sub apply", test_sub, test_apply, setup, teardown},
+        {"recover-change-sub", test_recover_change_sub_apply, test_recover_change_sub, setup, teardown},
+        {"recover-oper-sub", test_recover_oper_sub_get, test_recover_oper_sub, setup, teardown},
+        {"recover-rpc-sub", test_recover_rpc_sub_send, test_recover_rpc_sub, setup, teardown},
+        {"recover-notif-sub", test_recover_notif_sub_send, test_recover_notif_sub, setup, teardown},
     };
 
     test_log_init();
