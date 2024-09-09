@@ -566,7 +566,8 @@ sr_lydmods_moddep_type(const struct lysc_type *type, const struct lysc_node *nod
 
         if ((node->nodetype == LYS_LEAF) && ((struct lysc_node_leaf *)node)->dflt) {
             /* get target module of the default value */
-            if (lys_find_lypath_atoms(((struct lysc_node_leaf *)node)->dflt->target, &atoms)) {
+            if (lys_find_path_atoms(node->module->ctx, NULL,
+                    lyd_value_get_canonical(node->module->ctx, ((struct lysc_node_leaf *)node)->dflt), 0, &atoms)) {
                 SR_ERRINFO_MEM(&err_info);
                 goto cleanup;
             }
