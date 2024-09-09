@@ -60,18 +60,19 @@ if(ENABLE_TESTS)
         test_multi_connection test_nacm test_rotation test_sub_notif test_plugin)
 
     foreach(test_name IN LISTS tests)
-        add_executable(${test_name} ${test_sources} ${test_name}.c)
+        # link srobj to get the number of DS plugins available
+        # this number can fluctuate depending on the presence of optional libraries
+        if(${test_name} STREQUAL "test_plugin")
+            add_executable(${test_name} ${test_sources} ${test_name}.c $<TARGET_OBJECTS:srobj>)
+        else()
+            add_executable(${test_name} ${test_sources} ${test_name}.c)
+        endif()
     endforeach()
 
     # set common attributes of all tests
     foreach(test_name IN LISTS tests)
         target_link_libraries(${test_name} ${CMOCKA_LIBRARIES} sysrepo)
 
-        # link srobj to get the number of DS plugins available
-        # this number can fluctuate depending on the presence of optional libraries
-        if(${test_name} STREQUAL "test_plugin")
-            target_link_libraries(${test_name} srobj)
-        endif()
         add_test(NAME ${test_name} COMMAND $<TARGET_FILE:${test_name}>)
         set_property(TEST ${test_name} APPEND PROPERTY ENVIRONMENT
             "MALLOC_CHECK_=3"
