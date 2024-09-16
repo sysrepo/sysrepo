@@ -76,7 +76,7 @@ struct srplg_ntf_s;
 #define SR_SUBSHM_LOCK_TIMEOUT 10000
 
 /** timeout for locking ext SHM lock; time that truncating, writing into SHM but even recovering may take (ms) */
-#define SR_EXT_LOCK_TIMEOUT 500
+#define SR_EXT_LOCK_TIMEOUT 2000
 
 /** timeout for obtaining write lock after an event timed out */
 #define SR_EVENT_TIMEOUT_LOCK_TIMEOUT 50
