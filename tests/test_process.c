@@ -1398,6 +1398,7 @@ fork_and_create_subs(subscr_type_t subscr_type, uint32_t priority, uint32_t fail
     case -1:
         /* fork failed */
         sr_assert(0);
+        return;
     default:
         /* parent */
         close(pipe_fds[1]);
