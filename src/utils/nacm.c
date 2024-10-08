@@ -2006,7 +2006,7 @@ sr_nacm_get_node_set_read_filter(sr_session_ctx_t *session, struct ly_set *set)
 
         if (denied) {
             /* result denied */
-            ly_set_rm_index(set, i, NULL);
+            ly_set_rm_index_ordered(set, i, NULL);
             continue;
         }
 
