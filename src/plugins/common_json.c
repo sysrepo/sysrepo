@@ -124,18 +124,27 @@ srpjson_file_exists(const char *plg_name, const char *path)
 sr_error_info_t *
 srpjson_shm_prefix(const char *plg_name, const char **prefix)
 {
+    static char sr_shm_prefix_val[SR_PATH_MAX] = "";
+    const char *tmp = NULL;
     sr_error_info_t *err_info = NULL;
 
-    *prefix = getenv(SR_SHM_PREFIX_ENV);
-    if (*prefix == NULL) {
-        *prefix = SR_SHM_PREFIX_DEFAULT;
-    } else if (strchr(*prefix, '/')) {
-        *prefix = NULL;
-        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INVAL_ARG, "%s cannot contain slashes.", SR_SHM_PREFIX_ENV);
+    if (sr_shm_prefix_val[0]) {
+        *prefix = sr_shm_prefix_val;
         return err_info;
     }
 
-    return NULL;
+    /* first time */
+    tmp = getenv(SR_SHM_PREFIX_ENV);
+    if (tmp == NULL) {
+        tmp = SR_SHM_PREFIX_DEFAULT;
+    } else if (strlen(tmp) >= SR_PATH_MAX) {
+        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INVAL_ARG, "%s cannot be longer than %u.", SR_SHM_PREFIX_ENV, SR_PATH_MAX);
+    } else if (strchr(tmp, '/') != NULL) {
+        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INVAL_ARG, "%s cannot contain slashes.", SR_SHM_PREFIX_ENV);
+    }
+    strncpy(sr_shm_prefix_val, tmp, SR_PATH_MAX);
+    *prefix = sr_shm_prefix_val;
+    return err_info;
 }
 
 const char *

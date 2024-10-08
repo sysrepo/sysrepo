@@ -1220,14 +1220,21 @@ sr_session_get_connection(sr_session_ctx_t *session)
 API const char *
 sr_get_repo_path(void)
 {
+    static char sr_repo_path[256] = "";
     char *value;
 
-    value = getenv(SR_REPO_PATH_ENV);
-    if (value) {
-        return value;
+    if (sr_repo_path[0]) {
+        return sr_repo_path;
     }
 
-    return SR_REPO_PATH;
+    value = getenv(SR_REPO_PATH_ENV);
+    if (value && (strlen(value) < SR_PATH_MAX)) {
+        strncpy(sr_repo_path, value, SR_PATH_MAX);
+    } else {
+        strncpy(sr_repo_path, SR_REPO_PATH, SR_PATH_MAX);
+    }
+
+    return sr_repo_path;
 }
 
 /**

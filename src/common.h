@@ -33,6 +33,9 @@ struct sr_mod_info_mod_s;
 struct srplg_ds_s;
 struct srplg_ntf_s;
 
+/* max length for env variables specifying paths **/
+#define SR_PATH_MAX 256
+
 /** macro for mutex align check */
 #define SR_MUTEX_ALIGN_CHECK(mutex) ((uintptr_t)mutex % sizeof(void *))
 
