@@ -262,6 +262,11 @@ It is also possible to relocate the `SHM_DIR` by setting `SYSREPO_SHM_DIR` varia
 `SR_ENV_RUN_TESTS` can be used when building packages which run tests that use sysrepo.
 This will enable the package tests to run without having priviliges to chown files to `SYSREPO_GROUP`.
 
+Maximum length of these variables specifying paths is defined by SR_PATH_MAX (256).
+
+Note: All environmental variables are read only once and changes during the lifetime of the process are ignored.
+The process should not make any changes to them during its lifetime.
+
 ## CLI
 
 There are 2 simple binaries `sysrepoctl(1)` and `sysrepocfg(1)` included that can execute commands related to
