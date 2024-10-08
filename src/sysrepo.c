@@ -2877,6 +2877,7 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
     sr_error_info_t *err_info = NULL;
     struct ly_set *set = NULL;
     struct sr_mod_info_s mod_info;
+    struct lyd_node *node;
     uint32_t i;
 
     SR_CHECK_ARG_APIRET(!session || !xpath || !values || !value_cnt ||
@@ -2912,6 +2913,23 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
         goto cleanup;
     }
 
+    /* ignore unwanted results */
+    if (session->ds == SR_DS_OPERATIONAL) {
+        i = 0;
+        while (i < set->count) {
+            node = set->dnodes[i];
+            if ((node->schema->flags & LYS_CONFIG_R) && (opts & SR_OPER_NO_STATE)) {
+                /* ignored state node */
+                ly_set_rm_index_ordered(set, i, NULL);
+            } else if ((node->schema->flags & LYS_CONFIG_W) && (opts & SR_OPER_NO_CONFIG)) {
+                /* ignored config node */
+                ly_set_rm_index_ordered(set, i, NULL);
+            } else {
+                ++i;
+            }
+        }
+    }
+
     /* apply NACM */
     if ((err_info = sr_nacm_get_node_set_read_filter(session, set))) {
         goto cleanup;
@@ -2944,6 +2962,89 @@ cleanup:
         *value_cnt = 0;
     }
     return sr_api_ret(session, err_info);
+}
+
+/**
+ * @brief Trim all configuration/state nodes/origin from the data, recursively.
+ *
+ * @param[in] subtree Subtree root of the data to trim.
+ * @param[in] get_oper_opts Get oper data options.
+ * @param[in,out] first First top-level sibling, may be adjusted.
+ * @return 1 if @p subtree was trimmed;
+ * @return 0 otherwise.
+ */
+static int
+sr_oper_data_trim_r(struct lyd_node *subtree, sr_get_oper_flag_t get_oper_opts, struct lyd_node **first)
+{
+    struct lyd_node *next, *elem;
+    struct lyd_meta *meta;
+
+    if (!(get_oper_opts & (SR_OPER_NO_STATE | SR_OPER_NO_CONFIG)) && (get_oper_opts & SR_OPER_WITH_ORIGIN)) {
+        /* nothing to trim */
+        return 0;
+    }
+
+    if (lysc_is_key(subtree->schema)) {
+        return 0;
+    }
+
+    if (subtree->schema->flags & LYS_CONFIG_R) {
+        /* state subtree */
+        if (get_oper_opts & SR_OPER_NO_STATE) {
+            /* free it whole */
+            sr_lyd_free_tree_safe(subtree, first);
+            return 1;
+        }
+
+        if (get_oper_opts & SR_OPER_WITH_ORIGIN) {
+            /* no need to go into state children */
+            return 0;
+        }
+    }
+
+    /* trim all our children */
+    LY_LIST_FOR_SAFE(lyd_child_no_keys(subtree), next, elem) {
+        sr_oper_data_trim_r(elem, get_oper_opts, first);
+    }
+
+    if ((subtree->schema->flags & LYS_CONFIG_W) && (get_oper_opts & SR_OPER_NO_CONFIG) && !lyd_child_no_keys(subtree)) {
+        /* config-only subtree (config node with no children) */
+        sr_lyd_free_tree_safe(subtree, first);
+        return 1;
+    }
+
+    if (!(get_oper_opts & SR_OPER_WITH_ORIGIN)) {
+        /* trim origin */
+        LY_LIST_FOR(subtree->meta, meta) {
+            if (!strcmp(meta->name, "origin") && !strcmp(meta->annotation->module->name, "ietf-origin")) {
+                lyd_free_meta_single(meta);
+                break;
+            }
+        }
+    }
+
+    return 0;
+}
+
+/**
+ * @brief Trim all configuration/state nodes/origin from the data based on options.
+ *
+ * @param[in] set Set of results to consider.
+ * @param[in] get_oper_opts Get oper data options.
+ * @param[in,out] first First top-level sibling, may be adjusted.
+ */
+static void
+sr_oper_data_trim(struct ly_set *set, sr_get_oper_flag_t get_oper_opts, struct lyd_node **first)
+{
+    uint32_t i = 0;
+
+    while (i < set->count) {
+        if (sr_oper_data_trim_r(set->dnodes[i], get_oper_opts, first)) {
+            ly_set_rm_index_ordered(set, i, NULL);
+        } else {
+            ++i;
+        }
+    }
 }
 
 API int
@@ -2987,6 +3088,11 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
     /* filter the required data */
     if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, &set))) {
         goto cleanup;
+    }
+
+    /* trim unwanted data, after filtering */
+    if (session->ds == SR_DS_OPERATIONAL) {
+        sr_oper_data_trim(set, 0, &mod_info.data);
     }
 
     /* apply NACM #1, get rid of whole denied results */
@@ -3096,6 +3202,11 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
     /* filter the required data */
     if ((err_info = sr_modinfo_get_filter(&mod_info, (opts & SR_GET_NO_FILTER) ? "/*" : xpath, session, &set))) {
         goto cleanup;
+    }
+
+    /* trim unwanted data, after filtering */
+    if (session->ds == SR_DS_OPERATIONAL) {
+        sr_oper_data_trim(set, opts, &mod_info.data);
     }
 
     /* get rid of all redundant results that are descendants of another result */
@@ -3225,6 +3336,11 @@ sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     /* filter the required data */
     if ((err_info = sr_modinfo_get_filter(&mod_info, path, session, &set))) {
         goto cleanup;
+    }
+
+    /* trim unwanted data, after filtering */
+    if (session->ds == SR_DS_OPERATIONAL) {
+        sr_oper_data_trim(set, 0, &mod_info.data);
     }
 
     /* apply NACM */

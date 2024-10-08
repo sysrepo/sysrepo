@@ -1477,61 +1477,6 @@ error_sub_unlock:
 }
 
 /**
- * @brief Trim all configuration/state nodes/origin from the data based on options.
- *
- * @param[in,out] data Data to trim.
- * @param[in] sibling First sibling of the current data to trim.
- * @param[in] get_oper_opts Get oper data options.
- */
-static void
-sr_oper_data_trim_r(struct lyd_node **data, struct lyd_node *sibling, sr_get_oper_flag_t get_oper_opts)
-{
-    struct lyd_node *next, *elem;
-    struct lyd_meta *meta;
-
-    if (!(get_oper_opts & (SR_OPER_NO_STATE | SR_OPER_NO_CONFIG)) && (get_oper_opts & SR_OPER_WITH_ORIGIN)) {
-        /* nothing to trim */
-        return;
-    }
-
-    LY_LIST_FOR_SAFE(sibling, next, elem) {
-        assert((elem->schema->nodetype != LYS_LEAF) || !(elem->schema->flags & LYS_KEY));
-        if (elem->schema->flags & LYS_CONFIG_R) {
-            /* state subtree */
-            if (get_oper_opts & SR_OPER_NO_STATE) {
-                /* free it whole */
-                sr_lyd_free_tree_safe(elem, data);
-                continue;
-            }
-
-            if (get_oper_opts & SR_OPER_WITH_ORIGIN) {
-                /* no need to go into state children */
-                continue;
-            }
-        }
-
-        /* trim all our children */
-        sr_oper_data_trim_r(data, lyd_child_no_keys(elem), get_oper_opts);
-
-        if ((elem->schema->flags & LYS_CONFIG_W) && (get_oper_opts & SR_OPER_NO_CONFIG) && !lyd_child_no_keys(elem)) {
-            /* config-only subtree (config node with no children) */
-            sr_lyd_free_tree_safe(elem, data);
-            continue;
-        }
-
-        if (!(get_oper_opts & SR_OPER_WITH_ORIGIN)) {
-            /* trim origin */
-            LY_LIST_FOR(elem->meta, meta) {
-                if (!strcmp(meta->name, "origin") && !strcmp(meta->annotation->module->name, "ietf-origin")) {
-                    lyd_free_meta_single(meta);
-                    break;
-                }
-            }
-        }
-    }
-}
-
-/**
  * @brief Load module data of the ietf-yang-library module. They are actually generated.
  *
  * @param[in] mod_info Mod info to use.
@@ -2556,9 +2501,6 @@ sr_modinfo_module_data_load(struct sr_mod_info_s *mod_info, struct sr_mod_info_m
                 &mod_info->data))) {
             return err_info;
         }
-
-        /* trim any data according to options (they could not be trimmed before oper subscriptions) */
-        sr_oper_data_trim_r(&mod_info->data, mod_info->data, get_oper_opts);
     }
 
     return NULL;
