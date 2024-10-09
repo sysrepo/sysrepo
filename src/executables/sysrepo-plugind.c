@@ -181,14 +181,14 @@ get_plugins_dir(const char **plugins_dir)
     }
 
     /* first time - get plugins dir from environment variable, or use default one */
-
     tmp = getenv("SRPD_PLUGINS_PATH");
     if (!tmp) {
         tmp = SRPD_PLG_PATH;
-    }
-    if (strlen(tmp) >= SR_PATH_MAX) {
+    } else if (strlen(tmp) >= SR_PATH_MAX) {
         error_print(0, "Plugins dir (%s) longer than (%u).", tmp, SR_PATH_MAX);
+        return -1;
     }
+
     /* create the directory if it does not exist */
     if (access(tmp, F_OK) == -1) {
         if (errno != ENOENT) {

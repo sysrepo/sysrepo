@@ -210,8 +210,13 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
     if (!plugins_dir[0]) {
         /* get plugins dir from environment variable, or use default one */
         tmp = getenv("SR_PLUGINS_PATH");
-        if (tmp && ((len = strlen(tmp)) < SR_PATH_MAX)) {
-            strncpy(plugins_dir, tmp, len);
+        if (tmp) {
+            if ((len = strlen(tmp)) < SR_PATH_MAX) {
+                strncpy(plugins_dir, tmp, len);
+            } else {
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "SR_PLUGINS_PATH (%s) cannot be longer than %u.", tmp, SR_PATH_MAX);
+                goto cleanup;
+            }
         } else {
             strncpy(plugins_dir, SR_PLG_PATH, SR_PATH_MAX);
         }
@@ -388,8 +393,13 @@ sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32_t *ntf_handle_co
     if (!plugins_dir[0]) {
         /* get plugins dir from environment variable, or use default one */
         tmp = getenv("SR_PLUGINS_PATH");
-        if (tmp && ((len = strlen(tmp)) < SR_PATH_MAX)) {
-            strncpy(plugins_dir, tmp, len);
+        if (tmp) {
+            if ((len = strlen(tmp)) < SR_PATH_MAX) {
+                strncpy(plugins_dir, tmp, len);
+            } else {
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "SR_PLUGINS_PATH (%s) cannot be longer than %u.", tmp, SR_PATH_MAX);
+                goto cleanup;
+            }
         } else {
             strncpy(plugins_dir, SR_PLG_PATH, SR_PATH_MAX);
         }
@@ -1082,8 +1092,13 @@ sr_shm_prefix(const char **prefix)
     } else if (strchr(tmp, '/') != NULL) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "%s cannot contain slashes.", SR_SHM_PREFIX_ENV);
     }
-    strncpy(sr_shm_prefix_val, tmp, SR_PATH_MAX);
-    *prefix = sr_shm_prefix_val;
+
+    if (err_info) {
+        *prefix = NULL;
+    } else {
+        strncpy(sr_shm_prefix_val, tmp, SR_PATH_MAX);
+        *prefix = sr_shm_prefix_val;
+    }
     return err_info;
 }
 
