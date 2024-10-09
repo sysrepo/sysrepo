@@ -33,6 +33,9 @@ struct sr_mod_info_mod_s;
 struct srplg_ds_s;
 struct srplg_ntf_s;
 
+/* max length for env variables specifying paths **/
+#define SR_PATH_MAX 256
+
 /** macro for mutex align check */
 #define SR_MUTEX_ALIGN_CHECK(mutex) ((uintptr_t)mutex % sizeof(void *))
 
@@ -1378,5 +1381,11 @@ sr_error_info_t *sr_conn_push_oper_mod_del(sr_conn_ctx_t *conn, const char *mod_
  * @return 1 if SR_ENV_RUN_TESTS is set in the env, 0 otherwise.
  */
 int sr_is_prod_env(void);
+
+/**
+ * @brief Get the SHM dir as determined by SYSREPO_SHM_DIR env var else default SR_SHM_DIR
+ * @return Path to the current SHM directory.
+ */
+const char *sr_shm_dir_get(void);
 
 #endif /* _COMMON_H */

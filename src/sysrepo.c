@@ -1220,14 +1220,27 @@ sr_session_get_connection(sr_session_ctx_t *session)
 API const char *
 sr_get_repo_path(void)
 {
+    static char sr_repo_path[SR_PATH_MAX] = "";
     char *value;
+
+    if (sr_repo_path[0]) {
+        return sr_repo_path;
+    }
 
     value = getenv(SR_REPO_PATH_ENV);
     if (value) {
-        return value;
+        if (strlen(value) < SR_PATH_MAX) {
+            strncpy(sr_repo_path, value, SR_PATH_MAX);
+        } else {
+            SR_LOG_WRN(SR_REPO_PATH_ENV " (%s) longer than %u, using default %s instead",
+                    value, SR_PATH_MAX, SR_REPO_PATH);
+        }
+    }
+    if (!sr_repo_path[0]) {
+        strncpy(sr_repo_path, SR_REPO_PATH, SR_PATH_MAX);
     }
 
-    return SR_REPO_PATH;
+    return sr_repo_path;
 }
 
 /**

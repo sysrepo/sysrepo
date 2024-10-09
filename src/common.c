@@ -188,8 +188,8 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
 #ifdef SR_HAVE_DLOPEN
     struct dirent *file;
     size_t len;
-    const char *plugins_dir;
-    char *path = NULL;
+    static char plugins_dir[SR_PATH_MAX] = "";
+    char *path = NULL, *tmp;
     void *dlhandle = NULL, *mem;
     uint32_t *ver;
     const struct srplg_ds_s *srpds;
@@ -207,10 +207,19 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
     }
 
 #ifdef SR_HAVE_DLOPEN
-    /* get plugins dir from environment variable, or use default one */
-    plugins_dir = getenv("SR_PLUGINS_PATH");
-    if (!plugins_dir) {
-        plugins_dir = SR_PLG_PATH;
+    if (!plugins_dir[0]) {
+        /* get plugins dir from environment variable, or use default one */
+        tmp = getenv("SR_PLUGINS_PATH");
+        if (tmp) {
+            if ((len = strlen(tmp)) < SR_PATH_MAX) {
+                strncpy(plugins_dir, tmp, len);
+            } else {
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "SR_PLUGINS_PATH (%s) cannot be longer than %u.", tmp, SR_PATH_MAX);
+                goto cleanup;
+            }
+        } else {
+            strncpy(plugins_dir, SR_PLG_PATH, SR_PATH_MAX);
+        }
     }
 
     /* open directory, if possible */
@@ -362,8 +371,8 @@ sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32_t *ntf_handle_co
 #ifdef SR_HAVE_DLOPEN
     struct dirent *file;
     size_t len;
-    const char *plugins_dir;
-    char *path = NULL;
+    static char plugins_dir[SR_PATH_MAX] = "";
+    char *path = NULL, *tmp;
     void *dlhandle = NULL, *mem;
     uint32_t *ver;
     const struct srplg_ntf_s *srpntf;
@@ -381,10 +390,19 @@ sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32_t *ntf_handle_co
     }
 
 #ifdef SR_HAVE_DLOPEN
-    /* get plugins dir from environment variable, or use default one */
-    plugins_dir = getenv("SR_PLUGINS_PATH");
-    if (!plugins_dir) {
-        plugins_dir = SR_PLG_PATH;
+    if (!plugins_dir[0]) {
+        /* get plugins dir from environment variable, or use default one */
+        tmp = getenv("SR_PLUGINS_PATH");
+        if (tmp) {
+            if ((len = strlen(tmp)) < SR_PATH_MAX) {
+                strncpy(plugins_dir, tmp, len);
+            } else {
+                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "SR_PLUGINS_PATH (%s) cannot be longer than %u.", tmp, SR_PATH_MAX);
+                goto cleanup;
+            }
+        } else {
+            strncpy(plugins_dir, SR_PLG_PATH, SR_PATH_MAX);
+        }
     }
 
     /* open directory, if possible */
@@ -1024,6 +1042,29 @@ sr_module_get_impl_inv_imports(const struct lys_module *ly_mod, struct ly_set *m
     return err_info;
 }
 
+const char *
+sr_shm_dir_get(void)
+{
+    static char sr_shm_dir_str[SR_PATH_MAX] = "";
+    const char *tmp = NULL;
+
+    if (sr_shm_dir_str[0]) {
+        return sr_shm_dir_str;
+    }
+
+    /* first time only */
+    if (!(tmp = getenv("SYSREPO_SHM_DIR"))) {
+        tmp = SR_SHM_DIR;
+    } else if (strlen(tmp) >= SR_PATH_MAX) {
+        SR_LOG_WRN("SYSREPO_SHM_DIR env variable longer than %u, using default %s instead",
+                SR_PATH_MAX, SR_SHM_DIR);
+        tmp = SR_SHM_DIR;
+    }
+    strncpy(sr_shm_dir_str, tmp, SR_PATH_MAX);
+
+    return sr_shm_dir_str;
+}
+
 /**
  * @brief Get global SHM prefix prepended to all SHM files.
  *
@@ -1033,16 +1074,31 @@ sr_module_get_impl_inv_imports(const struct lys_module *ly_mod, struct ly_set *m
 static sr_error_info_t *
 sr_shm_prefix(const char **prefix)
 {
+    static char sr_shm_prefix_val[SR_PATH_MAX] = "";
+    const char *tmp = NULL;
     sr_error_info_t *err_info = NULL;
 
-    *prefix = getenv(SR_SHM_PREFIX_ENV);
-    if (*prefix == NULL) {
-        *prefix = SR_SHM_PREFIX_DEFAULT;
-    } else if (strchr(*prefix, '/') != NULL) {
-        *prefix = NULL;
+    if (sr_shm_prefix_val[0]) {
+        *prefix = sr_shm_prefix_val;
+        return err_info;
+    }
+
+    /* first time */
+    tmp = getenv(SR_SHM_PREFIX_ENV);
+    if (tmp == NULL) {
+        tmp = SR_SHM_PREFIX_DEFAULT;
+    } else if (strlen(tmp) >= SR_PATH_MAX) {
+        sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "%s cannot be longer than %u.", SR_SHM_PREFIX_ENV, SR_PATH_MAX);
+    } else if (strchr(tmp, '/') != NULL) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "%s cannot contain slashes.", SR_SHM_PREFIX_ENV);
     }
 
+    if (err_info) {
+        *prefix = NULL;
+    } else {
+        strncpy(sr_shm_prefix_val, tmp, SR_PATH_MAX);
+        *prefix = sr_shm_prefix_val;
+    }
     return err_info;
 }
 
@@ -1057,7 +1113,7 @@ sr_path_main_shm(char **path)
         return err_info;
     }
 
-    if (asprintf(path, "%s/%s_main", SR_SHM_DIR, prefix) == -1) {
+    if (asprintf(path, "%s/%s_main", sr_shm_dir_get(), prefix) == -1) {
         SR_ERRINFO_MEM(&err_info);
         *path = NULL;
     }
@@ -1076,7 +1132,7 @@ sr_path_mod_shm(char **path)
         return err_info;
     }
 
-    if (asprintf(path, "%s/%s_mod", SR_SHM_DIR, prefix) == -1) {
+    if (asprintf(path, "%s/%s_mod", sr_shm_dir_get(), prefix) == -1) {
         SR_ERRINFO_MEM(&err_info);
         *path = NULL;
     }
@@ -1095,7 +1151,7 @@ sr_path_ext_shm(char **path)
         return err_info;
     }
 
-    if (asprintf(path, "%s/%s_ext", SR_SHM_DIR, prefix) == -1) {
+    if (asprintf(path, "%s/%s_ext", sr_shm_dir_get(), prefix) == -1) {
         SR_ERRINFO_MEM(&err_info);
         *path = NULL;
     }
@@ -1116,9 +1172,9 @@ sr_path_sub_shm(const char *mod_name, const char *suffix1, int64_t suffix2, char
     }
 
     if (suffix2 > -1) {
-        ret = asprintf(path, "%s/%ssub_%s.%s.%08" PRIx32, SR_SHM_DIR, prefix, mod_name, suffix1, (uint32_t)suffix2);
+        ret = asprintf(path, "%s/%ssub_%s.%s.%08" PRIx32, sr_shm_dir_get(), prefix, mod_name, suffix1, (uint32_t)suffix2);
     } else {
-        ret = asprintf(path, "%s/%ssub_%s.%s", SR_SHM_DIR, prefix, mod_name, suffix1);
+        ret = asprintf(path, "%s/%ssub_%s.%s", sr_shm_dir_get(), prefix, mod_name, suffix1);
     }
 
     if (ret == -1) {
@@ -1140,9 +1196,9 @@ sr_path_sub_data_shm(const char *mod_name, const char *suffix1, int64_t suffix2,
     }
 
     if (suffix2 > -1) {
-        ret = asprintf(path, "%s/%ssub_data_%s.%s.%08" PRIx32, SR_SHM_DIR, prefix, mod_name, suffix1, (uint32_t)suffix2);
+        ret = asprintf(path, "%s/%ssub_data_%s.%s.%08" PRIx32, sr_shm_dir_get(), prefix, mod_name, suffix1, (uint32_t)suffix2);
     } else {
-        ret = asprintf(path, "%s/%ssub_data_%s.%s", SR_SHM_DIR, prefix, mod_name, suffix1);
+        ret = asprintf(path, "%s/%ssub_data_%s.%s", sr_shm_dir_get(), prefix, mod_name, suffix1);
     }
 
     if (ret == -1) {

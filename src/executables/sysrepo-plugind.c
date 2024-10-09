@@ -42,6 +42,8 @@
 # include <systemd/sd-daemon.h>
 #endif
 
+#define SR_PATH_MAX 256
+
 /** protected flag for terminating sysrepo-plugind */
 int loop_finish;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
@@ -170,26 +172,37 @@ static int
 get_plugins_dir(const char **plugins_dir)
 {
     char *err_dir = NULL;
+    static char sr_plugins_dir[SR_PATH_MAX] = "";
+    const char *tmp = NULL;
 
-    /* get plugins dir from environment variable, or use default one */
-    *plugins_dir = getenv("SRPD_PLUGINS_PATH");
-    if (!*plugins_dir) {
-        *plugins_dir = SRPD_PLG_PATH;
+    if (sr_plugins_dir[0]) {
+        *plugins_dir = sr_plugins_dir;
+        return 0;
+    }
+
+    /* first time - get plugins dir from environment variable, or use default one */
+    tmp = getenv("SRPD_PLUGINS_PATH");
+    if (!tmp) {
+        tmp = SRPD_PLG_PATH;
+    } else if (strlen(tmp) >= SR_PATH_MAX) {
+        error_print(0, "Plugins dir (%s) longer than (%u).", tmp, SR_PATH_MAX);
+        return -1;
     }
 
     /* create the directory if it does not exist */
-    if (access(*plugins_dir, F_OK) == -1) {
+    if (access(tmp, F_OK) == -1) {
         if (errno != ENOENT) {
             error_print(0, "Checking plugins dir existence failed (%s).", strerror(errno));
             return -1;
         }
-        if (srpd_mkpath(*plugins_dir, 0777, &err_dir) == -1) {
+        if (srpd_mkpath(tmp, 0777, &err_dir) == -1) {
             error_print(0, "Creating dir \"%s\" failed (%s).", err_dir, strerror(errno));
             free(err_dir);
             return -1;
         }
     }
-
+    strncpy(sr_plugins_dir, tmp, SR_PATH_MAX);
+    *plugins_dir = sr_plugins_dir;
     return 0;
 }
 

@@ -31,6 +31,7 @@
 #include <mongoc/mongoc.h>
 
 #include "common_db.h"
+#include "common_json.h"
 #include "compat.h"
 #include "config.h"
 #include "plugins_datastore.h"
@@ -222,7 +223,10 @@ srpds_data_init(const struct lys_module *mod, sr_datastore_t ds, int installed, 
     mdata->datastore = mongoc_client_get_database(mdata->client, srpds_ds2database(ds));
 
     /* get the module name */
-    shm_prefix = getenv("SYSREPO_SHM_PREFIX");
+    if ((err_info = srpjson_shm_prefix(plugin_name, &shm_prefix))) {
+        goto cleanup;
+    }
+
     if (asprintf(&(mdata->module_name), "%s_%s", shm_prefix ? shm_prefix : "", mod->name) == -1) {
         ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno))
         goto cleanup;

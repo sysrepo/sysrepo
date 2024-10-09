@@ -532,7 +532,12 @@ static sr_error_info_t *
 srpds_get_mod_ns(sr_datastore_t ds, const char *module_name, char **mod_ns)
 {
     sr_error_info_t *err_info = NULL;
-    char *shm_prefix = getenv("SYSREPO_SHM_PREFIX");
+    char *shm_prefix = NULL;
+
+    /* get the shm prefix */
+    if ((err_info = srpjson_shm_prefix(plugin_name, &shm_prefix))) {
+        return err_info;
+    }
 
     if (asprintf(mod_ns, "%s:%s:%s", srpds_ds2dsprefix(ds), shm_prefix ? shm_prefix : "", module_name) == -1) {
         ERRINFO(&err_info, plugin_name, SR_ERR_NO_MEMORY, "asprintf()", strerror(errno))
