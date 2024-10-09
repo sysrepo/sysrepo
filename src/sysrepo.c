@@ -1230,14 +1230,14 @@ sr_get_repo_path(void)
     value = getenv(SR_REPO_PATH_ENV);
     if (value) {
         if (strlen(value) < SR_PATH_MAX) {
-            strncpy(sr_repo_path, value, SR_PATH_MAX);
+            strncpy(sr_repo_path, value, SR_PATH_MAX - 1);
         } else {
             SR_LOG_WRN(SR_REPO_PATH_ENV " (%s) longer than %u, using default %s instead",
                     value, SR_PATH_MAX, SR_REPO_PATH);
         }
     }
     if (!sr_repo_path[0]) {
-        strncpy(sr_repo_path, SR_REPO_PATH, SR_PATH_MAX);
+        strncpy(sr_repo_path, SR_REPO_PATH, SR_PATH_MAX - 1);
     }
 
     return sr_repo_path;

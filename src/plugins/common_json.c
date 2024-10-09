@@ -142,7 +142,7 @@ srpjson_shm_prefix(const char *plg_name, const char **prefix)
     } else if (strchr(tmp, '/') != NULL) {
         srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INVAL_ARG, "%s cannot contain slashes.", SR_SHM_PREFIX_ENV);
     }
-    strncpy(sr_shm_prefix_val, tmp, SR_PATH_MAX);
+    strncpy(sr_shm_prefix_val, tmp, SR_PATH_MAX - 1);
     *prefix = sr_shm_prefix_val;
     return err_info;
 }

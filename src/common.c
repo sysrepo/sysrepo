@@ -218,7 +218,7 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
                 goto cleanup;
             }
         } else {
-            strncpy(plugins_dir, SR_PLG_PATH, SR_PATH_MAX);
+            strncpy(plugins_dir, SR_PLG_PATH, SR_PATH_MAX - 1);
         }
     }
 
@@ -401,7 +401,7 @@ sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32_t *ntf_handle_co
                 goto cleanup;
             }
         } else {
-            strncpy(plugins_dir, SR_PLG_PATH, SR_PATH_MAX);
+            strncpy(plugins_dir, SR_PLG_PATH, SR_PATH_MAX - 1);
         }
     }
 
@@ -1060,7 +1060,7 @@ sr_shm_dir_get(void)
                 SR_PATH_MAX, SR_SHM_DIR);
         tmp = SR_SHM_DIR;
     }
-    strncpy(sr_shm_dir_str, tmp, SR_PATH_MAX);
+    strncpy(sr_shm_dir_str, tmp, SR_PATH_MAX - 1);
 
     return sr_shm_dir_str;
 }
@@ -1096,7 +1096,7 @@ sr_shm_prefix(const char **prefix)
     if (err_info) {
         *prefix = NULL;
     } else {
-        strncpy(sr_shm_prefix_val, tmp, SR_PATH_MAX);
+        strncpy(sr_shm_prefix_val, tmp, SR_PATH_MAX - 1);
         *prefix = sr_shm_prefix_val;
     }
     return err_info;

@@ -201,7 +201,7 @@ get_plugins_dir(const char **plugins_dir)
             return -1;
         }
     }
-    strncpy(sr_plugins_dir, tmp, SR_PATH_MAX);
+    strncpy(sr_plugins_dir, tmp, SR_PATH_MAX - 1);
     *plugins_dir = sr_plugins_dir;
     return 0;
 }
