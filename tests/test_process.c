@@ -1388,7 +1388,8 @@ fork_and_create_subs(subscr_type_t subscr_type, uint32_t priority, uint32_t fail
     char xpath[512];
     uint32_t opts = SR_SUBSCR_NO_THREAD;
 
-    pipe(pipe_fds);
+    ret = pipe(pipe_fds);
+    sr_assert(ret == 0);
     sr_data_t *sr_data = NULL;
 
     switch (fork()) {
@@ -1402,7 +1403,8 @@ fork_and_create_subs(subscr_type_t subscr_type, uint32_t priority, uint32_t fail
     default:
         /* parent */
         close(pipe_fds[1]);
-        read(pipe_fds[0], &data, sizeof("sub-ready"));
+        ret = read(pipe_fds[0], &data, sizeof("sub-ready"));
+        sr_assert(ret == sizeof("sub-ready"));
         close(pipe_fds[0]);
         return;
     }
@@ -1438,7 +1440,8 @@ fork_and_create_subs(subscr_type_t subscr_type, uint32_t priority, uint32_t fail
         ret = sr_oper_poll_subscribe(sess, "ietf-interfaces", xpath, 300, opts, &subscr);
         sr_assert(ret == SR_ERR_OK);
         if (fail_ev != SR_EV_NONE) {
-            write(pipe_fds[1], "sub-ready", sizeof("sub-ready"));
+            ret = write(pipe_fds[1], "sub-ready", sizeof("sub-ready"));
+            sr_assert(ret == sizeof("sub-ready"));
             close(pipe_fds[1]);
             conditional_exit(&pvt_data, fail_ev, sess, NULL);
         }
@@ -1454,7 +1457,8 @@ fork_and_create_subs(subscr_type_t subscr_type, uint32_t priority, uint32_t fail
     default:
         break;
     }
-    write(pipe_fds[1], "sub-ready", sizeof("sub-ready"));
+    ret = write(pipe_fds[1], "sub-ready", sizeof("sub-ready"));
+    sr_assert(ret == sizeof("sub-ready"));
     close(pipe_fds[1]);
     TLOG_INF("Created subscription %s failing for event %s priority %u", subscr_type_strings[subscr_type], ev_to_str(fail_ev), priority);
 
