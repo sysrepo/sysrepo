@@ -347,6 +347,15 @@ sr_error_info_t *sr_lyd_new_meta2(const struct ly_ctx *ctx, struct lyd_node *par
         struct lyd_meta **meta);
 
 /**
+ * @brief Duplicate a metadata instance.
+ *
+ * @param[in] meta Metadata instance to duplicate.
+ * @param[in] parent Parent of the duplicated metadata.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_dup_meta_single(const struct lyd_meta *meta, struct lyd_node *parent);
+
+/**
  * @brief Create a new JSON attribute.
  *
  * @param[in] parent Opaque parent of the attribute.
@@ -526,6 +535,24 @@ sr_error_info_t *sr_lyd_insert_sibling(struct lyd_node *sibling, struct lyd_node
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lyd_insert_child(struct lyd_node *parent, struct lyd_node *child);
+
+/**
+ * @brief Insert a node before another node.
+ *
+ * @param[in] sibling Node to insert before.
+ * @param[in] node Node to insert.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_insert_before(struct lyd_node *sibling, struct lyd_node *node);
+
+/**
+ * @brief Insert a node after another node.
+ *
+ * @param[in] sibling Node to insert after.
+ * @param[in] node Node to insert.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_insert_after(struct lyd_node *sibling, struct lyd_node *node);
 
 /**
  * @brief Change a term node value.

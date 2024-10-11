@@ -790,7 +790,8 @@ sr_edit_diff_create_parents(const struct lyd_node *node, struct lyd_node **tree,
 {
     sr_error_info_t *err_info = NULL;
     char *path_str = NULL;
-    struct lyd_node *tree_parent;
+    struct lyd_node *tree_parent, *par;
+    struct lyd_meta *m;
 
     if (!lyd_parent(node)) {
         /* top-level node, there is no parent */
@@ -816,7 +817,17 @@ sr_edit_diff_create_parents(const struct lyd_node *node, struct lyd_node **tree,
             }
 
             /* find the first created parent */
-            for (*top_parent = *node_parent; lyd_parent(*top_parent) != tree_parent; *top_parent = lyd_parent(*top_parent)) {}
+            for (*top_parent = *node_parent; lyd_parent(*top_parent) != tree_parent; *top_parent = lyd_parent(*top_parent)) {
+                if (lysc_is_dup_inst_list((*top_parent)->schema)) {
+                    /* copy only the instance position metadata */
+                    for (par = lyd_parent(node); par->schema != (*top_parent)->schema; par = lyd_parent(par)) {}
+                    m = lyd_find_meta(par->meta, NULL, "sysrepo:dup-inst-list-position");
+                    assert(m);
+                    if ((err_info = sr_lyd_dup_meta_single(m, *top_parent))) {
+                        goto cleanup;
+                    }
+                }
+            }
 
             /* append to tree if no parent existed */
             if (!tree_parent) {
@@ -3004,7 +3015,9 @@ static sr_error_info_t *
 sr_edit_diff_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_parent, const struct lyd_node *src_node)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *trg_node = NULL, *trg_sibling, *child_src;
+    struct lyd_node *trg_node = NULL, *trg_sibling, *child_src, *trg_iter, *trg_anchor;
+    struct lyd_meta *m2, *m;
+    uint32_t pos = 0, i;
 
     /* find an equal node in the current data */
     trg_sibling = trg_parent ? lyd_child(trg_parent) : *trg_root;
@@ -3020,9 +3033,22 @@ sr_edit_diff_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_paren
             }
         }
     } else {
-        /* node not found, merge it */
-        if ((err_info = sr_lyd_dup(src_node, NULL, LYD_DUP_RECURSIVE | LYD_DUP_NO_META, 0, &trg_node))) {
+        /* node not found, merge it, with information about instance positions */
+        if ((err_info = sr_lyd_dup(src_node, NULL, LYD_DUP_RECURSIVE, 0, &trg_node))) {
             goto cleanup;
+        }
+        LYD_TREE_DFS_BEGIN(trg_node, trg_iter) {
+            if (lysc_is_dup_inst_list(trg_iter->schema)) {
+                /* keep only the instance position metadata */
+                LY_LIST_FOR_SAFE(trg_iter->meta, m2, m) {
+                    if (strcmp(m->annotation->module->name, "sysrepo") || strcmp(m->name, "dup-inst-list-position")) {
+                        lyd_free_meta_single(m);
+                    }
+                }
+            } else {
+                lyd_free_meta_siblings(trg_iter->meta);
+            }
+            LYD_TREE_DFS_END(trg_node, trg_iter);
         }
 
         /* set 'none' operation */
@@ -3038,8 +3064,37 @@ sr_edit_diff_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_paren
             }
         }
 
+        if (lysc_is_userordered(trg_node->schema)) {
+            /* learn the position, if known */
+            m = lyd_find_meta(src_node->meta, NULL, "sysrepo:dup-inst-list-position");
+            if (m) {
+                pos = atoi(lyd_get_meta_value(m));
+            }
+            if (pos) {
+                /* find the anchor */
+                i = 2;
+                LYD_LIST_FOR_INST(trg_parent ? lyd_child(trg_parent) : *trg_root, src_node->schema, trg_anchor) {
+                    if (i >= pos) {
+                        break;
+                    }
+
+                    trg_anchor = trg_anchor->next;
+                    ++i;
+                }
+
+                if (!trg_anchor) {
+                    /* no instances, add normally */
+                    pos = 0;
+                }
+            }
+        }
+
         /* insert */
-        if (trg_parent) {
+        if (pos == 1) {
+            err_info = sr_lyd_insert_before(trg_anchor, trg_node);
+        } else if (pos) {
+            err_info = sr_lyd_insert_after(trg_anchor, trg_node);
+        } else if (trg_parent) {
             err_info = sr_lyd_insert_child(trg_parent, trg_node);
         } else {
             err_info = sr_lyd_insert_sibling(*trg_root, trg_node, trg_root);

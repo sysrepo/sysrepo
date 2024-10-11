@@ -804,6 +804,27 @@ cleanup:
 }
 
 sr_error_info_t *
+sr_lyd_dup_meta_single(const struct lyd_meta *meta, struct lyd_node *parent)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
+
+    ly_temp_log_options(&temp_lo);
+
+    if (lyd_dup_meta_single(meta, parent, NULL)) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(parent), NULL, SR_ERR_LY);
+        goto cleanup;
+    }
+
+    /* discard any suppressed errors */
+    ly_err_clean((struct ly_ctx *)LYD_CTX(parent), NULL);
+
+cleanup:
+    ly_temp_log_options(NULL);
+    return err_info;
+}
+
+sr_error_info_t *
 sr_lyd_new_attr(struct lyd_node *parent, const char *mod_name, const char *name, const char *value)
 {
     sr_error_info_t *err_info = NULL;
@@ -1166,6 +1187,42 @@ sr_lyd_insert_child(struct lyd_node *parent, struct lyd_node *child)
 
     if (lyd_insert_child(parent, child)) {
         sr_errinfo_new_ly(&err_info, LYD_CTX(parent), NULL, SR_ERR_LY);
+        goto cleanup;
+    }
+
+cleanup:
+    ly_temp_log_options(NULL);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_lyd_insert_before(struct lyd_node *sibling, struct lyd_node *node)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
+
+    ly_temp_log_options(&temp_lo);
+
+    if (lyd_insert_before(sibling, node)) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL, SR_ERR_LY);
+        goto cleanup;
+    }
+
+cleanup:
+    ly_temp_log_options(NULL);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_lyd_insert_after(struct lyd_node *sibling, struct lyd_node *node)
+{
+    sr_error_info_t *err_info = NULL;
+    uint32_t temp_lo = LY_LOSTORE;
+
+    ly_temp_log_options(&temp_lo);
+
+    if (lyd_insert_after(sibling, node)) {
+        sr_errinfo_new_ly(&err_info, LYD_CTX(node), NULL, SR_ERR_LY);
         goto cleanup;
     }
 
