@@ -135,15 +135,20 @@ srpjson_shm_prefix(const char *plg_name, const char **prefix)
 
     /* first time */
     tmp = getenv(SR_SHM_PREFIX_ENV);
-    if (tmp == NULL) {
+    if (!tmp) {
         tmp = SR_SHM_PREFIX_DEFAULT;
-    } else if (strlen(tmp) >= SR_PATH_MAX) {
+    }
+
+    if (strlen(tmp) >= SR_PATH_MAX) {
         srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INVAL_ARG, "%s cannot be longer than %u.", SR_SHM_PREFIX_ENV, SR_PATH_MAX);
+        tmp = "";
     } else if (strchr(tmp, '/') != NULL) {
         srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INVAL_ARG, "%s cannot contain slashes.", SR_SHM_PREFIX_ENV);
+        tmp = "";
     }
-    strncpy(sr_shm_prefix_val, tmp, SR_PATH_MAX - 1);
+    strncpy(sr_shm_prefix_val, tmp, SR_PATH_MAX);
     *prefix = sr_shm_prefix_val;
+
     return err_info;
 }
 

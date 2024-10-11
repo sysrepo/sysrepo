@@ -1230,14 +1230,22 @@ sr_get_repo_path(void)
     value = getenv(SR_REPO_PATH_ENV);
     if (value) {
         if (strlen(value) < SR_PATH_MAX) {
-            strncpy(sr_repo_path, value, SR_PATH_MAX - 1);
+            strncpy(sr_repo_path, value, SR_PATH_MAX);
         } else {
             SR_LOG_WRN(SR_REPO_PATH_ENV " (%s) longer than %u, using default %s instead",
                     value, SR_PATH_MAX, SR_REPO_PATH);
         }
     }
     if (!sr_repo_path[0]) {
-        strncpy(sr_repo_path, SR_REPO_PATH, SR_PATH_MAX - 1);
+        if (strlen(SR_REPO_PATH) >= SR_PATH_MAX) {
+            value = "/etc/sysrepo";
+            sr_log(SR_LL_ERR, "SR_REPO_PATH (%s) is longer than maximum allowed %u - defaulting to %s",
+                    SR_REPO_PATH, SR_PATH_MAX, value);
+
+        } else {
+            value = SR_REPO_PATH;
+        }
+        strncpy(sr_repo_path, value, SR_PATH_MAX);
     }
 
     return sr_repo_path;
