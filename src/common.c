@@ -210,15 +210,15 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
     if (!plugins_dir[0]) {
         /* get plugins dir from environment variable, or use default one */
         tmp = getenv("SR_PLUGINS_PATH");
-        if (tmp) {
-            if ((len = strlen(tmp)) < SR_PATH_MAX) {
-                strncpy(plugins_dir, tmp, len);
-            } else {
-                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "SR_PLUGINS_PATH (%s) cannot be longer than %u.", tmp, SR_PATH_MAX);
-                goto cleanup;
-            }
+        if (!tmp) {
+            tmp = SR_PLG_PATH;
+        }
+
+        if ((len = strlen(tmp)) < SR_PATH_MAX) {
+            strncpy(plugins_dir, tmp, SR_PATH_MAX);
         } else {
-            strncpy(plugins_dir, SR_PLG_PATH, SR_PATH_MAX - 1);
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "SR_PLUGINS_PATH (%s) cannot be longer than %u.", tmp, SR_PATH_MAX);
+            goto cleanup;
         }
     }
 
@@ -394,15 +394,15 @@ sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32_t *ntf_handle_co
     if (!plugins_dir[0]) {
         /* get plugins dir from environment variable, or use default one */
         tmp = getenv("SR_PLUGINS_PATH");
-        if (tmp) {
-            if ((len = strlen(tmp)) < SR_PATH_MAX) {
-                strncpy(plugins_dir, tmp, len);
-            } else {
-                sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "SR_PLUGINS_PATH (%s) cannot be longer than %u.", tmp, SR_PATH_MAX);
-                goto cleanup;
-            }
+        if (!tmp) {
+            tmp = SR_PLG_PATH;
+        }
+
+        if ((len = strlen(tmp)) < SR_PATH_MAX) {
+            strncpy(plugins_dir, tmp, SR_PATH_MAX);
         } else {
-            strncpy(plugins_dir, SR_PLG_PATH, SR_PATH_MAX - 1);
+            sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "SR_PLUGINS_PATH (%s) cannot be longer than %u.", tmp, SR_PATH_MAX);
+            goto cleanup;
         }
     }
 
@@ -1055,13 +1055,23 @@ sr_shm_dir_get(void)
 
     /* first time only */
     if (!(tmp = getenv("SYSREPO_SHM_DIR"))) {
-        tmp = SR_SHM_DIR;
+        tmp = NULL;
     } else if (strlen(tmp) >= SR_PATH_MAX) {
         SR_LOG_WRN("SYSREPO_SHM_DIR env variable longer than %u, using default %s instead",
                 SR_PATH_MAX, SR_SHM_DIR);
-        tmp = SR_SHM_DIR;
+        tmp = NULL;
     }
-    strncpy(sr_shm_dir_str, tmp, SR_PATH_MAX - 1);
+
+    if (!tmp) {
+        tmp = SR_SHM_DIR;
+        if (strlen(tmp) >= SR_PATH_MAX) {
+            tmp = "/dev/shm";
+            sr_log(SR_LL_ERR, "SR_SHM_DIR (%s) is longer than maximum allowed %u - defaulting to %s",
+                    SR_SHM_DIR, SR_PATH_MAX, tmp);
+        }
+    }
+
+    strncpy(sr_shm_dir_str, tmp, SR_PATH_MAX);
 
     return sr_shm_dir_str;
 }
@@ -1088,7 +1098,9 @@ sr_shm_prefix(const char **prefix)
     tmp = getenv(SR_SHM_PREFIX_ENV);
     if (tmp == NULL) {
         tmp = SR_SHM_PREFIX_DEFAULT;
-    } else if (strlen(tmp) >= SR_PATH_MAX) {
+    }
+
+    if (strlen(tmp) >= SR_PATH_MAX) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "%s cannot be longer than %u.", SR_SHM_PREFIX_ENV, SR_PATH_MAX);
     } else if (strchr(tmp, '/') != NULL) {
         sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "%s cannot contain slashes.", SR_SHM_PREFIX_ENV);
@@ -1097,7 +1109,7 @@ sr_shm_prefix(const char **prefix)
     if (err_info) {
         *prefix = NULL;
     } else {
-        strncpy(sr_shm_prefix_val, tmp, SR_PATH_MAX - 1);
+        strncpy(sr_shm_prefix_val, tmp, SR_PATH_MAX);
         *prefix = sr_shm_prefix_val;
     }
     return err_info;
