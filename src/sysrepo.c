@@ -491,36 +491,29 @@ API int
 sr_get_plugins(sr_conn_ctx_t *conn, const char ***ds_plugins, const char ***ntf_plugins)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t i, idx;
+    uint32_t i;
 
     SR_CHECK_ARG_APIRET(!conn, NULL, err_info);
 
     if (ds_plugins) {
-        *ds_plugins = malloc((sr_ds_plugin_int_count() + conn->ds_handle_count + 1) * sizeof **ds_plugins);
+        /* internal plugins are copied into every connection */
+        *ds_plugins = malloc((conn->ds_handle_count + 1) * sizeof **ds_plugins);
         SR_CHECK_MEM_GOTO(!*ds_plugins, err_info, cleanup);
 
-        idx = 0;
-        for (i = 0; i < sr_ds_plugin_int_count(); ++i) {
-            (*ds_plugins)[idx++] = sr_internal_ds_plugins[i]->name;
-        }
         for (i = 0; i < conn->ds_handle_count; ++i) {
-            (*ds_plugins)[idx++] = conn->ds_handles[i].plugin->name;
+            (*ds_plugins)[i] = conn->ds_handles[i].plugin->name;
         }
-        (*ds_plugins)[idx] = NULL;
+        (*ds_plugins)[i] = NULL;
     }
 
     if (ntf_plugins) {
-        *ntf_plugins = malloc((sr_ntf_plugin_int_count() + conn->ntf_handle_count + 1) * sizeof **ntf_plugins);
+        *ntf_plugins = malloc((conn->ntf_handle_count + 1) * sizeof **ntf_plugins);
         SR_CHECK_MEM_GOTO(!*ntf_plugins, err_info, cleanup);
 
-        idx = 0;
-        for (i = 0; i < sr_ntf_plugin_int_count(); ++i) {
-            (*ntf_plugins)[idx++] = sr_internal_ntf_plugins[i]->name;
-        }
         for (i = 0; i < conn->ntf_handle_count; ++i) {
-            (*ntf_plugins)[idx++] = conn->ntf_handles[i].plugin->name;
+            (*ntf_plugins)[i] = conn->ntf_handles[i].plugin->name;
         }
-        (*ntf_plugins)[idx] = NULL;
+        (*ntf_plugins)[i] = NULL;
     }
 
 cleanup:
