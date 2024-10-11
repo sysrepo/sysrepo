@@ -7,16 +7,20 @@ include /usr/share/dpkg/default.mk
 # determine number of processors to enable parallel tests
 NPROCS:=$(shell grep -c ^processor /proc/cpuinfo)
 
+# Use the build directory to set LD_LIBRARY_PATH for tests
+SR_BUILD_DIR:=$(shell pwd)/obj-$(DEB_HOST_GNU_TYPE)
+
 %:
 	dh $@ -j
 
 override_dh_auto_configure:
 	dh_auto_configure -- \
 		-DCMAKE_BUILD_TYPE:String="RelWithDebInfo" \
+		-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
 		-DSYSREPO_UMASK=007 \
 		-DSYSREPO_GROUP=sysrepo \
 		-DNACM_SRMON_DATA_PERM=660
 
 override_dh_auto_test:
-	make -C obj-$(DEB_HOST_GNU_TYPE) test ARGS=' -j $(NPROCS) -V'
+	LD_LIBRARY_PATH="$(SR_BUILD_DIR)" make -C obj-$(DEB_HOST_GNU_TYPE) test ARGS=' -j $(NPROCS) -V'
 	make -C obj-$(DEB_HOST_GNU_TYPE) test_clean
