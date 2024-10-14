@@ -4024,7 +4024,7 @@ static sr_error_info_t *
 sr_edit_oper_del_node(struct lyd_node *node, struct lyd_node **change_edit)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *iter, *new_parent, *parent, *match, *to_free = NULL;
+    struct lyd_node *iter, *new_parent, *parent, *match = NULL, *to_free = NULL;
     enum edit_op op, cur_op;
 
     if (!change_edit) {

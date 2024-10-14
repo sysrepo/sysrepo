@@ -80,7 +80,7 @@ srpd_exec(const char *plugin_name, const char *cmd, uint32_t num_of_args, ...)
 {
     pid_t pid;
     int ret, rc = 0;
-    char **args = NULL;
+    char **args = NULL, **tmp;
     uint32_t i;
     va_list ap;
 
@@ -89,7 +89,13 @@ srpd_exec(const char *plugin_name, const char *cmd, uint32_t num_of_args, ...)
     pid = fork();
     if (pid == 0) {
         for (i = 0; i < num_of_args; ++i) {
-            args = realloc(args, (i + 2) * sizeof *args);
+            tmp = realloc(args, (i + 2) * sizeof *args);
+            if (!tmp) {
+                SRPLG_LOG_ERR(plugin_name, "realloc failed (%s).", strerror(errno));
+                exit(1);
+            } else {
+                args = tmp;
+            }
             args[i] = va_arg(ap, char *);
         }
         args[i] = NULL;

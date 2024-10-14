@@ -482,6 +482,7 @@ sr_lycc_check_upd_modules(sr_conn_ctx_t *conn, const struct ly_set *old_mod_set,
     const struct lys_module *upd_mod = NULL, *old_mod;
     uint32_t i;
 
+    assert(upd_mod_set->count);
     for (i = 0; i < upd_mod_set->count; ++i) {
         upd_mod = upd_mod_set->objs[i];
         old_mod = old_mod_set->objs[i];
@@ -505,6 +506,8 @@ sr_lycc_check_upd_modules(sr_conn_ctx_t *conn, const struct ly_set *old_mod_set,
             }
         }
     }
+
+    assert(upd_mod);
 
     /* check subscriptions in the new context */
     if ((err_info = sr_shmext_check_sub_all(conn, upd_mod->ctx))) {
