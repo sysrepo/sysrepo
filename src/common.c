@@ -255,6 +255,7 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
         ver = dlsym(dlhandle, "srpds_apiver__");
         if (!ver) {
             /* not a DS plugin */
+            SR_LOG_INF("File \"%s\" not a DS plugin, missing API version.", path);
             goto next_file;
         } else if (*ver != SRPLG_DS_API_VERSION) {
             SR_LOG_WRN("Obsolete DS plugin \"%s\" in version %" PRIu32 " found (expected %d).", path, *ver,
