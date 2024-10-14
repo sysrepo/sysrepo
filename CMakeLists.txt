@@ -381,19 +381,26 @@ endif()
 use_compat()
 
 # required functions
-set(CMAKE_REQUIRED_DEFINITIONS "-D_GNU_SOURCE;-D_DEFAULT_SOURCE")
+list(APPEND CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
+list(APPEND CMAKE_REQUIRED_DEFINITIONS -D_DEFAULT_SOURCE)
+
 check_symbol_exists(eaccess "unistd.h" SR_HAVE_EACCESS)
 if(NOT SR_HAVE_EACCESS)
     message(WARNING "Function eaccess() is not supported, using access() instead which may "
         "change results of access control checks!")
 endif()
 check_symbol_exists(mkstemps "stdlib.h" SR_HAVE_MKSTEMPS)
+
+list(APPEND CMAKE_REQUIRED_LIBRARIES dl)
 check_symbol_exists(dlopen "dlfcn.h" SR_HAVE_DLOPEN)
+list(REMOVE_ITEM CMAKE_REQUIRED_LIBRARIES dl)
 if(NOT SR_HAVE_DLOPEN)
     message(WARNING "Function dlopen() is not supported, disabling plugin support and 'sysrepo-plugind'.")
     set(ENABLE_SYSREPO_PLUGIND OFF)
 endif()
-unset(CMAKE_REQUIRED_DEFINITIONS)
+
+list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
+list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_DEFAULT_SOURCE)
 
 # libmongoc - optional
 find_package(mongoc-1.0 1.24.0 CONFIG)
