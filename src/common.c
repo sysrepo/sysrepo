@@ -215,7 +215,7 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
         }
 
         if ((len = strlen(tmp)) < SR_PATH_MAX) {
-            strncpy(plugins_dir, tmp, SR_PATH_MAX);
+            snprintf(plugins_dir, SR_PATH_MAX, "%s", tmp);
         } else {
             sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "SR_PLUGINS_PATH (%s) cannot be longer than %u.", tmp, SR_PATH_MAX);
             goto cleanup;
@@ -398,7 +398,7 @@ sr_ntf_handle_init(struct sr_ntf_handle_s **ntf_handles, uint32_t *ntf_handle_co
         }
 
         if ((len = strlen(tmp)) < SR_PATH_MAX) {
-            strncpy(plugins_dir, tmp, SR_PATH_MAX);
+            snprintf(plugins_dir, SR_PATH_MAX, "%s", tmp);
         } else {
             sr_errinfo_new(&err_info, SR_ERR_INVAL_ARG, "SR_PLUGINS_PATH (%s) cannot be longer than %u.", tmp, SR_PATH_MAX);
             goto cleanup;
@@ -1070,7 +1070,7 @@ sr_shm_dir_get(void)
         }
     }
 
-    strncpy(sr_shm_dir_str, tmp, SR_PATH_MAX);
+    snprintf(sr_shm_dir_str, SR_PATH_MAX, "%s", tmp);
 
     return sr_shm_dir_str;
 }
@@ -1108,7 +1108,7 @@ sr_shm_prefix(const char **prefix)
     if (err_info) {
         *prefix = NULL;
     } else {
-        strncpy(sr_shm_prefix_val, tmp, SR_PATH_MAX);
+        snprintf(sr_shm_prefix_val, SR_PATH_MAX, "%s", tmp);
         *prefix = sr_shm_prefix_val;
     }
     return err_info;

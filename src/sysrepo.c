@@ -1230,7 +1230,7 @@ sr_get_repo_path(void)
     value = getenv(SR_REPO_PATH_ENV);
     if (value) {
         if (strlen(value) < SR_PATH_MAX) {
-            strncpy(sr_repo_path, value, SR_PATH_MAX);
+            snprintf(sr_repo_path, SR_PATH_MAX, "%s", value);
         } else {
             SR_LOG_WRN(SR_REPO_PATH_ENV " (%s) longer than %u, using default %s instead",
                     value, SR_PATH_MAX, SR_REPO_PATH);
@@ -1245,7 +1245,7 @@ sr_get_repo_path(void)
         } else {
             value = SR_REPO_PATH;
         }
-        strncpy(sr_repo_path, value, SR_PATH_MAX);
+        snprintf(sr_repo_path, SR_PATH_MAX, "%s", value);
     }
 
     return sr_repo_path;
