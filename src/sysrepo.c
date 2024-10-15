@@ -2983,9 +2983,8 @@ static int
 sr_oper_data_trim_r(struct lyd_node *subtree, sr_get_oper_flag_t get_oper_opts, struct lyd_node **first)
 {
     struct lyd_node *next, *elem;
-    struct lyd_meta *meta;
 
-    if (!(get_oper_opts & (SR_OPER_NO_STATE | SR_OPER_NO_CONFIG)) && (get_oper_opts & SR_OPER_WITH_ORIGIN)) {
+    if (!(get_oper_opts & (SR_OPER_NO_STATE | SR_OPER_NO_CONFIG))) {
         /* nothing to trim */
         return 0;
     }
@@ -3002,10 +3001,8 @@ sr_oper_data_trim_r(struct lyd_node *subtree, sr_get_oper_flag_t get_oper_opts, 
             return 1;
         }
 
-        if (get_oper_opts & SR_OPER_WITH_ORIGIN) {
-            /* no need to go into state children */
-            return 0;
-        }
+        /* no need to go into state children */
+        return 0;
     }
 
     /* trim all our children */
@@ -3017,16 +3014,6 @@ sr_oper_data_trim_r(struct lyd_node *subtree, sr_get_oper_flag_t get_oper_opts, 
         /* config-only subtree (config node with no children) */
         sr_lyd_free_tree_safe(subtree, first);
         return 1;
-    }
-
-    if (!(get_oper_opts & SR_OPER_WITH_ORIGIN)) {
-        /* trim origin */
-        LY_LIST_FOR(subtree->meta, meta) {
-            if (!strcmp(meta->name, "origin") && !strcmp(meta->annotation->module->name, "ietf-origin")) {
-                lyd_free_meta_single(meta);
-                break;
-            }
-        }
     }
 
     return 0;
@@ -3113,8 +3100,9 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
         goto cleanup;
     }
 
-    /* set result */
-    if ((err_info = sr_lyd_dup(set->dnodes[0], NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS, 0, &(*subtree)->tree))) {
+    /* set result, without origin */
+    if ((err_info = sr_lyd_dup(set->dnodes[0], NULL, LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS | LYD_DUP_NO_META, 0,
+            &(*subtree)->tree))) {
         goto cleanup;
     }
 
@@ -3224,6 +3212,10 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
     ht = lyht_new(1, sizeof rec, sr_lyht_value_get_data_equal_cb, NULL, 1);
     SR_CHECK_MEM_GOTO(!ht, err_info, cleanup);
 
+    /* prepare duplication options */
+    dup_opts = (max_depth ? 0 : LYD_DUP_RECURSIVE) | LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS |
+            ((opts & SR_OPER_WITH_ORIGIN) ? 0 : LYD_DUP_NO_META);
+
     for (i = 0; i < set->count; ++i) {
         /* check whether a parent does not exist yet in the result */
         for (parent = lyd_parent(set->dnodes[i]); parent; parent = lyd_parent(parent)) {
@@ -3237,7 +3229,6 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
         }
 
         /* duplicate subtree and connect it to an existing parent, if any */
-        dup_opts = (max_depth ? 0 : LYD_DUP_RECURSIVE) | LYD_DUP_WITH_PARENTS | LYD_DUP_WITH_FLAGS;
         if ((err_info = sr_lyd_dup(set->dnodes[i], parent, dup_opts, 0, &node))) {
             goto cleanup;
         }
@@ -3246,7 +3237,7 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
         for (node_parent = node; lyd_parent(node_parent) != parent; node_parent = lyd_parent(node_parent)) {}
 
         /* duplicate only to the specified depth */
-        if (max_depth && (err_info = sr_lyd_dup_r(set->dnodes[i], max_depth, node))) {
+        if (max_depth && (err_info = sr_lyd_dup_r(set->dnodes[i], max_depth, dup_opts, node))) {
             lyd_free_tree(node_parent);
             goto cleanup;
         }

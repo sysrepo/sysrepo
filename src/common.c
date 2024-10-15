@@ -4305,11 +4305,14 @@ sr_val_sr2ly(struct ly_ctx *ctx, const char *xpath, const char *val_str, int dfl
 }
 
 sr_error_info_t *
-sr_lyd_dup_r(const struct lyd_node *src_parent, uint32_t depth, struct lyd_node *trg_parent)
+sr_lyd_dup_r(const struct lyd_node *src_parent, uint32_t depth, uint32_t options, struct lyd_node *trg_parent)
 {
     sr_error_info_t *err_info = NULL;
     const struct lyd_node *src_child;
     struct lyd_node *trg_child;
+
+    /* fix invalid options */
+    options &= ~(LYD_DUP_RECURSIVE | LYD_DUP_WITH_PARENTS);
 
     if (!depth || (src_parent->schema->nodetype & (LYS_LEAF | LYS_LEAFLIST | LYS_ANYDATA))) {
         return NULL;
@@ -4318,7 +4321,7 @@ sr_lyd_dup_r(const struct lyd_node *src_parent, uint32_t depth, struct lyd_node 
     /* skip keys, they are already duplicated */
     src_child = lyd_child_no_keys(src_parent);
     while (src_child) {
-        if ((err_info = sr_lyd_dup(src_child, NULL, LYD_DUP_WITH_FLAGS, 0, &trg_child))) {
+        if ((err_info = sr_lyd_dup(src_child, NULL, options, 0, &trg_child))) {
             return err_info;
         }
 
@@ -4326,7 +4329,7 @@ sr_lyd_dup_r(const struct lyd_node *src_parent, uint32_t depth, struct lyd_node 
             SR_ERRINFO_INT(&err_info);
             return err_info;
         }
-        if ((err_info = sr_lyd_dup_r(src_child, depth - 1, trg_child))) {
+        if ((err_info = sr_lyd_dup_r(src_child, depth - 1, options, trg_child))) {
             return err_info;
         }
 

@@ -1147,10 +1147,12 @@ sr_error_info_t *sr_val_sr2ly(struct ly_ctx *ctx, const char *xpath, const char 
  *
  * @param[in] src_parent Source parent.
  * @param[in] depth Depth to duplicate.
+ * @param[in] options libyang dup options.
  * @param[in,out] trg_parent Target parent to add children to.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_lyd_dup_r(const struct lyd_node *src_parent, uint32_t depth, struct lyd_node *trg_parent);
+sr_error_info_t *sr_lyd_dup_r(const struct lyd_node *src_parent, uint32_t depth, uint32_t options,
+        struct lyd_node *trg_parent);
 
 /**
  * @brief Trim subtree to the specified depth.
