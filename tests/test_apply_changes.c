@@ -5582,12 +5582,12 @@ apply_change_timeout_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* perform the change, time out but give it some time so that the callback is at least called) */
-    ret = sr_apply_changes(sess, 10);
+    ret = sr_apply_changes(sess, 100);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
     pthread_barrier_wait(&st->barrier2);
 
     /* try again while the first callback is still executing (waiting) */
-    ret = sr_apply_changes(sess, 10);
+    ret = sr_apply_changes(sess, 100);
     assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
     pthread_barrier_wait(&st->barrier2);
 
