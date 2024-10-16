@@ -16,6 +16,7 @@
 
 #define _GNU_SOURCE
 
+#include <poll.h>
 #include <pthread.h>
 #include <setjmp.h>
 #include <stdarg.h>
@@ -1261,34 +1262,33 @@ subscribe_rpc_shelve_thread(void *arg)
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr = NULL;
-    int count, ret;
+    int ret, fd;
+    struct pollfd pfd = {.events = POLLIN};
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* subscribe */
-    ret = sr_rpc_subscribe_tree(sess, "/ops:rpc3", rpc_shelve_cb, st, 0, 0, &subscr);
+    ret = sr_rpc_subscribe_tree(sess, "/ops:rpc3", rpc_shelve_cb, st, 0, SR_SUBSCR_NO_THREAD, &subscr);
     assert_int_equal(ret, SR_ERR_OK);
+    sr_get_event_pipe(subscr, &fd);
+    pfd.fd = fd;
 
     /* signal that subscription was created */
     pthread_barrier_wait(&st->barrier);
 
-    count = 0;
-    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 1) && (count < 1500)) {
-        usleep(10000);
-        ++count;
-    }
+    /* wait for the event */
+    ret = poll(&pfd, 1, 1000);
+    assert_int_equal(ret, 1);
+
+    /* process the event */
+    ret = sr_subscription_process_events(subscr, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /* callback was shelved, process it again */
     ret = sr_subscription_process_events(subscr, NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
-
-    count = 0;
-    while ((ATOMIC_LOAD_RELAXED(st->cb_called) < 2) && (count < 1500)) {
-        usleep(10000);
-        ++count;
-    }
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
     /* wait for the other thread to finish */
