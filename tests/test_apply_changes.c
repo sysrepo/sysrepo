@@ -473,6 +473,9 @@ apply_change_done_thread(void *arg)
     assert_string_equal(str1, str2);
     free(str1);
 
+    /* wait before change #2 */
+    pthread_barrier_wait(&st->barrier);
+
     /* perform 2nd change */
     ret = sr_delete_item(sess, "/ietf-interfaces:interfaces", 0);
     assert_int_equal(ret, SR_ERR_OK);
@@ -515,6 +518,9 @@ subscribe_change_done_thread(void *arg)
     ret = sr_subscription_process_events(subscr, NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
+
+    /* ready for change #2 */
+    pthread_barrier_wait(&st->barrier);
 
     /* wait for the callback */
     pthread_barrier_wait(&st->barrier);
@@ -5529,6 +5535,7 @@ module_change_timeout_cb(sr_session_ctx_t *session, uint32_t sub_id, const char 
         sr_event_t event, uint32_t request_id, void *private_data)
 {
     struct state *st = (struct state *)private_data;
+    int wait = 0;
 
     (void)session;
     (void)sub_id;
@@ -5543,13 +5550,13 @@ module_change_timeout_cb(sr_session_ctx_t *session, uint32_t sub_id, const char 
 
         /* time out, twice */
         pthread_barrier_wait(&st->barrier2);
-        pthread_barrier_wait(&st->barrier2);
+        wait = 1;
         break;
     case 1:
         /* we timeouted before, but returned success so now we get abort */
         assert_int_equal(event, SR_EV_ABORT);
 
-        pthread_barrier_wait(&st->barrier2);
+        wait = 1;
         break;
     case 2:
         assert_int_equal(event, SR_EV_CHANGE);
@@ -5562,6 +5569,10 @@ module_change_timeout_cb(sr_session_ctx_t *session, uint32_t sub_id, const char 
     }
 
     ATOMIC_INC_RELAXED(st->cb_called);
+    if (wait) {
+        /* wait after cb_called is increased */
+        pthread_barrier_wait(&st->barrier2);
+    }
     return SR_ERR_OK;
 }
 
@@ -5595,6 +5606,9 @@ apply_change_timeout_thread(void *arg)
     pthread_barrier_wait(&st->barrier2);
 
     /* signal that the commit is finished (by timeout) */
+    pthread_barrier_wait(&st->barrier);
+
+    /* wait for the other thread */
     pthread_barrier_wait(&st->barrier);
 
     /* finally apply changes successfully */
@@ -5637,6 +5651,9 @@ subscribe_change_timeout_thread(void *arg)
     /* wait for the other thread to report timeout */
     pthread_barrier_wait(&st->barrier);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
+
+    /* signal that we checked cb_called */
+    pthread_barrier_wait(&st->barrier);
 
     /* wait for the other thread to finish applying changes */
     pthread_barrier_wait(&st->barrier);
