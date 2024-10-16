@@ -403,10 +403,6 @@ module_change_done_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *mo
     }
 
     ATOMIC_INC_RELAXED(st->cb_called);
-    if (ATOMIC_LOAD_RELAXED(st->cb_called) != 2) {
-        /* if not called by the same thread */
-        pthread_barrier_wait(&st->barrier);
-    }
     if (ATOMIC_LOAD_RELAXED(st->cb_called) == 1) {
         return SR_ERR_CALLBACK_SHELVE;
     }
@@ -444,9 +440,6 @@ apply_change_done_thread(void *arg)
     /* perform 1st change */
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
-
-    /* signal change #1 */
-    pthread_barrier_wait(&st->barrier);
 
     /* check current data tree */
     ret = sr_get_subtree(sess, "/ietf-interfaces:interfaces", 0, &subtree);
@@ -500,35 +493,57 @@ subscribe_change_done_thread(void *arg)
     struct state *st = (struct state *)arg;
     sr_session_ctx_t *sess;
     sr_subscription_ctx_t *subscr = NULL;
-    int ret;
+    int ret, fd;
+    struct pollfd pfd = {.events = POLLIN};
 
     ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
     assert_int_equal(ret, SR_ERR_OK);
 
-    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_change_done_cb, st, 0, 0, &subscr);
+    ret = sr_module_change_subscribe(sess, "ietf-interfaces", NULL, module_change_done_cb, st, 0, SR_SUBSCR_NO_THREAD,
+            &subscr);
     assert_int_equal(ret, SR_ERR_OK);
+    sr_get_event_pipe(subscr, &fd);
+    pfd.fd = fd;
 
     /* signal that subscription was created */
     pthread_barrier_wait(&st->barrier);
 
-    /* wait for the callback #1 */
-    pthread_barrier_wait(&st->barrier);
+    /* wait until the change event */
+    ret = poll(&pfd, 1, 1000);
+    assert_int_equal(ret, 1);
+
+    /* process the event */
+    ret = sr_subscription_process_events(subscr, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /* callback was shelved, process it again */
     ret = sr_subscription_process_events(subscr, NULL, NULL);
     assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
 
+    /* wait until the done event and process it */
+    ret = poll(&pfd, 1, 1000);
+    assert_int_equal(ret, 1);
+    ret = sr_subscription_process_events(subscr, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
+
     /* ready for change #2 */
     pthread_barrier_wait(&st->barrier);
 
-    /* wait for the callback */
-    pthread_barrier_wait(&st->barrier);
-    pthread_barrier_wait(&st->barrier);
-    pthread_barrier_wait(&st->barrier);
-    pthread_barrier_wait(&st->barrier);
+    /* wait until the change event and process it */
+    ret = poll(&pfd, 1, 1000);
+    assert_int_equal(ret, 1);
+    ret = sr_subscription_process_events(subscr, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 4);
 
-    /* final invocation count check */
+    /* wait until the done event and process it */
+    ret = poll(&pfd, 1, 1000);
+    assert_int_equal(ret, 1);
+    ret = sr_subscription_process_events(subscr, NULL, NULL);
+    assert_int_equal(ret, SR_ERR_OK);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 5);
 
     sr_unsubscribe(subscr);
