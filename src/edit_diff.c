@@ -3077,8 +3077,6 @@ sr_edit_diff_edit_merge_r(struct lyd_node **trg_root, struct lyd_node *trg_paren
                     if (i >= pos) {
                         break;
                     }
-
-                    trg_anchor = trg_anchor->next;
                     ++i;
                 }
 
