@@ -1196,7 +1196,7 @@ sr_module_oper_data_update(struct sr_mod_info_mod_s *mod, const char *orig_name,
 
     if (!(get_oper_opts & SR_OPER_NO_STORED)) {
         /* get stored operational edit */
-        if ((err_info = sr_module_file_oper_data_load(mod, &edit))) {
+        if ((err_info = sr_module_file_data_append(mod->ly_mod, mod->ds_handle, SR_DS_OPERATIONAL, NULL, 0, &edit))) {
             return err_info;
         }
     }

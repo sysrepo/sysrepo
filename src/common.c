@@ -5461,8 +5461,10 @@ sr_module_file_data_append(const struct lys_module *ly_mod, const struct sr_ds_h
         const char **xpaths, uint32_t xpath_count, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *mod_data;
+    struct lyd_node *mod_data, *root, *elem;
+    struct lyd_meta *meta;
     int modified;
+    sr_cid_t dead_cid = 0;
 
     if (ds == SR_DS_CANDIDATE) {
         if ((err_info = ds_handle[ds]->plugin->candidate_modified_cb(ly_mod, ds_handle[ds]->plg_data, &modified))) {
@@ -5485,54 +5487,37 @@ sr_module_file_data_append(const struct lys_module *ly_mod, const struct sr_ds_h
         return err_info;
     }
 
+    if (mod_data && (ds == SR_DS_OPERATIONAL)) {
+trim_retry:
+        if (dead_cid) {
+            /* this connection is dead, remove its stored edit */
+            SR_LOG_INF("Recovering module \"%s\" stored operational data of CID %" PRIu32 ".", ly_mod->name, dead_cid);
+            if ((err_info = sr_edit_oper_del(&mod_data, dead_cid, NULL, NULL))) {
+                return err_info;
+            }
+        }
+
+        /* find edit belonging to a dead connection, if any */
+        LY_LIST_FOR(mod_data, root) {
+            LYD_TREE_DFS_BEGIN(root, elem) {
+                meta = lyd_find_meta(elem->meta, NULL, "sysrepo:cid");
+                if (meta && !sr_conn_is_alive(meta->value.uint32)) {
+                    dead_cid = meta->value.uint32;
+
+                    /* retry the whole check until there are no dead connections */
+                    goto trim_retry;
+                }
+                LYD_TREE_DFS_END(root, elem);
+            }
+        }
+    }
+
     /* append module data */
     if (mod_data) {
         lyd_insert_sibling(*data, mod_data, data);
     }
 
     return NULL;
-}
-
-sr_error_info_t *
-sr_module_file_oper_data_load(struct sr_mod_info_mod_s *mod, struct lyd_node **edit)
-{
-    sr_error_info_t *err_info = NULL;
-    struct lyd_node *root, *elem;
-    struct lyd_meta *meta;
-    sr_cid_t dead_cid = 0;
-
-    assert(!*edit);
-
-    /* load the operational data (edit) */
-    if ((err_info = mod->ds_handle[SR_DS_OPERATIONAL]->plugin->load_cb(mod->ly_mod, SR_DS_OPERATIONAL, NULL, 0,
-            mod->ds_handle[SR_DS_OPERATIONAL]->plg_data, edit))) {
-        return err_info;
-    }
-
-trim_retry:
-    if (dead_cid) {
-        /* this connection is dead, remove its stored edit */
-        SR_LOG_INF("Recovering module \"%s\" stored operational data of CID %" PRIu32 ".", mod->ly_mod->name, dead_cid);
-        if ((err_info = sr_edit_oper_del(edit, dead_cid, NULL, NULL))) {
-            return err_info;
-        }
-    }
-
-    /* find edit belonging to a dead connection, if any */
-    LY_LIST_FOR(*edit, root) {
-        LYD_TREE_DFS_BEGIN(root, elem) {
-            meta = lyd_find_meta(elem->meta, NULL, "sysrepo:cid");
-            if (meta && !sr_conn_is_alive(meta->value.uint32)) {
-                dead_cid = meta->value.uint32;
-
-                /* retry the whole check until there are no dead connections */
-                goto trim_retry;
-            }
-            LYD_TREE_DFS_END(root, elem);
-        }
-    }
-
-    return err_info;
 }
 
 sr_error_info_t *

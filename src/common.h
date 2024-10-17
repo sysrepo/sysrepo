@@ -1340,15 +1340,6 @@ sr_error_info_t *sr_module_file_data_append(const struct lys_module *ly_mod, con
         sr_datastore_t ds, const char **xpaths, uint32_t xpath_count, struct lyd_node **data);
 
 /**
- * @brief Load operational data (edit) loaded from a SHM for a specific module.
- *
- * @param[in] mod Mod info mod.
- * @param[out] edit Loaded edit to return.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_module_file_oper_data_load(struct sr_mod_info_mod_s *mod, struct lyd_node **edit);
-
-/**
  * @brief Learn CIDs and PIDs of all the live connections.
  *
  * @param[out] cids Optional array of CIDs.
