@@ -1270,7 +1270,7 @@ conditional_exit(struct cb_data *data, int ev, sr_session_ctx_t *session, struct
 }
 
 static int
-wait_for_children()
+wait_for_children(void)
 {
     int ret = 0;
     pid_t pid;
