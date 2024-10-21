@@ -2840,7 +2840,7 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     *value = malloc(sizeof **value);
     SR_CHECK_MEM_GOTO(!*value, err_info, cleanup);
 
-    if ((err_info = sr_val_ly2sr(set->dnodes[0], *value))) {
+    if ((err_info = sr_val_ly2sr(set->dnodes[0], 0, *value))) {
         goto cleanup;
     }
 
@@ -2955,7 +2955,7 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
     }
 
     for (i = 0; i < set->count; ++i) {
-        if ((err_info = sr_val_ly2sr(set->dnodes[i], (*values) + i))) {
+        if ((err_info = sr_val_ly2sr(set->dnodes[i], opts & SR_OPER_WITH_ORIGIN, (*values) + i))) {
             goto cleanup;
         }
         ++(*value_cnt);
@@ -5743,7 +5743,7 @@ sr_change_ly2sr(const struct lyd_node *node, const char *value_str, const char *
     }
 
     /* fill the sr value */
-    if ((err_info = sr_val_ly2sr(node_ptr, sr_val))) {
+    if ((err_info = sr_val_ly2sr(node_ptr, 0, sr_val))) {
         goto cleanup;
     }
 
@@ -6236,7 +6236,7 @@ sr_rpc_send(sr_session_ctx_t *session, const char *path, const sr_val_t *input, 
             SR_CHECK_MEM_GOTO(!*output, err_info, cleanup);
 
             /* fill it */
-            if ((err_info = sr_val_ly2sr(elem, &(*output)[*output_cnt]))) {
+            if ((err_info = sr_val_ly2sr(elem, 0, &(*output)[*output_cnt]))) {
                 goto cleanup;
             }
 

@@ -1850,7 +1850,7 @@ sr_notif_call_callback(sr_session_ctx_t *ev_sess, sr_event_notif_cb cb, sr_event
                     }
                     vals = mem;
 
-                    if ((err_info = sr_val_ly2sr(elem, &vals[val_count]))) {
+                    if ((err_info = sr_val_ly2sr(elem, 0, &vals[val_count]))) {
                         goto cleanup;
                     }
 

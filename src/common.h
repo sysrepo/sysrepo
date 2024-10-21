@@ -1111,10 +1111,11 @@ sr_event_t sr_ev2api(sr_sub_event_t ev);
  * @brief Transform a libyang node into sysrepo value.
  *
  * @param[in] node libyang node to transform.
+ * @param[in] with_origin Whether to fill the origin as well.
  * @param[out] sr_val sysrepo value.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val);
+sr_error_info_t *sr_val_ly2sr(const struct lyd_node *node, int with_origin, sr_val_t *sr_val);
 
 /**
  * @brief Transform a sysrepo value into libyang string value.

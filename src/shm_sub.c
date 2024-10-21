@@ -4092,7 +4092,7 @@ sr_shmsub_rpc_listen_call_callback(struct opsub_rpcsub_s *rpc_sub, sr_session_ct
                 }
                 input_vals = mem;
 
-                if ((err_info = sr_val_ly2sr(elem, &input_vals[input_val_count]))) {
+                if ((err_info = sr_val_ly2sr(elem, 0, &input_vals[input_val_count]))) {
                     goto cleanup;
                 }
 

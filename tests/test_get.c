@@ -378,6 +378,69 @@ dummy_change_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_n
     return SR_ERR_OK;
 }
 
+static void
+test_oper_vals(void **state)
+{
+    struct state *st = (struct state *)*state;
+    sr_subscription_ctx_t *subscr = NULL;
+    sr_val_t *vals;
+    size_t val_count;
+    int ret;
+
+    /* subscribe to running data */
+    ret = sr_module_change_subscribe(st->sess, "defaults", NULL, dummy_change_cb, NULL, 0, 0, &subscr);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
+
+    /* get defaults oper data */
+    ret = sr_get_items(st->sess, "/defaults:*//.", 0, 0, &vals, &val_count);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_string_equal(vals[0].xpath, "/defaults:cont");
+    assert_int_equal(vals[0].dflt, 1);
+    assert_null(vals[0].origin);
+
+    assert_string_equal(vals[1].xpath, "/defaults:cont/l");
+    assert_int_equal(vals[1].dflt, 1);
+    assert_null(vals[1].origin);
+
+    assert_string_equal(vals[2].xpath, "/defaults:cont/interval");
+    assert_int_equal(vals[2].dflt, 1);
+    assert_null(vals[2].origin);
+
+    sr_free_values(vals, val_count);
+
+    /* set explicit default value */
+    ret = sr_set_item_str(st->sess, "/defaults:cont/interval", "30", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(st->sess, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* read it back */
+    ret = sr_get_items(st->sess, "/defaults:*//.", 0, SR_OPER_WITH_ORIGIN, &vals, &val_count);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    assert_string_equal(vals[0].xpath, "/defaults:cont");
+    assert_string_equal(vals[0].origin, "ietf-origin:intended");
+
+    assert_string_equal(vals[1].xpath, "/defaults:cont/l");
+    assert_string_equal(vals[1].origin, "ietf-origin:default");
+
+    assert_string_equal(vals[2].xpath, "/defaults:cont/interval");
+    assert_string_equal(vals[2].origin, "ietf-origin:unknown");
+
+    sr_free_values(vals, val_count);
+
+    /* cleanup */
+    sr_discard_items(st->sess, "/defaults:cont");
+    sr_apply_changes(st->sess, 0);
+
+    sr_unsubscribe(subscr);
+    sr_session_switch_ds(st->sess, SR_DS_RUNNING);
+}
+
+/* TEST */
 static int
 union_oper_cb(sr_session_ctx_t *session, uint32_t sub_id, const char *module_name, const char *xpath,
         const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
@@ -717,6 +780,7 @@ main(void)
         cmocka_unit_test(test_enable_cached_get),
         cmocka_unit_test(test_no_read_access),
         cmocka_unit_test(test_explicit_default),
+        cmocka_unit_test(test_oper_vals),
         cmocka_unit_test(test_union),
         cmocka_unit_test(test_key),
         cmocka_unit_test(test_factory_default),

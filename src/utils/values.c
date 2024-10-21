@@ -942,7 +942,7 @@ sr_tree_to_val(const struct lyd_node *data, const char *path, sr_val_t **value)
     *value = malloc(sizeof **value);
     SR_CHECK_MEM_GOTO(!*value, err_info, cleanup);
 
-    if ((err_info = sr_val_ly2sr(set->dnodes[0], *value))) {
+    if ((err_info = sr_val_ly2sr(set->dnodes[0], 1, *value))) {
         goto cleanup;
     }
 
@@ -978,7 +978,7 @@ sr_tree_to_values(const struct lyd_node *data, const char *xpath, sr_val_t **val
                 continue;
             }
 
-            if ((err_info = sr_val_ly2sr(set->dnodes[i], *values + *value_cnt))) {
+            if ((err_info = sr_val_ly2sr(set->dnodes[i], 1, *values + *value_cnt))) {
                 goto cleanup;
             }
             ++(*value_cnt);

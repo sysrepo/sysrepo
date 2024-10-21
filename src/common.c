@@ -4046,10 +4046,10 @@ sr_ev2api(sr_sub_event_t ev)
 }
 
 sr_error_info_t *
-sr_val_ly2sr(const struct lyd_node *node, sr_val_t *sr_val)
+sr_val_ly2sr(const struct lyd_node *node, int with_origin, sr_val_t *sr_val)
 {
     sr_error_info_t *err_info = NULL;
-    char *ptr, *origin;
+    char *ptr, *origin = NULL;
     const struct lyd_node_term *leaf;
     const struct lyd_value *val;
     struct lyd_node_any *any;
@@ -4213,7 +4213,9 @@ store_value:
     }
 
     /* origin */
-    sr_edit_diff_get_origin(node, &origin, NULL);
+    if (with_origin) {
+        sr_edit_diff_get_origin(node, &origin, NULL);
+    }
     sr_val->origin = origin;
 
     return NULL;
