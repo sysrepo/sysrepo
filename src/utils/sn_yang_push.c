@@ -445,8 +445,8 @@ srsn_yp_on_change_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
     struct srsn_sub *sub = private_data;
     char *xp = NULL, buf[26];
     sr_change_iter_t *iter = NULL;
-    sr_change_oper_t op;
-    const struct lyd_node *node;
+    sr_change_oper_t op, last_op = 0;
+    const struct lyd_node *node, *par, *last_node = NULL;
     const struct ly_ctx *ly_ctx;
     struct lyd_node *ly_yp = NULL;
     const char *prev_value, *prev_list;
@@ -472,6 +472,18 @@ srsn_yp_on_change_cb(sr_session_ctx_t *session, uint32_t UNUSED(sub_id), const c
     pthread_mutex_lock(&sub->damp_sntimer.lock);
 
     while (!sr_get_change_tree_next(session, iter, &op, &node, &prev_value, &prev_list, NULL)) {
+        /* skip nested create edits */
+        if ((op == SR_OP_CREATED) && (op == last_op)) {
+            for (par = lyd_parent(node); par && (par != last_node); par = lyd_parent(par)) {}
+            if (par) {
+                continue;
+            }
+        }
+
+        /* remember last op and node */
+        last_op = op;
+        last_node = node;
+
         /* learn yang-push operation */
         yp_op = srsn_yp_op_sr2yp(op, node);
         if (sub->excluded_changes[yp_op]) {
