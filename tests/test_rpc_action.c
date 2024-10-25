@@ -219,10 +219,10 @@ test_fail(void **state)
     /* expect an error */
     ret = sr_rpc_send_tree(st->sess, input, 0, &output);
     lyd_free_all(input);
-    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(ret, SR_ERR_SYS);
     ret = sr_session_get_error(st->sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(err_info->err_count, 2);
+    assert_int_equal(err_info->err_count, 1);
     assert_int_equal(err_info->err[0].err_code, SR_ERR_SYS);
     assert_string_equal(err_info->err[0].message, "RPC FAIL");
     assert_null(err_info->err[0].error_format);
@@ -969,7 +969,7 @@ test_multi_fail(void **state)
     sr_release_data(output_op);
 
     /* it should fail with 5 total callback calls */
-    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(ret, SR_ERR_NO_MEMORY);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 5);
 
     /*
@@ -985,7 +985,7 @@ test_multi_fail(void **state)
     sr_release_data(output_op);
 
     /* it should fail with 3 total callback calls */
-    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 3);
 
     /*
@@ -1001,7 +1001,7 @@ test_multi_fail(void **state)
     sr_release_data(output_op);
 
     /* it should fail with 1 total callback calls */
-    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(ret, SR_ERR_LOCKED);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     /*
@@ -1445,11 +1445,11 @@ test_rpc_action_with_no_thread(void **state)
 
     /* try to send second RPC, expect an error */
     ret = sr_rpc_send(st->sess, "/ops:rpc2", NULL, 0, 50, &output, &output_count);
-    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(ret, SR_ERR_TIME_OUT);
 
     /* try to send third RPC, expect an error */
     ret = sr_rpc_send(st->sess, "/ops:rpc3", NULL, 0, 50, &output, &output_count);
-    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(ret, SR_ERR_TIME_OUT);
 
     /* process events on rpc subscriptions with the flag is SR_SUBSCR_NO_THREAD */
     ret = sr_subscription_process_events(subscr2, st->sess, NULL);
@@ -1480,7 +1480,7 @@ test_rpc_action_with_no_thread(void **state)
 
     /* send first action */
     ret = sr_rpc_send_tree(st->sess, input_op, 50, &output_op);
-    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(ret, SR_ERR_TIME_OUT);
 
     /* process events on action subscriptions when the flag is SR_SUBSCR_NO_THREAD */
     ret = sr_subscription_process_events(subscr2, st->sess, NULL);

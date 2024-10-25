@@ -640,8 +640,8 @@ cleanup:
     sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
     if (cb_err_info) {
         /* return callback error if some was generated */
-        sr_errinfo_merge(&err_info, cb_err_info);
-        sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, "User callback failed.");
+        assert(!err_info);
+        err_info = cb_err_info;
     }
     return sr_api_ret(NULL, err_info);
 }
@@ -4115,10 +4115,10 @@ cleanup:
     }
     if (cb_err_info) {
         /* return callback error if some was generated */
-        sr_errinfo_merge(&err_info, cb_err_info);
-        sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, "User callback failed.");
+        assert(!err_info);
+        err_info = cb_err_info;
     }
-    SR_LOG_DBG("Applying \"%s\" datastore changes  %s.", sr_ds2str(session->ds), err_info ? "failed" : "success");
+    SR_LOG_DBG("Applying \"%s\" datastore changes %s.", sr_ds2str(session->ds), err_info ? "failed" : "success");
     return sr_api_ret(session, err_info);
 }
 
@@ -4215,8 +4215,8 @@ cleanup:
     sr_modinfo_erase(&mod_info);
     if (cb_err_info) {
         /* return callback error if some was generated */
-        sr_errinfo_merge(&err_info, cb_err_info);
-        sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, "User callback failed.");
+        assert(!err_info);
+        err_info = cb_err_info;
     }
     return err_info;
 }
@@ -6431,8 +6431,8 @@ cleanup_rpcsub_unlock:
 cleanup:
     if (cb_err_info) {
         /* return callback error if some was generated */
-        sr_errinfo_merge(&err_info, cb_err_info);
-        sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, "User callback failed.");
+        assert(!err_info);
+        err_info = cb_err_info;
     }
     if (err_info) {
         sr_release_data(*output);
@@ -6543,8 +6543,8 @@ cleanup_rpcsub_unlock:
 cleanup:
     if (cb_err_info) {
         /* return callback error if some was generated */
-        sr_errinfo_merge(&err_info, cb_err_info);
-        sr_errinfo_new(&err_info, SR_ERR_CALLBACK_FAILED, "User callback failed.");
+        assert(!err_info);
+        err_info = cb_err_info;
     }
     if (err_info) {
         sr_release_data(*output);

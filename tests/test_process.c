@@ -317,7 +317,7 @@ test_rpc_crash1(int rp, int wp)
 
     /* this should crash the other process */
     ret = sr_rpc_send_tree(sess, rpc, 2000, &output);
-    sr_assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    sr_assert_int_equal(ret, SR_ERR_TIME_OUT);
 
     lyd_free_tree(rpc);
     sr_release_context(conn);
@@ -1647,7 +1647,7 @@ test_recover_rpc_sub_send(int rp, int wp)
     input.dflt = 0;
 
     ret = sr_rpc_send(sess, "/ops:rpc3", &input, 1, 1000, &output, &output_count);
-    sr_assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    sr_assert_int_equal(ret, SR_ERR_TIME_OUT);
 
     ret = sr_rpc_send(sess, "/ops:rpc3", &input, 1, 0, &output, &output_count);
     sr_assert_int_equal(ret, SR_ERR_OK);

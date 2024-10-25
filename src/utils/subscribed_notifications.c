@@ -125,8 +125,8 @@ srsn_stream_collect_mods(const char *stream, const char *xpath_filter, const str
             goto cleanup;
         }
     } else if (xpath_filter) {
-        /* collect only modules selected by the filter */
-        if (lys_find_xpath(ly_ctx, NULL, xpath_filter, 0, &set)) {
+        /* collect only modules selected by the filter (atoms needed, it evaluates to a boolean) */
+        if (lys_find_xpath_atoms(ly_ctx, NULL, xpath_filter, 0, &set)) {
             rc = SR_ERR_LY;
             goto cleanup;
         }

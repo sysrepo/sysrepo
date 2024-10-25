@@ -897,7 +897,7 @@ copy_fail_thread(void *arg)
     ret = sr_session_switch_ds(sess, SR_DS_RUNNING);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_copy_config(sess, "ietf-interfaces", SR_DS_CANDIDATE, 0);
-    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
     ret = sr_session_get_error(sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
     assert_string_equal(err_info->err[0].message, "Custom error.");

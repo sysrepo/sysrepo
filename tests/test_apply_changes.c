@@ -1326,18 +1326,15 @@ apply_update_fail_thread(void *arg)
 
     /* perform the change (it should fail) */
     ret = sr_apply_changes(sess, 0);
-    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(ret, SR_ERR_UNSUPPORTED);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 1);
 
     ret = sr_session_get_error(sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(err_info->err_count, 2);
+    assert_int_equal(err_info->err_count, 1);
     assert_int_equal(err_info->err[0].err_code, SR_ERR_UNSUPPORTED);
     assert_string_equal(err_info->err[0].message, "Custom user callback error.%s");
     assert_null(err_info->err[0].error_format);
-    assert_int_equal(err_info->err[1].err_code, SR_ERR_CALLBACK_FAILED);
-    assert_string_equal(err_info->err[1].message, "User callback failed.");
-    assert_null(err_info->err[1].error_format);
 
     ret = sr_discard_changes(sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1864,7 +1861,7 @@ apply_change_fail_thread(void *arg)
 
     /* perform the change (it should fail) */
     ret = sr_apply_changes(sess, 0);
-    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(ret, SR_ERR_UNSUPPORTED);
 
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called2), 2);
@@ -1873,16 +1870,13 @@ apply_change_fail_thread(void *arg)
     /* no custom error message set */
     ret = sr_session_get_error(sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(err_info->err_count, 2);
+    assert_int_equal(err_info->err_count, 1);
     assert_int_equal(err_info->err[0].err_code, SR_ERR_UNSUPPORTED);
     assert_string_equal(err_info->err[0].message, "msg");
     assert_string_equal(err_info->err[0].error_format, "error1");
     assert_int_equal(sr_get_error_data(&err_info->err[0], 0, &size, (const void **)&str1), SR_ERR_OK);
     assert_int_equal(size, 6);
     assert_string_equal(str1, "empty");
-    assert_int_equal(err_info->err[1].err_code, SR_ERR_CALLBACK_FAILED);
-    assert_string_equal(err_info->err[1].message, "User callback failed.");
-    assert_null(err_info->err[1].error_format);
 
     ret = sr_discard_changes(sess);
     assert_int_equal(ret, SR_ERR_OK);
@@ -1903,7 +1897,7 @@ apply_change_fail_thread(void *arg)
     ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth52']/type", "iana-if-type:ethernetCsmacd", NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
-    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(ret, SR_ERR_NOT_FOUND);
 
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called), 2);
     assert_int_equal(ATOMIC_LOAD_RELAXED(st->cb_called2), 3);
@@ -2109,12 +2103,12 @@ apply_change_fail2_thread(void *arg)
 
     /* perform the change (it should fail) */
     ret = sr_apply_changes(sess, 0);
-    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
 
     /* no custom error message set */
     ret = sr_session_get_error(sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(err_info->err_count, 2);
+    assert_int_equal(err_info->err_count, 1);
     assert_string_equal(err_info->err[0].message, "Modifications are not supported for "
             "/ietf-interfaces:interfaces/interface/ietf-if-aug:bridge-port/enable-ingress-filtering");
     assert_null(err_info->err[0].error_format);
@@ -2329,12 +2323,12 @@ apply_change_fail_priority_thread(void *arg)
 
     /* perform the change (it should fail) */
     ret = sr_apply_changes(sess, 0);
-    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(ret, SR_ERR_OPERATION_FAILED);
 
     /* check error */
     ret = sr_session_get_error(sess, &err_info);
     assert_int_equal(ret, SR_ERR_OK);
-    assert_int_equal(err_info->err_count, 2);
+    assert_int_equal(err_info->err_count, 1);
     assert_int_equal(err_info->err[0].err_code, SR_ERR_OPERATION_FAILED);
     assert_string_equal(err_info->err[0].message, "Operation failed");
     assert_null(err_info->err[0].error_format);
@@ -5609,12 +5603,12 @@ apply_change_timeout_thread(void *arg)
 
     /* perform the change, time out but give it some time so that the callback is at least called) */
     ret = sr_apply_changes(sess, 100);
-    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(ret, SR_ERR_TIME_OUT);
     pthread_barrier_wait(&st->barrier2);
 
     /* try again while the first callback is still executing (waiting) */
     ret = sr_apply_changes(sess, 100);
-    assert_int_equal(ret, SR_ERR_CALLBACK_FAILED);
+    assert_int_equal(ret, SR_ERR_TIME_OUT);
     pthread_barrier_wait(&st->barrier2);
 
     /* process abort */
