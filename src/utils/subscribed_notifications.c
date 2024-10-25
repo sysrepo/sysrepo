@@ -126,14 +126,20 @@ srsn_stream_collect_mods(const char *stream, const char *xpath_filter, const str
         }
     } else if (xpath_filter) {
         /* collect only modules selected by the filter */
-        if (lys_find_xpath_atoms(ly_ctx, NULL, xpath_filter, 0, &set)) {
+        if (lys_find_xpath(ly_ctx, NULL, xpath_filter, 0, &set)) {
             rc = SR_ERR_LY;
             goto cleanup;
         }
 
         for (idx = 0; idx < set->count; ++idx) {
+            ly_mod = lysc_owner_module(set->snodes[idx]);
+            if (!strcmp(ly_mod->name, "sysrepo")) {
+                /* cannot be subscribed to */
+                continue;
+            }
+
             /* handles duplicates */
-            if (ly_set_add(*mod_set, lysc_owner_module(set->snodes[idx]), 0, NULL)) {
+            if (ly_set_add(*mod_set, (void *)ly_mod, 0, NULL)) {
                 rc = SR_ERR_INTERNAL;
                 goto cleanup;
             }
