@@ -187,8 +187,8 @@ sr_shmsub_unlink(const char *name, const char *suffix1, int64_t suffix2)
         goto cleanup;
     }
 
-    /* unlink */
-    if (unlink(path) == -1) {
+    /* unlink and ignore non-fatal missing file as it may have been removed earlier or never created (on a crash) */
+    if ((unlink(path) == -1) && (errno != ENOENT)) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to unlink \"%s\" SHM (%s).", path, strerror(errno));
         goto cleanup;
     }
@@ -283,8 +283,8 @@ sr_shmsub_data_unlink(const char *name, const char *suffix1, int64_t suffix2)
         goto cleanup;
     }
 
-    /* unlink */
-    if (unlink(path) == -1) {
+    /* unlink and ignore non-fatal missing file as it may have been removed earlier or never created (on a crash) */
+    if ((unlink(path) == -1) && (errno != ENOENT)) {
         sr_errinfo_new(&err_info, SR_ERR_SYS, "Failed to unlink \"%s\" data SHM (%s).", path, strerror(errno));
         goto cleanup;
     }
