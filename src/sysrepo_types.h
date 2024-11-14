@@ -454,7 +454,14 @@ typedef enum {
      * event handling but results in 0 filtered-out changes returned by ::sr_module_change_sub_get_info(). Accepted
      * only for ::sr_module_change_subscribe().
      */
-    SR_SUBSCR_FILTER_ORIG = 0x100
+    SR_SUBSCR_FILTER_ORIG = 0x0100,
+
+    /**
+     * @brief If you call getters (::sr_get_data()) in the module change callback for data from **other** modules
+     * than the one the callback subscribed for, use this flag. Normally, only the changes of the subscribed module
+     * are sent to the callback so it retrieves the old data of other modules.
+     */
+    SR_SUBSCR_CHANGE_ALL_MODULES = 0x0200
 
 } sr_subscr_flag_t;
 

@@ -5427,7 +5427,8 @@ sr_module_change_subscribe(sr_session_ctx_t *session, const char *module_name, c
 
     conn = session->conn;
     /* only these options are relevant outside this function and will be stored */
-    sub_opts = opts & (SR_SUBSCR_DONE_ONLY | SR_SUBSCR_PASSIVE | SR_SUBSCR_UPDATE | SR_SUBSCR_FILTER_ORIG);
+    sub_opts = opts & (SR_SUBSCR_DONE_ONLY | SR_SUBSCR_PASSIVE | SR_SUBSCR_UPDATE | SR_SUBSCR_FILTER_ORIG |
+            SR_SUBSCR_CHANGE_ALL_MODULES);
 
     /* CONTEXT LOCK */
     if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {

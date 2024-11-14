@@ -1473,16 +1473,59 @@ sr_shmsub_change_notify_nsubs_set_mod_prio(struct sr_shmsub_many_info_change_s *
     *max_mpriority = cur_mprio - 1;
 }
 
+static sr_error_info_t *
+sr_shmsub_change_notify_get_diff(struct lyd_node *diff, const struct lys_module *ly_mod, int sub_opts,
+        char **full_diff_lyb, uint32_t *full_diff_lyb_len, char **diff_lyb, uint32_t *diff_lyb_len, int *free_diff)
+{
+    sr_error_info_t *err_info = NULL;
+    struct lyd_node *mod_diff;
+
+    /* free previous diff */
+    if (*free_diff) {
+        free(*diff_lyb);
+        *diff_lyb = NULL;
+    }
+
+    if (sub_opts & SR_SUBSCR_CHANGE_ALL_MODULES) {
+        /* print the full diff if not before */
+        if (!*full_diff_lyb && (err_info = sr_lyd_print_data(diff, LYD_LYB, 0, -1, full_diff_lyb, full_diff_lyb_len))) {
+            goto cleanup;
+        }
+
+        *diff_lyb = *full_diff_lyb;
+        *diff_lyb_len = *full_diff_lyb_len;
+        *free_diff = 0;
+    } else {
+        /* separate the diff of this module */
+        mod_diff = sr_module_data_unlink(&diff, ly_mod);
+        assert(mod_diff);
+
+        /* print it */
+        if ((err_info = sr_lyd_print_data(mod_diff, LYD_LYB, 0, -1, diff_lyb, diff_lyb_len))) {
+            goto cleanup;
+        }
+        *free_diff = 1;
+
+        /* relink to the diff */
+        if ((err_info = sr_lyd_insert_sibling(diff, mod_diff, &diff))) {
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    return err_info;
+}
+
 sr_error_info_t *
 sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_name, const void *orig_data,
         uint32_t timeout_ms, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
-    uint32_t notify_count = 0, max_priority, cur_mpriority, diff_lyb_len, *aux = NULL, i, subscriber_count;
+    uint32_t notify_count = 0, max_priority, cur_mpriority, full_diff_lyb_len, diff_lyb_len, *aux = NULL, i, subscriber_count;
     struct sr_shmsub_many_info_change_s *notify_subs = NULL, *nsub;
     struct sr_mod_info_mod_s *mod = NULL;
-    char *diff_lyb = NULL;
-    int opts, pending_events;
+    char *full_diff_lyb = NULL, *diff_lyb = NULL;
+    int opts, pending_events, free_diff = 0;
     sr_cid_t cid;
 
     cid = mod_info->conn->cid;
@@ -1526,11 +1569,6 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
     /* assign consolidated module priorities */
     sr_shmsub_change_notify_nsubs_set_mod_prio(notify_subs, notify_count, mod_info->ds, &cur_mpriority);
 
-    /* prepare the diff to write into subscription SHM */
-    if ((err_info = sr_lyd_print_data(mod_info->diff, LYD_LYB, 0, -1, &diff_lyb, &diff_lyb_len))) {
-        goto cleanup;
-    }
-
     do {
         pending_events = 0;
         for (i = 0; i < notify_count; ++i) {
@@ -1552,6 +1590,12 @@ sr_shmsub_change_notify_change(struct sr_mod_info_s *mod_info, const char *orig_
             }
             nsub->pending_event = 1;
             pending_events = 1;
+
+            /* prepare the all-modules diff to write into subscription SHM */
+            if ((err_info = sr_shmsub_change_notify_get_diff(mod_info->diff, nsub->mod->ly_mod, opts, &full_diff_lyb,
+                    &full_diff_lyb_len, &diff_lyb, &diff_lyb_len, &free_diff))) {
+                goto cleanup;
+            }
 
             /* open sub SHM and map it */
             if ((err_info = sr_shmsub_open_map(nsub->mod->ly_mod->name, sr_ds2str(mod_info->ds), -1, &nsub->shm_sub))) {
@@ -1652,7 +1696,10 @@ cleanup:
     }
 
     free(aux);
-    free(diff_lyb);
+    free(full_diff_lyb);
+    if (free_diff) {
+        free(diff_lyb);
+    }
     free(notify_subs);
     return err_info;
 }
