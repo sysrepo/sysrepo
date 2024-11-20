@@ -4,8 +4,8 @@
  * @brief ext SHM routines
  *
  * @copyright
- * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -310,6 +310,16 @@ sr_shmext_print(sr_mod_shm_t *mod_shm, sr_shm_t *shm_ext)
 
     for (idx = 0; idx < mod_shm->mod_count; ++idx) {
         shm_mod = SR_SHM_MOD_IDX(mod_shm, idx);
+
+        if (shm_mod->oper_push_data) {
+            /* add oper push data sessions */
+            if (sr_shmext_print_add_item(&items, &item_count, shm_mod->oper_push_data,
+                    SR_SHM_SIZE(shm_mod->oper_push_data_count * sizeof(sr_mod_oper_push_t)),
+                    "oper push data sessions (%" PRIu32 ", mod \"%s\")", shm_mod->oper_push_data_count,
+                    ((char *)mod_shm) + shm_mod->name)) {
+                goto error;
+            }
+        }
 
         for (ds = 0; ds < SR_DS_COUNT; ++ds) {
             if (shm_mod->change_sub[ds].sub_count) {
@@ -2850,5 +2860,261 @@ cleanup_rpcsub_unlock:
         sr_rwunlock(&shm_rpc->lock, 0, SR_LOCK_WRITE, conn->cid, __func__);
     }
 
+    return err_info;
+}
+
+/**
+ * @brief Learn indices of existing/new push oper data entry and their order.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] shm_mod SHM mod.
+ * @param[in] mod_name Module name.
+ * @param[in] sid Session ID of the oper data.
+ * @param[in,out] order Push oper data entry order for this session.
+ * @param[out] found_i Index where the entry was found, -1 if not found.
+ * @param[out] insert_i Index where the entry should be inserted, if differs from @p found_i.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_shmext_oper_push_update_get_idx(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *mod_name, uint32_t sid,
+        uint32_t *order, int32_t *found_i, int32_t *insert_i)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_oper_push_t *oper_push = NULL;
+    uint16_t i;
+
+    *found_i = -1;
+    *insert_i = -1;
+
+    for (i = 0; i < shm_mod->oper_push_data_count; ++i) {
+        oper_push = &((sr_mod_oper_push_t *)(conn->ext_shm.addr + shm_mod->oper_push_data))[i];
+
+        if (oper_push->sid == sid) {
+            /* found the item */
+            *found_i = i;
+
+            if (!*order) {
+                /* not changing the order */
+                *order = oper_push->order;
+            }
+            if (oper_push->order == *order) {
+                /* order is not changed, the item does not need to be moved */
+                *insert_i = i;
+            }
+        } else if (oper_push->order == *order) {
+            sr_errinfo_new(&err_info, SR_ERR_EXISTS, "Operational push data with order \"%" PRIu32
+                    "\" for module \"%s\" already exist.", *order, mod_name);
+            goto cleanup;
+        }
+
+        if (*order && (*insert_i == -1) && (oper_push->order > *order)) {
+            /* first item with higher order */
+            *insert_i = i;
+        }
+    }
+
+    if (!*order) {
+        /* item not found, generate its order */
+        if (shm_mod->oper_push_data_count) {
+            /* oper_push is the last item */
+            *order = oper_push->order + 1;
+        } else {
+            *order = 1;
+        }
+    }
+
+    if (*insert_i == -1) {
+        /* highest order set or no order, inserting at the end in both cases */
+        *insert_i = shm_mod->oper_push_data_count;
+    }
+
+cleanup:
+    return err_info;
+}
+
+sr_error_info_t *
+sr_shmext_oper_push_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *mod_name, uint32_t sid, uint32_t order,
+        int has_data, sr_lock_mode_t has_mod_locks)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_mod_lock_s *shm_lock;
+    sr_mod_oper_push_t *old_item, *new_item, tmp;
+    int32_t found_i, insert_i;
+
+    assert((has_mod_locks == SR_LOCK_NONE) || (has_mod_locks == SR_LOCK_WRITE));
+
+    shm_lock = &shm_mod->data_lock_info[SR_DS_OPERATIONAL];
+
+    if (!has_mod_locks) {
+        /* SHM MOD WRITE LOCK */
+        if ((err_info = sr_shmmod_lock(shm_lock, SR_CHANGE_CB_TIMEOUT, SR_LOCK_WRITE, SR_CHANGE_CB_TIMEOUT,
+                conn->cid, 0, 0, mod_name))) {
+            goto cleanup;
+        }
+    }
+
+    /* EXT WRITE LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_WRITE, 1, __func__))) {
+        goto cleanup_shmmod_unlock;
+    }
+
+    /* learn what exactly do we need to do based on the relevant indices */
+    if ((err_info = sr_shmext_oper_push_update_get_idx(conn, shm_mod, mod_name, sid, &order, &found_i, &insert_i))) {
+        goto cleanup_shmmod_unlock;
+    }
+
+    if (found_i == -1) {
+        SR_LOG_DBG("#SHM before (adding oper push session)");
+        sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
+
+        /* session not added yet, add it */
+        if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_mod->oper_push_data,
+                (uint32_t *)&shm_mod->oper_push_data_count, 0, sizeof *new_item, insert_i, (void **)&new_item, 0, NULL))) {
+            goto cleanup_ext_shmmod_unlock;
+        }
+
+        /* fill the new item with the defaults */
+        new_item->cid = conn->cid;
+        new_item->sid = sid;
+        new_item->order = 0;
+        new_item->has_data = 0;
+
+        SR_LOG_DBG("#SHM after (adding oper push session)");
+        sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
+
+        found_i = insert_i;
+    } else if (found_i != insert_i) {
+        /* move the items to keep ascending order */
+        old_item = &((sr_mod_oper_push_t *)(conn->ext_shm.addr + shm_mod->oper_push_data))[found_i];
+        new_item = &((sr_mod_oper_push_t *)(conn->ext_shm.addr + shm_mod->oper_push_data))[insert_i];
+        tmp = *old_item;
+
+        if (found_i > insert_i) {
+            memmove(new_item + 1, new_item, (found_i - insert_i) * sizeof *old_item);
+        } else {
+            memmove(old_item, old_item + 1, (insert_i - found_i - 1) * sizeof *old_item);
+        }
+
+        *new_item = tmp;
+    }
+
+    /* update relevant members, order is always correct and may be equal to the current value */
+    new_item = &((sr_mod_oper_push_t *)(conn->ext_shm.addr + shm_mod->oper_push_data))[insert_i];
+    assert(new_item->cid == conn->cid);
+    assert(new_item->sid == sid);
+    new_item->order = order;
+    if (has_data > -1) {
+        new_item->has_data = has_data;
+    }
+
+cleanup_ext_shmmod_unlock:
+    /* EXT WRITE UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_WRITE, 1, __func__);
+
+cleanup_shmmod_unlock:
+    if (!has_mod_locks) {
+        /* SHM MOD WRITE UNLOCK */
+        sr_rwunlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+    }
+
+cleanup:
+    return err_info;
+}
+
+sr_error_info_t *
+sr_shmext_oper_push_get(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *mod_name, uint32_t sid, uint32_t *order,
+        int *has_data, sr_lock_mode_t has_mod_locks)
+{
+    sr_error_info_t *err_info = NULL;
+    struct sr_mod_lock_s *shm_lock;
+    sr_mod_oper_push_t *oper_push;
+    uint16_t i;
+
+    assert(order || has_data);
+    assert((has_mod_locks == SR_LOCK_NONE) || (has_mod_locks == SR_LOCK_READ));
+
+    if (order) {
+        *order = 0;
+    }
+    if (has_data) {
+        *has_data = -1;
+    }
+
+    shm_lock = &shm_mod->data_lock_info[SR_DS_OPERATIONAL];
+
+    if (!has_mod_locks) {
+        /* SHM MOD READ LOCK */
+        if ((err_info = sr_shmmod_lock(shm_lock, SR_CHANGE_CB_TIMEOUT, SR_LOCK_READ, SR_CHANGE_CB_TIMEOUT,
+                conn->cid, 0, 0, mod_name))) {
+            goto cleanup;
+        }
+    }
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 1, __func__))) {
+        goto cleanup_shmmod_unlock;
+    }
+
+    /* find the session in mod oper push data */
+    for (i = 0; i < shm_mod->oper_push_data_count; ++i) {
+        oper_push = &((sr_mod_oper_push_t *)(conn->ext_shm.addr + shm_mod->oper_push_data))[i];
+        if (oper_push->sid == sid) {
+            if (order) {
+                *order = oper_push->order;
+            }
+            if (has_data) {
+                *has_data = oper_push->has_data;
+            }
+            break;
+        }
+    }
+
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 1, __func__);
+
+cleanup_shmmod_unlock:
+    if (!has_mod_locks) {
+        /* SHM MOD READ UNLOCK */
+        sr_rwunlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+    }
+
+cleanup:
+    return err_info;
+}
+
+sr_error_info_t *
+sr_shmext_oper_push_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *UNUSED(mod_name), uint32_t sid,
+        sr_lock_mode_t has_mod_locks)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_oper_push_t *oper_push;
+    uint16_t i;
+
+    assert(has_mod_locks == SR_LOCK_WRITE);
+    (void)has_mod_locks;
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 1, __func__))) {
+        goto cleanup;
+    }
+
+    /* find the session in mod oper push data */
+    for (i = 0; i < shm_mod->oper_push_data_count; ++i) {
+        oper_push = &((sr_mod_oper_push_t *)(conn->ext_shm.addr + shm_mod->oper_push_data))[i];
+        if (oper_push->sid == sid) {
+            break;
+        }
+    }
+    SR_CHECK_INT_GOTO(i == shm_mod->oper_push_data_count, err_info, cleanup_ext_unlock);
+
+    /* free the item */
+    sr_shmrealloc_del(&conn->ext_shm, &shm_mod->oper_push_data, (uint32_t *)&shm_mod->oper_push_data_count,
+            sizeof *oper_push, i, 0, 0);
+
+cleanup_ext_unlock:
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 1, __func__);
+
+cleanup:
     return err_info;
 }

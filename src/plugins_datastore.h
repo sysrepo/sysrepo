@@ -40,7 +40,7 @@ extern "C" {
 /**
  * @brief Datastore plugin API version
  */
-#define SRPLG_DS_API_VERSION 11
+#define SRPLG_DS_API_VERSION 12
 
 /**
  * @brief Setup datastore of a newly installed module.
@@ -111,11 +111,7 @@ typedef sr_error_info_t *(*srds_conn_init)(sr_conn_ctx_t *conn, void **plg_data)
 typedef void (*srds_conn_destroy)(sr_conn_ctx_t *conn, void *plg_data);
 
 /**
- * @brief Store data for a module. Either a diff can be applied manually or full new data tree stored.
- *
- * If @p ds is ::SR_DS_OPERATIONAL, it is actually an **edit** data tree that is being stored. That means that data
- * nodes with their **operations** (metadata) need to be stored and even **opaque nodes** with attributes. For this
- * datastore @p mod_diff is **never** provided.
+ * @brief Store data for a module. Either a diff can be applied manually (if available) or full new data tree stored.
  *
  * If @p ds is ::SR_DS_CANDIDATE and it has not been modified (::srds_candidate_modified() returns 0) then @p mod_diff
  * is actually the difference between previous ::SR_DS_RUNNING contents and the new ::SR_DS_CANDIDATE contents.
@@ -126,23 +122,17 @@ typedef void (*srds_conn_destroy)(sr_conn_ctx_t *conn, void *plg_data);
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
+ * @param[in] cid ID of the connection storing the data, relevant for @p ds ::SR_DS_OPERATIONAL.
+ * @param[in] sid ID of the session storing the data, relevant for @p ds ::SR_DS_OPERATIONAL.
  * @param[in] mod_diff Diff of currently stored module data and the new @p mod_data. __Not always available.__
- * @param[in] mod_data New module data tree to store.
+ * @param[in] mod_data New module data tree to store. If @p ds ::SR_DS_OPERATIONAL, every node may have a metadata
+ * instance of 'ietf-origin:origin' that needs to be stored. Also, top-level 'discard-items' opaque nodes may be present.
  * @param[in] plg_data Plugin data.
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
-typedef sr_error_info_t *(*srds_store)(const struct lys_module *mod, sr_datastore_t ds, const struct lyd_node *mod_diff,
-        const struct lyd_node *mod_data, void *plg_data);
-
-/**
- * @brief Recover module data when a crash occurred while they were being written.
- *
- * @param[in] mod Specific module.
- * @param[in] ds Specific datastore.
- * @param[in] plg_data Plugin data.
- */
-typedef void (*srds_recover)(const struct lys_module *mod, sr_datastore_t ds, void *plg_data);
+typedef sr_error_info_t *(*srds_store)(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid,
+        const struct lyd_node *mod_diff, const struct lyd_node *mod_data, void *plg_data);
 
 /**
  * @brief Load data of a module.
@@ -154,6 +144,8 @@ typedef void (*srds_recover)(const struct lys_module *mod, sr_datastore_t ds, vo
  *
  * @param[in] mod Specific module.
  * @param[in] ds Specific datastore.
+ * @param[in] cid ID of the connection of the session, relevant for @p ds ::SR_DS_OPERATIONAL.
+ * @param[in] sid ID of the session whose data to load, relevant for @p ds ::SR_DS_OPERATIONAL.
  * @param[in] xpaths Array of XPaths selecting the required data, NULL if all the module data are needed.
  * @param[in] xpath_count Number of @p xpaths.
  * @param[in] plg_data Plugin data.
@@ -161,8 +153,8 @@ typedef void (*srds_recover)(const struct lys_module *mod, sr_datastore_t ds, vo
  * @return NULL on success;
  * @return Sysrepo error info on error.
  */
-typedef sr_error_info_t *(*srds_load)(const struct lys_module *mod, sr_datastore_t ds, const char **xpaths,
-        uint32_t xpath_count, void *plg_data, struct lyd_node **mod_data);
+typedef sr_error_info_t *(*srds_load)(const struct lys_module *mod, sr_datastore_t ds, sr_cid_t cid, uint32_t sid,
+        const char **xpaths, uint32_t xpath_count, void *plg_data, struct lyd_node **mod_data);
 
 /**
  * @brief Copy data of a module from source datastore to the target datastore.
@@ -295,7 +287,6 @@ struct srplg_ds_s {
     srds_conn_init conn_init_cb;    /**< callback for per-connection data initialization */
     srds_conn_destroy conn_destroy_cb;  /**< callback for per-connection data destroy */
     srds_store store_cb;            /**< callback for storing module data */
-    srds_recover recover_cb;        /**< callback for stored module data recovery */
     srds_load load_cb;              /**< callback for loading stored module data */
     srds_copy copy_cb;              /**< callback for copying stored module data from one datastore to another */
     srds_candidate_modified candidate_modified_cb;  /**< callback for checking whether candidate was modified */

@@ -411,9 +411,7 @@ test_sub_suspend(void **state)
     }
 
     /* discard all operational data */
-    ret = sr_discard_items(st->sess2, NULL);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess2, 0);
+    ret = sr_discard_oper_changes(NULL, st->sess2, NULL, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     ret = sr_session_switch_ds(st->sess2, SR_DS_RUNNING);

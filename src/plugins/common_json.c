@@ -20,6 +20,7 @@
 #include "compat.h"
 
 #include <assert.h>
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
@@ -672,16 +673,39 @@ srpjson_get_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, 
         break;
     case SR_DS_RUNNING:
     case SR_DS_CANDIDATE:
-    case SR_DS_OPERATIONAL:
         if ((err_info = srpjson_shm_prefix(plg_name, &prefix))) {
             return err_info;
         }
 
         r = asprintf(path, "%s/%s_%s.%s", sr_shm_dir_get(), prefix, mod_name, srpjson_ds2str(ds));
         break;
+    case SR_DS_OPERATIONAL:
+        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_INTERNAL, "Internal error.");
+        return err_info;
     }
 
     if (r == -1) {
+        *path = NULL;
+        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
+        return err_info;
+    }
+
+    return NULL;
+}
+
+sr_error_info_t *
+srpjson_get_oper_path(const char *plg_name, const char *mod_name, sr_cid_t cid, uint32_t sid, char **path)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *prefix;
+
+    *path = NULL;
+
+    if ((err_info = srpjson_shm_prefix(plg_name, &prefix))) {
+        return err_info;
+    }
+
+    if (asprintf(path, "%s/%s_%s.operational.%" PRIu32 "-%" PRIu32, sr_shm_dir_get(), prefix, mod_name, cid, sid) == -1) {
         *path = NULL;
         srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
         return err_info;
@@ -778,4 +802,49 @@ srpjson_module_has_data(const struct lys_module *ly_mod, int state_data)
     }
 
     return 0;
+}
+
+int
+srpjson_dir_oper_file_iter(const char *plg_name, DIR *dir, const char *dir_path, const char *mod_name, char **path)
+{
+    sr_error_info_t *err_info = NULL;
+    const char *prefix;
+    struct dirent *ent;
+    int len;
+    char *file_prefix = NULL;
+
+    *path = NULL;
+
+    if ((err_info = srpjson_shm_prefix(plg_name, &prefix))) {
+        srplg_errinfo_free(&err_info);
+        return 1;
+    }
+
+    /* prepare file prefix */
+    len = asprintf(&file_prefix, "%s_%s.operational.", prefix, mod_name);
+    if (len == -1) {
+        srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
+        srplg_errinfo_free(&err_info);
+        return 1;
+    }
+
+    do {
+        /* next entry */
+        ent = readdir(dir);
+        if (!ent) {
+            break;
+        }
+
+        if (((ent->d_type == DT_REG) || (ent->d_type == DT_UNKNOWN)) && !strncmp(ent->d_name, file_prefix, len)) {
+            /* assume correct suffix */
+            if (asprintf(path, "%s/%s", dir_path, ent->d_name) == -1) {
+                srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
+                srplg_errinfo_free(&err_info);
+                return 1;
+            }
+        }
+    } while (!*path);
+
+    free(file_prefix);
+    return *path ? 0 : 1;
 }

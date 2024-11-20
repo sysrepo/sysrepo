@@ -453,6 +453,20 @@ void sr_lyd_free_tree_safe(struct lyd_node *tree, struct lyd_node **first);
 sr_error_info_t *sr_lyd_merge(struct lyd_node **target, const struct lyd_node *source, int siblings, uint32_t options);
 
 /**
+ * @brief Merge 2 data trees of a module.
+ *
+ * @param[in,out] target Target data tree to merge to.
+ * @param[in] source Source data tree to merge.
+ * @param[in] mod Specific module to use.
+ * @param[in] merge_cb Callback to call for each merge.
+ * @param[in] cb_data Arbitrary callback data.
+ * @param[in] options Merge options.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_lyd_merge_module(struct lyd_node **target, const struct lyd_node *source,
+        const struct lys_module *mod, lyd_merge_cb merge_cb, void *cb_data, uint32_t options);
+
+/**
  * @brief Find the nodes selected by an XPath.
  *
  * @param[in] tree Data tree to search.
@@ -461,16 +475,6 @@ sr_error_info_t *sr_lyd_merge(struct lyd_node **target, const struct lyd_node *s
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_lyd_find_xpath(const struct lyd_node *tree, const char *xpath, struct ly_set **set);
-
-/**
- * @brief Find the nodes selected by an XPath with the root being the context node.
- *
- * @param[in] tree Data tree to search.
- * @param[in] xpath XPath expression in JSON format.
- * @param[out] set Result set with data nodes.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_lyd_find_xpath_root(const struct lyd_node *tree, const char *xpath, struct ly_set **set);
 
 /**
  * @brief Find the nodes selected by a path.
@@ -698,12 +702,13 @@ sr_error_info_t *sr_ly_print_xpath10_value(const struct lyd_value_xpath10 *xp_va
  *
  * @param[in] ctx Context to use.
  * @param[in] value Value to canonize.
- * @param[in] prefixes Prefixes for the resolved value format.
- * @param[out] str Canonizes value.
+ * @param[in] format Value format.
+ * @param[in] prefix_data Value format prefix data.
+ * @param[out] str Canonized value.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_ly_canonize_xpath10_value(const struct ly_ctx *ctx, const char *value, struct lysc_prefix *prefixes,
-        char **str);
+sr_error_info_t *sr_ly_canonize_xpath10_value(const struct ly_ctx *ctx, const char *value, LY_VALUE_FORMAT format,
+        void *prefix_data, char **str);
 
 /**
  * @brief Generate an error for an opaque node.

@@ -57,15 +57,6 @@ enum edit_op {
 LY_ERR sr_lyd_diff_apply_cb(const struct lyd_node *diff_node, struct lyd_node *data_node, void *cb_data);
 
 /**
- * @brief Transform edit into best-effort diff.
- *
- * @param[in] edit Edit to transform.
- * @param[out] diff Created diff.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_edit2diff(const struct lyd_node *edit, struct lyd_node **diff);
-
-/**
  * @brief Return string name of an operation.
  *
  * @param[in] op Operation.
@@ -105,10 +96,11 @@ enum edit_op sr_edit_diff_find_oper(const struct lyd_node *edit, int recursive, 
  * @brief Get (inherited) origin of a node.
  *
  * @param[in] node Node to examine.
+ * @param[in] recursive Whether to search recursively in parents.
  * @param[out] origin Found origin.
  * @param[out] origin_own Whether the found origin is owned or inherited.
  */
-void sr_edit_diff_get_origin(const struct lyd_node *node, char **origin, int *origin_own);
+void sr_edit_diff_get_origin(const struct lyd_node *node, int recursive, char **origin, int *origin_own);
 
 /**
  * @brief Set origin of a node.
@@ -142,29 +134,28 @@ sr_error_info_t *sr_edit_mod_apply(const struct lyd_node *edit, const struct lys
         struct lyd_node **data, struct lyd_node **diff, int *change);
 
 /**
- * @brief Merge sysrepo edit with a specific module edit data tree.
+ * @brief Apply sysrepo operational edit on a specific module data tree.
  *
- * @param[in] edit Edit tree to apply.
- * @param[in] cid Connection CID of @p edit to set.
- * @param[in] ly_mod Edit data tree module.
- * @param[in,out] data Edit data tree to modify.
- * @param[in,out] diff Optionally create the diff of the original edit and the new one (or merge into diff).
+ * @param[in] tree Data tree to merge.
+ * @param[in] ly_mod Data tree module.
+ * @param[in,out] data Data tree to modify.
+ * @param[in,out] diff Optionally create the diff of the original data and the new one (or merge into diff).
  * @param[out] change Optional, set if there were some module changes.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_edit_mod_merge(const struct lyd_node *edit, uint32_t cid, const struct lys_module *ly_mod,
+sr_error_info_t *sr_oper_edit_mod_apply(const struct lyd_node *tree, const struct lys_module *ly_mod,
         struct lyd_node **data, struct lyd_node **diff, int *change);
 
 /**
- * @brief Merge missing nodes in a diff from an edit and use 'none' operation for them.
+ * @brief Merge missing nodes in a diff from data and use 'none' operation for them.
  *
  * @param[in,out] diff Diff to merge into.
- * @param[in] ly_mod Edit data tree module.
- * @param[in] edit Edit data tree to merge.
+ * @param[in] ly_mod Data tree module.
+ * @param[in] data Data tree to merge.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_edit_mod_diff_edit_merge(struct lyd_node **diff, const struct lys_module *ly_mod,
-        const struct lyd_node *edit);
+sr_error_info_t *sr_edit_mod_diff_merge(struct lyd_node **diff, const struct lys_module *ly_mod,
+        const struct lyd_node *data);
 
 /**
  * @brief Add change into sysrepo edit.
@@ -195,16 +186,5 @@ sr_error_info_t *sr_edit_add(sr_session_ctx_t *session, const char *xpath, const
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_diff_set_getnext(struct ly_set *set, uint32_t *idx, struct lyd_node **node, sr_change_oper_t *op);
-
-/**
- * @brief Remove stored edit nodes that belong to a connection and that optionally match an xpath.
- *
- * @param[in,out] edit Edit to remove from.
- * @param[in] cid Connection ID of the deleted connection.
- * @param[in] xpath XPath selecting nodes to consider for deletion, NULL for all the nodes.
- * @param[out] change_edit Optional change edit created for subscribers based on the changes made in oper edit.
- * @return err_info, NULL on success.
- */
-sr_error_info_t *sr_edit_oper_del(struct lyd_node **edit, sr_cid_t cid, const char *xpath, struct lyd_node **change_edit);
 
 #endif

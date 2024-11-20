@@ -796,58 +796,6 @@ test_isolate(void **state)
 }
 
 static void
-test_oper_merge(void **state)
-{
-    struct state *st = (struct state *)*state;
-    sr_data_t *data;
-    char *str;
-    int ret;
-
-    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
-
-    /* set and delete an oper leaf */
-    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/type",
-            "iana-if-type:ethernetCsmacd", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/ietf-interfaces-aug-leaf:new-test-leaf",
-            "7", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/ietf-interfaces-aug-leaf:new-test-leaf",
-            0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* delete and set an oper leaf */
-    ret = sr_delete_item(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/ietf-interfaces-aug-leaf:new-test-leaf",
-            0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_set_item_str(st->sess, "/ietf-interfaces:interfaces-state/interface[name='eth1']/ietf-interfaces-aug-leaf:new-test-leaf",
-            "8", NULL, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* read the oper data */
-    ret = sr_get_data(st->sess, "/ietf-interfaces:interfaces-state", 0, 0, SR_OPER_WITH_ORIGIN, &data);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = lyd_print_mem(&str, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
-    assert_int_equal(ret, 0);
-
-    sr_release_data(data);
-    assert_string_equal(str,
-            "<interfaces-state xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\""
-            " xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
-            "  <interface>\n"
-            "    <name>eth1</name>\n"
-            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
-            "    <new-test-leaf xmlns=\"urn:if-aug-leaf\">8</new-test-leaf>\n"
-            "  </interface>\n"
-            "</interfaces-state>\n");
-    free(str);
-}
-
-static void
 test_purge(void **state)
 {
     struct state *st = (struct state *)*state;
@@ -944,93 +892,6 @@ test_top_op(void **state)
 
     assert_true(subtree->tree->flags & LYD_DEFAULT);
     sr_release_data(subtree);
-}
-
-static void
-test_oper(void **state)
-{
-    struct state *st = (struct state *)*state;
-    const struct ly_ctx *ly_ctx;
-    struct lyd_node *edit;
-    sr_data_t *subtree;
-    const char *str;
-    char *str2;
-    int ret;
-
-    ly_ctx = sr_acquire_context(st->conn);
-
-    /* merge a series of oper edits */
-    sr_session_switch_ds(st->sess, SR_DS_OPERATIONAL);
-
-    str =
-            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-            "  <interface>"
-            "    <name>eth0</name>"
-            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>"
-            "  </interface>"
-            "</interfaces>";
-    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &edit));
-    ret = sr_edit_batch(st->sess, edit, "merge");
-    lyd_free_all(edit);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    str =
-            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-            "  <interface>"
-            "    <name>eth0</name>"
-            "    <ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">"
-            "      <address>"
-            "        <ip>192.0.2.1</ip>"
-            "        <prefix-length>24</prefix-length>"
-            "      </address>"
-            "    </ipv4>"
-            "  </interface>"
-            "</interfaces>";
-    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &edit));
-    ret = sr_edit_batch(st->sess, edit, "merge");
-    lyd_free_all(edit);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    str =
-            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">"
-            "  <interface>"
-            "    <name>eth0</name>"
-            "    <ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\">"
-            "      <address xmlns:nc=\"urn:ietf:params:xml:ns:netconf:base:1.0\" nc:operation=\"remove\">"
-            "        <ip>192.0.2.1</ip>"
-            "      </address>"
-            "    </ipv4>"
-            "  </interface>"
-            "</interfaces>";
-    assert_int_equal(LY_SUCCESS, lyd_parse_data_mem(ly_ctx, str, LYD_XML, LYD_PARSE_ONLY | LYD_PARSE_STRICT, 0, &edit));
-    ret = sr_edit_batch(st->sess, edit, "merge");
-    lyd_free_all(edit);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(st->sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
-    /* check datastore contents */
-    ret = sr_get_subtree(st->sess, "/ietf-interfaces:interfaces", 0, &subtree);
-    assert_int_equal(ret, SR_ERR_OK);
-    lyd_print_mem(&str2, subtree->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS);
-    sr_release_data(subtree);
-
-    str =
-            "<interfaces xmlns=\"urn:ietf:params:xml:ns:yang:ietf-interfaces\">\n"
-            "  <interface>\n"
-            "    <name>eth0</name>\n"
-            "    <type xmlns:ianaift=\"urn:ietf:params:xml:ns:yang:iana-if-type\">ianaift:ethernetCsmacd</type>\n"
-            "    <ipv4 xmlns=\"urn:ietf:params:xml:ns:yang:ietf-ip\"/>\n"
-            "  </interface>\n"
-            "</interfaces>\n";
-    assert_string_equal(str, str2);
-    free(str2);
-
-    sr_release_context(st->conn);
 }
 
 static void
@@ -1554,10 +1415,8 @@ main(void)
         cmocka_unit_test_teardown(test_replace_userord, clear_test),
         cmocka_unit_test_teardown(test_none, clear_interfaces),
         cmocka_unit_test_teardown(test_isolate, clear_interfaces),
-        cmocka_unit_test_teardown(test_oper_merge, clear_interfaces),
         cmocka_unit_test(test_purge),
         cmocka_unit_test(test_top_op),
-        cmocka_unit_test_teardown(test_oper, clear_interfaces),
         cmocka_unit_test_teardown(test_union, clear_test),
         cmocka_unit_test(test_decimal64),
         cmocka_unit_test(test_mutiple_types),

@@ -881,11 +881,7 @@ teardown_store_oper(void **state)
     }
 
     // delete all datastore data
-    rc = sr_discard_items(tdata->sess, "/plugin:*");
-    if (rc != SR_ERR_OK) {
-        return 1;
-    }
-    rc = sr_apply_changes(tdata->sess, 0);
+    rc = sr_discard_oper_changes(NULL, tdata->sess, "plugin", 0);
     if (rc != SR_ERR_OK) {
         return 1;
     }
@@ -932,91 +928,13 @@ test_store_oper(void **state)
             "  </simple-cont2>\n"
             "</simple-cont>\n";
 
-    const char *str3 =
-            "<simple-cont xmlns=\"s\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
-            "  <simple-cont2>\n"
-            "    <ac1>\n"
-            "      <acl4 or:origin=\"or:system\">\n"
-            "        <acs1>hello</acs1>\n"
-            "        <acs2>this is a keyless instance</acs2>\n"
-            "      </acl4>\n"
-            "      <acl4>\n"
-            "        <acs1 or:origin=\"or:dynamic\">bye</acs1>\n"
-            "      </acl4>\n"
-            "      <acl4>\n"
-            "        <acs1>bye</acs1>\n"
-            "        <acs2>this is a keyless instance</acs2>\n"
-            "      </acl4>\n"
-            "      <acl4>\n"
-            "        <acs1>hello</acs1>\n"
-            "        <acs2>this is a keyless instance</acs2>\n"
-            "      </acl4>\n"
-            "      <acl4>\n"
-            "        <acs1>bye</acs1>\n"
-            "      </acl4>\n"
-            "      <dup-keys>first</dup-keys>\n"
-            "      <dup-keys>first</dup-keys>\n"
-            "      <dup-keys or:origin=\"or:default\">third</dup-keys>\n"
-            "      <dup-keys>second</dup-keys>\n"
-            "      <dup-keys>second</dup-keys>\n"
-            "      <dup-keys>first</dup-keys>\n"
-            "      <dup-keys>fourth</dup-keys>\n"
-            "      <dup-keys>first</dup-keys>\n"
-            "    </ac1>\n"
-            "  </simple-cont2>\n"
-            "</simple-cont>\n";
-
-    const char *final_comp =
-            "<simple-cont xmlns=\"s\" xmlns:or=\"urn:ietf:params:xml:ns:yang:ietf-origin\" or:origin=\"or:unknown\">\n"
-            "  <simple-cont2>\n"
-            "    <ac1>\n"
-            "      <acl4>\n"
-            "        <acs1 or:origin=\"or:dynamic\">hello</acs1>\n"
-            "        <acs2>this is a keyless instance</acs2>\n"
-            "      </acl4>\n"
-            "      <acl4 or:origin=\"or:system\">\n"
-            "        <acs1>bye</acs1>\n"
-            "        <acs2>no data</acs2>\n"
-            "      </acl4>\n"
-            "      <acl4 or:origin=\"or:system\">\n"
-            "        <acs1>hello</acs1>\n"
-            "        <acs2>this is a keyless instance</acs2>\n"
-            "      </acl4>\n"
-            "      <acl4>\n"
-            "        <acs1 or:origin=\"or:dynamic\">bye</acs1>\n"
-            "      </acl4>\n"
-            "      <acl4>\n"
-            "        <acs1>bye</acs1>\n"
-            "        <acs2>this is a keyless instance</acs2>\n"
-            "      </acl4>\n"
-            "      <acl4>\n"
-            "        <acs1>hello</acs1>\n"
-            "        <acs2>this is a keyless instance</acs2>\n"
-            "      </acl4>\n"
-            "      <acl4>\n"
-            "        <acs1>bye</acs1>\n"
-            "      </acl4>\n"
-            "      <dup-keys or:origin=\"or:default\">first</dup-keys>\n"
-            "      <dup-keys>first</dup-keys>\n"
-            "      <dup-keys>first</dup-keys>\n"
-            "      <dup-keys>first</dup-keys>\n"
-            "      <dup-keys or:origin=\"or:default\">third</dup-keys>\n"
-            "      <dup-keys>second</dup-keys>\n"
-            "      <dup-keys>second</dup-keys>\n"
-            "      <dup-keys>first</dup-keys>\n"
-            "      <dup-keys>fourth</dup-keys>\n"
-            "      <dup-keys>first</dup-keys>\n"
-            "    </ac1>\n"
-            "  </simple-cont2>\n"
-            "</simple-cont>\n";
-
     /* OPERATIONAL */
     rc = sr_session_switch_ds(tdata->sess, SR_DS_OPERATIONAL);
     assert_int_equal(rc, SR_ERR_OK);
 
     /*
-    *   FIRST STORE
-    */
+     *   STORE
+     */
     rc = lyd_parse_data_mem(tdata->ctx, str2, LYD_XML, LYD_PARSE_OPAQ | LYD_PARSE_ONLY, 0, &node);
     assert_int_equal(rc, LY_SUCCESS);
 
@@ -1037,52 +955,6 @@ test_store_oper(void **state)
 
     // compare
     assert_string_equal(str1, str2);
-    free(str1);
-
-    /*
-    *   SECOND STORE
-    */
-    rc = lyd_parse_data_mem(tdata->ctx, str3, LYD_XML, LYD_PARSE_OPAQ | LYD_PARSE_ONLY, 0, &node);
-    assert_int_equal(rc, LY_SUCCESS);
-
-    rc = sr_discard_items(tdata->sess, "/plugin:simple-cont/simple-cont2/ac1/acl4[1]");
-    assert_int_equal(rc, SR_ERR_OK);
-
-    rc = sr_discard_items(tdata->sess, "/plugin:simple-cont/simple-cont2/ac1/acl4[3]");
-    assert_int_equal(rc, SR_ERR_OK);
-
-    rc = sr_discard_items(tdata->sess, "/plugin:simple-cont/simple-cont2/ac1/dup-keys[3]");
-    assert_int_equal(rc, SR_ERR_OK);
-
-    rc = sr_discard_items(tdata->sess, "/plugin:simple-cont/simple-cont2/ac1/dup-keys[3]");
-    assert_int_equal(rc, SR_ERR_OK);
-
-    rc = sr_discard_items(tdata->sess, "/plugin:simple-cont/simple-cont2/ac1/dup-keys[3]");
-    assert_int_equal(rc, SR_ERR_OK);
-
-    rc = sr_discard_items(tdata->sess, "/plugin:simple-cont/simple-cont2/ac1/dup-keys[3]");
-    assert_int_equal(rc, SR_ERR_OK);
-
-    rc = sr_apply_changes(tdata->sess, 0);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    rc = sr_edit_batch(tdata->sess, node, "merge");
-    assert_int_equal(rc, SR_ERR_OK);
-    lyd_free_all(node);
-
-    rc = sr_apply_changes(tdata->sess, 0);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    // load module
-    rc = sr_get_data(tdata->sess, "/plugin:*", 0, 0, SR_OPER_WITH_ORIGIN, &data);
-    assert_int_equal(rc, SR_ERR_OK);
-
-    rc = lyd_print_mem(&str1, data->tree, LYD_XML, LYD_PRINT_WITHSIBLINGS | LYD_PRINT_WD_ALL_TAG);
-    assert_int_equal(rc, LY_SUCCESS);
-    sr_release_data(data);
-
-    // compare
-    assert_string_equal(str1, final_comp);
     free(str1);
 }
 

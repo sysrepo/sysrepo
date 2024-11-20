@@ -27,60 +27,9 @@ module sysrepo {
     description
         "Sysrepo YANG datastore internal attributes and information.";
 
-    revision "2023-06-16" {
+    revision "2024-10-25" {
         description
-            "Added metadata for dup inst list positions when merging into a stored edit.";
-    }
-
-    revision "2023-02-16" {
-        description
-            "Import and use ietf-datastores for enabled extending supported datastores.";
-    }
-
-    revision "2021-10-08" {
-        description
-            "Removed nodes for scheduling changes.";
-    }
-
-    revision "2021-09-07" {
-        description
-            "Added module datastore plugins, increased replay-support type precision,
-             and added details to dependencies.";
-    }
-
-    revision "2021-03-31" {
-        description
-            "Add content-id yang-library data identifier.";
-    }
-
-    revision "2021-01-18" {
-        description
-            "Reorganized dependencies.";
-    }
-
-    revision "2020-01-15" {
-        description
-            "Added a new purge operation.";
-    }
-
-    revision "2019-11-26" {
-        description
-            "startup-data renamed to data; it is used for running datastore as well.";
-    }
-
-    revision "2019-10-25" {
-        description
-            "Added attributes for storing operational data owners.";
-    }
-
-    revision "2019-09-25" {
-        description
-            "Added initial startup data for newly installed modules.";
-    }
-
-    revision "2019-09-17" {
-        description
-            "Added list of scheduled installed modules.";
+            "Removed redundant metadata used for push operational data.";
     }
 
     revision "2019-07-10" {
@@ -118,22 +67,6 @@ module sysrepo {
             "Additional proprietary <edit-config> operations used internally.";
         reference
             "RFC 6241 section 7.2.";
-    }
-
-    md:annotation dup-inst-list-position {
-        type union {
-            type empty;
-            type uint32;
-        }
-        description
-            "Absolute position of the list instance starting at 1 with duplicate instances to uniquely identify a
-             stored instance. Empty value means the instance should always be created.";
-    }
-
-    md:annotation cid {
-        type uint32;
-        description
-            "Process with this CID is the owner of the operational data subtree.";
     }
 
     identity notification {

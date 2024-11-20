@@ -61,6 +61,8 @@
 #include "shm_sub.h"
 #include "sysrepo.h"
 
+#define SR_IS_YANG_ID_CHAR(c) (isalpha(c) || isdigit(c) || ((c) == '_') || ((c) == '-') || ((c) == '.'))
+
 /**
  * @brief Internal datastore plugin array.
  */
@@ -270,9 +272,8 @@ sr_ds_handle_init(struct sr_ds_handle_s **ds_handles, uint32_t *ds_handle_count)
             goto next_file;
         }
         if (!srpds->name || !srpds->install_cb || !srpds->uninstall_cb || !srpds->init_cb || !srpds->store_cb ||
-                !srpds->recover_cb || !srpds->load_cb || !srpds->copy_cb || !srpds->candidate_modified_cb ||
-                !srpds->candidate_reset_cb || !srpds->access_set_cb || !srpds->access_get_cb ||
-                !srpds->access_check_cb || !srpds->last_modif_cb) {
+                !srpds->load_cb || !srpds->copy_cb || !srpds->candidate_modified_cb || !srpds->candidate_reset_cb ||
+                !srpds->access_set_cb || !srpds->access_get_cb || !srpds->access_check_cb || !srpds->last_modif_cb) {
             SR_LOG_WRN("DS plugin \"%s\" with incomplete callback structure.", path);
             goto next_file;
         }
@@ -2995,7 +2996,7 @@ sr_conn_ext_data_update(sr_conn_ctx_t *conn)
     if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 1, &mi))) {
         goto cleanup;
     }
-    if ((err_info = sr_modinfo_consolidate(&mi, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_READ, 0, NULL, NULL,
+    if ((err_info = sr_modinfo_consolidate(&mi, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_READ, NULL,
             SR_OPER_CB_TIMEOUT, 0, 0))) {
         goto cleanup;
     }
@@ -3252,11 +3253,11 @@ sr_conn_run_cache_update(sr_conn_ctx_t *conn, const struct sr_mod_info_s *mod_in
         }
 
         /* remove old data */
-        mod_data = sr_module_data_unlink(&conn->run_cache_data, cmod->mod);
+        mod_data = sr_module_data_unlink(&conn->run_cache_data, cmod->mod, 0);
         lyd_free_siblings(mod_data);
 
         /* replace with loaded current data */
-        if ((err_info = mod->ds_handle[cache_ds]->plugin->load_cb(mod->ly_mod, cache_ds, NULL, 0,
+        if ((err_info = mod->ds_handle[cache_ds]->plugin->load_cb(mod->ly_mod, cache_ds, 0, 0, NULL, 0,
                 mod->ds_handle[cache_ds]->plg_data, &mod_data))) {
             goto cleanup;
         }
@@ -3313,7 +3314,7 @@ sr_conn_run_cache_update_mod(sr_conn_ctx_t *conn, const struct lys_module *ly_mo
     assert(cmod->id != mod_cache_id);
 
     /* remove old data */
-    old_data = sr_module_data_unlink(&conn->run_cache_data, cmod->mod);
+    old_data = sr_module_data_unlink(&conn->run_cache_data, cmod->mod, 0);
     lyd_free_siblings(old_data);
 
     /* replace with current data */
@@ -4214,7 +4215,7 @@ store_value:
 
     /* origin */
     if (with_origin) {
-        sr_edit_diff_get_origin(node, &origin, NULL);
+        sr_edit_diff_get_origin(node, 1, &origin, NULL);
     }
     sr_val->origin = origin;
 
@@ -4870,7 +4871,7 @@ sr_xpath_next_identifier(const char *id, int allow_special)
             return id;
         }
         ++id;
-        while (isalpha(id[0]) || isdigit(id[0]) || (id[0] == '_') || (id[0] == '-') || (id[0] == '.')) {
+        while (SR_IS_YANG_ID_CHAR(id[0])) {
             ++id;
         }
     }
@@ -4942,6 +4943,28 @@ sr_xpath_skip_predicate(const char *xpath)
     } while (quot || (xpath[0] != ']'));
 
     return xpath + 1;
+}
+
+int
+sr_xpath_refs_mod(const char *xpath, const char *mod_name)
+{
+    const char *ptr;
+    int found = 0, mod_name_len = strlen(mod_name);
+
+    for (ptr = xpath; ptr[0]; ++ptr) {
+        if ((ptr[0] == '\'') || (ptr[0] == '\"')) {
+            /* skip literal */
+            ptr = strchr(ptr + 1, ptr[0]);
+        }
+
+        if (!strncmp(ptr, mod_name, mod_name_len) && ((ptr == xpath) || !SR_IS_YANG_ID_CHAR(ptr[-1])) &&
+                (ptr[mod_name_len] == ':')) {
+            found = 1;
+            break;
+        }
+    }
+
+    return found;
 }
 
 /**
@@ -5429,18 +5452,29 @@ sr_userord_anchor_meta_name(const struct lysc_node *schema)
 }
 
 struct lyd_node *
-sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod)
+sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod, int with_discard_items)
 {
     struct lyd_node *next, *node, *mod_data = NULL;
     const struct lys_module *cur_mod;
+    int to_unlink;
 
     assert(data && ly_mod);
 
     LY_LIST_FOR_SAFE(*data, next, node) {
         cur_mod = lyd_owner_module(node);
+        to_unlink = 0;
 
         if (((cur_mod->ctx == ly_mod->ctx) && (cur_mod == ly_mod)) ||
                 ((cur_mod->ctx != ly_mod->ctx) && !strcmp(cur_mod->name, ly_mod->name))) {
+            /* data from this module */
+            to_unlink = 1;
+        } else if (with_discard_items && !strcmp(cur_mod->name, "sysrepo") && !strcmp(LYD_NAME(node), "discard-items") &&
+                sr_xpath_refs_mod(lyd_get_value(node), ly_mod->name)) {
+            /* discard-items referencing this module */
+            to_unlink = 1;
+        }
+
+        if (to_unlink) {
             /* properly unlink this node */
             if (node == *data) {
                 *data = next;
@@ -5449,7 +5483,7 @@ sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod)
 
             /* connect it to other data from this module */
             lyd_insert_sibling(mod_data, node, &mod_data);
-        } else if (mod_data) {
+        } else if (mod_data && !with_discard_items) {
             /* we went through all the data from this module */
             break;
         }
@@ -5460,13 +5494,11 @@ sr_module_data_unlink(struct lyd_node **data, const struct lys_module *ly_mod)
 
 sr_error_info_t *
 sr_module_file_data_append(const struct lys_module *ly_mod, const struct sr_ds_handle_s *ds_handle[], sr_datastore_t ds,
-        const char **xpaths, uint32_t xpath_count, struct lyd_node **data)
+        sr_cid_t cid, uint32_t sid, const char **xpaths, uint32_t xpath_count, struct lyd_node **data)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *mod_data, *root, *elem;
-    struct lyd_meta *meta;
+    struct lyd_node *mod_data;
     int modified;
-    sr_cid_t dead_cid = 0;
 
     if (ds == SR_DS_CANDIDATE) {
         if ((err_info = ds_handle[ds]->plugin->candidate_modified_cb(ly_mod, ds_handle[ds]->plg_data, &modified))) {
@@ -5485,33 +5517,9 @@ sr_module_file_data_append(const struct lys_module *ly_mod, const struct sr_ds_h
     }
 
     /* get the data */
-    if ((err_info = ds_handle[ds]->plugin->load_cb(ly_mod, ds, xpaths, xpath_count, ds_handle[ds]->plg_data, &mod_data))) {
+    if ((err_info = ds_handle[ds]->plugin->load_cb(ly_mod, ds, cid, sid, xpaths, xpath_count, ds_handle[ds]->plg_data,
+            &mod_data))) {
         return err_info;
-    }
-
-    if (mod_data && (ds == SR_DS_OPERATIONAL)) {
-trim_retry:
-        if (dead_cid) {
-            /* this connection is dead, remove its stored edit */
-            SR_LOG_INF("Recovering module \"%s\" stored operational data of CID %" PRIu32 ".", ly_mod->name, dead_cid);
-            if ((err_info = sr_edit_oper_del(&mod_data, dead_cid, NULL, NULL))) {
-                return err_info;
-            }
-        }
-
-        /* find edit belonging to a dead connection, if any */
-        LY_LIST_FOR(mod_data, root) {
-            LYD_TREE_DFS_BEGIN(root, elem) {
-                meta = lyd_find_meta(elem->meta, NULL, "sysrepo:cid");
-                if (meta && !sr_conn_is_alive(meta->value.uint32)) {
-                    dead_cid = meta->value.uint32;
-
-                    /* retry the whole check until there are no dead connections */
-                    goto trim_retry;
-                }
-                LYD_TREE_DFS_END(root, elem);
-            }
-        }
     }
 
     /* append module data */
@@ -5629,80 +5637,6 @@ cleanup:
         }
         *count = 0;
     }
-    return err_info;
-}
-
-sr_error_info_t *
-sr_conn_push_oper_mod_add(sr_conn_ctx_t *conn, const char *mod_name)
-{
-    sr_error_info_t *err_info = NULL;
-    uint32_t i;
-    void *mem;
-
-    /* OPER PUSH MOD LOCK */
-    if ((err_info = sr_mlock(&conn->oper_push_mod_lock, -1, __func__, NULL, NULL))) {
-        return err_info;
-    }
-
-    for (i = 0; i < conn->oper_push_mod_count; ++i) {
-        if (!strcmp(conn->oper_push_mods[i], mod_name)) {
-            /* already added */
-            goto cleanup;
-        }
-    }
-
-    /* add new module */
-    mem = realloc(conn->oper_push_mods, (i + 1) * sizeof *conn->oper_push_mods);
-    SR_CHECK_MEM_GOTO(!mem, err_info, cleanup);
-    conn->oper_push_mods = mem;
-
-    conn->oper_push_mods[i] = strdup(mod_name);
-    SR_CHECK_MEM_GOTO(!conn->oper_push_mods[i], err_info, cleanup);
-    ++conn->oper_push_mod_count;
-
-cleanup:
-    /* OPER PUSH MOD UNLOCK */
-    sr_munlock(&conn->oper_push_mod_lock);
-
-    return err_info;
-}
-
-sr_error_info_t *
-sr_conn_push_oper_mod_del(sr_conn_ctx_t *conn, const char *mod_name)
-{
-    sr_error_info_t *err_info = NULL;
-    uint32_t i;
-
-    /* OPER PUSH MOD LOCK */
-    if ((err_info = sr_mlock(&conn->oper_push_mod_lock, -1, __func__, NULL, NULL))) {
-        return err_info;
-    }
-
-    for (i = 0; i < conn->oper_push_mod_count; ++i) {
-        if (!strcmp(conn->oper_push_mods[i], mod_name)) {
-            /* found */
-            break;
-        }
-    }
-    if (i == conn->oper_push_mod_count) {
-        sr_errinfo_new(&err_info, SR_ERR_INTERNAL,
-                "Module \"%s\" not found in the push oper module cache of a connection.", mod_name);
-        goto cleanup;
-    }
-
-    free(conn->oper_push_mods[i]);
-    --conn->oper_push_mod_count;
-    if (i < conn->oper_push_mod_count) {
-        conn->oper_push_mods[i] = conn->oper_push_mods[conn->oper_push_mod_count];
-    } else if (!conn->oper_push_mod_count) {
-        free(conn->oper_push_mods);
-        conn->oper_push_mods = NULL;
-    }
-
-cleanup:
-    /* OPER PUSH MOD UNLOCK */
-    sr_munlock(&conn->oper_push_mod_lock);
-
     return err_info;
 }
 

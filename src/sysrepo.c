@@ -57,6 +57,8 @@
 
 static sr_error_info_t *sr_session_notif_buf_stop(sr_session_ctx_t *session);
 static sr_error_info_t *_sr_session_stop(sr_session_ctx_t *session);
+static int _sr_discard_oper_changes(sr_session_ctx_t *session, const char *module_name, int session_stopped,
+        uint32_t timeout_ms);
 static sr_error_info_t *_sr_unsubscribe(sr_subscription_ctx_t *subscription);
 
 /**
@@ -115,15 +117,10 @@ sr_conn_new(const sr_conn_options_t opts, sr_conn_ctx_t **conn_p)
     if ((err_info = sr_rwlock_init(&conn->oper_cache_lock, 0))) {
         goto error10;
     }
-    if ((err_info = sr_mutex_init(&conn->oper_push_mod_lock, 0))) {
-        goto error11;
-    }
 
     *conn_p = conn;
     return NULL;
 
-error11:
-    pthread_mutex_destroy(&conn->oper_push_mod_lock);
 error10:
     sr_ntf_handle_free(conn->ntf_handles, conn->ntf_handle_count);
 error9:
@@ -190,12 +187,6 @@ sr_conn_free(sr_conn_ctx_t *conn)
     sr_rwlock_destroy(&conn->run_cache_lock);
     sr_ntf_handle_free(conn->ntf_handles, conn->ntf_handle_count);
     sr_rwlock_destroy(&conn->oper_cache_lock);
-
-    for (i = 0; i < conn->oper_push_mod_count; ++i) {
-        free(conn->oper_push_mods[i]);
-    }
-    free(conn->oper_push_mods);
-    pthread_mutex_destroy(&conn->oper_push_mod_lock);
 
     free(conn);
 }
@@ -369,7 +360,6 @@ sr_disconnect(sr_conn_ctx_t *conn)
 {
     sr_error_info_t *err_info = NULL;
     uint32_t i;
-    int rc;
 
     if (!conn) {
         return sr_api_ret(NULL, NULL);
@@ -396,11 +386,6 @@ sr_disconnect(sr_conn_ctx_t *conn)
         if ((err_info = _sr_session_stop(conn->sessions[0]))) {
             return sr_api_ret(NULL, err_info);
         }
-    }
-
-    /* free any stored operational data (API function) */
-    if ((rc = sr_discard_oper_changes(conn, NULL, NULL, 0))) {
-        return rc;
     }
 
     /* stop tracking this connection */
@@ -534,116 +519,6 @@ API uid_t
 sr_get_su_uid(void)
 {
     return SR_SU_UID;
-}
-
-API int
-sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms)
-{
-    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
-    struct sr_mod_info_s mod_info;
-    const struct lys_module *ly_mod;
-    struct sr_mod_info_mod_s *mod;
-    struct lyd_node *change_edit = NULL, *node;
-    uint32_t i;
-
-    SR_CHECK_ARG_APIRET(!conn, NULL, err_info);
-
-    if (!conn->oper_push_mod_count) {
-        /* no data to discard */
-        return sr_api_ret(NULL, err_info);
-    }
-
-    if (!timeout_ms) {
-        timeout_ms = SR_CHANGE_CB_TIMEOUT;
-    }
-    SR_MODINFO_INIT(mod_info, conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL);
-
-    /* CONTEXT LOCK */
-    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
-        goto cleanup;
-    }
-
-    /* collect all required modules */
-    if (xpath) {
-        if ((err_info = sr_modinfo_collect_xpath(conn->ly_ctx, xpath, SR_DS_OPERATIONAL, NULL, 0, &mod_info))) {
-            goto cleanup;
-        }
-    } else {
-        /* add only the cached modules */
-        for (i = 0; i < conn->oper_push_mod_count; ++i) {
-            ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, conn->oper_push_mods[i]);
-            if (!ly_mod) {
-                /* could have been removed */
-                continue;
-            }
-            if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 1, &mod_info))) {
-                goto cleanup;
-            }
-        }
-    }
-
-    /* add modules, lock, and get data */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_LOCK_UPGRADEABLE | SR_MI_PERM_WRITE, 0,
-            NULL, NULL, 0, 0, 0))) {
-        goto cleanup;
-    }
-
-    /* get and apply edit together */
-    if ((err_info = sr_edit_oper_del(&mod_info.data, conn->cid, xpath, &change_edit))) {
-        goto cleanup;
-    }
-
-    if (!change_edit) {
-        /* no discarded oper data */
-        goto cleanup;
-    }
-
-    /* set changed flags */
-    for (i = 0; i < mod_info.mod_count; ++i) {
-        mod = &mod_info.mods[i];
-        LY_LIST_FOR(change_edit, node) {
-            if (lyd_owner_module(node) == mod->ly_mod) {
-                mod->state |= MOD_INFO_CHANGED;
-                break;
-            }
-        }
-    }
-
-    /* get diff */
-    if ((err_info = sr_edit2diff(change_edit, &mod_info.diff))) {
-        goto cleanup;
-    }
-
-    /* notify all the subscribers and store the changes */
-    if ((err_info = sr_changes_notify_store(&mod_info, session, timeout_ms, &cb_err_info))) {
-        goto cleanup;
-    }
-
-    if (!xpath) {
-        /* no modules now modified */
-        for (i = 0; i < conn->oper_push_mod_count; ++i) {
-            free(conn->oper_push_mods[i]);
-        }
-        free(conn->oper_push_mods);
-        conn->oper_push_mods = NULL;
-        conn->oper_push_mod_count = 0;
-    }
-
-cleanup:
-    /* MODULES UNLOCK */
-    sr_shmmod_modinfo_unlock(&mod_info);
-
-    lyd_free_all(change_edit);
-    sr_modinfo_erase(&mod_info);
-
-    /* CONTEXT UNLOCK */
-    sr_lycc_unlock(conn, SR_LOCK_READ, 0, __func__);
-    if (cb_err_info) {
-        /* return callback error if some was generated */
-        assert(!err_info);
-        err_info = cb_err_info;
-    }
-    return sr_api_ret(NULL, err_info);
 }
 
 /**
@@ -843,9 +718,11 @@ _sr_session_stop(sr_session_ctx_t *session)
     assert(!session->subscription_count && !session->subscriptions);
 
     /* stop notification buffering thread */
-    if ((err_info = sr_session_notif_buf_stop(session))) {
-        return err_info;
-    }
+    tmp_err = sr_session_notif_buf_stop(session);
+    sr_errinfo_merge(&err_info, tmp_err);
+
+    /* free any stored operational data and the SHM ext push oper data entries */
+    _sr_discard_oper_changes(session, NULL, 1, 0);
 
     /* remove ourselves from conn sessions */
     tmp_err = sr_ptr_del(&session->conn->ptr_lock, (void ***)&session->conn->sessions, &session->conn->session_count, session);
@@ -1867,6 +1744,13 @@ sr_remove_modules(sr_conn_ctx_t *conn, const char **module_names, int force)
         goto cleanup;
     }
 
+    /* delete operational data of the modules that will be deleted */
+    for (i = 0; i < mod_set.count; ++i) {
+        if ((err_info = sr_shmmod_del_module_oper_data(conn, mod_set.objs[i], NULL, NULL, 0))) {
+            goto cleanup;
+        }
+    }
+
     /* CONTEXT UPGRADE */
     if ((err_info = sr_lycc_relock(conn, SR_LOCK_WRITE, __func__))) {
         goto cleanup;
@@ -2813,8 +2697,8 @@ sr_get_item(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* add modules into mod_info with deps, locking, and their data */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_READ,
-            session->sid, session->orig_name, session->orig_data, timeout_ms, 0, 0))) {
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_READ, session,
+            timeout_ms, 0, 0))) {
         goto cleanup;
     }
 
@@ -2917,8 +2801,8 @@ sr_get_items(sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms, 
     }
 
     /* add modules into mod_info with deps, locking, and their data */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_READ, session->sid,
-            session->orig_name, session->orig_data, timeout_ms, 0, opts))) {
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_READ, session,
+            timeout_ms, 0, opts))) {
         goto cleanup;
     }
 
@@ -3081,8 +2965,8 @@ sr_get_subtree(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms,
     }
 
     /* add modules into mod_info with deps, locking, and their data */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_READ, session->sid,
-            session->orig_name, session->orig_data, timeout_ms, 0, 0))) {
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_READ, session,
+            timeout_ms, 0, 0))) {
         goto cleanup;
     }
 
@@ -3196,8 +3080,8 @@ sr_get_data(sr_session_ctx_t *session, const char *xpath, uint32_t max_depth, ui
     }
 
     /* add modules into mod_info with deps, locking, and their data */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_READ, session->sid,
-            session->orig_name, session->orig_data, timeout_ms, 0, opts))) {
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_READ, session,
+            timeout_ms, 0, opts))) {
         goto cleanup;
     }
 
@@ -3333,8 +3217,8 @@ sr_get_node(sr_session_ctx_t *session, const char *path, uint32_t timeout_ms, sr
     }
 
     /* add modules into mod_info with deps, locking, and their data */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_READ,
-            session->sid, session->orig_name, session->orig_data, timeout_ms, 0, 0))) {
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_READ, session,
+            timeout_ms, 0, 0))) {
         goto cleanup;
     }
 
@@ -3545,7 +3429,7 @@ sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_option
     const struct lysc_node *snode;
     uint32_t temp_lo = 0;
 
-    SR_CHECK_ARG_APIRET(!session || !path || SR_EDIT_DS_API_CHECK(session->ds, opts), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !path || !SR_IS_CONVENTIONAL_DS(session->ds), session, err_info);
 
     if (!session->dt[session->ds].edit) {
         /* CONTEXT LOCK */
@@ -3596,7 +3480,7 @@ sr_discard_items(sr_session_ctx_t *session, const char *xpath)
     sr_error_info_t *err_info = NULL;
     struct lyd_node *node;
 
-    SR_CHECK_ARG_APIRET(!session || (session->ds != SR_DS_OPERATIONAL), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || (session->ds != SR_DS_OPERATIONAL) || !xpath, session, err_info);
 
     /* we do not need any lock, ext SHM is not accessed */
 
@@ -3614,6 +3498,9 @@ sr_discard_items(sr_session_ctx_t *session, const char *xpath)
 
     /* add the operation into edit */
     if ((err_info = sr_lyd_new_opaq(session->conn->ly_ctx, "discard-items", xpath, "sysrepo", "sysrepo", &node))) {
+        goto cleanup;
+    }
+    if ((err_info = sr_edit_set_oper(node, "merge"))) {
         goto cleanup;
     }
     if ((err_info = sr_lyd_insert_sibling(session->dt[session->ds].edit->tree, node, &session->dt[session->ds].edit->tree))) {
@@ -3636,7 +3523,7 @@ sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_position
     sr_error_info_t *err_info = NULL;
     char *pref_origin = NULL;
 
-    SR_CHECK_ARG_APIRET(!session || !path || SR_EDIT_DS_API_CHECK(session->ds, opts), session, err_info);
+    SR_CHECK_ARG_APIRET(!session || !path || !SR_IS_CONVENTIONAL_DS(session->ds), session, err_info);
 
     if (origin) {
         if (!strchr(origin, ':')) {
@@ -3678,12 +3565,13 @@ API int
 sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char *default_operation)
 {
     sr_error_info_t *err_info = NULL;
-    struct lyd_node *dup_edit = NULL, *root, *elem;
-    enum edit_op op;
+    struct lyd_node *dup_edit = NULL, *root, *elem, *dup;
+    struct lyd_node_opaq *opaq;
+    char *val_json;
 
     SR_CHECK_ARG_APIRET(!session || !edit || !default_operation || !SR_IS_STANDARD_DS(session->ds), session, err_info);
     SR_CHECK_ARG_APIRET(strcmp(default_operation, "merge") && strcmp(default_operation, "replace") &&
-            strcmp(default_operation, "none"), session, err_info);
+            ((session->ds == SR_DS_OPERATIONAL) || strcmp(default_operation, "none")), session, err_info);
 
     if (session->dt[session->ds].edit) {
         /* do not allow merging NETCONF edits into sysrepo ones, it can cause some unexpected results */
@@ -3705,35 +3593,55 @@ sr_edit_batch(sr_session_ctx_t *session, const struct lyd_node *edit, const char
         goto cleanup_unlock;
     }
 
+    if (session->ds == SR_DS_OPERATIONAL) {
+        /* check discard-items nodes */
+        LY_LIST_FOR_SAFE(dup_edit, elem, root) {
+            if (!lyd_node_module(root) || strcmp(lyd_node_module(root)->name, "sysrepo") ||
+                    strcmp(LYD_NAME(root), "discard-items")) {
+                continue;
+            }
+
+            opaq = (struct lyd_node_opaq *)root;
+            if (opaq->format != LY_VALUE_JSON) {
+                /* always have the xpath in JSON format, avoids hassle with later conversions */
+                opaq = (struct lyd_node_opaq *)root;
+                if ((err_info = sr_ly_canonize_xpath10_value(session->conn->ly_ctx, lyd_get_value(root),
+                        opaq->format, opaq->val_prefix_data, &val_json))) {
+                    goto cleanup_unlock;
+                }
+
+                /* insert the opaq node in JSON format and free the previous one */
+                err_info = sr_lyd_new_opaq(session->conn->ly_ctx, LYD_NAME(root), val_json, NULL, "sysrepo", &dup);
+                free(val_json);
+                if (err_info) {
+                    goto cleanup_unlock;
+                }
+                if ((err_info = sr_lyd_insert_sibling(dup_edit, dup, &dup_edit))) {
+                    goto cleanup_unlock;
+                }
+                sr_lyd_free_tree_safe(root, &dup_edit);
+            }
+        }
+    }
+
     /* add default operation and default origin */
     LY_LIST_FOR(dup_edit, root) {
+        /* set the default operation if none set */
         if (!sr_edit_diff_find_oper(root, 0, NULL) && (err_info = sr_edit_set_oper(root, default_operation))) {
             goto cleanup_unlock;
         }
+
         if (session->ds == SR_DS_OPERATIONAL) {
+            /* set origin */
             if ((err_info = sr_edit_diff_set_origin(root, SR_OPER_ORIGIN, 0))) {
                 goto cleanup_unlock;
             }
 
-            /* check that no forbidden data/operations are set */
+            /* check that no nested operations are set */
             LYD_TREE_DFS_BEGIN(root, elem) {
-                if (!elem->schema && (elem->parent || !lyd_node_module(elem) ||
-                        strcmp(lyd_node_module(elem)->name, "sysrepo") || strcmp(LYD_NAME(elem), "discard-items"))) {
-                    sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Opaque node \"%s\" is not allowed for operational "
-                            "datastore changes.", LYD_NAME(elem));
-                    goto cleanup_unlock;
-                } else if (lysc_is_dup_inst_list(elem->schema) &&
-                        !lyd_find_meta(elem->meta, NULL, "sysrepo:dup-inst-list-position")) {
-                    /* fine, just create the metadata with empty value so that the instance is created */
-                    if ((err_info = sr_lyd_new_meta(elem, NULL, "sysrepo:dup-inst-list-position", ""))) {
-                        goto cleanup_unlock;
-                    }
-                }
-
-                op = sr_edit_diff_find_oper(elem, 0, NULL);
-                if (op && (op != EDIT_MERGE) && (op != EDIT_REMOVE) && (op != EDIT_PURGE) && (op != EDIT_ETHER)) {
-                    sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Operation \"%s\" is not allowed for operational "
-                            "datastore changes.", sr_edit_op2str(op));
+                if ((elem != root) && sr_edit_diff_find_oper(elem, 0, NULL)) {
+                    sr_errinfo_new(&err_info, SR_ERR_UNSUPPORTED, "Nested operations are not allowed for operational "
+                            "datastore changes.");
                     goto cleanup_unlock;
                 }
 
@@ -3839,8 +3747,8 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
 
     /* add modules into mod_info with deps, locking, and their data (we need inverse dependencies because the data will
      * likely be changed) */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_INV_DEPS | SR_MI_PERM_NO, session->sid,
-            session->orig_name, session->orig_data, timeout_ms, 0, 0))) {
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_INV_DEPS | SR_MI_PERM_NO, session,
+            timeout_ms, 0, 0))) {
         goto cleanup;
     }
 
@@ -3854,8 +3762,8 @@ sr_validate(sr_session_ctx_t *session, const char *module_name, uint32_t timeout
     if ((err_info = sr_modinfo_collect_deps(&mod_info))) {
         goto cleanup;
     }
-    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_PERM_NO, session->sid,
-            session->orig_name, session->orig_data, timeout_ms, 0, 0))) {
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_PERM_NO, session,
+            timeout_ms, 0, 0))) {
         goto cleanup;
     }
 
@@ -3891,9 +3799,30 @@ cleanup:
     return sr_api_ret(session, err_info);
 }
 
+/**
+ * @brief Check whether mod info diff has any changes that the subscribers will be notified about.
+ * Excludes 'discard-items' opaque node changes.
+ *
+ * @param[in] mod_info Mod info to use.
+ * @return Whether there are any changes to notify or not.
+ */
+static int
+sr_changes_has_notify_diff(const struct sr_mod_info_s *mod_info)
+{
+    const struct lyd_node *node;
+
+    LY_LIST_FOR(mod_info->diff, node) {
+        if (node->schema) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 sr_error_info_t *
-sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session, uint32_t timeout_ms,
-        sr_error_info_t **cb_err_info)
+sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session, int shmmod_session_del,
+        uint32_t timeout_ms, sr_error_info_t **cb_err_info)
 {
     sr_error_info_t *err_info = NULL;
     struct sr_denied denied = {0};
@@ -3911,8 +3840,10 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
         orig_data = session->orig_data;
     }
 
-    if (!mod_info->diff) {
-        SR_LOG_DBG("No \"%s\" datastore changes to apply.", sr_ds2str(mod_info->ds));
+    if (!sr_changes_has_notify_diff(mod_info)) {
+        if (!sr_modinfo_is_changed(mod_info)) {
+            SR_LOG_DBG("No \"%s\" datastore changes to apply.", sr_ds2str(mod_info->ds));
+        }
         goto store;
     }
 
@@ -3948,8 +3879,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
         if ((err_info = sr_modinfo_collect_deps(mod_info))) {
             goto cleanup;
         }
-        if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_PERM_NO, sid,
-                orig_name, orig_data, 0, 0, 0))) {
+        if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_PERM_NO, session, 0, 0, 0))) {
             goto cleanup;
         }
 
@@ -3974,7 +3904,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
         goto cleanup;
     }
 
-    if (!mod_info->diff) {
+    if (!sr_changes_has_notify_diff(mod_info)) {
         /* diff can disappear after validation */
         SR_LOG_DBG("No \"%s\" datastore changes to apply after validation.", sr_ds2str(mod_info->ds));
         goto store;
@@ -3997,7 +3927,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
         goto cleanup;
     }
 
-    if (!mod_info->diff) {
+    if (!sr_changes_has_notify_diff(mod_info)) {
         SR_LOG_DBG("No \"%s\" datastore changes to apply after update.", sr_ds2str(mod_info->ds));
         goto store;
     }
@@ -4013,7 +3943,7 @@ sr_changes_notify_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *sessio
     }
 
 store:
-    if (!mod_info->diff && !sr_modinfo_is_changed(mod_info)) {
+    if (!sr_changes_has_notify_diff(mod_info) && !sr_modinfo_is_changed(mod_info)) {
         /* there is no diff and no changed modules, nothing to store */
         goto cleanup;
     }
@@ -4024,7 +3954,7 @@ store:
     }
 
     /* store updated datastore */
-    if ((err_info = sr_modinfo_data_store(mod_info))) {
+    if ((err_info = sr_modinfo_data_store(mod_info, session, shmmod_session_del))) {
         goto cleanup;
     }
 
@@ -4060,7 +3990,8 @@ sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
 {
     sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
     struct sr_mod_info_s mod_info;
-    uint32_t mi_opts;
+    uint32_t mi_opts, i;
+    int update_sm_data = 0;
 
     SR_CHECK_ARG_APIRET(!session || !SR_IS_STANDARD_DS(session->ds), session, err_info);
 
@@ -4085,23 +4016,40 @@ sr_apply_changes(sr_session_ctx_t *session, uint32_t timeout_ms)
     }
 
     /* add modules into mod_info with deps, locking, and their data */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, mi_opts, session->sid, session->orig_name,
-            session->orig_data, 0, 0, 0))) {
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, mi_opts, session, 0, 0, 0))) {
         goto cleanup;
     }
 
     /* create diff */
     if (mod_info.ds == SR_DS_OPERATIONAL) {
-        err_info = sr_modinfo_edit_merge(&mod_info, session->dt[session->ds].edit->tree, 1);
+        if ((err_info = sr_modinfo_oper_edit_apply(&mod_info, session->dt[session->ds].edit->tree, 1))) {
+            goto cleanup;
+        }
+
+        /* check for oper changes in schema-mount data */
+        for (i = 0; i < mod_info.mod_count; ++i) {
+            if (!strcmp(mod_info.mods[i].ly_mod->name, "ietf-yang-schema-mount")) {
+                update_sm_data = 1;
+                break;
+            }
+        }
     } else {
-        err_info = sr_modinfo_edit_apply(&mod_info, session->dt[session->ds].edit->tree, 1);
-    }
-    if (err_info) {
-        goto cleanup;
+        if ((err_info = sr_modinfo_edit_apply(&mod_info, session->dt[session->ds].edit->tree, 1))) {
+            goto cleanup;
+        }
     }
 
     /* notify all the subscribers and store the changes */
-    err_info = sr_changes_notify_store(&mod_info, session, timeout_ms, &cb_err_info);
+    if ((err_info = sr_changes_notify_store(&mod_info, session, 0, timeout_ms, &cb_err_info))) {
+        goto cleanup;
+    }
+
+    if (update_sm_data) {
+        /* operational schema-mount data were changed, update them in the connection */
+        if ((err_info = sr_conn_ext_data_update(session->conn))) {
+            goto cleanup;
+        }
+    }
 
 cleanup:
     /* MODULES UNLOCK */
@@ -4196,7 +4144,7 @@ _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, s
 
     /* add modules with dependencies into mod_info */
     if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_INV_DEPS | SR_MI_LOCK_UPGRADEABLE | SR_MI_PERM_NO,
-            session->sid, session->orig_name, session->orig_data, 0, 0, 0))) {
+            session, 0, 0, 0))) {
         goto cleanup;
     }
 
@@ -4206,7 +4154,7 @@ _sr_replace_config(sr_session_ctx_t *session, const struct lys_module *ly_mod, s
     }
 
     /* notify all the subscribers and store the changes */
-    err_info = sr_changes_notify_store(&mod_info, session, timeout_ms, &cb_err_info);
+    err_info = sr_changes_notify_store(&mod_info, session, 0, timeout_ms, &cb_err_info);
 
 cleanup:
     /* MODULES UNLOCK */
@@ -4331,8 +4279,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
 
     if ((src_datastore == SR_DS_RUNNING) && (session->ds == SR_DS_CANDIDATE)) {
         /* add modules into mod_info without data */
-        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_WRITE, SR_MI_DATA_NO | SR_MI_PERM_NO, session->sid,
-                session->orig_name, session->orig_data, 0, 0, 0))) {
+        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_WRITE, SR_MI_DATA_NO | SR_MI_PERM_NO, session, 0, 0, 0))) {
             goto cleanup;
         }
 
@@ -4343,8 +4290,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
 
     if ((src_datastore == SR_DS_CANDIDATE) && (session->ds == SR_DS_RUNNING)) {
         /* add modules into mod_info, WRITE lock */
-        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_WRITE, SR_MI_PERM_NO, session->sid, session->orig_name,
-                session->orig_data, 0, 0, 0))) {
+        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_WRITE, SR_MI_PERM_NO, session, 0, 0, 0))) {
             goto cleanup;
         }
 
@@ -4359,8 +4305,7 @@ sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_
         }
     } else {
         /* add modules into mod_info, READ lock */
-        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session->sid, session->orig_name,
-                session->orig_data, 0, 0, 0))) {
+        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, 0))) {
             goto cleanup;
         }
 
@@ -4382,6 +4327,206 @@ cleanup:
     /* CONTEXT UNLOCK */
     sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
     return sr_api_ret(session, err_info);
+}
+
+static int
+_sr_discard_oper_changes(sr_session_ctx_t *session, const char *module_name, int shmmod_session_del, uint32_t timeout_ms)
+{
+    sr_error_info_t *err_info = NULL, *cb_err_info = NULL;
+    struct sr_mod_info_s mod_info;
+    const struct lys_module *ly_mod = NULL;
+    struct lyd_node *node;
+    uint32_t i;
+
+    assert(session && (!shmmod_session_del || !module_name));
+
+    if (!timeout_ms) {
+        timeout_ms = SR_CHANGE_CB_TIMEOUT;
+    }
+    SR_MODINFO_INIT(mod_info, session->conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL);
+
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(session->conn, SR_LOCK_READ, 0, __func__))) {
+        goto cleanup;
+    }
+
+    if (module_name) {
+        /* try to find this module */
+        ly_mod = ly_ctx_get_module_implemented(session->conn->ly_ctx, module_name);
+        if (!ly_mod) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
+            goto cleanup;
+        }
+    }
+
+    /* add only modules that this session has push oper data for */
+    if ((err_info = sr_modinfo_collect_oper_sess(session, ly_mod, &mod_info))) {
+        goto cleanup;
+    }
+
+    if (!mod_info.mod_count) {
+        /* no modules with oper push data of this session */
+        goto cleanup;
+    }
+
+    /* add modules, lock, and get data */
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_LOCK_UPGRADEABLE | SR_MI_PERM_WRITE, session,
+            0, 0, 0))) {
+        goto cleanup;
+    }
+
+    /* all the data are removed */
+    mod_info.diff = mod_info.data;
+    mod_info.data = NULL;
+    LY_LIST_FOR(mod_info.diff, node) {
+        if ((err_info = sr_diff_set_oper(node, "delete"))) {
+            goto cleanup;
+        }
+    }
+
+    /* set changed flags for all the modules, we have loaded only those with some data */
+    for (i = 0; i < mod_info.mod_count; ++i) {
+        mod_info.mods[i].state |= MOD_INFO_CHANGED;
+    }
+
+    /* notify all the subscribers and store the changes */
+    if ((err_info = sr_changes_notify_store(&mod_info, session, shmmod_session_del, timeout_ms, &cb_err_info))) {
+        goto cleanup;
+    }
+
+cleanup:
+    /* MODULES UNLOCK */
+    sr_shmmod_modinfo_unlock(&mod_info);
+
+    sr_modinfo_erase(&mod_info);
+
+    /* CONTEXT UNLOCK */
+    sr_lycc_unlock(session->conn, SR_LOCK_READ, 0, __func__);
+    if (cb_err_info) {
+        /* return callback error if some was generated */
+        assert(!err_info);
+        err_info = cb_err_info;
+    }
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_discard_oper_changes(sr_conn_ctx_t *UNUSED(conn), sr_session_ctx_t *session, const char *module_name,
+        uint32_t timeout_ms)
+{
+    sr_error_info_t *err_info = NULL;
+
+    SR_CHECK_ARG_APIRET(!session, NULL, err_info);
+
+    return _sr_discard_oper_changes(session, module_name, 0, timeout_ms);
+}
+
+API int
+sr_get_oper_changes(sr_session_ctx_t *session, const char *module_name, sr_data_t **data)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_conn_ctx_t *conn = session->conn;
+    struct sr_mod_info_s mod_info;
+    const struct lys_module *ly_mod = NULL;
+
+    SR_CHECK_ARG_APIRET(!session || !data, NULL, err_info);
+
+    *data = NULL;
+
+    SR_MODINFO_INIT(mod_info, conn, SR_DS_OPERATIONAL, SR_DS_OPERATIONAL);
+
+    /* CONTEXT LOCK */
+    if ((err_info = sr_lycc_lock(conn, SR_LOCK_READ, 0, __func__))) {
+        return sr_api_ret(session, err_info);
+    }
+
+    /* prepare data wrapper */
+    if ((err_info = _sr_acquire_data(conn, NULL, data))) {
+        goto cleanup;
+    }
+
+    if (module_name) {
+        /* try to find this module */
+        ly_mod = ly_ctx_get_module_implemented(conn->ly_ctx, module_name);
+        if (!ly_mod) {
+            sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
+            goto cleanup;
+        }
+    }
+
+    /* add only modules that this session has push oper data for */
+    if ((err_info = sr_modinfo_collect_oper_sess(session, ly_mod, &mod_info))) {
+        goto cleanup;
+    }
+
+    if (!mod_info.mod_count) {
+        /* no modules with oper push data of this session */
+        goto cleanup;
+    }
+
+    /* add modules and get data */
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, 0))) {
+        goto cleanup;
+    }
+
+    /* use the data */
+    (*data)->tree = mod_info.data;
+    mod_info.data = NULL;
+
+cleanup:
+    /* MODULES UNLOCK */
+    sr_shmmod_modinfo_unlock(&mod_info);
+
+    sr_modinfo_erase(&mod_info);
+
+    if (err_info || !(*data)->tree) {
+        sr_release_data(*data);
+        *data = NULL;
+    }
+    return sr_api_ret(session, err_info);
+}
+
+API int
+sr_set_oper_changes_order(sr_session_ctx_t *session, const char *module_name, uint32_t order)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod = NULL;
+
+    SR_CHECK_ARG_APIRET(!session || !order, NULL, err_info);
+
+    /* check module existence */
+    if (module_name && !(ly_mod = ly_ctx_get_module_implemented(session->conn->ly_ctx, module_name))) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
+        goto cleanup;
+    }
+
+    /* update its order */
+    err_info = sr_shmmod_session_oper_order(session, ly_mod, order, NULL);
+
+cleanup:
+    return sr_api_ret(NULL, err_info);
+}
+
+API int
+sr_get_oper_changes_order(sr_session_ctx_t *session, const char *module_name, uint32_t *order)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct lys_module *ly_mod;
+
+    SR_CHECK_ARG_APIRET(!session || !module_name || !order, NULL, err_info);
+
+    /* check module existence */
+    if (!(ly_mod = ly_ctx_get_module_implemented(session->conn->ly_ctx, module_name))) {
+        sr_errinfo_new(&err_info, SR_ERR_NOT_FOUND, "Module \"%s\" was not found in sysrepo.", module_name);
+        goto cleanup;
+    }
+
+    /* read its order */
+    *order = 0;
+    err_info = sr_shmmod_session_oper_order(session, ly_mod, 0, order);
+
+cleanup:
+    return sr_api_ret(NULL, err_info);
 }
 
 /**
@@ -4530,7 +4675,7 @@ _sr_un_lock(sr_session_ctx_t *session, const char *module_name, int lock, uint32
         }
     }
     if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_WRITE, SR_MI_DATA_NO | SR_MI_PERM_READ | SR_MI_PERM_STRICT,
-            session->sid, session->orig_name, session->orig_data, 0, timeout_ms, 0))) {
+            session, 0, timeout_ms, 0))) {
         goto cleanup;
     }
 
@@ -4616,7 +4761,7 @@ sr_get_lock(sr_conn_ctx_t *conn, sr_datastore_t datastore, const char *module_na
         }
     }
     if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_NONE, SR_MI_DATA_NO | SR_MI_PERM_READ |
-            SR_MI_PERM_STRICT, 0, NULL, NULL, 0, 0, 0))) {
+            SR_MI_PERM_STRICT, NULL, 0, 0, 0))) {
         goto cleanup;
     }
 
@@ -5259,8 +5404,7 @@ sr_module_change_subscribe_enable(sr_session_ctx_t *session, struct sr_mod_info_
     if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, mod_info))) {
         goto cleanup;
     }
-    if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session->sid, session->orig_name,
-            session->orig_data, 0, 0, SR_OPER_NO_SUBS))) {
+    if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, SR_MI_PERM_NO, session, 0, 0, SR_OPER_NO_SUBS))) {
         goto cleanup;
     }
 
@@ -6352,7 +6496,7 @@ _sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, con
         goto cleanup;
     }
     if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_RO | SR_MI_PERM_NO,
-            session->sid, session->orig_name, session->orig_data, SR_OPER_CB_TIMEOUT, 0, 0))) {
+            session, SR_OPER_CB_TIMEOUT, 0, 0))) {
         goto cleanup;
     }
 
@@ -6413,7 +6557,7 @@ _sr_rpc_send_tree(sr_session_ctx_t *session, struct sr_mod_info_s *mod_info, con
         goto cleanup;
     }
     if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_RO | SR_MI_PERM_NO,
-            session->sid, session->orig_name, session->orig_data, SR_OPER_CB_TIMEOUT, 0, 0))) {
+            session, SR_OPER_CB_TIMEOUT, 0, 0))) {
         goto cleanup;
     }
 
@@ -6478,7 +6622,7 @@ _sr_rpc_ext_send_tree(sr_session_ctx_t *session, const struct lyd_node *ext_pare
         goto cleanup;
     }
     if ((err_info = sr_modinfo_consolidate(mod_info, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_RO | SR_MI_PERM_NO,
-            session->sid, session->orig_name, session->orig_data, SR_OPER_CB_TIMEOUT, 0, 0))) {
+            session, SR_OPER_CB_TIMEOUT, 0, 0))) {
         goto cleanup;
     }
 
@@ -6648,8 +6792,8 @@ sr_rpc_send_tree(sr_session_ctx_t *session, struct lyd_node *input, uint32_t tim
         if ((err_info = sr_modinfo_add(lyd_owner_module(input_top), parent_path, 0, 0, &mod_info))) {
             goto cleanup;
         }
-        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_NO,
-                session->sid, session->orig_name, session->orig_data, SR_OPER_CB_TIMEOUT, 0, 0))) {
+        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_NO, session,
+                SR_OPER_CB_TIMEOUT, 0, 0))) {
             goto cleanup;
         }
     }
@@ -6944,8 +7088,8 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
         if ((err_info = sr_modinfo_add(lyd_owner_module(notif_top), parent_path, 0, 0, &mod_info))) {
             goto cleanup;
         }
-        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_NO,
-                session->sid, session->orig_name, session->orig_data, SR_OPER_CB_TIMEOUT, 0, 0))) {
+        if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_DATA_RO | SR_MI_PERM_NO, session,
+                SR_OPER_CB_TIMEOUT, 0, 0))) {
             goto cleanup;
         }
     }
@@ -6970,7 +7114,7 @@ sr_notif_send_tree(sr_session_ctx_t *session, struct lyd_node *notif, uint32_t t
         }
     }
     if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_NEW_DEPS | SR_MI_DATA_RO | SR_MI_PERM_NO,
-            session->sid, session->orig_name, session->orig_data, SR_OPER_CB_TIMEOUT, 0, 0))) {
+            session, SR_OPER_CB_TIMEOUT, 0, 0))) {
         goto cleanup;
     }
 
@@ -7254,8 +7398,8 @@ sr_oper_get_subscribe(sr_session_ctx_t *session, const char *module_name, const 
     SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
 
     /* OPER GET SUB WRITE LOCK */
-    if ((err_info = sr_rwlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__, NULL,
-            NULL))) {
+    if ((err_info = sr_rwlock(&shm_mod->oper_get_lock, SR_SHMEXT_SUB_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__,
+            NULL, NULL))) {
         goto cleanup;
     }
 

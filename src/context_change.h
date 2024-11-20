@@ -30,7 +30,6 @@ struct sr_data_update_s {
     struct sr_data_update_set_s {
         struct lyd_node *start;
         struct lyd_node *run;
-        struct lyd_node *oper;
         struct lyd_node *fdflt;
     } old;
     struct sr_data_update_set_s new;

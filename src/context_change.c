@@ -31,6 +31,7 @@
 #include "config.h"
 #include "log.h"
 #include "ly_wrap.h"
+#include "modinfo.h"
 #include "plugins_datastore.h"
 #include "plugins_notification.h"
 #include "shm_ext.h"
@@ -44,20 +45,11 @@ sr_lycc_lock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, int lydmods_lock, const c
     sr_error_info_t *err_info = NULL, *tmp_err;
     sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
     sr_lock_mode_t remap_mode = SR_LOCK_NONE;
-    struct sr_shmmod_recover_cb_s cb_data;
     struct ly_ctx *new_ctx = NULL;
     char *path;
 
-    /* fill the cb_data for recovery */
-    cb_data.ly_ctx_p = &conn->ly_ctx;
-    cb_data.ds = SR_DS_STARTUP;
-    if ((err_info = sr_ds_handle_find(srpds_json.name, conn, &cb_data.ds_handle))) {
-        return err_info;
-    }
-
     /* CONTEXT LOCK */
-    if ((err_info = sr_rwlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func,
-            sr_shmmod_recover_cb, &cb_data))) {
+    if ((err_info = sr_rwlock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func, NULL, NULL))) {
         return err_info;
     }
 
@@ -144,14 +136,9 @@ sr_lycc_relock(sr_conn_ctx_t *conn, sr_lock_mode_t mode, const char *func)
 {
     sr_error_info_t *err_info = NULL;
     sr_main_shm_t *main_shm = SR_CONN_MAIN_SHM(conn);
-    struct sr_shmmod_recover_cb_s cb_data;
-
-    cb_data.ly_ctx_p = &conn->ly_ctx;
-    cb_data.ds = SR_DS_STARTUP;
 
     /* RELOCK */
-    if ((err_info = sr_rwrelock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func,
-            sr_shmmod_recover_cb, &cb_data))) {
+    if ((err_info = sr_rwrelock(&main_shm->context_lock, SR_CONTEXT_LOCK_TIMEOUT, mode, conn->cid, func, NULL, NULL))) {
         return err_info;
     }
     assert(main_shm->content_id == conn->content_id);
@@ -638,7 +625,7 @@ sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *ctx, struct sr_dat
         if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle[ds]))) {
             goto cleanup;
         }
-        if ((err_info = sr_module_file_data_append(ly_mod, ds_handle, ds, NULL, 0, &data->start))) {
+        if ((err_info = sr_module_file_data_append(ly_mod, ds_handle, ds, 0, 0, NULL, 0, &data->start))) {
             goto cleanup;
         }
 
@@ -648,18 +635,9 @@ sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *ctx, struct sr_dat
             if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle[ds]))) {
                 goto cleanup;
             }
-            if ((err_info = sr_module_file_data_append(ly_mod, ds_handle, ds, NULL, 0, &data->run))) {
+            if ((err_info = sr_module_file_data_append(ly_mod, ds_handle, ds, 0, 0, NULL, 0, &data->run))) {
                 goto cleanup;
             }
-        }
-
-        /* find operational plugin and append data */
-        ds = SR_DS_OPERATIONAL;
-        if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle[ds]))) {
-            goto cleanup;
-        }
-        if ((err_info = sr_module_file_data_append(ly_mod, ds_handle, ds, NULL, 0, &data->oper))) {
-            goto cleanup;
         }
 
         /* find factory-default plugin and append data */
@@ -667,7 +645,7 @@ sr_lycc_append_data(sr_conn_ctx_t *conn, const struct ly_ctx *ctx, struct sr_dat
         if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle[ds]))) {
             goto cleanup;
         }
-        if ((err_info = sr_module_file_data_append(ly_mod, ds_handle, ds, NULL, 0, &data->fdflt))) {
+        if ((err_info = sr_module_file_data_append(ly_mod, ds_handle, ds, 0, 0, NULL, 0, &data->fdflt))) {
             goto cleanup;
         }
     }
@@ -721,67 +699,6 @@ cleanup:
 }
 
 /**
- * @brief Update oper data parsed with old context to be parsed with a new context.
- *
- * @param[in] old_data Old data to update.
- * @param[in] new_ctx New context to use.
- * @param[out] new_data Data tree in @p new_ctx.
- * @return err_info, NULL on success.
- */
-static sr_error_info_t *
-sr_lycc_update_oper_data_tree(const struct lyd_node *old_data, const struct ly_ctx *new_ctx, struct lyd_node **new_data)
-{
-    sr_error_info_t *err_info = NULL;
-    char *data_json = NULL;
-    struct lyd_node *root, *node, *to_free;
-
-    *new_data = NULL;
-
-    /* print the data of all the modules into JSON */
-    if ((err_info = sr_lyd_print_data(old_data, LYD_JSON, LYD_PRINT_SHRINK, -1, &data_json, NULL))) {
-        goto cleanup;
-    }
-
-    /* try to load it into the new updated context skipping any unknown nodes */
-    if ((err_info = sr_lyd_parse_data(new_ctx, data_json, NULL, LYD_JSON,
-            LYD_PARSE_OPAQ | LYD_PARSE_STORE_ONLY | LYD_PARSE_ORDERED, 0, new_data))) {
-        goto cleanup;
-    }
-
-    if (!*new_data) {
-        /* no data */
-        goto cleanup;
-    }
-
-    /* we need to manually trim any unknown nodes because we had to use LYD_PARSE_OPAQ flag */
-    to_free = NULL;
-    LY_LIST_FOR(*new_data, root) {
-        LYD_TREE_DFS_BEGIN(root, node) {
-            if (*new_data == to_free) {
-                *new_data = (*new_data)->next;
-            }
-            lyd_free_tree(to_free);
-            to_free = NULL;
-
-            if (!lyd_owner_module(node)) {
-                /* free this subtree */
-                to_free = node;
-                LYD_TREE_DFS_continue = 1;
-            }
-            LYD_TREE_DFS_END(root, node);
-        }
-    }
-    if (*new_data == to_free) {
-        *new_data = (*new_data)->next;
-    }
-    lyd_free_tree(to_free);
-
-cleanup:
-    free(data_json);
-    return err_info;
-}
-
-/**
  * @brief Get initial data for a datastore using a DS plugin load() callback.
  *
  * @param[in] conn Connection to use.
@@ -801,6 +718,8 @@ sr_lycc_update_data_init_ds_load(sr_conn_ctx_t *conn, sr_int_install_mod_t *new_
     struct lyd_node *mod_data = NULL, *dup_data = NULL;
     uint32_t i;
 
+    assert(ds != SR_DS_OPERATIONAL);
+
     *init_data = NULL;
 
     for (i = 0; i < new_mod_count; ++i) {
@@ -815,7 +734,7 @@ sr_lycc_update_data_init_ds_load(sr_conn_ctx_t *conn, sr_int_install_mod_t *new_
         }
 
         /* load the initial data of the module */
-        if ((err_info = ds_handle->plugin->load_cb(new_mods[i].ly_mod, ds, NULL, 0, ds_handle->plg_data, &mod_data))) {
+        if ((err_info = ds_handle->plugin->load_cb(new_mods[i].ly_mod, ds, 0, 0, NULL, 0, ds_handle->plg_data, &mod_data))) {
             goto cleanup;
         }
         if (!mod_data) {
@@ -939,9 +858,6 @@ sr_lycc_update_data(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, struct ly
     if ((err_info = sr_lycc_update_data_tree(data_info->old.fdflt, parse_opts, new_ctx, &fdflt_init_data, &data_info->new.fdflt))) {
         goto cleanup;
     }
-    if ((err_info = sr_lycc_update_oper_data_tree(data_info->old.oper, new_ctx, &data_info->new.oper))) {
-        goto cleanup;
-    }
 
     /* fully validate complete startup, running (what is enabled), and factory-default datastore */
     if ((err_info = sr_lyd_validate_all(&data_info->new.start, new_ctx, LYD_VALIDATE_NO_STATE))) {
@@ -1011,6 +927,8 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
     uint32_t idx = 0, ly_log_opts = 0;
     int diff;
 
+    assert(ds != SR_DS_OPERATIONAL);
+
     while ((new_ly_mod = ly_ctx_get_module_iter(new_ctx, &idx))) {
         if (!new_ly_mod->implemented || !strcmp(new_ly_mod->name, "sysrepo")) {
             continue;
@@ -1025,8 +943,8 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
         /* get old and new data of the module */
         lyd_free_siblings(new_mod_data);
         lyd_free_siblings(old_mod_data);
-        new_mod_data = sr_module_data_unlink(new_data, new_ly_mod);
-        old_mod_data = sr_module_data_unlink(old_data, old_ly_mod ? old_ly_mod : new_ly_mod);
+        new_mod_data = sr_module_data_unlink(new_data, new_ly_mod, 0);
+        old_mod_data = sr_module_data_unlink(old_data, old_ly_mod ? old_ly_mod : new_ly_mod, 0);
 
         /* get plugin name */
         if (asprintf(&xpath, "module[name='%s']/plugin[datastore='%s']/name", new_ly_mod->name, sr_ds2ident(ds)) == -1) {
@@ -1069,7 +987,7 @@ sr_lycc_store_data_ds_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ct
 
         if (diff) {
             /* store new data */
-            if ((err_info = ds_handle->plugin->store_cb(new_ly_mod, ds, mod_diff, new_mod_data, ds_handle->plg_data))) {
+            if ((err_info = ds_handle->plugin->store_cb(new_ly_mod, ds, 0, 0, mod_diff, new_mod_data, ds_handle->plg_data))) {
                 break;
             }
         }
@@ -1099,12 +1017,6 @@ sr_lycc_store_data_if_differ(sr_conn_ctx_t *conn, const struct ly_ctx *new_ctx, 
         return err_info;
     }
 
-    /* operational */
-    if ((err_info = sr_lycc_store_data_ds_if_differ(conn, new_ctx, SR_DS_OPERATIONAL, sr_mods, &data_info->old.oper,
-            &data_info->new.oper))) {
-        return err_info;
-    }
-
     /* factory-default */
     if ((err_info = sr_lycc_store_data_ds_if_differ(conn, new_ctx, SR_DS_FACTORY_DEFAULT, sr_mods, &data_info->old.fdflt,
             &data_info->new.fdflt))) {
@@ -1119,11 +1031,9 @@ sr_lycc_update_data_clear(struct sr_data_update_s *data_info)
 {
     lyd_free_siblings(data_info->old.start);
     lyd_free_siblings(data_info->old.run);
-    lyd_free_siblings(data_info->old.oper);
     lyd_free_siblings(data_info->old.fdflt);
 
     lyd_free_siblings(data_info->new.start);
     lyd_free_siblings(data_info->new.run);
-    lyd_free_siblings(data_info->new.oper);
     lyd_free_siblings(data_info->new.fdflt);
 }

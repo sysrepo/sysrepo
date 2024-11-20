@@ -4,8 +4,8 @@
  * @brief main SHM routines modifying module information
  *
  * @copyright
- * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -35,10 +35,12 @@
 
 #include "common.h"
 #include "config.h"
+#include "edit_diff.h"
 #include "log.h"
 #include "ly_wrap.h"
 #include "modinfo.h"
 #include "plugins_datastore.h"
+#include "shm_ext.h"
 
 sr_error_info_t *
 sr_shmmod_open(sr_shm_t *shm, int zero)
@@ -223,7 +225,7 @@ sr_shmmod_fill(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_
             /* set replay-support flag */
             smod->replay_supp = 1;
         } else if (!strcmp(sr_child->schema->name, "enabled-feature")) {
-            /* count features and ther names length */
+            /* count features and their names length */
             ++smod->feat_count;
             feat_names_len += sr_strshmlen(lyd_get_value(sr_child));
         } else if (!strcmp(sr_child->schema->name, "plugin")) {
@@ -274,6 +276,10 @@ sr_shmmod_fill(sr_shm_t *shm_mod, size_t shm_mod_idx, const struct lyd_node *sr_
     assert(shm_end == shm_mod->addr + shm_mod->size);
 
     if (old_smod) {
+        /* copy oper push data */
+        smod->oper_push_data = old_smod->oper_push_data;
+        smod->oper_push_data_count = old_smod->oper_push_data_count;
+
         /* copy change subscriptions */
         for (ds = 0; ds < SR_DS_COUNT; ++ds) {
             smod->change_sub[ds].subs = old_smod->change_sub[ds].subs;
@@ -846,6 +852,140 @@ cleanup:
 }
 
 /**
+ * @brief Remove push oper data of a module for a session.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] ly_mod Module to use.
+ * @param[in] shm_mod SHM module.
+ * @param[in] cid Connection ID of the push oper data.
+ * @param[in] sid Session ID of the push oper data.
+ * @param[in] has_data Flag set of the push oper data.
+ * @return err_info, NULL on success.
+ */
+static sr_error_info_t *
+sr_shmmod_del_module_sess_oper_data(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_mod_t *shm_mod,
+        sr_cid_t cid, uint32_t sid, int has_data)
+{
+    sr_error_info_t *err_info = NULL;
+    const struct sr_ds_handle_s *oper_ds_handle;
+    struct lyd_node *mod_diff = NULL, *node;
+
+    /* get DS handle */
+    if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[SR_DS_OPERATIONAL], conn,
+            &oper_ds_handle))) {
+        goto cleanup;
+    }
+
+    if (has_data) {
+        /* load oper data */
+        if ((err_info = oper_ds_handle->plugin->load_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, NULL, 0, oper_ds_handle->plg_data,
+                &mod_diff))) {
+            goto cleanup;
+        }
+
+        /* make into diff */
+        LY_LIST_FOR(mod_diff, node) {
+            if ((err_info = sr_diff_set_oper(node, "delete"))) {
+                goto cleanup;
+            }
+        }
+
+        /* store the empty data */
+        if ((err_info = oper_ds_handle->plugin->store_cb(ly_mod, SR_DS_OPERATIONAL, cid, sid, mod_diff, NULL,
+                oper_ds_handle->plg_data))) {
+            goto cleanup;
+        }
+    }
+
+    /* remove this module oper push data entry */
+    if ((err_info = sr_shmext_oper_push_del(conn, shm_mod, ly_mod->name, sid, SR_LOCK_WRITE))) {
+        goto cleanup;
+    }
+
+cleanup:
+    lyd_free_siblings(mod_diff);
+    return err_info;
+}
+
+sr_error_info_t *
+sr_shmmod_del_module_oper_data(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, uint32_t *mod_state,
+        sr_mod_t *shm_mod, int dead_only)
+{
+    sr_error_info_t *err_info = NULL, *tmp_err;
+    struct sr_mod_lock_s *shm_lock;
+    sr_mod_oper_push_t *oper_push_l = NULL;
+    uint16_t oper_push_count, i;
+
+    assert(!mod_state || (*mod_state & MOD_INFO_RLOCK));
+
+    /* find SHM mod */
+    if (!shm_mod) {
+        shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
+        SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
+    }
+    shm_lock = &shm_mod->data_lock_info[SR_DS_OPERATIONAL];
+
+    if (mod_state) {
+        /* MOD READ UNLOCK */
+        sr_rwunlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_READ, conn->cid, __func__);
+        *mod_state &= ~MOD_INFO_RLOCK;
+    }
+
+    /* MOD WRITE LOCK */
+    if ((err_info = sr_shmmod_lock(shm_lock, 0, SR_LOCK_WRITE, 0, conn->cid, 0, 0, ly_mod->name))) {
+        goto cleanup;
+    }
+    if (mod_state) {
+        *mod_state |= MOD_INFO_WLOCK;
+    }
+
+    /* allocate mem */
+    oper_push_count = shm_mod->oper_push_data_count;
+    oper_push_l = malloc(oper_push_count * sizeof *oper_push_l);
+    SR_CHECK_MEM_GOTO(!oper_push_l, err_info, cleanup_unlock);
+
+    /* EXT READ LOCK */
+    if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 1, __func__))) {
+        goto cleanup_unlock;
+    }
+
+    /* get local copy of push oper data, they cannot change because we are holding mod write lock */
+    memcpy(oper_push_l, conn->ext_shm.addr + shm_mod->oper_push_data, oper_push_count * sizeof *oper_push_l);
+
+    /* EXT READ UNLOCK */
+    sr_shmext_conn_remap_unlock(conn, SR_LOCK_READ, 1, __func__);
+
+    for (i = 0; i < oper_push_count; ++i) {
+        if (dead_only && sr_conn_is_alive(oper_push_l[i].cid)) {
+            continue;
+        }
+
+        /* discard these oper changes and/or only mod SHM push oper data entry */
+        if ((err_info = sr_shmmod_del_module_sess_oper_data(conn, ly_mod, shm_mod, oper_push_l[i].cid,
+                oper_push_l[i].sid, oper_push_l[i].has_data))) {
+            goto cleanup_unlock;
+        }
+    }
+
+cleanup_unlock:
+    /* MOD WRITE UNLOCK */
+    sr_rwunlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE, conn->cid, __func__);
+
+    if (mod_state) {
+        /* MOD READ LOCK */
+        if ((tmp_err = sr_shmmod_lock(shm_lock, 0, SR_LOCK_READ, 0, conn->cid, 0, 0, ly_mod->name))) {
+            sr_errinfo_merge(&err_info, tmp_err);
+        } else {
+            *mod_state |= MOD_INFO_RLOCK;
+        }
+    }
+
+cleanup:
+    free(oper_push_l);
+    return err_info;
+}
+
+/**
  * @brief Create feature array ended with NULL from SHM features.
  *
  * @param[in] mod_shm_addr Mod SHM address.
@@ -1135,48 +1275,11 @@ cleanup:
     return err_info;
 }
 
-void
-sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data)
-{
-    struct sr_shmmod_recover_cb_s *cb_data = data;
-    const struct lys_module *ly_mod;
-
-    (void)cid;
-
-    if (mode != SR_LOCK_WRITE) {
-        /* nothing to recover */
-        return;
-    }
-
-    /* get sysrepo module from the context now that it cannot change */
-    ly_mod = ly_ctx_get_module_implemented(*cb_data->ly_ctx_p, "sysrepo");
-    assert(ly_mod);
-
-    /* recovery specific for the plugin */
-    cb_data->ds_handle->plugin->recover_cb(ly_mod, cb_data->ds, cb_data->ds_handle->plg_data);
-}
-
-/**
- * @brief Lock or relock a mod SHM module.
- *
- * @param[in] ly_mod libyang module.
- * @param[in] ds Datastore.
- * @param[in] shm_lock Main SHM module lock.
- * @param[in] timeout_ms Timeout in ms. If 0, the default timeout is used.
- * @param[in] mode Lock mode of the module.
- * @param[in] ds_timeout_ms Timeout in ms for DS-lock in case it is required and locked, if 0 no waiting is performed.
- * @param[in] cid Connection ID.
- * @param[in] sid Sysrepo session ID to store.
- * @param[in] ds_handle DS plugin handle.
- * @param[in] relock Whether some lock is already held or not.
- */
-static sr_error_info_t *
-sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod_lock_s *shm_lock, uint32_t timeout_ms,
-        sr_lock_mode_t mode, uint32_t ds_timeout_ms, sr_cid_t cid, uint32_t sid, const struct sr_ds_handle_s *ds_handle,
-        int relock)
+sr_error_info_t *
+sr_shmmod_lock(struct sr_mod_lock_s *shm_lock, uint32_t timeout_ms, sr_lock_mode_t mode, uint32_t ds_timeout_ms,
+        sr_cid_t cid, uint32_t sid, int relock, const char *mod_name)
 {
     sr_error_info_t *err_info = NULL, *tmp_err;
-    struct sr_shmmod_recover_cb_s cb_data;
     int ds_locked;
     uint32_t sleep_ms;
 
@@ -1185,20 +1288,15 @@ sr_shmmod_lock(const struct lys_module *ly_mod, sr_datastore_t ds, struct sr_mod
         timeout_ms = SR_MOD_LOCK_TIMEOUT;
     }
 
-    /* fill recovery callback information, context cannot be changed */
-    cb_data.ly_ctx_p = (struct ly_ctx **)&ly_mod->ctx;
-    cb_data.ds = ds;
-    cb_data.ds_handle = ds_handle;
-
 ds_lock_retry:
     ds_locked = 0;
 
     if (relock) {
         /* RELOCK */
-        err_info = sr_rwrelock(&shm_lock->data_lock, timeout_ms, mode, cid, __func__, sr_shmmod_recover_cb, &cb_data);
+        err_info = sr_rwrelock(&shm_lock->data_lock, timeout_ms, mode, cid, __func__, NULL, NULL);
     } else {
         /* LOCK */
-        err_info = sr_rwlock(&shm_lock->data_lock, timeout_ms, mode, cid, __func__, sr_shmmod_recover_cb, &cb_data);
+        err_info = sr_rwlock(&shm_lock->data_lock, timeout_ms, mode, cid, __func__, NULL, NULL);
     }
     if (err_info) {
         goto cleanup;
@@ -1258,7 +1356,7 @@ revert_lock:
     } else {
         /* timeout elapsed */
         sr_errinfo_new(&err_info, SR_ERR_LOCKED, "Module \"%s\" is DS-locked by session %" PRIu32 ".",
-                ly_mod->name, shm_lock->ds_lock_sid);
+                mod_name, shm_lock->ds_lock_sid);
     }
 
 cleanup:
@@ -1303,8 +1401,8 @@ sr_shmmod_modinfo_lock(struct sr_mod_info_s *mod_info, sr_datastore_t ds, sr_loc
         }
 
         /* MOD LOCK */
-        if ((err_info = sr_shmmod_lock(mod->ly_mod, ds, shm_lock, timeout_ms, mode, ds_timeout_ms,
-                mod_info->conn->cid, sid, mod->ds_handle[ds], 0))) {
+        if ((err_info = sr_shmmod_lock(shm_lock, timeout_ms, mode, ds_timeout_ms, mod_info->conn->cid, sid, 0,
+                mod->ly_mod->name))) {
             return err_info;
         }
 
@@ -1383,8 +1481,8 @@ sr_shmmod_modinfo_rdlock_upgrade(struct sr_mod_info_s *mod_info, uint32_t sid, u
          * causing potential dead-lock with other apply_changes using the same modules */
         if ((mod->state & (MOD_INFO_RLOCK_UPGR | MOD_INFO_REQ)) == (MOD_INFO_RLOCK_UPGR | MOD_INFO_REQ)) {
             /* MOD WRITE UPGRADE */
-            if ((err_info = sr_shmmod_lock(mod->ly_mod, mod_info->ds, shm_lock, timeout_ms, SR_LOCK_WRITE_URGE,
-                    ds_timeout_ms, mod_info->conn->cid, sid, mod->ds_handle[mod_info->ds], 1))) {
+            if ((err_info = sr_shmmod_lock(shm_lock, timeout_ms, SR_LOCK_WRITE_URGE, ds_timeout_ms,
+                    mod_info->conn->cid, sid, 1, mod->ly_mod->name))) {
                 return err_info;
             }
 
@@ -1412,8 +1510,8 @@ sr_shmmod_modinfo_wrlock_downgrade(struct sr_mod_info_s *mod_info, uint32_t sid,
         /* downgrade write-locked and read-upgr modules */
         if (mod->state & (MOD_INFO_WLOCK | MOD_INFO_RLOCK_UPGR)) {
             /* MOD READ DOWNGRADE */
-            if ((err_info = sr_shmmod_lock(mod->ly_mod, mod_info->ds, shm_lock, timeout_ms, SR_LOCK_READ,
-                    0, mod_info->conn->cid, sid, mod->ds_handle[mod_info->ds], 1))) {
+            if ((err_info = sr_shmmod_lock(shm_lock, timeout_ms, SR_LOCK_READ, 0, mod_info->conn->cid, sid, 1,
+                    mod->ly_mod->name))) {
                 return err_info;
             }
 
@@ -1513,8 +1611,8 @@ sr_shmmod_release_locks(sr_conn_ctx_t *conn, uint32_t sid)
                 }
 
                 /* MOD WRITE LOCK */
-                if ((err_info = sr_shmmod_lock(ly_mod, ds, shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE, 0, conn->cid,
-                        sid, ds_handle, 0))) {
+                if ((err_info = sr_shmmod_lock(shm_lock, SR_MOD_LOCK_TIMEOUT, SR_LOCK_WRITE, 0, conn->cid, sid, 0,
+                        ly_mod->name))) {
                     sr_errinfo_free(&err_info);
                 } else {
                     /* reset candidate */
@@ -1577,13 +1675,13 @@ sr_shmmod_copy_mod(const struct lys_module *ly_mod, const struct sr_ds_handle_s 
 
     /* load source data */
     assert(sds != SR_DS_CANDIDATE);
-    if ((err_info = sds_handle->plugin->load_cb(ly_mod, sds, NULL, 0, sds_handle->plg_data, &s_mod_data))) {
+    if ((err_info = sds_handle->plugin->load_cb(ly_mod, sds, 0, 0, NULL, 0, sds_handle->plg_data, &s_mod_data))) {
         goto cleanup;
     }
 
     /* load also current target data */
     assert(tds != SR_DS_CANDIDATE);
-    if ((err_info = tds_handle->plugin->load_cb(ly_mod, tds, NULL, 0, tds_handle->plg_data, &r_mod_data))) {
+    if ((err_info = tds_handle->plugin->load_cb(ly_mod, tds, 0, 0, NULL, 0, tds_handle->plg_data, &r_mod_data))) {
         goto cleanup;
     }
 
@@ -1596,7 +1694,7 @@ sr_shmmod_copy_mod(const struct lys_module *ly_mod, const struct sr_ds_handle_s 
     }
 
     /* write data to target */
-    if ((err_info = tds_handle->plugin->store_cb(ly_mod, tds, mod_diff, s_mod_data, tds_handle->plg_data))) {
+    if ((err_info = tds_handle->plugin->store_cb(ly_mod, tds, 0, 0, mod_diff, s_mod_data, tds_handle->plg_data))) {
         goto cleanup;
     }
 
@@ -1692,7 +1790,6 @@ sr_shmmod_change_prio(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_d
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_t *shm_mod;
-    const struct sr_ds_handle_s *ds_handle;
     struct sr_mod_lock_s *shm_lock;
 
     assert((!prio && prio_p) || !prio_p);
@@ -1701,17 +1798,12 @@ sr_shmmod_change_prio(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_d
     shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(conn), ly_mod->name);
     SR_CHECK_INT_RET(!shm_mod, err_info);
 
-    /* get DS plugin handle */
-    if ((err_info = sr_ds_handle_find(conn->mod_shm.addr + shm_mod->plugins[ds], conn, &ds_handle))) {
-        return err_info;
-    }
-
     /* use read lock for getting, write lock for setting */
     shm_lock = &shm_mod->data_lock_info[ds];
 
     /* SHM MOD LOCK */
-    if ((err_info = sr_shmmod_lock(ly_mod, ds, shm_lock, SR_CHANGE_CB_TIMEOUT, prio_p ? SR_LOCK_READ : SR_LOCK_WRITE,
-            SR_CHANGE_CB_TIMEOUT, conn->cid, 0, ds_handle, 0))) {
+    if ((err_info = sr_shmmod_lock(shm_lock, SR_CHANGE_CB_TIMEOUT, prio_p ? SR_LOCK_READ : SR_LOCK_WRITE,
+            SR_CHANGE_CB_TIMEOUT, conn->cid, 0, 0, ly_mod->name))) {
         return err_info;
     }
 
@@ -1727,4 +1819,70 @@ sr_shmmod_change_prio(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_d
     sr_rwunlock(&shm_lock->data_lock, SR_MOD_LOCK_TIMEOUT, prio_p ? SR_LOCK_READ : SR_LOCK_WRITE, conn->cid, __func__);
 
     return NULL;
+}
+
+sr_error_info_t *
+sr_shmmod_session_oper_order(sr_session_ctx_t *session, const struct lys_module *ly_mod, uint32_t order,
+        uint32_t *order_p)
+{
+    sr_error_info_t *err_info = NULL;
+    sr_mod_shm_t *mod_shm;
+    sr_mod_t *shm_mod;
+    uint16_t i;
+
+    assert(!order || !order_p);
+
+    if (ly_mod) {
+        /* we have the module */
+        shm_mod = sr_shmmod_find_module(SR_CONN_MOD_SHM(session->conn), ly_mod->name);
+        SR_CHECK_INT_GOTO(!shm_mod, err_info, cleanup);
+
+        if (order_p) {
+            if ((err_info = sr_shmext_oper_push_get(session->conn, shm_mod, ly_mod->name, session->sid, order_p, NULL,
+                    SR_LOCK_NONE))) {
+                goto cleanup;
+            }
+        } else {
+            /* order 0 means it should be set to the next lowest order */
+            if ((err_info = sr_shmext_oper_push_update(session->conn, shm_mod, ly_mod->name, session->sid, order, -1,
+                    SR_LOCK_NONE))) {
+                goto cleanup;
+            }
+        }
+    } else {
+        mod_shm = SR_CONN_MOD_SHM(session->conn);
+
+        /* EXT READ LOCK */
+        if ((err_info = sr_shmext_conn_remap_lock(session->conn, SR_LOCK_READ, 1, __func__))) {
+            goto cleanup;
+        }
+
+        /* update all the modules with any push oper data */
+        for (i = 0; i < mod_shm->mod_count; ++i) {
+            shm_mod = SR_SHM_MOD_IDX(mod_shm, i);
+
+            if (!shm_mod->oper_push_data_count) {
+                continue;
+            }
+
+            if (order_p) {
+                if ((err_info = sr_shmext_oper_push_get(session->conn, shm_mod, ((char *)mod_shm) + shm_mod->name,
+                        session->sid, order_p, NULL, SR_LOCK_NONE))) {
+                    goto unlock;
+                }
+            } else {
+                if ((err_info = sr_shmext_oper_push_update(session->conn, shm_mod, ((char *)mod_shm) + shm_mod->name,
+                        session->sid, order, -1, SR_LOCK_NONE))) {
+                    goto unlock;
+                }
+            }
+        }
+
+unlock:
+        /* EXT READ UNLOCK */
+        sr_shmext_conn_remap_unlock(session->conn, SR_LOCK_READ, 1, __func__);
+    }
+
+cleanup:
+    return err_info;
 }

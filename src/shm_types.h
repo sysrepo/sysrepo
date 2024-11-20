@@ -4,8 +4,8 @@
  * @brief header for all SHM types
  *
  * @copyright
- * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -76,6 +76,16 @@ typedef struct {
 } sr_dep_t;
 
 /**
+ * @brief Mod SHM oper push data session entry.
+ */
+typedef struct {
+    sr_cid_t cid;   /**< Connection ID. */
+    uint32_t sid;   /**< Session ID. */
+    uint32_t order; /**< Order (priority) of the data, lower applied first. */
+    int has_data;   /**< Whether the session has any data stored or not. */
+} sr_mod_oper_push_t;
+
+/**
  * @brief Mod SHM RPC/action.
  */
 typedef struct {
@@ -134,6 +144,9 @@ typedef struct {
     uint16_t dep_count;         /**< Number of module data dependencies. */
     off_t inv_deps;             /**< Array of inverse module data dependencies (off_t *) (offset in mod SHM). */
     uint16_t inv_dep_count;     /**< Number of inverse module data dependencies. */
+
+    off_t oper_push_data;       /**< Array of oper push data entries (offset in ext SHM). */
+    uint16_t oper_push_data_count;  /**< Number of oper poush data entries. */
 
     struct {
         sr_rwlock_t lock;       /**< Process-shared lock for reading or preventing changes (READ) or modifying (WRITE)

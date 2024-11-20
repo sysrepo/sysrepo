@@ -547,12 +547,27 @@ static void
 test_remove_module(void **state)
 {
     struct state *st = (struct state *)*state;
+    sr_session_ctx_t *sess;
+    sr_data_t *data;
     int ret;
 
-    /* install modules with one depending on the other */
+    ret = sr_session_start(st->conn, SR_DS_OPERATIONAL, &sess);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* install modules with one depending on another */
     ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/ietf-interfaces.yang", TESTS_SRC_DIR "/files", NULL);
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/ietf-ip.yang", TESTS_SRC_DIR "/files", NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_install_module(st->conn, TESTS_SRC_DIR "/files/simple.yang", TESTS_SRC_DIR "/files", NULL);
+    assert_int_equal(ret, SR_ERR_OK);
+
+    /* store some oper data */
+    ret = sr_set_item_str(sess, "/ietf-interfaces:interfaces/interface[name='eth5']", NULL, NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_set_item_str(sess, "/simple:ac1/acd1", "false", NULL, 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
 
     /* fail to remove */
@@ -562,6 +577,17 @@ test_remove_module(void **state)
     /* force */
     ret = sr_remove_module(st->conn, "ietf-interfaces", 1);
     assert_int_equal(ret, SR_ERR_OK);
+
+    /* check the oper data */
+    ret = sr_get_data(sess, "/simple:*", 0, 0, 0, &data);
+    assert_int_equal(ret, SR_ERR_OK);
+    assert_string_equal(lyd_get_value(lyd_child(data->tree)), "false");
+    sr_release_data(data);
+
+    /* cleanup */
+    ret = sr_remove_module(st->conn, "simple", 0);
+    assert_int_equal(ret, SR_ERR_OK);
+    sr_session_stop(sess);
 }
 
 static void

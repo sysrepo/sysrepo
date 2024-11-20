@@ -117,6 +117,17 @@ sr_error_info_t *sr_modinfo_collect_xpath(const struct ly_ctx *ly_ctx, const cha
         sr_session_ctx_t *session, uint32_t xpath_opts, struct sr_mod_info_s *mod_info);
 
 /**
+ * @brief Collect modules with oper push data of a session.
+ *
+ * @param[in] sess Session to use.
+ * @param[in] ly_mod Optional module to check and and add.
+ * @param[in,out] mod_info Mod info to add to.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_modinfo_collect_oper_sess(sr_session_ctx_t *sess, const struct lys_module *ly_mod,
+        struct sr_mod_info_s *mod_info);
+
+/**
  * @brief Collect required modules of (MOD_INFO_REQ & MOD_INFO_CHANGED) | MOD_INFO_INV_DEP modules in mod info.
  * Other modules will not be validated.
  *
@@ -168,14 +179,14 @@ struct sr_mod_info_mod_s *sr_modinfo_next_mod(struct sr_mod_info_mod_s *last, st
 sr_error_info_t *sr_modinfo_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *edit, int create_diff);
 
 /**
- * @brief Merge sysrepo edit with mod info data that are actually an edit as well.
+ * @brief Apply operational sysrepo edit on mod info data.
  *
  * @param[in] mod_info Mod info to use.
- * @param[in] edit Sysrepo edit to merge.
+ * @param[in] data Sysrepo data to merge.
  * @param[in] create_diff Whether to also create diff with the original data tree.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_edit_merge(struct sr_mod_info_s *mod_info, const struct lyd_node *edit, int create_diff);
+sr_error_info_t *sr_modinfo_oper_edit_apply(struct sr_mod_info_s *mod_info, const struct lyd_node *data, int create_diff);
 
 /**
  * @brief Replace mod info data with new data.
@@ -218,16 +229,13 @@ void sr_modinfo_changesub_rdunlock(struct sr_mod_info_s *mod_info);
  * @param[in,out] mod_info Mod info to consolidate.
  * @param[in] mod_lock Mode of module lock.
  * @param[in] mi_opts Mod info options modifying the default behavior but some SR_MI_PERM_* must always be used.
- * @param[in] sid Session ID to store in lock information.
- * @param[in] orig_name Event originator name.
- * @param[in] orig_data Event originator data.
+ * @param[in] sess Session to use and get orig info from.
  * @param[in] timeout_ms Timeout for operational callbacks.
  * @param[in] ds_lock_timeout_ms Timeout in ms for DS-lock in case it is required and locked, if 0 no waiting is performed.
  * @param[in] get_oper_opts Get oper data options, ignored if getting only ::SR_DS_OPERATIONAL data (edit).
  */
 sr_error_info_t *sr_modinfo_consolidate(struct sr_mod_info_s *mod_info, sr_lock_mode_t mod_lock, int mi_opts,
-        uint32_t sid, const char *orig_name, const void *orig_data, uint32_t timeout_ms, uint32_t ds_lock_timeout_ms,
-        sr_get_oper_flag_t get_oper_opts);
+        sr_session_ctx_t *sess, uint32_t timeout_ms, uint32_t ds_lock_timeout_ms, sr_get_oper_flag_t get_oper_opts);
 
 /**
  * @brief Validate data for modules in mod info.
@@ -304,9 +312,11 @@ sr_error_info_t *sr_modinfo_generate_config_change_notif(struct sr_mod_info_s *m
  * @brief Store data (persistently) from mod info.
  *
  * @param[in] mod_info Mod info to use.
+ * @param[in] session Session to use, if operational DS.
+ * @param[in] shmmod_session_del Set if @p session oper data entry should be deleted from mod SHM.
  * @return err_info, NULL on success.
  */
-sr_error_info_t *sr_modinfo_data_store(struct sr_mod_info_s *mod_info);
+sr_error_info_t *sr_modinfo_data_store(struct sr_mod_info_s *mod_info, sr_session_ctx_t *session, int shmmod_session_del);
 
 /**
  * @brief Reset (unlock SHM files) all candidate data for mod info.

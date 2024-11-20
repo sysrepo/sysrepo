@@ -19,6 +19,7 @@
 
 #define _GNU_SOURCE
 
+#include <dirent.h>
 #include <sys/types.h>
 
 #include <libyang/libyang.h>
@@ -203,6 +204,19 @@ sr_error_info_t *srpjson_get_startup_dir(const char *plg_name, char **path);
 sr_error_info_t *srpjson_get_path(const char *plg_name, const char *mod_name, sr_datastore_t ds, char **path);
 
 /**
+ * @brief Get path to an operational datastore file of a module.
+ *
+ * @param[in] plg_name Plugin name.
+ * @param[in] mod_name Module name.
+ * @param[in] cid Connection ID.
+ * @param[in] sid Session ID.
+ * @param[out] path Generated file path.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *srpjson_get_oper_path(const char *plg_name, const char *mod_name, sr_cid_t cid, uint32_t sid,
+        char **path);
+
+/**
  * @brief Get path to a datastore permission file of a module.
  *
  * @param[in] plg_name Plugin name.
@@ -242,5 +256,18 @@ sr_error_info_t *srpjson_get_notif_path(const char *plg_name, const char *mod_na
  * @return Whether the module has data or not.
  */
 int srpjson_module_has_data(const struct lys_module *ly_mod, int state_data);
+
+/**
+ * @brief Iterate over operational DS files in a directory.
+ *
+ * @param[in] plg_name Plugin name.
+ * @param[in] dir Opened dir.
+ * @param[in] dir_path Path to @p dir directory.
+ * @param[in] mod_name Module name.
+ * @param[out] path Path to an operational data file.
+ * @return 0 on success;
+ * @return 1 if no more files found.
+ */
+int srpjson_dir_oper_file_iter(const char *plg_name, DIR *dir, const char *dir_path, const char *mod_name, char **path);
 
 #endif /* _COMMON_JSON_H */

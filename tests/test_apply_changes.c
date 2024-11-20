@@ -6857,17 +6857,12 @@ apply_change_schema_mount_thread(void *arg)
     assert_int_equal(ret, SR_ERR_OK);
     ret = sr_apply_changes(sess, 0);
     assert_int_equal(ret, SR_ERR_OK);
-    sr_session_stop(sess);
 
     /* signal that the subscription can be created */
     pthread_barrier_wait(&st->barrier);
 
     /* wait for subscription */
     pthread_barrier_wait(&st->barrier);
-
-    /* create a new session to update LY ext data and get the schema-mount data */
-    ret = sr_session_start(st->conn, SR_DS_RUNNING, &sess);
-    assert_int_equal(ret, SR_ERR_OK);
 
     /* create some running data */
     ret = sr_set_item_str(sess, "/sm:root/ietf-interfaces:interfaces/interface[name='bu']/type",
@@ -6884,11 +6879,6 @@ apply_change_schema_mount_thread(void *arg)
     pthread_barrier_wait(&st->barrier);
 
     /* cleanup */
-    ret = sr_delete_item(sess, "/sm:root", 0);
-    assert_int_equal(ret, SR_ERR_OK);
-    ret = sr_apply_changes(sess, 0);
-    assert_int_equal(ret, SR_ERR_OK);
-
     sr_session_stop(sess);
     return NULL;
 }

@@ -400,7 +400,8 @@ sr_lydmods_moddep_add_lref(const char *target_mod, const struct lyxp_expr *exp, 
     }
 
     /* get the path in canonical (JSON) format */
-    if ((err_info = sr_ly_canonize_xpath10_value(LYD_CTX(sr_deps), lyxp_get_expr(exp), prefixes, &path))) {
+    if ((err_info = sr_ly_canonize_xpath10_value(LYD_CTX(sr_deps), lyxp_get_expr(exp), LY_VALUE_SCHEMA_RESOLVED,
+            prefixes, &path))) {
         goto cleanup;
     }
 
@@ -476,7 +477,8 @@ sr_lydmods_moddep_add_xpath(const struct ly_set *target_mods, const struct lyxp_
     }
 
     /* get the path in canonical (JSON) format */
-    if ((err_info = sr_ly_canonize_xpath10_value(LYD_CTX(sr_deps), lyxp_get_expr(exp), prefixes, &path))) {
+    if ((err_info = sr_ly_canonize_xpath10_value(LYD_CTX(sr_deps), lyxp_get_expr(exp), LY_VALUE_SCHEMA_RESOLVED,
+            prefixes, &path))) {
         goto cleanup;
     }
 
@@ -891,7 +893,7 @@ sr_lydmods_print(struct lyd_node **sr_mods)
     lyd_change_term_bin(node, &hash, sizeof hash);
 
     /* store the data using the internal JSON plugin */
-    if ((err_info = srpds_json.store_cb(sr_ly_mod, SR_DS_STARTUP, NULL, *sr_mods, NULL))) {
+    if ((err_info = srpds_json.store_cb(sr_ly_mod, SR_DS_STARTUP, 0, 0, NULL, *sr_mods, NULL))) {
         return err_info;
     }
 
@@ -1094,7 +1096,7 @@ sr_lydmods_parse(const struct ly_ctx *ly_ctx, sr_conn_ctx_t *conn, int *initiali
     }
     if (srpjson_file_exists(NULL, path)) {
         /* load the data using the internal JSON plugin */
-        if ((err_info = srpds_json.load_cb(ly_mod, SR_DS_STARTUP, NULL, 0, NULL, &sr_mods))) {
+        if ((err_info = srpds_json.load_cb(ly_mod, SR_DS_STARTUP, 0, 0, NULL, 0, NULL, &sr_mods))) {
             goto cleanup;
         }
         if (!sr_mods) {

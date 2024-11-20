@@ -4,8 +4,8 @@
  * @brief header for mod SHM routines
  *
  * @copyright
- * Copyright (c) 2018 - 2023 Deutsche Telekom AG.
- * Copyright (c) 2018 - 2023 CESNET, z.s.p.o.
+ * Copyright (c) 2018 - 2024 Deutsche Telekom AG.
+ * Copyright (c) 2018 - 2024 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -67,6 +67,19 @@ sr_rpc_t *sr_shmmod_find_rpc(sr_mod_shm_t *mod_shm, const char *path);
  * @return err_info, NULL on success.
  */
 sr_error_info_t *sr_shmmod_store_modules(sr_shm_t *shm_mod, const struct lyd_node *sr_mods);
+
+/**
+ * @brief Delete all push oper data and SHM ext push oper data entries for a set of module.
+ *
+ * @param[in] conn Connection to use.
+ * @param[in] ly_mod Module to use.
+ * @param[in,out] mod_state Optional mod info mod state to update when using mod lock.
+ * @param[in] shm_mod Optional SHM mod if available.
+ * @param[in] dead_only Whether to delete push oper data of only dead connection or all.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_del_module_oper_data(sr_conn_ctx_t *conn, const struct lys_module *ly_mod,
+        uint32_t *mod_state, sr_mod_t *shm_mod, int dead_only);
 
 /**
  * @brief Load modules stored in mod SHM into a context.
@@ -141,19 +154,20 @@ sr_error_info_t *sr_shmmod_collect_deps(sr_mod_shm_t *mod_shm, sr_dep_t *shm_dep
         const struct lyd_node *data, struct sr_mod_info_s *mod_info);
 
 /**
- * @brief Information structure for the SHM module recovery callback.
+ * @brief Lock or relock a mod SHM module.
+ *
+ * @param[in] shm_lock Main SHM module lock.
+ * @param[in] timeout_ms Timeout in ms. If 0, the default timeout is used.
+ * @param[in] mode Lock mode of the module.
+ * @param[in] ds_timeout_ms Timeout in ms for DS-lock in case it is required and locked, if 0 no waiting is performed.
+ * @param[in] cid Connection ID.
+ * @param[in] sid Sysrepo session ID to store.
+ * @param[in] relock Whether some lock is already held or not.
+ * @param[in] mod_name Module name, for logging.
+ * @return err_info, NULL on success.
  */
-struct sr_shmmod_recover_cb_s {
-    struct ly_ctx **ly_ctx_p;   /**< Pointer to context to get sysrepo module from, may be changed. */
-    sr_datastore_t ds;          /**< Datastore being recovered. */
-    const struct sr_ds_handle_s *ds_handle; /**< Datastore plugin handle of the module being recovered. */
-};
-
-/**
- * @brief Recovery callback for SHM module data locks.
- * Recover possibly backed-up data file.
- */
-void sr_shmmod_recover_cb(sr_lock_mode_t mode, sr_cid_t cid, void *data);
+sr_error_info_t *sr_shmmod_lock(struct sr_mod_lock_s *shm_lock, uint32_t timeout_ms, sr_lock_mode_t mode,
+        uint32_t ds_timeout_ms, sr_cid_t cid, uint32_t sid, int relock, const char *mod_name);
 
 /**
  * @brief READ lock all modules in mod info.
@@ -251,5 +265,17 @@ sr_error_info_t *sr_shmmod_reboot_init(sr_conn_ctx_t *conn, int initialized);
  */
 sr_error_info_t *sr_shmmod_change_prio(sr_conn_ctx_t *conn, const struct lys_module *ly_mod, sr_datastore_t ds,
         uint32_t prio, uint32_t *prio_p);
+
+/**
+ * @brief Get/set order of a push oper data entry.
+ *
+ * @param[in] session Session to use.
+ * @param[in] ly_mod Module to use.
+ * @param[in] order Order to set, 0 to get it instead.
+ * @param[out] order_p Retrieved order, NULL to set it instead.
+ * @return err_info, NULL on success.
+ */
+sr_error_info_t *sr_shmmod_session_oper_order(sr_session_ctx_t *session, const struct lys_module *ly_mod, uint32_t order,
+        uint32_t *order_p);
 
 #endif /* _SHM_MOD_H */

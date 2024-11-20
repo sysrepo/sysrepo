@@ -205,11 +205,6 @@ int sr_get_plugins(sr_conn_ctx_t *conn, const char ***ds_plugins, const char ***
 uid_t sr_get_su_uid(void);
 
 /**
- * @brief Deprecated, use ::sr_discard_items().
- */
-int sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const char *xpath, uint32_t timeout_ms);
-
-/**
  * @brief Start a new session.
  *
  * @param[in] conn Connection to use.
@@ -927,7 +922,7 @@ int sr_set_item(sr_session_ctx_t *session, const char *path, const sr_val_t *val
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifier of the data element to be set.
  * @param[in] value String representation of the value to be set.
- * @param[in] origin Origin of the value, used only for ::SR_DS_OPERATIONAL edits. Module ietf-origin is assumed
+ * @param[in] origin Origin of the value, used only for ::SR_DS_OPERATIONAL edits. Module 'ietf-origin' is assumed
  * if no prefix used.
  * @param[in] opts Options overriding default behavior of this call.
  * @return Error code (::SR_ERR_OK on success, ::SR_ERR_OPERATION_FAILED if the whole edit was discarded).
@@ -944,9 +939,7 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
  * If the @p path of list/leaf-list does not include keys/value, all instances are deleted but there can be no further
  * changes merged into the list, use ::SR_EDIT_ISOLATE in such a case.
  *
- * For ::SR_DS_OPERATIONAL, the flag is not allowed. However, when trying to **remove a value stored in the push
- * operational data** (set before using ::sr_set_item_str() on ::SR_DS_OPERATIONAL, for example), use
- * ::sr_discard_items() instead.
+ * Not supported for ::SR_DS_OPERATIONAL, use ::sr_discard_items() or ::sr_discard_oper_changes() instead.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] path [Path](@ref paths) identifier of the data element to be deleted.
@@ -956,7 +949,7 @@ int sr_set_item_str(sr_session_ctx_t *session, const char *path, const char *val
 int sr_delete_item(sr_session_ctx_t *session, const char *path, const sr_edit_options_t opts);
 
 /**
- * @brief Deprecated, use ::sr_delete_item().
+ * @brief Deprecated, not supported.
  */
 int sr_oper_delete_item_str(sr_session_ctx_t *session, const char *path, const char *value, const sr_edit_options_t opts);
 
@@ -985,7 +978,7 @@ int sr_discard_items(sr_session_ctx_t *session, const char *xpath);
  * turned off with ::SR_EDIT_NON_RECURSIVE option). If ::SR_EDIT_STRICT flag is set,
  * the node must not exist (otherwise an error is returned).
  *
- * For ::SR_DS_OPERATIONAL, neither option is allowed.
+ * Not supported for ::SR_DS_OPERATIONAL.
  *
  * @note To determine current order, you can issue a ::sr_get_items() call
  * (without specifying keys of particular list).
@@ -1008,7 +1001,7 @@ int sr_move_item(sr_session_ctx_t *session, const char *path, const sr_move_posi
  * @brief Provide a prepared edit data tree to be applied.
  * These changes are applied only after calling ::sr_apply_changes().
  *
- * Only operations `merge`, `remove`, and `ether` are allowed for ::SR_DS_OPERATIONAL.
+ * Only top-level operations `merge` and `replace` are allowed for ::SR_DS_OPERATIONAL.
  *
  * @param[in] session Session ([DS](@ref sr_datastore_t)-specific) to use.
  * @param[in] edit Edit content, similar semantics to
@@ -1111,6 +1104,51 @@ int sr_replace_config(sr_session_ctx_t *session, const char *module_name, struct
  * @return Error code (::SR_ERR_OK on success).
  */
 int sr_copy_config(sr_session_ctx_t *session, const char *module_name, sr_datastore_t src_datastore, uint32_t timeout_ms);
+
+/**
+ * @brief Discard push operational changes of a module for a session.
+ *
+ * @param[in] conn Unused.
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
+ * @param[in] module_name Optional module name that limits the operation only to this module.
+ * @param[in] timeout_ms Module change callback timeout in millisecond. If 0, default is used.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_discard_oper_changes(sr_conn_ctx_t *conn, sr_session_ctx_t *session, const char *module_name, uint32_t timeout_ms);
+
+/**
+ * @brief Get stored push operational changes of a session.
+ *
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
+ * @param[in] module_name Optional module name that limits the operation only to this module.
+ * @param[out] data SR data with the stored push oper changes. NULL if none found.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_get_oper_changes(sr_session_ctx_t *session, const char *module_name, sr_data_t **data);
+
+/**
+ * @brief Set explicit push operational changes order determining when they are applied relative to other sessions
+ * for the module.
+ *
+ * By default the next highest order (lowest priority) is generated for any new session push oper data of a module.
+ *
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
+ * @param[in] module_name Name of the module to change. Set to NULL to change the order for all the modules.
+ * @param[in] order Non-zero order to set, must be unique.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_set_oper_changes_order(sr_session_ctx_t *session, const char *module_name, uint32_t order);
+
+/**
+ * @brief Get push operational changes order determining when they are applied relative to other sessions
+ * for the module.
+ *
+ * @param[in] session Session (not [DS](@ref sr_datastore_t)-specific) to use.
+ * @param[in] module_name Name of the module to use.
+ * @param[out] order Non-zero push oper data order. 0 if there are no push oper data of the session for the module.
+ * @return Error code (::SR_ERR_OK on success).
+ */
+int sr_get_oper_changes_order(sr_session_ctx_t *session, const char *module_name, uint32_t *order);
 
 /** @} editdata */
 

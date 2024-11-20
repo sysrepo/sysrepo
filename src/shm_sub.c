@@ -1240,7 +1240,7 @@ sr_shmsub_change_notify_get_diff(struct lyd_node *diff, const struct lys_module 
         *free_diff = 0;
     } else {
         /* separate the diff of this module */
-        mod_diff = sr_module_data_unlink(&diff, ly_mod);
+        mod_diff = sr_module_data_unlink(&diff, ly_mod, 0);
         assert(mod_diff);
 
         /* print it */
@@ -2362,7 +2362,7 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
     }
 
     /* add modules into mod_info, READ lock */
-    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, 0, NULL, NULL, 0, 0, 0))) {
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_PERM_NO, NULL, 0, 0, 0))) {
         goto cleanup;
     }
 
@@ -2397,7 +2397,7 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
 
         /* add modules with dependencies into mod_info */
         if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_READ, SR_MI_INV_DEPS | SR_MI_LOCK_UPGRADEABLE | SR_MI_PERM_NO,
-                0, NULL, NULL, 0, 0, 0))) {
+                NULL, 0, 0, 0))) {
             goto cleanup;
         }
 
@@ -2407,7 +2407,7 @@ sr_shmsub_rpc_internal_call_callback(sr_conn_ctx_t *conn, const struct lyd_node 
         }
 
         /* notify all the subscribers and store the changes */
-        if ((err_info = sr_changes_notify_store(&mod_info, NULL, SR_CHANGE_CB_TIMEOUT, &cb_err_info)) || cb_err_info) {
+        if ((err_info = sr_changes_notify_store(&mod_info, NULL, 0, SR_CHANGE_CB_TIMEOUT, &cb_err_info)) || cb_err_info) {
             goto cleanup;
         }
 
@@ -3677,7 +3677,7 @@ sr_shmsub_oper_get_listen_process_module_events(struct modsub_operget_s *oper_ge
         if (parent) {
             /* set origin if none */
             LY_LIST_FOR(orig_parent ? lyd_child_no_keys(parent) : parent, node) {
-                sr_edit_diff_get_origin(node, &origin, NULL);
+                sr_edit_diff_get_origin(node, 1, &origin, NULL);
                 if ((!origin || !strcmp(origin, SR_CONFIG_ORIGIN)) &&
                         (err_info = sr_edit_diff_set_origin(node, SR_OPER_ORIGIN, 0))) {
                     goto error;
@@ -3883,8 +3883,7 @@ sr_shmsub_oper_poll_listen_process_module_events(struct modsub_operpoll_s *oper_
     if ((err_info = sr_modinfo_add(ly_mod, NULL, 0, 0, &mod_info))) {
         goto cleanup;
     }
-    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_NONE, SR_MI_DATA_NO | SR_MI_PERM_NO, 0, NULL, NULL,
-            0, 0, 0))) {
+    if ((err_info = sr_modinfo_consolidate(&mod_info, SR_LOCK_NONE, SR_MI_DATA_NO | SR_MI_PERM_NO, NULL, 0, 0, 0))) {
         goto cleanup;
     }
 
