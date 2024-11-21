@@ -129,19 +129,15 @@ If employing the pull method, the operational data are always retrieved when the
 to be up-to-date. An application can subscribe to providing these data using an [operational subscription](@ref oper_subs).
 This method is suitable for data that change often such as some counters or statistics.
 
-As for the second push method, its main principle is that the state data need to be set only when they change. Otherwise
-they are stored and reused whenever needed without any interaction with the provider client. These data are
-[set normally](@ref edit_data) but they are owned by the client and only _merge_, _remove_, and _ether_ operations
-are supported. Note that these data are stored directly as an edit that is being applied on the base subscribed
-_running_ data as needed. Incompatible edit changes replace one another such as adding a node and then removing the
-same node. To discard some stored push changes, use a specific [function](@ref ::sr_discard_oper_changes). As soon as
-the client [disconnects](@ref conn_sess), the data are considered to no longer be in-use and are discarded. This method
-is suitable for data that do not change often or not at all such as network interface state or basic information about
-the system.
+As for the second [push method](@ref push_oper_data), its main principle is that the state data need to be set only when
+they change. They are stored and reused whenever needed without any interaction with the provider client but are
+owned by the session. This push method is suitable for data that do not change often or not at all such as network
+interface state or basic information about the system. Using this method to provide some specific operational data may
+be challenging because of a lack of many configuration data restrictions but there is a [dedicated page](@ref push_oper_data)
+explaining all the details and possible issues.
 
-These methods can be combined and provided data can overlap. Later push data overwrite older stored push data and
-pull data always overwrite push data. There is an example `oper_pull_push_example` illustrating providing the same data
-using both methods.
+These methods can be combined and provided data can overlap. There is an example `oper_pull_push_example` illustrating
+providing the same data using both methods.
 
 # Threading Model
 @anchor threads

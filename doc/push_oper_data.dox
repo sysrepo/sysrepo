@@ -1,0 +1,48 @@
+/**
+@page push_oper_data Push Operational Data
+
+Push operational data are commonly set using the standard ::sr_set_item() and ::sr_set_item_str() functions. These
+build a data tree in the session, which is then stored using ::sr_apply_changes(). That means it is **merged** into
+any previous push oper data of the session. Additionally, using ::sr_discard_items() an XPath can be set that will
+select all the nodes to be removed from **previous data**, which may be enabled *running* data or any push oper data
+with a lower order (higher priority). This mechanism should work well for simple edits and if it does not, use
+the advanced mechanism described further below.
+
+When building the _operational_ datastore, all the stored push data are applied in a **specific** order. That means data
+for each session are loaded, previous items discarded (if any set), and then merged into the *operational* datastore.
+Using a combination of discarding items and merging data, it should be possible to fully customize the final
+_operational_ datastore.
+
+Push oper data set by a session are owned by it. If the session is **stopped**, all its push oper data are
+automatically **discarded**. You can do so also manually using ::sr_discard_changes().
+
+## Order
+
+Whenever a session that has no push oper data for a module stores some data, their order within the module is
+automatically generated to be the highest (lowest priority). You can learn the exact order using
+::sr_get_oper_changes_order(). It is also possible to set a specific unique order (even before the session stores any
+push oper data) using ::sr_set_oper_changes_order().
+
+## Advanced Push Oper Data
+
+Since the standard editing functions are designed for configuration data, they do not properly support state lists and
+leaf-lists. State data allow duplicate instances of leaf-lists, several list instances with the same values of all the
+keys, and even key-less lists with multiple instances. Positional predicates can be used to specify their position
+but even that is limited and applies only relative to the current prepared changes in the session.
+
+To peoprely allow such and any other push oper data, another more advanced mechanism should be used:
+
+- get the current stored push oper data of the session with ::sr_get_oper_changes();
+- edit the obtained data tree using all the available _libyang_ functions:
+  - create new nodes,
+  - remove existing nodes,
+  - add, remove, or change `ietf-origin:origin` metadata of the nodes,
+  - create or remove any top-level [`discard-items`](@ref sr_discard_items) opaque nodes of the `sysrepo` module with
+    value being the XPath to discard,
+  - no operations should be used unlike in configuration edits;
+- use ::sr_edit_batch() to prepare the customized data tree in the session:
+  - use `replace` operation to fully replace the previously stored push oper data of this session,
+  - use `merge` to merge the provided data into the previously stored data;
+- normally call ::sr_apply_changes() to store the push oper data.
+
+*/

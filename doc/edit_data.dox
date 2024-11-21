@@ -9,7 +9,7 @@ any [relevant callbacks](@ref change_subs) and make them visible for all session
 The uncommitted changes are stored in the form of a NETCONF (@ref rfcs "RFC") _edit-config_ content. It can also be
 directly provided instead of performing the changes one-by-one.
 
-Note that changes of _operational_ datastore behave in a special way (more in [operational data](@ref oper_data)).
+Note that changes of _operational_ datastore behave in a special way (more in [push operational data](@ref push_oper_data)).
 
 Lastly, it is possible to simply replace the whole datastore (only conventional datastores, all except
 ::SR_DS_OPERATIONAL) or only a specific module data with a data tree. Or the source configuration may also come from
