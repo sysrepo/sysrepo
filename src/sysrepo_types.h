@@ -693,7 +693,7 @@ typedef int (*sr_oper_get_items_cb)(sr_session_ctx_t *session, uint32_t sub_id, 
 /** @} oper_subs */
 
 /**
- * @ingroup plugin_api
+ * @ingroup srpd_plugin_api
  * @{
  */
 

@@ -90,7 +90,7 @@ int sr_session_set_netconf_error2(sr_session_ctx_t *session, const char *error_t
  *
  * Similar functionality to ::sr_session_set_netconf_error().
  *
- * @param[in] session Implicit session provided in a callback.
+ * @param[in,out] err_info Error info to create or add to.
  * @param[in] error_type NETCONF error type.
  * @param[in] error_tag NETCONF error tag.
  * @param[in] error_app_tag Optional NETCONF error app tag.
