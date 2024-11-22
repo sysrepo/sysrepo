@@ -794,6 +794,7 @@ srpjson_dir_oper_file_iter(const char *plg_name, DIR *dir, const char *dir_path,
             if (asprintf(path, "%s/%s", dir_path, ent->d_name) == -1) {
                 srplg_log_errinfo(&err_info, plg_name, NULL, SR_ERR_NO_MEMORY, "Memory allocation failed.");
                 srplg_errinfo_free(&err_info);
+                free(file_prefix);
                 return 1;
             }
         }

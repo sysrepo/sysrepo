@@ -146,7 +146,7 @@ typedef struct {
     uint16_t inv_dep_count;     /**< Number of inverse module data dependencies. */
 
     off_t oper_push_data;       /**< Array of oper push data entries (offset in ext SHM). */
-    uint16_t oper_push_data_count;  /**< Number of oper poush data entries. */
+    uint32_t oper_push_data_count;  /**< Number of oper poush data entries. */
 
     struct {
         sr_rwlock_t lock;       /**< Process-shared lock for reading or preventing changes (READ) or modifying (WRITE)

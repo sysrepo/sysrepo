@@ -914,7 +914,7 @@ sr_shmmod_del_module_oper_data(sr_conn_ctx_t *conn, const struct lys_module *ly_
     sr_error_info_t *err_info = NULL, *tmp_err;
     struct sr_mod_lock_s *shm_lock;
     sr_mod_oper_push_t *oper_push_l = NULL;
-    uint16_t oper_push_count, i;
+    uint32_t oper_push_count, i;
 
     assert(!mod_state || (*mod_state & MOD_INFO_RLOCK));
 

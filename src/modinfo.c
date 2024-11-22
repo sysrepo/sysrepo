@@ -1208,8 +1208,7 @@ sr_module_oper_data_load(struct sr_mod_info_mod_s *mod, sr_conn_ctx_t *conn, str
     const struct lys_module *ly_mod;
     const char *xpath;
     struct ly_set *set;
-    uint16_t i;
-    uint32_t j;
+    uint32_t i, j;
 
     /* EXT READ LOCK */
     if ((err_info = sr_shmext_conn_remap_lock(conn, SR_LOCK_READ, 1, __func__))) {

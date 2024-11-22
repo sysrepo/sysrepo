@@ -2881,7 +2881,7 @@ sr_shmext_oper_push_update_get_idx(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_oper_push_t *oper_push = NULL;
-    uint16_t i;
+    uint32_t i;
 
     *found_i = -1;
     *insert_i = -1;
@@ -2968,8 +2968,8 @@ sr_shmext_oper_push_update(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *m
         sr_shmext_print(SR_CONN_MOD_SHM(conn), &conn->ext_shm);
 
         /* session not added yet, add it */
-        if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_mod->oper_push_data,
-                (uint32_t *)&shm_mod->oper_push_data_count, 0, sizeof *new_item, insert_i, (void **)&new_item, 0, NULL))) {
+        if ((err_info = sr_shmrealloc_add(&conn->ext_shm, &shm_mod->oper_push_data, &shm_mod->oper_push_data_count, 0,
+                sizeof *new_item, insert_i, (void **)&new_item, 0, NULL))) {
             goto cleanup_ext_shmmod_unlock;
         }
 
@@ -3028,7 +3028,7 @@ sr_shmext_oper_push_get(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *mod_
     sr_error_info_t *err_info = NULL;
     struct sr_mod_lock_s *shm_lock;
     sr_mod_oper_push_t *oper_push;
-    uint16_t i;
+    uint32_t i;
 
     assert(order || has_data);
     assert((has_mod_locks == SR_LOCK_NONE) || (has_mod_locks == SR_LOCK_READ));
@@ -3088,7 +3088,7 @@ sr_shmext_oper_push_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *UNUS
 {
     sr_error_info_t *err_info = NULL;
     sr_mod_oper_push_t *oper_push;
-    uint16_t i;
+    uint32_t i;
 
     assert(has_mod_locks == SR_LOCK_WRITE);
     (void)has_mod_locks;
@@ -3108,8 +3108,7 @@ sr_shmext_oper_push_del(sr_conn_ctx_t *conn, sr_mod_t *shm_mod, const char *UNUS
     SR_CHECK_INT_GOTO(i == shm_mod->oper_push_data_count, err_info, cleanup_ext_unlock);
 
     /* free the item */
-    sr_shmrealloc_del(&conn->ext_shm, &shm_mod->oper_push_data, (uint32_t *)&shm_mod->oper_push_data_count,
-            sizeof *oper_push, i, 0, 0);
+    sr_shmrealloc_del(&conn->ext_shm, &shm_mod->oper_push_data, &shm_mod->oper_push_data_count, sizeof *oper_push, i, 0, 0);
 
 cleanup_ext_unlock:
     /* EXT READ UNLOCK */
